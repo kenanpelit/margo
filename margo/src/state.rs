@@ -109,6 +109,16 @@ impl ClientData for MargoClientData {
     fn disconnected(&self, _client_id: ClientId, _reason: DisconnectReason) {}
 }
 
+// One-line tag for focus targets; only used in tracing so we don't have to
+// pull `Debug` through whatever wrapped surface a target carries.
+fn focus_target_label(t: &FocusTarget) -> String {
+    match t {
+        FocusTarget::Window(w) => format!("Window({:?})", w.wl_surface().map(|s| s.id())),
+        FocusTarget::LayerSurface(_) => "LayerSurface".to_string(),
+        FocusTarget::SessionLock(s) => format!("SessionLock({:?})", s.wl_surface().id()),
+    }
+}
+
 // ── Focus target ─────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1362,8 +1372,19 @@ impl MargoState {
 
         let current = self.seat.get_keyboard().and_then(|kb| kb.current_focus());
         if current.as_ref() == desired.as_ref() {
+            tracing::debug!(
+                "refresh_keyboard_focus: noop (locked={}, current={:?})",
+                self.session_locked,
+                current.as_ref().map(focus_target_label),
+            );
             return;
         }
+        tracing::info!(
+            "refresh_keyboard_focus: locked={} current={:?} -> desired={:?}",
+            self.session_locked,
+            current.as_ref().map(focus_target_label),
+            desired.as_ref().map(focus_target_label),
+        );
         self.focus_surface(desired);
     }
 
@@ -2502,6 +2523,11 @@ impl CompositorHandler for MargoState {
                     .iter()
                     .any(|(_, s)| s.wl_surface() == &root)
                 {
+                    tracing::info!(
+                        "session_lock: commit on lock surface {:?}, surfaces total={}",
+                        root.id(),
+                        self.lock_surfaces.len()
+                    );
                     // First commit on a lock surface = it's now mapped (has
                     // a buffer attached). Run focus refresh AT THIS POINT
                     // so `wl_keyboard.enter` lands on a fully-formed
@@ -3469,14 +3495,18 @@ impl SessionLockHandler for MargoState {
     }
 
     fn lock(&mut self, confirmation: SessionLocker) {
-        tracing::info!("session locked");
+        tracing::info!(
+            "session_lock: lock() called (was locked={}, lock_surfaces={})",
+            self.session_locked,
+            self.lock_surfaces.len()
+        );
         confirmation.lock();
         self.session_locked = true;
         self.arrange_all();
     }
 
     fn unlock(&mut self) {
-        tracing::info!("session unlocked");
+        tracing::info!("session_lock: unlock() called");
         self.session_locked = false;
         self.lock_surfaces.clear();
         self.arrange_all();

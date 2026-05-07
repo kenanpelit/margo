@@ -173,6 +173,21 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                 // Without `Forward` here the lock screen never sees a single
                 // keystroke and there's no way to unlock.
                 if state.session_locked {
+                    let focus = state
+                        .seat
+                        .get_keyboard()
+                        .and_then(|kb| kb.current_focus());
+                    tracing::info!(
+                        "lock: forwarding key keycode={} state={:?} focus={}",
+                        keycode.raw(),
+                        key_state,
+                        match &focus {
+                            Some(crate::state::FocusTarget::SessionLock(_)) => "SessionLock",
+                            Some(crate::state::FocusTarget::LayerSurface(_)) => "LayerSurface",
+                            Some(crate::state::FocusTarget::Window(_)) => "Window",
+                            None => "None",
+                        }
+                    );
                     return FilterResult::Forward;
                 }
                 // Check for compositor keybindings when key is pressed
