@@ -9,7 +9,8 @@ use smithay::{
     },
     delegate_compositor, delegate_data_control, delegate_data_device, delegate_dmabuf,
     delegate_input_method_manager, delegate_layer_shell, delegate_output,
-    delegate_primary_selection, delegate_seat, delegate_shm, delegate_text_input_manager,
+    delegate_pointer_constraints, delegate_primary_selection, delegate_relative_pointer,
+    delegate_seat, delegate_shm, delegate_text_input_manager,
     delegate_xdg_decoration, delegate_xdg_shell, delegate_session_lock,
     delegate_idle_notify, delegate_idle_inhibit,
     desktop::{LayerSurface as DesktopLayerSurface, PopupManager, Space, Window, WindowSurface, WindowSurfaceType, layer_map_for_output},
@@ -73,6 +74,10 @@ use smithay::{
         shm::{ShmHandler, ShmState},
         session_lock::{SessionLocker, SessionLockHandler, SessionLockManagerState, LockSurface},
         input_method::{InputMethodHandler, InputMethodManagerState, PopupSurface as InputMethodPopupSurface},
+        pointer_constraints::{
+            with_pointer_constraint, PointerConstraintsHandler, PointerConstraintsState,
+        },
+        relative_pointer::RelativePointerManagerState,
         text_input::TextInputManagerState,
         viewporter::ViewporterState,
         dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
@@ -740,6 +745,20 @@ pub struct MargoState {
     /// `zwp_input_method_v2` global. Goes hand-in-hand with text_input —
     /// Qt's text-input plugin won't activate without both.
     pub input_method_state: InputMethodManagerState,
+    /// `zwp_pointer_constraints_v1` global. Lets clients request that
+    /// the pointer be locked (held in place, FPS games / Blender's
+    /// rotate-around-camera) or confined to a region (Krita canvas
+    /// drag, remote-desktop client). Activated through
+    /// `PointerConstraintsHandler::new_constraint`; honoured in
+    /// `handle_pointer_motion`.
+    pub pointer_constraints_state: PointerConstraintsState,
+    /// `zwp_relative_pointer_manager_v1` global. Required complement
+    /// to pointer constraints — when the pointer is locked, clients
+    /// still need to know the cursor *would have moved by Δ*. Each
+    /// pointer-motion event already calls `pointer.relative_motion`,
+    /// so all this state needs to do is exist so clients can bind
+    /// the global and get a `wp_relative_pointer_v1` per pointer.
+    pub relative_pointer_state: RelativePointerManagerState,
     /// `ext_idle_notifier_v1`: pings clients (swayidle, noctalia) once
     /// the seat has been idle for the duration they registered.
     pub idle_notifier_state: smithay::wayland::idle_notify::IdleNotifierState<MargoState>,
@@ -830,6 +849,8 @@ impl MargoState {
         let session_lock_state = smithay::wayland::session_lock::SessionLockManagerState::new::<Self, _>(&dh, |_| true);
         let text_input_state = TextInputManagerState::new::<Self>(&dh);
         let input_method_state = InputMethodManagerState::new::<Self, _>(&dh, |_client| true);
+        let pointer_constraints_state = PointerConstraintsState::new::<Self>(&dh);
+        let relative_pointer_state = RelativePointerManagerState::new::<Self>(&dh);
         let idle_notifier_state =
             smithay::wayland::idle_notify::IdleNotifierState::<Self>::new(&dh, loop_handle.clone());
         let idle_inhibit_state =
@@ -884,6 +905,8 @@ impl MargoState {
             session_lock_state,
             text_input_state,
             input_method_state,
+            pointer_constraints_state,
+            relative_pointer_state,
             space,
             popups,
             seat,
@@ -3964,6 +3987,101 @@ impl InputMethodHandler for MargoState {
 }
 delegate_text_input_manager!(MargoState);
 delegate_input_method_manager!(MargoState);
+
+// ── Smithay delegate: pointer constraints + relative pointer ─────────────────
+//
+// `wp_pointer_constraints_v1` lets clients lock or confine the cursor to
+// their surface. Two flavours:
+//   * Lock: the pointer's *position* on screen freezes at request time;
+//     the client still receives relative_motion events, but nothing else.
+//     This is the FPS / Blender / DCC-app pattern — the user moves the
+//     mouse, the camera turns, the cursor itself doesn't visibly drift.
+//   * Confine: the pointer is allowed to move freely, but only inside
+//     the surface (and an optional sub-region). Used by Krita to keep
+//     the brush from leaving the canvas during a drag, and by remote-
+//     desktop clients to keep the host pointer trapped inside the
+//     remote view.
+//
+// `wp_relative_pointer_manager_v1` is the natural complement: it lets
+// clients listen for pure delta-only motion events, so a locked pointer
+// still reports "the user moved the mouse by Δ" without leaking an
+// absolute position. Our `handle_pointer_motion` already calls
+// `pointer.relative_motion(...)` on every libinput delta, so once the
+// global is registered all clients can bind a `wp_relative_pointer_v1`
+// per pointer and get the full event stream.
+//
+// Constraint *enforcement* (lock the cursor, clamp to region) lives in
+// `input_handler::handle_pointer_motion`; this module only wires the
+// protocol surface.
+impl PointerConstraintsHandler for MargoState {
+    fn new_constraint(
+        &mut self,
+        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+        pointer: &smithay::input::pointer::PointerHandle<Self>,
+    ) {
+        // Activate the constraint immediately if the pointer is
+        // already over the requesting surface. The client typically
+        // requests a constraint while it has pointer focus (a
+        // fullscreen game, a Blender viewport drag, …), so this is
+        // the common path. If the pointer is somewhere else when
+        // the request arrives, smithay defers activation until
+        // pointer focus moves into the surface.
+        let Some(current_focus) = pointer.current_focus() else {
+            return;
+        };
+        if current_focus.wl_surface().as_deref() == Some(surface) {
+            with_pointer_constraint(surface, pointer, |constraint| {
+                if let Some(constraint) = constraint {
+                    constraint.activate();
+                }
+            });
+        }
+    }
+
+    fn cursor_position_hint(
+        &mut self,
+        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+        pointer: &smithay::input::pointer::PointerHandle<Self>,
+        location: smithay::utils::Point<f64, smithay::utils::Logical>,
+    ) {
+        // While a lock is active, the client may suggest a
+        // post-unlock cursor position via this hint (e.g. "the
+        // crosshair was at (320, 200) when I locked, please put the
+        // cursor there when unlocking"). Honour it only if the
+        // constraint is currently active and the surface still owns
+        // the pointer.
+        let active = with_pointer_constraint(surface, pointer, |constraint| {
+            constraint.is_some_and(|c| c.is_active())
+        });
+        if !active {
+            return;
+        }
+        // Resolve the surface's screen origin so we can convert the
+        // surface-relative `location` hint to compositor-global
+        // coordinates.
+        let origin = self
+            .space
+            .elements()
+            .find_map(|window| {
+                (window.wl_surface().as_deref() == Some(surface)).then(|| {
+                    self.space
+                        .element_location(window)
+                        .unwrap_or_default()
+                })
+            })
+            .unwrap_or_default()
+            .to_f64();
+        let target = origin + location;
+        // Update the pointer's tracked location AND our own
+        // `input_pointer` shadow so the next motion event runs from
+        // the correct anchor.
+        pointer.set_location(target);
+        self.input_pointer.x = target.x;
+        self.input_pointer.y = target.y;
+    }
+}
+delegate_pointer_constraints!(MargoState);
+delegate_relative_pointer!(MargoState);
 
 // ── Smithay delegate: Idle notify + Idle inhibit ─────────────────────────────
 

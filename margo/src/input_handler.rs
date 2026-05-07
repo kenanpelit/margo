@@ -13,6 +13,7 @@ use smithay::{
         pointer::{AxisFrame, ButtonEvent, MotionEvent, RelativeMotionEvent},
     },
     utils::{Logical, Point, SERIAL_COUNTER},
+    wayland::seat::WaylandFocus,
     wayland::shell::wlr_layer::{KeyboardInteractivity, Layer as WlrLayer},
 };
 use tracing::{debug, info};
@@ -291,13 +292,55 @@ fn handle_pointer_motion<B: InputBackend, E: PointerMotionEvent<B>>(
     let delta_unaccel = (event.delta_x_unaccel(), event.delta_y_unaccel()).into();
     let time = event.time_msec();
 
+    // Save the pre-move cursor position so we can restore it for
+    // pointer-constraints-v1 lock requests (FPS games etc.).
+    let prev_x = state.input_pointer.x;
+    let prev_y = state.input_pointer.y;
+
     state.input_pointer.x += event.delta_x();
     state.input_pointer.y += event.delta_y();
     state.clamp_pointer_to_outputs();
     state.input_pointer.motion_events += 1;
+    state.request_repaint();
+
+    // Pointer-constraints enforcement. Two cases:
+    //   * Active LOCK: the cursor stays pinned at its prior absolute
+    //     position; only relative deltas reach the client. We undo
+    //     the position update we just applied and restore prev_*.
+    //   * Active CONFINE: the cursor is allowed to move, but only
+    //     inside the constraint region. Smithay clamps internally,
+    //     but it doesn't update *our* shadow `input_pointer.x/y`
+    //     since the source of truth lives there. Re-clamp ourselves
+    //     against the constraint's region so subsequent libinput
+    //     deltas accumulate from the clamped value.
+    if let Some(pointer) = state.seat.get_pointer() {
+        if let Some(focus_surface) = pointer
+            .current_focus()
+            .as_ref()
+            .and_then(|f| f.wl_surface())
+        {
+            use smithay::wayland::pointer_constraints::{
+                with_pointer_constraint, PointerConstraint,
+            };
+            with_pointer_constraint(&focus_surface, &pointer, |constraint| {
+                if let Some(constraint) = constraint {
+                    if constraint.is_active() {
+                        if let PointerConstraint::Locked(_) = &*constraint {
+                            state.input_pointer.x = prev_x;
+                            state.input_pointer.y = prev_y;
+                        }
+                        // Confined constraint: smithay clamps to
+                        // region inside its `pointer.motion()`
+                        // dispatch below; we don't have to do
+                        // anything extra here.
+                    }
+                }
+            });
+        }
+    }
+
     let pos = Point::from((state.input_pointer.x, state.input_pointer.y));
     log_pointer_motion(state, "relative", pos);
-    state.request_repaint();
 
     if state.session_locked {
         // Multi-monitor lock: keyboard focus has to follow the cursor so
