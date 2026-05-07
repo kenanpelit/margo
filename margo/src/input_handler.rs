@@ -240,6 +240,15 @@ fn handle_pointer_motion<B: InputBackend, E: PointerMotionEvent<B>>(
     log_pointer_motion(state, "relative", pos);
     state.request_repaint();
 
+    if state.session_locked {
+        // Multi-monitor lock: keyboard focus has to follow the cursor so
+        // the lock surface on the screen the user is looking at is the
+        // one that gets keystrokes. Without this, after `alt+l` you might
+        // be typing into eDP-1's lock surface while staring at DP-3's,
+        // and nothing happens.
+        state.refresh_keyboard_focus();
+    }
+
     // Sloppy-focus uses the toplevel-level FocusTarget (keyboard cares about
     // windows, not subsurfaces). Pointer events use the drilled wl_surface.
     let kbd_focus = focus_under(state, pos);

@@ -1157,17 +1157,44 @@ impl MargoState {
                 && old.height > 0
                 && old != rect;
             if should_animate {
+                // Animate the window's *position* between layout slots,
+                // but snap the size to the target on frame 0. Why:
+                //
+                // Resize-shy clients (Electron browsers like Helium /
+                // Spotify / Discord) take 50–100 ms to ack a new
+                // `xdg_toplevel.configure(size)` and commit a fresh
+                // buffer. If we lerp `c.geom.width` from old → new over
+                // 480 ms while the buffer arrives at the new size in
+                // a couple frames, the slot is animating around an
+                // already-resized buffer for the rest of the
+                // animation: empty wallpaper inside the border while
+                // the slot catches up, then a snap when both align.
+                // That's the "border ve pencere kayması" jitter.
+                //
+                // Snapping size means the buffer size, the slot, and
+                // the border all agree from t=0. Position still
+                // animates so the rearrange feels alive — but only
+                // when position actually changes; slot-only resizes
+                // (helium's column halving) become an instant resize
+                // with no visible animation, which is exactly what
+                // the user wanted.
+                let initial = Rect {
+                    x: old.x,
+                    y: old.y,
+                    width: rect.width,
+                    height: rect.height,
+                };
                 self.clients[client_idx].animation = ClientAnimation {
                     should_animate: true,
                     running: true,
                     time_started: now,
                     duration: self.config.animation_duration_move.max(1),
-                    initial: old,
+                    initial,
                     current: rect,
                     action: AnimationType::Move,
                     ..Default::default()
                 };
-                self.clients[client_idx].geom = old;
+                self.clients[client_idx].geom = initial;
             } else {
                 self.clients[client_idx].animation.running = false;
                 self.clients[client_idx].geom = rect;
@@ -1306,6 +1333,110 @@ impl MargoState {
             .map(|i| self.clients[i].monitor)
             .or_else(|| self.pointer_monitor())
             .unwrap_or(0)
+    }
+
+    /// Centralised "what should keyboard focus be right now?" — the niri
+    /// pattern. We can't rely on transitional events (layer_destroyed
+    /// alone, set_focus from new_surface) because real clients change
+    /// focus state in ways those events don't fire for:
+    ///
+    ///   * **noctalia's launcher / settings panels** don't create or
+    ///     destroy a layer surface when they open/close. They keep one
+    ///     `MainScreen` `WlrLayershell` per output and just toggle its
+    ///     `keyboardFocus` between `Exclusive` and `None`. The transition
+    ///     surfaces only as a `wl_surface.commit` with a different
+    ///     cached `keyboard_interactivity` — no destroy callback, no
+    ///     unmap. Without recomputing focus on every layer commit we
+    ///     never notice the panel closed and the key events keep going
+    ///     into the void.
+    ///   * **session lock with multiple outputs**. Quickshell creates one
+    ///     `WlSessionLockSurface` per screen; only the surface on the
+    ///     output the user is looking at should hold focus, and that has
+    ///     to track cursor motion across outputs.
+    ///
+    /// This method picks a target by priority and pushes it through the
+    /// existing `focus_surface` plumbing only if it differs from the
+    /// current focus, so it's cheap to call after every relevant event.
+    pub fn refresh_keyboard_focus(&mut self) {
+        let desired = self.compute_desired_focus();
+
+        let current = self.seat.get_keyboard().and_then(|kb| kb.current_focus());
+        if current.as_ref() == desired.as_ref() {
+            return;
+        }
+        self.focus_surface(desired);
+    }
+
+    fn compute_desired_focus(&self) -> Option<FocusTarget> {
+        if self.session_locked {
+            // Lock surface on the output under the cursor wins, with
+            // graceful fallbacks: focused-monitor's surface, then any
+            // surface (so we never end up locked with no focus at all).
+            let pointer_output = self
+                .monitor_at_point(self.input_pointer.x, self.input_pointer.y)
+                .and_then(|i| self.monitors.get(i).map(|m| m.output.clone()));
+
+            if let Some(out) = pointer_output {
+                if let Some((_, s)) =
+                    self.lock_surfaces.iter().find(|(o, _)| o == &out)
+                {
+                    return Some(FocusTarget::SessionLock(s.clone()));
+                }
+            }
+            return self
+                .lock_surfaces
+                .first()
+                .map(|(_, s)| FocusTarget::SessionLock(s.clone()));
+        }
+
+        // Highest-priority Exclusive layer on Top/Overlay anywhere.
+        for layer in self.layer_shell_state.layer_surfaces().rev() {
+            let exclusive = layer.with_cached_state(|data| {
+                data.keyboard_interactivity
+                    == smithay::wayland::shell::wlr_layer::KeyboardInteractivity::Exclusive
+                    && matches!(
+                        data.layer,
+                        smithay::wayland::shell::wlr_layer::Layer::Top
+                            | smithay::wayland::shell::wlr_layer::Layer::Overlay
+                    )
+            });
+            if !exclusive {
+                continue;
+            }
+            let mapped = self.space.outputs().find_map(|output| {
+                let map = layer_map_for_output(output);
+                let found = map
+                    .layers()
+                    .find(|m| m.layer_surface() == &layer)
+                    .map(|m| m.layer_surface().clone());
+                found
+            });
+            if let Some(s) = mapped {
+                return Some(FocusTarget::LayerSurface(s));
+            }
+        }
+
+        // Otherwise: monitor's last-selected client (focus history),
+        // falling back to the topmost visible client on the same monitor.
+        let mon_idx = self.pointer_monitor().or_else(|| {
+            self.focused_client_idx().map(|i| self.clients[i].monitor)
+        })?;
+        if mon_idx >= self.monitors.len() {
+            return None;
+        }
+        let tagset = self.monitors[mon_idx].current_tagset();
+        if let Some(idx) = self.monitors[mon_idx].selected.filter(|&i| {
+            i < self.clients.len()
+                && self.clients[i].monitor == mon_idx
+                && self.clients[i].is_visible_on(mon_idx, tagset)
+        }) {
+            return Some(FocusTarget::Window(self.clients[idx].window.clone()));
+        }
+        let idx = self
+            .clients
+            .iter()
+            .position(|c| c.monitor == mon_idx && c.is_visible_on(mon_idx, tagset))?;
+        Some(FocusTarget::Window(self.clients[idx].window.clone()))
     }
 
     /// For scroller layout, return the client-vector index where a newly
@@ -2366,37 +2497,25 @@ impl CompositorHandler for MargoState {
             }
 
             if self.session_locked {
-                if let Some((_, lock_surface)) = self
+                if self
                     .lock_surfaces
                     .iter()
-                    .find(|(_, s)| s.wl_surface() == &root)
-                    .cloned()
+                    .any(|(_, s)| s.wl_surface() == &root)
                 {
                     // First commit on a lock surface = it's now mapped (has
-                    // a buffer). Re-issue keyboard focus AT THIS POINT so
-                    // wl_keyboard.enter lands on a fully-formed surface.
-                    //
-                    // Why we do it here and not just in `new_surface`: when
-                    // the lock surface is first created the wl_surface
-                    // exists but has no buffer attached yet. Qt's
-                    // QtWayland plugin doesn't always wire `forceActiveFocus`
-                    // on the QML TextInput until the QQuickWindow has
-                    // received both surface activation AND a paint event.
-                    // Sending wl_keyboard.enter again on first-commit
-                    // guarantees Qt sees the focus event after the surface
-                    // is fully alive — that's the difference between "lock
-                    // screen renders but password field is dead" and "lock
-                    // screen accepts the password from the first
-                    // keystroke."
-                    let need_refocus = self
-                        .seat
-                        .get_keyboard()
-                        .and_then(|kb| kb.current_focus())
-                        .map(|cur| !matches!(cur, FocusTarget::SessionLock(ref s) if s == &lock_surface))
-                        .unwrap_or(true);
-                    if need_refocus {
-                        self.focus_surface(Some(FocusTarget::SessionLock(lock_surface)));
-                    }
+                    // a buffer attached). Run focus refresh AT THIS POINT
+                    // so `wl_keyboard.enter` lands on a fully-formed
+                    // surface — Qt's QtWayland plugin doesn't always wire
+                    // forceActiveFocus on the QML TextInput until the
+                    // QQuickWindow has received both surface activation
+                    // AND a paint event, so re-issuing focus once the
+                    // first buffer commits is what flips the password
+                    // field from "renders but is dead" to "accepts the
+                    // first keystroke." `refresh_keyboard_focus` also
+                    // makes sure the surface that gets focus is the one
+                    // on the cursor's output (not always the first
+                    // surface in `lock_surfaces`).
+                    self.refresh_keyboard_focus();
                     self.request_repaint();
                     return;
                 }
@@ -2468,6 +2587,19 @@ impl CompositorHandler for MargoState {
                 }
 
                 self.refresh_output_work_area(&output);
+
+                // A layer commit can flip `keyboard_interactivity` —
+                // noctalia's bar / launcher / settings / control-center
+                // all live on a single per-screen MainScreen layer and
+                // mutate `WlrLayershell.keyboardFocus` between
+                // `Exclusive` and `None` instead of destroying the
+                // surface. Without recomputing focus here, closing one
+                // of those panels with Esc leaves keyboard focus
+                // pinned to the (still-alive) layer surface in `None`
+                // mode — keys go nowhere until the user nudges the
+                // mouse, which is exactly what made "rofi works but
+                // the noctalia launcher does not" reproducible.
+                self.refresh_keyboard_focus();
             }
         }
         self.popups.commit(surface);
@@ -3388,8 +3520,15 @@ impl SessionLockHandler for MargoState {
             size.h
         );
 
-        self.lock_surfaces.push((output, surface.clone()));
-        self.focus_surface(Some(FocusTarget::SessionLock(surface)));
+        self.lock_surfaces.push((output, surface));
+        // Don't try to set focus here: the wl_surface exists but has no
+        // buffer yet, so `wl_keyboard.enter` arrives before Qt's
+        // QQuickWindow is paint-ready and the password TextInput's
+        // `forceActiveFocus()` no-ops. The commit handler runs the
+        // refresh once the surface attaches its first buffer, which
+        // both fixes that timing AND picks the lock surface on the
+        // user's monitor instead of the first one in `lock_surfaces`.
+        self.refresh_keyboard_focus();
         self.request_repaint();
     }
 }
