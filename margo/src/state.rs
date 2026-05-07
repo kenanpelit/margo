@@ -1382,6 +1382,31 @@ impl MargoState {
         LayoutId::from_name(&self.config.default_layout).unwrap_or(LayoutId::Tile)
     }
 
+    /// Look up the "home monitor" for a given tag bitmask, by matching
+    /// any single bit in the mask against `tagrule = id:N,monitor_name:X`
+    /// entries. Returns the monitor index if exactly one tag is set in
+    /// the mask AND a tagrule pins it. Used by `view_tag` and
+    /// `new_toplevel` to route cross-monitor.
+    pub fn tag_home_monitor(&self, tagmask: u32) -> Option<usize> {
+        if tagmask == 0 {
+            return None;
+        }
+        // Translate single-bit mask to 1-indexed tag id.
+        let id = if tagmask.is_power_of_two() {
+            (tagmask.trailing_zeros() + 1) as i32
+        } else {
+            // Multi-tag mask — use the lowest set bit.
+            ((tagmask & tagmask.wrapping_neg()).trailing_zeros() + 1) as i32
+        };
+        let name = self
+            .config
+            .tag_rules
+            .iter()
+            .find(|r| r.id == id && r.monitor_name.is_some())
+            .and_then(|r| r.monitor_name.clone())?;
+        self.monitors.iter().position(|m| m.name == name)
+    }
+
     pub fn apply_tag_rules_to_monitor(&mut self, mon_idx: usize) {
         let Some(mon) = self.monitors.get_mut(mon_idx) else {
             return;
@@ -1410,6 +1435,24 @@ impl MargoState {
                 mon.pertag.nmasters[tag] = rule.nmaster as u32;
             }
         }
+    }
+
+    /// Move keyboard focus + cursor "home" onto the given monitor. Does
+    /// NOT change the monitor's current tagset — the caller (view_tag,
+    /// focus_mon) is responsible for that. Used by view_tag's tag-home
+    /// redirect: if the user presses super+N for a tag pinned to another
+    /// monitor, we warp here first so the upcoming view operation
+    /// happens in the right place.
+    pub fn warp_focus_to_monitor(&mut self, mon_idx: usize) {
+        if mon_idx >= self.monitors.len() {
+            return;
+        }
+        let area = self.monitors[mon_idx].monitor_area;
+        // Center the pointer on the target monitor so subsequent
+        // sloppy-focus / focus-under lookups land on this output.
+        self.input_pointer.x = (area.x + area.width / 2) as f64;
+        self.input_pointer.y = (area.y + area.height / 2) as f64;
+        self.focus_first_visible_or_clear(mon_idx);
     }
 
     fn focus_first_visible_or_clear(&mut self, mon_idx: usize) {
@@ -1902,8 +1945,28 @@ impl MargoState {
     }
 
     pub fn view_tag(&mut self, tagmask: u32) {
-        let mon_idx = self.focused_monitor();
-        if mon_idx >= self.monitors.len() || tagmask == 0 {
+        if tagmask == 0 {
+            return;
+        }
+        // If a tagrule pins this tag to a specific monitor, jump focus
+        // there first so multi-monitor users get niri-style "tag 7 is on
+        // eDP-1, super+7 from anywhere takes me to it" behaviour. We
+        // skip the redirect when the user is already on the home
+        // monitor or the tagmask is the all-tags special value.
+        let current_mon = self.focused_monitor();
+        let mon_idx = if tagmask != u32::MAX {
+            if let Some(home) = self.tag_home_monitor(tagmask) {
+                if home != current_mon && home < self.monitors.len() {
+                    self.warp_focus_to_monitor(home);
+                }
+                home
+            } else {
+                current_mon
+            }
+        } else {
+            current_mon
+        };
+        if mon_idx >= self.monitors.len() {
             return;
         }
         let seltags = self.monitors[mon_idx].seltags;
@@ -2419,6 +2482,23 @@ impl XdgShellHandler for MargoState {
         client.app_id = app_id.clone();
         client.title = title.clone();
         self.apply_window_rules(&mut client);
+
+        // Tag-home redirect: if a windowrule set `tags:N` but DIDN'T pin
+        // a `monitor:`, route to the tag's home monitor as defined by
+        // `tagrule = id:N, monitor_name:X`. Lets the user write
+        //   tagrule = id:7, monitor_name:eDP-1
+        //   windowrule = tags:7, appid:^transmission$
+        // and the windowrule doesn't have to repeat `monitor:eDP-1`.
+        let no_explicit_monitor = !self
+            .matching_window_rules(&client.app_id, &client.title)
+            .iter()
+            .any(|r| r.monitor.is_some());
+        if no_explicit_monitor {
+            if let Some(home) = self.tag_home_monitor(client.tags) {
+                client.monitor = home;
+            }
+        }
+
         let target_mon = client.monitor;
         let focus_new = !client.no_focus && !client.open_silent;
 
@@ -2946,6 +3026,23 @@ impl MargoState {
         client.title = window.x11_surface().map(|s| s.title()).unwrap_or_default();
         client.app_id = window.x11_surface().map(|s| s.class()).unwrap_or_default();
         self.apply_window_rules(&mut client);
+
+        // Tag-home redirect: if a windowrule set `tags:N` but DIDN'T pin
+        // a `monitor:`, route to the tag's home monitor as defined by
+        // `tagrule = id:N, monitor_name:X`. Lets the user write
+        //   tagrule = id:7, monitor_name:eDP-1
+        //   windowrule = tags:7, appid:^transmission$
+        // and the windowrule doesn't have to repeat `monitor:eDP-1`.
+        let no_explicit_monitor = !self
+            .matching_window_rules(&client.app_id, &client.title)
+            .iter()
+            .any(|r| r.monitor.is_some());
+        if no_explicit_monitor {
+            if let Some(home) = self.tag_home_monitor(client.tags) {
+                client.monitor = home;
+            }
+        }
+
         let target_mon = client.monitor;
         let focus_new = !client.no_focus && !client.open_silent;
         let ft_handle = self.foreign_toplevel_list.new_toplevel::<Self>(&client.title, &client.app_id);
