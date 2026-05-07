@@ -8,7 +8,8 @@ use smithay::{
         renderer::utils::on_commit_buffer_handler,
     },
     delegate_compositor, delegate_data_control, delegate_data_device, delegate_dmabuf,
-    delegate_layer_shell, delegate_output, delegate_primary_selection, delegate_seat, delegate_shm,
+    delegate_input_method_manager, delegate_layer_shell, delegate_output,
+    delegate_primary_selection, delegate_seat, delegate_shm, delegate_text_input_manager,
     delegate_xdg_decoration, delegate_xdg_shell, delegate_session_lock,
     delegate_idle_notify, delegate_idle_inhibit,
     desktop::{LayerSurface as DesktopLayerSurface, PopupManager, Space, Window, WindowSurface, WindowSurfaceType, layer_map_for_output},
@@ -71,6 +72,8 @@ use smithay::{
         },
         shm::{ShmHandler, ShmState},
         session_lock::{SessionLocker, SessionLockHandler, SessionLockManagerState, LockSurface},
+        input_method::{InputMethodHandler, InputMethodManagerState, PopupSurface as InputMethodPopupSurface},
+        text_input::TextInputManagerState,
         viewporter::ViewporterState,
         dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
         xwayland_shell::{XWaylandShellHandler, XWaylandShellState},
@@ -620,6 +623,16 @@ pub struct MargoState {
     pub primary_selection_state: PrimarySelectionState,
     pub data_control_state: DataControlState,
     pub session_lock_state: smithay::wayland::session_lock::SessionLockManagerState,
+    /// `wp_text_input_v3` global. Qt clients (Quickshell/noctalia, KDE,
+    /// QtWidgets apps) probe for this when a TextInput field becomes
+    /// active — without it, Qt's QML password fields silently drop
+    /// keystrokes on the lock screen even when wl_keyboard.enter is
+    /// delivered. We don't drive an IME ourselves; smithay routes the
+    /// protocol traffic correctly with just the global registered.
+    pub text_input_state: TextInputManagerState,
+    /// `zwp_input_method_v2` global. Goes hand-in-hand with text_input —
+    /// Qt's text-input plugin won't activate without both.
+    pub input_method_state: InputMethodManagerState,
     /// `ext_idle_notifier_v1`: pings clients (swayidle, noctalia) once
     /// the seat has been idle for the duration they registered.
     pub idle_notifier_state: smithay::wayland::idle_notify::IdleNotifierState<MargoState>,
@@ -708,6 +721,8 @@ impl MargoState {
             DataControlState::new::<Self, _>(&dh, Some(&primary_selection_state), |_| true);
         let layer_shell_state = WlrLayerShellState::new::<Self>(&dh);
         let session_lock_state = smithay::wayland::session_lock::SessionLockManagerState::new::<Self, _>(&dh, |_| true);
+        let text_input_state = TextInputManagerState::new::<Self>(&dh);
+        let input_method_state = InputMethodManagerState::new::<Self, _>(&dh, |_client| true);
         let idle_notifier_state =
             smithay::wayland::idle_notify::IdleNotifierState::<Self>::new(&dh, loop_handle.clone());
         let idle_inhibit_state =
@@ -759,6 +774,8 @@ impl MargoState {
             primary_selection_state,
             data_control_state,
             session_lock_state,
+            text_input_state,
+            input_method_state,
             space,
             popups,
             seat,
@@ -2349,7 +2366,37 @@ impl CompositorHandler for MargoState {
             }
 
             if self.session_locked {
-                if self.lock_surfaces.iter().any(|(_, s)| s.wl_surface() == &root) {
+                if let Some((_, lock_surface)) = self
+                    .lock_surfaces
+                    .iter()
+                    .find(|(_, s)| s.wl_surface() == &root)
+                    .cloned()
+                {
+                    // First commit on a lock surface = it's now mapped (has
+                    // a buffer). Re-issue keyboard focus AT THIS POINT so
+                    // wl_keyboard.enter lands on a fully-formed surface.
+                    //
+                    // Why we do it here and not just in `new_surface`: when
+                    // the lock surface is first created the wl_surface
+                    // exists but has no buffer attached yet. Qt's
+                    // QtWayland plugin doesn't always wire `forceActiveFocus`
+                    // on the QML TextInput until the QQuickWindow has
+                    // received both surface activation AND a paint event.
+                    // Sending wl_keyboard.enter again on first-commit
+                    // guarantees Qt sees the focus event after the surface
+                    // is fully alive — that's the difference between "lock
+                    // screen renders but password field is dead" and "lock
+                    // screen accepts the password from the first
+                    // keystroke."
+                    let need_refocus = self
+                        .seat
+                        .get_keyboard()
+                        .and_then(|kb| kb.current_focus())
+                        .map(|cur| !matches!(cur, FocusTarget::SessionLock(ref s) if s == &lock_surface))
+                        .unwrap_or(true);
+                    if need_refocus {
+                        self.focus_surface(Some(FocusTarget::SessionLock(lock_surface)));
+                    }
                     self.request_repaint();
                     return;
                 }
@@ -3292,6 +3339,62 @@ impl SessionLockHandler for MargoState {
     }
 }
 delegate_session_lock!(MargoState);
+
+// ── Smithay delegate: text-input-v3 + input-method-v2 ────────────────────────
+//
+// Qt's `text-input-v3` plugin is what backs every `QML.TextInput` field on
+// Wayland. It probes for both `wp_text_input_v3` and `zwp_input_method_v2`
+// globals at activate-time; if either one is missing, Qt falls back to a
+// degraded path where keystrokes are NOT routed to the focused TextInput
+// even though `wl_keyboard.key` is being delivered to the surface. The
+// most visible symptom: noctalia's lock screen receives wl_keyboard.enter
+// just fine, the cursor blinks, MouseArea forces focus — and yet the
+// password field stays empty no matter what you type.
+//
+// Smithay handles all the protocol plumbing as long as the globals are
+// registered. We do NOT drive an IME ourselves (no fcitx/ibus integration
+// here), so the handler is intentionally minimal: input-method popups
+// just get tracked through the regular xdg popup manager so they render
+// at the right location, and dismissal hooks back into PopupManager.
+
+impl InputMethodHandler for MargoState {
+    fn new_popup(&mut self, surface: InputMethodPopupSurface) {
+        if let Err(err) = self
+            .popups
+            .track_popup(smithay::desktop::PopupKind::from(surface))
+        {
+            tracing::warn!("input_method: failed to track popup: {err}");
+        }
+    }
+
+    fn popup_repositioned(&mut self, _surface: InputMethodPopupSurface) {}
+
+    fn dismiss_popup(&mut self, surface: InputMethodPopupSurface) {
+        if let Some(parent) = surface.get_parent().map(|p| p.surface.clone()) {
+            let _ = smithay::desktop::PopupManager::dismiss_popup(
+                &parent,
+                &smithay::desktop::PopupKind::from(surface),
+            );
+        }
+    }
+
+    fn parent_geometry(
+        &self,
+        parent: &WlSurface,
+    ) -> Rectangle<i32, smithay::utils::Logical> {
+        // Look up the parent toplevel and report its window-geometry so
+        // input-method popups (e.g. fcitx candidate window) can position
+        // relative to the cursor inside the focused window.
+        self.space
+            .elements()
+            .find_map(|w| {
+                (w.wl_surface().as_deref() == Some(parent)).then(|| w.geometry())
+            })
+            .unwrap_or_default()
+    }
+}
+delegate_text_input_manager!(MargoState);
+delegate_input_method_manager!(MargoState);
 
 // ── Smithay delegate: Idle notify + Idle inhibit ─────────────────────────────
 
