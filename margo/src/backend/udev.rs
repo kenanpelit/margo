@@ -53,6 +53,7 @@ use smithay::{
     wayland::{
         compositor::with_states,
         dmabuf::DmabufFeedbackBuilder,
+        seat::WaylandFocus,
     },
     wayland::shell::wlr_layer::Layer as WlrLayer,
 };
@@ -69,6 +70,7 @@ render_elements! {
     Border=crate::render::rounded_border::RoundedBorderElement,
     Clipped=crate::render::clipped_surface::ClippedSurfaceRenderElement,
     Resize=crate::render::resize_render::ResizeRenderElement,
+    Solid=smithay::backend::renderer::element::solid::SolidColorRenderElement,
 }
 
 // ── Type aliases ──────────────────────────────────────────────────────────────
@@ -1162,17 +1164,23 @@ fn build_render_elements(
     od: &OutputDevice,
     state: &MargoState,
 ) -> Vec<MargoRenderElement> {
-    build_render_elements_inner(renderer, od, state, true)
+    build_render_elements_inner(renderer, od, state, true, false)
 }
 
-/// Like `build_render_elements`, but optionally omits the cursor sprite.
-/// Used by the screencopy path so clients with `overlay_cursor=false` get
-/// a cursor-free capture.
+/// Like `build_render_elements`, but optionally omits the cursor sprite
+/// and/or substitutes blocked-out (`block_out_from_screencast = 1`) clients
+/// with solid black rectangles. The cursor flag is honoured by every
+/// caller (display render passes `true`, screencopy with `overlay_cursor`
+/// off passes `false`); the screencast flag is set ONLY by
+/// `serve_screencopies` so the regular display render still shows
+/// password managers / private-browsing tabs / 2FA codes intact while
+/// any wlr-screencopy client recording the output sees them blacked out.
 fn build_render_elements_inner(
     renderer: &mut GlesRenderer,
     od: &OutputDevice,
     state: &MargoState,
     include_cursor: bool,
+    for_screencast: bool,
 ) -> Vec<MargoRenderElement> {
     let output_scale = od.output.current_scale().fractional_scale();
 
@@ -1328,6 +1336,7 @@ fn build_render_elements_inner(
         output_scale,
         border_program,
         clipped_surface_program,
+        for_screencast,
         &mut elements,
     );
 
@@ -1351,6 +1360,7 @@ fn push_client_elements(
     output_scale: f64,
     border_program: Option<smithay::backend::renderer::gles::GlesPixelProgram>,
     clipped_surface_program: Option<GlesTexProgram>,
+    for_screencast: bool,
     elements: &mut Vec<MargoRenderElement>,
 ) {
     let scale = Scale::from(output_scale);
@@ -1363,6 +1373,48 @@ fn push_client_elements(
         let physical_location = (render_location - output_geo.loc).to_physical_precise_round(scale);
 
         let client = state.clients.iter().find(|client| client.window == *window);
+
+        // Screencast blackout: when we're building the element list
+        // for a wlr-screencopy capture (`for_screencast = true`) and
+        // this window has the windowrule's `block_out_from_screencast
+        // = 1` flag set, replace its surface render with a solid
+        // black rectangle. The on-screen render path doesn't go
+        // through this branch (it passes `for_screencast = false`)
+        // so the user still sees their password manager / private-
+        // browsing tab / 2FA app — only the captured output is
+        // censored.
+        if for_screencast
+            && client.is_some_and(|c| c.block_out_from_screencast)
+        {
+            if let Some(c) = client {
+                let dst = Rectangle::<i32, smithay::utils::Physical>::new(
+                    smithay::utils::Point::from((
+                        c.geom.x - output_geo.loc.x,
+                        c.geom.y - output_geo.loc.y,
+                    ))
+                    .to_physical_precise_round::<f64, _>(scale),
+                    smithay::utils::Size::from((c.geom.width.max(1), c.geom.height.max(1)))
+                        .to_physical_precise_round::<f64, _>(scale),
+                );
+                let id = match window.wl_surface() {
+                    Some(s) => smithay::backend::renderer::element::Id::from_wayland_resource(
+                        &*s,
+                    ),
+                    None => smithay::backend::renderer::element::Id::new(),
+                };
+                elements.push(MargoRenderElement::Solid(
+                    smithay::backend::renderer::element::solid::SolidColorRenderElement::new(
+                        id,
+                        dst,
+                        smithay::backend::renderer::utils::CommitCounter::default(),
+                        [0.0, 0.0, 0.0, 1.0],
+                        smithay::backend::renderer::element::Kind::Unspecified,
+                    ),
+                ));
+            }
+            continue;
+        }
+
         let radius = client
             .filter(|client| !client.no_radius && !client.is_fullscreen)
             .map(|_| state.config.border_radius.max(0) as f32)
@@ -1715,18 +1767,26 @@ fn serve_screencopies(
         }
         let scale = od.output.current_scale().fractional_scale();
 
-        // Re-build the element list honouring the client's `overlay_cursor`
-        // preference. When false (the screenshot default), we skip the
-        // cursor sprite so the captured image has no overlay. Hoisted
-        // out of the buffer-target branches so both the dmabuf and SHM
-        // paths share the same element computation.
-        let owned_elements: Vec<MargoRenderElement>;
-        let elements_to_render: &[MargoRenderElement] = if screencopy.overlay_cursor() {
-            elements
-        } else {
-            owned_elements = build_render_elements_inner(renderer, od, state, false);
-            &owned_elements
-        };
+        // Re-build the element list with `for_screencast = true` so
+        // any window flagged `block_out_from_screencast = 1` in the
+        // user's windowrules gets substituted with a solid black
+        // rect — password managers, private-browsing tabs, 2FA
+        // apps, polkit prompts, …. We can't reuse the main display
+        // `elements` array even when `overlay_cursor = true`,
+        // because that array was built without the screencast
+        // blackout filter (it's still showing those windows
+        // intact, which is what the user is supposed to see on
+        // screen). The cursor sprite is included if the client
+        // asked for it via `overlay_cursor`.
+        let owned_elements = build_render_elements_inner(
+            renderer,
+            od,
+            state,
+            screencopy.overlay_cursor(),
+            true,
+        );
+        let elements_to_render: &[MargoRenderElement] = &owned_elements;
+        let _ = elements; // main display array intentionally unused for screencast
 
         // ── DMA-BUF zero-copy fast path ─────────────────────────────
         // OBS / Discord / xdg-desktop-portal-wlr negotiate dmabuf via
