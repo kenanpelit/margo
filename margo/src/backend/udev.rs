@@ -90,6 +90,12 @@ struct OutputDevice {
     /// bound. `None` if the kernel/driver doesn't expose GAMMA_LUT (in which
     /// case sunsetr / gammastep silently skip the output).
     gamma: Option<GammaProps>,
+    /// Connector handle this CRTC is driving. Needed during hotplug so we
+    /// can re-check whether the *specific* connector for this output is
+    /// still connected — the previous code asked "is anything still
+    /// connected on this card?" which gave wrong answers in multi-monitor
+    /// setups.
+    connector: connector::Handle,
 }
 
 // ── DRM gamma properties ──────────────────────────────────────────────────────
@@ -486,6 +492,7 @@ pub fn run(
                 empty_count: 0,
                 queue_error_count: 0,
                 gamma: gamma_props,
+                connector: *conn_handle,
             },
         );
     }
@@ -615,37 +622,12 @@ pub fn run(
         .insert_source(udev_backend, {
             let backend_data = backend_data.clone();
             move |event, _, state: &mut MargoState| match event {
-                UdevEvent::Added { device_id: _, path } => info!("udev added: {:?}", path),
+                UdevEvent::Added { device_id: _, path } => {
+                    info!("udev added: {:?}", path);
+                }
                 UdevEvent::Changed { device_id: _ } => {
                     info!("udev device changed, rescanning outputs");
-                    let mut bd = backend_data.borrow_mut();
-                    let BackendData { renderer: _, outputs, drm } = &mut *bd;
-                    
-                    let resources = match drm.resource_handles() {
-                        Ok(r) => r,
-                        Err(e) => {
-                            error!("failed to get resource handles: {e}");
-                            return;
-                        }
-                    };
-                    
-                    let mut to_remove = Vec::new();
-                    for (crtc, od) in outputs.iter() {
-                        let is_connected = resources.connectors().iter().any(|conn_handle| {
-                            drm.get_connector(*conn_handle, false)
-                                .map(|c| c.state() == connector::State::Connected)
-                                .unwrap_or(false)
-                        });
-                        if !is_connected {
-                            to_remove.push(*crtc);
-                        }
-                    }
-                    
-                    for crtc in to_remove {
-                        if let Some(od) = outputs.remove(&crtc) {
-                            state.remove_output(&od.output);
-                        }
-                    }
+                    rescan_outputs(&backend_data, state);
                 }
                 UdevEvent::Removed { device_id: _ } => {}
             }
@@ -661,6 +643,139 @@ pub fn run(
 
     info!("udev backend ready ({} outputs)", state.monitors.len());
     Ok(())
+}
+
+// ── Hotplug rescan ────────────────────────────────────────────────────────────
+//
+// Called from `UdevEvent::Changed` whenever the kernel notifies us that
+// the DRM device's connector topology may have shifted. We:
+//
+// 1. Remove every OutputDevice whose specific connector is no longer
+//    `Connected` (laptop dock unplug, monitor cable pulled). The previous
+//    implementation answered "is *anything* still connected on this card?"
+//    which gave wrong answers in multi-monitor setups.
+//
+// 2. Migrate any clients that lived on the removed monitor to the
+//    remaining first monitor — without this they keep `c.monitor =
+//    <stale index>` and disappear from the layout.
+//
+// 3. (TODO) Add new outputs for connectors that *just* came up. Building
+//    a DrmCompositor at runtime is a chunky operation — punted to a
+//    follow-up so the unplug path lands in isolation. Until then,
+//    plugging in an external monitor still requires a logout.
+
+fn rescan_outputs(
+    backend_data: &Rc<RefCell<BackendData>>,
+    state: &mut MargoState,
+) {
+    let mut bd = backend_data.borrow_mut();
+    let BackendData {
+        renderer: _,
+        outputs,
+        drm,
+    } = &mut *bd;
+
+    // Find which currently-tracked outputs have lost their connector.
+    let mut to_remove: Vec<crtc::Handle> = Vec::new();
+    for (crtc, od) in outputs.iter() {
+        let still_connected = drm
+            .get_connector(od.connector, false)
+            .map(|c| c.state() == connector::State::Connected)
+            .unwrap_or(false);
+        if !still_connected {
+            tracing::info!(
+                "output {} disconnected (CRTC {:?})",
+                od.output.name(),
+                crtc
+            );
+            to_remove.push(*crtc);
+        }
+    }
+
+    if to_remove.is_empty() {
+        return;
+    }
+
+    let removed_outputs: Vec<Output> = to_remove
+        .into_iter()
+        .filter_map(|crtc| outputs.remove(&crtc).map(|od| od.output))
+        .collect();
+    drop(bd);
+
+    // Migrate clients off the gone monitors before letting state forget
+    // them; otherwise their per-client `monitor` indices become dangling.
+    for output in &removed_outputs {
+        migrate_clients_off_output(state, output);
+        state.remove_output(output);
+    }
+
+    // Always re-arrange remaining outputs so the migrated clients land in
+    // the new layout and any per-tag scroller proportions re-center.
+    state.arrange_all();
+    state.request_repaint();
+}
+
+fn migrate_clients_off_output(state: &mut MargoState, removed: &Output) {
+    let removed_idx = state
+        .monitors
+        .iter()
+        .position(|m| &m.output == removed);
+    let Some(removed_idx) = removed_idx else { return };
+
+    // Pick the surviving monitor that's NOT the one being removed. If
+    // there are no other monitors, the session is essentially headless;
+    // arrange_all() below still runs but the windows just stay invisible
+    // until something replugs.
+    let target_idx = state
+        .monitors
+        .iter()
+        .enumerate()
+        .find(|(i, _)| *i != removed_idx)
+        .map(|(i, _)| i);
+
+    let Some(target_idx) = target_idx else {
+        // Last monitor unplugged — nothing to migrate to. Clients keep
+        // their geometry; on next plug-in they'll snap to whoever shows
+        // up first.
+        return;
+    };
+
+    let target_tagset = state.monitors[target_idx].current_tagset();
+    let target_name = state.monitors[target_idx].name.clone();
+
+    // Compute the post-removal index for `target_idx` once. After
+    // `state.remove_output()` runs and Vec::remove(removed_idx) shifts
+    // every later element down by one, this is the slot where the
+    // surviving target monitor will land.
+    let target_after = if target_idx > removed_idx {
+        target_idx - 1
+    } else {
+        target_idx
+    };
+
+    let mut migrated = 0;
+    for client in state.clients.iter_mut() {
+        if client.monitor == removed_idx {
+            client.monitor = target_after;
+            // Make sure the client is on at least one tag of the target
+            // monitor — otherwise it's invisible until the user toggles
+            // a tag.
+            if client.tags & target_tagset == 0 {
+                client.tags |= target_tagset;
+            }
+            migrated += 1;
+        } else if client.monitor > removed_idx {
+            // Same Vec::remove shift applied to clients that already
+            // lived on a later monitor.
+            client.monitor -= 1;
+        }
+    }
+    if migrated > 0 {
+        tracing::info!(
+            "migrated {migrated} clients from {} → {target_name}",
+            removed.name(),
+        );
+    }
 }
 
 // ── Per-frame render ──────────────────────────────────────────────────────────
