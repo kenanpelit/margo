@@ -78,6 +78,29 @@ fn main() -> Result<()> {
         )
         .init();
 
+    // Wrap the default panic hook so an unwind in the compositor (or
+    // anything in a calloop dispatch closure) reaches the journal with
+    // file:line + message + a backtrace. Without this the user just
+    // sees `wayland-wm@margo-session.service: Main process exited`
+    // and has to guess.
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let backtrace = std::backtrace::Backtrace::force_capture();
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}", l.file(), l.line()))
+            .unwrap_or_else(|| "<unknown>".to_string());
+        let msg = if let Some(s) = info.payload().downcast_ref::<&str>() {
+            (*s).to_string()
+        } else if let Some(s) = info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "<non-string panic payload>".to_string()
+        };
+        error!("PANIC at {location}: {msg}\n{backtrace}");
+        default_hook(info);
+    }));
+
     let args = Args::parse();
 
     let config = margo_config::parse_config(args.config.as_deref()).unwrap_or_else(|e| {
@@ -107,6 +130,24 @@ fn main() -> Result<()> {
         loop_signal,
         args.config.clone(),
     );
+
+    // SIGUSR1 → dump runtime state to the journal. Lets a user staring
+    // at a frozen / grey screen capture diagnostics without crashing the
+    // compositor:
+    //   pkill -USR1 margo
+    // The dump goes through `tracing::info!` so it lands wherever the
+    // user's MARGO_LOG filter sends regular output.
+    if let Ok(signals) = smithay::reexports::calloop::signals::Signals::new(&[
+        smithay::reexports::calloop::signals::Signal::SIGUSR1,
+    ]) {
+        if let Err(e) = loop_handle.insert_source(signals, |_, _, state: &mut MargoState| {
+            state.debug_dump();
+        }) {
+            warn!("SIGUSR1 source: {e}");
+        }
+    } else {
+        warn!("could not register SIGUSR1 — `pkill -USR1 margo` won't work");
+    }
 
     // Wayland display source: when the display fd is readable, dispatch
     // pending client requests, then flush any responses. Without

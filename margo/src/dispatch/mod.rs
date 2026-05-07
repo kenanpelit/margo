@@ -8,6 +8,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
     debug!("action: {action}");
     match action {
         "quit" => state.should_quit = true,
+        "debug_dump" | "debug-dump" | "diagnose" => state.debug_dump(),
         "reload" | "reload_config" => match state.reload_config() {
             Ok(()) => {
                 tracing::info!("config reloaded");
