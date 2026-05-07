@@ -11,8 +11,8 @@ use smithay::{
     delegate_input_method_manager, delegate_layer_shell, delegate_output,
     delegate_pointer_constraints, delegate_primary_selection, delegate_relative_pointer,
     delegate_seat, delegate_shm, delegate_text_input_manager,
-    delegate_xdg_decoration, delegate_xdg_shell, delegate_session_lock,
-    delegate_idle_notify, delegate_idle_inhibit,
+    delegate_xdg_activation, delegate_xdg_decoration, delegate_xdg_shell,
+    delegate_session_lock, delegate_idle_notify, delegate_idle_inhibit,
     desktop::{LayerSurface as DesktopLayerSurface, PopupManager, Space, Window, WindowSurface, WindowSurfaceType, layer_map_for_output},
     input::{
         Seat, SeatHandler, SeatState,
@@ -79,6 +79,10 @@ use smithay::{
         },
         relative_pointer::RelativePointerManagerState,
         text_input::TextInputManagerState,
+        xdg_activation::{
+            XdgActivationHandler, XdgActivationState, XdgActivationToken,
+            XdgActivationTokenData,
+        },
         viewporter::ViewporterState,
         dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
         drm_syncobj::{DrmSyncobjHandler, DrmSyncobjState},
@@ -759,6 +763,18 @@ pub struct MargoState {
     /// so all this state needs to do is exist so clients can bind
     /// the global and get a `wp_relative_pointer_v1` per pointer.
     pub relative_pointer_state: RelativePointerManagerState,
+    /// `xdg_activation_v1` global. The polite focus-stealing
+    /// channel: launchers (rofi, wofi, xdg-desktop-portal-wlr's
+    /// activate request), notification daemons (notify-send action
+    /// buttons), and chained-launcher flows (browser handles a
+    /// mailto: by activating the running mail client) hand a token
+    /// to the target surface; we honour or reject it. We accept
+    /// when the request comes with a valid recent keyboard
+    /// interaction serial (ie. the user was actively typing on the
+    /// requesting client when it generated the token), reject
+    /// otherwise — that's the spec-recommended anti-focus-steal
+    /// gate.
+    pub xdg_activation_state: XdgActivationState,
     /// `ext_idle_notifier_v1`: pings clients (swayidle, noctalia) once
     /// the seat has been idle for the duration they registered.
     pub idle_notifier_state: smithay::wayland::idle_notify::IdleNotifierState<MargoState>,
@@ -851,6 +867,7 @@ impl MargoState {
         let input_method_state = InputMethodManagerState::new::<Self, _>(&dh, |_client| true);
         let pointer_constraints_state = PointerConstraintsState::new::<Self>(&dh);
         let relative_pointer_state = RelativePointerManagerState::new::<Self>(&dh);
+        let xdg_activation_state = XdgActivationState::new::<Self>(&dh);
         let idle_notifier_state =
             smithay::wayland::idle_notify::IdleNotifierState::<Self>::new(&dh, loop_handle.clone());
         let idle_inhibit_state =
@@ -907,6 +924,7 @@ impl MargoState {
             input_method_state,
             pointer_constraints_state,
             relative_pointer_state,
+            xdg_activation_state,
             space,
             popups,
             seat,
@@ -4082,6 +4100,115 @@ impl PointerConstraintsHandler for MargoState {
 }
 delegate_pointer_constraints!(MargoState);
 delegate_relative_pointer!(MargoState);
+
+// ── Smithay delegate: xdg-activation-v1 ──────────────────────────────────────
+//
+// xdg-activation is the polite focus-stealing channel. Use cases:
+//   * Notification daemon "Reply" / "Open" action buttons asking the
+//     compositor to activate the conversation thread in the messenger
+//     app the notification came from.
+//   * `notify-send -A` style scripts that want the user to come back
+//     to a long-running task after the OK click.
+//   * `xdg-desktop-portal-wlr`'s `Activate` request, used by Discord
+//     screen-share, Telegram desktop, etc., to bring themselves to
+//     the front when the user clicks a system-tray icon.
+//   * Browser → mailto: → Thunderbird already running → activate.
+//
+// Anti-focus-steal: spec recommends rejecting any token whose creating
+// client wasn't the most recently keyboard-focused one. We follow
+// anvil's reading: the token is valid only if its bundled serial is
+// no older than our seat keyboard's last `enter` event, AND the seat
+// in the token matches our seat. Without this, anything that knows
+// the protocol could steal focus by spinning up a token at any time.
+//
+// On accept we route through the same focus path the user's bindings
+// use: switch to the target window's tag, restore that monitor, focus
+// the window. That keeps activation-driven jumps consistent with
+// alt+tab / explicit `mctl dispatch view N`.
+
+impl XdgActivationHandler for MargoState {
+    fn activation_state(&mut self) -> &mut XdgActivationState {
+        &mut self.xdg_activation_state
+    }
+
+    fn token_created(
+        &mut self,
+        _token: XdgActivationToken,
+        data: XdgActivationTokenData,
+    ) -> bool {
+        // A token without a (serial, seat) bundle is suspicious —
+        // someone scripted activation without going through a real
+        // user interaction. Reject.
+        let Some((serial, seat)) = data.serial else {
+            return false;
+        };
+        // Different seat? Don't trust.
+        if Seat::<MargoState>::from_resource(&seat).as_ref() != Some(&self.seat) {
+            return false;
+        }
+        // Serial must be no older than the seat keyboard's last enter
+        // — i.e. the requesting client was the keyboard-focused one
+        // when it generated the token.
+        let Some(keyboard) = self.seat.get_keyboard() else {
+            return false;
+        };
+        let Some(last_enter) = keyboard.last_enter() else {
+            return false;
+        };
+        serial.is_no_older_than(&last_enter)
+    }
+
+    fn request_activation(
+        &mut self,
+        _token: XdgActivationToken,
+        token_data: XdgActivationTokenData,
+        surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    ) {
+        // Token expires after 10s — older requests are stale (the
+        // user has moved on). Anvil's value, matches GNOME mutter's.
+        if token_data.timestamp.elapsed().as_secs() >= 10 {
+            return;
+        }
+
+        // Find which client owns the surface.
+        let Some(idx) = self
+            .clients
+            .iter()
+            .position(|c| c.window.wl_surface().as_deref() == Some(&surface))
+        else {
+            return;
+        };
+
+        // Switch to the client's tag (view its mask). Multi-bit
+        // masks pick the lowest set bit so we land on a single
+        // canonical tag rather than enabling several at once. The
+        // existing view_tag handles the per-tag home-monitor warp,
+        // so multi-monitor users come back to the right output too.
+        let mask = self.clients[idx].tags;
+        let one_bit = mask & mask.wrapping_neg();
+        let target = if one_bit != 0 { one_bit } else { mask };
+        self.view_tag(target);
+
+        // Focus + raise. focus_surface tracks selected/prev-selected
+        // history per monitor, and the layer-mapped Space takes care
+        // of the actual stack ordering when we follow with
+        // enforce_z_order so the activated window comes to the top
+        // of its z-band.
+        let window = self.clients[idx].window.clone();
+        self.focus_surface(Some(FocusTarget::Window(window.clone())));
+        self.space.raise_element(&window, true);
+        self.enforce_z_order();
+        self.request_repaint();
+
+        tracing::info!(
+            "xdg_activation: activated app_id={} idx={} tag={:#x}",
+            self.clients[idx].app_id,
+            idx,
+            target
+        );
+    }
+}
+delegate_xdg_activation!(MargoState);
 
 // ── Smithay delegate: Idle notify + Idle inhibit ─────────────────────────────
 
