@@ -216,6 +216,12 @@ struct BackendData {
     /// operations (gamma LUT updates, output power management) that need to
     /// poke properties outside the per-CRTC `DrmCompositor`.
     drm: DrmDevice,
+    /// Allocator + framebuffer-exporter dependencies needed to construct
+    /// new `DrmCompositor`s on hotplug. Captured once at startup; everything
+    /// here is cheap to clone.
+    gbm: GbmDevice<DrmDeviceFd>,
+    primary_node: DrmNode,
+    renderer_formats: smithay::backend::allocator::format::FormatSet,
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────
@@ -505,6 +511,9 @@ pub fn run(
         renderer,
         outputs: backend_outputs,
         drm,
+        gbm: gbm.clone(),
+        primary_node,
+        renderer_formats: renderer_formats.clone(),
     }));
     state.dmabuf_import_hook = Some(Rc::new(RefCell::new({
         let backend_data = backend_data.clone();
@@ -545,7 +554,7 @@ pub fn run(
             move |_, _, state: &mut MargoState| {
                 if state.take_repaint_request() {
                     let mut bd = backend_data.borrow_mut();
-                    let BackendData { renderer, outputs, drm } = &mut *bd;
+                    let BackendData { renderer, outputs, drm, .. } = &mut *bd;
                     render_all_outputs(renderer, outputs, drm, state, "repaint");
                 }
                 TimeoutAction::ToDuration(Duration::from_millis(REPAINT_INTERVAL_MS))
@@ -637,7 +646,7 @@ pub fn run(
     // ── 11. Initial render pass ───────────────────────────────────────────────
     {
         let mut bd = backend_data.borrow_mut();
-        let BackendData { renderer, outputs, drm } = &mut *bd;
+        let BackendData { renderer, outputs, drm, .. } = &mut *bd;
         render_all_outputs(renderer, outputs, drm, state, "initial");
     }
 
@@ -659,23 +668,29 @@ pub fn run(
 //    remaining first monitor — without this they keep `c.monitor =
 //    <stale index>` and disappear from the layout.
 //
-// 3. (TODO) Add new outputs for connectors that *just* came up. Building
-//    a DrmCompositor at runtime is a chunky operation — punted to a
-//    follow-up so the unplug path lands in isolation. Until then,
-//    plugging in an external monitor still requires a logout.
+// 3. Add new outputs for connectors that *just* came up. Walks every
+//    connector reported by `resource_handles().connectors()`, picks the
+//    ones in `Connected` state that don't already have an OutputDevice,
+//    and runs them through `setup_connector()`. The freshly-built
+//    `DrmCompositor` gets an initial `render_frame` + `queue_frame` so
+//    the new monitor lights up without waiting for the next repaint
+//    timer tick.
 
 fn rescan_outputs(
     backend_data: &Rc<RefCell<BackendData>>,
     state: &mut MargoState,
 ) {
+    // Phase 1: remove disconnected outputs.
     let mut bd = backend_data.borrow_mut();
     let BackendData {
         renderer: _,
         outputs,
         drm,
+        gbm: _,
+        primary_node: _,
+        renderer_formats: _,
     } = &mut *bd;
 
-    // Find which currently-tracked outputs have lost their connector.
     let mut to_remove: Vec<crtc::Handle> = Vec::new();
     for (crtc, od) in outputs.iter() {
         let still_connected = drm
@@ -692,27 +707,281 @@ fn rescan_outputs(
         }
     }
 
-    if to_remove.is_empty() {
-        return;
-    }
-
     let removed_outputs: Vec<Output> = to_remove
         .into_iter()
         .filter_map(|crtc| outputs.remove(&crtc).map(|od| od.output))
         .collect();
     drop(bd);
 
-    // Migrate clients off the gone monitors before letting state forget
-    // them; otherwise their per-client `monitor` indices become dangling.
     for output in &removed_outputs {
         migrate_clients_off_output(state, output);
         state.remove_output(output);
     }
 
-    // Always re-arrange remaining outputs so the migrated clients land in
-    // the new layout and any per-tag scroller proportions re-center.
-    state.arrange_all();
-    state.request_repaint();
+    // Phase 2: add newly-connected outputs.
+    let mut added_any = false;
+    let mut bd = backend_data.borrow_mut();
+    let used_crtcs: std::collections::HashSet<crtc::Handle> =
+        bd.outputs.keys().copied().collect();
+    let resources = match bd.drm.resource_handles() {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!("rescan: resource_handles failed: {e}");
+            drop(bd);
+            if !removed_outputs.is_empty() {
+                state.arrange_all();
+                state.request_repaint();
+            }
+            return;
+        }
+    };
+
+    let mut current_used = used_crtcs.clone();
+    let mut new_outputs: Vec<(crtc::Handle, OutputDevice)> = Vec::new();
+    for conn_handle in resources.connectors() {
+        // Already driving this connector? Don't double-bind.
+        if bd.outputs.values().any(|od| od.connector == *conn_handle) {
+            continue;
+        }
+        let Ok(conn_info) = bd.drm.get_connector(*conn_handle, false) else {
+            continue;
+        };
+        if conn_info.state() != connector::State::Connected {
+            continue;
+        }
+        // Borrow split: setup_connector needs &mut DrmDevice + &mut MargoState
+        // simultaneously, so peel everything we need off `bd` first.
+        let BackendData {
+            drm,
+            gbm,
+            primary_node,
+            renderer_formats,
+            ..
+        } = &mut *bd;
+
+        if let Some((crtc, od)) = setup_connector(
+            drm,
+            *conn_handle,
+            &conn_info,
+            &resources,
+            &current_used,
+            state,
+            gbm,
+            *primary_node,
+            renderer_formats,
+        ) {
+            current_used.insert(crtc);
+            new_outputs.push((crtc, od));
+            added_any = true;
+        }
+    }
+
+    for (crtc, mut od) in new_outputs {
+        // Kick the swapchain so the freshly-built compositor schedules a
+        // first vblank — otherwise the new monitor stays blank until the
+        // global repaint timer happens to tick *and* something on the
+        // existing outputs marks itself dirty.
+        let elements = build_render_elements(&mut bd.renderer, &od, state);
+        if let Err(e) = od.compositor.render_frame(
+            &mut bd.renderer,
+            &elements,
+            [0.1, 0.1, 0.1, 1.0],
+            FrameFlags::DEFAULT,
+        ) {
+            tracing::warn!("hotplug initial render failed for {}: {e:?}", od.output.name());
+        } else {
+            let _ = od.compositor.queue_frame(());
+        }
+        bd.outputs.insert(crtc, od);
+    }
+    drop(bd);
+
+    if !removed_outputs.is_empty() || added_any {
+        state.arrange_all();
+        state.request_repaint();
+    }
+}
+
+/// Build the OutputDevice + associated MargoMonitor for a single
+/// connected connector. Mirrors the inline init loop so that hotplug
+/// goes through exactly the same code path as startup.
+#[allow(clippy::too_many_arguments)]
+fn setup_connector(
+    drm: &mut DrmDevice,
+    conn_handle: connector::Handle,
+    conn_info: &connector::Info,
+    resources: &smithay::reexports::drm::control::ResourceHandles,
+    used_crtcs: &std::collections::HashSet<crtc::Handle>,
+    state: &mut MargoState,
+    gbm: &GbmDevice<DrmDeviceFd>,
+    primary_node: DrmNode,
+    renderer_formats: &smithay::backend::allocator::format::FormatSet,
+) -> Option<(crtc::Handle, OutputDevice)> {
+    let crtc = find_crtc(&drm.device_fd().clone(), conn_info, resources, used_crtcs)?;
+
+    let (phys_w, phys_h) = conn_info.size().unwrap_or((0, 0));
+    let output_name = format!(
+        "{}-{}",
+        conn_info.interface().as_str(),
+        conn_info.interface_id()
+    );
+
+    let rule = state
+        .config
+        .monitor_rules
+        .iter()
+        .find(|r| r.name.as_deref().map(|n| n == output_name).unwrap_or(true))
+        .cloned();
+
+    let drm_mode = select_drm_mode(conn_info, rule.as_ref())?;
+    let wl_mode = OutputMode::from(drm_mode);
+
+    let scale = rule.as_ref().map(|r| r.scale).unwrap_or(1.0);
+    let transform = smithay_transform(rule.as_ref().map(|r| r.transform).unwrap_or(0));
+
+    let position = if let Some(r) = &rule {
+        if r.x != i32::MAX && r.y != i32::MAX {
+            (r.x, r.y)
+        } else {
+            let x_offset = state.space.outputs().fold(0i32, |acc, o| {
+                acc + state.space.output_geometry(o).map(|g| g.size.w).unwrap_or(0)
+            });
+            (x_offset, 0)
+        }
+    } else {
+        let x_offset = state.space.outputs().fold(0i32, |acc, o| {
+            acc + state.space.output_geometry(o).map(|g| g.size.w).unwrap_or(0)
+        });
+        (x_offset, 0)
+    };
+
+    info!(
+        "hotplug add: {} {}x{}@{} pos={:?} scale={}",
+        output_name,
+        wl_mode.size.w,
+        wl_mode.size.h,
+        wl_mode.refresh / 1000,
+        position,
+        scale
+    );
+
+    let output = Output::new(
+        output_name.clone(),
+        PhysicalProperties {
+            size: (phys_w as i32, phys_h as i32).into(),
+            subpixel: Subpixel::Unknown,
+            make: "Unknown".into(),
+            model: "Unknown".into(),
+            serial_number: "Unknown".into(),
+        },
+    );
+    let _global = output.create_global::<MargoState>(&state.display_handle);
+    output.change_current_state(
+        Some(wl_mode),
+        Some(transform),
+        Some(smithay::output::Scale::Fractional(scale as f64)),
+        Some(position.into()),
+    );
+    output.set_preferred(wl_mode);
+    state.space.map_output(&output, position);
+
+    let drm_surface = match drm.create_surface(crtc, drm_mode, &[conn_handle]) {
+        Ok(s) => s,
+        Err(e) => {
+            warn!("hotplug create_surface for {output_name}: {e}");
+            return None;
+        }
+    };
+
+    let allocator = GbmAllocator::new(gbm.clone(), GbmBufferFlags::RENDERING);
+    let exporter = GbmFramebufferExporter::new(gbm.clone(), primary_node.into());
+    let color_formats = [DrmFourcc::Xrgb8888, DrmFourcc::Argb8888];
+    let compositor = match DrmCompositor::new(
+        &output,
+        drm_surface,
+        None,
+        allocator,
+        exporter,
+        color_formats.iter().copied(),
+        renderer_formats.clone(),
+        (64u32, 64u32).into(),
+        Some(gbm.clone()),
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            warn!("hotplug DrmCompositor::new for {output_name}: {e:?}");
+            return None;
+        }
+    };
+
+    let monitor_area = crate::layout::Rect {
+        x: position.0,
+        y: position.1,
+        width: wl_mode.size.w,
+        height: wl_mode.size.h,
+    };
+    let pertag = crate::layout::Pertag::new(
+        state.default_layout(),
+        state.config.default_mfact,
+        state.config.default_nmaster,
+    );
+    state.monitors.push(crate::state::MargoMonitor {
+        name: output_name.clone(),
+        output: output.clone(),
+        monitor_area,
+        work_area: monitor_area,
+        seltags: 0,
+        tagset: [1, 1],
+        gappih: state.config.gappih as i32,
+        gappiv: state.config.gappiv as i32,
+        gappoh: state.config.gappoh as i32,
+        gappov: state.config.gappov as i32,
+        pertag,
+        selected: None,
+        prev_selected: None,
+        is_overview: false,
+        overview_backup_tagset: 1,
+        canvas_overview_visible: false,
+        canvas_in_overview: false,
+        canvas_saved_pan_x: 0.0,
+        canvas_saved_pan_y: 0.0,
+        canvas_saved_zoom: 1.0,
+        minimap_visible: false,
+        dwl_ipc: crate::protocols::dwl_ipc::DwlIpcState::new(),
+        ext_workspace: crate::protocols::ext_workspace::ExtWorkspaceState::new(),
+        scale: 1.0,
+        transform: 0,
+        enabled: true,
+        gamma_size: 0,
+    });
+    state.apply_tag_rules_to_monitor(state.monitors.len() - 1);
+
+    let mut gamma_props = GammaProps::discover(drm, crtc);
+    if let Some(gamma) = gamma_props.as_mut() {
+        if let Err(err) = gamma.set_gamma(drm, None) {
+            tracing::debug!("couldn't reset gamma on {output_name}: {err:?}");
+        }
+    }
+    let gamma_size = gamma_props
+        .as_ref()
+        .and_then(|g| g.gamma_size(drm))
+        .unwrap_or(0);
+    let mon_idx = state.monitors.len() - 1;
+    state.monitors[mon_idx].gamma_size = gamma_size;
+
+    Some((
+        crtc,
+        OutputDevice {
+            output,
+            compositor,
+            render_count: 0,
+            queued_count: 0,
+            empty_count: 0,
+            queue_error_count: 0,
+            gamma: gamma_props,
+            connector: conn_handle,
+        },
+    ))
 }
 
 fn migrate_clients_off_output(state: &mut MargoState, removed: &Output) {
