@@ -798,6 +798,13 @@ impl MargoState {
     }
 
     pub fn remove_output(&mut self, output: &Output) {
+        for layer in smithay::desktop::layer_map_for_output(output).layers() {
+            layer.layer_surface().send_close();
+        }
+
+        self.gamma_control_manager_state.output_removed(output);
+        self.screencopy_state.remove_output(output);
+
         if let Some(pos) = self.monitors.iter().position(|m| m.output == *output) {
             tracing::info!("removing monitor: {}", self.monitors[pos].name);
             self.monitors.remove(pos);
