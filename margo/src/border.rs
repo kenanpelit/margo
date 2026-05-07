@@ -78,7 +78,27 @@ pub fn refresh(state: &mut MargoState) {
             let visible = mon_idx < state.monitors.len()
                 && c.is_visible_on(mon_idx, state.monitors[mon_idx].current_tagset());
             let hide = c.no_border || c.is_fullscreen || !visible;
-            (c.geom, c.border_width as f32, hide)
+
+            // The border has to wrap the *actual* on-screen content, not
+            // the layout-reserved rect. Electron clients (Helium browser,
+            // Spotify) silently clamp our `xdg_toplevel.configure(size)`
+            // against their internal min-size and end up rendering
+            // narrower than we asked, which leaves a 10–15px wallpaper
+            // strip between the visible window and the border drawn at
+            // `c.geom`. Reading `window.geometry().size` gives us the size
+            // the client actually committed; we shrink the border rect to
+            // match (never grow past `c.geom` so we don't bleed into
+            // adjacent scroller columns).
+            let actual = c.window.geometry().size;
+            let mut g = c.geom;
+            if actual.w > 0 && actual.w < g.width {
+                g.width = actual.w;
+            }
+            if actual.h > 0 && actual.h < g.height {
+                g.height = actual.h;
+            }
+
+            (g, c.border_width as f32, hide)
         };
         let color = if hide { [0.0; 4] } else { color_for(state, idx, focused == Some(idx)) };
         let effective = if hide { 0.0 } else { width };

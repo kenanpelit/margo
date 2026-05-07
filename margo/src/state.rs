@@ -2181,6 +2181,14 @@ impl CompositorHandler for MargoState {
                         tracing::trace!("commit on already-configured toplevel");
                     }
                 }
+                // Re-derive border geometry from the freshly-committed
+                // window_geometry. Clients (notably Electron — Helium /
+                // Spotify) sometimes commit at a smaller size than we
+                // asked them to, and without this refresh the border
+                // stays drawn around the larger layout-reserved rect,
+                // leaving a wallpaper strip between the visible window
+                // and its frame.
+                crate::border::refresh(self);
             }
 
             let layer_output = self.space.outputs().find_map(|output| {
