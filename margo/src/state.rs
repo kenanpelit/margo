@@ -1221,6 +1221,7 @@ impl MargoState {
                     && self.clients[client_idx].animation.current == rect;
 
             let should_animate = self.config.animations
+                && self.config.animation_duration_move > 0
                 && !self.clients[client_idx].no_animation
                 && !self.clients[client_idx].is_tag_switching
                 && old.width > 0
