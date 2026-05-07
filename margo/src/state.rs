@@ -441,6 +441,20 @@ pub struct MargoClient {
     /// renderer in scope, so the actual GPU work has to be deferred
     /// to the render thread.
     pub snapshot_pending: bool,
+    /// True while the client is between `new_toplevel` and its first
+    /// post-app_id commit. We deliberately don't map the window into
+    /// the smithay space or run window rules during this window
+    /// because Qt clients (CopyQ, KeePassXC, …) routinely create
+    /// the xdg_toplevel role *before* sending `set_app_id`, so a
+    /// rule keyed on `appid:^copyq$` wouldn't match yet and the
+    /// window would briefly appear at the layout's default position
+    /// before snapping to its rule-driven floating geometry — the
+    /// "super+v copyq açtığımda pencere bir kaybolup tekrar geliyor"
+    /// flicker. Cleared on the first commit that satisfies our
+    /// "ready to map" criteria (app_id is set OR we've waited long
+    /// enough); at that point we apply rules, place the window, and
+    /// hand it focus.
+    pub is_initial_map_pending: bool,
     pub animation_type_open: Option<String>,
     pub animation_type_close: Option<String>,
     pub app_id: String,
@@ -514,6 +528,7 @@ impl MargoClient {
             opacity_animation: OpacityAnimation::default(),
             resize_snapshot: None,
             snapshot_pending: false,
+            is_initial_map_pending: false,
             animation_type_open: None,
             animation_type_close: None,
             app_id: String::new(),
@@ -1224,7 +1239,14 @@ impl MargoState {
             }
         };
         let visible_in_pass = |c: &MargoClient| {
-            c.is_visible_on(mon_idx, tagset)
+            // Skip clients that haven't gone through their deferred
+            // initial map yet — they exist in `self.clients` but
+            // haven't been placed in `space` and don't have rules
+            // applied. Including them in arrange would map them at
+            // the layout's default position, which is exactly the
+            // pre-rule flicker we deferred to avoid.
+            !c.is_initial_map_pending
+                && c.is_visible_on(mon_idx, tagset)
                 && (!is_overview || (!c.is_minimized && !c.is_killing && !c.is_in_scratchpad))
         };
 
@@ -2768,6 +2790,21 @@ impl CompositorHandler for MargoState {
                 }
             }
 
+            // First check if this commit belongs to a client we've
+            // deferred (created in `new_toplevel`, not yet mapped
+            // because we wanted to wait for app_id before applying
+            // window rules). If so, finalise the initial map now.
+            let deferred_idx = self
+                .clients
+                .iter()
+                .position(|c| {
+                    c.is_initial_map_pending
+                        && c.window.wl_surface().as_deref() == Some(&root)
+                });
+            if let Some(idx) = deferred_idx {
+                self.finalize_initial_map(idx);
+            }
+
             let committed_window = self
                 .space
                 .elements()
@@ -2913,12 +2950,93 @@ impl DrmSyncobjHandler for MargoState {
 }
 smithay::delegate_drm_syncobj!(MargoState);
 
+// ── Deferred initial map (out-of-trait helper) ───────────────────────────────
+
+impl MargoState {
+    /// Finalize the deferred initial map of a client created in
+    /// `new_toplevel` but held back from `space.map_element` until its
+    /// app_id had a chance to arrive. Called from the commit handler
+    /// the first time a buffer is attached to the toplevel's surface.
+    /// At this point Qt clients have invariably set `app_id`, so
+    /// window rules can be applied with their full intended effect
+    /// (`isfloating`, custom geom, tag pinning, …) BEFORE the window
+    /// is ever placed in the smithay space — no rule-jump flicker.
+    pub(crate) fn finalize_initial_map(&mut self, idx: usize) {
+        // Sync the latest app_id / title from the surface before
+        // running window rules — by this point Qt has had its chance.
+        if idx >= self.clients.len() {
+            return;
+        }
+        if let WindowSurface::Wayland(toplevel) = self.clients[idx].window.underlying_surface() {
+            let (app_id, title) = read_toplevel_identity(&toplevel);
+            self.clients[idx].app_id = app_id;
+            self.clients[idx].title = title;
+        }
+
+        // Now run rules with the live app_id/title.
+        let _changed = self.apply_window_rules_to_client(idx);
+
+        // Tag-home redirect: if rules picked tag N but didn't pin a
+        // monitor, route to the tag's home output.
+        let no_explicit_monitor = !self
+            .matching_window_rules(
+                &self.clients[idx].app_id,
+                &self.clients[idx].title,
+            )
+            .iter()
+            .any(|r| r.monitor.is_some());
+        if no_explicit_monitor {
+            if let Some(home) = self.tag_home_monitor(self.clients[idx].tags) {
+                self.clients[idx].monitor = home;
+            }
+        }
+
+        let target_mon = self.clients[idx].monitor;
+        let focus_new =
+            !self.clients[idx].no_focus && !self.clients[idx].open_silent;
+        let window = self.clients[idx].window.clone();
+
+        let map_loc = self
+            .monitors
+            .get(target_mon)
+            .map(|m| (m.monitor_area.x, m.monitor_area.y))
+            .unwrap_or((0, 0));
+        self.space.map_element(window.clone(), map_loc, true);
+
+        if focus_new {
+            if target_mon < self.monitors.len() {
+                self.monitors[target_mon].prev_selected =
+                    self.monitors[target_mon].selected;
+                self.monitors[target_mon].selected = Some(idx);
+            }
+            self.focus_surface(Some(FocusTarget::Window(window)));
+        }
+
+        // Mark the client mapped BEFORE arrange so the layout pass
+        // sees it as a real participant.
+        self.clients[idx].is_initial_map_pending = false;
+
+        if !self.monitors.is_empty() {
+            self.arrange_monitor(target_mon);
+        }
+
+        tracing::info!(
+            "finalize_initial_map: app_id={} idx={idx} monitor={target_mon} \
+             floating={} tags={:#x}",
+            self.clients[idx].app_id,
+            self.clients[idx].is_floating,
+            self.clients[idx].tags,
+        );
+    }
+}
+
 // ── Smithay delegate: XDG Shell ───────────────────────────────────────────────
 
 impl XdgShellHandler for MargoState {
     fn xdg_shell_state(&mut self) -> &mut XdgShellState {
         &mut self.xdg_shell_state
     }
+
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
         let (app_id, title) = read_toplevel_identity(&surface);
 
@@ -2928,26 +3046,22 @@ impl XdgShellHandler for MargoState {
         let mut client = MargoClient::new(window.clone(), mon_idx, initial_tags, &self.config);
         client.app_id = app_id.clone();
         client.title = title.clone();
-        self.apply_window_rules(&mut client);
 
-        // Tag-home redirect: if a windowrule set `tags:N` but DIDN'T pin
-        // a `monitor:`, route to the tag's home monitor as defined by
-        // `tagrule = id:N, monitor_name:X`. Lets the user write
-        //   tagrule = id:7, monitor_name:eDP-1
-        //   windowrule = tags:7, appid:^transmission$
-        // and the windowrule doesn't have to repeat `monitor:eDP-1`.
-        let no_explicit_monitor = !self
-            .matching_window_rules(&client.app_id, &client.title)
-            .iter()
-            .any(|r| r.monitor.is_some());
-        if no_explicit_monitor {
-            if let Some(home) = self.tag_home_monitor(client.tags) {
-                client.monitor = home;
-            }
-        }
-
-        let target_mon = client.monitor;
-        let focus_new = !client.no_focus && !client.open_silent;
+        // Defer the actual map / rule-application / arrange / focus
+        // until the first commit. Qt clients (CopyQ, KeePassXC, the
+        // GTK file picker via `pcmanfm-qt`, …) almost always create
+        // the xdg_toplevel role *before* sending `set_app_id`, so at
+        // this point `app_id` is empty and any windowrule keyed on
+        // `appid:^copyq$` doesn't fire. If we mapped the window now
+        // the user would see the toplevel briefly at the layout's
+        // default position (top-left of the focused monitor) and
+        // then snap to its rule-driven floating geometry one frame
+        // later — the visible "super+v ile copyq açtığımda pencere
+        // çok hızlı bir şekilde bir kaybolup tekrar gözüküyor"
+        // flicker. Holding the map until the first commit (when Qt
+        // has had its chance to set app_id and we can look up the
+        // right rules) eliminates that flicker entirely.
+        client.is_initial_map_pending = true;
 
         let ft_handle = self.foreign_toplevel_list.new_toplevel::<Self>(&title, &app_id);
         ft_handle.send_done();
@@ -2956,6 +3070,7 @@ impl XdgShellHandler for MargoState {
         // Smart-insert (niri pattern): in scroller layout, place the new
         // client right after the focused one so closing it returns you near
         // your previous position. Other layouts are order-agnostic.
+        let target_mon = client.monitor;
         let insert_at = self.scroller_insert_position(target_mon);
         let new_idx = match insert_at {
             Some(pos) => {
@@ -2969,28 +3084,11 @@ impl XdgShellHandler for MargoState {
             }
         };
 
-        let map_loc = self
-            .monitors
-            .get(target_mon)
-            .map(|m| (m.monitor_area.x, m.monitor_area.y))
-            .unwrap_or((0, 0));
-        self.space.map_element(window.clone(), map_loc, true);
-        if focus_new {
-            // Mark this as the selected client on its monitor so scroller
-            // centers the new one.
-            if target_mon < self.monitors.len() {
-                self.monitors[target_mon].prev_selected =
-                    self.monitors[target_mon].selected;
-                self.monitors[target_mon].selected = Some(new_idx);
-            }
-            self.focus_surface(Some(FocusTarget::Window(window)));
-        }
-
-        if !self.monitors.is_empty() {
-            self.arrange_monitor(target_mon);
-        }
-
-        tracing::info!("new toplevel: {app_id} monitor={target_mon} idx={new_idx}");
+        tracing::info!(
+            "new toplevel: app_id={:?} monitor={target_mon} idx={new_idx} \
+             (map deferred until first commit)",
+            if app_id.is_empty() { "<unset>" } else { &app_id },
+        );
     }
     fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
         let _ = self.popups.track_popup(smithay::desktop::PopupKind::Xdg(surface));
