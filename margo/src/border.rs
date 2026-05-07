@@ -79,23 +79,39 @@ pub fn refresh(state: &mut MargoState) {
                 && c.is_visible_on(mon_idx, state.monitors[mon_idx].current_tagset());
             let hide = c.no_border || c.is_fullscreen || !visible;
 
-            // The border has to wrap the *actual* on-screen content, not
-            // the layout-reserved rect. Electron clients (Helium browser,
-            // Spotify) silently clamp our `xdg_toplevel.configure(size)`
-            // against their internal min-size and end up rendering
-            // narrower than we asked, which leaves a 10–15px wallpaper
-            // strip between the visible window and the border drawn at
-            // `c.geom`. Reading `window.geometry().size` gives us the size
-            // the client actually committed; we shrink the border rect to
-            // match (never grow past `c.geom` so we don't bleed into
-            // adjacent scroller columns).
+            // The border normally has to wrap the *actual* on-screen
+            // content, not the layout-reserved rect: Electron clients
+            // (Helium browser, Spotify, Discord) silently clamp our
+            // `xdg_toplevel.configure(size)` against their internal
+            // min-size and render narrower than we asked, leaving a
+            // 10–15 px wallpaper strip between the visible window and
+            // the border drawn at `c.geom`. So in the steady state we
+            // shrink the border to `window.geometry().size` whenever
+            // that's smaller than the slot.
+            //
+            // Move animation is the exception. While `c.animation.running`
+            // is true, `c.geom` is interpolated from old → target every
+            // tick, but the client's buffer is locked to whichever size
+            // it last acked (typically the new target, committed within a
+            // frame or two of the configure). If we let the buffer-size
+            // fallback fire here, the border would snap to the FINAL size
+            // mid-animation while the slot is still half-way there, and
+            // the user would see the border jump while the surrounding
+            // tiles are still sliding. Niri's resize animation avoids
+            // this by smoothly tweening the buffer size visually; we
+            // can't do that yet, so the next-best thing is: trust the
+            // animation, draw the border at the interpolated slot, and
+            // only fall back to the actual buffer rect once the
+            // animation has settled.
             let actual = c.window.geometry().size;
             let mut g = c.geom;
-            if actual.w > 0 && actual.w < g.width {
-                g.width = actual.w;
-            }
-            if actual.h > 0 && actual.h < g.height {
-                g.height = actual.h;
+            if !c.animation.running {
+                if actual.w > 0 && actual.w < g.width {
+                    g.width = actual.w;
+                }
+                if actual.h > 0 && actual.h < g.height {
+                    g.height = actual.h;
+                }
             }
 
             (g, c.border_width as f32, hide)
