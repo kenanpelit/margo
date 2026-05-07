@@ -351,6 +351,12 @@ fn main() -> Result<()> {
                 let win_geom = window.geometry();
                 state.space.map_element(window, (geom.x - win_geom.loc.x, geom.y - win_geom.loc.y), false);
             }
+            // smithay's `space.map_element` always moves the touched
+            // element to the top of the stack, so an animated tile
+            // would otherwise leap above an unrelated floating window
+            // (CopyQ, pavucontrol). Re-establish the z bands after
+            // every animation tick.
+            state.enforce_z_order();
             border::refresh(state);
             state.request_repaint();
         }

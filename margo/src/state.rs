@@ -1362,8 +1362,44 @@ impl MargoState {
                 }
             }
         }
+        self.enforce_z_order();
         crate::border::refresh(self);
         self.request_repaint();
+    }
+
+    /// Smithay's `Space::map_element` always inserts the touched
+    /// element at the top of the stack — there's no way to map at an
+    /// explicit z. So every time `arrange_monitor` re-maps a tile-
+    /// layer window during a layout change or a move animation, that
+    /// tile silently leaps above any floating window (CopyQ,
+    /// pavucontrol, picker dialogs) that happened to be on screen.
+    ///
+    /// To keep "floating sits on top of tiled" actually true, run
+    /// this after every `map_element` storm. We re-`raise_element`
+    /// floats first, then overlays/scratchpads, in `clients`-vec
+    /// forward order — `raise_element` itself moves to top, so the
+    /// last raise per band wins, which means the most-recently-
+    /// created float of each band ends up at the top of its band
+    /// (sane default for "newly opened picker shows on top").
+    pub fn enforce_z_order(&mut self) {
+        let floats: Vec<smithay::desktop::Window> = self
+            .clients
+            .iter()
+            .filter(|c| (c.is_floating || c.is_in_scratchpad) && !c.is_overlay)
+            .map(|c| c.window.clone())
+            .collect();
+        for w in &floats {
+            self.space.raise_element(w, false);
+        }
+        let overlays: Vec<smithay::desktop::Window> = self
+            .clients
+            .iter()
+            .filter(|c| c.is_overlay)
+            .map(|c| c.window.clone())
+            .collect();
+        for w in &overlays {
+            self.space.raise_element(w, false);
+        }
     }
 
     pub fn focus_surface(&mut self, target: Option<FocusTarget>) {
