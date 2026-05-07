@@ -70,6 +70,16 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
         "view" => state.view_tag(tag_arg(arg)),
         "toggleview" => state.toggle_view_tag(tag_arg(arg)),
         "tag" | "tagsilent" => state.tag_focused(tag_arg(arg)),
+        // `tagview` = move the focused window to <tag> AND switch the
+        // current monitor to that tag, so you follow the window. This
+        // is the behaviour the user usually wants when they think
+        // "send this window to tag N and take me there." Plain `tag`
+        // stays dwm-/dwl-style: window goes, user stays put.
+        "tagview" | "tag_view" | "tag-view" | "movetagview" => {
+            let mask = tag_arg(arg);
+            state.tag_focused(mask);
+            state.view_tag(mask);
+        }
         "toggletag" => state.toggle_client_tag(tag_arg(arg)),
         "tagall" => state.view_tag(u32::MAX),
         "viewtoleft" | "viewtoleft_have_client" => state.view_relative(-1),
