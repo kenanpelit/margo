@@ -31,8 +31,26 @@ pub struct ResizeRenderElement {
     /// Stable identity, derived from the source surface so smithay's
     /// damage tracker can match the element across frames.
     id: Id,
-    /// The captured window content. Scales to fit `geometry`.
-    texture: GlesTexture,
+    /// "Previous" texture — the snapshot of the window's content
+    /// captured at the moment the resize animation started. Held for
+    /// the entire duration of the animation; rendered with
+    /// `1.0 - progress` alpha so it fades out as the transition
+    /// completes.
+    tex_prev: GlesTexture,
+    /// "Next" texture — the live window content re-captured into an
+    /// offscreen GlesTexture every frame. By going through the SAME
+    /// `render_texture_from_to` path as `tex_prev` (instead of
+    /// the live `WaylandSurfaceRenderElement` tree), both layers
+    /// share the same pixel-snapping, the same rounded-clip shader,
+    /// and the same draw transform — eliminating the residual
+    /// "oynama" the user kept seeing when the live surface and the
+    /// snapshot were composited via separate code paths.
+    ///
+    /// `None` for the first ~1 frame of the animation while the
+    /// next-texture capture catches up; in that case we just render
+    /// `tex_prev` opaque, which is exactly what we want at
+    /// progress = 0.
+    tex_next: Option<GlesTexture>,
     /// Where to render the texture (logical coordinates), updated each
     /// frame from the live (interpolated) layout slot.
     geometry: Rectangle<i32, Logical>,
@@ -41,41 +59,45 @@ pub struct ResizeRenderElement {
     scale: Scale<f64>,
     /// Bumped every time `geometry` changes so smithay re-damages.
     commit: CommitCounter,
-    /// Per-frame opacity. 1.0 during the resize animation; the caller
-    /// can fade it out at the end if they want a crossfade with the
-    /// live surface.
-    alpha: f32,
-    /// Corner radius applied to the rendered texture (logical px).
-    /// Reuses the `clipped_surface` GLES texture shader to mask the
-    /// snapshot's corners so they match the live surface's rounded
-    /// corners during the crossfade — without this the snapshot's
-    /// sharp corners are visible until alpha fades out, which the
-    /// user perceives as a 90°-corner-flash mid-resize.
+    /// Animation progress in [0, 1]. Drives the crossfade alpha for
+    /// both layers: `tex_prev` at `1 - progress`, `tex_next` at
+    /// `progress`. Multiplied by `result_alpha` to support an outer
+    /// fade-in/out of the entire transition if needed.
+    progress: f32,
+    /// Outer alpha (currently always 1.0). Reserved for the layer's
+    /// own opacity if we ever want to fade the whole transition.
+    result_alpha: f32,
+    /// Corner radius applied to BOTH rendered textures (logical px).
+    /// Reuses the `clipped_surface` GLES texture shader to mask
+    /// corners so the crossfade preserves the rounded look.
     radius: f32,
-    /// Optional override texture-program: when set, the snapshot is
-    /// drawn through it instead of the default tex program. Used to
-    /// inject the corner-clipping shader.
+    /// Optional corner-clipping texture program.
     program: Option<GlesTexProgram>,
 }
 
 impl ResizeRenderElement {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: Id,
-        texture: GlesTexture,
+        tex_prev: GlesTexture,
+        tex_next: Option<GlesTexture>,
         geometry: Rectangle<i32, Logical>,
         scale: Scale<f64>,
-        alpha: f32,
+        progress: f32,
+        result_alpha: f32,
         commit: CommitCounter,
         radius: f32,
         program: Option<GlesTexProgram>,
     ) -> Self {
         Self {
             id,
-            texture,
+            tex_prev,
+            tex_next,
             geometry,
             scale,
             commit,
-            alpha,
+            progress: progress.clamp(0.0, 1.0),
+            result_alpha,
             radius,
             program,
         }
@@ -122,7 +144,12 @@ impl Element for ResizeRenderElement {
     }
 
     fn src(&self) -> Rectangle<f64, Buffer> {
-        let size = self.texture.size();
+        // Both textures are sampled across their full extent. The
+        // `Element::src` value is the source rect in buffer coords
+        // for the tex_prev texture (caller treats it as the "main"
+        // texture for damage tracking). tex_next, if present, is
+        // sampled likewise inside `draw`.
+        let size = self.tex_prev.size();
         Rectangle::new((0.0, 0.0).into(), (size.w as f64, size.h as f64).into())
     }
 
@@ -158,7 +185,11 @@ impl Element for ResizeRenderElement {
     }
 
     fn alpha(&self) -> f32 {
-        self.alpha
+        // We composite both layers ourselves at progress-derived
+        // alphas inside `draw`; report the outer "result alpha" so
+        // smithay's damage tracker treats the element as opaque-
+        // ish only when result_alpha is 1.0.
+        self.result_alpha
     }
 
     fn kind(&self) -> Kind {
@@ -170,44 +201,94 @@ impl RenderElement<GlesRenderer> for ResizeRenderElement {
     fn draw(
         &self,
         frame: &mut GlesFrame<'_, '_>,
-        src: Rectangle<f64, Buffer>,
+        _src: Rectangle<f64, Buffer>,
         dst: Rectangle<i32, Physical>,
         damage: &[Rectangle<i32, Physical>],
         _opaque_regions: &[Rectangle<i32, Physical>],
         _cache: Option<&UserDataMap>,
     ) -> Result<(), GlesError> {
-        // Inject the corner-clipping shader if we have one. This is
-        // the same `compile_custom_texture_shader`-style pattern used
-        // by `crate::render::clipped_surface::ClippedSurfaceRenderElement`:
-        // override the renderer's default texture program for the
-        // duration of *this* draw call so `render_texture_from_to`
-        // routes its texture sample through our rounded-mask GLSL,
-        // then clear the override so the next render element gets
-        // the default path back.
-        let overridden = if let Some(program) = self.program.as_ref().filter(|_| self.radius > 0.0)
-        {
-            frame.override_default_tex_program(program.clone(), self.rounded_clip_uniforms(dst));
-            true
-        } else {
-            false
+        // Two-pass crossfade. Both passes share:
+        //   * The same destination rect (`dst`).
+        //   * The same rounded-corner clipping shader (overridden
+        //     before the call, cleared after).
+        //   * The same `render_texture_from_to` code path.
+        //
+        // → the prev and next layers can't drift relative to each
+        //   other for any reason — pixel snapping, matrix rounding,
+        //   subsurface composition — because they're literally the
+        //   same renderer call with different source textures and
+        //   alphas. That kills the residual "minor oynama" the
+        //   single-snapshot + live-WaylandSurfaceRenderElement
+        //   composite kept producing.
+
+        let alpha_prev = (1.0 - self.progress).clamp(0.0, 1.0) * self.result_alpha;
+        let alpha_next = self.progress.clamp(0.0, 1.0) * self.result_alpha;
+
+        let install_override = |frame: &mut GlesFrame<'_, '_>| {
+            if let Some(program) = self.program.as_ref().filter(|_| self.radius > 0.0) {
+                frame.override_default_tex_program(
+                    program.clone(),
+                    self.rounded_clip_uniforms(dst),
+                );
+                true
+            } else {
+                false
+            }
         };
 
-        let result = smithay::backend::renderer::Frame::render_texture_from_to(
-            frame,
-            &self.texture,
-            src,
-            dst,
-            damage,
-            &[],
-            Transform::Normal,
-            self.alpha,
-        );
-
-        if overridden {
-            frame.clear_tex_program_override();
+        // Pass 1: tex_prev at alpha = 1 - progress.
+        if alpha_prev > 0.001 {
+            let overridden = install_override(frame);
+            let prev_size = self.tex_prev.size();
+            let prev_src: Rectangle<f64, Buffer> = Rectangle::new(
+                (0.0, 0.0).into(),
+                (prev_size.w as f64, prev_size.h as f64).into(),
+            );
+            smithay::backend::renderer::Frame::render_texture_from_to(
+                frame,
+                &self.tex_prev,
+                prev_src,
+                dst,
+                damage,
+                &[],
+                Transform::Normal,
+                alpha_prev,
+            )?;
+            if overridden {
+                frame.clear_tex_program_override();
+            }
         }
 
-        result
+        // Pass 2: tex_next at alpha = progress (if we have it). The
+        // first ~1 frame of the animation typically has no next
+        // texture yet — the offscreen capture runs once we know the
+        // animation is in flight, so the very first frame is just
+        // tex_prev opaque, which is what we'd render anyway.
+        if let Some(tex_next) = self.tex_next.as_ref() {
+            if alpha_next > 0.001 {
+                let overridden = install_override(frame);
+                let next_size = tex_next.size();
+                let next_src: Rectangle<f64, Buffer> = Rectangle::new(
+                    (0.0, 0.0).into(),
+                    (next_size.w as f64, next_size.h as f64).into(),
+                );
+                smithay::backend::renderer::Frame::render_texture_from_to(
+                    frame,
+                    tex_next,
+                    next_src,
+                    dst,
+                    damage,
+                    &[],
+                    Transform::Normal,
+                    alpha_next,
+                )?;
+                if overridden {
+                    frame.clear_tex_program_override();
+                }
+            }
+        }
+
+        Ok(())
     }
 
     fn underlying_storage(&self, _renderer: &mut GlesRenderer) -> Option<UnderlyingStorage<'_>> {

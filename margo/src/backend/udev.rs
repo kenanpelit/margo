@@ -1432,59 +1432,106 @@ fn push_client_elements(
                 // render below is NOT skipped — both layers always
                 // composite together for the crossfade.
 
+                // Two-texture niri-style crossfade: if a snapshot
+                // is active, capture the live surface tree to a
+                // *fresh* GlesTexture this frame (`tex_next`), then
+                // composite tex_prev and tex_next together via a
+                // single ResizeRenderElement that draws BOTH
+                // through the same `render_texture_from_to` path
+                // and the same rounded-clip shader. This is the
+                // niri pattern: the only thing that differs between
+                // the two layers in the final output is the source
+                // texture and the alpha — everything else (pixel
+                // snapping, clipping, transform) is byte-identical,
+                // so there's nothing for the eye to lock onto as
+                // "movement" between the layers.
+                let mut snapshot_active = false;
                 if let Some((c, snapshot)) =
                     client.and_then(|c| c.resize_snapshot.as_ref().map(|s| (c, s)))
                 {
-                    // Crossfade progress = elapsed-since-capture
-                    // ÷ the configured move animation duration. We
-                    // use Instant rather than the animation's
-                    // `time_started` because both timestamps share
-                    // the same monotonic clock and we only need ~ms
-                    // precision. Clamp in case the user has changed
-                    // animation_duration_move mid-transition.
                     let dur_ms = state.config.animation_duration_move.max(1) as f32;
                     let elapsed_ms = snapshot.captured_at.elapsed().as_millis() as f32;
                     let progress = (elapsed_ms / dur_ms).clamp(0.0, 1.0);
-                    let alpha = 1.0 - progress;
 
-                    if alpha > 0.001 {
-                        let dst = smithay::utils::Rectangle::new(
-                            (
-                                c.geom.x - output_geo.loc.x,
-                                c.geom.y - output_geo.loc.y,
-                            )
-                                .into(),
-                            (c.geom.width.max(1), c.geom.height.max(1)).into(),
+                    let dst = smithay::utils::Rectangle::new(
+                        (
+                            c.geom.x - output_geo.loc.x,
+                            c.geom.y - output_geo.loc.y,
+                        )
+                            .into(),
+                        (c.geom.width.max(1), c.geom.height.max(1)).into(),
+                    );
+                    let id =
+                        smithay::backend::renderer::element::Id::from_wayland_resource(
+                            wl_surface,
                         );
-                        let id =
-                            smithay::backend::renderer::element::Id::from_wayland_resource(
-                                wl_surface,
-                            );
-                        // Reuse the same rounded-clip GLES program
-                        // as the live surface (`clipped_surface`). The
-                        // ResizeRenderElement applies it to the
-                        // snapshot via override_default_tex_program so
-                        // the snapshot's corners match the live
-                        // surface's rounded corners during the
-                        // crossfade — without this the snapshot would
-                        // show 90° corners until alpha fades out and
-                        // the rounded live surface takes over, which
-                        // the user perceives as a corner-flash.
-                        let resize_program = clipped_surface_program.clone();
-                        elements.push(MargoRenderElement::Resize(
-                            crate::render::resize_render::ResizeRenderElement::new(
-                                id,
-                                snapshot.texture.clone(),
-                                dst,
-                                scale,
-                                alpha,
-                                smithay::backend::renderer::utils::CommitCounter::default(),
-                                radius,
-                                resize_program,
-                            ),
-                        ));
-                        let _ = snapshot.source_size; // for clarity
-                    }
+
+                    // Capture LIVE → tex_next this frame. The
+                    // capture goes through the same offscreen-
+                    // render path as tex_prev (`capture_window`),
+                    // so the resulting texture has the same
+                    // pixel-level layout as the snapshot would have
+                    // if taken right now. Failure → no tex_next,
+                    // ResizeRenderElement falls back to tex_prev
+                    // only at full alpha (no worse than the
+                    // single-texture variant we had before).
+                    let live_size = c.window.geometry().size;
+                    let tex_next = if live_size.w > 0 && live_size.h > 0 {
+                        match crate::render::window_capture::capture_window(
+                            renderer,
+                            &c.window,
+                            live_size,
+                            output_scale.into(),
+                        ) {
+                            Ok(t) => Some(t),
+                            Err(e) => {
+                                tracing::trace!(
+                                    "resize_next: live capture failed: {e:?}"
+                                );
+                                None
+                            }
+                        }
+                    } else {
+                        None
+                    };
+
+                    let resize_program = clipped_surface_program.clone();
+                    elements.push(MargoRenderElement::Resize(
+                        crate::render::resize_render::ResizeRenderElement::new(
+                            id,
+                            snapshot.texture.clone(),
+                            tex_next,
+                            dst,
+                            scale,
+                            progress,
+                            1.0,
+                            smithay::backend::renderer::utils::CommitCounter::default(),
+                            radius,
+                            resize_program,
+                        ),
+                    ));
+                    let _ = snapshot.source_size; // for clarity
+                    snapshot_active = true;
+                }
+
+                // While a resize transition is in flight we render
+                // ONLY through ResizeRenderElement (which contains
+                // both prev and next textures). Skipping the live
+                // surface's WaylandSurfaceRenderElement tree here
+                // is what guarantees the layers can't desync — they
+                // *are* the same draw path now. Once the snapshot
+                // expires (animation done, tick_animations clears
+                // `resize_snapshot`), we drop back to the normal
+                // live render below.
+                if snapshot_active {
+                    // Skip the live Wayland surface tree for this
+                    // window; tex_next inside the ResizeRenderElement
+                    // already represents its current frame. (We do
+                    // NOT skip the rest of the function — other
+                    // windows in the iteration still need to be
+                    // rendered. Hence `continue` on the outer
+                    // `for window in ...` loop, not `return`.)
+                    continue;
                 }
 
                 let surface_elements = render_elements_from_surface_tree::<
@@ -1499,8 +1546,6 @@ fn push_client_elements(
                     Kind::Unspecified,
                 );
 
-                // Live surface goes BELOW the snapshot in stacking
-                // order (= pushed LAST = drawn first underneath).
                 for elem in surface_elements {
                     if radius > 0.0 {
                         if let (Some(program), Some(clip_geometry)) =
