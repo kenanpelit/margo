@@ -575,6 +575,14 @@ pub struct Config {
 
     // misc
     pub sloppyfocus: bool,
+    /// When the cursor crosses into a new toplevel under sloppy focus,
+    /// also re-run the layout so scroller mode re-centers on it. Off
+    /// by default because in scroller layout this means every mouse
+    /// move that flips focus between two columns kicks off a fresh
+    /// 480 ms slide animation, and the user perceives the constant
+    /// re-centering as window jitter. Enable explicitly if you really
+    /// do want sloppy focus to drive the scroller.
+    pub sloppyfocus_arrange: bool,
     pub warpcursor: bool,
     pub drag_corner: i32,
     pub drag_warp_cursor: bool,
@@ -761,6 +769,7 @@ impl Default for Config {
             touch_edge_size_bottom: 50.0,
 
             sloppyfocus: true,
+            sloppyfocus_arrange: false,
             warpcursor: true,
             drag_corner: 3,
             drag_warp_cursor: true,

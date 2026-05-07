@@ -351,9 +351,19 @@ fn apply_sloppy_focus(state: &mut MargoState, target: Option<&FocusTarget>) {
     }
     state.focus_surface(Some(FocusTarget::Window(window.clone())));
     // Re-arrange so scroller-mode auto-centers the new focus.
-    let mon = state.focused_monitor();
-    if mon < state.monitors.len() {
-        state.arrange_monitor(mon);
+    //
+    // Off by default. With `scroller_focus_center = 1` (a common
+    // setting) every cursor crossing into another column kicks the
+    // scroller to recenter on it, restarts a 480 ms slide animation,
+    // and the user perceives the constant re-centering as window
+    // jitter — that's the original "border ve pencere kayması"
+    // report. We keep the call available behind `sloppyfocus_arrange`
+    // for users who explicitly want the scroller to follow the mouse.
+    if state.config.sloppyfocus_arrange {
+        let mon = state.focused_monitor();
+        if mon < state.monitors.len() {
+            state.arrange_monitor(mon);
+        }
     }
 }
 

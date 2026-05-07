@@ -358,6 +358,7 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
 
         // misc
         "sloppyfocus" => cfg.sloppyfocus = parse_bool(val),
+        "sloppyfocus_arrange" => cfg.sloppyfocus_arrange = parse_bool(val),
         "warpcursor" => cfg.warpcursor = parse_bool(val),
         "drag_corner" => cfg.drag_corner = parse_i32(val),
         "drag_warp_cursor" => cfg.drag_warp_cursor = parse_bool(val),
