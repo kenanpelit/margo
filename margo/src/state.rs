@@ -1201,22 +1201,37 @@ impl MargoState {
                 );
             }
             let old = self.clients[client_idx].geom;
+
+            // If we're already animating toward exactly this target,
+            // leave the in-flight animation alone. arrange_monitor gets
+            // called from many event sources (title change → window-
+            // rule reapply, focus shift, output resize, scroller pan
+            // recompute, …) and a long-running browser like Helium can
+            // tick those off every frame while it's playing video. The
+            // old behaviour was: each call saw `old != rect` (because
+            // `old = c.geom` is the *interpolated* mid-flight value, not
+            // the target), restarted the move animation with `initial
+            // = old`, and reset `time_started = now`. Result: the
+            // animation never finishes — every 16 ms it inches a few
+            // pixels toward the target and then resets, producing the
+            // exact 1-pixel-per-frame oscillation we kept seeing in the
+            // arrange traces (-1794 → -1795 → -1794 → …).
+            let already_animating_to_target =
+                self.clients[client_idx].animation.running
+                    && self.clients[client_idx].animation.current == rect;
+
             let should_animate = self.config.animations
                 && !self.clients[client_idx].no_animation
                 && !self.clients[client_idx].is_tag_switching
                 && old.width > 0
                 && old.height > 0
-                && old != rect;
+                && old != rect
+                && !already_animating_to_target;
 
             // Diagnostic: every layout decision per visible client.
-            // Compare `actual=` (what the client rendered last commit)
-            // against `slot=` (what the layout wants now); when these
-            // disagree by more than a frame after `should_animate=true`
-            // settles, the user sees the "border ve pencere kayması"
-            // jitter we keep chasing.
             let actual_geom = self.clients[client_idx].window.geometry().size;
             tracing::info!(
-                "arrange[{}]: client_idx={} old={}x{}+{}+{} slot={}x{}+{}+{} actual_buf={}x{} animate={}",
+                "arrange[{}]: client_idx={} old={}x{}+{}+{} slot={}x{}+{}+{} actual_buf={}x{} animate={} already_to_target={}",
                 self.clients[client_idx].app_id.as_str(),
                 client_idx,
                 old.width,
@@ -1230,6 +1245,7 @@ impl MargoState {
                 actual_geom.w,
                 actual_geom.h,
                 should_animate,
+                already_animating_to_target,
             );
             if should_animate {
                 // Animate the window's *position* between layout slots,
@@ -1270,6 +1286,10 @@ impl MargoState {
                     ..Default::default()
                 };
                 self.clients[client_idx].geom = initial;
+            } else if already_animating_to_target {
+                // Existing animation still converging on the right
+                // target — leave its `time_started`, `initial`, and the
+                // current interpolated `c.geom` exactly where they are.
             } else {
                 self.clients[client_idx].animation.running = false;
                 self.clients[client_idx].geom = rect;
