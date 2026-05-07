@@ -18,7 +18,9 @@
 //! size-snap fix.
 
 use smithay::backend::renderer::element::{Element, Id, Kind, RenderElement, UnderlyingStorage};
-use smithay::backend::renderer::gles::{GlesError, GlesFrame, GlesRenderer, GlesTexture};
+use smithay::backend::renderer::gles::{
+    GlesError, GlesFrame, GlesRenderer, GlesTexProgram, GlesTexture, Uniform, UniformValue,
+};
 use smithay::backend::renderer::utils::{CommitCounter, DamageSet, OpaqueRegions};
 use smithay::backend::renderer::Texture;
 use smithay::utils::user_data::UserDataMap;
@@ -43,6 +45,17 @@ pub struct ResizeRenderElement {
     /// can fade it out at the end if they want a crossfade with the
     /// live surface.
     alpha: f32,
+    /// Corner radius applied to the rendered texture (logical px).
+    /// Reuses the `clipped_surface` GLES texture shader to mask the
+    /// snapshot's corners so they match the live surface's rounded
+    /// corners during the crossfade — without this the snapshot's
+    /// sharp corners are visible until alpha fades out, which the
+    /// user perceives as a 90°-corner-flash mid-resize.
+    radius: f32,
+    /// Optional override texture-program: when set, the snapshot is
+    /// drawn through it instead of the default tex program. Used to
+    /// inject the corner-clipping shader.
+    program: Option<GlesTexProgram>,
 }
 
 impl ResizeRenderElement {
@@ -53,6 +66,8 @@ impl ResizeRenderElement {
         scale: Scale<f64>,
         alpha: f32,
         commit: CommitCounter,
+        radius: f32,
+        program: Option<GlesTexProgram>,
     ) -> Self {
         Self {
             id,
@@ -61,7 +76,39 @@ impl ResizeRenderElement {
             scale,
             commit,
             alpha,
+            radius,
+            program,
         }
+    }
+
+    fn rounded_clip_uniforms(&self, dst: Rectangle<i32, Physical>) -> Vec<Uniform<'static>> {
+        // The clipped_surface fragment shader expects three uniforms:
+        //   * `geo_size` — the destination rect's size in physical px.
+        //     Used inside `rounded_rect_alpha(p, size, radius)` to
+        //     compute the corner mask.
+        //   * `corner_radius` — same units as `geo_size`, scaled to
+        //     the output's fractional scale.
+        //   * `input_to_geo` — 3×3 matrix mapping the texture's UV
+        //     space (`v_coords`, [0,1]²) into "geometry-relative
+        //     position" space (also [0,1]²). For the resize-snapshot
+        //     case the destination *is* the geometry rect, so the
+        //     mapping is the identity.
+        const MAT_IDENTITY: [f32; 9] = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+
+        let geo_size = (dst.size.w.max(1) as f32, dst.size.h.max(1) as f32);
+        let radius_phys = self.radius * (self.scale.x as f32);
+
+        vec![
+            Uniform::new("geo_size", geo_size),
+            Uniform::new("corner_radius", radius_phys),
+            Uniform {
+                name: "input_to_geo".into(),
+                value: UniformValue::Matrix3x3 {
+                    matrices: vec![MAT_IDENTITY],
+                    transpose: false,
+                },
+            },
+        ]
     }
 }
 
@@ -129,12 +176,23 @@ impl RenderElement<GlesRenderer> for ResizeRenderElement {
         _opaque_regions: &[Rectangle<i32, Physical>],
         _cache: Option<&UserDataMap>,
     ) -> Result<(), GlesError> {
-        // Smithay's `render_texture_from_to` scales the texture
-        // sample-rect (`src`, in buffer coords) into the destination
-        // rect (`dst`, in physical coords) — exactly what we need: the
-        // captured snapshot at its native pixel size, drawn into the
-        // current animated slot in physical screen coords.
-        smithay::backend::renderer::Frame::render_texture_from_to(
+        // Inject the corner-clipping shader if we have one. This is
+        // the same `compile_custom_texture_shader`-style pattern used
+        // by `crate::render::clipped_surface::ClippedSurfaceRenderElement`:
+        // override the renderer's default texture program for the
+        // duration of *this* draw call so `render_texture_from_to`
+        // routes its texture sample through our rounded-mask GLSL,
+        // then clear the override so the next render element gets
+        // the default path back.
+        let overridden = if let Some(program) = self.program.as_ref().filter(|_| self.radius > 0.0)
+        {
+            frame.override_default_tex_program(program.clone(), self.rounded_clip_uniforms(dst));
+            true
+        } else {
+            false
+        };
+
+        let result = smithay::backend::renderer::Frame::render_texture_from_to(
             frame,
             &self.texture,
             src,
@@ -143,7 +201,13 @@ impl RenderElement<GlesRenderer> for ResizeRenderElement {
             &[],
             Transform::Normal,
             self.alpha,
-        )
+        );
+
+        if overridden {
+            frame.clear_tex_program_override();
+        }
+
+        result
     }
 
     fn underlying_storage(&self, _renderer: &mut GlesRenderer) -> Option<UnderlyingStorage<'_>> {

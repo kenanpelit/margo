@@ -1320,33 +1320,30 @@ impl MargoState {
                 already_animating_to_target,
             );
             if should_animate {
-                // Animate the window's *position* between layout slots,
-                // but snap the size to the target on frame 0. Why:
+                // Animate the slot fully — both position AND size lerp
+                // from `old` to `rect` over `animation_duration_move`.
+                // Combined with the niri-style crossfade that runs in
+                // parallel (snapshot rendered on top with fading
+                // alpha, scaled to the *current* interpolated slot),
+                // this gives the smooth resize transition the user
+                // sees from niri/Hyprland's animated layouts: the
+                // pre-resize content scales down while the post-
+                // resize content fades up.
                 //
-                // Resize-shy clients (Electron browsers like Helium /
-                // Spotify / Discord) take 50–100 ms to ack a new
-                // `xdg_toplevel.configure(size)` and commit a fresh
-                // buffer. If we lerp `c.geom.width` from old → new over
-                // 480 ms while the buffer arrives at the new size in
-                // a couple frames, the slot is animating around an
-                // already-resized buffer for the rest of the
-                // animation: empty wallpaper inside the border while
-                // the slot catches up, then a snap when both align.
-                // That's the "border ve pencere kayması" jitter.
-                //
-                // Snapping size means the buffer size, the slot, and
-                // the border all agree from t=0. Position still
-                // animates so the rearrange feels alive — but only
-                // when position actually changes; slot-only resizes
-                // (helium's column halving) become an instant resize
-                // with no visible animation, which is exactly what
-                // the user wanted.
-                let initial = Rect {
-                    x: old.x,
-                    y: old.y,
-                    width: rect.width,
-                    height: rect.height,
-                };
+                // Earlier we used to snap the size to the target on
+                // frame 0 (initial.width = rect.width) so the buffer
+                // and the slot would always match dimensions — but
+                // that left the snapshot fixed at the new slot size
+                // for the entire animation, which meant the snapshot
+                // was rendered at a *different* size from the captured
+                // content for 150 ms and the user saw a stretched/
+                // squished version of the pre-resize image. The
+                // crossfade infrastructure makes the size-snap
+                // unnecessary: we always render BOTH layers at the
+                // interpolated slot, and the buffer/slot mismatch on
+                // the live layer is hidden under the snapshot until
+                // alpha drops.
+                let initial = old;
                 // niri-style resize transition: if the slot size
                 // changes (not just the position), flag a snapshot so
                 // the next render captures the *current* surface tree

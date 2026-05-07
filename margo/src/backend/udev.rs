@@ -1460,6 +1460,17 @@ fn push_client_elements(
                             smithay::backend::renderer::element::Id::from_wayland_resource(
                                 wl_surface,
                             );
+                        // Reuse the same rounded-clip GLES program
+                        // as the live surface (`clipped_surface`). The
+                        // ResizeRenderElement applies it to the
+                        // snapshot via override_default_tex_program so
+                        // the snapshot's corners match the live
+                        // surface's rounded corners during the
+                        // crossfade — without this the snapshot would
+                        // show 90° corners until alpha fades out and
+                        // the rounded live surface takes over, which
+                        // the user perceives as a corner-flash.
+                        let resize_program = clipped_surface_program.clone();
                         elements.push(MargoRenderElement::Resize(
                             crate::render::resize_render::ResizeRenderElement::new(
                                 id,
@@ -1468,6 +1479,8 @@ fn push_client_elements(
                                 scale,
                                 alpha,
                                 smithay::backend::renderer::utils::CommitCounter::default(),
+                                radius,
+                                resize_program,
                             ),
                         ));
                         let _ = snapshot.source_size; // for clarity
