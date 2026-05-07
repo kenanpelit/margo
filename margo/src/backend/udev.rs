@@ -1715,6 +1715,95 @@ fn serve_screencopies(
         }
         let scale = od.output.current_scale().fractional_scale();
 
+        // Re-build the element list honouring the client's `overlay_cursor`
+        // preference. When false (the screenshot default), we skip the
+        // cursor sprite so the captured image has no overlay. Hoisted
+        // out of the buffer-target branches so both the dmabuf and SHM
+        // paths share the same element computation.
+        let owned_elements: Vec<MargoRenderElement>;
+        let elements_to_render: &[MargoRenderElement] = if screencopy.overlay_cursor() {
+            elements
+        } else {
+            owned_elements = build_render_elements_inner(renderer, od, state, false);
+            &owned_elements
+        };
+
+        // ── DMA-BUF zero-copy fast path ─────────────────────────────
+        // OBS / Discord / xdg-desktop-portal-wlr negotiate dmabuf via
+        // `frame.linux_dmabuf(...)` and submit a GBM-allocated wl_buffer
+        // sized to the full output. That's the cheap case: bind the
+        // dmabuf as a render target and let smithay's damage tracker
+        // paint the elements straight into it. No CPU readback, no SHM
+        // upload — the screencast pipeline gets a buffer the GPU has
+        // already touched. For region capture (`grim -g`) we'd need to
+        // translate elements by `-region_loc` and render at
+        // `buffer_size` instead of `output_size`; that's a follow-up
+        // (smithay's OutputDamageTracker doesn't take a render-time
+        // offset, so we'd need RelocateRenderElement wrapping). Until
+        // then, region capture with a dmabuf target fails the frame —
+        // grim is the only user we know of that requests one and it
+        // happily falls back to SHM.
+        if let crate::protocols::screencopy::ScreencopyBuffer::Dmabuf(dmabuf) =
+            screencopy.buffer()
+        {
+            let full_output = size == output_size
+                && region_loc == smithay::utils::Point::<i32, smithay::utils::Physical>::from((0, 0));
+            if full_output {
+                let mut dmabuf = dmabuf.clone();
+                let render_result = match renderer.bind(&mut dmabuf) {
+                    Ok(mut target) => {
+                        let mut tracker = DamageTracker::new(output_size, scale, Transform::Normal);
+                        let res = tracker
+                            .render_output(
+                                renderer,
+                                &mut target,
+                                0,
+                                elements_to_render,
+                                [0.0, 0.0, 0.0, 1.0],
+                            )
+                            .map(|r| r.damage.map(|d| d.to_owned()));
+                        drop(target);
+                        res
+                    }
+                    Err(e) => Err(smithay::backend::renderer::damage::Error::Rendering(e)),
+                };
+
+                match render_result {
+                    Ok(damage) => {
+                        if screencopy.with_damage() {
+                            if let Some(damage_rects) = damage.as_ref() {
+                                screencopy.damage(damage_rects.iter().map(|r| {
+                                    smithay::utils::Rectangle::new(
+                                        smithay::utils::Point::from((r.loc.x, r.loc.y)),
+                                        smithay::utils::Size::from((r.size.w, r.size.h)),
+                                    )
+                                }));
+                            }
+                        }
+                        // Dmabuf submit: y_invert=false (textures
+                        // sampled top-left). Smithay's
+                        // OutputDamageTracker is synchronous from a
+                        // wl_buffer-release perspective at this point,
+                        // so we don't yet propagate a SyncPoint to the
+                        // client — every consumer we've tested
+                        // (xdg-desktop-portal-wlr, OBS, wf-recorder)
+                        // is happy with implicit-sync dmabuf
+                        // submission for screencopy.
+                        screencopy.submit_now(false, now);
+                    }
+                    Err(e) => warn!("screencopy: dmabuf render failed: {e:?}"),
+                }
+                continue;
+            }
+            warn!(
+                "screencopy: dmabuf region capture (region={:?}, want={:?}, output={:?}) \
+                 not yet implemented — failing frame",
+                region_loc, size, output_size
+            );
+            continue;
+        }
+
+        // ── SHM path (renderbuffer + read-back + memcpy) ─────────────
         // Render the FULL output (not just the region). We crop on read-back
         // via `copy_framebuffer`. Renderbuffer matches the output mode.
         let buf_size = smithay::utils::Size::<i32, smithay::utils::Buffer>::from(
@@ -1740,17 +1829,6 @@ fn serve_screencopies(
                 warn!("screencopy: bind renderbuffer failed: {e:?}");
                 continue;
             }
-        };
-
-        // Re-build the element list honouring the client's `overlay_cursor`
-        // preference. When false (the screenshot default), we skip the
-        // cursor sprite so the captured image has no overlay.
-        let owned_elements: Vec<MargoRenderElement>;
-        let elements_to_render: &[MargoRenderElement] = if screencopy.overlay_cursor() {
-            elements
-        } else {
-            owned_elements = build_render_elements_inner(renderer, od, state, false);
-            &owned_elements
         };
 
         let mut tracker = DamageTracker::new(output_size, scale, Transform::Normal);
@@ -1794,7 +1872,11 @@ fn serve_screencopies(
             }
         };
 
-        // Write into the SHM buffer (dmabuf branch is a TODO).
+        // Write into the SHM buffer. The dmabuf branch is handled
+        // earlier in the loop with a zero-copy bind+render path; by
+        // the time we reach this match the buffer must be SHM. The
+        // Dmabuf arm is unreachable but kept exhaustive so adding a
+        // future ScreencopyBuffer variant fails to compile here.
         let copied = match screencopy.buffer() {
             crate::protocols::screencopy::ScreencopyBuffer::Shm(buf) => {
                 let need = (size.w as usize).saturating_mul(4).saturating_mul(size.h as usize);
@@ -1820,8 +1902,8 @@ fn serve_screencopies(
                 copied_n > 0
             }
             crate::protocols::screencopy::ScreencopyBuffer::Dmabuf(_) => {
-                warn!("screencopy: dmabuf target not yet implemented");
-                false
+                // Should not happen: handled earlier and `continue`d.
+                unreachable!("screencopy dmabuf path took the SHM branch");
             }
         };
 
