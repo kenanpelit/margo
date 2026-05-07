@@ -2916,6 +2916,61 @@ impl WlrLayerShellHandler for MargoState {
         }
 
         self.refresh_output_work_area(&output);
+
+        // Hand keyboard focus back to a real window when the layer that
+        // had grabbed it (typically noctalia's launcher / settings panel
+        // / control-center, all of them `keyboard-interactivity:
+        // exclusive`) goes away. Without this, keyboard.current_focus
+        // is left pointing at the just-destroyed surface, every key
+        // press is delivered to nothing, and the user has to nudge the
+        // mouse before the toplevel underneath wakes up — exactly the
+        // "esc the launcher and the window stays dead" symptom.
+        //
+        // Only intervene if the destroyed layer was actually holding
+        // focus: a non-exclusive layer (notification toasts, the bar)
+        // disappearing should not yank focus around. We pick the
+        // monitor's currently `selected` client as the fallback because
+        // that's the last-focused-window-on-this-output that
+        // focus_surface tracked, falling back to the topmost visible
+        // client if nothing was previously selected (fresh session,
+        // or the prior focus belonged to a different layer).
+        let current_focus_was_layer = self
+            .seat
+            .get_keyboard()
+            .and_then(|kb| kb.current_focus())
+            .map(|f| match f {
+                FocusTarget::LayerSurface(s) => s == surface,
+                _ => false,
+            })
+            .unwrap_or(false);
+
+        if current_focus_was_layer {
+            let restore = self.monitors[mon_idx]
+                .selected
+                .filter(|&idx| {
+                    idx < self.clients.len()
+                        && self.clients[idx].is_visible_on(
+                            mon_idx,
+                            self.monitors[mon_idx].current_tagset(),
+                        )
+                })
+                .or_else(|| {
+                    let tagset = self.monitors[mon_idx].current_tagset();
+                    self.clients
+                        .iter()
+                        .position(|c| c.monitor == mon_idx && c.is_visible_on(mon_idx, tagset))
+                });
+
+            match restore {
+                Some(idx) => {
+                    let window = self.clients[idx].window.clone();
+                    self.monitors[mon_idx].selected = Some(idx);
+                    self.focus_surface(Some(FocusTarget::Window(window)));
+                }
+                None => self.focus_surface(None),
+            }
+        }
+
         tracing::info!("layer surface destroyed");
     }
 }
