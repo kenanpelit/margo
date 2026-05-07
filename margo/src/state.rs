@@ -76,6 +76,7 @@ use smithay::{
         text_input::TextInputManagerState,
         viewporter::ViewporterState,
         dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
+        drm_syncobj::{DrmSyncobjHandler, DrmSyncobjState},
         xwayland_shell::{XWaylandShellHandler, XWaylandShellState},
     },
     xwayland::{X11Surface, X11Wm, XWaylandClientData, XwmHandler, xwm::{Reorder, ResizeEdge, X11Window, XwmId}},
@@ -697,6 +698,16 @@ pub struct MargoState {
     pub dmabuf_state: DmabufState,
     pub dmabuf_global: Option<DmabufGlobal>,
     pub dmabuf_import_hook: Option<DmabufImportHook>,
+    /// `wp_linux_drm_syncobj_v1` global state. `None` until the udev
+    /// backend opens the primary DRM node and confirms it supports
+    /// `syncobj_eventfd` — older kernels (< 5.18) and devices without
+    /// `DRM_CAP_SYNCOBJ_TIMELINE` can't drive explicit-sync, so we
+    /// don't expose the protocol there. Modern Chromium / Firefox
+    /// prefers explicit sync when the global is advertised: per-
+    /// surface `wp_linux_drm_syncobj_surface_v1` carries acquire +
+    /// release fences alongside the dmabuf, eliminating the implicit
+    /// fence wait that otherwise drops frames under GPU load.
+    pub drm_syncobj_state: Option<DrmSyncobjState>,
     pub seat_state: SeatState<MargoState>,
     pub layer_shell_state: WlrLayerShellState,
     pub output_manager_state: OutputManagerState,
@@ -848,6 +859,7 @@ impl MargoState {
             dmabuf_state,
             dmabuf_global: None,
             dmabuf_import_hook: None,
+            drm_syncobj_state: None,
             seat_state,
             layer_shell_state,
             output_manager_state,
@@ -2879,6 +2891,27 @@ impl DmabufHandler for MargoState {
     }
 }
 delegate_dmabuf!(MargoState);
+
+// ── Smithay delegate: linux-drm-syncobj-v1 (explicit sync) ───────────────────
+//
+// The protocol global is only exposed when the udev backend has had a
+// chance to test the primary DRM node for `syncobj_eventfd` support and
+// flipped `drm_syncobj_state` to `Some`. Until that happens
+// `drm_syncobj_state()` returns `None` and smithay's dispatch refuses to
+// bind, so kernels / drivers without timeline syncobj support don't see
+// a global advertised at all (which is exactly the contract niri /
+// sway / mutter follow). Once the global is up, the per-surface
+// `wp_linux_drm_syncobj_surface_v1` plumbs acquire + release fences
+// through smithay's compositor pre-commit hooks automatically — clients
+// (Chromium 100+, Firefox with `widget.dmabuf-textures.enabled`) can
+// stop relying on implicit-sync hacks and tile their frame pacing on a
+// real GPU timeline.
+impl DrmSyncobjHandler for MargoState {
+    fn drm_syncobj_state(&mut self) -> Option<&mut DrmSyncobjState> {
+        self.drm_syncobj_state.as_mut()
+    }
+}
+smithay::delegate_drm_syncobj!(MargoState);
 
 // ── Smithay delegate: XDG Shell ───────────────────────────────────────────────
 

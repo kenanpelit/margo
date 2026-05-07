@@ -296,6 +296,32 @@ pub fn run(
         }
     }
 
+    // ── 4b. linux-drm-syncobj-v1 (explicit sync) ────────────────────────────
+    //
+    // Modern hardware-accelerated clients (Chromium 100+, Firefox with
+    // dmabuf textures, native Wayland games via DXVK / VKD3D-Proton)
+    // tile their frame pacing on a real GPU timeline rather than the
+    // implicit fence wait baked into the dmabuf protocol. Exposing this
+    // global is what lets them attach acquire / release fences to a
+    // surface commit and let smithay's compositor handle the GPU
+    // synchronisation for us. We gate on `supports_syncobj_eventfd` so
+    // older kernels (< 5.18) and devices without
+    // `DRM_CAP_SYNCOBJ_TIMELINE` don't see a global advertised at all
+    // — same contract niri / sway / mutter follow.
+    if smithay::wayland::drm_syncobj::supports_syncobj_eventfd(&drm_fd) {
+        let syncobj_state = smithay::wayland::drm_syncobj::DrmSyncobjState::new::<MargoState>(
+            &state.display_handle,
+            drm_fd.clone(),
+        );
+        state.drm_syncobj_state = Some(syncobj_state);
+        info!("linux-drm-syncobj-v1 enabled (explicit sync available to clients)");
+    } else {
+        info!(
+            "linux-drm-syncobj-v1 NOT advertised — kernel / driver lacks syncobj_eventfd; \
+             clients will fall back to implicit dmabuf sync"
+        );
+    }
+
     // ── 5. Get renderer formats for DRM compositor ───────────────────────────
     let renderer_formats = renderer
         .egl_context()
