@@ -187,8 +187,7 @@ test harness for window rules.
 The P1 sprint focuses on protocol parity with niri / sway: DMA-BUF
 screencopy, region-cropped capture, screencast blackout filter,
 `pointer_constraints_v1`, `xdg_activation_v1`,
-`wlr_output_management_v1`, and `presentation-time`. The exact ordering
-and rationale lives in [`YOL_HARITASI.md`](YOL_HARITASI.md).
+`wlr_output_management_v1`, and `presentation-time`.
 
 ## Acknowledgements
 
