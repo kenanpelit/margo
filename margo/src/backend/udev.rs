@@ -526,42 +526,6 @@ pub fn run(
                         }
                     }
                 }
-                DrmEvent::Changed => {
-                    info!("DRM device changed, rescanning outputs");
-                    let mut bd = backend_data.borrow_mut();
-                    let BackendData { renderer, outputs, drm } = &mut *bd;
-                    
-                    // 1. Identify disconnected connectors
-                    let resources = match drm.resource_handles() {
-                        Ok(r) => r,
-                        Err(e) => {
-                            error!("failed to get resource handles during rescan: {e}");
-                            return;
-                        }
-                    };
-                    
-                    let mut to_remove = Vec::new();
-                    for (crtc, od) in outputs.iter() {
-                        let is_connected = resources.connectors().iter().any(|conn_handle| {
-                            drm.get_connector(*conn_handle, false)
-                                .map(|c| c.state() == connector::State::Connected)
-                                .unwrap_or(false)
-                        });
-                        if !is_connected {
-                            to_remove.push(*crtc);
-                        }
-                    }
-                    
-                    // 2. Cleanup removed outputs
-                    for crtc in to_remove {
-                        if let Some(od) = outputs.remove(&crtc) {
-                            state.remove_output(&od.output);
-                        }
-                    }
-                    
-                    // 3. (Optional/TODO) Support adding new outputs at runtime.
-                    // For now, cleanup is the priority to prevent leaks/crashes.
-                }
                 DrmEvent::Error(e) => error!("DRM error: {:?}", e),
             }
         })
@@ -648,10 +612,43 @@ pub fn run(
         .map_err(|e| anyhow::anyhow!("UdevBackend::new: {e}"))?;
     event_loop
         .handle()
-        .insert_source(udev_backend, |event, _, _state: &mut MargoState| match event {
-            UdevEvent::Added { device_id: _, path } => info!("udev added: {:?}", path),
-            UdevEvent::Changed { device_id: _ } => {}
-            UdevEvent::Removed { device_id: _ } => {}
+        .insert_source(udev_backend, {
+            let backend_data = backend_data.clone();
+            move |event, _, state: &mut MargoState| match event {
+                UdevEvent::Added { device_id: _, path } => info!("udev added: {:?}", path),
+                UdevEvent::Changed { device_id: _ } => {
+                    info!("udev device changed, rescanning outputs");
+                    let mut bd = backend_data.borrow_mut();
+                    let BackendData { renderer: _, outputs, drm } = &mut *bd;
+                    
+                    let resources = match drm.resource_handles() {
+                        Ok(r) => r,
+                        Err(e) => {
+                            error!("failed to get resource handles: {e}");
+                            return;
+                        }
+                    };
+                    
+                    let mut to_remove = Vec::new();
+                    for (crtc, od) in outputs.iter() {
+                        let is_connected = resources.connectors().iter().any(|conn_handle| {
+                            drm.get_connector(*conn_handle, false)
+                                .map(|c| c.state() == connector::State::Connected)
+                                .unwrap_or(false)
+                        });
+                        if !is_connected {
+                            to_remove.push(*crtc);
+                        }
+                    }
+                    
+                    for crtc in to_remove {
+                        if let Some(od) = outputs.remove(&crtc) {
+                            state.remove_output(&od.output);
+                        }
+                    }
+                }
+                UdevEvent::Removed { device_id: _ } => {}
+            }
         })
         .map_err(|e| anyhow::anyhow!("udev source: {e}"))?;
 
