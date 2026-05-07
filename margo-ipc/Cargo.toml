@@ -1,0 +1,19 @@
+[package]
+name = "margo-ipc"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "mctl"
+path = "src/bin/mctl.rs"
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+wayland-client.workspace = true
+wayland-backend.workspace = true
+wayland-scanner.workspace = true
+clap.workspace = true

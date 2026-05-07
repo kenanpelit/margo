@@ -1,0 +1,16 @@
+/.cache
+/.vscode
+.codex
+.claude
+.agents
+/result
+YOL_HARITASI.md
+CLAUDE.md
+.mcp.json
+.nix/
+flake.lock
+flake.nix
+docs
+protocols
+# Rust build artifacts
+/target/

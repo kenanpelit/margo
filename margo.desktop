@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=margo
+Comment=A feature-rich Wayland compositor
+Exec=margo
+Type=Application
+TryExec=margo
+DesktopNames=margo;mango;wlroots
+X-GDM-SessionType=wayland
+X-Session-Type=wayland

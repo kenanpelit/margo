@@ -1,0 +1,41 @@
+[workspace]
+members = [
+    "margo",
+    "margo-config",
+    "margo-ipc",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/kenanpelit/margo"
+rust-version = "1.85"
+
+[workspace.dependencies]
+anyhow = "1.0"
+bitflags = "2.0"
+clap = { version = "4.0", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+thiserror = "2.0"
+calloop = { version = "0.14", features = ["executor", "futures-io"] }
+wayland-server = "0.31"
+wayland-client = "0.31"
+wayland-backend = "0.3"
+wayland-scanner = "0.31"
+xkbcommon = { version = "0.8", features = ["wayland"] }
+xcursor = "0.3"
+
+[workspace.dependencies.smithay]
+git = "https://github.com/Smithay/smithay.git"
+rev = "ff5fa7df392cecfba049ffed55cdaa4e98a8e7ef"
+default-features = false
+
+[profile.release]
+debug = "line-tables-only"
+overflow-checks = true
+lto = "thin"

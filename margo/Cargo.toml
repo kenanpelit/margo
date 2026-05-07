@@ -1,0 +1,60 @@
+[package]
+name = "margo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "A feature-rich Wayland compositor"
+keywords = ["wayland", "compositor", "tiling", "smithay", "wm"]
+
+[[bin]]
+name = "margo"
+path = "src/main.rs"
+
+[dependencies]
+margo-config = { path = "../margo-config" }
+margo-ipc = { path = "../margo-ipc" }
+
+anyhow.workspace = true
+bitflags.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+thiserror.workspace = true
+calloop.workspace = true
+wayland-server.workspace = true
+wayland-client.workspace = true
+wayland-backend.workspace = true
+wayland-scanner.workspace = true
+xkbcommon.workspace = true
+
+input = { version = "0.10", features = ["libinput_1_21"] }
+drm-fourcc = "2.2"
+drm-ffi = "0.9"
+bytemuck = { version = "1", features = ["derive"] }
+libc = "0.2"
+keyframe = { version = "1.1", default-features = false }
+nix = { version = "0.29", features = ["signal", "process"] }
+xcursor.workspace = true
+log = "0.4"
+regex = "1"
+
+[dependencies.smithay]
+workspace = true
+features = [
+    "backend_drm",
+    "backend_egl",
+    "backend_gbm",
+    "backend_libinput",
+    "backend_session_libseat",
+    "backend_udev",
+    "backend_winit",
+    "desktop",
+    "renderer_gl",
+    "renderer_pixman",
+    "renderer_multi",
+    "use_system_lib",
+    "wayland_frontend",
+    "xwayland",
+]
