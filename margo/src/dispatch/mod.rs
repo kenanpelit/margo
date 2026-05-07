@@ -9,6 +9,14 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
     match action {
         "quit" => state.should_quit = true,
         "debug_dump" | "debug-dump" | "diagnose" => state.debug_dump(),
+        // Emergency escape from a stuck lock screen. Tears down the
+        // current ext_session_lock from the compositor side without
+        // requiring the locker client to cooperate — useful when
+        // noctalia/Quickshell can't accept keyboard input and the user
+        // would otherwise have to switch to a TTY (or reboot) to
+        // recover. This action is whitelisted in handle_keyboard so
+        // it works *even while* `session_locked` is true.
+        "force_unlock" | "force-unlock" => state.force_unlock(),
         "moveresize" => {
             // mango legacy: arg `curmove` → start move grab; `curresize`
             // → start resize grab. Anything else falls back to move.

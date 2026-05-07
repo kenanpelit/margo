@@ -173,6 +173,50 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                 // Without `Forward` here the lock screen never sees a single
                 // keystroke and there's no way to unlock.
                 if state.session_locked {
+                    // Whitelisted escape hatch: a `force_unlock`
+                    // keybind always wins, even while the session is
+                    // locked, so the user has a way to recover from a
+                    // wedged lock screen without rebooting. Everything
+                    // else is forwarded straight to the lock surface.
+                    if key_state == KeyState::Pressed {
+                        let keysym = handle.modified_sym();
+                        let mods = smithay_mods_to_margo(modifiers);
+                        let mode = state.input_keyboard.mode.clone();
+                        let mut matched = find_keybinding(
+                            &state.config.key_bindings,
+                            mods,
+                            keysym.raw(),
+                            keycode.raw(),
+                            &mode,
+                            false,
+                        );
+                        if matched.is_none() {
+                            for sym in handle.raw_syms() {
+                                matched = find_keybinding(
+                                    &state.config.key_bindings,
+                                    mods,
+                                    sym.raw(),
+                                    keycode.raw(),
+                                    &mode,
+                                    false,
+                                );
+                                if matched.is_some() {
+                                    break;
+                                }
+                            }
+                        }
+                        if let Some(kb) = matched {
+                            if matches!(kb.action.as_str(), "force_unlock" | "force-unlock") {
+                                tracing::warn!(
+                                    "lock: force_unlock keybind hit, breaking out"
+                                );
+                                let action = kb.action.clone();
+                                let arg = kb.arg.clone();
+                                crate::dispatch::dispatch_action(state, &action, &arg);
+                                return FilterResult::Intercept(());
+                            }
+                        }
+                    }
                     let focus = state
                         .seat
                         .get_keyboard()

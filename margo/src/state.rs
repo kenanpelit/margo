@@ -917,6 +917,47 @@ impl MargoState {
 
     /// Dump a one-shot diagnostic summary at INFO level — outputs, focused
     /// client, layer surfaces, lock state, idle inhibitors, recent counters.
+    /// Force-tear-down a stuck session lock from the compositor side.
+    ///
+    /// Use case: the user pressed alt+l, noctalia's lock screen came up,
+    /// and now the password input is unresponsive — they can't type to
+    /// unlock. Without this, recovery means switching to a TTY and
+    /// killing the locker process. With this they can hit a hard-coded
+    /// keybind (the action is whitelisted in `handle_keyboard` even
+    /// while `session_locked`) and get back to the desktop.
+    ///
+    /// We don't try to nicely tell the locker to release; we just clear
+    /// our state, drop the lock surfaces, and re-show toplevels. The
+    /// noctalia process will see its surfaces destroyed and recover on
+    /// its own.
+    pub fn force_unlock(&mut self) {
+        if !self.session_locked && self.lock_surfaces.is_empty() {
+            tracing::info!("force_unlock: nothing to do (already unlocked)");
+            return;
+        }
+        tracing::warn!(
+            "force_unlock: tearing down stuck lock (lock_surfaces={})",
+            self.lock_surfaces.len()
+        );
+        self.session_locked = false;
+        self.lock_surfaces.clear();
+        self.arrange_all();
+        self.refresh_keyboard_focus();
+        let _ = crate::utils::spawn(&[
+            "notify-send",
+            "-a",
+            "margo",
+            "-i",
+            "preferences-system",
+            "-u",
+            "critical",
+            "-t",
+            "3000",
+            "Margo",
+            "Lock force-cleared",
+        ]);
+    }
+
     /// Triggered by `SIGUSR1` or by the `mctl debug-dump` IPC command so a
     /// user staring at a frozen / grey screen can capture state without
     /// crashing the compositor.
@@ -3510,6 +3551,11 @@ impl SessionLockHandler for MargoState {
         self.session_locked = false;
         self.lock_surfaces.clear();
         self.arrange_all();
+        // After unlock, push focus back to a real window — by default
+        // current_focus is still pointing at the (now-dead) lock surface
+        // and the user has to nudge the mouse before any keys reach the
+        // toplevel underneath.
+        self.refresh_keyboard_focus();
     }
 
     fn new_surface(&mut self, surface: LockSurface, output: smithay::reexports::wayland_server::protocol::wl_output::WlOutput) {
