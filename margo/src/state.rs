@@ -1207,6 +1207,30 @@ impl MargoState {
                 && old.width > 0
                 && old.height > 0
                 && old != rect;
+
+            // Diagnostic: every layout decision per visible client.
+            // Compare `actual=` (what the client rendered last commit)
+            // against `slot=` (what the layout wants now); when these
+            // disagree by more than a frame after `should_animate=true`
+            // settles, the user sees the "border ve pencere kayması"
+            // jitter we keep chasing.
+            let actual_geom = self.clients[client_idx].window.geometry().size;
+            tracing::info!(
+                "arrange[{}]: client_idx={} old={}x{}+{}+{} slot={}x{}+{}+{} actual_buf={}x{} animate={}",
+                self.clients[client_idx].app_id.as_str(),
+                client_idx,
+                old.width,
+                old.height,
+                old.x,
+                old.y,
+                rect.width,
+                rect.height,
+                rect.x,
+                rect.y,
+                actual_geom.w,
+                actual_geom.h,
+                should_animate,
+            );
             if should_animate {
                 // Animate the window's *position* between layout slots,
                 // but snap the size to the target on frame 0. Why:

@@ -105,13 +105,37 @@ pub fn refresh(state: &mut MargoState) {
             // animation has settled.
             let actual = c.window.geometry().size;
             let mut g = c.geom;
+            let mut border_shrunk_to_actual = false;
             if !c.animation.running {
                 if actual.w > 0 && actual.w < g.width {
                     g.width = actual.w;
+                    border_shrunk_to_actual = true;
                 }
                 if actual.h > 0 && actual.h < g.height {
                     g.height = actual.h;
+                    border_shrunk_to_actual = true;
                 }
+            }
+
+            // Diagnostic — only fires when border deviates from the
+            // layout slot or when an animation is mid-flight, so the
+            // log line count stays bounded in the steady state.
+            if border_shrunk_to_actual
+                || c.animation.running
+                || (actual.w != 0 && actual.w != c.geom.width)
+            {
+                tracing::info!(
+                    "border[{}]: slot={}x{} actual={}x{} drawn={}x{} anim={} shrunk={}",
+                    c.app_id.as_str(),
+                    c.geom.width,
+                    c.geom.height,
+                    actual.w,
+                    actual.h,
+                    g.width,
+                    g.height,
+                    c.animation.running,
+                    border_shrunk_to_actual,
+                );
             }
 
             (g, c.border_width as f32, hide)
