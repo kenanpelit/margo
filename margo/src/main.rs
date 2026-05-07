@@ -329,7 +329,7 @@ fn main() -> Result<()> {
         let now = utils::now_ms();
         let animations_changed = {
             let (clients, curves) = (&mut state.clients, &state.animation_curves);
-            state::tick_animations(clients, curves, now)
+            state::tick_animations(clients, curves, now, state.config.animation_duration_move)
         };
         if animations_changed {
             let animated: Vec<_> = state

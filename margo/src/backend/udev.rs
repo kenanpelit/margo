@@ -1394,20 +1394,60 @@ fn push_client_elements(
                     }
                 }
 
-                // Niri-style resize transition: if the client has an
-                // active resize snapshot (captured by
-                // `take_pending_snapshots` earlier this frame, kept
-                // alive until `tick_animations` clears it), render
-                // *that* texture scaled to the live (animated) slot
-                // instead of the live surface. The snapshot is the
-                // pre-resize content; scaling it to the slot keeps the
-                // visual pinned to the slot's interpolated rect, so
-                // Helium / Spotify's slow ack-and-reflow doesn't leak
-                // a "buffer is the wrong size for its slot"
-                // mismatch onto the screen.
-                let mut rendered_via_snapshot = false;
-                if let Some(snapshot) = client.and_then(|c| c.resize_snapshot.as_ref()) {
-                    if let Some(c) = client {
+                // Niri-style resize transition: render BOTH the live
+                // surface AND a snapshot of the pre-resize content,
+                // crossfading between them as the move animation
+                // progresses.
+                //
+                //   * The live surface goes down first (rendered as it
+                //     normally would be — clipped to the slot, with
+                //     rounded corners). At the start of the transition
+                //     this is typically still the OLD buffer at the
+                //     OLD size, the configure ack hasn't landed yet,
+                //     so the live render alone would show "buffer
+                //     bigger than slot, content clipped weirdly."
+                //   * On TOP of that we push a `ResizeRenderElement`
+                //     drawing the captured snapshot, scaled to the
+                //     current animated slot, with progress-controlled
+                //     alpha. The snapshot is what the user actually
+                //     saw the frame BEFORE the resize started, so it
+                //     hides the live render's misalignment for the
+                //     first half of the transition. As the alpha
+                //     fades from 1.0 → 0.0 over the animation
+                //     duration, the live (by then correctly-sized)
+                //     surface bleeds through.
+                //
+                // Net effect: the user sees a smooth crossfade from
+                // the pre-resize content to the post-resize content,
+                // covering the moment Helium / Spotify is busy
+                // re-laying out for the new size.
+
+                // Smithay convention: first-pushed element is
+                // top-most visually. So during the resize transition
+                // we push the snapshot FIRST (top, translucent,
+                // fading out) and then the live surface elements
+                // BELOW (fully opaque, visible through the fading
+                // snapshot). Smithay's `opaque_regions()` for our
+                // `ResizeRenderElement` returns empty so the live
+                // render below is NOT skipped — both layers always
+                // composite together for the crossfade.
+
+                if let Some((c, snapshot)) =
+                    client.and_then(|c| c.resize_snapshot.as_ref().map(|s| (c, s)))
+                {
+                    // Crossfade progress = elapsed-since-capture
+                    // ÷ the configured move animation duration. We
+                    // use Instant rather than the animation's
+                    // `time_started` because both timestamps share
+                    // the same monotonic clock and we only need ~ms
+                    // precision. Clamp in case the user has changed
+                    // animation_duration_move mid-transition.
+                    let dur_ms = state.config.animation_duration_move.max(1) as f32;
+                    let elapsed_ms = snapshot.captured_at.elapsed().as_millis() as f32;
+                    let progress = (elapsed_ms / dur_ms).clamp(0.0, 1.0);
+                    let alpha = 1.0 - progress;
+
+                    if alpha > 0.001 {
                         let dst = smithay::utils::Rectangle::new(
                             (
                                 c.geom.x - output_geo.loc.x,
@@ -1416,59 +1456,59 @@ fn push_client_elements(
                                 .into(),
                             (c.geom.width.max(1), c.geom.height.max(1)).into(),
                         );
-                        let id = smithay::backend::renderer::element::Id::from_wayland_resource(
-                            wl_surface,
-                        );
+                        let id =
+                            smithay::backend::renderer::element::Id::from_wayland_resource(
+                                wl_surface,
+                            );
                         elements.push(MargoRenderElement::Resize(
                             crate::render::resize_render::ResizeRenderElement::new(
                                 id,
                                 snapshot.texture.clone(),
                                 dst,
                                 scale,
-                                1.0,
+                                alpha,
                                 smithay::backend::renderer::utils::CommitCounter::default(),
                             ),
                         ));
-                        rendered_via_snapshot = true;
-                        let _ = snapshot.source_size; // accessed for clarity
+                        let _ = snapshot.source_size; // for clarity
                     }
                 }
 
-                if !rendered_via_snapshot {
-                    let surface_elements = render_elements_from_surface_tree::<
-                        GlesRenderer,
-                        WaylandSurfaceRenderElement<GlesRenderer>,
-                    >(
-                        renderer,
-                        wl_surface,
-                        physical_location,
-                        scale,
-                        1.0,
-                        Kind::Unspecified,
-                    );
+                let surface_elements = render_elements_from_surface_tree::<
+                    GlesRenderer,
+                    WaylandSurfaceRenderElement<GlesRenderer>,
+                >(
+                    renderer,
+                    wl_surface,
+                    physical_location,
+                    scale,
+                    1.0,
+                    Kind::Unspecified,
+                );
 
-                    for elem in surface_elements {
-                        if radius > 0.0 {
-                            if let (Some(program), Some(clip_geometry)) =
-                                (clipped_surface_program.as_ref(), clip_geometry)
-                            {
-                                elements.push(MargoRenderElement::Clipped(
-                                    crate::render::clipped_surface::ClippedSurfaceRenderElement::new(
-                                        elem,
-                                        scale,
-                                        clip_geometry,
-                                        radius,
-                                        program.clone(),
-                                    ),
-                                ));
-                                continue;
-                            }
+                // Live surface goes BELOW the snapshot in stacking
+                // order (= pushed LAST = drawn first underneath).
+                for elem in surface_elements {
+                    if radius > 0.0 {
+                        if let (Some(program), Some(clip_geometry)) =
+                            (clipped_surface_program.as_ref(), clip_geometry)
+                        {
+                            elements.push(MargoRenderElement::Clipped(
+                                crate::render::clipped_surface::ClippedSurfaceRenderElement::new(
+                                    elem,
+                                    scale,
+                                    clip_geometry,
+                                    radius,
+                                    program.clone(),
+                                ),
+                            ));
+                            continue;
                         }
-
-                        elements.push(MargoRenderElement::Space(SpaceRenderElements::Element(
-                            Wrap::from(elem),
-                        )));
                     }
+
+                    elements.push(MargoRenderElement::Space(SpaceRenderElements::Element(
+                        Wrap::from(elem),
+                    )));
                 }
             }
             WindowSurface::X11(_) => {

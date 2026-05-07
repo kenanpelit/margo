@@ -635,9 +635,27 @@ impl MargoMonitor {
 
 // ── Animation tick ────────────────────────────────────────────────────────────
 
-pub fn tick_animations(clients: &mut [MargoClient], curves: &AnimationCurves, now_ms: u32) -> bool {
+pub fn tick_animations(
+    clients: &mut [MargoClient],
+    curves: &AnimationCurves,
+    now_ms: u32,
+    animation_duration_move: u32,
+) -> bool {
     let mut changed = false;
     for c in clients.iter_mut() {
+        // Resize-snapshot expiry runs every tick, independent of the
+        // move animation: the snapshot's crossfade ends at
+        // `animation_duration_move`, after which it's pure overhead
+        // (alpha = 0, contributes no pixels) and should be dropped so
+        // future renders skip the live+snapshot composite path.
+        if let Some(snapshot) = c.resize_snapshot.as_ref() {
+            let dur = std::time::Duration::from_millis(animation_duration_move as u64);
+            if snapshot.captured_at.elapsed() >= dur {
+                c.resize_snapshot = None;
+                changed = true;
+            }
+        }
+
         let anim = &mut c.animation;
         if !anim.running { continue; }
         changed = true;
@@ -645,11 +663,9 @@ pub fn tick_animations(clients: &mut [MargoClient], curves: &AnimationCurves, no
         if elapsed >= anim.duration {
             anim.running = false;
             c.geom = anim.current;
-            // The move animation has settled: drop any resize
-            // snapshot we were displaying. From the next render on,
-            // we go back to drawing the live surface (which by now
-            // has had ample time to ack our configure and commit a
-            // buffer at the new size).
+            // Slot animation settled: also drop any lingering
+            // snapshot (defensive — the expiry check above usually
+            // catches it first).
             c.resize_snapshot = None;
             continue;
         }
