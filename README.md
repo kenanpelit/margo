@@ -13,8 +13,7 @@ already depend on.
 
 > **Status:** P0 (reliable daily session) is complete. P1 is the modern
 > desktop-protocol parity sprint — DMA-BUF screencopy, pointer constraints,
-> output management, `linux_dmabuf`, presentation-time. See
-> [`YOL_HARITASI.md`](YOL_HARITASI.md) for the full roadmap.
+> output management, `linux_dmabuf`, presentation-time.
 
 ---
 
