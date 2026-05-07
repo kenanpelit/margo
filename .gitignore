@@ -7,10 +7,9 @@
 YOL_HARITASI.md
 CLAUDE.md
 .mcp.json
-.nix/
+nix
 flake.lock
 flake.nix
 docs
-protocols
 # Rust build artifacts
 /target/
