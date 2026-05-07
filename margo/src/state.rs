@@ -333,6 +333,37 @@ impl DndFocus<MargoState> for FocusTarget {
 
 // ── Margo: per-window compositor state ───────────────────────────────────────
 
+/// Captured snapshot of a window's rendered content, used to keep the
+/// pre-resize visuals on screen while the client (typically Electron:
+/// Helium, Spotify, Discord) takes 50–100 ms to ack a configure and
+/// commit a buffer at the new size. The snapshot is rendered scaled
+/// to the (interpolated) layout slot during the move animation,
+/// instead of the live surface — that's the niri-style resize
+/// transition that hides Helium's 50 ms reflow flicker.
+pub struct ResizeSnapshot {
+    /// The captured window contents, allocated as an offscreen
+    /// `GlesTexture` by `crate::render::window_capture::capture_window`.
+    pub texture: smithay::backend::renderer::gles::GlesTexture,
+    /// Logical size of the window at capture time. Used by the render
+    /// path to decide if the snapshot is still relevant or if the live
+    /// buffer has caught up enough to take over.
+    pub source_size: smithay::utils::Size<i32, smithay::utils::Logical>,
+    /// Wall-clock instant at which the snapshot was created. Combined
+    /// with the move animation duration, the render path knows when
+    /// to stop using this texture and switch back to the live
+    /// surface.
+    pub captured_at: std::time::Instant,
+}
+
+impl std::fmt::Debug for ResizeSnapshot {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ResizeSnapshot")
+            .field("source_size", &self.source_size)
+            .field("captured_at", &self.captured_at)
+            .finish_non_exhaustive()
+    }
+}
+
 pub struct MargoClient {
     pub surface_type: crate::SurfaceType,
     pub geom: Rect,
@@ -393,6 +424,22 @@ pub struct MargoClient {
     pub pid: u32,
     pub animation: ClientAnimation,
     pub opacity_animation: OpacityAnimation,
+    /// Niri-style resize animation snapshot. Set when the layout slot
+    /// size changes; the next render captures the current surface
+    /// tree to a `GlesTexture` and stores it here. Subsequent renders
+    /// draw this texture scaled to the (interpolated) slot until the
+    /// animation expires or the client commits a fresh buffer at the
+    /// new size, at which point we clear it and go back to drawing
+    /// the live surface.
+    pub resize_snapshot: Option<ResizeSnapshot>,
+    /// One-shot flag set by `arrange_monitor` whenever the slot size
+    /// crosses a meaningful threshold. Drained by the udev backend at
+    /// the next frame, which uses it to populate
+    /// `resize_snapshot`. The two-step dance is necessary because
+    /// `arrange_monitor` runs in many event paths that don't have the
+    /// renderer in scope, so the actual GPU work has to be deferred
+    /// to the render thread.
+    pub snapshot_pending: bool,
     pub animation_type_open: Option<String>,
     pub animation_type_close: Option<String>,
     pub app_id: String,
@@ -464,6 +511,8 @@ impl MargoClient {
             pid: 0,
             animation: ClientAnimation::default(),
             opacity_animation: OpacityAnimation::default(),
+            resize_snapshot: None,
+            snapshot_pending: false,
             animation_type_open: None,
             animation_type_close: None,
             app_id: String::new(),
@@ -596,6 +645,12 @@ pub fn tick_animations(clients: &mut [MargoClient], curves: &AnimationCurves, no
         if elapsed >= anim.duration {
             anim.running = false;
             c.geom = anim.current;
+            // The move animation has settled: drop any resize
+            // snapshot we were displaying. From the next render on,
+            // we go back to drawing the live surface (which by now
+            // has had ample time to ack our configure and commit a
+            // buffer at the new size).
+            c.resize_snapshot = None;
             continue;
         }
         let t = elapsed as f64 / anim.duration as f64;
@@ -1276,6 +1331,25 @@ impl MargoState {
                     width: rect.width,
                     height: rect.height,
                 };
+                // niri-style resize transition: if the slot size
+                // changes (not just the position), flag a snapshot so
+                // the next render captures the *current* surface tree
+                // to a `GlesTexture`. While the move animation
+                // interpolates the slot from old to new, the render
+                // path draws that snapshot scaled to the live slot
+                // instead of the live surface — the OLD content stays
+                // pinned visually until the client (Electron, slow
+                // ack) commits a buffer at the new size, which drops
+                // the snapshot. Without this, Helium's 50–100 ms
+                // ack-and-reflow window leaks the buffer-vs-slot
+                // mismatch onto the screen.
+                let slot_size_changed =
+                    old.width != rect.width || old.height != rect.height;
+                if slot_size_changed
+                    && self.clients[client_idx].resize_snapshot.is_none()
+                {
+                    self.clients[client_idx].snapshot_pending = true;
+                }
                 self.clients[client_idx].animation = ClientAnimation {
                     should_animate: true,
                     running: true,

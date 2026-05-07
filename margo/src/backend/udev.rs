@@ -68,6 +68,7 @@ render_elements! {
     WaylandSurface=WaylandSurfaceRenderElement<GlesRenderer>,
     Border=crate::render::rounded_border::RoundedBorderElement,
     Clipped=crate::render::clipped_surface::ClippedSurfaceRenderElement,
+    Resize=crate::render::resize_render::ResizeRenderElement,
 }
 
 // ── Type aliases ──────────────────────────────────────────────────────────────
@@ -1049,6 +1050,87 @@ fn migrate_clients_off_output(state: &mut MargoState, removed: &Output) {
 
 // ── Per-frame render ──────────────────────────────────────────────────────────
 
+/// Drain `snapshot_pending` flags by capturing the live surface tree
+/// of each affected client into a `GlesTexture`, stored in
+/// `client.resize_snapshot`. Called once per frame before the render
+/// element collection runs, so the rest of the frame can read the
+/// snapshot from `state.clients` immutably.
+fn take_pending_snapshots(
+    renderer: &mut GlesRenderer,
+    od: &OutputDevice,
+    state: &mut MargoState,
+) {
+    let output_scale = od.output.current_scale().fractional_scale().into();
+
+    // Collect the indices to process first to dodge the
+    // iter-while-mutating dance: we mutate `state.clients[i]` after the
+    // iteration so the borrow checker stays happy.
+    let pending: Vec<usize> = state
+        .clients
+        .iter()
+        .enumerate()
+        .filter_map(|(i, c)| {
+            if c.snapshot_pending && state.monitors.get(c.monitor).is_some_and(|m| m.output == od.output) {
+                Some(i)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    for idx in pending {
+        let (window, size) = {
+            let c = &state.clients[idx];
+            // Capture at the *current* live geometry size, not the
+            // animated slot size — the snapshot mirrors what the
+            // client has on screen RIGHT NOW (typically still the
+            // pre-resize buffer).
+            let geom = c.window.geometry();
+            (c.window.clone(), geom.size)
+        };
+
+        if size.w <= 0 || size.h <= 0 {
+            // Window not yet mapped or zero-sized — skip this round,
+            // the flag stays set and we'll try again next frame.
+            continue;
+        }
+
+        match crate::render::window_capture::capture_window(
+            renderer,
+            &window,
+            size,
+            output_scale,
+        ) {
+            Ok(texture) => {
+                state.clients[idx].resize_snapshot =
+                    Some(crate::state::ResizeSnapshot {
+                        texture,
+                        source_size: size,
+                        captured_at: std::time::Instant::now(),
+                    });
+                state.clients[idx].snapshot_pending = false;
+                tracing::debug!(
+                    "resize_snapshot: captured {} ({}x{})",
+                    state.clients[idx].app_id,
+                    size.w,
+                    size.h,
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "resize_snapshot: capture failed for {}: {e:?}",
+                    state.clients[idx].app_id
+                );
+                // Drop the flag anyway so we don't loop on an
+                // un-snapshottable surface. Worst case the user sees
+                // the existing pre-fix buffer/slot mismatch for this
+                // animation.
+                state.clients[idx].snapshot_pending = false;
+            }
+        }
+    }
+}
+
 fn build_render_elements(
     renderer: &mut GlesRenderer,
     od: &OutputDevice,
@@ -1312,39 +1394,81 @@ fn push_client_elements(
                     }
                 }
 
-                let surface_elements = render_elements_from_surface_tree::<
-                    GlesRenderer,
-                    WaylandSurfaceRenderElement<GlesRenderer>,
-                >(
-                    renderer,
-                    wl_surface,
-                    physical_location,
-                    scale,
-                    1.0,
-                    Kind::Unspecified,
-                );
-
-                for elem in surface_elements {
-                    if radius > 0.0 {
-                        if let (Some(program), Some(clip_geometry)) =
-                            (clipped_surface_program.as_ref(), clip_geometry)
-                        {
-                            elements.push(MargoRenderElement::Clipped(
-                                crate::render::clipped_surface::ClippedSurfaceRenderElement::new(
-                                    elem,
-                                    scale,
-                                    clip_geometry,
-                                    radius,
-                                    program.clone(),
-                                ),
-                            ));
-                            continue;
-                        }
+                // Niri-style resize transition: if the client has an
+                // active resize snapshot (captured by
+                // `take_pending_snapshots` earlier this frame, kept
+                // alive until `tick_animations` clears it), render
+                // *that* texture scaled to the live (animated) slot
+                // instead of the live surface. The snapshot is the
+                // pre-resize content; scaling it to the slot keeps the
+                // visual pinned to the slot's interpolated rect, so
+                // Helium / Spotify's slow ack-and-reflow doesn't leak
+                // a "buffer is the wrong size for its slot"
+                // mismatch onto the screen.
+                let mut rendered_via_snapshot = false;
+                if let Some(snapshot) = client.and_then(|c| c.resize_snapshot.as_ref()) {
+                    if let Some(c) = client {
+                        let dst = smithay::utils::Rectangle::new(
+                            (
+                                c.geom.x - output_geo.loc.x,
+                                c.geom.y - output_geo.loc.y,
+                            )
+                                .into(),
+                            (c.geom.width.max(1), c.geom.height.max(1)).into(),
+                        );
+                        let id = smithay::backend::renderer::element::Id::from_wayland_resource(
+                            wl_surface,
+                        );
+                        elements.push(MargoRenderElement::Resize(
+                            crate::render::resize_render::ResizeRenderElement::new(
+                                id,
+                                snapshot.texture.clone(),
+                                dst,
+                                scale,
+                                1.0,
+                                smithay::backend::renderer::utils::CommitCounter::default(),
+                            ),
+                        ));
+                        rendered_via_snapshot = true;
+                        let _ = snapshot.source_size; // accessed for clarity
                     }
+                }
 
-                    elements.push(MargoRenderElement::Space(SpaceRenderElements::Element(
-                        Wrap::from(elem),
-                    )));
+                if !rendered_via_snapshot {
+                    let surface_elements = render_elements_from_surface_tree::<
+                        GlesRenderer,
+                        WaylandSurfaceRenderElement<GlesRenderer>,
+                    >(
+                        renderer,
+                        wl_surface,
+                        physical_location,
+                        scale,
+                        1.0,
+                        Kind::Unspecified,
+                    );
+
+                    for elem in surface_elements {
+                        if radius > 0.0 {
+                            if let (Some(program), Some(clip_geometry)) =
+                                (clipped_surface_program.as_ref(), clip_geometry)
+                            {
+                                elements.push(MargoRenderElement::Clipped(
+                                    crate::render::clipped_surface::ClippedSurfaceRenderElement::new(
+                                        elem,
+                                        scale,
+                                        clip_geometry,
+                                        radius,
+                                        program.clone(),
+                                    ),
+                                ));
+                                continue;
+                            }
+                        }
+
+                        elements.push(MargoRenderElement::Space(SpaceRenderElements::Element(
+                            Wrap::from(elem),
+                        )));
+                    }
                 }
             }
             WindowSurface::X11(_) => {
@@ -1644,6 +1768,17 @@ fn render_output(
     state: &mut MargoState,
     reason: &'static str,
 ) {
+    // Niri-style resize transition: any window whose layout slot
+    // changed size since the last frame had `snapshot_pending` set by
+    // `arrange_monitor`. We're now on the render thread with a live
+    // `GlesRenderer`, so this is the moment we can actually allocate
+    // the offscreen GlesTexture and paint the surface tree into it.
+    // Subsequent frames will draw the snapshot scaled to the
+    // (animated) slot until the move animation finishes — at which
+    // point `tick_animations` clears `resize_snapshot` and we go back
+    // to drawing the live surface.
+    take_pending_snapshots(renderer, od, state);
+
     let elements = build_render_elements(renderer, od, state);
     // Serve any pending wlr-screencopy frames for this output BEFORE the
     // main render. We re-use `elements` so the captured image matches what
