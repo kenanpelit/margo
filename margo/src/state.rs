@@ -822,6 +822,72 @@ impl MargoState {
         self.request_repaint();
     }
 
+    /// Start an interactive move grab on the currently focused window.
+    /// Triggered by the `moveresize,curmove` action (typically a super+
+    /// left-drag mousebind). No-op if there's no focused client or no
+    /// pointer button is currently pressed.
+    pub fn start_interactive_move(&mut self) {
+        let Some(idx) = self.focused_client_idx() else { return };
+        let window = self.clients[idx].window.clone();
+        let initial_loc = smithay::utils::Point::<i32, smithay::utils::Logical>::from((
+            self.clients[idx].geom.x,
+            self.clients[idx].geom.y,
+        ));
+        let Some(pointer) = self.seat.get_pointer() else { return };
+        // Use the most recent serial we've seen — we're driving the grab
+        // ourselves from a synthesized command, so just take the next one.
+        let serial = SERIAL_COUNTER.next_serial();
+        let start_data = smithay::input::pointer::GrabStartData {
+            focus: None,
+            button: 0x110, // BTN_LEFT
+            location: smithay::utils::Point::<f64, smithay::utils::Logical>::from((
+                self.input_pointer.x,
+                self.input_pointer.y,
+            )),
+        };
+        let grab = crate::input::grabs::MoveSurfaceGrab {
+            start_data,
+            window,
+            initial_loc,
+        };
+        pointer.set_grab(self, grab, serial, smithay::input::pointer::Focus::Clear);
+    }
+
+    /// Start an interactive resize grab on the focused window. Edge
+    /// defaults to bottom-right (the natural drag-corner gesture). If
+    /// you want a specific edge, pass it in the action arg later.
+    pub fn start_interactive_resize(&mut self) {
+        let Some(idx) = self.focused_client_idx() else { return };
+        let c = &self.clients[idx];
+        let window = c.window.clone();
+        let initial_loc = smithay::utils::Point::<i32, smithay::utils::Logical>::from((
+            c.geom.x, c.geom.y,
+        ));
+        let initial_size = smithay::utils::Size::<i32, smithay::utils::Logical>::from((
+            c.geom.width.max(1),
+            c.geom.height.max(1),
+        ));
+        let Some(pointer) = self.seat.get_pointer() else { return };
+        let serial = SERIAL_COUNTER.next_serial();
+        let start_data = smithay::input::pointer::GrabStartData {
+            focus: None,
+            button: 0x111, // BTN_RIGHT
+            location: smithay::utils::Point::<f64, smithay::utils::Logical>::from((
+                self.input_pointer.x,
+                self.input_pointer.y,
+            )),
+        };
+        let grab = crate::input::grabs::ResizeSurfaceGrab {
+            start_data,
+            window,
+            edges:
+                smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::ResizeEdge::BottomRight,
+            initial_loc,
+            initial_size,
+        };
+        pointer.set_grab(self, grab, serial, smithay::input::pointer::Focus::Clear);
+    }
+
     /// Dump a one-shot diagnostic summary at INFO level — outputs, focused
     /// client, layer surfaces, lock state, idle inhibitors, recent counters.
     /// Triggered by `SIGUSR1` or by the `mctl debug-dump` IPC command so a
@@ -2416,11 +2482,84 @@ impl XdgShellHandler for MargoState {
     }
     fn move_request(
         &mut self,
-        _surface: ToplevelSurface,
-        _seat: smithay::reexports::wayland_server::protocol::wl_seat::WlSeat,
-        _serial: Serial,
+        surface: ToplevelSurface,
+        seat: smithay::reexports::wayland_server::protocol::wl_seat::WlSeat,
+        serial: Serial,
     ) {
+        let Some(seat) = Seat::<MargoState>::from_resource(&seat) else { return };
+        let Some(pointer) = seat.get_pointer() else { return };
+        if !pointer.has_grab(serial) {
+            return;
+        }
+        let Some(start_data) = pointer.grab_start_data() else { return };
+
+        // Resolve the toplevel back to our MargoClient + Window so the grab
+        // can manipulate float_geom directly.
+        let wl_surf = surface.wl_surface().clone();
+        let Some(idx) = self
+            .clients
+            .iter()
+            .position(|c| c.window.wl_surface().as_deref() == Some(&wl_surf))
+        else {
+            return;
+        };
+        let window = self.clients[idx].window.clone();
+        let initial_loc =
+            smithay::utils::Point::<i32, smithay::utils::Logical>::from((
+                self.clients[idx].geom.x,
+                self.clients[idx].geom.y,
+            ));
+
+        let grab = crate::input::grabs::MoveSurfaceGrab {
+            start_data,
+            window,
+            initial_loc,
+        };
+        pointer.set_grab(self, grab, serial, smithay::input::pointer::Focus::Clear);
     }
+
+    fn resize_request(
+        &mut self,
+        surface: ToplevelSurface,
+        seat: smithay::reexports::wayland_server::protocol::wl_seat::WlSeat,
+        serial: Serial,
+        edges: smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::ResizeEdge,
+    ) {
+        let Some(seat) = Seat::<MargoState>::from_resource(&seat) else { return };
+        let Some(pointer) = seat.get_pointer() else { return };
+        if !pointer.has_grab(serial) {
+            return;
+        }
+        let Some(start_data) = pointer.grab_start_data() else { return };
+
+        let wl_surf = surface.wl_surface().clone();
+        let Some(idx) = self
+            .clients
+            .iter()
+            .position(|c| c.window.wl_surface().as_deref() == Some(&wl_surf))
+        else {
+            return;
+        };
+        let c = &self.clients[idx];
+        let window = c.window.clone();
+        let initial_loc = smithay::utils::Point::<i32, smithay::utils::Logical>::from((
+            c.geom.x, c.geom.y,
+        ));
+        let initial_size = smithay::utils::Size::<i32, smithay::utils::Logical>::from((
+            c.geom.width.max(1),
+            c.geom.height.max(1),
+        ));
+
+        let grab = crate::input::grabs::ResizeSurfaceGrab {
+            start_data,
+            window,
+            edges,
+            initial_loc,
+            initial_size,
+        };
+        pointer.set_grab(self, grab, serial, smithay::input::pointer::Focus::Clear);
+    }
+
     fn grab(
         &mut self,
         _surface: PopupSurface,

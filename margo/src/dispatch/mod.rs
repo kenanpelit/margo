@@ -9,6 +9,14 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
     match action {
         "quit" => state.should_quit = true,
         "debug_dump" | "debug-dump" | "diagnose" => state.debug_dump(),
+        "moveresize" => {
+            // mango legacy: arg `curmove` → start move grab; `curresize`
+            // → start resize grab. Anything else falls back to move.
+            match arg.v.as_deref().unwrap_or("curmove") {
+                "curresize" | "resize" => state.start_interactive_resize(),
+                _ => state.start_interactive_move(),
+            }
+        }
         "reload" | "reload_config" => match state.reload_config() {
             Ok(()) => {
                 tracing::info!("config reloaded");

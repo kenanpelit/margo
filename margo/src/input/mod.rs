@@ -4,6 +4,8 @@
 /// dispatching raw input events to compositor actions.
 use margo_config::{Config, KeyBinding, Modifiers};
 
+pub mod grabs;
+
 // ── Keyboard state ────────────────────────────────────────────────────────────
 
 #[derive(Debug, Default)]

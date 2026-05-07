@@ -335,7 +335,38 @@ fn handle_pointer_button<B: InputBackend, E: PointerButtonEvent<B>>(
 ) {
     let serial = SERIAL_COUNTER.next_serial();
     let btn_state = event.state();
+    let button = event.button_code();
     let pos = Point::from((state.input_pointer.x, state.input_pointer.y));
+
+    // Mousebind dispatch — `mousebind = MOD,btn_left,moveresize,curmove`
+    // and friends. Match on press only; release passes through so any
+    // grab we kicked off cleans up via its own button handler. If we
+    // dispatch an action we DON'T forward the button to clients
+    // (otherwise super+left-drag would also be a click for them).
+    if btn_state == ButtonState::Pressed {
+        let mods = state
+            .seat
+            .get_keyboard()
+            .map(|k| smithay_mods_to_margo(&k.modifier_state()))
+            .unwrap_or_else(margo_config::Modifiers::empty);
+        let matched = state
+            .config
+            .mouse_bindings
+            .iter()
+            .find(|mb| mb.modifiers == mods && mb.button == button)
+            .cloned();
+        if let Some(mb) = matched {
+            // Make sure focus follows the click first so move/resize
+            // operates on the *clicked* window, not whatever happened to
+            // be focused.
+            if let Some((target, _)) = focus_under(state, pos) {
+                state.focus_surface(Some(target));
+            }
+            crate::dispatch::dispatch_action(state, &mb.action, &mb.arg);
+            state.request_repaint();
+            return;
+        }
+    }
 
     if btn_state == ButtonState::Pressed {
         if state.is_overview_open() {
