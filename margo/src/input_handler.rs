@@ -147,10 +147,17 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
     let keycode = event.key_code();
 
     if let Some(keyboard) = state.seat.get_keyboard() {
-        if let Some(focus) = exclusive_keyboard_layer(state) {
-            let current_focus = keyboard.current_focus();
-            if current_focus.as_ref() != Some(&focus) {
-                keyboard.set_focus(state, Some(focus), serial);
+        // While the session is locked, the lock surface MUST keep
+        // keyboard focus — never let an exclusive layer surface
+        // (noctalia bar / launcher / OSD with `keyboard-interactivity:
+        // exclusive`) hijack focus, otherwise the user can't type the
+        // password into the lock screen.
+        if !state.session_locked {
+            if let Some(focus) = exclusive_keyboard_layer(state) {
+                let current_focus = keyboard.current_focus();
+                if current_focus.as_ref() != Some(&focus) {
+                    keyboard.set_focus(state, Some(focus), serial);
+                }
             }
         }
 
