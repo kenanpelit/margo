@@ -667,6 +667,17 @@ pub fn run(
         .insert_source(repaint_source, {
             let backend_data = backend_data.clone();
             move |(), _, state: &mut MargoState| {
+                // Apply any wlr_output_management mode changes
+                // before rendering. The handler that accepted them
+                // ran on MargoState (no backend handle), so it
+                // queued requests onto state.pending_output_mode_changes;
+                // we drain here where DrmCompositor::use_mode is
+                // reachable. A successful apply re-arranges and
+                // re-pings repaint internally.
+                if !state.pending_output_mode_changes.is_empty() {
+                    let mut bd = backend_data.borrow_mut();
+                    apply_pending_mode_changes(&mut bd, state);
+                }
                 if state.take_repaint_request() {
                     let mut bd = backend_data.borrow_mut();
                     let BackendData { renderer, outputs, drm, .. } = &mut *bd;
@@ -2846,6 +2857,180 @@ fn render_output(
 // ── CRTC helper ───────────────────────────────────────────────────────────────
 
 // ── Mode selection ────────────────────────────────────────────────────────────
+
+/// Drain `state.pending_output_mode_changes` and apply each via
+/// `DrmCompositor::use_mode`, then update the smithay `Output` so
+/// wl_output mode events reach clients (kanshi, status bar).
+///
+/// This runs at the top of the repaint handler (before rendering)
+/// so a kanshi profile flip lands within one frame instead of
+/// being delayed to the next event.
+///
+/// Failure modes — each just skips the entry with a warning:
+///   * Output name not in `state.monitors` → output went away.
+///   * Connector info read fails → DRM in a weird state, retry next frame.
+///   * No DRM mode matches the (w, h, refresh) triple → kanshi
+///     asked for a mode the panel doesn't actually advertise.
+///   * `compositor.use_mode` fails → atomic test failed (the kernel
+///     refused the modeset, e.g. CRTC pixel-clock limit).
+fn apply_pending_mode_changes(bd: &mut BackendData, state: &mut MargoState) {
+    let drained: Vec<crate::PendingOutputModeChange> =
+        state.pending_output_mode_changes.drain(..).collect();
+    if drained.is_empty() {
+        return;
+    }
+
+    for change in drained {
+        // Find the OutputDevice by output name. The `Output` stored
+        // on each device has the same name we surface to clients.
+        let Some((_crtc, od)) = bd
+            .outputs
+            .iter_mut()
+            .find(|(_, od)| od.output.name() == change.output_name)
+        else {
+            tracing::warn!(
+                "output_management: pending mode change for unknown output {} dropped",
+                change.output_name,
+            );
+            continue;
+        };
+
+        // Read the current connector info so we can match the
+        // requested mode against the real KMS mode list. The drm
+        // crate's `Mode` is what `use_mode` wants; smithay's
+        // `OutputMode` is the wl_output-side type, so we need the
+        // drm one for the apply path.
+        let conn_info = match bd.drm.get_connector(od.connector, false) {
+            Ok(info) => info,
+            Err(e) => {
+                tracing::warn!(
+                    "output_management: get_connector({:?}) failed: {e}",
+                    od.connector
+                );
+                continue;
+            }
+        };
+
+        let drm_mode = match find_matching_drm_mode(
+            conn_info.modes(),
+            change.width,
+            change.height,
+            change.refresh_mhz,
+        ) {
+            Some(m) => m,
+            None => {
+                tracing::warn!(
+                    "output_management: no DRM mode matches {}x{}@{}.{:03}Hz on {} \
+                     (advertised modes: {})",
+                    change.width,
+                    change.height,
+                    change.refresh_mhz / 1000,
+                    change.refresh_mhz % 1000,
+                    change.output_name,
+                    conn_info.modes().len(),
+                );
+                continue;
+            }
+        };
+
+        // Try the modeset. `use_mode` resizes the swapchain to the
+        // new dimensions internally; the next queue_frame will
+        // commit a frame at the new resolution. If atomic-test
+        // rejects (pixel clock cap, missing connector property,
+        // VRR-only mode), we log + leave the old mode in place.
+        if let Err(e) = od.compositor.use_mode(drm_mode) {
+            tracing::warn!(
+                "output_management: DrmCompositor::use_mode failed on {}: {e:?}",
+                change.output_name,
+            );
+            continue;
+        }
+
+        // Mirror the new mode into the smithay Output. Without
+        // this, the wl_output protocol never advertises the
+        // change, and clients keep believing the old mode is
+        // active. delete_mode/add_mode handles the case where the
+        // new mode wasn't in the previously-advertised list (rare
+        // but possible if the connector probe race with kanshi).
+        let new_wl_mode = OutputMode::from(drm_mode);
+        od.output.change_current_state(
+            Some(new_wl_mode),
+            None,
+            None,
+            None,
+        );
+        // Prefer the new mode for the next preferred-mode query
+        // too, so a later `wlr-randr` without a `--mode` argument
+        // sticks with what the user just picked.
+        od.output.set_preferred(new_wl_mode);
+
+        tracing::info!(
+            "output_management: applied mode {}x{}@{}.{:03}Hz on {}",
+            change.width,
+            change.height,
+            change.refresh_mhz / 1000,
+            change.refresh_mhz % 1000,
+            change.output_name,
+        );
+
+        // Logical work area (in compositor coords) follows the new
+        // mode size — the layout reflow already fired in
+        // apply_output_pending, but we run it once more after the
+        // real DRM size is known so client-side widgets see the
+        // correct geometry from the very first post-modeset frame.
+        let output = od.output.clone();
+        state.refresh_output_work_area(&output);
+    }
+
+    state.arrange_all();
+    state.request_repaint();
+    // Re-publish topology so output-management watchers see the
+    // new mode reflected in OutputSnapshot.current_mode.
+    state.publish_output_topology();
+}
+
+/// Find a `drm::control::Mode` matching `(w, h, refresh_mhz)`.
+///
+/// drm-rs's `Mode::vrefresh()` is the integer Hz approximation of
+/// the actual refresh rate (e.g. 60 for both 59.940 and 60.000 Hz);
+/// the protocol delivers refresh in mHz so we tolerate ±500 mHz
+/// rounding on top of an exact `(w, h)` match. If multiple modes
+/// share dimensions and refresh, prefer one with PREFERRED set.
+fn find_matching_drm_mode(
+    modes: &[DrmMode],
+    width: i32,
+    height: i32,
+    refresh_mhz: i32,
+) -> Option<DrmMode> {
+    let target_w = width as u16;
+    let target_h = height as u16;
+    let target_hz = (refresh_mhz as f64) / 1000.0;
+
+    let mut candidates: Vec<&DrmMode> = modes
+        .iter()
+        .filter(|m| {
+            let (w, h) = m.size();
+            w == target_w && h == target_h
+        })
+        .filter(|m| {
+            let hz = m.vrefresh() as f64;
+            (hz - target_hz).abs() < 1.0
+        })
+        .collect();
+
+    if candidates.is_empty() {
+        return None;
+    }
+    // Prefer KMS PREFERRED mode if multiple match.
+    candidates.sort_by_key(|m| {
+        if m.mode_type().contains(ModeTypeFlags::PREFERRED) {
+            0
+        } else {
+            1
+        }
+    });
+    Some(*candidates[0])
+}
 
 fn select_drm_mode(
     conn: &connector::Info,

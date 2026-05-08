@@ -1096,10 +1096,19 @@ pub struct MargoState {
     /// `wlr_output_management_v1` state. Lets `kanshi`,
     /// `wlr-randr`, `way-displays` etc. discover the output
     /// topology and apply scale / transform / position changes
-    /// at runtime. Mode and enable changes are still rejected;
-    /// see `protocols::output_management::apply_output_pending`.
+    /// at runtime. Disable still rejected; mode changes are now
+    /// queued via `pending_output_mode_changes` for the udev
+    /// backend to drain at the next repaint.
     pub output_management_state:
         crate::protocols::output_management::OutputManagementManagerState,
+    /// Mode changes accepted by `apply_output_pending` but not yet
+    /// applied at the DRM layer. The udev repaint handler drains
+    /// this and feeds each entry through `DrmCompositor::use_mode`,
+    /// then updates the smithay `Output` state so wl_output mode
+    /// events fire for any client (kanshi watcher, status bar).
+    /// Held outside the apply path because the handler runs on
+    /// MargoState and doesn't have a borrow on the udev BackendData.
+    pub pending_output_mode_changes: Vec<crate::PendingOutputModeChange>,
     /// `wp_presentation` global. Lets clients (kitty, mpv, native
     /// Wayland Vulkan games via DXVK / VKD3D, video conferencing
     /// apps that adapt their pacing to the actual display refresh)
@@ -1310,6 +1319,7 @@ impl MargoState {
             relative_pointer_state,
             xdg_activation_state,
             output_management_state,
+            pending_output_mode_changes: Vec::new(),
             presentation_state,
             space,
             popups,
@@ -1686,7 +1696,7 @@ impl MargoState {
         Ok(())
     }
 
-    fn refresh_output_work_area(&mut self, output: &Output) {
+    pub(crate) fn refresh_output_work_area(&mut self, output: &Output) {
         let work_area = {
             let map = layer_map_for_output(output);
             map.non_exclusive_zone()
@@ -5959,24 +5969,23 @@ impl crate::protocols::output_management::OutputManagementHandler for MargoState
             crate::protocols::output_management::PendingHeadConfig,
         >,
     ) -> bool {
-        // Hard-reject any change we can't safely apply. Mode
-        // changes need DRM-level re-modeset which is risky and out
-        // of scope for v1; disable requests need teardown of an
-        // entire OutputDevice. Both come back next iteration.
-        if pending
-            .values()
-            .any(|p| p.requests_mode_change() || !p.enabled())
-        {
-            tracing::warn!("output_management: rejecting config (mode/disable not yet supported)");
+        // Disable still rejected — tearing down an OutputDevice at
+        // runtime needs careful client migration and a re-init
+        // path; tracked separately. Mode changes are accepted and
+        // queued for the udev backend to apply on the next repaint.
+        if pending.values().any(|p| !p.enabled()) {
+            tracing::warn!("output_management: rejecting disable (not yet supported)");
             return false;
         }
 
-        // Apply the subset we DO support: scale, transform,
-        // position. Each goes through smithay's
-        // `Output::change_current_state` which both updates the
-        // output's recorded values AND broadcasts wl_output events
-        // to all clients (so their fractional-scale-aware widgets
-        // re-layout). Layout reflow happens via arrange_all.
+        // Apply scale, transform, position synchronously through
+        // `Output::change_current_state` — same path as before,
+        // updates smithay-side state plus broadcasts wl_output
+        // events to clients. Mode changes are deferred onto
+        // `pending_output_mode_changes` because the actual DRM
+        // re-modeset happens in the udev backend (which holds the
+        // DrmCompositor); doing it here would require plumbing a
+        // backend handle onto MargoState.
         let mut changed = false;
         for (name, p) in &pending {
             let Some(mon_idx) = self.monitors.iter().position(|m| m.name == *name) else {
@@ -6010,6 +6019,24 @@ impl crate::protocols::output_management::OutputManagementHandler for MargoState
                     None,
                     Some(smithay::utils::Point::from((x, y))),
                 );
+                local_change = true;
+            }
+            if let Some((w, h, refresh_mhz)) = p.mode() {
+                self.pending_output_mode_changes
+                    .push(crate::PendingOutputModeChange {
+                        output_name: name.clone(),
+                        width: w,
+                        height: h,
+                        refresh_mhz,
+                    });
+                tracing::info!(
+                    "output_management: queued mode change {name}: {w}x{h}@{}.{:03}Hz",
+                    refresh_mhz / 1000,
+                    refresh_mhz % 1000,
+                );
+                // We've accepted the request; the actual apply
+                // happens at the next repaint and will fire its
+                // own arrange/repaint when the new mode lands.
                 local_change = true;
             }
             if local_change {

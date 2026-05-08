@@ -614,8 +614,13 @@ impl PendingHeadConfig {
     pub fn position(&self) -> Option<(i32, i32)> {
         self.position
     }
-    pub fn requests_mode_change(&self) -> bool {
-        self.mode.is_some()
+    /// Returns the requested `(width, height, refresh_mhz)` if a
+    /// mode change was set on this head, else `None`. The handler
+    /// reads this once at apply time; `requests_mode_change` was
+    /// the previous predicate-only accessor before mode changes
+    /// were actually wired through.
+    pub fn mode(&self) -> Option<(i32, i32, i32)> {
+        self.mode
     }
 }
 

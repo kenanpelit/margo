@@ -50,6 +50,28 @@ pub const LYR_BLOCK: usize = 9;
 pub const NUM_LAYERS: usize = 10;
 pub const MAX_TAGS: usize = 9;
 
+// ── Pending output mode changes (apply path crosses backends) ────────────────
+//
+// `wlr_output_management_v1` mode changes are accepted by the
+// handler running on `MargoState` but the actual DRM use_mode call
+// lives in the udev backend, where we have access to the
+// `DrmCompositor` and connector mode list. The handler stashes
+// requests here; the udev repaint handler drains and applies them
+// before the next render.
+//
+// Defined at the crate root so both `state.rs` (handler) and
+// `backend/udev.rs` (drainer) can name the type without a circular
+// module dep.
+#[derive(Debug, Clone)]
+pub struct PendingOutputModeChange {
+    pub output_name: String,
+    pub width: i32,
+    pub height: i32,
+    /// Refresh rate in mHz, as the protocol delivers it. Convert
+    /// to Hz at match time (drm-rs `Mode::vrefresh()` returns Hz).
+    pub refresh_mhz: i32,
+}
+
 // ── CLI ───────────────────────────────────────────────────────────────────────
 
 #[derive(Parser, Debug)]
