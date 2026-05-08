@@ -1132,6 +1132,17 @@ pub struct MargoState {
     /// gnome-shell. See `crate::dbus`. Set once at startup;
     /// connections close when the field drops (compositor exit).
     pub dbus_servers: crate::dbus::DBusServers,
+    /// GBM device the udev backend opened for buffer allocation.
+    /// Populated at backend init; D-Bus / screencast threads pull
+    /// it for `Cast::new` to allocate dmabuf-backed PipeWire
+    /// buffers without re-opening the DRM node. `None` outside
+    /// the udev backend (winit nested mode).
+    pub cast_gbm: Option<smithay::backend::allocator::gbm::GbmDevice<smithay::backend::drm::DrmDeviceFd>>,
+    /// Renderer-side dmabuf format constraints, snapshotted at
+    /// backend init so the screencast cast lifecycle has them
+    /// without crossing the borrow boundary into the udev
+    /// renderer mid-D-Bus-call.
+    pub cast_render_formats: smithay::backend::allocator::format::FormatSet,
     /// `ext-image-capture-source-v1` core state. Mints opaque
     /// source handles that clients pass to ext-image-copy-capture
     /// to identify what they want to capture. xdp-wlr 0.8+ uses
@@ -1412,6 +1423,8 @@ impl MargoState {
             scripting: None,
             screencasting: None,
             dbus_servers: crate::dbus::DBusServers::default(),
+            cast_gbm: None,
+            cast_render_formats: Default::default(),
             image_capture_source_state,
             output_capture_source_state,
             toplevel_capture_source_state,
@@ -1664,6 +1677,155 @@ impl MargoState {
             return;
         };
         casting.casts.retain(|cast| cast.session_id != session_id);
+    }
+
+    /// Start a cast in response to xdp-gnome's `Session.Start`
+    /// D-Bus call. Margo equivalent of niri's
+    /// `on_screen_cast_msg::StartCast` arm in
+    /// `screencasting/mod.rs`.
+    ///
+    /// Steps:
+    ///   1. Resolve the `StreamTargetId` against margo's monitor
+    ///      list (output) or client list (toplevel) → produce a
+    ///      `CastTarget` + `(size, refresh, alpha)` triple.
+    ///   2. Lazy-init `Screencasting` + the PipeWire core if this
+    ///      is the first cast of the session.
+    ///   3. Call `pw.start_cast(...)` to mint a `Cast`. The cast
+    ///      drives PipeWire negotiation; once the format is
+    ///      agreed it emits `pipe_wire_stream_added(node_id)` over
+    ///      the supplied `signal_ctx` so xdp-gnome / browser can
+    ///      open the PipeWire node.
+    ///   4. Push the cast onto `casting.casts`. Subsequent frame
+    ///      production goes through the udev backend's repaint
+    ///      hook (Phase E2 — render integration).
+    pub fn start_cast(
+        &mut self,
+        session_id: crate::dbus::cast_ids::CastSessionId,
+        stream_id: crate::dbus::cast_ids::CastStreamId,
+        target: crate::dbus::mutter_screen_cast::StreamTargetId,
+        cursor_mode: crate::dbus::mutter_screen_cast::CursorMode,
+        signal_ctx: zbus::object_server::SignalEmitter<'static>,
+    ) {
+        use crate::dbus::mutter_screen_cast::StreamTargetId;
+        use crate::screencasting::CastTarget;
+
+        let (target, size, refresh, alpha) = match target {
+            StreamTargetId::Output { name } => {
+                let Some(mon) = self.monitors.iter().find(|m| m.name == name) else {
+                    tracing::warn!("StartCast: requested output {name} is missing");
+                    self.stop_cast(session_id);
+                    return;
+                };
+                let Some(mode) = mon.output.current_mode() else {
+                    tracing::warn!("StartCast: output {name} has no current mode");
+                    self.stop_cast(session_id);
+                    return;
+                };
+                let size = smithay::utils::Size::<i32, smithay::utils::Physical>::from(
+                    (mode.size.w, mode.size.h),
+                );
+                let refresh = mode.refresh as u32;
+                let weak = mon.output.downgrade();
+                (
+                    CastTarget::Output {
+                        output: weak,
+                        name,
+                    },
+                    size,
+                    refresh,
+                    false,
+                )
+            }
+            StreamTargetId::Window { id } => {
+                // Match the window-id (we hand out per-client
+                // memory addresses cast to u64 from
+                // `gnome_shell_introspect`). Look up by re-scanning
+                // clients; the address is stable for the duration
+                // of the client's life.
+                let Some(client) = self
+                    .clients
+                    .iter()
+                    .find(|c| std::ptr::addr_of!(**c) as u64 == id)
+                else {
+                    tracing::warn!("StartCast: requested window {id} is missing");
+                    self.stop_cast(session_id);
+                    return;
+                };
+                let geom = client.geom;
+                if geom.width <= 0 || geom.height <= 0 {
+                    tracing::warn!("StartCast: window {id} has degenerate geometry");
+                    self.stop_cast(session_id);
+                    return;
+                }
+                let size = smithay::utils::Size::<i32, smithay::utils::Physical>::from(
+                    (geom.width, geom.height),
+                );
+                // Use the focused monitor's refresh as a stand-in;
+                // PipeWire negotiates an actual pacing later.
+                let refresh = self
+                    .monitors
+                    .get(client.monitor)
+                    .and_then(|m| m.output.current_mode())
+                    .map(|m| m.refresh as u32)
+                    .unwrap_or(60_000);
+                (CastTarget::Window { id }, size, refresh, true)
+            }
+        };
+
+        let Some(gbm) = self.cast_gbm.clone() else {
+            tracing::warn!("StartCast: udev GBM device unavailable (winit?)");
+            self.stop_cast(session_id);
+            return;
+        };
+        let render_formats = self.cast_render_formats.clone();
+
+        // Lazy-init Screencasting + PipeWire on first cast.
+        if self.screencasting.is_none() {
+            let casting =
+                crate::screencasting::Screencasting::new(&self.loop_handle);
+            self.screencasting = Some(Box::new(casting));
+        }
+        let casting = self.screencasting.as_mut().unwrap();
+
+        if casting.pipewire.is_none() {
+            let pw_to_compositor = casting.pw_to_compositor.clone();
+            match crate::screencasting::pw_utils::PipeWire::new(
+                self.loop_handle.clone(),
+                pw_to_compositor,
+            ) {
+                Ok(pw) => casting.pipewire = Some(pw),
+                Err(err) => {
+                    tracing::warn!("StartCast: PipeWire init failed: {err:?}");
+                    self.stop_cast(session_id);
+                    return;
+                }
+            }
+        }
+        let pw = casting.pipewire.as_ref().unwrap();
+
+        match pw.start_cast(
+            gbm,
+            render_formats,
+            session_id,
+            stream_id,
+            target,
+            size,
+            refresh,
+            alpha,
+            cursor_mode,
+            signal_ctx,
+        ) {
+            Ok(cast) => {
+                casting.casts.push(cast);
+                tracing::info!(
+                    "StartCast: session={session_id} stream={stream_id} cast pushed"
+                );
+            }
+            Err(err) => {
+                tracing::warn!("StartCast: pw.start_cast failed: {err:?}");
+                self.stop_cast(session_id);
+            }
+        }
     }
 
     pub fn debug_dump(&self) {

@@ -593,18 +593,19 @@ fn main() -> Result<()> {
                     return;
                 };
                 match msg {
-                    ScreenCastToCompositor::StartCast { session_id, .. } => {
-                        // Phase E: instantiate a `Cast` against
-                        // the source, attach the PipeWire stream,
-                        // emit `pipe_wire_stream_added` over the
-                        // signal_ctx. For now: log + stash the
-                        // session_id so xdp-gnome's call to
-                        // `Session.Start` succeeds at the D-Bus
-                        // layer (browser sees a node ID later
-                        // when the Phase E render hook lands).
-                        tracing::info!(
-                            "screencast: StartCast received (session={}); cast lifecycle wires up in Phase E",
-                            session_id
+                    ScreenCastToCompositor::StartCast {
+                        session_id,
+                        stream_id,
+                        target,
+                        cursor_mode,
+                        signal_ctx,
+                    } => {
+                        state.start_cast(
+                            session_id,
+                            stream_id,
+                            target,
+                            cursor_mode,
+                            signal_ctx,
                         );
                     }
                     ScreenCastToCompositor::StopCast { session_id } => {

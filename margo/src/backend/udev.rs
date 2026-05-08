@@ -571,6 +571,14 @@ pub fn run(
         return Err(anyhow::anyhow!("no connected outputs found"));
     }
 
+    // Hand a clone of GBM + render-format set to MargoState so the
+    // screencast / D-Bus thread can read them without crossing the
+    // udev backend's RefCell borrow. Fresh snapshot — formats
+    // change rarely (only on renderer reset, which margo doesn't
+    // currently do at runtime).
+    state.cast_gbm = Some(gbm.clone());
+    state.cast_render_formats = renderer_formats.clone();
+
     let backend_data = Rc::new(RefCell::new(BackendData {
         renderer,
         outputs: backend_outputs,
