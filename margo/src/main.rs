@@ -2,6 +2,7 @@ mod animation;
 mod backend;
 mod border;
 mod cursor;
+mod dbus;
 mod dispatch;
 mod render;
 mod input;

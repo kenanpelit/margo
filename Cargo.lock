@@ -1355,6 +1355,7 @@ name = "margo"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-channel",
  "async-io",
  "bitflags 2.11.1",
  "bytemuck",

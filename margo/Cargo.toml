@@ -58,6 +58,7 @@ rhai = { version = "1", default-features = false, features = ["std", "no_optimiz
 zbus = "5"
 pipewire = { version = "0.9", features = ["v0_3_33"] }
 async-io = "2"
+async-channel = "2"
 
 [dependencies.smithay]
 workspace = true
