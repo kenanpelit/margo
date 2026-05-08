@@ -362,7 +362,7 @@ fn main() -> Result<()> {
     // callbacks survive.
     {
         let engine = scripting::init_engine();
-        scripting::run_user_init(&engine);
+        scripting::run_user_init(&engine, &mut margo);
     }
 
     // ── Run the event loop ────────────────────────────────────────────────────

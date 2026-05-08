@@ -1,9 +1,11 @@
 # Plugin / scripting system — design notes
 
-> Status: **foundation landed**. `~/.config/margo/init.rhai` is
-> evaluated at compositor startup with one bound function (`spawn`)
-> and three no-op event-hook stubs. This document captures the
-> roadmap toward a full event-driven plugin system.
+> Status: **Phase 2 landed**. `~/.config/margo/init.rhai` is
+> evaluated at compositor startup with full dispatch invocation
+> (`dispatch(action, args)`), state introspection (`focused_appid`,
+> `current_tag`, `monitor_names`, …), and three no-op event-hook
+> stubs (Phase 3). This document captures the rollout plan toward
+> a full event-driven plugin system.
 
 ## Why this exists
 
@@ -64,15 +66,37 @@ no editor support, and we'd own every parser bug forever. Hard pass.
   `on_window_open(fn)` are accepted (logged) but no-op. Users can
   write scripts today that will start firing once Phase 2 lands.
 
-### Phase 2 — Action bindings (next sprint)
+### Phase 2 — Action bindings + state introspection ✓ shipped
 
-* `dispatch(action: string, args: [...])` — call any registered
-  margo action. Replaces shell scripts that wrap `mctl dispatch`.
-* `tag(n: int)` / `tagview(n: int)` — convenience wrappers.
-* `current_tag() -> int`, `focused_appid() -> string?`,
-  `monitors() -> [Monitor]` — read-only state introspection.
-* Threading: scripts run on the compositor thread, synchronously.
-  Heavy work in scripts blocks the event loop; document this.
+* `dispatch(action: string, args: [...])` — calls any registered
+  margo action. Args array maps positionally onto the `Arg` struct
+  (strings → v/v2/v3, ints → i/ui & i2/ui2, floats → f/f2).
+  Zero-arg overload `dispatch(action)` for `killclient`,
+  `togglefloating`, etc.
+* `spawn(cmd)` — convenience for `dispatch("spawn", [cmd])`.
+* `tag(n: int) → int` — converts 1-based tag number to bitmask.
+* Read-only state: `current_tag()`, `current_tagmask()`,
+  `focused_appid()`, `focused_title()`, `focused_monitor_name()`,
+  `monitor_count()`, `monitor_names()`, `client_count()`.
+* Threading: scripts run on the compositor thread, synchronously,
+  during startup only. Heavy work blocks the event loop — keep it
+  cheap or `spawn` it as a subprocess.
+* State-access pattern: thread-local raw pointer to `MargoState`
+  set for the duration of the eval, cleared via RAII guard. Same
+  contract reused in Phase 3.
+
+  Example user script (works today):
+
+  ```rhai
+  if monitor_count() >= 2 {
+      // External monitor present — start in scroller layout
+      dispatch("setlayout", ["scroller"]);
+  }
+  if focused_appid() == "" {
+      // Cold start, no focused window — pop a terminal
+      dispatch("spawn", ["kitty"]);
+  }
+  ```
 
 ### Phase 3 — Event hooks (multi-sprint)
 
