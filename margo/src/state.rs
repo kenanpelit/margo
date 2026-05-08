@@ -594,6 +594,21 @@ impl MargoClient {
             && !self.is_unglobal
     }
     pub fn is_visible_on(&self, mon: usize, tagset: u32) -> bool {
+        // Hidden scratchpads (in_scratchpad without `show`) are
+        // unmapped from the scene by `hide_scratchpad_client` but
+        // remain in `clients` (so the next toggle press picks the
+        // same instance up). Without this exclusion every
+        // subsequent `arrange_monitor` would walk visible_in_pass,
+        // see the scratchpad's tag still matches the active tagset,
+        // and `map_element` it right back onto the screen — that's
+        // exactly the user-visible "tekrar basıyorum kaybolmuyor"
+        // bug. is_visible_on is the single chokepoint every layout
+        // / focus / IPC path goes through, so guarding it here
+        // keeps the rest of the codebase from each having to learn
+        // about the scratchpad show flag.
+        if self.is_in_scratchpad && !self.is_scratchpad_show {
+            return false;
+        }
         self.monitor == mon && (self.tags & tagset) != 0
     }
 }
