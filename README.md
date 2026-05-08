@@ -1,8 +1,6 @@
-# margo
-
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: light)" srcset="docs/assets/margo-banner.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/margo-banner-dark.svg">
     <img src="docs/assets/margo-banner-dark.svg" alt="margo" width="600">
   </picture>
 </p>
