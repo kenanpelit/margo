@@ -159,6 +159,23 @@ pub fn now_ms() -> u32 {
         .unwrap_or(0)
 }
 
+/// Current CLOCK_MONOTONIC time as a `Duration`. Mirrors niri's
+/// `crate::utils::get_monotonic_time` so the ported screencasting
+/// code keeps its timestamps in the same domain wp_presentation
+/// uses elsewhere in margo.
+pub fn get_monotonic_time() -> std::time::Duration {
+    let mut ts = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
+    // SAFETY: clock_gettime takes a CLOCK_MONOTONIC clock id and a
+    // valid `timespec` pointer; both invariants are held here.
+    unsafe {
+        libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts);
+    }
+    std::time::Duration::new(ts.tv_sec as u64, ts.tv_nsec as u32)
+}
+
 /// Clamp an integer value.
 #[inline]
 pub fn clamp_i32(x: i32, min: i32, max: i32) -> i32 {

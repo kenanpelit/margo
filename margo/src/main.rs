@@ -10,6 +10,7 @@ mod input_handler;
 mod libinput_config;
 mod layout;
 mod protocols;
+mod screencasting;
 mod scripting;
 mod state;
 mod utils;

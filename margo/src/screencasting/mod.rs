@@ -15,17 +15,28 @@
 //!      the consumer.
 //!
 //! Reference port: niri/src/screencasting/{mod,pw_utils}.rs. License
-//! preserved: GPL-3.0-or-later. Original niri provenance is annotated
-//! at each function boundary.
+//! preserved: GPL-3.0-or-later.
 //!
-//! ## Why a separate thread loop
+//! ## Phase status
 //!
-//! pipewire-rs does its own event-loop dispatching off the calling
-//! thread, and PipeWire's `pw_thread_loop` is a self-contained event
-//! pump. Mixing it into smithay's calloop loop is possible via the
-//! `pipewire-extra` integration crate but adds complexity; niri runs
-//! a dedicated thread per cast session and we mirror that for now.
+//! * **Phase C foundation (this commit)** — [`render_helpers`]:
+//!   the GLES helpers ported from niri/src/render_helpers/ that
+//!   the rest of the cast pipeline calls into
+//!   (`render_to_dmabuf`, `render_and_download`, `clear_dmabuf`,
+//!   `encompassing_geo`).
+//! * **Phase C1 (next)** — `pw_utils` submodule with the
+//!   `PipeWire` core, `Cast` struct, format negotiation, stream
+//!   lifecycle. Direct port of niri/src/screencasting/pw_utils.rs
+//!   (~1500 LOC adapted to margo's render path).
+//! * **Phase C2 (after)** — `Screencasting` top-level state
+//!   (cast list, dynamic-target tracking) and the `redraw_cast`
+//!   entry point the udev backend's repaint loop calls.
+//! * **Phase D (final)** — wire `Screencasting` into
+//!   `MargoState`, hook the D-Bus `ScreenCastToCompositor`
+//!   channel onto a calloop receiver, flip portals.conf to
+//!   `gnome` so xdp-gnome routes through the new shim.
+//!
+//! Built incrementally so each commit lands compile-clean — large
+//! ports tend to drift when you stage everything at once.
 
-#![cfg(any())] // Phase A scaffold — pw_utils + cast lifecycle in Phase C.
-
-pub mod pw_utils;
+pub mod render_helpers;
