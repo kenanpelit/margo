@@ -109,4 +109,12 @@ _mctl_outputs() {
     _describe -t outputs 'output' outs
 }
 
-_mctl "$@"
+# DO NOT call `_mctl "$@"` here. zsh's `compinit` autoloads this file
+# the first time `mctl <Tab>` fires; the autoload mechanism wraps the
+# whole body as the function definition and invokes it from a real
+# completion context. Calling `_mctl "$@"` at file scope would also
+# work under autoload, but it explodes when a user runs
+# `source /usr/share/zsh/site-functions/_mctl` manually — `_arguments`
+# refuses to run outside a completion context and prints
+# `_arguments:comparguments:NNN: can only be called from completion function`.
+# Leaving the file body as pure definitions makes it source-safe.
