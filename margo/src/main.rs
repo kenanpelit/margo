@@ -72,11 +72,12 @@ pub struct PendingImageCopyFrame {
 pub enum PendingImageCopySource {
     /// Capture the entire output identified by name (e.g. "DP-3").
     Output(String),
-    /// Capture a single toplevel — Step 2.5. Today the handler
-    /// fails frames before they hit this path so the variant
-    /// exists for forward compatibility but is unused.
-    #[allow(dead_code)]
-    Toplevel,
+    /// Capture a single toplevel — Step 2.5. Stores the smithay
+    /// `Window` directly (Arc-backed so cloning is cheap) so the
+    /// index into `state.clients` can shift between frame
+    /// request and render-loop drain without invalidating the
+    /// reference.
+    Toplevel(smithay::desktop::Window),
 }
 
 // ── Pending output mode changes (apply path crosses backends) ────────────────

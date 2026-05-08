@@ -6364,34 +6364,57 @@ impl ImageCopyCaptureHandler for MargoState {
     }
 
     fn capture_constraints(&mut self, source: &ImageCaptureSource) -> Option<BufferConstraints> {
-        // Match the source's stashed user_data against an output.
-        // Toplevel sources don't have a render path yet — return
-        // None for them so the session fails cleanly and the
-        // browser falls back to the monitor share path.
-        let weak_output: &smithay::output::WeakOutput =
-            source.user_data().get::<smithay::output::WeakOutput>()?;
-        let output = weak_output.upgrade()?;
-        let mode = output.current_mode()?;
-        // Output mode size is in physical pixels — match that for
-        // the buffer. `BufferCoords` is the same numeric domain.
-        let size = smithay::utils::Size::<i32, smithay::utils::Buffer>::from(
-            (mode.size.w, mode.size.h),
-        );
+        // Two source kinds: output (display capture) and toplevel
+        // (per-window capture). The user_data carries a different
+        // handle for each — we picked the one that matches.
+
+        // Output source (Screen tab in meeting clients)
+        if let Some(weak_output) = source.user_data().get::<smithay::output::WeakOutput>() {
+            let output = weak_output.upgrade()?;
+            let mode = output.current_mode()?;
+            let size = smithay::utils::Size::<i32, smithay::utils::Buffer>::from(
+                (mode.size.w, mode.size.h),
+            );
+            return Some(BufferConstraints {
+                size,
+                shm: vec![
+                    smithay::reexports::wayland_server::protocol::wl_shm::Format::Argb8888,
+                    smithay::reexports::wayland_server::protocol::wl_shm::Format::Xrgb8888,
+                ],
+                dma: None,
+            });
+        }
+
+        // Toplevel source (Window tab) — find the MargoClient
+        // backing this ForeignToplevelHandle and report its
+        // current geometry. Bbox-with-popups would clip popups;
+        // the live capture only catches the toplevel proper.
+        let handle = source
+            .user_data()
+            .get::<smithay::wayland::foreign_toplevel_list::ForeignToplevelHandle>()?;
+        let client = self
+            .clients
+            .iter()
+            .find(|c| {
+                c.foreign_toplevel_handle
+                    .as_ref()
+                    .is_some_and(|h| h.matches(handle))
+            })?;
+
+        // Window size — geometry().size is the surface-side
+        // logical size; for screencast we want pixels in the
+        // buffer-coord domain. They're numerically the same when
+        // scale=1 and identical for arrange-tracked geometry.
+        let size = smithay::utils::Size::<i32, smithay::utils::Buffer>::from((
+            client.geom.width.max(1),
+            client.geom.height.max(1),
+        ));
         Some(BufferConstraints {
             size,
-            // Argb8888 + Xrgb8888 cover ~every meeting client out
-            // there (Chromium / Firefox / Discord-Electron). Both
-            // are 32-bit BGRA; the Xrgb variant ignores alpha,
-            // Argb preserves it.
             shm: vec![
                 smithay::reexports::wayland_server::protocol::wl_shm::Format::Argb8888,
                 smithay::reexports::wayland_server::protocol::wl_shm::Format::Xrgb8888,
             ],
-            // DMA-BUF is Step 2.1 — leave None for now so SHM is
-            // the only allocation path. Browsers happily fall back
-            // to SHM when dma constraints are absent. (smithay
-            // gates the field on `backend_drm`, which is enabled
-            // in our build via the udev backend.)
             dma: None,
         })
     }
@@ -6412,35 +6435,65 @@ impl ImageCopyCaptureHandler for MargoState {
     }
 
     fn frame(&mut self, session: &SessionRef, frame: Frame) {
-        // Look up the source's output via the session ref so we
-        // can route this frame to the udev repaint loop. The
-        // session keeps a strong handle to the source.
+        // Route the frame to either an output or a toplevel
+        // render path based on which user_data the source
+        // carries.
         let source = session.source();
-        let weak_output = source.user_data().get::<smithay::output::WeakOutput>();
 
-        let target = match weak_output.and_then(|w| w.upgrade()) {
-            Some(output) => crate::PendingImageCopySource::Output(output.name()),
-            None => {
-                // Toplevel source (no output user_data) — Step 2.5.
-                // Until per-window render path lands, fail with
-                // BufferConstraints so the browser falls through
-                // to its full-screen capture fallback.
-                frame.fail(
-                    smithay::wayland::image_copy_capture::CaptureFailureReason::BufferConstraints,
-                );
+        // Output source — match by name so the udev side can
+        // resolve back to an OutputDevice.
+        if let Some(weak_output) = source.user_data().get::<smithay::output::WeakOutput>() {
+            if let Some(output) = weak_output.upgrade() {
+                self.pending_image_copy_frames
+                    .push(crate::PendingImageCopyFrame {
+                        source: crate::PendingImageCopySource::Output(output.name()),
+                        frame: Some(frame),
+                    });
+                self.request_repaint();
                 return;
             }
-        };
+        }
 
-        // Stash for the udev backend to render in the next repaint.
-        self.pending_image_copy_frames
-            .push(crate::PendingImageCopyFrame {
-                source: target,
-                frame: Some(frame),
-            });
-        // Kick a repaint so the frame doesn't wait for the next
-        // unrelated event.
-        self.request_repaint();
+        // Toplevel source — clone the matching client's Window
+        // (Arc-backed, cheap) so the udev side can render it
+        // directly. Index into self.clients can shift between
+        // request and drain, so don't store an index.
+        if let Some(handle) = source
+            .user_data()
+            .get::<smithay::wayland::foreign_toplevel_list::ForeignToplevelHandle>()
+        {
+            if let Some(client) = self
+                .clients
+                .iter()
+                .find(|c| {
+                c.foreign_toplevel_handle
+                    .as_ref()
+                    .is_some_and(|h| h.matches(handle))
+            })
+            {
+                let window = client.window.clone();
+                self.pending_image_copy_frames
+                    .push(crate::PendingImageCopyFrame {
+                        source: crate::PendingImageCopySource::Toplevel(window),
+                        frame: Some(frame),
+                    });
+                self.request_repaint();
+                return;
+            }
+            // Toplevel went away (closed) between session
+            // creation and frame request.
+            frame.fail(
+                smithay::wayland::image_copy_capture::CaptureFailureReason::Stopped,
+            );
+            return;
+        }
+
+        // Source carries neither user_data tag — shouldn't
+        // happen unless someone wires a custom source we don't
+        // recognise.
+        frame.fail(
+            smithay::wayland::image_copy_capture::CaptureFailureReason::Unknown,
+        );
     }
 }
 

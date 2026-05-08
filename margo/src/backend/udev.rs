@@ -1495,49 +1495,109 @@ fn drain_image_copy_frames(
             None => continue,
         };
 
-        // Match the source's output name to a live OutputDevice.
-        // Toplevel sources never reach here — the handler fails
-        // them upstream with BufferConstraints.
-        let target_name = match &pending.source {
-            crate::PendingImageCopySource::Output(name) => name.clone(),
-            crate::PendingImageCopySource::Toplevel => {
-                frame.fail(CaptureFailureReason::BufferConstraints);
-                continue;
+        // Two source kinds — output (Screen tab) and toplevel
+        // (Window tab). Both end up rendering into the same
+        // shape of GLES renderbuffer + SHM memcpy; the only
+        // difference is which scene subset we render.
+        //
+        // We pre-compute (output_size, scale, render_elements)
+        // for each kind, then the shared bind/render/copy block
+        // below handles the rest.
+        let (buf_size, scale, elements_owned): (
+            smithay::utils::Size<i32, smithay::utils::Buffer>,
+            f64,
+            Vec<MargoRenderElement>,
+        ) = match &pending.source {
+            crate::PendingImageCopySource::Output(name) => {
+                let od = match outputs
+                    .iter_mut()
+                    .find(|(_, od)| od.output.name() == *name)
+                {
+                    Some((_, od)) => od,
+                    None => {
+                        frame.fail(CaptureFailureReason::Stopped);
+                        continue;
+                    }
+                };
+                let output_size = od
+                    .output
+                    .current_mode()
+                    .map(|m| m.size)
+                    .unwrap_or_default();
+                if output_size.w == 0 || output_size.h == 0 {
+                    frame.fail(CaptureFailureReason::Stopped);
+                    continue;
+                }
+                let scale = od.output.current_scale().fractional_scale();
+                let buf_size = smithay::utils::Size::<i32, smithay::utils::Buffer>::from(
+                    (output_size.w, output_size.h),
+                );
+                let elements = build_render_elements_inner(renderer, od, state, false, true);
+                (buf_size, scale, elements)
             }
-        };
-        let od = match outputs
-            .iter_mut()
-            .find(|(_, od)| od.output.name() == target_name)
-        {
-            Some((_, od)) => od,
-            None => {
-                // Output went away (hot-unplug between session
-                // creation and frame request). Stopped is the
-                // semantically correct reason here; the smithay
-                // helper will also send a stopped event on the
-                // session itself.
-                frame.fail(CaptureFailureReason::Stopped);
-                continue;
+            crate::PendingImageCopySource::Toplevel(window) => {
+                use smithay::backend::renderer::element::AsRenderElements;
+
+                // Find the live MargoClient backing this Window
+                // so we can read its current geometry. Window is
+                // Arc-backed; even if the client got dropped
+                // from `state.clients`, the Window itself is
+                // still alive enough to render its surface tree
+                // — but if the underlying wl_surface destroyed,
+                // render_elements returns empty + we'd send a
+                // black frame, which is worse than failing.
+                let client = state
+                    .clients
+                    .iter()
+                    .find(|c| &c.window == window);
+                let geom = match client {
+                    Some(c) => c.geom,
+                    None => {
+                        // Toplevel went away.
+                        frame.fail(CaptureFailureReason::Stopped);
+                        continue;
+                    }
+                };
+                if geom.width <= 0 || geom.height <= 0 {
+                    frame.fail(CaptureFailureReason::BufferConstraints);
+                    continue;
+                }
+                // Render the window into a buffer sized to its
+                // own geometry. Scale 1.0: the window's render
+                // tree is already in physical pixels for the
+                // monitor it lives on; we don't fractional-scale
+                // the capture (clients pick a target resolution
+                // via their own framework).
+                let scale = smithay::utils::Scale::from(1.0);
+                // Element location (0, 0) so the window's top-
+                // left lines up with the buffer's origin —
+                // capture is the window itself, not the screen
+                // it's positioned on.
+                let elements: Vec<smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement<GlesRenderer>> =
+                    AsRenderElements::<GlesRenderer>::render_elements(
+                        window,
+                        renderer,
+                        smithay::utils::Point::from((0, 0)),
+                        scale,
+                        1.0,
+                    );
+                // Wrap each surface element in MargoRenderElement
+                // so the existing render_output dispatch works.
+                let wrapped: Vec<MargoRenderElement> = elements
+                    .into_iter()
+                    .map(MargoRenderElement::WaylandSurface)
+                    .collect();
+                let buf_size = smithay::utils::Size::<i32, smithay::utils::Buffer>::from(
+                    (geom.width, geom.height),
+                );
+                (buf_size, 1.0, wrapped)
             }
         };
 
-        let output_size = od.output.current_mode().map(|m| m.size).unwrap_or_default();
-        if output_size.w == 0 || output_size.h == 0 {
-            frame.fail(CaptureFailureReason::Stopped);
-            continue;
-        }
-        let scale = od.output.current_scale().fractional_scale();
-        let buf_size = smithay::utils::Size::<i32, smithay::utils::Buffer>::from(
-            (output_size.w, output_size.h),
-        );
-
-        // Render every visible element for this output, exactly
-        // like the display path does. for_screencast=true so the
-        // privacy-mask filter (block_out_from_screencast windows
-        // → solid black) applies — meeting clients capturing
-        // their own browser shouldn't see KeePassXC.
-        let elements_owned = build_render_elements_inner(renderer, od, state, false, true);
         let elements_refs: Vec<&MargoRenderElement> = elements_owned.iter().collect();
+        let output_size = smithay::utils::Size::<i32, smithay::utils::Physical>::from(
+            (buf_size.w, buf_size.h),
+        );
 
         // Allocate an offscreen renderbuffer and render the scene
         // into it. Identical shape to the SHM arm of
