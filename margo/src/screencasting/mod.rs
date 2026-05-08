@@ -39,10 +39,10 @@
 //! Built incrementally so each commit lands compile-clean — large
 //! ports tend to drift when you stage everything at once.
 
+pub mod pw_utils;
 pub mod render_helpers;
 
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
-use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::output::WeakOutput;
 
 /// What a screencast stream is targeting. Direct port of niri's
@@ -66,10 +66,38 @@ pub enum CastTarget {
     },
 }
 
-/// The render-element type cast streams render. Margo's renderer
-/// produces `WaylandSurfaceRenderElement<GlesRenderer>` for
+/// Top-level screencast state. Created lazily when xdp-gnome
+/// opens its first ScreenCast session via the Mutter D-Bus shim;
+/// holds the PipeWire core + list of active casts.
+///
+/// Direct port of niri's `Screencasting` (niri/src/screencasting/
+/// mod.rs). Margo doesn't use the dynamic-cast / mapped_cast_output
+/// fields niri carries for its window-id IPC — we route directly
+/// off the foreign-toplevel handle margo's D-Bus shim stashes on
+/// the source.
+pub struct Screencasting {
+    pub casts: Vec<pw_utils::Cast>,
+
+    /// Channel from the PipeWire side back to the compositor:
+    /// `StopCast`, `Redraw`, `FatalError`. Receiver lives in
+    /// `MargoState`'s event loop and dispatches into the cast
+    /// pipeline.
+    pub pw_to_compositor: calloop::channel::Sender<pw_utils::PwToNiri>,
+
+    /// Drop PipeWire last (after the casts) to avoid a use-after-
+    /// free; the casts hold StreamRc handles tied to the core.
+    pub pipewire: Option<pw_utils::PipeWire>,
+}
+
+/// The render-element type cast streams render. Generic on the
+/// renderer to match niri's pattern (where pw_utils.rs deals with
+/// the element type as `CastRenderElement<R>`); concrete instances
+/// in margo always plug in `GlesRenderer` since the udev backend
+/// is the only renderer the cast path runs against.
+///
+/// Margo's renderer produces `WaylandSurfaceRenderElement<R>` for
 /// surface trees; that's the universal element variant the cast
 /// path needs. `MargoRenderElement`'s richer set (border, shadow,
-/// open/close) lives only in the display path; capture frames
-/// don't need them.
-pub type CastRenderElement = WaylandSurfaceRenderElement<GlesRenderer>;
+/// open/close) lives only in the display path — capture frames
+/// don't include those decorations.
+pub type CastRenderElement<R> = WaylandSurfaceRenderElement<R>;

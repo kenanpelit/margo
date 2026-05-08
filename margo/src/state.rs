@@ -1122,6 +1122,11 @@ pub struct MargoState {
     /// invocation (the recursion guard + borrow-checker dance lives
     /// in `scripting::fire_hook`).
     pub scripting: Option<Box<crate::scripting::ScriptingState>>,
+    /// Active screencasting state — PipeWire core, list of running
+    /// casts, dynamic-cast queue. `None` until xdp-gnome opens its
+    /// first ScreenCast session and the lazy PipeWire init runs;
+    /// margo's compositor process otherwise pays no PipeWire cost.
+    pub screencasting: Option<Box<crate::screencasting::Screencasting>>,
     /// `ext-image-capture-source-v1` core state. Mints opaque
     /// source handles that clients pass to ext-image-copy-capture
     /// to identify what they want to capture. xdp-wlr 0.8+ uses
@@ -1400,6 +1405,7 @@ impl MargoState {
             pending_output_mode_changes: Vec::new(),
             color_management_state,
             scripting: None,
+            screencasting: None,
             image_capture_source_state,
             output_capture_source_state,
             toplevel_capture_source_state,
