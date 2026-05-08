@@ -629,39 +629,98 @@ where
         match request {
             wp_image_description_v1::Request::Destroy => {}
             wp_image_description_v1::Request::GetInformation { information } => {
-                // CRITICAL: a `new_id` arg MUST be initialized via
-                // data_init or the Wayland connection enters a bad
-                // state and the next sync() drops it. The previous
-                // implementation `drop(information)` skipped this and
-                // crashed every client (mpv, Chromium ozone, …) that
-                // probed surface feedback — they'd lose their Wayland
-                // connection mid-EGL-handshake and report
-                // "Failed initializing any suitable GPU context".
+                // The previous Phase 1 commit `drop(information)`'d the
+                // new_id without binding it — Wayland protocol violation,
+                // server kicks the client. The follow-up tried to send
+                // a partial event set (just primaries_named + tf_named)
+                // and segfaulted margo because clients (mpv, Chromium)
+                // expect the full event sequence per the protocol spec;
+                // dispatching against a half-populated info object is
+                // undefined behaviour territory.
                 //
-                // We initialize the resource and fire the per-
-                // description info events the client expects:
-                // primaries_named + tf_named (the bare minimum for a
-                // valid image description) followed by `done` (which
-                // is a destructor — the resource auto-cleans after).
+                // The fix is to mirror Hyprland's `CColorManagement
+                // ImageDescriptionInfo` constructor literally — it
+                // sends EVERY event the protocol defines for a usable
+                // sRGB description, then `done`:
                 //
-                // Phase 2 will fill in the full set (icc_file,
-                // luminances, target_primaries, target_max_cll, …)
-                // once we actually drive HDR. Today we just need a
-                // protocol-correct stub.
+                //   1. primaries (8 chromaticity ints, scaled by 1M)
+                //   2. primaries_named (if a named primary is stored)
+                //   3. tf_named (mandatory)
+                //   4. luminances (min × 10000, max, reference cd/m²)
+                //   5. target_primaries (matches primaries unless the
+                //      stored desc has separate mastering values)
+                //   6. target_luminance (min × 10000, max)
+                //   7. done (destructor — finalizes the resource)
+                //
+                // For the sRGB defaults below we use the well-known
+                // BT.709/sRGB chromaticities and 80 cd/m² white point
+                // (the SDR reference). When a stored description has
+                // explicit primaries / tf / luminances those override.
+
                 let info = data_init.init(information, ());
+
+                // ── 1. primaries (chromaticity ints scaled by 1M) ──
+                // sRGB / BT.709: R=(0.640,0.330) G=(0.300,0.600)
+                // B=(0.150,0.060) W=D65 (0.3127,0.3290).
+                let prim = data.params.mastering_primaries.unwrap_or([
+                    640_000, 330_000,   // R x, y
+                    300_000, 600_000,   // G x, y
+                    150_000,  60_000,   // B x, y
+                    312_700, 329_000,   // W x, y (D65)
+                ]);
+                info.primaries(
+                    prim[0], prim[1], prim[2], prim[3],
+                    prim[4], prim[5], prim[6], prim[7],
+                );
+
+                // ── 2. primaries_named (optional, only if known enum) ──
                 if let Some(p) = data.params.primaries_named {
                     if let Ok(named) = wp_color_manager_v1::Primaries::try_from(p) {
                         info.primaries_named(named);
                     }
+                } else {
+                    info.primaries_named(wp_color_manager_v1::Primaries::Srgb);
                 }
-                if let Some(tf) = data.params.tf_named {
-                    if let Ok(named) = wp_color_manager_v1::TransferFunction::try_from(tf) {
-                        info.tf_named(named);
-                    }
+
+                // ── 3. tf_named (mandatory) ──
+                let tf = data
+                    .params
+                    .tf_named
+                    .and_then(|v| wp_color_manager_v1::TransferFunction::try_from(v).ok())
+                    .unwrap_or(wp_color_manager_v1::TransferFunction::Srgb);
+                info.tf_named(tf);
+
+                // ── 4. luminances (min × 10000, max, reference) ──
+                let (min_lum, max_lum, ref_lum) = data
+                    .params
+                    .luminances
+                    .unwrap_or((0, 80, 80));
+                info.luminances(min_lum, max_lum, ref_lum);
+
+                // ── 5. target_primaries — reuse `primaries` if no
+                //     mastering primaries are stored. mpv/Chromium use
+                //     this to know "what gamut should I tone-map for".
+                info.target_primaries(
+                    prim[0], prim[1], prim[2], prim[3],
+                    prim[4], prim[5], prim[6], prim[7],
+                );
+
+                // ── 6. target_luminance (min × 10000, max) ──
+                let (target_min, target_max) = data
+                    .params
+                    .mastering_luminance
+                    .unwrap_or((0, 80));
+                info.target_luminance(target_min, target_max);
+
+                // ── 7. target_max_cll / fall (only if HDR-tagged) ──
+                if let Some(cll) = data.params.max_cll {
+                    info.target_max_cll(cll);
                 }
-                // `done` is a destructor event — the server-side
-                // resource is finalized once this fires; client
-                // should no longer send requests on it.
+                if let Some(fall) = data.params.max_fall {
+                    info.target_max_fall(fall);
+                }
+
+                // ── 8. done — destructor; resource finalizes here ──
                 info.done();
             }
             _ => {}
