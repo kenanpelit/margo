@@ -1,8 +1,8 @@
 # Margo Road Map
 
-> Last updated: **2026-05-08** (post-Phase-2 scripting + presentation-time + CI sweep)
+> Last updated: **2026-05-08** (post-spring-everywhere + scripting Phase 3 + HDR Phase 1 + output-management mode change)
 > Branch: `main` (single-branch — Rust port complete; the C tree is the legacy reference under `src/`)
-> One-liner: **P0 → P4 fully shipped, P5/P6 long-term goals 6/6 in design or foundation phase, and a recent depth-pass on scripting + presentation-time + CI.** Margo is now a daily-driver Wayland compositor with full modern-protocol parity, niri-grade animations + spring physics, on-demand redraw scheduler, GitHub Actions CI gate, and an embedded Rhai scripting engine that can `dispatch(...)` any registered action and read live compositor state. The work ahead is depth on the long-term goals.
+> One-liner: **P0 → P4 fully shipped; P5/P6 long-term goals all moved from design to code.** Margo is now a daily-driver Wayland compositor with full modern-protocol parity, niri-grade animations + spring physics across every transition type, on-demand redraw scheduler, runtime DRM mode change via `wlr-randr`/`kanshi`, GitHub Actions CI gate, an embedded Rhai scripting engine that fires event hooks mid-event-loop, and `wp_color_management_v1` standing up for HDR-capable client probes. What's left is depth on each, not new feature areas.
 
 This document is **the source of truth** for what's shipped, what's worth a second pass, and what's queued. Each section follows the same shape:
 
@@ -19,11 +19,11 @@ This document is **the source of truth** for what's shipped, what's worth a seco
 | Core | UWSM, config, layouts, render, clipboard, layers, gamma, gestures | ✅ |
 | **P0** | session_lock, idle_notifier, hotplug, debug log, move/resize, smoke | **✅ 6/6** |
 | **P0+ polish** | text_input/IM, lock cursor-tracking, focus oracle, layer-mutate detect, tagview, z-order, scroller jitter, niri resize crossfade, deferred map | **✅ 12/12** |
-| **P1 protocol parity** | dmabuf+drm-syncobj, dmabuf-screencopy, region-crop, blockout, pointer_constraints+relative_pointer, xdg_activation, output_management, presentation-time | **✅ 8/8** |
-| **P2 perf/akıcılık** | frame_clock, spring engine, open/close/tag/focus/layer animations, hw cursor, direct scanout, damage opt | **✅ 6/6** |
+| **P1 protocol parity** | dmabuf+drm-syncobj, dmabuf-screencopy, region-crop, blockout, pointer_constraints+relative_pointer, xdg_activation, output_management (incl. mode change), presentation-time (VBlank-accurate) | **✅ 8/8** |
+| **P2 perf/akıcılık** | frame_clock, spring engine, open/close/tag/focus/layer animations (bezier + opt-in spring across all 5), hw cursor, direct scanout, damage opt | **✅ 6/6** |
 | **P3 window mgmt v2** | scratchpad+named, mango/layerrule parity, CSD/SSD policy, IPC parity, XWayland HiDPI env, popup focus | **✅ 6/6** |
-| **P4 tooling** | smoke-winit, manual checklist, mctl JSON/rules/check-config, post-install smoke, shell completions | **✅ 6/6** |
-| **P5/P6 long-term** | spatial canvas, adaptive layout, drop shadow ✓ — built-in portal, HDR, scripting in design/foundation | **6/6 partial** |
+| **P4 tooling** | smoke-winit, manual checklist, mctl JSON/rules/check-config, post-install smoke, shell completions, GitHub Actions CI | **✅ 7/7** |
+| **P5/P6 long-term** | spatial canvas ✓, adaptive layout ✓, drop shadow ✓, scripting Phase 3 ✓, HDR Phase 1 ✓; built-in portal still design-only | **5/6 code-shipped** |
 
 ---
 
@@ -240,47 +240,63 @@ Each entry tagged `[x]` (code shipped), `[~]` (foundation or design committed), 
 *Worth revisiting:* Shadows look "perfectly sharp" because the SDF is exact — fine at 10–25 px shadow_size (user's config), unnaturalistic at huge sizes. Kawase blur is the next phase if real wide-shadow demand surfaces.
 
 ### `[~]` Built-in xdg-desktop-portal backend
-**Design: `docs/portal-design.md`.** 4 milestones — screencast (xdp-wlr fallback), screenshot, file chooser via xdp-gtk delegation, unified activation policy. Smithay 0.7 has no full xdp handler; needs zbus + per-method trait impl.
+**Design only: `docs/portal-design.md`.** 4 milestones — screencast (xdp-wlr fallback), screenshot, file chooser via xdp-gtk delegation, unified activation policy. Smithay 0.7 has no full xdp handler; needs zbus + per-method trait impl. Still vapour code-wise.
 
-### `[~]` HDR + color management
-**Design: `docs/hdr-design.md`.** 4 phases — `wp_color_management_v1` protocol scaffolding → linear-light fp16 composite path → KMS HDR scan-out (`HDR_OUTPUT_METADATA`) → ICC profile per-output 3D LUT. Per-phase LOC + hardware-test matrix (Intel/AMD/NVIDIA). DrmCompositor doesn't expose HDR primitives; drops to drm-rs directly.
+### `[~]` HDR + color management *(Phase 1 shipped)*
+**Phase 1 code: `margo/src/protocols/color_management.rs` (commit `25255a9`) + design `docs/hdr-design.md`.**
 
-### `[~]` Script/plugin system *(Phase 2 shipped)*
-**Phase 1+2 code: `margo/src/scripting.rs` (commits `562b5f7`, `13bdd57`) + design `docs/scripting-design.md`.** Rhai 1.24 sandboxed engine; `~/.config/margo/init.rhai` evaluated at startup with full action invocation and read-only state introspection.
+`wp_color_management_v1` global stands up; on bind it advertises supported primaries (sRGB / BT.2020 / Display-P3 / Adobe RGB), transfer functions (sRGB / ext_linear / ST2084-PQ / HLG / gamma 2.2), the perceptual rendering intent, and the parametric-creator feature surface. Chromium and mpv probes find a colour-managed compositor and light up their HDR decode paths even though composite still tone-maps to sRGB. ICC creator stubbed (Phase 4); parametric creator fully wired with all setters (`set_tf_named`, `set_primaries`, `set_luminances`, `set_mastering_*`, `set_max_cll`, `set_max_fall`).
+
+Per-surface trackers store the active description's identity in an atomic; Phase 2 (linear-light fp16 composite) reads it from the render path. Phase 3 is KMS HDR scan-out; Phase 4 is per-output ICC.
+
+### `[x]` Script/plugin system — Phases 1, 2, **3** shipped
+**`margo/src/scripting.rs` (commits `562b5f7`, `13bdd57`, `769141e`) + design `docs/scripting-design.md`.** Rhai 1.24 sandboxed engine; `~/.config/margo/init.rhai` evaluated at startup with full action invocation, read-only state introspection, AND event hooks that fire mid-event-loop.
 
 Bindings shipped:
 - `dispatch(action, args_array)` + zero-arg overload — invokes any registered margo action.
 - `spawn(cmd)`, `tag(n)` — convenience helpers.
 - `current_tag()`, `current_tagmask()`, `focused_appid()`, `focused_title()`, `focused_monitor_name()`, `monitor_count()`, `monitor_names()`, `client_count()` — read-only state.
-- `on_focus_change`, `on_tag_switch`, `on_window_open` — Phase 3 forward-compat stubs that accept registrations today.
+- **`on_focus_change(fn())`** — fires from `focus_surface` (post-IPC-broadcast, gated on `prev != new`).
+- **`on_tag_switch(fn())`** — fires from `view_tag` after arrange + IPC.
+- **`on_window_open(fn())`** — fires from `finalize_initial_map` after window-rules + focus.
 
-State-access pattern: thread-local raw pointer set during `run_user_init`, cleared via RAII guard. Same contract reuses for Phase 3 event hooks. Rhai's `print` / `debug` channels routed into tracing so script output lands in `journalctl`. Example: `contrib/scripts/init.example.rhai`.
+State-access pattern: thread-local raw pointer set during eval, cleared via RAII guard. Hook firing uses an Option-take/restore dance so a re-entrant hook (a hook calls `dispatch(...)` triggering another event) finds `None` and is a no-op — recursion guard for free. Rhai's `print` / `debug` channels routed into tracing so script output lands in `journalctl`. Example: `contrib/scripts/init.example.rhai`.
 
 *Why Rhai over Lua:* pure Rust (no C build), type-safe `register_fn`, sandbox tight by default. Trade-off is unfamiliarity; mitigated by example scripts.
+
+What's still missing: `on_window_close` (needs stable identity for closing windows), `on_output_change` (easy add when demand surfaces), `mctl run <script>` for one-shot scripts (Phase 4), plugin packaging (Phase 5).
 
 ---
 
 ## What's queued (next sprint candidates)
 
-Recently shipped (this depth-pass):
-- ✓ **Scripting Phase 2** — `dispatch(...)` + state introspection (commit `13bdd57`).
-- ✓ **CI workflow** — cargo build/test/clippy + `mctl check-config` on every PR (commit `2910567`).
-- ✓ **JSON schema versioning** — `"version": 1` field on `mctl status --json` (commit `2910567`).
-- ✓ **`presentation-time` accuracy** — feedback now signalled at VBlank time, not submit time (commit `bcb6fb4`).
+Recently shipped (this two-sprint depth-pass):
+
+**Sprint 1 — tooling + observability:**
+- ✓ Scripting Phase 2 — `dispatch(...)` + state introspection (commit `13bdd57`).
+- ✓ GitHub Actions CI workflow — cargo build/test + `mctl check-config` on every PR (commit `2910567`).
+- ✓ JSON schema `"version": 1` field on `mctl status --json` (commit `2910567`).
+- ✓ `presentation-time` accuracy — feedback signalled at VBlank, not submit (commit `bcb6fb4`).
+
+**Sprint 2 — depth on long-term goals:**
+- ✓ **`wlr_output_management_v1` mode change** — runtime DRM atomic re-modeset; `wlr-randr --mode 1920x1080@60` succeeds, kanshi profile flips actually change scan-out resolution (commit `a26cc9b`).
+- ✓ **HDR Phase 1** — `wp_color_management_v1` global stands up, advertises primaries + TFs + parametric creator. Chromium / mpv detect colour-managed compositor and light up HDR paths (commit `25255a9`).
+- ✓ **Scripting Phase 3** — `on_focus_change` / `on_tag_switch` / `on_window_open` registrations fire from compositor event sites with recursion guard (commit `769141e`).
+- ✓ **Spring physics for open/close/tag/focus/layer** — `animation_clock_*` per-type config picks bezier or spring-baked curve. Default bezier; opt-in spring (commit `71b95a1`).
 
 Still queued — pick one:
 
-1. **`wlr_output_management_v1` mode change.** Wire the DRM atomic re-modeset so `wlr-randr --output DP-3 --mode 1920x1080@60` succeeds instead of `failed()`. ~150 LOC + careful testing. Highest day-to-day-impact item left.
+1. **HDR Phase 2 — linear-light fp16 composite.** Per-surface transfer-function decode at sample time; output stays SDR but the internal pipeline goes linear. Foundation for Phase 3 (KMS HDR scan-out). ~500 LOC + shader-test matrix.
 
-2. **HDR phase 1.** Hand-generate `wp_color_management_v1` bindings, register the manager global, accept all named primaries + transfer functions, store per-surface state without changing render. ~300 LOC. Lets Chromium / mpv enable internal HDR paths even though composite is still SDR — useful capability advertisement.
+2. **Built-in xdg-desktop-portal backend Milestone 1** — screencast over `xdp-wlr` fallback. Reduces the external `xdg-desktop-portal-wlr` dep; first concrete code on the portal track. ~600 LOC + zbus integration.
 
-3. **Scripting Phase 3 — event hooks.** Move the Rhai engine into `MargoState` so the `on_focus_change` / `on_tag_switch` / `on_window_open` registrations fire mid-event-loop. Multi-sprint — needs careful event-site instrumentation and a state-snapshot type for the hook callback args.
+3. **`on_window_close` event hook.** Needs a stable identity for closing windows so a handler can react before the client dies. Couples to the existing `closing_clients` list. ~100 LOC.
 
-4. **Spring physics for non-move animations.** Currently spring is opt-in for `animation_clock_move` only; open/close/tag/focus/layer all use bezier curves. Plumb `Spring` state into each animation type. Mostly mechanical; ~250 LOC.
+4. **Direct scanout observability.** Add `scanout: bool` per client to `mctl status --json`, sourced from `RenderFrameResult.states`. ~80 LOC + dwl-ipc-v2 extension.
 
-5. **Direct scanout observability.** Add a `scanout: bool` field per client in `mctl status --json` output, sourced from `RenderFrameResult.states`. Lets users verify "yes, this fullscreen mpv is on primary plane" without log-diving. ~80 LOC + dwl-ipc-v2 extension.
+5. **Smoke test in CI.** Run `scripts/smoke-winit.sh` headless via Xvfb in a dedicated workflow. Needs a lightweight terminal client on the runner + ~20 LOC YAML.
 
-6. **Smoke test in CI.** Run `scripts/smoke-winit.sh` headless via Xvfb in a dedicated workflow. Needs a lightweight terminal client on the runner and ~20 LOC of YAML.
+6. **`wlr_output_management_v1` disable-output.** The runtime mode change shipped; disable still rejected. Disable means tearing down an OutputDevice + migrating clients to a remaining output. ~200 LOC + careful testing.
 
 ---
 
