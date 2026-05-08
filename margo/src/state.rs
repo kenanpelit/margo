@@ -1109,6 +1109,13 @@ pub struct MargoState {
     /// Held outside the apply path because the handler runs on
     /// MargoState and doesn't have a borrow on the udev BackendData.
     pub pending_output_mode_changes: Vec<crate::PendingOutputModeChange>,
+    /// `wp_color_management_v1` (staging) — Phase 1 scaffolding.
+    /// The global is registered so Chromium / mpv probe-detection
+    /// finds a colour-managed compositor and lights up their HDR
+    /// decode paths. Composite stays sRGB; per-surface descriptions
+    /// are stored on the surface tracker, not yet read by render.
+    /// Phase 2 (linear-light fp16 composite) consumes these.
+    pub color_management_state: crate::protocols::color_management::ColorManagementState,
     /// `wp_presentation` global. Lets clients (kitty, mpv, native
     /// Wayland Vulkan games via DXVK / VKD3D, video conferencing
     /// apps that adapt their pacing to the actual display refresh)
@@ -1256,6 +1263,17 @@ impl MargoState {
                 Self,
                 _,
             >(&dh, |_client| true);
+        // wp_color_management_v1 (staging) — Phase 1 scaffolding.
+        // Standing the global up early lets HDR-aware clients
+        // (Chromium, mpv) detect "this compositor speaks colour
+        // management" and enable their decode paths even though
+        // composite is still SDR. See `protocols/color_management.rs`
+        // and `docs/hdr-design.md` for the four-phase rollout.
+        let color_management_state =
+            crate::protocols::color_management::ColorManagementState::new::<Self, _>(
+                &dh,
+                |_client| true,
+            );
         // Clock id 1 = CLOCK_MONOTONIC. That's the same domain
         // `monotonic_now()` in the udev backend uses, so the
         // timestamps we publish are consistent with the ones
@@ -1320,6 +1338,7 @@ impl MargoState {
             xdg_activation_state,
             output_management_state,
             pending_output_mode_changes: Vec::new(),
+            color_management_state,
             presentation_state,
             space,
             popups,
@@ -6057,6 +6076,18 @@ impl crate::protocols::output_management::OutputManagementHandler for MargoState
 }
 crate::delegate_output_management!(MargoState);
 delegate_presentation!(MargoState);
+
+// wp_color_management_v1 (staging) handler — Phase 1 scaffolding.
+// The actual logic is dispatch-driven inside the protocols module;
+// MargoState only needs to expose the manager state.
+impl crate::protocols::color_management::ColorManagementHandler for MargoState {
+    fn color_management_state(
+        &mut self,
+    ) -> &mut crate::protocols::color_management::ColorManagementState {
+        &mut self.color_management_state
+    }
+}
+crate::delegate_color_management!(MargoState);
 
 // ── Smithay delegate: Idle notify + Idle inhibit ─────────────────────────────
 

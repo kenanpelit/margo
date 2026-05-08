@@ -1,4 +1,5 @@
 /// Wayland protocol implementations for margo.
+pub mod color_management;
 pub mod dwl_ipc;
 pub mod ext_workspace;
 pub mod foreign_toplevel;
