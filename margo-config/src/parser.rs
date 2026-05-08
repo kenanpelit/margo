@@ -169,6 +169,16 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
         "animation_curve_opafadeout" => cfg.animation_curve_opafadeout = parse_bezier(val)?,
         "animation_curve_canvas_pan" => cfg.animation_curve_canvas_pan = parse_bezier(val)?,
         "animation_curve_canvas_zoom" => cfg.animation_curve_canvas_zoom = parse_bezier(val)?,
+        "animation_clock_move" => cfg.animation_clock_move = val.trim().to_lowercase(),
+        "animation_spring_stiffness" => {
+            cfg.animation_spring_stiffness = val.trim().parse().unwrap_or(800.0)
+        }
+        "animation_spring_damping_ratio" => {
+            cfg.animation_spring_damping_ratio = val.trim().parse().unwrap_or(1.0)
+        }
+        "animation_spring_mass" => {
+            cfg.animation_spring_mass = val.trim().parse().unwrap_or(1.0)
+        }
 
         // scroller
         "scroller_structs" => cfg.scroller_structs = parse_i32(val),

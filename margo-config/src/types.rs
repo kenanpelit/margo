@@ -447,6 +447,23 @@ pub struct Config {
     pub animation_curve_canvas_pan: BezierCurve,
     pub animation_duration_canvas_zoom: u32,
     pub animation_curve_canvas_zoom: BezierCurve,
+    /// Animation engine for the move/tile transition. `"bezier"` (default)
+    /// drives the existing baked-curve + fixed-duration model; `"spring"`
+    /// switches to a critically-damped harmonic oscillator that
+    /// preserves velocity across mid-flight retargets and settles in a
+    /// refresh-rate-invariant way. See `animation::spring` for the
+    /// integrator. Other animation types (open/close/tag/focus, opacity
+    /// fades, canvas pan/zoom) keep using bezier regardless.
+    pub animation_clock_move: String,
+    /// Spring constant. Higher → snappier pull toward the target.
+    /// Niri's window-movement default is 800.
+    pub animation_spring_stiffness: f64,
+    /// Damping ratio. 1.0 = critical (no overshoot). Set <1 for bouncy
+    /// feels, >1 for sluggish settles. 0.85–1.0 is the sane window-move
+    /// range.
+    pub animation_spring_damping_ratio: f64,
+    /// Effective mass. 1.0 is canonical.
+    pub animation_spring_mass: f64,
 
     // scroller
     pub scroller_structs: i32,
@@ -654,6 +671,10 @@ impl Default for Config {
             animation_curve_canvas_pan: BezierCurve::default(),
             animation_duration_canvas_zoom: 300,
             animation_curve_canvas_zoom: BezierCurve::default(),
+            animation_clock_move: "bezier".into(),
+            animation_spring_stiffness: 800.0,
+            animation_spring_damping_ratio: 1.0,
+            animation_spring_mass: 1.0,
 
             scroller_structs: 20,
             scroller_default_proportion: 0.9,

@@ -661,46 +661,128 @@ impl MargoMonitor {
 
 // ── Animation tick ────────────────────────────────────────────────────────────
 
+/// Per-call parameters for [`tick_animations`]. Bundles the move-animation
+/// duration (used for both bezier ticks and resize-snapshot expiry) with
+/// the spring physics configuration, so the call site doesn't have to
+/// thread four scalars individually.
+#[derive(Debug, Clone, Copy)]
+pub struct AnimTickSpec {
+    /// Total bezier duration in `now_ms` units. Also bounds resize
+    /// snapshot life-time regardless of which clock is in use.
+    pub duration_move: u32,
+    /// `true` → spring physics integrator drives the move animation;
+    /// `false` → original bezier sampling.
+    pub use_spring: bool,
+    /// Pre-built spring (stiffness/damping/mass already resolved from
+    /// the damping ratio). Ignored when `use_spring` is false.
+    pub spring: crate::animation::spring::Spring,
+}
+
 pub fn tick_animations(
     clients: &mut [MargoClient],
     curves: &AnimationCurves,
     now_ms: u32,
-    animation_duration_move: u32,
+    spec: AnimTickSpec,
 ) -> bool {
     let mut changed = false;
     for c in clients.iter_mut() {
-        // Resize-snapshot expiry runs every tick, independent of the
-        // move animation: the snapshot's crossfade ends at
-        // `animation_duration_move`, after which it's pure overhead
-        // (alpha = 0, contributes no pixels) and should be dropped so
-        // future renders skip the live+snapshot composite path.
-        if let Some(snapshot) = c.resize_snapshot.as_ref() {
-            let dur = std::time::Duration::from_millis(animation_duration_move as u64);
-            if snapshot.captured_at.elapsed() >= dur {
-                c.resize_snapshot = None;
-                changed = true;
+        // Resize-snapshot expiry. Bezier mode caps the snapshot's life
+        // at `duration_move` (its crossfade alpha is fully transparent
+        // by then anyway). Spring mode has no fixed duration — the
+        // snapshot is dropped when the spring settles, inside the
+        // settle branch below — so we only run the wall-clock cap on
+        // bezier here. Otherwise a long spring overshoot would lose
+        // its snapshot mid-flight and the live surface (still at the
+        // pre-resize size) would suddenly pop into view.
+        if !spec.use_spring {
+            if let Some(snapshot) = c.resize_snapshot.as_ref() {
+                let dur = std::time::Duration::from_millis(spec.duration_move as u64);
+                if snapshot.captured_at.elapsed() >= dur {
+                    c.resize_snapshot = None;
+                    changed = true;
+                }
             }
         }
 
         let anim = &mut c.animation;
         if !anim.running { continue; }
         changed = true;
-        let elapsed = now_ms.wrapping_sub(anim.time_started);
-        if elapsed >= anim.duration {
-            anim.running = false;
-            c.geom = anim.current;
-            // Slot animation settled: also drop any lingering
-            // snapshot (defensive — the expiry check above usually
-            // catches it first).
-            c.resize_snapshot = None;
-            continue;
+
+        if spec.use_spring {
+            // Spring path. dt is the wall-clock delta since our last
+            // tick (clamped to a single frame's worth — a stalled
+            // event loop must not blow up the integrator with a
+            // multi-second `dt`). The integrator itself sub-steps at
+            // 1 ms regardless of `dt`, so this clamp is just defence
+            // in depth.
+            let dt_ms = now_ms.wrapping_sub(anim.last_tick_ms).min(64);
+            anim.last_tick_ms = now_ms;
+            let dt = dt_ms as f64 / 1000.0;
+
+            // Integrate four independent springs (x, y, w, h). Each
+            // channel keeps its own velocity so the pinned dimension
+            // can settle while the others are still moving.
+            let targets = [
+                anim.current.x as f64,
+                anim.current.y as f64,
+                anim.current.width as f64,
+                anim.current.height as f64,
+            ];
+            let geom_now = [
+                c.geom.x as f64,
+                c.geom.y as f64,
+                c.geom.width as f64,
+                c.geom.height as f64,
+            ];
+
+            let mut all_settled = true;
+            let mut new_geom = [0.0f64; 4];
+            for (i, ((&pos, &target), v)) in geom_now
+                .iter()
+                .zip(targets.iter())
+                .zip(anim.velocity.iter_mut())
+                .enumerate()
+            {
+                let (np, nv) = spec.spring.step(pos, target, *v, dt);
+                new_geom[i] = np;
+                *v = nv;
+                if !spec.spring.is_settled(np, target, nv) {
+                    all_settled = false;
+                }
+            }
+
+            c.geom.x = new_geom[0].round() as i32;
+            c.geom.y = new_geom[1].round() as i32;
+            c.geom.width = new_geom[2].round() as i32;
+            c.geom.height = new_geom[3].round() as i32;
+
+            if all_settled {
+                // Snap exactly to target on settle so we don't leave
+                // a sub-pixel residual that survives the next render.
+                anim.running = false;
+                c.geom = anim.current;
+                c.resize_snapshot = None;
+                anim.velocity = [0.0; 4];
+            }
+        } else {
+            // Bezier path (original behaviour).
+            let elapsed = now_ms.wrapping_sub(anim.time_started);
+            if elapsed >= anim.duration {
+                anim.running = false;
+                c.geom = anim.current;
+                // Slot animation settled: also drop any lingering
+                // snapshot (defensive — the expiry check above usually
+                // catches it first).
+                c.resize_snapshot = None;
+                continue;
+            }
+            let t = elapsed as f64 / anim.duration as f64;
+            let s = curves.sample(t, anim.action);
+            c.geom.x = lerp_i32(anim.initial.x, anim.current.x, s);
+            c.geom.y = lerp_i32(anim.initial.y, anim.current.y, s);
+            c.geom.width = lerp_i32(anim.initial.width, anim.current.width, s);
+            c.geom.height = lerp_i32(anim.initial.height, anim.current.height, s);
         }
-        let t = elapsed as f64 / anim.duration as f64;
-        let s = curves.sample(t, anim.action);
-        c.geom.x = lerp_i32(anim.initial.x, anim.current.x, s);
-        c.geom.y = lerp_i32(anim.initial.y, anim.current.y, s);
-        c.geom.width = lerp_i32(anim.initial.width, anim.current.width, s);
-        c.geom.height = lerp_i32(anim.initial.height, anim.current.height, s);
     }
     changed
 }
@@ -1553,14 +1635,28 @@ impl MargoState {
                 {
                     self.clients[client_idx].snapshot_pending = true;
                 }
+                // Spring retarget: if the previous animation was still
+                // running, carry its per-channel velocity forward.
+                // Without this, the integrator would re-start from rest
+                // every time the layout reshuffled mid-flight and the
+                // window would visibly hitch — the whole point of the
+                // spring clock is that retargets stay continuous.
+                // Bezier ignores this field; harmless if it's set.
+                let prev_velocity = if self.clients[client_idx].animation.running {
+                    self.clients[client_idx].animation.velocity
+                } else {
+                    [0.0; 4]
+                };
                 self.clients[client_idx].animation = ClientAnimation {
                     should_animate: true,
                     running: true,
                     time_started: now,
+                    last_tick_ms: now,
                     duration: self.config.animation_duration_move.max(1),
                     initial,
                     current: rect,
                     action: AnimationType::Move,
+                    velocity: prev_velocity,
                     ..Default::default()
                 };
                 self.clients[client_idx].geom = initial;

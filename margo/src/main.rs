@@ -328,8 +328,20 @@ fn main() -> Result<()> {
         // Animation tick — split borrow across fields
         let now = utils::now_ms();
         let animations_changed = {
+            let cfg = &state.config;
+            let use_spring = cfg.animation_clock_move.eq_ignore_ascii_case("spring");
+            let spring = animation::spring::Spring::with_damping_ratio(
+                cfg.animation_spring_stiffness,
+                cfg.animation_spring_mass,
+                cfg.animation_spring_damping_ratio,
+            );
+            let spec = state::AnimTickSpec {
+                duration_move: cfg.animation_duration_move,
+                use_spring,
+                spring,
+            };
             let (clients, curves) = (&mut state.clients, &state.animation_curves);
-            state::tick_animations(clients, curves, now, state.config.animation_duration_move)
+            state::tick_animations(clients, curves, now, spec)
         };
         if animations_changed {
             let animated: Vec<_> = state

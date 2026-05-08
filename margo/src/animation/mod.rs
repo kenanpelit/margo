@@ -126,6 +126,17 @@ pub struct ClientAnimation {
     pub initial: Rect,
     pub current: Rect,
     pub action: AnimationType,
+    /// Last tick's wall-clock time in `now_ms` units. Spring integration
+    /// uses `now_ms - last_tick_ms` as `dt`; bezier ticks ignore it.
+    /// Initialised to `time_started` when the animation kicks off so the
+    /// very first sub-step gets a small but non-zero `dt`.
+    pub last_tick_ms: u32,
+    /// Per-channel velocity for the spring integrator (x, y, w, h, in
+    /// logical-pixels-per-second). Bezier path leaves this at zero.
+    /// Carried across retargets so a window already in motion doesn't
+    /// snap when the layout reshuffles mid-animation — the spring
+    /// reaches the new target while preserving the velocity it had.
+    pub velocity: [f64; 4],
 }
 
 #[derive(Debug, Clone, Default)]
