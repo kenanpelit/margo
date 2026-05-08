@@ -139,6 +139,30 @@ pub struct ClientAnimation {
     pub velocity: [f64; 4],
 }
 
+/// Per-client open/close transition state. Set when the client maps for
+/// the first time (open) or when its toplevel role is destroyed
+/// (close); cleared when the animation settles.
+///
+/// The actual texture used by the render path lives on the client (open
+/// animation) or in [`crate::state::ClosingClient`] (close — by the time
+/// we draw the close, the wl_surface may already be gone).
+#[derive(Debug, Clone, Copy)]
+pub struct OpenCloseClientAnim {
+    pub kind: crate::render::open_close::OpenCloseKind,
+    pub time_started: u32,
+    pub duration: u32,
+    /// 0..=1 progress through the curve. Both open and close animate
+    /// `progress` in the same direction; `OpenCloseRenderElement` knows
+    /// which side of the transition it's on via its `is_close` flag.
+    pub progress: f32,
+    /// Scale at the "extreme" end of the transition (start of open,
+    /// end of close). 0.5–0.8 typical. Pulled from
+    /// [`margo_config::Config::zoom_initial_ratio`] /
+    /// [`margo_config::Config::zoom_end_ratio`] when the animation
+    /// fires; baked here so config changes mid-flight don't snap.
+    pub extreme_scale: f32,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct OpacityAnimation {
     pub running: bool,

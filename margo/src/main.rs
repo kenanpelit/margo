@@ -340,8 +340,12 @@ fn main() -> Result<()> {
                 use_spring,
                 spring,
             };
-            let (clients, curves) = (&mut state.clients, &state.animation_curves);
-            state::tick_animations(clients, curves, now, spec)
+            let (clients, curves, closing) = (
+                &mut state.clients,
+                &state.animation_curves,
+                &mut state.closing_clients,
+            );
+            state::tick_animations(clients, curves, now, spec, closing)
         };
         if animations_changed {
             let animated: Vec<_> = state

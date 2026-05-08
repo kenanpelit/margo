@@ -465,6 +465,25 @@ pub struct MargoClient {
     /// enough); at that point we apply rules, place the window, and
     /// hand it focus.
     pub is_initial_map_pending: bool,
+    /// Open transition state. Set in `finalize_initial_map` if open
+    /// animations are enabled; cleared when the curve settles. While
+    /// `Some`, the renderer captures a `GlesTexture` snapshot on the
+    /// first frame after the client commits a buffer, then renders
+    /// that texture scaled + faded around the slot's centre. The live
+    /// `wl_surface` is hidden during the transition so the user never
+    /// sees the unanimated "instant pop" frame underneath.
+    pub opening_animation: Option<crate::animation::OpenCloseClientAnim>,
+    /// Captured surface texture for the open animation. Populated on
+    /// the first render after `opening_animation` becomes `Some` and
+    /// the surface has a usable buffer; dropped along with
+    /// `opening_animation` when the curve settles.
+    pub opening_texture: Option<smithay::backend::renderer::gles::GlesTexture>,
+    /// Set when `opening_animation` is created; cleared by the renderer
+    /// once it actually captures a texture into `opening_texture`. The
+    /// two-step dance mirrors `snapshot_pending` — `finalize_initial_map`
+    /// runs from a commit handler that doesn't have a `GlesRenderer`
+    /// in scope, so the GPU work has to defer to the next render.
+    pub opening_capture_pending: bool,
     pub animation_type_open: Option<String>,
     pub animation_type_close: Option<String>,
     pub app_id: String,
@@ -539,6 +558,9 @@ impl MargoClient {
             resize_snapshot: None,
             snapshot_pending: false,
             is_initial_map_pending: false,
+            opening_animation: None,
+            opening_texture: None,
+            opening_capture_pending: false,
             animation_type_open: None,
             animation_type_close: None,
             app_id: String::new(),
@@ -683,8 +705,48 @@ pub fn tick_animations(
     curves: &AnimationCurves,
     now_ms: u32,
     spec: AnimTickSpec,
+    closing_clients: &mut Vec<ClosingClient>,
 ) -> bool {
     let mut changed = false;
+    // Advance opening animations on each client. Settles drop both
+    // the animation state and the captured texture so the live
+    // wl_surface takes over on the next frame.
+    for c in clients.iter_mut() {
+        if let Some(anim) = c.opening_animation.as_mut() {
+            let elapsed = now_ms.wrapping_sub(anim.time_started);
+            if elapsed >= anim.duration {
+                c.opening_animation = None;
+                c.opening_texture = None;
+                c.opening_capture_pending = false;
+                changed = true;
+            } else {
+                let raw = elapsed as f64 / anim.duration as f64;
+                anim.progress = curves.sample(raw, AnimationType::Open) as f32;
+                changed = true;
+            }
+        }
+    }
+
+    // Advance close animations and pop entries that have settled.
+    // Iterate in reverse so we can `swap_remove` cleanly without
+    // resampling indices. (Order doesn't matter visually — closing
+    // clients don't interact with each other beyond stacking, which
+    // we don't preserve in this list anyway.)
+    let mut i = 0;
+    while i < closing_clients.len() {
+        let cc = &mut closing_clients[i];
+        let elapsed = now_ms.wrapping_sub(cc.time_started);
+        if elapsed >= cc.duration {
+            closing_clients.swap_remove(i);
+            changed = true;
+            continue;
+        }
+        let raw = elapsed as f64 / cc.duration as f64;
+        cc.progress = curves.sample(raw, AnimationType::Close) as f32;
+        changed = true;
+        i += 1;
+    }
+
     for c in clients.iter_mut() {
         // Resize-snapshot expiry. Bezier mode caps the snapshot's life
         // at `duration_move` (its crossfade alpha is fully transparent
@@ -795,6 +857,59 @@ fn lerp_i32(a: i32, b: i32, t: f64) -> i32 {
 // ── Top-level compositor state ────────────────────────────────────────────────
 
 pub type DmabufImportHook = Rc<RefCell<dyn FnMut(&Dmabuf) -> bool>>;
+
+/// A window in the middle of its close animation. Lives in
+/// [`MargoState::closing_clients`] from `toplevel_destroyed` (or X11
+/// `destroyed_window`) until `tick_animations` decides the curve is
+/// done. The captured `texture` is what the render path draws — we
+/// can't render the live `wl_surface` because it's already gone.
+#[derive(Debug)]
+pub struct ClosingClient {
+    /// Stable scene-graph ID, derived from the original window so
+    /// smithay's damage tracker keeps tracking the slot consistently
+    /// across frames of the close animation.
+    pub id: smithay::backend::renderer::element::Id,
+    /// Captured surface tree as a single texture. `None` while the
+    /// render path hasn't run yet; the renderer fills it in on the
+    /// first frame after destruction. If the capture fails (surface
+    /// was already torn down), the entry is dropped without
+    /// rendering — better to skip the animation than crash.
+    pub texture: Option<smithay::backend::renderer::gles::GlesTexture>,
+    /// True until [`texture`] is populated. The renderer drains all
+    /// pending captures before building elements each frame.
+    pub capture_pending: bool,
+    /// Logical-pixel rect the window occupied when the close started.
+    /// Used as the "stable" target for the OpenCloseRenderElement —
+    /// the scale/alpha curves animate around this rect's centre.
+    pub geom: Rect,
+    /// Monitor the window was on. Used by the renderer to decide
+    /// which output draws this entry (multi-monitor setups).
+    pub monitor: usize,
+    /// Tag bitmask the window was visible on. The render path skips
+    /// this entry on monitors whose current tagset doesn't intersect.
+    pub tags: u32,
+    /// Animation start time in `now_ms` units.
+    pub time_started: u32,
+    /// Total animation duration in milliseconds.
+    pub duration: u32,
+    /// 0..=1 progress through the close curve. 0 = just started
+    /// closing (still fully visible), 1 = fully gone. The render
+    /// element flips its alpha/scale curve on `is_close = true`.
+    pub progress: f32,
+    /// Animation flavour (Zoom / Fade / Slide).
+    pub kind: crate::render::open_close::OpenCloseKind,
+    /// Final scale at progress = 1. Pulled from
+    /// [`margo_config::Config::zoom_end_ratio`] when the animation
+    /// fires; baked here so config changes mid-flight don't snap.
+    pub extreme_scale: f32,
+    /// Corner radius (logical px) so the closing snapshot still has
+    /// rounded corners during fade-out. 0 = no clipping.
+    pub border_radius: f32,
+    /// We need to fetch the wl_surface buffer once to capture; after
+    /// that this surface reference is dropped. Held only while
+    /// `capture_pending == true`.
+    pub source_surface: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
+}
 
 pub struct MargoState {
     pub compositor_state: CompositorState,
@@ -948,6 +1063,16 @@ pub struct MargoState {
     pub pending_gamma: Vec<(Output, Option<Vec<u16>>)>,
     pub screencopy_state: crate::protocols::screencopy::ScreencopyManagerState,
     pub libinput_devices: Vec<smithay::reexports::input::Device>,
+    /// Windows that have been requested to close but are still on screen
+    /// for the duration of the close animation. Each entry carries a
+    /// captured `GlesTexture` of the window's last visible frame plus
+    /// the geometry / monitor / tags it was on, so the renderer can
+    /// keep painting it after the live `wl_surface` is gone.
+    /// `tick_animations` advances each entry's progress and pops it
+    /// when the curve settles. Pending captures (the wl_surface was
+    /// still alive at destruction time but we hadn't rendered yet)
+    /// live as `None` in `texture` until the next render fills them in.
+    pub closing_clients: Vec<ClosingClient>,
 }
 
 impl MargoState {
@@ -1091,6 +1216,7 @@ impl MargoState {
             pending_gamma: Vec::new(),
             screencopy_state,
             libinput_devices: Vec::new(),
+            closing_clients: Vec::new(),
             config,
         }
     }
@@ -3272,12 +3398,48 @@ impl MargoState {
             self.arrange_monitor(target_mon);
         }
 
+        // Kick off the open animation if globally enabled, this client
+        // didn't opt out (window-rule `no_animation` / `open_silent`),
+        // and the user configured a non-zero open duration. The
+        // renderer captures the surface into a `GlesTexture` on the
+        // very next frame (driven by `opening_capture_pending`) and
+        // from then on the live `wl_surface` is hidden — we only draw
+        // the snapshot through `OpenCloseRenderElement` until the
+        // curve settles. This eliminates the "instant pop at the new
+        // geom for one frame, then the animation kicks in" flash that
+        // pure wrap-the-live-surface approaches produce.
+        if self.config.animations
+            && self.config.animation_duration_open > 0
+            && !self.clients[idx].no_animation
+            && !self.clients[idx].open_silent
+        {
+            // Per-client override (set by window-rule
+            // `animation_type_open=…`) wins over the global config.
+            let kind_str = self.clients[idx]
+                .animation_type_open
+                .clone()
+                .unwrap_or_else(|| self.config.animation_type_open.clone());
+            let kind = crate::render::open_close::OpenCloseKind::parse(&kind_str);
+            let now = crate::utils::now_ms();
+            self.clients[idx].opening_animation =
+                Some(crate::animation::OpenCloseClientAnim {
+                    kind,
+                    time_started: now,
+                    duration: self.config.animation_duration_open,
+                    progress: 0.0,
+                    extreme_scale: self.config.zoom_initial_ratio.clamp(0.05, 1.0),
+                });
+            self.clients[idx].opening_capture_pending = true;
+            self.request_repaint();
+        }
+
         tracing::info!(
             "finalize_initial_map: app_id={} idx={idx} monitor={target_mon} \
-             floating={} tags={:#x}",
+             floating={} tags={:#x} open_anim={}",
             self.clients[idx].app_id,
             self.clients[idx].is_floating,
             self.clients[idx].tags,
+            self.clients[idx].opening_animation.is_some(),
         );
     }
 }
@@ -3451,6 +3613,49 @@ impl XdgShellHandler for MargoState {
         }) {
             if let Some(handle) = self.clients[idx].foreign_toplevel_handle.take() {
                 handle.send_closed();
+            }
+            // Enqueue a close animation entry BEFORE removing the
+            // client. The renderer captures the wl_surface to a
+            // texture on its very next frame (the surface is still
+            // alive — Wayland clients destroy their xdg_toplevel role
+            // first, then their wl_surface), and from then on draws
+            // the texture scaled+faded out around the slot's centre.
+            // Without this, the user sees windows wink out instantly
+            // when closed; with it, they pull in like the rest of a
+            // modern compositor's behaviour.
+            //
+            // We still unmap and remove from `clients` immediately so
+            // every other state machine (focus stack, layout, scene
+            // ordering) treats the close as having happened. The
+            // closing entry lives in `closing_clients` purely as a
+            // render-side concern.
+            if self.config.animations
+                && self.config.animation_duration_close > 0
+                && !self.clients[idx].no_animation
+            {
+                let kind_str = self.clients[idx]
+                    .animation_type_close
+                    .clone()
+                    .unwrap_or_else(|| self.config.animation_type_close.clone());
+                let kind = crate::render::open_close::OpenCloseKind::parse(&kind_str);
+                let now = crate::utils::now_ms();
+                let c = &self.clients[idx];
+                self.closing_clients.push(ClosingClient {
+                    id: smithay::backend::renderer::element::Id::new(),
+                    texture: None,
+                    capture_pending: true,
+                    geom: c.geom,
+                    monitor: c.monitor,
+                    tags: c.tags,
+                    time_started: now,
+                    duration: self.config.animation_duration_close,
+                    progress: 0.0,
+                    kind,
+                    extreme_scale: self.config.zoom_end_ratio.clamp(0.05, 1.0),
+                    border_radius: self.config.border_radius as f32,
+                    source_surface: Some(wl_surf.clone()),
+                });
+                self.request_repaint();
             }
             let window = self.clients[idx].window.clone();
             self.space.unmap_elem(&window);

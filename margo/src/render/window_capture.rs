@@ -19,6 +19,7 @@ use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::gles::{GlesError, GlesRenderer, GlesTexture};
 use smithay::backend::renderer::{Bind, Color32F, Offscreen};
 use smithay::desktop::Window;
+use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Buffer as BufferCoord, Logical, Physical, Scale, Size, Transform};
 use smithay::wayland::seat::WaylandFocus;
 
@@ -80,6 +81,52 @@ pub fn capture_window(
             // anything else as a recoverable failure by returning a
             // generic GL error — the caller falls back to drawing the
             // live surface.
+            _ => GlesError::UnknownPixelFormat,
+        })?;
+    drop(target);
+
+    Ok(texture)
+}
+
+/// Same as [`capture_window`] but takes a raw `wl_surface` — used by
+/// the close animation, where the smithay `Window` wrapper is already
+/// gone (we removed the client from the layout's `clients` vec) but
+/// the bare `wl_surface` is still alive long enough to grab one final
+/// frame. Identical body to `capture_window` minus the `Window::wl_surface()`
+/// indirection; if you change one, change the other.
+pub fn capture_surface(
+    renderer: &mut GlesRenderer,
+    surface: &WlSurface,
+    size: Size<i32, Logical>,
+    scale: Scale<f64>,
+) -> Result<GlesTexture, GlesError> {
+    let physical_size: Size<i32, Physical> = size.to_physical_precise_round(scale);
+    let buffer_size: Size<i32, BufferCoord> =
+        (physical_size.w.max(1), physical_size.h.max(1)).into();
+
+    let mut texture: GlesTexture =
+        <GlesRenderer as Offscreen<GlesTexture>>::create_buffer(
+            renderer,
+            DrmFourcc::Abgr8888,
+            buffer_size,
+        )?;
+
+    let elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
+        render_elements_from_surface_tree(
+            renderer,
+            surface,
+            (0, 0),
+            scale,
+            1.0,
+            Kind::Unspecified,
+        );
+
+    let mut target = renderer.bind(&mut texture)?;
+    let mut tracker = OutputDamageTracker::new(physical_size, scale, Transform::Normal);
+    tracker
+        .render_output(renderer, &mut target, 0, &elements, Color32F::TRANSPARENT)
+        .map_err(|err| match err {
+            smithay::backend::renderer::damage::Error::Rendering(e) => e,
             _ => GlesError::UnknownPixelFormat,
         })?;
     drop(target);

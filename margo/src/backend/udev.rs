@@ -68,6 +68,7 @@ render_elements! {
     Border=crate::render::rounded_border::RoundedBorderElement,
     Clipped=crate::render::clipped_surface::ClippedSurfaceRenderElement,
     Resize=crate::render::resize_render::ResizeRenderElement,
+    OpenClose=crate::render::open_close::OpenCloseRenderElement,
     Solid=smithay::backend::renderer::element::solid::SolidColorRenderElement,
 }
 
@@ -1221,6 +1222,136 @@ fn take_pending_snapshots(
     }
 }
 
+/// Drain `opening_capture_pending` and `ClosingClient::capture_pending`
+/// flags by capturing the corresponding wl_surface tree to a
+/// `GlesTexture`. Mirrors `take_pending_snapshots` but feeds the open
+/// and close transitions instead of the resize snapshot. Has to run on
+/// the render thread because `GlesRenderer` is the only place we can
+/// turn a wl_buffer into a sampleable texture.
+///
+/// Capture failures are demoted to "no animation": for the open path
+/// we drop `opening_animation` so the live surface gets drawn from the
+/// next frame; for the close path we drop the closing entry entirely.
+/// Better than rendering an empty rect.
+fn take_pending_open_close_captures(
+    renderer: &mut GlesRenderer,
+    od: &OutputDevice,
+    state: &mut MargoState,
+) {
+    let output_scale = od.output.current_scale().fractional_scale().into();
+
+    // Open captures — only for clients on this output.
+    let opening_idxs: Vec<usize> = state
+        .clients
+        .iter()
+        .enumerate()
+        .filter_map(|(i, c)| {
+            if c.opening_capture_pending
+                && c.opening_animation.is_some()
+                && state.monitors.get(c.monitor).is_some_and(|m| m.output == od.output)
+            {
+                Some(i)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    for idx in opening_idxs {
+        let (window, size) = {
+            let c = &state.clients[idx];
+            let geom = c.window.geometry();
+            (c.window.clone(), geom.size)
+        };
+        if size.w <= 0 || size.h <= 0 {
+            // No buffer attached yet (Qt clients especially commit
+            // null-buffer attaches during configure handshakes).
+            // Leave the flag set so we retry next frame; the
+            // animation timer will catch up once the buffer arrives.
+            continue;
+        }
+        match crate::render::window_capture::capture_window(renderer, &window, size, output_scale)
+        {
+            Ok(texture) => {
+                state.clients[idx].opening_texture = Some(texture);
+                state.clients[idx].opening_capture_pending = false;
+                tracing::debug!(
+                    "open_anim: captured {} ({}x{})",
+                    state.clients[idx].app_id,
+                    size.w,
+                    size.h,
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "open_anim: capture failed for {}: {e:?}",
+                    state.clients[idx].app_id
+                );
+                state.clients[idx].opening_animation = None;
+                state.clients[idx].opening_capture_pending = false;
+            }
+        }
+    }
+
+    // Close captures — only for entries on this output.
+    let close_idxs: Vec<usize> = state
+        .closing_clients
+        .iter()
+        .enumerate()
+        .filter_map(|(i, c)| {
+            if c.capture_pending
+                && state.monitors.get(c.monitor).is_some_and(|m| m.output == od.output)
+            {
+                Some(i)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    let mut to_drop: Vec<usize> = Vec::new();
+    for idx in close_idxs {
+        // We need a window-like handle to capture from. The closing
+        // entry kept the wl_surface alive; build a temporary capture
+        // from its surface tree directly.
+        let Some(surface) = state.closing_clients[idx].source_surface.clone() else {
+            to_drop.push(idx);
+            continue;
+        };
+        let geom = state.closing_clients[idx].geom;
+        let size = smithay::utils::Size::<i32, smithay::utils::Logical>::from((
+            geom.width.max(1),
+            geom.height.max(1),
+        ));
+        match crate::render::window_capture::capture_surface(
+            renderer,
+            &surface,
+            size,
+            output_scale,
+        ) {
+            Ok(texture) => {
+                state.closing_clients[idx].texture = Some(texture);
+                state.closing_clients[idx].capture_pending = false;
+                state.closing_clients[idx].source_surface = None;
+                tracing::debug!(
+                    "close_anim: captured wl_surface ({}x{})",
+                    size.w,
+                    size.h,
+                );
+            }
+            Err(e) => {
+                tracing::warn!("close_anim: capture failed: {e:?}");
+                to_drop.push(idx);
+            }
+        }
+    }
+
+    // Drop failures (in reverse so indices stay valid).
+    for idx in to_drop.into_iter().rev() {
+        state.closing_clients.remove(idx);
+    }
+}
+
 fn build_render_elements(
     renderer: &mut GlesRenderer,
     od: &OutputDevice,
@@ -1396,9 +1527,24 @@ fn build_render_elements_inner(
         &od.output,
         output_geo,
         output_scale,
-        border_program,
-        clipped_surface_program,
+        border_program.clone(),
+        clipped_surface_program.clone(),
         for_screencast,
+        &mut elements,
+    );
+
+    // Closing-client snapshots. Each entry is a window whose toplevel
+    // role was destroyed but whose close animation hasn't finished;
+    // we render the captured texture scaled+faded around its last
+    // known geometry. Drawn AFTER the live clients so it's on top of
+    // its old layer band — slightly fragile if a new window mapped
+    // exactly underneath, but acceptable for a sub-second transition.
+    push_closing_clients(
+        state,
+        &od.output,
+        output_geo,
+        output_scale,
+        clipped_surface_program.clone(),
         &mut elements,
     );
 
@@ -1412,6 +1558,65 @@ fn build_render_elements_inner(
     );
 
     elements
+}
+
+/// Push render elements for windows in their close animation. Mirrors
+/// `push_client_elements` but operates on `state.closing_clients`
+/// (entries that survived `toplevel_destroyed` to play their fade-out)
+/// instead of mapped clients.
+fn push_closing_clients(
+    state: &MargoState,
+    output: &Output,
+    output_geo: Rectangle<i32, Logical>,
+    output_scale: f64,
+    clipped_surface_program: Option<GlesTexProgram>,
+    elements: &mut Vec<MargoRenderElement>,
+) {
+    let scale = Scale::from(output_scale);
+    let target_mon_idx = state
+        .monitors
+        .iter()
+        .position(|m| m.output == *output);
+    let Some(target_mon_idx) = target_mon_idx else {
+        return;
+    };
+    let tagset = if state.monitors[target_mon_idx].is_overview {
+        !0
+    } else {
+        state.monitors[target_mon_idx].current_tagset()
+    };
+
+    for cc in state.closing_clients.iter() {
+        if cc.monitor != target_mon_idx {
+            continue;
+        }
+        if (cc.tags & tagset) == 0 {
+            continue;
+        }
+        let Some(texture) = cc.texture.as_ref() else {
+            continue;
+        };
+        let dst = smithay::utils::Rectangle::new(
+            (cc.geom.x - output_geo.loc.x, cc.geom.y - output_geo.loc.y).into(),
+            (cc.geom.width.max(1), cc.geom.height.max(1)).into(),
+        );
+        elements.push(MargoRenderElement::OpenClose(
+            crate::render::open_close::OpenCloseRenderElement::new(
+                cc.id.clone(),
+                texture.clone(),
+                dst,
+                scale,
+                cc.progress,
+                1.0,
+                cc.kind,
+                true, // is_close
+                cc.extreme_scale,
+                smithay::backend::renderer::utils::CommitCounter::default(),
+                cc.border_radius,
+                clipped_surface_program.clone(),
+            ),
+        ));
+    }
 }
 
 fn push_client_elements(
@@ -1571,6 +1776,63 @@ fn push_client_elements(
                 // `ResizeRenderElement` returns empty so the live
                 // render below is NOT skipped — both layers always
                 // composite together for the crossfade.
+
+                // Open animation: if this client is in the middle of
+                // its open transition AND we've captured a texture
+                // for it, render the snapshot through OpenClose
+                // instead of the live surface tree. The live tree is
+                // SKIPPED entirely for the duration of the curve so
+                // the user doesn't see "instant pop, then animation"
+                // — the very first frame already animates from the
+                // `extreme_scale` start. Once the animation settles,
+                // `tick_animations` clears `opening_animation` and
+                // `opening_texture`, and the live render below picks
+                // up unmodified.
+                // Open animation: capture-pending OR texture-ready
+                // both suppress the live surface render. The reason
+                // we suppress even before capture: the live surface
+                // at progress = 0 would otherwise pop in at full
+                // alpha+scale for one frame before the animation
+                // kicks in. Better to draw nothing for that one
+                // frame than betray the transition.
+                if let Some(c) = client {
+                    if c.opening_animation.is_some() {
+                        if let Some((anim, tex)) = c
+                            .opening_animation
+                            .as_ref()
+                            .and_then(|a| c.opening_texture.as_ref().map(|t| (a, t)))
+                        {
+                            let dst = smithay::utils::Rectangle::new(
+                                (c.geom.x - output_geo.loc.x, c.geom.y - output_geo.loc.y)
+                                    .into(),
+                                (c.geom.width.max(1), c.geom.height.max(1)).into(),
+                            );
+                            let id =
+                                smithay::backend::renderer::element::Id::from_wayland_resource(
+                                    wl_surface,
+                                );
+                            elements.push(MargoRenderElement::OpenClose(
+                                crate::render::open_close::OpenCloseRenderElement::new(
+                                    id,
+                                    tex.clone(),
+                                    dst,
+                                    scale,
+                                    anim.progress,
+                                    1.0,
+                                    anim.kind,
+                                    false,
+                                    anim.extreme_scale,
+                                    smithay::backend::renderer::utils::CommitCounter::default(),
+                                    radius,
+                                    clipped_surface_program.clone(),
+                                ),
+                            ));
+                        }
+                        // capture_pending → emit nothing this frame; next
+                        // frame the texture will be ready.
+                        continue;
+                    }
+                }
 
                 // Two-texture niri-style crossfade: if a snapshot
                 // is active, capture the live surface tree to a
@@ -2183,6 +2445,7 @@ fn render_output(
     // point `tick_animations` clears `resize_snapshot` and we go back
     // to drawing the live surface.
     take_pending_snapshots(renderer, od, state);
+    take_pending_open_close_captures(renderer, od, state);
 
     let elements = build_render_elements(renderer, od, state);
     // Serve any pending wlr-screencopy frames for this output BEFORE the
