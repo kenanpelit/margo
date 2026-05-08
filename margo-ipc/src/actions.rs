@@ -275,6 +275,19 @@ pub const ACTIONS: &[Action] = &[
         detail: "",
     },
     Action {
+        name: "sticky_window",
+        aliases: &["togglesticky", "toggle_sticky", "sticky"],
+        args: "",
+        group: Group::Window,
+        summary: "Pin the focused window to every tag on its monitor.",
+        detail: "Saves the current tag mask, then sets tags = u32::MAX so the \
+                 window appears across every tag of its current monitor. \
+                 A second press restores the saved tag set. Equivalent to \
+                 niri-float-sticky's per-window sticky, built into the \
+                 compositor — no external daemon needed. Skipped silently \
+                 for windows currently in scratchpad state.",
+    },
+    Action {
         name: "killclient",
         aliases: &[],
         args: "",

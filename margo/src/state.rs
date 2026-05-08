@@ -3596,6 +3596,101 @@ impl MargoState {
         let current_pos = layouts.iter().position(|name| name == current).unwrap_or(0);
         let next = layouts[(current_pos + 1) % layouts.len()].clone();
         self.set_layout(&next);
+        self.notify_layout(&next);
+    }
+
+    /// Toggle the focused client's "sticky" / global state — visible
+    /// on every tag of its current monitor instead of only the tag
+    /// it was tagged with. Equivalent to niri-float-sticky's
+    /// per-window sticky toggle, but built into the compositor so
+    /// no external daemon is needed.
+    ///
+    /// Implementation: when sticking, save the current tag mask onto
+    /// `old_tags` and overwrite `tags = u32::MAX`. Every
+    /// `is_visible_on(mon, tagset)` check walks `(tags & tagset)
+    /// != 0`, and `u32::MAX & anything` is `anything` (non-zero
+    /// for any active tagset), so the window shows up wherever the
+    /// monitor goes.
+    ///
+    /// When unsticking, restore from `old_tags`. If `old_tags` is
+    /// 0 (rule never saved one — a freshly-created sticky-by-rule
+    /// client) fall back to whichever tag is currently visible on
+    /// the monitor so the window doesn't vanish.
+    ///
+    /// Cross-monitor sticky (window visible on multiple monitors at
+    /// once) is a separate, much-bigger change — would need scene-
+    /// graph mapping per output. Skipped for now; this covers the
+    /// niri-float-sticky single-monitor "appears on every tag of
+    /// this output" case which is the 95% use.
+    pub fn toggle_sticky(&mut self) {
+        let Some(idx) = self.focused_client_idx() else { return };
+        // Don't sticky scratchpads — they have their own
+        // visibility model (`is_scratchpad_show` flag); flipping
+        // tags out from under the scratchpad path would confuse it.
+        if self.clients[idx].is_in_scratchpad {
+            tracing::info!("toggle_sticky: skipped (client is in scratchpad)");
+            return;
+        }
+        let was_sticky = self.clients[idx].is_global;
+        let mon_idx = self.clients[idx].monitor;
+        let appid = self.clients[idx].app_id.clone();
+
+        if was_sticky {
+            // Restore previous tag mask. Fall back to the monitor's
+            // currently-visible tag if old_tags wasn't populated
+            // (rule-driven sticky-from-spawn never went through
+            // toggle).
+            let restored = if self.clients[idx].old_tags != 0 {
+                self.clients[idx].old_tags
+            } else {
+                self.monitors
+                    .get(mon_idx)
+                    .map(|m| m.current_tagset())
+                    .filter(|m| *m != 0)
+                    .unwrap_or(1)
+            };
+            self.clients[idx].tags = restored;
+            self.clients[idx].is_global = false;
+        } else {
+            self.clients[idx].old_tags = self.clients[idx].tags;
+            self.clients[idx].tags = u32::MAX;
+            self.clients[idx].is_global = true;
+        }
+
+        self.arrange_monitor(mon_idx);
+        crate::protocols::dwl_ipc::broadcast_monitor(self, mon_idx);
+        self.request_repaint();
+        crate::scripting::fire_focus_change(self);
+
+        // OSD-style notification — short timeout so it doesn't
+        // pile up if the user toggles a few windows in a row.
+        let title = if was_sticky { "Sticky off" } else { "Sticky on" };
+        let body = if appid.is_empty() {
+            String::from("Focused window")
+        } else {
+            appid
+        };
+        let _ = crate::utils::spawn(&[
+            "notify-send", "-a", "margo",
+            "-i", "view-pin-symbolic",
+            "-t", "1200",
+            title, &body,
+        ]);
+    }
+
+    /// Fire an OSD-style notification telling the user the active
+    /// layout just changed. Called from `switch_layout` (cycle) and
+    /// from the `setlayout` dispatch handler (explicit pick) — not
+    /// from `set_layout` itself, because that's also called
+    /// internally for window-rule application and we don't want to
+    /// notify on every rule-driven re-arrangement.
+    pub fn notify_layout(&self, name: &str) {
+        let _ = crate::utils::spawn(&[
+            "notify-send", "-a", "margo",
+            "-i", "view-grid-symbolic",
+            "-t", "1200",
+            "Margo Layout", name,
+        ]);
     }
 
     pub fn toggle_floating(&mut self) {

@@ -89,11 +89,20 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
         "setlayout" => {
             if let Some(name) = &arg.v {
                 state.set_layout(name);
+                // Mirror switch_layout's OSD: explicit-pick is also
+                // a user-triggered change, deserves the same hint.
+                state.notify_layout(name);
             }
         }
         "switch_layout" => state.switch_layout(),
         "togglefloating" => state.toggle_floating(),
         "togglefullscreen" => state.toggle_fullscreen(),
+        // niri-float-sticky equivalent — pin the focused client to
+        // every tag on its monitor. Toggle via the same action;
+        // second press restores the previous tag set.
+        "sticky_window" | "togglesticky" | "toggle_sticky" | "sticky" => {
+            state.toggle_sticky()
+        }
         // Mango-style named scratchpad. Three args (mapped from the
         // bind line):
         //   v  → app_id pattern (e.g. `dropdown-terminal`)
