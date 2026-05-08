@@ -381,8 +381,24 @@ fn main() -> Result<()> {
                 .map(|client| (client.window.clone(), client.geom))
                 .collect();
             for (window, geom) in animated {
-                let win_geom = window.geometry();
-                state.space.map_element(window, (geom.x - win_geom.loc.x, geom.y - win_geom.loc.y), false);
+                // Match `arrange_monitor`'s convention exactly:
+                // `Space::map_element` records the location of the
+                // window's *geometry origin* in space coords. Render
+                // path (push_client_elements) then computes
+                // `render_location = element_location - window.geometry().loc`
+                // to put the surface buffer in the right physical
+                // spot. Subtracting `geometry().loc` HERE on top of
+                // the render-path subtraction produces a double-
+                // correction: the surface ends up at
+                // `c.geom.loc - 2 * geometry.loc` instead of
+                // `c.geom.loc` for any client with non-zero geometry
+                // offset (Electron toplevels frequently report a
+                // non-zero `geometry().loc` even with server-side
+                // decorations). That's the "border içindeki pencere
+                // border kadar hızlı hareket etmiyor" symptom — every
+                // animation tick re-positioned the surface
+                // `geometry.loc` short of where the border tracked.
+                state.space.map_element(window, (geom.x, geom.y), false);
             }
             // smithay's `space.map_element` always moves the touched
             // element to the top of the stack, so an animated tile
