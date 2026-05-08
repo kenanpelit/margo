@@ -2151,6 +2151,18 @@ impl MargoState {
         // updates without waiting for the next arrange.
         crate::border::refresh(self);
         self.request_repaint();
+
+        // Broadcast the new focus to dwl-ipc-v2 clients (noctalia,
+        // waybar-dwl, …). The struct gets its title / appid /
+        // fullscreen / floating fields from `focused_client_idx`,
+        // which we just changed; without this the bar would keep
+        // showing the previously-focused window's title until the
+        // next tag-switch / arrange caused some other broadcast to
+        // fire. mango broadcasts on every focus change too — this
+        // is straight parity.
+        if prev_focus_idx != new_focus_idx {
+            crate::protocols::dwl_ipc::broadcast_all(self);
+        }
     }
 
     pub fn post_repaint(&mut self, output: &Output, time: impl Into<std::time::Duration>) {
@@ -2880,6 +2892,16 @@ impl MargoState {
             }
             self.arrange_monitor(new_monitor);
             crate::protocols::dwl_ipc::broadcast_all(self);
+        } else if title_changed || app_id_changed {
+            // Even when no rule reapply was needed (the client just
+            // changed its title — e.g. browser tab switch — and no
+            // title-keyed rules exist), noctalia / waybar-dwl still
+            // care about the new title / app_id for their focused-
+            // window indicator. Mango broadcasts on every title
+            // commit; without this the bar would freeze on the
+            // previous title until something else triggered a
+            // broadcast.
+            crate::protocols::dwl_ipc::broadcast_all(self);
         }
     }
 
@@ -3357,6 +3379,10 @@ impl MargoState {
             }
             let mon_idx = self.clients[idx].monitor;
             self.arrange_monitor(mon_idx);
+            // dwl-ipc-v2 reports `floating` per output's focused
+            // client; the bar status indicator (noctalia "tile/float"
+            // glyph) needs an explicit broadcast or it stays stale.
+            crate::protocols::dwl_ipc::broadcast_monitor(self, mon_idx);
         }
     }
 
@@ -3391,6 +3417,10 @@ impl MargoState {
             self.clients[idx].is_fullscreen = !self.clients[idx].is_fullscreen;
             let mon_idx = self.clients[idx].monitor;
             self.arrange_monitor(mon_idx);
+            // Same reason as `toggle_floating`: bar widgets reflect
+            // the focused client's `fullscreen` flag and must be
+            // told when it flips.
+            crate::protocols::dwl_ipc::broadcast_monitor(self, mon_idx);
         }
     }
 
