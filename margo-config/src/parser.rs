@@ -70,9 +70,41 @@ fn parse_file(cfg: &mut Config, path: &Path, required: bool) -> Result<()> {
     Ok(())
 }
 
+/// Strip an inline `#`-comment that begins at a whitespace boundary
+/// (`<space|tab>#…` to end of line) — same convention as
+/// sshd_config / sysctl.conf. A `#` flush-against text is preserved
+/// so we don't eat hex colours (`0x1e1e2eff`), regex anchors
+/// (`^foo#bar$`), or URL fragments embedded in spawn commands.
+///
+/// Whole-line comments (`#` at column 0) are filtered upstream in
+/// `parse_file`; this helper handles the inline case only.
+///
+/// Caveat: a literal `<space>#` inside a single-line shell command
+/// (`bind = …,spawn,sh -c 'echo # foo'`) would also be stripped.
+/// In practice that pattern doesn't appear in real configs — shell
+/// inline-comments-after-space are rare; users wanting them
+/// literal can quote-escape (`#` → `\#` in their shell, which the
+/// stripper leaves alone since it's not a config-level `#`) or use
+/// a wrapper script.
+fn strip_inline_comment(line: &str) -> &str {
+    let bytes = line.as_bytes();
+    let mut prev_ws = false;
+    for (i, &b) in bytes.iter().enumerate() {
+        if b == b'#' && prev_ws {
+            return line[..i].trim_end();
+        }
+        prev_ws = b == b' ' || b == b'\t';
+    }
+    line
+}
+
 // ── Line-level dispatch ──────────────────────────────────────────────────────
 
 fn parse_line(cfg: &mut Config, line: &str, origin: &Path) -> Result<()> {
+    // Strip inline comments before parsing so users can write e.g.
+    //   xkb_rules_options = ctrl:nocaps   # CapsLock → Ctrl
+    // without the comment becoming part of the value.
+    let line = strip_inline_comment(line);
     let (raw_key, raw_val) = split_kv(line).ok_or_else(|| anyhow!("invalid line format"))?;
     let key = raw_key.trim();
     let val = raw_val.trim();
@@ -1081,7 +1113,46 @@ fn parse_bool_s(s: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_config;
+    use super::{parse_config, strip_inline_comment};
+
+    #[test]
+    fn inline_comments_after_whitespace_are_stripped() {
+        // Common case the bug surfaced for: option list with trailing comment.
+        assert_eq!(
+            strip_inline_comment("xkb_rules_options = ctrl:nocaps   # CapsLock → Ctrl"),
+            "xkb_rules_options = ctrl:nocaps"
+        );
+        // Tab before `#` should also count.
+        assert_eq!(
+            strip_inline_comment("repeat_rate = 35\t# faster keys"),
+            "repeat_rate = 35"
+        );
+    }
+
+    #[test]
+    fn flush_hash_is_preserved() {
+        // Regex `#` flush against neighbour char — common in
+        // window-rule title patterns. The space before `=` is
+        // followed by `title:^foo#bar$`, no whitespace right
+        // before the `#`, so it stays.
+        assert_eq!(
+            strip_inline_comment("windowrule = title:^foo#bar$"),
+            "windowrule = title:^foo#bar$"
+        );
+        // URL fragment in spawn argument.
+        assert_eq!(
+            strip_inline_comment("bind = super,d,spawn,xdg-open https://x.org/page#anchor"),
+            "bind = super,d,spawn,xdg-open https://x.org/page#anchor"
+        );
+    }
+
+    #[test]
+    fn no_hash_means_unchanged() {
+        assert_eq!(
+            strip_inline_comment("default_layout = scroller"),
+            "default_layout = scroller"
+        );
+    }
 
     #[test]
     fn parses_source_and_unsigned_bind_args() {
