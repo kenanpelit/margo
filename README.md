@@ -1,11 +1,24 @@
 # margo
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/margo-banner-dark.svg">
-  <img src="docs/assets/margo-banner.svg" alt="margo" width="600">
-</picture>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/margo-banner-dark.svg">
+    <img src="docs/assets/margo-banner.svg" alt="margo" width="600">
+  </picture>
+</p>
 
-> A fast, dynamically-tiled Wayland compositor written in Rust.
+<p align="center">
+  <em>A fast, dynamically-tiled Wayland compositor written in Rust.</em>
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg" alt="License"></a>
+  <a href="road_map.md"><img src="https://img.shields.io/badge/status-daily%20driver-success" alt="Status"></a>
+  <a href="Cargo.toml"><img src="https://img.shields.io/badge/rust-1.85%2B-orange?logo=rust" alt="Rust"></a>
+  <a href="https://github.com/Smithay/smithay"><img src="https://img.shields.io/badge/built%20on-Smithay-blueviolet" alt="Smithay"></a>
+</p>
+
+margo is a feature-complete Wayland compositor — a Rust + [Smithay] port of [mango], in the dwl/dwm tradition. It keeps the **tag** model (no workspaces), ships **15 tiling layouts**, and runs on > A fast, dynamically-tiled Wayland compositor written in Rust.
 
 [![License](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-daily%20driver-success)](road_map.md)
