@@ -160,3 +160,8 @@ Original portions of dwl, dwm, sway, tinywl, and wlroots are preserved under the
 ## License
 
 GPL-3.0-or-later. See [`LICENSE`](LICENSE).
+
+<p align="center">
+  <img src="docs/assets/margo-icon.svg" alt="margo" width="48"><br>
+  <sub>GPL-3.0-or-later</sub>
+</p>
