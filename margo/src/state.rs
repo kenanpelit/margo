@@ -4428,28 +4428,104 @@ delegate_xdg_shell!(MargoState);
 // ── Smithay delegate: XDG decoration ─────────────────────────────────────────
 
 impl XdgDecorationHandler for MargoState {
+    /// First time a client binds `xdg-decoration-unstable-v1` for this
+    /// toplevel. Mango's policy (and ours) is "compositor draws the
+    /// decorations by default" — we send `ServerSide` so the client
+    /// suppresses its CSD titlebar / shadow / corner radius and lets
+    /// the compositor's `RoundedBorderElement` + `clipped_surface`
+    /// shaders do the work. Clients can still ask for CSD via
+    /// `request_mode(ClientSide)` and we'll honour it iff the client
+    /// matches a window-rule with `allow_csd:1` (see `request_mode`).
     fn new_decoration(&mut self, toplevel: ToplevelSurface) {
+        let mode = self.decoration_mode_for(&toplevel);
         toplevel.with_pending_state(|state| {
-            state.decoration_mode = Some(XdgDecorationMode::ServerSide);
+            state.decoration_mode = Some(mode);
         });
         toplevel.send_configure();
     }
 
-    fn request_mode(&mut self, toplevel: ToplevelSurface, _mode: XdgDecorationMode) {
+    /// Client asked for a specific decoration mode. We honour
+    /// `ClientSide` only when the client is window-ruled with
+    /// `allow_csd:1` (or the global `Config::allow_csd_default` is
+    /// on). Everything else gets `ServerSide` regardless of what
+    /// they asked for — keeps the visual identity consistent for the
+    /// 95 % of clients that just default to whatever the server
+    /// suggests, while still letting the user opt specific apps
+    /// (browsers usually) into their native CSD.
+    fn request_mode(&mut self, toplevel: ToplevelSurface, mode: XdgDecorationMode) {
+        let resolved = match mode {
+            XdgDecorationMode::ClientSide if self.client_allows_csd(&toplevel) => {
+                XdgDecorationMode::ClientSide
+            }
+            _ => XdgDecorationMode::ServerSide,
+        };
         toplevel.with_pending_state(|state| {
-            state.decoration_mode = Some(XdgDecorationMode::ServerSide);
+            state.decoration_mode = Some(resolved);
         });
         toplevel.send_configure();
     }
 
+    /// Client cleared its decoration preference — re-evaluate from
+    /// our policy (same path as `new_decoration`). This is the case
+    /// where a client toggles its decoration off via UI; we don't
+    /// just fall back to SSD silently if the user had whitelisted
+    /// CSD for this client, the next configure should still respect
+    /// `allow_csd`.
     fn unset_mode(&mut self, toplevel: ToplevelSurface) {
+        let mode = self.decoration_mode_for(&toplevel);
         toplevel.with_pending_state(|state| {
-            state.decoration_mode = Some(XdgDecorationMode::ServerSide);
+            state.decoration_mode = Some(mode);
         });
         toplevel.send_configure();
     }
 }
 delegate_xdg_decoration!(MargoState);
+
+impl MargoState {
+    /// What decoration mode should we send to a freshly-bound or
+    /// reset toplevel? Defaults to `ServerSide`; flips to
+    /// `ClientSide` only when the client is in our `clients` vec
+    /// and matches a window-rule that whitelists CSD. At the time
+    /// `new_decoration` fires the toplevel may not even be in
+    /// `clients` yet (xdg-decoration arrives before the first
+    /// commit), in which case we ALSO check the raw window-rule
+    /// list against the toplevel's current app_id / title — the
+    /// rule machinery would otherwise only kick in at
+    /// `finalize_initial_map`, too late to influence the very first
+    /// configure.
+    fn decoration_mode_for(&self, toplevel: &ToplevelSurface) -> XdgDecorationMode {
+        if self.client_allows_csd(toplevel) {
+            XdgDecorationMode::ClientSide
+        } else {
+            XdgDecorationMode::ServerSide
+        }
+    }
+
+    fn client_allows_csd(&self, toplevel: &ToplevelSurface) -> bool {
+        let wl_surface = toplevel.wl_surface();
+        // Path A: client already mapped — read the resolved
+        // `allow_csd` flag right off the `MargoClient`.
+        if let Some(client) = self.clients.iter().find(|c| {
+            c.window.wl_surface().as_deref() == Some(wl_surface)
+        }) {
+            return client.allow_csd;
+        }
+        // Path B: client is between role bind and first commit —
+        // best we can do is look up the window-rule by the
+        // toplevel's currently-set app_id / title. This is the
+        // path that fires for the *first* `xdg_decoration.configure`
+        // many compositors get wrong (Chromium / Firefox often
+        // bind decoration before any role-data commit, so the
+        // initial mode the user sees depends entirely on what we
+        // send right now).
+        let (app_id, title) = read_toplevel_identity(toplevel);
+        self.config
+            .window_rules
+            .iter()
+            .filter(|rule| self.window_rule_matches(rule, &app_id, &title))
+            .any(|rule| rule.allow_csd == Some(true))
+    }
+}
 
 // ── Smithay delegate: SHM ────────────────────────────────────────────────────
 
