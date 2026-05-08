@@ -39,6 +39,11 @@ nix = { version = "0.29", features = ["signal", "process"] }
 xcursor.workspace = true
 log = "0.4"
 regex = "1"
+# Embedded scripting engine for `~/.config/margo/init.rhai`.
+# Pure-Rust, no C deps. Used by `crate::scripting` to run user
+# scripts at startup; eventually hosts focus / tag / map event
+# hooks once those are exposed.
+rhai = { version = "1", default-features = false, features = ["std", "no_optimize"] }
 
 [dependencies.smithay]
 workspace = true

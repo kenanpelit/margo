@@ -9,6 +9,7 @@ mod input_handler;
 mod libinput_config;
 mod layout;
 mod protocols;
+mod scripting;
 mod state;
 mod utils;
 
@@ -352,6 +353,16 @@ fn main() -> Result<()> {
     }
     if let Some(cmd) = args.startup_command {
         utils::spawn_shell(&cmd)?;
+    }
+
+    // ── User scripting (~/.config/margo/init.rhai) ───────────────────────────
+    // Runs once, after exec_once but before the event loop. The
+    // engine instance is dropped once the script returns; once
+    // event-hook bindings land it'll move into MargoState so
+    // callbacks survive.
+    {
+        let engine = scripting::init_engine();
+        scripting::run_user_init(&engine);
     }
 
     // ── Run the event loop ────────────────────────────────────────────────────
