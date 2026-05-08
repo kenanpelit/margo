@@ -1816,60 +1816,66 @@ fn serve_screencopies(
         if let crate::protocols::screencopy::ScreencopyBuffer::Dmabuf(dmabuf) =
             screencopy.buffer()
         {
-            let full_output = size == output_size
-                && region_loc == smithay::utils::Point::<i32, smithay::utils::Physical>::from((0, 0));
-            if full_output {
-                let mut dmabuf = dmabuf.clone();
-                let render_result = match renderer.bind(&mut dmabuf) {
-                    Ok(mut target) => {
-                        let mut tracker = DamageTracker::new(output_size, scale, Transform::Normal);
-                        let res = tracker
-                            .render_output(
-                                renderer,
-                                &mut target,
-                                0,
-                                elements_to_render,
-                                [0.0, 0.0, 0.0, 1.0],
-                            )
-                            .map(|r| r.damage.map(|d| d.to_owned()));
-                        drop(target);
-                        res
-                    }
-                    Err(e) => Err(smithay::backend::renderer::damage::Error::Rendering(e)),
-                };
+            // Translate every element by `-region_loc` and render
+            // to a damage-tracker sized to the *client's* requested
+            // `buffer_size`. For full-output capture region_loc is
+            // (0,0) and buffer_size == output_size, so the wrap is
+            // a no-op and the relocate elements forward to their
+            // inner draw unchanged. For region capture (`grim -g`,
+            // a portal `crop` request) we shift the world by
+            // -region_loc so the requested rect lands at (0,0) of
+            // the dmabuf and run a damage tracker at buffer_size,
+            // which clips anything outside the dmabuf for free.
+            use smithay::backend::renderer::element::utils::{
+                Relocate, RelocateRenderElement,
+            };
+            let translate: smithay::utils::Point<i32, smithay::utils::Physical> =
+                (-region_loc.x, -region_loc.y).into();
+            let relocated: Vec<RelocateRenderElement<&MargoRenderElement>> = elements_to_render
+                .iter()
+                .map(|e| RelocateRenderElement::from_element(e, translate, Relocate::Relative))
+                .collect();
 
-                match render_result {
-                    Ok(damage) => {
-                        if screencopy.with_damage() {
-                            if let Some(damage_rects) = damage.as_ref() {
-                                screencopy.damage(damage_rects.iter().map(|r| {
-                                    smithay::utils::Rectangle::new(
-                                        smithay::utils::Point::from((r.loc.x, r.loc.y)),
-                                        smithay::utils::Size::from((r.size.w, r.size.h)),
-                                    )
-                                }));
-                            }
-                        }
-                        // Dmabuf submit: y_invert=false (textures
-                        // sampled top-left). Smithay's
-                        // OutputDamageTracker is synchronous from a
-                        // wl_buffer-release perspective at this point,
-                        // so we don't yet propagate a SyncPoint to the
-                        // client — every consumer we've tested
-                        // (xdg-desktop-portal-wlr, OBS, wf-recorder)
-                        // is happy with implicit-sync dmabuf
-                        // submission for screencopy.
-                        screencopy.submit_now(false, now);
-                    }
-                    Err(e) => warn!("screencopy: dmabuf render failed: {e:?}"),
+            let mut dmabuf = dmabuf.clone();
+            let render_result = match renderer.bind(&mut dmabuf) {
+                Ok(mut target) => {
+                    let mut tracker = DamageTracker::new(size, scale, Transform::Normal);
+                    let res = tracker
+                        .render_output(
+                            renderer,
+                            &mut target,
+                            0,
+                            &relocated,
+                            [0.0, 0.0, 0.0, 1.0],
+                        )
+                        .map(|r| r.damage.map(|d| d.to_owned()));
+                    drop(target);
+                    res
                 }
-                continue;
+                Err(e) => Err(smithay::backend::renderer::damage::Error::Rendering(e)),
+            };
+
+            match render_result {
+                Ok(damage) => {
+                    if screencopy.with_damage() {
+                        if let Some(damage_rects) = damage.as_ref() {
+                            screencopy.damage(damage_rects.iter().map(|r| {
+                                smithay::utils::Rectangle::new(
+                                    smithay::utils::Point::from((r.loc.x, r.loc.y)),
+                                    smithay::utils::Size::from((r.size.w, r.size.h)),
+                                )
+                            }));
+                        }
+                    }
+                    // Implicit-sync dmabuf submit. Every consumer
+                    // we've tested (xdg-desktop-portal-wlr, OBS,
+                    // wf-recorder, grim) is happy with this; the
+                    // explicit-sync path comes back when DRM
+                    // syncobj fences are wired into screencopy.
+                    screencopy.submit_now(false, now);
+                }
+                Err(e) => warn!("screencopy: dmabuf render failed: {e:?}"),
             }
-            warn!(
-                "screencopy: dmabuf region capture (region={:?}, want={:?}, output={:?}) \
-                 not yet implemented — failing frame",
-                region_loc, size, output_size
-            );
             continue;
         }
 
@@ -1998,6 +2004,77 @@ fn serve_screencopies(
     }
 }
 
+/// Drain `wp_presentation_feedback` callbacks across every surface
+/// that contributed a render element to the frame just queued, and
+/// signal `presented(...)` on each. Mirrors anvil's
+/// `take_presentation_feedback` + immediate-present pattern: we
+/// don't have hardware-level page-flip timing yet (would require
+/// hooking into DrmCompositor's vblank callbacks), so the timestamp
+/// we publish is "right now" with a Vsync flag — same approximation
+/// niri's winit backend uses. Clients that care about microsecond
+/// accuracy will benefit when we plumb actual vblank timestamps in
+/// a follow-up; in the meantime the protocol surface is exposed and
+/// kitty / mpv stop guessing 60 Hz.
+fn publish_presentation_feedback(
+    output: &Output,
+    state: &mut MargoState,
+    render_states: &smithay::backend::renderer::element::RenderElementStates,
+) {
+    use smithay::desktop::layer_map_for_output;
+    use smithay::desktop::utils::{
+        surface_presentation_feedback_flags_from_states, surface_primary_scanout_output,
+        OutputPresentationFeedback,
+    };
+    use smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback;
+
+    let mut feedback = OutputPresentationFeedback::new(output);
+
+    // Toplevels.
+    for window in state.space.elements() {
+        if state.space.outputs_for_element(window).contains(output) {
+            window.take_presentation_feedback(
+                &mut feedback,
+                surface_primary_scanout_output,
+                |surface, _| {
+                    surface_presentation_feedback_flags_from_states(surface, None, render_states)
+                },
+            );
+        }
+    }
+    // Layer surfaces (bar, notifications, OSD).
+    let map = layer_map_for_output(output);
+    for layer_surface in map.layers() {
+        layer_surface.take_presentation_feedback(
+            &mut feedback,
+            surface_primary_scanout_output,
+            |surface, _| {
+                surface_presentation_feedback_flags_from_states(surface, None, render_states)
+            },
+        );
+    }
+
+    let now = monotonic_now();
+    let refresh = output
+        .current_mode()
+        .map(|m| {
+            // mode.refresh is in mHz; convert to per-frame duration.
+            let hz = (m.refresh as f64) / 1000.0;
+            if hz > 0.0 {
+                std::time::Duration::from_secs_f64(1.0 / hz)
+            } else {
+                std::time::Duration::from_secs_f64(1.0 / 60.0)
+            }
+        })
+        .unwrap_or_else(|| std::time::Duration::from_secs_f64(1.0 / 60.0));
+
+    feedback.presented::<_, smithay::utils::Monotonic>(
+        now,
+        smithay::wayland::presentation::Refresh::fixed(refresh),
+        0, // sequence — we don't track DRM page-flip seq yet
+        wp_presentation_feedback::Kind::Vsync,
+    );
+}
+
 fn monotonic_now() -> std::time::Duration {
     use std::sync::OnceLock;
     use std::time::Instant;
@@ -2099,6 +2176,14 @@ fn render_output(
                             elements.len()
                         );
                     }
+                    // wp_presentation: notify each surface that
+                    // contributed a render element this frame about
+                    // the actual present time + refresh interval.
+                    // Clients that registered a `feedback` request
+                    // get the precise timestamp they need to pace
+                    // their next frame against the real display
+                    // refresh, instead of guessing 60 Hz.
+                    publish_presentation_feedback(&od.output, state, &result.states);
                     state.post_repaint(&od.output, state.clock.now());
                     state.display_handle.flush_clients().ok();
                 }

@@ -11,7 +11,7 @@ use smithay::{
     delegate_input_method_manager, delegate_layer_shell, delegate_output,
     delegate_pointer_constraints, delegate_primary_selection, delegate_relative_pointer,
     delegate_seat, delegate_shm, delegate_text_input_manager,
-    delegate_xdg_activation, delegate_xdg_decoration, delegate_xdg_shell,
+    delegate_presentation, delegate_xdg_activation, delegate_xdg_decoration, delegate_xdg_shell,
     delegate_session_lock, delegate_idle_notify, delegate_idle_inhibit,
     desktop::{LayerSurface as DesktopLayerSurface, PopupManager, Space, Window, WindowSurface, WindowSurfaceType, layer_map_for_output},
     input::{
@@ -77,6 +77,7 @@ use smithay::{
         pointer_constraints::{
             with_pointer_constraint, PointerConstraintsHandler, PointerConstraintsState,
         },
+        presentation::PresentationState,
         relative_pointer::RelativePointerManagerState,
         text_input::TextInputManagerState,
         xdg_activation::{
@@ -782,6 +783,14 @@ pub struct MargoState {
     /// see `protocols::output_management::apply_output_pending`.
     pub output_management_state:
         crate::protocols::output_management::OutputManagementManagerState,
+    /// `wp_presentation` global. Lets clients (kitty, mpv, native
+    /// Wayland Vulkan games via DXVK / VKD3D, video conferencing
+    /// apps that adapt their pacing to the actual display refresh)
+    /// register `wp_presentation_feedback` per-frame and learn the
+    /// real `presented` timestamp + refresh interval. Without this
+    /// they're stuck guessing — kitty falls back to a 60 Hz tick,
+    /// mpv ships its own debouncer, vsync-sensitive games stutter.
+    pub presentation_state: PresentationState,
     /// `ext_idle_notifier_v1`: pings clients (swayidle, noctalia) once
     /// the seat has been idle for the duration they registered.
     pub idle_notifier_state: smithay::wayland::idle_notify::IdleNotifierState<MargoState>,
@@ -880,6 +889,11 @@ impl MargoState {
                 Self,
                 _,
             >(&dh, |_client| true);
+        // Clock id 1 = CLOCK_MONOTONIC. That's the same domain
+        // `monotonic_now()` in the udev backend uses, so the
+        // timestamps we publish are consistent with the ones
+        // clients see in their own `clock_gettime(CLOCK_MONOTONIC)`.
+        let presentation_state = PresentationState::new::<Self>(&dh, 1);
         let idle_notifier_state =
             smithay::wayland::idle_notify::IdleNotifierState::<Self>::new(&dh, loop_handle.clone());
         let idle_inhibit_state =
@@ -938,6 +952,7 @@ impl MargoState {
             relative_pointer_state,
             xdg_activation_state,
             output_management_state,
+            presentation_state,
             space,
             popups,
             seat,
@@ -4329,6 +4344,7 @@ impl crate::protocols::output_management::OutputManagementHandler for MargoState
     }
 }
 crate::delegate_output_management!(MargoState);
+delegate_presentation!(MargoState);
 
 // ── Smithay delegate: Idle notify + Idle inhibit ─────────────────────────────
 
