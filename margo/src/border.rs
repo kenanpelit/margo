@@ -77,36 +77,53 @@ pub fn refresh(state: &mut MargoState) {
             let mon_idx = c.monitor;
             let visible = mon_idx < state.monitors.len()
                 && c.is_visible_on(mon_idx, state.monitors[mon_idx].current_tagset());
-            let hide = c.no_border || c.is_fullscreen || !visible;
+            // Hide the border for the duration of an open transition.
+            // The OpenCloseRenderElement is drawing the surface scaled
+            // around `c.geom`'s centre, so a full-slot border around it
+            // would visibly precede the window into existence by ~180 ms.
+            // Letting the border pop in at the end of the open
+            // animation matches niri/Hyprland behaviour and is far less
+            // jarring than the alternative.
+            let hide = c.no_border
+                || c.is_fullscreen
+                || !visible
+                || c.opening_animation.is_some();
 
-            // The border normally has to wrap the *actual* on-screen
-            // content, not the layout-reserved rect: Electron clients
-            // (Helium browser, Spotify, Discord) silently clamp our
+            // The border has to wrap the *actual* on-screen content,
+            // not the layout-reserved rect: Electron clients (Helium
+            // browser, Spotify, Discord) silently clamp our
             // `xdg_toplevel.configure(size)` against their internal
             // min-size and render narrower than we asked, leaving a
-            // 10–15 px wallpaper strip between the visible window and
-            // the border drawn at `c.geom`. So in the steady state we
-            // shrink the border to `window.geometry().size` whenever
-            // that's smaller than the slot.
+            // wallpaper strip between the visible window and the
+            // border drawn at `c.geom`.
             //
-            // Move animation is the exception. While `c.animation.running`
-            // is true, `c.geom` is interpolated from old → target every
-            // tick, but the client's buffer is locked to whichever size
-            // it last acked (typically the new target, committed within a
-            // frame or two of the configure). If we let the buffer-size
-            // fallback fire here, the border would snap to the FINAL size
-            // mid-animation while the slot is still half-way there, and
-            // the user would see the border jump while the surrounding
-            // tiles are still sliding. Niri's resize animation avoids
-            // this by smoothly tweening the buffer size visually; we
-            // can't do that yet, so the next-best thing is: trust the
-            // animation, draw the border at the interpolated slot, and
-            // only fall back to the actual buffer rect once the
-            // animation has settled.
+            // Three cases:
+            //
+            //   1. A resize-snapshot is in flight. The renderer is
+            //      drawing a captured texture *scaled to `c.geom`* and
+            //      hiding the live surface, so the visible content
+            //      fills the interpolated slot exactly. Border tracks
+            //      `c.geom`.
+            //
+            //   2. A move/spring animation is running with no snapshot
+            //      (pure translate, dimensions unchanged). The slot's
+            //      `width/height` already match the buffer; tracking
+            //      `c.geom` is the same as tracking the buffer. Either
+            //      works, but `c.geom` is cheaper.
+            //
+            //   3. Steady state OR mid-animation when the buffer
+            //      doesn't match the slot. Always clamp the border
+            //      box to `min(actual, slot)`. This is the case the
+            //      old `!anim.running` gate left uncovered: when
+            //      Helium/Spotify settle at a buffer size smaller
+            //      than the slot we requested, the post-settle frame
+            //      would draw the border at the slot rect even though
+            //      the live surface only covered a sub-rectangle.
             let actual = c.window.geometry().size;
+            let snapshot_active = c.resize_snapshot.is_some();
             let mut g = c.geom;
             let mut border_shrunk_to_actual = false;
-            if !c.animation.running {
+            if !snapshot_active {
                 if actual.w > 0 && actual.w < g.width {
                     g.width = actual.w;
                     border_shrunk_to_actual = true;
