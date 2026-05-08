@@ -1116,6 +1116,12 @@ pub struct MargoState {
     /// are stored on the surface tracker, not yet read by render.
     /// Phase 2 (linear-light fp16 composite) consumes these.
     pub color_management_state: crate::protocols::color_management::ColorManagementState,
+    /// User-script engine + compiled AST + registered event hooks.
+    /// `None` if no `~/.config/margo/init.rhai` is present. Boxed so
+    /// the field is small + we can `Option::take()` it during hook
+    /// invocation (the recursion guard + borrow-checker dance lives
+    /// in `scripting::fire_hook`).
+    pub scripting: Option<Box<crate::scripting::ScriptingState>>,
     /// `wp_presentation` global. Lets clients (kitty, mpv, native
     /// Wayland Vulkan games via DXVK / VKD3D, video conferencing
     /// apps that adapt their pacing to the actual display refresh)
@@ -1339,6 +1345,7 @@ impl MargoState {
             output_management_state,
             pending_output_mode_changes: Vec::new(),
             color_management_state,
+            scripting: None,
             presentation_state,
             space,
             popups,
@@ -2243,6 +2250,14 @@ impl MargoState {
         // is straight parity.
         if prev_focus_idx != new_focus_idx {
             crate::protocols::dwl_ipc::broadcast_all(self);
+            // Phase 3 scripting: invoke any `on_focus_change`
+            // handlers the user registered in init.rhai. Hooks
+            // see the new focused state via `focused_appid()` /
+            // `focused_title()`. Wrapped in a `prev != new` gate
+            // because focus_surface is called speculatively from
+            // `refresh_keyboard_focus` and we don't want to fire
+            // hooks for no-op refreshes.
+            crate::scripting::fire_focus_change(self);
         }
     }
 
@@ -3312,6 +3327,11 @@ impl MargoState {
             self.request_repaint();
         }
         crate::protocols::dwl_ipc::broadcast_monitor(self, mon_idx);
+        // Phase 3 scripting: fire `on_tag_switch` handlers. Runs
+        // after focus + broadcast so a handler reading
+        // `current_tag()` / `focused_appid()` sees the post-switch
+        // state, not the pre-switch.
+        crate::scripting::fire_tag_switch(self);
     }
 
     pub fn toggle_view_tag(&mut self, tagmask: u32) {
@@ -4536,6 +4556,14 @@ impl MargoState {
             self.clients[idx].tags,
             self.clients[idx].opening_animation.is_some(),
         );
+
+        // Phase 3 scripting: invoke `on_window_open` handlers now
+        // that app_id / title / window-rules have all settled. A
+        // handler that calls `focused_appid()` sees the just-mapped
+        // window's identity, and dispatches like `tagview` /
+        // `togglefloating` apply to it because focus has already
+        // been pushed to it earlier in this function.
+        crate::scripting::fire_window_open(self);
     }
 }
 

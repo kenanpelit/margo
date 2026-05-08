@@ -1,43 +1,51 @@
 //! Embedded scripting engine for user-defined hooks.
 //!
-//! Status: **Phase 2** — `dispatch(action, args)` and read-only state
-//! introspection are live. Scripts in `~/.config/margo/init.rhai` can
-//! invoke any registered margo action and inspect focused-client /
-//! current-tag / monitor-list state. Event hooks (`on_focus_change`,
-//! `on_tag_switch`, `on_window_open`) are still forward-compat stubs;
-//! they accept handler registrations without error so users can write
-//! Phase-3-ready scripts today.
+//! Status: **Phase 3** — event hooks fire mid-event-loop.
+//! `on_focus_change`, `on_tag_switch`, and `on_window_open`
+//! registered from `~/.config/margo/init.rhai` are now invoked
+//! at the matching compositor event sites with the live state
+//! reachable through the same binding surface as Phase 2.
 //!
-//! Why Rhai instead of Lua / a bespoke DSL: pure Rust (no C build),
-//! type-safe binding via `register_fn`, sandbox tight by default.
-//! See `docs/scripting-design.md` for the rollout plan.
+//! The engine, the compiled AST, and the per-event hook lists
+//! all live on `MargoState::scripting`, so callbacks survive
+//! past startup. To fire a hook we briefly *take* the
+//! `ScriptingState` out of `MargoState`, run the FnPtr on the
+//! still-owned engine + AST, then put it back. This keeps the
+//! borrow checker happy without introducing unsafe pointer juggling
+//! beyond the thread-local state pointer that was already in
+//! place for Phase 2 — and gives us a free recursion guard: if a
+//! hook calls `dispatch(...)` and that triggers a re-entrant
+//! focus change, the inner `fire_*` finds `scripting = None` and
+//! is a no-op rather than a stack overflow.
 //!
-//! ## State access pattern
+//! ## State flow
 //!
-//! Phase 2 bindings need `&mut MargoState` to dispatch actions and
-//! read state. Rather than thread the state through Rhai's
-//! `NativeCallContext` plumbing, we use a thread-local raw pointer
-//! set for the duration of `run_user_init` and cleared on return:
+//! ```text
+//!  startup:
+//!    main.rs → init_user_scripting(&mut state)
+//!      ↪ build engine, compile AST, store ScriptingState on state
+//!      ↪ eval script body → registers FnPtrs into hooks vecs
+//!  runtime:
+//!    state.focus_surface(...)
+//!      ↪ fire_focus_change(state)
+//!         ↪ take scripting out of state (now None)
+//!         ↪ for h in hooks: h.call(&engine, &ast, ())
+//!            ↪ binding code accesses state via STATE_PTR
+//!         ↪ put scripting back
+//! ```
 //!
-//!   * Rhai runs synchronously on the compositor thread, so there's
-//!     no aliasing window — the script can't escape to another
-//!     thread or yield mid-call.
-//!   * The pointer is set via a `Drop`-guarded scope so a Rhai panic
-//!     (script syntax error caught by the engine, or a `panic!()`
-//!     in a binding) cannot leave a dangling pointer behind.
-//!   * Bindings call `with_state` which checks the pointer is non-
-//!     null before dereferencing. If a script somehow ends up calling
-//!     a binding outside the eval scope (a stored `FnPtr` invoked
-//!     later), the call is a no-op with a warning, not a crash.
+//! ## Why not store engine in an Rc<RefCell<…>>?
 //!
-//! Once Phase 3 lands and event hooks fire mid-event-loop, this
-//! pattern still works — set the pointer at each event site, run
-//! the registered handler, clear. Same eval contract.
+//! Tried it. Rhai's `FnPtr::call(&engine, &ast, args)` takes plain
+//! `&` references; wrapping in RefCell forces us to borrow on
+//! every call and a hook that recursively triggers another hook
+//! double-borrows. The take/restore dance gives us recursion
+//! safety for free.
 
 use std::cell::Cell;
 use std::path::PathBuf;
 
-use rhai::{Array, Dynamic, Engine, Scope};
+use rhai::{Array, Dynamic, Engine, FnPtr, Scope, AST};
 use tracing::{error, info, warn};
 
 use margo_config::Arg;
@@ -45,48 +53,53 @@ use margo_config::Arg;
 use crate::state::MargoState;
 
 thread_local! {
-    /// Raw pointer to the live `MargoState` for the duration of a
-    /// script eval. Set by `run_user_init`, cleared on return. See
-    /// the module-level docs for the safety contract.
     static STATE_PTR: Cell<*mut MargoState> = const { Cell::new(std::ptr::null_mut()) };
 }
 
-/// Run `f` with a `&mut MargoState` if the script eval scope is
-/// active. Returns `None` (with a warning) if a binding was somehow
-/// invoked outside an eval — e.g. via a stored `FnPtr` retained past
-/// the scope. The default value the caller provides ensures the
-/// script keeps running rather than panicking.
 fn with_state<R>(f: impl FnOnce(&mut MargoState) -> R) -> Option<R> {
     let ptr = STATE_PTR.with(|s| s.get());
     if ptr.is_null() {
         warn!("scripting binding called outside an eval context — ignoring");
         return None;
     }
-    // Safety: STATE_PTR is non-null only inside `run_user_init`,
-    // which holds the unique mutable borrow of `MargoState`. Rhai
-    // runs synchronously on the compositor thread, so no second
-    // reference can race.
+    // Safety: STATE_PTR is non-null only during init or hook eval,
+    // both of which hold the unique mutable borrow of MargoState.
+    // Rhai runs synchronously on the compositor thread.
     let state = unsafe { &mut *ptr };
     Some(f(state))
 }
 
-/// Build a Rhai engine pre-loaded with margo's binding surface.
-pub fn init_engine() -> Engine {
+/// Per-MargoState scripting context. Holds the running engine,
+/// the compiled init.rhai AST, and the lists of hook closures the
+/// user registered. Stored as `Option<Box<ScriptingState>>` on
+/// `MargoState` so we can `take()` the value out during hook
+/// invocation (see module docs).
+pub struct ScriptingState {
+    engine: Engine,
+    ast: AST,
+    pub hooks: ScriptingHooks,
+}
+
+#[derive(Default)]
+pub struct ScriptingHooks {
+    pub on_focus_change: Vec<FnPtr>,
+    pub on_tag_switch: Vec<FnPtr>,
+    pub on_window_open: Vec<FnPtr>,
+}
+
+/// Build an engine pre-loaded with the binding surface (Phase 2)
+/// plus the hook registration functions (Phase 3). The engine is
+/// stateless w.r.t. user code — all per-script data ends up in
+/// `ScriptingHooks` on MargoState — so we hand a fresh one back.
+fn build_engine() -> Engine {
     let mut engine = Engine::new();
 
-    // Sandbox limits. Defence-in-depth: script comes from the user's
-    // own dotfiles, but a typo'd recursive function shouldn't take
-    // the compositor down.
     engine.set_max_call_levels(64);
     engine.set_max_expr_depths(64, 32);
     engine.set_max_array_size(1024);
     engine.set_max_string_size(64 * 1024);
     engine.set_strict_variables(true);
 
-    // Wire Rhai's `print()` and `debug()` into tracing so script
-    // output lands in `journalctl -u margo` rather than stdout —
-    // which is closed in a real DRM session and would otherwise
-    // silently swallow everything.
     engine.on_print(|s| info!(target: "init.rhai", "{s}"));
     engine.on_debug(|s, src, pos| {
         let src = src.unwrap_or("init.rhai");
@@ -94,49 +107,25 @@ pub fn init_engine() -> Engine {
     });
 
     // ── Action invocation ───────────────────────────────────────────────
-    //
-    // `dispatch(action, args_array)` invokes any registered margo
-    // action. The args array maps positionally onto the `Arg` struct:
-    //   - First / second / third strings → v / v2 / v3
-    //   - First / second integers        → ui & i / ui2 & i2
-    //   - First / second floats          → f / f2
-    //
-    // Tags are bitmasks — use `tag(n)` to convert a 1-based tag
-    // number to its mask.
-    //
-    // Examples:
-    //   dispatch("spawn", ["kitty"])
-    //   dispatch("setlayout", ["scroller"])
-    //   dispatch("view", [tag(5)])         // switch to tag 5
-    //   dispatch("focusstack", [1])        // direction = +1 (next)
-    //   dispatch("tagview", [tag(8)])      // move + follow to tag 8
+
     engine.register_fn("dispatch", |action: &str, args: Array| {
         let arg = args_to_arg(&args);
         with_state(|state| {
             crate::dispatch::dispatch_action(state, action, &arg);
         });
     });
-    // Zero-arg overload for actions like "killclient" / "switch_layout"
-    // / "togglefloating" / "togglefullscreen" / "reload".
     engine.register_fn("dispatch", |action: &str| {
         with_state(|state| {
             crate::dispatch::dispatch_action(state, action, &Arg::default());
         });
     });
 
-    // `spawn(cmd)` — convenience equivalent to `dispatch("spawn", [cmd])`
-    // but without the dispatch-table indirection. Identical semantics
-    // to the config-file `spawn` action.
     engine.register_fn("spawn", |cmd: &str| {
         if let Err(e) = crate::utils::spawn_shell(cmd) {
             warn!("init.rhai spawn '{cmd}' failed: {e}");
         }
     });
 
-    // `tag(n)` — convert 1-based tag number to bitmask. Example:
-    //   tag(1) == 1, tag(5) == 16, tag(9) == 256.
-    // Out-of-range (n < 1 or n > 32) returns 0 — dispatch with mask 0
-    // is a no-op rather than a crash, so a typo is recoverable.
     engine.register_fn("tag", |n: rhai::INT| -> rhai::INT {
         if (1..=32).contains(&n) {
             1 << (n - 1)
@@ -147,12 +136,7 @@ pub fn init_engine() -> Engine {
     });
 
     // ── Read-only state introspection ───────────────────────────────────
-    //
-    // None of these mutate. Mutation goes through `dispatch(...)`.
 
-    // Returns the 1-based bit position of the lowest selected tag on
-    // the focused monitor. Useful for `if current_tag() == 8 { … }`.
-    // Returns 0 if no monitor or no tag is selected.
     engine.register_fn("current_tag", || -> rhai::INT {
         with_state(|state| {
             let mon = state.focused_monitor();
@@ -170,8 +154,6 @@ pub fn init_engine() -> Engine {
         .unwrap_or(0)
     });
 
-    // Raw bitmask of all currently-visible tags on the focused monitor.
-    // Useful for "is tag 4 visible alongside tag 8" checks via `&`.
     engine.register_fn("current_tagmask", || -> rhai::INT {
         with_state(|state| {
             let mon = state.focused_monitor();
@@ -184,7 +166,6 @@ pub fn init_engine() -> Engine {
         .unwrap_or(0)
     });
 
-    // app_id of the focused client, empty string if no focus.
     engine.register_fn("focused_appid", || -> String {
         with_state(|state| {
             state
@@ -195,7 +176,6 @@ pub fn init_engine() -> Engine {
         .unwrap_or_default()
     });
 
-    // title of the focused client, empty string if no focus.
     engine.register_fn("focused_title", || -> String {
         with_state(|state| {
             state
@@ -206,8 +186,6 @@ pub fn init_engine() -> Engine {
         .unwrap_or_default()
     });
 
-    // Output name of the focused monitor (e.g. "DP-3", "eDP-1").
-    // Empty string if no monitor is focused.
     engine.register_fn("focused_monitor_name", || -> String {
         with_state(|state| {
             let mon = state.focused_monitor();
@@ -220,12 +198,10 @@ pub fn init_engine() -> Engine {
         .unwrap_or_default()
     });
 
-    // Number of connected outputs.
     engine.register_fn("monitor_count", || -> rhai::INT {
         with_state(|state| state.monitors.len() as rhai::INT).unwrap_or(0)
     });
 
-    // Names of all connected outputs as an array of strings.
     engine.register_fn("monitor_names", || -> Array {
         with_state(|state| {
             state
@@ -237,37 +213,41 @@ pub fn init_engine() -> Engine {
         .unwrap_or_default()
     });
 
-    // Number of mapped clients.
     engine.register_fn("client_count", || -> rhai::INT {
         with_state(|state| state.clients.len() as rhai::INT).unwrap_or(0)
     });
 
-    // ── Forward-compat event-hook stubs (Phase 3) ───────────────────────
+    // ── Event hook registration (Phase 3) ───────────────────────────────
     //
-    // Accept handler registrations today — log them — fire nothing
-    // yet. When Phase 3 wires the event sites in `state.rs`, scripts
-    // that already register hooks here just start firing.
-    engine.register_fn("on_focus_change", |_handler: rhai::FnPtr| {
-        info!("init.rhai: on_focus_change registered (Phase 3 — not yet wired)");
+    // These now actually fire — the registered FnPtr is appended to
+    // the matching list in `ScriptingHooks` and invoked from the
+    // event site via `fire_*` helpers below.
+
+    engine.register_fn("on_focus_change", |handler: FnPtr| {
+        with_state(|s| {
+            if let Some(sc) = s.scripting.as_mut() {
+                sc.hooks.on_focus_change.push(handler);
+            }
+        });
     });
-    engine.register_fn("on_tag_switch", |_handler: rhai::FnPtr| {
-        info!("init.rhai: on_tag_switch registered (Phase 3 — not yet wired)");
+    engine.register_fn("on_tag_switch", |handler: FnPtr| {
+        with_state(|s| {
+            if let Some(sc) = s.scripting.as_mut() {
+                sc.hooks.on_tag_switch.push(handler);
+            }
+        });
     });
-    engine.register_fn("on_window_open", |_handler: rhai::FnPtr| {
-        info!("init.rhai: on_window_open registered (Phase 3 — not yet wired)");
+    engine.register_fn("on_window_open", |handler: FnPtr| {
+        with_state(|s| {
+            if let Some(sc) = s.scripting.as_mut() {
+                sc.hooks.on_window_open.push(handler);
+            }
+        });
     });
 
     engine
 }
 
-/// Map a Rhai `Array` of args to the `Arg` struct the dispatch table
-/// consumes. Strings populate `v` / `v2` / `v3` in declaration order;
-/// integers populate `(i, ui)` / `(i2, ui2)` (one integer fills both
-/// the signed and unsigned slots — actions read whichever they need
-/// via `tag_arg` / `direction_arg`); floats populate `f` / `f2`.
-///
-/// Booleans are coerced to integers (`true → 1`, `false → 0`) so a
-/// script written `dispatch("togglefloating", [true])` doesn't fail.
 fn args_to_arg(args: &Array) -> Arg {
     let mut arg = Arg::default();
     let mut string_slot = 0;
@@ -275,9 +255,6 @@ fn args_to_arg(args: &Array) -> Arg {
     let mut float_slot = 0;
     for v in args.iter() {
         if v.is_string() {
-            // Cloning is cheap relative to the dispatch call itself
-            // and keeps the `args` param non-`&mut` so multiple
-            // bindings can read the same array shape.
             let s = v.clone().into_string().unwrap_or_default();
             match string_slot {
                 0 => arg.v = Some(s),
@@ -341,16 +318,44 @@ fn init_script_path() -> Option<PathBuf> {
     None
 }
 
-/// Evaluate the user's `init.rhai` if present, with the live
-/// `MargoState` reachable through the bound functions. Errors are
-/// logged with Rhai's own line/col reporting; never panic.
-pub fn run_user_init(engine: &Engine, state: &mut MargoState) {
+/// Stand up the scripting engine on `state`, compile init.rhai if
+/// present, and run its top-level statements once. Hook-registration
+/// statements populate `state.scripting.hooks`; non-hook statements
+/// (like a top-level `dispatch("setlayout", ["scroller"])`) execute
+/// immediately. After this returns, the engine + AST stay parked on
+/// MargoState ready for the `fire_*` helpers to invoke registered
+/// hooks at runtime.
+///
+/// No-op if no init.rhai exists — the user runs un-scripted by
+/// default.
+pub fn init_user_scripting(state: &mut MargoState) {
     let Some(path) = init_script_path() else {
         return;
     };
     info!("init.rhai: evaluating {}", path.display());
 
-    // RAII guard so the pointer is cleared even if Rhai unwinds.
+    let engine = build_engine();
+    let ast = match engine.compile_file(path.clone()) {
+        Ok(ast) => ast,
+        Err(e) => {
+            error!("init.rhai: compile error in {} — {e}", path.display());
+            return;
+        }
+    };
+
+    state.scripting = Some(Box::new(ScriptingState {
+        engine,
+        ast,
+        hooks: ScriptingHooks::default(),
+    }));
+
+    // Eval top-level statements. The hook registration functions
+    // need state.scripting to exist (they push into hooks vecs), so
+    // we install ScriptingState first and run after.
+    let Some(sc) = state.scripting.take() else {
+        return;
+    };
+
     struct StateGuard;
     impl Drop for StateGuard {
         fn drop(&mut self) {
@@ -361,8 +366,108 @@ pub fn run_user_init(engine: &Engine, state: &mut MargoState) {
     let _guard = StateGuard;
 
     let mut scope = Scope::new();
-    match engine.run_file_with_scope(&mut scope, path.clone()) {
+    let result = sc.engine.run_ast_with_scope(&mut scope, &sc.ast);
+
+    // Drop the state pointer before the explicit re-assignment so
+    // observers that count refcounts via STATE_PTR don't see two
+    // active refs.
+    STATE_PTR.with(|s| s.set(std::ptr::null_mut()));
+    state.scripting = Some(sc);
+
+    match result {
         Ok(()) => info!("init.rhai: ran cleanly"),
-        Err(e) => error!("init.rhai: error in {} — {e}", path.display()),
+        Err(e) => error!("init.rhai: runtime error — {e}"),
     }
+}
+
+/// Which hook list to fire. Used by `fire_hook` so it knows which
+/// vec to drain + which to restore — encoded explicitly instead of
+/// inferred so re-registration during a hook body (a hook calls
+/// `on_tag_switch(...)` while running an `on_focus_change`)
+/// doesn't make us put back the wrong list.
+#[derive(Copy, Clone)]
+enum HookKind {
+    FocusChange,
+    TagSwitch,
+    WindowOpen,
+}
+
+/// Invoke every registered `on_focus_change` hook.
+pub fn fire_focus_change(state: &mut MargoState) {
+    fire_hook(state, HookKind::FocusChange);
+}
+
+/// Invoke every registered `on_tag_switch` hook.
+pub fn fire_tag_switch(state: &mut MargoState) {
+    fire_hook(state, HookKind::TagSwitch);
+}
+
+/// Invoke every registered `on_window_open` hook. Called from
+/// `finalize_initial_map` so handlers see the final, post-rule
+/// app_id / title — not the empty initial values.
+pub fn fire_window_open(state: &mut MargoState) {
+    fire_hook(state, HookKind::WindowOpen);
+}
+
+fn fire_hook(state: &mut MargoState, kind: HookKind) {
+    // Take scripting out of state. A nested fire_hook (a hook calls
+    // dispatch which causes another event) finds None and is a
+    // no-op — recursion guard for free.
+    let Some(mut sc) = state.scripting.take() else {
+        return;
+    };
+    let hooks = match kind {
+        HookKind::FocusChange => std::mem::take(&mut sc.hooks.on_focus_change),
+        HookKind::TagSwitch => std::mem::take(&mut sc.hooks.on_tag_switch),
+        HookKind::WindowOpen => std::mem::take(&mut sc.hooks.on_window_open),
+    };
+
+    // Hot path: nothing registered. Restore + return without
+    // touching the state pointer.
+    if hooks.is_empty() {
+        // The list was empty before too, so nothing to restore.
+        state.scripting = Some(sc);
+        return;
+    }
+
+    {
+        // RAII state-pointer guard so a panic inside Rhai (caught by
+        // the engine but theoretically possible) clears the pointer.
+        struct StateGuard;
+        impl Drop for StateGuard {
+            fn drop(&mut self) {
+                STATE_PTR.with(|s| s.set(std::ptr::null_mut()));
+            }
+        }
+        STATE_PTR.with(|s| s.set(state as *mut _));
+        let _guard = StateGuard;
+
+        for h in &hooks {
+            let res: Result<Dynamic, Box<rhai::EvalAltResult>> =
+                h.call(&sc.engine, &sc.ast, ());
+            if let Err(e) = res {
+                warn!("init.rhai hook error: {e}");
+            }
+        }
+    }
+
+    // Restore the drained list — but if a hook body called
+    // `on_focus_change(...)` etc. while running, the matching
+    // vec is now non-empty; append rather than overwrite so we
+    // keep both old + new handlers.
+    let dst = match kind {
+        HookKind::FocusChange => &mut sc.hooks.on_focus_change,
+        HookKind::TagSwitch => &mut sc.hooks.on_tag_switch,
+        HookKind::WindowOpen => &mut sc.hooks.on_window_open,
+    };
+    if dst.is_empty() {
+        *dst = hooks;
+    } else {
+        // Newly-registered handlers came in during the run; keep
+        // them at the front and put the previous set behind.
+        let mut combined = hooks;
+        combined.extend(std::mem::take(dst));
+        *dst = combined;
+    }
+    state.scripting = Some(sc);
 }

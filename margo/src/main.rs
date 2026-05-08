@@ -378,14 +378,12 @@ fn main() -> Result<()> {
     }
 
     // ── User scripting (~/.config/margo/init.rhai) ───────────────────────────
-    // Runs once, after exec_once but before the event loop. The
-    // engine instance is dropped once the script returns; once
-    // event-hook bindings land it'll move into MargoState so
-    // callbacks survive.
-    {
-        let engine = scripting::init_engine();
-        scripting::run_user_init(&engine, &mut margo);
-    }
+    // Compiles + evaluates the user script once, after exec_once
+    // but before the event loop. The ScriptingState (engine, AST,
+    // registered hook FnPtrs) parks on MargoState for the lifetime
+    // of the compositor so on_focus_change / on_tag_switch /
+    // on_window_open handlers fire mid-event-loop (Phase 3).
+    scripting::init_user_scripting(&mut margo);
 
     // ── Run the event loop ────────────────────────────────────────────────────
     event_loop.run(None, &mut margo, |state| {

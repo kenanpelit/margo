@@ -1,11 +1,12 @@
 # Plugin / scripting system — design notes
 
-> Status: **Phase 2 landed**. `~/.config/margo/init.rhai` is
-> evaluated at compositor startup with full dispatch invocation
-> (`dispatch(action, args)`), state introspection (`focused_appid`,
-> `current_tag`, `monitor_names`, …), and three no-op event-hook
-> stubs (Phase 3). This document captures the rollout plan toward
-> a full event-driven plugin system.
+> Status: **Phase 3 landed**. `~/.config/margo/init.rhai` is
+> evaluated at compositor startup with full dispatch invocation,
+> state introspection, AND event hooks that actually fire mid-
+> event-loop. `on_focus_change`, `on_tag_switch`, and
+> `on_window_open` registered handlers now run from the matching
+> compositor event sites with the live state reachable through
+> the same binding surface as Phase 2.
 
 ## Why this exists
 
@@ -98,20 +99,48 @@ no editor support, and we'd own every parser bug forever. Hard pass.
   }
   ```
 
-### Phase 3 — Event hooks (multi-sprint)
+### Phase 3 — Event hooks ✓ shipped
 
-* Engine moves into `MargoState` so callbacks survive past startup.
-* `on_focus_change(fn(client))` fires from the focus-update site
-  in `state.rs::activate_window`.
-* `on_tag_switch(fn(tag))` fires from `view_tag`.
-* `on_window_open(fn(client))` fires from `finalize_initial_map`.
-* `on_window_close(fn(client))` fires from `unmap`.
-* `on_output_change(fn(monitor))` fires from output add/remove.
-* Each callback receives a frozen state snapshot (Rust struct
-  exposed as Rhai object). Mutating snapshots does not mutate
-  compositor state — to make a change, the script calls a
-  binding. (Mirrors how Wayland clients can't mutate compositor
-  state except via protocol calls.)
+* `ScriptingState { engine, ast, hooks }` lives on `MargoState`
+  as `Option<Box<...>>`, so callbacks survive past startup.
+* `on_focus_change(fn())` fires from `focus_surface` after
+  the focus broadcast, gated on `prev != new` so the speculative
+  refresh path doesn't trigger no-op hooks.
+* `on_tag_switch(fn())` fires from `view_tag` after the
+  arrange + IPC broadcast, so handlers reading
+  `current_tag()` / `focused_appid()` see post-switch state.
+* `on_window_open(fn())` fires from `finalize_initial_map`
+  after window rules + focus, so handlers see the final
+  app_id + title and `dispatch(...)` calls apply to the
+  just-opened window.
+* Recursion guard: hooks fire by *taking* `ScriptingState` out
+  of `MargoState`, running the FnPtrs on the still-owned
+  engine/AST, then putting it back. A re-entrant `fire_*`
+  finds `None` and is a no-op — so a hook that calls
+  `dispatch(...)` triggering another event doesn't re-fire
+  itself.
+* Hooks registered during a hook body are appended to the
+  matching list when the outer fire returns; no handler is
+  silently dropped.
+* Hooks today take no args. Reading state via the Phase 2
+  binding surface (`focused_appid()`, `current_tag()`, …) is
+  the user-facing API. Future iterations may pass typed
+  argument structs, but the no-arg version covers ~all real
+  patterns and avoids exposing a struct surface that has to
+  evolve compatibly across compositor versions.
+
+Out-of-scope (future):
+
+* `on_window_close(fn())` — needs a stable identity for
+  closed windows so a handler can react before the client
+  dies. Tracked separately.
+* `on_output_change(fn())` — fires on output add/remove
+  with the monitor name; useful for "auto-relayout when
+  external display plugged in".
+* Per-client filter sugar (`on_window_open("spotify", fn() { ... })`)
+  — today filters are `if focused_appid() == "spotify" { ... }`
+  inside the handler body. Sugar is small Phase 3.5 if
+  user demand surfaces.
 
 ### Phase 4 — `mctl run <script>` (small)
 
