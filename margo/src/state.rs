@@ -3133,23 +3133,40 @@ impl MargoState {
                 let was_vis = c.is_visible_on(mon_idx, current);
                 let is_vis = c.is_visible_on(mon_idx, new_tagmask);
                 if !was_vis && is_vis {
-                    // Fall back to a sane default if c.geom hasn't been
-                    // populated yet (freshly-mapped client never
-                    // arranged on this monitor): half the monitor area
-                    // centred. This case is rare — finalize_initial_map
-                    // arranges before the first tag switch — but the
-                    // fallback keeps the animation visually sane
-                    // instead of degenerate-thin.
-                    let (w, h) = if c.geom.width > 0 && c.geom.height > 0 {
-                        (c.geom.width, c.geom.height)
-                    } else {
-                        (mon_geom.width / 2, mon_geom.height / 2)
-                    };
+                    // First-show case: the client was never properly
+                    // arranged on this monitor (typically because it
+                    // mapped while a different tag was active — e.g.
+                    // a startup script launching apps onto their home
+                    // tags before the user has visited those tags).
+                    // c.geom is still default `(0, 0, 0, 0)` and no
+                    // configure has been sent for the actual slot
+                    // size yet. Skip the tag-in animation entirely:
+                    // staging an offscreen rect with a fabricated
+                    // size would force arrange to run a size-changing
+                    // move animation (`mon/2 → slot`), the renderer
+                    // would try to capture a resize-snapshot from a
+                    // surface tree without a usable buffer, that
+                    // capture would fail or render at the wrong size,
+                    // and the user would see the live surface stuck
+                    // at its default size while the border tracked
+                    // the slot — exactly the "first-launch via
+                    // semsumo doesn't fit, pkill+relaunch fixes it"
+                    // symptom on Spotify and Helium. By falling
+                    // through, `arrange_monitor` runs its
+                    // direct-snap branch (because `old.width == 0`
+                    // makes `should_animate` false), pushes the
+                    // window to its slot in one go, and sends the
+                    // first valid configure. The next tag-switch
+                    // visit will animate normally with a populated
+                    // c.geom.
+                    if c.geom.width <= 0 || c.geom.height <= 0 {
+                        continue;
+                    }
                     c.geom = crate::layout::Rect {
                         x: off_in_xy.0,
                         y: off_in_xy.1,
-                        width: w,
-                        height: h,
+                        width: c.geom.width,
+                        height: c.geom.height,
                     };
                     // Force arrange to start a fresh animation (the
                     // already_animating_to_target guard would skip if
@@ -3774,6 +3791,69 @@ impl MargoState {
 
         if !self.monitors.is_empty() {
             self.arrange_monitor(target_mon);
+        }
+
+        // Inactive-tag bootstrap. If the client mapped onto a tag
+        // that's not currently active on `target_mon` (typical at
+        // session start: `semsumo-daily` launches Spotify with
+        // tag-rule `tags:8` while the user is still on tag 1), the
+        // arrange_monitor call above ran with the *current* tagset
+        // and skipped this client — it didn't get a slot, didn't
+        // receive a configure, and its `c.geom` stays at the
+        // `Rect::default()` zero rect. The client picks its own
+        // default size and commits a buffer at that size; later,
+        // when the user finally tag-switches in, arrange has to
+        // run a `default → slot` transition that fights the
+        // pre-existing buffer. That's the long tail of the
+        // "Spotify only fits the border after pkill+relaunch"
+        // symptom.
+        //
+        // Kick a configure with the monitor's working area as a
+        // sane default so the client can at least commit at a
+        // reasonable size during launch. The eventual tag-switch
+        // arrange will send a *real* configure (the actual slot
+        // computed by the layout) and the resize transition there
+        // will work as designed because the client now has a real
+        // buffer to snapshot.
+        if self.clients[idx].geom.width <= 0 || self.clients[idx].geom.height <= 0 {
+            if let Some(mon) = self.monitors.get(target_mon) {
+                let area = mon.monitor_area;
+                self.clients[idx].geom = Rect {
+                    x: area.x,
+                    y: area.y,
+                    width: area.width,
+                    height: area.height,
+                };
+                if let WindowSurface::Wayland(toplevel) =
+                    self.clients[idx].window.underlying_surface()
+                {
+                    toplevel.with_pending_state(|state| {
+                        state.size = Some(smithay::utils::Size::from((
+                            area.width,
+                            area.height,
+                        )));
+                    });
+                    let initial_sent = with_states(toplevel.wl_surface(), |states| {
+                        states
+                            .data_map
+                            .get::<XdgToplevelSurfaceData>()
+                            .and_then(|d| d.lock().ok().map(|d| d.initial_configure_sent))
+                            .unwrap_or(false)
+                    });
+                    if !initial_sent {
+                        toplevel.send_configure();
+                    }
+                }
+                tracing::info!(
+                    "inactive-tag bootstrap: app_id={} tags={:#x} \
+                     active_tagset={:#x} sent default {}x{}",
+                    self.clients[idx].app_id,
+                    self.clients[idx].tags,
+                    mon.current_tagset(),
+                    area.width,
+                    area.height,
+                );
+            }
         }
 
         // Kick off the open animation if globally enabled, this client
