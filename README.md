@@ -25,11 +25,6 @@ margo is a feature-complete Wayland compositor — a Rust + [Smithay] port of [m
 [![Rust](https://img.shields.io/badge/rust-1.85%2B-orange?logo=rust)](Cargo.toml)
 [![Smithay](https://img.shields.io/badge/built%20on-Smithay-blueviolet)](https://github.com/Smithay/smithay)
 
-margo is a feature-complete Wayland compositor — a Rust + [Smithay] port of [mango], in the dwl/dwm tradition. It keeps the **tag** model (no workspaces), ships **15 tiling layouts**, and runs on Smithay's modern protocol stack. Every commit goes through a daily driver before tagging.
-
-[Smithay]: https://github.com/Smithay/smithay
-[mango]: https://github.com/mangowm/mango
-
 ---
 
 ## Highlights
