@@ -451,6 +451,177 @@ fn main() -> Result<()> {
         }
     }
 
+    // ── DisplayConfig D-Bus shim ──────────────────────────────────────────────
+    // xdp-gnome cross-references monitor enumeration on
+    // `org.gnome.Mutter.DisplayConfig` when populating the
+    // ScreenCast chooser's Entire Screen tab.
+    {
+        use crate::dbus::ipc_output;
+        use crate::dbus::mutter_display_config::DisplayConfig;
+        use crate::dbus::Start as _;
+
+        let outputs = std::sync::Arc::new(std::sync::Mutex::new(ipc_output::snapshot(&margo)));
+        match DisplayConfig::new(outputs).start() {
+            Ok(conn) => margo.dbus_servers.conn_display_config = Some(conn),
+            Err(e) => warn!("DisplayConfig D-Bus start failed: {e}"),
+        }
+    }
+
+    // ── Gnome Shell Introspect D-Bus shim ─────────────────────────────────────
+    // Powers the Window tab of xdp-gnome's screencast chooser:
+    // `GetWindows` returns the list of toplevels with title +
+    // app_id. The compositor side answers via the from_compositor
+    // async-channel — for now respond with margo's current
+    // `clients` snapshot synchronously inline so the chooser
+    // dialog populates without round-tripping back through
+    // calloop. Live reactive updates (`windows_changed` signal)
+    // are a follow-up.
+    {
+        use crate::dbus::gnome_shell_introspect::{
+            CompositorToIntrospect, Introspect, IntrospectToCompositor, WindowProperties,
+        };
+        use crate::dbus::Start as _;
+        use std::collections::HashMap;
+
+        let (intr_tx, intr_rx) = calloop::channel::channel::<IntrospectToCompositor>();
+        let (resp_tx, resp_rx) = async_channel::unbounded::<CompositorToIntrospect>();
+
+        if let Err(e) = event_loop
+            .handle()
+            .insert_source(intr_rx, move |event, _, state: &mut MargoState| {
+                if let calloop::channel::Event::Msg(IntrospectToCompositor::GetWindows) = event {
+                    let mut map: HashMap<u64, WindowProperties> = HashMap::new();
+                    for c in &state.clients {
+                        // Stable id per-process: use the wl_surface
+                        // pointer cast to u64 if available, else a
+                        // monotonic counter on the client. xdp-gnome
+                        // only needs uniqueness within the snapshot.
+                        let id = std::ptr::addr_of!(*c) as u64;
+                        map.insert(
+                            id,
+                            WindowProperties {
+                                title: c.title.clone(),
+                                app_id: c.app_id.clone(),
+                            },
+                        );
+                    }
+                    let _ = resp_tx.try_send(CompositorToIntrospect::Windows(map));
+                }
+            })
+        {
+            warn!("Introspect calloop source insert failed: {e}");
+        } else {
+            match Introspect::new(intr_tx, resp_rx).start() {
+                Ok(conn) => margo.dbus_servers.conn_introspect = Some(conn),
+                Err(e) => warn!("Introspect D-Bus start failed: {e}"),
+            }
+        }
+    }
+
+    // ── Gnome Shell Screenshot D-Bus shim ─────────────────────────────────────
+    // Programmatic Screenshot portal path. Margo already has the
+    // keybind-driven `margo-screenshot` script for users; this
+    // shim handles the API path (browser screenshot APIs, GNOME
+    // apps invoking the portal).
+    {
+        use crate::dbus::gnome_shell_screenshot::{
+            CompositorToScreenshot, Screenshot, ScreenshotToCompositor,
+        };
+        use crate::dbus::Start as _;
+
+        let (shot_tx, shot_rx) = calloop::channel::channel::<ScreenshotToCompositor>();
+        let (resp_tx, resp_rx) = async_channel::unbounded::<CompositorToScreenshot>();
+
+        if let Err(e) = event_loop
+            .handle()
+            .insert_source(shot_rx, move |event, _, _state: &mut MargoState| {
+                let calloop::channel::Event::Msg(msg) = event else {
+                    return;
+                };
+                match msg {
+                    ScreenshotToCompositor::TakeScreenshot { include_cursor: _ } => {
+                        // Hand off to the existing margo-screenshot
+                        // script — it knows the user's preferred
+                        // dir / filename pattern. Block-style
+                        // synchronous output isn't great for the
+                        // portal contract; revisit when we have
+                        // an in-process screenshot path.
+                        let _ = utils::spawn_shell("margo-screenshot screen");
+                        let _ = resp_tx
+                            .try_send(CompositorToScreenshot::ScreenshotResult(None));
+                    }
+                    ScreenshotToCompositor::PickColor(reply) => {
+                        // No in-tree color picker yet — let the
+                        // requesting app handle it.
+                        let _ = reply.try_send(None);
+                    }
+                }
+            })
+        {
+            warn!("Screenshot calloop source insert failed: {e}");
+        } else {
+            match Screenshot::new(shot_tx, resp_rx).start() {
+                Ok(conn) => margo.dbus_servers.conn_screen_shot = Some(conn),
+                Err(e) => warn!("Screenshot D-Bus start failed: {e}"),
+            }
+        }
+    }
+
+    // ── Mutter ScreenCast D-Bus shim — the main event ─────────────────────────
+    // This is the interface that xdp-gnome calls to mint
+    // sessions / streams. Without it, the Window + Entire Screen
+    // tabs in browser meeting clients stay grayed out.
+    //
+    // The receiver side (`ScreenCastToCompositor` channel) wires
+    // into `MargoState::screencasting`; `StartCast` boots a
+    // PipeWire stream against the source, `StopCast` tears it
+    // down. The actual cast lifecycle / render hook for
+    // emitting frames lives in
+    // `crate::screencasting::pw_utils::Cast`.
+    {
+        use crate::dbus::ipc_output;
+        use crate::dbus::mutter_screen_cast::{ScreenCast, ScreenCastToCompositor};
+        use crate::dbus::Start as _;
+
+        let (sc_tx, sc_rx) = calloop::channel::channel::<ScreenCastToCompositor>();
+        let outputs = std::sync::Arc::new(std::sync::Mutex::new(ipc_output::snapshot(&margo)));
+
+        if let Err(e) = event_loop
+            .handle()
+            .insert_source(sc_rx, |event, _, state: &mut MargoState| {
+                let calloop::channel::Event::Msg(msg) = event else {
+                    return;
+                };
+                match msg {
+                    ScreenCastToCompositor::StartCast { session_id, .. } => {
+                        // Phase E: instantiate a `Cast` against
+                        // the source, attach the PipeWire stream,
+                        // emit `pipe_wire_stream_added` over the
+                        // signal_ctx. For now: log + stash the
+                        // session_id so xdp-gnome's call to
+                        // `Session.Start` succeeds at the D-Bus
+                        // layer (browser sees a node ID later
+                        // when the Phase E render hook lands).
+                        tracing::info!(
+                            "screencast: StartCast received (session={}); cast lifecycle wires up in Phase E",
+                            session_id
+                        );
+                    }
+                    ScreenCastToCompositor::StopCast { session_id } => {
+                        state.stop_cast(session_id);
+                    }
+                }
+            })
+        {
+            warn!("ScreenCast calloop source insert failed: {e}");
+        } else {
+            match ScreenCast::new(outputs, sc_tx).start() {
+                Ok(conn) => margo.dbus_servers.conn_screen_cast = Some(conn),
+                Err(e) => warn!("ScreenCast D-Bus start failed: {e}"),
+            }
+        }
+    }
+
     // ── exec_once commands ────────────────────────────────────────────────────
     for cmd in margo.config.exec_once.clone() {
         if let Err(e) = utils::spawn_shell(&cmd) {

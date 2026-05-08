@@ -79,3 +79,76 @@ impl IpcTransform {
         }
     }
 }
+
+/// Build a fresh `IpcOutputMap` from the live `MargoState::monitors`.
+/// xdp-gnome calls `GetCurrentState` / monitors listing on every
+/// chooser dialog so taking a fresh snapshot per call is fine
+/// (small N — usually 1-3 outputs).
+///
+/// Output IDs are stable for the duration of a margo session: we
+/// hash the connector name into a u64 so the same monitor maps to
+/// the same OutputId across snapshots, which is what xdp-gnome
+/// expects.
+pub fn snapshot(state: &crate::state::MargoState) -> IpcOutputMap {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut map = IpcOutputMap::new();
+    for mon in &state.monitors {
+        let mode = mon.output.current_mode();
+        let phys = mon.output.physical_properties();
+
+        let modes: Vec<IpcMode> = mon
+            .output
+            .modes()
+            .iter()
+            .map(|m| IpcMode {
+                width: m.size.w as u16,
+                height: m.size.h as u16,
+                refresh_rate: m.refresh as u32,
+                is_preferred: mon
+                    .output
+                    .preferred_mode()
+                    .is_some_and(|p| p.size == m.size && p.refresh == m.refresh),
+            })
+            .collect();
+
+        let current_mode_idx = mode.and_then(|cm| {
+            mon.output
+                .modes()
+                .iter()
+                .position(|m| m.size == cm.size && m.refresh == cm.refresh)
+        });
+
+        let logical = Some(IpcLogicalOutput {
+            x: mon.monitor_area.x,
+            y: mon.monitor_area.y,
+            width: mon.monitor_area.width.max(0) as u32,
+            height: mon.monitor_area.height.max(0) as u32,
+            scale: mon.scale as f64,
+            transform: IpcTransform::Normal,
+        });
+
+        let mut hasher = DefaultHasher::new();
+        mon.name.hash(&mut hasher);
+        let id: OutputId = hasher.finish();
+
+        map.insert(
+            id,
+            IpcOutput {
+                name: mon.name.clone(),
+                make: phys.make.clone(),
+                model: phys.model.clone(),
+                serial: Some(phys.serial_number.clone()).filter(|s| !s.is_empty()),
+                physical_size: Some((phys.size.w as u32, phys.size.h as u32))
+                    .filter(|(w, h)| *w > 0 && *h > 0),
+                logical,
+                modes,
+                current_mode: current_mode_idx,
+                vrr_supported: false,
+                vrr_enabled: false,
+            },
+        );
+    }
+    map
+}
