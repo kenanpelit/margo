@@ -1,207 +1,152 @@
 # margo
 
-A feature-rich, dynamically tiled Wayland compositor written in Rust on top of
-[Smithay](https://github.com/Smithay/smithay). margo is a daily-driver fork of
-[mango](https://github.com/mangowm/mango) (originally C/wlroots) that has been
-re-implemented from scratch in Rust — without giving up the dwl-style tag
-model, the rich layout family, or the IPC surface that downstream widgets
-already depend on.
+> A fast, dynamically-tiled Wayland compositor written in Rust.
 
 [![License](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
-![Status](https://img.shields.io/badge/status-P0%20complete%20%E2%80%94%20daily%20driver-success)
-![Rust](https://img.shields.io/badge/rust-1.85%2B-orange?logo=rust)
+[![Status](https://img.shields.io/badge/status-daily%20driver-success)](road_map.md)
+[![Rust](https://img.shields.io/badge/rust-1.85%2B-orange?logo=rust)](Cargo.toml)
+[![Smithay](https://img.shields.io/badge/built%20on-Smithay-blueviolet)](https://github.com/Smithay/smithay)
 
-> **Status:** P0 (reliable daily session) is complete. P1 is the modern
-> desktop-protocol parity sprint — DMA-BUF screencopy, pointer constraints,
-> output management, `linux_dmabuf`, presentation-time.
+margo is a feature-complete Wayland compositor — a Rust + [Smithay] port of [mango], in the dwl/dwm tradition. It keeps the **tag** model (no workspaces), ships **15 tiling layouts**, and runs on Smithay's modern protocol stack. Every commit goes through a daily driver before tagging.
+
+[Smithay]: https://github.com/Smithay/smithay
+[mango]: https://github.com/mangowm/mango
 
 ---
 
 ## Highlights
 
-- **15 layouts** out of the box — `tile`, `scroller`, `grid`, `monocle`,
-  `deck`, `center_tile`, `right_tile`, `vertical_*` mirrors, `tg_mix`,
-  `canvas`, `dwindle`, `overview` — each per-tag, with master/stack control,
-  configurable gaps, and animated transitions.
-- **Tag model, not workspaces.** Nine tags, multi-select, per-tag layout +
-  mfact + nmaster snapshots, per-tag *home monitor* pinning
-  (`tagrule = id:N, monitor_name:DP-3`), and dwm-style "press the same tag
-  twice to bounce back" behaviour.
-- **Window rules** with PCRE2-compatible regexes on `app_id`/`title`,
-  size constraints (min/max), forced floating + geometry, screencast
-  blackout flag, late `app_id`-driven re-apply, and live reload.
-- **Animations.** Bezier-baked move / open / close / tag / focus curves,
-  size-snap on tile rearrange so Electron clients (Helium, Spotify,
-  Discord) don't shift under their border.
-- **XWayland** for legacy clients, alongside native xdg-shell.
-- **Live config reload** via `mctl reload` — no logout, no restart,
-  picks up window rules and re-applies them to mapped windows.
-- **Hot-pluggable monitors.** Plug or unplug a display; outputs come
-  and go without a session restart, lock surfaces and layer surfaces
-  re-anchor automatically.
+- **15 layouts** — `tile`, `scroller`, `grid`, `monocle`, `deck`, `center_tile`, `right_tile`, vertical mirrors, `tg_mix`, `canvas`, `dwindle`, plus a full overview. Each tag remembers its own choice.
+- **9 multi-select tags**, dwm-style — press the same tag twice to bounce back, pin tags to a home monitor (`tagrule = id:N, monitor_name:DP-3`), tag windows by regex.
+- **Spring physics + bezier curves** — niri-style move animation with mid-flight retarget velocity preservation, bezier curves for open/close/tag/focus/layer.
+- **Real protocol stack** — DMA-BUF screencopy, `pointer_constraints`, `relative_pointer`, `xdg_activation`, `wlr_output_management` (incl. runtime mode change), `presentation-time` with VBlank-accurate timestamps, drop shadows.
+- **Window rules** with PCRE2 regex on `app_id`/`title` — floating geometry, tag pinning, screencast block-out for password managers, terminal swallowing.
+- **Embedded Rhai scripting** — drop a `~/.config/margo/init.rhai`; call any compositor action from script, hook `on_focus_change` / `on_tag_switch` / `on_window_open`.
+- **Hot-reload everything** — `mctl reload` (or Super+Ctrl+R) re-applies window rules, key binds, monitor topology, animation curves, and gestures without restarting your session.
+- **DRM hotplug** that actually works — dock or undock a laptop, plug a second monitor; outputs come and go without a logout.
+- **`mctl` IPC** speaks `dwl-ipc-unstable-v2` — drop-in for noctalia, waybar-dwl, fnott, and any dwl/mango widget.
 
-## Wayland protocols
-
-| Category | Protocols |
-|---|---|
-| Core | `wl_compositor`, `wl_subcompositor`, `wl_shm`, `wl_seat`, `wl_output`, `wl_data_device_manager`, `viewporter`, `linux_dmabuf` (input only — egress is on the P1 list) |
-| Shell | `xdg_shell`, `xdg_decoration_v1`, `wlr_layer_shell_v1`, `xwayland_shell_v1` |
-| Input | `wp_text_input_v3`, `zwp_input_method_v2` (Qt password fields, Fcitx5, IBus) |
-| Selection | `wlr_data_control_v1`, `primary_selection_v1` |
-| Idle / lock | `ext_idle_notifier_v1`, `zwp_idle_inhibit_manager_v1`, `ext_session_lock_v1` |
-| Capture / display | `wlr_screencopy_v1` (SHM), `wlr_gamma_control_v1`, `wlr_output_power_management_v1`, `xdg_output_v1` |
-| IPC / surfaces | `dwl_ipc_unstable_v2`, `ext_workspace_v1`, `foreign_toplevel_list_v1`, `wlr_foreign_toplevel_management_v1` |
-
-## Build
+## Install
 
 ### Arch (PKGBUILD)
 
-A reference [PKGBUILD](https://github.com/kenanpelit/margo_build) is maintained
-out-of-tree. The standard flow is:
-
 ```bash
 git clone https://github.com/kenanpelit/margo_build ~/.kod/margo_build
-cd ~/.kod/margo_build
-makepkg -si
+cd ~/.kod/margo_build && makepkg -si
 ```
 
-### From source (cargo)
+### From source
 
 ```bash
 git clone https://github.com/kenanpelit/margo
-cd margo
-cargo build --release
+cd margo && cargo build --release
 sudo install -Dm755 target/release/margo /usr/bin/margo
 sudo install -Dm755 target/release/mctl  /usr/bin/mctl
-sudo install -Dm644 margo.desktop \
-    /usr/share/wayland-sessions/margo.desktop
+sudo install -Dm644 margo.desktop /usr/share/wayland-sessions/margo.desktop
 ```
 
-Runtime dependencies match the PKGBUILD: `libinput`, `libxkbcommon`,
-`wayland`, `mesa`, `seatd`, `pixman`, `libdrm`, `systemd-libs`, `pcre2`,
-`xorg-xwayland` (optional but recommended).
+System dependencies: `wayland`, `libinput`, `libxkbcommon`, `seatd`, `mesa`, `libdrm`, `pixman`, `pcre2`, `xorg-xwayland` (optional).
 
-### Nix (flake)
+### Nix flake
 
 ```bash
 nix run github:kenanpelit/margo
 ```
 
-The flake exposes `packages.default`, a `devShells.default` with
-`rust-analyzer` and `clippy`, plus `nixosModules.margo` and
-`hmModules.margo`. See [`nix/`](nix/) and [`flake.nix`](flake.nix).
+The flake exposes `packages.default`, a `devShells.default` with `rust-analyzer` + `clippy`, plus `nixosModules.margo` and `hmModules.margo`.
 
 ## Configure
 
-margo reads `~/.config/margo/config.conf` (text, `key = value`).
-A curated example shipping every keybind / window rule / tagrule
-the maintainer uses is at
-[`margo/src/config.example.conf`](margo/src/config.example.conf) and is
-also installed to `/usr/share/doc/margo-git/config.example.conf`.
+`~/.config/margo/config.conf` — text, `key = value`, hot-reloadable. A complete example with every binding lives in [`margo/src/config.example.conf`](margo/src/config.example.conf).
 
 ```ini
-# Looks
-borderpx       = 3
-border_radius  = 12
-gaps           = 6
+# Look
+borderpx        = 3
+border_radius   = 12
+gappih          = 12
+gappiv          = 12
 focused_opacity   = 1.0
 unfocused_opacity = 0.9
 
-# Tags 1–6 live on DP-3, 7–9 on eDP-1.
-tagrule = id:1, layout:tile,     monitor_name:DP-3
-tagrule = id:7, layout:scroller, monitor_name:eDP-1
+# Tags 1–6 home on DP-3, 7–9 home on eDP-1
+tagrule = id:1, layout_name:scroller, monitor_name:DP-3
+tagrule = id:7, layout_name:scroller, monitor_name:eDP-1
 
-# Force Helium onto tag 1 (its tag rule supplies the monitor)
+# Pin Helium to tag 1
 windowrule = tags:1, appid:^Kenp$
+# Float password prompts
 windowrule = isfloating:1, width:640, height:260, \
              title:^(Authentication Required|Unlock Keyring)$
 
-# Common keybinds
-bind = super,        Return, spawn, kitty
-bind = super,        q,      killclient
-bind = super,        space,  spawn, qs -c noctalia-shell ipc call launcher toggle
-bind = alt,          l,      spawn, qs -c noctalia-shell ipc call lockScreen lock
-bind = super+shift,  r,      reload_config
+# Animations — niri-style
+animation_clock_move = spring     # mid-flight velocity preserved
+animation_clock_tag  = bezier     # snap-stop, no overshoot
+animation_curve_open = 0.16,1.0,0.30,1.0   # ease-out-expo
+
+# Keys
+bind = super,       Return, spawn, kitty
+bind = super,       q,      killclient
+bind = super,       space,  spawn, qs -c noctalia-shell ipc call launcher toggle
+bind = super+ctrl,  s,      sticky_window
+bind = super+ctrl,  r,      reload_config
+```
+
+Validate before reloading:
+
+```bash
+mctl check-config
 ```
 
 ## IPC — `mctl`
 
-`mctl` is the in-tree IPC client. It speaks `dwl-ipc-unstable-v2` so existing
-dwl/mango ecosystem widgets (status bars, screen-lockers, OSDs) work
-unchanged.
-
 ```bash
-mctl status                   # JSON dump of monitors / tags / clients
-mctl watch                    # follow state changes (good for bars)
+mctl status                          # JSON: monitors, tags, focused window
+mctl status --json | jq '.outputs[]'
+mctl watch                           # follow state changes (great for bars)
+mctl actions --verbose               # list every dispatchable action
 mctl dispatch togglefullscreen
-mctl tags 0x02                # view tag 2
-mctl reload                   # hot-reload config
-mctl quit                     # graceful shutdown
+mctl dispatch view 4                 # tag bitmask 4 = tag 3
+mctl rules --appid Kenp              # show which window rules match
+mctl reload                          # hot-reload config
 ```
 
-The dispatch surface is the same string keys you bind in `config.conf`
-(`spawn`, `view`, `tag`, `setlayout`, `togglefloating`, `zoom`,
-`focusmon`, `toggleoverview`, …). Run `mctl --help` for the full list.
+Actions are the same string keys you bind in `config.conf` (`spawn`, `view`, `tag`, `setlayout`, `togglefloating`, `zoom`, `focusmon`, `toggleoverview`, `sticky_window`, …). Shell completions for bash / zsh / fish ship with the package.
 
-## Architecture
+## Scripting
 
-```
-margo/                 # workspace root
-├── margo/             # compositor binary
-│   └── src/
-│       ├── main.rs            # entry, calloop wiring, panic hook
-│       ├── state.rs           # MargoState, all delegate impls
-│       ├── input_handler.rs   # libinput → smithay seat plumbing
-│       ├── dispatch/          # action name → state.rs method
-│       ├── layout/            # 15 tiling algorithms
-│       ├── animation/         # bezier curve baking + ticking
-│       ├── render/            # rounded borders + clipped surfaces
-│       ├── protocols/         # dwl-ipc, ext-workspace, foreign-toplevel,
-│       │                      # gamma-control, screencopy
-│       ├── input/             # keyboard / pointer / touch / gestures
-│       ├── backend/           # winit + udev (DRM + libinput)
-│       └── config.example.conf
-├── margo-config/      # text config parser (PCRE2 via `regex`)
-├── margo-ipc/         # mctl client + shared IPC types
-├── protocols/         # Wayland XML for non-upstream protocols
-├── nix/               # flake module + NixOS / home-manager configs
-├── scripts/           # screenshot, smoke-rules.sh windowrule tester
-└── docs/              # extended user docs (mango-derived)
+Drop `~/.config/margo/init.rhai` and margo evaluates it at startup:
+
+```rhai
+// Auto-tag Spotify into tag 8
+on_window_open(|| {
+    if focused_appid() == "spotify" {
+        dispatch("tagview", [tag(8)]);
+    }
+});
+
+// Quiet bar when entering tag 9
+on_tag_switch(|| {
+    if current_tag() == 9 {
+        spawn("pkill -SIGUSR1 waybar");
+    }
+});
 ```
 
-The compositor is a single Smithay event loop driven by `calloop`. State
-lives in `MargoState`; a `MargoClient` carries per-toplevel geometry,
-animation state, tag mask, and rule-derived flags. `MargoMonitor` carries
-a `Pertag` block so each tag remembers its own layout / mfact /
-nmaster / view selection.
+Engine: [Rhai] (Rust, sandboxed). Full reference: [`docs/scripting-design.md`](docs/scripting-design.md).
 
-For a deeper tour see [`CLAUDE.md`](CLAUDE.md).
+[Rhai]: https://rhai.rs
 
-## Roadmap
+## Documentation
 
-P0 (reliable daily session) is **done** — `ext_session_lock_v1`,
-`ext_idle_notifier_v1`, DRM hotplug (plug + unplug), interactive move /
-resize, structured panic + `SIGUSR1` state-dump diagnostics, and a smoke
-test harness for window rules.
-
-The P1 sprint focuses on protocol parity with niri / sway: DMA-BUF
-screencopy, region-cropped capture, screencast blackout filter,
-`pointer_constraints_v1`, `xdg_activation_v1`,
-`wlr_output_management_v1`, and `presentation-time`.
+- **[`road_map.md`](road_map.md)** — what's shipped, what's queued, design tradeoffs.
+- **[`docs/`](docs/)** — design plans for in-flight features (HDR / portal / scripting) and the post-install validation checklist.
+- `mctl --help` and `mctl actions --verbose` — full action + binding reference, generated from source.
 
 ## Acknowledgements
 
-margo stands on the shoulders of:
+[Smithay] (compositor toolkit) · [niri](https://github.com/YaLTeR/niri) (focus oracle, hotplug, transactional resize patterns) · [mango](https://github.com/mangowm/mango) (feature inventory, IPC surface, default keybinds) · [dwl](https://codeberg.org/dwl/dwl) (the original dwm-on-wlroots) · [anvil](https://github.com/Smithay/smithay/tree/master/anvil) (Smithay's reference compositor) · [Hyprland](https://hypr.land) (color-management protocol shape).
 
-- **[Smithay](https://github.com/Smithay/smithay)** — Wayland compositor toolkit in Rust.
-- **[niri](https://github.com/YaLTeR/niri)** — patterns for keyboard focus refresh, lock-state machine, transactional resize, and hotplug.
-- **[mango](https://github.com/mangowm/mango)** — feature inventory, IPC surface, default keybinds.
-- **[dwl](https://codeberg.org/dwl/dwl)** — the original dwm-on-wlroots that the tag model and dispatch shape come from.
-- **[anvil](https://github.com/Smithay/smithay/tree/master/anvil)** — Smithay's reference compositor; the input-method handler and X11 wiring trace back to it.
-- **[scenefx](https://github.com/wlrfx/scenefx)** — visual effects reference (mango's blur / shadow / radius work).
-
-Original portions of dwl, dwm, sway, tinywl, and wlroots are preserved
-under their respective licenses; see `LICENSE.*` files.
+Original portions of dwl, dwm, sway, tinywl, and wlroots are preserved under their respective licenses — see `LICENSE.*`.
 
 ## License
 
