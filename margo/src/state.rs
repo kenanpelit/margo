@@ -1122,6 +1122,39 @@ pub struct MargoState {
     /// invocation (the recursion guard + borrow-checker dance lives
     /// in `scripting::fire_hook`).
     pub scripting: Option<Box<crate::scripting::ScriptingState>>,
+    /// `ext-image-capture-source-v1` core state. Mints opaque
+    /// source handles that clients pass to ext-image-copy-capture
+    /// to identify what they want to capture. xdp-wlr 0.8+ uses
+    /// these for the per-window screencast path.
+    pub image_capture_source_state:
+        smithay::wayland::image_capture_source::ImageCaptureSourceState,
+    /// `ext-output-image-capture-source-manager-v1` global —
+    /// "give me a capture source for this wl_output". Backs the
+    /// monitor-share path in xdp-wlr.
+    pub output_capture_source_state:
+        smithay::wayland::image_capture_source::OutputCaptureSourceState,
+    /// `ext-foreign-toplevel-image-capture-source-manager-v1`
+    /// global — "give me a capture source for this toplevel".
+    /// Margo's `ForeignToplevelListState` already implements the
+    /// matching `ext-foreign-toplevel-list-v1`, so xdp-wlr can
+    /// enumerate windows + ask for per-window capture; this is
+    /// the protocol that lights up the **Window tab** in
+    /// browser-based meeting clients (Google Meet, Zoom Web,
+    /// Discord, Jitsi).
+    pub toplevel_capture_source_state:
+        smithay::wayland::image_capture_source::ToplevelCaptureSourceState,
+    /// `ext-image-copy-capture-v1` — the actual capture transport.
+    /// Clients open a session against an `ImageCaptureSource`,
+    /// receive buffer constraints, allocate a matching buffer,
+    /// then request a frame which margo renders into the buffer.
+    pub image_copy_capture_state:
+        smithay::wayland::image_copy_capture::ImageCopyCaptureState,
+    /// Active capture sessions, keyed by something we can match
+    /// against an `ImageCaptureSource` later — for now we hold
+    /// the `Session` handles so they don't get dropped (which
+    /// would auto-stop the session). Real frame routing wires
+    /// up in the rendering follow-up commit.
+    pub image_copy_capture_sessions: Vec<smithay::wayland::image_copy_capture::Session>,
     /// `wp_presentation` global. Lets clients (kitty, mpv, native
     /// Wayland Vulkan games via DXVK / VKD3D, video conferencing
     /// apps that adapt their pacing to the actual display refresh)
@@ -1280,6 +1313,20 @@ impl MargoState {
                 &dh,
                 |_client| true,
             );
+        // ext-image-capture-source-v1 + ext-image-copy-capture-v1
+        // — the modern Wayland screencast stack. Without these
+        // globals, xdp-wlr 0.8+ can't expose per-window share
+        // (Window tab in meeting clients). Smithay ships full
+        // helpers; output and toplevel source globals are
+        // independent so we can advertise both.
+        let image_capture_source_state =
+            smithay::wayland::image_capture_source::ImageCaptureSourceState::new();
+        let output_capture_source_state =
+            smithay::wayland::image_capture_source::OutputCaptureSourceState::new::<Self>(&dh);
+        let toplevel_capture_source_state =
+            smithay::wayland::image_capture_source::ToplevelCaptureSourceState::new::<Self>(&dh);
+        let image_copy_capture_state =
+            smithay::wayland::image_copy_capture::ImageCopyCaptureState::new::<Self>(&dh);
         // Clock id 1 = CLOCK_MONOTONIC. That's the same domain
         // `monotonic_now()` in the udev backend uses, so the
         // timestamps we publish are consistent with the ones
@@ -1346,6 +1393,11 @@ impl MargoState {
             pending_output_mode_changes: Vec::new(),
             color_management_state,
             scripting: None,
+            image_capture_source_state,
+            output_capture_source_state,
+            toplevel_capture_source_state,
+            image_copy_capture_state,
+            image_copy_capture_sessions: Vec::new(),
             presentation_state,
             space,
             popups,
@@ -6211,6 +6263,145 @@ impl crate::protocols::color_management::ColorManagementHandler for MargoState {
     }
 }
 crate::delegate_color_management!(MargoState);
+
+// ── ext-image-capture-source-v1 + ext-image-copy-capture-v1 handlers ─────────
+//
+// Step 1 of the per-window screencast stack: scaffold the protocol
+// surface so xdp-wlr 0.8+ sees the globals and exposes the Window
+// tab in meeting clients. Frame rendering ("actually copy pixels
+// into the client's buffer") is the follow-up commit; today every
+// frame request fails with `Unspecified` so capture sessions open
+// + close cleanly without dispatching against an unrendered buffer.
+//
+// What landing this commit alone gets us:
+//
+//   * `ext_image_capture_source_v1` global advertised.
+//   * `ext_output_image_capture_source_manager_v1` global —
+//     clients can mint a source from any wl_output.
+//   * `ext_foreign_toplevel_image_capture_source_manager_v1` global
+//     — clients can mint a source from any toplevel listed by
+//     `ext-foreign-toplevel-list-v1` (which margo already speaks).
+//   * `ext_image_copy_capture_manager_v1` global — sessions can
+//     be opened against any of the above sources.
+//
+// What still needs Step 2 (rendering):
+//
+//   * `capture_constraints` returning real format/size constraints
+//     so the client allocates a matching buffer.
+//   * `frame()` callback rendering the source into the supplied
+//     buffer, then `Frame::success(...)`.
+//
+// Today both `capture_constraints` returns `None` (rejecting capture)
+// and `frame()` immediately fails — the protocol surface exists but
+// no pixels flow yet. Browser meeting clients see the Window tab
+// populated but actual share will fall back to the wlr-screencopy
+// monitor path.
+use smithay::wayland::image_capture_source::{
+    ImageCaptureSource, ImageCaptureSourceHandler, ImageCaptureSourceState,
+    OutputCaptureSourceHandler, OutputCaptureSourceState, ToplevelCaptureSourceHandler,
+    ToplevelCaptureSourceState,
+};
+use smithay::wayland::image_copy_capture::{
+    BufferConstraints, CursorSession, Frame, ImageCopyCaptureHandler, ImageCopyCaptureState,
+    Session, SessionRef,
+};
+
+impl ImageCaptureSourceHandler for MargoState {
+    fn source_destroyed(&mut self, source: ImageCaptureSource) {
+        // Nothing to clean up on the compositor side yet — sources
+        // are stateless until rendering wires up a per-source
+        // tracker.
+        let _ = source;
+    }
+}
+
+impl OutputCaptureSourceHandler for MargoState {
+    fn output_capture_source_state(&mut self) -> &mut OutputCaptureSourceState {
+        &mut self.output_capture_source_state
+    }
+
+    fn output_source_created(
+        &mut self,
+        source: ImageCaptureSource,
+        output: &smithay::output::Output,
+    ) {
+        // Stash the output's downgrade handle on the source so
+        // Step 2's frame() can find which output the client wants.
+        source
+            .user_data()
+            .insert_if_missing(|| output.downgrade());
+    }
+}
+
+impl ToplevelCaptureSourceHandler for MargoState {
+    fn toplevel_capture_source_state(&mut self) -> &mut ToplevelCaptureSourceState {
+        &mut self.toplevel_capture_source_state
+    }
+
+    fn toplevel_source_created(
+        &mut self,
+        source: ImageCaptureSource,
+        toplevel: smithay::wayland::foreign_toplevel_list::ForeignToplevelHandle,
+    ) {
+        // Stash the toplevel handle so Step 2's frame() can map
+        // the source back to a `MargoClient` index. Cloning a
+        // ForeignToplevelHandle is cheap (Arc-backed).
+        source.user_data().insert_if_missing(|| toplevel);
+    }
+}
+
+impl ImageCopyCaptureHandler for MargoState {
+    fn image_copy_capture_state(&mut self) -> &mut ImageCopyCaptureState {
+        &mut self.image_copy_capture_state
+    }
+
+    fn capture_constraints(&mut self, source: &ImageCaptureSource) -> Option<BufferConstraints> {
+        // Step 2 returns real (size, formats) here so the client
+        // allocates a matching buffer. Today we reject by
+        // returning `None`, which makes session creation fail
+        // gracefully on the client side without leaving stale
+        // sessions hanging.
+        let _ = source;
+        None
+    }
+
+    fn new_session(&mut self, session: Session) {
+        // Hold the session so it doesn't drop (drop = stopped
+        // event back to client). When rendering lands we'll match
+        // by source identity and route frames.
+        self.image_copy_capture_sessions.push(session);
+    }
+
+    fn new_cursor_session(&mut self, session: CursorSession) {
+        // Cursor capture is a separate sub-protocol; we don't
+        // support it yet. Drop the session — the helper sends
+        // `stopped` to the client automatically.
+        let _ = session;
+    }
+
+    fn frame(&mut self, session: &SessionRef, frame: Frame) {
+        // No buffer rendering yet — fail every frame so the
+        // client knows not to wait. `Unspecified` is the catch-
+        // all reason; dedicated reasons (`Stopped`, `BufferConstraints`)
+        // exist but don't apply pre-Step-2.
+        let _ = session;
+        frame.fail(
+            smithay::wayland::image_copy_capture::CaptureFailureReason::Unknown,
+        );
+    }
+}
+
+smithay::delegate_image_capture_source!(MargoState);
+smithay::delegate_output_capture_source!(MargoState);
+smithay::delegate_toplevel_capture_source!(MargoState);
+smithay::delegate_image_copy_capture!(MargoState);
+
+// Suppress the unused-import warning until Step 2 starts using
+// `ImageCaptureSourceState`'s methods directly.
+#[allow(dead_code)]
+fn _force_unused_state_alive(s: &ImageCaptureSourceState) {
+    let _ = s;
+}
 
 // ── Smithay delegate: Idle notify + Idle inhibit ─────────────────────────────
 
