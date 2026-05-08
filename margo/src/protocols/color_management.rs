@@ -108,12 +108,43 @@ impl ColorManagementState {
         D: 'static,
         F: for<'c> Fn(&'c Client) -> bool + Send + Sync + 'static,
     {
-        display.create_global::<D, WpColorManagerV1, _>(
-            VERSION,
-            ColorManagerGlobalData {
-                filter: Box::new(filter),
-            },
-        );
+        // Phase 1.5 — niri-style: do NOT register the global yet.
+        //
+        // Originally Phase 1 advertised `wp_color_manager_v1` so HDR-
+        // aware clients (Chromium/Helium ozone, mpv vo=gpu) would
+        // detect a colour-managed compositor and enable their HDR
+        // paths. Multiple bug iterations (drop(new_id) protocol
+        // violation → SEGV in libwayland-server) showed our Phase 1
+        // implementation isn't robust enough yet for real probes:
+        //
+        //   * mpv `--vo=gpu --gpu-context=wayland` calls
+        //     `get_surface_feedback → get_preferred → get_information`
+        //     and crashes when the response chain isn't 100% spec-
+        //     correct.
+        //   * Helium / Chromium ozone follows the same pattern from
+        //     a different code path and triggers the unrelated
+        //     "Vulkan + ozone-wayland incompatible" message after
+        //     the connection breaks.
+        //
+        // niri (~/.kod/niri/src/protocols/) sidesteps this entirely
+        // by not exposing the manager global at all — clients
+        // probing for colour management see "this compositor doesn't
+        // speak it" and use their default sRGB fallback. That's
+        // strictly worse for HDR detection but strictly better for
+        // not crashing every Wayland EGL client.
+        //
+        // We mirror niri until Phase 2 (linear-light fp16 composite +
+        // proper image-description info event flow) lands; the
+        // dispatch impls below stay compiled in as dead code so the
+        // refactor when Phase 2 ships is "uncomment one line" rather
+        // than "rebuild all the protocol plumbing".
+        let _ = (display, filter);  // silence unused; both come back in Phase 2.
+        // display.create_global::<D, WpColorManagerV1, _>(
+        //     VERSION,
+        //     ColorManagerGlobalData {
+        //         filter: Box::new(filter),
+        //     },
+        // );
         Self {
             // Start at 1 so 0 stays reserved for "no description".
             next_identity: AtomicU64::new(1),
