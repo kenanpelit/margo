@@ -1,0 +1,112 @@
+#compdef mctl
+# zsh completion for mctl
+#
+# Install:
+#   mkdir -p ~/.local/share/zsh/site-functions
+#   cp contrib/completions/_mctl ~/.local/share/zsh/site-functions/_mctl
+#   # Then ensure that path is in your $fpath (most zsh setups already do).
+#
+# Pulls dispatch action names from `mctl actions --names` so the list
+# stays in sync with the compositor binary you have installed.
+
+_mctl() {
+    local context state state_descr line
+    typeset -A opt_args
+
+    _arguments -C \
+        '(-h --help)'{-h,--help}'[print help]' \
+        '(-V --version)'{-V,--version}'[print version]' \
+        '(-o --output)'{-o,--output}'[output to target (default: focused)]:output:_mctl_outputs' \
+        '1: :_mctl_subcommands' \
+        '*::: :->args' \
+        && return 0
+
+    case $state in
+        args)
+            case $words[1] in
+                d|dispatch)
+                    _arguments \
+                        '1:dispatch action:_mctl_actions' \
+                        '*:action argument:->action_args' \
+                        && return 0
+                    case $state in
+                        action_args)
+                            # If first arg was `setlayout`, complete layout names.
+                            if [[ $words[2] == "setlayout" && $CURRENT == 3 ]]; then
+                                _values 'layout' \
+                                    tile scroller grid monocle deck \
+                                    center_tile right_tile vertical_tile \
+                                    vertical_scroller vertical_grid \
+                                    vertical_deck tgmix canvas dwindle
+                            fi
+                            ;;
+                    esac
+                    ;;
+                actions)
+                    _arguments \
+                        '(-v --verbose)'{-v,--verbose}'[print detail / examples]' \
+                        '(-g --group)'{-g,--group}'[filter to a single group]:group:(Tag Focus Layout Scroller Window Scratchpad Overview System)' \
+                        '--names[flat newline list of every accepted spelling]'
+                    ;;
+                completions)
+                    _arguments '1:shell:(bash zsh fish elvish powershell)'
+                    ;;
+                tags)
+                    _arguments \
+                        '1:tag bitmask (1<<(tag-1))' \
+                        '2:toggle (0=set, 1=toggle):(0 1)'
+                    ;;
+                client-tags)
+                    _arguments \
+                        '1:AND mask (u32)' \
+                        '2:XOR mask (u32)'
+                    ;;
+                layout)
+                    _arguments '1:layout index (0-based)'
+                    ;;
+                help)
+                    _mctl_subcommands
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+_mctl_subcommands() {
+    local -a subs
+    subs=(
+        'dispatch:dispatch a compositor command by name'
+        'd:alias for dispatch'
+        'tags:set the active tagset on an output'
+        'client-tags:mutate the focused client tag bitmask'
+        'layout:set layout by 0-based index'
+        'quit:quit the compositor'
+        'reload:reload config.conf'
+        'watch:stream state updates'
+        'status:print current status'
+        'actions:list every dispatch action'
+        'completions:emit a shell-completion script'
+        'help:show subcommand help'
+    )
+    _describe -t subcommands 'mctl subcommand' subs
+}
+
+_mctl_actions() {
+    local cache_var=_mctl_actions_cache
+    local -a list
+    if [[ -z ${(P)cache_var} ]]; then
+        list=(${(f)"$(mctl actions --names 2>/dev/null)"})
+        typeset -g $cache_var="${(j: :)list}"
+    else
+        list=(${=${(P)cache_var}})
+    fi
+    _describe -t actions 'dispatch action' list
+}
+
+_mctl_outputs() {
+    local -a outs
+    outs=(${(f)"$(mctl status 2>/dev/null | awk -F'[ =]' '/^output=/{print $2}')"})
+    _describe -t outputs 'output' outs
+}
+
+_mctl "$@"

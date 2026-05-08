@@ -17,3 +17,4 @@ wayland-client.workspace = true
 wayland-backend.workspace = true
 wayland-scanner.workspace = true
 clap.workspace = true
+clap_complete = "4"
