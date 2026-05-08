@@ -2063,7 +2063,40 @@ fn push_client_elements(
                 let rendered = AsRenderElements::<GlesRenderer>::render_elements::<
                     WaylandSurfaceRenderElement<GlesRenderer>,
                 >(window, renderer, physical_location, scale, 1.0);
+                // XWayland clients route through the same
+                // `clipped_surface` shader as native Wayland: without
+                // this, the X11 branch pushed the rendered surface
+                // straight into the scene with no rounded-clip mask
+                // applied. Spotify under XWayland reports a
+                // `geometry().size` larger than the slot we
+                // allocate (1520×1158 vs slot 1488×1152 in the
+                // user's layout), and the unclipped X11 path leaked
+                // those extra 32×6 px past the border on the right
+                // and bottom — exactly the "border tutarsız" the
+                // user kept reporting on Spotify after every
+                // semsumo-daily startup. Same wrapping logic as the
+                // Wayland branch: if `radius > 0` and the shader
+                // is available, wrap each rendered element in
+                // `ClippedSurfaceRenderElement` with the
+                // `min(actual, slot)` clip rect so border + surface
+                // share an outline.
                 for elem in rendered {
+                    if radius > 0.0 {
+                        if let (Some(program), Some(clip_geometry)) =
+                            (clipped_surface_program.as_ref(), clip_geometry)
+                        {
+                            elements.push(MargoRenderElement::Clipped(
+                                crate::render::clipped_surface::ClippedSurfaceRenderElement::new(
+                                    elem,
+                                    scale,
+                                    clip_geometry,
+                                    radius,
+                                    program.clone(),
+                                ),
+                            ));
+                            continue;
+                        }
+                    }
                     elements.push(MargoRenderElement::Space(SpaceRenderElements::Element(
                         Wrap::from(elem),
                     )));
