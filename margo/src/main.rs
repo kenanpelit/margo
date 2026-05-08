@@ -399,6 +399,58 @@ fn main() -> Result<()> {
 
     margo.seat.add_pointer();
 
+    // ── D-Bus shims for xdp-gnome screencast support ──────────────────────────
+    // Stand up the Mutter / Shell D-Bus interfaces in the user-bus
+    // session so xdg-desktop-portal-gnome can serve the ScreenCast
+    // / Screenshot / DisplayConfig portals against margo. Each
+    // shim claims its own bus name; failures are logged but
+    // non-fatal — a missing bus or zbus error just means xdp-gnome
+    // can't serve that one portal interface, the rest of the
+    // compositor keeps running. See `crate::dbus` for the
+    // architecture and `docs/portal-design.md` for the rollout
+    // plan. This call is the bring-up entry point niri's pattern
+    // calls `DBusServers::start`.
+    {
+        use crate::dbus::mutter_service_channel::{NewClient, ServiceChannel};
+        use crate::dbus::Start as _;
+
+        // Per-interface channels so blocking D-Bus callbacks can
+        // hand work to the calloop thread without taking a
+        // borrow on MargoState.
+        let (svc_tx, svc_rx) = calloop::channel::channel::<NewClient>();
+        if let Err(e) = event_loop
+            .handle()
+            .insert_source(svc_rx, |event, _, state: &mut MargoState| match event {
+                calloop::channel::Event::Msg(client) => {
+                    // xdp-gnome opened a service-channel Wayland
+                    // socket. Insert the compositor-side end into
+                    // the display so xdp becomes its own client.
+                    let stream = match client.client.try_clone() {
+                        Ok(s) => s,
+                        Err(e) => {
+                            tracing::warn!("svc client clone failed: {e:?}");
+                            return;
+                        }
+                    };
+                    if let Err(e) = state.display_handle.insert_client(
+                        stream.into(),
+                        std::sync::Arc::new(MargoClientData::default()),
+                    ) {
+                        tracing::warn!("insert_client (svc): {e:?}");
+                    }
+                }
+                calloop::channel::Event::Closed => (),
+            })
+        {
+            warn!("ServiceChannel calloop source insert failed: {e}");
+        } else {
+            match ServiceChannel::new(svc_tx).start() {
+                Ok(conn) => margo.dbus_servers.conn_service_channel = Some(conn),
+                Err(e) => warn!("ServiceChannel D-Bus start failed: {e}"),
+            }
+        }
+    }
+
     // ── exec_once commands ────────────────────────────────────────────────────
     for cmd in margo.config.exec_once.clone() {
         if let Err(e) = utils::spawn_shell(&cmd) {

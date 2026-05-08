@@ -1127,6 +1127,11 @@ pub struct MargoState {
     /// first ScreenCast session and the lazy PipeWire init runs;
     /// margo's compositor process otherwise pays no PipeWire cost.
     pub screencasting: Option<Box<crate::screencasting::Screencasting>>,
+    /// D-Bus shim connections so xdp-gnome can serve the
+    /// ScreenCast / Screenshot / Mutter portals on margo without
+    /// gnome-shell. See `crate::dbus`. Set once at startup;
+    /// connections close when the field drops (compositor exit).
+    pub dbus_servers: crate::dbus::DBusServers,
     /// `ext-image-capture-source-v1` core state. Mints opaque
     /// source handles that clients pass to ext-image-copy-capture
     /// to identify what they want to capture. xdp-wlr 0.8+ uses
@@ -1406,6 +1411,7 @@ impl MargoState {
             color_management_state,
             scripting: None,
             screencasting: None,
+            dbus_servers: crate::dbus::DBusServers::default(),
             image_capture_source_state,
             output_capture_source_state,
             toplevel_capture_source_state,
@@ -1611,7 +1617,55 @@ impl MargoState {
 
     /// Triggered by `SIGUSR1` or by the `mctl debug-dump` IPC command so a
     /// user staring at a frozen / grey screen can capture state without
-    /// crashing the compositor.
+    /// Drain a PipeWire-side message into the compositor side.
+    /// Mirrors niri's `State::on_pw_msg`. Three message types:
+    ///
+    ///   * `StopCast { session_id }` — tear down the cast plus
+    ///     any matching streams.
+    ///   * `Redraw { stream_id }` — kick the render path so this
+    ///     stream's next frame renders.
+    ///   * `FatalError` — PipeWire failed catastrophically; tear
+    ///     down everything and let the next session start cleanly.
+    pub fn on_pw_msg(&mut self, msg: crate::screencasting::pw_utils::PwToNiri) {
+        use crate::screencasting::pw_utils::PwToNiri;
+        match msg {
+            PwToNiri::StopCast { session_id } => self.stop_cast(session_id),
+            PwToNiri::Redraw { stream_id: _ } => {
+                // Margo's redraw scheduler is global; per-stream
+                // gating is a follow-up. Until Phase E (per-cast
+                // render hook in the udev backend) lands, every
+                // Redraw msg fires a global repaint and the cast
+                // pipeline rides the next frame.
+                self.request_repaint();
+            }
+            PwToNiri::FatalError => {
+                tracing::warn!("stopping screencasting due to PipeWire fatal error");
+                if let Some(mut casting) = self.screencasting.take() {
+                    let session_ids: Vec<_> =
+                        casting.casts.iter().map(|c| c.session_id).collect();
+                    casting.casts.clear();
+                    casting.pipewire = None;
+                    self.screencasting = Some(casting);
+                    for id in session_ids {
+                        self.stop_cast(id);
+                    }
+                    self.screencasting = None;
+                }
+            }
+        }
+    }
+
+    /// Tear down every cast belonging to the given session. Called
+    /// from xdp-gnome's `Session.Stop` D-Bus method (via the
+    /// `ScreenCastToCompositor` channel) and from `on_pw_msg` when
+    /// PipeWire errors out.
+    pub fn stop_cast(&mut self, session_id: crate::dbus::cast_ids::CastSessionId) {
+        let Some(casting) = self.screencasting.as_mut() else {
+            return;
+        };
+        casting.casts.retain(|cast| cast.session_id != session_id);
+    }
+
     pub fn debug_dump(&self) {
         tracing::info!("─── margo debug dump ───");
         tracing::info!(

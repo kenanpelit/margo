@@ -89,6 +89,33 @@ pub struct Screencasting {
     pub pipewire: Option<pw_utils::PipeWire>,
 }
 
+impl Screencasting {
+    /// Stand up the screencasting state + register the calloop
+    /// receiver that drains `PwToNiri` messages from PipeWire
+    /// callbacks back into the compositor event loop. Mirrors
+    /// niri's `Screencasting::new`.
+    pub fn new(
+        event_loop: &calloop::LoopHandle<'static, crate::state::MargoState>,
+    ) -> Self {
+        let pw_to_compositor = {
+            let (tx, rx) = calloop::channel::channel();
+            event_loop
+                .insert_source(rx, move |event, _, state| match event {
+                    calloop::channel::Event::Msg(msg) => state.on_pw_msg(msg),
+                    calloop::channel::Event::Closed => (),
+                })
+                .unwrap();
+            tx
+        };
+
+        Self {
+            casts: Vec::new(),
+            pw_to_compositor,
+            pipewire: None,
+        }
+    }
+}
+
 /// The render-element type cast streams render. Generic on the
 /// renderer to match niri's pattern (where pw_utils.rs deals with
 /// the element type as `CastRenderElement<R>`); concrete instances
