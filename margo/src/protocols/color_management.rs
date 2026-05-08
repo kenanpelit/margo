@@ -46,6 +46,7 @@ use smithay::reexports::wayland_protocols::wp::color_management::v1::server::{
     wp_color_manager_v1::{self, WpColorManagerV1},
     wp_image_description_creator_icc_v1::{self, WpImageDescriptionCreatorIccV1},
     wp_image_description_creator_params_v1::{self, WpImageDescriptionCreatorParamsV1},
+    wp_image_description_info_v1::WpImageDescriptionInfoV1,
     wp_image_description_v1::{self, WpImageDescriptionV1},
 };
 use smithay::reexports::wayland_server::backend::ClientId;
@@ -613,6 +614,7 @@ where
 impl<D> Dispatch<WpImageDescriptionV1, ImageDescription, D> for ColorManagementState
 where
     D: Dispatch<WpImageDescriptionV1, ImageDescription>,
+    D: Dispatch<WpImageDescriptionInfoV1, ()>,
     D: ColorManagementHandler + 'static,
 {
     fn request(
@@ -620,19 +622,74 @@ where
         _client: &Client,
         _resource: &WpImageDescriptionV1,
         request: wp_image_description_v1::Request,
-        _data: &ImageDescription,
+        data: &ImageDescription,
         _dh: &DisplayHandle,
-        _data_init: &mut DataInit<'_, D>,
+        data_init: &mut DataInit<'_, D>,
     ) {
         match request {
             wp_image_description_v1::Request::Destroy => {}
             wp_image_description_v1::Request::GetInformation { information } => {
-                // info object is a stub — phase 2 will fill in
-                // primaries, tf, luminance events on it.
-                drop(information);
+                // CRITICAL: a `new_id` arg MUST be initialized via
+                // data_init or the Wayland connection enters a bad
+                // state and the next sync() drops it. The previous
+                // implementation `drop(information)` skipped this and
+                // crashed every client (mpv, Chromium ozone, …) that
+                // probed surface feedback — they'd lose their Wayland
+                // connection mid-EGL-handshake and report
+                // "Failed initializing any suitable GPU context".
+                //
+                // We initialize the resource and fire the per-
+                // description info events the client expects:
+                // primaries_named + tf_named (the bare minimum for a
+                // valid image description) followed by `done` (which
+                // is a destructor — the resource auto-cleans after).
+                //
+                // Phase 2 will fill in the full set (icc_file,
+                // luminances, target_primaries, target_max_cll, …)
+                // once we actually drive HDR. Today we just need a
+                // protocol-correct stub.
+                let info = data_init.init(information, ());
+                if let Some(p) = data.params.primaries_named {
+                    if let Ok(named) = wp_color_manager_v1::Primaries::try_from(p) {
+                        info.primaries_named(named);
+                    }
+                }
+                if let Some(tf) = data.params.tf_named {
+                    if let Ok(named) = wp_color_manager_v1::TransferFunction::try_from(tf) {
+                        info.tf_named(named);
+                    }
+                }
+                // `done` is a destructor event — the server-side
+                // resource is finalized once this fires; client
+                // should no longer send requests on it.
+                info.done();
             }
             _ => {}
         }
+    }
+}
+
+// ── Image description info — passive event-emitter, all destructor-driven ──
+
+impl<D> Dispatch<WpImageDescriptionInfoV1, (), D> for ColorManagementState
+where
+    D: Dispatch<WpImageDescriptionInfoV1, ()>,
+    D: ColorManagementHandler + 'static,
+{
+    fn request(
+        _state: &mut D,
+        _client: &Client,
+        _resource: &WpImageDescriptionInfoV1,
+        _request: smithay::reexports::wayland_protocols::wp::color_management::v1::server::wp_image_description_info_v1::Request,
+        _data: &(),
+        _dh: &DisplayHandle,
+        _data_init: &mut DataInit<'_, D>,
+    ) {
+        // wp_image_description_info_v1 has no requests other than
+        // the protocol-baseline destructor. The events (primaries,
+        // tf, luminances, …) flow server → client via methods on
+        // the resource handle returned at init time. Nothing to
+        // dispatch here.
     }
 }
 
@@ -669,6 +726,10 @@ macro_rules! delegate_color_management {
         );
         smithay::reexports::wayland_server::delegate_dispatch!($ty:
             [smithay::reexports::wayland_protocols::wp::color_management::v1::server::wp_image_description_v1::WpImageDescriptionV1: $crate::protocols::color_management::ImageDescription] =>
+                $crate::protocols::color_management::ColorManagementState
+        );
+        smithay::reexports::wayland_server::delegate_dispatch!($ty:
+            [smithay::reexports::wayland_protocols::wp::color_management::v1::server::wp_image_description_info_v1::WpImageDescriptionInfoV1: ()] =>
                 $crate::protocols::color_management::ColorManagementState
         );
     };
