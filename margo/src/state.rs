@@ -775,6 +775,13 @@ pub struct MargoState {
     /// otherwise — that's the spec-recommended anti-focus-steal
     /// gate.
     pub xdg_activation_state: XdgActivationState,
+    /// `wlr_output_management_v1` state. Lets `kanshi`,
+    /// `wlr-randr`, `way-displays` etc. discover the output
+    /// topology and apply scale / transform / position changes
+    /// at runtime. Mode and enable changes are still rejected;
+    /// see `protocols::output_management::apply_output_pending`.
+    pub output_management_state:
+        crate::protocols::output_management::OutputManagementManagerState,
     /// `ext_idle_notifier_v1`: pings clients (swayidle, noctalia) once
     /// the seat has been idle for the duration they registered.
     pub idle_notifier_state: smithay::wayland::idle_notify::IdleNotifierState<MargoState>,
@@ -868,6 +875,11 @@ impl MargoState {
         let pointer_constraints_state = PointerConstraintsState::new::<Self>(&dh);
         let relative_pointer_state = RelativePointerManagerState::new::<Self>(&dh);
         let xdg_activation_state = XdgActivationState::new::<Self>(&dh);
+        let output_management_state =
+            crate::protocols::output_management::OutputManagementManagerState::new::<
+                Self,
+                _,
+            >(&dh, |_client| true);
         let idle_notifier_state =
             smithay::wayland::idle_notify::IdleNotifierState::<Self>::new(&dh, loop_handle.clone());
         let idle_inhibit_state =
@@ -925,6 +937,7 @@ impl MargoState {
             pointer_constraints_state,
             relative_pointer_state,
             xdg_activation_state,
+            output_management_state,
             space,
             popups,
             seat,
@@ -961,6 +974,26 @@ impl MargoState {
             libinput_devices: Vec::new(),
             config,
         }
+    }
+
+    /// Rebuild the wlr-output-management snapshot from the current
+    /// monitor list and publish it to all bound clients (kanshi,
+    /// wlr-randr, way-displays, …). Cheap when nothing's changed:
+    /// `snapshot_changed` early-returns on equal snapshots.
+    pub fn publish_output_topology(&mut self) {
+        let mut snap = std::collections::HashMap::new();
+        for mon in &self.monitors {
+            let pos = (mon.monitor_area.x, mon.monitor_area.y);
+            snap.insert(
+                mon.name.clone(),
+                crate::protocols::output_management::snapshot_from_output(
+                    &mon.output,
+                    mon.enabled,
+                    pos,
+                ),
+            );
+        }
+        self.output_management_state.snapshot_changed(snap);
     }
 
     pub fn remove_output(&mut self, output: &Output) {
@@ -4209,6 +4242,93 @@ impl XdgActivationHandler for MargoState {
     }
 }
 delegate_xdg_activation!(MargoState);
+
+// ── Smithay delegate: wlr-output-management-v1 ───────────────────────────────
+
+impl crate::protocols::output_management::OutputManagementHandler for MargoState {
+    fn output_management_state(
+        &mut self,
+    ) -> &mut crate::protocols::output_management::OutputManagementManagerState {
+        &mut self.output_management_state
+    }
+
+    fn apply_output_pending(
+        &mut self,
+        pending: std::collections::HashMap<
+            String,
+            crate::protocols::output_management::PendingHeadConfig,
+        >,
+    ) -> bool {
+        // Hard-reject any change we can't safely apply. Mode
+        // changes need DRM-level re-modeset which is risky and out
+        // of scope for v1; disable requests need teardown of an
+        // entire OutputDevice. Both come back next iteration.
+        if pending
+            .values()
+            .any(|p| p.requests_mode_change() || !p.enabled())
+        {
+            tracing::warn!("output_management: rejecting config (mode/disable not yet supported)");
+            return false;
+        }
+
+        // Apply the subset we DO support: scale, transform,
+        // position. Each goes through smithay's
+        // `Output::change_current_state` which both updates the
+        // output's recorded values AND broadcasts wl_output events
+        // to all clients (so their fractional-scale-aware widgets
+        // re-layout). Layout reflow happens via arrange_all.
+        let mut changed = false;
+        for (name, p) in &pending {
+            let Some(mon_idx) = self.monitors.iter().position(|m| m.name == *name) else {
+                tracing::warn!(
+                    "output_management: ignoring pending head for unknown output {name}"
+                );
+                continue;
+            };
+            let mon = &self.monitors[mon_idx];
+            let output = mon.output.clone();
+            let mut local_change = false;
+
+            if let Some(scale) = p.scale() {
+                output.change_current_state(
+                    None,
+                    None,
+                    Some(smithay::output::Scale::Fractional(scale)),
+                    None,
+                );
+                local_change = true;
+            }
+            if let Some(t) = p.transform() {
+                let smithay_t: smithay::utils::Transform = t.into();
+                output.change_current_state(None, Some(smithay_t), None, None);
+                local_change = true;
+            }
+            if let Some((x, y)) = p.position() {
+                output.change_current_state(
+                    None,
+                    None,
+                    None,
+                    Some(smithay::utils::Point::from((x, y))),
+                );
+                local_change = true;
+            }
+            if local_change {
+                self.refresh_output_work_area(&output);
+                changed = true;
+            }
+        }
+        if changed {
+            self.arrange_all();
+            self.request_repaint();
+            // Re-publish topology so other wlr-output-management
+            // clients (kanshi watchers, secondary wlr-randr) see
+            // the new state.
+            self.publish_output_topology();
+        }
+        changed
+    }
+}
+crate::delegate_output_management!(MargoState);
 
 // ── Smithay delegate: Idle notify + Idle inhibit ─────────────────────────────
 

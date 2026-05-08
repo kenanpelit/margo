@@ -679,6 +679,12 @@ pub fn run(
         render_all_outputs(renderer, outputs, drm, state, "initial");
     }
 
+    // Now that all outputs have been discovered and registered via
+    // setup_connector, publish the topology to wlr-output-management
+    // clients so anything that bound the global before us (`kanshi`,
+    // `wlr-randr` queries) sees the full list.
+    state.publish_output_topology();
+
     info!("udev backend ready ({} outputs)", state.monitors.len());
     Ok(())
 }
@@ -829,6 +835,10 @@ fn rescan_outputs(
         state.arrange_all();
         state.request_repaint();
     }
+    // Always re-publish output topology after a rescan so kanshi /
+    // wlr-randr see the new layout. snapshot_changed is cheap when
+    // nothing actually changed.
+    state.publish_output_topology();
 }
 
 /// Build the OutputDevice + associated MargoMonitor for a single
