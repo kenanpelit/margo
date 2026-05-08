@@ -50,6 +50,35 @@ pub const LYR_BLOCK: usize = 9;
 pub const NUM_LAYERS: usize = 10;
 pub const MAX_TAGS: usize = 9;
 
+// ── Pending image-copy-capture frames ────────────────────────────────────────
+//
+// `ImageCopyCaptureHandler::frame()` runs on `MargoState` but the
+// renderer + connector mode info live in the udev backend's
+// `BackendData`. The handler stashes incoming frames here; the
+// repaint loop drains them after `render_all_outputs` so we can
+// reuse the renderer that just produced the live frame for the
+// monitor instead of spinning up a second EGL context.
+pub struct PendingImageCopyFrame {
+    /// The capture target — output by name (Step 2 today; toplevel
+    /// support lands in Step 2.5 with a per-window render path).
+    pub source: PendingImageCopySource,
+    /// The frame the udev backend will render into and signal.
+    /// `Option<Frame>` because `Frame::success` consumes the value;
+    /// once drained from this list it's `take()`n.
+    pub frame: Option<smithay::wayland::image_copy_capture::Frame>,
+}
+
+#[derive(Debug, Clone)]
+pub enum PendingImageCopySource {
+    /// Capture the entire output identified by name (e.g. "DP-3").
+    Output(String),
+    /// Capture a single toplevel — Step 2.5. Today the handler
+    /// fails frames before they hit this path so the variant
+    /// exists for forward compatibility but is unused.
+    #[allow(dead_code)]
+    Toplevel,
+}
+
 // ── Pending output mode changes (apply path crosses backends) ────────────────
 //
 // `wlr_output_management_v1` mode changes are accepted by the

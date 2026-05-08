@@ -683,6 +683,16 @@ pub fn run(
                     let BackendData { renderer, outputs, drm, .. } = &mut *bd;
                     render_all_outputs(renderer, outputs, drm, state, "repaint");
                 }
+                // ext-image-copy-capture: drain pending frames
+                // queued by `ImageCopyCaptureHandler::frame()` and
+                // render each into its client buffer. Done after
+                // the live render so the renderer is warm + the
+                // scene state is the same one the user just saw.
+                if !state.pending_image_copy_frames.is_empty() {
+                    let mut bd = backend_data.borrow_mut();
+                    let BackendData { renderer, outputs, .. } = &mut *bd;
+                    drain_image_copy_frames(renderer, outputs, state);
+                }
             }
         })
         .map_err(|e| anyhow::anyhow!("repaint ping source: {e}"))?;
@@ -1447,6 +1457,191 @@ fn build_render_elements(
     state: &MargoState,
 ) -> Vec<MargoRenderElement> {
     build_render_elements_inner(renderer, od, state, true, false)
+}
+
+/// Drain `MargoState::pending_image_copy_frames` and render each
+/// frame into its client buffer. Step 2 of the per-window
+/// screencast story — output capture today, toplevel capture
+/// pending Step 2.5.
+///
+/// Called once per repaint after the live render so the
+/// renderer is already warm and the scene state is identical
+/// to what just landed on screen. Each frame is rendered into
+/// an offscreen Xrgb8888 renderbuffer, then `copy_framebuffer`
+/// reads pixels back and we memcpy into the client's SHM buffer
+/// — exactly the same shape as `serve_screencopies`'s SHM arm,
+/// just driven by a different list of consumers.
+///
+/// DMA-BUF transport is Step 2.1 — for now SHM is the only
+/// allocation path the handler advertises, so every frame here
+/// is SHM-backed.
+fn drain_image_copy_frames(
+    renderer: &mut GlesRenderer,
+    outputs: &mut std::collections::HashMap<crtc::Handle, OutputDevice>,
+    state: &mut MargoState,
+) {
+    use smithay::backend::renderer::damage::OutputDamageTracker as DamageTracker;
+    use smithay::backend::renderer::{Bind, ExportMem, Offscreen};
+    use smithay::wayland::image_copy_capture::CaptureFailureReason;
+
+    let drained: Vec<_> = state.pending_image_copy_frames.drain(..).collect();
+    if drained.is_empty() {
+        return;
+    }
+
+    for mut pending in drained {
+        let frame = match pending.frame.take() {
+            Some(f) => f,
+            None => continue,
+        };
+
+        // Match the source's output name to a live OutputDevice.
+        // Toplevel sources never reach here — the handler fails
+        // them upstream with BufferConstraints.
+        let target_name = match &pending.source {
+            crate::PendingImageCopySource::Output(name) => name.clone(),
+            crate::PendingImageCopySource::Toplevel => {
+                frame.fail(CaptureFailureReason::BufferConstraints);
+                continue;
+            }
+        };
+        let od = match outputs
+            .iter_mut()
+            .find(|(_, od)| od.output.name() == target_name)
+        {
+            Some((_, od)) => od,
+            None => {
+                // Output went away (hot-unplug between session
+                // creation and frame request). Stopped is the
+                // semantically correct reason here; the smithay
+                // helper will also send a stopped event on the
+                // session itself.
+                frame.fail(CaptureFailureReason::Stopped);
+                continue;
+            }
+        };
+
+        let output_size = od.output.current_mode().map(|m| m.size).unwrap_or_default();
+        if output_size.w == 0 || output_size.h == 0 {
+            frame.fail(CaptureFailureReason::Stopped);
+            continue;
+        }
+        let scale = od.output.current_scale().fractional_scale();
+        let buf_size = smithay::utils::Size::<i32, smithay::utils::Buffer>::from(
+            (output_size.w, output_size.h),
+        );
+
+        // Render every visible element for this output, exactly
+        // like the display path does. for_screencast=true so the
+        // privacy-mask filter (block_out_from_screencast windows
+        // → solid black) applies — meeting clients capturing
+        // their own browser shouldn't see KeePassXC.
+        let elements_owned = build_render_elements_inner(renderer, od, state, false, true);
+        let elements_refs: Vec<&MargoRenderElement> = elements_owned.iter().collect();
+
+        // Allocate an offscreen renderbuffer and render the scene
+        // into it. Identical shape to the SHM arm of
+        // `serve_screencopies` — see that function for context.
+        let mut renderbuffer = match <GlesRenderer as Offscreen<
+            smithay::backend::renderer::gles::GlesRenderbuffer,
+        >>::create_buffer(
+            renderer,
+            drm_fourcc::DrmFourcc::Xrgb8888,
+            buf_size,
+        ) {
+            Ok(rb) => rb,
+            Err(e) => {
+                warn!("image_copy_capture: create_buffer failed: {e:?}");
+                frame.fail(CaptureFailureReason::Unknown);
+                continue;
+            }
+        };
+        let mut target = match renderer.bind(&mut renderbuffer) {
+            Ok(t) => t,
+            Err(e) => {
+                warn!("image_copy_capture: bind renderbuffer failed: {e:?}");
+                frame.fail(CaptureFailureReason::Unknown);
+                continue;
+            }
+        };
+        let mut tracker = DamageTracker::new(output_size, scale, Transform::Normal);
+        if let Err(e) = tracker.render_output(
+            renderer,
+            &mut target,
+            0,
+            &elements_refs,
+            [0.0, 0.0, 0.0, 1.0],
+        ) {
+            warn!("image_copy_capture: render_output failed: {e:?}");
+            frame.fail(CaptureFailureReason::Unknown);
+            continue;
+        }
+        // Pull pixels back from GL into a CPU-side mapping, then
+        // memcpy into the client SHM buffer.
+        let region = smithay::utils::Rectangle::new(
+            smithay::utils::Point::<i32, smithay::utils::Buffer>::from((0, 0)),
+            buf_size,
+        );
+        let mapping = match renderer.copy_framebuffer(
+            &target,
+            region,
+            drm_fourcc::DrmFourcc::Xrgb8888,
+        ) {
+            Ok(m) => m,
+            Err(e) => {
+                warn!("image_copy_capture: copy_framebuffer failed: {e:?}");
+                frame.fail(CaptureFailureReason::Unknown);
+                continue;
+            }
+        };
+        drop(target);
+        let pixels = match renderer.map_texture(&mapping) {
+            Ok(p) => p,
+            Err(e) => {
+                warn!("image_copy_capture: map_texture failed: {e:?}");
+                frame.fail(CaptureFailureReason::Unknown);
+                continue;
+            }
+        };
+
+        // Write into the client's wl_buffer (SHM only — DMA-BUF
+        // is Step 2.1).
+        let buffer = frame.buffer();
+        let need = (buf_size.w as usize)
+            .saturating_mul(4)
+            .saturating_mul(buf_size.h as usize);
+        let copy_result = smithay::wayland::shm::with_buffer_contents_mut(
+            &buffer,
+            |dst_ptr, dst_len, _meta| {
+                let n = need.min(dst_len).min(pixels.len());
+                // SAFETY: dst_ptr/dst_len come from a validated
+                // wl_shm wl_buffer; we never read more than n
+                // bytes from `pixels` (whose length is bounded by
+                // dst_len above). Both regions are non-overlapping
+                // (CPU map vs renderer mapping).
+                unsafe {
+                    std::ptr::copy_nonoverlapping(pixels.as_ptr(), dst_ptr, n);
+                }
+                n > 0
+            },
+        );
+        match copy_result {
+            Ok(true) => {
+                // Success — present the frame with the current
+                // monotonic time. damage = None means "everything
+                // changed" which is the right answer for a fresh
+                // capture.
+                frame.success(
+                    Transform::Normal,
+                    None,
+                    monotonic_now(),
+                );
+            }
+            Ok(false) | Err(_) => {
+                frame.fail(CaptureFailureReason::BufferConstraints);
+            }
+        }
+    }
 }
 
 /// Like `build_render_elements`, but optionally omits the cursor sprite

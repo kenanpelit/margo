@@ -1155,6 +1155,13 @@ pub struct MargoState {
     /// would auto-stop the session). Real frame routing wires
     /// up in the rendering follow-up commit.
     pub image_copy_capture_sessions: Vec<smithay::wayland::image_copy_capture::Session>,
+    /// Frames awaiting their backing source's content. The udev
+    /// repaint handler drains this list after every render and
+    /// fills each frame's buffer from the matching output (or
+    /// fails the frame if the source has gone stale). Stored as
+    /// `(session_ref, frame, source_kind)` so we can route
+    /// without re-querying user_data on each iteration.
+    pub pending_image_copy_frames: Vec<crate::PendingImageCopyFrame>,
     /// `wp_presentation` global. Lets clients (kitty, mpv, native
     /// Wayland Vulkan games via DXVK / VKD3D, video conferencing
     /// apps that adapt their pacing to the actual display refresh)
@@ -1398,6 +1405,7 @@ impl MargoState {
             toplevel_capture_source_state,
             image_copy_capture_state,
             image_copy_capture_sessions: Vec::new(),
+            pending_image_copy_frames: Vec::new(),
             presentation_state,
             space,
             popups,
@@ -6356,38 +6364,83 @@ impl ImageCopyCaptureHandler for MargoState {
     }
 
     fn capture_constraints(&mut self, source: &ImageCaptureSource) -> Option<BufferConstraints> {
-        // Step 2 returns real (size, formats) here so the client
-        // allocates a matching buffer. Today we reject by
-        // returning `None`, which makes session creation fail
-        // gracefully on the client side without leaving stale
-        // sessions hanging.
-        let _ = source;
-        None
+        // Match the source's stashed user_data against an output.
+        // Toplevel sources don't have a render path yet — return
+        // None for them so the session fails cleanly and the
+        // browser falls back to the monitor share path.
+        let weak_output: &smithay::output::WeakOutput =
+            source.user_data().get::<smithay::output::WeakOutput>()?;
+        let output = weak_output.upgrade()?;
+        let mode = output.current_mode()?;
+        // Output mode size is in physical pixels — match that for
+        // the buffer. `BufferCoords` is the same numeric domain.
+        let size = smithay::utils::Size::<i32, smithay::utils::Buffer>::from(
+            (mode.size.w, mode.size.h),
+        );
+        Some(BufferConstraints {
+            size,
+            // Argb8888 + Xrgb8888 cover ~every meeting client out
+            // there (Chromium / Firefox / Discord-Electron). Both
+            // are 32-bit BGRA; the Xrgb variant ignores alpha,
+            // Argb preserves it.
+            shm: vec![
+                smithay::reexports::wayland_server::protocol::wl_shm::Format::Argb8888,
+                smithay::reexports::wayland_server::protocol::wl_shm::Format::Xrgb8888,
+            ],
+            // DMA-BUF is Step 2.1 — leave None for now so SHM is
+            // the only allocation path. Browsers happily fall back
+            // to SHM when dma constraints are absent. (smithay
+            // gates the field on `backend_drm`, which is enabled
+            // in our build via the udev backend.)
+            dma: None,
+        })
     }
 
     fn new_session(&mut self, session: Session) {
-        // Hold the session so it doesn't drop (drop = stopped
-        // event back to client). When rendering lands we'll match
-        // by source identity and route frames.
+        // Hold the session so it doesn't drop (drop sends
+        // `stopped` to the client). Sessions live until the
+        // client tears them down or the source becomes invalid.
         self.image_copy_capture_sessions.push(session);
     }
 
     fn new_cursor_session(&mut self, session: CursorSession) {
         // Cursor capture is a separate sub-protocol; we don't
-        // support it yet. Drop the session — the helper sends
-        // `stopped` to the client automatically.
+        // route the cursor through ext-image-copy-capture yet
+        // (margo's cursor lives on a hardware plane when
+        // possible). Drop = `stopped` to the client.
         let _ = session;
     }
 
     fn frame(&mut self, session: &SessionRef, frame: Frame) {
-        // No buffer rendering yet — fail every frame so the
-        // client knows not to wait. `Unspecified` is the catch-
-        // all reason; dedicated reasons (`Stopped`, `BufferConstraints`)
-        // exist but don't apply pre-Step-2.
-        let _ = session;
-        frame.fail(
-            smithay::wayland::image_copy_capture::CaptureFailureReason::Unknown,
-        );
+        // Look up the source's output via the session ref so we
+        // can route this frame to the udev repaint loop. The
+        // session keeps a strong handle to the source.
+        let source = session.source();
+        let weak_output = source.user_data().get::<smithay::output::WeakOutput>();
+
+        let target = match weak_output.and_then(|w| w.upgrade()) {
+            Some(output) => crate::PendingImageCopySource::Output(output.name()),
+            None => {
+                // Toplevel source (no output user_data) — Step 2.5.
+                // Until per-window render path lands, fail with
+                // BufferConstraints so the browser falls through
+                // to its full-screen capture fallback.
+                frame.fail(
+                    smithay::wayland::image_copy_capture::CaptureFailureReason::BufferConstraints,
+                );
+                return;
+            }
+        };
+
+        // Stash for the udev backend to render in the next repaint.
+        self.pending_image_copy_frames
+            .push(crate::PendingImageCopyFrame {
+                source: target,
+                frame: Some(frame),
+            });
+        // Kick a repaint so the frame doesn't wait for the next
+        // unrelated event.
+        self.request_repaint();
     }
 }
 
