@@ -99,6 +99,18 @@ struct OutputDevice {
     /// connected on this card?" which gave wrong answers in multi-monitor
     /// setups.
     connector: connector::Handle,
+    /// `wp_presentation_feedback` builders that have been collected at
+    /// submit time but not yet signalled. We hold them here until the
+    /// matching `DrmEvent::VBlank` fires, then call `.presented(now,
+    /// refresh, 0, Vsync)` at that point — the timestamp is the actual
+    /// page-flip moment instead of "when we queued the flip", which is
+    /// off by one frame interval. Smithay 0.7's `DrmEvent::VBlank`
+    /// doesn't expose the kernel's page-flip seq, so the seq value
+    /// stays 0; clients that need true monotonic seq will see this as
+    /// a future-iteration upgrade. Stored as a Vec because in pathological
+    /// cases (smithay reports back-to-back VBlanks) we'd otherwise drop
+    /// feedbacks; in practice it's almost always 0 or 1 entry.
+    pending_presentation: Vec<smithay::desktop::utils::OutputPresentationFeedback>,
 }
 
 // ── DRM gamma properties ──────────────────────────────────────────────────────
@@ -550,6 +562,7 @@ pub fn run(
                 queue_error_count: 0,
                 gamma: gamma_props,
                 connector: *conn_handle,
+                pending_presentation: Vec::new(),
             },
         );
     }
@@ -584,13 +597,40 @@ pub fn run(
             let backend_data = backend_data.clone();
             move |event, _, state: &mut MargoState| match event {
                 DrmEvent::VBlank(crtc) => {
-                    let mut bd = backend_data.borrow_mut();
-                    if let Some(od) = bd.outputs.get_mut(&crtc) {
-                        // Acknowledge the previous flip; without this, queue_frame
-                        // for the next frame will fail and the render loop stalls.
-                        if let Err(e) = od.compositor.frame_submitted() {
-                            warn!("frame_submitted: {e:?}");
+                    // Acknowledge the previous flip and drain any
+                    // pending presentation feedback that was queued
+                    // when we submitted that frame. We do this in a
+                    // tight scope so the `RefMut` is released before
+                    // we signal `presented(...)` — the per-surface
+                    // callbacks may end up taking their own borrows
+                    // on backend_data via wayland-server dispatch.
+                    let mut to_flush: Vec<(Output, smithay::desktop::utils::OutputPresentationFeedback)> = Vec::new();
+                    {
+                        let mut bd = backend_data.borrow_mut();
+                        if let Some(od) = bd.outputs.get_mut(&crtc) {
+                            // Without this, queue_frame for the next
+                            // frame will fail and the render loop
+                            // stalls.
+                            if let Err(e) = od.compositor.frame_submitted() {
+                                warn!("frame_submitted: {e:?}");
+                            }
+                            for feedback in od.pending_presentation.drain(..) {
+                                to_flush.push((od.output.clone(), feedback));
+                            }
                         }
+                    }
+                    // Now that the page flip has actually landed,
+                    // signal `wp_presentation_feedback.presented`
+                    // for every surface that contributed to the
+                    // frame we queued earlier. The timestamp is
+                    // taken inside `flush_presentation_feedback` so
+                    // it matches the real flip moment instead of
+                    // the submit moment. In steady state there's
+                    // exactly one entry; the Vec covers the rare
+                    // case of back-to-back VBlanks queued before
+                    // we drained the previous one.
+                    for (output, feedback) in to_flush {
+                        flush_presentation_feedback(&output, feedback);
                     }
                     // Drop the in-flight count and, if the scene is still
                     // dirty (animation, deferred input, late commit), let
@@ -1073,6 +1113,7 @@ fn setup_connector(
             queue_error_count: 0,
             gamma: gamma_props,
             connector: conn_handle,
+            pending_presentation: Vec::new(),
         },
     ))
 }
@@ -2558,28 +2599,27 @@ fn serve_screencopies(
     }
 }
 
-/// Drain `wp_presentation_feedback` callbacks across every surface
-/// that contributed a render element to the frame just queued, and
-/// signal `presented(...)` on each. Mirrors anvil's
-/// `take_presentation_feedback` + immediate-present pattern: we
-/// don't have hardware-level page-flip timing yet (would require
-/// hooking into DrmCompositor's vblank callbacks), so the timestamp
-/// we publish is "right now" with a Vsync flag — same approximation
-/// niri's winit backend uses. Clients that care about microsecond
-/// accuracy will benefit when we plumb actual vblank timestamps in
-/// a follow-up; in the meantime the protocol surface is exposed and
-/// kitty / mpv stop guessing 60 Hz.
-fn publish_presentation_feedback(
+/// Build an `OutputPresentationFeedback` collecting every surface that
+/// contributed a render element to the frame just queued. The result
+/// holds per-surface feedback callbacks ready for `.presented(...)`,
+/// but we deliberately do **not** call `.presented()` here — the page
+/// flip hasn't actually landed yet, only been queued. Storing the
+/// builder on the `OutputDevice` and signalling at `DrmEvent::VBlank`
+/// time gives clients a timestamp that matches the real scan-out
+/// moment, not "queue + ~half-a-frame-of-latency".
+///
+/// Mirrors anvil's `take_presentation_feedback` shape; the difference
+/// is this returns the builder instead of consuming it.
+fn build_presentation_feedback(
     output: &Output,
     state: &mut MargoState,
     render_states: &smithay::backend::renderer::element::RenderElementStates,
-) {
+) -> smithay::desktop::utils::OutputPresentationFeedback {
     use smithay::desktop::layer_map_for_output;
     use smithay::desktop::utils::{
         surface_presentation_feedback_flags_from_states, surface_primary_scanout_output,
         OutputPresentationFeedback,
     };
-    use smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback;
 
     let mut feedback = OutputPresentationFeedback::new(output);
 
@@ -2607,11 +2647,17 @@ fn publish_presentation_feedback(
         );
     }
 
-    let now = monotonic_now();
-    let refresh = output
+    feedback
+}
+
+/// Convert an `Output`'s current mode refresh rate to a per-frame
+/// `Duration`. Falls back to 60 Hz when the mode isn't known yet
+/// (winit nested mode, hotplug-in-progress, kernel reporting 0 mHz).
+fn output_refresh_duration(output: &Output) -> std::time::Duration {
+    output
         .current_mode()
         .map(|m| {
-            // mode.refresh is in mHz; convert to per-frame duration.
+            // mode.refresh is in mHz.
             let hz = (m.refresh as f64) / 1000.0;
             if hz > 0.0 {
                 std::time::Duration::from_secs_f64(1.0 / hz)
@@ -2619,12 +2665,35 @@ fn publish_presentation_feedback(
                 std::time::Duration::from_secs_f64(1.0 / 60.0)
             }
         })
-        .unwrap_or_else(|| std::time::Duration::from_secs_f64(1.0 / 60.0));
+        .unwrap_or_else(|| std::time::Duration::from_secs_f64(1.0 / 60.0))
+}
 
+/// Signal `presented(now, refresh, 0, Vsync)` on a feedback builder
+/// previously stashed on the OutputDevice. Called from the
+/// `DrmEvent::VBlank` handler, so `now` reflects the actual
+/// page-flip moment — not the submit time, which is the cheap
+/// approximation we used to do.
+///
+/// `seq` is left at 0 because smithay 0.7's `DrmEvent::VBlank(crtc)`
+/// doesn't carry the kernel's page-flip sequence number; pulling it
+/// from the kernel directly needs bypassing smithay's compositor and
+/// is tracked as a future iteration. Clients that care about seq
+/// see this as "no monotonic seq available"; clients that care
+/// about the timestamp (the common case — kitty / mpv frame pacing)
+/// now get a meaningful one.
+fn flush_presentation_feedback(
+    output: &Output,
+    feedback: smithay::desktop::utils::OutputPresentationFeedback,
+) {
+    use smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback;
+
+    let mut feedback = feedback;
+    let now = monotonic_now();
+    let refresh = output_refresh_duration(output);
     feedback.presented::<_, smithay::utils::Monotonic>(
         now,
         smithay::wayland::presentation::Refresh::fixed(refresh),
-        0, // sequence — we don't track DRM page-flip seq yet
+        0,
         wp_presentation_feedback::Kind::Vsync,
     );
 }
@@ -2735,14 +2804,18 @@ fn render_output(
                             elements.len()
                         );
                     }
-                    // wp_presentation: notify each surface that
-                    // contributed a render element this frame about
-                    // the actual present time + refresh interval.
-                    // Clients that registered a `feedback` request
-                    // get the precise timestamp they need to pace
-                    // their next frame against the real display
-                    // refresh, instead of guessing 60 Hz.
-                    publish_presentation_feedback(&od.output, state, &result.states);
+                    // wp_presentation: collect every surface's
+                    // feedback callback now while we still have the
+                    // RenderElementStates, but defer the actual
+                    // `presented(...)` signal until the matching
+                    // `DrmEvent::VBlank` fires. The flip hasn't
+                    // actually landed yet — calling presented() here
+                    // would publish a timestamp that's a frame-or-so
+                    // earlier than reality. The VBlank handler picks
+                    // this up and signals with a clock value taken
+                    // at the real page-flip moment.
+                    let feedback = build_presentation_feedback(&od.output, state, &result.states);
+                    od.pending_presentation.push(feedback);
                     state.post_repaint(&od.output, state.clock.now());
                     state.display_handle.flush_clients().ok();
                 }
