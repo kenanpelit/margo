@@ -66,6 +66,7 @@ render_elements! {
     Cursor=MemoryRenderBufferRenderElement<GlesRenderer>,
     WaylandSurface=WaylandSurfaceRenderElement<GlesRenderer>,
     Border=crate::render::rounded_border::RoundedBorderElement,
+    Shadow=crate::render::shadow::ShadowRenderElement,
     Clipped=crate::render::clipped_surface::ClippedSurfaceRenderElement,
     Resize=crate::render::resize_render::ResizeRenderElement,
     OpenClose=crate::render::open_close::OpenCloseRenderElement,
@@ -1814,6 +1815,55 @@ fn push_client_elements(
                         program.clone(),
                     ) {
                         elements.push(MargoRenderElement::Border(border));
+                    }
+                }
+
+                // Drop shadow under floating windows when
+                // `Config::shadows` is on, the client doesn't have
+                // `no_shadow:1` from a windowrule, and the global
+                // `shadow_only_floating` policy lets it through.
+                // Shadow goes BENEATH the surface (later in
+                // `elements` Vec = lower scene layer) so the window
+                // bites into its own shadow naturally. Skipped on
+                // fullscreen / overlay / tagged scratchpad clients
+                // where a shadow would just bleed past edges that
+                // are supposed to feel locked to the screen.
+                if let Some(client) = client {
+                    if state.config.shadows
+                        && !client.no_shadow
+                        && !client.is_fullscreen
+                        && !client.is_in_scratchpad
+                        && (client.is_floating || !state.config.shadow_only_floating)
+                    {
+                        if let Some(program) = crate::render::shadow::shader(renderer) {
+                            let win_rect = smithay::utils::Rectangle::new(
+                                (
+                                    client.geom.x - output_geo.loc.x,
+                                    client.geom.y - output_geo.loc.y,
+                                )
+                                    .into(),
+                                (
+                                    client.geom.width.max(1),
+                                    client.geom.height.max(1),
+                                )
+                                    .into(),
+                            );
+                            let shadow = crate::render::shadow::ShadowRenderElement::new(
+                                smithay::backend::renderer::element::Id::new(),
+                                win_rect,
+                                state.config.border_radius.max(0) as f32,
+                                state.config.shadows_size as f32,
+                                state.config.shadows_blur,
+                                (
+                                    state.config.shadows_position_x,
+                                    state.config.shadows_position_y,
+                                ),
+                                state.config.shadowscolor.0,
+                                scale,
+                                program.0,
+                            );
+                            elements.push(MargoRenderElement::Shadow(shadow));
+                        }
                     }
                 }
 
