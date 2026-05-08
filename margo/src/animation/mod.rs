@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 use margo_config::BezierCurve;
 
+pub mod spring;
+
 pub const BAKED_POINTS_COUNT: usize = 256;
 
 /// Animation type enum matching C's `enum { NONE, OPEN, MOVE, CLOSE, TAG, FOCUS, ... }`.
