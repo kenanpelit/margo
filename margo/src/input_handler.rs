@@ -230,6 +230,7 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                             Some(crate::state::FocusTarget::SessionLock(_)) => "SessionLock",
                             Some(crate::state::FocusTarget::LayerSurface(_)) => "LayerSurface",
                             Some(crate::state::FocusTarget::Window(_)) => "Window",
+                            Some(crate::state::FocusTarget::Popup(_)) => "Popup",
                             None => "None",
                         }
                     );
@@ -495,10 +496,9 @@ fn handle_pointer_button<B: InputBackend, E: PointerButtonEvent<B>>(
                 Some(FocusTarget::Window(window)) => {
                     state.close_overview(Some(window));
                 }
-                Some(target @ FocusTarget::LayerSurface(_)) => {
-                    state.focus_surface(Some(target));
-                }
-                Some(target @ FocusTarget::SessionLock(_)) => {
+                Some(target @ FocusTarget::LayerSurface(_))
+                | Some(target @ FocusTarget::SessionLock(_))
+                | Some(target @ FocusTarget::Popup(_)) => {
                     state.focus_surface(Some(target));
                 }
                 None => state.close_overview(None),

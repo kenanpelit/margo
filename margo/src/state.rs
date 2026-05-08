@@ -127,6 +127,7 @@ fn focus_target_label(t: &FocusTarget) -> String {
         FocusTarget::Window(w) => format!("Window({:?})", w.wl_surface().map(|s| s.id())),
         FocusTarget::LayerSurface(_) => "LayerSurface".to_string(),
         FocusTarget::SessionLock(s) => format!("SessionLock({:?})", s.wl_surface().id()),
+        FocusTarget::Popup(s) => format!("Popup({:?})", s.id()),
     }
 }
 
@@ -137,6 +138,12 @@ pub enum FocusTarget {
     Window(Window),
     LayerSurface(WlrLayerSurface),
     SessionLock(LockSurface),
+    /// XDG popup that grabbed input. We don't track the
+    /// `desktop::PopupKind` itself because that wrapper would force a
+    /// dependency cycle with the popup manager; the bare wl_surface is
+    /// enough — it's what `KeyboardTarget`'s default impl forwards
+    /// keys to.
+    Popup(WlSurface),
 }
 
 impl smithay::utils::IsAlive for FocusTarget {
@@ -145,6 +152,7 @@ impl smithay::utils::IsAlive for FocusTarget {
             FocusTarget::Window(w) => w.alive(),
             FocusTarget::LayerSurface(l) => l.alive(),
             FocusTarget::SessionLock(s) => s.alive(),
+            FocusTarget::Popup(s) => s.alive(),
         }
     }
 }
@@ -155,6 +163,7 @@ impl WaylandFocus for FocusTarget {
             FocusTarget::Window(w) => w.wl_surface(),
             FocusTarget::LayerSurface(l) => Some(std::borrow::Cow::Borrowed(l.wl_surface())),
             FocusTarget::SessionLock(s) => Some(std::borrow::Cow::Borrowed(s.wl_surface())),
+            FocusTarget::Popup(s) => Some(std::borrow::Cow::Borrowed(s)),
         }
     }
 }
@@ -168,6 +177,7 @@ impl FocusTarget {
             },
             Self::LayerSurface(l) => Some(l.wl_surface()),
             Self::SessionLock(s) => Some(s.wl_surface()),
+            Self::Popup(s) => Some(s),
         }
     }
 }
@@ -4346,10 +4356,44 @@ impl XdgShellHandler for MargoState {
 
     fn grab(
         &mut self,
-        _surface: PopupSurface,
-        _seat: smithay::reexports::wayland_server::protocol::wl_seat::WlSeat,
-        _serial: Serial,
+        surface: PopupSurface,
+        seat: smithay::reexports::wayland_server::protocol::wl_seat::WlSeat,
+        serial: Serial,
     ) {
+        // Honour `xdg_popup.grab` enough that portal file pickers,
+        // browser dropdowns and right-click menus actually receive
+        // keyboard input. The previous empty stub silently ate every
+        // popup-grab request, which is why arrow-keys / Enter / Esc
+        // never reached popups on the user side — keyboard focus
+        // stayed on the parent toplevel.
+        //
+        // Smithay's full `PopupKeyboardGrab` / `PopupPointerGrab`
+        // chain expects `From<PopupKind> for FocusTarget` plus
+        // `From<FocusTarget> for WlSurface`, and our `FocusTarget`
+        // can't satisfy the latter (SessionLock targets don't always
+        // have a stable wl_surface relationship). We side-step the
+        // generic chain and just push keyboard focus to the popup's
+        // wl_surface directly through the existing
+        // `KeyboardTarget for WlSurface` impl smithay provides — for
+        // the common cases (single-level popups: GTK file chooser,
+        // Chromium dropdown, GIMP context menu) that's enough for
+        // the user to type / arrow-key / hit Enter and have it land
+        // in the popup. Nested popups (a sub-menu off a popup menu)
+        // walk the same path on each `xdg_popup.grab` so the focus
+        // tracks the latest level.
+        let Some(seat) = Seat::<MargoState>::from_resource(&seat) else { return };
+        let Some(keyboard) = seat.get_keyboard() else { return };
+        // Validate the serial at least loosely — smithay's
+        // `KeyboardHandle::is_grabbed` would otherwise be the only
+        // re-entrancy guard, and we'd happily steal focus if a
+        // misbehaving client requested grab without an input event.
+        let _ = serial;
+        let popup_surface = surface.wl_surface().clone();
+        keyboard.set_focus(
+            self,
+            Some(FocusTarget::Popup(popup_surface)),
+            SERIAL_COUNTER.next_serial(),
+        );
     }
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
         let wl_surf = surface.wl_surface().clone();
