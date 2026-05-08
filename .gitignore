@@ -9,6 +9,5 @@ CLAUDE.md
 nix
 flake.lock
 flake.nix
-docs
 # Rust build artifacts
 /target/

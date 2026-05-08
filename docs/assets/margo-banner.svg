@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300">
+  <title>margo</title>
+  <desc>margo Wayland compositor - GitHub README banner</desc>
+  <rect width="1200" height="300" fill="#ffffff"/>
+
+  <g transform="translate(80, 60)">
+    <rect x="0" y="0" width="38" height="180" rx="3" fill="#CE422B"/>
+    <rect x="46" y="0" width="38" height="98" rx="3" fill="#CE422B"/>
+    <rect x="46" y="106" width="84" height="74" rx="3" fill="#1a1a1a"/>
+    <rect x="92" y="0" width="38" height="98" rx="3" fill="#CE422B"/>
+    <rect x="138" y="0" width="38" height="180" rx="3" fill="#CE422B"/>
+  </g>
+
+  <text x="320" y="140" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="84" font-weight="500" fill="#1a1a1a" letter-spacing="-2">margo</text>
+  <text x="320" y="180" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="18" fill="#444">a fast, dynamically-tiled wayland compositor</text>
+  <text x="320" y="206" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="18" fill="#666">written in rust</text>
+
+  <g transform="translate(320, 234)">
+    <circle cx="0" cy="0" r="4" fill="#CE422B"/>
+    <circle cx="14" cy="0" r="4" fill="#CE422B" opacity="0.7"/>
+    <circle cx="28" cy="0" r="4" fill="#CE422B" opacity="0.5"/>
+    <circle cx="42" cy="0" r="4" fill="#CE422B" opacity="0.35"/>
+    <circle cx="56" cy="0" r="4" fill="#CE422B" opacity="0.2"/>
+    <circle cx="70" cy="0" r="4" fill="#666" opacity="0.4"/>
+    <circle cx="84" cy="0" r="4" fill="#666" opacity="0.4"/>
+    <circle cx="98" cy="0" r="4" fill="#666" opacity="0.4"/>
+    <circle cx="112" cy="0" r="4" fill="#666" opacity="0.4"/>
+  </g>
+</svg>
