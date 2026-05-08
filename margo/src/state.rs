@@ -3025,68 +3025,38 @@ impl MargoState {
         let new_idx = current.trailing_zeros() as i32;
         let old_idx_target = new_tagmask.trailing_zeros() as i32;
         let going_forward = old_idx_target > new_idx;
-        let (offscreen_in, offscreen_out): (
-            crate::layout::Rect,
-            crate::layout::Rect,
-        ) = match (direction, going_forward) {
+        // Offscreen *staging* origin for the inbound slide. We only set
+        // x/y here; the size is taken from the client's previous c.geom
+        // below so the animation is a pure translate (no size change,
+        // no resize-snapshot capture, no scaling artefacts). The
+        // previous version of this code stored a 1×1 rect here, which
+        // forced arrange_monitor to start a `1×1 → target.size` move
+        // animation; arrange flagged `slot_size_changed` and the
+        // renderer ran the resize-snapshot crossfade scaled from a
+        // tiny rect up to the slot. That's the "border kadar hızlı
+        // hareket etmiyor, sonra yerine oturuyor" symptom — the
+        // border tracked the interpolated *slot*, but the snapshot
+        // visually expanded from a point because the start size was
+        // degenerate.
+        let (off_in_xy, off_out_xy): ((i32, i32), (i32, i32)) = match (direction, going_forward) {
             (margo_config::TagAnimDirection::Horizontal, true) => (
-                // Inbound from right, outbound to left.
-                crate::layout::Rect {
-                    x: mon_geom.x + mon_geom.width + 50,
-                    y: mon_geom.y,
-                    width: 1,
-                    height: 1,
-                },
-                crate::layout::Rect {
-                    x: mon_geom.x - mon_geom.width - 50,
-                    y: mon_geom.y,
-                    width: 1,
-                    height: 1,
-                },
+                (mon_geom.x + mon_geom.width + 50, mon_geom.y),
+                (mon_geom.x - mon_geom.width - 50, mon_geom.y),
             ),
             (margo_config::TagAnimDirection::Horizontal, false) => (
-                crate::layout::Rect {
-                    x: mon_geom.x - mon_geom.width - 50,
-                    y: mon_geom.y,
-                    width: 1,
-                    height: 1,
-                },
-                crate::layout::Rect {
-                    x: mon_geom.x + mon_geom.width + 50,
-                    y: mon_geom.y,
-                    width: 1,
-                    height: 1,
-                },
+                (mon_geom.x - mon_geom.width - 50, mon_geom.y),
+                (mon_geom.x + mon_geom.width + 50, mon_geom.y),
             ),
             (margo_config::TagAnimDirection::Vertical, true) => (
-                crate::layout::Rect {
-                    x: mon_geom.x,
-                    y: mon_geom.y + mon_geom.height + 50,
-                    width: 1,
-                    height: 1,
-                },
-                crate::layout::Rect {
-                    x: mon_geom.x,
-                    y: mon_geom.y - mon_geom.height - 50,
-                    width: 1,
-                    height: 1,
-                },
+                (mon_geom.x, mon_geom.y + mon_geom.height + 50),
+                (mon_geom.x, mon_geom.y - mon_geom.height - 50),
             ),
             (margo_config::TagAnimDirection::Vertical, false) => (
-                crate::layout::Rect {
-                    x: mon_geom.x,
-                    y: mon_geom.y - mon_geom.height - 50,
-                    width: 1,
-                    height: 1,
-                },
-                crate::layout::Rect {
-                    x: mon_geom.x,
-                    y: mon_geom.y + mon_geom.height + 50,
-                    width: 1,
-                    height: 1,
-                },
+                (mon_geom.x, mon_geom.y - mon_geom.height - 50),
+                (mon_geom.x, mon_geom.y + mon_geom.height + 50),
             ),
         };
+        let _ = off_out_xy;
         let slide_dir = match (direction, going_forward) {
             (margo_config::TagAnimDirection::Horizontal, true) => {
                 crate::render::open_close::SlideDirection::Left
@@ -3139,13 +3109,22 @@ impl MargoState {
                         border_radius: self.config.border_radius as f32,
                         source_surface: surface,
                     });
-                    let _ = offscreen_out;
                 }
             }
         }
 
-        // Stage incoming clients off-screen so arrange's Move
-        // animation slides them in to their target slot.
+        // Stage incoming clients at an off-screen *but full-size*
+        // staging rect so arrange_monitor's Move animation slides
+        // them in as a pure translate. We deliberately preserve the
+        // client's previous c.geom dimensions: the layout for a
+        // returning tag almost always recomputes the same slot size,
+        // so initial.size == target.size, `slot_size_changed` is
+        // false, and the renderer skips the resize-snapshot path
+        // entirely. Border tracks the interpolated `c.geom` and the
+        // surface buffer (which is already at the target size,
+        // committed during the *previous* visit to this tag) follows
+        // it via map_element on each tick. Result: border and surface
+        // travel as a unit, with no settle / pop / scale-in.
         if do_anim {
             for c in self.clients.iter_mut() {
                 if c.monitor != mon_idx {
@@ -3154,13 +3133,27 @@ impl MargoState {
                 let was_vis = c.is_visible_on(mon_idx, current);
                 let is_vis = c.is_visible_on(mon_idx, new_tagmask);
                 if !was_vis && is_vis {
-                    c.geom = offscreen_in;
-                    // Force arrange to actually animate (the
-                    // already_animating_to_target guard would
-                    // otherwise skip if the previous animation's
-                    // target happened to match). is_tag_switching
-                    // stays false because we WANT the move
-                    // animation, just from a stashed initial.
+                    // Fall back to a sane default if c.geom hasn't been
+                    // populated yet (freshly-mapped client never
+                    // arranged on this monitor): half the monitor area
+                    // centred. This case is rare — finalize_initial_map
+                    // arranges before the first tag switch — but the
+                    // fallback keeps the animation visually sane
+                    // instead of degenerate-thin.
+                    let (w, h) = if c.geom.width > 0 && c.geom.height > 0 {
+                        (c.geom.width, c.geom.height)
+                    } else {
+                        (mon_geom.width / 2, mon_geom.height / 2)
+                    };
+                    c.geom = crate::layout::Rect {
+                        x: off_in_xy.0,
+                        y: off_in_xy.1,
+                        width: w,
+                        height: h,
+                    };
+                    // Force arrange to start a fresh animation (the
+                    // already_animating_to_target guard would skip if
+                    // a previous animation's target happens to match).
                     c.animation.running = false;
                 }
             }
