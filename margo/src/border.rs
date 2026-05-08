@@ -119,11 +119,33 @@ pub fn refresh(state: &mut MargoState) {
             //      than the slot we requested, the post-settle frame
             //      would draw the border at the slot rect even though
             //      the live surface only covered a sub-rectangle.
-            let actual = c.window.geometry().size;
-            let snapshot_active = c.resize_snapshot.is_some();
+            // Read the client-declared geometry rect. `loc` is the
+            // offset of the "drawable area" within the wl_buffer
+            // (Electron clients sometimes report a non-zero loc to
+            // exclude shadow / titlebar). `size` is the declared
+            // visible size — what the client thinks is on-screen.
+            let geom_rect = c.window.geometry();
+            let actual = geom_rect.size;
+            // `snapshot_pending` covers the gap between
+            // arrange_monitor flagging a resize transition and the
+            // renderer actually capturing a texture for it: arrange
+            // runs `border::refresh` synchronously, but the snapshot
+            // capture only fires on the next render. Without rolling
+            // `pending` into `active`, the arrange-time refresh would
+            // shrink the border to `actual` while the next render's
+            // `ResizeRenderElement` paints the snapshot stretched to
+            // the full slot — that's the "border ve pencere bağımsız
+            // haraket ediyor" mismatch the user sees on Spotify
+            // during super+r.
+            let snapshot_active = c.resize_snapshot.is_some() || c.snapshot_pending;
             let mut g = c.geom;
             let mut border_shrunk_to_actual = false;
             if !snapshot_active {
+                // Clamp to the visible bounds: a buffer rendered at
+                // c.geom.loc covers (c.geom.loc, geometry.size); the
+                // rest is clipped to the slot anyway. Clipping the
+                // border to `min(actual, slot)` makes the frame hug
+                // whatever the user actually sees.
                 if actual.w > 0 && actual.w < g.width {
                     g.width = actual.w;
                     border_shrunk_to_actual = true;
@@ -134,23 +156,36 @@ pub fn refresh(state: &mut MargoState) {
                 }
             }
 
-            // Diagnostic — only fires when border deviates from the
-            // layout slot or when an animation is mid-flight, so the
-            // log line count stays bounded in the steady state.
+            // Diagnostic — fires when something interesting is
+            // happening (deviation from slot, mid-flight animation,
+            // non-zero geometry offset, or active snapshot). Includes
+            // `loc` so we can spot Electron-style buffer offsets that
+            // would otherwise be invisible to the existing
+            // `slot vs actual` summary.
             if border_shrunk_to_actual
                 || c.animation.running
+                || snapshot_active
+                || geom_rect.loc.x != 0
+                || geom_rect.loc.y != 0
                 || (actual.w != 0 && actual.w != c.geom.width)
+                || (actual.h != 0 && actual.h != c.geom.height)
             {
                 tracing::info!(
-                    "border[{}]: slot={}x{} actual={}x{} drawn={}x{} anim={} shrunk={}",
+                    "border[{}]: slot={}x{}+{}+{} geom_loc={}+{} geom_size={}x{} drawn={}x{} \
+                     anim={} snap={} shrunk={}",
                     c.app_id.as_str(),
                     c.geom.width,
                     c.geom.height,
+                    c.geom.x,
+                    c.geom.y,
+                    geom_rect.loc.x,
+                    geom_rect.loc.y,
                     actual.w,
                     actual.h,
                     g.width,
                     g.height,
                     c.animation.running,
+                    snapshot_active,
                     border_shrunk_to_actual,
                 );
             }

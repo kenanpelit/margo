@@ -1733,18 +1733,49 @@ fn push_client_elements(
             .filter(|client| !client.no_radius && !client.is_fullscreen)
             .map(|_| state.config.border_radius.max(0) as f32)
             .unwrap_or(0.0);
+        // Clip the surface tree to the same `min(geometry.size, slot)`
+        // box that `border::refresh` uses for the border. The two
+        // following the SAME rect is what gives a tight fit on
+        // Electron clients (Spotify especially) that report a
+        // declared `geometry().size` smaller than the slot we
+        // requested but ALSO render a wl_buffer that's bigger than
+        // their declared geometry — without intersecting the clip
+        // with `geometry.size`, the surface bleeds beyond the border
+        // by `buffer - geometry` pixels on the right / bottom while
+        // the border stays at `geometry`. With this intersection,
+        // the surface and border are guaranteed to share an outline.
+        //
+        // Snapshot/animation path is unaffected: when
+        // `resize_snapshot` is in flight the border tracks `c.geom`
+        // unmodified, so we want the clip to track `c.geom` too,
+        // which is what skipping the intersection during a snapshot
+        // achieves.
         let clip_geometry = client.map(|client| {
+            let actual = client.window.geometry().size;
+            // `snapshot_pending` mirrors the same gate used in
+            // border::refresh — the clip and the border have to
+            // share a rect, otherwise the resize transition's
+            // snapshot (drawn at the full slot) would extend past
+            // the border that already shrunk to `actual`.
+            let snapshot_active =
+                client.resize_snapshot.is_some() || client.snapshot_pending;
+            let mut w = client.geom.width.max(1);
+            let mut h = client.geom.height.max(1);
+            if !snapshot_active {
+                if actual.w > 0 && actual.w < w {
+                    w = actual.w;
+                }
+                if actual.h > 0 && actual.h < h {
+                    h = actual.h;
+                }
+            }
             Rectangle::new(
                 (
                     f64::from(client.geom.x - output_geo.loc.x),
                     f64::from(client.geom.y - output_geo.loc.y),
                 )
                     .into(),
-                (
-                    f64::from(client.geom.width.max(1)),
-                    f64::from(client.geom.height.max(1)),
-                )
-                    .into(),
+                (f64::from(w), f64::from(h)).into(),
             )
         });
 
