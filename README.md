@@ -2,8 +2,8 @@
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/margo-banner-dark.svg">
-    <img src="docs/assets/margo-banner.svg" alt="margo" width="600">
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/margo-banner.svg">
+    <img src="docs/assets/margo-banner-dark.svg" alt="margo" width="600">
   </picture>
 </p>
 
@@ -18,12 +18,10 @@
   <a href="https://github.com/Smithay/smithay"><img src="https://img.shields.io/badge/built%20on-Smithay-blueviolet" alt="Smithay"></a>
 </p>
 
-margo is a feature-complete Wayland compositor — a Rust + [Smithay] port of [mango], in the dwl/dwm tradition. It keeps the **tag** model (no workspaces), ships **15 tiling layouts**, and runs on > A fast, dynamically-tiled Wayland compositor written in Rust.
+margo is a feature-complete Wayland compositor — a Rust + [Smithay] port of [mango], in the dwl/dwm tradition. It keeps the **tag** model (no workspaces), ships **15 tiling layouts**, and runs on Smithay's modern protocol stack. Every commit goes through a daily driver before tagging.
 
-[![License](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/status-daily%20driver-success)](road_map.md)
-[![Rust](https://img.shields.io/badge/rust-1.85%2B-orange?logo=rust)](Cargo.toml)
-[![Smithay](https://img.shields.io/badge/built%20on-Smithay-blueviolet)](https://github.com/Smithay/smithay)
+[Smithay]: https://github.com/Smithay/smithay
+[mango]: https://github.com/mangowm/mango
 
 ---
 
