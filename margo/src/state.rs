@@ -28,7 +28,7 @@ use smithay::{
     },
     output::Output,
     reexports::{
-        calloop::{LoopHandle, LoopSignal},
+        calloop::{ping::Ping, LoopHandle, LoopSignal},
         wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as XdgDecorationMode,
         wayland_server::{
             DisplayHandle, Resource,
@@ -814,7 +814,27 @@ pub struct MargoState {
     pub loop_signal: LoopSignal,
     pub clock: Clock<Monotonic>,
     pub should_quit: bool,
+    /// Set whenever something dirties the scene. Drained by the udev/winit
+    /// backend before each render. Source-of-truth for "does anything need
+    /// to be redrawn this iteration"; the [`repaint_ping`] is only the
+    /// wake-up mechanism, not the state.
     repaint_requested: bool,
+    /// On-demand wake source for the redraw scheduler. The udev backend
+    /// installs a calloop `Ping` source whose callback runs the render
+    /// path; here we keep a sender so [`MargoState::request_repaint`] can
+    /// poke it from anywhere (input handlers, commit hooks, animation
+    /// ticks, IPC dispatch). Idle = no pings = loop stays asleep instead
+    /// of waking 60 Hz from a polling timer.
+    repaint_ping: Option<Ping>,
+    /// Number of `queue_frame()` calls awaiting their matching
+    /// `DrmEvent::VBlank`. Acts as a rate limiter for the redraw
+    /// scheduler: while >0, [`request_repaint`] still flags the scene
+    /// dirty but does *not* ping — the post-dispatch animation tick
+    /// would otherwise re-arm a repaint on every loop iteration and the
+    /// ping callback would fire immediately, rendering on the CPU as
+    /// fast as the loop can spin (between vblanks). The vblank handler
+    /// decrements this and, if zero, re-emits the deferred ping.
+    pending_vblanks: u32,
     config_path: Option<PathBuf>,
 
     pub config: Config,
@@ -962,6 +982,8 @@ impl MargoState {
             clock: Clock::new(),
             should_quit: false,
             repaint_requested: true,
+            repaint_ping: None,
+            pending_vblanks: 0,
             config_path,
             animation_curves,
             input_keyboard,
@@ -1216,6 +1238,51 @@ impl MargoState {
 
     pub fn request_repaint(&mut self) {
         self.repaint_requested = true;
+        // Wake the redraw scheduler so the loop drains the flag this
+        // iteration. Coalesces: many request_repaint() calls between two
+        // dispatches still produce a single Ping event (eventfd semantics
+        // — see calloop ping source), so we don't need to track whether
+        // a wake is already pending.
+        //
+        // Suppress the ping while a previously-queued frame is still
+        // waiting for its vblank. The DRM compositor only accepts one
+        // pending page-flip per output, and the post-dispatch animation
+        // tick re-arms repaint every iteration; without this gate the
+        // ping callback would fire between vblanks and either render an
+        // identical scene (wasted work) or hit `queue_frame` "frame
+        // already pending" errors. The vblank handler re-emits the ping
+        // once it counts back down to zero.
+        if self.pending_vblanks == 0 {
+            if let Some(ping) = &self.repaint_ping {
+                ping.ping();
+            }
+        }
+    }
+
+    /// Called by the udev backend after a successful `queue_frame`.
+    /// Pushes the redraw scheduler into "frame in flight" mode so further
+    /// repaint requests stay deferred until the page-flip completes.
+    pub fn note_frame_queued(&mut self) {
+        self.pending_vblanks += 1;
+    }
+
+    /// Called by the udev backend's `DrmEvent::VBlank` handler after
+    /// `frame_submitted`. If this was the last in-flight frame and the
+    /// scene is dirty, re-arm the redraw scheduler.
+    pub fn note_vblank(&mut self) {
+        self.pending_vblanks = self.pending_vblanks.saturating_sub(1);
+        if self.pending_vblanks == 0 && self.repaint_requested {
+            if let Some(ping) = &self.repaint_ping {
+                ping.ping();
+            }
+        }
+    }
+
+    /// Install the wake handle the udev/winit backend created. Call once
+    /// at startup; subsequent [`request_repaint`] calls will wake the
+    /// loop via the supplied [`Ping`] sender.
+    pub fn set_repaint_ping(&mut self, ping: Ping) {
+        self.repaint_ping = Some(ping);
     }
 
     pub fn take_repaint_request(&mut self) -> bool {

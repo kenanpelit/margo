@@ -8,7 +8,6 @@ use std::{
     os::unix::io::{AsFd, FromRawFd, IntoRawFd},
     rc::Rc,
     sync::Mutex,
-    time::Duration,
 };
 
 use anyhow::{Context, Result};
@@ -42,7 +41,7 @@ use smithay::{
     input::pointer::{CursorImageAttributes, CursorImageStatus},
     output::{Mode as OutputMode, Output, PhysicalProperties, Subpixel},
     reexports::{
-        calloop::{timer::{TimeoutAction, Timer}, EventLoop},
+        calloop::{ping::make_ping, EventLoop},
         drm::control::{
             property, Device as DrmDeviceTrait, Mode as DrmMode, ModeTypeFlags, connector, crtc,
         },
@@ -61,7 +60,6 @@ use tracing::{error, info, warn};
 
 use crate::{input_handler::handle_input, state::MargoState};
 
-const REPAINT_INTERVAL_MS: u64 = 16;
 render_elements! {
     MargoRenderElement<=GlesRenderer>;
     Space=SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>,
@@ -560,7 +558,7 @@ pub fn run(
         .handle()
         .insert_source(drm_notifier, {
             let backend_data = backend_data.clone();
-            move |event, _, _state: &mut MargoState| match event {
+            move |event, _, state: &mut MargoState| match event {
                 DrmEvent::VBlank(crtc) => {
                     let mut bd = backend_data.borrow_mut();
                     if let Some(od) = bd.outputs.get_mut(&crtc) {
@@ -570,26 +568,53 @@ pub fn run(
                             warn!("frame_submitted: {e:?}");
                         }
                     }
+                    // Drop the in-flight count and, if the scene is still
+                    // dirty (animation, deferred input, late commit), let
+                    // the redraw scheduler ping itself for the next frame.
+                    // This is what gives us continuous animation playback
+                    // now that the global 16 ms timer is gone.
+                    state.note_vblank();
                 }
                 DrmEvent::Error(e) => error!("DRM error: {:?}", e),
             }
         })
         .map_err(|e| anyhow::anyhow!("DRM event source: {e}"))?;
 
+    // ── On-demand redraw scheduler ────────────────────────────────────────────
+    //
+    // Replaces the old 16 ms polling timer. The flow now is:
+    //
+    //   * Anything that dirties the scene calls `state.request_repaint()`,
+    //     which sets the dirty flag *and* pings this source.
+    //   * Calloop wakes, runs the closure below once (no matter how many
+    //     pings landed since the last dispatch — eventfd coalesces them).
+    //   * If the dirty flag is set, render every output. `queue_frame`
+    //     schedules a page-flip; the resulting `DrmEvent::VBlank` will
+    //     wake the loop again, at which point `main.rs`'s post-dispatch
+    //     callback ticks animations and may re-arm a redraw.
+    //
+    // Idle behaviour: no events → no pings → no wake-ups. CPU/GPU drop to
+    // zero while the user does nothing, instead of paying a 60 Hz poll
+    // tax for a flag that's almost always false.
+    let (repaint_ping, repaint_source) =
+        make_ping().map_err(|e| anyhow::anyhow!("create repaint ping: {e}"))?;
     event_loop
         .handle()
-        .insert_source(Timer::from_duration(Duration::from_millis(REPAINT_INTERVAL_MS)), {
+        .insert_source(repaint_source, {
             let backend_data = backend_data.clone();
-            move |_, _, state: &mut MargoState| {
+            move |(), _, state: &mut MargoState| {
                 if state.take_repaint_request() {
                     let mut bd = backend_data.borrow_mut();
                     let BackendData { renderer, outputs, drm, .. } = &mut *bd;
                     render_all_outputs(renderer, outputs, drm, state, "repaint");
                 }
-                TimeoutAction::ToDuration(Duration::from_millis(REPAINT_INTERVAL_MS))
             }
         })
-        .map_err(|e| anyhow::anyhow!("repaint timer source: {e}"))?;
+        .map_err(|e| anyhow::anyhow!("repaint ping source: {e}"))?;
+    state.set_repaint_ping(repaint_ping);
+    // Initial ping to drain the dirty flag we set in MargoState::new (the
+    // first frame must run; no other event has fired yet).
+    state.request_repaint();
 
     // ── 8. Session event source ───────────────────────────────────────────────
     // (libinput will be inserted into state below; the closure reads it from state)
@@ -2166,6 +2191,10 @@ fn render_output(
             match od.compositor.queue_frame(()) {
                 Ok(()) => {
                     od.queued_count += 1;
+                    // Bumps `pending_vblanks` so further repaint requests
+                    // queue silently until the page-flip completes; the
+                    // matching `DrmEvent::VBlank` will pop it back down.
+                    state.note_frame_queued();
                     if od.queued_count <= 10 || od.queued_count % 300 == 0 {
                         info!(
                             "queued frame output={} reason={} queued={} renders={} elements={}",
