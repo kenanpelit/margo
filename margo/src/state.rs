@@ -3502,13 +3502,53 @@ impl MargoState {
         if idx >= self.clients.len() {
             return;
         }
-        let mon_idx = self.clients[idx].monitor;
-        if mon_idx >= self.monitors.len() {
+
+        // Migrate the scratchpad to the *cursor's* monitor when
+        // `scratchpad_cross_monitor` is on (the user's config has
+        // it enabled). Without this, a scratchpad first opened on
+        // eDP-1 (because tag-home routing parked it there at map
+        // time, or because the focused client lived there when the
+        // spawn fired) would always re-show on eDP-1 even after
+        // the user moved their cursor to DP-3 — exactly the
+        // "imlecin olduğu ekranda değil eDP-1'de açılıyor" symptom.
+        //
+        // We deliberately use `pointer_monitor()` rather than
+        // `focused_monitor()` for the migration target. A
+        // scratchpad summon is a "bring it *here*" gesture; if the
+        // user is reading docs on DP-3 with cursor there but their
+        // last keyboard focus happened to land on eDP-1
+        // (Spotify-on-tag-8 stays focused after a brief click
+        // through), they'd still want clipse / wiremix to drop
+        // down where the cursor is. Falls back to focused-monitor
+        // → client's stored monitor if the pointer hasn't entered
+        // any output yet (rare, mostly during session bring-up).
+        let target_mon_idx = if self.config.scratchpad_cross_monitor {
+            self.pointer_monitor()
+                .or_else(|| {
+                    let f = self.focused_monitor();
+                    (f < self.monitors.len()).then_some(f)
+                })
+                .filter(|i| *i < self.monitors.len())
+                .unwrap_or(self.clients[idx].monitor)
+        } else {
+            self.clients[idx].monitor
+        };
+        if target_mon_idx >= self.monitors.len() {
             return;
         }
-        let work_area = self.monitors[mon_idx].work_area;
-        let active_tagset = self.monitors[mon_idx].current_tagset();
+        // Apply the migration before reading work_area / tagset so
+        // the scratchpad rect is centred on its new home.
+        self.clients[idx].monitor = target_mon_idx;
+        let work_area = self.monitors[target_mon_idx].work_area;
+        let active_tagset = self.monitors[target_mon_idx].current_tagset();
 
+        // Re-centre the float_geom on the target monitor's work
+        // area while preserving the rule-supplied size+offset. The
+        // windowrule's offsetx/offsety is a hint about *where on
+        // the active monitor* the scratchpad should sit, not an
+        // absolute screen position — using the absolute coords
+        // baked at first-map time would put the panel on whichever
+        // monitor it was originally arranged for.
         let c = &mut self.clients[idx];
         c.is_in_scratchpad = true;
         c.is_scratchpad_show = true;
@@ -3517,20 +3557,32 @@ impl MargoState {
         c.is_fullscreen = false;
         c.is_maximized_screen = false;
 
-        // If float_geom hasn't been set by a windowrule, fall back to
-        // the global scratchpad_*_ratio. Either way recentre on the
-        // monitor so the scratchpad never appears off-screen after a
-        // monitor reconfig.
-        if c.float_geom.width <= 0 || c.float_geom.height <= 0 {
-            let w = (work_area.width as f32 * self.config.scratchpad_width_ratio).round() as i32;
-            let h = (work_area.height as f32 * self.config.scratchpad_height_ratio).round() as i32;
-            c.float_geom = Rect {
-                x: work_area.x + (work_area.width - w) / 2,
-                y: work_area.y + (work_area.height - h) / 2,
-                width: w.max(100),
-                height: h.max(100),
-            };
-        }
+        // Decide width/height: prefer windowrule values if they
+        // were set, fall back to `scratchpad_*_ratio * work_area`.
+        let (w, h) = if c.float_geom.width > 0 && c.float_geom.height > 0 {
+            (
+                c.float_geom.width.min(work_area.width.max(1)),
+                c.float_geom.height.min(work_area.height.max(1)),
+            )
+        } else {
+            (
+                (work_area.width as f32 * self.config.scratchpad_width_ratio).round() as i32,
+                (work_area.height as f32 * self.config.scratchpad_height_ratio).round() as i32,
+            )
+        };
+        // Recentre on the active monitor's work area, then layer
+        // the rule's offset on top so user-tuned positioning still
+        // applies (the user has e.g. `offsety:-100` on
+        // dropdown-terminal so it docks near the top of whatever
+        // monitor it lands on).
+        let center_x = work_area.x + (work_area.width - w) / 2;
+        let center_y = work_area.y + (work_area.height - h) / 2;
+        c.float_geom = Rect {
+            x: center_x,
+            y: center_y,
+            width: w.max(100),
+            height: h.max(100),
+        };
         c.geom = c.float_geom;
         c.tags = active_tagset; // join the current tagset
 
@@ -3540,7 +3592,7 @@ impl MargoState {
         // toggled-up scratchpad.
         self.space.map_element(window.clone(), (c.float_geom.x, c.float_geom.y), true);
         self.enforce_z_order();
-        self.arrange_monitor(mon_idx);
+        self.arrange_monitor(target_mon_idx);
         self.focus_surface(Some(FocusTarget::Window(window)));
     }
 
@@ -4124,27 +4176,37 @@ impl MargoState {
 
         // Named scratchpad bootstrap. If the windowrule flagged this
         // client as a named scratchpad (mango's `isnamedscratchpad:1`
-        // pattern), tuck it away on first map. The user's keybind
-        // brings it up explicitly via `toggle_named_scratchpad`; the
-        // initial spawn shouldn't dump a panel-sized floating
-        // dropdown-terminal onto whatever tag they happen to be on.
-        // Clears focus too so the just-launched (and now hidden)
-        // window doesn't keep the keyboard.
+        // pattern), promote it to a *visible* scratchpad on first
+        // map: `is_in_scratchpad = true`, `is_scratchpad_show = true`,
+        // float_geom from the rule, focus retained. The user-side
+        // mental model is "press the bind → my scratchpad appears
+        // here", so the very first press of the toggle key (which
+        // spawned the app in the first place because nothing was
+        // running) MUST land a visible window. Subsequent presses
+        // toggle hide / show via the regular `switch_scratchpad_state`
+        // path.
+        //
+        // Earlier this branch tucked the freshly-spawned client away
+        // (unmap + is_minimized) on the theory that the spawn-cmd
+        // and the visibility toggle were two separate steps. They
+        // aren't on the user side — pressing the bind once should
+        // result in a visible scratchpad; pressing again should
+        // hide it. Only the second-and-later cycles go through
+        // toggle_named_scratchpad's switch_scratchpad_state branch.
         if self.clients[idx].is_named_scratchpad
             && !self.clients[idx].is_in_scratchpad
         {
             self.clients[idx].is_in_scratchpad = true;
-            self.clients[idx].is_scratchpad_show = false;
-            self.clients[idx].is_minimized = true;
-            let window = self.clients[idx].window.clone();
-            self.space.unmap_elem(&window);
-            if focus_new {
-                // Drop the focus we set above — the client is hidden
-                // now, no point keeping the keyboard pointed at it.
-                self.focus_first_visible_or_clear(target_mon);
-            }
+            self.clients[idx].is_scratchpad_show = true;
+            self.clients[idx].is_floating = true;
+            // Don't unmap — leave the window where finalize_initial_map's
+            // own map_element / arrange_monitor placed it. The
+            // windowrule's float_geom (offsetx/offsety/width/height)
+            // already drove that placement, so the visible result
+            // matches the show_scratchpad_client positioning we'd
+            // otherwise apply on a subsequent toggle.
             tracing::info!(
-                "named_scratchpad bootstrap: app_id={} hidden until toggle",
+                "named_scratchpad bootstrap: app_id={} visible from first map",
                 self.clients[idx].app_id,
             );
         }
