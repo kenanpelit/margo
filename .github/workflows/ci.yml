@@ -1,0 +1,89 @@
+# Margo CI — keep the lightweight checks fast (~3 minutes total) so they
+# run on every push without becoming the reason people stop pushing.
+#
+# Scope today: catch the regressions that block a release (compile
+# break, test failure, broken example config). Stylistic checks
+# (rustfmt, clippy lint promotion) are intentionally not gating —
+# the codebase has organic drift from many sessions and a 283-hunk
+# fmt sweep would be its own commit, not a CI gate.
+#
+# What's NOT covered here (yet):
+#   * `scripts/smoke-winit.sh` — needs Xvfb plus a real terminal
+#     client (kitty/alacritty); feasible but worth ~20 LOC of YAML
+#     to do right. Tracked as a separate workflow once the core
+#     checks have been stable.
+#   * Real DRM session — impossible on GitHub-hosted runners.
+#     Manual post-install validation lives in
+#     `docs/manual-checklist.md`.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: build / test / config-validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # System libraries margo links against — smithay's transitive
+      # deps (wayland, libinput, libxkbcommon, libseat, libgbm/libEGL,
+      # libdrm, libudev) plus the regex crate's PCRE2 backend.
+      - name: System dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config \
+            libwayland-dev wayland-protocols \
+            libinput-dev libxkbcommon-dev libudev-dev \
+            libseat-dev \
+            libdrm-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev \
+            libpixman-1-dev \
+            libpcre2-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: cargo build
+        run: cargo build --workspace
+
+      - name: cargo test
+        run: cargo test --workspace
+
+      - name: cargo clippy (informational)
+        # Run clippy but don't gate — the codebase has accumulated
+        # ~26 warnings across sessions; an opt-in cleanup pass is
+        # tracked separately. CI surfaces them in the run log so
+        # they're visible without blocking merges.
+        run: cargo clippy --workspace --all-targets || true
+
+      - name: mctl check-config (bundled example)
+        # Validates that an example user config parses without
+        # unknown fields, regex compile errors, or duplicate
+        # binds. Falls back to a minimal stub if no example is
+        # checked in yet.
+        run: |
+          if [ -f assets/example/config.conf ]; then
+            CFG=assets/example/config.conf
+          else
+            CFG=/tmp/margo-min.conf
+            cat > "$CFG" <<'EOF'
+          # Minimal smoke config used by CI when no example ships.
+          modkey = super
+          bind = super,Return,spawn,kitty
+          EOF
+          fi
+          ./target/debug/mctl check-config --config "$CFG"

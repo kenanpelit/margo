@@ -720,7 +720,12 @@ fn print_status_json(state: &IpcState) -> Result<()> {
             })
         })
         .collect();
+    // Stable JSON schema. Bump `version` on any breaking change
+    // (field renamed or removed); additive changes (new fields,
+    // new enum variants on existing fields) keep the version
+    // unchanged and consumers should ignore unknown fields.
     let document = json!({
+        "version": 1,
         "tag_count": state.tag_count,
         "layouts": state.layouts,
         "outputs": outputs,
