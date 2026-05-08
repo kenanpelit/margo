@@ -5720,10 +5720,33 @@ impl XdgActivationHandler for MargoState {
         // canonical tag rather than enabling several at once. The
         // existing view_tag handles the per-tag home-monitor warp,
         // so multi-monitor users come back to the right output too.
+        //
+        // CRUCIAL: only call `view_tag` when the client is NOT
+        // already visible on its monitor's active tagset. With
+        // `view_current_to_back = 1` (the user's config), invoking
+        // `view_tag` with the *current* tagmask deliberately toggles
+        // to the previous tag — that's the dwl/mango "press tag-N
+        // again to flip back" feature. Browsers (Helium / Chromium)
+        // self-activate on every link click, extension popup,
+        // tab-switch and 3-finger gesture, all of which fed into
+        // `view_tag` with the already-active mask and bounced the
+        // user back to whatever tag they came from. Skipping the
+        // tag switch when the surface is already visible kills that
+        // entire class of regressions while preserving the
+        // legitimate "launcher activates a window on tag 4 → bring
+        // me there" behaviour.
         let mask = self.clients[idx].tags;
-        let one_bit = mask & mask.wrapping_neg();
-        let target = if one_bit != 0 { one_bit } else { mask };
-        self.view_tag(target);
+        let mon_idx = self.clients[idx].monitor;
+        let already_visible = self
+            .monitors
+            .get(mon_idx)
+            .map(|m| (mask & m.current_tagset()) != 0)
+            .unwrap_or(false);
+        if !already_visible {
+            let one_bit = mask & mask.wrapping_neg();
+            let target = if one_bit != 0 { one_bit } else { mask };
+            self.view_tag(target);
+        }
 
         // Focus + raise. focus_surface tracks selected/prev-selected
         // history per monitor, and the layer-mapped Space takes care
@@ -5737,10 +5760,11 @@ impl XdgActivationHandler for MargoState {
         self.request_repaint();
 
         tracing::info!(
-            "xdg_activation: activated app_id={} idx={} tag={:#x}",
+            "xdg_activation: activated app_id={} idx={} tag={:#x} already_visible={}",
             self.clients[idx].app_id,
             idx,
-            target
+            mask,
+            already_visible,
         );
     }
 }
