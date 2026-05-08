@@ -262,6 +262,15 @@ pub fn run(
     let (mut drm, drm_notifier) =
         DrmDevice::new(drm_fd.clone(), false).context("DrmDevice::new")?;
 
+    // Hardware cursor plane diagnostics. Reports what the driver advertises
+    // so we can confirm cursor placement fits and we're actually getting
+    // atomic cursor-plane updates instead of compositing the cursor into
+    // the primary plane on every motion event.
+    {
+        let cs = drm.cursor_size();
+        info!("DRM hardware cursor plane: {}×{} (advertised by driver)", cs.w, cs.h);
+    }
+
     // ── 4. GBM + EGL + GLES ──────────────────────────────────────────────────
     let gbm = GbmDevice::new(drm_fd.clone()).context("GbmDevice::new")?;
     let egl_display =
@@ -430,7 +439,20 @@ pub fn run(
             }
         };
 
-        // Create per-output DRM compositor
+        // Create per-output DRM compositor.
+        //
+        // `cursor_size` is the maximum hardware-cursor buffer size the
+        // DRM device can scan out on its cursor plane. Querying it from
+        // the device (instead of the old hardcoded 64×64) lets smithay
+        // place larger cursors directly on the cursor plane on GPUs
+        // that support 128² or 256² (most modern AMD/Intel/NVIDIA);
+        // anything that fits gets atomic plane updates and never
+        // touches the primary swapchain. Falling back to 64×64 only
+        // when the driver doesn't report a size (very old drivers).
+        let cursor_size = {
+            let s = drm.cursor_size();
+            if s.w == 0 || s.h == 0 { (64u32, 64u32).into() } else { s }
+        };
         let allocator = GbmAllocator::new(gbm.clone(), GbmBufferFlags::RENDERING);
         let exporter = GbmFramebufferExporter::new(gbm.clone(), primary_node.into());
         let compositor = match DrmCompositor::new(
@@ -441,7 +463,7 @@ pub fn run(
             exporter,
             color_formats.iter().copied(),
             renderer_formats.clone(),
-            (64u32, 64u32).into(),
+            cursor_size,
             Some(gbm.clone()),
         ) {
             Ok(c) => c,
@@ -960,6 +982,11 @@ fn setup_connector(
     let allocator = GbmAllocator::new(gbm.clone(), GbmBufferFlags::RENDERING);
     let exporter = GbmFramebufferExporter::new(gbm.clone(), primary_node.into());
     let color_formats = [DrmFourcc::Xrgb8888, DrmFourcc::Argb8888];
+    // Use device-reported cursor plane size (matches the startup path).
+    let cursor_size = {
+        let s = drm.cursor_size();
+        if s.w == 0 || s.h == 0 { (64u32, 64u32).into() } else { s }
+    };
     let compositor = match DrmCompositor::new(
         &output,
         drm_surface,
@@ -968,7 +995,7 @@ fn setup_connector(
         exporter,
         color_formats.iter().copied(),
         renderer_formats.clone(),
-        (64u32, 64u32).into(),
+        cursor_size,
         Some(gbm.clone()),
     ) {
         Ok(c) => c,
