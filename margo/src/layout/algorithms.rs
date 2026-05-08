@@ -430,6 +430,7 @@ pub fn vertical_grid(ctx: &ArrangeCtx) -> ArrangeResult {
         scroller_focus_center: ctx.scroller_focus_center,
         scroller_prefer_center: ctx.scroller_prefer_center,
         scroller_prefer_overspread: ctx.scroller_prefer_overspread,
+        canvas_pan: ctx.canvas_pan,
     };
     let mut res = grid(&transposed_ctx);
     for (_, r) in &mut res {
@@ -604,6 +605,7 @@ pub fn tgmix(ctx: &ArrangeCtx) -> ArrangeResult {
         scroller_focus_center: ctx.scroller_focus_center,
         scroller_prefer_center: ctx.scroller_prefer_center,
         scroller_prefer_overspread: ctx.scroller_prefer_overspread,
+        canvas_pan: ctx.canvas_pan,
     };
     let stack_ctx = ArrangeCtx {
         work_area: stack_wa,
@@ -618,6 +620,7 @@ pub fn tgmix(ctx: &ArrangeCtx) -> ArrangeResult {
         scroller_focus_center: ctx.scroller_focus_center,
         scroller_prefer_center: ctx.scroller_prefer_center,
         scroller_prefer_overspread: ctx.scroller_prefer_overspread,
+        canvas_pan: ctx.canvas_pan,
     };
 
     let mut result = tile(&master_ctx);

@@ -43,6 +43,17 @@ pub struct Pertag {
     /// tags so a deliberate user choice is never overridden by a
     /// heuristic.
     pub user_picked_layout: Vec<bool>,
+    /// Spatial-canvas pan offset per tag, in logical pixels. Applied
+    /// as a translate to every client's `canvas_geom` when the tag
+    /// uses the `Canvas` layout — pan moves the *viewport* over the
+    /// canvas, the clients themselves stay anchored. Stored per-tag
+    /// so each tag can hold a different "spatial focus" (a sketch
+    /// canvas on tag 3 keeps its zoomed-in view of the corner the
+    /// user was working on, even after they tab through other tags
+    /// and back). `canvas_pan` / `canvas_reset` dispatch actions
+    /// mutate these.
+    pub canvas_pan_x: Vec<f64>,
+    pub canvas_pan_y: Vec<f64>,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -65,6 +76,8 @@ impl Pertag {
             nmasters: vec![default_nmaster; MAX_TAGS + 1],
             gaps: vec![GapConfig::default(); MAX_TAGS + 1],
             user_picked_layout: vec![false; MAX_TAGS + 1],
+            canvas_pan_x: vec![0.0; MAX_TAGS + 1],
+            canvas_pan_y: vec![0.0; MAX_TAGS + 1],
         }
     }
 }
@@ -201,4 +214,9 @@ pub struct ArrangeCtx<'a> {
     pub scroller_prefer_center: bool,
     /// Prefer edge overspread for first/last scroller clients.
     pub scroller_prefer_overspread: bool,
+    /// Active tag's spatial-canvas pan offset (logical pixels).
+    /// Only meaningful for the `Canvas` layout — translates every
+    /// client's `canvas_geom` so the viewport moves over a fixed
+    /// canvas. Zero for non-canvas layouts.
+    pub canvas_pan: (f64, f64),
 }

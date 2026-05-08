@@ -1779,6 +1779,21 @@ impl MargoState {
             gaps.gappov = 0;
         }
 
+        let curtag = self.monitors[mon_idx].pertag.curtag;
+        let canvas_pan = (
+            self.monitors[mon_idx]
+                .pertag
+                .canvas_pan_x
+                .get(curtag)
+                .copied()
+                .unwrap_or(0.0),
+            self.monitors[mon_idx]
+                .pertag
+                .canvas_pan_y
+                .get(curtag)
+                .copied()
+                .unwrap_or(0.0),
+        );
         let ctx = layout::ArrangeCtx {
             work_area,
             tiled: &tiled,
@@ -1792,6 +1807,7 @@ impl MargoState {
             scroller_focus_center: self.config.scroller_focus_center,
             scroller_prefer_center: self.config.scroller_prefer_center,
             scroller_prefer_overspread: self.config.scroller_prefer_overspread,
+            canvas_pan,
         };
 
         let geometries = layout::arrange(layout, &ctx);
@@ -3472,6 +3488,43 @@ impl MargoState {
             );
             self.monitors[mon_idx].pertag.ltidxs[curtag] = chosen;
         }
+    }
+
+    /// Spatial-canvas pan: shift the *viewport* on the active tag by
+    /// (dx, dy) logical pixels. Stored per-tag so each tag remembers
+    /// where the user had been "looking" in the canvas. The
+    /// `Canvas` layout reads the offset on every arrange and
+    /// translates each client's `canvas_geom` by it — clients stay
+    /// anchored on the canvas, the viewport moves.
+    pub fn canvas_pan(&mut self, dx: i32, dy: i32) {
+        let mon_idx = self.focused_monitor();
+        if mon_idx >= self.monitors.len() {
+            return;
+        }
+        let curtag = self.monitors[mon_idx].pertag.curtag;
+        if let Some(slot) = self.monitors[mon_idx].pertag.canvas_pan_x.get_mut(curtag) {
+            *slot += dx as f64;
+        }
+        if let Some(slot) = self.monitors[mon_idx].pertag.canvas_pan_y.get_mut(curtag) {
+            *slot += dy as f64;
+        }
+        self.arrange_monitor(mon_idx);
+    }
+
+    /// Reset the active tag's canvas viewport to the origin (0, 0).
+    pub fn canvas_reset(&mut self) {
+        let mon_idx = self.focused_monitor();
+        if mon_idx >= self.monitors.len() {
+            return;
+        }
+        let curtag = self.monitors[mon_idx].pertag.curtag;
+        if let Some(slot) = self.monitors[mon_idx].pertag.canvas_pan_x.get_mut(curtag) {
+            *slot = 0.0;
+        }
+        if let Some(slot) = self.monitors[mon_idx].pertag.canvas_pan_y.get_mut(curtag) {
+            *slot = 0.0;
+        }
+        self.arrange_monitor(mon_idx);
     }
 
     pub fn switch_layout(&mut self) {

@@ -139,6 +139,11 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
         "focusmon" => state.focus_mon(direction_arg(arg)),
         "tagmon" => state.tag_mon(direction_arg(arg)),
         "toggleoverview" => state.toggle_overview(),
+        // Spatial-canvas pan (PaperWM-ish). Two integer args:
+        // dx and dy logical-pixel deltas. Stored per-tag so each
+        // tag remembers its viewport offset.
+        "canvas_pan" => state.canvas_pan(arg.i, arg.i2),
+        "canvas_reset" => state.canvas_reset(),
         _ => debug!("unhandled action: {action}"),
     }
 }
