@@ -247,11 +247,50 @@ fn main() -> Result<()> {
                             XWaylandEvent::Ready { x11_socket, display_number } => {
                                 unsafe {
                                     std::env::set_var("DISPLAY", format!(":{display_number}"));
+                                    // XCURSOR_SIZE / XCURSOR_THEME let
+                                    // XWayland apps pick up the same
+                                    // cursor the native Wayland side
+                                    // uses. Without these the X11
+                                    // cursor falls back to libxcursor's
+                                    // 16-px default and the user sees
+                                    // a noticeably-smaller pointer the
+                                    // moment an X11 client takes the
+                                    // pointer (the classic
+                                    // "Steam / Discord / Spotify
+                                    // cursor shrinks on hover" bug).
+                                    // Default theme is left to the
+                                    // user's `XCURSOR_THEME` env if
+                                    // already set; we only fill in
+                                    // a missing slot so we never
+                                    // override an explicit choice.
+                                    let cursor_size = state.config.cursor_size.max(8);
+                                    std::env::set_var(
+                                        "XCURSOR_SIZE",
+                                        cursor_size.to_string(),
+                                    );
+                                    if std::env::var_os("XCURSOR_THEME").is_none() {
+                                        if let Some(theme) = state
+                                            .config
+                                            .cursor_theme
+                                            .as_deref()
+                                            .filter(|s| !s.is_empty())
+                                        {
+                                            std::env::set_var("XCURSOR_THEME", theme);
+                                        }
+                                    }
                                 }
-                                info!("XWayland ready on :{display_number}");
+                                info!(
+                                    "XWayland ready on :{display_number} \
+                                     XCURSOR_SIZE={} XCURSOR_THEME={}",
+                                    state.config.cursor_size,
+                                    std::env::var("XCURSOR_THEME").unwrap_or_else(|_| "<unset>".into()),
+                                );
                                 utils::import_session_environment(&[
                                     "XDG_SESSION_DESKTOP",
                                     "DESKTOP_SESSION",
+                                    "DISPLAY",
+                                    "XCURSOR_SIZE",
+                                    "XCURSOR_THEME",
                                 ]);
                                 match smithay::xwayland::X11Wm::start_wm(
                                     state.loop_handle.clone(),
