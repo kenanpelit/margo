@@ -2784,9 +2784,183 @@ impl MargoState {
             tagmask
         };
 
+        // ── Tag transition animation ──────────────────────────────
+        //
+        // Before flipping the tagset we:
+        //
+        //   * Capture every client that's about to become invisible
+        //     into a `ClosingClient` with `kind = Slide(direction)`
+        //     and `is_close = true`. The renderer will draw them
+        //     sliding off-screen for `animation_duration_tag` ms;
+        //     when settled they pop off the list. (Outgoing windows
+        //     stay rendered through the transition so the user sees
+        //     them leaving, instead of winking out instantly.)
+        //
+        //   * Stage every client that's about to become visible at
+        //     an off-screen geom so `arrange_monitor` (called below)
+        //     starts a Move animation from off-screen → target slot.
+        //     That gives the inbound slide for free; we don't need
+        //     a second render path.
+        //
+        // Direction: derived from the bit-position delta of the tag
+        // mask. Going to a higher tag → enter from the right / bottom;
+        // going to a lower tag → enter from the left / top. Niri does
+        // the same; mango's vertical mode swaps the axis.
+        let do_anim = self.config.animations
+            && self.config.animation_duration_tag > 0
+            && current != new_tagmask;
+        let direction = self.config.tag_animation_direction;
+        let mon_geom = self.monitors[mon_idx].monitor_area;
+        let new_idx = current.trailing_zeros() as i32;
+        let old_idx_target = new_tagmask.trailing_zeros() as i32;
+        let going_forward = old_idx_target > new_idx;
+        let (offscreen_in, offscreen_out): (
+            crate::layout::Rect,
+            crate::layout::Rect,
+        ) = match (direction, going_forward) {
+            (margo_config::TagAnimDirection::Horizontal, true) => (
+                // Inbound from right, outbound to left.
+                crate::layout::Rect {
+                    x: mon_geom.x + mon_geom.width + 50,
+                    y: mon_geom.y,
+                    width: 1,
+                    height: 1,
+                },
+                crate::layout::Rect {
+                    x: mon_geom.x - mon_geom.width - 50,
+                    y: mon_geom.y,
+                    width: 1,
+                    height: 1,
+                },
+            ),
+            (margo_config::TagAnimDirection::Horizontal, false) => (
+                crate::layout::Rect {
+                    x: mon_geom.x - mon_geom.width - 50,
+                    y: mon_geom.y,
+                    width: 1,
+                    height: 1,
+                },
+                crate::layout::Rect {
+                    x: mon_geom.x + mon_geom.width + 50,
+                    y: mon_geom.y,
+                    width: 1,
+                    height: 1,
+                },
+            ),
+            (margo_config::TagAnimDirection::Vertical, true) => (
+                crate::layout::Rect {
+                    x: mon_geom.x,
+                    y: mon_geom.y + mon_geom.height + 50,
+                    width: 1,
+                    height: 1,
+                },
+                crate::layout::Rect {
+                    x: mon_geom.x,
+                    y: mon_geom.y - mon_geom.height - 50,
+                    width: 1,
+                    height: 1,
+                },
+            ),
+            (margo_config::TagAnimDirection::Vertical, false) => (
+                crate::layout::Rect {
+                    x: mon_geom.x,
+                    y: mon_geom.y - mon_geom.height - 50,
+                    width: 1,
+                    height: 1,
+                },
+                crate::layout::Rect {
+                    x: mon_geom.x,
+                    y: mon_geom.y + mon_geom.height + 50,
+                    width: 1,
+                    height: 1,
+                },
+            ),
+        };
+        let slide_dir = match (direction, going_forward) {
+            (margo_config::TagAnimDirection::Horizontal, true) => {
+                crate::render::open_close::SlideDirection::Left
+            }
+            (margo_config::TagAnimDirection::Horizontal, false) => {
+                crate::render::open_close::SlideDirection::Right
+            }
+            (margo_config::TagAnimDirection::Vertical, true) => {
+                crate::render::open_close::SlideDirection::Up
+            }
+            (margo_config::TagAnimDirection::Vertical, false) => {
+                crate::render::open_close::SlideDirection::Down
+            }
+        };
+        let now = crate::utils::now_ms();
+
+        // Snapshot outgoing clients into the close-animation pipeline.
+        // We DON'T touch the live `clients` vec — those entries stay
+        // around but become invisible per the new tagset; the render
+        // path skips them naturally. The snapshot we push here uses
+        // the same OpenCloseRenderElement as the toplevel close path,
+        // just with a slide kind instead of zoom.
+        if do_anim {
+            for c in self.clients.iter() {
+                if c.monitor != mon_idx {
+                    continue;
+                }
+                let was_vis = c.is_visible_on(mon_idx, current);
+                let is_vis = c.is_visible_on(mon_idx, new_tagmask);
+                if was_vis && !is_vis {
+                    let surface = c.window.wl_surface().map(|s| (*s).clone());
+                    self.closing_clients.push(ClosingClient {
+                        id: smithay::backend::renderer::element::Id::new(),
+                        texture: None,
+                        capture_pending: surface.is_some(),
+                        geom: c.geom,
+                        monitor: mon_idx,
+                        // Outgoing snapshot needs to render on *this*
+                        // tagset until the slide completes — pin its
+                        // visibility tag bitmap to all-bits-set so
+                        // `push_closing_clients` always draws it.
+                        // The list-removal in `tick_animations` is
+                        // what bounds its lifetime.
+                        tags: !0u32,
+                        time_started: now,
+                        duration: self.config.animation_duration_tag,
+                        progress: 0.0,
+                        kind: crate::render::open_close::OpenCloseKind::Slide(slide_dir),
+                        extreme_scale: 1.0, // pure slide, no scale
+                        border_radius: self.config.border_radius as f32,
+                        source_surface: surface,
+                    });
+                    let _ = offscreen_out;
+                }
+            }
+        }
+
+        // Stage incoming clients off-screen so arrange's Move
+        // animation slides them in to their target slot.
+        if do_anim {
+            for c in self.clients.iter_mut() {
+                if c.monitor != mon_idx {
+                    continue;
+                }
+                let was_vis = c.is_visible_on(mon_idx, current);
+                let is_vis = c.is_visible_on(mon_idx, new_tagmask);
+                if !was_vis && is_vis {
+                    c.geom = offscreen_in;
+                    // Force arrange to actually animate (the
+                    // already_animating_to_target guard would
+                    // otherwise skip if the previous animation's
+                    // target happened to match). is_tag_switching
+                    // stays false because we WANT the move
+                    // animation, just from a stashed initial.
+                    c.animation.running = false;
+                }
+            }
+        }
+
         self.update_pertag_for_tagset(mon_idx, new_tagmask);
         self.arrange_monitor(mon_idx);
         self.focus_first_visible_or_clear(mon_idx);
+        if do_anim {
+            self.request_repaint();
+        }
         crate::protocols::dwl_ipc::broadcast_monitor(self, mon_idx);
     }
 
