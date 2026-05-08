@@ -170,6 +170,11 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
         "animation_curve_canvas_pan" => cfg.animation_curve_canvas_pan = parse_bezier(val)?,
         "animation_curve_canvas_zoom" => cfg.animation_curve_canvas_zoom = parse_bezier(val)?,
         "animation_clock_move" => cfg.animation_clock_move = val.trim().to_lowercase(),
+        "animation_clock_open" => cfg.animation_clock_open = val.trim().to_lowercase(),
+        "animation_clock_close" => cfg.animation_clock_close = val.trim().to_lowercase(),
+        "animation_clock_tag" => cfg.animation_clock_tag = val.trim().to_lowercase(),
+        "animation_clock_focus" => cfg.animation_clock_focus = val.trim().to_lowercase(),
+        "animation_clock_layer" => cfg.animation_clock_layer = val.trim().to_lowercase(),
         "animation_spring_stiffness" => {
             cfg.animation_spring_stiffness = val.trim().parse().unwrap_or(800.0)
         }

@@ -452,9 +452,29 @@ pub struct Config {
     /// switches to a critically-damped harmonic oscillator that
     /// preserves velocity across mid-flight retargets and settles in a
     /// refresh-rate-invariant way. See `animation::spring` for the
-    /// integrator. Other animation types (open/close/tag/focus, opacity
-    /// fades, canvas pan/zoom) keep using bezier regardless.
+    /// integrator. Move uses the actual spring physics (with velocity
+    /// carry-over); other animation types (`animation_clock_open`/
+    /// `_close`/`_tag`/`_focus`/`_layer`) sample a *spring-shaped*
+    /// 0→1 curve baked at config-load time — same lookup-table
+    /// machinery as bezier, just with a different shape.
     pub animation_clock_move: String,
+    /// Animation engine for the open transition (zoom + fade-in).
+    /// `"bezier"` (default) | `"spring"`. Spring mode produces a
+    /// snappier-with-tiny-overshoot pop versus bezier's smoothed
+    /// approach. Both honour `animation_duration_open`.
+    pub animation_clock_open: String,
+    /// Animation engine for the close transition (zoom + fade-out).
+    /// Same `"bezier"` / `"spring"` choice as open. Spring mode
+    /// gives a more "kicked-out" feel.
+    pub animation_clock_close: String,
+    /// Animation engine for tag-switch slide.
+    pub animation_clock_tag: String,
+    /// Animation engine for focus highlight cross-fade (border
+    /// colour + opacity blend).
+    pub animation_clock_focus: String,
+    /// Animation engine for layer-surface open/close (bar,
+    /// notifications, OSDs).
+    pub animation_clock_layer: String,
     /// Spring constant. Higher → snappier pull toward the target.
     /// Niri's window-movement default is 800.
     pub animation_spring_stiffness: f64,
@@ -679,6 +699,11 @@ impl Default for Config {
             animation_duration_canvas_zoom: 300,
             animation_curve_canvas_zoom: BezierCurve::default(),
             animation_clock_move: "bezier".into(),
+            animation_clock_open: "bezier".into(),
+            animation_clock_close: "bezier".into(),
+            animation_clock_tag: "bezier".into(),
+            animation_clock_focus: "bezier".into(),
+            animation_clock_layer: "bezier".into(),
             animation_spring_stiffness: 800.0,
             animation_spring_damping_ratio: 1.0,
             animation_spring_mass: 1.0,
