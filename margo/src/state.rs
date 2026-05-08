@@ -3715,35 +3715,47 @@ impl MargoState {
         self.switch_scratchpad_state(idx);
     }
 
-    /// Public action: pull the focused client back out of any
-    /// scratchpad state. Bind this to an emergency-recovery key so
-    /// when a regular window accidentally gets promoted to a
-    /// scratchpad (typo in a bind, fuzzy match on a substring app_id,
-    /// migration mishap, etc.) the user can restore it without
-    /// restarting the compositor or deleting the running app.
-    /// Mirrors mango-ext's "exit scratchpad" semantics: clear the
-    /// scratchpad flags, drop the named-scratchpad mark, re-map at
-    /// the slot, re-arrange so the layout treats it as a normal
-    /// tile / float again.
+    /// Public action: full reset of the focused client back to
+    /// a normal tile. Bind this to an emergency-recovery key
+    /// (the user has it on `super+ctrl,Escape`) for any time a
+    /// window ends up in a state the standard binds can't get it
+    /// out of — accidental scratchpad promotion, sticky floating
+    /// because some popup left it that way, fullscreen
+    /// stuck-on, the list goes on. Mirrors mango-ext's "exit
+    /// scratchpad" but also drops the floating / fullscreen /
+    /// minimised flags so the next arrange treats the window as a
+    /// vanilla tiled toplevel. Cheaper and more reliable than
+    /// chasing the specific flag that's misbehaving.
     pub fn unscratchpad_focused(&mut self) {
         let Some(idx) = self.focused_client_idx() else { return };
-        if !self.clients[idx].is_in_scratchpad
+        let already_normal = !self.clients[idx].is_in_scratchpad
             && !self.clients[idx].is_named_scratchpad
             && !self.clients[idx].is_scratchpad_show
-        {
-            return; // nothing to do
+            && !self.clients[idx].is_floating
+            && !self.clients[idx].is_fullscreen
+            && !self.clients[idx].is_maximized_screen
+            && !self.clients[idx].is_minimized;
+        if already_normal {
+            return;
         }
-        // Clear every scratchpad-related flag. We keep
-        // `is_floating` as-is — if the user wants the recovered
-        // window tiled, they can press their tile/float toggle
-        // afterwards.
         let c = &mut self.clients[idx];
         let app_id = c.app_id.clone();
-        let was_minimized = c.is_minimized;
+        let snapshot = (
+            c.is_in_scratchpad,
+            c.is_scratchpad_show,
+            c.is_named_scratchpad,
+            c.is_minimized,
+            c.is_floating,
+            c.is_fullscreen,
+            c.is_maximized_screen,
+        );
         c.is_in_scratchpad = false;
         c.is_scratchpad_show = false;
         c.is_named_scratchpad = false;
         c.is_minimized = false;
+        c.is_floating = false;
+        c.is_fullscreen = false;
+        c.is_maximized_screen = false;
         let mon_idx = c.monitor;
         let window = c.window.clone();
         let geom = c.geom;
@@ -3756,9 +3768,17 @@ impl MargoState {
         self.arrange_monitor(mon_idx);
         self.focus_surface(Some(FocusTarget::Window(window)));
         tracing::info!(
-            "unscratchpad: recovered app_id={} was_minimized={}",
+            "unscratchpad: recovered app_id={} from \
+             (in_scratch={}, scratch_show={}, named_scratch={}, \
+              minimized={}, floating={}, fullscreen={}, max_screen={})",
             app_id,
-            was_minimized,
+            snapshot.0,
+            snapshot.1,
+            snapshot.2,
+            snapshot.3,
+            snapshot.4,
+            snapshot.5,
+            snapshot.6,
         );
     }
 
