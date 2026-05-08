@@ -833,61 +833,49 @@ pub fn tick_animations(
         changed = true;
 
         if spec.use_spring {
-            // Spring path. dt is the wall-clock delta since our last
-            // tick (clamped to a single frame's worth — a stalled
-            // event loop must not blow up the integrator with a
-            // multi-second `dt`). The integrator itself sub-steps at
-            // 1 ms regardless of `dt`, so this clamp is just defence
-            // in depth.
-            let dt_ms = now_ms.wrapping_sub(anim.last_tick_ms).min(64);
-            anim.last_tick_ms = now_ms;
-            let dt = dt_ms as f64 / 1000.0;
-
-            // Integrate four independent springs (x, y, w, h). Each
-            // channel keeps its own velocity so the pinned dimension
-            // can settle while the others are still moving.
-            let targets = [
-                anim.current.x as f64,
-                anim.current.y as f64,
-                anim.current.width as f64,
-                anim.current.height as f64,
-            ];
-            let geom_now = [
-                c.geom.x as f64,
-                c.geom.y as f64,
-                c.geom.width as f64,
-                c.geom.height as f64,
-            ];
-
-            let mut all_settled = true;
-            let mut new_geom = [0.0f64; 4];
-            for (i, ((&pos, &target), v)) in geom_now
-                .iter()
-                .zip(targets.iter())
-                .zip(anim.velocity.iter_mut())
-                .enumerate()
-            {
-                let (np, nv) = spec.spring.step(pos, target, *v, dt);
-                new_geom[i] = np;
-                *v = nv;
-                if !spec.spring.is_settled(np, target, nv) {
-                    all_settled = false;
-                }
-            }
-
-            c.geom.x = new_geom[0].round() as i32;
-            c.geom.y = new_geom[1].round() as i32;
-            c.geom.width = new_geom[2].round() as i32;
-            c.geom.height = new_geom[3].round() as i32;
-
-            if all_settled {
-                // Snap exactly to target on settle so we don't leave
-                // a sub-pixel residual that survives the next render.
+            // Spring path — niri-style analytical solution.
+            //
+            // The animation already has a precomputed `duration` from
+            // arrange_monitor (`Spring::clamped_duration`). We sample
+            // the closed-form oscillator at `elapsed` and lerp from
+            // initial → current using its [0, 1] progress. This
+            // guarantees the animation ends at exactly `duration` ms;
+            // the previous numerical integrator could leave the
+            // running flag set indefinitely when c.geom rounded onto
+            // its target while velocity was still above the velocity-
+            // epsilon, producing a CPU-bound tick→render→tick loop.
+            let elapsed_ms = now_ms.wrapping_sub(anim.time_started);
+            if elapsed_ms >= anim.duration {
+                // Hard end. Snap to the exact target — `value_at` may
+                // miss it by a fraction of a pixel, and we don't want
+                // the difference surviving into the next frame.
                 anim.running = false;
                 c.geom = anim.current;
                 c.resize_snapshot = None;
-                anim.velocity = [0.0; 4];
+                continue;
             }
+            // 1D progress spring goes 0 → 1 over `duration`. Apply that
+            // single progress to all four channels so x/y/w/h move
+            // together — for window movement that's exactly what we
+            // want (the user perceives a single object travelling, not
+            // four independent ones).
+            let progress_spring = crate::animation::spring::Spring {
+                from: 0.0,
+                to: 1.0,
+                initial_velocity: 0.0,
+                params: crate::animation::spring::SpringParams {
+                    damping: spec.spring.params.damping,
+                    mass: spec.spring.params.mass,
+                    stiffness: spec.spring.params.stiffness,
+                    epsilon: spec.spring.params.epsilon,
+                },
+            };
+            let t = std::time::Duration::from_millis(elapsed_ms as u64);
+            let p = progress_spring.value_at(t).clamp(0.0, 1.0);
+            c.geom.x = lerp_i32(anim.initial.x, anim.current.x, p);
+            c.geom.y = lerp_i32(anim.initial.y, anim.current.y, p);
+            c.geom.width = lerp_i32(anim.initial.width, anim.current.width, p);
+            c.geom.height = lerp_i32(anim.initial.height, anim.current.height, p);
         } else {
             // Bezier path (original behaviour).
             let elapsed = now_ms.wrapping_sub(anim.time_started);
@@ -1873,21 +1861,61 @@ impl MargoState {
                 // window would visibly hitch — the whole point of the
                 // spring clock is that retargets stay continuous.
                 // Bezier ignores this field; harmless if it's set.
-                let prev_velocity = if self.clients[client_idx].animation.running {
-                    self.clients[client_idx].animation.velocity
+                // Decide the animation's hard duration. With bezier
+                // we honour the user's `animation_duration_move`; with
+                // spring we let the physics tell us how long it'll
+                // take to settle to within `epsilon` of the target,
+                // capped between a sane floor and ceiling so a single
+                // bad config value can't produce a 10-second slide.
+                let use_spring = self
+                    .config
+                    .animation_clock_move
+                    .eq_ignore_ascii_case("spring");
+                let duration_ms = if use_spring {
+                    let max_disp = ((rect.x - initial.x).abs())
+                        .max((rect.y - initial.y).abs())
+                        .max((rect.width - initial.width).abs())
+                        .max((rect.height - initial.height).abs())
+                        as f64;
+                    if max_disp <= 0.5 {
+                        // Already at target (sub-pixel). Take the
+                        // bezier-style fallback so we still log a
+                        // meaningful animation start, but the tick
+                        // will settle on the very next frame.
+                        self.config.animation_duration_move.max(1)
+                    } else {
+                        let spring = crate::animation::spring::Spring {
+                            from: 0.0,
+                            to: max_disp,
+                            initial_velocity: 0.0,
+                            params: crate::animation::spring::SpringParams::new(
+                                self.config.animation_spring_damping_ratio,
+                                self.config.animation_spring_stiffness,
+                                0.5, // half-pixel epsilon
+                            ),
+                        };
+                        let dur = spring
+                            .clamped_duration()
+                            .map(|d| d.as_millis() as u32)
+                            // Pathological overdamped → fall back.
+                            .unwrap_or(self.config.animation_duration_move.max(1));
+                        // Clamp: 60 ms floor (one vblank), 1500 ms
+                        // ceiling (anything longer is almost certainly
+                        // a misconfiguration).
+                        dur.clamp(60, 1500)
+                    }
                 } else {
-                    [0.0; 4]
+                    self.config.animation_duration_move.max(1)
                 };
                 self.clients[client_idx].animation = ClientAnimation {
                     should_animate: true,
                     running: true,
                     time_started: now,
                     last_tick_ms: now,
-                    duration: self.config.animation_duration_move.max(1),
+                    duration: duration_ms,
                     initial,
                     current: rect,
                     action: AnimationType::Move,
-                    velocity: prev_velocity,
                     ..Default::default()
                 };
                 self.clients[client_idx].geom = initial;

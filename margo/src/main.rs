@@ -330,11 +330,21 @@ fn main() -> Result<()> {
         let animations_changed = {
             let cfg = &state.config;
             let use_spring = cfg.animation_clock_move.eq_ignore_ascii_case("spring");
-            let spring = animation::spring::Spring::with_damping_ratio(
-                cfg.animation_spring_stiffness,
-                cfg.animation_spring_mass,
-                cfg.animation_spring_damping_ratio,
-            );
+            // The spring carried in `AnimTickSpec` is a 0→1 *progress*
+            // spring — its from/to/initial_velocity are unused at tick
+            // time; only the params (damping/mass/stiffness/epsilon)
+            // matter, and they're rebuilt every frame from config so
+            // `/reload` picks up new tuning without restart.
+            let spring = animation::spring::Spring {
+                from: 0.0,
+                to: 1.0,
+                initial_velocity: 0.0,
+                params: animation::spring::SpringParams::new(
+                    cfg.animation_spring_damping_ratio,
+                    cfg.animation_spring_stiffness,
+                    0.0001,
+                ),
+            };
             let spec = state::AnimTickSpec {
                 duration_move: cfg.animation_duration_move,
                 use_spring,
