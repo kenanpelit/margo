@@ -1037,6 +1037,8 @@ dependencies = [
  "anyhow",
  "clap",
  "clap_complete",
+ "margo-config",
+ "regex",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
