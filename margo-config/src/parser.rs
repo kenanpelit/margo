@@ -210,6 +210,7 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
         "default_nmaster" => cfg.default_nmaster = parse_u32(val),
         "center_master_overspread" => cfg.center_master_overspread = parse_bool(val),
         "center_when_single_stack" => cfg.center_when_single_stack = parse_bool(val),
+        "auto_layout" => cfg.auto_layout = parse_bool(val),
         "focus_cross_monitor" => cfg.focus_cross_monitor = parse_bool(val),
         "exchange_cross_monitor" => cfg.exchange_cross_monitor = parse_bool(val),
         "scratchpad_cross_monitor" => cfg.scratchpad_cross_monitor = parse_bool(val),

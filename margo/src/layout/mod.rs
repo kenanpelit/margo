@@ -37,6 +37,12 @@ pub struct Pertag {
     pub nmasters: Vec<u32>,
     /// Gap config per tag.
     pub gaps: Vec<GapConfig>,
+    /// `true` for tags where the user explicitly picked the layout
+    /// via `setlayout` / `switch_layout` action. Adaptive layout
+    /// (`Config::auto_layout = true`) skips auto-selection on these
+    /// tags so a deliberate user choice is never overridden by a
+    /// heuristic.
+    pub user_picked_layout: Vec<bool>,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -58,6 +64,7 @@ impl Pertag {
             mfacts: vec![default_mfact; MAX_TAGS + 1],
             nmasters: vec![default_nmaster; MAX_TAGS + 1],
             gaps: vec![GapConfig::default(); MAX_TAGS + 1],
+            user_picked_layout: vec![false; MAX_TAGS + 1],
         }
     }
 }

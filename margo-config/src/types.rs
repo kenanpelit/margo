@@ -484,6 +484,13 @@ pub struct Config {
     pub default_nmaster: u32,
     pub center_master_overspread: bool,
     pub center_when_single_stack: bool,
+    /// Auto-pick the best layout for each tag based on visible-client
+    /// count and the monitor's aspect ratio. Off by default — when
+    /// on, `arrange_monitor` updates the per-tag layout on every
+    /// pass unless the user has explicitly called `setlayout` /
+    /// `switch_layout` on that tag (`Pertag::user_picked_layout`
+    /// sticky bit).
+    pub auto_layout: bool,
     pub focus_cross_monitor: bool,
     pub exchange_cross_monitor: bool,
     pub scratchpad_cross_monitor: bool,
@@ -693,6 +700,7 @@ impl Default for Config {
             default_nmaster: 1,
             center_master_overspread: false,
             center_when_single_stack: true,
+            auto_layout: false,
             focus_cross_monitor: false,
             exchange_cross_monitor: false,
             scratchpad_cross_monitor: false,

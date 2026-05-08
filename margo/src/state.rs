@@ -1709,6 +1709,17 @@ impl MargoState {
             return;
         }
 
+        // Adaptive layout: when `Config::auto_layout` is on AND the
+        // user hasn't explicitly picked a layout for the current tag
+        // (`pertag.user_picked_layout[curtag]` sticky bit), pick a
+        // layout based on the visible-client count and the monitor's
+        // aspect ratio. Sets `pertag.ltidxs[curtag]` *before* we read
+        // it for `layout` below, so a single arrange pass picks up
+        // the new value naturally.
+        if self.config.auto_layout && !self.monitors[mon_idx].is_overview {
+            self.maybe_apply_adaptive_layout(mon_idx);
+        }
+
         let mon = &self.monitors[mon_idx];
         let is_overview = mon.is_overview;
         let layout = if is_overview { crate::layout::LayoutId::Grid } else { mon.current_layout() };
@@ -3370,7 +3381,96 @@ impl MargoState {
             }
             let curtag = self.monitors[mon_idx].pertag.curtag;
             self.monitors[mon_idx].pertag.ltidxs[curtag] = layout;
+            // User explicitly picked a layout — adaptive auto-layout
+            // must back off on this tag so its choice survives every
+            // subsequent arrange pass. Reset by `view_tag` switching
+            // to a tag that's never been touched by `setlayout` and
+            // letting auto-layout pick again.
+            self.monitors[mon_idx].pertag.user_picked_layout[curtag] = true;
             self.arrange_monitor(mon_idx);
+        }
+    }
+
+    /// Adaptive layout heuristic: pick the most ergonomic layout for
+    /// the current tag based on visible-client count + monitor aspect
+    /// ratio. Called from `arrange_monitor` when `Config::auto_layout`
+    /// is on. Skipped on tags where the user has explicitly called
+    /// `setlayout` (sticky `pertag.user_picked_layout` flag) so a
+    /// deliberate user choice is never overridden.
+    fn maybe_apply_adaptive_layout(&mut self, mon_idx: usize) {
+        let curtag = self.monitors[mon_idx].pertag.curtag;
+        if self
+            .monitors[mon_idx]
+            .pertag
+            .user_picked_layout
+            .get(curtag)
+            .copied()
+            .unwrap_or(false)
+        {
+            return;
+        }
+        let tagset = self.monitors[mon_idx].current_tagset();
+        let mon_area = self.monitors[mon_idx].monitor_area;
+
+        // Count tile-eligible visible clients (skip floating /
+        // fullscreen / scratchpad / minimised — they don't take up a
+        // tile slot).
+        let count = self
+            .clients
+            .iter()
+            .filter(|c| c.is_visible_on(mon_idx, tagset) && c.is_tiled())
+            .count();
+        if count == 0 {
+            // Empty tag — keep whatever's set so the user sees the
+            // *next* arrival land in a sensible layout for one.
+            return;
+        }
+
+        let aspect = if mon_area.height > 0 {
+            mon_area.width as f32 / mon_area.height as f32
+        } else {
+            16.0 / 9.0
+        };
+        let very_wide = aspect >= 2.4; // ultrawide / 32:9
+        let wide = aspect >= 1.5; // 16:9 / 16:10
+        let portrait = aspect <= 0.9; // rotated panels
+
+        // Heuristic. Tuned for the user's two-monitor setup
+        // (DP-3 2560x1440 → wide; eDP-1 1920x1200 → wide-ish):
+        //
+        //   1 client  → monocle    (no point splitting space for one)
+        //   2 clients → tile        (master/stack ratio classic)
+        //   3-5 wide  → scroller    (niri-style horizontal tracks)
+        //   3-5 portrait → vertical_scroller
+        //   6+  wide  → grid
+        //   6+  ultrawide → vertical_scroller (long horizontal track)
+        //   6+  portrait → vertical_grid
+        //
+        // The thresholds and choices are deliberately conservative —
+        // adaptive should "feel right" 90% of the time, never wrong.
+        // A user who wants a different mapping toggles it off and
+        // bumps `setlayout` directly per tag.
+        let chosen = match (count, very_wide, wide, portrait) {
+            (1, _, _, _) => crate::layout::LayoutId::Monocle,
+            (2, _, _, _) => crate::layout::LayoutId::Tile,
+            (3..=5, _, _, true) => crate::layout::LayoutId::VerticalScroller,
+            (3..=5, _, true, _) => crate::layout::LayoutId::Scroller,
+            (3..=5, _, _, _) => crate::layout::LayoutId::Tile,
+            (_, _, _, true) => crate::layout::LayoutId::VerticalGrid,
+            (_, true, _, _) => crate::layout::LayoutId::VerticalScroller,
+            (_, _, true, _) => crate::layout::LayoutId::Grid,
+            _ => crate::layout::LayoutId::Tile,
+        };
+
+        if self.monitors[mon_idx].pertag.ltidxs[curtag] != chosen {
+            tracing::info!(
+                "auto_layout: tag={} clients={} aspect={:.2} → {:?}",
+                curtag,
+                count,
+                aspect,
+                chosen,
+            );
+            self.monitors[mon_idx].pertag.ltidxs[curtag] = chosen;
         }
     }
 
