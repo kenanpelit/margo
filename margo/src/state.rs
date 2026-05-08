@@ -3793,68 +3793,24 @@ impl MargoState {
             self.arrange_monitor(target_mon);
         }
 
-        // Inactive-tag bootstrap. If the client mapped onto a tag
-        // that's not currently active on `target_mon` (typical at
-        // session start: `semsumo-daily` launches Spotify with
-        // tag-rule `tags:8` while the user is still on tag 1), the
-        // arrange_monitor call above ran with the *current* tagset
-        // and skipped this client — it didn't get a slot, didn't
-        // receive a configure, and its `c.geom` stays at the
-        // `Rect::default()` zero rect. The client picks its own
-        // default size and commits a buffer at that size; later,
-        // when the user finally tag-switches in, arrange has to
-        // run a `default → slot` transition that fights the
-        // pre-existing buffer. That's the long tail of the
-        // "Spotify only fits the border after pkill+relaunch"
-        // symptom.
-        //
-        // Kick a configure with the monitor's working area as a
-        // sane default so the client can at least commit at a
-        // reasonable size during launch. The eventual tag-switch
-        // arrange will send a *real* configure (the actual slot
-        // computed by the layout) and the resize transition there
-        // will work as designed because the client now has a real
-        // buffer to snapshot.
-        if self.clients[idx].geom.width <= 0 || self.clients[idx].geom.height <= 0 {
-            if let Some(mon) = self.monitors.get(target_mon) {
-                let area = mon.monitor_area;
-                self.clients[idx].geom = Rect {
-                    x: area.x,
-                    y: area.y,
-                    width: area.width,
-                    height: area.height,
-                };
-                if let WindowSurface::Wayland(toplevel) =
-                    self.clients[idx].window.underlying_surface()
-                {
-                    toplevel.with_pending_state(|state| {
-                        state.size = Some(smithay::utils::Size::from((
-                            area.width,
-                            area.height,
-                        )));
-                    });
-                    let initial_sent = with_states(toplevel.wl_surface(), |states| {
-                        states
-                            .data_map
-                            .get::<XdgToplevelSurfaceData>()
-                            .and_then(|d| d.lock().ok().map(|d| d.initial_configure_sent))
-                            .unwrap_or(false)
-                    });
-                    if !initial_sent {
-                        toplevel.send_configure();
-                    }
-                }
-                tracing::info!(
-                    "inactive-tag bootstrap: app_id={} tags={:#x} \
-                     active_tagset={:#x} sent default {}x{}",
-                    self.clients[idx].app_id,
-                    self.clients[idx].tags,
-                    mon.current_tagset(),
-                    area.width,
-                    area.height,
-                );
-            }
-        }
+        // Note: clients that mapped onto a non-active tag intentionally
+        // get NO bootstrap configure here. An earlier version of this
+        // code seeded `c.geom` with the monitor's work area and sent a
+        // matching configure so the client could commit at "some size"
+        // during launch. That actively hurt: XWayland clients (Spotify
+        // is the canonical case) commit at the bootstrap size, cache
+        // it as their natural extent, and then resist the smaller
+        // configure the eventual tag-switch arrange tries to send —
+        // the surface stays stuck at the larger bootstrap size and the
+        // `clipped_surface` shader ends up cropping the right / bottom
+        // of the visible content. Leaving `c.geom` at the default zero
+        // rect lets `view_tag`'s "skip tag-in staging when c.geom is
+        // degenerate" branch fall through to `arrange_monitor`'s
+        // direct-snap path, which sends a *first* configure at the
+        // real slot size. Native Wayland clients always honour that
+        // first configure; XWayland clients honour it far more
+        // reliably than a subsequent shrink.
+
 
         // Kick off the open animation if globally enabled, this client
         // didn't opt out (window-rule `no_animation` / `open_silent`),
