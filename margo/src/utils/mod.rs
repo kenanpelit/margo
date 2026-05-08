@@ -34,36 +34,120 @@ pub fn spawn_shell(cmd: &str) -> Result<()> {
     Ok(())
 }
 
-/// Push WAYLAND_DISPLAY (and optionally DISPLAY for XWayland) into systemd
-/// user environment + dbus activation environment, so user-level units
-/// like noctalia.service launched by `systemd --user` can find our socket.
+/// Push WAYLAND_DISPLAY / DISPLAY / XDG_* into systemd user
+/// environment + dbus activation environment, so user-level units
+/// (noctalia.service, transient `uwsm app` units, anything else
+/// systemd --user spawns) can find our compositor socket and the
+/// XWayland display number.
+///
+/// Why this matters in practice: `uwsm app -a kitty -- kitty` runs
+/// kitty as a transient systemd-user unit, which inherits its env
+/// from systemd-user environment AT THE MOMENT THE UNIT STARTS.
+/// If WAYLAND_DISPLAY isn't there, the kitty (and anything mpv
+/// launched from inside it) sees no Wayland socket; mpv probes
+/// fall through to X11, then to DRM, which can fight margo for
+/// DRM master and crash the session.
+///
+/// We log which vars actually got pushed (key=value) so a user
+/// hitting "mpv falls back to DRM" can verify via `journalctl
+/// --user -u margo | grep import_session` whether the push
+/// succeeded — silent failure was the previous bug, when
+/// `systemctl` exited non-zero (no user manager / dbus broken /
+/// permission denied) the import would no-op without any trace.
 pub fn import_session_environment(extra: &[&str]) {
     let mut vars = vec!["WAYLAND_DISPLAY", "DISPLAY", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE"];
     vars.extend_from_slice(extra);
+    // De-duplicate while preserving order — `extra` may overlap
+    // with the defaults (e.g. caller passed "DISPLAY" explicitly
+    // because it just became known) and a duplicate arg to
+    // systemctl import-environment is a hard error in some
+    // versions.
+    let mut seen = std::collections::HashSet::new();
+    vars.retain(|v| seen.insert(*v));
 
-    // systemd user manager
-    let _ = Command::new("systemctl")
+    let to_push: Vec<(&str, String)> = vars
+        .iter()
+        .filter_map(|k| std::env::var(k).ok().map(|v| (*k, v)))
+        .collect();
+    if to_push.is_empty() {
+        tracing::warn!("import_session_environment: no variables set in process env, skipping");
+        return;
+    }
+    let pushed_keys: Vec<&str> = to_push.iter().map(|(k, _)| *k).collect();
+    let pushed_log: Vec<String> = to_push
+        .iter()
+        .map(|(k, v)| {
+            // Truncate long values (a ridiculously-long XCURSOR_THEME
+            // shouldn't blow up the log line).
+            let v = if v.len() > 64 { format!("{}…", &v[..63]) } else { v.clone() };
+            format!("{k}={v}")
+        })
+        .collect();
+
+    // systemd user manager: imports each NAME from the caller's env
+    // into the manager's env block. `inherit_*` and stderr capture
+    // so we can include the failure reason in the log.
+    let sysd = Command::new("systemctl")
         .arg("--user")
         .arg("import-environment")
-        .args(&vars)
+        .args(&pushed_keys)
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output();
+    match sysd {
+        Ok(out) if out.status.success() => {
+            tracing::info!(
+                "import_session_environment: systemctl --user OK ({})",
+                pushed_log.join(" "),
+            );
+        }
+        Ok(out) => {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            tracing::warn!(
+                "import_session_environment: systemctl --user failed (status={}): {}",
+                out.status,
+                stderr.trim(),
+            );
+        }
+        Err(e) => {
+            tracing::warn!("import_session_environment: systemctl --user spawn failed: {e}");
+        }
+    }
 
-    // dbus activation environment (for desktop portal etc.)
-    let env_args: Vec<String> = vars
-        .iter()
-        .filter_map(|k| std::env::var(k).ok().map(|v| format!("{k}={v}")))
-        .collect();
-    if !env_args.is_empty() {
-        let _ = Command::new("dbus-update-activation-environment")
-            .arg("--systemd")
-            .args(&env_args)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
+    // dbus activation environment (xdg-desktop-portal & co.) — accepts
+    // KEY=VALUE pairs rather than naked names. Independent failure mode
+    // from systemd; if dbus daemon isn't running or `dbus-update-…`
+    // isn't installed, we just skip without taking the systemd half
+    // down.
+    let env_args: Vec<String> = to_push.iter().map(|(k, v)| format!("{k}={v}")).collect();
+    let dbus = Command::new("dbus-update-activation-environment")
+        .arg("--systemd")
+        .args(&env_args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output();
+    match dbus {
+        Ok(out) if out.status.success() => {
+            tracing::info!("import_session_environment: dbus-update-activation OK");
+        }
+        Ok(out) => {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            tracing::warn!(
+                "import_session_environment: dbus-update-activation failed (status={}): {}",
+                out.status,
+                stderr.trim(),
+            );
+        }
+        Err(e) => {
+            // Common: dbus-update-activation-environment not
+            // installed (rare today, was the case on minimal
+            // arch installs). Demote to debug.
+            tracing::debug!(
+                "import_session_environment: dbus-update-activation skipped: {e}",
+            );
+        }
     }
 }
 
