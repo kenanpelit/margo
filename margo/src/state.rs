@@ -588,6 +588,20 @@ impl MargoClient {
     }
 }
 
+/// Whether a `LayerRule` applies to a given layer-shell namespace.
+/// Empty `layer_name` patterns match every namespace (so a rule with
+/// no `layer_name:` filter applies globally — matches mango's
+/// behaviour). Anything else is treated as a regex pattern via
+/// [`matches_rule_text`] so the user's existing
+/// `layer_name:^(rofi|fuzzel|launcher).*` style rules carry over.
+fn matches_layer_name(rule: &margo_config::LayerRule, namespace: &str) -> bool {
+    rule.layer_name
+        .as_deref()
+        .filter(|p| !p.is_empty())
+        .map(|p| matches_rule_text(p, namespace))
+        .unwrap_or(true)
+}
+
 fn matches_rule_text(pattern: &str, value: &str) -> bool {
     if pattern.is_empty() {
         return true;
@@ -2711,6 +2725,18 @@ impl MargoState {
             if let Some(value) = rule.unfocused_opacity {
                 client.unfocused_opacity = value.clamp(0.0, 1.0);
             }
+            // Per-window animation-type overrides. The rule's
+            // `animation_type_open` / `animation_type_close` win over
+            // the global config when the window opens or closes —
+            // `finalize_initial_map` and `toplevel_destroyed` already
+            // read these per-client fields and only fall back to the
+            // global `Config::animation_type_*` when they're `None`.
+            if let Some(value) = rule.animation_type_open.as_ref() {
+                client.animation_type_open = Some(value.clone());
+            }
+            if let Some(value) = rule.animation_type_close.as_ref() {
+                client.animation_type_close = Some(value.clone());
+            }
             // Niri-style additions.
             if rule.min_width > 0 {
                 client.min_width = rule.min_width;
@@ -4507,18 +4533,38 @@ impl WlrLayerShellHandler for MargoState {
         }
         self.refresh_output_work_area(&smithay_output);
 
+        // Resolve layer-rule overrides for this namespace. Rules are
+        // matched by regex against the `namespace` string the client
+        // chose at layer-shell creation (e.g. `noctalia-osd`,
+        // `rofi`, `screenshot`). Latest matching rule wins for the
+        // animation-type override; any matching rule's `noanim:1`
+        // disables open/close animations entirely (used for OSDs and
+        // screenshot overlays where the slide would interfere with
+        // the user-facing transition).
+        let matched_rules: Vec<&margo_config::LayerRule> = self
+            .config
+            .layer_rules
+            .iter()
+            .filter(|r| matches_layer_name(r, &namespace))
+            .collect();
+        let layer_no_anim = matched_rules.iter().any(|r| r.no_anim);
+        let kind_str = matched_rules
+            .iter()
+            .rev()
+            .find_map(|r| r.animation_type_open.clone())
+            .unwrap_or_else(|| self.config.layer_animation_type_open.clone());
+
         // Open animation: fade in from `layer_animation_type_open`
         // direction. We use the live render path during the
         // transition (no snapshot needed — surface is alive),
         // applying a per-layer alpha + offset based on this
         // animation's progress in `push_layer_elements`.
-        if self.config.animations
+        if !layer_no_anim
+            && self.config.animations
             && self.config.layer_animations
             && self.config.animation_duration_open > 0
         {
-            let kind = crate::render::open_close::OpenCloseKind::parse(
-                &self.config.layer_animation_type_open,
-            );
+            let kind = crate::render::open_close::OpenCloseKind::parse(&kind_str);
             let now = crate::utils::now_ms();
             self.layer_animations.insert(
                 wl_surface_clone.id(),
@@ -4593,7 +4639,29 @@ impl WlrLayerShellHandler for MargoState {
         // animation for the same surface — if a layer was destroyed
         // mid-open we just play the close from wherever the open was.
         let wl_surf = surface.wl_surface().clone();
-        if self.config.animations
+        // Resolve layer-rule overrides for the close animation. Same
+        // matching logic as new_layer_surface — the namespace lives
+        // on the smithay `LayerSurface`, which we already grabbed
+        // above.
+        let namespace = layer
+            .as_ref()
+            .map(|l| l.namespace().to_string())
+            .unwrap_or_default();
+        let matched_rules: Vec<&margo_config::LayerRule> = self
+            .config
+            .layer_rules
+            .iter()
+            .filter(|r| matches_layer_name(r, &namespace))
+            .collect();
+        let layer_no_anim = matched_rules.iter().any(|r| r.no_anim);
+        let kind_str = matched_rules
+            .iter()
+            .rev()
+            .find_map(|r| r.animation_type_close.clone())
+            .unwrap_or_else(|| self.config.layer_animation_type_close.clone());
+
+        if !layer_no_anim
+            && self.config.animations
             && self.config.layer_animations
             && self.config.animation_duration_close > 0
         {
@@ -4608,9 +4676,7 @@ impl WlrLayerShellHandler for MargoState {
                 })
             });
             if let Some(geom) = geom {
-                let kind = crate::render::open_close::OpenCloseKind::parse(
-                    &self.config.layer_animation_type_close,
-                );
+                let kind = crate::render::open_close::OpenCloseKind::parse(&kind_str);
                 let now = crate::utils::now_ms();
                 self.layer_animations.insert(
                     wl_surf.id(),
