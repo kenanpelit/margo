@@ -113,6 +113,14 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
             state.toggle_named_scratchpad(name, title, spawn);
         }
         "toggle_scratchpad" | "togglescratchpad" => state.toggle_scratchpad(),
+        // Recovery action: pull the focused client back out of any
+        // scratchpad state. Useful when a regular window
+        // accidentally got promoted to scratchpad (typo bind, fuzzy
+        // app_id match) and the user wants it back as a normal
+        // tile / float.
+        "unscratchpad" | "unscratchpad_focused" | "exit_scratchpad" => {
+            state.unscratchpad_focused()
+        }
         "incnmaster" => state.inc_nmaster(arg.i),
         "setmfact" => state.set_mfact(arg.f),
         "togglegaps" => state.toggle_gaps(),

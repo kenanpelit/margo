@@ -3476,16 +3476,30 @@ impl MargoState {
         name: Option<&str>,
         title: Option<&str>,
     ) -> Option<usize> {
-        let name_lc = name.map(|s| s.to_lowercase());
-        let title_lc = title.map(|s| s.to_lowercase());
+        // Use the same regex matcher the windowrule machinery uses so
+        // bind authors can write `clipse`, `^clipse$`, or `clip(se|board)`
+        // and get consistent semantics. The earlier `.contains()`
+        // substring match was a footgun: a user-typed bare `clipse`
+        // matched any client whose app_id contained the substring
+        // "clipse", which is fine right up until a different toolkit
+        // happens to namespace itself with one of the scratchpad
+        // names — at which point a regular window silently got
+        // promoted to a scratchpad on the next toggle press, with no
+        // way to escape short of restarting margo. Anchored or
+        // word-boundary-aware patterns (`^clipse$`, `\bwiremix\b`)
+        // protect against that.
+        let name_pat = name.unwrap_or("");
+        let title_pat = title.unwrap_or("");
         for (idx, c) in self.clients.iter().enumerate() {
-            let app_match = match name_lc.as_deref() {
-                Some(p) if !p.is_empty() => c.app_id.to_lowercase().contains(p),
-                _ => true,
+            let app_match = if name_pat.is_empty() {
+                true
+            } else {
+                matches_rule_text(name_pat, &c.app_id)
             };
-            let title_match = match title_lc.as_deref() {
-                Some(p) if !p.is_empty() => c.title.to_lowercase().contains(p),
-                _ => true,
+            let title_match = if title_pat.is_empty() {
+                true
+            } else {
+                matches_rule_text(title_pat, &c.title)
             };
             if app_match && title_match {
                 return Some(idx);
@@ -3699,6 +3713,53 @@ impl MargoState {
             self.space.unmap_elem(&window);
         }
         self.switch_scratchpad_state(idx);
+    }
+
+    /// Public action: pull the focused client back out of any
+    /// scratchpad state. Bind this to an emergency-recovery key so
+    /// when a regular window accidentally gets promoted to a
+    /// scratchpad (typo in a bind, fuzzy match on a substring app_id,
+    /// migration mishap, etc.) the user can restore it without
+    /// restarting the compositor or deleting the running app.
+    /// Mirrors mango-ext's "exit scratchpad" semantics: clear the
+    /// scratchpad flags, drop the named-scratchpad mark, re-map at
+    /// the slot, re-arrange so the layout treats it as a normal
+    /// tile / float again.
+    pub fn unscratchpad_focused(&mut self) {
+        let Some(idx) = self.focused_client_idx() else { return };
+        if !self.clients[idx].is_in_scratchpad
+            && !self.clients[idx].is_named_scratchpad
+            && !self.clients[idx].is_scratchpad_show
+        {
+            return; // nothing to do
+        }
+        // Clear every scratchpad-related flag. We keep
+        // `is_floating` as-is — if the user wants the recovered
+        // window tiled, they can press their tile/float toggle
+        // afterwards.
+        let c = &mut self.clients[idx];
+        let app_id = c.app_id.clone();
+        let was_minimized = c.is_minimized;
+        c.is_in_scratchpad = false;
+        c.is_scratchpad_show = false;
+        c.is_named_scratchpad = false;
+        c.is_minimized = false;
+        let mon_idx = c.monitor;
+        let window = c.window.clone();
+        let geom = c.geom;
+
+        // Re-map the surface (scratchpad hide had unmapped it from
+        // the scene). Active tagset already covers the recovered
+        // window since `is_visible_on`'s scratchpad-guard no longer
+        // suppresses it.
+        self.space.map_element(window.clone(), (geom.x, geom.y), true);
+        self.arrange_monitor(mon_idx);
+        self.focus_surface(Some(FocusTarget::Window(window)));
+        tracing::info!(
+            "unscratchpad: recovered app_id={} was_minimized={}",
+            app_id,
+            was_minimized,
+        );
     }
 
     /// Public action: toggle the *anonymous* scratchpad set — every
