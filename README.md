@@ -1,5 +1,10 @@
 # margo
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/margo-banner-dark.svg">
+  <img src="docs/assets/margo-banner.svg" alt="margo" width="600">
+</picture>
+
 > A fast, dynamically-tiled Wayland compositor written in Rust.
 
 [![License](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)

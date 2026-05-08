@@ -39,4 +39,38 @@
 //! Built incrementally so each commit lands compile-clean — large
 //! ports tend to drift when you stage everything at once.
 
+pub mod pw_utils;
 pub mod render_helpers;
+
+use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
+use smithay::backend::renderer::gles::GlesRenderer;
+use smithay::output::WeakOutput;
+
+/// What a screencast stream is targeting. Direct port of niri's
+/// `crate::niri::CastTarget` enum — same shape so the imported
+/// pw_utils.rs flow doesn't change. Output uses `WeakOutput` so
+/// hot-unplug between session creation and frame production
+/// surfaces as `upgrade()` returning None.
+#[derive(Clone, PartialEq, Eq)]
+pub enum CastTarget {
+    /// Dynamic cast before the user has picked a target.
+    Nothing,
+    Output {
+        output: WeakOutput,
+        /// Cached output name so we can match against the
+        /// session's stashed handle even if the WeakOutput
+        /// has gone stale.
+        name: String,
+    },
+    Window {
+        id: u64,
+    },
+}
+
+/// The render-element type cast streams render. Margo's renderer
+/// produces `WaylandSurfaceRenderElement<GlesRenderer>` for
+/// surface trees; that's the universal element variant the cast
+/// path needs. `MargoRenderElement`'s richer set (border, shadow,
+/// open/close) lives only in the display path; capture frames
+/// don't need them.
+pub type CastRenderElement = WaylandSurfaceRenderElement<GlesRenderer>;
