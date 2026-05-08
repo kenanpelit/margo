@@ -708,6 +708,36 @@ pub fn tick_animations(
     closing_clients: &mut Vec<ClosingClient>,
 ) -> bool {
     let mut changed = false;
+    // Advance focus highlight (border colour + opacity) crossfades.
+    // `OpacityAnimation` does double duty: focused_opacity ↔ unfocused_opacity
+    // for the alpha, focuscolor ↔ bordercolor for the border. Both
+    // sample the `Focus` curve. Border refresh reads the current
+    // colour from this struct on every refresh so the cross-fade
+    // shows even between renders.
+    for c in clients.iter_mut() {
+        let oa = &mut c.opacity_animation;
+        if !oa.running {
+            continue;
+        }
+        let elapsed = now_ms.wrapping_sub(oa.time_started);
+        if elapsed >= oa.duration {
+            oa.running = false;
+            oa.current_opacity = oa.target_opacity;
+            oa.current_border_color = oa.target_border_color;
+            changed = true;
+            continue;
+        }
+        let t = elapsed as f64 / oa.duration as f64;
+        let s = curves.sample(t, AnimationType::Focus) as f32;
+        oa.current_opacity = oa.initial_opacity + (oa.target_opacity - oa.initial_opacity) * s;
+        for i in 0..4 {
+            let a = oa.initial_border_color[i];
+            let b = oa.target_border_color[i];
+            oa.current_border_color[i] = a + (b - a) * s;
+        }
+        changed = true;
+    }
+
     // Advance opening animations on each client. Settles drop both
     // the animation state and the captured texture so the live
     // wl_surface takes over on the next frame.
@@ -1903,6 +1933,11 @@ impl MargoState {
     }
 
     pub fn focus_surface(&mut self, target: Option<FocusTarget>) {
+        // Capture the *previously* focused client BEFORE we rewrite
+        // the keyboard focus — we need the old + new pair to drive
+        // the border-colour cross-fade animation below.
+        let prev_focus_idx = self.focused_client_idx();
+
         // Track focus history per-monitor so toplevel_destroyed can recall
         // the previously focused window (niri-style).
         if let Some(FocusTarget::Window(ref w)) = target {
@@ -1922,6 +1957,79 @@ impl MargoState {
         if let Some(keyboard) = self.seat.get_keyboard() {
             keyboard.set_focus(self, target, serial);
         }
+
+        // Focus highlight cross-fade. When focus moves between two
+        // windows, animate both: the outgoing window's border colour
+        // fades from `focuscolor` toward `bordercolor`, the incoming
+        // one fades the other way. `tick_animations` drives the
+        // sample; `border::refresh` reads the in-flight colour from
+        // `opacity_animation.current_border_color` and renders that
+        // instead of the static color_for() value.
+        //
+        // Per-client `opacity` (focused_opacity / unfocused_opacity)
+        // is animated through the same struct so an unfocused window
+        // also dims smoothly instead of snapping to its dimmer alpha
+        // — same trick mango/dwl uses but with the right curve.
+        let new_focus_idx = self.focused_client_idx();
+        if prev_focus_idx != new_focus_idx
+            && self.config.animations
+            && self.config.animation_duration_focus > 0
+        {
+            let now = crate::utils::now_ms();
+            let dur = self.config.animation_duration_focus;
+            let bordercolor = self.config.bordercolor.0;
+            let focuscolor = self.config.focuscolor.0;
+            // Outgoing: drop focus highlight back to bordercolor +
+            // dim opacity to unfocused.
+            if let Some(idx) = prev_focus_idx {
+                if idx < self.clients.len() {
+                    let initial_color =
+                        self.clients[idx].opacity_animation.current_border_color;
+                    let initial_color = if initial_color == [0.0, 0.0, 0.0, 0.0] {
+                        focuscolor
+                    } else {
+                        initial_color
+                    };
+                    let initial_opacity = self.clients[idx].focused_opacity;
+                    self.clients[idx].opacity_animation = OpacityAnimation {
+                        running: true,
+                        initial_opacity,
+                        target_opacity: self.clients[idx].unfocused_opacity,
+                        current_opacity: initial_opacity,
+                        time_started: now,
+                        duration: dur,
+                        initial_border_color: initial_color,
+                        target_border_color: bordercolor,
+                        current_border_color: initial_color,
+                    };
+                }
+            }
+            // Incoming: ramp up to focuscolor + brighten opacity.
+            if let Some(idx) = new_focus_idx {
+                if idx < self.clients.len() {
+                    let initial_color =
+                        self.clients[idx].opacity_animation.current_border_color;
+                    let initial_color = if initial_color == [0.0, 0.0, 0.0, 0.0] {
+                        bordercolor
+                    } else {
+                        initial_color
+                    };
+                    let initial_opacity = self.clients[idx].unfocused_opacity;
+                    self.clients[idx].opacity_animation = OpacityAnimation {
+                        running: true,
+                        initial_opacity,
+                        target_opacity: self.clients[idx].focused_opacity,
+                        current_opacity: initial_opacity,
+                        time_started: now,
+                        duration: dur,
+                        initial_border_color: initial_color,
+                        target_border_color: focuscolor,
+                        current_border_color: initial_color,
+                    };
+                }
+            }
+        }
+
         // Refresh border colors so the focused/unfocused distinction
         // updates without waiting for the next arrange.
         crate::border::refresh(self);

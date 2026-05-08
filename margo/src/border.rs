@@ -140,7 +140,20 @@ pub fn refresh(state: &mut MargoState) {
 
             (g, c.border_width as f32, hide)
         };
-        let color = if hide { [0.0; 4] } else { color_for(state, idx, focused == Some(idx)) };
+        let color = if hide {
+            [0.0; 4]
+        } else if state.clients[idx].opacity_animation.running
+            && state.clients[idx].opacity_animation.current_border_color != [0.0, 0.0, 0.0, 0.0]
+        {
+            // Focus crossfade is in flight — use the interpolated
+            // colour from `tick_animations`. Reading directly off the
+            // animation struct keeps the cross-fade visible *between*
+            // arrange passes too (every render driven by an
+            // animation tick refreshes this).
+            state.clients[idx].opacity_animation.current_border_color
+        } else {
+            color_for(state, idx, focused == Some(idx))
+        };
         let effective = if hide { 0.0 } else { width };
         let radius = state.config.border_radius as f32;
         state.clients[idx].border.update(geom, effective, radius, color);
