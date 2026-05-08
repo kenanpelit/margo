@@ -1350,6 +1350,42 @@ fn take_pending_open_close_captures(
     for idx in to_drop.into_iter().rev() {
         state.closing_clients.remove(idx);
     }
+
+    // Layer-surface close captures. Same shape as the toplevel-close
+    // path: the layer's wl_surface is still alive at `layer_destroyed`
+    // time, the renderer grabs one frame of it before it goes dark.
+    let pending_layer_keys: Vec<_> = state
+        .layer_animations
+        .iter()
+        .filter_map(|(k, a)| if a.is_close && a.capture_pending { Some(k.clone()) } else { None })
+        .collect();
+    for key in pending_layer_keys {
+        let Some(anim) = state.layer_animations.get(&key) else { continue };
+        let Some(surface) = anim.source_surface.clone() else { continue };
+        let geom = anim.geom;
+        let size = smithay::utils::Size::<i32, smithay::utils::Logical>::from((
+            geom.width.max(1),
+            geom.height.max(1),
+        ));
+        match crate::render::window_capture::capture_surface(
+            renderer,
+            &surface,
+            size,
+            output_scale,
+        ) {
+            Ok(texture) => {
+                if let Some(a) = state.layer_animations.get_mut(&key) {
+                    a.texture = Some(texture);
+                    a.capture_pending = false;
+                    a.source_surface = None;
+                }
+            }
+            Err(e) => {
+                tracing::warn!("layer close_anim: capture failed: {e:?}");
+                state.layer_animations.remove(&key);
+            }
+        }
+    }
 }
 
 fn build_render_elements(
@@ -1518,6 +1554,7 @@ fn build_render_elements_inner(
         &upper_layers,
         output_scale,
         1.0,
+        state,
         &mut elements,
     );
 
@@ -1554,6 +1591,16 @@ fn build_render_elements_inner(
         &lower_layers,
         output_scale,
         1.0,
+        state,
+        &mut elements,
+    );
+
+    push_closing_layers(
+        state,
+        &od.output,
+        output_geo,
+        output_scale,
+        clipped_surface_program,
         &mut elements,
     );
 
@@ -2001,12 +2048,36 @@ fn push_layer_elements(
     layers: &[&smithay::desktop::LayerSurface],
     output_scale: f64,
     alpha: f32,
+    state: &MargoState,
     elements: &mut Vec<MargoRenderElement>,
 ) {
+    use smithay::reexports::wayland_server::Resource;
     for surface in layers {
         let Some(geo) = layer_map.layer_geometry(surface) else {
             continue;
         };
+
+        // Skip the LIVE render entirely if this layer is in its close
+        // animation — `push_closing_layers` paints it from the
+        // captured texture instead. (smithay's LayerMap won't
+        // actually have the layer at this point either, since
+        // `unmap_layer` already ran in `layer_destroyed`; this guard
+        // is just defensive.)
+        let key = surface.layer_surface().wl_surface().id();
+        if state.layer_animations.get(&key).map(|a| a.is_close).unwrap_or(false) {
+            continue;
+        }
+
+        // Open animation: scale alpha by the curve's progress so the
+        // layer fades in. We don't slide the geometry — layer surfaces
+        // typically have anchor-driven layout that the user would
+        // notice if we shifted, and the slide-in feel is mostly carried
+        // by the alpha curve anyway.
+        let layer_alpha = match state.layer_animations.get(&key) {
+            Some(anim) if !anim.is_close => alpha * anim.progress.clamp(0.0, 1.0),
+            _ => alpha,
+        };
+
         let rendered =
             AsRenderElements::<GlesRenderer>::render_elements::<WaylandSurfaceRenderElement<
                 GlesRenderer,
@@ -2015,13 +2086,68 @@ fn push_layer_elements(
                 renderer,
                 geo.loc.to_physical_precise_round(output_scale),
                 Scale::from(output_scale),
-                alpha,
+                layer_alpha,
             );
         elements.extend(
             rendered
                 .into_iter()
                 .map(|elem| MargoRenderElement::Space(SpaceRenderElements::Surface(elem))),
         );
+    }
+}
+
+/// Render the captured texture for any layer surface in its close
+/// animation. Mirrors `push_closing_clients` but for layer surfaces;
+/// drawn in the layer band so notification-style layers fade out
+/// where they were instead of leaping to a different stacking
+/// position.
+fn push_closing_layers(
+    state: &MargoState,
+    output: &Output,
+    output_geo: Rectangle<i32, Logical>,
+    output_scale: f64,
+    clipped_surface_program: Option<GlesTexProgram>,
+    elements: &mut Vec<MargoRenderElement>,
+) {
+    let scale = Scale::from(output_scale);
+    let target_mon_idx = state.monitors.iter().position(|m| m.output == *output);
+    let Some(_target_mon_idx) = target_mon_idx else {
+        return;
+    };
+    for (_id, anim) in state.layer_animations.iter() {
+        if !anim.is_close {
+            continue;
+        }
+        let Some(texture) = anim.texture.as_ref() else {
+            continue;
+        };
+        let dst = smithay::utils::Rectangle::new(
+            (anim.geom.x - output_geo.loc.x, anim.geom.y - output_geo.loc.y).into(),
+            (anim.geom.width.max(1), anim.geom.height.max(1)).into(),
+        );
+        // Per-frame fresh Id — the ObjectId is stable across frames
+        // so we *could* derive a stable Id, but smithay's damage
+        // tracker copes with new ids fine for short-lived render
+        // elements like the close transition. The simpler `Id::new()`
+        // avoids the Resource-vs-ObjectId type juggling at no real
+        // cost (the close window is < 500 ms).
+        let elem_id = smithay::backend::renderer::element::Id::new();
+        elements.push(MargoRenderElement::OpenClose(
+            crate::render::open_close::OpenCloseRenderElement::new(
+                elem_id,
+                texture.clone(),
+                dst,
+                scale,
+                anim.progress,
+                1.0,
+                anim.kind,
+                true,
+                0.6, // layer surfaces don't carry the same zoom_end_ratio config — pick a sensible default
+                smithay::backend::renderer::utils::CommitCounter::default(),
+                0.0, // no rounded-corner clip on layers
+                clipped_surface_program.clone(),
+            ),
+        ));
     }
 }
 

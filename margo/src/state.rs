@@ -706,6 +706,10 @@ pub fn tick_animations(
     now_ms: u32,
     spec: AnimTickSpec,
     closing_clients: &mut Vec<ClosingClient>,
+    layer_animations: &mut std::collections::HashMap<
+        smithay::reexports::wayland_server::backend::ObjectId,
+        LayerSurfaceAnim,
+    >,
 ) -> bool {
     let mut changed = false;
     // Advance focus highlight (border colour + opacity) crossfades.
@@ -754,6 +758,34 @@ pub fn tick_animations(
                 anim.progress = curves.sample(raw, AnimationType::Open) as f32;
                 changed = true;
             }
+        }
+    }
+
+    // Advance layer-surface open/close animations. Settled entries
+    // are removed from the map; the open path then falls back to
+    // unmodulated layer rendering, the close path stops drawing the
+    // texture (the underlying smithay layer was already unmapped at
+    // `layer_destroyed` time).
+    {
+        let mut to_drop: Vec<smithay::reexports::wayland_server::backend::ObjectId> = Vec::new();
+        for (id, anim) in layer_animations.iter_mut() {
+            let elapsed = now_ms.wrapping_sub(anim.time_started);
+            if elapsed >= anim.duration {
+                to_drop.push(id.clone());
+                continue;
+            }
+            let raw = elapsed as f64 / anim.duration as f64;
+            let action = if anim.is_close {
+                AnimationType::Close
+            } else {
+                AnimationType::Open
+            };
+            anim.progress = curves.sample(raw, action) as f32;
+            changed = true;
+        }
+        for id in to_drop {
+            layer_animations.remove(&id);
+            changed = true;
         }
     }
 
@@ -941,6 +973,37 @@ pub struct ClosingClient {
     pub source_surface: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
 }
 
+/// Layer surface in mid-open or mid-close transition. Mirrors
+/// [`ClosingClient`] but stripped down — layer surfaces don't have
+/// the same lifecycle complexity as toplevels (no per-tag visibility,
+/// no monitor migration, smithay's `LayerMap` owns them).
+#[derive(Debug)]
+pub struct LayerSurfaceAnim {
+    pub time_started: u32,
+    pub duration: u32,
+    pub progress: f32,
+    /// `true` for close transition (texture-driven slide-out),
+    /// `false` for open (live surface fade-in).
+    pub is_close: bool,
+    /// Snapshot for the close path. `None` for open and while a close
+    /// capture is pending; populated by the renderer the first frame
+    /// after the layer is destroyed.
+    pub texture: Option<smithay::backend::renderer::gles::GlesTexture>,
+    pub capture_pending: bool,
+    /// Where the layer was when its close animation kicked off.
+    /// Render path needs this because by close time the smithay
+    /// `LayerMap` no longer knows the layer's geometry.
+    pub geom: Rect,
+    /// Slide direction derived from the layer's anchor. Layers
+    /// anchored to the top edge slide up on close (and slide in
+    /// from above on open); right-anchored slide right; etc. Pure
+    /// fade for layers with no useful anchor (centred dialogs).
+    pub kind: crate::render::open_close::OpenCloseKind,
+    /// Held only while `capture_pending` so the close-side capture
+    /// has a surface to read from.
+    pub source_surface: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
+}
+
 pub struct MargoState {
     pub compositor_state: CompositorState,
     pub xdg_shell_state: XdgShellState,
@@ -1103,6 +1166,17 @@ pub struct MargoState {
     /// still alive at destruction time but we hadn't rendered yet)
     /// live as `None` in `texture` until the next render fills them in.
     pub closing_clients: Vec<ClosingClient>,
+    /// Layer surfaces in their open / close animation. Keyed by the
+    /// layer's wl_surface object id so the render path can look up
+    /// the per-layer animation state without an O(n) scan. Each
+    /// entry tracks both directions: `is_close` flips at
+    /// `layer_destroyed`. After settling, open entries get popped
+    /// in `tick_animations` (cleared from the map); close entries
+    /// also drop the captured texture along with the entry.
+    pub layer_animations: std::collections::HashMap<
+        smithay::reexports::wayland_server::backend::ObjectId,
+        LayerSurfaceAnim,
+    >,
 }
 
 impl MargoState {
@@ -1247,6 +1321,7 @@ impl MargoState {
             screencopy_state,
             libinput_devices: Vec::new(),
             closing_clients: Vec::new(),
+            layer_animations: std::collections::HashMap::new(),
             config,
         }
     }
@@ -4092,15 +4167,48 @@ impl WlrLayerShellHandler for MargoState {
         let Some(smithay_output) = smithay_output else { return };
 
         let desktop_layer = DesktopLayerSurface::new(surface, namespace.clone());
+        let wl_surface_clone = desktop_layer.wl_surface().clone();
         {
             let mut map = layer_map_for_output(&smithay_output);
             map.map_layer(&desktop_layer).unwrap();
             map.arrange();
         }
         self.refresh_output_work_area(&smithay_output);
+
+        // Open animation: fade in from `layer_animation_type_open`
+        // direction. We use the live render path during the
+        // transition (no snapshot needed — surface is alive),
+        // applying a per-layer alpha + offset based on this
+        // animation's progress in `push_layer_elements`.
+        if self.config.animations
+            && self.config.layer_animations
+            && self.config.animation_duration_open > 0
+        {
+            let kind = crate::render::open_close::OpenCloseKind::parse(
+                &self.config.layer_animation_type_open,
+            );
+            let now = crate::utils::now_ms();
+            self.layer_animations.insert(
+                wl_surface_clone.id(),
+                LayerSurfaceAnim {
+                    time_started: now,
+                    duration: self.config.animation_duration_open,
+                    progress: 0.0,
+                    is_close: false,
+                    texture: None,
+                    capture_pending: false,
+                    geom: Rect::default(),
+                    kind,
+                    source_surface: None,
+                },
+            );
+            self.request_repaint();
+        }
+
         tracing::info!(
-            "new layer surface: namespace={namespace} output={}",
-            smithay_output.name()
+            "new layer surface: namespace={namespace} output={} anim={}",
+            smithay_output.name(),
+            self.layer_animations.contains_key(&wl_surface_clone.id()),
         );
     }
 
@@ -4145,6 +4253,50 @@ impl WlrLayerShellHandler for MargoState {
             }
             result
         };
+
+        // Close animation: capture the layer's wl_surface tree to a
+        // texture and push a `LayerSurfaceAnim` entry so the renderer
+        // keeps painting it sliding/fading away after smithay's
+        // `LayerMap::unmap_layer` removes it. Cancel any pending open
+        // animation for the same surface — if a layer was destroyed
+        // mid-open we just play the close from wherever the open was.
+        let wl_surf = surface.wl_surface().clone();
+        if self.config.animations
+            && self.config.layer_animations
+            && self.config.animation_duration_close > 0
+        {
+            // Read geometry off the layer map BEFORE we unmap it.
+            let geom = layer.as_ref().and_then(|l| {
+                let map = layer_map_for_output(&output);
+                map.layer_geometry(l).map(|g| Rect {
+                    x: g.loc.x,
+                    y: g.loc.y,
+                    width: g.size.w,
+                    height: g.size.h,
+                })
+            });
+            if let Some(geom) = geom {
+                let kind = crate::render::open_close::OpenCloseKind::parse(
+                    &self.config.layer_animation_type_close,
+                );
+                let now = crate::utils::now_ms();
+                self.layer_animations.insert(
+                    wl_surf.id(),
+                    LayerSurfaceAnim {
+                        time_started: now,
+                        duration: self.config.animation_duration_close,
+                        progress: 0.0,
+                        is_close: true,
+                        texture: None,
+                        capture_pending: true,
+                        geom,
+                        kind,
+                        source_surface: Some(wl_surf.clone()),
+                    },
+                );
+                self.request_repaint();
+            }
+        }
 
         if let Some(layer) = layer {
             let mut map = layer_map_for_output(&output);

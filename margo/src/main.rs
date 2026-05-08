@@ -340,12 +340,19 @@ fn main() -> Result<()> {
                 use_spring,
                 spring,
             };
-            let (clients, curves, closing) = (
+            // Disjoint borrows across MargoState fields so each
+            // category of animation can be advanced from a single
+            // call. The compiler treats these as independent
+            // because they're distinct named fields.
+            let curves = &state.animation_curves;
+            state::tick_animations(
                 &mut state.clients,
-                &state.animation_curves,
+                curves,
+                now,
+                spec,
                 &mut state.closing_clients,
-            );
-            state::tick_animations(clients, curves, now, spec, closing)
+                &mut state.layer_animations,
+            )
         };
         if animations_changed {
             let animated: Vec<_> = state
