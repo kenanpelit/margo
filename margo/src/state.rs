@@ -3368,6 +3368,254 @@ impl MargoState {
         }
     }
 
+    // ── Scratchpad ────────────────────────────────────────────────────────────
+    //
+    // Mango-style named scratchpads. A scratchpad client is a regular
+    // toplevel that the user keeps "in their pocket": invisible by
+    // default, summoned onto the current tag with a single keybind,
+    // dismissed back into hiding with the same keybind. Margo's window
+    // rules already let the user mark a client `isnamedscratchpad:1`
+    // and pin its float geometry (width / height / offsetx / offsety)
+    // via the existing windowrule plumbing — what was missing is the
+    // toggle / spawn-on-miss action that ties it together.
+    //
+    // The implementation mirrors mango-ext's `toggle_named_scratchpad`
+    // + `apply_named_scratchpad` + `switch_scratchpad_client_state` +
+    // `show_scratchpad` chain, simplified by skipping cross-monitor
+    // migration and canvas-layout per-tag offsets (we don't carry
+    // those on `MargoClient` yet).
+
+    /// Find the index of the first client whose `app_id` matches `name`
+    /// (substring, case-insensitive) and, if `title` is supplied, whose
+    /// title also contains it. Used by [`toggle_named_scratchpad`] to
+    /// locate an already-running instance before deciding whether to
+    /// spawn a new one.
+    fn find_client_by_id_or_title(
+        &self,
+        name: Option<&str>,
+        title: Option<&str>,
+    ) -> Option<usize> {
+        let name_lc = name.map(|s| s.to_lowercase());
+        let title_lc = title.map(|s| s.to_lowercase());
+        for (idx, c) in self.clients.iter().enumerate() {
+            let app_match = match name_lc.as_deref() {
+                Some(p) if !p.is_empty() => c.app_id.to_lowercase().contains(p),
+                _ => true,
+            };
+            let title_match = match title_lc.as_deref() {
+                Some(p) if !p.is_empty() => c.title.to_lowercase().contains(p),
+                _ => true,
+            };
+            if app_match && title_match {
+                return Some(idx);
+            }
+        }
+        None
+    }
+
+    /// Bring a scratchpad client onto the active tagset and centre it
+    /// at its `float_geom` (already populated by the windowrule's
+    /// width/height/offsetx/offsety, or falls back to the
+    /// `scratchpad_*_ratio` config defaults).
+    fn show_scratchpad_client(&mut self, idx: usize) {
+        if idx >= self.clients.len() {
+            return;
+        }
+        let mon_idx = self.clients[idx].monitor;
+        if mon_idx >= self.monitors.len() {
+            return;
+        }
+        let work_area = self.monitors[mon_idx].work_area;
+        let active_tagset = self.monitors[mon_idx].current_tagset();
+
+        let c = &mut self.clients[idx];
+        c.is_in_scratchpad = true;
+        c.is_scratchpad_show = true;
+        c.is_minimized = false;
+        c.is_floating = true;
+        c.is_fullscreen = false;
+        c.is_maximized_screen = false;
+
+        // If float_geom hasn't been set by a windowrule, fall back to
+        // the global scratchpad_*_ratio. Either way recentre on the
+        // monitor so the scratchpad never appears off-screen after a
+        // monitor reconfig.
+        if c.float_geom.width <= 0 || c.float_geom.height <= 0 {
+            let w = (work_area.width as f32 * self.config.scratchpad_width_ratio).round() as i32;
+            let h = (work_area.height as f32 * self.config.scratchpad_height_ratio).round() as i32;
+            c.float_geom = Rect {
+                x: work_area.x + (work_area.width - w) / 2,
+                y: work_area.y + (work_area.height - h) / 2,
+                width: w.max(100),
+                height: h.max(100),
+            };
+        }
+        c.geom = c.float_geom;
+        c.tags = active_tagset; // join the current tagset
+
+        let window = c.window.clone();
+        // Re-map at the float position. `map_element(_, _, true)`
+        // raises to the top of the scene, which is what we want for a
+        // toggled-up scratchpad.
+        self.space.map_element(window.clone(), (c.float_geom.x, c.float_geom.y), true);
+        self.enforce_z_order();
+        self.arrange_monitor(mon_idx);
+        self.focus_surface(Some(FocusTarget::Window(window)));
+    }
+
+    /// Tuck a scratchpad client away. We unmap from the scene so it
+    /// doesn't render anywhere, and clear `is_scratchpad_show` so the
+    /// next `toggle_named_scratchpad` flips it back on.
+    fn hide_scratchpad_client(&mut self, idx: usize) {
+        if idx >= self.clients.len() {
+            return;
+        }
+        let window = self.clients[idx].window.clone();
+        self.clients[idx].is_scratchpad_show = false;
+        self.clients[idx].is_minimized = true;
+        self.space.unmap_elem(&window);
+        // If this was the focused window, drop focus to the next
+        // visible client on the same monitor so the keyboard isn't
+        // stranded on a hidden surface.
+        let mon_idx = self.clients[idx].monitor;
+        if mon_idx < self.monitors.len() {
+            self.focus_first_visible_or_clear(mon_idx);
+        }
+        self.request_repaint();
+    }
+
+    /// Toggle the show/hide state of a single scratchpad client.
+    fn switch_scratchpad_state(&mut self, idx: usize) {
+        if idx >= self.clients.len() {
+            return;
+        }
+        if self.clients[idx].is_scratchpad_show {
+            self.hide_scratchpad_client(idx);
+        } else {
+            self.show_scratchpad_client(idx);
+        }
+    }
+
+    /// Public action: toggle the visibility of a named scratchpad.
+    ///
+    /// `name`  — appid pattern (substring match, case-insensitive).
+    /// `title` — optional title pattern. Both must match if supplied.
+    /// `spawn` — shell command to launch if no running client matches;
+    ///           the next call after the spawn picks up the new client
+    ///           (its windowrule should set `isnamedscratchpad:1` so
+    ///           it lands hidden, ready to be toggled).
+    pub fn toggle_named_scratchpad(
+        &mut self,
+        name: Option<&str>,
+        title: Option<&str>,
+        spawn: Option<&str>,
+    ) {
+        let target = self.find_client_by_id_or_title(name, title);
+        let Some(idx) = target else {
+            // No matching client — spawn the launcher command if the
+            // user supplied one. The just-launched client will land
+            // tagged `isnamedscratchpad:1` per its windowrule and the
+            // next bind press will toggle it visible.
+            if let Some(cmd) = spawn.filter(|s| !s.trim().is_empty()) {
+                if let Err(e) = crate::utils::spawn_shell(cmd) {
+                    tracing::error!("toggle_named_scratchpad spawn '{cmd}': {e}");
+                }
+            }
+            return;
+        };
+
+        // Mark as named scratchpad (the windowrule may already have
+        // set it, but this is idempotent and lets bare keybindings
+        // turn arbitrary running clients into scratchpads).
+        self.clients[idx].is_named_scratchpad = true;
+
+        // Single-scratchpad enforcement: when this config is on, only
+        // ONE named scratchpad may be visible at a time. Hide every
+        // other shown scratchpad on the same monitor before switching
+        // the target's state.
+        if self.config.single_scratchpad {
+            let mon_idx = self.clients[idx].monitor;
+            let to_hide: Vec<usize> = self
+                .clients
+                .iter()
+                .enumerate()
+                .filter(|(i, c)| {
+                    *i != idx
+                        && c.is_in_scratchpad
+                        && c.is_scratchpad_show
+                        && (self.config.scratchpad_cross_monitor || c.monitor == mon_idx)
+                })
+                .map(|(i, _)| i)
+                .collect();
+            for i in to_hide {
+                self.hide_scratchpad_client(i);
+            }
+        }
+
+        // First-time toggle: mark the client as `is_in_scratchpad` so
+        // future toggles see it as a scratchpad. Then flip the
+        // visibility.
+        if !self.clients[idx].is_in_scratchpad {
+            self.clients[idx].is_in_scratchpad = true;
+            // Start the client hidden so the very first toggle reveals
+            // it (mirrors mango's "set_minimized then switch_state"
+            // dance).
+            self.clients[idx].is_scratchpad_show = false;
+            self.clients[idx].is_minimized = true;
+            let window = self.clients[idx].window.clone();
+            self.space.unmap_elem(&window);
+        }
+        self.switch_scratchpad_state(idx);
+    }
+
+    /// Public action: toggle the *anonymous* scratchpad set — every
+    /// client previously promoted to a scratchpad via the legacy
+    /// `toggle_scratchpad` command (no name, no title, just "stash
+    /// the current focused window"). Mirrors mango's implementation
+    /// faithfully enough that the pattern carries over.
+    pub fn toggle_scratchpad(&mut self) {
+        if let Some(mon_idx) = self
+            .focused_client_idx()
+            .map(|i| self.clients[i].monitor)
+        {
+            // First pass: if any anonymous scratchpad is currently
+            // shown, hide them all. (single_scratchpad makes this
+            // mostly the same as toggle_named, just keyed off the
+            // anonymous flag.)
+            let mut hit = false;
+            let to_toggle: Vec<usize> = (0..self.clients.len())
+                .filter(|&i| {
+                    let c = &self.clients[i];
+                    !c.is_named_scratchpad
+                        && (self.config.scratchpad_cross_monitor || c.monitor == mon_idx)
+                })
+                .collect();
+
+            for i in to_toggle {
+                let c = &self.clients[i];
+                if self.config.single_scratchpad
+                    && c.is_named_scratchpad
+                    && !c.is_minimized
+                {
+                    self.clients[i].is_minimized = true;
+                    let window = self.clients[i].window.clone();
+                    self.space.unmap_elem(&window);
+                    continue;
+                }
+                if c.is_named_scratchpad {
+                    continue;
+                }
+                if hit {
+                    continue;
+                }
+                if c.is_in_scratchpad {
+                    self.switch_scratchpad_state(i);
+                    hit = true;
+                }
+            }
+        }
+    }
+
     pub fn inc_nmaster(&mut self, delta: i32) {
         let mon_idx = self.focused_monitor();
         if mon_idx >= self.monitors.len() {
@@ -3791,6 +4039,33 @@ impl MargoState {
 
         if !self.monitors.is_empty() {
             self.arrange_monitor(target_mon);
+        }
+
+        // Named scratchpad bootstrap. If the windowrule flagged this
+        // client as a named scratchpad (mango's `isnamedscratchpad:1`
+        // pattern), tuck it away on first map. The user's keybind
+        // brings it up explicitly via `toggle_named_scratchpad`; the
+        // initial spawn shouldn't dump a panel-sized floating
+        // dropdown-terminal onto whatever tag they happen to be on.
+        // Clears focus too so the just-launched (and now hidden)
+        // window doesn't keep the keyboard.
+        if self.clients[idx].is_named_scratchpad
+            && !self.clients[idx].is_in_scratchpad
+        {
+            self.clients[idx].is_in_scratchpad = true;
+            self.clients[idx].is_scratchpad_show = false;
+            self.clients[idx].is_minimized = true;
+            let window = self.clients[idx].window.clone();
+            self.space.unmap_elem(&window);
+            if focus_new {
+                // Drop the focus we set above — the client is hidden
+                // now, no point keeping the keyboard pointed at it.
+                self.focus_first_visible_or_clear(target_mon);
+            }
+            tracing::info!(
+                "named_scratchpad bootstrap: app_id={} hidden until toggle",
+                self.clients[idx].app_id,
+            );
         }
 
         // Note: clients that mapped onto a non-active tag intentionally

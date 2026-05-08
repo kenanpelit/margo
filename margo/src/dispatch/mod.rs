@@ -94,6 +94,25 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
         "switch_layout" => state.switch_layout(),
         "togglefloating" => state.toggle_floating(),
         "togglefullscreen" => state.toggle_fullscreen(),
+        // Mango-style named scratchpad. Three args (mapped from the
+        // bind line):
+        //   v  → app_id pattern (e.g. `dropdown-terminal`)
+        //   v2 → optional title pattern (use `none` to skip)
+        //   v3 → spawn command run when no matching client exists
+        // Together: `bind = super,Return,toggle_named_scratchpad,
+        //           dropdown-terminal,none,kitty --class dropdown-terminal`
+        "toggle_named_scratchpad"
+        | "togglenamedscratchpad"
+        | "toggle-named-scratchpad" => {
+            let name = arg.v.as_deref();
+            let title = arg.v2.as_deref().filter(|s| {
+                let t = s.trim();
+                !t.is_empty() && !t.eq_ignore_ascii_case("none")
+            });
+            let spawn = arg.v3.as_deref().filter(|s| !s.trim().is_empty());
+            state.toggle_named_scratchpad(name, title, spawn);
+        }
+        "toggle_scratchpad" | "togglescratchpad" => state.toggle_scratchpad(),
         "incnmaster" => state.inc_nmaster(arg.i),
         "setmfact" => state.set_mfact(arg.f),
         "togglegaps" => state.toggle_gaps(),
