@@ -64,7 +64,11 @@ pub fn handle_input<B: InputBackend>(state: &mut MargoState, event: InputEvent<B
 // direction (or diagonal) and look up `gesturebind` from the config. This
 // mirrors how mango (C) and niri handle touchpad swipes.
 
-const SWIPE_MIN_DISTANCE: f64 = 30.0;
+/// Hardcoded fallback when `Config::swipe_min_threshold` isn't set (or is
+/// set to its default of 1, which is too aggressive for natural use).
+/// Mango's C version uses ~30 px and that feels right; the config knob
+/// gives users with very-short-throw swipes a way to lower it.
+const SWIPE_MIN_DISTANCE_DEFAULT: f64 = 30.0;
 
 fn handle_swipe_begin<B: InputBackend, E: GestureBeginEvent<B>>(state: &mut MargoState, event: E) {
     state.input_gesture.swipe_active = true;
@@ -90,8 +94,21 @@ fn handle_swipe_end(state: &mut MargoState) {
         return;
     }
     let total = (g.dx * g.dx + g.dy * g.dy).sqrt();
-    if total < SWIPE_MIN_DISTANCE {
-        return; // ignored, too short
+    // Honour `Config::swipe_min_threshold` if the user set it to a
+    // non-trivial value; fall back to the hardcoded default otherwise
+    // (1 — the parser default — would dispatch on accidental jitter).
+    let cfg_threshold = state.config.swipe_min_threshold as f64;
+    let threshold = if cfg_threshold > 1.0 {
+        cfg_threshold
+    } else {
+        SWIPE_MIN_DISTANCE_DEFAULT
+    };
+    if total < threshold {
+        debug!(
+            "swipe ignored (too short): total={:.1} threshold={:.1} fingers={}",
+            total, threshold, g.fingers
+        );
+        return;
     }
     // Map dx/dy to a motion code matching margo-config's parse_motion()
     // (UP=0, DOWN=1, RIGHT=2, LEFT=3, UP_RIGHT=4, UP_LEFT=5, DOWN_LEFT=6, DOWN_RIGHT=7).
