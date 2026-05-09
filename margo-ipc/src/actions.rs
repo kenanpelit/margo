@@ -425,6 +425,17 @@ pub const ACTIONS: &[Action] = &[
         summary: "Run a shell command (passes through `sh -c`).",
         detail: "",
     },
+    Action {
+        name: "run_script",
+        aliases: &["run-script", "rhai-eval"],
+        args: "<PATH>",
+        group: Group::System,
+        summary: "Evaluate a Rhai script against the live compositor (W3.2).",
+        detail: "Same binding surface + sandbox as ~/.config/margo/init.rhai; \
+                 works whether or not init.rhai exists. Hooks registered \
+                 inside the script persist after the run. User-facing \
+                 wrapper: `mctl run <file>`.",
+    },
     // ── Screenshot ──────────────────────────────────────────────────
     // All screenshot actions delegate to the `mscreenshot`
     // shell helper, which orchestrates grim + slurp + wl-copy +

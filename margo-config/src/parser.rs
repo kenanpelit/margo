@@ -761,6 +761,7 @@ fn parse_tagrule(cfg: &mut Config, val: &str) -> Result<()> {
             "no_render_border" => rule.no_render_border = parse_bool_s(&v),
             "open_as_floating" => rule.open_as_floating = parse_bool_s(&v),
             "no_hide" => rule.no_hide = parse_bool_s(&v),
+            "wallpaper" => rule.wallpaper = Some(v),
             other => warn!("unknown tagrule option: {}", other),
         }
     }

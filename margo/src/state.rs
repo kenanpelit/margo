@@ -730,6 +730,13 @@ pub struct MargoMonitor {
     pub scale: f32,
     pub transform: i32,
     pub enabled: bool,
+    /// Last N focused-client indices for this monitor (MRU order,
+    /// most recent first). Populated by `focus_surface` whenever
+    /// focus shifts to a client living on this output. Capped at
+    /// `FOCUS_HISTORY_DEPTH` so it stays bounded across long
+    /// sessions. Exposed in state.json as `focus_history` (a list
+    /// of app_id strings) for MRU widgets / dock icons.
+    pub focus_history: std::collections::VecDeque<usize>,
     /// Number of u16 entries per channel in the DRM `GAMMA_LUT_SIZE` for
     /// this output's CRTC. 0 means gamma control is not supported (e.g. on
     /// the winit backend or on a connector without GAMMA_LUT). Updated by
@@ -1306,6 +1313,12 @@ pub struct MargoState {
     /// still alive at destruction time but we hadn't rendered yet)
     /// live as `None` in `texture` until the next render fills them in.
     pub closing_clients: Vec<ClosingClient>,
+    /// Discovered Rhai plugins (W3.3). Empty when no
+    /// `~/.config/margo/plugins/` exists; populated by
+    /// `init_plugins` after init_user_scripting. Stored on state
+    /// so `mctl plugin list` (future) can enumerate without
+    /// re-walking the FS.
+    pub plugins: Vec<crate::plugin::Plugin>,
     /// AccessKit accessibility-tree adapter (W2.4). `start()` is
     /// called once at compositor init; subsequent
     /// `publish_window_list` calls flush a fresh tree on every
@@ -1516,6 +1529,7 @@ impl MargoState {
             screencopy_state,
             libinput_devices: Vec::new(),
             closing_clients: Vec::new(),
+            plugins: Vec::new(),
             #[cfg(feature = "a11y")]
             a11y: crate::a11y::A11yState::new(),
             region_selector: None,
@@ -1827,6 +1841,37 @@ impl MargoState {
                         .filter(|c| c.monitor == i)
                         .fold(0u32, |a, c| a | c.tags),
                     "is_overview": mon.is_overview,
+                    // W3.6: per-tag wallpaper hint of the *active*
+                    // tag. Wallpaper daemons watching state.json
+                    // can swap on tag change. Empty string = "use
+                    // session default". Per-tag map is in
+                    // `wallpapers_by_tag` below for daemons that
+                    // want to pre-cache.
+                    "wallpaper": mon.pertag.wallpapers
+                        .get(mon.pertag.curtag).cloned().unwrap_or_default(),
+                    "wallpapers_by_tag": (1..=crate::MAX_TAGS)
+                        .map(|t| mon.pertag.wallpapers
+                            .get(t).cloned().unwrap_or_default())
+                        .collect::<Vec<_>>(),
+                    // W3.4: scratchpad summary (counts of visible /
+                    // hidden) and per-monitor focus history (MRU
+                    // app_ids, most recent first). MRU widgets and
+                    // dock indicators read these to render counts +
+                    // recently-used app rings.
+                    "scratchpad_visible": self.clients.iter()
+                        .filter(|c| c.monitor == i
+                            && c.is_in_scratchpad
+                            && c.is_scratchpad_show)
+                        .count(),
+                    "scratchpad_hidden": self.clients.iter()
+                        .filter(|c| c.monitor == i
+                            && c.is_in_scratchpad
+                            && !c.is_scratchpad_show)
+                        .count(),
+                    "focus_history": mon.focus_history.iter()
+                        .filter_map(|&idx| self.clients.get(idx))
+                        .map(|c| c.app_id.clone())
+                        .collect::<Vec<_>>(),
                 })
             })
             .collect();
@@ -2827,6 +2872,25 @@ impl MargoState {
 
     pub fn focus_surface(&mut self, target: Option<FocusTarget>) {
         let _span = tracy_client::span!("focus_surface");
+        // W3.4: push to per-monitor focus_history when a new client
+        // takes focus. Walks `target` to a client index, drops dups
+        // (same client re-focused = front of queue, no churn), caps
+        // at FOCUS_HISTORY_DEPTH.
+        const FOCUS_HISTORY_DEPTH: usize = 5;
+        if let Some(FocusTarget::Window(w)) = &target {
+            let new_idx = self.clients.iter().position(|c| &c.window == w);
+            if let Some(idx) = new_idx {
+                let mon = self.clients[idx].monitor;
+                if mon < self.monitors.len() {
+                    let hist = &mut self.monitors[mon].focus_history;
+                    hist.retain(|&i| i != idx);
+                    hist.push_front(idx);
+                    while hist.len() > FOCUS_HISTORY_DEPTH {
+                        hist.pop_back();
+                    }
+                }
+            }
+        }
         // Capture the *previously* focused client BEFORE we rewrite
         // the keyboard focus — we need the old + new pair to drive
         // the border-colour cross-fade animation below.
@@ -3245,6 +3309,9 @@ impl MargoState {
             }
             if rule.nmaster > 0 {
                 mon.pertag.nmasters[tag] = rule.nmaster as u32;
+            }
+            if let Some(wp) = &rule.wallpaper {
+                mon.pertag.wallpapers[tag] = wp.clone();
             }
         }
     }
@@ -4374,11 +4441,41 @@ impl MargoState {
     /// internally for window-rule application and we don't want to
     /// notify on every rule-driven re-arrangement.
     pub fn notify_layout(&self, name: &str) {
+        // W3.5: enrich the toast with position-in-cycle context so
+        // users navigating the 14-layout catalogue see where they
+        // are. Format: `<name> (<pos>/<total>) → <next>`. Falls
+        // back to bare name when not in `circle_layout`.
+        let cycle: Vec<String> = if self.config.circle_layouts.is_empty() {
+            vec![]
+        } else {
+            self.config.circle_layouts.clone()
+        };
+        let body = if let Some(pos) = cycle.iter().position(|n| n == name) {
+            let total = cycle.len();
+            let next = &cycle[(pos + 1) % total];
+            format!("{name}  ({}/{total}) → next: {next}", pos + 1)
+        } else {
+            name.to_string()
+        };
         let _ = crate::utils::spawn(&[
             "notify-send", "-a", "margo",
             "-i", "view-grid-symbolic",
             "-t", "1200",
-            "Margo Layout", name,
+            "Margo Layout", &body,
+        ]);
+    }
+
+    /// Toast for layout-adjacent actions (proportion preset,
+    /// gap toggle). Same look-and-feel as `notify_layout` so the
+    /// user can rely on the in-corner toast giving consistent
+    /// state feedback for layout-cycle keybinds.
+    pub fn notify_layout_state(&self, action: &str, value: &str) {
+        let body = format!("{action}: {value}");
+        let _ = crate::utils::spawn(&[
+            "notify-send", "-a", "margo",
+            "-i", "view-grid-symbolic",
+            "-t", "1000",
+            "Margo Layout", &body,
         ]);
     }
 
@@ -4418,9 +4515,15 @@ impl MargoState {
             .iter()
             .position(|value| (*value - current).abs() < 0.01)
             .unwrap_or(0);
-        self.clients[idx].scroller_proportion = presets[(current_pos + 1) % presets.len()];
+        let next_proportion = presets[(current_pos + 1) % presets.len()];
+        self.clients[idx].scroller_proportion = next_proportion;
         let mon_idx = self.clients[idx].monitor;
         self.arrange_monitor(mon_idx);
+        // W3.5: toast feedback for the cycling action.
+        self.notify_layout_state(
+            "scroller proportion",
+            &format!("{:.2}", next_proportion),
+        );
     }
 
     pub fn toggle_fullscreen(&mut self) {
@@ -4954,6 +5057,10 @@ impl MargoState {
         for mon_idx in 0..self.monitors.len() {
             self.arrange_monitor(mon_idx);
         }
+        self.notify_layout_state(
+            "gaps",
+            if self.enable_gaps { "on" } else { "off" },
+        );
     }
 
     pub fn inc_gaps(&mut self, delta: i32) {

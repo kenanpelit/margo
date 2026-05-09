@@ -421,6 +421,185 @@ pub fn fire_window_open(state: &mut MargoState) {
     fire_hook(state, HookKind::WindowOpen);
 }
 
+/// W3.3: load every discovered plugin under
+/// `~/.config/margo/plugins/<name>/`. Called once at startup
+/// after `init_user_scripting` so init.rhai sets up the engine
+/// + state and plugins layer their hooks on top.
+///
+/// Each plugin's init.rhai is compiled + run with the same
+/// engine the user's init.rhai uses, so plugins can share
+/// helpers via `import` (Rhai's module system) and see all the
+/// hook-registration bindings. The compositor doesn't sandbox
+/// per-plugin — Rhai's host-side sandboxing already prevents
+/// FFI / fs access; cross-plugin interference is the user's
+/// responsibility (don't install plugins that fight each
+/// other).
+///
+/// Plugins with `enabled = false` in their manifest are skipped.
+/// Compile / runtime errors don't abort the loader — the rest
+/// of the plugins continue. The compositor stays up regardless.
+pub fn init_plugins(state: &mut MargoState) {
+    let mut plugins = crate::plugin::discover();
+    if plugins.is_empty() {
+        return;
+    }
+    info!("loading {} plugin(s)", plugins.len());
+
+    // Stand up the engine if init.rhai didn't (no init.rhai on
+    // disk — plugins-only setup). Mirrors the same fallback as
+    // run_script_file.
+    if state.scripting.is_none() {
+        state.scripting = Some(Box::new(ScriptingState {
+            engine: build_engine(),
+            ast: rhai::AST::empty(),
+            hooks: ScriptingHooks::default(),
+        }));
+    }
+
+    for plugin in plugins.iter_mut() {
+        if !plugin.manifest.enabled {
+            info!(
+                "plugin: {} (disabled in manifest, skipping)",
+                plugin.manifest.name
+            );
+            continue;
+        }
+        if !plugin.script.is_file() {
+            warn!(
+                "plugin: {} has no init.rhai at {} — skipping",
+                plugin.manifest.name,
+                plugin.script.display()
+            );
+            continue;
+        }
+
+        // Compile against the live engine.
+        let Some(mut sc) = state.scripting.take() else {
+            return;
+        };
+        let ast = match sc.engine.compile_file(plugin.script.clone()) {
+            Ok(a) => a,
+            Err(e) => {
+                warn!(
+                    "plugin {}: compile error in {} — {e}",
+                    plugin.manifest.name,
+                    plugin.script.display()
+                );
+                state.scripting = Some(sc);
+                continue;
+            }
+        };
+        let original_ast = std::mem::replace(&mut sc.ast, ast);
+        state.scripting = Some(sc);
+        run_compiled(state);
+        if let Some(sc) = state.scripting.as_mut() {
+            sc.ast = original_ast;
+        }
+        plugin.loaded = true;
+        info!(
+            "plugin loaded: {} v{} — {}",
+            plugin.manifest.name,
+            plugin.manifest.version,
+            plugin.manifest.description
+        );
+    }
+
+    state.plugins = plugins;
+}
+
+/// W3.2: one-shot script eval. Reads a Rhai script from `path`,
+/// compiles it, and runs it once against the live MargoState.
+/// Used by `mctl run <file>` for ad-hoc scripting without
+/// reloading init.rhai.
+///
+/// Falls back gracefully:
+///   * If init.rhai never set up the engine (no scripting state
+///     parked on MargoState), we stand up a fresh one for this
+///     call so users can `mctl run` even without a config file.
+///   * Compile / runtime errors log at error level and return —
+///     the live compositor stays up.
+///   * Hook registrations inside the script (e.g. an
+///     `on_focus_change(...)` call) DO persist after this run,
+///     same as init.rhai. Use case: live-edit your hook list.
+pub fn run_script_file(state: &mut MargoState, path: &std::path::Path) {
+    let src = match std::fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(e) => {
+            error!("mctl run: read {}: {e}", path.display());
+            return;
+        }
+    };
+
+    // Stand up the engine if init.rhai never ran (no init.rhai on
+    // disk, or it errored out). This lets users `mctl run` from a
+    // fresh session without forcing them to author an init script.
+    if state.scripting.is_none() {
+        let engine = build_engine();
+        let ast = match engine.compile(&src) {
+            Ok(a) => a,
+            Err(e) => {
+                error!("mctl run: compile {}: {e}", path.display());
+                return;
+            }
+        };
+        state.scripting = Some(Box::new(ScriptingState {
+            engine,
+            ast,
+            hooks: ScriptingHooks::default(),
+        }));
+        // Run the freshly-compiled script via the same eval path
+        // init_user_scripting uses.
+        run_compiled(state);
+        return;
+    }
+
+    // Engine already running. Compile against the same engine so
+    // any registered fns / consts from init.rhai are visible.
+    let Some(mut sc) = state.scripting.take() else {
+        return;
+    };
+    let ast = match sc.engine.compile(&src) {
+        Ok(a) => a,
+        Err(e) => {
+            error!("mctl run: compile {}: {e}", path.display());
+            state.scripting = Some(sc);
+            return;
+        }
+    };
+    // Replace the stored AST temporarily so hook registrations
+    // resolve against the new file's symbols. Keep the old AST
+    // saved so the engine doesn't lose init.rhai's definitions.
+    let original_ast = std::mem::replace(&mut sc.ast, ast);
+    state.scripting = Some(sc);
+    run_compiled(state);
+    // Swap original AST back so the next hook fire still sees
+    // init.rhai's body.
+    if let Some(sc) = state.scripting.as_mut() {
+        sc.ast = original_ast;
+    }
+    info!("mctl run: ran {}", path.display());
+}
+
+fn run_compiled(state: &mut MargoState) {
+    let Some(sc) = state.scripting.take() else {
+        return;
+    };
+    struct StateGuard;
+    impl Drop for StateGuard {
+        fn drop(&mut self) {
+            STATE_PTR.with(|s| s.set(std::ptr::null_mut()));
+        }
+    }
+    STATE_PTR.with(|s| s.set(state as *mut _));
+    let _guard = StateGuard;
+    let mut scope = Scope::new();
+    if let Err(e) = sc.engine.run_ast_with_scope(&mut scope, &sc.ast) {
+        error!("mctl run: runtime error: {e}");
+    }
+    STATE_PTR.with(|s| s.set(std::ptr::null_mut()));
+    state.scripting = Some(sc);
+}
+
 /// Invoke every registered `on_window_close` hook. Called from the
 /// toplevel-destroyed path BEFORE the client is removed from
 /// `clients`, so `client_count()` and `focused_*()` still reflect

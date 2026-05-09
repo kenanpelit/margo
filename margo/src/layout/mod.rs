@@ -57,6 +57,13 @@ pub struct Pertag {
     /// mutate these.
     pub canvas_pan_x: Vec<f64>,
     pub canvas_pan_y: Vec<f64>,
+    /// Per-tag wallpaper hint set by `tagrule = id:N, wallpaper:path`
+    /// (W3.6). Compositor stores the string verbatim; wallpaper
+    /// daemons (swaybg / noctalia / custom) read it from the
+    /// dwl-ipc broadcast or state.json on tag-switch and swap
+    /// accordingly. Empty string = "no per-tag override; use the
+    /// session-default wallpaper".
+    pub wallpapers: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -81,6 +88,7 @@ impl Pertag {
             user_picked_layout: vec![false; MAX_TAGS + 1],
             canvas_pan_x: vec![0.0; MAX_TAGS + 1],
             canvas_pan_y: vec![0.0; MAX_TAGS + 1],
+            wallpapers: vec![String::new(); MAX_TAGS + 1],
         }
     }
 }

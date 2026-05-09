@@ -156,7 +156,8 @@ pub fn run(
         scale: 1.0,
         transform: 0,
         enabled: true,
-        gamma_size: 0, // winit/nested: no DRM gamma plane
+        gamma_size: 0,
+            focus_history: std::collections::VecDeque::new(), // winit/nested: no DRM gamma plane
     });
     state.apply_tag_rules_to_monitor(state.monitors.len() - 1);
 

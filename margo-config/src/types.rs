@@ -318,6 +318,13 @@ pub struct TagRule {
     pub no_render_border: bool,
     pub open_as_floating: bool,
     pub no_hide: bool,
+    /// Per-tag wallpaper hint (W3.6). Path or shell-glob the tag's
+    /// preferred wallpaper. The compositor stores it on Pertag and
+    /// broadcasts it via dwl-ipc on tag-switch — wallpaper daemons
+    /// (swaybg-wrapper, noctalia, custom) read the broadcast and
+    /// swap accordingly. niri can't host this — it has no tags;
+    /// it's a margo-unique extension of the dwl-ipc surface.
+    pub wallpaper: Option<String>,
 }
 
 // ── Layer rule ───────────────────────────────────────────────────────────────

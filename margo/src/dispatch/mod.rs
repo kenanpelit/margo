@@ -64,6 +64,17 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                 }
             }
         }
+        // W3.2 — one-shot Rhai script eval. `mctl run <file>` is
+        // the user-facing wrapper; it just calls dispatch with
+        // this action + path arg. Fully sandboxed via the
+        // existing scripting engine; same recursion guards as
+        // init.rhai.
+        "run_script" | "run-script" | "rhai-eval" => {
+            if let Some(path) = arg.v.as_deref() {
+                let p = std::path::Path::new(path);
+                crate::scripting::run_script_file(state, p);
+            }
+        }
         // ── Screenshot dispatch ─────────────────────────────
         // All screenshot actions delegate to the `mscreenshot`
         // companion binary (a workspace sibling of `mctl` and

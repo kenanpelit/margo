@@ -89,6 +89,27 @@ enum Command {
         args: Vec<String>,
     },
 
+    /// One-shot Rhai script execution against the live compositor (W3.2).
+    #[command(
+        display_order = 22,
+        long_about = "Evaluate a Rhai script once against the live margo \
+                      session. Same binding surface + sandbox as \
+                      ~/.config/margo/init.rhai; works whether or not \
+                      init.rhai exists. Hook registrations inside the \
+                      script (on_focus_change(...) etc.) persist after \
+                      the run.\n\
+                      \n\
+                      EXAMPLES:\n  \
+                        mctl run /tmp/test.rhai      # ad-hoc test\n  \
+                        mctl run plugin.rhai         # register a hook live"
+    )]
+    Run {
+        /// Path to the Rhai script file. Resolved relative to the
+        /// caller's CWD (mctl client side); the absolute path is
+        /// what gets sent to the compositor.
+        file: std::path::PathBuf,
+    },
+
     /// Set the active tagset on an output (raw tag bitmask)
     #[command(
         display_order = 21,
@@ -646,6 +667,27 @@ fn main() -> Result<()> {
             let a: Vec<&str> = cmd_args.iter().map(String::as_str).collect();
             let get = |i: usize| a.get(i).copied().unwrap_or("").to_string();
             ipc_out.dispatch(name, get(0), get(1), get(2), get(3), get(4));
+            eq.roundtrip(&mut state)?;
+        }
+        Command::Run { file } => {
+            // W3.2 — resolve to an absolute path so the
+            // compositor (different CWD) reads the same file.
+            let abs = match std::fs::canonicalize(&file) {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!("mctl run: cannot find {}: {e}", file.display());
+                    std::process::exit(1);
+                }
+            };
+            let abs_str = abs.to_string_lossy().to_string();
+            ipc_out.dispatch(
+                "run_script".to_string(),
+                abs_str,
+                String::new(),
+                String::new(),
+                String::new(),
+                String::new(),
+            );
             eq.roundtrip(&mut state)?;
         }
         Command::Tags { mask, toggle } => {

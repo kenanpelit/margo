@@ -12,6 +12,7 @@ mod input;
 mod input_handler;
 mod libinput_config;
 mod layout;
+mod plugin;
 mod protocols;
 #[cfg(feature = "xdp-gnome-screencast")]
 mod screencasting;
@@ -767,6 +768,12 @@ fn main() -> Result<()> {
     // of the compositor so on_focus_change / on_tag_switch /
     // on_window_open handlers fire mid-event-loop (Phase 3).
     scripting::init_user_scripting(&mut margo);
+    // ── Plugins (~/.config/margo/plugins/<name>/) ─────────────────────────────
+    // W3.3: discover + load every plugin directory. Each plugin's
+    // init.rhai runs against the same engine init.rhai used, so
+    // hooks layer on top. Plugins with `enabled = false` in
+    // their manifest are skipped.
+    scripting::init_plugins(&mut margo);
 
     // ── Run the event loop ────────────────────────────────────────────────────
     event_loop.run(None, &mut margo, |state| {
