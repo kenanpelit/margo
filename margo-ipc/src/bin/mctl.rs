@@ -590,9 +590,16 @@ fn main() -> Result<()> {
                         state.manager = Some(mgr);
                     }
                     "wl_output" => {
+                        // Bind to v4+ so the connector `Name`
+                        // event fires (`wl_output.name` was added
+                        // in protocol version 4). Older v3 only
+                        // carries Geometry / Mode / Done / Scale
+                        // — no connector name, which is why
+                        // `mctl status`'s `output=` field used to
+                        // print empty.
                         let wl_out: wl_output::WlOutput = globals
                             .registry()
-                            .bind(global.name, global.version.min(3), &qh, global.name);
+                            .bind(global.name, global.version.min(4), &qh, global.name);
                         state.outputs.push(OutputInfo {
                             wl_output: Some(wl_out),
                             ..Default::default()
@@ -886,7 +893,33 @@ fn cmd_rules(
     let cfg = parse_config(Some(&cfg_path))
         .map_err(|e| anyhow::anyhow!("parse {}: {e}", cfg_path.display()))?;
 
+    // No filter args provided → behave like `niri msg windows` /
+    // `hyprctl rules`: just dump every defined windowrule. Test
+    // mode (with --appid/--title) only when the user explicitly
+    // asks.
+    let no_filter = appid.is_empty() && title.is_empty();
     println!("config: {}", cfg_path.display());
+    if no_filter {
+        println!(
+            "─── all windowrules ({}) ─────────────────────",
+            cfg.window_rules.len()
+        );
+        if cfg.window_rules.is_empty() {
+            println!("  (no `windowrule = ...` lines defined)");
+        } else {
+            for r in &cfg.window_rules {
+                print_rule(r);
+            }
+        }
+        if verbose {
+            println!(
+                "\nTip: pass `--appid X` and/or `--title Y` to see which \
+                 rules WOULD apply to a hypothetical window."
+            );
+        }
+        return Ok(());
+    }
+
     println!("query:  appid='{}' title='{}'\n", appid, title);
 
     // Re-implement the matcher locally — `WindowRule` matching lives
