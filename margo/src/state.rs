@@ -6519,12 +6519,29 @@ impl crate::protocols::output_management::OutputManagementHandler for MargoState
                 local_change = true;
             }
             if let Some((x, y)) = p.position() {
+                // Three sources of truth need to agree on the
+                // new position, all updated together:
+                //   1. smithay's Output (broadcasts wl_output
+                //      .geometry events to clients).
+                //   2. smithay's Space (where the output is
+                //      placed in the global compositor coord
+                //      space; the live render iterates outputs
+                //      via the Space, so without re-mapping
+                //      the rendered position doesn't change).
+                //   3. margo's own `monitor_area.x/y` (used by
+                //      `arrange_*` to place clients on the
+                //      monitor — without this update, clients
+                //      get re-laid out at the OLD position
+                //      even after the output moves).
                 output.change_current_state(
                     None,
                     None,
                     None,
                     Some(smithay::utils::Point::from((x, y))),
                 );
+                self.space.map_output(&output, smithay::utils::Point::from((x, y)));
+                self.monitors[mon_idx].monitor_area.x = x;
+                self.monitors[mon_idx].monitor_area.y = y;
                 local_change = true;
             }
             if let Some((w, h, refresh_mhz)) = p.mode() {
