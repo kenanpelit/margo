@@ -53,6 +53,16 @@ pub fn handle_input<B: InputBackend>(state: &mut MargoState, event: InputEvent<B
     // user can still scroll a video / mute audio while the
     // selector is up.
     if state.region_selector.is_some() {
+        // Force the cursor visible while in screenshot mode. If a
+        // client had marked the cursor surface as `Hidden` (some
+        // games / video players do, even briefly while focused),
+        // the user can't see WHERE they're aiming the rect.
+        // Reset to the default named cursor before any selector
+        // input runs.
+        use smithay::input::pointer::CursorImageStatus;
+        if matches!(state.cursor_status, CursorImageStatus::Hidden) {
+            state.cursor_status = CursorImageStatus::default_named();
+        }
         match event {
             InputEvent::Keyboard { event } => {
                 handle_region_selector_keyboard(state, event);
@@ -63,6 +73,11 @@ pub fn handle_input<B: InputBackend>(state: &mut MargoState, event: InputEvent<B
                 let dy = event.delta_y();
                 state.input_pointer.x += dx;
                 state.input_pointer.y += dy;
+                // Clamp to the focused output's logical area so
+                // the cursor (and the selection rect's free
+                // corner) can't escape into nowhere when the
+                // user drags too far.
+                state.clamp_pointer_to_outputs();
                 let cursor = (state.input_pointer.x, state.input_pointer.y);
                 if let Some(sel) = state.region_selector.as_mut() {
                     sel.update_drag(cursor);

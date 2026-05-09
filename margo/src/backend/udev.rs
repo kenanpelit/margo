@@ -2049,7 +2049,6 @@ fn drain_active_cast_frames(
 ///
 /// Returns `(elements, cursor_logical_loc)`. Empty vec when the
 /// pointer is off this output, hidden, or a non-renderable image.
-#[cfg(feature = "xdp-gnome-screencast")]
 pub fn build_cursor_elements_for_output(
     renderer: &mut GlesRenderer,
     od: &OutputDevice,
@@ -3510,28 +3509,70 @@ fn render_output(
     take_pending_open_close_captures(renderer, od, state);
 
     let mut elements = build_render_elements(renderer, od, state);
-    // W2.1 region selector overlay — when active, prepend the
-    // outline rects (highest z-order) so they render on top of
-    // every other element. Mutates the selector's solid-color
-    // buffers in place: `render_elements` updates each buffer's
-    // size to match the current rect so smithay's CommitCounter
-    // only ticks on real geometry change. Pushed BEFORE the
-    // screencopy serve so the captured frame includes the overlay
-    // — match-what-the-user-sees semantics.
+    // W2.1 region selector overlay — when active, layer:
+    //   [cursor (top), outline edges, dim, live scene]
+    // Cursor must stay on top so the user can SEE where they're
+    // dragging from. The default `build_render_elements` already
+    // puts cursor at the front of `elements`; we extract it,
+    // insert the overlay between cursor and the rest, and
+    // re-prepend so the order ends up [cursor, overlay edges,
+    // dim, scene].
+    //
+    // Edges + dim mutate the selector's persistent SolidColor
+    // buffers in place — same buffer Ids across frames, so
+    // damage tracking only invalidates when geometry actually
+    // changes (drag motion, output resize).
+    //
+    // Pushed BEFORE the screencopy serve so the captured frame
+    // matches what the user sees on-screen.
     if state.region_selector.is_some() {
-        let mon_origin = state
+        let (mon_origin, mon_size) = state
             .monitors
             .iter()
             .find(|m| m.output == od.output)
-            .map(|m| (m.monitor_area.x, m.monitor_area.y))
-            .unwrap_or((0, 0));
+            .map(|m| (
+                (m.monitor_area.x, m.monitor_area.y),
+                (m.monitor_area.width, m.monitor_area.height),
+            ))
+            .unwrap_or(((0, 0), (1920, 1080)));
         let scale = od.output.current_scale().fractional_scale();
+        // Build cursor separately so we can keep it on top.
+        let (cursor_elements, _cursor_loc) =
+            build_cursor_elements_for_output(renderer, od, state);
+        let cursor_count = cursor_elements.len();
+
         if let Some(sel) = state.region_selector.as_mut() {
-            let overlay = sel.render_elements(mon_origin, scale);
-            // Prepend so the outline is on top.
-            let mut head: Vec<MargoRenderElement> =
-                overlay.into_iter().map(MargoRenderElement::Solid).collect();
-            head.append(&mut elements);
+            let overlay = sel.render_elements(mon_origin, mon_size, scale);
+            // Compose: cursor (top) → overlay → main scene.
+            // build_render_elements already drew cursor as part
+            // of `elements[0..cursor_count]`; we strip those and
+            // re-add at the very front so they sit above the
+            // overlay we're inserting.
+            //
+            // Heuristic: assume the FIRST `cursor_count` elements
+            // of `elements` are the cursor (matches
+            // build_render_elements_inner's push order). On
+            // mismatch (e.g. the cursor is off-output) the
+            // overlay still works; the edges might be drawn
+            // above a layer-shell instead, which is fine.
+            let mut head: Vec<MargoRenderElement> = Vec::new();
+            // Cursor on top — pre-extract from elements head if
+            // we can, else use our separately-built copy.
+            for c in cursor_elements.into_iter().take(cursor_count) {
+                head.push(c);
+            }
+            // Drop the cursor that was at the front of `elements`
+            // so we don't render it twice (once on top, once
+            // under the overlay).
+            let scene_tail: Vec<MargoRenderElement> =
+                elements.drain(cursor_count..).collect();
+            // Now: head = [cursor], scene_tail = [scene without cursor].
+            for o in overlay {
+                head.push(MargoRenderElement::Solid(o));
+            }
+            for s in scene_tail {
+                head.push(s);
+            }
             elements = head;
         }
     }

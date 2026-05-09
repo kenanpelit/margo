@@ -93,6 +93,14 @@ pub const OUTLINE_PX: i32 = 2;
 /// out against any wallpaper. Could be a config knob later.
 pub const OUTLINE_COLOR: [f32; 4] = [0.80, 0.42, 0.97, 1.0];
 
+/// Translucent black tint laid over the entire output while the
+/// selector is active. Tells the user "you're in screenshot
+/// mode" at a glance + draws attention to the bright outline
+/// rect cut out on top. ~22% alpha — dim enough to be obvious,
+/// light enough to keep the captured content readable while
+/// they aim.
+pub const DIM_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 0.22];
+
 /// Live selection state. Stored as `Option<Self>` on MargoState so
 /// `is_some()` becomes the universal "is the selector active?"
 /// test.
@@ -122,6 +130,12 @@ pub struct ActiveRegionSelector {
     outline_bottom: SolidColorBuffer,
     outline_left: SolidColorBuffer,
     outline_right: SolidColorBuffer,
+    /// Full-output translucent black tint. Sits above the live
+    /// scene but below the outline edges. Resized per-output
+    /// each frame; one shared buffer suffices across outputs
+    /// because solid-color buffers don't store size in GPU
+    /// memory — the size lives on the buffer struct only.
+    dim_overlay: SolidColorBuffer,
 }
 
 impl std::fmt::Debug for ActiveRegionSelector {
@@ -141,16 +155,17 @@ impl ActiveRegionSelector {
     /// button-down sets `anchor` to the click point and starts
     /// `dragging`.
     pub fn at(cursor_logical: (f64, f64), mode: SelectorMode) -> Self {
-        let make_buf = || SolidColorBuffer::new((1, 1), OUTLINE_COLOR);
+        let make_outline = || SolidColorBuffer::new((1, 1), OUTLINE_COLOR);
         Self {
             anchor: cursor_logical,
             current: cursor_logical,
             dragging: false,
             mode,
-            outline_top: make_buf(),
-            outline_bottom: make_buf(),
-            outline_left: make_buf(),
-            outline_right: make_buf(),
+            outline_top: make_outline(),
+            outline_bottom: make_outline(),
+            outline_left: make_outline(),
+            outline_right: make_outline(),
+            dim_overlay: SolidColorBuffer::new((1, 1), DIM_COLOR),
         }
     }
 
@@ -202,80 +217,107 @@ impl ActiveRegionSelector {
         Some(format!("{},{} {}x{}", r.x, r.y, r.width, r.height))
     }
 
-    /// Build the overlay render elements for one output. Returns
-    /// up to four [`SolidColorRenderElement`] instances representing
-    /// the top / bottom / left / right edges of the selection rect.
-    /// Empty when the selector hasn't been dragged yet (degenerate
-    /// rect) OR when the rect doesn't intersect this output (the
-    /// user can drag across multiple monitors; each monitor draws
-    /// only the segments that fall in its bounds).
+    /// Build the overlay render elements for one output:
+    ///   * Always: a translucent black tint covering the full
+    ///     output ("you're in screenshot mode" cue).
+    ///   * If the user has dragged a non-degenerate rect: four
+    ///     bright-magenta outline edges around the rect.
+    ///
+    /// **z-order convention**: vec index 0 = highest z. The
+    /// caller (udev::render_output) inserts these BELOW the
+    /// cursor element so the cursor stays visible on top of
+    /// everything, but ABOVE the live scene so the dim + edges
+    /// are visible. Within the vec, edges come first (above the
+    /// dim) so the bright outline isn't washed out by its own
+    /// tint.
     ///
     /// `output_origin_logical` is the output's top-left in global
     /// logical coords (matches `Monitor::monitor_area.x/y`).
+    /// `output_size_logical` is `(width, height)` in logical
+    /// pixels — drives the dim's full-output cover.
     /// `output_scale` is the fractional scale.
     pub fn render_elements(
         &mut self,
         output_origin_logical: (i32, i32),
+        output_size_logical: (i32, i32),
         output_scale: f64,
     ) -> Vec<SolidColorRenderElement> {
-        let Some(rect) = self.selection_rect() else {
-            return Vec::new();
-        };
-        // Translate to output-local logical coords.
-        let (ox, oy) = output_origin_logical;
-        let lx = rect.x - ox;
-        let ly = rect.y - oy;
-        let lw = rect.width;
-        let lh = rect.height;
-        let t = OUTLINE_PX;
-
-        // Update each buffer's logical size — the
-        // SolidColorRenderElement converts to physical via the
-        // scale we pass.
-        let safe = |v: i32| -> i32 { v.max(1) };
-        self.outline_top.update((safe(lw), safe(t)), OUTLINE_COLOR);
-        self.outline_bottom.update((safe(lw), safe(t)), OUTLINE_COLOR);
-        self.outline_left
-            .update((safe(t), safe(lh - 2 * t).max(1)), OUTLINE_COLOR);
-        self.outline_right
-            .update((safe(t), safe(lh - 2 * t).max(1)), OUTLINE_COLOR);
-
         let scale: Scale<f64> = Scale::from(output_scale);
         let to_phys = |x: i32, y: i32| -> Point<i32, Physical> {
             let px = (x as f64 * output_scale).round() as i32;
             let py = (y as f64 * output_scale).round() as i32;
             Point::from((px, py))
         };
-        vec![
-            SolidColorRenderElement::from_buffer(
+
+        // Always-on full-output dim. Resize buffer to match the
+        // current output (cheap — solid-color buffers store size
+        // on the struct, not in GPU memory; `update` only bumps
+        // the CommitCounter when something actually changed so
+        // damage tracking stays tight).
+        let (ow, oh) = output_size_logical;
+        self.dim_overlay
+            .update((ow.max(1), oh.max(1)), DIM_COLOR);
+        let dim_elem = SolidColorRenderElement::from_buffer(
+            &self.dim_overlay,
+            to_phys(0, 0),
+            scale,
+            1.0,
+            Kind::Unspecified,
+        );
+
+        let mut out = Vec::new();
+
+        // Outline edges (only when there's a non-degenerate rect).
+        if let Some(rect) = self.selection_rect() {
+            let (ox, oy) = output_origin_logical;
+            let lx = rect.x - ox;
+            let ly = rect.y - oy;
+            let lw = rect.width;
+            let lh = rect.height;
+            let t = OUTLINE_PX;
+            let safe = |v: i32| -> i32 { v.max(1) };
+            self.outline_top.update((safe(lw), safe(t)), OUTLINE_COLOR);
+            self.outline_bottom.update((safe(lw), safe(t)), OUTLINE_COLOR);
+            self.outline_left
+                .update((safe(t), safe(lh - 2 * t).max(1)), OUTLINE_COLOR);
+            self.outline_right
+                .update((safe(t), safe(lh - 2 * t).max(1)), OUTLINE_COLOR);
+
+            // Edges first → above dim within this vec.
+            out.push(SolidColorRenderElement::from_buffer(
                 &self.outline_top,
                 to_phys(lx, ly),
                 scale,
                 1.0,
                 Kind::Unspecified,
-            ),
-            SolidColorRenderElement::from_buffer(
+            ));
+            out.push(SolidColorRenderElement::from_buffer(
                 &self.outline_bottom,
                 to_phys(lx, ly + lh - t),
                 scale,
                 1.0,
                 Kind::Unspecified,
-            ),
-            SolidColorRenderElement::from_buffer(
+            ));
+            out.push(SolidColorRenderElement::from_buffer(
                 &self.outline_left,
                 to_phys(lx, ly + t),
                 scale,
                 1.0,
                 Kind::Unspecified,
-            ),
-            SolidColorRenderElement::from_buffer(
+            ));
+            out.push(SolidColorRenderElement::from_buffer(
                 &self.outline_right,
                 to_phys(lx + lw - t, ly + t),
                 scale,
                 1.0,
                 Kind::Unspecified,
-            ),
-        ]
-    }
+            ));
+        }
 
+        // Dim last → below edges within this vec; both still
+        // above the live scene because the caller pushes the
+        // whole vec in front of `elements`.
+        out.push(dim_elem);
+        out
+    }
 }
