@@ -701,12 +701,22 @@ pub fn run(
                     let BackendData { renderer, outputs, .. } = &mut *bd;
                     drain_image_copy_frames(renderer, outputs, state);
                 }
-                // PipeWire screencast: drain per-cast redraw requests.
-                // PipeWire callbacks push CastStreamId into
-                // `state.pending_cast_redraws` (via `on_pw_msg`); each
-                // entry resolves to one `Cast` whose subset of the
-                // scene we render into its queued PipeWire dmabuf.
-                if !state.pending_cast_redraws.is_empty() {
+                // PipeWire screencast: render every active cast on
+                // every repaint. niri's output render path tags casts
+                // with `check_time_and_schedule` for inter-frame
+                // pacing; until that lands here, we lean on
+                // PipeWire's own `dequeue_available_buffer` to drop
+                // frames when the consumer hasn't returned a buffer
+                // yet — buffer-bounded backpressure.
+                //
+                // We only need ONE active cast (or one pending
+                // PipeWire redraw msg) to bother running the drain.
+                let needs_drain = !state.pending_cast_redraws.is_empty()
+                    || state
+                        .screencasting
+                        .as_ref()
+                        .is_some_and(|s| !s.casts.is_empty());
+                if needs_drain {
                     let mut bd = backend_data.borrow_mut();
                     let BackendData { renderer, outputs, .. } = &mut *bd;
                     drain_pending_cast_frames(renderer, outputs, state);
@@ -1743,16 +1753,14 @@ fn drain_pending_cast_frames(
     outputs: &mut HashMap<crtc::Handle, OutputDevice>,
     state: &mut MargoState,
 ) {
-    use crate::dbus::cast_ids::CastStreamId;
     use crate::screencasting::pw_utils::{CastSizeChange, CursorData};
     use crate::screencasting::CastTarget;
     use smithay::utils::Size;
 
-    let drained: Vec<CastStreamId> =
-        std::mem::take(&mut state.pending_cast_redraws);
-    if drained.is_empty() {
-        return;
-    }
+    // Drain the PipeWire-driven request list — we don't actually
+    // route off it (we render every active cast on every repaint),
+    // but draining keeps it from growing unbounded.
+    state.pending_cast_redraws.clear();
 
     // Take the casts out so we can mutate each cast while still
     // reading from `state.clients` / `state.monitors`. niri uses
@@ -1766,11 +1774,12 @@ fn drain_pending_cast_frames(
     let mut to_stop = Vec::new();
     let now = crate::utils::get_monotonic_time();
 
-    for stream_id in drained {
-        let Some(cast) = casts.iter_mut().find(|c| c.stream_id == stream_id)
-        else {
-            continue;
-        };
+    // niri's output render path iterates every active cast each
+    // frame. We do the same — PipeWire's `dequeue_available_buffer`
+    // returns None when the consumer hasn't returned a buffer yet,
+    // so frame production self-throttles to whatever the WebRTC
+    // consumer can chew through.
+    for cast in casts.iter_mut() {
         if !cast.is_active() {
             continue;
         }
@@ -1909,11 +1918,21 @@ fn drain_pending_cast_frames(
         }
     }
 
+    let any_active = casts.iter().any(|c| c.is_active());
     if let Some(s) = state.screencasting.as_mut() {
         s.casts = casts;
     }
     for id in to_stop {
         state.stop_cast(id);
+    }
+    // Keep the repaint chain ticking while a cast is active.
+    // Without this, after the first frame the repaint scheduler
+    // goes idle (no input/animation = no dirty), and the cast
+    // freezes. We re-arm via request_repaint(); the VBlank handler
+    // will re-fire the ping when the queued frame lands, giving us
+    // ~refresh-rate cast frames.
+    if any_active {
+        state.request_repaint();
     }
 }
 
