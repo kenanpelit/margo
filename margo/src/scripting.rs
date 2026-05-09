@@ -497,9 +497,10 @@ pub fn init_plugins(state: &mut MargoState) {
         }
         plugin.loaded = true;
         info!(
-            "plugin loaded: {} v{} — {}",
+            "plugin loaded: {} v{} from {} — {}",
             plugin.manifest.name,
             plugin.manifest.version,
+            plugin.dir.display(),
             plugin.manifest.description
         );
     }
