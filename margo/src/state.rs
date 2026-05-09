@@ -1306,6 +1306,13 @@ pub struct MargoState {
     /// still alive at destruction time but we hadn't rendered yet)
     /// live as `None` in `texture` until the next render fills them in.
     pub closing_clients: Vec<ClosingClient>,
+    /// AccessKit accessibility-tree adapter (W2.4). `start()` is
+    /// called once at compositor init; subsequent
+    /// `publish_window_list` calls flush a fresh tree on every
+    /// arrange + focus change. Off by default — only built when
+    /// the `a11y` feature is on.
+    #[cfg(feature = "a11y")]
+    pub a11y: crate::a11y::A11yState,
     /// Active region-selection UI for the in-compositor screenshot
     /// flow (W2.1). `Some(...)` while the user is dragging /
     /// pondering a rect; cleared on Escape, on confirm (after
@@ -1509,6 +1516,8 @@ impl MargoState {
             screencopy_state,
             libinput_devices: Vec::new(),
             closing_clients: Vec::new(),
+            #[cfg(feature = "a11y")]
+            a11y: crate::a11y::A11yState::new(),
             region_selector: None,
             layer_animations: std::collections::HashMap::new(),
             config,
@@ -1717,7 +1726,32 @@ impl MargoState {
         }
         self.request_repaint();
         self.write_state_file();
+        self.publish_a11y_window_list();
     }
+
+    /// Snapshot the client list and ship it to the AccessKit
+    /// adapter so screen readers see the current toplevels +
+    /// focus state. No-op without the `a11y` feature.
+    #[cfg(feature = "a11y")]
+    pub fn publish_a11y_window_list(&mut self) {
+        let focused_idx = self.focused_client_idx();
+        let snapshot: Vec<crate::a11y::WindowSnapshot> = self
+            .clients
+            .iter()
+            .enumerate()
+            .map(|(i, c)| crate::a11y::WindowSnapshot {
+                app_id: c.app_id.clone(),
+                title: c.title.clone(),
+                is_focused: Some(i) == focused_idx,
+            })
+            .collect();
+        self.a11y.publish_window_list(snapshot.iter());
+    }
+
+    /// Stub on builds without the `a11y` feature so call sites
+    /// don't have to learn the feature flag.
+    #[cfg(not(feature = "a11y"))]
+    pub fn publish_a11y_window_list(&mut self) {}
 
     /// Serialise the current state — outputs, clients, layouts —
     /// to `$XDG_RUNTIME_DIR/margo/state.json` (atomic rename).

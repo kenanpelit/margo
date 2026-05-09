@@ -74,6 +74,15 @@ async-channel = { version = "2", optional = true }
 # binary to a live Tracy server for sub-frame profiling.
 tracy-client = { version = "0.18", default-features = false }
 
+# AccessKit accessibility tree (W2.4). Emits margo's window list +
+# focus state on the freedesktop a11y D-Bus surface so Orca and
+# other screen readers can navigate the compositor. The Linux
+# backend (`accesskit_unix`) pulls zbus internally — gated behind
+# the `a11y` feature so distro builds without screen-reader
+# support drop the dep.
+accesskit = { version = "0.22", optional = true }
+accesskit_unix = { version = "0.18", optional = true }
+
 [features]
 default = ["xdp-gnome-screencast"]
 # Enables the D-Bus surface (gnome screencast shim + screenshot
@@ -92,6 +101,11 @@ xdp-gnome-screencast = ["dbus", "dep:pipewire"]
 # `--features profile-with-tracy` and connect Tracy GUI to see
 # per-frame timeline + GPU profiling.
 profile-with-tracy = ["tracy-client/default"]
+# AccessKit tree emission for screen readers (Orca etc.). Off by
+# default to keep the dep tree lean; flipping it on adds the
+# accesskit + accesskit_unix crates and an a11y adapter thread
+# that mirrors margo's window list onto the freedesktop a11y bus.
+a11y = ["dep:accesskit", "dep:accesskit_unix"]
 
 [dependencies.smithay]
 workspace = true

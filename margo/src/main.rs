@@ -1,3 +1,5 @@
+#[cfg(feature = "a11y")]
+mod a11y;
 mod animation;
 mod backend;
 mod border;
@@ -748,6 +750,15 @@ fn main() -> Result<()> {
     if let Some(cmd) = args.startup_command {
         utils::spawn_shell(&cmd)?;
     }
+
+    // ── AccessKit a11y adapter ────────────────────────────────────────────────
+    // Spin up the screen-reader bridge thread before any clients
+    // map. Initial tree publishes after the first `arrange_all`;
+    // Orca + AT-SPI consumers see "margo" with an empty window
+    // list until then. Best-effort — `a11y.start()` logs +
+    // continues on failure.
+    #[cfg(feature = "a11y")]
+    margo.a11y.start();
 
     // ── User scripting (~/.config/margo/init.rhai) ───────────────────────────
     // Compiles + evaluates the user script once, after exec_once
