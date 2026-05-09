@@ -1139,6 +1139,16 @@ fn parse_bool_s(s: &str) -> bool {
     parse_bool(s)
 }
 
+fn parse_i32_s(s: &str) -> i32 {
+    parse_i32(s)
+}
+fn parse_f32_s(s: &str) -> f32 {
+    parse_f32(s)
+}
+fn parse_u32_s(s: &str) -> u32 {
+    parse_u32(s)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{parse_config, strip_inline_comment};
@@ -1275,13 +1285,4 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(dir);
     }
-}
-fn parse_i32_s(s: &str) -> i32 {
-    parse_i32(s)
-}
-fn parse_f32_s(s: &str) -> f32 {
-    parse_f32(s)
-}
-fn parse_u32_s(s: &str) -> u32 {
-    parse_u32(s)
 }

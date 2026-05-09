@@ -110,6 +110,41 @@ enum Command {
         file: std::path::PathBuf,
     },
 
+    /// Translate a Hyprland or Sway/i3 config to margo (W4.4).
+    #[command(
+        display_order = 23,
+        long_about = "Translate a Hyprland or Sway/i3 config file to a margo \
+                      `config.conf`. Reads <FILE>, emits the translated config \
+                      to stdout (or `-o OUT`). Only keybinds + spawn lines are \
+                      auto-translated; window rules / animations / monitor \
+                      topology need manual re-authoring (`config.example.conf` \
+                      walks every section).\n\
+                      \n\
+                      Format is auto-detected from the file path or first 200 \
+                      lines (`bind = ...` → hyprland, `bindsym ...` → sway). \
+                      Override with `--from hyprland|sway`.\n\
+                      \n\
+                      Niri's KDL config is intentionally out-of-scope: niri's \
+                      workspaces+scrolling model doesn't map cleanly onto \
+                      margo's tag-based one — auto-translating it would \
+                      invent semantics niri users wouldn't expect.\n\
+                      \n\
+                      EXAMPLES:\n  \
+                        mctl migrate ~/.config/hypr/hyprland.conf > ~/.config/margo/config.conf\n  \
+                        mctl migrate --from sway ~/.config/sway/config -o /tmp/margo.conf\n  \
+                        mctl check-config /tmp/margo.conf  # validate the result"
+    )]
+    Migrate {
+        /// Source config file.
+        file: std::path::PathBuf,
+        /// Force a specific source format (otherwise auto-detected).
+        #[arg(long, value_name = "FORMAT")]
+        from: Option<String>,
+        /// Write output to a file instead of stdout.
+        #[arg(short, long, value_name = "PATH")]
+        output: Option<std::path::PathBuf>,
+    },
+
     /// Set the active tagset on an output (raw tag bitmask)
     #[command(
         display_order = 21,
@@ -689,6 +724,58 @@ fn main() -> Result<()> {
                 String::new(),
             );
             eq.roundtrip(&mut state)?;
+        }
+        Command::Migrate { file, from, output } => {
+            // W4.4 — pure-function translation, no compositor IPC
+            // involved. We literally just read the source, run it
+            // through `margo_ipc::migrate`, write the result.
+            let contents = match std::fs::read_to_string(&file) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("mctl migrate: read {}: {e}", file.display());
+                    std::process::exit(1);
+                }
+            };
+            let format = match from
+                .as_deref()
+                .and_then(margo_ipc::migrate::SourceFormat::parse_name)
+                .or_else(|| margo_ipc::migrate::SourceFormat::detect(&file, &contents))
+            {
+                Some(f) => f,
+                None => {
+                    eprintln!(
+                        "mctl migrate: cannot detect source format for {}\n  \
+                         override with `--from hyprland` or `--from sway`",
+                        file.display()
+                    );
+                    std::process::exit(2);
+                }
+            };
+            let result = margo_ipc::migrate::migrate(format, &contents);
+            // Warnings → stderr so the user sees them but stdout
+            // is clean if they pipe directly into config.conf.
+            for w in &result.warnings {
+                eprintln!("warning: {w}");
+            }
+            match output {
+                Some(path) => {
+                    if let Err(e) = std::fs::write(&path, &result.output) {
+                        eprintln!("mctl migrate: write {}: {e}", path.display());
+                        std::process::exit(1);
+                    }
+                    eprintln!(
+                        "mctl migrate: wrote {} ({} warning{})",
+                        path.display(),
+                        result.warnings.len(),
+                        if result.warnings.len() == 1 { "" } else { "s" }
+                    );
+                }
+                None => {
+                    print!("{}", result.output);
+                }
+            }
+            // Skip the IPC roundtrip — this command is offline.
+            return Ok(());
         }
         Command::Tags { mask, toggle } => {
             ipc_out.set_tags(mask, toggle);
