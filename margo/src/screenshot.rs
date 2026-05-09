@@ -305,36 +305,75 @@ fn capture_window(
         bail!("window physical size is zero");
     }
 
-    // Window's surface tree at (0, 0) — capture buffer IS the
-    // window. Includes popups and synced surface children via
-    // `AsRenderElements`. We don't pull in the full
-    // `MargoRenderElement` tree here because that would re-render
-    // the *whole output* and we'd then need to filter / clip;
-    // a direct surface-tree render is cheaper and still correct
-    // for the common case (no border/shadow in screenshots is
-    // standard — every other compositor's window-screenshot
-    // strips chrome too).
-    use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
-    let surface_elems: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
-        AsRenderElements::<GlesRenderer>::render_elements(
-            &client.window,
+    // Two render paths for window capture:
+    //
+    //   * include_pointer = false → render just the window's
+    //     surface tree at origin (0, 0). Cheap, no decoration,
+    //     matches what every other compositor's "screenshot
+    //     window" produces.
+    //
+    //   * include_pointer = true → render the FULL output's
+    //     element list (cursor + every other window) but
+    //     translated by `-window_offset_within_output`, so the
+    //     target window's top-left lands at (0, 0) of the
+    //     window-sized cast buffer. Extra clients on the same
+    //     monitor end up at negative coords and clip naturally.
+    //     This is the same RelocateRenderElement trick the Phase F
+    //     screencast Window cast uses.
+    use smithay::backend::renderer::element::utils::{
+        Relocate, RelocateRenderElement,
+    };
+    use smithay::backend::renderer::element::RenderElement;
+
+    if !include_pointer {
+        use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
+        let surface_elems: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
+            AsRenderElements::<GlesRenderer>::render_elements(
+                &client.window,
+                renderer,
+                Point::from((0, 0)),
+                scale,
+                1.0,
+            );
+        let elements: Vec<MargoRenderElement> = surface_elems
+            .into_iter()
+            .map(MargoRenderElement::WaylandSurface)
+            .collect();
+
+        return finish_capture(
             renderer,
-            Point::from((0, 0)),
+            elements.iter(),
+            size,
             scale,
-            1.0,
+            window_label(client),
+        );
+    }
+
+    // include_pointer = true path.
+    let (_, od) = outputs
+        .iter()
+        .find(|(_, od)| od.output == mon.output)
+        .context("client's monitor not bound to a backend device")?;
+    let output_elems: Vec<MargoRenderElement> =
+        crate::backend::udev::build_render_elements_inner(
+            renderer, od, state, true, true,
         );
 
-    // Optional pointer: include only if it's actually over this
-    // window. Translates from output-local physical coords to
-    // window-local by negating the window's monitor-local origin.
-    let elements: Vec<MargoRenderElement> = surface_elems
-        .into_iter()
-        .map(MargoRenderElement::WaylandSurface)
-        .collect();
+    let win_off_x =
+        -((geom.x - mon.monitor_area.x) as f64 * scale_f).round() as i32;
+    let win_off_y =
+        -((geom.y - mon.monitor_area.y) as f64 * scale_f).round() as i32;
+    let win_off = Point::<i32, Physical>::from((win_off_x, win_off_y));
 
-    // include_pointer for window screenshots needs a relocate
-    // chain through the cursor element list — Phase 2 wiring.
-    let _ = (outputs, include_pointer);
+    let translated: Vec<RelocateRenderElement<MargoRenderElement>> = output_elems
+        .into_iter()
+        .map(|e| RelocateRenderElement::from_element(e, win_off, Relocate::Relative))
+        .collect();
+    // Help the trait-resolver: render_and_download is generic over
+    // `impl RenderElement<GlesRenderer>`; the explicit bound makes
+    // sure RelocateRenderElement<MargoRenderElement> picks the
+    // right impl.
+    fn _assert_render_element<E: RenderElement<GlesRenderer>>(_: &E) {}
 
     let mapping = render_and_download(
         renderer,
@@ -342,7 +381,7 @@ fn capture_window(
         scale,
         Transform::Normal,
         Fourcc::Abgr8888,
-        elements.iter(),
+        translated.iter(),
     )
     .context("render window to pixel buffer")?;
 
@@ -350,34 +389,91 @@ fn capture_window(
         .map_texture(&mapping)
         .context("read back rendered pixels")?
         .to_vec();
+    Ok(CapturedImage {
+        size,
+        pixels,
+        label: window_label(client),
+    })
+}
 
-    let label = if !client.title.is_empty() {
+/// Common tail of every `capture_*` path: render → download →
+/// box up the result. Pulled out so the include_pointer-true
+/// and include_pointer-false branches of `capture_window` don't
+/// duplicate the read-back boilerplate.
+fn finish_capture<E>(
+    renderer: &mut GlesRenderer,
+    elements: impl Iterator<Item = E>,
+    size: Size<i32, Physical>,
+    scale: Scale<f64>,
+    label: String,
+) -> Result<CapturedImage>
+where
+    E: smithay::backend::renderer::element::RenderElement<GlesRenderer>,
+{
+    let mapping = render_and_download(
+        renderer,
+        size,
+        scale,
+        Transform::Normal,
+        Fourcc::Abgr8888,
+        elements,
+    )
+    .context("render to pixel buffer")?;
+    let pixels = renderer
+        .map_texture(&mapping)
+        .context("read back rendered pixels")?
+        .to_vec();
+    Ok(CapturedImage { size, pixels, label })
+}
+
+fn window_label(client: &crate::state::MargoClient) -> String {
+    if !client.title.is_empty() {
         format!("window {}", client.title)
     } else if !client.app_id.is_empty() {
         format!("window {}", client.app_id)
     } else {
         "window".to_string()
-    };
-    Ok(CapturedImage { size, pixels, label })
+    }
 }
 
-/// Encode + write + clipboard on a worker thread, then notify
-/// the main loop with the resolved path.
+/// Save result delivered from the worker thread back into the
+/// main loop. Carries either the file path (for IPC + the
+/// notification) or the encoded PNG bytes (for the native
+/// clipboard set, which has to run on the main thread because
+/// `set_data_device_selection` touches Wayland state).
+struct SaveDelivery {
+    path: Option<PathBuf>,
+    label: String,
+    clipboard_png: Option<Arc<[u8]>>,
+    error: Option<String>,
+}
+
+/// Encode + write on a worker thread; clipboard set + notify
+/// run back on the main loop via a calloop channel.
 fn spawn_save(state: &mut MargoState, image: CapturedImage, request: ScreenshotRequest) {
     let path = request
         .save_path
         .or_else(|| make_default_path().ok().flatten());
 
-    // Channel: worker → main loop, "save complete with this
-    // path". Used for IPC broadcast + notification on the main
-    // thread (so we don't shell out to notify-send from a worker).
-    let (tx, rx) = calloop::channel::sync_channel::<SaveResult>(1);
+    let (tx, rx) = calloop::channel::sync_channel::<SaveDelivery>(1);
     state
         .loop_handle
-        .insert_source(rx, |event, _, _state| {
-            if let calloop::channel::Event::Msg(result) = event {
-                send_notification_success(&result);
-                if let Some(p) = result.path.as_ref() {
+        .insert_source(rx, |event, _, state| {
+            if let calloop::channel::Event::Msg(delivery) = event {
+                // Set clipboard from the main thread. The
+                // selection's user_data carries the PNG bytes
+                // so `send_selection` can serve any number of
+                // future read fds without re-encoding.
+                if let Some(bytes) = delivery.clipboard_png.as_ref() {
+                    smithay::wayland::selection::data_device::set_data_device_selection(
+                        &state.display_handle,
+                        &state.seat,
+                        vec![String::from("image/png")],
+                        crate::state::SelectionUserData::Screenshot(bytes.clone()),
+                    );
+                }
+                send_notification(&delivery);
+                if let Some(p) = delivery.path.as_ref() {
                     info!("screenshot saved: {}", p.display());
                 }
             }
@@ -388,14 +484,15 @@ fn spawn_save(state: &mut MargoState, image: CapturedImage, request: ScreenshotR
     let label = image.label.clone();
 
     thread::spawn(move || {
-        // 1. Encode PNG.
+        // 1. Encode PNG (slow — ~50-100ms for 4K).
         let png_bytes = match encode_png(image.size, &image.pixels) {
             Ok(b) => b,
             Err(err) => {
                 warn!("PNG encode failed: {err:#}");
-                let _ = tx.send(SaveResult {
+                let _ = tx.send(SaveDelivery {
                     path: None,
                     label,
+                    clipboard_png: None,
                     error: Some(format!("{err:#}")),
                 });
                 return;
@@ -417,26 +514,17 @@ fn spawn_save(state: &mut MargoState, image: CapturedImage, request: ScreenshotR
             }
         }
 
-        // 3. Clipboard via wl-copy. Subprocess; spawn detached so
-        //    it stays alive after we exit (wl-copy daemonises
-        //    its own selection-source watcher anyway).
-        if copy_clipboard {
-            let _ = pipe_into_wl_copy(&png_arc[..]);
-        }
-
-        let _ = tx.send(SaveResult {
+        // 3. Hand the bytes back to the main loop for the
+        //    native clipboard set. No `wl-copy` subprocess.
+        let _ = tx.send(SaveDelivery {
             path: written,
             label,
+            clipboard_png: copy_clipboard.then_some(png_arc),
             error: None,
         });
     });
 }
 
-struct SaveResult {
-    path: Option<PathBuf>,
-    label: String,
-    error: Option<String>,
-}
 
 /// Encode an RGBA8 buffer as a PNG. Pure-Rust via the `png`
 /// crate; no `image` crate (which would pull every codec).
@@ -468,26 +556,6 @@ fn encode_png(size: Size<i32, Physical>, pixels: &[u8]) -> Result<Vec<u8>> {
     Ok(buf)
 }
 
-/// Pipe PNG bytes into `wl-copy`. Returns the child's exit
-/// status; warnings logged but not fatal — the user still has
-/// the file on disk if disk-write succeeded.
-fn pipe_into_wl_copy(png: &[u8]) -> Result<()> {
-    use std::io::Write;
-    let mut child = std::process::Command::new("wl-copy")
-        .arg("--type")
-        .arg("image/png")
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .context("spawn wl-copy")?;
-    {
-        let stdin = child.stdin.as_mut().context("wl-copy stdin")?;
-        stdin.write_all(png).context("write to wl-copy")?;
-    }
-    let _ = child.wait();
-    Ok(())
-}
 
 /// `$XDG_PICTURES_DIR/Screenshots/screenshot_YYYY-MM-DD_HH-MM-SS.png`,
 /// honouring `$SCREENSHOT_SAVE_DIR` for the directory if set.
@@ -534,11 +602,13 @@ fn current_timestamp() -> String {
     }
 }
 
-fn send_notification_success(result: &SaveResult) {
-    let body = match (&result.path, &result.error) {
-        (_, Some(err)) => format!("{} — error: {err}", result.label),
-        (Some(p), None) => format!("{}\n{}", result.label, p.display()),
-        (None, None) => format!("{} → clipboard", result.label),
+fn send_notification(result: &SaveDelivery) {
+    let body = match (&result.path, &result.error, &result.clipboard_png) {
+        (_, Some(err), _) => format!("{} — error: {err}", result.label),
+        (Some(p), None, Some(_)) => format!("{}\n{} (+ clipboard)", result.label, p.display()),
+        (Some(p), None, None) => format!("{}\n{}", result.label, p.display()),
+        (None, None, Some(_)) => format!("{} → clipboard", result.label),
+        (None, None, None) => format!("{} (no save target)", result.label),
     };
     let icon = if result.error.is_some() {
         "dialog-error"

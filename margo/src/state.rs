@@ -5668,8 +5668,28 @@ delegate_layer_shell!(MargoState);
 
 // ── Smithay delegate: Data Device ─────────────────────────────────────────────
 
+/// User-data attached to a `set_data_device_selection` /
+/// `set_primary_selection` call. The default `External` variant
+/// signals "this selection comes from an outside Wayland client,
+/// just mirror the offer to XWayland". The `Screenshot` variant
+/// is set when margo itself is offering a PNG (from the
+/// screenshot pipeline) — the bytes ride along so
+/// `send_selection` can serve the read fd directly without a
+/// `wl-copy` subprocess.
+#[derive(Debug, Clone)]
+pub enum SelectionUserData {
+    External,
+    Screenshot(std::sync::Arc<[u8]>),
+}
+
+impl Default for SelectionUserData {
+    fn default() -> Self {
+        SelectionUserData::External
+    }
+}
+
 impl SelectionHandler for MargoState {
-    type SelectionUserData = ();
+    type SelectionUserData = SelectionUserData;
 
     fn new_selection(
         &mut self,
@@ -5690,11 +5710,43 @@ impl SelectionHandler for MargoState {
         mime_type: String,
         fd: OwnedFd,
         _seat: Seat<Self>,
-        _user_data: &(),
+        user_data: &SelectionUserData,
     ) {
-        if let Some(xwm) = self.xwm.as_mut() {
-            if let Err(err) = xwm.send_selection(ty, mime_type, fd) {
-                tracing::warn!(?err, ?ty, "failed to send Wayland selection to XWayland");
+        match user_data {
+            SelectionUserData::External => {
+                if let Some(xwm) = self.xwm.as_mut() {
+                    if let Err(err) = xwm.send_selection(ty, mime_type, fd) {
+                        tracing::warn!(
+                            ?err,
+                            ?ty,
+                            "failed to send Wayland selection to XWayland"
+                        );
+                    }
+                }
+            }
+            SelectionUserData::Screenshot(bytes) => {
+                // Margo-offered selection (PNG screenshot). Spawn a
+                // worker thread to write the bytes to the read end of
+                // the pipe — the consumer (whatever Wayland client
+                // pasted) is on the other side. Done off-main-thread
+                // because a slow consumer would otherwise block the
+                // whole compositor on `write(fd)`.
+                if mime_type == "image/png" {
+                    let bytes = bytes.clone();
+                    std::thread::spawn(move || {
+                        use std::io::Write;
+                        let mut file = std::fs::File::from(fd);
+                        if let Err(err) = file.write_all(&bytes[..]) {
+                            tracing::debug!(
+                                "screenshot clipboard consumer write failed: {err}"
+                            );
+                        }
+                    });
+                } else {
+                    tracing::debug!(
+                        "screenshot selection asked for unsupported mime `{mime_type}`"
+                    );
+                }
             }
         }
     }
@@ -5990,12 +6042,18 @@ impl XwmHandler for MargoState {
         mime_types: Vec<String>,
     ) {
         match selection {
-            SelectionTarget::Clipboard => {
-                set_data_device_selection(&self.display_handle, &self.seat, mime_types, ())
-            }
-            SelectionTarget::Primary => {
-                set_primary_selection(&self.display_handle, &self.seat, mime_types, ())
-            }
+            SelectionTarget::Clipboard => set_data_device_selection(
+                &self.display_handle,
+                &self.seat,
+                mime_types,
+                SelectionUserData::External,
+            ),
+            SelectionTarget::Primary => set_primary_selection(
+                &self.display_handle,
+                &self.seat,
+                mime_types,
+                SelectionUserData::External,
+            ),
         }
     }
 
