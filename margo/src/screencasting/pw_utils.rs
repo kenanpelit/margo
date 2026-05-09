@@ -843,6 +843,10 @@ impl PipeWire {
 }
 
 impl Cast {
+    pub fn cursor_mode(&self) -> CursorMode {
+        self.cursor_mode
+    }
+
     pub fn is_active(&self) -> bool {
         self.inner.borrow().is_active
     }
@@ -1092,8 +1096,8 @@ impl Cast {
     pub fn dequeue_buffer_and_render(
         &mut self,
         renderer: &mut GlesRenderer,
-        mut elements: &[CastRenderElement<GlesRenderer>],
-        cursor_data: &CursorData<CastRenderElement<GlesRenderer>>,
+        mut elements: &[CastRenderElement],
+        cursor_data: &CursorData<CastRenderElement>,
         size: Size<i32, Physical>,
         scale: Scale<f64>,
     ) -> bool {

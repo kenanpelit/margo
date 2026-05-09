@@ -43,7 +43,6 @@
 pub mod pw_utils;
 pub mod render_helpers;
 
-use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::output::WeakOutput;
 
 /// What a screencast stream is targeting. Direct port of niri's
@@ -117,15 +116,38 @@ impl Screencasting {
     }
 }
 
-/// The render-element type cast streams render. Generic on the
-/// renderer to match niri's pattern (where pw_utils.rs deals with
-/// the element type as `CastRenderElement<R>`); concrete instances
-/// in margo always plug in `GlesRenderer` since the udev backend
-/// is the only renderer the cast path runs against.
+/// The render-element type cast streams render.
 ///
-/// Margo's renderer produces `WaylandSurfaceRenderElement<R>` for
-/// surface trees; that's the universal element variant the cast
-/// path needs. `MargoRenderElement`'s richer set (border, shadow,
-/// open/close) lives only in the display path — capture frames
-/// don't include those decorations.
-pub type CastRenderElement<R> = WaylandSurfaceRenderElement<R>;
+/// Two variants:
+///
+///   * `Direct` — a `MargoRenderElement` straight from the live
+///     output render path. Used for `CastTarget::Output` where the
+///     cast buffer is the same size + scale as the output, and
+///     element coords map 1:1 onto the cast buffer.
+///   * `Relocated` — a `MargoRenderElement` shifted by some offset
+///     so it lands at a different origin in the cast buffer. Used
+///     for `CastTarget::Window` where the cast buffer is the size
+///     of *one window* and we need to re-center the entire output
+///     element list so the target window's top-left lands at (0,0)
+///     of the cast buffer.
+///
+/// Margo's full `MargoRenderElement` set (border, shadow, clipped
+/// surface, open / close / resize animation, solid block-out) flows
+/// through both variants — the cast view matches the live display
+/// pixel-for-pixel modulo the relocate offset for window casts.
+mod cast_render_element {
+    use smithay::backend::renderer::{
+        element::{render_elements, utils::RelocateRenderElement},
+        gles::GlesRenderer,
+    };
+
+    use crate::backend::udev::MargoRenderElement;
+
+    render_elements! {
+        pub CastRenderElement<=GlesRenderer>;
+        Direct=MargoRenderElement,
+        Relocated=RelocateRenderElement<MargoRenderElement>,
+    }
+}
+
+pub use cast_render_element::CastRenderElement;
