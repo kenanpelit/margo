@@ -292,7 +292,27 @@ fn main() -> Result<()> {
     } else {
         info!("using udev backend");
         if let Err(e) = backend::udev::run(&mut margo, &mut event_loop) {
-            error!("udev backend failed: {e}, falling back to winit");
+            // udev / DRM bring-up failed. Most common causes (in
+            // descending order of frequency): no GPU at all (qemu
+            // without virgl, container without /dev/dri), mesa
+            // drivers missing, /dev/dri/card* permission denied,
+            // running on the wrong VT.
+            //
+            // We try winit nested mode as a fallback — that needs
+            // a parent wayland/x11 session, which is already the
+            // case during dev iteration. On a fresh TTY login
+            // with no GPU, winit will also fail here (it ALSO
+            // needs EGL today; full software rendering via
+            // pixman is W2.2b, not yet shipped).
+            error!("udev backend failed: {e}");
+            error!("");
+            error!("Common fixes:");
+            error!("  • Install Mesa drivers: `sudo pacman -S mesa libglvnd`");
+            error!("  • Check /dev/dri/card* permission (user must be in the `video` seat group)");
+            error!("  • In qemu, enable virtio-gpu with --enable-virgl");
+            error!("");
+            error!("Falling back to winit (nested mode — needs WAYLAND_DISPLAY or DISPLAY).");
+            error!("Software rendering (pixman) fallback is W2.2b in road_map.md, not yet shipped.");
             if let Some(wd) = &parent_wayland_display {
                 unsafe { std::env::set_var("WAYLAND_DISPLAY", wd) };
             }
