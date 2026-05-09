@@ -708,14 +708,17 @@ pub fn run(
                 // PipeWire's own `dequeue_available_buffer` to drop
                 // frames when the consumer hasn't returned a buffer
                 // yet — buffer-bounded backpressure.
-                let has_casts = state
-                    .screencasting
-                    .as_ref()
-                    .is_some_and(|s| !s.casts.is_empty());
-                if has_casts {
-                    let mut bd = backend_data.borrow_mut();
-                    let BackendData { renderer, outputs, .. } = &mut *bd;
-                    drain_active_cast_frames(renderer, outputs, state);
+                #[cfg(feature = "xdp-gnome-screencast")]
+                {
+                    let has_casts = state
+                        .screencasting
+                        .as_ref()
+                        .is_some_and(|s| !s.casts.is_empty());
+                    if has_casts {
+                        let mut bd = backend_data.borrow_mut();
+                        let BackendData { renderer, outputs, .. } = &mut *bd;
+                        drain_active_cast_frames(renderer, outputs, state);
+                    }
                 }
             }
         })
@@ -1762,6 +1765,7 @@ fn drain_image_copy_frames(
 ///      part of the element list. For window casts the cursor is
 ///      relocated along with the rest of the output via
 ///      `CastRenderElement::Relocated`.
+#[cfg(feature = "xdp-gnome-screencast")]
 fn drain_active_cast_frames(
     renderer: &mut GlesRenderer,
     outputs: &mut HashMap<crtc::Handle, OutputDevice>,
@@ -2043,6 +2047,7 @@ fn drain_active_cast_frames(
 ///
 /// Returns `(elements, cursor_logical_loc)`. Empty vec when the
 /// pointer is off this output, hidden, or a non-renderable image.
+#[cfg(feature = "xdp-gnome-screencast")]
 pub fn build_cursor_elements_for_output(
     renderer: &mut GlesRenderer,
     od: &OutputDevice,

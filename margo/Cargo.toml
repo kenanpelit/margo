@@ -45,20 +45,38 @@ regex = "1"
 # hooks once those are exposed.
 rhai = { version = "1", default-features = false, features = ["std", "no_optimize"] }
 
-# ── xdp-gnome screencast shim deps (niri pattern) ────────────────────────────
+# ── xdp-gnome screencast shim deps (niri pattern, feature-gated) ─────────────
 # margo implements `org.gnome.Mutter.ScreenCast` as a D-Bus service so
 # `xdg-desktop-portal-gnome` can serve the ScreenCast portal in
 # Helium / Chromium / Firefox meeting clients (Window + Entire Screen
 # tabs). Without this shim, xdp-gnome silently fails because it
 # expects gnome-shell on the bus. Reference: niri/src/dbus/.
 #
+# All four are gated behind the `xdp-gnome-screencast` feature
+# (default-on). Distros / VM tenants who don't need the portal can
+# build with `--no-default-features` and skip the zbus + pipewire
+# transitive trees entirely (~280 crates → ~120). Power users
+# scripting margo from a tty can do the same.
+#
 # zbus 5 — D-Bus async runtime + interface macros.
 # pipewire — PipeWire stream the captured frames flow through.
 # async-io — runtime zbus/pipewire share.
-zbus = "5"
-pipewire = { version = "0.9", features = ["v0_3_33"] }
-async-io = "2"
-async-channel = "2"
+zbus = { version = "5", optional = true }
+pipewire = { version = "0.9", features = ["v0_3_33"], optional = true }
+async-io = { version = "2", optional = true }
+async-channel = { version = "2", optional = true }
+
+[features]
+default = ["xdp-gnome-screencast"]
+# Enables the D-Bus surface (gnome screencast shim + screenshot
+# shim + display-config / introspect / service-channel). Requires
+# zbus + async-io + async-channel; omitting this drops `mctl`'s
+# windows_changed signalling and the entire portal path.
+dbus = ["dep:zbus", "dep:async-io", "dep:async-channel"]
+# Full screencast portal (Mutter D-Bus shims wired to a PipeWire
+# stream pipeline). Implies `dbus`. Drop this for VM/headless
+# builds, or builds that don't need browser screen-share.
+xdp-gnome-screencast = ["dbus", "dep:pipewire"]
 
 [dependencies.smithay]
 workspace = true

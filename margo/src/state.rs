@@ -1150,11 +1150,16 @@ pub struct MargoState {
     /// casts, dynamic-cast queue. `None` until xdp-gnome opens its
     /// first ScreenCast session and the lazy PipeWire init runs;
     /// margo's compositor process otherwise pays no PipeWire cost.
+    /// Gated on the `xdp-gnome-screencast` feature so distro builds
+    /// without screencast support drop the entire PipeWire dep tree.
+    #[cfg(feature = "xdp-gnome-screencast")]
     pub screencasting: Option<Box<crate::screencasting::Screencasting>>,
     /// D-Bus shim connections so xdp-gnome can serve the
     /// ScreenCast / Screenshot / Mutter portals on margo without
     /// gnome-shell. See `crate::dbus`. Set once at startup;
     /// connections close when the field drops (compositor exit).
+    /// Gated on the `dbus` feature.
+    #[cfg(feature = "dbus")]
     pub dbus_servers: crate::dbus::DBusServers,
     /// GBM device the udev backend opened for buffer allocation.
     /// Populated at backend init; D-Bus / screencast threads pull
@@ -1453,7 +1458,9 @@ impl MargoState {
             pending_output_mode_changes: Vec::new(),
             color_management_state,
             scripting: None,
+            #[cfg(feature = "xdp-gnome-screencast")]
             screencasting: None,
+            #[cfg(feature = "dbus")]
             dbus_servers: crate::dbus::DBusServers::default(),
             cast_gbm: None,
             cast_render_formats: Default::default(),
@@ -1659,7 +1666,11 @@ impl MargoState {
     /// the `org.gnome.Shell.Introspect.WindowsChanged` D-Bus signal
     /// against the registered `Introspect` interface. Cheap no-op if
     /// the D-Bus shim isn't running (no screencast portal use).
+    /// On builds without the `dbus` feature this is a literal no-op
+    /// — the call sites stay regardless so the rest of the
+    /// codebase doesn't have to learn about the feature flag.
     pub fn emit_windows_changed(&self) {
+        #[cfg(feature = "dbus")]
         if let Some(conn) = &self.dbus_servers.conn_introspect {
             crate::dbus::gnome_shell_introspect::emit_windows_changed_sync(conn);
         }
@@ -1979,6 +1990,7 @@ impl MargoState {
     ///     stream's next frame renders.
     ///   * `FatalError` — PipeWire failed catastrophically; tear
     ///     down everything and let the next session start cleanly.
+    #[cfg(feature = "xdp-gnome-screencast")]
     pub fn on_pw_msg(&mut self, msg: crate::screencasting::pw_utils::PwToNiri) {
         use crate::screencasting::pw_utils::PwToNiri;
         match msg {
@@ -2014,6 +2026,7 @@ impl MargoState {
     /// from xdp-gnome's `Session.Stop` D-Bus method (via the
     /// `ScreenCastToCompositor` channel) and from `on_pw_msg` when
     /// PipeWire errors out.
+    #[cfg(feature = "xdp-gnome-screencast")]
     pub fn stop_cast(&mut self, session_id: crate::dbus::cast_ids::CastSessionId) {
         let Some(casting) = self.screencasting.as_mut() else {
             return;
@@ -2040,6 +2053,7 @@ impl MargoState {
     ///   4. Push the cast onto `casting.casts`. Subsequent frame
     ///      production goes through the udev backend's repaint
     ///      hook (Phase E2 — render integration).
+    #[cfg(feature = "xdp-gnome-screencast")]
     pub fn start_cast(
         &mut self,
         session_id: crate::dbus::cast_ids::CastSessionId,

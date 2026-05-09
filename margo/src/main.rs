@@ -2,6 +2,7 @@ mod animation;
 mod backend;
 mod border;
 mod cursor;
+#[cfg(feature = "dbus")]
 mod dbus;
 mod dispatch;
 mod render;
@@ -10,6 +11,7 @@ mod input_handler;
 mod libinput_config;
 mod layout;
 mod protocols;
+#[cfg(feature = "xdp-gnome-screencast")]
 mod screencasting;
 mod screenshot_region;
 mod scripting;
@@ -434,6 +436,7 @@ fn main() -> Result<()> {
     // architecture and `docs/portal-design.md` for the rollout
     // plan. This call is the bring-up entry point niri's pattern
     // calls `DBusServers::start`.
+    #[cfg(feature = "dbus")]
     {
         use crate::dbus::mutter_service_channel::{NewClient, ServiceChannel};
         use crate::dbus::Start as _;
@@ -479,6 +482,7 @@ fn main() -> Result<()> {
     // xdp-gnome cross-references monitor enumeration on
     // `org.gnome.Mutter.DisplayConfig` when populating the
     // ScreenCast chooser's Entire Screen tab.
+    #[cfg(feature = "dbus")]
     {
         use crate::dbus::ipc_output;
         use crate::dbus::mutter_display_config::DisplayConfig;
@@ -500,6 +504,7 @@ fn main() -> Result<()> {
     // dialog populates without round-tripping back through
     // calloop. Live reactive updates (`windows_changed` signal)
     // are a follow-up.
+    #[cfg(feature = "dbus")]
     {
         use crate::dbus::gnome_shell_introspect::{
             CompositorToIntrospect, Introspect, IntrospectToCompositor, WindowProperties,
@@ -547,6 +552,7 @@ fn main() -> Result<()> {
     // keybind-driven `margo-screenshot` script for users; this
     // shim handles the API path (browser screenshot APIs, GNOME
     // apps invoking the portal).
+    #[cfg(feature = "dbus")]
     {
         use crate::dbus::gnome_shell_screenshot::{
             CompositorToScreenshot, Screenshot, ScreenshotToCompositor,
@@ -602,6 +608,7 @@ fn main() -> Result<()> {
     // down. The actual cast lifecycle / render hook for
     // emitting frames lives in
     // `crate::screencasting::pw_utils::Cast`.
+    #[cfg(feature = "xdp-gnome-screencast")]
     {
         use crate::dbus::ipc_output;
         use crate::dbus::mutter_screen_cast::{ScreenCast, ScreenCastToCompositor};
