@@ -701,6 +701,16 @@ pub fn run(
                     let BackendData { renderer, outputs, .. } = &mut *bd;
                     drain_image_copy_frames(renderer, outputs, state);
                 }
+                // PipeWire screencast: drain per-cast redraw requests.
+                // PipeWire callbacks push CastStreamId into
+                // `state.pending_cast_redraws` (via `on_pw_msg`); each
+                // entry resolves to one `Cast` whose subset of the
+                // scene we render into its queued PipeWire dmabuf.
+                if !state.pending_cast_redraws.is_empty() {
+                    let mut bd = backend_data.borrow_mut();
+                    let BackendData { renderer, outputs, .. } = &mut *bd;
+                    drain_pending_cast_frames(renderer, outputs, state);
+                }
             }
         })
         .map_err(|e| anyhow::anyhow!("repaint ping source: {e}"))?;
@@ -1709,6 +1719,201 @@ fn drain_image_copy_frames(
                 frame.fail(CaptureFailureReason::BufferConstraints);
             }
         }
+    }
+}
+
+/// Drain `MargoState::pending_cast_redraws` and render each pending
+/// cast frame into its PipeWire dmabuf. The third leg of the
+/// screencast story (alongside the live display path and
+/// `drain_image_copy_frames`).
+///
+/// PipeWire callbacks (`on_param_changed`, frame ready) push a
+/// `CastStreamId` onto the pending list via `MargoState::on_pw_msg`'s
+/// `Redraw` arm. Each entry resolves to one `Cast` whose target
+/// (Output / Window / Nothing) selects which subset of the scene
+/// gets rendered into the cast's queued PipeWire buffer.
+///
+/// Direct port of niri's `redraw_cast` (Window arm) and
+/// `render_for_screen_cast` / `render_windows_for_screen_cast`
+/// fused into a single drain pass — margo doesn't have niri's
+/// per-output redraw scheduler, so we run all pending casts on
+/// every repaint tick they were enqueued for.
+fn drain_pending_cast_frames(
+    renderer: &mut GlesRenderer,
+    outputs: &mut HashMap<crtc::Handle, OutputDevice>,
+    state: &mut MargoState,
+) {
+    use crate::dbus::cast_ids::CastStreamId;
+    use crate::screencasting::pw_utils::{CastSizeChange, CursorData};
+    use crate::screencasting::CastTarget;
+    use smithay::utils::Size;
+
+    let drained: Vec<CastStreamId> =
+        std::mem::take(&mut state.pending_cast_redraws);
+    if drained.is_empty() {
+        return;
+    }
+
+    // Take the casts out so we can mutate each cast while still
+    // reading from `state.clients` / `state.monitors`. niri uses
+    // the same `mem::take` trick — Vec layout means re-inserting
+    // unchanged is essentially free.
+    let mut casts = match state.screencasting.as_mut() {
+        Some(s) => std::mem::take(&mut s.casts),
+        None => return,
+    };
+
+    let mut to_stop = Vec::new();
+    let now = crate::utils::get_monotonic_time();
+
+    for stream_id in drained {
+        let Some(cast) = casts.iter_mut().find(|c| c.stream_id == stream_id)
+        else {
+            continue;
+        };
+        if !cast.is_active() {
+            continue;
+        }
+
+        // Clone the target up front so we drop the borrow on `cast`
+        // while we read state.* — then re-borrow `cast` for the
+        // actual render call below.
+        let target = cast.target.clone();
+        match target {
+            CastTarget::Nothing => {
+                if cast.dequeue_buffer_and_clear(renderer) {
+                    cast.last_frame_time = now;
+                }
+            }
+            CastTarget::Window { id } => {
+                let client = state
+                    .clients
+                    .iter()
+                    .find(|c| std::ptr::addr_of!(**c) as u64 == id);
+                let Some(client) = client else { continue };
+                let geom = client.geom;
+                if geom.width <= 0 || geom.height <= 0 {
+                    continue;
+                }
+                let size = Size::<i32, Physical>::from((geom.width, geom.height));
+                match cast.ensure_size(size) {
+                    Ok(CastSizeChange::Ready) => (),
+                    Ok(CastSizeChange::Pending) => continue,
+                    Err(err) => {
+                        warn!("cast ensure_size: {err:?}");
+                        to_stop.push(cast.session_id);
+                        continue;
+                    }
+                }
+                let scale = Scale::from(1.0_f64);
+                // Window's surface tree at (0,0) — the cast buffer
+                // *is* the window, so the window's top-left = the
+                // buffer's origin.
+                let elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
+                    AsRenderElements::<GlesRenderer>::render_elements(
+                        &client.window,
+                        renderer,
+                        Point::from((0, 0)),
+                        scale,
+                        1.0,
+                    );
+                let cursor_data =
+                    CursorData::compute(&elements, 0, Point::default(), scale);
+                if cast.dequeue_buffer_and_render(
+                    renderer,
+                    &elements,
+                    &cursor_data,
+                    size,
+                    scale,
+                ) {
+                    cast.last_frame_time = now;
+                }
+            }
+            CastTarget::Output { name, .. } => {
+                let Some((_, od)) = outputs
+                    .iter()
+                    .find(|(_, od)| od.output.name() == name)
+                else {
+                    continue;
+                };
+                let Some(mode) = od.output.current_mode() else {
+                    continue;
+                };
+                let size = mode.size;
+                if size.w <= 0 || size.h <= 0 {
+                    continue;
+                }
+                let scale =
+                    Scale::from(od.output.current_scale().fractional_scale());
+
+                match cast.ensure_size(size) {
+                    Ok(CastSizeChange::Ready) => (),
+                    Ok(CastSizeChange::Pending) => continue,
+                    Err(err) => {
+                        warn!("cast ensure_size: {err:?}");
+                        to_stop.push(cast.session_id);
+                        continue;
+                    }
+                }
+
+                let mon_idx =
+                    state.monitors.iter().position(|m| m.name == name);
+                let Some(mon_idx) = mon_idx else { continue };
+                let mon = &state.monitors[mon_idx];
+                let mon_loc_x = mon.monitor_area.x;
+                let mon_loc_y = mon.monitor_area.y;
+                let visible_tags = mon.current_tagset();
+
+                // Render each visible client on this monitor at its
+                // monitor-local position. Surface elements only —
+                // borders/shadows live in the display path's
+                // `MargoRenderElement` enum, not in the cast feed
+                // (the cast type alias is
+                // `WaylandSurfaceRenderElement<R>`).
+                let mut elements: Vec<
+                    WaylandSurfaceRenderElement<GlesRenderer>,
+                > = Vec::new();
+                for client in &state.clients {
+                    if client.monitor != mon_idx {
+                        continue;
+                    }
+                    if (client.tags & visible_tags) == 0 {
+                        continue;
+                    }
+                    if client.is_minimized {
+                        continue;
+                    }
+                    let pos = Point::<i32, Physical>::from((
+                        client.geom.x - mon_loc_x,
+                        client.geom.y - mon_loc_y,
+                    ));
+                    let elems = AsRenderElements::<GlesRenderer>::render_elements::<
+                        WaylandSurfaceRenderElement<GlesRenderer>,
+                    >(
+                        &client.window, renderer, pos, scale, 1.0
+                    );
+                    elements.extend(elems);
+                }
+                let cursor_data =
+                    CursorData::compute(&elements, 0, Point::default(), scale);
+                if cast.dequeue_buffer_and_render(
+                    renderer,
+                    &elements,
+                    &cursor_data,
+                    size,
+                    scale,
+                ) {
+                    cast.last_frame_time = now;
+                }
+            }
+        }
+    }
+
+    if let Some(s) = state.screencasting.as_mut() {
+        s.casts = casts;
+    }
+    for id in to_stop {
+        state.stop_cast(id);
     }
 }
 
