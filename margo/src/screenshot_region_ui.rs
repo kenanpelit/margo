@@ -363,7 +363,7 @@ pub fn build_render_elements(
         let mut v = cover_dark(od);
         // Even on outputs that came online after the selector
         // opened, render the cursor so the user isn't lost.
-        let mut cursor = build_cursor_elements(renderer, od, state);
+        let mut cursor = build_cursor_elements(renderer, od, state, true);
         cursor.append(&mut v);
         return cursor;
     };
@@ -372,7 +372,7 @@ pub fn build_render_elements(
     let mut elements: Vec<MargoRenderElement> = Vec::with_capacity(20);
 
     // 1. Cursor on top.
-    let cursor = build_cursor_elements(renderer, od, state);
+    let cursor = build_cursor_elements(renderer, od, state, true);
     elements.extend(cursor);
 
     let active = selector.active_output == name;
@@ -611,27 +611,29 @@ fn push_help_bar(
 ) {
     let pointer_text = if show_pointer { "P hide pointer" } else { "P show pointer" };
     let text = format!(
-        "Enter save  Esc cancel  {}",
+        "Enter save   Esc cancel   {}",
         pointer_text
     );
 
-    // Each glyph is 5×7 logical pixels at scale 1, so we draw at
-    // scale 2 (10×14) for legibility.
-    let glyph_scale: i32 = 2;
+    // Each glyph is 5×7 logical pixels at scale 1; we draw at
+    // scale 4 (20×28) so the help bar reads cleanly even on
+    // 1080p screens. Bumped from 2 after user feedback that
+    // the bar was invisible at 14 px tall.
+    let glyph_scale: i32 = 4;
     let glyph_w = FONT_WIDTH * glyph_scale;
     let glyph_h = FONT_HEIGHT * glyph_scale;
-    let advance = glyph_w + 2; // 2-px space between glyphs
+    let advance = glyph_w + 4; // 4-px space between glyphs
 
     let chars: Vec<char> = text.chars().collect();
     let text_w = chars.len() as i32 * advance;
     let text_h = glyph_h;
 
-    let pad_x: i32 = 16;
-    let pad_y: i32 = 8;
+    let pad_x: i32 = 28;
+    let pad_y: i32 = 18;
     let panel_w = text_w + pad_x * 2;
     let panel_h = text_h + pad_y * 2;
     let panel_x = (output_logical_size.w - panel_w) / 2;
-    let panel_y = output_logical_size.h - panel_h - 24; // 24 px from bottom
+    let panel_y = output_logical_size.h - panel_h - 40; // 40 px from bottom
 
     // Panel background — semi-opaque dark.
     let bg: [f32; 4] = [0.10, 0.10, 0.12, 0.88];

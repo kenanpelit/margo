@@ -2049,13 +2049,18 @@ fn drain_active_cast_frames(
 /// helper extracted from `build_render_elements_inner`'s cursor
 /// branch so the in-compositor region selector can keep the
 /// pointer visible while the rest of the scene is replaced by
-/// the frozen overlay (`build_render_elements_inner`'s normal
-/// run isn't usable for the selector — it'd return the whole
-/// scene plus the cursor; we only want the cursor).
+/// the frozen overlay.
+///
+/// `force_visible` overrides `cursor_status::Hidden`. The region
+/// selector passes `true` because the user can't see where they're
+/// clicking otherwise — even if a focused client (browser, video
+/// player) had previously requested cursor-hidden, the selector
+/// is now intercepting input and the user needs a pointer.
 pub fn build_cursor_elements(
     renderer: &mut GlesRenderer,
     od: &OutputDevice,
     state: &MargoState,
+    force_visible: bool,
 ) -> Vec<MargoRenderElement> {
     let output_scale = od.output.current_scale().fractional_scale();
     let Some(output_geo) = state.space.output_geometry(&od.output) else {
@@ -2091,7 +2096,10 @@ pub fn build_cursor_elements(
                 elements.push(MargoRenderElement::WaylandSurface(e));
             }
         }
-        CursorImageStatus::Hidden => {}
+        CursorImageStatus::Hidden if !force_visible => {
+            // Client asked cursor-hidden and caller didn't
+            // override — render nothing.
+        }
         _ => {
             if let Some(cursor_elem) =
                 state.cursor_manager.render_element(renderer, ptr_pos, output_scale)

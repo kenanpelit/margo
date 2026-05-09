@@ -270,6 +270,14 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                         match result {
                             crate::screenshot_region_ui::HandleResult::Consumed => {
                                 state.region_selector = Some(sel);
+                                // Re-arm so any state change made by
+                                // the handler (e.g. P-toggle flipping
+                                // include_pointer in the help bar
+                                // text) actually re-renders. Without
+                                // this the screen stays on whatever
+                                // the last pointer-driven repaint
+                                // left.
+                                state.request_repaint();
                             }
                             crate::screenshot_region_ui::HandleResult::Close { save } => {
                                 // Stash the just-drawn rect so
