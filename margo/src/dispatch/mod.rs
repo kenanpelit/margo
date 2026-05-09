@@ -108,6 +108,28 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                 },
             );
         }
+        // Phase 3: in-compositor region selector. Captures
+        // every output to a frozen GLES texture, dims everything
+        // outside a user-drawn rectangle, lets the user drag
+        // out a selection on top of the frozen scene, then
+        // queues the capture on Return. Esc cancels.
+        // No `slurp` dependency.
+        "screenshot-region-ui" | "screenshot_region_ui" => {
+            let (save_to_disk, copy_clipboard) = match arg.v.as_deref() {
+                Some("clipboard") | Some("clip") => (false, true),
+                Some("no-clip") | Some("noclip") => (true, false),
+                _ => (true, true),
+            };
+            state.pending_region_selector_open = Some(
+                crate::screenshot_region_ui::PendingOpen {
+                    save_to_disk,
+                    save_path: None,
+                    copy_clipboard,
+                    include_pointer: false,
+                },
+            );
+            state.request_repaint();
+        }
         "screenshot-region" | "screenshot_region" => {
             let (save_to_disk, copy_clipboard) = match arg.v.as_deref() {
                 Some("clipboard") | Some("clip") => (false, true),

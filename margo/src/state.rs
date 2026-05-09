@@ -1188,6 +1188,20 @@ pub struct MargoState {
     /// repaint hook drains them after the live render and feeds
     /// each into `render_and_download` + a save thread.
     pub pending_screenshots: Vec<crate::screenshot::ScreenshotRequest>,
+    /// Pending "open the in-compositor region selector" intent.
+    /// Drained by the udev repaint hook on the next frame: the
+    /// hook captures every output's current scene to a frozen
+    /// `GlesTexture`, builds a [`RegionSelector`], and assigns it
+    /// to [`MargoState::region_selector`]. Cleared in either case.
+    pub pending_region_selector_open:
+        Option<crate::screenshot_region_ui::PendingOpen>,
+    /// Active in-compositor region selector. While `Some(_)`, the
+    /// live render path renders the frozen scene + dim overlay +
+    /// selection rectangle instead of the normal scene; pointer
+    /// and keyboard events are intercepted before client delivery
+    /// and routed through `screenshot_region_ui::handle_*`.
+    pub region_selector:
+        Option<crate::screenshot_region_ui::RegionSelector>,
     /// `wp_presentation` global. Lets clients (kitty, mpv, native
     /// Wayland Vulkan games via DXVK / VKD3D, video conferencing
     /// apps that adapt their pacing to the actual display refresh)
@@ -1437,6 +1451,8 @@ impl MargoState {
             image_copy_capture_sessions: Vec::new(),
             pending_image_copy_frames: Vec::new(),
             pending_screenshots: Vec::new(),
+            pending_region_selector_open: None,
+            region_selector: None,
             presentation_state,
             space,
             popups,

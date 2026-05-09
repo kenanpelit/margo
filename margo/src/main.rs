@@ -12,6 +12,7 @@ mod layout;
 mod protocols;
 mod screencasting;
 mod screenshot;
+mod screenshot_region_ui;
 mod scripting;
 mod state;
 mod utils;

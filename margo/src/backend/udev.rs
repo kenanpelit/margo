@@ -71,6 +71,7 @@ render_elements! {
     Resize=crate::render::resize_render::ResizeRenderElement,
     OpenClose=crate::render::open_close::OpenCloseRenderElement,
     Solid=smithay::backend::renderer::element::solid::SolidColorRenderElement,
+    Texture=smithay::backend::renderer::element::texture::TextureRenderElement<smithay::backend::renderer::gles::GlesTexture>,
 }
 
 // ── Type aliases ──────────────────────────────────────────────────────────────
@@ -727,6 +728,30 @@ pub fn run(
                     crate::screenshot::drain_pending_screenshots(
                         renderer, outputs, state,
                     );
+                }
+                // Phase 3 region-selector open. Same drain
+                // pattern: dispatch pushed a `PendingOpen`,
+                // udev captures the frozen textures here, and
+                // the result lands on `state.region_selector`
+                // for subsequent frames + input events.
+                if state.pending_region_selector_open.is_some() {
+                    let mut bd = backend_data.borrow_mut();
+                    let BackendData { renderer, outputs, .. } = &mut *bd;
+                    let request =
+                        state.pending_region_selector_open.take().unwrap();
+                    match crate::screenshot_region_ui::open(
+                        renderer, outputs, state, request,
+                    ) {
+                        Ok(sel) => {
+                            state.region_selector = Some(sel);
+                            // Re-arm so the first frame renders
+                            // with the selector overlay.
+                            state.request_repaint();
+                        }
+                        Err(err) => {
+                            warn!("region selector open failed: {err:#}");
+                        }
+                    }
                 }
             }
         })
@@ -1491,6 +1516,19 @@ fn build_render_elements(
     od: &OutputDevice,
     state: &MargoState,
 ) -> Vec<MargoRenderElement> {
+    // Phase 3: when the in-compositor region selector is open,
+    // swap the live scene for the frozen-texture + dim-strip
+    // overlay. The pointer position comes from the global
+    // input pointer state — the selector's `handle_pointer`
+    // already updates the rectangle based on it.
+    if let Some(selector) = state.region_selector.as_ref() {
+        return crate::screenshot_region_ui::build_render_elements(
+            renderer,
+            od,
+            selector,
+            (state.input_pointer.x, state.input_pointer.y),
+        );
+    }
     build_render_elements_inner(renderer, od, state, true, false)
 }
 

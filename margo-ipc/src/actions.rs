@@ -418,9 +418,20 @@ pub const ACTIONS: &[Action] = &[
         detail: "Spawns `slurp` for rectangle selection (drag-to-select, Esc \
                  cancels), then captures + PNG-encodes that rect natively in \
                  the compositor. Default: save to disk + clipboard. \
-                 `clipboard` = clipboard only. `no-clip` = save only. \
-                 Requires `slurp` on PATH; the in-compositor selector lands \
-                 in a future phase.",
+                 `clipboard` = clipboard only. `no-clip` = save only.",
+    },
+    Action {
+        name: "screenshot-region-ui",
+        aliases: &["screenshot_region_ui"],
+        args: "[clipboard|no-clip]",
+        group: Group::System,
+        summary: "In-compositor region selector — no `slurp` dependency.",
+        detail: "Captures every output to a frozen GLES texture, dims the \
+                 scene, lets the user drag out a selection on top of the \
+                 frozen image, and confirms on Return (Esc cancels). Pointer \
+                 + keyboard are intercepted while the selector is open — no \
+                 client gets stray input. Cross-output drags are not \
+                 supported (the active rectangle stays on one monitor).",
     },
     Action {
         name: "reload",

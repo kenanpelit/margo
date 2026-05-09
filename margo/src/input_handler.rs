@@ -253,6 +253,36 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                     );
                     return FilterResult::Forward;
                 }
+                // Phase 3 region selector intercept. While the
+                // selector is open, every key goes to its
+                // handler — Esc cancels, Return confirms,
+                // anything else is swallowed so compositor
+                // keybinds don't fire mid-selection.
+                if state.region_selector.is_some() {
+                    if key_state == KeyState::Pressed {
+                        let keysym = handle.modified_sym();
+                        let mut sel =
+                            state.region_selector.take().unwrap();
+                        let result =
+                            crate::screenshot_region_ui::handle_key(
+                                &mut sel, keysym, true,
+                            );
+                        match result {
+                            crate::screenshot_region_ui::HandleResult::Consumed => {
+                                state.region_selector = Some(sel);
+                            }
+                            crate::screenshot_region_ui::HandleResult::Close(req) => {
+                                drop(sel);
+                                if let Some(r) = req {
+                                    crate::screenshot::queue(state, r);
+                                }
+                                state.request_repaint();
+                            }
+                        }
+                    }
+                    return FilterResult::Intercept(());
+                }
+
                 // Check for compositor keybindings when key is pressed
                 if key_state == KeyState::Pressed {
                     let keysym = handle.modified_sym();
@@ -320,6 +350,19 @@ fn handle_pointer_motion<B: InputBackend, E: PointerMotionEvent<B>>(
     state.clamp_pointer_to_outputs();
     state.input_pointer.motion_events += 1;
     state.request_repaint();
+
+    // Phase 3 region selector: while open, intercept all
+    // pointer motion. The selector tracks the cursor + (when
+    // dragging) the live edge of the user's selection rect.
+    // Don't let the event reach client surfaces.
+    if let Some(sel) = state.region_selector.as_mut() {
+        crate::screenshot_region_ui::handle_pointer(
+            sel,
+            (state.input_pointer.x, state.input_pointer.y),
+            None,
+        );
+        return;
+    }
 
     // Pointer-constraints enforcement. Two cases:
     //   * Active LOCK: the cursor stays pinned at its prior absolute
@@ -444,6 +487,16 @@ fn handle_pointer_motion_abs<B: InputBackend, E: PointerMotionAbsoluteEvent<B>>(
         let pos = Point::from((state.input_pointer.x, state.input_pointer.y));
         log_pointer_motion(state, "absolute", pos);
         state.request_repaint();
+
+        // Phase 3 region selector intercept (abs path).
+        if let Some(sel) = state.region_selector.as_mut() {
+            crate::screenshot_region_ui::handle_pointer(
+                sel,
+                (state.input_pointer.x, state.input_pointer.y),
+                None,
+            );
+            return;
+        }
         let kbd_focus = focus_under(state, pos);
         apply_sloppy_focus(state, kbd_focus.as_ref().map(|(t, _)| t));
         let ptr_focus = pointer_focus_under(state, pos);
@@ -476,6 +529,24 @@ fn handle_pointer_button<B: InputBackend, E: PointerButtonEvent<B>>(
     let btn_state = event.state();
     let button = event.button_code();
     let pos = Point::from((state.input_pointer.x, state.input_pointer.y));
+
+    // Phase 3 region selector: intercept clicks. Left-button
+    // press starts a drag; release ends it (selection stays
+    // visible until Return/Esc).
+    if let Some(sel) = state.region_selector.as_mut() {
+        const BTN_LEFT: u32 = 0x110; // input-event-codes.h
+        if button == BTN_LEFT {
+            let pressed =
+                btn_state == smithay::backend::input::ButtonState::Pressed;
+            crate::screenshot_region_ui::handle_pointer(
+                sel,
+                (state.input_pointer.x, state.input_pointer.y),
+                Some(pressed),
+            );
+            state.request_repaint();
+        }
+        return;
+    }
 
     // Mousebind dispatch — `mousebind = MOD,btn_left,moveresize,curmove`
     // and friends. Match on press only; release passes through so any
