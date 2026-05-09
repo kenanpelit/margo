@@ -774,6 +774,7 @@ pub fn tick_animations(
         LayerSurfaceAnim,
     >,
 ) -> bool {
+    let _span = tracy_client::span!("tick_animations");
     let mut changed = false;
     // Advance focus highlight (border colour + opacity) crossfades.
     // `OpacityAnimation` does double duty: focused_opacity ↔ unfocused_opacity
@@ -2379,6 +2380,7 @@ impl MargoState {
     }
 
     pub fn arrange_monitor(&mut self, mon_idx: usize) {
+        let _span = tracy_client::span!("arrange_monitor");
         if mon_idx >= self.monitors.len() {
             return;
         }
@@ -2790,6 +2792,7 @@ impl MargoState {
     }
 
     pub fn focus_surface(&mut self, target: Option<FocusTarget>) {
+        let _span = tracy_client::span!("focus_surface");
         // Capture the *previously* focused client BEFORE we rewrite
         // the keyboard focus — we need the old + new pair to drive
         // the border-colour cross-fade animation below.

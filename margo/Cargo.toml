@@ -66,6 +66,14 @@ pipewire = { version = "0.9", features = ["v0_3_33"], optional = true }
 async-io = { version = "2", optional = true }
 async-channel = { version = "2", optional = true }
 
+# Always-on dep, but `default-features = false` makes every
+# `tracy_client::span!` / `plot!` / `frame_mark!` a no-op unless
+# `profile-with-tracy` is enabled. Lets us sprinkle the macros
+# unconditionally across hot paths and pay zero cost in normal
+# builds; flipping `--features profile-with-tracy` connects the
+# binary to a live Tracy server for sub-frame profiling.
+tracy-client = { version = "0.18", default-features = false }
+
 [features]
 default = ["xdp-gnome-screencast"]
 # Enables the D-Bus surface (gnome screencast shim + screenshot
@@ -77,6 +85,13 @@ dbus = ["dep:zbus", "dep:async-io", "dep:async-channel"]
 # stream pipeline). Implies `dbus`. Drop this for VM/headless
 # builds, or builds that don't need browser screen-share.
 xdp-gnome-screencast = ["dbus", "dep:pipewire"]
+# Live Tracy profiler integration. Sprinkled `tracy_client::span!`
+# macros across hot paths (render frame, build elements, arrange,
+# tick animations, input dispatch, focus refresh) become no-ops
+# unless this feature is on. Build + run with
+# `--features profile-with-tracy` and connect Tracy GUI to see
+# per-frame timeline + GPU profiling.
+profile-with-tracy = ["tracy-client/default"]
 
 [dependencies.smithay]
 workspace = true

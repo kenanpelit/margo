@@ -2108,6 +2108,7 @@ pub fn build_render_elements_inner(
     include_cursor: bool,
     for_screencast: bool,
 ) -> Vec<MargoRenderElement> {
+    let _span = tracy_client::span!("build_render_elements");
     let output_scale = od.output.current_scale().fractional_scale();
 
     let Some(output_geo) = state.space.output_geometry(&od.output) else {
@@ -3465,6 +3466,11 @@ fn render_output(
     state: &mut MargoState,
     reason: &'static str,
 ) {
+    // Tracy span — `let _span = ...` keeps the span alive for the
+    // entire fn body. No-op in non-tracy builds (tracy-client's
+    // default-features-off variant compiles the macro away).
+    let _span = tracy_client::span!("render_output");
+
     // Soft-disabled output: skip the entire render path. Clients on
     // this output have already been migrated; rendering a frame
     // would burn GPU cycles and queue page-flips against a panel

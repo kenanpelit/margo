@@ -24,6 +24,7 @@ use crate::{
 };
 
 pub fn handle_input<B: InputBackend>(state: &mut MargoState, event: InputEvent<B>) {
+    let _span = tracy_client::span!("handle_input");
     // Every input event resets the idle timers so swayidle / noctalia
     // see the seat as "active". `notify_activity` is a no-op when
     // there are no listeners, so this is essentially free.
