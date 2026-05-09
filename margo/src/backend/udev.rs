@@ -702,24 +702,20 @@ pub fn run(
                     drain_image_copy_frames(renderer, outputs, state);
                 }
                 // PipeWire screencast: render every active cast on
-                // every repaint. niri's output render path tags casts
-                // with `check_time_and_schedule` for inter-frame
-                // pacing; until that lands here, we lean on
+                // every repaint. niri's output render path tags
+                // casts with `check_time_and_schedule` for inter-
+                // frame pacing; until that lands here, we lean on
                 // PipeWire's own `dequeue_available_buffer` to drop
                 // frames when the consumer hasn't returned a buffer
                 // yet — buffer-bounded backpressure.
-                //
-                // We only need ONE active cast (or one pending
-                // PipeWire redraw msg) to bother running the drain.
-                let needs_drain = !state.pending_cast_redraws.is_empty()
-                    || state
-                        .screencasting
-                        .as_ref()
-                        .is_some_and(|s| !s.casts.is_empty());
-                if needs_drain {
+                let has_casts = state
+                    .screencasting
+                    .as_ref()
+                    .is_some_and(|s| !s.casts.is_empty());
+                if has_casts {
                     let mut bd = backend_data.borrow_mut();
                     let BackendData { renderer, outputs, .. } = &mut *bd;
-                    drain_pending_cast_frames(renderer, outputs, state);
+                    drain_active_cast_frames(renderer, outputs, state);
                 }
             }
         })
@@ -1732,23 +1728,22 @@ fn drain_image_copy_frames(
     }
 }
 
-/// Drain `MargoState::pending_cast_redraws` and render each pending
-/// cast frame into its PipeWire dmabuf. The third leg of the
-/// screencast story (alongside the live display path and
-/// `drain_image_copy_frames`).
+/// Render every active screencast into its queued PipeWire dmabuf.
+/// The third leg of the screencast story (alongside the live display
+/// path and `drain_image_copy_frames`).
 ///
-/// PipeWire callbacks (`on_param_changed`, frame ready) push a
-/// `CastStreamId` onto the pending list via `MargoState::on_pw_msg`'s
-/// `Redraw` arm. Each entry resolves to one `Cast` whose target
-/// (Output / Window / Nothing) selects which subset of the scene
-/// gets rendered into the cast's queued PipeWire buffer.
+/// Each `Cast` carries a target (Output / Window / Nothing) that
+/// selects which subset of the scene gets rendered into the cast's
+/// PipeWire buffer. We iterate every cast every repaint tick;
+/// PipeWire's own `dequeue_available_buffer` drops frames when the
+/// consumer hasn't returned a buffer yet, giving us buffer-bounded
+/// backpressure for free.
 ///
 /// Direct port of niri's `redraw_cast` (Window arm) and
 /// `render_for_screen_cast` / `render_windows_for_screen_cast`
-/// fused into a single drain pass — margo doesn't have niri's
-/// per-output redraw scheduler, so we run all pending casts on
-/// every repaint tick they were enqueued for.
-fn drain_pending_cast_frames(
+/// fused into one drain pass — margo doesn't have niri's per-output
+/// redraw scheduler, so all casts ride the same repaint cycle.
+fn drain_active_cast_frames(
     renderer: &mut GlesRenderer,
     outputs: &mut HashMap<crtc::Handle, OutputDevice>,
     state: &mut MargoState,
@@ -1756,11 +1751,6 @@ fn drain_pending_cast_frames(
     use crate::screencasting::pw_utils::{CastSizeChange, CursorData};
     use crate::screencasting::CastTarget;
     use smithay::utils::Size;
-
-    // Drain the PipeWire-driven request list — we don't actually
-    // route off it (we render every active cast on every repaint),
-    // but draining keeps it from growing unbounded.
-    state.pending_cast_redraws.clear();
 
     // Take the casts out so we can mutate each cast while still
     // reading from `state.clients` / `state.monitors`. niri uses

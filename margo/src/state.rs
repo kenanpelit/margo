@@ -1183,12 +1183,6 @@ pub struct MargoState {
     /// `(session_ref, frame, source_kind)` so we can route
     /// without re-querying user_data on each iteration.
     pub pending_image_copy_frames: Vec<crate::PendingImageCopyFrame>,
-    /// Stream IDs that PipeWire has asked us to redraw. Pushed from
-    /// `on_pw_msg::Redraw` and drained after the live render in the
-    /// udev backend's repaint loop (`drain_pending_cast_frames`).
-    /// Each entry maps to one `Cast` whose target subset of the scene
-    /// is rendered into its queued PipeWire dmabuf.
-    pub pending_cast_redraws: Vec<crate::dbus::cast_ids::CastStreamId>,
     /// `wp_presentation` global. Lets clients (kitty, mpv, native
     /// Wayland Vulkan games via DXVK / VKD3D, video conferencing
     /// apps that adapt their pacing to the actual display refresh)
@@ -1437,7 +1431,6 @@ impl MargoState {
             image_copy_capture_state,
             image_copy_capture_sessions: Vec::new(),
             pending_image_copy_frames: Vec::new(),
-            pending_cast_redraws: Vec::new(),
             presentation_state,
             space,
             popups,
@@ -1650,8 +1643,14 @@ impl MargoState {
         use crate::screencasting::pw_utils::PwToNiri;
         match msg {
             PwToNiri::StopCast { session_id } => self.stop_cast(session_id),
-            PwToNiri::Redraw { stream_id } => {
-                self.pending_cast_redraws.push(stream_id);
+            PwToNiri::Redraw { stream_id: _ } => {
+                // PipeWire only fires Redraw twice per stream
+                // (initial Streaming + first dmabuf); the steady-
+                // state cast cadence comes from the udev repaint
+                // loop iterating every active cast on every tick.
+                // We just wake the loop so the first cast frame
+                // lands on the next VBlank instead of waiting on
+                // unrelated input.
                 self.request_repaint();
             }
             PwToNiri::FatalError => {

@@ -1,8 +1,8 @@
 # Margo Road Map
 
-> Last updated: **2026-05-08** (post-spring-everywhere + scripting Phase 3 + HDR Phase 1 + output-management mode change)
+> Last updated: **2026-05-09** (post-screencast-portal Phase E2 — Mutter D-Bus shims + PipeWire frame production)
 > Branch: `main` (single-branch — Rust port complete; the C tree is the legacy reference under `src/`)
-> One-liner: **P0 → P4 fully shipped; P5/P6 long-term goals all moved from design to code.** Margo is now a daily-driver Wayland compositor with full modern-protocol parity, niri-grade animations + spring physics across every transition type, on-demand redraw scheduler, runtime DRM mode change via `wlr-randr`/`kanshi`, GitHub Actions CI gate, an embedded Rhai scripting engine that fires event hooks mid-event-loop, and `wp_color_management_v1` standing up for HDR-capable client probes. What's left is depth on each, not new feature areas.
+> One-liner: **P0 → P4 fully shipped; P5/P6 long-term goals all moved from design to code; P7 (built-in screencast portal) lit up the Window/Entire Screen tabs in browser meeting clients via a niri-pattern Mutter D-Bus shim + PipeWire pipeline.** Margo is now a daily-driver Wayland compositor with full modern-protocol parity, niri-grade animations + spring physics across every transition type, on-demand redraw scheduler, runtime DRM mode change via `wlr-randr`/`kanshi`, GitHub Actions CI gate, an embedded Rhai scripting engine that fires event hooks mid-event-loop, `wp_color_management_v1` standing up for HDR-capable client probes, and a built-in xdp-gnome backend that delivers live window/output frames into Helium / Chromium / Firefox screen-share dialogs without a running gnome-shell. What's left is depth on each, not new feature areas.
 
 This document is **the source of truth** for what's shipped, what's worth a second pass, and what's queued. Each section follows the same shape:
 
@@ -23,7 +23,8 @@ This document is **the source of truth** for what's shipped, what's worth a seco
 | **P2 perf/akıcılık** | frame_clock, spring engine, open/close/tag/focus/layer animations (bezier + opt-in spring across all 5), hw cursor, direct scanout, damage opt | **✅ 6/6** |
 | **P3 window mgmt v2** | scratchpad+named, mango/layerrule parity, CSD/SSD policy, IPC parity, XWayland HiDPI env, popup focus | **✅ 6/6** |
 | **P4 tooling** | smoke-winit, manual checklist, mctl JSON/rules/check-config, post-install smoke, shell completions, GitHub Actions CI | **✅ 7/7** |
-| **P5/P6 long-term** | spatial canvas ✓, adaptive layout ✓, drop shadow ✓, scripting Phase 3 ✓, HDR Phase 1 ✓; built-in portal still design-only | **5/6 code-shipped** |
+| **P5/P6 long-term** | spatial canvas ✓, adaptive layout ✓, drop shadow ✓, scripting Phase 3 ✓, HDR Phase 1 ✓, screencast portal moved to **P7** | **5/5 code-shipped** |
+| **P7 screencast portal** | 5 Mutter D-Bus shims, PipeWire pipeline, ext-image-copy-capture, browser Window/Output tabs live | **✅ 8/8 phases** |
 
 ---
 
@@ -239,8 +240,8 @@ Each entry tagged `[x]` (code shipped), `[~]` (foundation or design committed), 
 
 *Worth revisiting:* Shadows look "perfectly sharp" because the SDF is exact — fine at 10–25 px shadow_size (user's config), unnaturalistic at huge sizes. Kawase blur is the next phase if real wide-shadow demand surfaces.
 
-### `[~]` Built-in xdg-desktop-portal backend
-**Design only: `docs/portal-design.md`.** 4 milestones — screencast (xdp-wlr fallback), screenshot, file chooser via xdp-gtk delegation, unified activation policy. Smithay 0.7 has no full xdp handler; needs zbus + per-method trait impl. Still vapour code-wise.
+### `[x]` Built-in xdg-desktop-portal backend → moved to **P7** below
+The "design only" entry in earlier revisions of this roadmap shipped as a full implementation in May 2026. See P7 for the eight-phase port and what's worth revisiting.
 
 ### `[~]` HDR + color management *(Phase 1 shipped)*
 **Phase 1 code: `margo/src/protocols/color_management.rs` (commit `25255a9`) + design `docs/hdr-design.md`.**
@@ -268,6 +269,63 @@ What's still missing: `on_window_close` (needs stable identity for closing windo
 
 ---
 
+## 7. P7 — built-in screencast portal ✅ 8/8 phases
+
+`a4f6ed6 → bf7e579 → 0c2f5d5 → f8f7a9a → 0455b4e`, ~3700 LOC across `margo/src/dbus/` (5 D-Bus shims) + `margo/src/screencasting/` (PipeWire core + render hooks) + udev backend integration + `margo/Cargo.toml` deps.
+
+### Why this exists
+
+xdp-wlr advertises `ext-image-copy-capture` which works for full-output capture, but Chromium-family browsers (Helium, regular Chromium, Edge, Brave) do **not** light up the Window / Entire Screen tabs in their share dialog against the wlr backend — they only enable per-window / per-output picking when xdg-desktop-portal-gnome is the backend. xdp-gnome in turn talks to **gnome-shell** over D-Bus on `org.gnome.Mutter.ScreenCast` + `.DisplayConfig` + `org.gnome.Shell.Introspect` + `.Screenshot` + `.Mutter.ServiceChannel`. On gnome-shell-less compositors those interfaces don't exist and xdp-gnome silently fails.
+
+niri solved this by **implementing those Mutter D-Bus interfaces inside the compositor binary** so xdp-gnome can't tell it's not talking to real gnome-shell. P7 is a direct port of that pattern to margo.
+
+### Shipped — eight phases
+
+| Phase | Commit | LOC | What landed |
+|---|---|---|---|
+| **A** | `09c4e68` | +50 deps + scaffold | `zbus 5`, `pipewire 0.9`, `async-io`, `async-channel` workspace deps; module skeletons. |
+| **B** | `09c4e68` | +1080 | All 5 D-Bus interface shims (`mutter_screen_cast`, `mutter_display_config`, `mutter_service_channel`, `gnome_shell_introspect`, `gnome_shell_screenshot`). zbus 5.x `#[interface]` async impls; calloop ↔ async-channel bridges so D-Bus threads can talk to the compositor event loop. |
+| **C0** | `e3df482` | +215 | `screencasting/render_helpers.rs` — niri's GLES helpers (`encompassing_geo`, `render_to_texture`, `render_to_dmabuf`, `render_and_download`, `clear_dmabuf`). |
+| **C1** | `acc47cb` | +1655 | `screencasting/pw_utils.rs` — full port of niri's `PipeWire` core + `Cast` struct + `CastInner` state machine + format negotiation (dmabuf preferred, SHM fallback) + buffer dequeue/queue/sync_point handling. |
+| **D1** | `2c9d4e0` | +135 | `Screencasting` top-level state on `MargoState` + `mutter_service_channel` `NewClient` channel routing. |
+| **D2** | `a4f6ed6` | +244 | All 5 shims registered onto their well-known names (`org.gnome.Mutter.ScreenCast`, `.Mutter.DisplayConfig`, `.Shell.Introspect`, `.Shell.Screenshot`, `.Mutter.ServiceChannel`); xdp-gnome connects + finds margo-as-mutter. |
+| **E1** | `bf7e579` | +183 | `MargoState::start_cast` resolves `StreamTargetId::{Output, Window}` → `(CastTarget, size, refresh, alpha)`; lazy-init Screencasting + PipeWire on first cast; calls `pw.start_cast(...)`; pushes the resulting `Cast` onto `casting.casts`. xdp-gnome receives the PipeWire node ID and starts the WebRTC pipeline. |
+| **E2** | `0c2f5d5 → f8f7a9a` | +250 | `drain_active_cast_frames` in `backend/udev.rs` — the actual frame producer. Iterates every active cast each repaint; for `Window { id }` looks up the matching `MargoClient` by stable `addr_of!` u64 and renders the surface tree at (0,0); for `Output { name }` iterates every visible client on that monitor and renders each at its monitor-local position; calls `Cast::dequeue_buffer_and_render` against the queued PipeWire buffer. Plus continuous-repaint re-arm so the chain doesn't go idle while sharing. |
+
+Final cleanup commit `0455b4e` adds module-level `#![allow(dead_code)]` to the niri-port files so the build is warning-free with the pacing scaffolding still in place for Phase F.
+
+### Strengths
+
+- **Stable Window IDs via `addr_of!(*MargoClient) as u64`.** xdp-gnome's window picker needs a u64 handle that's stable for the duration of the client's life. Most compositors invent a side-channel ID map; we lean on the fact that `MargoClient` lives in a Vec at a stable heap address — its memory address IS the stable ID. Zero bookkeeping. `gnome_shell_introspect::GetWindows` returns these; `mutter_screen_cast::StreamTargetId::Window { id }` echoes one back; `MargoState::start_cast` matches against `state.clients` by linear scan. O(N) lookup is fine — N is single-digit-windows in practice.
+
+- **`mem::take(&mut casting.casts)` borrow trick.** `Cast::dequeue_buffer_and_render` needs `&mut Cast`; the surrounding render code needs `&MargoState` to look up clients/monitors. Both live on `MargoState`, so straight nested borrows fail. Detaching the casts vec lets us iterate freely; re-attaching is a single move. Direct port of niri's pattern in `redraw_cast`.
+
+- **Continuous-repaint while casts active.** Margo's repaint scheduler is dirty-flag-gated — without input or animation the loop goes idle. PipeWire fires `Redraw` exactly twice per stream lifetime (initial Streaming + first dmabuf), then never again, so pacing-by-PipeWire-callback would freeze on the first frame. Solution: at end of `drain_active_cast_frames`, if any cast is active, call `request_repaint()`. The VBlank handler re-pings the loop and we get continuous ~refresh-rate cast frames. PipeWire's `dequeue_available_buffer` returns None when the consumer hasn't returned a buffer yet, so frame production self-throttles to whatever the WebRTC consumer can chew through.
+
+- **Lazy PipeWire init.** `Screencasting` and the PipeWire core are an `Option<Box<...>>` on `MargoState`, only stood up on the first cast. Normal sessions (no screen sharing) pay zero PipeWire cost — no thread, no socket, no main_loop iteration. Cleanly mirrors the design intent: screencast is a feature, not a baseline.
+
+- **Buffer-bounded backpressure.** No frame-pacing logic in margo; we render every repaint into PipeWire's pool. PipeWire's pool has a fixed buffer count negotiated with the consumer. If the consumer hasn't drained a buffer yet, dequeue returns None and we drop the frame. Cleaner than a margo-side timer: the actual consumer determines the rate.
+
+### Worth revisiting
+
+- **No frame-pacing ⇒ wasted GPU on static scenes.** When sharing a window that hasn't changed (still terminal, paused video), we still render ~60fps into PipeWire. PipeWire's backpressure caps the OUTPUT rate but margo still does the GLES render work. niri's `Cast::check_time_and_schedule` skips the render entirely when `now < last_frame_time + min_time_between_frames` AND the source hasn't damaged. The `min_time_between_frames` field is already populated on every `CastInner` (P7 imports niri's pw_utils.rs verbatim); ~30 LOC to expose it via a getter and gate the per-cast render call. The unused-method warnings on `check_time_and_schedule` etc. were intentionally left silenced — those are the next-phase scaffolding.
+
+- **Output-target render uses surface elements only.** The cast type alias is `WaylandSurfaceRenderElement<R>`, which excludes margo's `Border`, `Shadow`, `Clipped`, `OpenClose`, and `Solid` variants of `MargoRenderElement`. Real client content is correct; window decorations missing in the share view. Acceptable for screen-share UX (recipients want content, not chrome) but visibly different from the live display. Fixing it requires widening `CastRenderElement<R>` to be `MargoRenderElement` and propagating the parameter through `pw_utils.rs` (which is in turn a niri verbatim port — invasive).
+
+- **HiDPI scale handling on Output target is naive.** We multiply client geom positions by `Scale::from(1.0)` when iterating clients for an output cast. Margo's typical session is `scale = 1`, but on fractional-scale outputs the cast buffer's physical pixels won't line up with the client's logical positions. Likely manifests as cropped or offset clients in the cast view. Margo's main render path handles this via `fractional_scale()` math; the cast path skipped it because the user's session is scale = 1. ~20 LOC fix when needed.
+
+- **Cursor not embedded.** `CursorData::compute(&[], 0, ..)` is passed for every cast — empty cursor element list. Both `CursorMode::Hidden` and `CursorMode::Metadata` paths take their no-cursor branch on the empty list. `CursorMode::Embedded` would render an empty cursor (benign). Real cursor support means feeding margo's pointer renderer into the cast's element list; ~80 LOC.
+
+- **No cast-side damage tracking.** Each cast carries its own `OutputDamageTracker` (allocated lazily by `dequeue_buffer_and_render`) that compares element states across frames. We pass `damage = None`-equivalent every frame. Wastes the consumer's encoder bandwidth on identical frames. Fixing it is mostly free since the damage tracker is already there — just thread the `damage` arg through the right call sites.
+
+- **`gnome_shell_introspect::windows_changed` signal never fired.** xdp-gnome listens for it to refresh the window picker live. Today the picker shows the snapshot from when the dialog opened; new windows that appear afterwards aren't visible until the user re-opens the share dialog. ~30 LOC to fire from `finalize_initial_map` and `toplevel_destroyed`.
+
+- **`IpcOutputMap` snapshot is one-shot.** `mutter_display_config::GetCurrentState` builds a fresh map per call (small N — fine) but the cached `name`/`refresh`/`output` triple stashed on each cast at `start_cast` time goes stale on hotplug. Disconnect/reconnect during an active cast won't update the snapshot. Niri tracks this via `mapped_cast_output`; margo can rebuild lazily via `WeakOutput::upgrade`.
+
+- **`ScreenCast::Session::Stop` D-Bus method exists but the cleanup chain is partial.** Stop messages route through `ScreenCastToCompositor::StopCast` and `MargoState::stop_cast`, which retains the cast-vec by `session_id`. PipeWire stream and Cast struct are dropped in order (Cast carries the listener which is dropped before the Stream — verified). What's NOT done: the WebRTC consumer can hang briefly if it's mid-frame when we drop. niri has `cleanup_with_grace_period`; we just drop. Acceptable; logs may show pipewire warnings on rapid stop/start cycles.
+
+---
+
 ## What's queued (next sprint candidates)
 
 Recently shipped (this two-sprint depth-pass):
@@ -286,9 +344,9 @@ Recently shipped (this two-sprint depth-pass):
 
 Still queued — pick one:
 
-1. **HDR Phase 2 — linear-light fp16 composite.** Per-surface transfer-function decode at sample time; output stays SDR but the internal pipeline goes linear. Foundation for Phase 3 (KMS HDR scan-out). ~500 LOC + shader-test matrix.
+1. **Screencast Phase F — pacing + damage + cursor.** Three depth items on the now-shipped P7. (a) Wire `Cast::check_time_and_schedule` into `drain_active_cast_frames` so static scenes don't burn 60fps GLES work. (b) Thread real damage through `dequeue_buffer_and_render` so the consumer's encoder skips identical frames. (c) Embed the pointer cursor into the cast element list. ~200 LOC total.
 
-2. **Built-in xdg-desktop-portal backend Milestone 1** — screencast over `xdp-wlr` fallback. Reduces the external `xdg-desktop-portal-wlr` dep; first concrete code on the portal track. ~600 LOC + zbus integration.
+2. **HDR Phase 2 — linear-light fp16 composite.** Per-surface transfer-function decode at sample time; output stays SDR but the internal pipeline goes linear. Foundation for Phase 3 (KMS HDR scan-out). ~500 LOC + shader-test matrix.
 
 3. **`on_window_close` event hook.** Needs a stable identity for closing windows so a handler can react before the client dies. Couples to the existing `closing_clients` list. ~100 LOC.
 
@@ -297,6 +355,10 @@ Still queued — pick one:
 5. **Smoke test in CI.** Run `scripts/smoke-winit.sh` headless via Xvfb in a dedicated workflow. Needs a lightweight terminal client on the runner + ~20 LOC YAML.
 
 6. **`wlr_output_management_v1` disable-output.** The runtime mode change shipped; disable still rejected. Disable means tearing down an OutputDevice + migrating clients to a remaining output. ~200 LOC + careful testing.
+
+7. **Screencast — full-decoration cast frames.** Widen `CastRenderElement<R>` to `MargoRenderElement` so the share view matches the live display (borders, shadows, popups, animations included). Invasive niri-port surgery on `pw_utils.rs`; ~400 LOC.
+
+8. **Screencast — `windows_changed` D-Bus signal emission.** Fire from `finalize_initial_map` and `toplevel_destroyed` so xdp-gnome's window picker stays live during a share dialog. ~30 LOC.
 
 ---
 
@@ -323,6 +385,7 @@ Run after installing a fresh package. Anything failing here is a release blocker
 - [ ] grim full + region capture → both dmabuf path; wf-recorder records without SHM fallback.
 - [ ] Screen lock → password input works on the cursor's monitor; multi-monitor dots animate in sync.
 - [ ] HDR-capable monitor → no regression (still SDR; HDR phase 1 advertises capability only).
+- [ ] Helium / Chromium → Meet → Share screen → Window tab populates with live windows; pick one → share preview shows live content (not frozen first frame).
 - [ ] `mctl status --json | jq .outputs[0].focused.app_id` returns the focused window.
 - [ ] `mctl check-config ~/.config/margo/config.conf` reports zero errors.
 - [ ] `~/.config/margo/init.rhai` evaluates at startup if present (one log line at info level).
