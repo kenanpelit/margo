@@ -16,7 +16,7 @@
   <a href="https://github.com/Smithay/smithay"><img src="https://img.shields.io/badge/built%20on-Smithay-blueviolet" alt="Smithay"></a>
 </p>
 
-**margo** is a Wayland compositor in the dwl/dwm tradition — a Rust + [Smithay] port of [mango]. Tags instead of workspaces, a deep tiling-layout catalogue, and a small set of companion CLIs (`mctl`, `mlayout`, `mscreenshot`) that turn the compositor into a scriptable workstation. Built and used as a daily driver: every commit ships through a real session before tagging.
+**margo** is a Wayland compositor in the dwl/dwm tradition — a Rust + [Smithay] port of [mango]. Tags instead of workspaces, a deep tiling-layout catalogue, and a small set of companion CLIs (`mctl`, `mlayout`, `mscreenshot`) for inspection and control from the shell. Built and used as a daily driver: every commit ships through a real session before tagging.
 
 [Smithay]: https://github.com/Smithay/smithay
 [mango]: https://github.com/mangowm/mango
