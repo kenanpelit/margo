@@ -45,6 +45,38 @@ pub fn handle_input<B: InputBackend>(state: &mut MargoState, event: InputEvent<B
         state.idle_notifier_state.notify_activity(&seat);
     }
 
+    // W2.1 region selector intercept — when the in-compositor
+    // screenshot UI is active, pointer + keyboard events drive
+    // the selector instead of the normal focus / keybind paths.
+    // Anything else (axis, gesture, touch) falls through so the
+    // user can still scroll a video / mute audio while the
+    // selector is up.
+    if state.region_selector.is_some() {
+        match event {
+            InputEvent::Keyboard { event } => {
+                handle_region_selector_keyboard(state, event);
+                return;
+            }
+            InputEvent::PointerMotion { event } => {
+                let dx = event.delta_x();
+                let dy = event.delta_y();
+                state.input_pointer.x += dx;
+                state.input_pointer.y += dy;
+                let cursor = (state.input_pointer.x, state.input_pointer.y);
+                if let Some(sel) = state.region_selector.as_mut() {
+                    sel.update_drag(cursor);
+                    state.request_repaint();
+                }
+                return;
+            }
+            InputEvent::PointerButton { event } => {
+                handle_region_selector_button(state, event);
+                return;
+            }
+            _ => {}
+        }
+    }
+
     match event {
         InputEvent::Keyboard { event } => handle_keyboard(state, event),
         InputEvent::PointerMotion { event } => handle_pointer_motion(state, event),
@@ -55,6 +87,65 @@ pub fn handle_input<B: InputBackend>(state: &mut MargoState, event: InputEvent<B
         InputEvent::GestureSwipeUpdate { event } => handle_swipe_update(state, event),
         InputEvent::GestureSwipeEnd { event: _ } => handle_swipe_end(state),
         _ => {}
+    }
+}
+
+// ── Region-selector input intercepts ────────────────────────────────────────
+//
+// While `state.region_selector.is_some()`:
+//
+//   * Pointer button down (left): begin_drag at cursor.
+//   * Pointer button up (left): end_drag, then confirm
+//     (commits the rect to mscreenshot via spawn_shell).
+//   * Keyboard Enter: confirm; Escape: cancel; everything else:
+//     swallowed (no compositor binds fire while the selector is up).
+
+fn handle_region_selector_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(
+    state: &mut MargoState,
+    event: E,
+) {
+    if event.state() != KeyState::Pressed {
+        return;
+    }
+    // Compare against raw evdev key codes (linux/input-event-codes.h):
+    //   KEY_ESC = 1, KEY_ENTER = 28, KEY_KPENTER = 96.
+    // No xkbcommon translation needed for these — they're physical-
+    // key constants, identical across layouts. Avoids the
+    // keyboard.input() filter dance entirely; xkb modifier state
+    // doesn't matter for "is the user pressing Escape".
+    let raw: u32 = event.key_code().raw();
+    match raw {
+        28 | 96 => state.confirm_region_selection(),
+        1 => state.cancel_region_selection(),
+        _ => {} // swallow everything else while the selector is up
+    }
+}
+
+fn handle_region_selector_button<B: InputBackend, E: PointerButtonEvent<B>>(
+    state: &mut MargoState,
+    event: E,
+) {
+    let cursor = (state.input_pointer.x, state.input_pointer.y);
+    // 0x110 = BTN_LEFT (linux/input-event-codes.h).
+    let is_left = event.button_code() == 0x110;
+    if !is_left {
+        return;
+    }
+    let pressed = event.state() == smithay::backend::input::ButtonState::Pressed;
+    if let Some(sel) = state.region_selector.as_mut() {
+        if pressed {
+            sel.begin_drag(cursor);
+            state.request_repaint();
+        } else {
+            sel.end_drag();
+            // Auto-confirm on release if the user actually dragged
+            // out a non-degenerate rect; otherwise leave the
+            // selector armed for a retry.
+            let has_rect = sel.selection_rect().is_some();
+            if has_rect {
+                state.confirm_region_selection();
+            }
+        }
     }
 }
 

@@ -154,7 +154,14 @@ fn run() -> Result<()> {
 
     require("grim")?;
     if matches!(source, CaptureSource::Region) {
-        require("slurp")?;
+        // slurp is only required when MARGO_REGION_GEOM isn't set —
+        // margo's W2.1 in-compositor selector pre-fills the env so
+        // we skip slurp entirely. Outside margo (or with the env
+        // unset) the legacy slurp-spawning path applies.
+        let pre_geom = std::env::var("MARGO_REGION_GEOM").unwrap_or_default();
+        if pre_geom.trim().is_empty() {
+            require("slurp")?;
+        }
     }
     if matches!(
         mode,
@@ -218,21 +225,35 @@ fn capture(source: CaptureSource, dest: &Path) -> Result<()> {
 }
 
 fn capture_region(dest: &Path) -> Result<()> {
-    let geom = run_capture_stdout(
-        "slurp",
-        &[
-            "-b", "00000055",
-            "-c", "f5f5f5ee",
-            "-s", "00000000",
-            "-w", "3",
-        ],
-    )?;
-    let geom = geom.trim();
+    // W2.1 in-compositor selector: when margo's render-side
+    // selector confirms a rect, it spawns mscreenshot with
+    // `MARGO_REGION_GEOM="X,Y WxH"` set. We honour that, skipping
+    // the slurp invocation entirely — saves the second-window
+    // focus-fight + IPC round-trip that prompted the W2.1 work in
+    // the first place. Empty / unset env falls through to the
+    // legacy slurp-spawning path so users without margo's
+    // selector (and other compositors that just call mscreenshot)
+    // keep working.
+    let geom_owned = std::env::var("MARGO_REGION_GEOM").unwrap_or_default();
+    let geom = if !geom_owned.trim().is_empty() {
+        geom_owned.trim().to_string()
+    } else {
+        let g = run_capture_stdout(
+            "slurp",
+            &[
+                "-b", "00000055",
+                "-c", "f5f5f5ee",
+                "-s", "00000000",
+                "-w", "3",
+            ],
+        )?;
+        g.trim().to_string()
+    };
     if geom.is_empty() {
         bail!("region selection cancelled");
     }
     let status = Command::new("grim")
-        .args(["-g", geom])
+        .args(["-g", &geom])
         .arg(dest)
         .status()
         .context("spawn grim")?;

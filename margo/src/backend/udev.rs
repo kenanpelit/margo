@@ -3496,7 +3496,32 @@ fn render_output(
     take_pending_snapshots(renderer, od, state);
     take_pending_open_close_captures(renderer, od, state);
 
-    let elements = build_render_elements(renderer, od, state);
+    let mut elements = build_render_elements(renderer, od, state);
+    // W2.1 region selector overlay — when active, prepend the
+    // outline rects (highest z-order) so they render on top of
+    // every other element. Mutates the selector's solid-color
+    // buffers in place: `render_elements` updates each buffer's
+    // size to match the current rect so smithay's CommitCounter
+    // only ticks on real geometry change. Pushed BEFORE the
+    // screencopy serve so the captured frame includes the overlay
+    // — match-what-the-user-sees semantics.
+    if state.region_selector.is_some() {
+        let mon_origin = state
+            .monitors
+            .iter()
+            .find(|m| m.output == od.output)
+            .map(|m| (m.monitor_area.x, m.monitor_area.y))
+            .unwrap_or((0, 0));
+        let scale = od.output.current_scale().fractional_scale();
+        if let Some(sel) = state.region_selector.as_mut() {
+            let overlay = sel.render_elements(mon_origin, scale);
+            // Prepend so the outline is on top.
+            let mut head: Vec<MargoRenderElement> =
+                overlay.into_iter().map(MargoRenderElement::Solid).collect();
+            head.append(&mut elements);
+            elements = head;
+        }
+    }
     // Serve any pending wlr-screencopy frames for this output BEFORE the
     // main render. We re-use `elements` so the captured image matches what
     // the user sees on the next frame. Returns early on success — the

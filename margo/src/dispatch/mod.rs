@@ -93,10 +93,20 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
             }
         }
         "screenshot-region-ui" | "screenshot_region_ui" => {
-            // `rec` mode: region → editor → file + clipboard.
-            if let Err(e) = crate::utils::spawn_shell("mscreenshot rec") {
-                tracing::error!("spawn mscreenshot: {e}");
-            }
+            // W2.1 in-compositor selection. Lights up the
+            // ActiveRegionSelector at the cursor's current
+            // position; subsequent pointer + key events route
+            // through the selector until confirm / cancel. On
+            // confirm, mscreenshot is spawned with the chosen
+            // mode + MARGO_REGION_GEOM env var so it skips its
+            // own slurp invocation.
+            //
+            // Optional arg picks the delivery mode (rec / area /
+            // ri / rc / rf — same names as mscreenshot
+            // subcommands). Bare action defaults to `rec` to
+            // preserve the previous keybind contract.
+            let mode = crate::screenshot_region::SelectorMode::parse(arg.v.as_deref());
+            state.open_region_selector(mode);
         }
         "screenshot-region" | "screenshot_region" => {
             // `area` mode: region → save to disk only.

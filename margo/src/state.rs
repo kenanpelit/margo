@@ -1300,6 +1300,14 @@ pub struct MargoState {
     /// still alive at destruction time but we hadn't rendered yet)
     /// live as `None` in `texture` until the next render fills them in.
     pub closing_clients: Vec<ClosingClient>,
+    /// Active region-selection UI for the in-compositor screenshot
+    /// flow (W2.1). `Some(...)` while the user is dragging /
+    /// pondering a rect; cleared on Escape, on confirm (after
+    /// spawning mscreenshot with `MARGO_REGION_GEOM`), and on
+    /// session-lock (so the selector doesn't leak across login
+    /// boundaries). Render path overlays the rect; input path
+    /// intercepts pointer + keyboard while this is `Some`.
+    pub region_selector: Option<crate::screenshot_region::ActiveRegionSelector>,
     /// Layer surfaces in their open / close animation. Keyed by the
     /// layer's wl_surface object id so the render path can look up
     /// the per-layer animation state without an O(n) scan. Each
@@ -1493,6 +1501,7 @@ impl MargoState {
             screencopy_state,
             libinput_devices: Vec::new(),
             closing_clients: Vec::new(),
+            region_selector: None,
             layer_animations: std::collections::HashMap::new(),
             config,
         }
@@ -1507,6 +1516,65 @@ impl MargoState {
     /// trigger a write after non-arrange state changes.
     pub fn refresh_state_file(&self) {
         self.write_state_file();
+    }
+
+    /// Open the in-compositor region selector at the current cursor
+    /// position. Replaces the previous "spawn slurp via mscreenshot"
+    /// flow — the selector lives entirely inside margo's render +
+    /// input loops so there's no second window fighting focus, no
+    /// IPC round-trip, no stale-frame artifacts. Subsequent pointer
+    /// button + motion + key events route through the selector
+    /// until [`Self::confirm_region_selection`] or
+    /// [`Self::cancel_region_selection`] runs.
+    pub fn open_region_selector(
+        &mut self,
+        mode: crate::screenshot_region::SelectorMode,
+    ) {
+        let cursor = (self.input_pointer.x, self.input_pointer.y);
+        self.region_selector = Some(
+            crate::screenshot_region::ActiveRegionSelector::at(cursor, mode),
+        );
+        self.request_repaint();
+        tracing::info!(
+            "region selector opened at ({:.0}, {:.0}) mode={:?}",
+            cursor.0,
+            cursor.1,
+            mode
+        );
+    }
+
+    /// User pressed Enter / released the drag button — finalize
+    /// the selection: spawn `mscreenshot <mode>` with
+    /// `MARGO_REGION_GEOM` set, then close the selector. Re-arms
+    /// (keeps the selector open) if the selection is degenerate
+    /// — user clicked but didn't drag. Caller decides whether to
+    /// route Enter through this immediately or wait for a real
+    /// drag.
+    pub fn confirm_region_selection(&mut self) {
+        let Some(sel) = self.region_selector.take() else {
+            return;
+        };
+        let Some(geom) = sel.geom_string() else {
+            // Degenerate rect — re-arm so user can try again.
+            self.region_selector = Some(sel);
+            return;
+        };
+        let mode = sel.mode.subcommand();
+        let cmd = format!("MARGO_REGION_GEOM='{}' mscreenshot {}", geom, mode);
+        tracing::info!("region selector confirm: {cmd}");
+        if let Err(e) = crate::utils::spawn_shell(&cmd) {
+            tracing::error!("spawn mscreenshot: {e}");
+        }
+        self.request_repaint();
+    }
+
+    /// User pressed Escape — drop the selector without spawning
+    /// mscreenshot.
+    pub fn cancel_region_selection(&mut self) {
+        if self.region_selector.take().is_some() {
+            tracing::info!("region selector cancelled");
+            self.request_repaint();
+        }
     }
 
     /// Soft-disable a monitor: mark it inactive, migrate every client
