@@ -343,13 +343,18 @@ Recently shipped (this two-sprint depth-pass):
 - ✓ **Direct scanout observability** — `MargoClient::last_scanout` cached after each successful `render_frame` by walking the surface tree and matching `Id::from_wayland_resource` against `RenderElementStates` for `ZeroCopy` presentation. Surfaces in ZeroCopy → primary or overlay plane (composition skipped). Exposed in state.json + `mctl clients` shows ★ marker for on-scanout windows.
 - ✓ **Screencast `CursorMode::Metadata` cursor sidecar** — new helper `build_cursor_elements_for_output` extracts cursor sprite render elements separately from the main scene; metadata casts now prepend pointer elements to the cast slice with `elem_count = cursor_count` so `CursorData::compute` wraps them, pw_utils strips the pointer elements from the main damage pass, and `add_cursor_metadata` writes a real cursor bitmap into the SPA sidecar. xdp-gnome consumers (browsers requesting metadata mode) see a sharp cursor at low cast resolutions instead of "no cursor at all".
 
-Still queued — pick one:
+**Sprint 4 — protocol depth + foundation work:**
+- ✓ **Smoke test in CI** — `.github/workflows/smoke.yml` runs `scripts/smoke-winit.sh` end-to-end under Xvfb on every push/PR with kitty as the test client. Lives separately from the lightweight `ci.yml` so the build/test/check-config path stays fast; on failure uploads `/tmp/margo-smoke-*/` as a workflow artifact.
+- ✓ **`wlr_output_management_v1` disable-output** — soft-disable path: marks `MargoMonitor::enabled = false`, migrates every client on it to the first remaining enabled monitor, skips arrange + render for it, and refuses any disable that would leave zero active outputs. The smithay `Output` and udev `OutputDevice` stay alive so re-enable resumes without a hotplug; pertag/gamma/scale survive. New keybind dispatch actions: `disable_output` / `enable_output` / `toggle_output` (catalogued in `mctl actions`). DRM connector power-off remains a follow-up.
+- ✓ **HDR Phase 2 — scaffolding shipped, swapchain integration upstream-gated.** New module `render/linear_composite.rs` ships the linear-light side of HDR: sRGB / ST2084-PQ / HLG / γ2.2 transfer-function math with bit-exact GLSL **and** equivalent `f32` CPU implementations for unit-test verification (round-trip identity at spec-value sample points: sRGB 0.5↔0.21404 linear, PQ peak, HLG kink at 0.5↔1/12). GLES texture shaders (encoder + decoder) compile lazily and cache thread-local. `MARGO_COLOR_LINEAR=1` env gate eagerly compiles both programs on the live renderer at first frame so driver-side rejection surfaces at startup, not first cast. The runtime swapchain switch from `Argb8888` to `Abgr16161616f` needs an `OutputDevice`-aware reformat that smithay 0.7's `DrmCompositor` doesn't expose at runtime — so `is_linear_composite_active()` returns `false` today; flip the body to `is_linear_composite_enabled()` once the upstream API lands and queue a `TextureRenderElement` wrapping the encoder onto the frame. ~80 LOC of integration remains, the math + shaders are validated and ready.
 
-1. **HDR Phase 2 — linear-light fp16 composite.** Per-surface transfer-function decode at sample time; output stays SDR but the internal pipeline goes linear. Foundation for Phase 3 (KMS HDR scan-out). ~500 LOC + shader-test matrix.
+Still queued:
 
-2. **Smoke test in CI.** Run `scripts/smoke-winit.sh` headless via Xvfb in a dedicated workflow. Needs a lightweight terminal client on the runner + ~20 LOC YAML.
+1. **Upstream smithay fp16 swapchain knob** — once landed, finishes Phase 2's runtime activation in ~80 LOC.
 
-3. **`wlr_output_management_v1` disable-output.** The runtime mode change shipped; disable still rejected. Disable means tearing down an OutputDevice + migrating clients to a remaining output. ~200 LOC + careful testing.
+2. **HDR Phase 3 — KMS HDR scan-out.** Negotiate output's preferred HDR format via DRM `EDR_PROPERTIES` blob; on HDR-capable surface visible, set `HDR_OUTPUT_METADATA` and flip to 10-bit PQ scan-out. ~400 LOC + heavy hardware-test matrix.
+
+3. **HDR Phase 4 — per-output ICC profiles.** Read `colord` ICC via D-Bus, bake into per-output 3D LUT, sample after composition. ~250 LOC.
 
 ---
 

@@ -3472,6 +3472,18 @@ fn render_output(
             return;
         }
     }
+    // HDR Phase 2 scaffolding hook: when MARGO_COLOR_LINEAR=1 is
+    // set, eagerly compile the encode/decode programs on the live
+    // renderer so a) the user finds out at startup if their driver
+    // rejects the GLSL, not at first cast b) the runtime swap-in
+    // (when the upstream DrmCompositor fp16 swapchain knob lands)
+    // doesn't pay first-frame compile latency. The actual render
+    // path stays the existing 8-bit composite — see
+    // `render::linear_composite::is_linear_composite_active`.
+    if crate::render::linear_composite::is_linear_composite_enabled() {
+        let _ = crate::render::linear_composite::encoder_shader(renderer);
+        let _ = crate::render::linear_composite::decoder_shader(renderer);
+    }
     // Niri-style resize transition: any window whose layout slot
     // changed size since the last frame had `snapshot_pending` set by
     // `arrange_monitor`. We're now on the render thread with a live

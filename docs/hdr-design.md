@@ -69,20 +69,42 @@ What a "done" release looks like, user-side:
 
 ### Phase 2 — Linear-light composite path
 
-* Add a `MARGO_COLOR_LINEAR=1` env-var (eventually a config knob).
-  When on:
-  * Allocate the swapchain in fp16 RGBA (`DrmFourcc::Abgr16161616F`)
-    instead of `DrmFourcc::Argb8888`.
-  * Each surface's render element decodes its declared transfer
-    function before sampling — sRGB clients go through the inverse
-    sRGB curve, PQ clients through inverse-PQ, etc.
-  * Final framebuffer encodes back to the output's transfer
-    function before scan-out.
-* Per-pass cost: a fragment-shader hop. Measurable on lower-end iGPUs;
-  acceptable on anything with hardware fp16 mixing (Intel/AMD/NV
-  iGPUs from 2018+).
+**Status: scaffolding shipped, swapchain integration upstream-gated.**
 
-  Estimated size: ~500 LOC + a notable shader-test matrix.
+* `MARGO_COLOR_LINEAR=1` env gate is honored at startup
+  (`render::linear_composite::is_linear_composite_enabled`). Toggling
+  it eagerly compiles the encode/decode shader programs on the live
+  renderer so a driver that rejects the GLSL fails loudly at session
+  start, not at first cast / first reload.
+* Shader programs ready (`render/linear_composite.rs`):
+  * sRGB → linear decoder (texture shader): inverse-sRGB on RGB,
+    pass-through on A, with per-element `u_alpha`.
+  * Linear → sRGB encoder (texture shader): forward-sRGB on RGB,
+    matching `u_alpha`.
+  * Embedded GLSL helpers for ST2084/PQ and HLG decoders, ready
+    for per-surface TF dispatch via `wp_color_management_v1`
+    state when the integration lands.
+* CPU-side `f32` reference implementations of every TF (sRGB / PQ /
+  HLG / γ2.2 forward + inverse) for unit testing. Round-trip
+  identity tests verify GLSL math agrees with CPU math at known
+  spec-value sample points (sRGB 0.5 ↔ 0.21404 linear, PQ peak,
+  HLG kink at encoded 0.5 ↔ 1/12 linear).
+* `is_linear_composite_active()` always returns `false` today —
+  the actual swapchain switch from `Argb8888` to `Abgr16161616f`
+  needs an `OutputDevice`-aware reformat which smithay 0.7's
+  `DrmCompositor` doesn't expose at runtime. When that API lands
+  upstream, flip the body to gate on
+  `is_linear_composite_enabled()` and queue a single
+  `TextureRenderElement` wrapping the encoder onto the
+  compositor's frame.
+* Per-pass cost when active (still: bench data point pending
+  upstream): one fragment-shader hop over the framebuffer rect.
+  Acceptable on anything with hardware fp16 mixing
+  (Intel/AMD/NV iGPUs from 2018+).
+
+  Shipped size: ~390 LOC inc. test matrix. Upstream-gated
+  swapchain integration: ~80 LOC remaining when smithay exposes
+  the format-swap API.
 
 ### Phase 3 — KMS HDR scan-out
 
