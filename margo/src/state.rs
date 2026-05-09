@@ -13,15 +13,14 @@ use smithay::{
         allocator::dmabuf::Dmabuf,
         renderer::utils::on_commit_buffer_handler,
     },
-    delegate_compositor, delegate_data_control, delegate_data_device, delegate_dmabuf,
+    delegate_compositor, delegate_dmabuf,
     delegate_output,
-    delegate_primary_selection,
     delegate_seat, delegate_shm,
     delegate_presentation, delegate_xdg_shell,
     desktop::{PopupManager, Space, Window, WindowSurface, WindowSurfaceType, layer_map_for_output},
     input::{
         Seat, SeatHandler, SeatState,
-        dnd::{DndFocus, DndGrabHandler, Source},
+        dnd::{DndFocus, Source},
         keyboard::{KeyboardTarget, KeysymHandle, ModifiersState},
         pointer::{
             AxisFrame, ButtonEvent, CursorImageStatus, GestureHoldBeginEvent, GestureHoldEndEvent,
@@ -55,16 +54,15 @@ use smithay::{
             data_device::{
                 clear_data_device_selection, current_data_device_selection_userdata,
                 request_data_device_client_selection, set_data_device_focus,
-                set_data_device_selection, DataDeviceHandler, DataDeviceState,
-                WaylandDndGrabHandler, WlOfferData,
+                set_data_device_selection, DataDeviceState, WlOfferData,
             },
             primary_selection::{
                 clear_primary_selection, current_primary_selection_userdata,
                 request_primary_client_selection, set_primary_focus, set_primary_selection,
-                PrimarySelectionHandler, PrimarySelectionState,
+                PrimarySelectionState,
             },
-            wlr_data_control::{DataControlHandler, DataControlState},
-            SelectionHandler, SelectionSource, SelectionTarget,
+            wlr_data_control::DataControlState,
+            SelectionTarget,
         },
         shell::{
             wlr_layer::{
@@ -6147,62 +6145,6 @@ delegate_seat!(MargoState);
 impl OutputHandler for MargoState {}
 delegate_output!(MargoState);
 
-
-// ── Smithay delegate: Data Device ─────────────────────────────────────────────
-
-impl SelectionHandler for MargoState {
-    type SelectionUserData = ();
-
-    fn new_selection(
-        &mut self,
-        ty: SelectionTarget,
-        source: Option<SelectionSource>,
-        _seat: Seat<Self>,
-    ) {
-        if let Some(xwm) = self.xwm.as_mut() {
-            if let Err(err) = xwm.new_selection(ty, source.map(|source| source.mime_types())) {
-                tracing::warn!(?err, ?ty, "failed to mirror Wayland selection to XWayland");
-            }
-        }
-    }
-
-    fn send_selection(
-        &mut self,
-        ty: SelectionTarget,
-        mime_type: String,
-        fd: OwnedFd,
-        _seat: Seat<Self>,
-        _user_data: &(),
-    ) {
-        if let Some(xwm) = self.xwm.as_mut() {
-            if let Err(err) = xwm.send_selection(ty, mime_type, fd) {
-                tracing::warn!(?err, ?ty, "failed to send Wayland selection to XWayland");
-            }
-        }
-    }
-}
-impl DataDeviceHandler for MargoState {
-    fn data_device_state(&mut self) -> &mut DataDeviceState {
-        &mut self.data_device_state
-    }
-}
-impl WaylandDndGrabHandler for MargoState {}
-delegate_data_device!(MargoState);
-
-impl PrimarySelectionHandler for MargoState {
-    fn primary_selection_state(&mut self) -> &mut PrimarySelectionState {
-        &mut self.primary_selection_state
-    }
-}
-delegate_primary_selection!(MargoState);
-
-impl DataControlHandler for MargoState {
-    fn data_control_state(&mut self) -> &mut DataControlState {
-        &mut self.data_control_state
-    }
-}
-delegate_data_control!(MargoState);
-
 impl crate::protocols::gamma_control::GammaControlHandler for MargoState {
     fn gamma_control_manager_state(
         &mut self,
@@ -6257,10 +6199,6 @@ impl crate::protocols::screencopy::ScreencopyHandler for MargoState {
     }
 }
 crate::delegate_screencopy!(MargoState);
-
-// ── Smithay delegate: DnD grab (required by X11Wm::start_wm) ─────────────────
-
-impl DndGrabHandler for MargoState {}
 
 // ── Smithay delegate: XWayland shell ─────────────────────────────────────────
 

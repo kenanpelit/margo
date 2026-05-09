@@ -17,6 +17,7 @@ mod idle;
 mod input_method;
 mod layer_shell;
 mod pointer_constraints;
+mod selection;
 mod session_lock;
 mod xdg_activation;
 mod xdg_decoration;
