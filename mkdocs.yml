@@ -57,7 +57,9 @@ theme:
 nav:
   - Overview: index.md
   - Install: install.md
-  - Configuration: configuration.md
+  - Configuration:
+      - Overview: configuration.md
+      - Full reference: config-reference.md
   - Companion tools: companion-tools.md
   - Scripting: scripting.md
   - Manual checklist: manual-checklist.md
@@ -83,7 +85,13 @@ markdown_extensions:
       line_spans: __span
       pygments_lang_class: true
   - pymdownx.inlinehilite
-  - pymdownx.snippets
+  - pymdownx.snippets:
+      # Snippets are pulled relative to the repo root so we can
+      # include the actual config.example.conf rather than keeping a
+      # mirror in docs/.
+      base_path:
+        - "."
+      check_paths: true
   - pymdownx.emoji:
       emoji_index: !!python/name:material.extensions.emoji.twemoji
       emoji_generator: !!python/name:material.extensions.emoji.to_svg

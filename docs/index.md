@@ -60,7 +60,7 @@ hide:
 
     `~/.config/margo/config.conf` — tags, rules, keys, animations.
 
-    [:octicons-arrow-right-24: Configuration](configuration.md)
+    [:octicons-arrow-right-24: Configuration](configuration.md) · [Full reference](config-reference.md)
 
 -   :material-tools:{ .lg .middle } **Companion tools**
 

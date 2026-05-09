@@ -1,6 +1,8 @@
 # Configuration
 
-`~/.config/margo/config.conf` — plain `key = value`, hot-reloadable. A complete annotated example lives in [`margo/src/config.example.conf`](https://github.com/kenanpelit/margo/blob/main/margo/src/config.example.conf) and is installed at `/usr/share/doc/margo-git/config.example.conf`.
+`~/.config/margo/config.conf` — plain `key = value`, hot-reloadable.
+
+This page is a **curated walkthrough** of the high-traffic options. For the complete annotated reference (every knob, every default, with inline commentary), see [Full reference](config-reference.md). The same content ships at `/usr/share/doc/margo-git/config.example.conf` after installation.
 
 ## A minimal config
 
@@ -172,7 +174,7 @@ mctl check-config       # exits 1 if any bind is shadowed
 
 ## See also
 
+- [**Full config reference**](config-reference.md) — every option with inline commentary, the complete `config.example.conf` rendered in-page.
 - [Companion tools](companion-tools.md) — `mctl`, `mlayout`, `mscreenshot`.
-- [Scripting](scripting.md) — `~/.config/margo/init.rhai`.
+- [Scripting](scripting.md) — `~/.config/margo/init.rhai` for what window rules and keybinds can't express.
 - [Manual checklist](manual-checklist.md) — what to verify after a fresh install.
-- The annotated [`config.example.conf`](https://github.com/kenanpelit/margo/blob/main/margo/src/config.example.conf) on GitHub — every option documented inline.
