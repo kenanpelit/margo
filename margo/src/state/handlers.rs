@@ -26,3 +26,4 @@ mod session_lock;
 mod x11;
 mod xdg_activation;
 mod xdg_decoration;
+mod xdg_shell;
