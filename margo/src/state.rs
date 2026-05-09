@@ -1509,6 +1509,83 @@ impl MargoState {
         self.write_state_file();
     }
 
+    /// Soft-disable a monitor: mark it inactive, migrate every client
+    /// to the first remaining enabled monitor, and clear focus from it.
+    /// Render and arrange paths skip disabled monitors so the panel
+    /// stops getting dirty repaints; the underlying smithay `Output`
+    /// stays alive so a later `enable_monitor` call can restore it
+    /// without a full hotplug round-trip. Pertag state survives across
+    /// the cycle.
+    ///
+    /// Note: the DRM connector is NOT powered off here — that needs
+    /// the udev backend's DrmCompositor handle, plumbed separately.
+    /// What this fixes: the wlr-output-management protocol-level
+    /// "disable" request now succeeds, kanshi profiles that toggle
+    /// outputs flip cleanly, and the bar / state file see the right
+    /// active-output set. Power-off of the panel is a follow-up.
+    pub fn disable_monitor(&mut self, mon_idx: usize) {
+        if mon_idx >= self.monitors.len() {
+            return;
+        }
+        if !self.monitors[mon_idx].enabled {
+            return;
+        }
+        // Pick a migration target — first OTHER enabled monitor.
+        let target = (0..self.monitors.len())
+            .find(|&i| i != mon_idx && self.monitors[i].enabled);
+        let Some(target) = target else {
+            tracing::warn!(
+                "disable_monitor: refusing to disable {} — no other enabled monitor",
+                self.monitors[mon_idx].name
+            );
+            return;
+        };
+        let target_tagset = self.monitors[target].current_tagset();
+        let target_name = self.monitors[target].name.clone();
+        let src_name = self.monitors[mon_idx].name.clone();
+
+        // Migrate every client living on the doomed monitor.
+        for c in self.clients.iter_mut() {
+            if c.monitor == mon_idx {
+                c.monitor = target;
+                // Pull onto an active tag of the new home so the
+                // client doesn't vanish into a hidden tagset.
+                if c.tags & target_tagset == 0 {
+                    c.tags = target_tagset;
+                }
+            }
+        }
+        // Clear focus history that points at the disabled monitor.
+        if self.focused_monitor() == mon_idx {
+            for mon in &mut self.monitors {
+                mon.selected = None;
+            }
+        }
+        self.monitors[mon_idx].enabled = false;
+        self.arrange_monitor(target);
+        self.focus_first_visible_or_clear(target);
+        self.publish_output_topology();
+        self.write_state_file();
+        tracing::info!("disabled output {src_name} → migrated clients to {target_name}");
+    }
+
+    /// Re-enable a previously soft-disabled monitor. New windows can
+    /// land on it again; arrange picks it up; render starts drawing
+    /// it on the next frame.
+    pub fn enable_monitor(&mut self, mon_idx: usize) {
+        if mon_idx >= self.monitors.len() {
+            return;
+        }
+        if self.monitors[mon_idx].enabled {
+            return;
+        }
+        self.monitors[mon_idx].enabled = true;
+        self.arrange_monitor(mon_idx);
+        self.publish_output_topology();
+        self.write_state_file();
+        tracing::info!("re-enabled output {}", self.monitors[mon_idx].name);
+    }
+
     /// Notify xdp-gnome's window picker that the toplevel set changed
     /// so a live screencast share dialog refreshes its list. Fires
     /// the `org.gnome.Shell.Introspect.WindowsChanged` D-Bus signal
@@ -2221,6 +2298,12 @@ impl MargoState {
 
     pub fn arrange_monitor(&mut self, mon_idx: usize) {
         if mon_idx >= self.monitors.len() {
+            return;
+        }
+        // Soft-disabled monitor: don't lay out — clients have already
+        // been migrated off, and laying out against a panel that isn't
+        // being rendered just produces stale geometry.
+        if !self.monitors[mon_idx].enabled {
             return;
         }
 
@@ -6741,13 +6824,60 @@ impl crate::protocols::output_management::OutputManagementHandler for MargoState
             crate::protocols::output_management::PendingHeadConfig,
         >,
     ) -> bool {
-        // Disable still rejected — tearing down an OutputDevice at
-        // runtime needs careful client migration and a re-init
-        // path; tracked separately. Mode changes are accepted and
-        // queued for the udev backend to apply on the next repaint.
-        if pending.values().any(|p| !p.enabled()) {
-            tracing::warn!("output_management: rejecting disable (not yet supported)");
-            return false;
+        // Disable / re-enable handled BEFORE the geometry-update
+        // loop — toggling `monitor.enabled` is cheap, but if a
+        // pending head says "disable + change mode" we'd want the
+        // mode change to apply against the *enabled* monitor; same
+        // for "enable + change scale". Process toggles first, then
+        // fall through into the existing geometry loop which will
+        // see the new enabled state via the monitor index.
+        //
+        // Refuse to disable the LAST enabled monitor — leaving zero
+        // active outputs strands the user with a dark screen and no
+        // way to recover except a TTY login. wlr-randr / kanshi
+        // typically guards against this client-side, but the
+        // protocol allows the request, so guard server-side too.
+        let any_disable = pending.values().any(|p| !p.enabled());
+        if any_disable {
+            let currently_enabled =
+                self.monitors.iter().filter(|m| m.enabled).count();
+            let pending_disabling = pending
+                .iter()
+                .filter(|(name, p)| {
+                    !p.enabled()
+                        && self
+                            .monitors
+                            .iter()
+                            .any(|m| m.name == **name && m.enabled)
+                })
+                .count();
+            if pending_disabling >= currently_enabled {
+                tracing::warn!(
+                    "output_management: rejecting disable — would leave 0 active outputs"
+                );
+                return false;
+            }
+        }
+
+        let mut changed = false;
+        // Pass 1 — enable/disable toggles. Disable migrates clients
+        // off the doomed output FIRST so the geometry pass below
+        // doesn't try to arrange against it.
+        for (name, p) in &pending {
+            let Some(mon_idx) = self.monitors.iter().position(|m| m.name == *name) else {
+                continue;
+            };
+            let was_enabled = self.monitors[mon_idx].enabled;
+            let want_enabled = p.enabled();
+            if was_enabled == want_enabled {
+                continue;
+            }
+            if !want_enabled {
+                self.disable_monitor(mon_idx);
+            } else {
+                self.enable_monitor(mon_idx);
+            }
+            changed = true;
         }
 
         // Apply scale, transform, position synchronously through
@@ -6758,7 +6888,6 @@ impl crate::protocols::output_management::OutputManagementHandler for MargoState
         // re-modeset happens in the udev backend (which holds the
         // DrmCompositor); doing it here would require plumbing a
         // backend handle onto MargoState.
-        let mut changed = false;
         for (name, p) in &pending {
             let Some(mon_idx) = self.monitors.iter().position(|m| m.name == *name) else {
                 tracing::warn!(
@@ -6766,6 +6895,11 @@ impl crate::protocols::output_management::OutputManagementHandler for MargoState
                 );
                 continue;
             };
+            // Skip geometry tweaks on monitors we're keeping
+            // disabled — they're not contributing to the live scene.
+            if !self.monitors[mon_idx].enabled {
+                continue;
+            }
             let mon = &self.monitors[mon_idx];
             let output = mon.output.clone();
             let mut local_change = false;

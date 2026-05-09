@@ -329,6 +329,39 @@ pub const ACTIONS: &[Action] = &[
         summary: "Move the focused window to an adjacent monitor.",
         detail: "",
     },
+    Action {
+        name: "disable_output",
+        aliases: &["disable-output"],
+        args: "<NAME>",
+        group: Group::Window,
+        summary: "Soft-disable an output (migrates clients off it).",
+        detail: "Marks the named output (e.g. eDP-1) as disabled — \
+                 clients on it are migrated to the first remaining \
+                 enabled output, arrange + render skip it from then \
+                 on. The smithay Output stays alive so a later \
+                 `enable_output` resumes without a hotplug. The DRM \
+                 panel itself is NOT powered down here (follow-up). \
+                 Refused if it would leave zero active outputs.",
+    },
+    Action {
+        name: "enable_output",
+        aliases: &["enable-output"],
+        args: "<NAME>",
+        group: Group::Window,
+        summary: "Re-enable a previously soft-disabled output.",
+        detail: "Reverse of `disable_output`. Existing clients aren't \
+                 automatically pulled back; they stay on whichever \
+                 output the disable pass migrated them to.",
+    },
+    Action {
+        name: "toggle_output",
+        aliases: &["toggle-output"],
+        args: "<NAME>",
+        group: Group::Window,
+        summary: "Toggle disable/enable on an output by name.",
+        detail: "Convenience for dock/undock keybinds: \
+                 `bind = super+ctrl,F12,toggle_output,eDP-1`.",
+    },
 
     // ── Scratchpad ─────────────────────────────────────────────────
     Action {

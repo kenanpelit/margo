@@ -211,6 +211,40 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
         }
         "focusmon" => state.focus_mon(direction_arg(arg)),
         "tagmon" => state.tag_mon(direction_arg(arg)),
+        // Soft-disable / enable an output by name, mirroring the
+        // wlr_output_management protocol path. Useful for keybind-
+        // driven multi-monitor workflows ("toggle the laptop panel
+        // when I dock"). Arg is the connector name (DP-3, eDP-1).
+        // Last enabled monitor is protected — disabling it is
+        // refused with a warn log.
+        //   bind = super+ctrl,F1,disable_output,eDP-1
+        //   bind = super+ctrl,F2,enable_output,eDP-1
+        //   bind = super+ctrl,F3,toggle_output,eDP-1
+        "disable_output" | "disable-output" => {
+            if let Some(name) = arg.v.as_deref() {
+                if let Some(idx) = state.monitors.iter().position(|m| m.name == name) {
+                    state.disable_monitor(idx);
+                }
+            }
+        }
+        "enable_output" | "enable-output" => {
+            if let Some(name) = arg.v.as_deref() {
+                if let Some(idx) = state.monitors.iter().position(|m| m.name == name) {
+                    state.enable_monitor(idx);
+                }
+            }
+        }
+        "toggle_output" | "toggle-output" => {
+            if let Some(name) = arg.v.as_deref() {
+                if let Some(idx) = state.monitors.iter().position(|m| m.name == name) {
+                    if state.monitors[idx].enabled {
+                        state.disable_monitor(idx);
+                    } else {
+                        state.enable_monitor(idx);
+                    }
+                }
+            }
+        }
         "toggleoverview" => state.toggle_overview(),
         // Spatial-canvas pan (PaperWM-ish). Two integer args:
         // dx and dy logical-pixel deltas. Stored per-tag so each

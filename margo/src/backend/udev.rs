@@ -3460,6 +3460,18 @@ fn render_output(
     state: &mut MargoState,
     reason: &'static str,
 ) {
+    // Soft-disabled output: skip the entire render path. Clients on
+    // this output have already been migrated; rendering a frame
+    // would burn GPU cycles and queue page-flips against a panel
+    // the user has chosen to deactivate. The OutputDevice stays
+    // alive (so re-enable can resume without a full hotplug), but
+    // each frame is a no-op. Note: the DRM connector itself isn't
+    // powered down here — that's the panel-off follow-up.
+    if let Some(mon) = state.monitors.iter().find(|m| m.output == od.output) {
+        if !mon.enabled {
+            return;
+        }
+    }
     // Niri-style resize transition: any window whose layout slot
     // changed size since the last frame had `snapshot_pending` set by
     // `arrange_monitor`. We're now on the render thread with a live
