@@ -495,3 +495,386 @@ fn arrange_dispatcher_matches_direct_call() {
     assert_eq!(arrange(LayoutId::Scroller, &ctx), scroller(&ctx));
     assert_eq!(arrange(LayoutId::Dwindle, &ctx), dwindle(&ctx));
 }
+
+// ── W1.2: extended property tests across the full layout catalogue ─────────
+//
+// Property tests for the full 14-layout catalogue × {1, 2, 3, 5} window
+// counts × focus shift. Each `LayoutId` variant should satisfy the
+// invariants below. Canvas is the panless free-form layout — it
+// returns an empty vec by design and is excluded from cardinality /
+// rect-validity properties (the live render path consults
+// `client.canvas_geom` directly).
+
+/// Every `LayoutId` variant except Canvas (no-op by design).
+const ALL_LAYOUTS_EXCEPT_CANVAS: &[LayoutId] = &[
+    LayoutId::Tile,
+    LayoutId::Scroller,
+    LayoutId::Grid,
+    LayoutId::Monocle,
+    LayoutId::Deck,
+    LayoutId::CenterTile,
+    LayoutId::RightTile,
+    LayoutId::VerticalScroller,
+    LayoutId::VerticalTile,
+    LayoutId::VerticalGrid,
+    LayoutId::VerticalDeck,
+    LayoutId::TgMix,
+    LayoutId::Dwindle,
+    LayoutId::Overview,
+];
+
+/// Layouts whose master/stack rects should not overlap one another.
+/// Excludes monocle/deck (intentional overlap), scroller variants
+/// (off-screen by design), canvas (empty), overview (== monocle).
+const TILE_CLASS_LAYOUTS: &[LayoutId] = &[
+    LayoutId::Tile,
+    LayoutId::RightTile,
+    LayoutId::Grid,
+    LayoutId::CenterTile,
+    LayoutId::VerticalTile,
+    LayoutId::VerticalGrid,
+    LayoutId::TgMix,
+    LayoutId::Dwindle,
+];
+
+#[test]
+fn arrange_dispatcher_matches_direct_call_all_layouts() {
+    // Property test: the `arrange()` dispatcher must agree with the
+    // direct function call for *every* `LayoutId` variant. The narrow
+    // version of this test (above) only spot-checks 7; this one
+    // covers all 15 (Canvas + Overview included).
+    let f = Fixture::with_windows(HD_1080P, 4);
+    let ctx = f.ctx().build();
+    for &layout in ALL_LAYOUTS_EXCEPT_CANVAS {
+        let direct: ArrangeResult = match layout {
+            LayoutId::Tile => tile(&ctx),
+            LayoutId::Scroller => scroller(&ctx),
+            LayoutId::Grid => grid(&ctx),
+            LayoutId::Monocle => monocle(&ctx),
+            LayoutId::Deck => deck(&ctx),
+            LayoutId::CenterTile => center_tile(&ctx),
+            LayoutId::RightTile => right_tile(&ctx),
+            LayoutId::VerticalScroller => vertical_scroller(&ctx),
+            LayoutId::VerticalTile => vertical_tile(&ctx),
+            LayoutId::VerticalGrid => vertical_grid(&ctx),
+            LayoutId::VerticalDeck => vertical_deck(&ctx),
+            LayoutId::TgMix => tgmix(&ctx),
+            LayoutId::Dwindle => dwindle(&ctx),
+            LayoutId::Overview => monocle(&ctx),
+            LayoutId::Canvas => unreachable!(),
+        };
+        assert_eq!(
+            arrange(layout, &ctx),
+            direct,
+            "arrange({layout:?}) diverged from direct call",
+        );
+    }
+    // Canvas is a no-op separately.
+    assert!(arrange(LayoutId::Canvas, &ctx).is_empty());
+}
+
+#[test]
+fn cardinality_matches_input_for_non_canvas_layouts() {
+    // Every non-canvas layout returns exactly one rect per input
+    // client. Empty input → empty output. Caught a real regression
+    // when an early `dwindle` impl dropped the last leaf for n>=8.
+    for &layout in ALL_LAYOUTS_EXCEPT_CANVAS {
+        for n in [0, 1, 2, 3, 5, 8] {
+            let f = Fixture::with_windows(HD_1080P, n);
+            let ctx = f.ctx().build();
+            let arranged = arrange(layout, &ctx);
+            assert_eq!(
+                arranged.len(),
+                n,
+                "{layout:?} n={n}: returned {} rects, expected {n}",
+                arranged.len(),
+            );
+        }
+    }
+}
+
+#[test]
+fn no_degenerate_rects_across_full_catalogue() {
+    // Every output rect must have positive width and height. A
+    // zero-or-negative size means a layout silently dropped a client
+    // off-screen — invisible bug at runtime, easy to catch here.
+    // Scroller variants intentionally exceed work_area off-screen,
+    // so we don't constrain x/y here — just the size invariant.
+    for &layout in ALL_LAYOUTS_EXCEPT_CANVAS {
+        for n in 1..=6 {
+            let f = Fixture::with_windows(HD_1080P, n);
+            let ctx = f.ctx().build();
+            for (idx, rect) in arrange(layout, &ctx) {
+                assert!(
+                    rect.width > 0 && rect.height > 0,
+                    "{layout:?} n={n} idx={idx}: degenerate rect {}x{}",
+                    rect.width,
+                    rect.height,
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn monocle_returns_identical_rect_for_every_client() {
+    // Property: monocle is a single-window-visible layout — every
+    // client gets the SAME rect. Adding gaps / changing nmaster
+    // shouldn't fan-out the geometry.
+    for n in 1..=6 {
+        let f = Fixture::with_windows(HD_1080P, n);
+        let ctx = f.ctx().build();
+        let arranged = monocle(&ctx);
+        if let Some((_, first)) = arranged.first().copied() {
+            for (idx, rect) in &arranged {
+                assert_eq!(
+                    *rect, first,
+                    "monocle n={n} idx={idx}: rect diverged from monocle invariant",
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn deck_stack_clients_share_one_rect() {
+    // Property: deck's non-master clients all get the same stack
+    // rect (that's the "tab stack" semantic). Master rects can
+    // differ when nmaster > 1, so we slice off the masters and
+    // verify the rest collapse to one rect.
+    for nmaster in 1..=2 {
+        for n in (nmaster + 1)..=5 {
+            let f = Fixture::with_windows(HD_1080P, n);
+            let ctx = f.ctx().nmaster(nmaster as u32).build();
+            let arranged = deck(&ctx);
+            let stack: Vec<_> = arranged
+                .iter()
+                .skip(nmaster)
+                .map(|(_, r)| *r)
+                .collect();
+            let first = stack[0];
+            for (i, rect) in stack.iter().enumerate() {
+                assert_eq!(
+                    *rect,
+                    first,
+                    "deck n={n} nmaster={nmaster} stack[{i}] diverged from shared stack rect",
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn tile_class_layouts_have_pairwise_disjoint_rects() {
+    // Property: in tiling layouts (no master/stack overlap by
+    // design), no two output rects share interior pixels. Allow a
+    // single-pixel touch for rounding seams. Excludes monocle / deck
+    // (overlap is the point) and scroller variants (off-screen by
+    // design).
+    for &layout in TILE_CLASS_LAYOUTS {
+        for n in 2..=5 {
+            let f = Fixture::with_windows(HD_1080P, n);
+            let ctx = f.ctx().build();
+            let arranged = arrange(layout, &ctx);
+            for i in 0..arranged.len() {
+                for j in (i + 1)..arranged.len() {
+                    let a = arranged[i].1;
+                    let b = arranged[j].1;
+                    let overlap_w = (a.x + a.width).min(b.x + b.width) - a.x.max(b.x);
+                    let overlap_h = (a.y + a.height).min(b.y + b.height) - a.y.max(b.y);
+                    let overlaps = overlap_w > 0 && overlap_h > 0;
+                    assert!(
+                        !overlaps,
+                        "{layout:?} n={n}: rects {i}={a:?} and {j}={b:?} overlap by {overlap_w}x{overlap_h}",
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn focus_position_does_not_shift_non_scroller_layouts() {
+    // Property: focus tracking is a scroller-only concern. Tile,
+    // grid, deck, monocle, etc. should produce IDENTICAL geometry
+    // regardless of `focused_tiled_pos` — moving focus among already-
+    // mapped clients should never trigger a re-arrange jitter.
+    let focus_invariant_layouts = [
+        LayoutId::Tile,
+        LayoutId::RightTile,
+        LayoutId::Grid,
+        LayoutId::Monocle,
+        LayoutId::Deck,
+        LayoutId::CenterTile,
+        LayoutId::VerticalTile,
+        LayoutId::VerticalGrid,
+        LayoutId::VerticalDeck,
+        LayoutId::TgMix,
+        LayoutId::Dwindle,
+        LayoutId::Overview,
+    ];
+    for &layout in &focus_invariant_layouts {
+        let f = Fixture::with_windows(HD_1080P, 4);
+        let baseline = arrange(layout, &f.ctx().build());
+        for focus in 0..4 {
+            let with_focus = arrange(layout, &f.ctx().focused(focus).build());
+            assert_eq!(
+                baseline, with_focus,
+                "{layout:?}: focus={focus} changed geometry — expected focus-invariant",
+            );
+        }
+    }
+}
+
+#[test]
+fn overview_aliases_monocle() {
+    // Overview is dispatched through the overview UI elsewhere; the
+    // arrange dispatcher routes it to monocle so the underlying
+    // tag still has a sensible base layout when overview ends.
+    for n in [1, 3, 5] {
+        let f = Fixture::with_windows(HD_1080P, n);
+        let ctx = f.ctx().build();
+        assert_eq!(
+            arrange(LayoutId::Overview, &ctx),
+            monocle(&ctx),
+            "Overview should route to monocle (n={n})",
+        );
+    }
+}
+
+#[test]
+fn empty_input_yields_empty_output_for_every_layout() {
+    // Edge case: zero-window tag. Every layout (canvas included)
+    // must return an empty vec — no panics, no synthetic rects.
+    let f = Fixture::with_windows(HD_1080P, 0);
+    let ctx = f.ctx().build();
+    for &layout in ALL_LAYOUTS_EXCEPT_CANVAS {
+        assert!(
+            arrange(layout, &ctx).is_empty(),
+            "{layout:?}: empty input should produce empty output",
+        );
+    }
+    assert!(arrange(LayoutId::Canvas, &ctx).is_empty());
+}
+
+#[test]
+fn right_tile_master_strictly_right_of_stack() {
+    // Property: right_tile is the mirror of tile — master is the
+    // RIGHTMOST rect, stack columns are to its left. This held in
+    // the snapshot test for n=2; extend across n in 2..=5.
+    for n in 2..=5 {
+        let f = Fixture::with_windows(HD_1080P, n);
+        let ctx = f.ctx().build();
+        let arranged = right_tile(&ctx);
+        let master = arranged.iter().find(|(i, _)| *i == 0).unwrap().1;
+        for (idx, rect) in &arranged {
+            if *idx == 0 {
+                continue;
+            }
+            assert!(
+                master.x >= rect.x + rect.width - 1, // allow 1 px gap-rounding
+                "right_tile n={n} stack idx={idx}: master.x={} not strictly right of stack rect right-edge {}",
+                master.x,
+                rect.x + rect.width,
+            );
+        }
+    }
+}
+
+#[test]
+fn vertical_tile_master_top_half_for_portrait_fixture() {
+    // Property: `vertical_tile` arranges top-master / bottom-stack on
+    // a portrait monitor. Master should lie in the top half.
+    for n in 2..=5 {
+        let f = Fixture::with_windows(PORTRAIT, n);
+        let ctx = f.ctx().build();
+        let arranged = vertical_tile(&ctx);
+        let master = arranged.iter().find(|(i, _)| *i == 0).unwrap().1;
+        let half_h = ctx.work_area.y + ctx.work_area.height / 2;
+        assert!(
+            master.y + master.height / 2 <= half_h + 1,
+            "vertical_tile n={n}: master center y={} should sit in top half (≤ {half_h})",
+            master.y + master.height / 2,
+        );
+    }
+}
+
+#[test]
+fn scroller_total_width_grows_with_window_count() {
+    // Property: scroller is unbounded — adding clients widens the
+    // sum-of-widths past the work area. (This is the off-screen
+    // semantic that excludes scroller from `non_scroller_layouts_*`.)
+    let work_w = HD_1080P.0;
+    let mut last_total: i32 = 0;
+    for n in 2..=6 {
+        let f = Fixture::with_windows(HD_1080P, n);
+        let ctx = f.ctx().focused(0).build();
+        let arranged = scroller(&ctx);
+        let total: i32 = arranged.iter().map(|(_, r)| r.width).sum();
+        assert!(
+            total >= last_total,
+            "scroller n={n}: total width {total} shrank from previous {last_total}",
+        );
+        if n >= 3 {
+            assert!(
+                total >= work_w,
+                "scroller n={n}: total width {total} should exceed work-area width {work_w}",
+            );
+        }
+        last_total = total;
+    }
+}
+
+#[test]
+fn gap_zero_makes_layouts_use_full_work_area() {
+    // Property: with all gaps zero, the bounding box of a tile-class
+    // layout should cover the *entire* work area (within rounding).
+    // Catches "gappoh hardcoded somewhere" regressions.
+    for &layout in TILE_CLASS_LAYOUTS {
+        let f = Fixture::with_windows(HD_1080P, 4).no_gap();
+        let ctx = f.ctx().build();
+        let arranged = arrange(layout, &ctx);
+        if arranged.is_empty() {
+            continue;
+        }
+        let min_x = arranged.iter().map(|(_, r)| r.x).min().unwrap();
+        let min_y = arranged.iter().map(|(_, r)| r.y).min().unwrap();
+        let max_x = arranged.iter().map(|(_, r)| r.x + r.width).max().unwrap();
+        let max_y = arranged.iter().map(|(_, r)| r.y + r.height).max().unwrap();
+        let wa = ctx.work_area;
+        // Allow ±2 px slop for rounding seams between rects.
+        assert!(
+            (min_x - wa.x).abs() <= 2 && (min_y - wa.y).abs() <= 2,
+            "{layout:?}: top-left ({min_x},{min_y}) drifted from work-area ({},{})",
+            wa.x,
+            wa.y,
+        );
+        assert!(
+            ((wa.x + wa.width) - max_x).abs() <= 2
+                && ((wa.y + wa.height) - max_y).abs() <= 2,
+            "{layout:?}: bottom-right ({max_x},{max_y}) drifted from work-area ({},{})",
+            wa.x + wa.width,
+            wa.y + wa.height,
+        );
+    }
+}
+
+#[test]
+fn scroller_focus_centering_holds_for_every_focused_index() {
+    // Stronger version of the existing single-index scroller centering
+    // test: with `scroller_focus_center = true`, ANY focused index
+    // should sit centered within ±2 px of work-area mid.
+    let n = 5;
+    let f = Fixture::with_windows(HD_1080P, n);
+    for focus in 0..n {
+        let ctx = f.ctx().focused(focus).scroller_focus_center(true).build();
+        let arranged = scroller(&ctx);
+        let focused_rect = arranged.iter().find(|(i, _)| *i == focus).unwrap().1;
+        let focused_mid = focused_rect.x + focused_rect.width / 2;
+        let target_mid = ctx.work_area.x + ctx.work_area.width / 2;
+        assert!(
+            (focused_mid - target_mid).abs() <= 2,
+            "scroller focus={focus}: mid {focused_mid} vs target {target_mid}",
+        );
+    }
+}

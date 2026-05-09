@@ -238,7 +238,7 @@ In-compositor region selector — `margo/src/screenshot_region.rs` (W2.1). New `
 | # | Status | What landed |
 |---|---|---|
 | **W1.1** Layout-snapshot suite | ✅ shipped | `margo/src/layout/snapshot_tests.rs` + `snapshots/` dir lock geometry of 14 layout algorithms × 20 canonical scenarios into committed `.snap` text files. Insta-based (no PNG churn — pure text diff at PR review). 24/24 pass on `cargo test --workspace`. Property tests verify `arrange()` dispatcher matches direct calls and non-scroller layouts stay inside the work area. |
-| **W1.2** Layout property-test extension | 🔲 queued (~200 LOC) | Extend `layout/algorithms.rs`'s 2 existing fixtures to cover all 14 layouts × 1/2/3/n-window cases × overview-vs-normal. |
+| **W1.2** Layout property-test extension | ✅ shipped | Added 14 property tests covering the full 14-layout catalogue × {1, 2, 3, 5, 8} window counts × focus shift × gap-zero edge case. Invariants verified: dispatcher matches direct call for *every* `LayoutId` variant; cardinality (`arranged.len() == n`); no degenerate rects (w/h > 0); monocle returns identical rect for every client; deck stack clients share one rect; tile-class layouts have pairwise-disjoint rects; focus-position invariance for non-scroller layouts; Overview aliases monocle; empty input yields empty output; right_tile master strictly right of stack; vertical_tile master top-half on portrait; scroller total width grows monotonically with window count; gap-zero uses full work area; scroller focus-centering holds for every focused index. Test count layout module: 26 → 40 (+14). |
 | **W1.3** Window-rule snapshot tests | 🔲 queued (~150 LOC) | Fixture-driven test loading N candidate (appid, title) pairs against the example config and snapshotting decisions. Catches regressions like "Electron leaked from tag 5". |
 | **W1.4** Clippy gating | ✅ shipped | New `clippy.toml` with `ignore-interior-mutability` for smithay's `Window` / `Output` / `ClientId` / `ObjectId`. Workspace cleanup pass: **51 → 0 warnings**. CI runs `cargo clippy --workspace --all-targets -- -D warnings` as a gate. |
 | **W1.5** CONTRIBUTING.md + PR template | ✅ shipped | Quick-start build + system deps, code-layout map, lint posture, test workflow (`cargo insta review`, smoke-winit), commit-message style (conventional commits + why-not-what bodies), tracy-span hints, PR review checklist, AI-contribution policy. PR template at `.github/pull_request_template.md`. |
@@ -246,7 +246,7 @@ In-compositor region selector — `margo/src/screenshot_region.rs` (W2.1). New `
 | **Smoke binaries** | ✅ shipped | `scripts/smoke-winit.sh`, `scripts/post-install-smoke.sh` (binaries run, example config parses, dispatch catalogue ≥30 entries, `desktop-file-validate`, completions in correct paths, LICENSE installed), `docs/manual-checklist.md` (13-section post-install/reboot validation). |
 | **Profiling** | ✅ shipped (W2.7) | `tracy-client = { version = "0.18", default-features = false }` always-on dep + `profile-with-tracy` feature. `tracy_client::span!(...)` calls are no-ops in normal builds and connect to a live Tracy GUI when the feature flips. Six hot-path spans: `render_output`, `build_render_elements`, `arrange_monitor`, `tick_animations`, `handle_input`, `focus_surface`. |
 
-Test count: 14 → 71 across the catch-and-surpass sweep.
+Test count: 14 → 85 across the catch-and-surpass sweep (W1.2 added +14 layout property tests).
 
 ---
 
@@ -319,7 +319,6 @@ Behaviour-stable. Listed for completeness — bisect targets if anything regress
 ## 14. Queued work
 
 ### Test infrastructure (W1)
-- **W1.2** Layout property-test extension (~200 LOC).
 - **W1.3** Window-rule snapshot tests (~150 LOC).
 
 ### Architecture (W4)
