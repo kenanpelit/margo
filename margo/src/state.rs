@@ -2557,6 +2557,14 @@ impl MargoState {
         self.enforce_z_order();
         crate::border::refresh(self);
         self.request_repaint();
+        // Refresh the IPC channels so `mctl clients`/`focused`/`status`
+        // and any dwl-ipc-v2 bar (waybar-dwl, noctalia, fnott) see new
+        // windows the moment they're laid out. arrange_all already
+        // covered both, but arrange_monitor (the path most map/unmap/
+        // tag-move events take) didn't — leaving state.json + the bar
+        // tag-counts stuck on the boot snapshot of zero.
+        self.write_state_file();
+        crate::protocols::dwl_ipc::broadcast_monitor(self, mon_idx);
     }
 
     /// Smithay's `Space::map_element` always inserts the touched
