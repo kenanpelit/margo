@@ -146,6 +146,26 @@ struct Args {
     /// Use winit backend (nested Wayland/X11) instead of udev/DRM
     #[arg(long)]
     winit: bool,
+
+    /// Disable margo's in-tree Smithay XWayland and instead run
+    /// Supreeeme's `xwayland-satellite` as a separate process. The
+    /// out-of-process model is more resilient — an X11 client crash
+    /// (or a misbehaving X11Wm) can't take the compositor down — and
+    /// inherits xwayland-satellite's bug fixes for HiDPI cursor
+    /// scaling, primary-selection bridging, and clipboard MIME
+    /// negotiation. Pass without an arg to spawn `xwayland-satellite`
+    /// from PATH; pass with `=PATH` to use a specific binary. Niri
+    /// pattern, see <https://github.com/Supreeeme/xwayland-satellite>.
+    #[arg(long, value_name = "BINARY", num_args = 0..=1, default_missing_value = "xwayland-satellite")]
+    xwayland_satellite: Option<String>,
+
+    /// Disable XWayland entirely. No X11 client support — pure
+    /// Wayland session. Useful for benchmarks, headless sessions,
+    /// containers that don't need X11. Mutually exclusive with
+    /// `--xwayland-satellite`; if both are set, `--no-xwayland`
+    /// wins.
+    #[arg(long)]
+    no_xwayland: bool,
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────
@@ -328,7 +348,52 @@ fn main() -> Result<()> {
     utils::import_session_environment(&["XDG_SESSION_DESKTOP", "DESKTOP_SESSION"]);
 
     // ── XWayland ──────────────────────────────────────────────────────────────
-    {
+    //
+    // Three modes (W2.5):
+    //   * `--no-xwayland` → don't spawn anything. Pure Wayland session.
+    //   * `--xwayland-satellite[=PATH]` → spawn `xwayland-satellite`
+    //     (Supreeeme) as a separate process. Resilience win: an X11
+    //     client crash can't take margo down. The satellite
+    //     registers as a regular Wayland client, opens its own
+    //     DISPLAY socket, and forwards clipboard / primary /
+    //     selection / clipboard-mime negotiation.
+    //   * Default → in-tree smithay XWayland (existing behaviour;
+    //     same in-process model that's been here since day one).
+    let want_intree_xwayland = !args.no_xwayland && args.xwayland_satellite.is_none();
+    if args.no_xwayland {
+        info!("--no-xwayland set; X11 client support disabled");
+    } else if let Some(satellite_bin) = args.xwayland_satellite.clone() {
+        info!("xwayland-satellite mode: spawning `{satellite_bin}` as separate process");
+        match std::process::Command::new(&satellite_bin)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        {
+            Ok(child) => {
+                info!(
+                    "spawned xwayland-satellite pid={} — set DISPLAY to the satellite's \
+                     socket (typically :0; satellite logs the actual number on stderr if \
+                     you redirect it)",
+                    child.id()
+                );
+                // Don't `wait()` — satellite reparents to systemd
+                // like any daemon. Strict lifetime coupling is
+                // user-side: pair `--no-xwayland` with a systemd
+                // user unit `PartOf=margo-session.target` instead.
+                std::mem::drop(child);
+            }
+            Err(e) => {
+                error!(
+                    "failed to spawn xwayland-satellite at `{satellite_bin}`: {e}\n  \
+                     install: `cargo install xwayland-satellite`\n  \
+                     or pass `--xwayland-satellite=/full/path/to/binary`\n  \
+                     X11 client support is now off (no fallback)"
+                );
+            }
+        }
+    }
+    if want_intree_xwayland {
         use smithay::xwayland::{XWayland, XWaylandEvent};
         use std::process::Stdio;
         match XWayland::spawn(
