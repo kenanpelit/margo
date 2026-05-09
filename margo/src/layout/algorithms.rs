@@ -732,6 +732,7 @@ mod tests {
             scroller_focus_center: true,
             scroller_prefer_center: true,
             scroller_prefer_overspread: false,
+            canvas_pan: (0.0, 0.0),
         };
 
         let arranged = scroller(&ctx);
@@ -764,6 +765,7 @@ mod tests {
             scroller_focus_center: true,
             scroller_prefer_center: true,
             scroller_prefer_overspread: false,
+            canvas_pan: (0.0, 0.0),
         };
 
         let arranged = vertical_scroller(&ctx);
