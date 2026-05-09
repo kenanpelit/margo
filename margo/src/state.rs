@@ -1183,6 +1183,11 @@ pub struct MargoState {
     /// `(session_ref, frame, source_kind)` so we can route
     /// without re-querying user_data on each iteration.
     pub pending_image_copy_frames: Vec<crate::PendingImageCopyFrame>,
+    /// Native screenshot pipeline — see `crate::screenshot`. The
+    /// dispatch layer pushes `ScreenshotRequest`s here; the udev
+    /// repaint hook drains them after the live render and feeds
+    /// each into `render_and_download` + a save thread.
+    pub pending_screenshots: Vec<crate::screenshot::ScreenshotRequest>,
     /// `wp_presentation` global. Lets clients (kitty, mpv, native
     /// Wayland Vulkan games via DXVK / VKD3D, video conferencing
     /// apps that adapt their pacing to the actual display refresh)
@@ -1431,6 +1436,7 @@ impl MargoState {
             image_copy_capture_state,
             image_copy_capture_sessions: Vec::new(),
             pending_image_copy_frames: Vec::new(),
+            pending_screenshots: Vec::new(),
             presentation_state,
             space,
             popups,

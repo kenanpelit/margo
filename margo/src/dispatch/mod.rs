@@ -64,6 +64,100 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                 }
             }
         }
+        // ── Native screenshot (replaces the old `spawn` of the
+        //    grim/slurp shell helper for the easy cases). The
+        //    optional `arg.v` is interpreted as:
+        //      * `screenshot`            → focused output, save+clipboard
+        //      * `screenshot output`     → same (alias)
+        //      * `screenshot window`     → focused window
+        //      * `screenshot output:DP-3`→ specific output by name
+        //      * `screenshot clipboard`  → focused output, clipboard only
+        //    Region selection still goes through the shell helper
+        //    until Phase 2's interactive UI lands.
+        "screenshot" | "screenshot-screen" | "screenshot_screen" => {
+            let mode = arg.v.as_deref().unwrap_or("output");
+            let request = match mode {
+                "window" => crate::screenshot::ScreenshotRequest {
+                    source: crate::screenshot::ScreenshotSource::FocusedWindow,
+                    include_pointer: false,
+                    save_path: None,
+                    copy_clipboard: true,
+                },
+                "clipboard" | "clip" => crate::screenshot::ScreenshotRequest {
+                    source: crate::screenshot::ScreenshotSource::FocusedOutput,
+                    include_pointer: false,
+                    save_path: None, // intentional: clipboard-only
+                    copy_clipboard: true,
+                },
+                other if other.starts_with("output:") => {
+                    let name = other.trim_start_matches("output:").to_string();
+                    crate::screenshot::ScreenshotRequest {
+                        source: crate::screenshot::ScreenshotSource::Output(name),
+                        include_pointer: false,
+                        save_path: None,
+                        copy_clipboard: true,
+                    }
+                }
+                _ => crate::screenshot::ScreenshotRequest {
+                    source: crate::screenshot::ScreenshotSource::FocusedOutput,
+                    include_pointer: false,
+                    save_path: None,
+                    copy_clipboard: true,
+                },
+            };
+            // For mode == "clipboard" we want clipboard-only; tweak:
+            let request = if mode == "clipboard" || mode == "clip" {
+                crate::screenshot::ScreenshotRequest {
+                    save_path: Some(std::path::PathBuf::new()), // sentinel — interpreted as "no save"
+                    ..request
+                }
+            } else {
+                request
+            };
+            // Drop the sentinel back to None for the actual queue.
+            let request = if request
+                .save_path
+                .as_ref()
+                .is_some_and(|p| p.as_os_str().is_empty())
+            {
+                crate::screenshot::ScreenshotRequest {
+                    save_path: None,
+                    copy_clipboard: true,
+                    ..request
+                }
+            } else {
+                request
+            };
+            crate::screenshot::queue(state, request);
+        }
+        "screenshot-window" | "screenshot_window" => {
+            crate::screenshot::queue(
+                state,
+                crate::screenshot::ScreenshotRequest {
+                    source: crate::screenshot::ScreenshotSource::FocusedWindow,
+                    include_pointer: false,
+                    save_path: None,
+                    copy_clipboard: true,
+                },
+            );
+        }
+        "screenshot-output" | "screenshot_output" => {
+            let source = match arg.v.as_deref() {
+                Some(name) if !name.is_empty() => {
+                    crate::screenshot::ScreenshotSource::Output(name.to_string())
+                }
+                _ => crate::screenshot::ScreenshotSource::FocusedOutput,
+            };
+            crate::screenshot::queue(
+                state,
+                crate::screenshot::ScreenshotRequest {
+                    source,
+                    include_pointer: false,
+                    save_path: None,
+                    copy_clipboard: true,
+                },
+            );
+        }
         "killclient" => state.kill_focused(),
         "focusstack" | "focusdir" => state.focus_stack(direction_arg(arg)),
         "exchange_client" | "smartmovewin" => state.exchange_stack(direction_arg(arg)),

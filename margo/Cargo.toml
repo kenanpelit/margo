@@ -60,6 +60,11 @@ pipewire = { version = "0.9", features = ["v0_3_33"] }
 async-io = "2"
 async-channel = "2"
 
+# Native screenshot pipeline: capture via render path, encode PNG
+# off the main thread, deliver to disk + clipboard. Pure-Rust PNG
+# encoder; lightweight (no full `image` crate).
+png = "0.17"
+
 [dependencies.smithay]
 workspace = true
 features = [

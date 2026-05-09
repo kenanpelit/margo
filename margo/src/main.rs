@@ -11,6 +11,7 @@ mod libinput_config;
 mod layout;
 mod protocols;
 mod screencasting;
+mod screenshot;
 mod scripting;
 mod state;
 mod utils;

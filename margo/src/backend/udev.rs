@@ -82,8 +82,8 @@ type GbmDrmCompositor = DrmCompositor<
     DrmDeviceFd,
 >;
 
-struct OutputDevice {
-    output: Output,
+pub struct OutputDevice {
+    pub output: Output,
     compositor: GbmDrmCompositor,
     render_count: u64,
     queued_count: u64,
@@ -716,6 +716,17 @@ pub fn run(
                     let mut bd = backend_data.borrow_mut();
                     let BackendData { renderer, outputs, .. } = &mut *bd;
                     drain_active_cast_frames(renderer, outputs, state);
+                }
+                // Native screenshot pipeline — see `crate::screenshot`.
+                // Dispatch handlers push into `pending_screenshots`;
+                // we drain after the live render so the captured
+                // pixels match what the user just saw on screen.
+                if !state.pending_screenshots.is_empty() {
+                    let mut bd = backend_data.borrow_mut();
+                    let BackendData { renderer, outputs, .. } = &mut *bd;
+                    crate::screenshot::drain_pending_screenshots(
+                        renderer, outputs, state,
+                    );
                 }
             }
         })
@@ -1980,7 +1991,7 @@ fn drain_active_cast_frames(
 /// `serve_screencopies` so the regular display render still shows
 /// password managers / private-browsing tabs / 2FA codes intact while
 /// any wlr-screencopy client recording the output sees them blacked out.
-fn build_render_elements_inner(
+pub fn build_render_elements_inner(
     renderer: &mut GlesRenderer,
     od: &OutputDevice,
     state: &MargoState,

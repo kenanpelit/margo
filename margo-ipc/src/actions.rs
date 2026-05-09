@@ -379,6 +379,36 @@ pub const ACTIONS: &[Action] = &[
         summary: "Run a shell command (passes through `sh -c`).",
         detail: "",
     },
+    // ── Screenshot ──────────────────────────────────────────────────
+    Action {
+        name: "screenshot",
+        aliases: &["screenshot-screen", "screenshot_screen"],
+        args: "[output|window|clipboard|output:NAME]",
+        group: Group::System,
+        summary: "Capture the focused output (default), focused window, or specific output.",
+        detail: "Native compositor capture — no `grim`/`slurp` subprocess. \
+                 Saves to $SCREENSHOT_SAVE_DIR or $XDG_PICTURES_DIR/Screenshots, \
+                 named `screenshot_TIMESTAMP.png`, and copies the same PNG to \
+                 the clipboard via `wl-copy` (requires `wl-clipboard`). The \
+                 `clipboard` mode skips disk and only sets the selection.",
+    },
+    Action {
+        name: "screenshot-window",
+        aliases: &["screenshot_window"],
+        args: "",
+        group: Group::System,
+        summary: "Capture the focused window — content only, no decoration.",
+        detail: "",
+    },
+    Action {
+        name: "screenshot-output",
+        aliases: &["screenshot_output"],
+        args: "[NAME]",
+        group: Group::System,
+        summary: "Capture a specific output by connector name (defaults to focused).",
+        detail: "Useful in multi-monitor setups: `screenshot-output DP-3` shoots \
+                 the external monitor regardless of which one currently has focus.",
+    },
     Action {
         name: "reload",
         aliases: &["reload_config"],
