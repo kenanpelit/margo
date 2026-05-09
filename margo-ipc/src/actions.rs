@@ -380,58 +380,56 @@ pub const ACTIONS: &[Action] = &[
         detail: "",
     },
     // ── Screenshot ──────────────────────────────────────────────────
+    // All screenshot actions delegate to the `margo-screenshot`
+    // shell helper, which orchestrates grim + slurp + wl-copy +
+    // an optional editor (swappy / satty). Required tools live in
+    // PKGBUILD `depends`; the editor is `optdepends`.
     Action {
         name: "screenshot",
         aliases: &["screenshot-screen", "screenshot_screen"],
-        args: "[output|window|clipboard|output:NAME]",
+        args: "[window]",
         group: Group::System,
-        summary: "Capture the focused output (default), focused window, or specific output.",
-        detail: "Native compositor capture — no `grim`/`slurp` subprocess. \
-                 Saves to $SCREENSHOT_SAVE_DIR or $XDG_PICTURES_DIR/Screenshots, \
-                 named `screenshot_TIMESTAMP.png`, and copies the same PNG to \
-                 the clipboard via `wl-copy` (requires `wl-clipboard`). The \
-                 `clipboard` mode skips disk and only sets the selection.",
+        summary: "Capture the focused output → editor → file.",
+        detail: "Spawns `margo-screenshot screen` (or `window` when arg is \
+                 `window`). Saves under $SCREENSHOT_SAVE_DIR or \
+                 $XDG_PICTURES_DIR/Screenshots as screenshot_TIMESTAMP.png. \
+                 If swappy/satty is installed, the saved file opens for \
+                 quick edits before being committed.",
     },
     Action {
         name: "screenshot-window",
         aliases: &["screenshot_window"],
         args: "",
         group: Group::System,
-        summary: "Capture the focused window — content only, no decoration.",
-        detail: "",
-    },
-    Action {
-        name: "screenshot-output",
-        aliases: &["screenshot_output"],
-        args: "[NAME]",
-        group: Group::System,
-        summary: "Capture a specific output by connector name (defaults to focused).",
-        detail: "Useful in multi-monitor setups: `screenshot-output DP-3` shoots \
-                 the external monitor regardless of which one currently has focus.",
+        summary: "Capture the focused window → editor → file.",
+        detail: "Spawns `margo-screenshot window`.",
     },
     Action {
         name: "screenshot-region",
         aliases: &["screenshot_region"],
-        args: "[clipboard|no-clip]",
+        args: "",
         group: Group::System,
-        summary: "Region screenshot via slurp + native capture.",
-        detail: "Spawns `slurp` for rectangle selection (drag-to-select, Esc \
-                 cancels), then captures + PNG-encodes that rect natively in \
-                 the compositor. Default: save to disk + clipboard. \
-                 `clipboard` = clipboard only. `no-clip` = save only.",
+        summary: "Drag a region → editor → file.",
+        detail: "Spawns `margo-screenshot area`. Uses `slurp` for selection.",
     },
     Action {
         name: "screenshot-region-ui",
         aliases: &["screenshot_region_ui"],
-        args: "[clipboard|no-clip]",
+        args: "",
         group: Group::System,
-        summary: "In-compositor region selector — no `slurp` dependency.",
-        detail: "Captures every output to a frozen GLES texture, dims the \
-                 scene, lets the user drag out a selection on top of the \
-                 frozen image, and confirms on Return (Esc cancels). Pointer \
-                 + keyboard are intercepted while the selector is open — no \
-                 client gets stray input. Cross-output drags are not \
-                 supported (the active rectangle stays on one monitor).",
+        summary: "Drag a region → editor → file + clipboard.",
+        detail: "Spawns `margo-screenshot rec`. Region selection via `slurp`, \
+                 capture via `grim`, clipboard via `wl-copy`.",
+    },
+    Action {
+        name: "screenshot-output",
+        aliases: &["screenshot_output"],
+        args: "",
+        group: Group::System,
+        summary: "Alias of `screenshot` — capture the focused output.",
+        detail: "Spawns `margo-screenshot screen`. The `[NAME]` arg from \
+                 earlier revisions is no longer honoured; the helper \
+                 captures whatever is focused.",
     },
     Action {
         name: "reload",

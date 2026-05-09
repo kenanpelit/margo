@@ -1183,43 +1183,6 @@ pub struct MargoState {
     /// `(session_ref, frame, source_kind)` so we can route
     /// without re-querying user_data on each iteration.
     pub pending_image_copy_frames: Vec<crate::PendingImageCopyFrame>,
-    /// Native screenshot pipeline — see `crate::screenshot`. The
-    /// dispatch layer pushes `ScreenshotRequest`s here; the udev
-    /// repaint hook drains them after the live render and feeds
-    /// each into `render_and_download` + a save thread.
-    pub pending_screenshots: Vec<crate::screenshot::ScreenshotRequest>,
-    /// Pending "open the in-compositor region selector" intent.
-    /// Drained by the udev repaint hook on the next frame: the
-    /// hook captures every output's current scene to a frozen
-    /// `GlesTexture`, builds a [`RegionSelector`], and assigns it
-    /// to [`MargoState::region_selector`]. Cleared in either case.
-    pub pending_region_selector_open:
-        Option<crate::screenshot_region_ui::PendingOpen>,
-    /// Active in-compositor region selector. While `Some(_)`, the
-    /// live render path renders the frozen scene + dim overlay +
-    /// selection rectangle instead of the normal scene; pointer
-    /// and keyboard events are intercepted before client delivery
-    /// and routed through `screenshot_region_ui::handle_*`.
-    pub region_selector:
-        Option<crate::screenshot_region_ui::RegionSelector>,
-    /// Last confirmed (or cancelled) region selector rectangle,
-    /// keyed by output name. Restored on next selector open so
-    /// users don't have to re-draw the same crop every time.
-    /// Survives Esc — niri pattern, so an accidental cancel
-    /// doesn't lose the rectangle the user just spent time
-    /// shaping.
-    pub last_screenshot_region: Option<(
-        String,
-        smithay::utils::Rectangle<i32, smithay::utils::Physical>,
-    )>,
-    /// Pending "save this frozen-texture region" intent. The
-    /// keyboard-intercept handler in input_handler enqueues this
-    /// when the user hits Return on a region selection; the udev
-    /// repaint hook drains it on the next frame and dispatches
-    /// to `screenshot::save_from_frozen_texture` (which needs a
-    /// renderer the input handler doesn't have).
-    pub pending_screenshot_from_frozen:
-        Option<crate::screenshot_region_ui::ConfirmSave>,
     /// `wp_presentation` global. Lets clients (kitty, mpv, native
     /// Wayland Vulkan games via DXVK / VKD3D, video conferencing
     /// apps that adapt their pacing to the actual display refresh)
@@ -1468,11 +1431,6 @@ impl MargoState {
             image_copy_capture_state,
             image_copy_capture_sessions: Vec::new(),
             pending_image_copy_frames: Vec::new(),
-            pending_screenshots: Vec::new(),
-            pending_region_selector_open: None,
-            region_selector: None,
-            last_screenshot_region: None,
-            pending_screenshot_from_frozen: None,
             presentation_state,
             space,
             popups,
@@ -5704,28 +5662,8 @@ delegate_layer_shell!(MargoState);
 
 // ── Smithay delegate: Data Device ─────────────────────────────────────────────
 
-/// User-data attached to a `set_data_device_selection` /
-/// `set_primary_selection` call. The default `External` variant
-/// signals "this selection comes from an outside Wayland client,
-/// just mirror the offer to XWayland". The `Screenshot` variant
-/// is set when margo itself is offering a PNG (from the
-/// screenshot pipeline) — the bytes ride along so
-/// `send_selection` can serve the read fd directly without a
-/// `wl-copy` subprocess.
-#[derive(Debug, Clone)]
-pub enum SelectionUserData {
-    External,
-    Screenshot(std::sync::Arc<[u8]>),
-}
-
-impl Default for SelectionUserData {
-    fn default() -> Self {
-        SelectionUserData::External
-    }
-}
-
 impl SelectionHandler for MargoState {
-    type SelectionUserData = SelectionUserData;
+    type SelectionUserData = ();
 
     fn new_selection(
         &mut self,
@@ -5746,53 +5684,11 @@ impl SelectionHandler for MargoState {
         mime_type: String,
         fd: OwnedFd,
         _seat: Seat<Self>,
-        user_data: &SelectionUserData,
+        _user_data: &(),
     ) {
-        match user_data {
-            SelectionUserData::External => {
-                if let Some(xwm) = self.xwm.as_mut() {
-                    if let Err(err) = xwm.send_selection(ty, mime_type, fd) {
-                        tracing::warn!(
-                            ?err,
-                            ?ty,
-                            "failed to send Wayland selection to XWayland"
-                        );
-                    }
-                }
-            }
-            SelectionUserData::Screenshot(bytes) => {
-                tracing::info!(
-                    "screenshot clipboard: send_selection mime=`{}` bytes={}",
-                    mime_type,
-                    bytes.len()
-                );
-                // Margo-offered selection (PNG screenshot). Spawn a
-                // worker thread to write the bytes to the read end of
-                // the pipe — the consumer (whatever Wayland client
-                // pasted) is on the other side. Done off-main-thread
-                // because a slow consumer would otherwise block the
-                // whole compositor on `write(fd)`.
-                let mime_lc = mime_type.to_ascii_lowercase();
-                let recognised = matches!(
-                    mime_lc.as_str(),
-                    "image/png" | "image/x-png" | "application/png"
-                ) || mime_type == "PNG";
-                if recognised {
-                    let bytes = bytes.clone();
-                    std::thread::spawn(move || {
-                        use std::io::Write;
-                        let mut file = std::fs::File::from(fd);
-                        if let Err(err) = file.write_all(&bytes[..]) {
-                            tracing::debug!(
-                                "screenshot clipboard consumer write failed: {err}"
-                            );
-                        }
-                    });
-                } else {
-                    tracing::debug!(
-                        "screenshot selection asked for unsupported mime `{mime_type}`"
-                    );
-                }
+        if let Some(xwm) = self.xwm.as_mut() {
+            if let Err(err) = xwm.send_selection(ty, mime_type, fd) {
+                tracing::warn!(?err, ?ty, "failed to send Wayland selection to XWayland");
             }
         }
     }
@@ -6088,18 +5984,12 @@ impl XwmHandler for MargoState {
         mime_types: Vec<String>,
     ) {
         match selection {
-            SelectionTarget::Clipboard => set_data_device_selection(
-                &self.display_handle,
-                &self.seat,
-                mime_types,
-                SelectionUserData::External,
-            ),
-            SelectionTarget::Primary => set_primary_selection(
-                &self.display_handle,
-                &self.seat,
-                mime_types,
-                SelectionUserData::External,
-            ),
+            SelectionTarget::Clipboard => {
+                set_data_device_selection(&self.display_handle, &self.seat, mime_types, ())
+            }
+            SelectionTarget::Primary => {
+                set_primary_selection(&self.display_handle, &self.seat, mime_types, ())
+            }
         }
     }
 

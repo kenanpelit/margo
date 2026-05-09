@@ -71,7 +71,6 @@ render_elements! {
     Resize=crate::render::resize_render::ResizeRenderElement,
     OpenClose=crate::render::open_close::OpenCloseRenderElement,
     Solid=smithay::backend::renderer::element::solid::SolidColorRenderElement,
-    Texture=smithay::backend::renderer::element::texture::TextureRenderElement<smithay::backend::renderer::gles::GlesTexture>,
 }
 
 // ── Type aliases ──────────────────────────────────────────────────────────────
@@ -717,60 +716,6 @@ pub fn run(
                     let mut bd = backend_data.borrow_mut();
                     let BackendData { renderer, outputs, .. } = &mut *bd;
                     drain_active_cast_frames(renderer, outputs, state);
-                }
-                // Native screenshot pipeline — see `crate::screenshot`.
-                // Dispatch handlers push into `pending_screenshots`;
-                // we drain after the live render so the captured
-                // pixels match what the user just saw on screen.
-                if !state.pending_screenshots.is_empty() {
-                    let mut bd = backend_data.borrow_mut();
-                    let BackendData { renderer, outputs, .. } = &mut *bd;
-                    crate::screenshot::drain_pending_screenshots(
-                        renderer, outputs, state,
-                    );
-                }
-                // Phase 3 region-selector open. Same drain
-                // pattern: dispatch pushed a `PendingOpen`,
-                // udev captures the frozen textures here, and
-                // the result lands on `state.region_selector`
-                // for subsequent frames + input events.
-                if state.pending_region_selector_open.is_some() {
-                    let mut bd = backend_data.borrow_mut();
-                    let BackendData { renderer, outputs, .. } = &mut *bd;
-                    let request =
-                        state.pending_region_selector_open.take().unwrap();
-                    match crate::screenshot_region_ui::open(
-                        renderer, outputs, state, request,
-                    ) {
-                        Ok(sel) => {
-                            state.region_selector = Some(sel);
-                            // Re-arm so the first frame renders
-                            // with the selector overlay.
-                            state.request_repaint();
-                        }
-                        Err(err) => {
-                            warn!("region selector open failed: {err:#}");
-                        }
-                    }
-                }
-                // Phase 4: drain a confirmed frozen-texture
-                // capture. The keyboard intercept stashed the
-                // texture + rect; here we have the renderer
-                // available to copy + readback the pixels.
-                if state.pending_screenshot_from_frozen.is_some() {
-                    let mut bd = backend_data.borrow_mut();
-                    let BackendData { renderer, .. } = &mut *bd;
-                    let req =
-                        state.pending_screenshot_from_frozen.take().unwrap();
-                    crate::screenshot::save_from_frozen_texture(
-                        renderer,
-                        state,
-                        req.texture,
-                        req.rect_physical,
-                        req.save_to_disk,
-                        req.save_path,
-                        req.copy_clipboard,
-                    );
                 }
             }
         })
@@ -1535,16 +1480,6 @@ fn build_render_elements(
     od: &OutputDevice,
     state: &MargoState,
 ) -> Vec<MargoRenderElement> {
-    // Phase 3: when the in-compositor region selector is open,
-    // swap the live scene for the frozen-texture + dim-strip
-    // overlay. The pointer position comes from the global
-    // input pointer state — the selector's `handle_pointer`
-    // already updates the rectangle based on it.
-    if let Some(selector) = state.region_selector.as_ref() {
-        return crate::screenshot_region_ui::build_render_elements(
-            renderer, od, state, selector,
-        );
-    }
     build_render_elements_inner(renderer, od, state, true, false)
 }
 
@@ -2045,72 +1980,6 @@ fn drain_active_cast_frames(
 /// `serve_screencopies` so the regular display render still shows
 /// password managers / private-browsing tabs / 2FA codes intact while
 /// any wlr-screencopy client recording the output sees them blacked out.
-/// Build only the cursor render elements for an output. Public
-/// helper extracted from `build_render_elements_inner`'s cursor
-/// branch so the in-compositor region selector can keep the
-/// pointer visible while the rest of the scene is replaced by
-/// the frozen overlay.
-///
-/// `force_visible` overrides `cursor_status::Hidden`. The region
-/// selector passes `true` because the user can't see where they're
-/// clicking otherwise — even if a focused client (browser, video
-/// player) had previously requested cursor-hidden, the selector
-/// is now intercepting input and the user needs a pointer.
-pub fn build_cursor_elements(
-    renderer: &mut GlesRenderer,
-    od: &OutputDevice,
-    state: &MargoState,
-    force_visible: bool,
-) -> Vec<MargoRenderElement> {
-    let output_scale = od.output.current_scale().fractional_scale();
-    let Some(output_geo) = state.space.output_geometry(&od.output) else {
-        return Vec::new();
-    };
-
-    let mut elements = Vec::new();
-    let ptr_global = Point::<f64, _>::from((state.input_pointer.x, state.input_pointer.y));
-    if !output_geo.to_f64().contains(ptr_global) {
-        return elements;
-    }
-    let ptr_pos = ptr_global - output_geo.loc.to_f64();
-    match &state.cursor_status {
-        CursorImageStatus::Surface(surface) => {
-            let hotspot = with_states(surface, |states| {
-                states
-                    .data_map
-                    .get::<Mutex<CursorImageAttributes>>()
-                    .and_then(|attrs| attrs.lock().ok().map(|attrs| attrs.hotspot))
-                    .unwrap_or_default()
-            });
-            let ptr_i = (ptr_pos - hotspot.to_f64())
-                .to_physical_precise_round::<f64, i32>(output_scale);
-            let cursor_elems = render_elements_from_surface_tree(
-                renderer,
-                surface,
-                ptr_i,
-                output_scale,
-                1.0f32,
-                Kind::Cursor,
-            );
-            for e in cursor_elems {
-                elements.push(MargoRenderElement::WaylandSurface(e));
-            }
-        }
-        CursorImageStatus::Hidden if !force_visible => {
-            // Client asked cursor-hidden and caller didn't
-            // override — render nothing.
-        }
-        _ => {
-            if let Some(cursor_elem) =
-                state.cursor_manager.render_element(renderer, ptr_pos, output_scale)
-            {
-                elements.push(MargoRenderElement::Cursor(cursor_elem));
-            }
-        }
-    }
-    elements
-}
-
 pub fn build_render_elements_inner(
     renderer: &mut GlesRenderer,
     od: &OutputDevice,

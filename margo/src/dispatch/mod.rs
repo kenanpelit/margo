@@ -64,103 +64,54 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                 }
             }
         }
-        // ── Native screenshot dispatch ──────────────────────
-        // `arg.v` interpretations for "screenshot":
-        //   (none)               → focused output, save+clip
-        //   "window"             → focused window, save+clip
-        //   "clipboard" / "clip" → focused output, clipboard ONLY
-        //   "output:DP-3"        → specific output, save+clip
-        // The other entries are convenience aliases.
+        // ── Screenshot dispatch ─────────────────────────────
+        // All screenshot actions delegate to the
+        // `margo-screenshot` shell helper which orchestrates
+        // grim/slurp/wl-copy + an optional editor (swappy / satty).
+        //
+        //   screenshot              → focused output → editor → file
+        //   screenshot-screen       → alias of `screenshot`
+        //   screenshot-window       → focused window → editor → file
+        //   screenshot-region       → drag-region → editor → file
+        //   screenshot-region-ui    → drag-region → editor → file + clipboard
+        //
+        // Required runtime tools (PKGBUILD `depends`): grim, slurp,
+        // wl-clipboard. Optional editor: swappy or satty (optdep).
         "screenshot" | "screenshot-screen" | "screenshot_screen" => {
-            use crate::screenshot::{ScreenshotRequest, ScreenshotSource};
-            let (source, save_to_disk, copy_clipboard) = match arg.v.as_deref() {
-                Some("window") => (ScreenshotSource::FocusedWindow, true, true),
-                Some("clipboard") | Some("clip") => {
-                    (ScreenshotSource::FocusedOutput, false, true)
-                }
-                Some(s) if s.starts_with("output:") => (
-                    ScreenshotSource::Output(s.trim_start_matches("output:").to_string()),
-                    true,
-                    true,
-                ),
-                _ => (ScreenshotSource::FocusedOutput, true, true),
+            let mode = match arg.v.as_deref() {
+                Some("window") => "window",
+                _ => "screen",
             };
-            crate::screenshot::queue(
-                state,
-                ScreenshotRequest {
-                    source,
-                    include_pointer: false,
-                    save_to_disk,
-                    save_path: None,
-                    copy_clipboard,
-                },
-            );
+            if let Err(e) = crate::utils::spawn_shell(&format!("margo-screenshot {}", mode))
+            {
+                tracing::error!("spawn margo-screenshot: {e}");
+            }
         }
         "screenshot-window" | "screenshot_window" => {
-            crate::screenshot::queue(
-                state,
-                crate::screenshot::ScreenshotRequest {
-                    source: crate::screenshot::ScreenshotSource::FocusedWindow,
-                    include_pointer: false,
-                    save_to_disk: true,
-                    save_path: None,
-                    copy_clipboard: true,
-                },
-            );
+            if let Err(e) = crate::utils::spawn_shell("margo-screenshot window") {
+                tracing::error!("spawn margo-screenshot: {e}");
+            }
         }
-        // Phase 3: in-compositor region selector. Captures
-        // every output to a frozen GLES texture, dims everything
-        // outside a user-drawn rectangle, lets the user drag
-        // out a selection on top of the frozen scene, then
-        // queues the capture on Return. Esc cancels.
-        // No `slurp` dependency.
         "screenshot-region-ui" | "screenshot_region_ui" => {
-            let (save_to_disk, copy_clipboard) = match arg.v.as_deref() {
-                Some("clipboard") | Some("clip") => (false, true),
-                Some("no-clip") | Some("noclip") => (true, false),
-                _ => (true, true),
-            };
-            state.pending_region_selector_open = Some(
-                crate::screenshot_region_ui::PendingOpen {
-                    save_to_disk,
-                    save_path: None,
-                    copy_clipboard,
-                    include_pointer: false,
-                },
-            );
-            state.request_repaint();
+            // `rec` mode: region → editor → file + clipboard.
+            // The "ui" suffix is historical from when this
+            // pointed at the (since-removed) in-compositor
+            // selector; behaviour now matches the reliable
+            // grim+slurp+swappy path.
+            if let Err(e) = crate::utils::spawn_shell("margo-screenshot rec") {
+                tracing::error!("spawn margo-screenshot: {e}");
+            }
         }
         "screenshot-region" | "screenshot_region" => {
-            let (save_to_disk, copy_clipboard) = match arg.v.as_deref() {
-                Some("clipboard") | Some("clip") => (false, true),
-                Some("no-clip") | Some("noclip") => (true, false),
-                _ => (true, true),
-            };
-            crate::screenshot::queue_region(
-                state,
-                save_to_disk,
-                None, // auto path
-                copy_clipboard,
-                false, // include_pointer — flip later when interactive UI lands
-            );
+            // `area` mode: region → editor → file (no clipboard).
+            if let Err(e) = crate::utils::spawn_shell("margo-screenshot area") {
+                tracing::error!("spawn margo-screenshot: {e}");
+            }
         }
         "screenshot-output" | "screenshot_output" => {
-            let source = match arg.v.as_deref() {
-                Some(name) if !name.is_empty() => {
-                    crate::screenshot::ScreenshotSource::Output(name.to_string())
-                }
-                _ => crate::screenshot::ScreenshotSource::FocusedOutput,
-            };
-            crate::screenshot::queue(
-                state,
-                crate::screenshot::ScreenshotRequest {
-                    source,
-                    include_pointer: false,
-                    save_to_disk: true,
-                    save_path: None,
-                    copy_clipboard: true,
-                },
-            );
+            if let Err(e) = crate::utils::spawn_shell("margo-screenshot screen") {
+                tracing::error!("spawn margo-screenshot: {e}");
+            }
         }
         "killclient" => state.kill_focused(),
         "focusstack" | "focusdir" => state.focus_stack(direction_arg(arg)),
