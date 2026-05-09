@@ -358,6 +358,72 @@ Still queued:
 
 ---
 
+## Catch-and-surpass-niri plan
+
+**Premise.** A fair side-by-side audit of margo (~33k LOC, 29 unit tests, 5 docs files) against niri (~93k LOC, 61 unit tests, **5,280 visual snapshot files**, 47 docs, AccessKit a11y, pixman software renderer, full tablet stack, modular per-backend crates) shows niri is the more battle-tested codebase by a wide margin. Margo wins on **tag-based dwm-style workflow**, **embedded Rhai scripting**, **dwl-ipc-v2 wire compat**, **HDR Phase 1 + Phase 2 scaffolding**, **14-layout catalogue** — none of which niri has, all of which exist because margo is built around a specific user's workflow. To make margo a *better* product than niri (not just a personal driver), four work-streams need to land. Prioritised by "biggest gap to close" first.
+
+### W1 — Test infrastructure depth (the single biggest niri lead)
+
+niri ships 5,280 visual snapshot files (`src/tests/snapshots/`) covering window-opening, fullscreen, floating, layer-shell, and remove-output state matrices. A single regression in any of those state machines is caught at PR time, not at a user's reload. Margo's 29 unit tests cover the parser, IPC catalogue, mlayout pickers — none of the *visual* output.
+
+| # | Item | Estimate | Notes |
+|---|---|---|---|
+| W1.1 | Visual snapshot test crate (`margo-visual-tests`) | ~600 LOC + framework | Port niri's `insta`-based snapshot pattern. Renders fixed scenarios (single tile, two-tile split, scroller with focus center, monocle, overview, scratchpad shown, fullscreen, layer-shell on top) into PNGs, compares against committed snapshots. Catches every layout-algorithm regression we've ever shipped. |
+| W1.2 | Layout-algorithm property tests (already partially shipped) | ~200 LOC | Extend `layout/algorithms.rs`'s 2 existing fixtures to cover all 14 layouts × 1/2/3/n-window cases × overview-vs-normal. Today only scroller has even a partial test. |
+| W1.3 | Window-rule snapshot tests | ~150 LOC | `mctl rules` already prints rule-match outcomes. Build a fixture-driven test that loads N candidate (appid, title) pairs against the example config and snapshots the rule-match decisions. Catches windowrule regressions like "Electron leaked from tag 5" before users see them. |
+| W1.4 | clippy gating + `clippy.toml` | ~30 LOC | niri ships `clippy.toml` with project lints + clippy is a CI gate. Margo's CI runs clippy non-gating because of organic drift; do an opt-in cleanup pass (one PR), then flip to gated. |
+| W1.5 | `CONTRIBUTING.md` + PR template | ~150 LOC docs | niri has 114-line CONTRIBUTING.md; margo has none. Required if we want external contributions. |
+
+### W2 — Capability parity (niri has, margo doesn't, users notice)
+
+| # | Item | Estimate | Why it matters |
+|---|---|---|---|
+| W2.1 | **In-compositor screenshot UI** | ~700 LOC | niri's `Print` opens an interactive selection UI inside the compositor (drag rectangle, resize handles, "press Enter to commit"). Margo's `screenshot-region-ui` shells out to `mscreenshot` → `slurp` — adds a second window, fights focus, can't preview. The in-compositor path is built into the render layer; it's the single UX gap between the two. Was originally Phase 3 of the screenshot work, reverted in `3cf9198` because of design churn — re-doing it cleanly should be revisited now. |
+| W2.2 | **Pixman software renderer fallback** | ~400 LOC | niri ships `renderer_pixman` as a separate crate so margo runs in `qemu`-without-virgl, in containers, on systems with no GPU/EGL. Margo today panics on bring-up if EGL fails. The hook is already there in smithay (`Renderer` trait); 400 LOC is the wrapper layer + dispatch. |
+| W2.3 | **Tablet input** | ~500 LOC | Stylus, button mapping, `tablet_v2` protocol, `map-to-focused-window` mode — niri has the full path. Wacom + Huion + iPad-via-USB users currently can't use margo at all. |
+| W2.4 | **AccessKit a11y tree** | ~350 LOC | `accesskit` + `accesskit_unix` + a `Niri::a11y_tree()` analogue. Screen readers (Orca) get a window list. Without this, margo isn't usable for blind users — niri is. The dbus surface is `org.freedesktop.a11y`; smithay-side it's a tree-emit per-arrange. |
+| W2.5 | **xwayland-satellite mode** | ~200 LOC | Run XWayland as a separate process per niri's pattern instead of in-tree. Resilience win: an X11 client crash can't take the compositor down. Today margo runs the in-tree XWayland (smithay `XWayland::start`); satellite mode is gated behind a feature flag. |
+| W2.6 | **Cargo feature flags** | ~50 LOC + audit | niri's `dbus`/`systemd`/`xdp-gnome-screencast`/`profile-with-tracy` feature flags let users build a minimal margo (no portal, no PipeWire). Today every margo build pulls in zbus + pipewire + the entire screencast stack. Power users want lean builds. |
+| W2.7 | **Tracy profiler hooks** | ~80 LOC | niri instruments hot paths with `tracy_client::span!`. `cargo run --features profile-with-tracy` connects to a Tracy server for live frame-time graphs. Margo has no profile-mode build; debugging "why is animation jittery" today means `tracing` log spelunking. |
+
+### W3 — Capability extension (push margo's existing lead further)
+
+These are areas where margo is *already ahead* and could widen the gap.
+
+| # | Item | Estimate | Notes |
+|---|---|---|---|
+| W3.1 | HDR Phase 3 — KMS HDR scan-out | ~400 LOC | Already in roadmap. Margo's HDR Phase 1 + 2 scaffolding give it a head start vs niri (zero HDR work). Land Phase 3 first, then Phase 4 ICC. |
+| W3.2 | Rhai scripting Phase 4 — `mctl run <script>` | ~200 LOC | Today scripting is init.rhai-only. One-shot script execution against the live state would let users script complex window-management actions on the fly. |
+| W3.3 | Rhai scripting Phase 5 — plugin packaging | ~400 LOC | A `~/.config/margo/plugins/<name>.rhai` directory + manifest + sandboxing per-plugin. Lets users share plugins (e.g. "smart-tag-routing", "ai-window-grouping") without modifying init.rhai. |
+| W3.4 | dwl-ipc-v2 extensions | ~150 LOC | We're the reference dwl-ipc-v2 implementation outside dwl/mango. Adding events for occupied counts, focus history, scratchpad state would make margo + noctalia / waybar-dwl combos richer than niri+swaybar. |
+| W3.5 | Layout-cycle keybinds with previews | ~200 LOC | `switch_layout` cycles through `circle_layout`. Adding a preview overlay (mini icons + hint) before commit would make the 14-layout catalogue actually navigable instead of just configurable. |
+| W3.6 | Per-tag wallpaper | ~150 LOC | Each tag carries its own wallpaper hint via `tagrule = id:N, wallpaper:path`; the swaybg/noctalia wallpaper component reads the active tag's hint via dwl-ipc. niri can't even contemplate this — it has no tags. |
+
+### W4 — Architecture / openness (slow-bake, but compounds)
+
+| # | Item | Estimate | Notes |
+|---|---|---|---|
+| W4.1 | Split backends into separate crates | ~600 LOC churn | niri has `backend_drm`, `backend_egl`, `backend_gbm`, `backend_libinput`, `backend_session_libseat`, `backend_winit`, `backend_udev` as 7 crates. Margo's `backend/` is in-tree. Splitting eases incremental compilation (touching the input loop doesn't recompile the renderer) AND lets downstream Wayland projects depend on margo's backend crates without pulling the whole compositor. |
+| W4.2 | Move `state.rs` (~7000 LOC) into modules | ~100 LOC churn | The single-translation-unit feel was a deliberate port from C, but at 7000 LOC compile times suffer. Split into `state/{ipc, focus, scratchpad, output, x11, wayland_handlers}`. Behaviour-preserving refactor. |
+| W4.3 | mkdocs site + GitHub Pages | ~200 LOC config + content | niri has a full `docs/` mkdocs site with wiki + rendered hooks docs. Margo has 5 markdown files. A published site (`kenanpelit.github.io/margo`) doubles the discoverability. |
+| W4.4 | Configuration migration tooling | ~250 LOC | A `mctl migrate` that reads a hyprland.conf / niri-config.kdl / sway/config and emits margo-equivalent keybinds + windowrules. Onboards users from those compositors with one command. niri has nothing like this. |
+| W4.5 | `niri-visual-tests`-equivalent design tool | ~500 LOC | niri ships an interactive "play with animations + colours live" GTK app. We'd want the equivalent for margo's 14 layouts × per-tag layout pinning preview. Useful for both regression catches and config authoring. |
+
+### Why this beats niri (sequenced execution)
+
+If we land **W1.1 (visual snapshots) + W2.1 (in-compositor screenshot) + W2.3 (tablet) + W3.1 (HDR Phase 3)** in that order — that's the four highest-leverage moves. After those four:
+
+- Margo has the *only* HDR-capable Wayland compositor with a Rust + Smithay base on the desktop side.
+- Margo has visual snapshot regression coverage on par with niri.
+- Margo has feature parity on screenshot UX + tablet + a11y (after W2.4).
+- Margo retains its unique advantages: tag-based workflow, 14 layouts, dwl-ipc-v2, Rhai.
+
+The "personal-driver-only" framing flips: margo becomes "a Rust+Smithay Wayland compositor with the maturity of niri AND a dwm/dwl-style tag workflow AND working HDR" — a category niri doesn't and won't compete in (niri's design intent is scroller-only, no tags).
+
+**Order of operations**: do W1.1 first regardless of what comes next — every capability item lands faster when a regression test catches the geometry bug before bisect.
+
+---
+
 ## What could be redone better (if we got a do-over)
 
 - **Render element collection has multiple paths** (display, screencast, dmabuf-screencopy region, snapshot). Each takes the same client list and produces a `MargoRenderElement` vec with subtle differences (`block_out_from_screencast`, region clip, snapshot vs live). A unified iterator with a `RenderTarget` enum parameter would dedup the wrappers. Today's code works; the cost is "every new render element type must be added to N places".
