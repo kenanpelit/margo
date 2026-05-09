@@ -83,10 +83,18 @@ pub struct LayoutOutput {
     pub color: Option<u8>,
     /// Logical position of the output's top-left corner in the
     /// global compositor coordinate space. When unset (the
-    /// `monitorrule` had no `x:`/`y:`), defaults to (0, 0) — the
-    /// preview's auto-placement re-distributes overlapping outputs.
+    /// `monitorrule` had no `x:`/`y:`), defaults to (0, 0); the
+    /// preview's auto-placement uses [`has_position`] (not the
+    /// value) to decide whether to honour the field or place
+    /// the output flush-right of the existing row.
     pub x: i32,
     pub y: i32,
+    /// True when the `monitorrule` specified at least one of
+    /// `x:` / `y:`. Distinguishes "user wrote `x:0,y:0`" from
+    /// "user omitted position entirely" — both leave the numeric
+    /// fields at zero, but only the former is an explicit
+    /// (0, 0) anchor.
+    pub has_position: bool,
     /// Logical width / height in pixels — the *post-scale* size, so
     /// a 2560x1440 mode at scale 2 renders as a 1280x720 rectangle.
     /// The preview draws against these directly.
@@ -271,6 +279,7 @@ fn parse_monitorrule(val: &str) -> Result<LayoutOutput> {
         color: None,
         x: 0,
         y: 0,
+        has_position: false,
         width: 0,
         height: 0,
         transform: 0,
@@ -287,8 +296,14 @@ fn parse_monitorrule(val: &str) -> Result<LayoutOutput> {
         let v = v.trim();
         match k.trim() {
             "name" => out.connector = v.to_string(),
-            "x" => out.x = v.parse().unwrap_or(0),
-            "y" => out.y = v.parse().unwrap_or(0),
+            "x" => {
+                out.x = v.parse().unwrap_or(0);
+                out.has_position = true;
+            }
+            "y" => {
+                out.y = v.parse().unwrap_or(0);
+                out.has_position = true;
+            }
             "width" => out.width = v.parse().unwrap_or(0),
             "height" => out.height = v.parse().unwrap_or(0),
             "scale" => {

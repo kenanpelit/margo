@@ -82,13 +82,7 @@ pub fn place_outputs(layout: &Layout) -> Vec<PlacedOutput> {
 }
 
 fn has_explicit_position(o: &LayoutOutput) -> bool {
-    // Margo's parser zero-initialises x/y when not specified, so we
-    // can't *perfectly* distinguish "user wrote x:0" from "field
-    // omitted". In practice, `x:0,y:0` *is* a valid explicit
-    // bottom-left placement and we treat it as such — the ambiguity
-    // only matters when the user has multiple outputs all defaulting
-    // to (0,0), which is degenerate anyway.
-    o.x != 0 || o.y != 0
+    o.has_position
 }
 
 fn make(o: &LayoutOutput, x: i32, y: i32) -> PlacedOutput {
@@ -283,6 +277,7 @@ mod tests {
             color: None,
             x,
             y,
+            has_position: x != 0 || y != 0,
             width: w,
             height: h,
             transform: 0,
