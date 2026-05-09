@@ -1,6 +1,6 @@
 # Margo Road Map
 
-> Last updated: **2026-05-09** (post-screencast-portal Phase E2 — Mutter D-Bus shims + PipeWire frame production)
+> Last updated: **2026-05-09** (post-screencast-portal Phase F — pacing + damage + cursor + full-decoration casts)
 > Branch: `main` (single-branch — Rust port complete; the C tree is the legacy reference under `src/`)
 > One-liner: **P0 → P4 fully shipped; P5/P6 long-term goals all moved from design to code; P7 (built-in screencast portal) lit up the Window/Entire Screen tabs in browser meeting clients via a niri-pattern Mutter D-Bus shim + PipeWire pipeline.** Margo is now a daily-driver Wayland compositor with full modern-protocol parity, niri-grade animations + spring physics across every transition type, on-demand redraw scheduler, runtime DRM mode change via `wlr-randr`/`kanshi`, GitHub Actions CI gate, an embedded Rhai scripting engine that fires event hooks mid-event-loop, `wp_color_management_v1` standing up for HDR-capable client probes, and a built-in xdp-gnome backend that delivers live window/output frames into Helium / Chromium / Firefox screen-share dialogs without a running gnome-shell. What's left is depth on each, not new feature areas.
 
@@ -24,7 +24,7 @@ This document is **the source of truth** for what's shipped, what's worth a seco
 | **P3 window mgmt v2** | scratchpad+named, mango/layerrule parity, CSD/SSD policy, IPC parity, XWayland HiDPI env, popup focus | **✅ 6/6** |
 | **P4 tooling** | smoke-winit, manual checklist, mctl JSON/rules/check-config, post-install smoke, shell completions, GitHub Actions CI | **✅ 7/7** |
 | **P5/P6 long-term** | spatial canvas ✓, adaptive layout ✓, drop shadow ✓, scripting Phase 3 ✓, HDR Phase 1 ✓, screencast portal moved to **P7** | **5/5 code-shipped** |
-| **P7 screencast portal** | 5 Mutter D-Bus shims, PipeWire pipeline, ext-image-copy-capture, browser Window/Output tabs live | **✅ 8/8 phases** |
+| **P7 screencast portal** | 5 Mutter D-Bus shims, PipeWire pipeline, frame pacing, damage, cursor, full-decoration casts, HiDPI | **✅ 9/9 phases** |
 
 ---
 
@@ -269,9 +269,9 @@ What's still missing: `on_window_close` (needs stable identity for closing windo
 
 ---
 
-## 7. P7 — built-in screencast portal ✅ 8/8 phases
+## 7. P7 — built-in screencast portal ✅ 9/9 phases
 
-`a4f6ed6 → bf7e579 → 0c2f5d5 → f8f7a9a → 0455b4e`, ~3700 LOC across `margo/src/dbus/` (5 D-Bus shims) + `margo/src/screencasting/` (PipeWire core + render hooks) + udev backend integration + `margo/Cargo.toml` deps.
+`a4f6ed6 → bf7e579 → 0c2f5d5 → f8f7a9a → 0455b4e → 81a6487`, ~3870 LOC across `margo/src/dbus/` (5 D-Bus shims) + `margo/src/screencasting/` (PipeWire core + render hooks) + udev backend integration + `margo/Cargo.toml` deps.
 
 ### Why this exists
 
@@ -291,8 +291,9 @@ niri solved this by **implementing those Mutter D-Bus interfaces inside the comp
 | **D2** | `a4f6ed6` | +244 | All 5 shims registered onto their well-known names (`org.gnome.Mutter.ScreenCast`, `.Mutter.DisplayConfig`, `.Shell.Introspect`, `.Shell.Screenshot`, `.Mutter.ServiceChannel`); xdp-gnome connects + finds margo-as-mutter. |
 | **E1** | `bf7e579` | +183 | `MargoState::start_cast` resolves `StreamTargetId::{Output, Window}` → `(CastTarget, size, refresh, alpha)`; lazy-init Screencasting + PipeWire on first cast; calls `pw.start_cast(...)`; pushes the resulting `Cast` onto `casting.casts`. xdp-gnome receives the PipeWire node ID and starts the WebRTC pipeline. |
 | **E2** | `0c2f5d5 → f8f7a9a` | +250 | `drain_active_cast_frames` in `backend/udev.rs` — the actual frame producer. Iterates every active cast each repaint; for `Window { id }` looks up the matching `MargoClient` by stable `addr_of!` u64 and renders the surface tree at (0,0); for `Output { name }` iterates every visible client on that monitor and renders each at its monitor-local position; calls `Cast::dequeue_buffer_and_render` against the queued PipeWire buffer. Plus continuous-repaint re-arm so the chain doesn't go idle while sharing. |
+| **F** | `81a6487` | +170 | Five depth items fused: (1) pacing via `Cast::check_time_and_schedule` — niri-port scaffolding from Phase C1 actually wired now; static scenes skip element-build at the gate. (2) damage via the per-cast `OutputDamageTracker` already inside `dequeue_buffer_and_render` — no buffer queued when nothing changed; encoder drops to keyframe-only. (3) cursor embedded as a `MargoRenderElement::Cursor` element via `include_cursor=true`; gated by `cast.cursor_mode()` so Hidden/Metadata don't leak. (4) full-decoration casts via a new `CastRenderElement` enum (`Direct(MargoRenderElement)` for output, `Relocated(RelocateRenderElement<MargoRenderElement>)` for window) — the share view now matches the live display with borders, shadows, popups, animations, block-out. (5) HiDPI scale fix: window casts now read the monitor's fractional scale and convert `client.geom` (logical) to physical pixels for the cast buffer. |
 
-Final cleanup commit `0455b4e` adds module-level `#![allow(dead_code)]` to the niri-port files so the build is warning-free with the pacing scaffolding still in place for Phase F.
+Final cleanup commit `0455b4e` adds module-level `#![allow(dead_code)]` to the niri-port files so the build is warning-free; Phase F flips most of those flags into actual call sites.
 
 ### Strengths
 
@@ -308,21 +309,15 @@ Final cleanup commit `0455b4e` adds module-level `#![allow(dead_code)]` to the n
 
 ### Worth revisiting
 
-- **No frame-pacing ⇒ wasted GPU on static scenes.** When sharing a window that hasn't changed (still terminal, paused video), we still render ~60fps into PipeWire. PipeWire's backpressure caps the OUTPUT rate but margo still does the GLES render work. niri's `Cast::check_time_and_schedule` skips the render entirely when `now < last_frame_time + min_time_between_frames` AND the source hasn't damaged. The `min_time_between_frames` field is already populated on every `CastInner` (P7 imports niri's pw_utils.rs verbatim); ~30 LOC to expose it via a getter and gate the per-cast render call. The unused-method warnings on `check_time_and_schedule` etc. were intentionally left silenced — those are the next-phase scaffolding.
-
-- **Output-target render uses surface elements only.** The cast type alias is `WaylandSurfaceRenderElement<R>`, which excludes margo's `Border`, `Shadow`, `Clipped`, `OpenClose`, and `Solid` variants of `MargoRenderElement`. Real client content is correct; window decorations missing in the share view. Acceptable for screen-share UX (recipients want content, not chrome) but visibly different from the live display. Fixing it requires widening `CastRenderElement<R>` to be `MargoRenderElement` and propagating the parameter through `pw_utils.rs` (which is in turn a niri verbatim port — invasive).
-
-- **HiDPI scale handling on Output target is naive.** We multiply client geom positions by `Scale::from(1.0)` when iterating clients for an output cast. Margo's typical session is `scale = 1`, but on fractional-scale outputs the cast buffer's physical pixels won't line up with the client's logical positions. Likely manifests as cropped or offset clients in the cast view. Margo's main render path handles this via `fractional_scale()` math; the cast path skipped it because the user's session is scale = 1. ~20 LOC fix when needed.
-
-- **Cursor not embedded.** `CursorData::compute(&[], 0, ..)` is passed for every cast — empty cursor element list. Both `CursorMode::Hidden` and `CursorMode::Metadata` paths take their no-cursor branch on the empty list. `CursorMode::Embedded` would render an empty cursor (benign). Real cursor support means feeding margo's pointer renderer into the cast's element list; ~80 LOC.
-
-- **No cast-side damage tracking.** Each cast carries its own `OutputDamageTracker` (allocated lazily by `dequeue_buffer_and_render`) that compares element states across frames. We pass `damage = None`-equivalent every frame. Wastes the consumer's encoder bandwidth on identical frames. Fixing it is mostly free since the damage tracker is already there — just thread the `damage` arg through the right call sites.
-
 - **`gnome_shell_introspect::windows_changed` signal never fired.** xdp-gnome listens for it to refresh the window picker live. Today the picker shows the snapshot from when the dialog opened; new windows that appear afterwards aren't visible until the user re-opens the share dialog. ~30 LOC to fire from `finalize_initial_map` and `toplevel_destroyed`.
 
 - **`IpcOutputMap` snapshot is one-shot.** `mutter_display_config::GetCurrentState` builds a fresh map per call (small N — fine) but the cached `name`/`refresh`/`output` triple stashed on each cast at `start_cast` time goes stale on hotplug. Disconnect/reconnect during an active cast won't update the snapshot. Niri tracks this via `mapped_cast_output`; margo can rebuild lazily via `WeakOutput::upgrade`.
 
 - **`ScreenCast::Session::Stop` D-Bus method exists but the cleanup chain is partial.** Stop messages route through `ScreenCastToCompositor::StopCast` and `MargoState::stop_cast`, which retains the cast-vec by `session_id`. PipeWire stream and Cast struct are dropped in order (Cast carries the listener which is dropped before the Stream — verified). What's NOT done: the WebRTC consumer can hang briefly if it's mid-frame when we drop. niri has `cleanup_with_grace_period`; we just drop. Acceptable; logs may show pipewire warnings on rapid stop/start cycles.
+
+- **Continuous repaint while casts active is global.** When any cast is active, `drain_active_cast_frames` re-arms `request_repaint()` at end-of-drain so the loop ticks at refresh rate. With pacing in place this is mostly cheap — paced-skip casts bail before the expensive element build — but a paced-skip frame still costs ~5µs per cast for the borrow + duration compare. niri schedules a per-cast timer that wakes the loop only at the right moment; margo would benefit when running multiple casts at different framerates simultaneously. Optimization, not a correctness gate.
+
+- **`CursorMode::Metadata` falls back to "no cursor at all".** Embedded mode embeds the cursor in the frame; Hidden mode omits the cursor; Metadata mode is supposed to send cursor as a sidecar so the consumer can composite it natively (sharper at low cast resolutions). Phase F gates `include_cursor` on `cast.cursor_mode() == Embedded` only — Metadata mode produces frames with no cursor and no metadata. Most browsers ask for Embedded so this is rarely visible; ~80 LOC to populate `CursorData` properly when xdp-gnome asks for Metadata.
 
 ---
 
@@ -344,21 +339,19 @@ Recently shipped (this two-sprint depth-pass):
 
 Still queued — pick one:
 
-1. **Screencast Phase F — pacing + damage + cursor.** Three depth items on the now-shipped P7. (a) Wire `Cast::check_time_and_schedule` into `drain_active_cast_frames` so static scenes don't burn 60fps GLES work. (b) Thread real damage through `dequeue_buffer_and_render` so the consumer's encoder skips identical frames. (c) Embed the pointer cursor into the cast element list. ~200 LOC total.
+1. **HDR Phase 2 — linear-light fp16 composite.** Per-surface transfer-function decode at sample time; output stays SDR but the internal pipeline goes linear. Foundation for Phase 3 (KMS HDR scan-out). ~500 LOC + shader-test matrix.
 
-2. **HDR Phase 2 — linear-light fp16 composite.** Per-surface transfer-function decode at sample time; output stays SDR but the internal pipeline goes linear. Foundation for Phase 3 (KMS HDR scan-out). ~500 LOC + shader-test matrix.
+2. **`on_window_close` event hook.** Needs a stable identity for closing windows so a handler can react before the client dies. Couples to the existing `closing_clients` list. ~100 LOC.
 
-3. **`on_window_close` event hook.** Needs a stable identity for closing windows so a handler can react before the client dies. Couples to the existing `closing_clients` list. ~100 LOC.
+3. **Direct scanout observability.** Add `scanout: bool` per client to `mctl status --json`, sourced from `RenderFrameResult.states`. ~80 LOC + dwl-ipc-v2 extension.
 
-4. **Direct scanout observability.** Add `scanout: bool` per client to `mctl status --json`, sourced from `RenderFrameResult.states`. ~80 LOC + dwl-ipc-v2 extension.
+4. **Smoke test in CI.** Run `scripts/smoke-winit.sh` headless via Xvfb in a dedicated workflow. Needs a lightweight terminal client on the runner + ~20 LOC YAML.
 
-5. **Smoke test in CI.** Run `scripts/smoke-winit.sh` headless via Xvfb in a dedicated workflow. Needs a lightweight terminal client on the runner + ~20 LOC YAML.
+5. **`wlr_output_management_v1` disable-output.** The runtime mode change shipped; disable still rejected. Disable means tearing down an OutputDevice + migrating clients to a remaining output. ~200 LOC + careful testing.
 
-6. **`wlr_output_management_v1` disable-output.** The runtime mode change shipped; disable still rejected. Disable means tearing down an OutputDevice + migrating clients to a remaining output. ~200 LOC + careful testing.
+6. **Screencast — `windows_changed` D-Bus signal emission.** Fire from `finalize_initial_map` and `toplevel_destroyed` so xdp-gnome's window picker stays live during a share dialog. ~30 LOC.
 
-7. **Screencast — full-decoration cast frames.** Widen `CastRenderElement<R>` to `MargoRenderElement` so the share view matches the live display (borders, shadows, popups, animations included). Invasive niri-port surgery on `pw_utils.rs`; ~400 LOC.
-
-8. **Screencast — `windows_changed` D-Bus signal emission.** Fire from `finalize_initial_map` and `toplevel_destroyed` so xdp-gnome's window picker stays live during a share dialog. ~30 LOC.
+7. **Screencast — `CursorMode::Metadata` cursor sidecar.** Populate `CursorData` properly when xdp-gnome requests metadata mode so consumers can composite the cursor sharply at low cast resolutions. ~80 LOC.
 
 ---
 
