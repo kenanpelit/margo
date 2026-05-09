@@ -21,3 +21,6 @@ clap_complete = "4"
 # Pulled in for `mctl rules` — config-only introspection, no Wayland.
 margo-config = { path = "../margo-config" }
 regex = "1"
+# `mctl clients`/`outputs` use libc::getuid for the
+# /run/user/$UID fallback when XDG_RUNTIME_DIR isn't set.
+libc = "0.2"

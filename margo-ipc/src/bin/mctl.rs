@@ -3,7 +3,7 @@
 //! Uses the zdwl_ipc_unstable_v2 Wayland protocol to query and control margo.
 //! Connects to the compositor via the standard WAYLAND_DISPLAY socket.
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
 use wayland_client::{
@@ -289,6 +289,81 @@ enum Command {
         #[arg(value_enum)]
         shell: Shell,
     },
+
+    /// List every open window with tag, monitor, app_id, title.
+    ///
+    /// Reads `$XDG_RUNTIME_DIR/margo/state.json` (margo refreshes
+    /// it on every arrange/focus/output-change event). Same data
+    /// you'd get from triggering `pkill -USR1 margo` and grepping
+    /// the journal, but live and parseable.
+    #[command(
+        long_about = "List every open window the compositor knows about — tag, \
+                      monitor, app_id, title, geometry, focus, floating/fullscreen \
+                      state. Reads `$XDG_RUNTIME_DIR/margo/state.json` which margo \
+                      refreshes on every relevant event.\n\
+                      \n\
+                      EXAMPLES:\n  \
+                        mctl clients                        # all windows, table\n  \
+                        mctl clients --json                 # full JSON\n  \
+                        mctl clients --tag 2                # only tag 2 windows\n  \
+                        mctl clients --monitor DP-3         # only DP-3 windows\n  \
+                        mctl clients --app-id helium        # match app_id substring\n  \
+                        mctl clients --json | jq '.[] | .app_id'\n  \
+                      \n\
+                      Output columns: TAG  MON  APP-ID  TITLE  (+ markers for \
+                      focused/floating/fullscreen). Pass `--wide` for the \
+                      full geometry column."
+    )]
+    Clients {
+        /// JSON dump of the full client list.
+        #[arg(long)]
+        json: bool,
+        /// Filter by tag number (1-based; e.g. `--tag 2`).
+        #[arg(long)]
+        tag: Option<u32>,
+        /// Filter by monitor connector name (e.g. `--monitor DP-3`).
+        #[arg(long)]
+        monitor: Option<String>,
+        /// Filter by app_id substring (case-insensitive).
+        #[arg(long)]
+        app_id: Option<String>,
+        /// Include the geometry column (`x,y wxh`).
+        #[arg(long)]
+        wide: bool,
+    },
+
+    /// List every connected output with mode, position, scale, layout.
+    #[command(
+        long_about = "List every connected output: connector name, position in \
+                      the global compositor coordinate space, mode, scale, \
+                      transform, current layout, active-tag mask. Reads the \
+                      same state file as `mctl clients`.\n\
+                      \n\
+                      EXAMPLES:\n  \
+                        mctl outputs\n  \
+                        mctl outputs --json\n  \
+                        mctl outputs --json | jq '.[].name'"
+    )]
+    Outputs {
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Print the focused window's app_id + title (terse, scriptable).
+    #[command(
+        long_about = "Print the focused window's app_id + title in a single \
+                      line — designed for status-bar scripts that just need \
+                      `who has focus right now`. `--json` for the full \
+                      ClientInfo struct.\n\
+                      \n\
+                      EXAMPLES:\n  \
+                        mctl focused                    # `app_id · title`\n  \
+                        mctl focused --json | jq .title"
+    )]
+    Focused {
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 // ── IPC state machine ─────────────────────────────────────────────────────────
@@ -463,6 +538,17 @@ fn main() -> Result<()> {
         Command::CheckConfig { config } => {
             return cmd_check_config(config.as_deref());
         }
+        // The state-file commands don't need a Wayland connection.
+        // They read whatever margo last wrote out.
+        Command::Clients { json, tag, monitor, app_id, wide } => {
+            return cmd_clients(*json, *tag, monitor.as_deref(), app_id.as_deref(), *wide);
+        }
+        Command::Outputs { json } => {
+            return cmd_outputs(*json);
+        }
+        Command::Focused { json } => {
+            return cmd_focused(*json);
+        }
         _ => {}
     }
 
@@ -584,9 +670,12 @@ fn main() -> Result<()> {
         Command::Actions { .. }
         | Command::Completions { .. }
         | Command::Rules { .. }
-        | Command::CheckConfig { .. } => {
-            // Both branches return early at the top of `main`; this
-            // arm only exists to keep the match exhaustive.
+        | Command::CheckConfig { .. }
+        | Command::Clients { .. }
+        | Command::Outputs { .. }
+        | Command::Focused { .. } => {
+            // Both branches return early at the top of `main`;
+            // this arm only exists to keep the match exhaustive.
             unreachable!();
         }
     }
@@ -1083,34 +1172,376 @@ fn select_output(state: &IpcState, name: Option<&str>) -> Result<usize> {
 }
 
 fn print_status(state: &IpcState, idx: usize) {
+    use std::io::IsTerminal;
+    let tty = std::io::stdout().is_terminal();
+    let bold = if tty { "\x1b[1m" } else { "" };
+    let dim = if tty { "\x1b[2m" } else { "" };
+    let cyan = if tty { "\x1b[36m" } else { "" };
+    let yellow = if tty { "\x1b[33m" } else { "" };
+    let green = if tty { "\x1b[32m" } else { "" };
+    let red = if tty { "\x1b[31m" } else { "" };
+    let reset = if tty { "\x1b[0m" } else { "" };
+
     let out = &state.outputs[idx];
+
+    // Header line — output name + active/inactive marker + layout symbol.
+    let active_marker = if out.active {
+        format!("{green}●{reset} ")
+    } else {
+        "  ".to_string()
+    };
     println!(
-        "output={} active={} layout={} title={:?} appid={:?} fullscreen={} floating={} x={} y={} width={} height={}",
-        out.name,
-        out.active,
-        out.layout_symbol,
-        out.title,
-        out.appid,
-        out.fullscreen,
-        out.floating,
-        out.x,
-        out.y,
-        out.width,
-        out.height,
+        "{active_marker}{bold}{}{reset}  {dim}layout {reset}{cyan}{}{reset}",
+        out.name, out.layout_symbol
     );
-    for (i, tag) in out.tags.iter().enumerate().take(state.tag_count as usize) {
+
+    // Focused window line.
+    if out.appid.is_empty() && out.title.is_empty() {
+        println!("    {dim}focused{reset}: (none)");
+    } else {
+        let mut flags = Vec::new();
+        if out.fullscreen {
+            flags.push(format!("{red}FULLSCREEN{reset}"));
+        }
+        if out.floating {
+            flags.push(format!("{yellow}FLOAT{reset}"));
+        }
+        let flags_str = if flags.is_empty() {
+            String::new()
+        } else {
+            format!("  {}", flags.join(" "))
+        };
         println!(
-            "  tag[{}] state={} clients={} focused={}",
-            i + 1,
-            match tag.state {
-                0 => "none",
-                1 => "active",
-                2 => "urgent",
-                _ => "?",
-            },
-            tag.clients,
-            tag.focused,
+            "    {dim}focused{reset}: {bold}{}{reset} · {}{flags_str}",
+            out.appid, out.title
+        );
+        if out.width > 0 && out.height > 0 {
+            println!(
+                "    {dim}geometry{reset}: {}×{} @ {},{}",
+                out.width, out.height, out.x, out.y
+            );
+        }
+    }
+
+    // Tags row — compact one-line summary.
+    let mut row = String::new();
+    for (i, tag) in out.tags.iter().enumerate().take(state.tag_count as usize) {
+        let n = i + 1;
+        let label = format!("{n}·{}", tag.clients);
+        let cell = if tag.focused {
+            format!("{green}[{label}]●{reset}")
+        } else if tag.state == 1 {
+            // active but not the focused tag — multi-tag-view case.
+            format!("{cyan}[{label}]{reset}")
+        } else if tag.state == 2 {
+            format!("{red}{label}!{reset}")
+        } else if tag.clients > 0 {
+            format!("{}", label)
+        } else {
+            format!("{dim}{label}{reset}")
+        };
+        if !row.is_empty() {
+            row.push(' ');
+            row.push(' ');
+        }
+        row.push_str(&cell);
+    }
+    println!("    {dim}tags{reset}: {row}");
+    println!();
+    println!(
+        "{dim}layouts:{reset} {}",
+        state.layouts
+            .iter()
+            .enumerate()
+            .map(|(i, l)| format!("{i}:{l}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+}
+
+// ── State-file consumers ────────────────────────────────────────
+
+fn read_state_file() -> Result<serde_json::Value> {
+    let path = state_file_path();
+    let body = std::fs::read_to_string(&path).with_context(|| {
+        format!(
+            "read {}: margo writes this file on every layout/focus change. \
+             Is margo running? (You can poke it with `pkill -USR1 margo` or \
+             toggle a tag to force a refresh.)",
+            path.display()
+        )
+    })?;
+    let json: serde_json::Value = serde_json::from_str(&body)
+        .with_context(|| format!("parse {}", path.display()))?;
+    Ok(json)
+}
+
+fn state_file_path() -> std::path::PathBuf {
+    let dir = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            let uid = unsafe { libc::getuid() };
+            std::path::PathBuf::from(format!("/run/user/{uid}"))
+        });
+    dir.join("margo").join("state.json")
+}
+
+fn cmd_clients(
+    json_out: bool,
+    tag_filter: Option<u32>,
+    monitor_filter: Option<&str>,
+    appid_filter: Option<&str>,
+    wide: bool,
+) -> Result<()> {
+    use std::io::IsTerminal;
+    let state = read_state_file()?;
+    let clients = state["clients"]
+        .as_array()
+        .ok_or_else(|| anyhow::anyhow!("state file missing `clients` array"))?;
+
+    let want_tag_mask = tag_filter.map(|n| 1u32 << (n.saturating_sub(1).min(31)));
+
+    let filtered: Vec<&serde_json::Value> = clients
+        .iter()
+        .filter(|c| {
+            if let Some(mask) = want_tag_mask {
+                let tags = c["tags"].as_u64().unwrap_or(0) as u32;
+                if tags & mask == 0 {
+                    return false;
+                }
+            }
+            if let Some(mon) = monitor_filter {
+                if c["monitor"].as_str().unwrap_or("") != mon {
+                    return false;
+                }
+            }
+            if let Some(needle) = appid_filter {
+                let needle = needle.to_lowercase();
+                let app = c["app_id"].as_str().unwrap_or("").to_lowercase();
+                if !app.contains(&needle) {
+                    return false;
+                }
+            }
+            true
+        })
+        .collect();
+
+    if json_out {
+        let arr: Vec<_> = filtered.iter().cloned().cloned().collect();
+        println!("{}", serde_json::to_string_pretty(&arr)?);
+        return Ok(());
+    }
+
+    if filtered.is_empty() {
+        println!("(no matching clients)");
+        return Ok(());
+    }
+
+    let tty = std::io::stdout().is_terminal();
+    let bold = if tty { "\x1b[1m" } else { "" };
+    let dim = if tty { "\x1b[2m" } else { "" };
+    let green = if tty { "\x1b[32m" } else { "" };
+    let yellow = if tty { "\x1b[33m" } else { "" };
+    let red = if tty { "\x1b[31m" } else { "" };
+    let reset = if tty { "\x1b[0m" } else { "" };
+
+    // Decode tag bitmask → comma list of tag numbers.
+    let decode_tags = |mask: u32| -> String {
+        let mut v = Vec::new();
+        for i in 0..9 {
+            if mask & (1 << i) != 0 {
+                v.push(format!("{}", i + 1));
+            }
+        }
+        if v.is_empty() {
+            "—".to_string()
+        } else {
+            v.join(",")
+        }
+    };
+
+    // Compute column widths.
+    let max_tag = filtered
+        .iter()
+        .map(|c| decode_tags(c["tags"].as_u64().unwrap_or(0) as u32).len())
+        .max()
+        .unwrap_or(3)
+        .max(3);
+    let max_mon = filtered
+        .iter()
+        .map(|c| c["monitor"].as_str().unwrap_or("").len())
+        .max()
+        .unwrap_or(3)
+        .max(3);
+    let max_app = filtered
+        .iter()
+        .map(|c| c["app_id"].as_str().unwrap_or("").len())
+        .max()
+        .unwrap_or(6)
+        .max(6)
+        .min(28);
+
+    // Header.
+    if wide {
+        println!(
+            "{bold}{:<w_tag$}  {:<w_mon$}  {:<w_app$}  {:<22}  TITLE{reset}",
+            "TAG",
+            "MON",
+            "APP-ID",
+            "GEOMETRY",
+            w_tag = max_tag,
+            w_mon = max_mon,
+            w_app = max_app,
+        );
+    } else {
+        println!(
+            "{bold}{:<w_tag$}  {:<w_mon$}  {:<w_app$}  TITLE{reset}",
+            "TAG",
+            "MON",
+            "APP-ID",
+            w_tag = max_tag,
+            w_mon = max_mon,
+            w_app = max_app,
         );
     }
-    println!("layouts: {}", state.layouts.join(", "));
+
+    for c in &filtered {
+        let tags = decode_tags(c["tags"].as_u64().unwrap_or(0) as u32);
+        let mon = c["monitor"].as_str().unwrap_or("");
+        let app = c["app_id"].as_str().unwrap_or("");
+        let title = c["title"].as_str().unwrap_or("");
+        let geom = format!(
+            "{}×{}+{}+{}",
+            c["width"].as_i64().unwrap_or(0),
+            c["height"].as_i64().unwrap_or(0),
+            c["x"].as_i64().unwrap_or(0),
+            c["y"].as_i64().unwrap_or(0),
+        );
+        let mut markers = String::new();
+        if c["focused"].as_bool().unwrap_or(false) {
+            markers.push_str(&format!("{green}●{reset} "));
+        }
+        if c["fullscreen"].as_bool().unwrap_or(false) {
+            markers.push_str(&format!("{red}⛶{reset} "));
+        }
+        if c["floating"].as_bool().unwrap_or(false) {
+            markers.push_str(&format!("{yellow}⬚{reset} "));
+        }
+        if c["minimized"].as_bool().unwrap_or(false) {
+            markers.push_str(&format!("{dim}↓{reset} "));
+        }
+        let app_disp = if app.len() > max_app {
+            format!("{}…", &app[..max_app.saturating_sub(1)])
+        } else {
+            app.to_string()
+        };
+        if wide {
+            println!(
+                "{:<w_tag$}  {:<w_mon$}  {:<w_app$}  {:<22}  {markers}{title}",
+                tags,
+                mon,
+                app_disp,
+                geom,
+                w_tag = max_tag,
+                w_mon = max_mon,
+                w_app = max_app,
+            );
+        } else {
+            println!(
+                "{:<w_tag$}  {:<w_mon$}  {:<w_app$}  {markers}{title}",
+                tags,
+                mon,
+                app_disp,
+                w_tag = max_tag,
+                w_mon = max_mon,
+                w_app = max_app,
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn cmd_outputs(json_out: bool) -> Result<()> {
+    use std::io::IsTerminal;
+    let state = read_state_file()?;
+    let outputs = state["outputs"]
+        .as_array()
+        .ok_or_else(|| anyhow::anyhow!("state file missing `outputs` array"))?;
+
+    if json_out {
+        println!("{}", serde_json::to_string_pretty(outputs)?);
+        return Ok(());
+    }
+
+    let tty = std::io::stdout().is_terminal();
+    let bold = if tty { "\x1b[1m" } else { "" };
+    let dim = if tty { "\x1b[2m" } else { "" };
+    let green = if tty { "\x1b[32m" } else { "" };
+    let cyan = if tty { "\x1b[36m" } else { "" };
+    let reset = if tty { "\x1b[0m" } else { "" };
+
+    println!(
+        "{bold}{:<10}  {:<11}  {:<6}  {:<10}  ACTIVE-TAGS{reset}",
+        "NAME", "POSITION", "SCALE", "MODE",
+    );
+    for o in outputs {
+        let name = o["name"].as_str().unwrap_or("");
+        let x = o["x"].as_i64().unwrap_or(0);
+        let y = o["y"].as_i64().unwrap_or(0);
+        let w = o["width"].as_i64().unwrap_or(0);
+        let h = o["height"].as_i64().unwrap_or(0);
+        let scale = o["scale"].as_f64().unwrap_or(1.0);
+        let mode = format!(
+            "{}×{}",
+            o["mode"]["physical_width"].as_i64().unwrap_or(0),
+            o["mode"]["physical_height"].as_i64().unwrap_or(0),
+        );
+        let active = o["active"].as_bool().unwrap_or(false);
+        let active_mark = if active {
+            format!("{green}●{reset} ")
+        } else {
+            "  ".to_string()
+        };
+        let active_tag = o["active_tag_mask"].as_u64().unwrap_or(0) as u32;
+        let mut tags = Vec::new();
+        for i in 0..9 {
+            if active_tag & (1 << i) != 0 {
+                tags.push(format!("{}", i + 1));
+            }
+        }
+        let tag_str = if tags.is_empty() {
+            "—".to_string()
+        } else {
+            tags.join(",")
+        };
+        println!(
+            "{active_mark}{bold}{name:<8}{reset}  {dim}{x:>4},{y:<4}{reset}  {dim}{scale:<6.2}{reset}  {cyan}{mode:<10}{reset}  {tag_str} {dim}({w}×{h} logical){reset}",
+        );
+    }
+
+    Ok(())
+}
+
+fn cmd_focused(json_out: bool) -> Result<()> {
+    let state = read_state_file()?;
+    let clients = state["clients"]
+        .as_array()
+        .ok_or_else(|| anyhow::anyhow!("state file missing `clients` array"))?;
+    let Some(focused) = clients.iter().find(|c| c["focused"].as_bool() == Some(true)) else {
+        if json_out {
+            println!("null");
+        } else {
+            println!("(no focused window)");
+        }
+        return Ok(());
+    };
+    if json_out {
+        println!("{}", serde_json::to_string_pretty(focused)?);
+        return Ok(());
+    }
+    let app = focused["app_id"].as_str().unwrap_or("");
+    let title = focused["title"].as_str().unwrap_or("");
+    println!("{app} · {title}");
+    Ok(())
 }
