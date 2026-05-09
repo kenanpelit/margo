@@ -1,0 +1,78 @@
+# Margo smoke — runs `scripts/smoke-winit.sh` end-to-end under Xvfb
+# so we catch regressions in the nested-backend path that `cargo
+# test` can't. This is the workflow `ci.yml` referenced as TODO; it
+# lives separately because it pulls in a desktop client (kitty)
+# which doubles install time on top of the lightweight check job.
+#
+# What the smoke script verifies (see scripts/smoke-winit.sh for
+# the canonical list): margo --help, --winit boot, kitty as the test
+# client, mctl status, mctl reload, dispatch focusstack, dispatch
+# killclient, post-kill empty status.
+#
+# Real DRM tests are out of scope — GitHub-hosted runners don't
+# expose a CRTC. Manual checklist in docs/manual-checklist.md
+# covers the post-install validation that needs hardware.
+
+name: smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  winit:
+    name: smoke-winit (xvfb)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # System libs margo links against (mirror ci.yml) plus the
+      # smoke-script-only deps: kitty (real wayland/x11 client) and
+      # xvfb-run (parent X display for winit).
+      - name: System dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config \
+            libwayland-dev wayland-protocols \
+            libinput-dev libxkbcommon-dev libudev-dev \
+            libseat-dev \
+            libdrm-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev \
+            libpixman-1-dev \
+            libpcre2-dev \
+            kitty \
+            xvfb
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      # Build release once — the smoke script picks up
+      # target/release/{margo,mctl} via its own probing.
+      - name: cargo build (release)
+        run: cargo build --workspace --release
+
+      # `xvfb-run -a` allocates a free display, exports DISPLAY,
+      # tears the X server down on exit. Margo's --winit runs
+      # against that DISPLAY just like a developer machine.
+      - name: smoke-winit under Xvfb
+        run: xvfb-run -a --server-args='-screen 0 1280x720x24' scripts/smoke-winit.sh
+        env:
+          SMOKE_VERBOSE: '1'
+
+      - name: Upload smoke logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-logs
+          path: /tmp/margo-smoke-*/
+          retention-days: 7

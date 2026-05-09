@@ -7,11 +7,10 @@
 # the codebase has organic drift from many sessions and a 283-hunk
 # fmt sweep would be its own commit, not a CI gate.
 #
-# What's NOT covered here (yet):
-#   * `scripts/smoke-winit.sh` — needs Xvfb plus a real terminal
-#     client (kitty/alacritty); feasible but worth ~20 LOC of YAML
-#     to do right. Tracked as a separate workflow once the core
-#     checks have been stable.
+# What's NOT covered here:
+#   * `scripts/smoke-winit.sh` — covered separately in `smoke.yml`
+#     (runs end-to-end under Xvfb with kitty as the test client).
+#     Lives in its own workflow so the lightweight path stays fast.
 #   * Real DRM session — impossible on GitHub-hosted runners.
 #     Manual post-install validation lives in
 #     `docs/manual-checklist.md`.
