@@ -24,9 +24,21 @@ Your `config.conf` does `source = margo-layout.conf` once, and a `mctl reload` r
 
 ## Quick start
 
-1. Add `source = margo-layout.conf` to `~/.config/margo/config.conf` (anywhere; ordering matters only if you also have other `monitorrule` lines).
-2. Create one or more `layout_<name>.conf` files (see the examples below).
-3. Run `margo-layout pick` and choose a layout.
+```sh
+margo-layout init
+```
+
+That's it. The `init` subcommand runs `wlr-randr`, captures every active output, writes the result as `layout_default.conf`, asks once whether it should add `source = margo-layout.conf` to your `config.conf`, and activates the new layout. Idempotent — safe to re-run.
+
+Need a different starting name? `margo-layout init --name vertical` writes `layout_vertical.conf` instead.
+
+To bookmark another setup later: rearrange your monitors physically, then
+
+```sh
+margo-layout new dock
+```
+
+This snapshots the new geometry as `layout_dock.conf` without activating it. From now on `margo-layout set dock` flips between them.
 
 ## Layout file format
 
@@ -68,6 +80,8 @@ monitorrule = name:eDP-1,width:1920,height:1200,refresh:60,x:2560,y:240,scale:1
 
 | Command | What it does |
 |---|---|
+| `margo-layout init [--name SLUG] [--yes] [--force]` | First-time setup. Captures the current monitor configuration, wires `config.conf`, activates. |
+| `margo-layout new <name> [--title T] [--shortcut S] [--activate]` | Snapshot the live monitor configuration as a new named layout. No activation by default — pass `--activate` to switch immediately. |
 | `margo-layout list` | Print every available layout with shortcuts and a colour summary. `--preview` adds a multi-line ASCII rectangle render under each. `--json` emits a stable schema for scripts. |
 | `margo-layout current` | Print the active layout's name and shortcut. |
 | `margo-layout set <name>` | Switch by file slug, `#@ name`, or any `#@ shortcut`. Triggers `mctl reload` unless `--no-reload`. |
