@@ -1202,6 +1202,24 @@ pub struct MargoState {
     /// and routed through `screenshot_region_ui::handle_*`.
     pub region_selector:
         Option<crate::screenshot_region_ui::RegionSelector>,
+    /// Last confirmed (or cancelled) region selector rectangle,
+    /// keyed by output name. Restored on next selector open so
+    /// users don't have to re-draw the same crop every time.
+    /// Survives Esc — niri pattern, so an accidental cancel
+    /// doesn't lose the rectangle the user just spent time
+    /// shaping.
+    pub last_screenshot_region: Option<(
+        String,
+        smithay::utils::Rectangle<i32, smithay::utils::Physical>,
+    )>,
+    /// Pending "save this frozen-texture region" intent. The
+    /// keyboard-intercept handler in input_handler enqueues this
+    /// when the user hits Return on a region selection; the udev
+    /// repaint hook drains it on the next frame and dispatches
+    /// to `screenshot::save_from_frozen_texture` (which needs a
+    /// renderer the input handler doesn't have).
+    pub pending_screenshot_from_frozen:
+        Option<crate::screenshot_region_ui::ConfirmSave>,
     /// `wp_presentation` global. Lets clients (kitty, mpv, native
     /// Wayland Vulkan games via DXVK / VKD3D, video conferencing
     /// apps that adapt their pacing to the actual display refresh)
@@ -1453,6 +1471,8 @@ impl MargoState {
             pending_screenshots: Vec::new(),
             pending_region_selector_open: None,
             region_selector: None,
+            last_screenshot_region: None,
+            pending_screenshot_from_frozen: None,
             presentation_state,
             space,
             popups,

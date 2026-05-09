@@ -753,6 +753,25 @@ pub fn run(
                         }
                     }
                 }
+                // Phase 4: drain a confirmed frozen-texture
+                // capture. The keyboard intercept stashed the
+                // texture + rect; here we have the renderer
+                // available to copy + readback the pixels.
+                if state.pending_screenshot_from_frozen.is_some() {
+                    let mut bd = backend_data.borrow_mut();
+                    let BackendData { renderer, .. } = &mut *bd;
+                    let req =
+                        state.pending_screenshot_from_frozen.take().unwrap();
+                    crate::screenshot::save_from_frozen_texture(
+                        renderer,
+                        state,
+                        req.texture,
+                        req.rect_physical,
+                        req.save_to_disk,
+                        req.save_path,
+                        req.copy_clipboard,
+                    );
+                }
             }
         })
         .map_err(|e| anyhow::anyhow!("repaint ping source: {e}"))?;

@@ -253,7 +253,7 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                     );
                     return FilterResult::Forward;
                 }
-                // Phase 3 region selector intercept. While the
+                // Phase 3+4 region selector intercept. While the
                 // selector is open, every key goes to its
                 // handler — Esc cancels, Return confirms,
                 // anything else is swallowed so compositor
@@ -271,11 +271,15 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                             crate::screenshot_region_ui::HandleResult::Consumed => {
                                 state.region_selector = Some(sel);
                             }
-                            crate::screenshot_region_ui::HandleResult::Close(req) => {
+                            crate::screenshot_region_ui::HandleResult::Close { save } => {
+                                // Stash the just-drawn rect so
+                                // next open restores it. niri-
+                                // pattern: even Esc preserves it.
+                                crate::screenshot_region_ui::stash_last_selection(
+                                    &sel, state,
+                                );
+                                state.pending_screenshot_from_frozen = save;
                                 drop(sel);
-                                if let Some(r) = req {
-                                    crate::screenshot::queue(state, r);
-                                }
                                 state.request_repaint();
                             }
                         }

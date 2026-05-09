@@ -1,63 +1,56 @@
-//! In-compositor region selector for screenshots.
+//! In-compositor region selector — niri-pattern port + improvements.
 //!
-//! When the user binds `screenshot-region-ui` (or invokes it via
-//! `mctl dispatch screenshot-region-ui`), this module takes over
-//! the pointer + keyboard until the user picks a rectangle or
-//! cancels. The selector renders a *frozen* copy of every output's
-//! current scene as the background, with a dim overlay everywhere
-//! except the dragged-out selection rect — so the user sees a
-//! stable image to crop against (no chasing animations / cursor
-//! ghosts).
+//! Press a `screenshot-region-ui` keybind, the compositor freezes a
+//! copy of every output's current scene to a `GlesTexture`, dims
+//! everything except a pre-drawn rectangle, and lets you adjust
+//! the rectangle with the mouse before confirming with Return.
 //!
-//! Two-stage flow:
+//! ## What the user sees
 //!
-//!   1. **Open**: dispatch handler queues a [`PendingOpen`] request
-//!      onto `MargoState`. The udev repaint hook drains that on the
-//!      next frame, captures every output's current render-element
-//!      list into a `GlesTexture`, builds the selector state, and
-//!      assigns it to `MargoState::region_selector`.
-//!   2. **Active**: the live render path swaps to
-//!      [`build_render_elements`] (this module) which produces a
-//!      `Vec<MargoRenderElement>` of frozen-texture backgrounds +
-//!      dim-strip overlays + selection-border lines. Pointer and
-//!      keyboard events are intercepted at the top of
-//!      `input_handler::handle_pointer_*` / `handle_keyboard` and
-//!      routed through this module's [`handle_pointer`] /
-//!      [`handle_key`] handlers instead of the normal client path.
-//!   3. **Confirm / cancel**: Return finalises and queues a regular
-//!      `ScreenshotSource::Region` capture; Esc clears the state
-//!      without saving.
+//! 1. **Print pressed** → frozen scene appears, dimmed everywhere,
+//!    with an immediately-visible selection rectangle:
+//!      * **First time on this session**: rectangle is centred at
+//!        50% of the active output's size — same as niri's default.
+//!      * **Subsequent times**: rectangle restored to the last
+//!        confirmed/cancelled selection on that output.
+//! 2. **Drag inside the selection** → moves the rectangle as a
+//!    whole, preserving size. Cursor offset is locked at click.
+//! 3. **Drag anywhere else** (or click on empty area) → starts a
+//!    fresh selection from the click point; further motion stretches
+//!    the opposite corner.
+//! 4. **Mouse release** → ends the drag; rectangle stays in place.
+//! 5. **Return** → captures the picked rectangle from the FROZEN
+//!    texture (not the live scene that's been replaced by the
+//!    selector overlay), saves to disk + clipboard via the
+//!    standard pipeline.
+//! 6. **Esc** → cancels without saving; the just-drawn rectangle
+//!    is still remembered as the next-open default.
 //!
-//! ## Design choices
+//! ## Why frozen-texture-capture matters
 //!
-//! * **Single-output selection**. The selection rect lives in the
-//!   coordinates of *one* output (the one the cursor was on at
-//!   open time). Niri makes the same choice for the same reason —
-//!   cross-output rectangles are well-defined for a global render
-//!   space but fall apart on mixed-scale outputs (a rect that
-//!   crosses a 1.0-scale and a 1.5-scale output has no clean
-//!   physical pixel meaning). Other outputs still freeze + dim, so
-//!   moving the cursor reveals the second monitor's frozen scene
-//!   too — but the active rectangle stays on one screen.
+//! Earlier versions captured via the standard `ScreenshotSource::
+//! Region` path, which on Return queues a request that the udev
+//! hook drains by calling `build_render_elements_inner` for the
+//! output. By that point the region selector is still active (we
+//! clear it after queuing), so `build_render_elements` returns
+//! the *selector overlay* (frozen + dim + border lines), not the
+//! original scene the user actually wanted to capture. The saved
+//! PNG was a screenshot of the screenshot UI, which the user
+//! correctly described as "boşluk" (empty / wrong content).
 //!
-//! * **No animation / no help text**. niri's selector does pango-
-//!   rendered Pango help and an open/close fade animation. We skip
-//!   both: the keybind hint comes from the user's config (they
-//!   already know they pressed Print to get here), and the
-//!   open/close is instant. Cuts ~600 LOC of pango+animation
-//!   plumbing.
-//!
-//! * **Mouse-only drag, keyboard-only confirm/cancel**. niri also
-//!   supports keyboard nudge (`Shift+arrow`) for sub-pixel tweaks.
-//!   Phase 4 territory; not worth the code today.
+//! Phase 4 fix: route confirmation through
+//! `screenshot::save_from_frozen_texture` which crops the captured
+//! frozen `GlesTexture` directly. The selector's own captured
+//! image IS the user-intended content; no second capture pass is
+//! needed.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 
 use anyhow::{bail, Context, Result};
 use smithay::backend::allocator::Fourcc;
-use smithay::backend::renderer::element::texture::{TextureBuffer, TextureRenderElement};
 use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRenderElement};
+use smithay::backend::renderer::element::texture::{TextureBuffer, TextureRenderElement};
 use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::gles::{GlesRenderer, GlesTexture};
 use smithay::input::keyboard::Keysym;
@@ -68,13 +61,12 @@ use crate::backend::udev::{
     build_render_elements_inner, MargoRenderElement, OutputDevice,
 };
 use crate::screencasting::render_helpers::create_texture;
-use crate::screenshot::{ScreenshotRequest, ScreenshotSource};
 use crate::state::MargoState;
 
-/// Pushed by the dispatch handler when the user invokes
-/// `screenshot-region-ui`. The udev hook drains this on the next
-/// repaint and turns it into a [`RegionSelector`] (which then
-/// lives on `state.region_selector` until the user finishes).
+/// Pushed by the dispatch handler. Drained by the udev hook on
+/// the next repaint, which captures every output's current scene
+/// to a frozen texture and assigns the resulting selector to
+/// `state.region_selector`.
 #[derive(Debug, Clone)]
 pub struct PendingOpen {
     pub save_to_disk: bool,
@@ -83,83 +75,99 @@ pub struct PendingOpen {
     pub include_pointer: bool,
 }
 
-/// Per-output frozen scene captured at open time. The texture is
-/// the output's full render-element tree rasterised into a single
-/// GLES texture; we draw it as a `MargoRenderElement::Texture`
-/// underneath the dim overlay.
-#[allow(dead_code)] // size + logical_origin are reserved for Phase 4 multi-output drags
+/// Per-output state for the active selector.
 pub struct FrozenOutput {
+    /// The captured scene at open time. Drawn under the dim
+    /// overlay so the user has a stable image to crop against.
     pub texture: GlesTexture,
+    /// Texture's pixel size — same as the output's physical mode.
     pub size: Size<i32, Physical>,
+    /// Output's fractional scale at capture time (passed to
+    /// `TextureBuffer`'s constructor as i32 — fractional gets
+    /// rounded; HiDPI users get a slight scale mismatch but
+    /// still see the frozen content correctly oriented).
     pub scale: f64,
-    /// The output's logical-space top-left in the global
-    /// coordinate space. Used to convert pointer global coords
-    /// back to output-local for the selection.
+    /// Output's logical-space top-left in the global compositor
+    /// coordinate space. Used to map the global pointer back to
+    /// output-local for the selection drag.
     pub logical_origin: Point<i32, Logical>,
-    /// Output's logical size — matches the dim-strip rectangles.
+    /// Output's logical size (post-scale). Same units as the
+    /// dim-strip rectangles' coordinates.
     pub logical_size: Size<i32, Logical>,
 }
 
-/// Live selector state. Pointer + keyboard events are routed
-/// through `handle_pointer` / `handle_key`; render path queries
-/// `build_render_elements` to get the overlay element list.
+/// Active selector state.
 pub struct RegionSelector {
-    /// Frozen scene per output (keyed by connector name).
     pub frozen: HashMap<String, FrozenOutput>,
-    /// Connector name of the output the active selection is on.
-    /// Updated as the cursor enters another output (the new
-    /// output becomes "active" and the old selection clears).
+    /// Connector name of the output the selection rectangle is
+    /// being drawn on. Updates as the cursor crosses output
+    /// boundaries.
     pub active_output: String,
-    /// Current selection in active-output local logical coords.
-    /// `None` until the user has clicked once.
-    pub selection: Option<LogicalRect>,
-    /// True while a mouse button is held (drag-out in progress).
-    pub dragging: bool,
-    /// Carried into the save when the user hits Return.
+    /// Selection rectangle in active-output's PHYSICAL pixels.
+    /// Stored as (anchor, current) corner points so we know which
+    /// edge is "live" during a drag-resize. Always populated —
+    /// `open()` pre-fills with a centred default or restores the
+    /// last-used rectangle on the active output.
+    pub a: Point<i32, Physical>,
+    pub b: Point<i32, Physical>,
+    /// Mouse-button state machine. niri-pattern: `Up` between
+    /// drags, `Down { mode }` while a button is held.
+    pub button: Button,
+    /// Carried into the save call when the user confirms.
     pub save_to_disk: bool,
     pub save_path: Option<PathBuf>,
     pub copy_clipboard: bool,
+    #[allow(dead_code)] // reserved for cursor-embedding pass
     pub include_pointer: bool,
 }
 
-/// Output-local logical rect (x1, y1, x2, y2 — top-left + bottom-
-/// right). Stored as raw points rather than a normalised
-/// `Rectangle` so we know which corner the user clicked first and
-/// can render the drag direction correctly.
-#[derive(Debug, Clone, Copy)]
-pub struct LogicalRect {
-    pub anchor: (i32, i32),
-    pub current: (i32, i32),
+#[derive(Debug)]
+pub enum Button {
+    Up,
+    Down { mode: DragMode },
 }
 
-impl LogicalRect {
-    fn normalised(self) -> Rectangle<i32, Logical> {
-        let (ax, ay) = self.anchor;
-        let (bx, by) = self.current;
-        let x = ax.min(bx);
-        let y = ay.min(by);
-        let w = (ax - bx).unsigned_abs() as i32;
-        let h = (ay - by).unsigned_abs() as i32;
-        Rectangle::new((x, y).into(), (w.max(1), h.max(1)).into())
-    }
+/// What a press initiated. niri's selector calls these
+/// "drag-existing" vs "drag-new"; they branch off
+/// `is_within_selection(click_point)`.
+#[derive(Debug)]
+pub enum DragMode {
+    /// User clicked inside the existing selection — drag-to-move.
+    /// Tracks the offset between the cursor and selection's
+    /// anchor at press time so motion preserves it.
+    Move { cursor_offset: Point<i32, Physical> },
+    /// User clicked outside or in empty space — drag-to-resize
+    /// from the click point. The press resets the anchor (`a`)
+    /// to the click; subsequent motion updates `b`.
+    Resize,
 }
 
-/// What the active-state input handlers return so the caller can
-/// decide whether to fall through to normal client routing.
+/// Result of an input event handler. `Close { save: ... }` lets
+/// the input handler queue the screenshot capture from the
+/// frozen texture before clearing the selector.
 pub enum HandleResult {
-    /// Selector consumed the event; don't deliver to clients.
     Consumed,
-    /// Selector wants to be torn down (Esc / Return). Caller
-    /// must clear `state.region_selector` and, if `Some(_)`,
-    /// queue the screenshot.
-    Close(Option<ScreenshotRequest>),
+    /// Selector is done — caller must clear
+    /// `state.region_selector`. If `save` is `Some`, queue a
+    /// frozen-texture save with those parameters.
+    Close {
+        save: Option<ConfirmSave>,
+    },
 }
 
-/// Capture every active output's current scene into a frozen
-/// `GlesTexture` + build a [`RegionSelector`]. Called from the
-/// udev repaint hook when [`PendingOpen`] has been pushed onto
-/// state. Returns the new selector so the caller can install it
-/// onto `state.region_selector`.
+pub struct ConfirmSave {
+    pub texture: GlesTexture,
+    pub rect_physical: Rectangle<i32, Physical>,
+    pub save_to_disk: bool,
+    pub save_path: Option<PathBuf>,
+    pub copy_clipboard: bool,
+}
+
+/// Captures every active output to a frozen `GlesTexture`,
+/// composes the initial selection rectangle (default-centred or
+/// restored from `state.last_screenshot_region`), and returns
+/// the new selector for the caller to install onto
+/// `state.region_selector`.
 pub fn open(
     renderer: &mut GlesRenderer,
     outputs: &mut HashMap<
@@ -176,7 +184,6 @@ pub fn open(
         .context("no focused monitor to open region selector on")?;
 
     let mut frozen: HashMap<String, FrozenOutput> = HashMap::new();
-
     for (_, od) in outputs.iter() {
         let name = od.output.name();
         let mode = match od.output.current_mode() {
@@ -190,37 +197,34 @@ pub fn open(
         let scale_f = od.output.current_scale().fractional_scale();
         let scale = Scale::from(scale_f);
 
+        // Render the output's CURRENT scene into a fresh texture.
+        // include_cursor=false because the frozen scene gets a
+        // dim overlay anyway, and embedding the cursor would
+        // produce a distracting still pointer in the middle of
+        // the user's selection drag.
         let elements: Vec<MargoRenderElement> =
-            build_render_elements_inner(renderer, od, state, true, false);
+            build_render_elements_inner(renderer, od, state, false, false);
 
-        // Render into a fresh GLES texture sized to the output's
-        // mode. Using `render_helpers::create_texture` + smithay's
-        // damage-tracker render is overkill here (we only do this
-        // once per open), so we inline the bind+render+forget
-        // path.
         use smithay::backend::renderer::Bind;
+        use smithay::backend::renderer::damage::OutputDamageTracker;
+        use smithay::backend::renderer::Color32F;
         let mut texture = create_texture(renderer, size, Fourcc::Abgr8888)
             .context("create frozen texture")?;
         {
             let mut target = renderer
                 .bind(&mut texture)
                 .context("bind frozen texture")?;
-            // Use a damage tracker per call so we get a clean
-            // first-frame render (None damage = full output).
-            use smithay::backend::renderer::damage::OutputDamageTracker;
             let mut dt = OutputDamageTracker::new(size, scale, Transform::Normal);
             dt.render_output(
                 renderer,
                 &mut target,
                 0,
                 &elements,
-                smithay::backend::renderer::Color32F::TRANSPARENT,
+                Color32F::TRANSPARENT,
             )
             .context("render frozen scene")?;
         }
 
-        // Logical origin/size: needed to map global pointer
-        // coords back to output-local for the selection state.
         let logical_origin = state
             .monitors
             .iter()
@@ -253,17 +257,52 @@ pub fn open(
         bail!("region selector: no captureable outputs");
     }
 
+    // Initial selection: niri-pattern.
+    //   - If there's a stashed last-selection on the active output, restore it.
+    //   - Otherwise centred 50% rect.
+    let active_size = frozen
+        .get(&active_output)
+        .map(|f| f.size)
+        .unwrap_or(Size::from((1920, 1080)));
+    let (a, b) = if let Some((last_output, last_rect)) = &state.last_screenshot_region {
+        if last_output == &active_output
+            && last_rect.size.w > 0
+            && last_rect.size.h > 0
+            && last_rect.loc.x >= 0
+            && last_rect.loc.y >= 0
+            && last_rect.loc.x + last_rect.size.w <= active_size.w
+            && last_rect.loc.y + last_rect.size.h <= active_size.h
+        {
+            (
+                last_rect.loc,
+                Point::from((
+                    last_rect.loc.x + last_rect.size.w - 1,
+                    last_rect.loc.y + last_rect.size.h - 1,
+                )),
+            )
+        } else {
+            default_selection(active_size)
+        }
+    } else {
+        default_selection(active_size)
+    };
+
     info!(
-        "region selector opened: {} output(s), active = `{}`",
+        "region selector opened: {} output(s), active = `{}`, rect = {}x{}+{}+{}",
         frozen.len(),
-        active_output
+        active_output,
+        (a.x - b.x).abs() + 1,
+        (a.y - b.y).abs() + 1,
+        a.x.min(b.x),
+        a.y.min(b.y),
     );
 
     Ok(RegionSelector {
         frozen,
         active_output,
-        selection: None,
-        dragging: false,
+        a,
+        b,
+        button: Button::Up,
         save_to_disk: request.save_to_disk,
         save_path: request.save_path,
         copy_clipboard: request.copy_clipboard,
@@ -271,56 +310,68 @@ pub fn open(
     })
 }
 
-/// Build the per-output element list for the live render path
-/// while the selector is active. Replaces
-/// `build_render_elements_inner`'s output for *every* output —
-/// the call site already iterates outputs, so we accept one
-/// `OutputDevice` and return its overlay.
+/// Default selection: 50% × 50% rect, centred on the output. Same
+/// shape niri uses for its first-time-open default.
+fn default_selection(size: Size<i32, Physical>) -> (Point<i32, Physical>, Point<i32, Physical>) {
+    let w = size.w / 2;
+    let h = size.h / 2;
+    let x = size.w / 4;
+    let y = size.h / 4;
+    (
+        Point::from((x, y)),
+        Point::from((x + w - 1, y + h - 1)),
+    )
+}
+
+/// Normalise (a, b) corner points into a positive-size Rectangle
+/// in physical pixels. Used for both rendering (which wants
+/// loc + size) and capture (which wants the cropped extent).
+pub fn rect_from_corners(
+    a: Point<i32, Physical>,
+    b: Point<i32, Physical>,
+) -> Rectangle<i32, Physical> {
+    let x = a.x.min(b.x);
+    let y = a.y.min(b.y);
+    let w = (a.x - b.x).abs() + 1;
+    let h = (a.y - b.y).abs() + 1;
+    Rectangle::new(Point::from((x, y)), Size::from((w, h)))
+}
+
+/// Build the render-element list for ONE output while the
+/// selector is active. Called from `udev::build_render_elements`
+/// (the live render path) for every output every frame.
 pub fn build_render_elements(
     renderer: &mut GlesRenderer,
     od: &OutputDevice,
     selector: &RegionSelector,
-    pointer_global: (f64, f64),
+    _pointer_global: (f64, f64),
 ) -> Vec<MargoRenderElement> {
     let name = od.output.name();
     let Some(frozen) = selector.frozen.get(&name) else {
-        // Output came online after the selector opened —
-        // nothing frozen to draw. Render an opaque dim cover
-        // so the live scene doesn't bleed through and confuse
-        // the user; they can still cancel with Esc.
         return cover_dark(od);
     };
 
     let scale = Scale::from(frozen.scale);
     let mut elements: Vec<MargoRenderElement> = Vec::with_capacity(10);
 
-    // Top → bottom in element order. First push = top-most.
-    //
-    // 1. Selection border lines (4 thin rects).
-    // 2. Dim overlay strips (4 rects around the selection).
-    //    These sit BELOW the border so the border edge looks
-    //    crisp.
-    // 3. Frozen-scene texture (full-output background).
     let active = selector.active_output == name;
-    if active {
-        if let Some(rect) = selector.selection {
-            push_selection_border(&mut elements, rect.normalised(), scale);
-            push_dim_strips(&mut elements, rect.normalised(), frozen.logical_size, scale);
-        } else {
-            // No drag yet on this output — full dim cover so
-            // the user knows they're in capture mode but
-            // haven't picked a rect.
-            push_full_dim(&mut elements, frozen.logical_size, scale);
-        }
+    let rect_phys = if active {
+        Some(rect_from_corners(selector.a, selector.b))
     } else {
-        // Inactive output: full-cover dim. Cursor moving over
-        // this output activates it on the next pointer event.
+        None
+    };
+
+    // First-pushed = top-most. Order: borders → dim → frozen.
+    if let Some(rect_phys) = rect_phys {
+        // Convert physical rect to logical for SolidColor placement.
+        let rect_logical = phys_to_logical(rect_phys, scale, frozen.logical_size);
+        push_selection_border(&mut elements, rect_logical, scale);
+        push_dim_strips(&mut elements, rect_logical, frozen.logical_size, scale);
+    } else {
         push_full_dim(&mut elements, frozen.logical_size, scale);
     }
 
-    // Frozen background (always last → bottom-most).
-    let _ = pointer_global; // reserved for cursor render — Phase 4
-    elements.push(frozen_background(renderer, frozen, scale));
+    elements.push(frozen_background(renderer, frozen));
     elements
 }
 
@@ -337,6 +388,23 @@ fn cover_dark(od: &OutputDevice) -> Vec<MargoRenderElement> {
     let mut v = Vec::new();
     push_full_dim(&mut v, size, scale);
     v
+}
+
+fn phys_to_logical(
+    rect: Rectangle<i32, Physical>,
+    scale: Scale<f64>,
+    output_logical: Size<i32, Logical>,
+) -> Rectangle<i32, Logical> {
+    let s = scale.x.max(0.001);
+    let x = (rect.loc.x as f64 / s).round() as i32;
+    let y = (rect.loc.y as f64 / s).round() as i32;
+    let w = (rect.size.w as f64 / s).round() as i32;
+    let h = (rect.size.h as f64 / s).round() as i32;
+    let x = x.clamp(0, output_logical.w);
+    let y = y.clamp(0, output_logical.h);
+    let w = w.min(output_logical.w - x).max(1);
+    let h = h.min(output_logical.h - y).max(1);
+    Rectangle::new(Point::from((x, y)), Size::from((w, h)))
 }
 
 fn push_full_dim(
@@ -359,8 +427,6 @@ fn push_dim_strips(
     logical_size: Size<i32, Logical>,
     scale: Scale<f64>,
 ) {
-    // Four strips around the selection; each is one
-    // SolidColorRenderElement at 50% black.
     let dim = [0.0, 0.0, 0.0, 0.5];
     let w = logical_size.w;
     let h = logical_size.h;
@@ -369,11 +435,9 @@ fn push_dim_strips(
     let sx2 = (sel.loc.x + sel.size.w).clamp(0, w);
     let sy2 = (sel.loc.y + sel.size.h).clamp(0, h);
 
-    // Top strip: full width × (sy)
     if sy > 0 {
         out.push(MargoRenderElement::Solid(solid((0, 0), (w, sy), scale, dim)));
     }
-    // Bottom strip: full width × (h - sy2)
     if sy2 < h {
         out.push(MargoRenderElement::Solid(solid(
             (0, sy2),
@@ -382,7 +446,6 @@ fn push_dim_strips(
             dim,
         )));
     }
-    // Left strip: (sx) × selection-height
     if sx > 0 {
         out.push(MargoRenderElement::Solid(solid(
             (0, sy),
@@ -391,7 +454,6 @@ fn push_dim_strips(
             dim,
         )));
     }
-    // Right strip: (w - sx2) × selection-height
     if sx2 < w {
         out.push(MargoRenderElement::Solid(solid(
             (sx2, sy),
@@ -415,28 +477,14 @@ fn push_selection_border(
     let w = sel.size.w;
     let h = sel.size.h;
 
-    // Top
-    out.push(MargoRenderElement::Solid(solid(
-        (x, y),
-        (w, bw),
-        scale,
-        stroke,
-    )));
-    // Bottom
+    out.push(MargoRenderElement::Solid(solid((x, y), (w, bw), scale, stroke)));
     out.push(MargoRenderElement::Solid(solid(
         (x, y + h - bw),
         (w, bw),
         scale,
         stroke,
     )));
-    // Left
-    out.push(MargoRenderElement::Solid(solid(
-        (x, y),
-        (bw, h),
-        scale,
-        stroke,
-    )));
-    // Right
+    out.push(MargoRenderElement::Solid(solid((x, y), (bw, h), scale, stroke)));
     out.push(MargoRenderElement::Solid(solid(
         (x + w - bw, y),
         (bw, h),
@@ -470,48 +518,55 @@ fn solid(
 }
 
 fn frozen_background(
-    _renderer: &mut GlesRenderer,
+    renderer: &mut GlesRenderer,
     frozen: &FrozenOutput,
-    _scale: Scale<f64>,
 ) -> MargoRenderElement {
-    // Wrap the captured GLES texture in a TextureBuffer + place
-    // it at output origin (0, 0). The texture is already sized
-    // to the output's physical mode, so we draw at scale 1 in
-    // physical space — but the surrounding overlay rectangles
-    // are computed in logical space and converted via `scale`.
-    // To make both line up, we draw the texture at logical
-    // (0, 0) with size = output's logical size and let the
-    // physical-rounding match.
+    // The texture was rendered at the output's physical mode
+    // size, so its buffer-pixel-to-physical-pixel mapping is
+    // 1:1. We pass scale=1 to TextureBuffer (the smithay
+    // signature is `scale: i32`); this tells smithay "1 buffer
+    // pixel = 1 logical pixel". The rendered location is (0, 0)
+    // in physical coords — the texture fills the output exactly.
+    //
+    // For HiDPI outputs (scale > 1), we override the rendered
+    // size so the texture fills the output's LOGICAL area and
+    // gets implicitly upscaled at composite time.
     let buffer = TextureBuffer::from_texture(
-        _renderer,
+        renderer,
         frozen.texture.clone(),
         1,
         Transform::Normal,
         None,
     );
-    let pos = Point::<f64, Physical>::from((0.0, 0.0));
+    let logical_size = Size::<i32, Logical>::from((
+        frozen.logical_size.w.max(1),
+        frozen.logical_size.h.max(1),
+    ));
     MargoRenderElement::Texture(TextureRenderElement::from_texture_buffer(
-        pos,
+        Point::<f64, Physical>::from((0.0, 0.0)),
         &buffer,
         Some(1.0),
         None,
-        None,
+        Some(logical_size),
         Kind::Unspecified,
     ))
 }
 
-/// Pointer event handler. Coords are global (the same coords the
-/// rest of margo's pointer logic uses). Returns `Consumed` for
-/// most events; the caller suppresses normal client routing on
-/// that.
+/// Pointer event handler. `pointer_global` is the global
+/// compositor cursor position in logical pixels.
+/// `button_press`: `Some(true)` = down, `Some(false)` = up,
+/// `None` = motion only.
 pub fn handle_pointer(
     selector: &mut RegionSelector,
     pointer_global: (f64, f64),
     button_press: Option<bool>,
 ) -> HandleResult {
-    // Resolve which output the pointer is on now. We snap to the
-    // first frozen output whose logical rect contains the cursor.
-    let (px, py) = (pointer_global.0.round() as i32, pointer_global.1.round() as i32);
+    let (px, py) = (
+        pointer_global.0.round() as i32,
+        pointer_global.1.round() as i32,
+    );
+
+    // Snap the active output to wherever the cursor is.
     let mut new_active: Option<String> = None;
     for (name, frozen) in &selector.frozen {
         let x0 = frozen.logical_origin.x;
@@ -525,49 +580,88 @@ pub fn handle_pointer(
     }
     if let Some(name) = new_active {
         if name != selector.active_output {
-            // Cursor crossed onto a different output — clear
-            // the in-progress selection so the next click
-            // starts fresh on the new output.
-            selector.active_output = name;
-            selector.selection = None;
-            selector.dragging = false;
+            // Cursor crossed onto a different output. Reset to
+            // a centred default on the new output and abort any
+            // in-progress drag.
+            selector.active_output = name.clone();
+            if let Some(frozen) = selector.frozen.get(&name) {
+                let (a, b) = default_selection(frozen.size);
+                selector.a = a;
+                selector.b = b;
+            }
+            selector.button = Button::Up;
         }
     }
 
+    // Map cursor → active-output PHYSICAL coords.
     let frozen = match selector.frozen.get(&selector.active_output) {
         Some(f) => f,
         None => return HandleResult::Consumed,
     };
-    let local = (
+    let scale_f = frozen.scale.max(0.001);
+    let local_logical = (
         px - frozen.logical_origin.x,
         py - frozen.logical_origin.y,
     );
+    let local_phys = Point::<i32, Physical>::from((
+        ((local_logical.0 as f64) * scale_f).round() as i32,
+        ((local_logical.1 as f64) * scale_f).round() as i32,
+    ));
+    let clamped = Point::<i32, Physical>::from((
+        local_phys.x.clamp(0, frozen.size.w - 1),
+        local_phys.y.clamp(0, frozen.size.h - 1),
+    ));
 
     match button_press {
         Some(true) => {
-            // Button down — start a fresh selection at the
-            // cursor.
-            selector.selection = Some(LogicalRect {
-                anchor: local,
-                current: local,
-            });
-            selector.dragging = true;
+            // Press: branch on whether the click is inside the
+            // existing selection (move) or outside (resize from
+            // click point).
+            let current = rect_from_corners(selector.a, selector.b);
+            let inside = clamped.x >= current.loc.x
+                && clamped.x < current.loc.x + current.size.w
+                && clamped.y >= current.loc.y
+                && clamped.y < current.loc.y + current.size.h;
+            if inside {
+                let cursor_offset = clamped - current.loc;
+                selector.button = Button::Down {
+                    mode: DragMode::Move { cursor_offset },
+                };
+            } else {
+                selector.a = clamped;
+                selector.b = clamped;
+                selector.button = Button::Down {
+                    mode: DragMode::Resize,
+                };
+            }
         }
         Some(false) => {
-            // Button up — finalise the drag but keep the
-            // selection visible (Return confirms, Esc cancels).
-            if let Some(rect) = selector.selection.as_mut() {
-                rect.current = local;
-            }
-            selector.dragging = false;
+            // Release: keep the selection where it is, exit
+            // drag state.
+            selector.button = Button::Up;
         }
         None => {
-            // Plain motion. Update the live edge while
-            // dragging; just track the cursor otherwise (so
-            // crossing outputs re-arms).
-            if selector.dragging {
-                if let Some(rect) = selector.selection.as_mut() {
-                    rect.current = local;
+            // Motion: translate or resize per button mode.
+            if let Button::Down { mode } = &selector.button {
+                match mode {
+                    DragMode::Move { cursor_offset } => {
+                        let current = rect_from_corners(selector.a, selector.b);
+                        let new_loc = clamped - *cursor_offset;
+                        // Clamp so the rect can't escape the
+                        // output bounds.
+                        let max_x = (frozen.size.w - current.size.w).max(0);
+                        let max_y = (frozen.size.h - current.size.h).max(0);
+                        let nx = new_loc.x.clamp(0, max_x);
+                        let ny = new_loc.y.clamp(0, max_y);
+                        selector.a = Point::from((nx, ny));
+                        selector.b = Point::from((
+                            nx + current.size.w - 1,
+                            ny + current.size.h - 1,
+                        ));
+                    }
+                    DragMode::Resize => {
+                        selector.b = clamped;
+                    }
                 }
             }
         }
@@ -577,47 +671,57 @@ pub fn handle_pointer(
 }
 
 /// Keyboard event handler. Esc cancels, Return confirms.
-/// Anything else → Consumed (so passthrough doesn't accidentally
-/// trigger compositor keybinds while the selector is open).
-pub fn handle_key(
-    selector: &mut RegionSelector,
-    keysym: Keysym,
-    pressed: bool,
-) -> HandleResult {
+/// Confirmation produces a `Close { save: Some(_) }` carrying
+/// the frozen texture + selected rect; the input handler hands
+/// that to `screenshot::save_from_frozen_texture`.
+pub fn handle_key(selector: &mut RegionSelector, keysym: Keysym, pressed: bool) -> HandleResult {
     if !pressed {
         return HandleResult::Consumed;
     }
 
     if keysym == Keysym::Escape {
-        return HandleResult::Close(None);
+        debug!("region selector: cancelled by Esc");
+        return HandleResult::Close { save: None };
     }
 
     if keysym == Keysym::Return || keysym == Keysym::KP_Enter {
-        let Some(rect) = selector.selection else {
-            // No selection drawn → Esc-equivalent.
-            return HandleResult::Close(None);
-        };
-        let r = rect.normalised();
-        if r.size.w <= 0 || r.size.h <= 0 {
-            return HandleResult::Close(None);
+        let rect = rect_from_corners(selector.a, selector.b);
+        if rect.size.w <= 0 || rect.size.h <= 0 {
+            debug!("region selector: empty selection on Return — cancelling");
+            return HandleResult::Close { save: None };
         }
-        let request = ScreenshotRequest {
-            source: ScreenshotSource::Region {
-                output: selector.active_output.clone(),
-                x: r.loc.x,
-                y: r.loc.y,
-                width: r.size.w,
-                height: r.size.h,
-            },
-            include_pointer: selector.include_pointer,
+
+        let Some(frozen) = selector.frozen.get(&selector.active_output) else {
+            return HandleResult::Close { save: None };
+        };
+
+        let confirm = ConfirmSave {
+            texture: frozen.texture.clone(),
+            rect_physical: rect,
             save_to_disk: selector.save_to_disk,
             save_path: selector.save_path.clone(),
             copy_clipboard: selector.copy_clipboard,
         };
-        debug!("region selector confirm: {:?}", request);
-        return HandleResult::Close(Some(request));
+        info!(
+            "region selector: confirmed {}x{} on `{}`",
+            rect.size.w, rect.size.h, selector.active_output
+        );
+        return HandleResult::Close {
+            save: Some(confirm),
+        };
     }
 
     HandleResult::Consumed
 }
 
+/// Public helper for the input handler: given a closing
+/// selector, stash its current rectangle as the
+/// `last_screenshot_region` for next-time-default. Called both
+/// on confirm and on cancel — niri-pattern: the last drawn rect
+/// survives Esc cancellation so the user can re-open and
+/// re-confirm if they hit Esc by mistake.
+pub fn stash_last_selection(selector: &RegionSelector, state: &mut MargoState) {
+    let rect = rect_from_corners(selector.a, selector.b);
+    state.last_screenshot_region =
+        Some((selector.active_output.clone(), rect));
+}

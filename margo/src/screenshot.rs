@@ -720,6 +720,89 @@ fn window_label(client: &crate::state::MargoClient) -> String {
     }
 }
 
+/// Capture pixels from an already-rendered `GlesTexture` (the
+/// frozen-screen background the region selector captured at
+/// open-time) and queue the standard save pipeline for the
+/// resulting image. This is the critical path for the in-
+/// compositor region selector — the user pressed Enter on a
+/// rectangle they saw drawn over a *frozen* scene, so we want
+/// to capture from THAT scene, not the live render which has
+/// already been replaced by the selector overlay by the time
+/// the dispatch hook fires.
+///
+/// `src_rect` is in physical pixels relative to the texture's
+/// origin (the texture is sized to the output's mode, so it
+/// matches the `(a, b)` corner points the selector tracks).
+pub fn save_from_frozen_texture(
+    renderer: &mut smithay::backend::renderer::gles::GlesRenderer,
+    state: &mut MargoState,
+    texture: smithay::backend::renderer::gles::GlesTexture,
+    src_rect: smithay::utils::Rectangle<i32, smithay::utils::Physical>,
+    save_to_disk: bool,
+    save_path: Option<PathBuf>,
+    copy_clipboard: bool,
+) {
+    use smithay::backend::renderer::ExportMem;
+    use smithay::utils::{Buffer, Rectangle, Transform};
+
+    if src_rect.size.w <= 0 || src_rect.size.h <= 0 {
+        warn!("save_from_frozen_texture: degenerate rect {:?}", src_rect);
+        return;
+    }
+
+    // copy_texture takes a Rectangle<i32, Buffer> — the texture
+    // we captured has 1:1 buffer-pixel-to-physical-pixel mapping
+    // (we asked render_to_texture for physical-mode-sized
+    // pixels), so a Buffer-space rect with the same numbers
+    // works.
+    let buf_rect = Rectangle::<i32, Buffer>::new(
+        smithay::utils::Point::<i32, Buffer>::from((src_rect.loc.x, src_rect.loc.y)),
+        smithay::utils::Size::<i32, Buffer>::from((src_rect.size.w, src_rect.size.h)),
+    );
+    let _ = Transform::Normal; // for self-doc
+
+    let mapping = match renderer.copy_texture(
+        &texture,
+        buf_rect,
+        Fourcc::Abgr8888,
+    ) {
+        Ok(m) => m,
+        Err(err) => {
+            warn!("save_from_frozen_texture: copy_texture: {err:#}");
+            send_notification_failure(&format!("texture copy: {err:#}"));
+            return;
+        }
+    };
+    let pixels = match renderer.map_texture(&mapping) {
+        Ok(p) => p.to_vec(),
+        Err(err) => {
+            warn!("save_from_frozen_texture: map_texture: {err:#}");
+            send_notification_failure(&format!("texture readback: {err:#}"));
+            return;
+        }
+    };
+
+    let image = CapturedImage {
+        size: src_rect.size,
+        pixels,
+        label: format!("region {}×{}", src_rect.size.w, src_rect.size.h),
+    };
+    let request = ScreenshotRequest {
+        source: ScreenshotSource::Region {
+            output: String::new(),
+            x: 0,
+            y: 0,
+            width: src_rect.size.w,
+            height: src_rect.size.h,
+        },
+        include_pointer: false,
+        save_to_disk,
+        save_path,
+        copy_clipboard,
+    };
+    spawn_save(state, image, request);
+}
+
 /// Save result delivered from the worker thread back into the
 /// main loop. Carries either the file path (for IPC + the
 /// notification) or the encoded PNG bytes (for the native
