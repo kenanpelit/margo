@@ -64,71 +64,37 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                 }
             }
         }
-        // ── Native screenshot (replaces the old `spawn` of the
-        //    grim/slurp shell helper for the easy cases). The
-        //    optional `arg.v` is interpreted as:
-        //      * `screenshot`            → focused output, save+clipboard
-        //      * `screenshot output`     → same (alias)
-        //      * `screenshot window`     → focused window
-        //      * `screenshot output:DP-3`→ specific output by name
-        //      * `screenshot clipboard`  → focused output, clipboard only
-        //    Region selection still goes through the shell helper
-        //    until Phase 2's interactive UI lands.
+        // ── Native screenshot dispatch ──────────────────────
+        // `arg.v` interpretations for "screenshot":
+        //   (none)               → focused output, save+clip
+        //   "window"             → focused window, save+clip
+        //   "clipboard" / "clip" → focused output, clipboard ONLY
+        //   "output:DP-3"        → specific output, save+clip
+        // The other entries are convenience aliases.
         "screenshot" | "screenshot-screen" | "screenshot_screen" => {
-            let mode = arg.v.as_deref().unwrap_or("output");
-            let request = match mode {
-                "window" => crate::screenshot::ScreenshotRequest {
-                    source: crate::screenshot::ScreenshotSource::FocusedWindow,
-                    include_pointer: false,
-                    save_path: None,
-                    copy_clipboard: true,
-                },
-                "clipboard" | "clip" => crate::screenshot::ScreenshotRequest {
-                    source: crate::screenshot::ScreenshotSource::FocusedOutput,
-                    include_pointer: false,
-                    save_path: None, // intentional: clipboard-only
-                    copy_clipboard: true,
-                },
-                other if other.starts_with("output:") => {
-                    let name = other.trim_start_matches("output:").to_string();
-                    crate::screenshot::ScreenshotRequest {
-                        source: crate::screenshot::ScreenshotSource::Output(name),
-                        include_pointer: false,
-                        save_path: None,
-                        copy_clipboard: true,
-                    }
+            use crate::screenshot::{ScreenshotRequest, ScreenshotSource};
+            let (source, save_to_disk, copy_clipboard) = match arg.v.as_deref() {
+                Some("window") => (ScreenshotSource::FocusedWindow, true, true),
+                Some("clipboard") | Some("clip") => {
+                    (ScreenshotSource::FocusedOutput, false, true)
                 }
-                _ => crate::screenshot::ScreenshotRequest {
-                    source: crate::screenshot::ScreenshotSource::FocusedOutput,
+                Some(s) if s.starts_with("output:") => (
+                    ScreenshotSource::Output(s.trim_start_matches("output:").to_string()),
+                    true,
+                    true,
+                ),
+                _ => (ScreenshotSource::FocusedOutput, true, true),
+            };
+            crate::screenshot::queue(
+                state,
+                ScreenshotRequest {
+                    source,
                     include_pointer: false,
+                    save_to_disk,
                     save_path: None,
-                    copy_clipboard: true,
+                    copy_clipboard,
                 },
-            };
-            // For mode == "clipboard" we want clipboard-only; tweak:
-            let request = if mode == "clipboard" || mode == "clip" {
-                crate::screenshot::ScreenshotRequest {
-                    save_path: Some(std::path::PathBuf::new()), // sentinel — interpreted as "no save"
-                    ..request
-                }
-            } else {
-                request
-            };
-            // Drop the sentinel back to None for the actual queue.
-            let request = if request
-                .save_path
-                .as_ref()
-                .is_some_and(|p| p.as_os_str().is_empty())
-            {
-                crate::screenshot::ScreenshotRequest {
-                    save_path: None,
-                    copy_clipboard: true,
-                    ..request
-                }
-            } else {
-                request
-            };
-            crate::screenshot::queue(state, request);
+            );
         }
         "screenshot-window" | "screenshot_window" => {
             crate::screenshot::queue(
@@ -136,9 +102,24 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                 crate::screenshot::ScreenshotRequest {
                     source: crate::screenshot::ScreenshotSource::FocusedWindow,
                     include_pointer: false,
+                    save_to_disk: true,
                     save_path: None,
                     copy_clipboard: true,
                 },
+            );
+        }
+        "screenshot-region" | "screenshot_region" => {
+            let (save_to_disk, copy_clipboard) = match arg.v.as_deref() {
+                Some("clipboard") | Some("clip") => (false, true),
+                Some("no-clip") | Some("noclip") => (true, false),
+                _ => (true, true),
+            };
+            crate::screenshot::queue_region(
+                state,
+                save_to_disk,
+                None, // auto path
+                copy_clipboard,
+                false, // include_pointer — flip later when interactive UI lands
             );
         }
         "screenshot-output" | "screenshot_output" => {
@@ -153,6 +134,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                 crate::screenshot::ScreenshotRequest {
                     source,
                     include_pointer: false,
+                    save_to_disk: true,
                     save_path: None,
                     copy_clipboard: true,
                 },

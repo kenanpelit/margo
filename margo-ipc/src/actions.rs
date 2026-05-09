@@ -410,6 +410,19 @@ pub const ACTIONS: &[Action] = &[
                  the external monitor regardless of which one currently has focus.",
     },
     Action {
+        name: "screenshot-region",
+        aliases: &["screenshot_region"],
+        args: "[clipboard|no-clip]",
+        group: Group::System,
+        summary: "Region screenshot via slurp + native capture.",
+        detail: "Spawns `slurp` for rectangle selection (drag-to-select, Esc \
+                 cancels), then captures + PNG-encodes that rect natively in \
+                 the compositor. Default: save to disk + clipboard. \
+                 `clipboard` = clipboard only. `no-clip` = save only. \
+                 Requires `slurp` on PATH; the in-compositor selector lands \
+                 in a future phase.",
+    },
+    Action {
         name: "reload",
         aliases: &["reload_config"],
         args: "",

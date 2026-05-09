@@ -71,14 +71,18 @@ pub struct ScreenshotRequest {
     /// Default: false (sensible for "I want a clean shot of this
     /// window/screen"). The interactive UI overrides per-session.
     pub include_pointer: bool,
-    /// Explicit save path — when None, [`make_default_path`]
-    /// generates `$XDG_PICTURES_DIR/Screenshots/screenshot_TS.png`.
-    /// `Some(_)` is honoured verbatim, no parent-dir creation
-    /// magic.
+    /// Write the encoded PNG to disk. Path: [`save_path`] if
+    /// `Some`, else auto-generated under `$XDG_PICTURES_DIR/
+    /// Screenshots/`. When `false`, the bytes go only to the
+    /// clipboard (if [`copy_clipboard`] is also true) or
+    /// nowhere (an explicit no-op the caller is responsible
+    /// for avoiding).
+    pub save_to_disk: bool,
+    /// Explicit save path — only consulted when [`save_to_disk`]
+    /// is true. `None` means "auto-generate".
     pub save_path: Option<PathBuf>,
-    /// When true, also push the encoded PNG into the clipboard
-    /// (via `wl-copy`). Both `save` and `clipboard` may be true;
-    /// at least one must be true or the request is a no-op.
+    /// Push the PNG into the clipboard via the native
+    /// `wl_data_source` selection.
     pub copy_clipboard: bool,
 }
 
@@ -97,14 +101,185 @@ pub enum ScreenshotSource {
     /// Capture by client identity — the same `addr_of!` u64 used
     /// by the screencast Window-target lookup.
     Window(u64),
+    /// Capture an arbitrary rectangle — the user's region
+    /// selection. Coords are output-local logical pixels.
+    /// Driven by the `screenshot-region` action which spawns
+    /// `slurp` to get the rect, then queues this variant.
+    Region {
+        output: String,
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+    },
+}
+
+/// Spawn `slurp` to get a region rectangle, then queue a
+/// screenshot for that rect on the appropriate output. Done
+/// asynchronously: the dispatch handler returns immediately,
+/// `slurp` runs while the user drags out a selection, and a
+/// worker thread reads its stdout and routes the result back
+/// onto the main loop via a calloop channel.
+///
+/// `slurp` is the only remaining external dep on the screenshot
+/// path — full in-compositor selection (frozen-screen overlay,
+/// arrow-key nudge) is Phase 3.
+pub fn queue_region(
+    state: &mut MargoState,
+    save_to_disk: bool,
+    save_path: Option<PathBuf>,
+    copy_clipboard: bool,
+    include_pointer: bool,
+) {
+    use std::io::Read;
+
+    if !is_command_available("slurp") {
+        warn!(
+            "screenshot-region requested but `slurp` is not on PATH — \
+             install `slurp` or use `screenshot` (full output) instead."
+        );
+        send_notification_failure(
+            "`slurp` is not installed. \
+             Install it (Arch: `pacman -S slurp`) or use the full-screen \
+             screenshot binding instead.",
+        );
+        return;
+    }
+
+    let (tx, rx) = calloop::channel::sync_channel::<RegionParseResult>(1);
+    state
+        .loop_handle
+        .insert_source(rx, move |event, _, state| {
+            if let calloop::channel::Event::Msg(result) = event {
+                match result {
+                    RegionParseResult::Ok { output, x, y, w, h } => {
+                        queue(
+                            state,
+                            ScreenshotRequest {
+                                source: ScreenshotSource::Region {
+                                    output,
+                                    x,
+                                    y,
+                                    width: w,
+                                    height: h,
+                                },
+                                include_pointer,
+                                save_to_disk,
+                                save_path: save_path.clone(),
+                                copy_clipboard,
+                            },
+                        );
+                    }
+                    RegionParseResult::Cancelled => {
+                        debug!("region selection cancelled");
+                    }
+                    RegionParseResult::Failed(msg) => {
+                        warn!("region selection failed: {msg}");
+                        send_notification_failure(&msg);
+                    }
+                }
+            }
+        })
+        .ok();
+
+    thread::spawn(move || {
+        // `-f "%o %x %y %w %h"` → output_name x y w h.
+        let mut child = match std::process::Command::new("slurp")
+            .args([
+                "-f",
+                "%o %x %y %w %h",
+                // Visual: dim everything outside the selection so
+                // the user can see what they're cropping. The
+                // colours match niri's selector (#000000 with 33%
+                // alpha background, white border).
+                "-b",
+                "00000055",
+                "-c",
+                "f5f5f5ee",
+                "-w",
+                "2",
+            ])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+        {
+            Ok(c) => c,
+            Err(err) => {
+                let _ = tx.send(RegionParseResult::Failed(format!(
+                    "spawn slurp: {err}"
+                )));
+                return;
+            }
+        };
+
+        let mut buf = String::new();
+        if let Some(stdout) = child.stdout.as_mut() {
+            let _ = stdout.read_to_string(&mut buf);
+        }
+        let status = child.wait().ok();
+
+        if !status.is_some_and(|s| s.success()) {
+            // slurp returns non-zero on Esc / cancel — silent
+            // unless we got something on stderr that suggests an
+            // actual error.
+            let _ = tx.send(RegionParseResult::Cancelled);
+            return;
+        }
+
+        let line = buf.trim();
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() != 5 {
+            let _ = tx.send(RegionParseResult::Failed(format!(
+                "slurp output unexpected: `{line}`"
+            )));
+            return;
+        }
+        let output = parts[0].to_string();
+        let parse_int = |s: &str, what: &str| -> std::result::Result<i32, String> {
+            s.parse()
+                .map_err(|e| format!("slurp {what} `{s}`: {e}"))
+        };
+        let result = (|| -> std::result::Result<RegionParseResult, String> {
+            Ok(RegionParseResult::Ok {
+                output: output.clone(),
+                x: parse_int(parts[1], "x")?,
+                y: parse_int(parts[2], "y")?,
+                w: parse_int(parts[3], "w")?,
+                h: parse_int(parts[4], "h")?,
+            })
+        })()
+        .unwrap_or_else(RegionParseResult::Failed);
+        let _ = tx.send(result);
+    });
+}
+
+enum RegionParseResult {
+    Ok {
+        output: String,
+        x: i32,
+        y: i32,
+        w: i32,
+        h: i32,
+    },
+    Cancelled,
+    Failed(String),
+}
+
+fn is_command_available(cmd: &str) -> bool {
+    let Some(path) = std::env::var_os("PATH") else {
+        return false;
+    };
+    std::env::split_paths(&path).any(|d| {
+        std::fs::metadata(d.join(cmd))
+            .map(|m| m.is_file())
+            .unwrap_or(false)
+    })
 }
 
 /// Kick off a request. Pushes onto the pending queue and pings
 /// repaint so the udev hook drains us on the next vblank.
 pub fn queue(state: &mut MargoState, request: ScreenshotRequest) {
-    if !request.copy_clipboard && request.save_path.is_none() {
-        // Caller asked for "neither save nor copy" — nothing to
-        // do. Could happen via `mctl dispatch screenshot ''`.
+    if !request.copy_clipboard && !request.save_to_disk {
         warn!("screenshot request with no save target and no clipboard — dropping");
         return;
     }
@@ -168,12 +343,37 @@ fn capture(
         ResolvedSource::Window { client_idx } => {
             capture_window(renderer, outputs, state, client_idx, request.include_pointer)
         }
+        ResolvedSource::Region {
+            output,
+            x,
+            y,
+            width,
+            height,
+        } => capture_region(
+            renderer,
+            outputs,
+            state,
+            &output,
+            (x, y, width, height),
+            request.include_pointer,
+        ),
     }
 }
 
 enum ResolvedSource {
-    Output { name: String },
-    Window { client_idx: usize },
+    Output {
+        name: String,
+    },
+    Window {
+        client_idx: usize,
+    },
+    Region {
+        output: String,
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+    },
 }
 
 fn resolve_source(src: &ScreenshotSource, state: &MargoState) -> Result<ResolvedSource> {
@@ -207,6 +407,27 @@ fn resolve_source(src: &ScreenshotSource, state: &MargoState) -> Result<Resolved
                 .position(|c| std::ptr::addr_of!(*c) as u64 == *id)
                 .with_context(|| format!("no window with id `{id}`"))?;
             Ok(ResolvedSource::Window { client_idx: idx })
+        }
+        ScreenshotSource::Region {
+            output,
+            x,
+            y,
+            width,
+            height,
+        } => {
+            if !state.monitors.iter().any(|m| &m.name == output) {
+                bail!("no output named `{output}`");
+            }
+            if *width <= 0 || *height <= 0 {
+                bail!("region size must be positive (got {width}x{height})");
+            }
+            Ok(ResolvedSource::Region {
+                output: output.clone(),
+                x: *x,
+                y: *y,
+                width: *width,
+                height: *height,
+            })
         }
     }
 }
@@ -266,6 +487,69 @@ fn capture_output(
         pixels,
         label: format!("output {name}"),
     })
+}
+
+/// Render an arbitrary rectangle of one output. The rect is in
+/// output-local logical coords (the `slurp` convention); we
+/// translate to physical via the output's fractional scale,
+/// build the full output element list, wrap each element in
+/// `RelocateRenderElement` with `-(rect_origin)` so the rect's
+/// top-left lands at (0, 0) of a region-sized cast buffer, and
+/// render that. Same trick the cursor-window path uses.
+fn capture_region(
+    renderer: &mut GlesRenderer,
+    outputs: &mut std::collections::HashMap<
+        smithay::reexports::drm::control::crtc::Handle,
+        crate::backend::udev::OutputDevice,
+    >,
+    state: &MargoState,
+    name: &str,
+    rect: (i32, i32, i32, i32),
+    include_pointer: bool,
+) -> Result<CapturedImage> {
+    use smithay::backend::renderer::element::utils::{Relocate, RelocateRenderElement};
+
+    let (rx, ry, rw, rh) = rect;
+    let (_, od) = outputs
+        .iter()
+        .find(|(_, od)| od.output.name() == name)
+        .with_context(|| format!("output `{name}` not bound to a backend device"))?;
+    let scale_f = od.output.current_scale().fractional_scale();
+    let scale = Scale::from(scale_f);
+
+    let size = Size::<i32, Physical>::from((
+        (rw as f64 * scale_f).round() as i32,
+        (rh as f64 * scale_f).round() as i32,
+    ));
+    if size.w <= 0 || size.h <= 0 {
+        bail!("region physical size collapsed to zero");
+    }
+
+    let elements: Vec<MargoRenderElement> =
+        crate::backend::udev::build_render_elements_inner(
+            renderer,
+            od,
+            state,
+            include_pointer,
+            true, // for_screencast → honour block_out_from_screencast
+        );
+
+    let off = Point::<i32, Physical>::from((
+        -((rx as f64 * scale_f).round() as i32),
+        -((ry as f64 * scale_f).round() as i32),
+    ));
+    let translated: Vec<RelocateRenderElement<MargoRenderElement>> = elements
+        .into_iter()
+        .map(|e| RelocateRenderElement::from_element(e, off, Relocate::Relative))
+        .collect();
+
+    finish_capture(
+        renderer,
+        translated.into_iter(),
+        size,
+        scale,
+        format!("region {rw}×{rh} on {name}"),
+    )
 }
 
 /// Render one window's surface tree into a CPU-readable pixel
@@ -451,9 +735,13 @@ struct SaveDelivery {
 /// Encode + write on a worker thread; clipboard set + notify
 /// run back on the main loop via a calloop channel.
 fn spawn_save(state: &mut MargoState, image: CapturedImage, request: ScreenshotRequest) {
-    let path = request
-        .save_path
-        .or_else(|| make_default_path().ok().flatten());
+    let path = if request.save_to_disk {
+        request
+            .save_path
+            .or_else(|| make_default_path().ok().flatten())
+    } else {
+        None
+    };
 
     let (tx, rx) = calloop::channel::sync_channel::<SaveDelivery>(1);
     state
