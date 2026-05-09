@@ -28,8 +28,10 @@ use std::process::Command;
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand};
 
+mod apply;
 mod capture;
 mod parser;
+mod presets;
 mod preview;
 
 use parser::Layout;
@@ -82,6 +84,34 @@ enum Cmd {
         /// Skip the trailing `mctl reload`.
         #[arg(long)]
         no_reload: bool,
+    },
+
+    /// Generate preset layout files for the detected monitor
+    /// arrangement. For a typical laptop+monitor setup this
+    /// writes `layout_vertical-ext-top.conf`,
+    /// `layout_horizontal-ext-left.conf`, etc. — the common
+    /// arrangements you'd otherwise hand-write. Then prompts
+    /// for which preset to activate (or use `--activate <slug>`
+    /// to pick non-interactively).
+    ///
+    /// Idempotent: existing layout files are skipped unless
+    /// `--force` is passed. Re-run after plugging in a new
+    /// monitor to refresh the catalogue.
+    Suggest {
+        /// Activate the named preset immediately after
+        /// generating. When omitted, you're prompted to pick
+        /// from the freshly-written list.
+        #[arg(long)]
+        activate: Option<String>,
+        /// Overwrite existing `layout_<preset>.conf` files
+        /// (default: skip ones that already exist so hand
+        /// edits aren't lost).
+        #[arg(long)]
+        force: bool,
+        /// Also wire `source = margo-layout.conf` into
+        /// `config.conf` if it isn't already.
+        #[arg(short, long)]
+        yes: bool,
     },
 
     /// Snapshot the current monitor configuration as a new named
@@ -186,8 +216,9 @@ fn run() -> Result<()> {
     let cli = Cli::parse();
     let config_dir = resolve_config_dir(cli.config_dir.as_deref())?;
 
-    // `init` and `new` need to run BEFORE we gather layouts —
-    // they're the bootstrap path used when zero layouts exist.
+    // `init` / `new` / `suggest` need to run BEFORE we gather
+    // layouts — they're the bootstrap paths used when zero
+    // layouts exist.
     match cli.command {
         Cmd::Init {
             name,
@@ -195,6 +226,11 @@ fn run() -> Result<()> {
             force,
             no_reload,
         } => return cmd_init(&config_dir, &name, yes, force, no_reload),
+        Cmd::Suggest {
+            activate,
+            force,
+            yes,
+        } => return cmd_suggest(&config_dir, activate.as_deref(), force, yes),
         Cmd::New {
             name,
             title,
@@ -227,7 +263,7 @@ fn run() -> Result<()> {
         Cmd::Preview { name } => cmd_preview(&config_dir, &layouts, name.as_deref()),
         Cmd::Pick { no_gui, no_reload } => cmd_pick(&config_dir, &layouts, no_gui, no_reload),
         // Already handled above.
-        Cmd::Init { .. } | Cmd::New { .. } => unreachable!(),
+        Cmd::Init { .. } | Cmd::New { .. } | Cmd::Suggest { .. } => unreachable!(),
     }
 }
 
@@ -322,6 +358,251 @@ fn cmd_init(
         "\nNext steps:\n  • `margo-layout list`            — view your catalogue\n  • `margo-layout new <name>`      — capture more setups\n  • `margo-layout pick`            — interactive switcher\n  • Bind `margo-layout next` to a hotkey for one-press cycling"
     );
     Ok(())
+}
+
+/// Generate preset arrangements for the detected monitor set,
+/// show each one with an ASCII preview, and prompt the user to
+/// pick. Only the picked preset gets written to disk — the
+/// others stay in-memory and disappear when the command exits,
+/// so the config directory doesn't get cluttered with seven
+/// candidate files when the user only wants one.
+///
+/// Auto-cleanup: at the start of each run, delete any
+/// `layout_<slug>.conf` whose first non-empty line is the
+/// `presets::AUTOGEN_MARKER`. Hand-edited layouts (which the
+/// user has stripped the marker from, or never had) survive.
+fn cmd_suggest(
+    config_dir: &Path,
+    activate_slug: Option<&str>,
+    _force: bool,
+    yes: bool,
+) -> Result<()> {
+    use std::io::Write;
+
+    ensure_config_dir(config_dir)?;
+
+    // 1. Detect connected outputs.
+    let outputs = capture::capture_via_wlr_randr()?;
+    println!("Detected {} active output(s):", outputs.len());
+    for o in &outputs {
+        println!(
+            "  • {} — {}x{}@{}Hz scale {}",
+            o.connector,
+            o.width,
+            o.height,
+            o.refresh.round() as i32,
+            o.scale
+        );
+    }
+    println!();
+
+    // 2. Sweep up auto-generated presets from previous runs so
+    //    re-running suggest doesn't accumulate stale files.
+    let removed = cleanup_auto_generated_presets(config_dir)?;
+    if !removed.is_empty() {
+        println!(
+            "Removed {} stale preset file(s) from previous suggest run(s).",
+            removed.len()
+        );
+    }
+
+    // 3. Generate the preset catalogue (in memory only — no
+    //    disk yet).
+    let presets = presets::generate(&outputs);
+    if presets.is_empty() {
+        bail!("no preset arrangements available for this output set");
+    }
+
+    // 4. config.conf wiring (same logic as `init`).
+    let config_file = config_dir.join("config.conf");
+    let needs_wire = !config_file.exists() || !config_already_sourced(&config_file)?;
+    if needs_wire {
+        let yes_to_wire = yes
+            || confirm_prompt(&format!(
+                "Add `source = margo-layout.conf` to {}? [Y/n] ",
+                config_file.display()
+            ))?;
+        if yes_to_wire {
+            wire_config_file(&config_file)?;
+            println!("Wired {}.", config_file.display());
+        } else {
+            println!(
+                "Skipped wiring config.conf. Add this line yourself when ready:\n    source = margo-layout.conf"
+            );
+        }
+    }
+
+    // 5. Show each preset with a preview, numbered. Drives the
+    //    pick prompt below.
+    let preview_layouts: Vec<parser::Layout> = presets
+        .iter()
+        .map(|p| preset_to_layout(p))
+        .collect();
+    println!("\nAvailable arrangements:");
+    for (i, (preset, layout)) in
+        presets.iter().zip(preview_layouts.iter()).enumerate()
+    {
+        println!(
+            "\n  {}. {} ({})",
+            i + 1,
+            preset.name,
+            preset.slug
+        );
+        println!("     {}", preview::render_inline(layout));
+    }
+    println!();
+
+    // 6. Pick.
+    let chosen_idx = if let Some(needle) = activate_slug {
+        presets
+            .iter()
+            .position(|p| p.slug == needle)
+            .with_context(|| {
+                format!(
+                    "no preset matches `{}` — known: {}",
+                    needle,
+                    presets
+                        .iter()
+                        .map(|p| p.slug)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            })?
+    } else {
+        eprint!("Pick a preset (number or slug, blank to abort): ");
+        std::io::stderr().flush().ok();
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input).context("read stdin")?;
+        let trimmed = input.trim();
+        if trimmed.is_empty() {
+            println!("(no selection — nothing written.)");
+            return Ok(());
+        }
+        if let Ok(n) = trimmed.parse::<usize>() {
+            if n == 0 || n > presets.len() {
+                bail!("number out of range (1..={})", presets.len());
+            }
+            n - 1
+        } else {
+            presets
+                .iter()
+                .position(|p| p.slug == trimmed)
+                .with_context(|| format!("no preset matches `{}`", trimmed))?
+        }
+    };
+
+    let chosen = &presets[chosen_idx];
+    let chosen_layout = &preview_layouts[chosen_idx];
+    println!("\nWriting layout_{}.conf …", chosen.slug);
+
+    // 7. Write ONLY the picked preset.
+    let target = config_dir.join(format!("layout_{}.conf", chosen.slug));
+    let shortcut = presets::shortcut_for(chosen.slug, &[]);
+    let body = presets::render(chosen, shortcut);
+    std::fs::write(&target, body)
+        .with_context(|| format!("write {}", target.display()))?;
+
+    // 8. Activate. Use the freshly-parsed file (not the
+    //    in-memory preview layout) so the symlink target is
+    //    the real layout file path on disk.
+    let layout = parser::parse_file(&target)?;
+    let _ = chosen_layout; // preview-only; don't symlink against the fake preset path
+    activate(config_dir, &layout)?;
+    println!("Activated layout `{}`.", chosen.name);
+    trigger_reload();
+
+    println!(
+        "\nNext steps:\n  • Re-run `margo-layout suggest` to switch arrangement\n  • `margo-layout new <name>` to capture a custom one\n  • `margo-layout pick` for an interactive switcher across hand-edited layouts"
+    );
+    Ok(())
+}
+
+/// Convert a [`presets::Preset`] into a [`parser::Layout`] so the
+/// rest of the code (preview render, activate symlink) can treat
+/// it like a parsed layout file. Cheap; the data is already here.
+fn preset_to_layout(preset: &presets::Preset) -> parser::Layout {
+    let outputs = preset
+        .outputs
+        .iter()
+        .map(|o| parser::LayoutOutput {
+            connector: o.connector.clone(),
+            label: o.label.map(str::to_string),
+            color: o.color,
+            x: o.x,
+            y: o.y,
+            has_position: true,
+            width: o.width,
+            height: o.height,
+            transform: 0,
+        })
+        .collect();
+    parser::Layout {
+        path: PathBuf::from(format!("(preset:{})", preset.slug)),
+        slug: preset.slug.to_string(),
+        name: preset.name.clone(),
+        shortcuts: Vec::new(),
+        outputs,
+    }
+}
+
+/// Delete every `layout_<slug>.conf` in `config_dir` whose body
+/// starts with the [`presets::AUTOGEN_MARKER`] line. Returns the
+/// list of slugs removed so the caller can summarise. Does NOT
+/// delete the active-layout symlink target — even if it's
+/// auto-generated, removing it under the user's feet would
+/// break the running session until the next `set`.
+fn cleanup_auto_generated_presets(config_dir: &Path) -> Result<Vec<String>> {
+    let active = current_slug(config_dir);
+    let active_target = active.as_ref().map(|s| format!("layout_{}.conf", s));
+
+    let mut removed = Vec::new();
+    let entries = match std::fs::read_dir(config_dir) {
+        Ok(e) => e,
+        Err(_) => return Ok(removed),
+    };
+    for entry in entries {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy().to_string();
+        if !name_str.starts_with("layout_") || !name_str.ends_with(".conf") {
+            continue;
+        }
+        if Some(&name_str) == active_target.as_ref() {
+            continue;
+        }
+        let path = entry.path();
+        let Ok(body) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        // New format → first non-empty line is the marker.
+        // Legacy format (pre-marker, suggest v0) → starts with
+        // "# Generated by `margo-layout suggest`". Both count as
+        // auto-generated for cleanup purposes; hand-edited
+        // layouts (`init` output) start with "# Generated by
+        // `margo-layout` from the live monitor configuration"
+        // which we deliberately don't sweep.
+        let is_autogen = body
+            .lines()
+            .take(3)
+            .any(|l| {
+                let t = l.trim();
+                t == presets::AUTOGEN_MARKER.trim()
+                    || t.starts_with("# Generated by `margo-layout suggest`")
+            });
+        if is_autogen {
+            if std::fs::remove_file(&path).is_ok() {
+                let slug = name_str
+                    .trim_start_matches("layout_")
+                    .trim_end_matches(".conf")
+                    .to_string();
+                removed.push(slug);
+            }
+        }
+    }
+    Ok(removed)
 }
 
 /// Snapshot the current monitor state into a new named layout
@@ -895,10 +1176,17 @@ fn match_layout<'a>(layouts: &'a [Layout], needle: &str) -> Result<&'a Layout> {
 }
 
 /// Atomically swap the `margo-layout.conf` symlink to point at the
-/// chosen layout. We write a fresh symlink at a unique sibling
-/// path then `rename` it over the live target — the rename is
-/// atomic on every Unix file system, so a `mctl reload` racing
-/// with us can never see a half-updated link.
+/// chosen layout AND push the geometry to the live session via
+/// `wlr-randr` so outputs reposition immediately. The symlink
+/// makes the choice durable; the wlr-randr call makes it visible.
+///
+/// Three steps, in order:
+///   1. write fresh symlink at a unique sibling path
+///   2. atomic `rename` over the live `margo-layout.conf` target
+///      (so a racing `mctl reload` can never see a half-updated link)
+///   3. spawn `wlr-randr` with all positions / modes from the
+///      layout file — atomic transaction inside wlr-randr, applies
+///      to all outputs in one configure event
 fn activate(config_dir: &Path, layout: &Layout) -> Result<()> {
     let active = config_dir.join(ACTIVE_LINK);
     let temp = config_dir.join(format!(
@@ -914,6 +1202,13 @@ fn activate(config_dir: &Path, layout: &Layout) -> Result<()> {
         .with_context(|| format!("create symlink at {}", temp.display()))?;
     std::fs::rename(&temp, &active)
         .with_context(|| format!("rename {} → {}", temp.display(), active.display()))?;
+
+    // Push geometry to the live session. Best-effort — failure
+    // here just means the user has to log out / back in to see
+    // the new arrangement; the layout file is still in place.
+    if let Err(err) = apply::apply(layout) {
+        eprintln!("(layout activated but `wlr-randr` apply failed: {err:#})");
+    }
     Ok(())
 }
 
