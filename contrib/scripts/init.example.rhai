@@ -15,9 +15,11 @@
 // no-ops, so any handler you write here will start firing
 // automatically once the event sites are wired:
 //
-//   * on_focus_change(|appid| { … })
-//   * on_tag_switch(|tag_number| { … })
-//   * on_window_open(|appid| { … })
+//   * on_focus_change(|| { … })           — query focused_*() inside
+//   * on_tag_switch(|| { … })              — query current_tag() inside
+//   * on_window_open(|| { … })             — fires after rules + focus
+//   * on_window_close(|appid, title| { … }) — args carry the dying
+//                                             window's identity
 //
 // Errors in this file are non-fatal — the compositor logs the
 // Rhai line/col where things went wrong and keeps running.
@@ -95,4 +97,12 @@ on_tag_switch(|| {
 on_focus_change(|| {
     // Could update a status indicator, log focus history, etc.
     print("focus → " + focused_appid());
+});
+
+on_window_close(|appid, title| {
+    // Fires AFTER the toplevel is gone — the window is no longer in
+    // `client_count()`, focus has shifted to a sibling, and the
+    // closing identity arrives as args (focused_*() can't reach a
+    // dead window).
+    print("closed: " + appid + " — " + title);
 });

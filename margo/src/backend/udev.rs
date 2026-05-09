@@ -3150,6 +3150,72 @@ fn serve_screencopies(
 ///
 /// Mirrors anvil's `take_presentation_feedback` shape; the difference
 /// is this returns the builder instead of consuming it.
+/// Refresh per-client `last_scanout` after a successful `render_frame`.
+/// A client is considered on-scanout when *any* of its surfaces (toplevel
+/// + subsurfaces) appears in `RenderElementStates::states` with
+/// `ZeroCopy` presentation. ZeroCopy is smithay's signal that the buffer
+/// went straight to a primary or overlay plane — composition skipped,
+/// the client renderered nothing.
+///
+/// Surfaces are looked up by `Id::from_wayland_resource(&wl_surface)`,
+/// the same id `WaylandSurfaceRenderElement` constructs at render time.
+/// Clients on a different monitor than `output` are left alone — their
+/// flag is updated when their own monitor renders. Closing/dying clients
+/// without a wl_surface are left at their previous value (will be
+/// reset to false on the next normal frame, or removed from `clients`
+/// when the toplevel is destroyed).
+fn update_client_scanout_flags(
+    state: &mut MargoState,
+    output: &Output,
+    render_states: &smithay::backend::renderer::element::RenderElementStates,
+) {
+    use smithay::backend::renderer::element::{Id, RenderElementPresentationState};
+    use smithay::wayland::compositor::with_surface_tree_downward;
+
+    let Some(out_idx) = state.monitors.iter().position(|m| &m.output == output) else {
+        return;
+    };
+
+    let active_tagset = state.monitors[out_idx].current_tagset();
+
+    for client in state.clients.iter_mut() {
+        if client.monitor != out_idx {
+            continue;
+        }
+        if !client.is_visible_on(out_idx, active_tagset) {
+            client.last_scanout = false;
+            continue;
+        }
+        let Some(root) = client.window.wl_surface().map(|s| s.into_owned()) else {
+            // X11 or unmapped surface — direct scanout doesn't apply.
+            client.last_scanout = false;
+            continue;
+        };
+        let mut on_scanout = false;
+        with_surface_tree_downward(
+            &root,
+            (),
+            |_, _, _| smithay::wayland::compositor::TraversalAction::DoChildren(()),
+            |surface, _, _| {
+                if on_scanout {
+                    return;
+                }
+                let id: Id = Id::from_wayland_resource(surface);
+                if let Some(s) = render_states.element_render_state(id) {
+                    if matches!(
+                        s.presentation_state,
+                        RenderElementPresentationState::ZeroCopy
+                    ) {
+                        on_scanout = true;
+                    }
+                }
+            },
+            |_, _, _| true,
+        );
+        client.last_scanout = on_scanout;
+    }
+}
+
 fn build_presentation_feedback(
     output: &Output,
     state: &mut MargoState,
@@ -3356,6 +3422,7 @@ fn render_output(
                     // at the real page-flip moment.
                     let feedback = build_presentation_feedback(&od.output, state, &result.states);
                     od.pending_presentation.push(feedback);
+                    update_client_scanout_flags(state, &od.output, &result.states);
                     state.post_repaint(&od.output, state.clock.now());
                     state.display_handle.flush_clients().ok();
                 }

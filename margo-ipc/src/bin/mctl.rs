@@ -1648,6 +1648,12 @@ fn cmd_clients(
         if c["minimized"].as_bool().unwrap_or(false) {
             markers.push_str(&format!("{dim}↓{reset} "));
         }
+        // ★ marker: this client is currently being scanned out
+        // directly from a primary/overlay plane (zero-copy). Cheap
+        // signal that compositor blending overhead is bypassed.
+        if c["scanout"].as_bool().unwrap_or(false) {
+            markers.push_str(&format!("{green}★{reset} "));
+        }
         let app_disp = if app.len() > max_app {
             format!("{}…", &app[..max_app.saturating_sub(1)])
         } else {

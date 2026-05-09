@@ -85,6 +85,11 @@ pub struct ScriptingHooks {
     pub on_focus_change: Vec<FnPtr>,
     pub on_tag_switch: Vec<FnPtr>,
     pub on_window_open: Vec<FnPtr>,
+    /// `on_window_close(|appid, title| { ... })` — handlers receive
+    /// the closing window's identity as args (the window is about
+    /// to be removed from `clients`, so `focused_*()` can't reach
+    /// it; the focus has typically already moved to a sibling).
+    pub on_window_close: Vec<FnPtr>,
 }
 
 /// Build an engine pre-loaded with the binding surface (Phase 2)
@@ -241,6 +246,13 @@ fn build_engine() -> Engine {
         with_state(|s| {
             if let Some(sc) = s.scripting.as_mut() {
                 sc.hooks.on_window_open.push(handler);
+            }
+        });
+    });
+    engine.register_fn("on_window_close", |handler: FnPtr| {
+        with_state(|s| {
+            if let Some(sc) = s.scripting.as_mut() {
+                sc.hooks.on_window_close.push(handler);
             }
         });
     });
@@ -407,6 +419,54 @@ pub fn fire_tag_switch(state: &mut MargoState) {
 /// app_id / title — not the empty initial values.
 pub fn fire_window_open(state: &mut MargoState) {
     fire_hook(state, HookKind::WindowOpen);
+}
+
+/// Invoke every registered `on_window_close` hook. Called from the
+/// toplevel-destroyed path BEFORE the client is removed from
+/// `clients`, so `client_count()` and `focused_*()` still reflect
+/// the pre-close state. Handler receives `(app_id, title)` as Rhai
+/// strings — the closing window is rarely the focused one (focus
+/// has usually already shifted to a sibling), so the args are the
+/// only reliable identity channel.
+pub fn fire_window_close(state: &mut MargoState, app_id: &str, title: &str) {
+    let Some(mut sc) = state.scripting.take() else {
+        return;
+    };
+    let hooks = std::mem::take(&mut sc.hooks.on_window_close);
+    if hooks.is_empty() {
+        state.scripting = Some(sc);
+        return;
+    }
+
+    {
+        struct StateGuard;
+        impl Drop for StateGuard {
+            fn drop(&mut self) {
+                STATE_PTR.with(|s| s.set(std::ptr::null_mut()));
+            }
+        }
+        STATE_PTR.with(|s| s.set(state as *mut _));
+        let _guard = StateGuard;
+
+        let app_id = app_id.to_string();
+        let title = title.to_string();
+        for h in &hooks {
+            let res: Result<Dynamic, Box<rhai::EvalAltResult>> =
+                h.call(&sc.engine, &sc.ast, (app_id.clone(), title.clone()));
+            if let Err(e) = res {
+                warn!("init.rhai on_window_close error: {e}");
+            }
+        }
+    }
+
+    if sc.hooks.on_window_close.is_empty() {
+        sc.hooks.on_window_close = hooks;
+    } else {
+        let mut combined = hooks;
+        combined.extend(std::mem::take(&mut sc.hooks.on_window_close));
+        sc.hooks.on_window_close = combined;
+    }
+    state.scripting = Some(sc);
 }
 
 fn fire_hook(state: &mut MargoState, kind: HookKind) {

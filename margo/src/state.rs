@@ -519,6 +519,15 @@ pub struct MargoClient {
     pub window: Window,
     pub foreign_toplevel_handle: Option<ForeignToplevelHandle>,
     pub border: crate::border::ClientBorder,
+    /// True if any of this client's surfaces was selected for direct
+    /// scan-out on the most recent successful render frame (zero-copy
+    /// to a primary or overlay plane). Refreshed by
+    /// `update_client_scanout_flags` after each `render_frame`. Surfaces
+    /// in `RenderElementPresentationState::ZeroCopy` set this to true;
+    /// composited or skipped paths leave it false. Exposed via
+    /// `mctl status --json` so users can verify "yes, this fullscreen
+    /// mpv is on the primary plane" without reading frame logs.
+    pub last_scanout: bool,
 }
 
 impl MargoClient {
@@ -596,6 +605,7 @@ impl MargoClient {
             window,
             foreign_toplevel_handle: None,
             border: crate::border::ClientBorder::default(),
+            last_scanout: false,
         }
     }
 
@@ -1499,6 +1509,17 @@ impl MargoState {
         self.write_state_file();
     }
 
+    /// Notify xdp-gnome's window picker that the toplevel set changed
+    /// so a live screencast share dialog refreshes its list. Fires
+    /// the `org.gnome.Shell.Introspect.WindowsChanged` D-Bus signal
+    /// against the registered `Introspect` interface. Cheap no-op if
+    /// the D-Bus shim isn't running (no screencast portal use).
+    pub fn emit_windows_changed(&self) {
+        if let Some(conn) = &self.dbus_servers.conn_introspect {
+            crate::dbus::gnome_shell_introspect::emit_windows_changed_sync(conn);
+        }
+    }
+
     pub fn publish_output_topology(&mut self) {
         let mut snap = std::collections::HashMap::new();
         for mon in &self.monitors {
@@ -1645,6 +1666,7 @@ impl MargoState {
                     "global": c.is_global,
                     "focused": Some(idx) == focused_idx,
                     "pid": c.pid,
+                    "scanout": c.last_scanout,
                 })
             })
             .collect();
@@ -5235,6 +5257,10 @@ impl MargoState {
         // `togglefloating` apply to it because focus has already
         // been pushed to it earlier in this function.
         crate::scripting::fire_window_open(self);
+
+        // Notify xdp-gnome's window picker so a live screencast
+        // share dialog refreshes its list while open.
+        self.emit_windows_changed();
     }
 }
 
@@ -5436,9 +5462,19 @@ impl XdgShellHandler for MargoState {
     }
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
         let wl_surf = surface.wl_surface().clone();
+        // Capture the closing window's identity for `on_window_close`
+        // before any work runs — handlers fire after the destroy is
+        // complete (state is consistent: client gone, focus shifted)
+        // but they still need to know *which* window died, so app_id
+        // and title come through as Rhai string args.
+        let mut closed_identity: Option<(String, String)> = None;
         if let Some(idx) = self.clients.iter().position(|c| {
             c.window.wl_surface().as_deref() == Some(&wl_surf)
         }) {
+            closed_identity = Some((
+                self.clients[idx].app_id.clone(),
+                self.clients[idx].title.clone(),
+            ));
             if let Some(handle) = self.clients[idx].foreign_toplevel_handle.take() {
                 handle.send_closed();
             }
@@ -5534,6 +5570,15 @@ impl XdgShellHandler for MargoState {
             }
         }
         tracing::info!("toplevel destroyed");
+        // Refresh xdp-gnome's window picker — see finalize_initial_map.
+        self.emit_windows_changed();
+        // Fire user scripting hook AFTER state is consistent
+        // (client removed, focus shifted, arrange done) so handlers
+        // observing `client_count()` / `focused_appid()` see the
+        // post-close world.
+        if let Some((app_id, title)) = closed_identity {
+            crate::scripting::fire_window_close(self, &app_id, &title);
+        }
     }
 }
 delegate_xdg_shell!(MargoState);
@@ -6140,10 +6185,15 @@ impl MargoState {
             self.arrange_monitor(target_mon);
         }
         tracing::info!("new x11 toplevel: {} monitor={target_mon}", self.clients.last().map(|c| c.app_id.as_str()).unwrap_or(""));
+        // Refresh xdp-gnome's window picker — same path the
+        // Wayland finalize_initial_map handler uses.
+        self.emit_windows_changed();
     }
 
     fn remove_x11_window(&mut self, x11surface: &X11Surface) {
         if let Some(idx) = self.find_x11_client(x11surface) {
+            let app_id = self.clients[idx].app_id.clone();
+            let title = self.clients[idx].title.clone();
             if let Some(handle) = self.clients[idx].foreign_toplevel_handle.take() {
                 handle.send_closed();
             }
@@ -6155,6 +6205,10 @@ impl MargoState {
             if !self.monitors.is_empty() {
                 self.arrange_monitor(mon_idx);
             }
+            // Refresh xdp-gnome's window picker — same path the
+            // Wayland toplevel_destroyed handler uses.
+            self.emit_windows_changed();
+            crate::scripting::fire_window_close(self, &app_id, &title);
         }
     }
 }

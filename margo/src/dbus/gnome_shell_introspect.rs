@@ -60,7 +60,6 @@ impl Introspect {
         }
     }
 
-    // FIXME: emit on window changes once render-loop hooks land.
     #[zbus(signal)]
     pub async fn windows_changed(ctxt: &SignalEmitter<'_>) -> zbus::Result<()>;
 }
@@ -74,6 +73,33 @@ impl Introspect {
             to_compositor,
             from_compositor,
         }
+    }
+}
+
+/// Emit `windows_changed` against the live `Introspect` interface so
+/// xdp-gnome's window picker refreshes mid-share-dialog. Best-effort:
+/// if the interface lookup fails (server torn down) or the emit
+/// errors, log at warn and continue — losing a refresh is benign,
+/// the next picker open will fetch the fresh list anyway.
+///
+/// Called on every window map / destroy from the compositor's event
+/// loop. The blocking-connection ↔ async-emit gap is bridged by
+/// `async_io::block_on`, the same pattern `pw_utils.rs` uses for
+/// `pipe_wire_stream_added`.
+pub fn emit_windows_changed_sync(conn: &zbus::blocking::Connection) {
+    let server = conn.object_server();
+    // `<_, Introspect>` lets the path type infer; only the interface
+    // type needs an annotation.
+    let iface_ref = match server.interface::<_, Introspect>("/org/gnome/Shell/Introspect") {
+        Ok(r) => r,
+        Err(e) => {
+            warn!("windows_changed: interface lookup failed: {e:?}");
+            return;
+        }
+    };
+    let emitter = iface_ref.signal_emitter().clone();
+    if let Err(e) = async_io::block_on(Introspect::windows_changed(&emitter)) {
+        warn!("windows_changed: emit failed: {e:?}");
     }
 }
 
