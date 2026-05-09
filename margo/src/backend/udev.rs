@@ -1867,13 +1867,43 @@ fn drain_active_cast_frames(
                     -((geom.y - mon.monitor_area.y) as f64 * scale_f).round() as i32;
                 let win_off = Point::<i32, Physical>::from((win_off_x, win_off_y));
 
+                let cursor_mode = cast.cursor_mode();
                 let include_cursor = matches!(
-                    cast.cursor_mode(),
+                    cursor_mode,
                     crate::dbus::mutter_screen_cast::CursorMode::Embedded
                 );
+                let want_metadata_cursor = matches!(
+                    cursor_mode,
+                    crate::dbus::mutter_screen_cast::CursorMode::Metadata
+                );
+
                 let output_elems =
                     build_render_elements_inner(renderer, od, state, include_cursor, true);
-                let elements: Vec<CastRenderElement> = output_elems
+                // Pointer-only sidecar elements for Metadata mode.
+                // Same shape as Embedded but lifted out of `elements`
+                // so pw_utils strips them from the main damage pass
+                // and renders them into the spa cursor bitmap.
+                let (cursor_elems_vec, cursor_loc) = if want_metadata_cursor {
+                    let (e, loc) = build_cursor_elements_for_output(renderer, od, state);
+                    let v: Vec<CastRenderElement> = e
+                        .into_iter()
+                        .map(|e| {
+                            CastRenderElement::Relocated(
+                                RelocateRenderElement::from_element(
+                                    e,
+                                    win_off,
+                                    Relocate::Relative,
+                                ),
+                            )
+                        })
+                        .collect();
+                    (v, loc)
+                } else {
+                    (Vec::new(), Point::default())
+                };
+                let cursor_count = cursor_elems_vec.len();
+
+                let main_elems: Vec<CastRenderElement> = output_elems
                     .into_iter()
                     .map(|e| {
                         CastRenderElement::Relocated(
@@ -1885,13 +1915,15 @@ fn drain_active_cast_frames(
                         )
                     })
                     .collect();
+                // Pointer elements come FIRST so CursorData::compute
+                // grabs them via `&elements[..elem_count]`.
+                let mut elements: Vec<CastRenderElement> =
+                    Vec::with_capacity(cursor_count + main_elems.len());
+                elements.extend(cursor_elems_vec);
+                elements.extend(main_elems);
 
-                // Cursor lives inside `elements` already (cursor at
-                // include_cursor=true); pass an empty CursorData so
-                // pw_utils.rs's metadata/embedded paths take their
-                // no-cursor branch.
                 let cursor_data: CursorData<CastRenderElement> =
-                    CursorData::compute(&[], 0, Point::default(), scale);
+                    CursorData::compute(&elements, cursor_count, cursor_loc, scale);
                 if cast.dequeue_buffer_and_render(
                     renderer,
                     &elements,
@@ -1934,19 +1966,39 @@ fn drain_active_cast_frames(
                     }
                 }
 
+                let cursor_mode = cast.cursor_mode();
                 let include_cursor = matches!(
-                    cast.cursor_mode(),
+                    cursor_mode,
                     crate::dbus::mutter_screen_cast::CursorMode::Embedded
                 );
+                let want_metadata_cursor = matches!(
+                    cursor_mode,
+                    crate::dbus::mutter_screen_cast::CursorMode::Metadata
+                );
+
                 let output_elems =
                     build_render_elements_inner(renderer, od, state, include_cursor, true);
-                let elements: Vec<CastRenderElement> = output_elems
+                let (cursor_elems_vec, cursor_loc) = if want_metadata_cursor {
+                    let (e, loc) = build_cursor_elements_for_output(renderer, od, state);
+                    let v: Vec<CastRenderElement> =
+                        e.into_iter().map(CastRenderElement::Direct).collect();
+                    (v, loc)
+                } else {
+                    (Vec::new(), Point::default())
+                };
+                let cursor_count = cursor_elems_vec.len();
+
+                let main_elems: Vec<CastRenderElement> = output_elems
                     .into_iter()
                     .map(CastRenderElement::Direct)
                     .collect();
+                let mut elements: Vec<CastRenderElement> =
+                    Vec::with_capacity(cursor_count + main_elems.len());
+                elements.extend(cursor_elems_vec);
+                elements.extend(main_elems);
 
                 let cursor_data: CursorData<CastRenderElement> =
-                    CursorData::compute(&[], 0, Point::default(), scale);
+                    CursorData::compute(&elements, cursor_count, cursor_loc, scale);
                 if cast.dequeue_buffer_and_render(
                     renderer,
                     &elements,
@@ -1976,6 +2028,64 @@ fn drain_active_cast_frames(
     if any_active {
         state.request_repaint();
     }
+}
+
+/// Build just the cursor sprite render elements for a given output
+/// without any of the surrounding scene (no clients, no layers, no
+/// borders). Used by the screencast Metadata cursor path: xdp-gnome's
+/// CursorMode::Metadata sends the cursor as a sidecar bitmap to the
+/// PipeWire consumer rather than embedding it in the frame, so the
+/// consumer can composite the cursor sharply at low cast resolutions.
+/// We need the same elements the embedded path would produce, but
+/// extracted from the main scene so `CursorData::compute` can wrap
+/// them, `add_cursor_metadata` can render them to a side bitmap,
+/// and the main render runs without them.
+///
+/// Returns `(elements, cursor_logical_loc)`. Empty vec when the
+/// pointer is off this output, hidden, or a non-renderable image.
+pub fn build_cursor_elements_for_output(
+    renderer: &mut GlesRenderer,
+    od: &OutputDevice,
+    state: &MargoState,
+) -> (Vec<MargoRenderElement>, Point<f64, Logical>) {
+    let output_scale = od.output.current_scale().fractional_scale();
+    let Some(output_geo) = state.space.output_geometry(&od.output) else {
+        return (Vec::new(), Point::default());
+    };
+    let ptr_global = Point::<f64, _>::from((state.input_pointer.x, state.input_pointer.y));
+    if !output_geo.to_f64().contains(ptr_global) {
+        return (Vec::new(), Point::default());
+    }
+    let ptr_pos = ptr_global - output_geo.loc.to_f64();
+    let mut elements = Vec::new();
+    match &state.cursor_status {
+        CursorImageStatus::Surface(surface) => {
+            let hotspot = with_states(surface, |states| {
+                states
+                    .data_map
+                    .get::<Mutex<CursorImageAttributes>>()
+                    .and_then(|attrs| attrs.lock().ok().map(|attrs| attrs.hotspot))
+                    .unwrap_or_default()
+            });
+            let ptr_i = (ptr_pos - hotspot.to_f64())
+                .to_physical_precise_round::<f64, i32>(output_scale);
+            let cursor_elems = render_elements_from_surface_tree(
+                renderer, surface, ptr_i, output_scale, 1.0f32, Kind::Cursor,
+            );
+            for e in cursor_elems {
+                elements.push(MargoRenderElement::WaylandSurface(e));
+            }
+        }
+        CursorImageStatus::Hidden => {}
+        _ => {
+            if let Some(cursor_elem) =
+                state.cursor_manager.render_element(renderer, ptr_pos, output_scale)
+            {
+                elements.push(MargoRenderElement::Cursor(cursor_elem));
+            }
+        }
+    }
+    (elements, ptr_pos)
 }
 
 /// Like `build_render_elements`, but optionally omits the cursor sprite

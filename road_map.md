@@ -341,6 +341,7 @@ Recently shipped (this two-sprint depth-pass):
 - ✓ **Screencast `windows_changed` D-Bus signal** — fires from `finalize_initial_map` + `toplevel_destroyed` (Wayland + X11) so xdp-gnome's window picker stays live mid-share-dialog. New helper `emit_windows_changed_sync` bridges blocking-zbus ↔ async via `async_io::block_on`, mirroring the existing `pipe_wire_stream_added` pattern.
 - ✓ **`on_window_close` Rhai hook** — fires AFTER state is consistent (client gone, focus shifted, arrange done) with `(app_id, title)` as Rhai string args (focused_*() can't reach a dead window). Same recursion-guard discipline as the other hooks. Example script extended.
 - ✓ **Direct scanout observability** — `MargoClient::last_scanout` cached after each successful `render_frame` by walking the surface tree and matching `Id::from_wayland_resource` against `RenderElementStates` for `ZeroCopy` presentation. Surfaces in ZeroCopy → primary or overlay plane (composition skipped). Exposed in state.json + `mctl clients` shows ★ marker for on-scanout windows.
+- ✓ **Screencast `CursorMode::Metadata` cursor sidecar** — new helper `build_cursor_elements_for_output` extracts cursor sprite render elements separately from the main scene; metadata casts now prepend pointer elements to the cast slice with `elem_count = cursor_count` so `CursorData::compute` wraps them, pw_utils strips the pointer elements from the main damage pass, and `add_cursor_metadata` writes a real cursor bitmap into the SPA sidecar. xdp-gnome consumers (browsers requesting metadata mode) see a sharp cursor at low cast resolutions instead of "no cursor at all".
 
 Still queued — pick one:
 
@@ -349,8 +350,6 @@ Still queued — pick one:
 2. **Smoke test in CI.** Run `scripts/smoke-winit.sh` headless via Xvfb in a dedicated workflow. Needs a lightweight terminal client on the runner + ~20 LOC YAML.
 
 3. **`wlr_output_management_v1` disable-output.** The runtime mode change shipped; disable still rejected. Disable means tearing down an OutputDevice + migrating clients to a remaining output. ~200 LOC + careful testing.
-
-4. **Screencast — `CursorMode::Metadata` cursor sidecar.** Populate `CursorData` properly when xdp-gnome requests metadata mode so consumers can composite the cursor sharply at low cast resolutions. ~80 LOC.
 
 ---
 
