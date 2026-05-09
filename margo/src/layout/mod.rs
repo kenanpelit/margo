@@ -3,6 +3,9 @@
 mod algorithms;
 pub use algorithms::*;
 
+#[cfg(test)]
+mod snapshot_tests;
+
 /// Axis-aligned bounding box.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Rect {

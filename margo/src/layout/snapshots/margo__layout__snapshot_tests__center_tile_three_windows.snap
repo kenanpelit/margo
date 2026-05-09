@@ -1,0 +1,7 @@
+---
+source: margo/src/layout/snapshot_tests.rs
+expression: format_arranged(&arranged)
+---
+ 0  x=436    y=8      w=1047   h=1064
+ 1  x=8      y=8      w=420    h=1064
+ 2  x=1491   y=8      w=420    h=1064

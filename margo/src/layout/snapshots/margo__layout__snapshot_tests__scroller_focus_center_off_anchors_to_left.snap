@@ -1,0 +1,7 @@
+---
+source: margo/src/layout/snapshot_tests.rs
+expression: format_arranged(&scroller(&ctx))
+---
+ 0  x=-2784  y=8      w=1491   h=1064
+ 1  x=-1285  y=8      w=1491   h=1064
+ 2  x=214    y=8      w=1491   h=1064

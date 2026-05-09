@@ -1,0 +1,9 @@
+---
+source: margo/src/layout/snapshot_tests.rs
+expression: format_arranged(&tgmix(&ctx))
+---
+ 0  x=8      y=8      w=1047   h=1064
+ 1  x=1071   y=8      w=416    h=528
+ 2  x=1495   y=8      w=416    h=528
+ 3  x=1071   y=544    w=416    h=528
+ 4  x=1495   y=544    w=416    h=528

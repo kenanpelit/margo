@@ -78,3 +78,14 @@ features = [
     "wayland_frontend",
     "xwayland",
 ]
+
+# ── Dev / test dependencies ──────────────────────────────────────────────────
+# `insta` — snapshot-style assertions (string-based). Used by the
+# layout-algorithm test matrix in `layout::snapshot_tests` to lock the
+# arrangement geometry of every layout × scenario combo. Each layout
+# function is pure (`ArrangeCtx -> Vec<(idx, Rect)>`) so we don't need
+# a live compositor — the snapshots commit to repo, regressions show
+# up as a one-line text diff at PR time. cargo-insta is the optional
+# review CLI (`cargo install cargo-insta`).
+[dev-dependencies]
+insta = "1"

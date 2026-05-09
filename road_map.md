@@ -368,7 +368,7 @@ niri ships 5,280 visual snapshot files (`src/tests/snapshots/`) covering window-
 
 | # | Item | Estimate | Notes |
 |---|---|---|---|
-| W1.1 | Visual snapshot test crate (`margo-visual-tests`) | ~600 LOC + framework | Port niri's `insta`-based snapshot pattern. Renders fixed scenarios (single tile, two-tile split, scroller with focus center, monocle, overview, scratchpad shown, fullscreen, layer-shell on top) into PNGs, compares against committed snapshots. Catches every layout-algorithm regression we've ever shipped. |
+| W1.1 | ✅ **Layout-snapshot test suite shipped.** `margo/src/layout/snapshot_tests.rs` + `snapshots/` dir lock the geometry of 14 layout algorithms × 20 canonical scenarios into committed `.snap` text files. Insta-based (no PNG churn — pure text diff at PR review). 24/24 pass on `cargo test --workspace`. Property tests verify `arrange()` dispatcher matches direct calls and non-scroller layouts stay inside the work area. |
 | W1.2 | Layout-algorithm property tests (already partially shipped) | ~200 LOC | Extend `layout/algorithms.rs`'s 2 existing fixtures to cover all 14 layouts × 1/2/3/n-window cases × overview-vs-normal. Today only scroller has even a partial test. |
 | W1.3 | Window-rule snapshot tests | ~150 LOC | `mctl rules` already prints rule-match outcomes. Build a fixture-driven test that loads N candidate (appid, title) pairs against the example config and snapshots the rule-match decisions. Catches windowrule regressions like "Electron leaked from tag 5" before users see them. |
 | W1.4 | clippy gating + `clippy.toml` | ~30 LOC | niri ships `clippy.toml` with project lints + clippy is a CI gate. Margo's CI runs clippy non-gating because of organic drift; do an opt-in cleanup pass (one PR), then flip to gated. |

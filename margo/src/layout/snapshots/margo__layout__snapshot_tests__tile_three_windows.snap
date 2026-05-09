@@ -1,0 +1,7 @@
+---
+source: margo/src/layout/snapshot_tests.rs
+expression: format_arranged(&tile(&ctx))
+---
+ 0  x=8      y=8      w=1047   h=1064
+ 1  x=1063   y=8      w=849    h=528
+ 2  x=1063   y=544    w=849    h=528

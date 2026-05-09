@@ -1,0 +1,8 @@
+---
+source: margo/src/layout/snapshot_tests.rs
+expression: format_arranged(&vertical_grid(&ctx))
+---
+ 0  x=8      y=8      w=588    h=948
+ 1  x=8      y=964    w=588    h=948
+ 2  x=604    y=8      w=588    h=948
+ 3  x=604    y=964    w=588    h=948

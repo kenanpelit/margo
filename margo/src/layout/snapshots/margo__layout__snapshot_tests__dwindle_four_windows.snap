@@ -1,0 +1,8 @@
+---
+source: margo/src/layout/snapshot_tests.rs
+expression: format_arranged(&dwindle(&ctx))
+---
+ 0  x=8      y=8      w=948    h=1064
+ 1  x=964    y=8      w=948    h=528
+ 2  x=964    y=544    w=470    h=528
+ 3  x=1442   y=544    w=470    h=528
