@@ -1,5 +1,5 @@
 [package]
-name = "margo-layout"
+name = "mlayout"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -7,7 +7,7 @@ description = "Switch margo's monitor layout between named profiles — multi-se
 repository.workspace = true
 
 [[bin]]
-name = "margo-layout"
+name = "mlayout"
 path = "src/main.rs"
 
 [dependencies]

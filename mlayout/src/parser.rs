@@ -9,15 +9,15 @@
 //!
 //! Every line that margo's parser reads as a comment (`#` prefix)
 //! is normal — but lines beginning with `#@` are *meta-directives*
-//! consumed by `margo-layout` itself. They configure the picker
+//! consumed by `mlayout` itself. They configure the picker
 //! UX: layout title, keyboard shortcut, per-output display name +
 //! color hint for the preview rectangles.
 //!
-//! When the active layout is switched (`margo-layout set <name>`),
-//! the chosen file is symlinked to `~/.config/margo/margo-layout.conf`
+//! When the active layout is switched (`mlayout set <name>`),
+//! the chosen file is symlinked to `~/.config/margo/mlayout.conf`
 //! and a `mctl reload` triggers margo to re-read its config without
 //! a logout. The user's main `config.conf` is expected to contain a
-//! `source = margo-layout.conf` line picking up the active layout.
+//! `source = mlayout.conf` line picking up the active layout.
 //!
 //! ## Meta-directive grammar
 //!
@@ -38,7 +38,7 @@
 //!     of the connector name picks a colour automatically.
 //!
 //! Anything else after `#@` is silently ignored — the prefix is
-//! reserved for `margo-layout` and won't collide with margo's
+//! reserved for `mlayout` and won't collide with margo's
 //! parser, which treats every `#`-prefixed line as a comment.
 
 use anyhow::{anyhow, bail, Context, Result};

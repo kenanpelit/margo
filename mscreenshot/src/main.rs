@@ -2,7 +2,7 @@
 //!
 //! Replaces the old `scripts/screenshot` bash helper and the
 //! short-lived in-compositor capture path. Lives in the margo
-//! workspace as a sibling binary to `mctl` and `margo-layout`,
+//! workspace as a sibling binary to `mctl` and `mlayout`,
 //! so it ships in the same package and can be invoked by the
 //! compositor's `screenshot-*` dispatch actions OR directly by
 //! the user from a terminal / keybind.

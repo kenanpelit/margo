@@ -2,7 +2,7 @@
 //!
 //! The preview draws each output as a coloured rectangle in a
 //! fixed-width terminal grid, with the output's display name
-//! centred inside. Used by `margo-layout list --preview` and the
+//! centred inside. Used by `mlayout list --preview` and the
 //! `pick` TUI to give the user a visual sanity check that the
 //! layout file matches the physical setup they think it does.
 //!

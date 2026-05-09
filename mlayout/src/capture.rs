@@ -27,7 +27,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use std::process::Command;
 
 /// One captured output as it currently looks on the running
-/// session — what `margo-layout new` writes into the layout file.
+/// session — what `mlayout new` writes into the layout file.
 #[derive(Debug, Clone)]
 pub struct CapturedOutput {
     pub connector: String,
@@ -56,7 +56,7 @@ pub fn capture_via_wlr_randr() -> Result<Vec<CapturedOutput>> {
             if e.kind() == std::io::ErrorKind::NotFound {
                 anyhow!(
                     "`wlr-randr` not found on PATH. Install it (Arch: \
-                     `pacman -S wlr-randr`) — margo-layout needs it to read \
+                     `pacman -S wlr-randr`) — mlayout needs it to read \
                      the live monitor configuration."
                 )
             } else {

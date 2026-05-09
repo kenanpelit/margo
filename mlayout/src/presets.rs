@@ -3,11 +3,11 @@
 //! Given the live monitor list (typically two: a laptop panel + an
 //! external display), generates a small catalogue of common
 //! arrangements and writes them as `layout_<slug>.conf` files. The
-//! user can then flip between them with `margo-layout set <slug>`.
+//! user can then flip between them with `mlayout set <slug>`.
 //!
 //! ## Why this exists
 //!
-//! `margo-layout init` captures whatever the *current* output
+//! `mlayout init` captures whatever the *current* output
 //! arrangement happens to be — useful as a one-shot "remember
 //! this", but unhelpful when the live state isn't actually the
 //! layout you want. (Common: udev hot-plug puts the external
@@ -310,7 +310,7 @@ fn many_output_presets(outputs: &[CapturedOutput]) -> Vec<Preset> {
 /// `cleanup_auto_generated_presets` looks for this exact line to
 /// decide whether a layout file is safe to delete (vs being a
 /// user-hand-edited layout that should be preserved).
-pub const AUTOGEN_MARKER: &str = "# margo-layout: auto-generated preset";
+pub const AUTOGEN_MARKER: &str = "# mlayout: auto-generated preset";
 
 /// Render one preset to the `layout_<slug>.conf` text format
 /// `parser::parse_file` expects.
@@ -318,7 +318,7 @@ pub fn render(preset: &Preset, shortcut: Option<&str>) -> String {
     let mut buf = String::new();
     buf.push_str(AUTOGEN_MARKER);
     buf.push('\n');
-    buf.push_str("# Re-run `margo-layout suggest` to refresh.\n");
+    buf.push_str("# Re-run `mlayout suggest` to refresh.\n");
     buf.push_str("# Hand-edit and remove the marker line above to opt out\n");
     buf.push_str("# of automatic cleanup.\n\n");
     buf.push_str(&format!("#@ name = \"{}\"\n", preset.name));

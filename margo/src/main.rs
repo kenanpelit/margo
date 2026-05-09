@@ -117,7 +117,7 @@ A feature-rich Wayland compositor (Rust/Smithay rewrite of mango).
 COMPANION BINARIES (each has its own --help):
   mctl              IPC client — status, layout, tag, dispatch,
                     actions catalogue (`mctl actions`).
-  margo-layout      Named monitor-arrangement profiles. Capture the
+  mlayout      Named monitor-arrangement profiles. Capture the
                     live setup with `init` / `new`, switch with
                     `set`, `next`, `prev`, or `pick`.
   mscreenshot       Screenshot helper — `rec` / `area` / `screen` /

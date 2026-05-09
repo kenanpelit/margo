@@ -67,7 +67,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
         // ── Screenshot dispatch ─────────────────────────────
         // All screenshot actions delegate to the `mscreenshot`
         // companion binary (a workspace sibling of `mctl` and
-        // `margo-layout`). It orchestrates grim / slurp /
+        // `mlayout`). It orchestrates grim / slurp /
         // wl-copy + an optional editor (swappy / satty).
         //
         //   screenshot              → focused output → editor → file

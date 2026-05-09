@@ -1,6 +1,6 @@
 //! Apply a layout's geometry to the live session.
 //!
-//! After `margo-layout set` swaps the symlink, the layout file is
+//! After `mlayout set` swaps the symlink, the layout file is
 //! the new source of truth — but margo's runtime won't reposition
 //! existing outputs to match unless something pokes them. The
 //! historical fix was "log out and back in"; this module does the

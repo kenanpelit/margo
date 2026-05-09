@@ -1,10 +1,10 @@
-//! `margo-layout` — quick-switch helper for margo's monitor layout.
+//! `mlayout` — quick-switch helper for margo's monitor layout.
 //!
 //! Drop one `layout_<name>.conf` file per setup into the margo
 //! config directory (each containing the `monitorrule` lines that
 //! describe that arrangement), point your main `config.conf` at
-//! `source = margo-layout.conf`, and use this binary to flip the
-//! `margo-layout.conf` symlink between the available files. A
+//! `source = mlayout.conf`, and use this binary to flip the
+//! `mlayout.conf` symlink between the available files. A
 //! `mctl reload` fires automatically after the swap so the change
 //! lands without a logout.
 //!
@@ -37,13 +37,13 @@ mod preview;
 use parser::Layout;
 
 /// Default link basename inside the margo config directory. The
-/// user's `config.conf` should `source = margo-layout.conf` so this
+/// user's `config.conf` should `source = mlayout.conf` so this
 /// path gets pulled into the active config on every reload.
-const ACTIVE_LINK: &str = "margo-layout.conf";
+const ACTIVE_LINK: &str = "mlayout.conf";
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "margo-layout",
+    name = "mlayout",
     version,
     about = "Switch margo's monitor layout between named profiles",
     long_about = "Maintain a catalogue of named monitor arrangements as \
@@ -65,7 +65,7 @@ enum Cmd {
     /// First-time setup. Reads the live monitor configuration via
     /// `wlr-randr`, writes it as a layout file (`layout_<name>.conf`,
     /// default name `default`), checks the main `config.conf` for a
-    /// `source = margo-layout.conf` line and offers to add one if
+    /// `source = mlayout.conf` line and offers to add one if
     /// it's missing, then activates the new layout. Idempotent —
     /// safe to re-run; existing layout files aren't overwritten
     /// unless `--force` is passed.
@@ -74,7 +74,7 @@ enum Cmd {
         /// `layout_<name>.conf`). Default: `default`.
         #[arg(long, default_value = "default")]
         name: String,
-        /// Don't ask before adding `source = margo-layout.conf` to
+        /// Don't ask before adding `source = mlayout.conf` to
         /// `config.conf`.
         #[arg(short, long)]
         yes: bool,
@@ -108,7 +108,7 @@ enum Cmd {
         /// edits aren't lost).
         #[arg(long)]
         force: bool,
-        /// Also wire `source = margo-layout.conf` into
+        /// Also wire `source = mlayout.conf` into
         /// `config.conf` if it isn't already.
         #[arg(short, long)]
         yes: bool,
@@ -117,8 +117,8 @@ enum Cmd {
     /// Snapshot the current monitor configuration as a new named
     /// layout file. Use this when you've physically rearranged
     /// monitors and want to bookmark the new setup as a profile —
-    /// e.g. plug in a projector, run `margo-layout new meeting`,
-    /// later run `margo-layout set meeting` to flip back.
+    /// e.g. plug in a projector, run `mlayout new meeting`,
+    /// later run `mlayout set meeting` to flip back.
     New {
         /// Slug for the new layout file (`layout_<name>.conf`).
         name: String,
@@ -152,7 +152,7 @@ enum Cmd {
     },
 
     /// Print the slug of the currently-active layout (whatever
-    /// `margo-layout.conf` symlinks to). Exit non-zero if no
+    /// `mlayout.conf` symlinks to). Exit non-zero if no
     /// active layout is set.
     Current,
 
@@ -207,7 +207,7 @@ enum Cmd {
 
 fn main() {
     if let Err(err) = run() {
-        eprintln!("margo-layout: {err:#}");
+        eprintln!("mlayout: {err:#}");
         std::process::exit(1);
     }
 }
@@ -328,12 +328,12 @@ fn cmd_init(
     let needs_wire = !config_file.exists() || !config_already_sourced(&config_file)?;
     if needs_wire {
         if !yes && !confirm_prompt(&format!(
-            "Add `source = margo-layout.conf` to {}? [Y/n] ",
+            "Add `source = mlayout.conf` to {}? [Y/n] ",
             config_file.display()
         ))? {
             println!(
                 "Skipped wiring config.conf. Add this line yourself when \
-                 ready:\n\n    source = margo-layout.conf\n"
+                 ready:\n\n    source = mlayout.conf\n"
             );
         } else {
             wire_config_file(&config_file)?;
@@ -355,7 +355,7 @@ fn cmd_init(
     }
 
     println!(
-        "\nNext steps:\n  • `margo-layout list`            — view your catalogue\n  • `margo-layout new <name>`      — capture more setups\n  • `margo-layout pick`            — interactive switcher\n  • Bind `margo-layout next` to a hotkey for one-press cycling"
+        "\nNext steps:\n  • `mlayout list`            — view your catalogue\n  • `mlayout new <name>`      — capture more setups\n  • `mlayout pick`            — interactive switcher\n  • Bind `mlayout next` to a hotkey for one-press cycling"
     );
     Ok(())
 }
@@ -419,7 +419,7 @@ fn cmd_suggest(
     if needs_wire {
         let yes_to_wire = yes
             || confirm_prompt(&format!(
-                "Add `source = margo-layout.conf` to {}? [Y/n] ",
+                "Add `source = mlayout.conf` to {}? [Y/n] ",
                 config_file.display()
             ))?;
         if yes_to_wire {
@@ -427,7 +427,7 @@ fn cmd_suggest(
             println!("Wired {}.", config_file.display());
         } else {
             println!(
-                "Skipped wiring config.conf. Add this line yourself when ready:\n    source = margo-layout.conf"
+                "Skipped wiring config.conf. Add this line yourself when ready:\n    source = mlayout.conf"
             );
         }
     }
@@ -512,7 +512,7 @@ fn cmd_suggest(
     trigger_reload();
 
     println!(
-        "\nNext steps:\n  • Re-run `margo-layout suggest` to switch arrangement\n  • `margo-layout new <name>` to capture a custom one\n  • `margo-layout pick` for an interactive switcher across hand-edited layouts"
+        "\nNext steps:\n  • Re-run `mlayout suggest` to switch arrangement\n  • `mlayout new <name>` to capture a custom one\n  • `mlayout pick` for an interactive switcher across hand-edited layouts"
     );
     Ok(())
 }
@@ -579,10 +579,10 @@ fn cleanup_auto_generated_presets(config_dir: &Path) -> Result<Vec<String>> {
         };
         // New format → first non-empty line is the marker.
         // Legacy format (pre-marker, suggest v0) → starts with
-        // "# Generated by `margo-layout suggest`". Both count as
+        // "# Generated by `mlayout suggest`". Both count as
         // auto-generated for cleanup purposes; hand-edited
         // layouts (`init` output) start with "# Generated by
-        // `margo-layout` from the live monitor configuration"
+        // `mlayout` from the live monitor configuration"
         // which we deliberately don't sweep.
         let is_autogen = body
             .lines()
@@ -590,7 +590,7 @@ fn cleanup_auto_generated_presets(config_dir: &Path) -> Result<Vec<String>> {
             .any(|l| {
                 let t = l.trim();
                 t == presets::AUTOGEN_MARKER.trim()
-                    || t.starts_with("# Generated by `margo-layout suggest`")
+                    || t.starts_with("# Generated by `mlayout suggest`")
             });
         if is_autogen {
             if std::fs::remove_file(&path).is_ok() {
@@ -656,7 +656,7 @@ fn cmd_new(
         }
     } else {
         println!(
-            "\nRun `margo-layout set {}` to activate this layout.",
+            "\nRun `mlayout set {}` to activate this layout.",
             name
         );
     }
@@ -674,9 +674,9 @@ fn render_layout_file(
     shortcuts: &[String],
 ) -> String {
     let mut buf = String::new();
-    buf.push_str("# Generated by `margo-layout` from the live monitor configuration.\n");
-    buf.push_str("# Edit freely — `margo-layout` will preserve your edits on\n");
-    buf.push_str("# subsequent reads. Re-capture with `margo-layout new ");
+    buf.push_str("# Generated by `mlayout` from the live monitor configuration.\n");
+    buf.push_str("# Edit freely — `mlayout` will preserve your edits on\n");
+    buf.push_str("# subsequent reads. Re-capture with `mlayout new ");
     buf.push_str(slug);
     buf.push_str(" --force` if you rearrange.\n\n");
     let display_title = title.map(str::to_string).unwrap_or_else(|| title_case(slug));
@@ -719,11 +719,11 @@ fn title_case(slug: &str) -> String {
     parts.join(" ")
 }
 
-/// Marker comment used to identify the line `margo-layout` adds
+/// Marker comment used to identify the line `mlayout` adds
 /// to `config.conf`. Lets us check on re-run whether wiring is
 /// already in place without false positives from user-added
 /// `source =` lines pointing somewhere else.
-const WIRE_MARKER: &str = "# managed by margo-layout";
+const WIRE_MARKER: &str = "# managed by mlayout";
 
 fn config_already_sourced(path: &Path) -> Result<bool> {
     if !path.exists() {
@@ -740,7 +740,7 @@ fn is_layout_source_line(line: &str) -> bool {
     if !line.starts_with("source") {
         return false;
     }
-    // `source = margo-layout.conf` — accept with or without
+    // `source = mlayout.conf` — accept with or without
     // surrounding whitespace, with optional quotes.
     let Some(rest) = line.strip_prefix("source") else {
         return false;
@@ -751,7 +751,7 @@ fn is_layout_source_line(line: &str) -> bool {
     };
     let rest = rest.trim();
     let rest = rest.trim_matches('"').trim_matches('\'');
-    rest == "margo-layout.conf"
+    rest == "mlayout.conf"
 }
 
 fn wire_config_file(path: &Path) -> Result<()> {
@@ -767,7 +767,7 @@ fn wire_config_file(path: &Path) -> Result<()> {
     existing.push('\n');
     existing.push_str(WIRE_MARKER);
     existing.push('\n');
-    existing.push_str("source = margo-layout.conf\n");
+    existing.push_str("source = mlayout.conf\n");
 
     std::fs::write(path, existing)
         .with_context(|| format!("write {}", path.display()))?;
@@ -833,7 +833,7 @@ fn cmd_list(
     if layouts.is_empty() {
         println!("No layouts found in {}.", config_dir.display());
         println!(
-            "Create one or more layout_<name>.conf files there to use margo-layout."
+            "Create one or more layout_<name>.conf files there to use mlayout."
         );
         return Ok(());
     }
@@ -869,7 +869,7 @@ fn cmd_list(
 
 fn cmd_current(config_dir: &Path, layouts: &[Layout]) -> Result<()> {
     let Some(slug) = current_slug(config_dir) else {
-        bail!("no active layout (run `margo-layout set <name>` to pick one)");
+        bail!("no active layout (run `mlayout set <name>` to pick one)");
     };
     let layout = layouts
         .iter()
@@ -942,7 +942,7 @@ fn cmd_preview(
 
     if layouts.is_empty() {
         bail!(
-            "no layouts in {} — run `margo-layout init` first",
+            "no layouts in {} — run `mlayout init` first",
             config_dir.display()
         );
     }
@@ -1175,14 +1175,14 @@ fn match_layout<'a>(layouts: &'a [Layout], needle: &str) -> Result<&'a Layout> {
     );
 }
 
-/// Atomically swap the `margo-layout.conf` symlink to point at the
+/// Atomically swap the `mlayout.conf` symlink to point at the
 /// chosen layout AND push the geometry to the live session via
 /// `wlr-randr` so outputs reposition immediately. The symlink
 /// makes the choice durable; the wlr-randr call makes it visible.
 ///
 /// Three steps, in order:
 ///   1. write fresh symlink at a unique sibling path
-///   2. atomic `rename` over the live `margo-layout.conf` target
+///   2. atomic `rename` over the live `mlayout.conf` target
 ///      (so a racing `mctl reload` can never see a half-updated link)
 ///   3. spawn `wlr-randr` with all positions / modes from the
 ///      layout file — atomic transaction inside wlr-randr, applies
@@ -1222,7 +1222,7 @@ fn current_slug(config_dir: &Path) -> Option<String> {
 }
 
 /// Best-effort `mctl reload`. Failure is non-fatal — the user
-/// might be running `margo-layout` outside a margo session, or
+/// might be running `mlayout` outside a margo session, or
 /// they may have set `--no-reload` for scripting reasons.
 fn trigger_reload() {
     match Command::new("mctl")

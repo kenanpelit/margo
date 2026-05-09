@@ -28,15 +28,32 @@ fn resolve_config_path(explicit: Option<&Path>) -> Result<PathBuf> {
 }
 
 fn resolve_include_path(include: &str, relative_to: &Path) -> PathBuf {
-    if let Some(rel) = include.strip_prefix("./") {
-        let dir = relative_to.parent().unwrap_or(Path::new("."));
-        dir.join(rel)
-    } else if let Some(rest) = include.strip_prefix("~/") {
+    // ~/-relative — substitute $HOME.
+    let path = if let Some(rest) = include.strip_prefix("~/") {
         let home = std::env::var("HOME").unwrap_or_default();
         PathBuf::from(home).join(rest)
+    } else if let Some(rest) = include.strip_prefix("./") {
+        // Explicit "./foo" — relative to the parent dir of the
+        // file currently being parsed.
+        let dir = relative_to.parent().unwrap_or(Path::new("."));
+        dir.join(rest)
     } else {
         PathBuf::from(include)
+    };
+
+    if path.is_absolute() {
+        return path;
     }
+
+    // Bare relative paths (`source = foo.conf`) — resolve
+    // against the parent directory of the file being parsed,
+    // NOT the process CWD. Without this, `source = mlayout
+    // .conf` from `~/.config/margo/config.conf` would look for
+    // `./mlayout.conf` relative to wherever margo was
+    // launched (typically `/`), silently load nothing, and the
+    // sourced rules disappear into the void.
+    let dir = relative_to.parent().unwrap_or(Path::new("."));
+    dir.join(path)
 }
 
 // ── File-level parsing ───────────────────────────────────────────────────────
@@ -112,6 +129,16 @@ fn parse_line(cfg: &mut Config, line: &str, origin: &Path) -> Result<()> {
     // include/source directive
     if key == "include" || key == "source" {
         let p = resolve_include_path(val, origin);
+        if !p.exists() {
+            warn!(
+                "{}: source/include `{}` resolved to `{}` which doesn't exist — \
+                 skipping (rules / binds in that file won't load)",
+                origin.display(),
+                val,
+                p.display()
+            );
+            return Ok(());
+        }
         return parse_file(cfg, &p, false);
     }
 
