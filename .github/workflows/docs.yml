@@ -32,9 +32,10 @@ jobs:
         with:
           python-version: "3.x"
           cache: pip
+          cache-dependency-path: requirements.txt
 
-      - name: Install mkdocs-material
-        run: pip install mkdocs-material
+      - name: Install docs deps
+        run: pip install -r requirements.txt
 
       - name: Sync repo-root markdown into docs/
         # The roadmap and CONTRIBUTING file are source-of-truth at the

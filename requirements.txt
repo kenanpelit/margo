@@ -1,0 +1,17 @@
+# Documentation site dependencies (W4.3).
+#
+# Used by .github/workflows/docs.yml to build the
+# https://kenanpelit.github.io/margo/ site, and by contributors who
+# want to preview the docs locally:
+#
+#   python3 -m venv .venv && . .venv/bin/activate
+#   pip install -r requirements.txt
+#   cp road_map.md     docs/roadmap.md
+#   cp CONTRIBUTING.md docs/contributing.md
+#   mkdocs serve
+#
+# Pinned to mkdocs-material 9.x; the project pulls in mkdocs as a
+# transitive dep so we don't list it explicitly. Bumping the major
+# means re-running `mkdocs build --strict` to verify our config still
+# matches their breaking changes.
+mkdocs-material>=9.5,<10

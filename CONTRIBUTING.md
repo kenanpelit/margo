@@ -133,7 +133,7 @@ To preview the site locally:
 
 ```bash
 python3 -m venv .venv && . .venv/bin/activate
-pip install mkdocs-material
+pip install -r requirements.txt
 cp road_map.md     docs/roadmap.md      # mirror the sync CI does
 cp CONTRIBUTING.md docs/contributing.md
 mkdocs serve                             # http://127.0.0.1:8000/
