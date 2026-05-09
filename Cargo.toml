@@ -4,6 +4,7 @@ members = [
     "margo-config",
     "margo-ipc",
     "margo-layout",
+    "mscreenshot",
 ]
 resolver = "2"
 

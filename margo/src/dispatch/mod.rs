@@ -65,52 +65,48 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
             }
         }
         // ── Screenshot dispatch ─────────────────────────────
-        // All screenshot actions delegate to the
-        // `margo-screenshot` shell helper which orchestrates
-        // grim/slurp/wl-copy + an optional editor (swappy / satty).
+        // All screenshot actions delegate to the `mscreenshot`
+        // companion binary (a workspace sibling of `mctl` and
+        // `margo-layout`). It orchestrates grim / slurp /
+        // wl-copy + an optional editor (swappy / satty).
         //
         //   screenshot              → focused output → editor → file
         //   screenshot-screen       → alias of `screenshot`
         //   screenshot-window       → focused window → editor → file
-        //   screenshot-region       → drag-region → editor → file
+        //   screenshot-region       → drag-region → save (no edit)
         //   screenshot-region-ui    → drag-region → editor → file + clipboard
         //
         // Required runtime tools (PKGBUILD `depends`): grim, slurp,
-        // wl-clipboard. Optional editor: swappy or satty (optdep).
+        // wl-clipboard. Optional editor: swappy / satty (optdep).
         "screenshot" | "screenshot-screen" | "screenshot_screen" => {
             let mode = match arg.v.as_deref() {
                 Some("window") => "window",
                 _ => "screen",
             };
-            if let Err(e) = crate::utils::spawn_shell(&format!("margo-screenshot {}", mode))
-            {
-                tracing::error!("spawn margo-screenshot: {e}");
+            if let Err(e) = crate::utils::spawn_shell(&format!("mscreenshot {}", mode)) {
+                tracing::error!("spawn mscreenshot: {e}");
             }
         }
         "screenshot-window" | "screenshot_window" => {
-            if let Err(e) = crate::utils::spawn_shell("margo-screenshot window") {
-                tracing::error!("spawn margo-screenshot: {e}");
+            if let Err(e) = crate::utils::spawn_shell("mscreenshot window") {
+                tracing::error!("spawn mscreenshot: {e}");
             }
         }
         "screenshot-region-ui" | "screenshot_region_ui" => {
             // `rec` mode: region → editor → file + clipboard.
-            // The "ui" suffix is historical from when this
-            // pointed at the (since-removed) in-compositor
-            // selector; behaviour now matches the reliable
-            // grim+slurp+swappy path.
-            if let Err(e) = crate::utils::spawn_shell("margo-screenshot rec") {
-                tracing::error!("spawn margo-screenshot: {e}");
+            if let Err(e) = crate::utils::spawn_shell("mscreenshot rec") {
+                tracing::error!("spawn mscreenshot: {e}");
             }
         }
         "screenshot-region" | "screenshot_region" => {
-            // `area` mode: region → editor → file (no clipboard).
-            if let Err(e) = crate::utils::spawn_shell("margo-screenshot area") {
-                tracing::error!("spawn margo-screenshot: {e}");
+            // `area` mode: region → save to disk only.
+            if let Err(e) = crate::utils::spawn_shell("mscreenshot area") {
+                tracing::error!("spawn mscreenshot: {e}");
             }
         }
         "screenshot-output" | "screenshot_output" => {
-            if let Err(e) = crate::utils::spawn_shell("margo-screenshot screen") {
-                tracing::error!("spawn margo-screenshot: {e}");
+            if let Err(e) = crate::utils::spawn_shell("mscreenshot screen") {
+                tracing::error!("spawn mscreenshot: {e}");
             }
         }
         "killclient" => state.kill_focused(),

@@ -120,7 +120,8 @@ COMPANION BINARIES (each has its own --help):
   margo-layout      Named monitor-arrangement profiles. Capture the
                     live setup with `init` / `new`, switch with
                     `set`, `next`, `prev`, or `pick`.
-  margo-screenshot  Capture full screen / region / focused window.
+  mscreenshot       Screenshot helper — `rec` / `area` / `screen` /
+                    `window` / `open` / `dir`.
 
 ENVIRONMENT:
   MARGO_LOG         tracing filter (e.g. `info`, `debug`,
@@ -568,7 +569,7 @@ fn main() -> Result<()> {
                         // synchronous output isn't great for the
                         // portal contract; revisit when we have
                         // an in-process screenshot path.
-                        let _ = utils::spawn_shell("margo-screenshot screen");
+                        let _ = utils::spawn_shell("mscreenshot screen");
                         let _ = resp_tx
                             .try_send(CompositorToScreenshot::ScreenshotResult(None));
                     }

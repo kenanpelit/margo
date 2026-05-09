@@ -380,7 +380,7 @@ pub const ACTIONS: &[Action] = &[
         detail: "",
     },
     // ── Screenshot ──────────────────────────────────────────────────
-    // All screenshot actions delegate to the `margo-screenshot`
+    // All screenshot actions delegate to the `mscreenshot`
     // shell helper, which orchestrates grim + slurp + wl-copy +
     // an optional editor (swappy / satty). Required tools live in
     // PKGBUILD `depends`; the editor is `optdepends`.
@@ -390,7 +390,7 @@ pub const ACTIONS: &[Action] = &[
         args: "[window]",
         group: Group::System,
         summary: "Capture the focused output → editor → file.",
-        detail: "Spawns `margo-screenshot screen` (or `window` when arg is \
+        detail: "Spawns `mscreenshot screen` (or `window` when arg is \
                  `window`). Saves under $SCREENSHOT_SAVE_DIR or \
                  $XDG_PICTURES_DIR/Screenshots as screenshot_TIMESTAMP.png. \
                  If swappy/satty is installed, the saved file opens for \
@@ -402,7 +402,7 @@ pub const ACTIONS: &[Action] = &[
         args: "",
         group: Group::System,
         summary: "Capture the focused window → editor → file.",
-        detail: "Spawns `margo-screenshot window`.",
+        detail: "Spawns `mscreenshot window`.",
     },
     Action {
         name: "screenshot-region",
@@ -410,7 +410,7 @@ pub const ACTIONS: &[Action] = &[
         args: "",
         group: Group::System,
         summary: "Drag a region → editor → file.",
-        detail: "Spawns `margo-screenshot area`. Uses `slurp` for selection.",
+        detail: "Spawns `mscreenshot area`. Uses `slurp` for selection.",
     },
     Action {
         name: "screenshot-region-ui",
@@ -418,7 +418,7 @@ pub const ACTIONS: &[Action] = &[
         args: "",
         group: Group::System,
         summary: "Drag a region → editor → file + clipboard.",
-        detail: "Spawns `margo-screenshot rec`. Region selection via `slurp`, \
+        detail: "Spawns `mscreenshot rec`. Region selection via `slurp`, \
                  capture via `grim`, clipboard via `wl-copy`.",
     },
     Action {
@@ -427,7 +427,7 @@ pub const ACTIONS: &[Action] = &[
         args: "",
         group: Group::System,
         summary: "Alias of `screenshot` — capture the focused output.",
-        detail: "Spawns `margo-screenshot screen`. The `[NAME]` arg from \
+        detail: "Spawns `mscreenshot screen`. The `[NAME]` arg from \
                  earlier revisions is no longer honoured; the helper \
                  captures whatever is focused.",
     },

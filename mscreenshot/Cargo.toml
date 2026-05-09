@@ -1,0 +1,18 @@
+[package]
+name = "mscreenshot"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Screenshot helper for margo — region/window/output capture with optional swappy/satty edit + clipboard."
+repository.workspace = true
+
+[[bin]]
+name = "mscreenshot"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+libc = "0.2"
