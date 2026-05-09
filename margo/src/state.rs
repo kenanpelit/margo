@@ -4528,14 +4528,76 @@ impl MargoState {
 
     pub fn toggle_fullscreen(&mut self) {
         if let Some(idx) = self.focused_client_idx() {
-            self.clients[idx].is_fullscreen = !self.clients[idx].is_fullscreen;
-            let mon_idx = self.clients[idx].monitor;
-            self.arrange_monitor(mon_idx);
-            // Same reason as `toggle_floating`: bar widgets reflect
-            // the focused client's `fullscreen` flag and must be
-            // told when it flips.
-            crate::protocols::dwl_ipc::broadcast_monitor(self, mon_idx);
+            let target = !self.clients[idx].is_fullscreen;
+            self.set_client_fullscreen(idx, target);
         }
+    }
+
+    /// Set a client's fullscreen state and inform the client via
+    /// the xdg_toplevel protocol so it actually re-renders for
+    /// fullscreen (drops decorations, fills the new geom).
+    ///
+    /// Three things happen in lockstep here:
+    ///
+    /// 1. `client.is_fullscreen` flips — drives margo's layout
+    ///    pass (arrange_monitor gives a fullscreen client the
+    ///    full monitor rect).
+    /// 2. `xdg_toplevel.with_pending_state` adds / removes the
+    ///    `Fullscreen` state and pins the size to the monitor
+    ///    rect. Without this, browsers + native fullscreen apps
+    ///    keep rendering the windowed UI even when their geom
+    ///    has changed — they trust the protocol state, not the
+    ///    geom. This was the bug behind "F11 / video player
+    ///    fullscreen does nothing" until W4.5.
+    /// 3. `arrange_monitor` runs the layout pass which queues
+    ///    the actual configure send + rerenders the scene.
+    /// 4. `broadcast_monitor` updates dwl-ipc bars (which carry
+    ///    the focused-client `fullscreen` flag for the icon
+    ///    indicator).
+    ///
+    /// X11 clients (XWayland) follow a different protocol path
+    /// (NetWMState); we just flip the flag for them and let
+    /// arrange handle geometry — that path was already correct
+    /// before this fix because XWayland clients trust geom
+    /// without a state-change packet.
+    pub fn set_client_fullscreen(&mut self, idx: usize, fullscreen: bool) {
+        if idx >= self.clients.len() {
+            return;
+        }
+        let mon_idx = self.clients[idx].monitor;
+        if mon_idx >= self.monitors.len() {
+            return;
+        }
+        self.clients[idx].is_fullscreen = fullscreen;
+
+        // Update the xdg_toplevel pending state for Wayland
+        // clients. X11 surfaces skip this — they don't carry a
+        // ToplevelSurface; their fullscreen state is signalled
+        // via NetWMState which the rest of margo doesn't
+        // currently round-trip through (a known limitation —
+        // log at trace so it's findable).
+        if let WindowSurface::Wayland(toplevel) =
+            self.clients[idx].window.underlying_surface()
+        {
+            use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
+            let monitor_size = self.monitors[mon_idx].monitor_area;
+            toplevel.with_pending_state(|state| {
+                if fullscreen {
+                    state.states.set(xdg_toplevel::State::Fullscreen);
+                    state.size = Some(smithay::utils::Size::from((
+                        monitor_size.width,
+                        monitor_size.height,
+                    )));
+                } else {
+                    state.states.unset(xdg_toplevel::State::Fullscreen);
+                    state.size = None; // layout pass picks the new size
+                }
+            });
+            toplevel.send_pending_configure();
+        }
+
+        self.arrange_monitor(mon_idx);
+        crate::protocols::dwl_ipc::broadcast_monitor(self, mon_idx);
     }
 
     // ── Scratchpad ────────────────────────────────────────────────────────────
@@ -5884,6 +5946,107 @@ impl XdgShellHandler for MargoState {
         if let Some((app_id, title)) = closed_identity {
             crate::scripting::fire_window_close(self, &app_id, &title);
         }
+    }
+
+    // ── Fullscreen / maximize requests ──────────────────────────────────────
+    //
+    // smithay's default `fullscreen_request` calls `send_configure()`
+    // without flipping any state, so the client never gets a
+    // configure with the Fullscreen flag set — Helium / Firefox /
+    // mpv stay windowed even after `xdg_toplevel.set_fullscreen()`.
+    // Same goes for F11 in browsers (they implement the JS
+    // Fullscreen API by calling set_fullscreen). The dispatch-side
+    // `togglefullscreen` action worked because we just toggled
+    // `is_fullscreen` on our MargoClient and let arrange_monitor
+    // give it a full-output rect, but we never told the client
+    // it was fullscreen via the protocol — well-behaved clients
+    // (browsers especially) keep rendering decorations / windowed
+    // chrome until the configure event lands with the right state.
+
+    fn fullscreen_request(
+        &mut self,
+        toplevel: smithay::wayland::shell::xdg::ToplevelSurface,
+        wl_output: Option<smithay::reexports::wayland_server::protocol::wl_output::WlOutput>,
+    ) {
+        let wl_surf = toplevel.wl_surface().clone();
+        let Some(idx) = self.clients.iter().position(|c| {
+            c.window.wl_surface().as_deref() == Some(&wl_surf)
+        }) else {
+            // Unmapped client (initial-map deferral pending) —
+            // record the intent so finalize_initial_map honours
+            // it. Without this, a client that calls
+            // set_fullscreen during its first map gets ignored.
+            // Fall through to the default configure so the
+            // client doesn't hang waiting.
+            toplevel.send_configure();
+            return;
+        };
+
+        // Optional output target: migrate the client to that
+        // monitor before going fullscreen so Helium / browsers
+        // that pass the meeting-screen output land on the right
+        // panel.
+        if let Some(target_output) = wl_output {
+            if let Some(target_mon) = self
+                .monitors
+                .iter()
+                .position(|m| m.output.owns(&target_output))
+            {
+                if self.clients[idx].monitor != target_mon {
+                    self.clients[idx].monitor = target_mon;
+                }
+            }
+        }
+
+        self.set_client_fullscreen(idx, true);
+    }
+
+    fn unfullscreen_request(
+        &mut self,
+        toplevel: smithay::wayland::shell::xdg::ToplevelSurface,
+    ) {
+        let wl_surf = toplevel.wl_surface().clone();
+        let Some(idx) = self.clients.iter().position(|c| {
+            c.window.wl_surface().as_deref() == Some(&wl_surf)
+        }) else {
+            toplevel.send_configure();
+            return;
+        };
+        self.set_client_fullscreen(idx, false);
+    }
+
+    fn maximize_request(
+        &mut self,
+        toplevel: smithay::wayland::shell::xdg::ToplevelSurface,
+    ) {
+        // margo doesn't have a separate maximized-vs-tiled state
+        // (we're a tiling compositor — the layout drives sizing).
+        // Treat maximize the same as fullscreen so apps like
+        // gnome-calculator / pavucontrol get the screen-filling
+        // behaviour they expect from `set_maximized`. Better than
+        // the smithay default of "configure with no state change".
+        let wl_surf = toplevel.wl_surface().clone();
+        let Some(idx) = self.clients.iter().position(|c| {
+            c.window.wl_surface().as_deref() == Some(&wl_surf)
+        }) else {
+            toplevel.send_configure();
+            return;
+        };
+        self.set_client_fullscreen(idx, true);
+    }
+
+    fn unmaximize_request(
+        &mut self,
+        toplevel: smithay::wayland::shell::xdg::ToplevelSurface,
+    ) {
+        let wl_surf = toplevel.wl_surface().clone();
+        let Some(idx) = self.clients.iter().position(|c| {
+            c.window.wl_surface().as_deref() == Some(&wl_surf)
+        }) else {
+            toplevel.send_configure();
+            return;
+        };
+        self.set_client_fullscreen(idx, false);
     }
 }
 delegate_xdg_shell!(MargoState);
