@@ -382,17 +382,10 @@ pub fn build_render_elements(
         None
     };
 
-    // 2. Help bar — only on the active output, anchored at the
-    //    bottom-centre. Doesn't render on inactive outputs to
-    //    avoid duplication.
-    if active {
-        push_help_bar(
-            &mut elements,
-            frozen.logical_size,
-            scale,
-            selector.include_pointer,
-        );
-    }
+    // (help bar disabled — bitmap-font rendering looked rough.
+    //  Keybinds: Enter = save, Esc = cancel, P = toggle pointer.
+    //  Documented via `mctl actions screenshot-region-ui` and
+    //  the README.)
 
     if let Some(rect_phys) = rect_phys {
         let rect_logical = phys_to_logical(rect_phys, scale, frozen.logical_size);
@@ -542,140 +535,6 @@ fn push_corner_handles(
         scale,
         handle,
     )));
-}
-
-/// 5×7 bitmap font for ASCII characters used in the help bar.
-/// Each glyph is 7 rows of 5 bits (high bit first). Embedded
-/// directly so we don't need pango/cairo or fontdue. Saves
-/// ~500KB of binary growth and ~200KB of font asset.
-const FONT_WIDTH: i32 = 5;
-const FONT_HEIGHT: i32 = 7;
-
-const fn glyph(rows: [u8; 7]) -> [u8; 7] {
-    rows
-}
-
-#[rustfmt::skip]
-fn glyph_for(c: char) -> Option<[u8; 7]> {
-    Some(match c {
-        ' ' => glyph([0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000]),
-        '[' => glyph([0b01110, 0b01000, 0b01000, 0b01000, 0b01000, 0b01000, 0b01110]),
-        ']' => glyph([0b01110, 0b00010, 0b00010, 0b00010, 0b00010, 0b00010, 0b01110]),
-        '·' => glyph([0b00000, 0b00000, 0b00000, 0b00100, 0b00000, 0b00000, 0b00000]),
-        '•' => glyph([0b00000, 0b00000, 0b01110, 0b01110, 0b01110, 0b00000, 0b00000]),
-        ':' => glyph([0b00000, 0b00100, 0b00000, 0b00000, 0b00000, 0b00100, 0b00000]),
-        ',' => glyph([0b00000, 0b00000, 0b00000, 0b00000, 0b00100, 0b00100, 0b01000]),
-        '.' => glyph([0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00100, 0b00000]),
-        // Capital letters used in keyboard hints.
-        'E' => glyph([0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b11111]),
-        'P' => glyph([0b11110, 0b10001, 0b10001, 0b11110, 0b10000, 0b10000, 0b10000]),
-        'R' => glyph([0b11110, 0b10001, 0b10001, 0b11110, 0b10100, 0b10010, 0b10001]),
-        'S' => glyph([0b01111, 0b10000, 0b10000, 0b01110, 0b00001, 0b00001, 0b11110]),
-        'C' => glyph([0b01110, 0b10001, 0b10000, 0b10000, 0b10000, 0b10001, 0b01110]),
-        // Lowercase used in 'cancel', 'save', 'pointer', 'toggle'.
-        'a' => glyph([0b00000, 0b00000, 0b01110, 0b00001, 0b01111, 0b10001, 0b01111]),
-        'b' => glyph([0b10000, 0b10000, 0b11110, 0b10001, 0b10001, 0b10001, 0b11110]),
-        'c' => glyph([0b00000, 0b00000, 0b01110, 0b10001, 0b10000, 0b10001, 0b01110]),
-        'd' => glyph([0b00001, 0b00001, 0b01111, 0b10001, 0b10001, 0b10001, 0b01111]),
-        'e' => glyph([0b00000, 0b00000, 0b01110, 0b10001, 0b11111, 0b10000, 0b01110]),
-        'f' => glyph([0b00110, 0b01001, 0b01000, 0b11110, 0b01000, 0b01000, 0b01000]),
-        'g' => glyph([0b00000, 0b00000, 0b01111, 0b10001, 0b01111, 0b00001, 0b01110]),
-        'h' => glyph([0b10000, 0b10000, 0b11110, 0b10001, 0b10001, 0b10001, 0b10001]),
-        'i' => glyph([0b00100, 0b00000, 0b01100, 0b00100, 0b00100, 0b00100, 0b01110]),
-        'k' => glyph([0b10000, 0b10000, 0b10010, 0b10100, 0b11000, 0b10100, 0b10010]),
-        'l' => glyph([0b01100, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110]),
-        'n' => glyph([0b00000, 0b00000, 0b11110, 0b10001, 0b10001, 0b10001, 0b10001]),
-        'o' => glyph([0b00000, 0b00000, 0b01110, 0b10001, 0b10001, 0b10001, 0b01110]),
-        'p' => glyph([0b00000, 0b00000, 0b11110, 0b10001, 0b11110, 0b10000, 0b10000]),
-        'r' => glyph([0b00000, 0b00000, 0b10110, 0b11001, 0b10000, 0b10000, 0b10000]),
-        's' => glyph([0b00000, 0b00000, 0b01111, 0b10000, 0b01110, 0b00001, 0b11110]),
-        't' => glyph([0b01000, 0b01000, 0b11110, 0b01000, 0b01000, 0b01001, 0b00110]),
-        'u' => glyph([0b00000, 0b00000, 0b10001, 0b10001, 0b10001, 0b10001, 0b01111]),
-        'v' => glyph([0b00000, 0b00000, 0b10001, 0b10001, 0b10001, 0b01010, 0b00100]),
-        'w' => glyph([0b00000, 0b00000, 0b10001, 0b10001, 0b10101, 0b11011, 0b10001]),
-        'x' => glyph([0b00000, 0b00000, 0b10001, 0b01010, 0b00100, 0b01010, 0b10001]),
-        'y' => glyph([0b00000, 0b00000, 0b10001, 0b10001, 0b01111, 0b00001, 0b01110]),
-        'z' => glyph([0b00000, 0b00000, 0b11111, 0b00010, 0b00100, 0b01000, 0b11111]),
-        _ => return None,
-    })
-}
-
-/// Push the help bar at the bottom-centre of the output. A dark
-/// rounded panel containing keyboard hints rendered via the
-/// embedded bitmap font.
-fn push_help_bar(
-    out: &mut Vec<MargoRenderElement>,
-    output_logical_size: Size<i32, Logical>,
-    scale: Scale<f64>,
-    show_pointer: bool,
-) {
-    let pointer_text = if show_pointer { "P hide pointer" } else { "P show pointer" };
-    let text = format!(
-        "Enter save   Esc cancel   {}",
-        pointer_text
-    );
-
-    // Each glyph is 5×7 logical pixels at scale 1; we draw at
-    // scale 4 (20×28) so the help bar reads cleanly even on
-    // 1080p screens. Bumped from 2 after user feedback that
-    // the bar was invisible at 14 px tall.
-    let glyph_scale: i32 = 4;
-    let glyph_w = FONT_WIDTH * glyph_scale;
-    let glyph_h = FONT_HEIGHT * glyph_scale;
-    let advance = glyph_w + 4; // 4-px space between glyphs
-
-    let chars: Vec<char> = text.chars().collect();
-    let text_w = chars.len() as i32 * advance;
-    let text_h = glyph_h;
-
-    let pad_x: i32 = 28;
-    let pad_y: i32 = 18;
-    let panel_w = text_w + pad_x * 2;
-    let panel_h = text_h + pad_y * 2;
-    let panel_x = (output_logical_size.w - panel_w) / 2;
-    let panel_y = output_logical_size.h - panel_h - 40; // 40 px from bottom
-
-    // Panel background — semi-opaque dark.
-    let bg: [f32; 4] = [0.10, 0.10, 0.12, 0.88];
-    out.push(MargoRenderElement::Solid(solid(
-        (panel_x, panel_y),
-        (panel_w, panel_h),
-        scale,
-        bg,
-    )));
-
-    // Top thin highlight line for contrast.
-    let highlight: [f32; 4] = [1.0, 1.0, 1.0, 0.10];
-    out.push(MargoRenderElement::Solid(solid(
-        (panel_x, panel_y),
-        (panel_w, 1),
-        scale,
-        highlight,
-    )));
-
-    // Render each glyph as a stack of solid rectangles for the
-    // ON pixels. Cap text at output width.
-    let fg: [f32; 4] = [0.95, 0.95, 0.95, 1.0];
-    let text_x_start = panel_x + pad_x;
-    let text_y_start = panel_y + pad_y;
-    for (i, c) in chars.iter().enumerate() {
-        let Some(g) = glyph_for(*c) else { continue };
-        let gx = text_x_start + (i as i32) * advance;
-        for (row_idx, row_bits) in g.iter().enumerate() {
-            for col in 0..FONT_WIDTH {
-                if row_bits & (1 << (FONT_WIDTH - 1 - col)) != 0 {
-                    let px = gx + col * glyph_scale;
-                    let py = text_y_start + (row_idx as i32) * glyph_scale;
-                    out.push(MargoRenderElement::Solid(solid(
-                        (px, py),
-                        (glyph_scale, glyph_scale),
-                        scale,
-                        fg,
-                    )));
-                }
-            }
-        }
-    }
 }
 
 fn push_selection_border(

@@ -836,14 +836,31 @@ fn spawn_save(state: &mut MargoState, image: CapturedImage, request: ScreenshotR
                 // so `send_selection` can serve any number of
                 // future read fds without re-encoding.
                 if let Some(bytes) = delivery.clipboard_png.as_ref() {
+                    // Offer multiple MIME aliases so paste works
+                    // across apps with quirky preferences:
+                    //   - image/png         the canonical type
+                    //   - image/x-png       legacy alias used by
+                    //                       some older apps
+                    //   - application/png   non-standard but seen
+                    //                       in the wild
+                    //   - PNG               XWayland TARGETS list
+                    //                       sometimes uses bare
+                    //                       upper-case
+                    let mimes = vec![
+                        String::from("image/png"),
+                        String::from("image/x-png"),
+                        String::from("application/png"),
+                        String::from("PNG"),
+                    ];
                     info!(
-                        "screenshot: setting clipboard selection ({} bytes, image/png)",
-                        bytes.len()
+                        "screenshot: setting clipboard selection ({} bytes, mimes={:?})",
+                        bytes.len(),
+                        mimes,
                     );
                     smithay::wayland::selection::data_device::set_data_device_selection(
                         &state.display_handle,
                         &state.seat,
-                        vec![String::from("image/png")],
+                        mimes,
                         crate::state::SelectionUserData::Screenshot(bytes.clone()),
                     );
                 }

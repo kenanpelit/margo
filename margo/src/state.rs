@@ -5772,7 +5772,12 @@ impl SelectionHandler for MargoState {
                 // pasted) is on the other side. Done off-main-thread
                 // because a slow consumer would otherwise block the
                 // whole compositor on `write(fd)`.
-                if mime_type == "image/png" {
+                let mime_lc = mime_type.to_ascii_lowercase();
+                let recognised = matches!(
+                    mime_lc.as_str(),
+                    "image/png" | "image/x-png" | "application/png"
+                ) || mime_type == "PNG";
+                if recognised {
                     let bytes = bytes.clone();
                     std::thread::spawn(move || {
                         use std::io::Write;
