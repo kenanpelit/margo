@@ -342,6 +342,19 @@ pub const ACTIONS: &[Action] = &[
                  Works with windowrule `isnamedscratchpad:1`.",
     },
     Action {
+        name: "summon",
+        aliases: &["taghere", "tag_here", "tag-here", "bring_here", "bringhere"],
+        args: "<APPID> <TITLE|none> <SPAWN>",
+        group: Group::Scratchpad,
+        summary: "Bring an app to the current tag, or launch it if not running.",
+        detail: "mango-here equivalent. Searches every monitor/tag for a window \
+                 matching the appid (and optional title) regex. If found, moves \
+                 it to the focused monitor's active tag and focuses it. If not, \
+                 spawns the SPAWN command. Hidden scratchpads are skipped — use \
+                 `toggle_named_scratchpad` for those. Bind: \
+                 `bind = alt,1,summon,^firefox$,none,firefox`.",
+    },
+    Action {
         name: "toggle_scratchpad",
         aliases: &["togglescratchpad"],
         args: "",

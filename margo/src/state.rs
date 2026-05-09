@@ -4469,6 +4469,117 @@ impl MargoState {
         self.switch_scratchpad_state(idx);
     }
 
+    /// Public action: bring a window matching <name>/<title> to the
+    /// currently-focused monitor's active tag, launching it via
+    /// <spawn> if no instance is open. The mango-here.sh script
+    /// implements the same flow for the C compositor; this is the
+    /// in-process Rust port — no `mmsg` round-trips, no view
+    /// snapshot/restore dance.
+    ///
+    /// Three args (mapped from the bind line):
+    ///   v  → app_id pattern (regex; same matcher as windowrule appid)
+    ///   v2 → optional title pattern (use `none` to skip)
+    ///   v3 → spawn command run when no matching client exists
+    /// Together: `bind = alt,1,summon,^Kenp$,none,start-kkenp`
+    ///
+    /// Hidden scratchpads are skipped — they have their own
+    /// `toggle_named_scratchpad` dispatch and summoning them here
+    /// would bypass the single-scratchpad enforcement.
+    pub fn summon(
+        &mut self,
+        name: Option<&str>,
+        title: Option<&str>,
+        spawn: Option<&str>,
+    ) {
+        let target = self.find_summonable_client(name, title);
+        let Some(idx) = target else {
+            if let Some(cmd) = spawn.filter(|s| !s.trim().is_empty()) {
+                if let Err(e) = crate::utils::spawn_shell(cmd) {
+                    tracing::error!("summon spawn '{cmd}': {e}");
+                }
+            }
+            return;
+        };
+
+        let target_mon = self.focused_monitor();
+        if target_mon >= self.monitors.len() {
+            return;
+        }
+        let target_tagset = self.monitors[target_mon].current_tagset();
+        if target_tagset == 0 {
+            return;
+        }
+
+        // Fast path: window is already visible on the focused monitor's
+        // active tag — just refocus it. Saves a needless tag-switch
+        // animation and a re-arrange when the user presses summon while
+        // the target is already in front of them.
+        let already_here = self.clients[idx].monitor == target_mon
+            && (self.clients[idx].tags & target_tagset) != 0
+            && !self.clients[idx].is_minimized;
+        if already_here {
+            let window = self.clients[idx].window.clone();
+            self.focus_surface(Some(FocusTarget::Window(window)));
+            return;
+        }
+
+        let source_mon = self.clients[idx].monitor;
+        let was_minimized = self.clients[idx].is_minimized;
+
+        self.clients[idx].old_tags = self.clients[idx].tags;
+        self.clients[idx].is_tag_switching = true;
+        self.clients[idx].animation.running = false;
+        self.clients[idx].tags = target_tagset;
+        self.clients[idx].monitor = target_mon;
+        if was_minimized {
+            self.clients[idx].is_minimized = false;
+        }
+
+        if source_mon != target_mon && source_mon < self.monitors.len() {
+            self.arrange_monitor(source_mon);
+        }
+        self.arrange_monitor(target_mon);
+
+        let window = self.clients[idx].window.clone();
+        self.focus_surface(Some(FocusTarget::Window(window)));
+
+        crate::protocols::dwl_ipc::broadcast_monitor(self, target_mon);
+        if source_mon != target_mon && source_mon < self.monitors.len() {
+            crate::protocols::dwl_ipc::broadcast_monitor(self, source_mon);
+        }
+    }
+
+    /// Like `find_client_by_id_or_title` but skips hidden scratchpads —
+    /// summoning them would conflict with the named-scratchpad toggle
+    /// dispatch and bypass single_scratchpad enforcement.
+    fn find_summonable_client(
+        &self,
+        name: Option<&str>,
+        title: Option<&str>,
+    ) -> Option<usize> {
+        let name_pat = name.unwrap_or("");
+        let title_pat = title.unwrap_or("");
+        for (idx, c) in self.clients.iter().enumerate() {
+            if c.is_in_scratchpad && !c.is_scratchpad_show {
+                continue;
+            }
+            let app_match = if name_pat.is_empty() {
+                true
+            } else {
+                matches_rule_text(name_pat, &c.app_id)
+            };
+            let title_match = if title_pat.is_empty() {
+                true
+            } else {
+                matches_rule_text(title_pat, &c.title)
+            };
+            if app_match && title_match {
+                return Some(idx);
+            }
+        }
+        None
+    }
+
     /// Public action: full reset of the focused client back to
     /// a normal tile. Bind this to an emergency-recovery key
     /// (the user has it on `super+ctrl,Escape`) for any time a

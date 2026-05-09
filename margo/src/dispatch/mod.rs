@@ -167,6 +167,25 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
             state.toggle_named_scratchpad(name, title, spawn);
         }
         "toggle_scratchpad" | "togglescratchpad" => state.toggle_scratchpad(),
+        // mango-here equivalent — bring a window to the current tag,
+        // launch it if it isn't running. Three args mirror
+        // toggle_named_scratchpad:
+        //   v  → app_id regex
+        //   v2 → optional title regex (`none` to skip)
+        //   v3 → spawn command if no instance exists
+        // Bind example:
+        //   bind = alt,1,summon,^Kenp$,none,start-kkenp
+        //   bind = alt,2,summon,^firefox$,,firefox
+        "summon" | "taghere" | "tag_here" | "tag-here" | "bring_here"
+        | "bringhere" => {
+            let name = arg.v.as_deref();
+            let title = arg.v2.as_deref().filter(|s| {
+                let t = s.trim();
+                !t.is_empty() && !t.eq_ignore_ascii_case("none")
+            });
+            let spawn = arg.v3.as_deref().filter(|s| !s.trim().is_empty());
+            state.summon(name, title, spawn);
+        }
         // Recovery action: pull the focused client back out of any
         // scratchpad state. Useful when a regular window
         // accidentally got promoted to scratchpad (typo bind, fuzzy
