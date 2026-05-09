@@ -14,11 +14,10 @@ use smithay::{
         renderer::utils::on_commit_buffer_handler,
     },
     delegate_compositor, delegate_data_control, delegate_data_device, delegate_dmabuf,
-    delegate_input_method_manager, delegate_output,
-    delegate_pointer_constraints, delegate_primary_selection, delegate_relative_pointer,
-    delegate_seat, delegate_shm, delegate_text_input_manager,
+    delegate_output,
+    delegate_primary_selection,
+    delegate_seat, delegate_shm,
     delegate_presentation, delegate_xdg_shell,
-    delegate_idle_notify, delegate_idle_inhibit,
     desktop::{PopupManager, Space, Window, WindowSurface, WindowSurfaceType, layer_map_for_output},
     input::{
         Seat, SeatHandler, SeatState,
@@ -79,10 +78,8 @@ use smithay::{
         },
         shm::{ShmHandler, ShmState},
         session_lock::LockSurface,
-        input_method::{InputMethodHandler, InputMethodManagerState, PopupSurface as InputMethodPopupSurface},
-        pointer_constraints::{
-            with_pointer_constraint, PointerConstraintsHandler, PointerConstraintsState,
-        },
+        input_method::InputMethodManagerState,
+        pointer_constraints::PointerConstraintsState,
         presentation::PresentationState,
         relative_pointer::RelativePointerManagerState,
         text_input::TextInputManagerState,
@@ -6530,44 +6527,6 @@ smithay::delegate_viewporter!(MargoState);
 // just get tracked through the regular xdg popup manager so they render
 // at the right location, and dismissal hooks back into PopupManager.
 
-impl InputMethodHandler for MargoState {
-    fn new_popup(&mut self, surface: InputMethodPopupSurface) {
-        if let Err(err) = self
-            .popups
-            .track_popup(smithay::desktop::PopupKind::from(surface))
-        {
-            tracing::warn!("input_method: failed to track popup: {err}");
-        }
-    }
-
-    fn popup_repositioned(&mut self, _surface: InputMethodPopupSurface) {}
-
-    fn dismiss_popup(&mut self, surface: InputMethodPopupSurface) {
-        if let Some(parent) = surface.get_parent().map(|p| p.surface.clone()) {
-            let _ = smithay::desktop::PopupManager::dismiss_popup(
-                &parent,
-                &smithay::desktop::PopupKind::from(surface),
-            );
-        }
-    }
-
-    fn parent_geometry(
-        &self,
-        parent: &WlSurface,
-    ) -> Rectangle<i32, smithay::utils::Logical> {
-        // Look up the parent toplevel and report its window-geometry so
-        // input-method popups (e.g. fcitx candidate window) can position
-        // relative to the cursor inside the focused window.
-        self.space
-            .elements()
-            .find_map(|w| {
-                (w.wl_surface().as_deref() == Some(parent)).then(|| w.geometry())
-            })
-            .unwrap_or_default()
-    }
-}
-delegate_text_input_manager!(MargoState);
-delegate_input_method_manager!(MargoState);
 
 // ── Smithay delegate: pointer constraints + relative pointer ─────────────────
 //
@@ -6594,75 +6553,6 @@ delegate_input_method_manager!(MargoState);
 // Constraint *enforcement* (lock the cursor, clamp to region) lives in
 // `input_handler::handle_pointer_motion`; this module only wires the
 // protocol surface.
-impl PointerConstraintsHandler for MargoState {
-    fn new_constraint(
-        &mut self,
-        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-        pointer: &smithay::input::pointer::PointerHandle<Self>,
-    ) {
-        // Activate the constraint immediately if the pointer is
-        // already over the requesting surface. The client typically
-        // requests a constraint while it has pointer focus (a
-        // fullscreen game, a Blender viewport drag, …), so this is
-        // the common path. If the pointer is somewhere else when
-        // the request arrives, smithay defers activation until
-        // pointer focus moves into the surface.
-        let Some(current_focus) = pointer.current_focus() else {
-            return;
-        };
-        if current_focus.wl_surface().as_deref() == Some(surface) {
-            with_pointer_constraint(surface, pointer, |constraint| {
-                if let Some(constraint) = constraint {
-                    constraint.activate();
-                }
-            });
-        }
-    }
-
-    fn cursor_position_hint(
-        &mut self,
-        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-        pointer: &smithay::input::pointer::PointerHandle<Self>,
-        location: smithay::utils::Point<f64, smithay::utils::Logical>,
-    ) {
-        // While a lock is active, the client may suggest a
-        // post-unlock cursor position via this hint (e.g. "the
-        // crosshair was at (320, 200) when I locked, please put the
-        // cursor there when unlocking"). Honour it only if the
-        // constraint is currently active and the surface still owns
-        // the pointer.
-        let active = with_pointer_constraint(surface, pointer, |constraint| {
-            constraint.is_some_and(|c| c.is_active())
-        });
-        if !active {
-            return;
-        }
-        // Resolve the surface's screen origin so we can convert the
-        // surface-relative `location` hint to compositor-global
-        // coordinates.
-        let origin = self
-            .space
-            .elements()
-            .find_map(|window| {
-                (window.wl_surface().as_deref() == Some(surface)).then(|| {
-                    self.space
-                        .element_location(window)
-                        .unwrap_or_default()
-                })
-            })
-            .unwrap_or_default()
-            .to_f64();
-        let target = origin + location;
-        // Update the pointer's tracked location AND our own
-        // `input_pointer` shadow so the next motion event runs from
-        // the correct anchor.
-        pointer.set_location(target);
-        self.input_pointer.x = target.x;
-        self.input_pointer.y = target.y;
-    }
-}
-delegate_pointer_constraints!(MargoState);
-delegate_relative_pointer!(MargoState);
 
 // ── Smithay delegate: xdg-activation-v1 ──────────────────────────────────────
 //
@@ -6862,18 +6752,6 @@ impl crate::protocols::output_management::OutputManagementHandler for MargoState
 }
 crate::delegate_output_management!(MargoState);
 delegate_presentation!(MargoState);
-
-// wp_color_management_v1 (staging) handler — Phase 1 scaffolding.
-// The actual logic is dispatch-driven inside the protocols module;
-// MargoState only needs to expose the manager state.
-impl crate::protocols::color_management::ColorManagementHandler for MargoState {
-    fn color_management_state(
-        &mut self,
-    ) -> &mut crate::protocols::color_management::ColorManagementState {
-        &mut self.color_management_state
-    }
-}
-crate::delegate_color_management!(MargoState);
 
 // ── ext-image-capture-source-v1 + ext-image-copy-capture-v1 handlers ─────────
 //
@@ -7112,37 +6990,3 @@ fn _force_unused_state_alive(s: &ImageCaptureSourceState) {
     let _ = s;
 }
 
-// ── Smithay delegate: Idle notify + Idle inhibit ─────────────────────────────
-
-impl smithay::wayland::idle_notify::IdleNotifierHandler for MargoState {
-    fn idle_notifier_state(
-        &mut self,
-    ) -> &mut smithay::wayland::idle_notify::IdleNotifierState<Self> {
-        &mut self.idle_notifier_state
-    }
-}
-delegate_idle_notify!(MargoState);
-
-impl smithay::wayland::idle_inhibit::IdleInhibitHandler for MargoState {
-    fn inhibit(
-        &mut self,
-        surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-    ) {
-        self.idle_inhibitors.insert(surface);
-        // Pause idle timers as long as anything is inhibiting.
-        let inhibited = !self.idle_inhibitors.is_empty();
-        self.idle_notifier_state.set_is_inhibited(inhibited);
-        tracing::debug!("idle_inhibit: active={} count={}", inhibited, self.idle_inhibitors.len());
-    }
-
-    fn uninhibit(
-        &mut self,
-        surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-    ) {
-        self.idle_inhibitors.remove(&surface);
-        let inhibited = !self.idle_inhibitors.is_empty();
-        self.idle_notifier_state.set_is_inhibited(inhibited);
-        tracing::debug!("idle_uninhibit: active={} count={}", inhibited, self.idle_inhibitors.len());
-    }
-}
-delegate_idle_inhibit!(MargoState);

@@ -12,7 +12,11 @@
 //! since child modules can see the parent's private items. The
 //! `delegate_*!` macros stay co-located with their impls.
 
+mod color_management;
+mod idle;
+mod input_method;
 mod layer_shell;
+mod pointer_constraints;
 mod session_lock;
 mod xdg_activation;
 mod xdg_decoration;
