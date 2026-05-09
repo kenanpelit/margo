@@ -836,6 +836,10 @@ fn spawn_save(state: &mut MargoState, image: CapturedImage, request: ScreenshotR
                 // so `send_selection` can serve any number of
                 // future read fds without re-encoding.
                 if let Some(bytes) = delivery.clipboard_png.as_ref() {
+                    info!(
+                        "screenshot: setting clipboard selection ({} bytes, image/png)",
+                        bytes.len()
+                    );
                     smithay::wayland::selection::data_device::set_data_device_selection(
                         &state.display_handle,
                         &state.seat,

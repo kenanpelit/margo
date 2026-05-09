@@ -1542,10 +1542,7 @@ fn build_render_elements(
     // already updates the rectangle based on it.
     if let Some(selector) = state.region_selector.as_ref() {
         return crate::screenshot_region_ui::build_render_elements(
-            renderer,
-            od,
-            selector,
-            (state.input_pointer.x, state.input_pointer.y),
+            renderer, od, state, selector,
         );
     }
     build_render_elements_inner(renderer, od, state, true, false)
@@ -2048,6 +2045,64 @@ fn drain_active_cast_frames(
 /// `serve_screencopies` so the regular display render still shows
 /// password managers / private-browsing tabs / 2FA codes intact while
 /// any wlr-screencopy client recording the output sees them blacked out.
+/// Build only the cursor render elements for an output. Public
+/// helper extracted from `build_render_elements_inner`'s cursor
+/// branch so the in-compositor region selector can keep the
+/// pointer visible while the rest of the scene is replaced by
+/// the frozen overlay (`build_render_elements_inner`'s normal
+/// run isn't usable for the selector — it'd return the whole
+/// scene plus the cursor; we only want the cursor).
+pub fn build_cursor_elements(
+    renderer: &mut GlesRenderer,
+    od: &OutputDevice,
+    state: &MargoState,
+) -> Vec<MargoRenderElement> {
+    let output_scale = od.output.current_scale().fractional_scale();
+    let Some(output_geo) = state.space.output_geometry(&od.output) else {
+        return Vec::new();
+    };
+
+    let mut elements = Vec::new();
+    let ptr_global = Point::<f64, _>::from((state.input_pointer.x, state.input_pointer.y));
+    if !output_geo.to_f64().contains(ptr_global) {
+        return elements;
+    }
+    let ptr_pos = ptr_global - output_geo.loc.to_f64();
+    match &state.cursor_status {
+        CursorImageStatus::Surface(surface) => {
+            let hotspot = with_states(surface, |states| {
+                states
+                    .data_map
+                    .get::<Mutex<CursorImageAttributes>>()
+                    .and_then(|attrs| attrs.lock().ok().map(|attrs| attrs.hotspot))
+                    .unwrap_or_default()
+            });
+            let ptr_i = (ptr_pos - hotspot.to_f64())
+                .to_physical_precise_round::<f64, i32>(output_scale);
+            let cursor_elems = render_elements_from_surface_tree(
+                renderer,
+                surface,
+                ptr_i,
+                output_scale,
+                1.0f32,
+                Kind::Cursor,
+            );
+            for e in cursor_elems {
+                elements.push(MargoRenderElement::WaylandSurface(e));
+            }
+        }
+        CursorImageStatus::Hidden => {}
+        _ => {
+            if let Some(cursor_elem) =
+                state.cursor_manager.render_element(renderer, ptr_pos, output_scale)
+            {
+                elements.push(MargoRenderElement::Cursor(cursor_elem));
+            }
+        }
+    }
+    elements
+}
+
 pub fn build_render_elements_inner(
     renderer: &mut GlesRenderer,
     od: &OutputDevice,

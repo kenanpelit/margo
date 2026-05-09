@@ -5761,6 +5761,11 @@ impl SelectionHandler for MargoState {
                 }
             }
             SelectionUserData::Screenshot(bytes) => {
+                tracing::info!(
+                    "screenshot clipboard: send_selection mime=`{}` bytes={}",
+                    mime_type,
+                    bytes.len()
+                );
                 // Margo-offered selection (PNG screenshot). Spawn a
                 // worker thread to write the bytes to the read end of
                 // the pipe — the consumer (whatever Wayland client
