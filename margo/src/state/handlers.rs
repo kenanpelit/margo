@@ -23,5 +23,6 @@ mod pointer_constraints;
 mod screencopy;
 mod selection;
 mod session_lock;
+mod x11;
 mod xdg_activation;
 mod xdg_decoration;
