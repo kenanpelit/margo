@@ -11,3 +11,6 @@ flake.lock
 flake.nix
 # Rust build artifacts
 /target/
+
+# mkdocs build output (W4.3)
+/site/

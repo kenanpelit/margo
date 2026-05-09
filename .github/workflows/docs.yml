@@ -1,0 +1,67 @@
+name: docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - 'road_map.md'
+      - 'CONTRIBUTING.md'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+# Pages deploy needs these. Per-job permissions stay tight by default.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Coalesce concurrent runs — only the latest deploys.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+          cache: pip
+
+      - name: Install mkdocs-material
+        run: pip install mkdocs-material
+
+      - name: Sync repo-root markdown into docs/
+        # The roadmap and CONTRIBUTING file are source-of-truth at the
+        # repo root (referenced by README, by mctl + by every PR).
+        # Copy them into docs/ at build time so the site renders the
+        # current version without forcing two copies in git.
+        run: |
+          cp road_map.md     docs/roadmap.md
+          cp CONTRIBUTING.md docs/contributing.md
+
+      - name: Build site
+        run: mkdocs build --strict
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

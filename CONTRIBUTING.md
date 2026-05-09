@@ -120,6 +120,28 @@ Big features need a roadmap entry first (open an issue or update
 `road_map.md`). Don't write 1000 lines of code chasing a feature
 nobody agreed to ship.
 
+## Documentation site
+
+The published docs at <https://kenanpelit.github.io/margo/> are built
+from `/docs/` via [mkdocs-material](https://squidfunk.github.io/mkdocs-material/).
+`mkdocs.yml` at the repo root drives the build. The CI workflow at
+`.github/workflows/docs.yml` syncs `road_map.md` and `CONTRIBUTING.md`
+into `docs/` before running mkdocs (the stub files in git are
+placeholders that get overwritten at build time).
+
+To preview the site locally:
+
+```bash
+python3 -m venv .venv && . .venv/bin/activate
+pip install mkdocs-material
+cp road_map.md     docs/roadmap.md      # mirror the sync CI does
+cp CONTRIBUTING.md docs/contributing.md
+mkdocs serve                             # http://127.0.0.1:8000/
+```
+
+`mkdocs build --strict` is what CI runs; treat warnings as build
+failures.
+
 ## Licensing
 
 GPL-3.0-or-later. By submitting code you agree to license it under the

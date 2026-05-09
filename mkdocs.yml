@@ -1,0 +1,107 @@
+site_name: margo
+site_description: >-
+  A modern Wayland tiling compositor — Rust + Smithay, with a
+  tag-based workflow. Daily-driver-grade. dwm/dwl-style tags,
+  14-layout catalogue, niri-grade animations, embedded Rhai
+  scripting, HDR scaffolding, in-compositor screencast portal.
+site_url: https://kenanpelit.github.io/margo/
+repo_url: https://github.com/kenanpelit/margo
+repo_name: kenanpelit/margo
+edit_uri: edit/main/docs/
+copyright: >-
+  GPL-3.0-or-later. Built on
+  <a href="https://github.com/Smithay/smithay">Smithay</a>.
+
+docs_dir: docs
+
+# docs/README.md is the contributor-facing "what's in this folder"
+# index that GitHub auto-renders when someone browses /docs/. The
+# site has its own index.md as the landing page, so README.md is
+# excluded from the build.
+exclude_docs: |
+  README.md
+
+theme:
+  name: material
+  logo: assets/margo-icon.svg
+  favicon: assets/margo-icon.svg
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: deep orange
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: deep orange
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - content.code.copy
+    - content.code.annotate
+    - content.action.edit
+    - search.suggest
+    - search.highlight
+  font:
+    text: Inter
+    code: JetBrains Mono
+
+nav:
+  - Overview: index.md
+  - Install: install.md
+  - Configuration: configuration.md
+  - Companion tools: companion-tools.md
+  - Scripting: scripting.md
+  - Manual checklist: manual-checklist.md
+  - Design notes:
+      - HDR + colour management: hdr-design.md
+      - Built-in portal: portal-design.md
+      - Scripting engine: scripting-design.md
+  - Roadmap: roadmap.md
+  - Contributing: contributing.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - toc:
+      permalink: "#"
+      toc_depth: 3
+      # GitHub-style slugs preserve double dashes from `&` →  ` -- ` so
+      # cross-doc anchor links from road_map.md (e.g.
+      # `#3-animations--frame-clock-p2`) match the rendered
+      # heading IDs. The default python-markdown slugifier collapses
+      # consecutive dashes; pymdownx.slugs.slugify(case='lower')
+      # mirrors GitHub's behaviour.
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/kenanpelit/margo
+      name: kenanpelit/margo on GitHub

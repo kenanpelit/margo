@@ -14,6 +14,11 @@
   <a href="road_map.md"><img src="https://img.shields.io/badge/status-daily%20driver-success" alt="Status"></a>
   <a href="Cargo.toml"><img src="https://img.shields.io/badge/rust-1.85%2B-orange?logo=rust" alt="Rust"></a>
   <a href="https://github.com/Smithay/smithay"><img src="https://img.shields.io/badge/built%20on-Smithay-blueviolet" alt="Smithay"></a>
+  <a href="https://kenanpelit.github.io/margo/"><img src="https://img.shields.io/badge/docs-kenanpelit.github.io%2Fmargo-blue" alt="Docs site"></a>
+</p>
+
+<p align="center">
+  📖 <strong><a href="https://kenanpelit.github.io/margo/">Documentation site</a></strong> — install guide, configuration reference, scripting, design notes, manual checklist.
 </p>
 
 **margo** is a Wayland compositor in the dwl/dwm tradition — a Rust + [Smithay] port of [mango]. Tags instead of workspaces, a deep tiling-layout catalogue, and a small set of companion CLIs (`mctl`, `mlayout`, `mscreenshot`) for inspection and control from the shell. Built and used as a daily driver: every commit ships through a real session before tagging.
