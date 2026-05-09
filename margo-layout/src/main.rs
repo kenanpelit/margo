@@ -153,7 +153,12 @@ enum Cmd {
 
     /// Render an ASCII preview of `<name>` to stdout — useful for
     /// sanity-checking the geometry without activating the layout.
-    Preview { name: String },
+    /// Omit `<name>` to preview every layout in the catalogue.
+    Preview {
+        /// Layout slug, name, or shortcut. If omitted, every
+        /// layout is previewed in turn (active marked with `●`).
+        name: Option<String>,
+    },
 
     /// Interactive picker. Renders the layout list with previews
     /// and reads a single line from stdin (slug, name, or
@@ -219,7 +224,7 @@ fn run() -> Result<()> {
         Cmd::Set { name, no_reload } => cmd_set(&config_dir, &layouts, &name, no_reload),
         Cmd::Next { no_reload } => cmd_cycle(&config_dir, &layouts, 1, no_reload),
         Cmd::Prev { no_reload } => cmd_cycle(&config_dir, &layouts, -1, no_reload),
-        Cmd::Preview { name } => cmd_preview(&layouts, &name),
+        Cmd::Preview { name } => cmd_preview(&config_dir, &layouts, name.as_deref()),
         Cmd::Pick { no_gui, no_reload } => cmd_pick(&config_dir, &layouts, no_gui, no_reload),
         // Already handled above.
         Cmd::Init { .. } | Cmd::New { .. } => unreachable!(),
@@ -642,10 +647,42 @@ fn cmd_cycle(
     Ok(())
 }
 
-fn cmd_preview(layouts: &[Layout], needle: &str) -> Result<()> {
-    let layout = match_layout(layouts, needle)?;
-    println!("{}", layout.name);
-    println!("{}", preview::render_ascii(layout, 80));
+fn cmd_preview(
+    config_dir: &Path,
+    layouts: &[Layout],
+    needle: Option<&str>,
+) -> Result<()> {
+    if let Some(needle) = needle {
+        let layout = match_layout(layouts, needle)?;
+        println!("{}", layout.name);
+        println!("{}", preview::render_ascii(layout, 80));
+        return Ok(());
+    }
+
+    if layouts.is_empty() {
+        bail!(
+            "no layouts in {} — run `margo-layout init` first",
+            config_dir.display()
+        );
+    }
+    let active = current_slug(config_dir);
+    for (i, layout) in layouts.iter().enumerate() {
+        if i > 0 {
+            println!();
+        }
+        let marker = if Some(&layout.slug) == active.as_ref() {
+            "● "
+        } else {
+            "  "
+        };
+        let shortcuts = if layout.shortcuts.is_empty() {
+            String::new()
+        } else {
+            format!(" [{}]", layout.shortcuts.join(", "))
+        };
+        println!("{}{}{}", marker, layout.name, shortcuts);
+        println!("{}", preview::render_ascii(layout, 80));
+    }
     Ok(())
 }
 
