@@ -107,7 +107,29 @@ pub struct PendingOutputModeChange {
 // ── CLI ───────────────────────────────────────────────────────────────────────
 
 #[derive(Parser, Debug)]
-#[command(name = "margo", about = "A feature-rich Wayland compositor")]
+#[command(
+    name = "margo",
+    version,
+    about = "A feature-rich Wayland compositor",
+    long_about = "\
+A feature-rich Wayland compositor (Rust/Smithay rewrite of mango).
+
+COMPANION BINARIES (each has its own --help):
+  mctl              IPC client — status, layout, tag, dispatch,
+                    actions catalogue (`mctl actions`).
+  margo-layout      Named monitor-arrangement profiles. Capture the
+                    live setup with `init` / `new`, switch with
+                    `set`, `next`, `prev`, or `pick`.
+  margo-screenshot  Capture full screen / region / focused window.
+
+ENVIRONMENT:
+  MARGO_LOG         tracing filter (e.g. `info`, `debug`,
+                    `margo=trace,smithay=info`).
+
+DOCUMENTATION:
+  /usr/share/doc/margo-git/   config example, road map, READMEs
+  https://github.com/kenanpelit/margo"
+)]
 struct Args {
     /// Path to config file (default: ~/.config/margo/config.conf)
     #[arg(short, long, value_name = "FILE")]

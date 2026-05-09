@@ -23,6 +23,7 @@ use margo_ipc::protocols::dwl_ipc::{
 #[derive(Parser, Debug)]
 #[command(
     name = "mctl",
+    version,
     about = "margo compositor control",
     long_about = "Query and control the margo Wayland compositor via the dwl-ipc-v2 protocol.\n\
                   \n\
