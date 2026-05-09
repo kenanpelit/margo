@@ -818,6 +818,12 @@ pub fn run(
     // clients so anything that bound the global before us (`kanshi`,
     // `wlr-randr` queries) sees the full list.
     state.publish_output_topology();
+    // Seed the runtime state file so `mctl clients` / `mctl outputs`
+    // work from the very first frame. Without this, the file only
+    // shows up after the first `arrange_all` (typically a tag toggle
+    // or window mapping), which means a stale-margo session has no
+    // way to query its own state.
+    state.write_state_file();
 
     info!("udev backend ready ({} outputs)", state.monitors.len());
     Ok(())

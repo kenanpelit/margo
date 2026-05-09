@@ -61,6 +61,7 @@ enum Command {
     /// Dispatch a compositor command by name (margo's internal dispatch table)
     #[command(
         alias = "d",
+        display_order = 20,
         long_about = "Dispatch a compositor command by name.\n\
                       \n\
                       The action <NAME> is the same string used in `bind = MODS,KEY,<NAME>,<args>` \
@@ -90,6 +91,7 @@ enum Command {
 
     /// Set the active tagset on an output (raw tag bitmask)
     #[command(
+        display_order = 21,
         long_about = "Set the active tagset on an output (raw tag bitmask).\n\
                       \n\
                       Bitmask is 1-indexed: tag 1 = 1, tag 2 = 2, tag 3 = 4, tag N = 1 << (N - 1). \
@@ -112,6 +114,7 @@ enum Command {
 
     /// Mutate the focused client's tag bitmask (advanced)
     #[command(
+        display_order = 23,
         long_about = "Mutate the focused client's tag bitmask.\n\
                       \n\
                       Applies `(tags & AND_MASK) ^ XOR_MASK`. Almost no one calls this \
@@ -129,6 +132,7 @@ enum Command {
 
     /// Set layout by index (0-based, matches the compositor's layout list)
     #[command(
+        display_order = 22,
         long_about = "Set the layout for the focused tag by 0-based index.\n\
                       \n\
                       The index ordering matches the list announced by the compositor at \
@@ -142,13 +146,16 @@ enum Command {
     },
 
     /// Quit the compositor cleanly
+    #[command(display_order = 31)]
     Quit,
 
     /// Reload `~/.config/margo/config.conf`
+    #[command(display_order = 30)]
     Reload,
 
     /// Stream state updates from margo (runs until Ctrl-C)
     #[command(
+        display_order = 2,
         long_about = "Stream a fresh status block every time the compositor publishes a \
                       `frame` event on the targeted output. Useful for watching focus / \
                       tag / layout changes live, or for piping into `awk`/`jq` in shell \
@@ -158,6 +165,7 @@ enum Command {
 
     /// Print current status (one shot)
     #[command(
+        display_order = 1,
         long_about = "Print the focused output's current state once and exit.\n\
                       \n\
                       Default output is the human-readable `output= … tag[N] …` block.\n\
@@ -183,6 +191,7 @@ enum Command {
 
     /// List every dispatch action margo accepts (for binds and `mctl dispatch`)
     #[command(
+        display_order = 40,
         long_about = "Print every dispatch action margo accepts, grouped by purpose, with \
                       argument-shape hints. Use `--verbose` for inline detail / examples, \
                       `--group <name>` to filter to a single section, `--names` for a flat \
@@ -226,6 +235,7 @@ enum Command {
                         mctl check-config --config ~/dotfiles/margo/config.conf\n  \
                         mctl check-config 2>&1 | grep ERROR"
     )]
+    #[command(display_order = 42)]
     CheckConfig {
         /// Path to inspect. Defaults to `~/.config/margo/config.conf`.
         #[arg(long)]
@@ -253,6 +263,7 @@ enum Command {
                       Useful when a rule isn't firing — pinpoints the regex problem \
                       without needing to launch the app and watch journalctl."
     )]
+    #[command(display_order = 41)]
     Rules {
         /// Path to the config to inspect. Defaults to
         /// `$XDG_CONFIG_HOME/margo/config.conf`, falling back to
@@ -284,6 +295,7 @@ enum Command {
                       from `mctl actions --names` — clap-generated completions only cover the \
                       subcommand layer, so prefer the contrib scripts where possible."
     )]
+    #[command(display_order = 43)]
     Completions {
         /// Shell to generate for.
         #[arg(value_enum)]
@@ -297,6 +309,8 @@ enum Command {
     /// you'd get from triggering `pkill -USR1 margo` and grepping
     /// the journal, but live and parseable.
     #[command(
+        alias = "client",
+        display_order = 3,
         long_about = "List every open window the compositor knows about — tag, \
                       monitor, app_id, title, geometry, focus, floating/fullscreen \
                       state. Reads `$XDG_RUNTIME_DIR/margo/state.json` which margo \
@@ -334,6 +348,8 @@ enum Command {
 
     /// List every connected output with mode, position, scale, layout.
     #[command(
+        alias = "monitors",
+        display_order = 4,
         long_about = "List every connected output: connector name, position in \
                       the global compositor coordinate space, mode, scale, \
                       transform, current layout, active-tag mask. Reads the \
@@ -351,6 +367,8 @@ enum Command {
 
     /// Print the focused window's app_id + title (terse, scriptable).
     #[command(
+        alias = "active",
+        display_order = 5,
         long_about = "Print the focused window's app_id + title in a single \
                       line — designed for status-bar scripts that just need \
                       `who has focus right now`. `--json` for the full \
@@ -651,9 +669,26 @@ fn main() -> Result<()> {
             eq.roundtrip(&mut state)?;
         }
         Command::Status { json } => {
-            if json {
-                print_status_json(&state)?;
+            // Prefer the rich state.json (post-r143) which carries
+            // the output's connector name plus tag-mask info that
+            // dwl-ipc-v2 doesn't broadcast in a single event. Fall
+            // back to the dwl-ipc snapshot if the file isn't there
+            // (margo-version mismatch, race on boot, etc.).
+            let used_state_file = if json {
+                if let Ok(rich) = read_state_file() {
+                    println!("{}", serde_json::to_string_pretty(&rich)?);
+                    true
+                } else {
+                    print_status_json(&state)?;
+                    true
+                }
+            } else if let Ok(rich) = read_state_file() {
+                print_status_rich(&rich, args.output.as_deref());
+                true
             } else {
+                false
+            };
+            if !used_state_file {
                 print_status(&state, target_idx);
             }
         }
@@ -1257,6 +1292,156 @@ fn print_status(state: &IpcState, idx: usize) {
             .collect::<Vec<_>>()
             .join(", ")
     );
+}
+
+/// Render `mctl status` from the richer state.json snapshot —
+/// per-output blocks with proper connector names + tag client
+/// counts. Used when the file exists (post-r143 margo).
+fn print_status_rich(state: &serde_json::Value, output_filter: Option<&str>) {
+    use std::io::IsTerminal;
+    let tty = std::io::stdout().is_terminal();
+    let bold = if tty { "\x1b[1m" } else { "" };
+    let dim = if tty { "\x1b[2m" } else { "" };
+    let cyan = if tty { "\x1b[36m" } else { "" };
+    let yellow = if tty { "\x1b[33m" } else { "" };
+    let green = if tty { "\x1b[32m" } else { "" };
+    let red = if tty { "\x1b[31m" } else { "" };
+    let reset = if tty { "\x1b[0m" } else { "" };
+
+    let outputs = match state["outputs"].as_array() {
+        Some(o) => o,
+        None => return,
+    };
+    let clients = state["clients"].as_array().map(|v| v.as_slice()).unwrap_or(&[]);
+    let layout_names: Vec<String> = state["layouts"]
+        .as_array()
+        .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+    let tag_count = state["tag_count"].as_u64().unwrap_or(9) as usize;
+
+    let mut printed_any = false;
+    for out in outputs {
+        let name = out["name"].as_str().unwrap_or("");
+        if let Some(filter) = output_filter {
+            if name != filter {
+                continue;
+            }
+        }
+        let active = out["active"].as_bool().unwrap_or(false);
+        let layout_idx = out["layout_idx"].as_u64().unwrap_or(0) as usize;
+        let layout = layout_names
+            .get(layout_idx)
+            .map(String::as_str)
+            .unwrap_or("?");
+
+        let active_marker = if active {
+            format!("{green}●{reset} ")
+        } else {
+            "  ".to_string()
+        };
+        if printed_any {
+            println!();
+        }
+        printed_any = true;
+        println!(
+            "{active_marker}{bold}{name}{reset}  {dim}layout {reset}{cyan}{layout}{reset}"
+        );
+
+        // Focused window on this output (find from clients array).
+        let mon_idx = out["x"].as_i64(); // unused — we match by name
+        let _ = mon_idx;
+        let focused = clients
+            .iter()
+            .find(|c| {
+                c["focused"].as_bool() == Some(true)
+                    && c["monitor"].as_str() == Some(name)
+            });
+        if let Some(c) = focused {
+            let app = c["app_id"].as_str().unwrap_or("");
+            let title = c["title"].as_str().unwrap_or("");
+            let mut flags = Vec::new();
+            if c["fullscreen"].as_bool().unwrap_or(false) {
+                flags.push(format!("{red}FULLSCREEN{reset}"));
+            }
+            if c["floating"].as_bool().unwrap_or(false) {
+                flags.push(format!("{yellow}FLOAT{reset}"));
+            }
+            let flags_str = if flags.is_empty() {
+                String::new()
+            } else {
+                format!("  {}", flags.join(" "))
+            };
+            println!(
+                "    {dim}focused{reset}: {bold}{app}{reset} · {title}{flags_str}"
+            );
+            let w = c["width"].as_i64().unwrap_or(0);
+            let h = c["height"].as_i64().unwrap_or(0);
+            if w > 0 && h > 0 {
+                let x = c["x"].as_i64().unwrap_or(0);
+                let y = c["y"].as_i64().unwrap_or(0);
+                println!("    {dim}geometry{reset}: {w}×{h} @ {x},{y}");
+            }
+        } else {
+            println!("    {dim}focused{reset}: (none)");
+        }
+
+        // Tag row: count clients per tag on this output.
+        let active_tag = out["active_tag_mask"].as_u64().unwrap_or(0) as u32;
+        let mut counts = vec![0u32; tag_count];
+        for c in clients {
+            if c["monitor"].as_str() != Some(name) {
+                continue;
+            }
+            let tags = c["tags"].as_u64().unwrap_or(0) as u32;
+            for i in 0..tag_count {
+                if tags & (1 << i) != 0 {
+                    counts[i] += 1;
+                }
+            }
+        }
+        let mut row = String::new();
+        for i in 0..tag_count {
+            let n = i + 1;
+            let on = active_tag & (1 << i) != 0;
+            let label = format!("{n}·{}", counts[i]);
+            let cell = if on {
+                let any_focused_here = clients.iter().any(|c| {
+                    c["focused"].as_bool() == Some(true)
+                        && c["monitor"].as_str() == Some(name)
+                        && (c["tags"].as_u64().unwrap_or(0) as u32 & (1 << i)) != 0
+                });
+                if any_focused_here {
+                    format!("{green}[{label}]●{reset}")
+                } else {
+                    format!("{cyan}[{label}]{reset}")
+                }
+            } else if counts[i] > 0 {
+                label.clone()
+            } else {
+                format!("{dim}{label}{reset}")
+            };
+            if !row.is_empty() {
+                row.push_str("  ");
+            }
+            row.push_str(&cell);
+        }
+        println!("    {dim}tags{reset}: {row}");
+    }
+
+    if printed_any {
+        println!();
+        println!(
+            "{dim}layouts:{reset} {}",
+            layout_names
+                .iter()
+                .enumerate()
+                .map(|(i, l)| format!("{i}:{l}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    } else if let Some(f) = output_filter {
+        eprintln!("(no output named `{f}`)");
+    }
 }
 
 // ── State-file consumers ────────────────────────────────────────
