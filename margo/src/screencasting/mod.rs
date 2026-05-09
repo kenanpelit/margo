@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! PipeWire screencast streams + cast session lifecycle.
 //!
 //! Companion module to [`crate::dbus::mutter_screen_cast`]. Where the

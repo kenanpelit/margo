@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Render-side helpers used by the screencast pipeline.
 //!
 //! Direct port of niri/src/render_helpers/mod.rs — only the

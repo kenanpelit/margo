@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! `org.gnome.Mutter.ServiceChannel` D-Bus shim.
 //!
 //! Direct port of niri/src/dbus/mutter_service_channel.rs. Used by

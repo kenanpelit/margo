@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! `org.gnome.Shell.Screenshot` D-Bus shim.
 //!
 //! Direct port of niri/src/dbus/gnome_shell_screenshot.rs.

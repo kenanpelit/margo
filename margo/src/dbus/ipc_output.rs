@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Margo equivalents of niri's `IpcOutputMap` + `niri_ipc::Output` —
 //! a structurally-compatible stand-in so the ported D-Bus shims compile
 //! against the same shape they do in niri.
