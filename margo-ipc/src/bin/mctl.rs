@@ -1346,7 +1346,7 @@ fn print_status(state: &IpcState, idx: usize) {
         } else if tag.state == 2 {
             format!("{red}{label}!{reset}")
         } else if tag.clients > 0 {
-            format!("{}", label)
+            label.to_string()
         } else {
             format!("{dim}{label}{reset}")
         };
@@ -1468,17 +1468,17 @@ fn print_status_rich(state: &serde_json::Value, output_filter: Option<&str>) {
                 continue;
             }
             let tags = c["tags"].as_u64().unwrap_or(0) as u32;
-            for i in 0..tag_count {
+            for (i, slot) in counts.iter_mut().enumerate() {
                 if tags & (1 << i) != 0 {
-                    counts[i] += 1;
+                    *slot += 1;
                 }
             }
         }
         let mut row = String::new();
-        for i in 0..tag_count {
+        for (i, count) in counts.iter().enumerate() {
             let n = i + 1;
             let on = active_tag & (1 << i) != 0;
-            let label = format!("{n}·{}", counts[i]);
+            let label = format!("{n}·{}", count);
             let cell = if on {
                 let any_focused_here = clients.iter().any(|c| {
                     c["focused"].as_bool() == Some(true)
@@ -1638,8 +1638,7 @@ fn cmd_clients(
         .map(|c| c["app_id"].as_str().unwrap_or("").len())
         .max()
         .unwrap_or(6)
-        .max(6)
-        .min(28);
+        .clamp(6, 28);
 
     // Header.
     if wide {

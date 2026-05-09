@@ -3594,7 +3594,7 @@ fn render_output(
             od.render_count += 1;
             if result.is_empty {
                 od.empty_count += 1;
-                if od.empty_count <= 5 || od.empty_count % 120 == 0 {
+                if od.empty_count <= 5 || od.empty_count.is_multiple_of(120) {
                     info!(
                         "render empty output={} reason={} renders={} elements={}",
                         od.output.name(),
@@ -3613,7 +3613,7 @@ fn render_output(
                     // queue silently until the page-flip completes; the
                     // matching `DrmEvent::VBlank` will pop it back down.
                     state.note_frame_queued();
-                    if od.queued_count <= 10 || od.queued_count % 300 == 0 {
+                    if od.queued_count <= 10 || od.queued_count.is_multiple_of(300) {
                         info!(
                             "queued frame output={} reason={} queued={} renders={} elements={}",
                             od.output.name(),
@@ -3642,7 +3642,7 @@ fn render_output(
                 Err(e) => {
                     od.queue_error_count += 1;
                     state.request_repaint();
-                    if od.queue_error_count <= 10 || od.queue_error_count % 300 == 0 {
+                    if od.queue_error_count <= 10 || od.queue_error_count.is_multiple_of(300) {
                         warn!(
                             "queue_frame output={} reason={} errors={} elements={} error={e:?}",
                             od.output.name(),

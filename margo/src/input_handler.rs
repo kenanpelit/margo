@@ -495,7 +495,7 @@ fn handle_pointer_motion<B: InputBackend, E: PointerMotionEvent<B>>(
             &RelativeMotionEvent {
                 delta,
                 delta_unaccel,
-                utime: event.time() as u64 * 1000,
+                utime: event.time() * 1000,
             },
         );
         ptr.frame(state);
@@ -569,7 +569,7 @@ fn handle_pointer_motion_abs<B: InputBackend, E: PointerMotionAbsoluteEvent<B>>(
 
 fn log_pointer_motion(state: &MargoState, kind: &str, pos: Point<f64, Logical>) {
     let count = state.input_pointer.motion_events;
-    if count <= 10 || count % 120 == 0 {
+    if count <= 10 || count.is_multiple_of(120) {
         info!(
             "pointer motion kind={} count={} x={:.1} y={:.1}",
             kind, count, pos.x, pos.y

@@ -577,10 +577,10 @@ where
             zwlr_output_configuration_head_v1::Request::SetScale { scale } => {
                 pending.scale = Some(scale);
             }
-            zwlr_output_configuration_head_v1::Request::SetTransform { transform } => {
-                if let WEnum::Value(t) = transform {
-                    pending.transform = Some(t);
-                }
+            zwlr_output_configuration_head_v1::Request::SetTransform {
+                transform: WEnum::Value(t),
+            } => {
+                pending.transform = Some(t);
             }
             zwlr_output_configuration_head_v1::Request::SetPosition { x, y } => {
                 pending.position = Some((x, y));

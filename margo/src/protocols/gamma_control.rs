@@ -129,7 +129,7 @@ where
                         if let Some(gamma_size) = state.get_gamma_size(&output) {
                             let zwlr_gamma_control =
                                 data_init.init(id, GammaControlState { gamma_size });
-                            zwlr_gamma_control.gamma_size(gamma_size as u32);
+                            zwlr_gamma_control.gamma_size(gamma_size);
                             state
                                 .gamma_control_manager_state()
                                 .gamma_controls

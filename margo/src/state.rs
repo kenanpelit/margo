@@ -2044,7 +2044,7 @@ impl MargoState {
         self.lock_surfaces.clear();
         self.arrange_all();
         self.refresh_keyboard_focus();
-        let _ = crate::utils::spawn(&[
+        let _ = crate::utils::spawn([
             "notify-send",
             "-a",
             "margo",
@@ -4426,7 +4426,7 @@ impl MargoState {
         } else {
             appid
         };
-        let _ = crate::utils::spawn(&[
+        let _ = crate::utils::spawn([
             "notify-send", "-a", "margo",
             "-i", "view-pin-symbolic",
             "-t", "1200",
@@ -4457,7 +4457,7 @@ impl MargoState {
         } else {
             name.to_string()
         };
-        let _ = crate::utils::spawn(&[
+        let _ = crate::utils::spawn([
             "notify-send", "-a", "margo",
             "-i", "view-grid-symbolic",
             "-t", "1200",
@@ -4471,7 +4471,7 @@ impl MargoState {
     /// state feedback for layout-cycle keybinds.
     pub fn notify_layout_state(&self, action: &str, value: &str) {
         let body = format!("{action}: {value}");
-        let _ = crate::utils::spawn(&[
+        let _ = crate::utils::spawn([
             "notify-send", "-a", "margo",
             "-i", "view-grid-symbolic",
             "-t", "1000",
@@ -5199,8 +5199,8 @@ impl CompositorHandler for MargoState {
                 root = parent;
             }
 
-            if self.session_locked {
-                if self
+            if self.session_locked
+                && self
                     .lock_surfaces
                     .iter()
                     .any(|(_, s)| s.wl_surface() == &root)
@@ -5227,7 +5227,6 @@ impl CompositorHandler for MargoState {
                     self.request_repaint();
                     return;
                 }
-            }
 
             // First check if this commit belongs to a client we've
             // deferred (created in `new_toplevel`, not yet mapped
@@ -5255,7 +5254,7 @@ impl CompositorHandler for MargoState {
                 // xdg-shell clients perform an initial bufferless commit after
                 // role assignment and then wait for this configure.
                 if let WindowSurface::Wayland(toplevel) = window.underlying_surface() {
-                    self.refresh_wayland_toplevel_identity(&window, &toplevel);
+                    self.refresh_wayland_toplevel_identity(&window, toplevel);
                     let initial_sent = with_states(toplevel.wl_surface(), |states| {
                         states
                             .data_map
@@ -5407,7 +5406,7 @@ impl MargoState {
             return;
         }
         if let WindowSurface::Wayland(toplevel) = self.clients[idx].window.underlying_surface() {
-            let (app_id, title) = read_toplevel_identity(&toplevel);
+            let (app_id, title) = read_toplevel_identity(toplevel);
             self.clients[idx].app_id = app_id;
             self.clients[idx].title = title;
         }
@@ -5849,12 +5848,9 @@ impl XdgShellHandler for MargoState {
                     // a remaining visible client at or before `idx`, else the
                     // first visible.
                     .or_else(|| {
-                        (0..self.clients.len())
-                            .rev()
-                            .filter(|&i| {
-                                i < idx && self.clients[i].is_visible_on(mon_idx, tagset)
-                            })
-                            .next()
+                        (0..self.clients.len()).rev().find(|&i| {
+                            i < idx && self.clients[i].is_visible_on(mon_idx, tagset)
+                        })
                     })
                     .or_else(|| {
                         self.clients

@@ -28,7 +28,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
         "reload" | "reload_config" => match state.reload_config() {
             Ok(()) => {
                 tracing::info!("config reloaded");
-                let _ = crate::utils::spawn(&[
+                let _ = crate::utils::spawn([
                     "notify-send",
                     "-a",
                     "margo",
@@ -42,7 +42,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
             }
             Err(e) => {
                 tracing::error!("reload config: {e:?}");
-                let _ = crate::utils::spawn(&[
+                let _ = crate::utils::spawn([
                     "notify-send",
                     "-a",
                     "margo",

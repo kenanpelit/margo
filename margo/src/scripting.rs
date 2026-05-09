@@ -322,12 +322,7 @@ fn init_script_path() -> Option<PathBuf> {
         std::env::var_os("XDG_CONFIG_HOME").map(|h| PathBuf::from(h).join("margo/init.rhai")),
         std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config/margo/init.rhai")),
     ];
-    for c in candidates.into_iter().flatten() {
-        if c.is_file() {
-            return Some(c);
-        }
-    }
-    None
+    candidates.into_iter().flatten().find(|c| c.is_file())
 }
 
 /// Stand up the scripting engine on `state`, compile init.rhai if

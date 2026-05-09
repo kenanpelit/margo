@@ -154,7 +154,7 @@ impl StaticMetadataDescriptor {
     ///
     /// Kernel reads it as little-endian; we encode that way
     /// regardless of host endianness so the output is portable.
-    pub fn to_blob(&self) -> [u8; 28] {
+    pub fn to_blob(self) -> [u8; 28] {
         let mut out = [0u8; 28];
         out[0] = self.eotf;
         out[1] = self.metadata_type;

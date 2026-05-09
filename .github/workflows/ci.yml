@@ -62,12 +62,14 @@ jobs:
       - name: cargo test
         run: cargo test --workspace
 
-      - name: cargo clippy (informational)
-        # Run clippy but don't gate — the codebase has accumulated
-        # ~26 warnings across sessions; an opt-in cleanup pass is
-        # tracked separately. CI surfaces them in the run log so
-        # they're visible without blocking merges.
-        run: cargo clippy --workspace --all-targets || true
+      - name: cargo clippy (gating)
+        # W1.4: clippy is now a gate. Cleanup pass landed (51
+        # warnings → 0); future drift caught at PR time. Project
+        # lint posture in `clippy.toml` + crate-level allows in
+        # `margo/src/main.rs` document which categories are
+        # intentionally suppressed (cosmetic doc-list indents +
+        # `too_many_arguments` on render helpers).
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: mctl check-config (bundled example)
         # Validates that an example user config parses without

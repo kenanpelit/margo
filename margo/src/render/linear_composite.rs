@@ -137,7 +137,7 @@ pub fn pq_encode(l: f32) -> f32 {
 pub fn hlg_decode(c: f32) -> f32 {
     const A: f32 = 0.17883277;
     const B: f32 = 0.28466892;
-    const C: f32 = 0.55991073;
+    const C: f32 = 0.559_910_7;
     if c <= 0.5 {
         c * c / 3.0
     } else {
@@ -149,7 +149,7 @@ pub fn hlg_decode(c: f32) -> f32 {
 pub fn hlg_encode(l: f32) -> f32 {
     const A: f32 = 0.17883277;
     const B: f32 = 0.28466892;
-    const C: f32 = 0.55991073;
+    const C: f32 = 0.559_910_7;
     if l <= 1.0 / 12.0 {
         (3.0 * l).sqrt()
     } else {

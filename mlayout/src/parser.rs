@@ -135,7 +135,7 @@ pub fn gather_layouts(dir: &Path) -> Result<Vec<Layout>> {
         layouts.push(layout);
     }
 
-    layouts.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    layouts.sort_by_key(|a| a.name.to_lowercase());
     Ok(layouts)
 }
 

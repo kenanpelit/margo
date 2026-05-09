@@ -127,12 +127,7 @@ pub fn plugins_dir() -> Option<PathBuf> {
         std::env::var_os("XDG_CONFIG_HOME").map(|h| PathBuf::from(h).join("margo/plugins")),
         std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config/margo/plugins")),
     ];
-    for c in candidates.into_iter().flatten() {
-        if c.is_dir() {
-            return Some(c);
-        }
-    }
-    None
+    candidates.into_iter().flatten().find(|c| c.is_dir())
 }
 
 /// Walk the plugins directory and return a description of every

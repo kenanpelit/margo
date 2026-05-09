@@ -970,7 +970,7 @@ impl Cast {
                 let still_alive = state
                     .monitors
                     .iter()
-                    .any(|m| &m.output == &output);
+                    .any(|m| m.output == output);
                 if still_alive {
                     state.request_repaint();
                 }

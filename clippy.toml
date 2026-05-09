@@ -1,0 +1,13 @@
+# Project-level clippy config. Mirrors niri's pattern.
+#
+# `ignore-interior-mutability` tells clippy not to flag these
+# types as "mutable_key_type" candidates — they use UnsafeCell /
+# atomics internally for refcounting / cloning, but their hash +
+# eq behaviour is observably stable for the lifetime of any
+# given handle. That's exactly the contract a HashMap key needs.
+ignore-interior-mutability = [
+    "smithay::desktop::Window",
+    "smithay::output::Output",
+    "wayland_server::backend::ClientId",
+    "wayland_server::backend::ObjectId",
+]
