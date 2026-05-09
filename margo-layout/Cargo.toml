@@ -1,0 +1,17 @@
+[package]
+name = "margo-layout"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Switch margo's monitor layout between named profiles — multi-setup helper for laptop users."
+repository.workspace = true
+
+[[bin]]
+name = "margo-layout"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
