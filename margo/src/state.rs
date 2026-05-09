@@ -1,4 +1,10 @@
 #![allow(dead_code)]
+
+// W4.2: per-protocol handler impls extracted into sibling files
+// under `state/handlers/` for incremental-compile wins. Each
+// submodule reaches into `MargoState` via `crate::state::MargoState`.
+mod handlers;
+
 use std::{cell::RefCell, os::unix::io::OwnedFd, path::PathBuf, rc::Rc, sync::Arc};
 
 use anyhow::{Context, Result};
@@ -8,12 +14,12 @@ use smithay::{
         renderer::utils::on_commit_buffer_handler,
     },
     delegate_compositor, delegate_data_control, delegate_data_device, delegate_dmabuf,
-    delegate_input_method_manager, delegate_layer_shell, delegate_output,
+    delegate_input_method_manager, delegate_output,
     delegate_pointer_constraints, delegate_primary_selection, delegate_relative_pointer,
     delegate_seat, delegate_shm, delegate_text_input_manager,
-    delegate_presentation, delegate_xdg_activation, delegate_xdg_decoration, delegate_xdg_shell,
-    delegate_session_lock, delegate_idle_notify, delegate_idle_inhibit,
-    desktop::{LayerSurface as DesktopLayerSurface, PopupManager, Space, Window, WindowSurface, WindowSurfaceType, layer_map_for_output},
+    delegate_presentation, delegate_xdg_shell,
+    delegate_idle_notify, delegate_idle_inhibit,
+    desktop::{PopupManager, Space, Window, WindowSurface, WindowSurfaceType, layer_map_for_output},
     input::{
         Seat, SeatHandler, SeatState,
         dnd::{DndFocus, DndGrabHandler, Source},
@@ -63,16 +69,16 @@ use smithay::{
         },
         shell::{
             wlr_layer::{
-                Layer, LayerSurface as WlrLayerSurface, LayerSurfaceData, WlrLayerShellHandler, WlrLayerShellState,
+                LayerSurface as WlrLayerSurface, LayerSurfaceData, WlrLayerShellState,
             },
             xdg::{
-                decoration::{XdgDecorationHandler, XdgDecorationState},
+                decoration::XdgDecorationState,
                 PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
                 XdgToplevelSurfaceData,
             },
         },
         shm::{ShmHandler, ShmState},
-        session_lock::{SessionLocker, SessionLockHandler, SessionLockManagerState, LockSurface},
+        session_lock::LockSurface,
         input_method::{InputMethodHandler, InputMethodManagerState, PopupSurface as InputMethodPopupSurface},
         pointer_constraints::{
             with_pointer_constraint, PointerConstraintsHandler, PointerConstraintsState,
@@ -80,10 +86,7 @@ use smithay::{
         presentation::PresentationState,
         relative_pointer::RelativePointerManagerState,
         text_input::TextInputManagerState,
-        xdg_activation::{
-            XdgActivationHandler, XdgActivationState, XdgActivationToken,
-            XdgActivationTokenData,
-        },
+        xdg_activation::XdgActivationState,
         viewporter::ViewporterState,
         dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
         drm_syncobj::{DrmSyncobjHandler, DrmSyncobjState},
@@ -6053,60 +6056,6 @@ delegate_xdg_shell!(MargoState);
 
 // ── Smithay delegate: XDG decoration ─────────────────────────────────────────
 
-impl XdgDecorationHandler for MargoState {
-    /// First time a client binds `xdg-decoration-unstable-v1` for this
-    /// toplevel. Mango's policy (and ours) is "compositor draws the
-    /// decorations by default" — we send `ServerSide` so the client
-    /// suppresses its CSD titlebar / shadow / corner radius and lets
-    /// the compositor's `RoundedBorderElement` + `clipped_surface`
-    /// shaders do the work. Clients can still ask for CSD via
-    /// `request_mode(ClientSide)` and we'll honour it iff the client
-    /// matches a window-rule with `allow_csd:1` (see `request_mode`).
-    fn new_decoration(&mut self, toplevel: ToplevelSurface) {
-        let mode = self.decoration_mode_for(&toplevel);
-        toplevel.with_pending_state(|state| {
-            state.decoration_mode = Some(mode);
-        });
-        toplevel.send_configure();
-    }
-
-    /// Client asked for a specific decoration mode. We honour
-    /// `ClientSide` only when the client is window-ruled with
-    /// `allow_csd:1` (or the global `Config::allow_csd_default` is
-    /// on). Everything else gets `ServerSide` regardless of what
-    /// they asked for — keeps the visual identity consistent for the
-    /// 95 % of clients that just default to whatever the server
-    /// suggests, while still letting the user opt specific apps
-    /// (browsers usually) into their native CSD.
-    fn request_mode(&mut self, toplevel: ToplevelSurface, mode: XdgDecorationMode) {
-        let resolved = match mode {
-            XdgDecorationMode::ClientSide if self.client_allows_csd(&toplevel) => {
-                XdgDecorationMode::ClientSide
-            }
-            _ => XdgDecorationMode::ServerSide,
-        };
-        toplevel.with_pending_state(|state| {
-            state.decoration_mode = Some(resolved);
-        });
-        toplevel.send_configure();
-    }
-
-    /// Client cleared its decoration preference — re-evaluate from
-    /// our policy (same path as `new_decoration`). This is the case
-    /// where a client toggles its decoration off via UI; we don't
-    /// just fall back to SSD silently if the user had whitelisted
-    /// CSD for this client, the next configure should still respect
-    /// `allow_csd`.
-    fn unset_mode(&mut self, toplevel: ToplevelSurface) {
-        let mode = self.decoration_mode_for(&toplevel);
-        toplevel.with_pending_state(|state| {
-            state.decoration_mode = Some(mode);
-        });
-        toplevel.send_configure();
-    }
-}
-delegate_xdg_decoration!(MargoState);
-
 impl MargoState {
     /// What decoration mode should we send to a freshly-bound or
     /// reset toplevel? Defaults to `ServerSide`; flips to
@@ -6201,269 +6150,6 @@ delegate_seat!(MargoState);
 impl OutputHandler for MargoState {}
 delegate_output!(MargoState);
 
-// ── Smithay delegate: Layer Shell ─────────────────────────────────────────────
-
-impl WlrLayerShellHandler for MargoState {
-    fn shell_state(&mut self) -> &mut WlrLayerShellState {
-        &mut self.layer_shell_state
-    }
-    fn new_layer_surface(
-        &mut self,
-        surface: WlrLayerSurface,
-        output: Option<smithay::reexports::wayland_server::protocol::wl_output::WlOutput>,
-        _layer: Layer,
-        namespace: String,
-    ) {
-        let smithay_output = output
-            .as_ref()
-            .and_then(Output::from_resource)
-            .or_else(|| {
-                self.monitors
-                    .get(self.focused_monitor())
-                    .map(|mon| mon.output.clone())
-            })
-            .or_else(|| self.space.outputs().next().cloned());
-
-        let Some(smithay_output) = smithay_output else { return };
-
-        let desktop_layer = DesktopLayerSurface::new(surface, namespace.clone());
-        let wl_surface_clone = desktop_layer.wl_surface().clone();
-        {
-            let mut map = layer_map_for_output(&smithay_output);
-            map.map_layer(&desktop_layer).unwrap();
-            map.arrange();
-        }
-        self.refresh_output_work_area(&smithay_output);
-
-        // Resolve layer-rule overrides for this namespace. Rules are
-        // matched by regex against the `namespace` string the client
-        // chose at layer-shell creation (e.g. `noctalia-osd`,
-        // `rofi`, `screenshot`). Latest matching rule wins for the
-        // animation-type override; any matching rule's `noanim:1`
-        // disables open/close animations entirely (used for OSDs and
-        // screenshot overlays where the slide would interfere with
-        // the user-facing transition).
-        let matched_rules: Vec<&margo_config::LayerRule> = self
-            .config
-            .layer_rules
-            .iter()
-            .filter(|r| matches_layer_name(r, &namespace))
-            .collect();
-        let layer_no_anim = matched_rules.iter().any(|r| r.no_anim);
-        let kind_str = matched_rules
-            .iter()
-            .rev()
-            .find_map(|r| r.animation_type_open.clone())
-            .unwrap_or_else(|| self.config.layer_animation_type_open.clone());
-
-        // Open animation: fade in from `layer_animation_type_open`
-        // direction. We use the live render path during the
-        // transition (no snapshot needed — surface is alive),
-        // applying a per-layer alpha + offset based on this
-        // animation's progress in `push_layer_elements`.
-        if !layer_no_anim
-            && self.config.animations
-            && self.config.layer_animations
-            && self.config.animation_duration_open > 0
-        {
-            let kind = crate::render::open_close::OpenCloseKind::parse(&kind_str);
-            let now = crate::utils::now_ms();
-            self.layer_animations.insert(
-                wl_surface_clone.id(),
-                LayerSurfaceAnim {
-                    time_started: now,
-                    duration: self.config.animation_duration_open,
-                    progress: 0.0,
-                    is_close: false,
-                    texture: None,
-                    capture_pending: false,
-                    geom: Rect::default(),
-                    kind,
-                    source_surface: None,
-                },
-            );
-            self.request_repaint();
-        }
-
-        tracing::info!(
-            "new layer surface: namespace={namespace} output={} anim={}",
-            smithay_output.name(),
-            self.layer_animations.contains_key(&wl_surface_clone.id()),
-        );
-    }
-
-    fn layer_destroyed(&mut self, surface: WlrLayerSurface) {
-        // Find the monitor index that owns this layer surface
-        let mut found_mon: Option<usize> = None;
-        for i in 0..self.monitors.len() {
-            let output = self.monitors[i].output.clone();
-            let found = {
-                let map = layer_map_for_output(&output);
-                let mut found_layer = false;
-                for l in map.layers() {
-                    if l.layer_surface() == &surface {
-                        found_layer = true;
-                        break;
-                    }
-                }
-                found_layer
-            };
-            if found {
-                found_mon = Some(i);
-                break;
-            }
-        }
-
-        let Some(mon_idx) = found_mon else {
-            tracing::info!("layer surface destroyed (not found)");
-            return;
-        };
-
-        let output = self.monitors[mon_idx].output.clone();
-
-        // Collect layer to remove
-        let layer = {
-            let map = layer_map_for_output(&output);
-            let mut result = None;
-            for l in map.layers() {
-                if l.layer_surface() == &surface {
-                    result = Some(l.clone());
-                    break;
-                }
-            }
-            result
-        };
-
-        // Close animation: capture the layer's wl_surface tree to a
-        // texture and push a `LayerSurfaceAnim` entry so the renderer
-        // keeps painting it sliding/fading away after smithay's
-        // `LayerMap::unmap_layer` removes it. Cancel any pending open
-        // animation for the same surface — if a layer was destroyed
-        // mid-open we just play the close from wherever the open was.
-        let wl_surf = surface.wl_surface().clone();
-        // Resolve layer-rule overrides for the close animation. Same
-        // matching logic as new_layer_surface — the namespace lives
-        // on the smithay `LayerSurface`, which we already grabbed
-        // above.
-        let namespace = layer
-            .as_ref()
-            .map(|l| l.namespace().to_string())
-            .unwrap_or_default();
-        let matched_rules: Vec<&margo_config::LayerRule> = self
-            .config
-            .layer_rules
-            .iter()
-            .filter(|r| matches_layer_name(r, &namespace))
-            .collect();
-        let layer_no_anim = matched_rules.iter().any(|r| r.no_anim);
-        let kind_str = matched_rules
-            .iter()
-            .rev()
-            .find_map(|r| r.animation_type_close.clone())
-            .unwrap_or_else(|| self.config.layer_animation_type_close.clone());
-
-        if !layer_no_anim
-            && self.config.animations
-            && self.config.layer_animations
-            && self.config.animation_duration_close > 0
-        {
-            // Read geometry off the layer map BEFORE we unmap it.
-            let geom = layer.as_ref().and_then(|l| {
-                let map = layer_map_for_output(&output);
-                map.layer_geometry(l).map(|g| Rect {
-                    x: g.loc.x,
-                    y: g.loc.y,
-                    width: g.size.w,
-                    height: g.size.h,
-                })
-            });
-            if let Some(geom) = geom {
-                let kind = crate::render::open_close::OpenCloseKind::parse(&kind_str);
-                let now = crate::utils::now_ms();
-                self.layer_animations.insert(
-                    wl_surf.id(),
-                    LayerSurfaceAnim {
-                        time_started: now,
-                        duration: self.config.animation_duration_close,
-                        progress: 0.0,
-                        is_close: true,
-                        texture: None,
-                        capture_pending: true,
-                        geom,
-                        kind,
-                        source_surface: Some(wl_surf.clone()),
-                    },
-                );
-                self.request_repaint();
-            }
-        }
-
-        if let Some(layer) = layer {
-            let mut map = layer_map_for_output(&output);
-            map.unmap_layer(&layer);
-            map.arrange();
-        }
-
-        self.refresh_output_work_area(&output);
-
-        // Hand keyboard focus back to a real window when the layer that
-        // had grabbed it (typically noctalia's launcher / settings panel
-        // / control-center, all of them `keyboard-interactivity:
-        // exclusive`) goes away. Without this, keyboard.current_focus
-        // is left pointing at the just-destroyed surface, every key
-        // press is delivered to nothing, and the user has to nudge the
-        // mouse before the toplevel underneath wakes up — exactly the
-        // "esc the launcher and the window stays dead" symptom.
-        //
-        // Only intervene if the destroyed layer was actually holding
-        // focus: a non-exclusive layer (notification toasts, the bar)
-        // disappearing should not yank focus around. We pick the
-        // monitor's currently `selected` client as the fallback because
-        // that's the last-focused-window-on-this-output that
-        // focus_surface tracked, falling back to the topmost visible
-        // client if nothing was previously selected (fresh session,
-        // or the prior focus belonged to a different layer).
-        let current_focus_was_layer = self
-            .seat
-            .get_keyboard()
-            .and_then(|kb| kb.current_focus())
-            .map(|f| match f {
-                FocusTarget::LayerSurface(s) => s == surface,
-                _ => false,
-            })
-            .unwrap_or(false);
-
-        if current_focus_was_layer {
-            let restore = self.monitors[mon_idx]
-                .selected
-                .filter(|&idx| {
-                    idx < self.clients.len()
-                        && self.clients[idx].is_visible_on(
-                            mon_idx,
-                            self.monitors[mon_idx].current_tagset(),
-                        )
-                })
-                .or_else(|| {
-                    let tagset = self.monitors[mon_idx].current_tagset();
-                    self.clients
-                        .iter()
-                        .position(|c| c.monitor == mon_idx && c.is_visible_on(mon_idx, tagset))
-                });
-
-            match restore {
-                Some(idx) => {
-                    let window = self.clients[idx].window.clone();
-                    self.monitors[mon_idx].selected = Some(idx);
-                    self.focus_surface(Some(FocusTarget::Window(window)));
-                }
-                None => self.focus_surface(None),
-            }
-        }
-
-        tracing::info!("layer surface destroyed");
-    }
-}
-delegate_layer_shell!(MargoState);
 
 // ── Smithay delegate: Data Device ─────────────────────────────────────────────
 
@@ -6827,88 +6513,6 @@ impl XwmHandler for MargoState {
 
 smithay::delegate_viewporter!(MargoState);
 
-// ── Smithay delegate: Session Lock ───────────────────────────────────────────
-
-impl SessionLockHandler for MargoState {
-    fn lock_state(&mut self) -> &mut SessionLockManagerState {
-        &mut self.session_lock_state
-    }
-
-    fn lock(&mut self, confirmation: SessionLocker) {
-        tracing::info!(
-            "session_lock: lock() called (was locked={}, lock_surfaces={})",
-            self.session_locked,
-            self.lock_surfaces.len()
-        );
-        confirmation.lock();
-        self.session_locked = true;
-        self.arrange_all();
-    }
-
-    fn unlock(&mut self) {
-        tracing::info!("session_lock: unlock() called");
-        self.session_locked = false;
-        self.lock_surfaces.clear();
-        self.arrange_all();
-        // After unlock, push focus back to a real window — by default
-        // current_focus is still pointing at the (now-dead) lock surface
-        // and the user has to nudge the mouse before any keys reach the
-        // toplevel underneath.
-        self.refresh_keyboard_focus();
-    }
-
-    fn new_surface(&mut self, surface: LockSurface, output: smithay::reexports::wayland_server::protocol::wl_output::WlOutput) {
-        let Some(output) = Output::from_resource(&output) else {
-            tracing::warn!("session_lock: new_surface for unknown output");
-            return;
-        };
-
-        // CRITICAL: ext-session-lock-v1 requires the compositor to send a
-        // configure WITH a non-zero size before the client will attach a
-        // buffer. Without this, the lock surface stays unmapped and we
-        // render solid black with just the cursor on top — exactly the
-        // "alt+l → black screen" symptom.
-        let size = output
-            .current_mode()
-            .map(|m| {
-                // Apply the output's transform so portrait outputs get the
-                // logical (post-transform) size.
-                let transform = output.current_transform();
-                let physical = transform.transform_size(m.size);
-                let scale = output.current_scale().fractional_scale();
-                Size::<u32, smithay::utils::Logical>::from((
-                    (physical.w as f64 / scale).round().max(1.0) as u32,
-                    (physical.h as f64 / scale).round().max(1.0) as u32,
-                ))
-            })
-            .unwrap_or_else(|| Size::<u32, smithay::utils::Logical>::from((1280, 720)));
-
-        surface.with_pending_state(|state| {
-            state.size = Some(size);
-        });
-        surface.send_configure();
-
-        tracing::info!(
-            "session_lock: new lock surface on {} size {}x{}",
-            output.name(),
-            size.w,
-            size.h
-        );
-
-        self.lock_surfaces.push((output, surface));
-        // Don't try to set focus here: the wl_surface exists but has no
-        // buffer yet, so `wl_keyboard.enter` arrives before Qt's
-        // QQuickWindow is paint-ready and the password TextInput's
-        // `forceActiveFocus()` no-ops. The commit handler runs the
-        // refresh once the surface attaches its first buffer, which
-        // both fixes that timing AND picks the lock surface on the
-        // user's monitor instead of the first one in `lock_surfaces`.
-        self.refresh_keyboard_focus();
-        self.request_repaint();
-    }
-}
-delegate_session_lock!(MargoState);
-
 // ── Smithay delegate: text-input-v3 + input-method-v2 ────────────────────────
 //
 // Qt's `text-input-v3` plugin is what backs every `QML.TextInput` field on
@@ -7085,113 +6689,6 @@ delegate_relative_pointer!(MargoState);
 // the window. That keeps activation-driven jumps consistent with
 // alt+tab / explicit `mctl dispatch view N`.
 
-impl XdgActivationHandler for MargoState {
-    fn activation_state(&mut self) -> &mut XdgActivationState {
-        &mut self.xdg_activation_state
-    }
-
-    fn token_created(
-        &mut self,
-        _token: XdgActivationToken,
-        data: XdgActivationTokenData,
-    ) -> bool {
-        // A token without a (serial, seat) bundle is suspicious —
-        // someone scripted activation without going through a real
-        // user interaction. Reject.
-        let Some((serial, seat)) = data.serial else {
-            return false;
-        };
-        // Different seat? Don't trust.
-        if Seat::<MargoState>::from_resource(&seat).as_ref() != Some(&self.seat) {
-            return false;
-        }
-        // Serial must be no older than the seat keyboard's last enter
-        // — i.e. the requesting client was the keyboard-focused one
-        // when it generated the token.
-        let Some(keyboard) = self.seat.get_keyboard() else {
-            return false;
-        };
-        let Some(last_enter) = keyboard.last_enter() else {
-            return false;
-        };
-        serial.is_no_older_than(&last_enter)
-    }
-
-    fn request_activation(
-        &mut self,
-        _token: XdgActivationToken,
-        token_data: XdgActivationTokenData,
-        surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-    ) {
-        // Token expires after 10s — older requests are stale (the
-        // user has moved on). Anvil's value, matches GNOME mutter's.
-        if token_data.timestamp.elapsed().as_secs() >= 10 {
-            return;
-        }
-
-        // Find which client owns the surface.
-        let Some(idx) = self
-            .clients
-            .iter()
-            .position(|c| c.window.wl_surface().as_deref() == Some(&surface))
-        else {
-            return;
-        };
-
-        // Switch to the client's tag (view its mask). Multi-bit
-        // masks pick the lowest set bit so we land on a single
-        // canonical tag rather than enabling several at once. The
-        // existing view_tag handles the per-tag home-monitor warp,
-        // so multi-monitor users come back to the right output too.
-        //
-        // CRUCIAL: only call `view_tag` when the client is NOT
-        // already visible on its monitor's active tagset. With
-        // `view_current_to_back = 1` (the user's config), invoking
-        // `view_tag` with the *current* tagmask deliberately toggles
-        // to the previous tag — that's the dwl/mango "press tag-N
-        // again to flip back" feature. Browsers (Helium / Chromium)
-        // self-activate on every link click, extension popup,
-        // tab-switch and 3-finger gesture, all of which fed into
-        // `view_tag` with the already-active mask and bounced the
-        // user back to whatever tag they came from. Skipping the
-        // tag switch when the surface is already visible kills that
-        // entire class of regressions while preserving the
-        // legitimate "launcher activates a window on tag 4 → bring
-        // me there" behaviour.
-        let mask = self.clients[idx].tags;
-        let mon_idx = self.clients[idx].monitor;
-        let already_visible = self
-            .monitors
-            .get(mon_idx)
-            .map(|m| (mask & m.current_tagset()) != 0)
-            .unwrap_or(false);
-        if !already_visible {
-            let one_bit = mask & mask.wrapping_neg();
-            let target = if one_bit != 0 { one_bit } else { mask };
-            self.view_tag(target);
-        }
-
-        // Focus + raise. focus_surface tracks selected/prev-selected
-        // history per monitor, and the layer-mapped Space takes care
-        // of the actual stack ordering when we follow with
-        // enforce_z_order so the activated window comes to the top
-        // of its z-band.
-        let window = self.clients[idx].window.clone();
-        self.focus_surface(Some(FocusTarget::Window(window.clone())));
-        self.space.raise_element(&window, true);
-        self.enforce_z_order();
-        self.request_repaint();
-
-        tracing::info!(
-            "xdg_activation: activated app_id={} idx={} tag={:#x} already_visible={}",
-            self.clients[idx].app_id,
-            idx,
-            mask,
-            already_visible,
-        );
-    }
-}
-delegate_xdg_activation!(MargoState);
 
 // ── Smithay delegate: wlr-output-management-v1 ───────────────────────────────
 

@@ -323,7 +323,7 @@ Behaviour-stable. Listed for completeness — bisect targets if anything regress
 
 ### Architecture (W4)
 - **W4.1** Split backends into separate crates (~600 LOC churn). Niri has 7 backend crates (`backend_drm`, `backend_egl`, `backend_gbm`, `backend_libinput`, `backend_session_libseat`, `backend_winit`, `backend_udev`); margo's `backend/` is in-tree. Splitting eases incremental compilation AND lets downstream Wayland projects depend on margo's backend crates.
-- **W4.2** Move `state.rs` (~7000 LOC) into modules (~100 LOC churn). Behaviour-preserving refactor into `state/{ipc, focus, scratchpad, output, x11, wayland_handlers}`.
+- **W4.2 — Phase 1 shipped, more queued.** First-pass extraction lands in `margo/src/state/handlers/` with 4 handlers split off `state.rs` (502 LOC moved): `xdg_decoration` (62 LOC), `session_lock` (96 LOC), `xdg_activation` (113 LOC), `layer_shell` (262 LOC). Pattern proven (each submodule reaches into `MargoState` via `crate::state::MargoState`; the `delegate_*!` macros stay co-located with their impls). state.rs went 7651 → 7148 LOC. Remaining big extractions queued: `xdg_shell` (~417 LOC), `x11/xwm` (~150 LOC), `output_management` (~174 LOC), `color_management` (~51 LOC), `selection` (~110 LOC), `screencopy` (~190 LOC), `compositor` (~150 LOC). Behaviour-preserving — all 40 layout tests + clippy gate stay green at every step.
 - **W4.3** mkdocs site + GitHub Pages (~200 LOC config + content).
 - **W4.5** `niri-visual-tests`-equivalent design tool (~500 LOC). Interactive GTK app for margo's 14 layouts × per-tag layout pinning preview.
 
