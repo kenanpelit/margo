@@ -7,6 +7,59 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+A "post-W-sweep capability + cleanup" pass. Five features and three
+refactors land between the 0.1.2 release and now; together they close
+out every internal long-tail item the road map flagged.
+
+### Added
+
+- **`mctl theme <preset>` — live visual theme switch.** Three built-in
+  presets (`default` / `minimal` / `gaudy`) toggle border thickness,
+  shadow depth, blur, and corner radius without touching the config
+  file. First switch captures a `theme_baseline` snapshot so
+  `default` always reverts to "what the config said"; `mctl reload`
+  invalidates the baseline so the next `default` lands the freshly-
+  parsed values. (`feat(theme)`)
+- **`mctl session save` / `mctl session load`.** JSON snapshot of
+  every monitor's tag selection, per-tag layout / mfact / nmaster /
+  canvas-pan to `$XDG_STATE_HOME/margo/session.json`. Atomic write
+  via temp + rename so a crash mid-write can't shadow a good file.
+  Open windows aren't captured (clients are bound to processes — the
+  spawn line lives in user-space). Snapshot entries for absent
+  monitors are logged + skipped on load. Versioned format with
+  rejection on mismatch. (`feat(session)`)
+- **Touchscreen multi-finger swipe → `gesture_bindings` dispatch.**
+  True touch events (TouchDown/Motion/Up) are now distilled into
+  the same `(fingers, motion, mods) → action` lookup the touchpad
+  swipe path uses. A binding written as `gesture = swipe, 3,
+  right, view_tag` fires regardless of input surface. (`feat(input)`)
+- **`presentation-time` real per-output VBlank seq.** The `seq` field
+  in `wp_presentation_feedback.presented` was hardcoded to 0; it's
+  now a monotonic `OutputDevice::vblank_seq` bumped at the head of
+  every `DrmEvent::VBlank` handler. Frame-pacing-sensitive consumers
+  (mpv `--vo=gpu-next`, kitty render loop, gnome-shell's
+  `getRefreshRate` polling) now see the contract the protocol
+  promises. (`feat(presentation-time)`)
+
+### Changed
+
+- **Window-rule reapply unified via `WindowRuleReason` enum.** Three
+  trigger sites (`finalize_initial_map`, late `app_id` settle,
+  `mctl reload`) previously called `apply_window_rules_to_client`
+  with no shared signal of *why* a rule was firing. New
+  `WindowRuleReason::{InitialMap, AppIdSettled, Reload}` is passed
+  to a single `reapply_rules(idx, reason)` path; the debug log
+  records the trigger so a `RUST_LOG=margo::state::windowrule=debug`
+  trace tells you which call site landed. Roadmap §16 #4 do-over
+  wishlist item. (`refactor(state)`)
+- **`RenderTarget` enum replaces `(include_cursor, for_screencast)`
+  bool pair.** `build_render_elements_inner` callsites now read
+  `RenderTarget::Display` / `DisplayNoCursor` / `Screencast { .. }`
+  instead of two anonymous booleans the reader had to remember the
+  meaning of. Internal `flags()` helper unpacks back into the same
+  two bools the function body still uses, so the hot path is
+  unchanged. Partial address of roadmap §16 #1. (`refactor(udev)`)
+
 ## [0.1.2] – 2026-05-10
 
 A "catch-and-surpass-niri sweep" tail-end release. Three commits land
