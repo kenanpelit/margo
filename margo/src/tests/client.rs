@@ -22,6 +22,10 @@ use smithay::reexports::wayland_protocols::ext::session_lock::v1::client::{
     ext_session_lock_surface_v1::{self, ExtSessionLockSurfaceV1},
     ext_session_lock_v1::{self, ExtSessionLockV1},
 };
+use smithay::reexports::wayland_protocols::wp::pointer_constraints::zv1::client::{
+    zwp_locked_pointer_v1::{self, ZwpLockedPointerV1},
+    zwp_pointer_constraints_v1::{self, ZwpPointerConstraintsV1},
+};
 use smithay::reexports::wayland_protocols::wp::idle_inhibit::zv1::client::{
     zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1,
     zwp_idle_inhibitor_v1::{self, ZwpIdleInhibitorV1},
@@ -39,7 +43,9 @@ use wayland_client::globals::Global;
 use wayland_client::protocol::wl_callback::{self, WlCallback};
 use wayland_client::protocol::wl_compositor::WlCompositor;
 use wayland_client::protocol::wl_display::WlDisplay;
+use wayland_client::protocol::wl_pointer::{self, WlPointer};
 use wayland_client::protocol::wl_registry::{self, WlRegistry};
+use wayland_client::protocol::wl_seat::{self, WlSeat};
 use wayland_client::protocol::wl_surface::{self, WlSurface};
 use wayland_client::{Connection, Dispatch, Proxy, QueueHandle};
 
@@ -286,6 +292,40 @@ impl Client {
         let lock = manager.lock(&self.qh, ());
         self.connection.flush().expect("client flush");
         lock
+    }
+
+    /// Bind `wl_seat` and obtain a pointer object from it. Returns
+    /// the pointer; tests use this to request pointer-constraints
+    /// (the manager rejects requests on free-floating proxies).
+    pub fn create_pointer(&mut self) -> WlPointer {
+        let seat: WlSeat = self.bind_global(7);
+        let pointer = seat.get_pointer(&self.qh, ());
+        self.connection.flush().expect("client flush");
+        pointer
+    }
+
+    /// Lock a pointer to a `wl_surface` via
+    /// `zwp_pointer_constraints_v1.lock_pointer`. Headless tests
+    /// can't drive the activation half (no real pointer focus),
+    /// but the protocol object itself must be created without
+    /// panicking — the constraint is lazily activated when focus
+    /// arrives.
+    pub fn lock_pointer(
+        &mut self,
+        surface: &WlSurface,
+        pointer: &WlPointer,
+    ) -> ZwpLockedPointerV1 {
+        let manager: ZwpPointerConstraintsV1 = self.bind_global(1);
+        let locked = manager.lock_pointer(
+            surface,
+            pointer,
+            None,
+            zwp_pointer_constraints_v1::Lifetime::Oneshot,
+            &self.qh,
+            (),
+        );
+        self.connection.flush().expect("client flush");
+        locked
     }
 
     /// Create a fresh layer-shell surface — bind the layer-shell
@@ -619,5 +659,53 @@ impl Dispatch<ExtSessionLockSurfaceV1, ()> for ClientState {
         if let ext_session_lock_surface_v1::Event::Configure { serial, .. } = event {
             surface.ack_configure(serial);
         }
+    }
+}
+
+impl Dispatch<WlSeat, ()> for ClientState {
+    fn event(
+        _: &mut Self,
+        _: &WlSeat,
+        _: wl_seat::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<WlPointer, ()> for ClientState {
+    fn event(
+        _: &mut Self,
+        _: &WlPointer,
+        _: wl_pointer::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<ZwpPointerConstraintsV1, ()> for ClientState {
+    fn event(
+        _: &mut Self,
+        _: &ZwpPointerConstraintsV1,
+        _: <ZwpPointerConstraintsV1 as Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<ZwpLockedPointerV1, ()> for ClientState {
+    fn event(
+        _: &mut Self,
+        _: &ZwpLockedPointerV1,
+        _: zwp_locked_pointer_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
     }
 }

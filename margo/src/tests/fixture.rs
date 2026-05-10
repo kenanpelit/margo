@@ -67,6 +67,11 @@ impl Fixture {
         }
     }
 
+    /// Convenience: `add_output_full(name, size, gamma_size: 0)`.
+    pub fn add_output(&mut self, name: &str, size: (i32, i32)) {
+        self.add_output_full(name, size, 0);
+    }
+
     /// Synthesize a headless `Output` and the matching
     /// `MargoMonitor` slot. Skips the DRM / GBM / GammaProps
     /// plumbing that the udev backend builds in `setup_connector`
@@ -78,7 +83,13 @@ impl Fixture {
     /// `state.monitors[idx]` directly after the call). Outputs
     /// land left-to-right based on the cumulative width already in
     /// `state.space`, mirroring the udev backend's default layout.
-    pub fn add_output(&mut self, name: &str, size: (i32, i32)) {
+    /// `gamma_size` of 0 disables gamma control on this output;
+    /// pass a non-zero value (typical real DRM output: 256 / 1024)
+    /// when testing the gamma-control handler — the headless
+    /// harness can't run a real DRM atomic, but margo's protocol
+    /// surface only checks the size to decide whether to advertise
+    /// the per-output capability.
+    pub fn add_output_full(&mut self, name: &str, size: (i32, i32), gamma_size: u32) {
         let state = &mut self.server.state;
         let (w, h) = size;
         let output = Output::new(
@@ -146,7 +157,7 @@ impl Fixture {
             scale: 1.0,
             transform: 0,
             enabled: true,
-            gamma_size: 0,
+            gamma_size,
             focus_history: std::collections::VecDeque::new(),
         });
         let mon_idx = state.monitors.len() - 1;

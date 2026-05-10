@@ -32,10 +32,18 @@ mod client;
 mod fixture;
 mod server;
 
+mod color_management;
+mod dmabuf;
+mod gamma_control;
 mod globals;
 mod idle;
 mod layer_shell;
+mod output_management;
+mod pointer_constraints;
+mod screencopy;
+mod selection;
 mod session_lock;
+mod x11;
 mod xdg_activation;
 mod xdg_decoration;
 mod xdg_shell;
