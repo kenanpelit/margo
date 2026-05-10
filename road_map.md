@@ -480,16 +480,62 @@ test setup that needs more than a winit nested session.
 | **W2.2b** Full pixman software renderer fallback | qemu / headless user reports | ~1500 LOC + 7 render-element generic-Renderer rewrites (`R: Renderer + Bind<...>`) plus parallel udev/winit paths |
 | **W2.3** Tablet input | Wacom / Huion user request | ~500 LOC for `tablet_v2` + stylus/pad mapping + `map-to-focused-window` mode |
 
-### 15.6 Phase 2 success criteria
+### 15.6 Phase 3 — Infinite Spatial Overview (in flight)
+
+Originally listed as a Phase 3 mandate in §15.7; promoted up because
+it shipped mid-Phase-2 in response to live UX feedback. Three commits
+landed the foundation; one follow-up fix tightened the cycle. Full
+design doc at `docs/design/spatial-overview.md`.
+
+| Commit | What landed |
+|---|---|
+| `7927aca` | Foundation: `OverviewMode` enum, `SpatialCamera` (current + target + momentum, snap / pan / zoom-around-anchor / tick), coordinate transforms (`world_to_screen` / `screen_to_world`), world layout (`tag_anchor` / `client_world_rect` / `world_bounds`), 12 unit tests, design doc |
+| `c2268f2` | State + arrange wiring: `MargoState::spatial` field, `arrange_spatial_overview_geometries` helper, `arrange_monitor` branches into it when `is_overview && overview_mode == Spatial`, `open_overview` snaps camera to world centre at the configured zoom |
+| `e95a278` | Live navigation: mouse LMB-drag pans (with momentum on release), scroll-wheel zooms cursor-anchored, seven keyboard dispatch actions (`overview_pan_left/right/up/down`, `overview_zoom_in/out/reset`), `tick_animations` site also ticks `state.spatial` while momentum is live |
+| `04112eb` | Auto-fit on open: `min(config_zoom, work_area / world × 0.95)` so the entire 3×3 world fits with a 5 % margin even if the user wrote `overview_zoom = 0.5`; open + reset_camera centre on world centre |
+| `f5008df` | Cycle pans to **window** centre (not tag centre) and bypasses the move animation during arrange (`overview_transition_animation_ms = Some(1)`) — keyboard cycle now reads as a window switcher with the border lit in `focuscolor` instantly, no slide kaos |
+
+### 15.7 Phase 3 polish — known follow-ups
+
+Items the current spatial overview leaves on the floor; not bugs,
+but obvious "the next pass should do this" entries the design doc
+hints at:
+
+- **MRU cycle ordering.** `overview_focus_step` walks
+  `overview_visible_clients` in client-list (insertion) order, not
+  MRU. Real Mac/Hyprland-style alt+Tab would promote each focused
+  client to the front of a `VecDeque<Window>` so next alt+Tab lands
+  on the most-recently-used window. ~50 LOC.
+- **Smooth open / close transition.** Open snaps the camera; design
+  doc specs a spring-damped zoom-out (damping 1.0, stiffness 800,
+  matches niri's `overview-open-close`). Tick path is already there
+  — open / close need to set a target instead of snapping. ~30 LOC.
+- **Active-tag visual indicator.** Currently the only "active tag"
+  cue in the overview is the focused-window border colour. A subtle
+  accent ring around the active tag's *slot* would help users orient
+  on a multi-tag day. Render-side, ~80 LOC.
+- **Per-cast wake-only repaint during camera-coast.** The momentum
+  tick currently triggers `arrange_all` + repaint every frame the
+  camera is moving; once velocity floors out, no work. Acceptable
+  cost on a 60 Hz panel but worth a profile if a 240 Hz user reports
+  power draw.
+- **Multi-monitor spatial topology.** Each monitor currently has its
+  own 3×3 world independently. The "one connected world across
+  monitors" semantic (where panning past the edge of monitor A
+  shows monitor B's tags) is a Phase 3.5 problem — needs cross-output
+  camera + a UX call on whether tags are unique or per-output.
+
+### 15.8 Phase 2 success criteria
 
 - [ ] Snapshot test count: **22 → 200+**
 - [ ] state.rs reduced from 6.1k LOC to **<3k** via further extraction (Q1)
 - [ ] Cold-path structured-logging migration complete (Q5)
 - [ ] At least **2 community contributors** with merged PRs (currently 1)
 - [ ] Plugin marketplace open with ≥3 community plugins
+- [x] **Phase 3 Infinite Spatial Overview shipped** (4 commits + 1 fix; design doc + foundation + state + arrange + live nav + auto-fit + window-centred cycle)
 - [ ] Phase 2 closing release: **v0.2.0** (semver minor — feature-complete in stream of work, no breaking changes)
 
-### 15.7 Phase 2 explicitly out-of-scope
+### 15.9 Phase 2 explicitly out-of-scope
 
 Three things will *not* land in Phase 2 — listed so future drift gets
 caught on review:
