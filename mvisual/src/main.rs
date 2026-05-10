@@ -613,7 +613,16 @@ fn build_ui(app: &Application) {
 }
 
 fn main() -> glib::ExitCode {
-    let app = Application::builder().application_id(APP_ID).build();
+    // `NON_UNIQUE` disables GApplication's "single instance" registration:
+    // without it, a stale dbus name (or a parallel `cargo run` from a
+    // previous session) makes the second start register as *remote*,
+    // forward `activate` to the (now-dead) primary, and quit immediately —
+    // the symptom is "window flashes on screen and disappears". mvisual
+    // is a developer / design tool, multiple instances are fine.
+    let app = Application::builder()
+        .application_id(APP_ID)
+        .flags(gtk::gio::ApplicationFlags::NON_UNIQUE)
+        .build();
     app.connect_activate(build_ui);
     app.run()
 }

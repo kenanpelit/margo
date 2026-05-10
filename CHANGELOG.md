@@ -7,6 +7,25 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.1.6] – 2026-05-10
+
+A `mvisual` UX hot-fix. `cargo run -p mvisual` flashed a window for a
+single frame and exited — the design tool was unusable.
+
+### Fixed
+
+- **`mvisual` window no longer flashes-and-quits.** GApplication
+  registers itself on the session bus by default; if a stale
+  `dev.margo.visual` name was still claimed (most commonly: a previous
+  `cargo run` session whose dbus name hadn't been released), the
+  second start registered as *remote*, forwarded the `activate` signal
+  to the (now-dead) primary, and exited immediately. Symptom was a
+  window appearing on screen for one frame then disappearing,
+  with no error output. Fixed by passing
+  `gio::ApplicationFlags::NON_UNIQUE` on the Application builder —
+  mvisual is a developer / design tool, multiple parallel instances
+  are intentional.
+
 ## [0.1.5] – 2026-05-10
 
 A 0.1.4 hot-fix. The `theme` / `session-save` / `session-load`
