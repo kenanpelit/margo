@@ -7,6 +7,30 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Hot corner no longer leaks through to the lock screen.**
+  `update_hot_corner` now early-exits when `session_locked` is true,
+  when the screenshot region selector is active, or when smithay
+  holds a pointer / keyboard grab (xdg_popup grabs, drag-and-drop).
+  Symptom was: pointer in the top-left corner while the lock surface
+  owned focus → `dispatch_action("toggle_overview")` fired → Tab /
+  Return reached greetd's authentication form and the user landed
+  in the login screen. Three guards added; armed_at stays None so
+  re-entry restarts the timer cleanly after the guard lifts.
+
+- **`overview_focus_next/_prev` border highlight tracks the
+  selection.** The previous attempt called `focus_surface` on every
+  Tab press, which fired margo's focus-crossfade opacity animation
+  for each step. The crossfade re-painted all borders mid-cycle
+  (interpolating between focuscolor and bordercolor), so the
+  visible cue was "cursor warps but borders all look smudged".
+  Now the cycle relies on the `is_overview_hovered` path that
+  `border::refresh` already paints with `focuscolor`
+  (`border.rs:64`), with no crossfade kick. Border, cursor, and
+  hover flag move together on every Tab; commit goes through
+  `overview_activate` (Enter), which runs the focus path once.
+
 ### Changed
 
 - **Overview rewritten — Mango/Hypr geometric continuity + niri

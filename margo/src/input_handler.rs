@@ -677,6 +677,40 @@ fn handle_pointer_motion<B: InputBackend, E: PointerMotionEvent<B>>(
 fn update_hot_corner(state: &mut MargoState) {
     use crate::state::HotCorner;
 
+    // Hard guards — these states own the screen and a corner-trigger
+    // dispatch on top of them produced the symptom the user hit:
+    //   * `session_locked` → dispatching `toggle_overview` while the
+    //     lock surface owns focus pushed the cursor through to the
+    //     login prompt because the lock-surface's keyboard grab kept
+    //     translating Tab/Return into the GreetD authentication flow.
+    //   * `region_selector` → the screenshot UI already intercepts
+    //     pointer + keyboard, an extra dispatch would race the
+    //     selector's commit / cancel path.
+    //   * any pointer or keyboard grab held by a popup → corner
+    //     trigger would smash through the grab and the popup
+    //     would dismiss without surfacing an action.
+    // Bail before we even check the corners; armed_at stays None so
+    // a re-entry restarts the timer cleanly once the guard lifts.
+    if state.session_locked {
+        return;
+    }
+    if state.region_selector.is_some() {
+        return;
+    }
+    if state
+        .seat
+        .get_pointer()
+        .map(|p| p.is_grabbed())
+        .unwrap_or(false)
+        || state
+            .seat
+            .get_keyboard()
+            .map(|k| k.is_grabbed())
+            .unwrap_or(false)
+    {
+        return;
+    }
+
     // Resolve the focused output's geometry — niri's hot-corner check
     // is per-output. Margo's outputs are arranged side-by-side in
     // `state.space`, so we hit-test against each output_geometry().

@@ -3960,22 +3960,28 @@ impl MargoState {
         }
         self.clients[new_idx].is_overview_hovered = true;
 
-        // Pointer warp to thumbnail centre.
+        // Pointer warp to thumbnail centre — without this, the next
+        // mouse motion would yank `is_overview_hovered` back to
+        // whatever's under the physical cursor and the keyboard
+        // cycle would visibly flicker.
         let g = self.clients[new_idx].geom;
         if g.width > 0 && g.height > 0 {
             self.input_pointer.x = (g.x + g.width / 2) as f64;
             self.input_pointer.y = (g.y + g.height / 2) as f64;
         }
 
-        // Real focus shift — border + smithay focus track the cycle.
-        // Without this, only `is_overview_hovered` flipped and the
-        // user got hover-color-but-not-focus-color, which read as
-        // "did anything happen?" mid-keystroke. Now Tab feels like
-        // a proper alt+Tab: focus, border, kb focus all move
-        // together.
-        let window = self.clients[new_idx].window.clone();
-        self.focus_surface(Some(FocusTarget::Window(window)));
-
+        // Don't call `focus_surface` here. While overview is open,
+        // `border::refresh` already paints `is_overview_hovered`
+        // with `focuscolor` (margo/src/border.rs:64), so the border
+        // colour tracks the selection without going through the
+        // smithay focus path. Calling `focus_surface` on every Tab
+        // press also kicks off an opacity-crossfade animation per
+        // step (state.rs:200-208) and shuffles dwl-ipc focus_history
+        // — both visible side-effects that made the cycle feel
+        // sluggish ("border yerine sadece imleç dolaşıyor"). The
+        // user commits the cycle's choice via `overview_activate`
+        // (Enter), which closes the overview onto the hovered
+        // thumbnail and runs the focus path once.
         crate::border::refresh(self);
         self.request_repaint();
         tracing::debug!(
