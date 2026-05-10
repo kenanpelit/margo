@@ -7,6 +7,38 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Performance
+
+- **`toggleoverview` shaved of redundant work.** Previous toggle
+  paths called `arrange_all()` on both open and close — meaning
+  every monitor (including ones already in their target state)
+  got a full layout rebuild + per-client move-animation kick.
+  On a 2- or 3-monitor setup with 12+ clients per output, that
+  could push 200 ms of arrange + animation work behind every
+  toggle keypress.
+  - `is_overview_open()` is now O(1) — reads a cached
+    `overview_open_count: u32` field that
+    `open_overview`/`close_overview` maintain. The previous
+    iter-every-monitor scan was hot (called from
+    `arrange_monitor` on every layout pass).
+  - `open_overview` and `close_overview` only `arrange_monitor`
+    the monitors whose `is_overview` ACTUALLY flipped this call.
+    Already-open monitors on a redundant `open_overview` pay
+    zero arrange cost.
+  - Both paths short-circuit when there's nothing to do —
+    `open_overview` with no flip-candidates returns before any
+    arrange/broadcast; `close_overview` checks the cached count
+    upfront.
+  - dwl-ipc broadcast batches at the end of a toggle instead of
+    per monitor, so noctalia / waybar-dwl receive a single
+    state burst per toggle.
+  - 11 new integration tests in `tests/overview.rs` lock the
+    state-machine semantics: `is_overview_open` count
+    invariant, double-tap idempotency, no-op-when-closed
+    short-circuit, multi-monitor flip-all-at-once,
+    pre-overview tagset preservation. Workspace test count:
+    128 → 139.
+
 ### Added
 
 - **Dual-color border** — opt-in concentric two-band rendering.
