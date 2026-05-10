@@ -7,6 +7,64 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.1.2] – 2026-05-10
+
+A "catch-and-surpass-niri sweep" tail-end release. Three commits land
+the last three queued W-items: a GTK4 design tool, HDR Phase 4 ICC
+scaffolding, and the udev backend split into focused sub-modules. No
+behaviour changes for existing daily-driver flows — the W-sweep is
+about coverage and architecture, and the test suite (181 passing) +
+clippy gate stay green at every step.
+
+### Added
+
+- **`mvisual` design tool (W4.5).** New workspace binary
+  (`cargo run -p mvisual`) renders all 14 tile-able layouts side-by-side
+  as live thumbnails plus a 1‒9 tag rail that mirrors the compositor's
+  `Pertag` so users can rehearse per-tag layout pinning before
+  committing to a config. GTK4-rs UI; live re-arrange on every
+  parameter tweak (window count / mfact / nmaster / inner+outer gaps /
+  focus index / scroller proportion). Wider than `niri-visual-tests`
+  on two axes: every layout visible at once (no click-cycle), plus
+  the per-tag pinning preview niri can't host since it has no tags.
+- **`margo-layouts` workspace crate.** Pure layout arithmetic
+  (~1040 LOC, no smithay/wlroots deps) extracted from
+  `margo/src/layout/{mod,algorithms}.rs` so the compositor binary
+  and `mvisual` consume the exact same `arrange()`. The 38-snapshot
+  layout regression suite stays in place, just retargeted at the new
+  crate.
+- **HDR Phase 4 — per-output ICC profiles (scaffolding).**
+  `margo/src/render/icc_lut.rs` (~390 LOC, 6 unit tests). `colord`
+  D-Bus client (`org.freedesktop.ColorManager` + Device + Profile
+  proxies) resolves a DRM connector name → assigned ICC path;
+  `lcms2`-backed `bake_lut` runs an identity 33³ grid through
+  sRGB → display-profile transform; `to_atlas_rgba32f` re-lays the
+  cube as a 1089 × 33 RGB texture so the GLES2 path can sample it
+  without a `sampler3D`. CPU-side trilinear sampler doubles as the
+  GLSL reference for the `ICC_LUT_FRAG` shader (ships as `const`).
+  `MARGO_HDR_ICC=1` env gate. Runtime activation upstream-blocked
+  on smithay's `compile_custom_texture_shader` exposing a
+  second-sampler hook.
+
+### Changed
+
+- **`backend/udev.rs` (3934 LOC) split into 4 sub-modules (W4.1).**
+  `backend/udev/` is now a directory: `mod.rs` (2873, ~27 % shrink,
+  the orchestrator), `helpers.rs` (77, transform / CRTC pick /
+  refresh-duration / monotonic clock), `mode.rs` (234, mode select +
+  apply via `DrmCompositor::use_mode`), `hotplug.rs` (405, rescan +
+  setup_connector + migrate-clients-off-output), `frame.rs` (331,
+  render dispatch + presentation feedback + scanout flags). Type
+  visibility for `OutputDevice` / `BackendData` / `GammaProps` lifted
+  to `pub(super)` so submodules reach shared state without trait
+  indirection. Behaviour-preserving — all 181 tests green at every
+  extract step. The road map's earlier "split into separate crates"
+  framing was rejected: niri's "7 backend crates" turn out to be
+  smithay's *feature flags*, not crates, and the real wins
+  (incremental compile + readability) land at sub-module granularity
+  without trait-abstracting `MargoState` (~3000 LOC churn for no
+  downstream consumer).
+
 ## [0.1.1] – 2026-05-10
 
 A focused popup-handling bug-fix release. Three commits, one
