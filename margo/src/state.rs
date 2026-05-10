@@ -3475,9 +3475,22 @@ impl MargoState {
         }
 
         let previous_focus = self.focused_client_idx();
+        // Fallback chain for "which client should be focused after
+        // close":
+        //   1. The explicit `activate_window` arg (mouse click on a
+        //      thumbnail, `overview_activate` action).
+        //   2. The currently-hovered thumbnail — covers keyboard
+        //      navigation followed by `Esc` / `alt+Tab` /
+        //      `toggleoverview`. Without this, `alt+ctrl+Tab` would
+        //      shift the visible highlight but `previous_focus`
+        //      would yank focus back to whatever was active before
+        //      overview opened, defeating the entire navigation.
+        //   3. `previous_focus` below — pre-overview focused client,
+        //      used when no thumbnail was ever hovered.
         let activate_idx = activate_window
             .as_ref()
-            .and_then(|window| self.clients.iter().position(|client| &client.window == window));
+            .and_then(|window| self.clients.iter().position(|client| &client.window == window))
+            .or_else(|| self.clients.iter().position(|c| c.is_overview_hovered));
 
         // Same targeting as open_overview: only arrange the monitors
         // that actually leave overview state. Track them up-front so
