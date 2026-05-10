@@ -7,6 +7,25 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.1.4] – 2026-05-10
+
+A "0.1.3 follow-up" release. The 0.1.3 commit added the `theme` /
+`session_save` / `session_load` dispatch actions on the compositor
+side but didn't wire them as `mctl` clap subcommands — running
+`mctl theme gaudy` died with "unrecognized subcommand". This fixes
+that, plus a hot-path structured-logging migration and a road-map
+reorganisation that were already pending in `[Unreleased]`.
+
+### Fixed
+
+- **`mctl theme` / `mctl session-save` / `mctl session-load`
+  subcommands.** Three new `Command` variants in the `mctl` clap
+  parser route through the existing dispatch path. No
+  compositor-side change — the dispatch handlers landed in 0.1.3,
+  only the CLI surface was missing. `mctl --help` now lists all
+  three; `session-save`/`session-load` accept the underscore alias
+  too for symmetry with the action name.
+
 ### Changed
 
 - **Hot-path logging migrated to `tracing` structured fields.**
