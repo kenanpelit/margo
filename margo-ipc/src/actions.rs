@@ -494,7 +494,15 @@ pub const ACTIONS: &[Action] = &[
         args: "",
         group: Group::System,
         summary: "Reload `~/.config/margo/config.conf`.",
-        detail: "Re-reads keybinds, animation params, window rules, layer rules.",
+        detail: "Re-reads keybinds, animation params, window rules, layer rules. Also invalidates the runtime theme baseline so `theme default` resets to the freshly-parsed values.",
+    },
+    Action {
+        name: "theme",
+        aliases: &["set_theme"],
+        args: "<preset>",
+        group: Group::System,
+        summary: "Live-swap the visual theme preset (no config reload).",
+        detail: "Built-in presets: `default` (restore the values from config.conf), `minimal` (no shadows/blur, thin square borders), `gaudy` (chunky rounded borders, deep drop shadows). Borders, shadows, blur all re-render on the next frame.",
     },
     Action {
         name: "quit",

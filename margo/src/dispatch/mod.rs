@@ -25,6 +25,38 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                 _ => state.start_interactive_move(),
             }
         }
+        "theme" | "set_theme" => {
+            let name = arg.v.as_deref().unwrap_or("default");
+            match state.apply_theme_preset(name) {
+                Ok(()) => {
+                    let _ = crate::utils::spawn([
+                        "notify-send",
+                        "-a",
+                        "margo",
+                        "-i",
+                        "preferences-desktop-theme",
+                        "-t",
+                        "1500",
+                        "Margo theme",
+                        name,
+                    ]);
+                }
+                Err(e) => {
+                    tracing::warn!("theme: {e}");
+                    let _ = crate::utils::spawn([
+                        "notify-send",
+                        "-a",
+                        "margo",
+                        "-i",
+                        "dialog-warning",
+                        "-t",
+                        "3000",
+                        "Margo theme",
+                        &e,
+                    ]);
+                }
+            }
+        }
         "reload" | "reload_config" => match state.reload_config() {
             Ok(()) => {
                 tracing::info!("config reloaded");
