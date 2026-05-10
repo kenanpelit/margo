@@ -2787,8 +2787,33 @@ impl MargoState {
         let tagset = if is_overview { !0 } else { mon.current_tagset() };
         let nmaster = mon.current_nmaster();
         let mfact = mon.current_mfact();
-        let work_area = mon.work_area;
         let monitor_area = mon.monitor_area;
+        // Apply `overview_zoom` to the work area so the overview Grid
+        // arranges every visible window inside a *centered* sub-rect
+        // smaller than the full work area — niri's "zoom 0.5" feeling
+        // without a true scene-tree transform. Centering keeps the
+        // overview rect inside the layer-shell exclusion zone, so the
+        // bar and other top/overlay layers stay anchored to the panel
+        // edges (niri pattern: top + overlay layers stay at 1.0,
+        // background + bottom would zoom in lock-step — margo doesn't
+        // depend on the latter today, so we only zoom the workspace
+        // surface).
+        let work_area = if is_overview {
+            let zoom = self.config.overview_zoom.clamp(0.1, 1.0) as f64;
+            let wa = mon.work_area;
+            let new_w = ((wa.width as f64) * zoom).round() as i32;
+            let new_h = ((wa.height as f64) * zoom).round() as i32;
+            let dx = (wa.width - new_w) / 2;
+            let dy = (wa.height - new_h) / 2;
+            crate::layout::Rect {
+                x: wa.x + dx,
+                y: wa.y + dy,
+                width: new_w.max(1),
+                height: new_h.max(1),
+            }
+        } else {
+            mon.work_area
+        };
         let mut gaps = if is_overview {
             let inner = self.config.overview_gap_inner.max(0);
             let outer = self.config.overview_gap_outer.max(0);
@@ -3696,7 +3721,19 @@ impl MargoState {
     /// move animation across N tiles is what made the previous
     /// overview feel laggy. 180 ms with the user's configured easing
     /// curve gives a smooth grid-zoom that still reads as animated.
+    /// Fallback overview transition duration. `Config::overview_transition_ms`
+    /// overrides this when non-zero; the default config value also
+    /// happens to be 180 so behaviour is unchanged unless the user
+    /// tunes it. See [`overview_transition_ms`] for the live read.
     const OVERVIEW_TRANSITION_MS: u32 = 180;
+
+    /// Live overview-transition duration: config knob if set, else the
+    /// hard-coded fallback. Used by `open_overview` / `close_overview`
+    /// to seed `overview_transition_animation_ms`.
+    fn overview_transition_ms(&self) -> u32 {
+        let cfg = self.config.overview_transition_ms;
+        if cfg > 0 { cfg } else { Self::OVERVIEW_TRANSITION_MS }
+    }
 
     pub fn open_overview(&mut self) {
         // Collect the indices of monitors that actually flip into
@@ -3724,7 +3761,7 @@ impl MargoState {
         // 250+ ms `animation_duration_move`). The per-client move
         // animation in arrange_monitor reads this override and falls
         // back to the configured value when None.
-        self.overview_transition_animation_ms = Some(Self::OVERVIEW_TRANSITION_MS);
+        self.overview_transition_animation_ms = Some(self.overview_transition_ms());
         self.arrange_monitors(&flipped);
         self.overview_transition_animation_ms = None;
         crate::protocols::dwl_ipc::broadcast_all(self);
@@ -3794,7 +3831,7 @@ impl MargoState {
             client.is_overview_hovered = false;
         }
 
-        self.overview_transition_animation_ms = Some(Self::OVERVIEW_TRANSITION_MS);
+        self.overview_transition_animation_ms = Some(self.overview_transition_ms());
         self.arrange_monitors(&flipped);
         self.overview_transition_animation_ms = None;
 

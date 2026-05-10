@@ -7,6 +7,26 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Changed
+
+- **Niri-overview port — Round 2a (geometric zoom + transition wiring).**
+  `overview_zoom` (added in 0.1.8) is now consumed by
+  `arrange_monitor`: while overview is open, the work area shrinks
+  to `zoom × work_area` centered inside the monitor's logical work
+  rect, so windows arrange inside a smaller, centered region —
+  niri's "zoom 0.5" feel without a true scene-tree transform.
+  Layer-shell positioning is unchanged on purpose: top + overlay
+  layers (the bar) stay anchored to the panel edges, matching
+  niri's "background + bottom would zoom in lockstep, top + overlay
+  stay at 1.0" pattern. `overview_transition_ms` config is now
+  honoured via a new `overview_transition_ms()` helper (fallback
+  180 ms when config value is 0).
+
+  Round 2b (per-tag thumbnails — every tag gets its own mini-layout
+  area, not the current "every window in one Grid") and Round 3
+  (mouse drag-and-drop windows across tags inside overview) are
+  the next two slices.
+
 ## [0.1.8] – 2026-05-10
 
 Niri-overview port — Round 1 (trigger mechanics). The next two rounds
