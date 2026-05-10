@@ -1582,20 +1582,6 @@ pub struct MargoState {
     /// arrange is done. None ⇒ fall back to the configured duration.
     pub overview_transition_animation_ms: Option<u32>,
 
-    /// `true` while the left mouse button is held over empty
-    /// overview space — every motion delta during the drag is fed
-    /// into `self.spatial.pan_by_screen_delta`. Cleared on button
-    /// release.
-    pub spatial_panning: bool,
-
-    /// World-space camera for the spatial overview (Phase 3). One
-    /// camera per `MargoState` — multi-monitor world topology is a
-    /// Phase 3.5 extension. Even when overview is closed the camera
-    /// stays loaded; `open_overview` snaps it to the active tag's
-    /// world centre so the open transition reads as "zoom out from
-    /// where I was". See `docs/design/spatial-overview.md`.
-    pub spatial: crate::spatial_overview::SpatialCamera,
-
     /// Which hot corner the pointer is currently dwelling in (if any).
     /// `None` while pointer is anywhere else; set on entry, cleared on
     /// exit. Together with [`hot_corner_armed_at`] drives the dwell
@@ -1800,8 +1786,6 @@ impl MargoState {
             region_selector: None,
             layer_animations: std::collections::HashMap::new(),
             overview_transition_animation_ms: None,
-            spatial: crate::spatial_overview::SpatialCamera::default(),
-            spatial_panning: false,
             hot_corner_dwelling: None,
             hot_corner_armed_at: None,
             config,
@@ -2774,35 +2758,41 @@ impl MargoState {
         }
     }
 
-    /// Spatial overview arrangement (Phase 3 commit 2). For each
-    /// tag (1..=9), arrange that tag's clients in its *configured*
-    /// layout inside a monitor-sized slot, then transform world →
-    /// screen via [`spatial_overview::world_to_screen`] using
-    /// `self.spatial` (the per-state camera).
-    ///
-    /// Result: every visible client lands on screen at its
-    /// camera-transformed rect. The render path, hit-test path,
-    /// and border path all read `client.geom` exactly as in the
-    /// non-overview case — the spatial transform is invisible to
-    /// downstream consumers.
-    fn arrange_spatial_overview_geometries(&self, mon_idx: usize) -> layout::ArrangeResult {
-        use crate::spatial_overview;
-        if mon_idx >= self.monitors.len() {
-            return Vec::new();
-        }
-        let mon = &self.monitors[mon_idx];
-        // World layout sizes off the monitor's logical area — every
-        // tag slot is monitor-sized so a tag at zoom 1.0 fills the
-        // panel exactly (zoomed-in view of the active tag is
-        // indistinguishable from non-overview).
-        let monitor_w = mon.monitor_area.width;
-        let monitor_h = mon.monitor_area.height;
-        let work_area = mon.work_area;
 
-        // Per-tag layout's gap config — halved like the legacy
-        // per-tag thumbnail pass for visual density at low zoom.
-        let user_inner = if self.enable_gaps { mon.gappih } else { 0 };
-        let inner_pad = (user_inner / 2).max(2);
+    /// Overview rendering — Mango/Hypr-style per-tag thumbnail grid.
+    /// Fixed 3×3 cell layout over the work area; tag 1 top-left,
+    /// tag 9 bottom-right. Each cell hosts its tag's clients in
+    /// that tag's *configured* layout (the per-tag `Pertag` —
+    /// `ltidxs[N]`, `mfacts[N]`, `nmasters[N]`). Empty tags simply
+    /// produce an empty cell.
+    ///
+    /// Why fixed 3×3 (not dynamic): spatial memory continuity. With
+    /// a dynamic grid the user has to re-locate the active tag every
+    /// time a tag empties out. With a fixed grid, tag 5 is always in
+    /// the centre, tag 1 always top-left, etc. — alt+Tab cycle and
+    /// hot-corner trigger become muscle memory after a few uses.
+    ///
+    /// `border::refresh` reads `is_overview_hovered` to paint the
+    /// keyboard-cycle's selected client in `focuscolor`; the cycle
+    /// path itself uses `overview_transition_animation_ms = Some(1)`
+    /// to bypass the move animation, so each Tab press lands the
+    /// hover colour instantly.
+    fn arrange_overview_per_tag_grid(
+        &self,
+        mon_idx: usize,
+        work_area: layout::Rect,
+        gaps: &layout::GapConfig,
+    ) -> layout::ArrangeResult {
+        const COLS: i32 = 3;
+        const ROWS: i32 = 3;
+        let mon = &self.monitors[mon_idx];
+        let pad = self.config.overview_gap_outer.max(0);
+        let cell_w = ((work_area.width - pad * (COLS + 1)) / COLS).max(1);
+        let cell_h = ((work_area.height - pad * (ROWS + 1)) / ROWS).max(1);
+
+        // Inner gap halved so thumbnail content reads denser at
+        // small cell size.
+        let inner_pad = (gaps.gappih / 2).max(2);
         let cell_gaps = layout::GapConfig {
             gappih: inner_pad,
             gappiv: inner_pad,
@@ -2811,9 +2801,19 @@ impl MargoState {
         };
 
         let mut results: layout::ArrangeResult = Vec::new();
-        for tag in 1..=(crate::layout::MAX_TAGS as u32) {
-            let tag_bit = 1u32 << (tag - 1);
-            let pertag_slot = tag as usize;
+        for tag_idx in 0..crate::layout::MAX_TAGS as i32 {
+            let row = tag_idx / COLS;
+            let col = tag_idx % COLS;
+            let cell_rect = layout::Rect {
+                x: work_area.x + pad + col * (cell_w + pad),
+                y: work_area.y + pad + row * (cell_h + pad),
+                width: cell_w,
+                height: cell_h,
+            };
+
+            let tag_bit = 1u32 << tag_idx;
+            // Pertag uses 1-based slots (slot 0 unused).
+            let pertag_slot = tag_idx as usize + 1;
             let tag_layout = mon
                 .pertag
                 .ltidxs
@@ -2856,16 +2856,8 @@ impl MargoState {
                 .map(|&i| self.clients[i].scroller_proportion)
                 .collect();
 
-            // Tag-local arrange — work area is monitor-sized, in
-            // tag-local coordinates starting at (0, 0).
-            let tag_local_work = layout::Rect {
-                x: 0,
-                y: 0,
-                width: monitor_w,
-                height: monitor_h,
-            };
             let ctx = layout::ArrangeCtx {
-                work_area: tag_local_work,
+                work_area: cell_rect,
                 tiled: &cell_tiled,
                 nmaster: tag_nmaster,
                 mfact: tag_mfact,
@@ -2879,36 +2871,7 @@ impl MargoState {
                 scroller_prefer_overspread: false,
                 canvas_pan: (0.0, 0.0),
             };
-            let local_geoms = layout::arrange(tag_layout, &ctx);
-
-            // Transform every (client_idx, local_rect) through
-            // tag_anchor + world_to_screen. Border / render / hit
-            // test all read `client.geom` post-transform — they
-            // don't need to know spatial mode is on.
-            for (idx, local_rect) in local_geoms {
-                let world =
-                    spatial_overview::client_world_rect(tag, local_rect, monitor_w, monitor_h);
-                let tl = spatial_overview::world_to_screen(
-                    (world.x as f64, world.y as f64),
-                    &self.spatial,
-                    work_area,
-                );
-                let br = spatial_overview::world_to_screen(
-                    (
-                        (world.x + world.width) as f64,
-                        (world.y + world.height) as f64,
-                    ),
-                    &self.spatial,
-                    work_area,
-                );
-                let screen_rect = layout::Rect {
-                    x: tl.0.round() as i32,
-                    y: tl.1.round() as i32,
-                    width: ((br.0 - tl.0).max(1.0)).round() as i32,
-                    height: ((br.1 - tl.1).max(1.0)).round() as i32,
-                };
-                results.push((idx, screen_rect));
-            }
+            results.extend(layout::arrange(tag_layout, &ctx));
         }
         results
     }
@@ -3058,17 +3021,17 @@ impl MargoState {
             canvas_pan,
         };
 
-        // Phase 3: in spatial overview mode, every tag's clients
-        // arrange in their own *configured* layout inside a
-        // monitor-sized world slot; world coords transform through
-        // the camera into screen rects. Grid mode (legacy) keeps the
-        // single-Grid-of-everything pass. See
-        // `docs/design/spatial-overview.md`.
-        let geometries = if is_overview
-            && crate::spatial_overview::OverviewMode::from_config_str(&self.config.overview_mode)
-                == crate::spatial_overview::OverviewMode::Spatial
-        {
-            self.arrange_spatial_overview_geometries(mon_idx)
+        // Overview path — Mango/Hypr-style zoom-out canvas. Every
+        // tag becomes its own thumbnail in a fixed 3×3 grid (tag 1
+        // top-left, tag 9 bottom-right — the 1-9 keypad mental
+        // model). Each thumbnail runs its tag's *configured* layout
+        // (Tile / Scroller / Grid / Canvas / …) inside the cell, so
+        // a scroller tag stays scroller-shaped at thumbnail size,
+        // a grid tag stays grid-shaped. Spatial-memory continuity:
+        // a window in the top-left of tag 1 will be in the top-left
+        // of the top-left thumbnail.
+        let geometries = if is_overview {
+            self.arrange_overview_per_tag_grid(mon_idx, work_area, &gaps)
         } else {
             layout::arrange(layout, &ctx)
         };
@@ -3935,38 +3898,6 @@ impl MargoState {
             return;
         }
 
-        // Phase 3: in spatial mode, snap the world-space camera so
-        // the entire 3×3 world fits the work area. Centre the
-        // camera on the world centre so every tag is equally
-        // visible — `overview_zoom` is treated as a *minimum*
-        // zoom; the final zoom is `min(config_zoom, auto_zoom)`
-        // where auto_zoom = (work_area / world_bounds) × 0.95
-        // (5% margin). This stops the previous failure mode where
-        // `overview_zoom = 0.5` opened the camera so far in that
-        // 8 of 9 tags fell off-screen.
-        if crate::spatial_overview::OverviewMode::from_config_str(&self.config.overview_mode)
-            == crate::spatial_overview::OverviewMode::Spatial
-        {
-            if let Some(&mon_idx) = flipped.first() {
-                let mon = &self.monitors[mon_idx];
-                let monitor_w = mon.monitor_area.width;
-                let monitor_h = mon.monitor_area.height;
-                let work_area = mon.work_area;
-                let world = crate::spatial_overview::world_bounds(monitor_w, monitor_h);
-                let auto_zoom_x = work_area.width as f64 / world.width as f64;
-                let auto_zoom_y = work_area.height as f64 / world.height as f64;
-                let auto_zoom = auto_zoom_x.min(auto_zoom_y) * 0.95;
-                // Cap at the user's `overview_zoom` so they can ask
-                // for "more zoomed out" (e.g. 0.2 to add breathing
-                // room) but not "more zoomed in than fits".
-                let cfg_zoom = self.config.overview_zoom.clamp(0.1, 1.0) as f64;
-                let zoom = cfg_zoom.min(auto_zoom);
-                let cx = world.width as f64 / 2.0;
-                let cy = world.height as f64 / 2.0;
-                self.spatial.snap_to(cx, cy, zoom);
-            }
-        }
-
         // Snappy 180 ms slide into the grid (vs the user's possibly
         // 250+ ms `animation_duration_move`). The per-client move
         // animation in arrange_monitor reads this override and falls
@@ -4160,65 +4091,17 @@ impl MargoState {
         }
         self.clients[new_idx].is_overview_hovered = true;
 
-        // In spatial overview, pan the camera so the newly-hovered
-        // *window* (not its tag) is centred on the work area. Two
-        // important details:
-        //
-        //   * We pan to the **client's world centre**, not the tag
-        //     slot centre. Tag-centre felt like "tag jumping" because
-        //     a client at the corner of a sparsely-populated tag
-        //     would still leave the camera off-target. Window-centre
-        //     panning makes alt+Tab feel like a real window switcher
-        //     — selection lands centred every time.
-        //
-        //   * We bypass the move animation for the duration of this
-        //     pan (`overview_transition_animation_ms = Some(1)` —
-        //     1 ms is treated as "snap, no slide"). Without this, every
-        //     cycle step kicked the per-client move animation across
-        //     the entire visible client set, producing a frame-long
-        //     "everyone slides" frame where the hover-coloured border
-        //     was indistinguishable from the others. Snap on cycle =
-        //     instant geometry update = the new hover client lights up
-        //     in `focuscolor` immediately, every other client stays
-        //     in `bordercolor`. User reads the cycle clearly.
-        let is_spatial = crate::spatial_overview::OverviewMode::from_config_str(
-            &self.config.overview_mode,
-        ) == crate::spatial_overview::OverviewMode::Spatial;
-        if is_spatial {
-            // Compute the new client's world-space centre. The
-            // client's *current* `geom` is the screen rect from the
-            // last arrange — invert through the *current* camera to
-            // recover its world position, then re-snap the camera so
-            // that world point lands at the work-area centre.
-            let mon_idx = self.clients[new_idx].monitor;
-            if mon_idx < self.monitors.len() {
-                let work_area = self.monitors[mon_idx].work_area;
-                let g = self.clients[new_idx].geom;
-                let cur_screen_centre =
-                    ((g.x + g.width / 2) as f64, (g.y + g.height / 2) as f64);
-                let world_centre = crate::spatial_overview::screen_to_world(
-                    cur_screen_centre,
-                    &self.spatial,
-                    work_area,
-                );
-                self.spatial
-                    .snap_to(world_centre.0, world_centre.1, self.spatial.zoom);
-                // Re-arrange under the snapped camera, *without* the
-                // move animation. open_overview already uses the same
-                // `Some(1)` trick to skip the slide; we restore it
-                // after this single arrange so the user's normal
-                // animation duration applies elsewhere.
-                self.overview_transition_animation_ms = Some(1);
-                self.arrange_monitor(mon_idx);
-                self.overview_transition_animation_ms = None;
-            }
-        }
+        // Snap-no-slide arrange so the cycle reads as a window
+        // switcher (border focuscolor lights up the new selection
+        // instantly). 1 ms is the layout-pass minimum and the
+        // per-client move animation gate treats it as "snap".
+        self.overview_transition_animation_ms = Some(1);
+        self.arrange_monitor(self.clients[new_idx].monitor);
+        self.overview_transition_animation_ms = None;
 
-        // Pointer warp to the post-pan thumbnail centre. After the
-        // snap above, the new hover client is at work-area centre on
-        // every output that contains it; the warp keeps cursor and
-        // border in lock-step so the next motion event doesn't yank
-        // hover off the keyboard-selected thumbnail.
+        // Pointer warp to thumbnail centre. Without this the next
+        // mouse motion would clear `is_overview_hovered` because
+        // the cursor wouldn't overlap the new thumbnail's rect.
         let g = self.clients[new_idx].geom;
         if g.width > 0 && g.height > 0 {
             self.input_pointer.x = (g.x + g.width / 2) as f64;
@@ -4247,74 +4130,6 @@ impl MargoState {
             list_len = list.len(),
             "cycle",
         );
-    }
-
-    /// Keyboard pan for the spatial overview camera. `dx_screen` /
-    /// `dy_screen` are screen-space deltas (one "screen step" of
-    /// ~25% of the work area is a sensible bind for arrow keys).
-    /// No-op outside spatial overview.
-    pub fn overview_pan_screen(&mut self, dx_screen: f64, dy_screen: f64) {
-        if !self.is_overview_open() {
-            return;
-        }
-        if crate::spatial_overview::OverviewMode::from_config_str(&self.config.overview_mode)
-            != crate::spatial_overview::OverviewMode::Spatial
-        {
-            return;
-        }
-        self.spatial.pan_by_screen_delta(dx_screen, dy_screen);
-        self.arrange_all();
-        self.request_repaint();
-    }
-
-    /// Multiply the camera's target zoom by `factor`, clamped to
-    /// `[ZOOM_MIN, ZOOM_MAX]`. Centred on the work area centre (no
-    /// anchor) — keyboard zoom isn't cursor-anchored the way
-    /// scroll-wheel zoom is. No-op outside spatial overview.
-    pub fn overview_zoom_by(&mut self, factor: f64) {
-        if !self.is_overview_open() {
-            return;
-        }
-        if crate::spatial_overview::OverviewMode::from_config_str(&self.config.overview_mode)
-            != crate::spatial_overview::OverviewMode::Spatial
-        {
-            return;
-        }
-        self.spatial.zoom_to_target(self.spatial.target_zoom * factor);
-        self.arrange_all();
-        self.request_repaint();
-    }
-
-    /// Re-centre the camera on the active tag's slot at the
-    /// configured `overview_zoom`. Useful as a "reset view" bind
-    /// when the user has wandered off into a corner.
-    pub fn overview_reset_camera(&mut self) {
-        if !self.is_overview_open() {
-            return;
-        }
-        let Some(mon_idx) = self.monitors.iter().position(|m| m.is_overview) else {
-            return;
-        };
-        let mon = &self.monitors[mon_idx];
-        let mw = mon.monitor_area.width;
-        let mh = mon.monitor_area.height;
-        let work_area = mon.work_area;
-        // Same auto-fit math as `open_overview` — reset always lands
-        // on "every tag visible, world centred". Acts as the
-        // "I got lost, take me home" bind.
-        let world = crate::spatial_overview::world_bounds(mw, mh);
-        let auto_zoom = (work_area.width as f64 / world.width as f64)
-            .min(work_area.height as f64 / world.height as f64)
-            * 0.95;
-        let cfg_zoom = self.config.overview_zoom.clamp(0.1, 1.0) as f64;
-        let zoom = cfg_zoom.min(auto_zoom);
-        self.spatial.snap_to(
-            world.width as f64 / 2.0,
-            world.height as f64 / 2.0,
-            zoom,
-        );
-        self.arrange_all();
-        self.request_repaint();
     }
 
     /// Close overview activating whichever thumbnail keyboard

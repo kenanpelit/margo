@@ -665,25 +665,6 @@ fn handle_pointer_motion<B: InputBackend, E: PointerMotionEvent<B>>(
         ptr.frame(state);
     }
 
-    // Spatial-overview camera pan — every motion event while
-    // `spatial_panning` is held streams its delta into the camera
-    // target. Velocity feeds momentum for the post-release coast:
-    // `delta / dt` would be ideal but at 60+ Hz the per-event delta
-    // is already a good velocity proxy (1 unit per frame ≈ unit/16ms
-    // ≈ 60 unit/sec). The momentum tick (FRICTION decay) drains
-    // these to zero over ~0.5 s.
-    if state.spatial_panning && state.is_overview_open() {
-        let dx = event.delta_x();
-        let dy = event.delta_y();
-        state.spatial.pan_by_screen_delta(dx, dy);
-        // Momentum sample — naïve per-event delta is the velocity
-        // estimate; final values left in `vx/vy` at button release
-        // = coast direction.
-        state.spatial.vx = dx * 60.0; // px/sec at 60 Hz
-        state.spatial.vy = dy * 60.0;
-        state.request_repaint();
-    }
-
     // Hot corner check — niri pattern. The pointer is in a corner
     // when it's in a 1×1 logical-pixel rectangle at one of the four
     // output corners; entering the corner arms a dwell timer, dwelling
@@ -1015,36 +996,13 @@ fn handle_pointer_button<B: InputBackend, E: PointerButtonEvent<B>>(
                 | Some(target @ FocusTarget::Popup(_)) => {
                     state.focus_surface(Some(target));
                 }
-                None => {
-                    let is_spatial = crate::spatial_overview::OverviewMode::from_config_str(
-                        &state.config.overview_mode,
-                    ) == crate::spatial_overview::OverviewMode::Spatial;
-                    // 0x110 = BTN_LEFT (input-event-codes.h).
-                    if is_spatial && button == 0x110 {
-                        state.spatial_panning = true;
-                        // Kill any in-flight momentum — fresh drag
-                        // starts from rest.
-                        state.spatial.vx = 0.0;
-                        state.spatial.vy = 0.0;
-                    } else {
-                        state.close_overview(None);
-                    }
-                }
+                None => state.close_overview(None),
             }
         } else if let Some((target, _)) = focus_under(state, pos) {
             state.focus_surface(Some(target));
         } else {
             state.focus_surface(None);
         }
-    }
-
-    // Release end-of-drag — panning flag clears; momentum left in
-    // `vx/vy` from the last motion delta keeps the camera coasting
-    // until friction (FRICTION × per-tick) settles it. The tick
-    // hook lives in `MargoState::tick_overview_camera` and runs
-    // off the main animation tick.
-    if btn_state == ButtonState::Released && button == 0x110 && state.spatial_panning {
-        state.spatial_panning = false;
     }
     state.request_repaint();
     if let Some(ptr) = state.seat.get_pointer() {
@@ -1065,56 +1023,6 @@ fn handle_pointer_axis<B: InputBackend, E: PointerAxisEvent<B>>(
     state: &mut MargoState,
     event: E,
 ) {
-    // Phase 3 spatial-overview scroll-to-zoom intercept. Vertical
-    // scroll while overview is open + spatial mode zooms the camera
-    // around the cursor (the world point under the cursor stays
-    // fixed). Horizontal scroll is left alone — it's a useful pan
-    // gesture for touchpad users in non-overview mode and re-using
-    // it for spatial pan would conflict with the LMB-drag pan.
-    if state.is_overview_open()
-        && crate::spatial_overview::OverviewMode::from_config_str(&state.config.overview_mode)
-            == crate::spatial_overview::OverviewMode::Spatial
-    {
-        let v = event
-            .amount(Axis::Vertical)
-            .unwrap_or_else(|| event.amount_v120(Axis::Vertical).unwrap_or(0.0) / 120.0 * 3.0);
-        if v.abs() > 0.01 {
-            // 1.1× per "click" (matches the scroll-wheel detent
-            // factor design doc cites). Scroll up (negative on
-            // libinput) = zoom in. Smithay sends `v` as positive
-            // for scroll-down on standard wheels.
-            let factor = if v > 0.0 { 1.0 / 1.1 } else { 1.1 };
-            let cursor = (state.input_pointer.x, state.input_pointer.y);
-            // Hit-test against the focused output's work area so the
-            // zoom anchor stays inside the panel even when the
-            // cursor wanders past an edge during an animation.
-            let mut wa = None;
-            for output in state.space.outputs() {
-                if let Some(geo) = state.space.output_geometry(output) {
-                    if (cursor.0 as i32) >= geo.loc.x
-                        && (cursor.0 as i32) < geo.loc.x + geo.size.w
-                        && (cursor.1 as i32) >= geo.loc.y
-                        && (cursor.1 as i32) < geo.loc.y + geo.size.h
-                    {
-                        if let Some(mon_idx) =
-                            state.monitors.iter().position(|m| &m.output == output)
-                        {
-                            wa = Some(state.monitors[mon_idx].work_area);
-                            break;
-                        }
-                    }
-                }
-            }
-            if let Some(work_area) = wa {
-                state
-                    .spatial
-                    .zoom_around_screen_point(factor, cursor, work_area);
-                state.request_repaint();
-            }
-            return; // Don't forward zoom-scroll to clients.
-        }
-    }
-
     // AxisFrame::source() and AxisFrame::value() both use smithay::backend::input types.
     let mut frame = AxisFrame::new(event.time_msec()).source(event.source());
 

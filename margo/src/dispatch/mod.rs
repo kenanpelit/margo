@@ -390,17 +390,6 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
         // text input. Binding bare Return would swallow Enter
         // everywhere, including terminals.
         "overview_focus_next" => state.overview_focus_next(),
-        // Spatial-overview camera nav. Step magnitude (480/270) is a
-        // quarter of a 1920×1080 panel; the camera math scales the
-        // step by `1/zoom` so the visible-world delta stays
-        // intuitively "one screen step" regardless of zoom level.
-        "overview_pan_left" => state.overview_pan_screen(-480.0, 0.0),
-        "overview_pan_right" => state.overview_pan_screen(480.0, 0.0),
-        "overview_pan_up" => state.overview_pan_screen(0.0, -270.0),
-        "overview_pan_down" => state.overview_pan_screen(0.0, 270.0),
-        "overview_zoom_in" => state.overview_zoom_by(1.2),
-        "overview_zoom_out" => state.overview_zoom_by(1.0 / 1.2),
-        "overview_zoom_reset" | "overview_reset_camera" => state.overview_reset_camera(),
         "overview_focus_prev" => state.overview_focus_prev(),
         "overview_activate" => state.overview_activate(),
         // Spatial-canvas pan (PaperWM-ish). Two integer args:

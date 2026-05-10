@@ -303,7 +303,6 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
         "enable_hotarea" => cfg.enable_hotarea = parse_bool(val),
 
         // overview
-        "overview_mode" => cfg.overview_mode = val.trim().to_string(),
         "ov_tab_mode" => cfg.ov_tab_mode = parse_u32(val),
         "overviewgappi" => cfg.overview_gap_inner = parse_i32(val),
         "overviewgappo" => cfg.overview_gap_outer = parse_i32(val),

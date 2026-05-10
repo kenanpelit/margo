@@ -538,11 +538,6 @@ pub struct Config {
     pub enable_hotarea: bool,
 
     // overview
-    /// Which overview style is active. `Spatial` (default) is the
-    /// new 2D pan-zoomable canvas; `Grid` is the legacy single-Grid
-    /// fallback. See `docs/design/spatial-overview.md`. Config
-    /// string: `overview_mode = spatial` (default) or `= grid`.
-    pub overview_mode: String,
     pub ov_tab_mode: u32,
     pub overview_gap_inner: i32,
     pub overview_gap_outer: i32,
@@ -772,7 +767,6 @@ impl Default for Config {
             hotarea_corner: HotareaCorner::BottomLeft,
             enable_hotarea: true,
 
-            overview_mode: "spatial".to_string(),
             ov_tab_mode: 0,
             overview_gap_inner: 5,
             overview_gap_outer: 30,

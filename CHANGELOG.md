@@ -7,7 +7,30 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
-### Added
+### Changed
+
+- **Overview reverted from "Infinite Spatial" back to Mango-style
+  per-tag thumbnail grid.** Five commits of camera-pan canvas
+  (foundation + state + nav + auto-fit + window-centred cycle) were
+  reverted in one pass after live UX feedback: the live camera
+  felt fiddly compared to a fixed-grid that the user's spatial
+  memory could rely on. Final shape:
+  * Fixed 3×3 grid (tag 1 top-left → tag 9 bottom-right). Same cell
+    index every time, spatial memory carries.
+  * Each thumbnail runs that tag's configured layout (Tile /
+    Scroller / Grid / Canvas / …). Scroller tag stays
+    scroller-shaped, grid tag stays grid-shaped.
+  * alt+Tab MRU cycle keeps the snap-no-slide arrange from the
+    spatial attempt — each Tab press lights `focuscolor` border
+    on the new selection instantly, no animation kaos.
+  * `spatial_overview` module + design doc + 7 dispatch actions +
+    `OverviewMode`/`overview_mode` config + `MargoState::spatial`/
+    `spatial_panning` fields + `SpatialCamera` + frame-tick
+    momentum + scroll-zoom intercept + LMB-drag pan handler all
+    removed. ~600 LOC out, simpler render path, no spatial state
+    to debug.
+
+### Added (replaces previous Phase 3 entries)
 
 - **Phase 3 — Spatial Overview live navigation (3 / 3, final).**
   Mouse + scroll + keyboard navigation all wired through the
