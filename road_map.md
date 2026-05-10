@@ -510,9 +510,15 @@ matches mango-ext exactly:
   in existence (i3, sway, Hypr, niri, GNOME). The cycle path
   itself does NO arrange — only `is_overview_hovered` flips and
   `border::refresh` runs, so the focuscolor border lights up the
-  new pick on the very next frame ("instant"). alt+Return /
-  `overview_activate` commits the highlighted thumbnail and closes
-  overview onto its window's tag.
+  new pick on the very next frame ("instant").
+* **Modifier-release auto-commit** — `overview_focus_next/prev`
+  snapshots the modifier mask at trigger time; the next key
+  release whose state no longer overlaps the snapshot
+  (i.e. every held modifier let go) calls `overview_activate`
+  automatically. So `alt+Tab` walks the cycle and *releasing Alt*
+  commits the pick — no explicit Enter needed. alt+Return is
+  still wired as the explicit commit path for users who prefer
+  it.
 * **Cinematic selection** — selected thumbnail gets a thicker
   focuscolor border (`overview_selected_border_multiplier`,
   default 1.6) so the pick reads at small thumbnail sizes;

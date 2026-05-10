@@ -9,6 +9,29 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- **Alt+Tab muscle-memory commit — release modifier to confirm.**
+  Holding Alt and tapping Tab to walk thumbnails was already
+  smooth, but the user still had to press Enter (`alt+Return →
+  overview_activate`) to commit the pick. Now, releasing Alt (or
+  whichever modifier the binding uses) is enough — overview
+  closes onto the highlighted thumbnail and focus moves there.
+  Matches the Win/GNOME/Hypr "hold modifier, tap to cycle, let
+  go to confirm" muscle memory the user expects from alt+Tab
+  outside this compositor.
+  * Implemented as a modifier snapshot taken when an
+    `overview_focus_next/prev` keybind fires, plus a release-
+    branch in the keyboard handler that watches for the snapshot
+    set going to zero (every snapshotted modifier released).
+  * Works for any modifier — `super,Tab,overview_focus_next`
+    binding would commit on Super release.
+  * `alt+shift+Tab` walks backwards: releasing Shift alone won't
+    commit (Alt is still held); releasing both Alt and Shift
+    will.
+  * Two new `MargoState` fields: `overview_cycle_pending` and
+    `overview_cycle_modifier_mask`. Cleared by `open_overview`,
+    `close_overview`, and `overview_activate`. `alt+Return` still
+    works as the explicit commit path.
+
 - **Overview cinematic selection — dim + thicker border on the
   pick.** Two new config keys, both clamped, both default-on:
   * `overview_selected_border_multiplier` (default `1.6`, range

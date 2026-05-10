@@ -1582,6 +1582,19 @@ pub struct MargoState {
     /// arrange is done. None ⇒ fall back to the configured duration.
     pub overview_transition_animation_ms: Option<u32>,
 
+    /// Alt+Tab muscle-memory: when an `overview_focus_next/prev` keybind
+    /// fires, the input handler snapshots which modifier(s) the user is
+    /// holding and sets `overview_cycle_pending = true`. On the next key
+    /// release event whose modifier state no longer overlaps that snapshot
+    /// (i.e. the user let go of Alt/Super/whatever they were holding),
+    /// the input handler calls `overview_activate` to commit the cycle's
+    /// pick — closing overview onto the highlighted thumbnail. This is
+    /// the standard Win/GNOME/Hypr "hold modifier, tap Tab to cycle,
+    /// release modifier to confirm" behaviour. Cleared by
+    /// `overview_activate`, `close_overview`, and `open_overview`.
+    pub overview_cycle_pending: bool,
+    pub overview_cycle_modifier_mask: margo_config::Modifiers,
+
     /// Which hot corner the pointer is currently dwelling in (if any).
     /// `None` while pointer is anywhere else; set on entry, cleared on
     /// exit. Together with [`hot_corner_armed_at`] drives the dwell
@@ -1786,6 +1799,8 @@ impl MargoState {
             region_selector: None,
             layer_animations: std::collections::HashMap::new(),
             overview_transition_animation_ms: None,
+            overview_cycle_pending: false,
+            overview_cycle_modifier_mask: margo_config::Modifiers::empty(),
             hot_corner_dwelling: None,
             hot_corner_armed_at: None,
             config,
@@ -3776,6 +3791,12 @@ impl MargoState {
             return;
         }
 
+        // Fresh open ⇒ no pending alt+Tab cycle yet. The input handler
+        // will set this flag the moment a `overview_focus_*` keybind
+        // fires.
+        self.overview_cycle_pending = false;
+        self.overview_cycle_modifier_mask = margo_config::Modifiers::empty();
+
         // Snappy 180 ms slide into the grid (vs the user's possibly
         // 250+ ms `animation_duration_move`). The per-client move
         // animation in arrange_monitor reads this override and falls
@@ -3791,6 +3812,12 @@ impl MargoState {
         if !was_open {
             return;
         }
+
+        // Drop any pending alt+Tab commit — overview is closing now,
+        // a stray modifier-release after this point shouldn't trigger
+        // a second `overview_activate` (which would reopen overview).
+        self.overview_cycle_pending = false;
+        self.overview_cycle_modifier_mask = margo_config::Modifiers::empty();
 
         let previous_focus = self.focused_client_idx();
         // Fallback chain for "which client should be focused after

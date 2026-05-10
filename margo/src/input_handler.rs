@@ -562,10 +562,55 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                         );
                         let action = kb.action.clone();
                         let arg = kb.arg.clone();
+                        // Alt+Tab muscle memory: when an overview-cycle
+                        // action fires, snapshot the modifier set the user
+                        // is currently holding. The release dispatch
+                        // below watches for any of those modifiers being
+                        // let go and auto-commits the cycle's pick. This
+                        // makes alt+Tab behave like Win/GNOME/Hypr —
+                        // hold modifier, tap Tab, release modifier to
+                        // confirm.
+                        if matches!(
+                            action.as_str(),
+                            "overview_focus_next" | "overview_focus_prev"
+                        ) {
+                            let snapshot = smithay_mods_to_margo(modifiers);
+                            state.overview_cycle_pending = true;
+                            state.overview_cycle_modifier_mask = snapshot;
+                        }
                         crate::dispatch::dispatch_action(state, &action, &arg);
                         return FilterResult::Intercept(());
                     }
                 }
+
+                // Modifier-release auto-commit for alt+Tab cycle. Triggers
+                // exactly when:
+                //   1. An `overview_focus_*` keybind has fired since the
+                //      last commit/close (`overview_cycle_pending`).
+                //   2. Overview is still open.
+                //   3. The current modifier state no longer overlaps the
+                //      snapshot taken at cycle time — i.e. the user has
+                //      released *every* modifier they were holding when
+                //      they last tapped Tab. This catches the standard
+                //      "release Alt to confirm" pattern even if the user
+                //      was holding Alt+Shift (alt+shift+Tab walks back) —
+                //      Shift release alone won't commit, but releasing
+                //      both Alt and Shift will.
+                if key_state == KeyState::Released
+                    && state.overview_cycle_pending
+                    && state.is_overview_open()
+                {
+                    let now = smithay_mods_to_margo(modifiers);
+                    let snap = state.overview_cycle_modifier_mask;
+                    if !snap.is_empty() && now.intersection(snap).is_empty() {
+                        state.overview_cycle_pending = false;
+                        state.overview_cycle_modifier_mask =
+                            margo_config::Modifiers::empty();
+                        state.overview_activate();
+                        return FilterResult::Intercept(());
+                    }
+                }
+
                 FilterResult::Forward
             },
         );
