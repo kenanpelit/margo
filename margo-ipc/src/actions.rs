@@ -505,6 +505,22 @@ pub const ACTIONS: &[Action] = &[
         detail: "Built-in presets: `default` (restore the values from config.conf), `minimal` (no shadows/blur, thin square borders), `gaudy` (chunky rounded borders, deep drop shadows). Borders, shadows, blur all re-render on the next frame.",
     },
     Action {
+        name: "session_save",
+        aliases: &["save_session"],
+        args: "",
+        group: Group::System,
+        summary: "Save per-monitor tag/layout state to disk.",
+        detail: "Writes a JSON snapshot to `$XDG_STATE_HOME/margo/session.json` (defaults to `~/.local/state/margo/session.json`). Captures every monitor's seltags, tagset, and per-tag layout/mfact/nmaster/canvas-pan. Open windows are NOT captured — those belong to user-space spawn lines.",
+    },
+    Action {
+        name: "session_load",
+        aliases: &["load_session"],
+        args: "",
+        group: Group::System,
+        summary: "Restore per-monitor tag/layout state from disk.",
+        detail: "Reads `$XDG_STATE_HOME/margo/session.json` and re-applies it to whatever monitors are present today (matched by output name). Snapshot entries for monitors that aren't connected get skipped (logged, not an error). Triggers an arrange + repaint so the new state is visible on the next frame.",
+    },
+    Action {
         name: "quit",
         aliases: &[],
         args: "",

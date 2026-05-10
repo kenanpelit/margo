@@ -25,6 +25,87 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                 _ => state.start_interactive_move(),
             }
         }
+        "session_save" | "save_session" => {
+            let path = match crate::session::session_path() {
+                Ok(p) => p,
+                Err(e) => {
+                    tracing::error!("session_save: resolve path: {e:?}");
+                    return;
+                }
+            };
+            let snap = crate::session::SessionSnapshot::capture(state);
+            let n = snap.monitors.len();
+            match crate::session::save_to(&path, &snap) {
+                Ok(()) => {
+                    tracing::info!(target: "session", "saved {n} monitors to {path:?}");
+                    let _ = crate::utils::spawn([
+                        "notify-send",
+                        "-a",
+                        "margo",
+                        "-i",
+                        "document-save",
+                        "-t",
+                        "1500",
+                        "Margo session",
+                        &format!("Saved {n} monitor(s)"),
+                    ]);
+                }
+                Err(e) => {
+                    tracing::error!(target: "session", "save failed: {e:?}");
+                    let _ = crate::utils::spawn([
+                        "notify-send",
+                        "-a",
+                        "margo",
+                        "-i",
+                        "dialog-error",
+                        "-t",
+                        "3000",
+                        "Margo session save failed",
+                        &format!("{e}"),
+                    ]);
+                }
+            }
+        }
+        "session_load" | "load_session" => {
+            let path = match crate::session::session_path() {
+                Ok(p) => p,
+                Err(e) => {
+                    tracing::error!("session_load: resolve path: {e:?}");
+                    return;
+                }
+            };
+            let snap = match crate::session::load_from(&path) {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::warn!(target: "session", "load failed: {e:?}");
+                    let _ = crate::utils::spawn([
+                        "notify-send",
+                        "-a",
+                        "margo",
+                        "-i",
+                        "dialog-warning",
+                        "-t",
+                        "3000",
+                        "Margo session load failed",
+                        &format!("{e}"),
+                    ]);
+                    return;
+                }
+            };
+            let applied = crate::session::apply_to_state(state, &snap);
+            tracing::info!(target: "session", "loaded {applied} monitors from {path:?}");
+            let _ = crate::utils::spawn([
+                "notify-send",
+                "-a",
+                "margo",
+                "-i",
+                "document-open",
+                "-t",
+                "1500",
+                "Margo session",
+                &format!("Restored {applied} monitor(s)"),
+            ]);
+        }
         "theme" | "set_theme" => {
             let name = arg.v.as_deref().unwrap_or("default");
             match state.apply_theme_preset(name) {

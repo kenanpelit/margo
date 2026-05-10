@@ -36,6 +36,7 @@ mod protocols;
 mod screencasting;
 mod screenshot_region;
 mod scripting;
+mod session;
 mod state;
 mod utils;
 
