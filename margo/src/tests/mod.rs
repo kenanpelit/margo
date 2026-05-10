@@ -33,3 +33,4 @@ mod fixture;
 mod server;
 
 mod globals;
+mod xdg_shell;

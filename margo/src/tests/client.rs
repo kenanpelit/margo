@@ -12,11 +12,18 @@ use std::os::unix::net::UnixStream;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 
+use smithay::reexports::wayland_protocols::xdg::shell::client::{
+    xdg_surface::{self, XdgSurface},
+    xdg_toplevel::{self, XdgToplevel},
+    xdg_wm_base::{self, XdgWmBase},
+};
 use wayland_backend::client::Backend;
 use wayland_client::globals::Global;
 use wayland_client::protocol::wl_callback::{self, WlCallback};
+use wayland_client::protocol::wl_compositor::WlCompositor;
 use wayland_client::protocol::wl_display::WlDisplay;
 use wayland_client::protocol::wl_registry::{self, WlRegistry};
+use wayland_client::protocol::wl_surface::{self, WlSurface};
 use wayland_client::{Connection, Dispatch, Proxy, QueueHandle};
 
 /// Stable id for talking about a particular client across the
@@ -33,12 +40,43 @@ impl ClientId {
     }
 }
 
+/// Configure event the test client received on a particular xdg
+/// surface — exposed so tests can assert "the client got told to
+/// be 1024×640" or "fullscreen state was sent".
+#[derive(Debug, Default, Clone)]
+pub struct ToplevelConfigure {
+    pub size: (i32, i32),
+    pub states: Vec<u32>,
+    pub bounds: Option<(i32, i32)>,
+}
+
+/// Tracking state for a single xdg_toplevel the client created.
+/// Tests reach in via `Client::toplevel_state(...)`.
+#[derive(Debug, Default, Clone)]
+pub struct ToplevelState {
+    pub configures: Vec<ToplevelConfigure>,
+    pub close_requested: bool,
+}
+
 /// What the test client tracks each frame: globals announced by the
 /// server (we keep them indexed by `(name)` so duplicate-bind tests
 /// can spot drift) and pending sync callbacks.
 #[derive(Default)]
 pub struct ClientState {
     pub globals: BTreeMap<u32, Global>,
+    /// Per-xdg_toplevel state, keyed by the proxy id. Populated as
+    /// the client creates toplevels and as configure / close
+    /// events arrive on them.
+    pub toplevels: BTreeMap<u32, ToplevelState>,
+    /// Pending configure being assembled for an xdg_surface. The
+    /// xdg-shell wire format streams `xdg_toplevel.configure` (size
+    /// + states + bounds) BEFORE the matching `xdg_surface.configure`
+    /// (serial). We accumulate fields on the toplevel side and
+    /// snapshot when the surface-side serial arrives.
+    pub pending_toplevel: BTreeMap<u32, ToplevelConfigure>,
+    /// Map xdg_surface.id() → xdg_toplevel.id() so the surface
+    /// configure event can find the right pending entry.
+    pub xdg_surface_to_toplevel: BTreeMap<u32, u32>,
 }
 
 /// Sync sentinel: each `roundtrip` mints one and the fixture spins
@@ -127,6 +165,77 @@ impl Client {
             .map(|g| g.interface.clone())
             .collect()
     }
+
+    /// Bind a global by its `interface` name and return the proxy.
+    /// Panics if the global hasn't been advertised yet — the test
+    /// is expected to call `Fixture::roundtrip` once before binding.
+    fn bind_global<I>(&self, version_cap: u32) -> I
+    where
+        I: Proxy + 'static,
+        ClientState: Dispatch<I, ()>,
+    {
+        let registry = self.display.get_registry(&self.qh, ());
+        let target_iface = I::interface().name;
+        let global = self
+            .state
+            .globals
+            .values()
+            .find(|g| g.interface == target_iface)
+            .unwrap_or_else(|| {
+                panic!(
+                    "global `{target_iface}` not advertised; available: {:?}",
+                    self.state
+                        .globals
+                        .values()
+                        .map(|g| g.interface.as_str())
+                        .collect::<Vec<_>>()
+                )
+            });
+        let version = global.version.min(version_cap);
+        registry.bind::<I, _, _>(global.name, version, &self.qh, ())
+    }
+
+    /// Bind `wl_compositor` and create a fresh `wl_surface`.
+    pub fn create_surface(&mut self) -> (WlCompositor, WlSurface) {
+        let compositor: WlCompositor = self.bind_global(6);
+        let surface = compositor.create_surface(&self.qh, ());
+        self.connection.flush().expect("client flush");
+        (compositor, surface)
+    }
+
+    /// Create a fresh xdg_toplevel by binding xdg_wm_base, creating
+    /// an xdg_surface from a wl_surface, and giving it the toplevel
+    /// role. Returns the toplevel proxy AND its underlying
+    /// wl_surface so tests can drive `commit()` themselves —
+    /// margo's deferred-map / app-id-refresh flow makes the commit
+    /// timing observable, so the harness lets tests choose when it
+    /// happens.
+    ///
+    /// Does NOT commit. Tests that want a regular "open a window"
+    /// flow should follow up with `wl_surface.commit(); flush();`
+    /// to trigger `finalize_initial_map`.
+    pub fn create_toplevel(&mut self) -> (XdgToplevel, WlSurface) {
+        let (_compositor, wl_surface) = self.create_surface();
+        let xdg_wm_base: XdgWmBase = self.bind_global(6);
+        let xdg_surface = xdg_wm_base.get_xdg_surface(&wl_surface, &self.qh, ());
+        let toplevel = xdg_surface.get_toplevel(&self.qh, ());
+        self.state
+            .xdg_surface_to_toplevel
+            .insert(xdg_surface.id().protocol_id(), toplevel.id().protocol_id());
+        self.state
+            .toplevels
+            .insert(toplevel.id().protocol_id(), ToplevelState::default());
+        self.connection.flush().expect("client flush");
+        (toplevel, wl_surface)
+    }
+
+    /// Push pending requests to the server. Tests call this after
+    /// every burst of requests (set_app_id / set_title / commit / …)
+    /// so the next round-trip reflects them.
+    pub fn flush(&mut self) {
+        self.connection.flush().expect("client flush");
+    }
+
 }
 
 // ── Dispatch impls — the bare minimum a test client needs ──────────
@@ -190,5 +299,121 @@ impl Dispatch<WlDisplay, ()> for ClientState {
         // Display has no events we care about for these tests
         // (errors would matter, but they bubble up via
         // dispatch_pending's Result if they happen).
+    }
+}
+
+// ── Stub Dispatch impls for the proxies tests bind ─────────────────
+//
+// The compositor / xdg_wm_base / wl_surface / xdg_surface chain has
+// to satisfy `Dispatch<I, ()>` for the registry-bind helper to
+// compile, but we don't act on most of these events.
+
+impl Dispatch<WlCompositor, ()> for ClientState {
+    fn event(
+        _: &mut Self,
+        _: &WlCompositor,
+        _: <WlCompositor as Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<WlSurface, ()> for ClientState {
+    fn event(
+        _: &mut Self,
+        _: &WlSurface,
+        event: wl_surface::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        // Enter / leave events arrive when outputs come and go;
+        // headless tests have no outputs so they shouldn't fire,
+        // but we accept them silently if the harness later adds an
+        // Output via MargoState.
+        let _ = event;
+    }
+}
+
+impl Dispatch<XdgWmBase, ()> for ClientState {
+    fn event(
+        _: &mut Self,
+        wm_base: &XdgWmBase,
+        event: xdg_wm_base::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        // Pong every ping the server sends — niri / mango / margo
+        // all do this; otherwise the server eventually decides the
+        // client is unresponsive and may drop it.
+        if let xdg_wm_base::Event::Ping { serial } = event {
+            wm_base.pong(serial);
+        }
+    }
+}
+
+impl Dispatch<XdgSurface, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        surface: &XdgSurface,
+        event: xdg_surface::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let xdg_surface::Event::Configure { serial } = event {
+            // Always ack — the test isn't interested in pending
+            // changes, just in the server's configure cadence.
+            surface.ack_configure(serial);
+            // Snapshot pending configure into the toplevel's history.
+            let surface_id = surface.id().protocol_id();
+            if let Some(&toplevel_id) = state.xdg_surface_to_toplevel.get(&surface_id) {
+                let _ = serial;
+                let pending = state
+                    .pending_toplevel
+                    .remove(&toplevel_id)
+                    .unwrap_or_default();
+                if let Some(t) = state.toplevels.get_mut(&toplevel_id) {
+                    t.configures.push(pending);
+                }
+            }
+        }
+    }
+}
+
+impl Dispatch<XdgToplevel, ()> for ClientState {
+    fn event(
+        state: &mut Self,
+        toplevel: &XdgToplevel,
+        event: xdg_toplevel::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        let id = toplevel.id().protocol_id();
+        match event {
+            xdg_toplevel::Event::Configure { width, height, states } => {
+                let entry = state.pending_toplevel.entry(id).or_default();
+                entry.size = (width, height);
+                // Each state byte is u32-LE in the spec.
+                entry.states = states
+                    .chunks_exact(4)
+                    .map(|chunk| u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+                    .collect();
+            }
+            xdg_toplevel::Event::ConfigureBounds { width, height } => {
+                let entry = state.pending_toplevel.entry(id).or_default();
+                entry.bounds = Some((width, height));
+            }
+            xdg_toplevel::Event::Close => {
+                if let Some(t) = state.toplevels.get_mut(&id) {
+                    t.close_requested = true;
+                }
+            }
+            _ => {}
+        }
     }
 }
