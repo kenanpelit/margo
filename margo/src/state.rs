@@ -125,6 +125,35 @@ fn focus_target_label(t: &FocusTarget) -> String {
     }
 }
 
+// ── Overview drag ────────────────────────────────────────────────────────────
+
+/// Tracks an in-progress mouse drag of a window across tag cells in
+/// the overview. Set on left-mouse-press over a client thumbnail
+/// while overview is open; cleared on release or cancel.
+///
+/// The drag-vs-click distinction lives in `threshold_passed`:
+/// without it, a quick click on a window thumbnail would be
+/// interpreted as a "drag and drop into the same tag" no-op
+/// (correct, but masks the previous click-to-activate behaviour).
+/// With it, a press → small motion below 5 px → release routes
+/// through `close_overview(Some(window))` like before; press →
+/// motion past 5 px → release-on-cell-rect routes through
+/// `client.tags = 1 << (target_tag - 1)` and arrange.
+#[derive(Debug, Clone, Copy)]
+pub struct OverviewDrag {
+    /// Index into `MargoState::clients` of the dragged window.
+    pub client_idx: usize,
+    pub start_cursor: (f64, f64),
+    pub current_cursor: (f64, f64),
+    /// Tag (1..=9) the cursor is currently dwelling over, or `None`
+    /// if cursor is in inter-cell padding / outside the overview area.
+    pub target_tag: Option<u32>,
+    /// `true` once the cursor has moved more than 5 px from the start
+    /// position. Below the threshold the gesture is treated as a
+    /// click; above, as a drag.
+    pub threshold_passed: bool,
+}
+
 // ── Hot corner ───────────────────────────────────────────────────────────────
 
 /// Which screen corner the pointer is currently dwelling in. niri's
@@ -1582,6 +1611,11 @@ pub struct MargoState {
     /// arrange is done. None ⇒ fall back to the configured duration.
     pub overview_transition_animation_ms: Option<u32>,
 
+    /// In-progress overview drag-and-drop, if any. See [`OverviewDrag`]
+    /// — set on left-press over a client thumbnail in overview, cleared
+    /// on release / cancel. `None` when no drag is active.
+    pub overview_drag: Option<OverviewDrag>,
+
     /// Which hot corner the pointer is currently dwelling in (if any).
     /// `None` while pointer is anywhere else; set on entry, cleared on
     /// exit. Together with [`hot_corner_armed_at`] drives the dwell
@@ -1786,6 +1820,7 @@ impl MargoState {
             region_selector: None,
             layer_animations: std::collections::HashMap::new(),
             overview_transition_animation_ms: None,
+            overview_drag: None,
             hot_corner_dwelling: None,
             hot_corner_armed_at: None,
             config,
@@ -3858,6 +3893,144 @@ impl MargoState {
         } else {
             0
         };
+    }
+
+    /// Geometric rect of the tag-thumbnail cell for `tag` (1..=9) on
+    /// `mon_idx`. Returns `None` if the tag is out of range or the
+    /// monitor doesn't exist. Same math as
+    /// `arrange_overview_per_tag_grid` and `overview_cell_at_cursor`
+    /// — keep the three in lock-step.
+    ///
+    /// Used by the render path to draw the drag-target accent border.
+    pub fn overview_cell_rect(&self, mon_idx: usize, tag: u32) -> Option<layout::Rect> {
+        const COLS: i32 = 3;
+        const ROWS: i32 = 3;
+        if mon_idx >= self.monitors.len() || !(1..=crate::layout::MAX_TAGS as u32).contains(&tag) {
+            return None;
+        }
+        let work_area = self.monitors[mon_idx].work_area;
+        let zoom = self.config.overview_zoom.clamp(0.1, 1.0) as f64;
+        let new_w = ((work_area.width as f64) * zoom).round() as i32;
+        let new_h = ((work_area.height as f64) * zoom).round() as i32;
+        let dx = (work_area.width - new_w) / 2;
+        let dy = (work_area.height - new_h) / 2;
+        let zoomed_x = work_area.x + dx;
+        let zoomed_y = work_area.y + dy;
+        let zoomed_w = new_w.max(1);
+        let zoomed_h = new_h.max(1);
+
+        let pad = self.config.overview_gap_outer.max(0);
+        let pad_total_w = pad * (COLS + 1);
+        let pad_total_h = pad * (ROWS + 1);
+        let cell_w = ((zoomed_w - pad_total_w) / COLS).max(1);
+        let cell_h = ((zoomed_h - pad_total_h) / ROWS).max(1);
+
+        let tag_idx = (tag - 1) as i32;
+        let row = tag_idx / COLS;
+        let col = tag_idx % COLS;
+        Some(layout::Rect {
+            x: zoomed_x + pad + col * (cell_w + pad),
+            y: zoomed_y + pad + row * (cell_h + pad),
+            width: cell_w,
+            height: cell_h,
+        })
+    }
+
+    /// Hit-test the cursor against the 3×3 tag-thumbnail grid that
+    /// `arrange_overview_per_tag_grid` lays out. Returns the 1-based
+    /// tag number under the cursor, or `None` if the cursor is in
+    /// inter-cell padding, outside the zoomed work area, or not over
+    /// any output. Used by the overview drag-and-drop path
+    /// (`OverviewDrag::target_tag` update on every pointer motion).
+    ///
+    /// Mirrors the math in `arrange_overview_per_tag_grid` exactly —
+    /// any change to one needs the other.
+    pub fn overview_cell_at_cursor(&self, cursor: (f64, f64)) -> Option<u32> {
+        const COLS: i32 = 3;
+        const ROWS: i32 = 3;
+        let cx = cursor.0;
+        let cy = cursor.1;
+
+        for output in self.space.outputs() {
+            let geo = self.space.output_geometry(output)?;
+            let g_x0 = geo.loc.x as f64;
+            let g_y0 = geo.loc.y as f64;
+            let g_x1 = (geo.loc.x + geo.size.w) as f64;
+            let g_y1 = (geo.loc.y + geo.size.h) as f64;
+            if cx < g_x0 || cx >= g_x1 || cy < g_y0 || cy >= g_y1 {
+                continue;
+            }
+
+            let mon_idx = self.monitors.iter().position(|m| &m.output == output)?;
+            let work_area = self.monitors[mon_idx].work_area;
+
+            // Replicate the geometric zoom from arrange_monitor.
+            let zoom = self.config.overview_zoom.clamp(0.1, 1.0) as f64;
+            let new_w = ((work_area.width as f64) * zoom).round() as i32;
+            let new_h = ((work_area.height as f64) * zoom).round() as i32;
+            let dx = (work_area.width - new_w) / 2;
+            let dy = (work_area.height - new_h) / 2;
+            let zoomed_x = work_area.x + dx;
+            let zoomed_y = work_area.y + dy;
+            let zoomed_w = new_w.max(1);
+            let zoomed_h = new_h.max(1);
+
+            // Replicate the cell-grid math.
+            let pad = self.config.overview_gap_outer.max(0);
+            let pad_total_w = pad * (COLS + 1);
+            let pad_total_h = pad * (ROWS + 1);
+            let cell_w = ((zoomed_w - pad_total_w) / COLS).max(1);
+            let cell_h = ((zoomed_h - pad_total_h) / ROWS).max(1);
+
+            let local_x = cx as i32 - zoomed_x - pad;
+            let local_y = cy as i32 - zoomed_y - pad;
+            if local_x < 0 || local_y < 0 {
+                return None;
+            }
+
+            // Tag cells are laid out left-to-right, top-to-bottom with
+            // `pad` between them. Stride = cell + pad.
+            let stride_w = cell_w + pad;
+            let stride_h = cell_h + pad;
+            let col = local_x / stride_w;
+            let row = local_y / stride_h;
+            if col >= COLS || row >= ROWS {
+                return None;
+            }
+            // Reject hits inside the inter-cell padding band.
+            let cell_local_x = local_x - col * stride_w;
+            let cell_local_y = local_y - row * stride_h;
+            if cell_local_x >= cell_w || cell_local_y >= cell_h {
+                return None;
+            }
+
+            let tag_idx = (row * COLS + col) as u32;
+            return Some(tag_idx + 1); // tags are 1-based
+        }
+        None
+    }
+
+    /// Index into `self.clients` of the topmost tiled window whose
+    /// thumbnail rect contains `cursor` while overview is open.
+    /// Iterates clients in the order arrange laid them out — last
+    /// match wins so floating-on-top semantics survive.
+    pub fn overview_client_at_cursor(&self, cursor: (f64, f64)) -> Option<usize> {
+        if !self.is_overview_open() {
+            return None;
+        }
+        let cx = cursor.0 as i32;
+        let cy = cursor.1 as i32;
+        let mut hit: Option<usize> = None;
+        for (i, c) in self.clients.iter().enumerate() {
+            if c.is_initial_map_pending || c.is_minimized || c.is_killing || c.is_in_scratchpad {
+                continue;
+            }
+            let g = c.geom;
+            if cx >= g.x && cx < g.x + g.width && cy >= g.y && cy < g.y + g.height {
+                hit = Some(i);
+            }
+        }
+        hit
     }
 
     pub fn is_overview_open(&self) -> bool {

@@ -416,12 +416,12 @@ pub const ACTIONS: &[Action] = &[
 
     // ── Overview ────────────────────────────────────────────────────
     Action {
-        name: "toggleoverview",
+        name: "toggle_overview",
         aliases: &[],
         args: "",
         group: Group::Overview,
         summary: "Enter / leave the tag-overview grid (zoom-out of all tags).",
-        detail: "",
+        detail: "Per-tag thumbnails in a 3×3 grid (tag 1 top-left, tag 9 bottom-right). Each tag's clients arrange in that tag's configured layout. Trigger via keybind, hot corner (`hot_corner_top_left = toggle_overview`), or 4-finger touchpad swipe up (`gesture = swipe, 4, up, toggle_overview`).",
     },
 
     // ── System ──────────────────────────────────────────────────────

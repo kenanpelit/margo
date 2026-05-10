@@ -7,7 +7,38 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- **Niri-overview port — Round 3 (mouse drag-and-drop windows across
+  tags).** Inside the overview, left-press on a window thumbnail
+  starts a drag; cursor motion past 5 px arms drag mode and
+  highlights the target tag's cell with a `focuscolor` border;
+  release on a cell rect retags the dragged window to that tag and
+  re-arranges (overview stays open so the user can keep moving
+  things). Release below the 5 px threshold, or outside any cell,
+  falls back to the legacy click-to-activate-and-close behaviour —
+  so a quick click on a thumbnail still opens that window like
+  before. New `MargoState::overview_drag: Option<OverviewDrag>`
+  state, plus `overview_cell_at_cursor` / `overview_cell_rect` /
+  `overview_client_at_cursor` hit-test helpers (kept in math
+  lock-step with `arrange_overview_per_tag_grid`). Visual feedback
+  is a 4 px accent outline around the target cell — drawn after
+  cursor so the cursor stays on top, before `upper_layers` so the
+  bar still wins z-order.
+
+  niri's "drag a window across workspaces" feature, adapted: niri
+  inserts new workspaces between drop columns; margo doesn't
+  (tags are abstract, no spatial "between"), so the drop simply
+  retags onto the cell-tag.
+
 ### Changed
+
+- **`toggle_overview` is the single dispatch name.** The
+  `toggleoverview` / `toggle-overview` / `overview` aliases that
+  briefly landed in 0.1.8 have been removed in favour of one
+  canonical name. Update any keybinds / hot-corner config strings
+  that used the underscore-less spelling. The `mctl actions`
+  catalogue entry now reads `toggle_overview`.
 
 - **Niri-overview port — Round 2b (per-tag thumbnails).** Overview
   no longer dumps every visible window into one Grid; instead, each

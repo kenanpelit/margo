@@ -665,6 +665,30 @@ fn handle_pointer_motion<B: InputBackend, E: PointerMotionEvent<B>>(
         ptr.frame(state);
     }
 
+    // Overview drag-and-drop tracker — niri pattern adapted to
+    // tag cells. While a drag is in progress, every motion updates
+    // the cursor + threshold + target-tag triple so the release-time
+    // routing in `handle_pointer_button` reads a fresh state.
+    if let Some(drag) = state.overview_drag.as_mut() {
+        let cur = (state.input_pointer.x, state.input_pointer.y);
+        drag.current_cursor = cur;
+        let dx = cur.0 - drag.start_cursor.0;
+        let dy = cur.1 - drag.start_cursor.1;
+        // 5 px squared = 25; squared so we don't pay an sqrt every
+        // motion event during a long drag.
+        if !drag.threshold_passed && (dx * dx + dy * dy) > 25.0 {
+            drag.threshold_passed = true;
+        }
+        if drag.threshold_passed {
+            // Re-borrow as &State for the hit-test helper.
+            let target = state.overview_cell_at_cursor(cur);
+            if let Some(d) = state.overview_drag.as_mut() {
+                d.target_tag = target;
+            }
+        }
+        state.request_repaint();
+    }
+
     // Hot corner check — niri pattern. The pointer is in a corner
     // when it's in a 1×1 logical-pixel rectangle at one of the four
     // output corners; entering the corner arms a dwell timer, dwelling
@@ -943,8 +967,29 @@ fn handle_pointer_button<B: InputBackend, E: PointerButtonEvent<B>>(
         .unwrap_or(false);
     let in_grab = pointer_grabbed || keyboard_grabbed;
 
+    // Press-time routing. Overview adds a drag-and-drop branch:
+    // pressing on a window thumbnail starts an OverviewDrag; the
+    // press → release decision (was it a drag, was it a click?)
+    // routes at release time.
     if btn_state == ButtonState::Pressed && !in_grab {
-        if state.is_overview_open() {
+        if state.is_overview_open() && button == 0x110 {
+            // 0x110 = BTN_LEFT (input-event-codes.h). RMB / MMB fall
+            // through to the existing focus-on-click path.
+            if let Some(client_idx) = state.overview_client_at_cursor((pos.x, pos.y)) {
+                state.overview_drag = Some(crate::state::OverviewDrag {
+                    client_idx,
+                    start_cursor: (pos.x, pos.y),
+                    current_cursor: (pos.x, pos.y),
+                    target_tag: state.overview_cell_at_cursor((pos.x, pos.y)),
+                    threshold_passed: false,
+                });
+                state.request_repaint();
+                return;
+            }
+            // Press on empty overview area — close.
+            state.close_overview(None);
+        } else if state.is_overview_open() {
+            // Overview + non-left mouse: existing focus routing.
             match focus_under(state, pos).map(|(target, _)| target) {
                 Some(FocusTarget::Window(window)) => {
                     state.close_overview(Some(window));
@@ -960,6 +1005,48 @@ fn handle_pointer_button<B: InputBackend, E: PointerButtonEvent<B>>(
             state.focus_surface(Some(target));
         } else {
             state.focus_surface(None);
+        }
+    }
+
+    // Release-time routing for an in-flight overview drag. Two cases:
+    //   • Drag past the 5 px threshold AND released over a tag cell
+    //     ⇒ retag the dragged client to that tag, arrange, leave
+    //       overview open so the user can keep moving things.
+    //   • Otherwise (short click, or release outside any cell) ⇒
+    //     fall back to the legacy click-to-activate behaviour:
+    //     close overview onto the dragged window.
+    if btn_state == ButtonState::Released && button == 0x110 {
+        if let Some(drag) = state.overview_drag.take() {
+            if drag.threshold_passed {
+                if let Some(target_tag) = drag.target_tag {
+                    if drag.client_idx < state.clients.len() {
+                        let bitmask = 1u32 << (target_tag - 1);
+                        let cur = state.clients[drag.client_idx].tags;
+                        if cur != bitmask {
+                            state.clients[drag.client_idx].tags = bitmask;
+                            // Force a flush of the deferred-map / arrange
+                            // pipeline; tag mutation alone wouldn't
+                            // reposition the thumbnail.
+                            state.arrange_all();
+                            crate::protocols::dwl_ipc::broadcast_all(state);
+                        }
+                    }
+                    state.request_repaint();
+                    return;
+                }
+                // Drag-released over inter-cell padding → no-op,
+                // keep overview open. User can try again.
+                state.request_repaint();
+                return;
+            }
+            // Below threshold — treat as click.
+            if drag.client_idx < state.clients.len() {
+                let window = state.clients[drag.client_idx].window.clone();
+                state.close_overview(Some(window));
+            } else {
+                state.close_overview(None);
+            }
+            return;
         }
     }
     state.request_repaint();
