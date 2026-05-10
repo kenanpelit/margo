@@ -61,7 +61,10 @@ fn color_for(state: &MargoState, client_idx: usize, focused: bool) -> [f32; 4] {
         cfg.globalcolor.0
     } else if c.is_fullscreen {
         cfg.maximizescreencolor.0
-    } else if focused {
+    } else if focused || c.is_overview_hovered {
+        // Overview hover reuses focuscolor so the user can see at a
+        // glance which thumbnail a click would activate without
+        // shifting actual keyboard focus on every cursor wiggle.
         cfg.focuscolor.0
     } else {
         cfg.bordercolor.0

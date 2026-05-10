@@ -444,6 +444,13 @@ pub struct MargoClient {
     pub no_swallow: bool,
     pub is_killing: bool,
     pub is_tag_switching: bool,
+    /// True while the pointer is hovering this client's grid slot
+    /// during overview. Border layer paints with `focuscolor` instead
+    /// of `bordercolor` for the duration so the user gets a clear
+    /// visual cue about which thumbnail a click would activate.
+    /// Toggled by `handle_pointer_motion` while `is_overview_open()`,
+    /// cleared on overview exit.
+    pub is_overview_hovered: bool,
     pub no_border: bool,
     pub no_shadow: bool,
     pub no_radius: bool,
@@ -577,6 +584,7 @@ impl MargoClient {
             no_swallow: false,
             is_killing: false,
             is_tag_switching: false,
+            is_overview_hovered: false,
             no_border: false,
             no_shadow: false,
             no_radius: false,
@@ -1366,6 +1374,13 @@ pub struct MargoState {
         smithay::reexports::wayland_server::backend::ObjectId,
         LayerSurfaceAnim,
     >,
+    /// Per-arrange override for the move-animation duration (in ms). Set
+    /// by `open_overview` / `close_overview` so the overview transition
+    /// uses a snappy ~180 ms slide instead of the full
+    /// `animation_duration_move`. `arrange_monitor` reads this and
+    /// `open_overview` / `close_overview` clear it after their batched
+    /// arrange is done. None ⇒ fall back to the configured duration.
+    pub overview_transition_animation_ms: Option<u32>,
 }
 
 impl MargoState {
@@ -1555,6 +1570,7 @@ impl MargoState {
             a11y: crate::a11y::A11yState::new(),
             region_selector: None,
             layer_animations: std::collections::HashMap::new(),
+            overview_transition_animation_ms: None,
             config,
         }
     }
@@ -1758,6 +1774,24 @@ impl MargoState {
     pub fn arrange_all(&mut self) {
         for mon_idx in 0..self.monitors.len() {
             self.arrange_monitor(mon_idx);
+        }
+        self.request_repaint();
+        self.write_state_file();
+        self.publish_a11y_window_list();
+    }
+
+    /// Arrange just the listed monitors. Used by `open_overview` and
+    /// `close_overview` so a multi-monitor setup doesn't pay the cost
+    /// of re-laying out outputs that didn't flip overview state. Skips
+    /// out-of-range indices defensively — the caller is the same
+    /// process that built the list, but `monitors` can shrink under us
+    /// during multi-output hot-unplug and we don't want to panic mid-
+    /// arrange.
+    pub fn arrange_monitors(&mut self, indices: &[usize]) {
+        for &idx in indices {
+            if idx < self.monitors.len() {
+                self.arrange_monitor(idx);
+            }
         }
         self.request_repaint();
         self.write_state_file();
@@ -2753,7 +2787,13 @@ impl MargoState {
                         dur.clamp(60, 1500)
                     }
                 } else {
-                    self.config.animation_duration_move.max(1)
+                    // Overview transitions override the configured
+                    // move duration with a snappier value (set by
+                    // open_overview/close_overview); falls through to
+                    // the user's animation_duration_move otherwise.
+                    self.overview_transition_animation_ms
+                        .unwrap_or(self.config.animation_duration_move)
+                        .max(1)
                 };
                 self.clients[client_idx].animation = ClientAnimation {
                     should_animate: true,
@@ -3389,20 +3429,43 @@ impl MargoState {
         self.monitors.iter().any(|mon| mon.is_overview)
     }
 
+    /// Snappy overview transition duration (ms). Hard-coded for now —
+    /// `animation_duration_move` defaults to 250 ms and the per-window
+    /// move animation across N tiles is what made the previous
+    /// overview feel laggy. 180 ms with the user's configured easing
+    /// curve gives a smooth grid-zoom that still reads as animated.
+    const OVERVIEW_TRANSITION_MS: u32 = 180;
+
     pub fn open_overview(&mut self) {
-        let mut changed = false;
-        for mon in &mut self.monitors {
+        // Collect the indices of monitors that actually flip into
+        // overview on this call. Any monitor already in overview is
+        // skipped — re-flipping would clobber `overview_backup_tagset`
+        // with the all-tags overview tagset and the close path would
+        // restore to `!0` (every tag) on every monitor. That was the
+        // root cause of the "tüm pencereler aynı tag'da kalıyor"
+        // regression in 8c58b20: the previous attempt mutated state
+        // before deciding whether the monitor actually changed.
+        let mut flipped: Vec<usize> = Vec::new();
+        for (i, mon) in self.monitors.iter_mut().enumerate() {
             if !mon.is_overview {
                 mon.overview_backup_tagset = mon.current_tagset().max(1);
                 mon.is_overview = true;
-                changed = true;
+                flipped.push(i);
             }
         }
 
-        if changed {
-            self.arrange_all();
-            crate::protocols::dwl_ipc::broadcast_all(self);
+        if flipped.is_empty() {
+            return;
         }
+
+        // Snappy 180 ms slide into the grid (vs the user's possibly
+        // 250+ ms `animation_duration_move`). The per-client move
+        // animation in arrange_monitor reads this override and falls
+        // back to the configured value when None.
+        self.overview_transition_animation_ms = Some(Self::OVERVIEW_TRANSITION_MS);
+        self.arrange_monitors(&flipped);
+        self.overview_transition_animation_ms = None;
+        crate::protocols::dwl_ipc::broadcast_all(self);
     }
 
     pub fn close_overview(&mut self, activate_window: Option<Window>) {
@@ -3416,6 +3479,11 @@ impl MargoState {
             .as_ref()
             .and_then(|window| self.clients.iter().position(|client| &client.window == window));
 
+        // Same targeting as open_overview: only arrange the monitors
+        // that actually leave overview state. Track them up-front so
+        // the tagset restore + arrange operate on the same set even
+        // if some side effect somewhere later mutates `is_overview`.
+        let mut flipped: Vec<usize> = Vec::new();
         for mon_idx in 0..self.monitors.len() {
             if !self.monitors[mon_idx].is_overview {
                 continue;
@@ -3440,9 +3508,20 @@ impl MargoState {
             self.monitors[mon_idx].is_overview = false;
             self.monitors[mon_idx].tagset[seltags] = target_tagset;
             self.update_pertag_for_tagset(mon_idx, target_tagset);
+            flipped.push(mon_idx);
         }
 
-        self.arrange_all();
+        // Clear hover state on every client — overview is gone, the
+        // border layer should drop back to its non-overview palette
+        // immediately. Doing this before arrange means the very next
+        // border::refresh sees a coherent post-overview world.
+        for client in self.clients.iter_mut() {
+            client.is_overview_hovered = false;
+        }
+
+        self.overview_transition_animation_ms = Some(Self::OVERVIEW_TRANSITION_MS);
+        self.arrange_monitors(&flipped);
+        self.overview_transition_animation_ms = None;
 
         let focus_idx = activate_idx.or(previous_focus).filter(|&idx| {
             self.monitors
@@ -5413,14 +5492,14 @@ impl CompositorHandler for MargoState {
         // ack and never attach a buffer — that's the "right-click menu
         // never opens" / "Helium 3-dot menu does nothing" / "Nemo
         // context menu invisible" symptom. Pattern lifted from anvil.
-        if let Some(popup) = self.popups.find_popup(surface) {
-            if let smithay::desktop::PopupKind::Xdg(ref xdg) = popup {
-                if !xdg.is_initial_configure_sent() {
-                    if let Err(err) = xdg.send_configure() {
-                        tracing::warn!(?err, "popup initial configure failed");
-                    } else {
-                        tracing::debug!("sent initial configure for xdg_popup");
-                    }
+        if let Some(smithay::desktop::PopupKind::Xdg(xdg)) =
+            self.popups.find_popup(surface)
+        {
+            if !xdg.is_initial_configure_sent() {
+                if let Err(err) = xdg.send_configure() {
+                    tracing::warn!(?err, "popup initial configure failed");
+                } else {
+                    tracing::debug!("sent initial configure for xdg_popup");
                 }
             }
         }

@@ -481,6 +481,7 @@ fn handle_pointer_motion<B: InputBackend, E: PointerMotionEvent<B>>(
     // windows, not subsurfaces). Pointer events use the drilled wl_surface.
     let kbd_focus = focus_under(state, pos);
     apply_sloppy_focus(state, kbd_focus.as_ref().map(|(t, _)| t));
+    update_overview_hover(state, pos);
     let ptr_focus = pointer_focus_under(state, pos);
 
     if let Some(ptr) = state.seat.get_pointer() {
@@ -573,6 +574,7 @@ fn handle_pointer_motion_abs<B: InputBackend, E: PointerMotionAbsoluteEvent<B>>(
 
         let kbd_focus = focus_under(state, pos);
         apply_sloppy_focus(state, kbd_focus.as_ref().map(|(t, _)| t));
+        update_overview_hover(state, pos);
         let ptr_focus = pointer_focus_under(state, pos);
         if let Some(ptr) = state.seat.get_pointer() {
             ptr.motion(
@@ -582,6 +584,43 @@ fn handle_pointer_motion_abs<B: InputBackend, E: PointerMotionAbsoluteEvent<B>>(
             );
             ptr.frame(state);
         }
+    }
+}
+
+/// Mark the overview thumbnail under the cursor as hovered so the
+/// border layer paints it with `focuscolor`. No-op outside overview.
+/// Walks the client list once — overview always has a small N (only
+/// tiled, non-minimized, non-scratchpad clients), so an O(n) scan
+/// per motion event is fine. Skips when the geom rect is empty
+/// (deferred-map clients land here briefly).
+fn update_overview_hover(state: &mut MargoState, pos: Point<f64, Logical>) {
+    if !state.is_overview_open() {
+        return;
+    }
+    let mut new_hovered: Option<usize> = None;
+    let px = pos.x as i32;
+    let py = pos.y as i32;
+    for (i, c) in state.clients.iter().enumerate() {
+        let g = &c.geom;
+        if g.width <= 0 || g.height <= 0 {
+            continue;
+        }
+        if px >= g.x && px < g.x + g.width && py >= g.y && py < g.y + g.height {
+            new_hovered = Some(i);
+            break;
+        }
+    }
+    let mut changed = false;
+    for (i, c) in state.clients.iter_mut().enumerate() {
+        let want = new_hovered == Some(i);
+        if c.is_overview_hovered != want {
+            c.is_overview_hovered = want;
+            changed = true;
+        }
+    }
+    if changed {
+        crate::border::refresh(state);
+        state.request_repaint();
     }
 }
 
