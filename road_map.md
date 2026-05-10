@@ -6,7 +6,7 @@
 
 Margo is a Rust + Smithay Wayland compositor with a dwm/dwl-style tag workflow, 14 layout algorithms, niri-grade animations + spring physics, on-demand redraw, runtime DRM mode change, an embedded Rhai scripting engine with mid-event-loop hooks, full `wp_color_management_v1` HDR scaffolding (Phase 1 shipped, Phase 2/3/4 staged for upstream activation), a built-in xdp-gnome screencast backend, and a GTK4 design tool (`mvisual`) that previews the full 14-layout catalogue × per-tag pinning matrix.
 
-This document is the **source of truth** for what's shipped, what's queued, and what's worth a second pass. **§1–§13** preserve per-capability detail (archaeology); **§14** ledgers Phase 1 cross-cuttingly; **§15** opens Phase 2 with five work streams. Side-by-side comparison against niri / Hyprland / mango-ext at the end of Phase 1 lives in §14.2.
+This document is the **source of truth** for what's shipped, what's queued, and what's worth a second pass. **§1–§13** preserve per-capability detail (archaeology); **§14** ledgers Phase 1 cross-cuttingly; **§15** opens Phase 2 with five work streams.
 
 ---
 
@@ -370,49 +370,6 @@ cross-cutting ledger plus the comparison snapshot at Phase 1 close.
 HDR Phase 2 / 3 / 4 runtime activation (smithay PRs needed), W2.2b
 pixman software fallback (qemu user request), W2.3 tablet input
 (Wacom / Huion user request).
-
-### 14.2 Comparison at end of Phase 1
-
-Audit results from a side-by-side scan of `~/.kod/Hyprland`,
-`~/.kod/niri`, `~/.kod/mango-ext`, `/repo/archive/.kod/margo` on
-2026-05-10 (Phase 1 close):
-
-| | margo (0.1.6) | niri | Hyprland | mango-ext |
-|---|---|---|---|---|
-| Language | Rust | Rust | C++26 | C |
-| Source LOC | **42k** | 80k | 91k | 26k |
-| Crate / module model | **7-crate workspace** | 4-crate (+ god-object) | tek-paket, modüler | **single-TU** |
-| Largest source file | state.rs 6.1k | niri.rs **6.5k** | Renderer.cpp 3.4k | mango.c **8.2k** |
-| `#[test]` / test fn | **151** | 195 | 49 file | **0** |
-| Snapshot tests (`.snap`) | 22 | **5280** | – | – |
-| Integration fixture | W1.6 calloop+wayland-client | 14 dosya | minimal | yok |
-| CI workflow | clippy gate + smoke | 2 | **11** | wiki sync only |
-| HDR (`wp_color_management_v1`) | **Phase 1 ✅, Phase 2/3/4 scaffold** | – | – | – |
-| Screencast portal (xdp-gnome) | **built-in** (5 D-Bus shim) | built-in | external | – |
-| Scripting | **Rhai sandbox** + plugin pack | – | Lua + INI | – |
-| GTK design tool | **mvisual (14 × 9)** | niri-visual-tests (1 × 1) | – | – |
-| Layout count | **14** | 2 | 5 | **14** |
-| Tag-based dwm flow | ✅ | – | – | ✅ |
-| Migrate from Hyprland/Sway | **`mctl migrate`** | – | – | – |
-| Workspace persistence | **`mctl session save/load`** | – | – | – |
-| Live theme swap | **`mctl theme`** | – | config edit | – |
-| Touchscreen gestures | ✅ multi-finger | – | trackpad-only | ✅ 8-direction |
-| Plugin ABI | Rhai sandbox (pure Rust) | – | C ABI ("no ABI guarantee") | – |
-| All-time contributors | **1** | 21 | 5+ (Vaxry dominant) | **1** |
-| Commits last 30 days | **223** | 96 | 127 | 47 |
-
-**Margo's unique wins:** HDR scaffolding (only project of the four),
-scripting + plugin combo (sandboxed pure-Rust, structurally above
-Hyprland's fragile C ABI), mvisual scope (14 × 9 vs niri's 1 × 1),
-`mctl migrate` (only project), dwl-ipc-v2 wire compat (noctalia /
-waybar-dwl ecosystem).
-
-**Margo's lag at Phase 1 close:** snapshot test coverage (22 vs niri's
-5280), community size (solo project, bus factor 1).
-
-**Phase 2's mandate:** close the test-coverage gap, harden what
-shipped, fix UX papercuts, grow community — no more axis features
-unless they ride on something the existing surface already needs.
 
 ---
 
