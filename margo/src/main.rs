@@ -37,6 +37,7 @@ mod screencasting;
 mod screenshot_region;
 mod scripting;
 mod session;
+mod spatial_overview;
 mod state;
 mod utils;
 

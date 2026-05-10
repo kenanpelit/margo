@@ -7,6 +7,42 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- **Phase 3 — Infinite Spatial Overview, foundation (1 / 3).** New
+  module `margo/src/spatial_overview.rs` (~450 LOC, 12 unit tests)
+  carrying the foundation for the spatial canvas overview that
+  replaces the legacy single-Grid overview as the default in
+  commit 3 of this slice. Design doc at
+  `docs/design/spatial-overview.md` covers the whole arc.
+
+  This commit is foundation-only — no behaviour change:
+  * `OverviewMode { Grid, Spatial }` enum + `from_config_str`
+    parser (Grid alias: `grid` / `legacy` / `flat`; Spatial alias:
+    `spatial` / `infinite` / `canvas`)
+  * `SpatialCamera` struct — current + target position, momentum
+    velocities, zoom clamps (`ZOOM_MIN = 0.1`, `ZOOM_MAX = 1.5`),
+    friction (0.92 per frame), velocity floor (0.5 px/frame for
+    snap-to-zero)
+  * Methods: `snap_to` (hard re-centre), `pan_to` / `zoom_to_target`
+    (set targets without snapping), `pan_by_screen_delta` (mouse
+    drag), `zoom_around_screen_point` (scroll-zoom keeps the
+    cursor's world point fixed), `tick` (per-frame integration:
+    momentum → target, friction, smooth-step current → target)
+  * Coordinate transforms `world_to_screen` / `screen_to_world` —
+    the single transform every consumer goes through, so arrange,
+    render, and input can't drift out of step
+  * World layout: `tag_anchor` (3×3 grid, tag 1 top-left, tag 9
+    bottom-right), `client_world_rect` (tag anchor + local layout
+    rect), `world_bounds`
+  * `TAG_PADDING` const (64 logical px between tag slots)
+
+  Commit 2 (next) wires `MargoState::spatial`, `arrange_monitor`
+  spatial branch, render path passthrough. Commit 3 adds input
+  handlers (mouse pan, scroll zoom, keyboard dispatches),
+  frame-tick momentum decay, and spatial-aware
+  `overview_focus_next/_prev`.
+
 ### Fixed
 
 - **Hot corner no longer leaks through to the lock screen.**
