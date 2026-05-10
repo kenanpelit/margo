@@ -39,6 +39,13 @@ mod scripting;
 mod state;
 mod utils;
 
+// W1.6 — integration test fixture (calloop-driven Server +
+// wayland-client Client harness). Compiled only under #[cfg(test)]
+// so release builds don't pull in the wayland-client dependencies
+// outside their dev scope.
+#[cfg(test)]
+mod tests;
+
 use std::sync::Arc;
 
 use anyhow::Result;
