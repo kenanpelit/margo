@@ -7,6 +7,29 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.1.5] – 2026-05-10
+
+A 0.1.4 hot-fix. The `theme` / `session-save` / `session-load`
+subcommands wired in 0.1.4 ran without error but had no visible
+effect — every preset switch silently fell through to `default`.
+`mctl run <file>` was carrying the same latent bug. One commit, one
+slot-fix; everything user-facing actually works now.
+
+### Fixed
+
+- **`mctl theme <preset>` payload now reaches the dispatch handler.**
+  dwl-ipc-v2's `dispatch` request takes 5 string slots; margo maps
+  them as `arg1 → arg.i` (numeric parse), `arg2 → arg.i2`,
+  `arg3 → arg.f`, `arg4 → arg.v` (string), `arg5 → arg.v2`. The
+  0.1.4 `Theme { preset }` clap variant was stuffing the preset
+  into slot 1 — the i32 parse silently failed, `arg.v` stayed
+  `None`, and `theme gaudy` quietly resolved to the `default`
+  preset. Now lands in slot 4 alongside the convention every other
+  string-payload dispatch follows. `session-save` / `session-load`
+  don't take args so they were already correct; the latent
+  `mctl run <file>` bug (path stuffed into slot 1, `run_script`
+  handler reads `arg.v`) is fixed in the same pass.
+
 ## [0.1.4] – 2026-05-10
 
 A "0.1.3 follow-up" release. The 0.1.3 commit added the `theme` /
