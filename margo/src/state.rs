@@ -5407,6 +5407,23 @@ impl CompositorHandler for MargoState {
                 self.refresh_keyboard_focus();
             }
         }
+        // Initial configure for xdg_popups. Toplevel and layer surfaces
+        // get their initial-configure pumped above; popups need the same
+        // treatment or GTK / Chromium will sit forever waiting for an
+        // ack and never attach a buffer — that's the "right-click menu
+        // never opens" / "Helium 3-dot menu does nothing" / "Nemo
+        // context menu invisible" symptom. Pattern lifted from anvil.
+        if let Some(popup) = self.popups.find_popup(surface) {
+            if let smithay::desktop::PopupKind::Xdg(ref xdg) = popup {
+                if !xdg.is_initial_configure_sent() {
+                    if let Err(err) = xdg.send_configure() {
+                        tracing::warn!(?err, "popup initial configure failed");
+                    } else {
+                        tracing::debug!("sent initial configure for xdg_popup");
+                    }
+                }
+            }
+        }
         self.popups.commit(surface);
         self.request_repaint();
     }
