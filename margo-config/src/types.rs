@@ -541,6 +541,22 @@ pub struct Config {
     pub ov_tab_mode: u32,
     pub overview_gap_inner: i32,
     pub overview_gap_outer: i32,
+    /// Visual zoom factor applied to overview thumbnails. niri uses
+    /// 0.5 as default; lower → more workspaces fit at once. Values
+    /// outside `[0.1, 1.0]` clamp at parse time.
+    pub overview_zoom: f32,
+    /// Snappy overview open/close transition duration (ms). Falls
+    /// back to a hard-coded 180ms when 0.
+    pub overview_transition_ms: u32,
+
+    // hot corners — niri pattern. Each corner names a dispatch action
+    // (or empty string = off). Pointer enters the corner pixel and
+    // dwell threshold (`hot_corner_dwell_ms`) fires the action.
+    pub hot_corner_top_left: String,
+    pub hot_corner_top_right: String,
+    pub hot_corner_bottom_left: String,
+    pub hot_corner_bottom_right: String,
+    pub hot_corner_dwell_ms: u32,
 
     // gaps / borders
     pub enable_gaps: bool,
@@ -754,6 +770,13 @@ impl Default for Config {
             ov_tab_mode: 0,
             overview_gap_inner: 5,
             overview_gap_outer: 30,
+            overview_zoom: 0.5,
+            overview_transition_ms: 180,
+            hot_corner_top_left: String::new(),
+            hot_corner_top_right: String::new(),
+            hot_corner_bottom_left: String::new(),
+            hot_corner_bottom_right: String::new(),
+            hot_corner_dwell_ms: 100,
 
             enable_gaps: true,
             smartgaps: false,

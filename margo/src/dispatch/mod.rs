@@ -382,7 +382,9 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                 }
             }
         }
-        "toggleoverview" => state.toggle_overview(),
+        "toggleoverview" | "toggle_overview" | "toggle-overview" | "overview" => {
+            state.toggle_overview()
+        }
         // Keyboard navigation while overview is open. The action
         // handlers are no-ops outside overview, but the keybinding
         // dispatcher still intercepts the keystroke — pick combos

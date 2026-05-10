@@ -7,6 +7,67 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.1.8] – 2026-05-10
+
+Niri-overview port — Round 1 (trigger mechanics). The next two rounds
+(zoom-out / layer-shell handling, and mouse drag-and-drop windows
+across tags) ship as follow-up releases.
+
+### Added
+
+- **Hot corner trigger.** Pointer dwelling in a 1×1-logical-pixel
+  rectangle at any of the four output corners fires a configured
+  dispatch action — niri pattern with a dwell threshold so a quick
+  flick past the corner doesn't trigger. Per-corner config; default
+  is "off" until the user opts in.
+
+  ```ini
+  hot_corner_top_left      = toggle_overview
+  hot_corner_top_right     =
+  hot_corner_bottom_left   =
+  hot_corner_bottom_right  =
+  hot_corner_dwell_ms      = 100
+  ```
+
+  Cleared on pointer-leave so out-and-back-in restarts the timer
+  (matches niri). Action string accepts every known dispatch name
+  (`toggleoverview` / `toggle_overview` / `toggle-overview` /
+  `overview` all alias to the same handler).
+- **Overview config knobs.** Two new fields:
+  - `overview_zoom` (default `0.5`, clamped `[0.1, 1.0]`) — wired in
+    config + state today; the Round-2 layer-shell + zoom-out render
+    pass consumes it.
+  - `overview_transition_ms` (default `180`) — replaces the
+    previously-hardcoded transition duration.
+- **`toggle_overview` dispatch aliases.** The handler used to only
+  accept the no-underscore `toggleoverview` string; now also takes
+  `toggle_overview`, `toggle-overview`, and bare `overview` so
+  config strings written to the new hot-corner fields don't have to
+  guess the spelling. The same handler underpins the existing
+  keybind path and the (already-supported) 4-finger swipe-up
+  gesture binding:
+
+  ```ini
+  bind = super,grave,toggle_overview
+  gesture = swipe, 4, up, toggle_overview
+  ```
+
+### Changed
+
+- `MargoState` gains `hot_corner_dwelling: Option<HotCorner>` +
+  `hot_corner_armed_at: Option<Instant>` to drive the dwell timer.
+  `update_hot_corner()` runs at the tail of every `pointer_motion`
+  handler — cheap (4 corner checks per output, no allocation).
+
+### What's coming in Round 2 / 3
+
+- **Round 2 (next release):** real zoom-out rendering (overview
+  thumbnails respect `overview_zoom`), layer-shell handling
+  (background + bottom layers zoom along, overlay + top stay at
+  1.0 — niri pattern).
+- **Round 3:** mouse drag-and-drop windows across tags inside the
+  overview, with target-tag visual highlight.
+
 ## [0.1.7] – 2026-05-10
 
 First Phase 2 release. Single user-facing feature: a real fix for

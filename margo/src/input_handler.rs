@@ -664,6 +664,87 @@ fn handle_pointer_motion<B: InputBackend, E: PointerMotionEvent<B>>(
         );
         ptr.frame(state);
     }
+
+    // Hot corner check — niri pattern. The pointer is in a corner
+    // when it's in a 1×1 logical-pixel rectangle at one of the four
+    // output corners; entering the corner arms a dwell timer, dwelling
+    // past `Config::hot_corner_dwell_ms` fires the configured dispatch
+    // action. Cleared on every motion that lands outside any corner so
+    // a quick out-and-back-in restarts the timer (matches niri).
+    update_hot_corner(state);
+}
+
+fn update_hot_corner(state: &mut MargoState) {
+    use crate::state::HotCorner;
+
+    // Resolve the focused output's geometry — niri's hot-corner check
+    // is per-output. Margo's outputs are arranged side-by-side in
+    // `state.space`, so we hit-test against each output_geometry().
+    let cursor_x = state.input_pointer.x;
+    let cursor_y = state.input_pointer.y;
+
+    // Find which output the cursor is currently inside (if any). For
+    // each output we then check the four corners of its logical
+    // rect against the cursor at 1 px tolerance.
+    let mut current_corner: Option<HotCorner> = None;
+    for output in state.space.outputs() {
+        let Some(geo) = state.space.output_geometry(output) else {
+            continue;
+        };
+        let x0 = geo.loc.x as f64;
+        let y0 = geo.loc.y as f64;
+        let x1 = (geo.loc.x + geo.size.w) as f64;
+        let y1 = (geo.loc.y + geo.size.h) as f64;
+        // 1 px tolerance — matches niri's `Rectangle::new(corner, Size::new(1, 1))`.
+        let near_left = (cursor_x - x0).abs() < 1.0;
+        let near_right = (cursor_x - (x1 - 1.0)).abs() < 1.0;
+        let near_top = (cursor_y - y0).abs() < 1.0;
+        let near_bottom = (cursor_y - (y1 - 1.0)).abs() < 1.0;
+        current_corner = match (near_left, near_right, near_top, near_bottom) {
+            (true, _, true, _) => Some(HotCorner::TopLeft),
+            (_, true, true, _) => Some(HotCorner::TopRight),
+            (true, _, _, true) => Some(HotCorner::BottomLeft),
+            (_, true, _, true) => Some(HotCorner::BottomRight),
+            _ => None,
+        };
+        if current_corner.is_some() {
+            break;
+        }
+    }
+
+    // Track entry / exit. On entry, arm the dwell timer; on exit,
+    // disarm. While dwelling in the same corner across multiple motion
+    // events, the `armed_at` instant is preserved.
+    if state.hot_corner_dwelling != current_corner {
+        state.hot_corner_dwelling = current_corner;
+        state.hot_corner_armed_at = current_corner.map(|_| std::time::Instant::now());
+        return;
+    }
+
+    // Same corner as last motion — check if dwell threshold elapsed.
+    let Some(corner) = current_corner else { return };
+    let Some(armed) = state.hot_corner_armed_at else { return };
+    let dwell = std::time::Duration::from_millis(state.config.hot_corner_dwell_ms as u64);
+    if armed.elapsed() < dwell {
+        return;
+    }
+
+    // Threshold reached. Fire the action and clear `armed_at` so we
+    // don't re-fire on every subsequent motion while still in the
+    // corner — user has to leave and re-enter to trigger again.
+    let action = corner.action_str(&state.config).trim().to_string();
+    state.hot_corner_armed_at = None;
+    if action.is_empty() {
+        return;
+    }
+    tracing::info!(
+        target: "hot_corner",
+        corner = ?corner,
+        action = %action,
+        "fired",
+    );
+    let arg = margo_config::Arg::default();
+    crate::dispatch::dispatch_action(state, &action, &arg);
 }
 
 /// `sloppyfocus`: when the pointer crosses into a new toplevel window, give

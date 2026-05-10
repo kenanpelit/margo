@@ -306,6 +306,13 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
         "ov_tab_mode" => cfg.ov_tab_mode = parse_u32(val),
         "overviewgappi" => cfg.overview_gap_inner = parse_i32(val),
         "overviewgappo" => cfg.overview_gap_outer = parse_i32(val),
+        "overview_zoom" => cfg.overview_zoom = parse_f32(val).clamp(0.1, 1.0),
+        "overview_transition_ms" => cfg.overview_transition_ms = parse_u32(val),
+        "hot_corner_top_left" => cfg.hot_corner_top_left = val.trim().to_string(),
+        "hot_corner_top_right" => cfg.hot_corner_top_right = val.trim().to_string(),
+        "hot_corner_bottom_left" => cfg.hot_corner_bottom_left = val.trim().to_string(),
+        "hot_corner_bottom_right" => cfg.hot_corner_bottom_right = val.trim().to_string(),
+        "hot_corner_dwell_ms" => cfg.hot_corner_dwell_ms = parse_u32(val),
         "cursor_hide_timeout" => cfg.cursor_hide_timeout = parse_u32(val),
 
         // gaps / borders

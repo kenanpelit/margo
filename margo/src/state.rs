@@ -125,6 +125,36 @@ fn focus_target_label(t: &FocusTarget) -> String {
     }
 }
 
+// ── Hot corner ───────────────────────────────────────────────────────────────
+
+/// Which screen corner the pointer is currently dwelling in. niri's
+/// pattern: a 1×1-logical-pixel rectangle at each corner; pointer
+/// entry arms a dwell timer; if the pointer stays past
+/// `Config::hot_corner_dwell_ms` the configured action fires
+/// (`config.hot_corner_top_left` etc., e.g. `"toggle_overview"`).
+///
+/// Only one corner can be active at a time — pointer-leave clears.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HotCorner {
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
+impl HotCorner {
+    /// Pull the matching dispatch-action string out of `Config`. Empty
+    /// string = "this corner is disabled".
+    pub fn action_str(self, cfg: &Config) -> &str {
+        match self {
+            HotCorner::TopLeft => &cfg.hot_corner_top_left,
+            HotCorner::TopRight => &cfg.hot_corner_top_right,
+            HotCorner::BottomLeft => &cfg.hot_corner_bottom_left,
+            HotCorner::BottomRight => &cfg.hot_corner_bottom_right,
+        }
+    }
+}
+
 // ── Fullscreen mode ──────────────────────────────────────────────────────────
 
 /// How "fullscreen" a client is.
@@ -1551,6 +1581,17 @@ pub struct MargoState {
     /// `open_overview` / `close_overview` clear it after their batched
     /// arrange is done. None ⇒ fall back to the configured duration.
     pub overview_transition_animation_ms: Option<u32>,
+
+    /// Which hot corner the pointer is currently dwelling in (if any).
+    /// `None` while pointer is anywhere else; set on entry, cleared on
+    /// exit. Together with [`hot_corner_armed_at`] drives the dwell
+    /// threshold before the corner's action fires.
+    pub hot_corner_dwelling: Option<HotCorner>,
+    /// `Instant` the pointer entered the current dwell corner. The
+    /// dwell threshold (`Config::hot_corner_dwell_ms`) is checked in
+    /// the same `pointer_motion` handler that sets / clears
+    /// `hot_corner_dwelling`. Cleared together with `hot_corner_dwelling`.
+    pub hot_corner_armed_at: Option<std::time::Instant>,
 }
 
 impl MargoState {
@@ -1745,6 +1786,8 @@ impl MargoState {
             region_selector: None,
             layer_animations: std::collections::HashMap::new(),
             overview_transition_animation_ms: None,
+            hot_corner_dwelling: None,
+            hot_corner_armed_at: None,
             config,
             theme_baseline: None,
         }
