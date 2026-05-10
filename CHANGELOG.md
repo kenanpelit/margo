@@ -9,6 +9,21 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- **Niri-overview port — Round 4 (dynamic grid).** The overview no
+  longer hard-codes a 3×3 grid of all 9 tags; instead, only tags
+  with visible clients on the monitor are shown, and the grid
+  shape is picked to fit: 1 occupied → 1×1 (full-screen
+  thumbnail), 2 → 2×1, 3 → 3×1, 4 → 2×2, 5–6 → 3×2, 7–9 → 3×3.
+  Even at `overview_zoom = 1.0` thumbnails were too small on a
+  1080p monitor because we were always burning 6 cells of pixel
+  budget on empty tags; now a single-tag day uses the whole
+  screen. While a drag is past the 5 px threshold every tag is
+  shown so empty tags become valid drop targets — drag UX
+  unchanged. New `MargoState::compute_overview_grid_layout`
+  helper is the single source of truth for the cell list;
+  `arrange_overview_per_tag_grid`, `overview_cell_rect`, and
+  `overview_cell_at_cursor` all consume it. Three-way drift gone.
+
 - **Niri-overview port — Round 3 (mouse drag-and-drop windows across
   tags).** Inside the overview, left-press on a window thumbnail
   starts a drag; cursor motion past 5 px arms drag mode and

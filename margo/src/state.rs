@@ -2793,33 +2793,125 @@ impl MargoState {
         }
     }
 
-    /// Overview-mode arrangement: every tag becomes its own thumbnail
-    /// in a 3×3 grid over the (already-zoomed) work area. Each cell
-    /// runs that tag's *configured* layout — `Pertag::ltidxs` per-tag
+    /// Single source of truth for the overview grid layout: returns
+    /// `(tag, cell_rect)` pairs in render order. Three callers
+    /// consume this — `arrange_overview_per_tag_grid` (per-frame
+    /// layout pass), `overview_cell_rect` (drag-target highlight),
+    /// `overview_cell_at_cursor` (drag hit-test). Keeping the math
+    /// in one place avoids the drift that was burning thumbnail
+    /// content into too-small cells on big monitors.
+    ///
+    /// Behaviour:
+    ///   * Only tags that actually have visible clients on `mon_idx`
+    ///     are shown — empty tags don't reserve space. With 1 tag
+    ///     occupied the thumbnail covers the whole zoomed work area;
+    ///     with 4 it's 2×2; with 9 it's 3×3. Drop-target use case
+    ///     for empty tags: while a drag is past threshold, every
+    ///     tag is shown so the user can land a window on a fresh
+    ///     tag.
+    ///   * Grid shape (cols × rows) is picked to fit the occupied
+    ///     count, biased landscape: 2 → 2×1, 3 → 3×1, 4 → 2×2,
+    ///     5–6 → 3×2, 7–9 → 3×3.
+    pub fn compute_overview_grid_layout(&self, mon_idx: usize) -> Vec<(u32, layout::Rect)> {
+        if mon_idx >= self.monitors.len() {
+            return Vec::new();
+        }
+        // Which tags actually carry a visible client on this monitor?
+        let occupied: Vec<u32> = (1..=crate::layout::MAX_TAGS as u32)
+            .filter(|&tag| {
+                let bit = 1u32 << (tag - 1);
+                self.clients.iter().any(|c| {
+                    c.monitor == mon_idx
+                        && (c.tags & bit) != 0
+                        && !c.is_initial_map_pending
+                        && !c.is_minimized
+                        && !c.is_killing
+                        && !c.is_in_scratchpad
+                })
+            })
+            .collect();
+
+        // Drag in progress: surface every tag so empty cells become
+        // valid drop targets. Otherwise stick to occupied — empty
+        // tags would only steal pixel budget from the windows the
+        // user actually wants to see.
+        let drag_active = self
+            .overview_drag
+            .as_ref()
+            .is_some_and(|d| d.threshold_passed);
+        let tags_to_show: Vec<u32> = if occupied.is_empty() || drag_active {
+            (1..=crate::layout::MAX_TAGS as u32).collect()
+        } else {
+            occupied
+        };
+
+        let n = tags_to_show.len();
+        if n == 0 {
+            return Vec::new();
+        }
+
+        // Grid shape — landscape-biased so cells stay roughly the
+        // monitor's aspect ratio.
+        let (cols, rows): (i32, i32) = match n {
+            1 => (1, 1),
+            2 => (2, 1),
+            3 => (3, 1),
+            4 => (2, 2),
+            5 | 6 => (3, 2),
+            _ => (3, 3), // 7-9
+        };
+
+        // Apply zoom to work_area (unchanged from before).
+        let work_area = self.monitors[mon_idx].work_area;
+        let zoom = self.config.overview_zoom.clamp(0.1, 1.0) as f64;
+        let new_w = ((work_area.width as f64) * zoom).round() as i32;
+        let new_h = ((work_area.height as f64) * zoom).round() as i32;
+        let dx = (work_area.width - new_w) / 2;
+        let dy = (work_area.height - new_h) / 2;
+        let zoomed_x = work_area.x + dx;
+        let zoomed_y = work_area.y + dy;
+        let zoomed_w = new_w.max(1);
+        let zoomed_h = new_h.max(1);
+
+        let pad = self.config.overview_gap_outer.max(0);
+        let cell_w = ((zoomed_w - pad * (cols + 1)) / cols).max(1);
+        let cell_h = ((zoomed_h - pad * (rows + 1)) / rows).max(1);
+
+        let mut result = Vec::with_capacity(n);
+        for (i, &tag) in tags_to_show.iter().enumerate() {
+            let row = (i as i32) / cols;
+            let col = (i as i32) % cols;
+            result.push((
+                tag,
+                layout::Rect {
+                    x: zoomed_x + pad + col * (cell_w + pad),
+                    y: zoomed_y + pad + row * (cell_h + pad),
+                    width: cell_w,
+                    height: cell_h,
+                },
+            ));
+        }
+        result
+    }
+
+    /// Overview-mode arrangement: every occupied tag (or every tag
+    /// during a drag) becomes its own thumbnail cell. Each cell runs
+    /// that tag's *configured* layout — `Pertag::ltidxs` per-tag
     /// `LayoutId`, `mfacts`, `nmasters` — over the cell rect, so a
     /// scroller tag stays scroller-shaped at thumbnail size, a grid
-    /// tag stays grid-shaped, etc. niri's overview shape
-    /// ("every workspace looks like itself, zoomed out") adapted to
-    /// margo's tag model.
-    ///
-    /// Tag → cell mapping: tag 1 top-left, tag 9 bottom-right
-    /// (matches the standard 1-9 keypad mental model). Rounds 3+ will
-    /// hit-test mouse drops against these cell rects to retag the
-    /// dropped window.
+    /// tag stays grid-shaped. The dynamic grid (1→1×1, 4→2×2, 9→3×3)
+    /// keeps thumbnails large when only a few tags are in use.
     fn arrange_overview_per_tag_grid(
         &self,
         mon_idx: usize,
-        work_area: layout::Rect,
+        _work_area: layout::Rect,
         gaps: &layout::GapConfig,
     ) -> layout::ArrangeResult {
-        const COLS: usize = 3;
-        const ROWS: usize = 3;
         let mon = &self.monitors[mon_idx];
-        let pad = gaps.gappoh.max(gaps.gappov).max(0);
-        let pad_total_w = pad * (COLS as i32 + 1);
-        let pad_total_h = pad * (ROWS as i32 + 1);
-        let cell_w = ((work_area.width - pad_total_w) / COLS as i32).max(1);
-        let cell_h = ((work_area.height - pad_total_h) / ROWS as i32).max(1);
+        let cells = self.compute_overview_grid_layout(mon_idx);
+        if cells.is_empty() {
+            return Vec::new();
+        }
 
         // Halve the per-cell inner gap so thumbnails read denser than
         // the user's normal gap config. `2` is the floor — anything
@@ -2833,19 +2925,10 @@ impl MargoState {
         };
 
         let mut results: layout::ArrangeResult = Vec::new();
-        for tag_idx in 0..crate::layout::MAX_TAGS {
-            let row = tag_idx / COLS;
-            let col = tag_idx % COLS;
-            let cell_rect = layout::Rect {
-                x: work_area.x + pad + col as i32 * (cell_w + pad),
-                y: work_area.y + pad + row as i32 * (cell_h + pad),
-                width: cell_w,
-                height: cell_h,
-            };
-
-            let tag_bit = 1u32 << tag_idx;
-            // Pertag indices are 1-based (slot 0 unused); map tag_idx ∈ 0..9 → 1..=9.
-            let pertag_slot = tag_idx + 1;
+        for (tag, cell_rect) in cells {
+            let tag_bit = 1u32 << (tag - 1);
+            // Pertag indices are 1-based (slot 0 unused).
+            let pertag_slot = tag as usize;
             let tag_layout = mon
                 .pertag
                 .ltidxs
@@ -3903,37 +3986,10 @@ impl MargoState {
     ///
     /// Used by the render path to draw the drag-target accent border.
     pub fn overview_cell_rect(&self, mon_idx: usize, tag: u32) -> Option<layout::Rect> {
-        const COLS: i32 = 3;
-        const ROWS: i32 = 3;
-        if mon_idx >= self.monitors.len() || !(1..=crate::layout::MAX_TAGS as u32).contains(&tag) {
-            return None;
-        }
-        let work_area = self.monitors[mon_idx].work_area;
-        let zoom = self.config.overview_zoom.clamp(0.1, 1.0) as f64;
-        let new_w = ((work_area.width as f64) * zoom).round() as i32;
-        let new_h = ((work_area.height as f64) * zoom).round() as i32;
-        let dx = (work_area.width - new_w) / 2;
-        let dy = (work_area.height - new_h) / 2;
-        let zoomed_x = work_area.x + dx;
-        let zoomed_y = work_area.y + dy;
-        let zoomed_w = new_w.max(1);
-        let zoomed_h = new_h.max(1);
-
-        let pad = self.config.overview_gap_outer.max(0);
-        let pad_total_w = pad * (COLS + 1);
-        let pad_total_h = pad * (ROWS + 1);
-        let cell_w = ((zoomed_w - pad_total_w) / COLS).max(1);
-        let cell_h = ((zoomed_h - pad_total_h) / ROWS).max(1);
-
-        let tag_idx = (tag - 1) as i32;
-        let row = tag_idx / COLS;
-        let col = tag_idx % COLS;
-        Some(layout::Rect {
-            x: zoomed_x + pad + col * (cell_w + pad),
-            y: zoomed_y + pad + row * (cell_h + pad),
-            width: cell_w,
-            height: cell_h,
-        })
+        self.compute_overview_grid_layout(mon_idx)
+            .into_iter()
+            .find(|(t, _)| *t == tag)
+            .map(|(_, rect)| rect)
     }
 
     /// Hit-test the cursor against the 3×3 tag-thumbnail grid that
@@ -3946,66 +4002,34 @@ impl MargoState {
     /// Mirrors the math in `arrange_overview_per_tag_grid` exactly —
     /// any change to one needs the other.
     pub fn overview_cell_at_cursor(&self, cursor: (f64, f64)) -> Option<u32> {
-        const COLS: i32 = 3;
-        const ROWS: i32 = 3;
-        let cx = cursor.0;
-        let cy = cursor.1;
+        let cx = cursor.0 as i32;
+        let cy = cursor.1 as i32;
 
+        // Find which output the cursor is currently inside.
         for output in self.space.outputs() {
             let geo = self.space.output_geometry(output)?;
-            let g_x0 = geo.loc.x as f64;
-            let g_y0 = geo.loc.y as f64;
-            let g_x1 = (geo.loc.x + geo.size.w) as f64;
-            let g_y1 = (geo.loc.y + geo.size.h) as f64;
-            if cx < g_x0 || cx >= g_x1 || cy < g_y0 || cy >= g_y1 {
+            if cx < geo.loc.x
+                || cx >= geo.loc.x + geo.size.w
+                || cy < geo.loc.y
+                || cy >= geo.loc.y + geo.size.h
+            {
                 continue;
             }
 
             let mon_idx = self.monitors.iter().position(|m| &m.output == output)?;
-            let work_area = self.monitors[mon_idx].work_area;
-
-            // Replicate the geometric zoom from arrange_monitor.
-            let zoom = self.config.overview_zoom.clamp(0.1, 1.0) as f64;
-            let new_w = ((work_area.width as f64) * zoom).round() as i32;
-            let new_h = ((work_area.height as f64) * zoom).round() as i32;
-            let dx = (work_area.width - new_w) / 2;
-            let dy = (work_area.height - new_h) / 2;
-            let zoomed_x = work_area.x + dx;
-            let zoomed_y = work_area.y + dy;
-            let zoomed_w = new_w.max(1);
-            let zoomed_h = new_h.max(1);
-
-            // Replicate the cell-grid math.
-            let pad = self.config.overview_gap_outer.max(0);
-            let pad_total_w = pad * (COLS + 1);
-            let pad_total_h = pad * (ROWS + 1);
-            let cell_w = ((zoomed_w - pad_total_w) / COLS).max(1);
-            let cell_h = ((zoomed_h - pad_total_h) / ROWS).max(1);
-
-            let local_x = cx as i32 - zoomed_x - pad;
-            let local_y = cy as i32 - zoomed_y - pad;
-            if local_x < 0 || local_y < 0 {
-                return None;
+            // Reuse the same cell list arrange + render use, so a cursor
+            // hit on the visual cell rect always corresponds to the
+            // tag that was actually drawn there.
+            for (tag, rect) in self.compute_overview_grid_layout(mon_idx) {
+                if cx >= rect.x
+                    && cx < rect.x + rect.width
+                    && cy >= rect.y
+                    && cy < rect.y + rect.height
+                {
+                    return Some(tag);
+                }
             }
-
-            // Tag cells are laid out left-to-right, top-to-bottom with
-            // `pad` between them. Stride = cell + pad.
-            let stride_w = cell_w + pad;
-            let stride_h = cell_h + pad;
-            let col = local_x / stride_w;
-            let row = local_y / stride_h;
-            if col >= COLS || row >= ROWS {
-                return None;
-            }
-            // Reject hits inside the inter-cell padding band.
-            let cell_local_x = local_x - col * stride_w;
-            let cell_local_y = local_y - row * stride_h;
-            if cell_local_x >= cell_w || cell_local_y >= cell_h {
-                return None;
-            }
-
-            let tag_idx = (row * COLS + col) as u32;
-            return Some(tag_idx + 1); // tags are 1-based
+            return None;
         }
         None
     }
