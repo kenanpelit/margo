@@ -125,35 +125,6 @@ fn focus_target_label(t: &FocusTarget) -> String {
     }
 }
 
-// ── Overview drag ────────────────────────────────────────────────────────────
-
-/// Tracks an in-progress mouse drag of a window across tag cells in
-/// the overview. Set on left-mouse-press over a client thumbnail
-/// while overview is open; cleared on release or cancel.
-///
-/// The drag-vs-click distinction lives in `threshold_passed`:
-/// without it, a quick click on a window thumbnail would be
-/// interpreted as a "drag and drop into the same tag" no-op
-/// (correct, but masks the previous click-to-activate behaviour).
-/// With it, a press → small motion below 5 px → release routes
-/// through `close_overview(Some(window))` like before; press →
-/// motion past 5 px → release-on-cell-rect routes through
-/// `client.tags = 1 << (target_tag - 1)` and arrange.
-#[derive(Debug, Clone, Copy)]
-pub struct OverviewDrag {
-    /// Index into `MargoState::clients` of the dragged window.
-    pub client_idx: usize,
-    pub start_cursor: (f64, f64),
-    pub current_cursor: (f64, f64),
-    /// Tag (1..=9) the cursor is currently dwelling over, or `None`
-    /// if cursor is in inter-cell padding / outside the overview area.
-    pub target_tag: Option<u32>,
-    /// `true` once the cursor has moved more than 5 px from the start
-    /// position. Below the threshold the gesture is treated as a
-    /// click; above, as a drag.
-    pub threshold_passed: bool,
-}
-
 // ── Hot corner ───────────────────────────────────────────────────────────────
 
 /// Which screen corner the pointer is currently dwelling in. niri's
@@ -1611,11 +1582,6 @@ pub struct MargoState {
     /// arrange is done. None ⇒ fall back to the configured duration.
     pub overview_transition_animation_ms: Option<u32>,
 
-    /// In-progress overview drag-and-drop, if any. See [`OverviewDrag`]
-    /// — set on left-press over a client thumbnail in overview, cleared
-    /// on release / cancel. `None` when no drag is active.
-    pub overview_drag: Option<OverviewDrag>,
-
     /// Which hot corner the pointer is currently dwelling in (if any).
     /// `None` while pointer is anywhere else; set on entry, cleared on
     /// exit. Together with [`hot_corner_armed_at`] drives the dwell
@@ -1820,7 +1786,6 @@ impl MargoState {
             region_selector: None,
             layer_animations: std::collections::HashMap::new(),
             overview_transition_animation_ms: None,
-            overview_drag: None,
             hot_corner_dwelling: None,
             hot_corner_armed_at: None,
             config,
@@ -2793,216 +2758,6 @@ impl MargoState {
         }
     }
 
-    /// Single source of truth for the overview grid layout: returns
-    /// `(tag, cell_rect)` pairs in render order. Three callers
-    /// consume this — `arrange_overview_per_tag_grid` (per-frame
-    /// layout pass), `overview_cell_rect` (drag-target highlight),
-    /// `overview_cell_at_cursor` (drag hit-test). Keeping the math
-    /// in one place avoids the drift that was burning thumbnail
-    /// content into too-small cells on big monitors.
-    ///
-    /// Behaviour:
-    ///   * Only tags that actually have visible clients on `mon_idx`
-    ///     are shown — empty tags don't reserve space. With 1 tag
-    ///     occupied the thumbnail covers the whole zoomed work area;
-    ///     with 4 it's 2×2; with 9 it's 3×3. Drop-target use case
-    ///     for empty tags: while a drag is past threshold, every
-    ///     tag is shown so the user can land a window on a fresh
-    ///     tag.
-    ///   * Grid shape (cols × rows) is picked to fit the occupied
-    ///     count, biased landscape: 2 → 2×1, 3 → 3×1, 4 → 2×2,
-    ///     5–6 → 3×2, 7–9 → 3×3.
-    pub fn compute_overview_grid_layout(&self, mon_idx: usize) -> Vec<(u32, layout::Rect)> {
-        if mon_idx >= self.monitors.len() {
-            return Vec::new();
-        }
-        // Which tags actually carry a visible client on this monitor?
-        let occupied: Vec<u32> = (1..=crate::layout::MAX_TAGS as u32)
-            .filter(|&tag| {
-                let bit = 1u32 << (tag - 1);
-                self.clients.iter().any(|c| {
-                    c.monitor == mon_idx
-                        && (c.tags & bit) != 0
-                        && !c.is_initial_map_pending
-                        && !c.is_minimized
-                        && !c.is_killing
-                        && !c.is_in_scratchpad
-                })
-            })
-            .collect();
-
-        // Drag in progress: surface every tag so empty cells become
-        // valid drop targets. Otherwise stick to occupied — empty
-        // tags would only steal pixel budget from the windows the
-        // user actually wants to see.
-        let drag_active = self
-            .overview_drag
-            .as_ref()
-            .is_some_and(|d| d.threshold_passed);
-        let tags_to_show: Vec<u32> = if occupied.is_empty() || drag_active {
-            (1..=crate::layout::MAX_TAGS as u32).collect()
-        } else {
-            occupied
-        };
-
-        let n = tags_to_show.len();
-        if n == 0 {
-            return Vec::new();
-        }
-
-        // Grid shape — landscape-biased so cells stay roughly the
-        // monitor's aspect ratio.
-        let (cols, rows): (i32, i32) = match n {
-            1 => (1, 1),
-            2 => (2, 1),
-            3 => (3, 1),
-            4 => (2, 2),
-            5 | 6 => (3, 2),
-            _ => (3, 3), // 7-9
-        };
-
-        // Apply zoom to work_area (unchanged from before).
-        let work_area = self.monitors[mon_idx].work_area;
-        let zoom = self.config.overview_zoom.clamp(0.1, 1.0) as f64;
-        let new_w = ((work_area.width as f64) * zoom).round() as i32;
-        let new_h = ((work_area.height as f64) * zoom).round() as i32;
-        let dx = (work_area.width - new_w) / 2;
-        let dy = (work_area.height - new_h) / 2;
-        let zoomed_x = work_area.x + dx;
-        let zoomed_y = work_area.y + dy;
-        let zoomed_w = new_w.max(1);
-        let zoomed_h = new_h.max(1);
-
-        let pad = self.config.overview_gap_outer.max(0);
-        let cell_w = ((zoomed_w - pad * (cols + 1)) / cols).max(1);
-        let cell_h = ((zoomed_h - pad * (rows + 1)) / rows).max(1);
-
-        let mut result = Vec::with_capacity(n);
-        for (i, &tag) in tags_to_show.iter().enumerate() {
-            let row = (i as i32) / cols;
-            let col = (i as i32) % cols;
-            result.push((
-                tag,
-                layout::Rect {
-                    x: zoomed_x + pad + col * (cell_w + pad),
-                    y: zoomed_y + pad + row * (cell_h + pad),
-                    width: cell_w,
-                    height: cell_h,
-                },
-            ));
-        }
-        result
-    }
-
-    /// Overview-mode arrangement: every occupied tag (or every tag
-    /// during a drag) becomes its own thumbnail cell. Each cell runs
-    /// that tag's *configured* layout — `Pertag::ltidxs` per-tag
-    /// `LayoutId`, `mfacts`, `nmasters` — over the cell rect, so a
-    /// scroller tag stays scroller-shaped at thumbnail size, a grid
-    /// tag stays grid-shaped. The dynamic grid (1→1×1, 4→2×2, 9→3×3)
-    /// keeps thumbnails large when only a few tags are in use.
-    fn arrange_overview_per_tag_grid(
-        &self,
-        mon_idx: usize,
-        _work_area: layout::Rect,
-        gaps: &layout::GapConfig,
-    ) -> layout::ArrangeResult {
-        let mon = &self.monitors[mon_idx];
-        let cells = self.compute_overview_grid_layout(mon_idx);
-        if cells.is_empty() {
-            return Vec::new();
-        }
-
-        // Halve the per-cell inner gap so thumbnails read denser than
-        // the user's normal gap config. `2` is the floor — anything
-        // smaller is invisible at thumbnail scale.
-        let inner_pad = (gaps.gappih / 2).max(2);
-        let cell_gaps = layout::GapConfig {
-            gappih: inner_pad,
-            gappiv: inner_pad,
-            gappoh: inner_pad,
-            gappov: inner_pad,
-        };
-
-        let mut results: layout::ArrangeResult = Vec::new();
-        for (tag, cell_rect) in cells {
-            let tag_bit = 1u32 << (tag - 1);
-            // Pertag indices are 1-based (slot 0 unused).
-            let pertag_slot = tag as usize;
-            let tag_layout = mon
-                .pertag
-                .ltidxs
-                .get(pertag_slot)
-                .copied()
-                .unwrap_or(layout::LayoutId::Tile);
-            let tag_mfact = mon
-                .pertag
-                .mfacts
-                .get(pertag_slot)
-                .copied()
-                .unwrap_or(self.config.default_mfact);
-            let tag_nmaster = mon
-                .pertag
-                .nmasters
-                .get(pertag_slot)
-                .copied()
-                .unwrap_or(self.config.default_nmaster);
-
-            let cell_tiled: Vec<usize> = self
-                .clients
-                .iter()
-                .enumerate()
-                .filter(|(_, c)| {
-                    !c.is_initial_map_pending
-                        && c.monitor == mon_idx
-                        && (c.tags & tag_bit) != 0
-                        && !c.is_minimized
-                        && !c.is_killing
-                        && !c.is_in_scratchpad
-                })
-                .map(|(i, _)| i)
-                .collect();
-
-            if cell_tiled.is_empty() {
-                continue;
-            }
-
-            let cell_props: Vec<f32> = cell_tiled
-                .iter()
-                .map(|&i| self.clients[i].scroller_proportion)
-                .collect();
-
-            let ctx = layout::ArrangeCtx {
-                work_area: cell_rect,
-                tiled: &cell_tiled,
-                nmaster: tag_nmaster,
-                mfact: tag_mfact,
-                gaps: &cell_gaps,
-                scroller_proportions: &cell_props,
-                default_scroller_proportion: self.config.scroller_default_proportion,
-                // Per-cell focused position is unknown at this layer
-                // — `arrange_monitor`'s cell-spanning focused index
-                // wouldn't apply inside a single cell. Pass `None`;
-                // scroller layouts fall back to anchor-left, which is
-                // fine for thumbnail rendering.
-                focused_tiled_pos: None,
-                scroller_structs: self.config.scroller_structs,
-                // Disable focus-centering inside cells — overview
-                // thumbnails are read at-a-glance, the user shouldn't
-                // see the scroller layout shifting around inside a
-                // tag thumbnail every time focus moves.
-                scroller_focus_center: false,
-                scroller_prefer_center: false,
-                scroller_prefer_overspread: false,
-                canvas_pan: (0.0, 0.0),
-            };
-
-            results.extend(layout::arrange(tag_layout, &ctx));
-        }
-
-        results
-    }
-
     pub fn arrange_monitor(&mut self, mon_idx: usize) {
         let _span = tracy_client::span!("arrange_monitor");
         if mon_idx >= self.monitors.len() {
@@ -3028,15 +2783,14 @@ impl MargoState {
 
         let mon = &self.monitors[mon_idx];
         let is_overview = mon.is_overview;
-        // Overview now arranges every tag's clients into its own
-        // per-tag thumbnail (3×3 grid by default — tag 1 top-left,
-        // tag 9 bottom-right). The single-Grid-of-everything path
-        // that used to live here was removed because it lost the
-        // "which tag does this window belong to" information at a
-        // glance — niri-style per-workspace thumbnails read clearer
-        // and let the upcoming Round 3 hit-test "drop window onto
-        // tag thumbnail" with no extra geometry maths.
-        let layout = mon.current_layout();
+        // Overview path: a single Grid arrangement over the
+        // (already-zoomed) work area, holding every tag's clients
+        // simultaneously. Mango/Hypr-style geometric continuity —
+        // each window keeps a deterministic spot in the thumbnail,
+        // and the keyboard-first MRU navigation
+        // (`overview_focus_next/prev`) cycles through them with
+        // focus + border tracking the selection.
+        let layout = if is_overview { crate::layout::LayoutId::Grid } else { mon.current_layout() };
         let tagset = if is_overview { !0 } else { mon.current_tagset() };
         let nmaster = mon.current_nmaster();
         let mfact = mon.current_mfact();
@@ -3149,20 +2903,7 @@ impl MargoState {
             canvas_pan,
         };
 
-        // In overview, replace the single-Grid-of-everything output with
-        // per-tag thumbnails: 9 cells (3×3 grid) over the zoomed
-        // work_area, each cell hosting only that tag's clients laid out
-        // in *that tag's* configured layout (Tile / Scroller / Grid /
-        // …) at its configured mfact / nmaster. This is the niri
-        // "every workspace becomes its own zoomed-out tile" feel —
-        // adapted to margo's tag model. Empty tags get an empty cell;
-        // Round 3's mouse drag-drop will hit-test against these cell
-        // rects to drop a window onto a target tag.
-        let geometries = if is_overview {
-            self.arrange_overview_per_tag_grid(mon_idx, work_area, &gaps)
-        } else {
-            layout::arrange(layout, &ctx)
-        };
+        let geometries = layout::arrange(layout, &ctx);
         let now = crate::utils::now_ms();
         for (client_idx, mut rect) in geometries {
             // Apply per-client size constraints from window rules. The layout
@@ -3981,82 +3722,6 @@ impl MargoState {
     /// Geometric rect of the tag-thumbnail cell for `tag` (1..=9) on
     /// `mon_idx`. Returns `None` if the tag is out of range or the
     /// monitor doesn't exist. Same math as
-    /// `arrange_overview_per_tag_grid` and `overview_cell_at_cursor`
-    /// — keep the three in lock-step.
-    ///
-    /// Used by the render path to draw the drag-target accent border.
-    pub fn overview_cell_rect(&self, mon_idx: usize, tag: u32) -> Option<layout::Rect> {
-        self.compute_overview_grid_layout(mon_idx)
-            .into_iter()
-            .find(|(t, _)| *t == tag)
-            .map(|(_, rect)| rect)
-    }
-
-    /// Hit-test the cursor against the 3×3 tag-thumbnail grid that
-    /// `arrange_overview_per_tag_grid` lays out. Returns the 1-based
-    /// tag number under the cursor, or `None` if the cursor is in
-    /// inter-cell padding, outside the zoomed work area, or not over
-    /// any output. Used by the overview drag-and-drop path
-    /// (`OverviewDrag::target_tag` update on every pointer motion).
-    ///
-    /// Mirrors the math in `arrange_overview_per_tag_grid` exactly —
-    /// any change to one needs the other.
-    pub fn overview_cell_at_cursor(&self, cursor: (f64, f64)) -> Option<u32> {
-        let cx = cursor.0 as i32;
-        let cy = cursor.1 as i32;
-
-        // Find which output the cursor is currently inside.
-        for output in self.space.outputs() {
-            let geo = self.space.output_geometry(output)?;
-            if cx < geo.loc.x
-                || cx >= geo.loc.x + geo.size.w
-                || cy < geo.loc.y
-                || cy >= geo.loc.y + geo.size.h
-            {
-                continue;
-            }
-
-            let mon_idx = self.monitors.iter().position(|m| &m.output == output)?;
-            // Reuse the same cell list arrange + render use, so a cursor
-            // hit on the visual cell rect always corresponds to the
-            // tag that was actually drawn there.
-            for (tag, rect) in self.compute_overview_grid_layout(mon_idx) {
-                if cx >= rect.x
-                    && cx < rect.x + rect.width
-                    && cy >= rect.y
-                    && cy < rect.y + rect.height
-                {
-                    return Some(tag);
-                }
-            }
-            return None;
-        }
-        None
-    }
-
-    /// Index into `self.clients` of the topmost tiled window whose
-    /// thumbnail rect contains `cursor` while overview is open.
-    /// Iterates clients in the order arrange laid them out — last
-    /// match wins so floating-on-top semantics survive.
-    pub fn overview_client_at_cursor(&self, cursor: (f64, f64)) -> Option<usize> {
-        if !self.is_overview_open() {
-            return None;
-        }
-        let cx = cursor.0 as i32;
-        let cy = cursor.1 as i32;
-        let mut hit: Option<usize> = None;
-        for (i, c) in self.clients.iter().enumerate() {
-            if c.is_initial_map_pending || c.is_minimized || c.is_killing || c.is_in_scratchpad {
-                continue;
-            }
-            let g = c.geom;
-            if cx >= g.x && cx < g.x + g.width && cy >= g.y && cy < g.y + g.height {
-                hit = Some(i);
-            }
-        }
-        hit
-    }
-
     pub fn is_overview_open(&self) -> bool {
         self.monitors.iter().any(|mon| mon.is_overview)
     }
@@ -4248,16 +3913,27 @@ impl MargoState {
         self.overview_focus_step(-1);
     }
 
-    /// Cycle the overview hover one step in `dir` (+1 = next, -1 =
-    /// prev). If no thumbnail is currently hovered, +1 lands on the
-    /// first thumbnail and -1 on the last — same wrap-around model
-    /// as alt+Tab on every other DE. Pointer warps to the new
-    /// thumbnail's centre so the next click activates whatever
-    /// alt+Tab last highlighted, even if the user used pure
-    /// keyboard for the cycle.
+    /// Cycle the overview thumbnail one step in `dir` (+1 = next,
+    /// −1 = prev). niri-style keyboard-first MRU navigator:
+    ///
+    /// * **Overview closed?** Open it first. The first cycle press
+    ///   then lands on the natural starting thumbnail (first for +1,
+    ///   last for −1) — single-keystroke "open + select first".
+    /// * **Cycle wrap-around** matches alt+Tab on every other DE.
+    /// * **Focus follows the cycle** — every step calls
+    ///   `focus_surface(Some(FocusTarget::Window(...)))` so the
+    ///   border immediately repaints with `focuscolor`, smithay's
+    ///   keyboard focus is on the new thumbnail's window, and
+    ///   activating it later (Enter / `overview_activate`) is just
+    ///   `close_overview(focus)`. Overview stays open between
+    ///   cycles — user keeps tapping Tab to walk the MRU.
+    /// * **Pointer warp** to thumbnail centre keeps the next mouse
+    ///   motion from yanking hover off the keyboard-selected
+    ///   thumbnail.
     fn overview_focus_step(&mut self, dir: i32) {
+        // First press while closed = open + select natural start.
         if !self.is_overview_open() {
-            return;
+            self.open_overview();
         }
         let list = self.overview_visible_clients();
         if list.is_empty() {
@@ -4284,19 +3960,31 @@ impl MargoState {
         }
         self.clients[new_idx].is_overview_hovered = true;
 
-        // Warp pointer to thumbnail centre. update_overview_hover()
-        // (input_handler) re-syncs hover off the cursor on the next
-        // motion event, so without this warp the very next mouse
-        // jiggle would yank hover back to whatever's under the
-        // physical cursor — very surprising mid-keyboard-cycle.
+        // Pointer warp to thumbnail centre.
         let g = self.clients[new_idx].geom;
         if g.width > 0 && g.height > 0 {
             self.input_pointer.x = (g.x + g.width / 2) as f64;
             self.input_pointer.y = (g.y + g.height / 2) as f64;
         }
 
+        // Real focus shift — border + smithay focus track the cycle.
+        // Without this, only `is_overview_hovered` flipped and the
+        // user got hover-color-but-not-focus-color, which read as
+        // "did anything happen?" mid-keystroke. Now Tab feels like
+        // a proper alt+Tab: focus, border, kb focus all move
+        // together.
+        let window = self.clients[new_idx].window.clone();
+        self.focus_surface(Some(FocusTarget::Window(window)));
+
         crate::border::refresh(self);
         self.request_repaint();
+        tracing::debug!(
+            target: "overview",
+            dir = dir,
+            new_idx = new_idx,
+            list_len = list.len(),
+            "cycle",
+        );
     }
 
     /// Close overview activating whichever thumbnail keyboard

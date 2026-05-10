@@ -7,6 +7,50 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Changed
+
+- **Overview rewritten — Mango/Hypr geometric continuity + niri
+  alt+Tab MRU cycle.** The Round 2b/3/4 per-tag thumbnail grid is
+  reverted in favour of the previous "single Grid arrangement of
+  every visible client over the zoomed work area" — windows keep a
+  deterministic spot in the thumbnail, overview reads as a
+  zoom-out of the desktop, the user's spatial memory survives.
+  `arrange_overview_per_tag_grid`, `compute_overview_grid_layout`,
+  `overview_cell_rect`, `overview_cell_at_cursor`,
+  `overview_client_at_cursor`, and `OverviewDrag` all removed —
+  ~600 LOC out, much simpler render path, no drift between three
+  grid-math implementations. Round 1 (hot corner + zoom config +
+  4-finger swipe wiring) and Round 2a (geometric zoom +
+  transition_ms wiring) stay.
+
+  `overview_focus_step` now opens the overview on its first press
+  if it's closed, and every step calls
+  `focus_surface(FocusTarget::Window(...))` so border + smithay
+  keyboard focus track the cycle. Bind to alt+Tab and the gesture
+  feels like a real alt+Tab on every other DE: focus moves with
+  the selection, overview stays open between presses, commit via
+  Enter (`overview_activate`).
+
+  Try it:
+  ```
+  bind = alt,Tab,overview_focus_next
+  bind = alt+shift,Tab,overview_focus_prev
+  bind = alt,Return,overview_activate
+  hot_corner_top_left = toggle_overview
+  gesture = swipe, 4, up, toggle_overview
+  overview_zoom = 0.5
+  ```
+
+  `mctl actions` catalogue now documents the three nav actions
+  (`overview_focus_next`, `_prev`, `_activate`) explicitly with
+  the new auto-open / focus-follows behaviour.
+
+  **Phase 3 mandate (separate sprint):** "Infinite Spatial Overview"
+  — workspace → space, 2D pan-zoomable canvas, semantic grouping,
+  inertial camera, minimap. Design doc + opt-in `overview_mode =
+  spatial` config. Not in this sprint; this overview ships now,
+  spatial mode lands as an alternative later.
+
 ### Added
 
 - **Niri-overview port — Round 4 (dynamic grid).** The overview no

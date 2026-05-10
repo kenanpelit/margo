@@ -1939,61 +1939,6 @@ pub(super) fn build_render_elements_inner(
         }
     }
 
-    // Overview drag-target accent border. While a drag is past the
-    // 5 px threshold and the cursor is dwelling over a tag-cell, the
-    // four outline edges of that cell render with `focuscolor` —
-    // user gets immediate "drop here" feedback. Drawn AFTER cursor
-    // (so cursor stays on top) but BEFORE upper_layers so the bar
-    // still wins z-order.
-    if state.is_overview_open() {
-        if let Some(drag) = state.overview_drag.as_ref() {
-            if drag.threshold_passed {
-                if let Some(target_tag) = drag.target_tag {
-                    let mon_idx = state.monitors.iter().position(|m| m.output == od.output);
-                    if let Some(idx) = mon_idx {
-                        if let Some(cell) = state.overview_cell_rect(idx, target_tag) {
-                            use smithay::backend::renderer::element::solid::{
-                                SolidColorBuffer, SolidColorRenderElement,
-                            };
-                            let (ox, oy) = (output_geo.loc.x, output_geo.loc.y);
-                            let lx = cell.x - ox;
-                            let ly = cell.y - oy;
-                            let lw = cell.width;
-                            let lh = cell.height;
-                            let t = 4i32;
-                            let scale: Scale<f64> = Scale::from(output_scale);
-                            let phys = |x: i32, y: i32| -> Point<i32, smithay::utils::Physical> {
-                                Point::from((
-                                    (x as f64 * output_scale).round() as i32,
-                                    (y as f64 * output_scale).round() as i32,
-                                ))
-                            };
-                            let color = state.config.focuscolor.0;
-                            let mut push_border = |x: i32, y: i32, w: i32, h: i32| {
-                                if w <= 0 || h <= 0 {
-                                    return;
-                                }
-                                let buffer = SolidColorBuffer::new((w, h), color);
-                                let elem = SolidColorRenderElement::from_buffer(
-                                    &buffer,
-                                    phys(x, y),
-                                    scale,
-                                    1.0,
-                                    Kind::Unspecified,
-                                );
-                                elements.push(MargoRenderElement::Solid(elem));
-                            };
-                            // Top, bottom, then left/right (avoid corner overlap).
-                            push_border(lx, ly, lw, t);
-                            push_border(lx, ly + lh - t, lw, t);
-                            push_border(lx, ly + t, t, lh - 2 * t);
-                            push_border(lx + lw - t, ly + t, t, lh - 2 * t);
-                        }
-                    }
-                }
-            }
-        }
-    }
 
     push_layer_elements(
         renderer,
