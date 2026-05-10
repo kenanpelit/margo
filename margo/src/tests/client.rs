@@ -17,6 +17,10 @@ use smithay::reexports::wayland_protocols::xdg::shell::client::{
     xdg_toplevel::{self, XdgToplevel},
     xdg_wm_base::{self, XdgWmBase},
 };
+use smithay::reexports::wayland_protocols_wlr::layer_shell::v1::client::{
+    zwlr_layer_shell_v1::{self, ZwlrLayerShellV1},
+    zwlr_layer_surface_v1::{self, ZwlrLayerSurfaceV1},
+};
 use wayland_backend::client::Backend;
 use wayland_client::globals::Global;
 use wayland_client::protocol::wl_callback::{self, WlCallback};
@@ -236,6 +240,37 @@ impl Client {
         self.connection.flush().expect("client flush");
     }
 
+    /// Create a fresh layer-shell surface — bind the layer-shell
+    /// global, attach a wl_surface to it under the given namespace
+    /// + layer (no specific output, server picks). Sets a default
+    /// (1, 30) size; without one (and with no anchor pinning
+    /// opposite edges), the protocol's `invalid_size` rule rejects
+    /// the first commit with `Protocol error 1 on
+    /// zwlr_layer_surface_v1`. Tests that need a different size
+    /// can call `layer_surface.set_size(...)` before their commit.
+    /// Returns the layer surface proxy and its underlying
+    /// wl_surface so tests drive their own commit cadence.
+    pub fn create_layer_surface(
+        &mut self,
+        namespace: &str,
+        layer: zwlr_layer_shell_v1::Layer,
+    ) -> (ZwlrLayerSurfaceV1, WlSurface) {
+        let (_compositor, wl_surface) = self.create_surface();
+        let layer_shell: ZwlrLayerShellV1 = self.bind_global(5);
+        let layer_surface = layer_shell.get_layer_surface(
+            &wl_surface,
+            None,
+            layer,
+            namespace.to_string(),
+            &self.qh,
+            (),
+        );
+        // Match a typical bar / notification footprint — the value
+        // doesn't matter for these tests, only that it's non-zero.
+        layer_surface.set_size(1, 30);
+        self.connection.flush().expect("client flush");
+        (layer_surface, wl_surface)
+    }
 }
 
 // ── Dispatch impls — the bare minimum a test client needs ──────────
@@ -414,6 +449,34 @@ impl Dispatch<XdgToplevel, ()> for ClientState {
                 }
             }
             _ => {}
+        }
+    }
+}
+
+impl Dispatch<ZwlrLayerShellV1, ()> for ClientState {
+    fn event(
+        _: &mut Self,
+        _: &ZwlrLayerShellV1,
+        _: zwlr_layer_shell_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<ZwlrLayerSurfaceV1, ()> for ClientState {
+    fn event(
+        _: &mut Self,
+        layer_surface: &ZwlrLayerSurfaceV1,
+        event: zwlr_layer_surface_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        // Auto-ack any configure so the server doesn't time us out.
+        if let zwlr_layer_surface_v1::Event::Configure { serial, .. } = event {
+            layer_surface.ack_configure(serial);
         }
     }
 }

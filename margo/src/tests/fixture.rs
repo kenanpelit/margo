@@ -36,10 +36,12 @@ use std::os::unix::net::UnixStream;
 use std::sync::Arc;
 
 use margo_config::Config;
+use smithay::output::{Mode as OutputMode, Output, PhysicalProperties, Subpixel};
 
 use super::client::{Client, ClientId};
 use super::server::Server;
-use crate::state::MargoClientData;
+use crate::layout::{LayoutId, Pertag, Rect};
+use crate::state::{MargoClientData, MargoMonitor};
 
 pub struct Fixture {
     pub server: Server,
@@ -63,6 +65,92 @@ impl Fixture {
         for client in &mut self.clients {
             client.read_and_dispatch();
         }
+    }
+
+    /// Synthesize a headless `Output` and the matching
+    /// `MargoMonitor` slot. Skips the DRM / GBM / GammaProps
+    /// plumbing that the udev backend builds in `setup_connector`
+    /// — tests can probe layout / layer-shell / output-placement
+    /// logic without a real GPU.
+    ///
+    /// `(width, height)` is the logical size; scale is fixed at
+    /// 1.0 (tests that need fractional scale should set it on
+    /// `state.monitors[idx]` directly after the call). Outputs
+    /// land left-to-right based on the cumulative width already in
+    /// `state.space`, mirroring the udev backend's default layout.
+    pub fn add_output(&mut self, name: &str, size: (i32, i32)) {
+        let state = &mut self.server.state;
+        let (w, h) = size;
+        let output = Output::new(
+            name.to_string(),
+            PhysicalProperties {
+                size: (w, h).into(),
+                subpixel: Subpixel::Unknown,
+                make: "test".into(),
+                model: "test".into(),
+                serial_number: name.to_string(),
+            },
+        );
+        let mode = OutputMode {
+            size: (w, h).into(),
+            refresh: 60_000,
+        };
+        let _global = output.create_global::<crate::state::MargoState>(&state.display_handle);
+        // Place the new output to the right of every existing one,
+        // same as the udev path's fallback positioning.
+        let position_x: i32 = state
+            .space
+            .outputs()
+            .filter_map(|o| state.space.output_geometry(o).map(|g| g.size.w))
+            .sum();
+        output.change_current_state(
+            Some(mode),
+            Some(smithay::utils::Transform::Normal),
+            Some(smithay::output::Scale::Fractional(1.0)),
+            Some((position_x, 0).into()),
+        );
+        output.set_preferred(mode);
+        state.space.map_output(&output, (position_x, 0));
+
+        let monitor_area = Rect {
+            x: position_x,
+            y: 0,
+            width: w,
+            height: h,
+        };
+        let pertag = Pertag::new(LayoutId::Tile, 0.55, 1);
+        state.monitors.push(MargoMonitor {
+            name: name.to_string(),
+            output,
+            monitor_area,
+            work_area: monitor_area,
+            seltags: 0,
+            tagset: [1, 1],
+            gappih: state.config.gappih as i32,
+            gappiv: state.config.gappiv as i32,
+            gappoh: state.config.gappoh as i32,
+            gappov: state.config.gappov as i32,
+            pertag,
+            selected: None,
+            prev_selected: None,
+            is_overview: false,
+            overview_backup_tagset: 1,
+            canvas_overview_visible: false,
+            canvas_in_overview: false,
+            canvas_saved_pan_x: 0.0,
+            canvas_saved_pan_y: 0.0,
+            canvas_saved_zoom: 1.0,
+            minimap_visible: false,
+            dwl_ipc: crate::protocols::dwl_ipc::DwlIpcState::new(),
+            ext_workspace: crate::protocols::ext_workspace::ExtWorkspaceState::new(),
+            scale: 1.0,
+            transform: 0,
+            enabled: true,
+            gamma_size: 0,
+            focus_history: std::collections::VecDeque::new(),
+        });
+        let mon_idx = state.monitors.len() - 1;
+        state.apply_tag_rules_to_monitor(mon_idx);
     }
 
     /// Add a new wayland-client-side `Client` connected to the
