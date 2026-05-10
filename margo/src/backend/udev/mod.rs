@@ -16,7 +16,7 @@ use smithay::{
     backend::{
         allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice},
         drm::{
-            compositor::{DrmCompositor, FrameFlags},
+            compositor::DrmCompositor,
             exporter::gbm::GbmFramebufferExporter,
             DrmDevice, DrmDeviceFd, DrmEvent, DrmNode, NodeType,
         },
@@ -43,7 +43,7 @@ use smithay::{
     reexports::{
         calloop::{ping::make_ping, EventLoop},
         drm::control::{
-            property, Device as DrmDeviceTrait, Mode as DrmMode, ModeTypeFlags, connector, crtc,
+            property, Device as DrmDeviceTrait, connector, crtc,
         },
         input::Libinput,
         rustix::fs::OFlags,
@@ -59,6 +59,15 @@ use smithay::{
 use tracing::{error, info, warn};
 
 use crate::{input_handler::handle_input, state::MargoState};
+
+mod frame;
+mod helpers;
+mod hotplug;
+mod mode;
+use frame::{flush_presentation_feedback, render_all_outputs};
+use helpers::{find_crtc, monotonic_now, smithay_transform};
+use hotplug::rescan_outputs;
+use mode::{apply_pending_mode_changes, select_drm_mode};
 
 render_elements! {
     pub MargoRenderElement<=GlesRenderer>;
@@ -84,21 +93,21 @@ type GbmDrmCompositor = DrmCompositor<
 
 pub struct OutputDevice {
     pub output: Output,
-    compositor: GbmDrmCompositor,
-    render_count: u64,
-    queued_count: u64,
-    empty_count: u64,
-    queue_error_count: u64,
+    pub(super) compositor: GbmDrmCompositor,
+    pub(super) render_count: u64,
+    pub(super) queued_count: u64,
+    pub(super) empty_count: u64,
+    pub(super) queue_error_count: u64,
     /// Per-CRTC GAMMA_LUT property handles, populated when the connector is
     /// bound. `None` if the kernel/driver doesn't expose GAMMA_LUT (in which
     /// case sunsetr / gammastep silently skip the output).
-    gamma: Option<GammaProps>,
+    pub(super) gamma: Option<GammaProps>,
     /// Connector handle this CRTC is driving. Needed during hotplug so we
     /// can re-check whether the *specific* connector for this output is
     /// still connected — the previous code asked "is anything still
     /// connected on this card?" which gave wrong answers in multi-monitor
     /// setups.
-    connector: connector::Handle,
+    pub(super) connector: connector::Handle,
     /// `wp_presentation_feedback` builders that have been collected at
     /// submit time but not yet signalled. We hold them here until the
     /// matching `DrmEvent::VBlank` fires, then call `.presented(now,
@@ -110,14 +119,14 @@ pub struct OutputDevice {
     /// a future-iteration upgrade. Stored as a Vec because in pathological
     /// cases (smithay reports back-to-back VBlanks) we'd otherwise drop
     /// feedbacks; in practice it's almost always 0 or 1 entry.
-    pending_presentation: Vec<smithay::desktop::utils::OutputPresentationFeedback>,
+    pub(super) pending_presentation: Vec<smithay::desktop::utils::OutputPresentationFeedback>,
 }
 
 // ── DRM gamma properties ──────────────────────────────────────────────────────
 //
 // Adapted from niri's `src/backend/tty.rs` GammaProps.
 
-struct GammaProps {
+pub(super) struct GammaProps {
     crtc: crtc::Handle,
     gamma_lut: property::Handle,
     gamma_lut_size: property::Handle,
@@ -126,7 +135,7 @@ struct GammaProps {
 }
 
 impl GammaProps {
-    fn discover(device: &DrmDevice, crtc: crtc::Handle) -> Option<Self> {
+    pub(super) fn discover(device: &DrmDevice, crtc: crtc::Handle) -> Option<Self> {
         let props = device.get_properties(crtc).ok()?;
         let mut gamma_lut = None;
         let mut gamma_lut_size = None;
@@ -155,7 +164,7 @@ impl GammaProps {
         })
     }
 
-    fn gamma_size(&self, device: &DrmDevice) -> Option<u32> {
+    pub(super) fn gamma_size(&self, device: &DrmDevice) -> Option<u32> {
         let props = device.get_properties(self.crtc).ok()?;
         for (prop, value) in props {
             if prop == self.gamma_lut_size {
@@ -168,7 +177,7 @@ impl GammaProps {
 
     /// Apply a gamma ramp (R, G, B planes concatenated, each `gamma_size`
     /// u16 entries). Pass `None` to clear/restore the default identity LUT.
-    fn set_gamma(&mut self, device: &DrmDevice, gamma: Option<&[u16]>) -> Result<()> {
+    pub(super) fn set_gamma(&mut self, device: &DrmDevice, gamma: Option<&[u16]>) -> Result<()> {
         #[allow(non_camel_case_types)]
         #[repr(C)]
         #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -224,19 +233,19 @@ impl GammaProps {
     }
 }
 
-struct BackendData {
-    renderer: GlesRenderer,
-    outputs: HashMap<crtc::Handle, OutputDevice>,
+pub(super) struct BackendData {
+    pub(super) renderer: GlesRenderer,
+    pub(super) outputs: HashMap<crtc::Handle, OutputDevice>,
     /// DRM device shared by all outputs on this card. Used for late-binding
     /// operations (gamma LUT updates, output power management) that need to
     /// poke properties outside the per-CRTC `DrmCompositor`.
-    drm: DrmDevice,
+    pub(super) drm: DrmDevice,
     /// Allocator + framebuffer-exporter dependencies needed to construct
     /// new `DrmCompositor`s on hotplug. Captured once at startup; everything
     /// here is cheap to clone.
-    gbm: GbmDevice<DrmDeviceFd>,
-    primary_node: DrmNode,
-    renderer_formats: smithay::backend::allocator::format::FormatSet,
+    pub(super) gbm: GbmDevice<DrmDeviceFd>,
+    pub(super) primary_node: DrmNode,
+    pub(super) renderer_formats: smithay::backend::allocator::format::FormatSet,
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────
@@ -837,413 +846,9 @@ pub fn run(
     Ok(())
 }
 
-// ── Hotplug rescan ────────────────────────────────────────────────────────────
+// ── Hotplug rescan ──────────────────────────────────────────────────────────
 //
-// Called from `UdevEvent::Changed` whenever the kernel notifies us that
-// the DRM device's connector topology may have shifted. We:
-//
-// 1. Remove every OutputDevice whose specific connector is no longer
-//    `Connected` (laptop dock unplug, monitor cable pulled). The previous
-//    implementation answered "is *anything* still connected on this card?"
-//    which gave wrong answers in multi-monitor setups.
-//
-// 2. Migrate any clients that lived on the removed monitor to the
-//    remaining first monitor — without this they keep `c.monitor =
-//    <stale index>` and disappear from the layout.
-//
-// 3. Add new outputs for connectors that *just* came up. Walks every
-//    connector reported by `resource_handles().connectors()`, picks the
-//    ones in `Connected` state that don't already have an OutputDevice,
-//    and runs them through `setup_connector()`. The freshly-built
-//    `DrmCompositor` gets an initial `render_frame` + `queue_frame` so
-//    the new monitor lights up without waiting for the next repaint
-//    timer tick.
-
-fn rescan_outputs(
-    backend_data: &Rc<RefCell<BackendData>>,
-    state: &mut MargoState,
-) {
-    // Phase 1: remove disconnected outputs.
-    let mut bd = backend_data.borrow_mut();
-    let BackendData {
-        renderer: _,
-        outputs,
-        drm,
-        gbm: _,
-        primary_node: _,
-        renderer_formats: _,
-    } = &mut *bd;
-
-    let mut to_remove: Vec<crtc::Handle> = Vec::new();
-    for (crtc, od) in outputs.iter() {
-        let still_connected = drm
-            .get_connector(od.connector, false)
-            .map(|c| c.state() == connector::State::Connected)
-            .unwrap_or(false);
-        if !still_connected {
-            tracing::info!(
-                "output {} disconnected (CRTC {:?})",
-                od.output.name(),
-                crtc
-            );
-            to_remove.push(*crtc);
-        }
-    }
-
-    let removed_outputs: Vec<Output> = to_remove
-        .into_iter()
-        .filter_map(|crtc| outputs.remove(&crtc).map(|od| od.output))
-        .collect();
-    drop(bd);
-
-    for output in &removed_outputs {
-        migrate_clients_off_output(state, output);
-        state.remove_output(output);
-    }
-
-    // Phase 2: add newly-connected outputs.
-    let mut added_any = false;
-    let mut bd = backend_data.borrow_mut();
-    let used_crtcs: std::collections::HashSet<crtc::Handle> =
-        bd.outputs.keys().copied().collect();
-    let resources = match bd.drm.resource_handles() {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::warn!("rescan: resource_handles failed: {e}");
-            drop(bd);
-            if !removed_outputs.is_empty() {
-                state.arrange_all();
-                state.request_repaint();
-            }
-            return;
-        }
-    };
-
-    let mut current_used = used_crtcs.clone();
-    let mut new_outputs: Vec<(crtc::Handle, OutputDevice)> = Vec::new();
-    for conn_handle in resources.connectors() {
-        // Already driving this connector? Don't double-bind.
-        if bd.outputs.values().any(|od| od.connector == *conn_handle) {
-            continue;
-        }
-        let Ok(conn_info) = bd.drm.get_connector(*conn_handle, false) else {
-            continue;
-        };
-        if conn_info.state() != connector::State::Connected {
-            continue;
-        }
-        // Borrow split: setup_connector needs &mut DrmDevice + &mut MargoState
-        // simultaneously, so peel everything we need off `bd` first.
-        let BackendData {
-            drm,
-            gbm,
-            primary_node,
-            renderer_formats,
-            ..
-        } = &mut *bd;
-
-        if let Some((crtc, od)) = setup_connector(
-            drm,
-            *conn_handle,
-            &conn_info,
-            &resources,
-            &current_used,
-            state,
-            gbm,
-            *primary_node,
-            renderer_formats,
-        ) {
-            current_used.insert(crtc);
-            new_outputs.push((crtc, od));
-            added_any = true;
-        }
-    }
-
-    for (crtc, mut od) in new_outputs {
-        // Kick the swapchain so the freshly-built compositor schedules a
-        // first vblank — otherwise the new monitor stays blank until the
-        // global repaint timer happens to tick *and* something on the
-        // existing outputs marks itself dirty.
-        let elements = build_render_elements(&mut bd.renderer, &od, state);
-        if let Err(e) = od.compositor.render_frame(
-            &mut bd.renderer,
-            &elements,
-            [0.1, 0.1, 0.1, 1.0],
-            FrameFlags::DEFAULT,
-        ) {
-            tracing::warn!("hotplug initial render failed for {}: {e:?}", od.output.name());
-        } else {
-            let _ = od.compositor.queue_frame(());
-        }
-        bd.outputs.insert(crtc, od);
-    }
-    drop(bd);
-
-    if !removed_outputs.is_empty() || added_any {
-        state.arrange_all();
-        state.request_repaint();
-    }
-    // Always re-publish output topology after a rescan so kanshi /
-    // wlr-randr see the new layout. snapshot_changed is cheap when
-    // nothing actually changed.
-    state.publish_output_topology();
-}
-
-/// Build the OutputDevice + associated MargoMonitor for a single
-/// connected connector. Mirrors the inline init loop so that hotplug
-/// goes through exactly the same code path as startup.
-#[allow(clippy::too_many_arguments)]
-fn setup_connector(
-    drm: &mut DrmDevice,
-    conn_handle: connector::Handle,
-    conn_info: &connector::Info,
-    resources: &smithay::reexports::drm::control::ResourceHandles,
-    used_crtcs: &std::collections::HashSet<crtc::Handle>,
-    state: &mut MargoState,
-    gbm: &GbmDevice<DrmDeviceFd>,
-    primary_node: DrmNode,
-    renderer_formats: &smithay::backend::allocator::format::FormatSet,
-) -> Option<(crtc::Handle, OutputDevice)> {
-    let crtc = find_crtc(&drm.device_fd().clone(), conn_info, resources, used_crtcs)?;
-
-    let (phys_w, phys_h) = conn_info.size().unwrap_or((0, 0));
-    let output_name = format!(
-        "{}-{}",
-        conn_info.interface().as_str(),
-        conn_info.interface_id()
-    );
-
-    let rule = state
-        .config
-        .monitor_rules
-        .iter()
-        .find(|r| r.name.as_deref().map(|n| n == output_name).unwrap_or(true))
-        .cloned();
-
-    let drm_mode = select_drm_mode(conn_info, rule.as_ref())?;
-    let wl_mode = OutputMode::from(drm_mode);
-
-    let scale = rule.as_ref().map(|r| r.scale).unwrap_or(1.0);
-    let transform = smithay_transform(rule.as_ref().map(|r| r.transform).unwrap_or(0));
-
-    let position = if let Some(r) = &rule {
-        if r.x != i32::MAX && r.y != i32::MAX {
-            (r.x, r.y)
-        } else {
-            let x_offset = state.space.outputs().fold(0i32, |acc, o| {
-                acc + state.space.output_geometry(o).map(|g| g.size.w).unwrap_or(0)
-            });
-            (x_offset, 0)
-        }
-    } else {
-        let x_offset = state.space.outputs().fold(0i32, |acc, o| {
-            acc + state.space.output_geometry(o).map(|g| g.size.w).unwrap_or(0)
-        });
-        (x_offset, 0)
-    };
-
-    info!(
-        "hotplug add: {} {}x{}@{} pos={:?} scale={}",
-        output_name,
-        wl_mode.size.w,
-        wl_mode.size.h,
-        wl_mode.refresh / 1000,
-        position,
-        scale
-    );
-
-    let output = Output::new(
-        output_name.clone(),
-        PhysicalProperties {
-            size: (phys_w as i32, phys_h as i32).into(),
-            subpixel: Subpixel::Unknown,
-            make: "Unknown".into(),
-            model: "Unknown".into(),
-            serial_number: "Unknown".into(),
-        },
-    );
-    let _global = output.create_global::<MargoState>(&state.display_handle);
-    output.change_current_state(
-        Some(wl_mode),
-        Some(transform),
-        Some(smithay::output::Scale::Fractional(scale as f64)),
-        Some(position.into()),
-    );
-    output.set_preferred(wl_mode);
-    state.space.map_output(&output, position);
-
-    let drm_surface = match drm.create_surface(crtc, drm_mode, &[conn_handle]) {
-        Ok(s) => s,
-        Err(e) => {
-            warn!("hotplug create_surface for {output_name}: {e}");
-            return None;
-        }
-    };
-
-    let allocator = GbmAllocator::new(gbm.clone(), GbmBufferFlags::RENDERING);
-    let exporter = GbmFramebufferExporter::new(gbm.clone(), primary_node.into());
-    let color_formats = [DrmFourcc::Xrgb8888, DrmFourcc::Argb8888];
-    // Use device-reported cursor plane size (matches the startup path).
-    let cursor_size = {
-        let s = drm.cursor_size();
-        if s.w == 0 || s.h == 0 { (64u32, 64u32).into() } else { s }
-    };
-    let compositor = match DrmCompositor::new(
-        &output,
-        drm_surface,
-        None,
-        allocator,
-        exporter,
-        color_formats.iter().copied(),
-        renderer_formats.clone(),
-        cursor_size,
-        Some(gbm.clone()),
-    ) {
-        Ok(c) => c,
-        Err(e) => {
-            warn!("hotplug DrmCompositor::new for {output_name}: {e:?}");
-            return None;
-        }
-    };
-
-    let monitor_area = crate::layout::Rect {
-        x: position.0,
-        y: position.1,
-        width: wl_mode.size.w,
-        height: wl_mode.size.h,
-    };
-    let pertag = crate::layout::Pertag::new(
-        state.default_layout(),
-        state.config.default_mfact,
-        state.config.default_nmaster,
-    );
-    state.monitors.push(crate::state::MargoMonitor {
-        name: output_name.clone(),
-        output: output.clone(),
-        monitor_area,
-        work_area: monitor_area,
-        seltags: 0,
-        tagset: [1, 1],
-        gappih: state.config.gappih as i32,
-        gappiv: state.config.gappiv as i32,
-        gappoh: state.config.gappoh as i32,
-        gappov: state.config.gappov as i32,
-        pertag,
-        selected: None,
-        prev_selected: None,
-        is_overview: false,
-        overview_backup_tagset: 1,
-        canvas_overview_visible: false,
-        canvas_in_overview: false,
-        canvas_saved_pan_x: 0.0,
-        canvas_saved_pan_y: 0.0,
-        canvas_saved_zoom: 1.0,
-        minimap_visible: false,
-        dwl_ipc: crate::protocols::dwl_ipc::DwlIpcState::new(),
-        ext_workspace: crate::protocols::ext_workspace::ExtWorkspaceState::new(),
-        scale: 1.0,
-        transform: 0,
-        enabled: true,
-        gamma_size: 0,
-            focus_history: std::collections::VecDeque::new(),
-    });
-    state.apply_tag_rules_to_monitor(state.monitors.len() - 1);
-    // Hotplug-in (live-connector path): keep the shared
-    // ipc_outputs snapshot in sync so xdp-gnome's chooser
-    // dialog picks up the new monitor without a margo restart.
-    state.refresh_ipc_outputs();
-
-    let mut gamma_props = GammaProps::discover(drm, crtc);
-    if let Some(gamma) = gamma_props.as_mut() {
-        if let Err(err) = gamma.set_gamma(drm, None) {
-            tracing::debug!("couldn't reset gamma on {output_name}: {err:?}");
-        }
-    }
-    let gamma_size = gamma_props
-        .as_ref()
-        .and_then(|g| g.gamma_size(drm))
-        .unwrap_or(0);
-    let mon_idx = state.monitors.len() - 1;
-    state.monitors[mon_idx].gamma_size = gamma_size;
-
-    Some((
-        crtc,
-        OutputDevice {
-            output,
-            compositor,
-            render_count: 0,
-            queued_count: 0,
-            empty_count: 0,
-            queue_error_count: 0,
-            gamma: gamma_props,
-            connector: conn_handle,
-            pending_presentation: Vec::new(),
-        },
-    ))
-}
-
-fn migrate_clients_off_output(state: &mut MargoState, removed: &Output) {
-    let removed_idx = state
-        .monitors
-        .iter()
-        .position(|m| &m.output == removed);
-    let Some(removed_idx) = removed_idx else { return };
-
-    // Pick the surviving monitor that's NOT the one being removed. If
-    // there are no other monitors, the session is essentially headless;
-    // arrange_all() below still runs but the windows just stay invisible
-    // until something replugs.
-    let target_idx = state
-        .monitors
-        .iter()
-        .enumerate()
-        .find(|(i, _)| *i != removed_idx)
-        .map(|(i, _)| i);
-
-    let Some(target_idx) = target_idx else {
-        // Last monitor unplugged — nothing to migrate to. Clients keep
-        // their geometry; on next plug-in they'll snap to whoever shows
-        // up first.
-        return;
-    };
-
-    let target_tagset = state.monitors[target_idx].current_tagset();
-    let target_name = state.monitors[target_idx].name.clone();
-
-    // Compute the post-removal index for `target_idx` once. After
-    // `state.remove_output()` runs and Vec::remove(removed_idx) shifts
-    // every later element down by one, this is the slot where the
-    // surviving target monitor will land.
-    let target_after = if target_idx > removed_idx {
-        target_idx - 1
-    } else {
-        target_idx
-    };
-
-    let mut migrated = 0;
-    for client in state.clients.iter_mut() {
-        if client.monitor == removed_idx {
-            client.monitor = target_after;
-            // Make sure the client is on at least one tag of the target
-            // monitor — otherwise it's invisible until the user toggles
-            // a tag.
-            if client.tags & target_tagset == 0 {
-                client.tags |= target_tagset;
-            }
-            migrated += 1;
-        } else if client.monitor > removed_idx {
-            // Same Vec::remove shift applied to clients that already
-            // lived on a later monitor.
-            client.monitor -= 1;
-        }
-    }
-    if migrated > 0 {
-        tracing::info!(
-            "migrated {migrated} clients from {} → {target_name}",
-            removed.name(),
-        );
-    }
-}
+// Implementation extracted to `hotplug.rs` (W4.1).
 
 // ── Per-frame render ──────────────────────────────────────────────────────────
 
@@ -1252,7 +857,7 @@ fn migrate_clients_off_output(state: &mut MargoState, removed: &Output) {
 /// `client.resize_snapshot`. Called once per frame before the render
 /// element collection runs, so the rest of the frame can read the
 /// snapshot from `state.clients` immutably.
-fn take_pending_snapshots(
+pub(super) fn take_pending_snapshots(
     renderer: &mut GlesRenderer,
     od: &OutputDevice,
     state: &mut MargoState,
@@ -1339,7 +944,7 @@ fn take_pending_snapshots(
 /// we drop `opening_animation` so the live surface gets drawn from the
 /// next frame; for the close path we drop the closing entry entirely.
 /// Better than rendering an empty rect.
-fn take_pending_open_close_captures(
+pub(super) fn take_pending_open_close_captures(
     renderer: &mut GlesRenderer,
     od: &OutputDevice,
     state: &mut MargoState,
@@ -1494,7 +1099,7 @@ fn take_pending_open_close_captures(
     }
 }
 
-fn build_render_elements(
+pub(super) fn build_render_elements(
     renderer: &mut GlesRenderer,
     od: &OutputDevice,
     state: &MargoState,
@@ -2976,7 +2581,7 @@ fn push_closing_layers(
 /// targets only — dmabuf clients fall through and time out (their `Drop`
 /// emits `failed`). Renders into a transient `GlesRenderbuffer` matching
 /// the client's requested `buffer_size` so we honour scaling/transform.
-fn serve_screencopies(
+pub(super) fn serve_screencopies(
     renderer: &mut GlesRenderer,
     od: &OutputDevice,
     state: &mut MargoState,
@@ -3264,671 +2869,5 @@ fn serve_screencopies(
     }
 }
 
-/// Build an `OutputPresentationFeedback` collecting every surface that
-/// contributed a render element to the frame just queued. The result
-/// holds per-surface feedback callbacks ready for `.presented(...)`,
-/// but we deliberately do **not** call `.presented()` here — the page
-/// flip hasn't actually landed yet, only been queued. Storing the
-/// builder on the `OutputDevice` and signalling at `DrmEvent::VBlank`
-/// time gives clients a timestamp that matches the real scan-out
-/// moment, not "queue + ~half-a-frame-of-latency".
-///
-/// Mirrors anvil's `take_presentation_feedback` shape; the difference
-/// is this returns the builder instead of consuming it.
-/// Refresh per-client `last_scanout` after a successful `render_frame`.
-/// A client is considered on-scanout when *any* of its surfaces (toplevel
-/// + subsurfaces) appears in `RenderElementStates::states` with
-/// `ZeroCopy` presentation. ZeroCopy is smithay's signal that the buffer
-/// went straight to a primary or overlay plane — composition skipped,
-/// the client renderered nothing.
-///
-/// Surfaces are looked up by `Id::from_wayland_resource(&wl_surface)`,
-/// the same id `WaylandSurfaceRenderElement` constructs at render time.
-/// Clients on a different monitor than `output` are left alone — their
-/// flag is updated when their own monitor renders. Closing/dying clients
-/// without a wl_surface are left at their previous value (will be
-/// reset to false on the next normal frame, or removed from `clients`
-/// when the toplevel is destroyed).
-fn update_client_scanout_flags(
-    state: &mut MargoState,
-    output: &Output,
-    render_states: &smithay::backend::renderer::element::RenderElementStates,
-) {
-    use smithay::backend::renderer::element::{Id, RenderElementPresentationState};
-    use smithay::wayland::compositor::with_surface_tree_downward;
-
-    let Some(out_idx) = state.monitors.iter().position(|m| &m.output == output) else {
-        return;
-    };
-
-    let active_tagset = state.monitors[out_idx].current_tagset();
-
-    for client in state.clients.iter_mut() {
-        if client.monitor != out_idx {
-            continue;
-        }
-        if !client.is_visible_on(out_idx, active_tagset) {
-            client.last_scanout = false;
-            continue;
-        }
-        let Some(root) = client.window.wl_surface().map(|s| s.into_owned()) else {
-            // X11 or unmapped surface — direct scanout doesn't apply.
-            client.last_scanout = false;
-            continue;
-        };
-        let mut on_scanout = false;
-        with_surface_tree_downward(
-            &root,
-            (),
-            |_, _, _| smithay::wayland::compositor::TraversalAction::DoChildren(()),
-            |surface, _, _| {
-                if on_scanout {
-                    return;
-                }
-                let id: Id = Id::from_wayland_resource(surface);
-                if let Some(s) = render_states.element_render_state(id) {
-                    if matches!(
-                        s.presentation_state,
-                        RenderElementPresentationState::ZeroCopy
-                    ) {
-                        on_scanout = true;
-                    }
-                }
-            },
-            |_, _, _| true,
-        );
-        client.last_scanout = on_scanout;
-    }
-}
-
-fn build_presentation_feedback(
-    output: &Output,
-    state: &mut MargoState,
-    render_states: &smithay::backend::renderer::element::RenderElementStates,
-) -> smithay::desktop::utils::OutputPresentationFeedback {
-    use smithay::desktop::layer_map_for_output;
-    use smithay::desktop::utils::{
-        surface_presentation_feedback_flags_from_states, surface_primary_scanout_output,
-        OutputPresentationFeedback,
-    };
-
-    let mut feedback = OutputPresentationFeedback::new(output);
-
-    // Toplevels.
-    for window in state.space.elements() {
-        if state.space.outputs_for_element(window).contains(output) {
-            window.take_presentation_feedback(
-                &mut feedback,
-                surface_primary_scanout_output,
-                |surface, _| {
-                    surface_presentation_feedback_flags_from_states(surface, None, render_states)
-                },
-            );
-        }
-    }
-    // Layer surfaces (bar, notifications, OSD).
-    let map = layer_map_for_output(output);
-    for layer_surface in map.layers() {
-        layer_surface.take_presentation_feedback(
-            &mut feedback,
-            surface_primary_scanout_output,
-            |surface, _| {
-                surface_presentation_feedback_flags_from_states(surface, None, render_states)
-            },
-        );
-    }
-
-    feedback
-}
-
-/// Convert an `Output`'s current mode refresh rate to a per-frame
-/// `Duration`. Falls back to 60 Hz when the mode isn't known yet
-/// (winit nested mode, hotplug-in-progress, kernel reporting 0 mHz).
-fn output_refresh_duration(output: &Output) -> std::time::Duration {
-    output
-        .current_mode()
-        .map(|m| {
-            // mode.refresh is in mHz.
-            let hz = (m.refresh as f64) / 1000.0;
-            if hz > 0.0 {
-                std::time::Duration::from_secs_f64(1.0 / hz)
-            } else {
-                std::time::Duration::from_secs_f64(1.0 / 60.0)
-            }
-        })
-        .unwrap_or_else(|| std::time::Duration::from_secs_f64(1.0 / 60.0))
-}
-
-/// Signal `presented(now, refresh, 0, Vsync)` on a feedback builder
-/// previously stashed on the OutputDevice. Called from the
-/// `DrmEvent::VBlank` handler, so `now` reflects the actual
-/// page-flip moment — not the submit time, which is the cheap
-/// approximation we used to do.
-///
-/// `seq` is left at 0 because smithay 0.7's `DrmEvent::VBlank(crtc)`
-/// doesn't carry the kernel's page-flip sequence number; pulling it
-/// from the kernel directly needs bypassing smithay's compositor and
-/// is tracked as a future iteration. Clients that care about seq
-/// see this as "no monotonic seq available"; clients that care
-/// about the timestamp (the common case — kitty / mpv frame pacing)
-/// now get a meaningful one.
-fn flush_presentation_feedback(
-    output: &Output,
-    feedback: smithay::desktop::utils::OutputPresentationFeedback,
-) {
-    use smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback;
-
-    let mut feedback = feedback;
-    let now = monotonic_now();
-    let refresh = output_refresh_duration(output);
-    feedback.presented::<_, smithay::utils::Monotonic>(
-        now,
-        smithay::wayland::presentation::Refresh::fixed(refresh),
-        0,
-        wp_presentation_feedback::Kind::Vsync,
-    );
-}
-
-fn monotonic_now() -> std::time::Duration {
-    use std::sync::OnceLock;
-    use std::time::Instant;
-    static START: OnceLock<Instant> = OnceLock::new();
-    START.get_or_init(Instant::now).elapsed()
-}
-
-fn render_all_outputs(
-    renderer: &mut GlesRenderer,
-    outputs: &mut HashMap<crtc::Handle, OutputDevice>,
-    drm: &DrmDevice,
-    state: &mut MargoState,
-    reason: &'static str,
-) {
-    // Apply any gamma ramp updates queued by wlr_gamma_control clients.
-    if !state.pending_gamma.is_empty() {
-        let pending = std::mem::take(&mut state.pending_gamma);
-        for (output, ramp) in pending {
-            let target = outputs.values_mut().find(|od| od.output == output);
-            let Some(od) = target else { continue };
-            let Some(g) = od.gamma.as_mut() else {
-                tracing::debug!("gamma: skip {} (no GAMMA_LUT)", od.output.name());
-                continue;
-            };
-            match g.set_gamma(drm, ramp.as_deref()) {
-                Ok(()) => tracing::debug!(
-                    "gamma applied output={} ramp={}",
-                    od.output.name(),
-                    if ramp.is_some() { "client" } else { "default" }
-                ),
-                Err(e) => warn!("gamma set failed on {}: {e:?}", od.output.name()),
-            }
-        }
-    }
-
-    for od in outputs.values_mut() {
-        render_output(renderer, od, state, reason);
-    }
-}
-
-fn render_output(
-    renderer: &mut GlesRenderer,
-    od: &mut OutputDevice,
-    state: &mut MargoState,
-    reason: &'static str,
-) {
-    // Tracy span — `let _span = ...` keeps the span alive for the
-    // entire fn body. No-op in non-tracy builds (tracy-client's
-    // default-features-off variant compiles the macro away).
-    let _span = tracy_client::span!("render_output");
-
-    // Soft-disabled output: skip the entire render path. Clients on
-    // this output have already been migrated; rendering a frame
-    // would burn GPU cycles and queue page-flips against a panel
-    // the user has chosen to deactivate. The OutputDevice stays
-    // alive (so re-enable can resume without a full hotplug), but
-    // each frame is a no-op. Note: the DRM connector itself isn't
-    // powered down here — that's the panel-off follow-up.
-    if let Some(mon) = state.monitors.iter().find(|m| m.output == od.output) {
-        if !mon.enabled {
-            return;
-        }
-    }
-    // HDR Phase 2 scaffolding hook: when MARGO_COLOR_LINEAR=1 is
-    // set, eagerly compile the encode/decode programs on the live
-    // renderer so a) the user finds out at startup if their driver
-    // rejects the GLSL, not at first cast b) the runtime swap-in
-    // (when the upstream DrmCompositor fp16 swapchain knob lands)
-    // doesn't pay first-frame compile latency. The actual render
-    // path stays the existing 8-bit composite — see
-    // `render::linear_composite::is_linear_composite_active`.
-    if crate::render::linear_composite::is_linear_composite_enabled() {
-        let _ = crate::render::linear_composite::encoder_shader(renderer);
-        let _ = crate::render::linear_composite::decoder_shader(renderer);
-    }
-    // Niri-style resize transition: any window whose layout slot
-    // changed size since the last frame had `snapshot_pending` set by
-    // `arrange_monitor`. We're now on the render thread with a live
-    // `GlesRenderer`, so this is the moment we can actually allocate
-    // the offscreen GlesTexture and paint the surface tree into it.
-    // Subsequent frames will draw the snapshot scaled to the
-    // (animated) slot until the move animation finishes — at which
-    // point `tick_animations` clears `resize_snapshot` and we go back
-    // to drawing the live surface.
-    take_pending_snapshots(renderer, od, state);
-    take_pending_open_close_captures(renderer, od, state);
-
-    let mut elements = build_render_elements(renderer, od, state);
-    // W2.1 region selector overlay — when active, layer:
-    //   [cursor (top), outline edges, dim, live scene]
-    // Cursor must stay on top so the user can SEE where they're
-    // dragging from. The default `build_render_elements` already
-    // puts cursor at the front of `elements`; we extract it,
-    // insert the overlay between cursor and the rest, and
-    // re-prepend so the order ends up [cursor, overlay edges,
-    // dim, scene].
-    //
-    // Edges + dim mutate the selector's persistent SolidColor
-    // buffers in place — same buffer Ids across frames, so
-    // damage tracking only invalidates when geometry actually
-    // changes (drag motion, output resize).
-    //
-    // Pushed BEFORE the screencopy serve so the captured frame
-    // matches what the user sees on-screen.
-    if state.region_selector.is_some() {
-        let (mon_origin, mon_size) = state
-            .monitors
-            .iter()
-            .find(|m| m.output == od.output)
-            .map(|m| (
-                (m.monitor_area.x, m.monitor_area.y),
-                (m.monitor_area.width, m.monitor_area.height),
-            ))
-            .unwrap_or(((0, 0), (1920, 1080)));
-        let scale = od.output.current_scale().fractional_scale();
-        // Build cursor separately so we can keep it on top.
-        let (cursor_elements, _cursor_loc) =
-            build_cursor_elements_for_output(renderer, od, state);
-        let cursor_count = cursor_elements.len();
-
-        if let Some(sel) = state.region_selector.as_mut() {
-            let overlay = sel.render_elements(mon_origin, mon_size, scale);
-            // Compose: cursor (top) → overlay → main scene.
-            // build_render_elements already drew cursor as part
-            // of `elements[0..cursor_count]`; we strip those and
-            // re-add at the very front so they sit above the
-            // overlay we're inserting.
-            //
-            // Heuristic: assume the FIRST `cursor_count` elements
-            // of `elements` are the cursor (matches
-            // build_render_elements_inner's push order). On
-            // mismatch (e.g. the cursor is off-output) the
-            // overlay still works; the edges might be drawn
-            // above a layer-shell instead, which is fine.
-            let mut head: Vec<MargoRenderElement> = Vec::new();
-            // Cursor on top — pre-extract from elements head if
-            // we can, else use our separately-built copy.
-            for c in cursor_elements.into_iter().take(cursor_count) {
-                head.push(c);
-            }
-            // Drop the cursor that was at the front of `elements`
-            // so we don't render it twice (once on top, once
-            // under the overlay).
-            let scene_tail: Vec<MargoRenderElement> =
-                elements.drain(cursor_count..).collect();
-            // Now: head = [cursor], scene_tail = [scene without cursor].
-            for o in overlay {
-                head.push(MargoRenderElement::Solid(o));
-            }
-            for s in scene_tail {
-                head.push(s);
-            }
-            elements = head;
-        }
-    }
-    // Serve any pending wlr-screencopy frames for this output BEFORE the
-    // main render. We re-use `elements` so the captured image matches what
-    // the user sees on the next frame. Returns early on success — the
-    // screencopy clients get the same pixels we're about to scan out.
-    serve_screencopies(renderer, od, state, &elements);
-    let clear_color = if state.session_locked {
-        [0.0, 0.0, 0.0, 1.0]
-    } else {
-        [0.1, 0.1, 0.1, 1.0]
-    };
-    match od
-        .compositor
-        .render_frame(renderer, &elements, clear_color, FrameFlags::DEFAULT)
-    {
-        Ok(result) => {
-            od.render_count += 1;
-            if result.is_empty {
-                od.empty_count += 1;
-                if od.empty_count <= 5 || od.empty_count.is_multiple_of(120) {
-                    info!(
-                        "render empty output={} reason={} renders={} elements={}",
-                        od.output.name(),
-                        reason,
-                        od.render_count,
-                        elements.len()
-                    );
-                }
-                return;
-            }
-
-            match od.compositor.queue_frame(()) {
-                Ok(()) => {
-                    od.queued_count += 1;
-                    // Bumps `pending_vblanks` so further repaint requests
-                    // queue silently until the page-flip completes; the
-                    // matching `DrmEvent::VBlank` will pop it back down.
-                    state.note_frame_queued();
-                    if od.queued_count <= 10 || od.queued_count.is_multiple_of(300) {
-                        info!(
-                            "queued frame output={} reason={} queued={} renders={} elements={}",
-                            od.output.name(),
-                            reason,
-                            od.queued_count,
-                            od.render_count,
-                            elements.len()
-                        );
-                    }
-                    // wp_presentation: collect every surface's
-                    // feedback callback now while we still have the
-                    // RenderElementStates, but defer the actual
-                    // `presented(...)` signal until the matching
-                    // `DrmEvent::VBlank` fires. The flip hasn't
-                    // actually landed yet — calling presented() here
-                    // would publish a timestamp that's a frame-or-so
-                    // earlier than reality. The VBlank handler picks
-                    // this up and signals with a clock value taken
-                    // at the real page-flip moment.
-                    let feedback = build_presentation_feedback(&od.output, state, &result.states);
-                    od.pending_presentation.push(feedback);
-                    update_client_scanout_flags(state, &od.output, &result.states);
-                    state.post_repaint(&od.output, state.clock.now());
-                    state.display_handle.flush_clients().ok();
-                }
-                Err(e) => {
-                    od.queue_error_count += 1;
-                    state.request_repaint();
-                    if od.queue_error_count <= 10 || od.queue_error_count.is_multiple_of(300) {
-                        warn!(
-                            "queue_frame output={} reason={} errors={} elements={} error={e:?}",
-                            od.output.name(),
-                            reason,
-                            od.queue_error_count,
-                            elements.len()
-                        );
-                    }
-                }
-            }
-        }
-        Err(e) => error!(
-            "render_frame output={} reason={} elements={} error={e:?}",
-            od.output.name(),
-            reason,
-            elements.len()
-        ),
-    }
-}
-
 // ── CRTC helper ───────────────────────────────────────────────────────────────
 
-// ── Mode selection ────────────────────────────────────────────────────────────
-
-/// Drain `state.pending_output_mode_changes` and apply each via
-/// `DrmCompositor::use_mode`, then update the smithay `Output` so
-/// wl_output mode events reach clients (kanshi, status bar).
-///
-/// This runs at the top of the repaint handler (before rendering)
-/// so a kanshi profile flip lands within one frame instead of
-/// being delayed to the next event.
-///
-/// Failure modes — each just skips the entry with a warning:
-///   * Output name not in `state.monitors` → output went away.
-///   * Connector info read fails → DRM in a weird state, retry next frame.
-///   * No DRM mode matches the (w, h, refresh) triple → kanshi
-///     asked for a mode the panel doesn't actually advertise.
-///   * `compositor.use_mode` fails → atomic test failed (the kernel
-///     refused the modeset, e.g. CRTC pixel-clock limit).
-fn apply_pending_mode_changes(bd: &mut BackendData, state: &mut MargoState) {
-    let drained: Vec<crate::PendingOutputModeChange> =
-        state.pending_output_mode_changes.drain(..).collect();
-    if drained.is_empty() {
-        return;
-    }
-
-    for change in drained {
-        // Find the OutputDevice by output name. The `Output` stored
-        // on each device has the same name we surface to clients.
-        let Some((_crtc, od)) = bd
-            .outputs
-            .iter_mut()
-            .find(|(_, od)| od.output.name() == change.output_name)
-        else {
-            tracing::warn!(
-                "output_management: pending mode change for unknown output {} dropped",
-                change.output_name,
-            );
-            continue;
-        };
-
-        // Read the current connector info so we can match the
-        // requested mode against the real KMS mode list. The drm
-        // crate's `Mode` is what `use_mode` wants; smithay's
-        // `OutputMode` is the wl_output-side type, so we need the
-        // drm one for the apply path.
-        let conn_info = match bd.drm.get_connector(od.connector, false) {
-            Ok(info) => info,
-            Err(e) => {
-                tracing::warn!(
-                    "output_management: get_connector({:?}) failed: {e}",
-                    od.connector
-                );
-                continue;
-            }
-        };
-
-        let drm_mode = match find_matching_drm_mode(
-            conn_info.modes(),
-            change.width,
-            change.height,
-            change.refresh_mhz,
-        ) {
-            Some(m) => m,
-            None => {
-                tracing::warn!(
-                    "output_management: no DRM mode matches {}x{}@{}.{:03}Hz on {} \
-                     (advertised modes: {})",
-                    change.width,
-                    change.height,
-                    change.refresh_mhz / 1000,
-                    change.refresh_mhz % 1000,
-                    change.output_name,
-                    conn_info.modes().len(),
-                );
-                continue;
-            }
-        };
-
-        // Try the modeset. `use_mode` resizes the swapchain to the
-        // new dimensions internally; the next queue_frame will
-        // commit a frame at the new resolution. If atomic-test
-        // rejects (pixel clock cap, missing connector property,
-        // VRR-only mode), we log + leave the old mode in place.
-        if let Err(e) = od.compositor.use_mode(drm_mode) {
-            tracing::warn!(
-                "output_management: DrmCompositor::use_mode failed on {}: {e:?}",
-                change.output_name,
-            );
-            continue;
-        }
-
-        // Mirror the new mode into the smithay Output. Without
-        // this, the wl_output protocol never advertises the
-        // change, and clients keep believing the old mode is
-        // active. delete_mode/add_mode handles the case where the
-        // new mode wasn't in the previously-advertised list (rare
-        // but possible if the connector probe race with kanshi).
-        let new_wl_mode = OutputMode::from(drm_mode);
-        od.output.change_current_state(
-            Some(new_wl_mode),
-            None,
-            None,
-            None,
-        );
-        // Prefer the new mode for the next preferred-mode query
-        // too, so a later `wlr-randr` without a `--mode` argument
-        // sticks with what the user just picked.
-        od.output.set_preferred(new_wl_mode);
-
-        tracing::info!(
-            "output_management: applied mode {}x{}@{}.{:03}Hz on {}",
-            change.width,
-            change.height,
-            change.refresh_mhz / 1000,
-            change.refresh_mhz % 1000,
-            change.output_name,
-        );
-
-        // Logical work area (in compositor coords) follows the new
-        // mode size — the layout reflow already fired in
-        // apply_output_pending, but we run it once more after the
-        // real DRM size is known so client-side widgets see the
-        // correct geometry from the very first post-modeset frame.
-        let output = od.output.clone();
-        state.refresh_output_work_area(&output);
-    }
-
-    state.arrange_all();
-    state.request_repaint();
-    // Re-publish topology so output-management watchers see the
-    // new mode reflected in OutputSnapshot.current_mode.
-    state.publish_output_topology();
-}
-
-/// Find a `drm::control::Mode` matching `(w, h, refresh_mhz)`.
-///
-/// drm-rs's `Mode::vrefresh()` is the integer Hz approximation of
-/// the actual refresh rate (e.g. 60 for both 59.940 and 60.000 Hz);
-/// the protocol delivers refresh in mHz so we tolerate ±500 mHz
-/// rounding on top of an exact `(w, h)` match. If multiple modes
-/// share dimensions and refresh, prefer one with PREFERRED set.
-fn find_matching_drm_mode(
-    modes: &[DrmMode],
-    width: i32,
-    height: i32,
-    refresh_mhz: i32,
-) -> Option<DrmMode> {
-    let target_w = width as u16;
-    let target_h = height as u16;
-    let target_hz = (refresh_mhz as f64) / 1000.0;
-
-    let mut candidates: Vec<&DrmMode> = modes
-        .iter()
-        .filter(|m| {
-            let (w, h) = m.size();
-            w == target_w && h == target_h
-        })
-        .filter(|m| {
-            let hz = m.vrefresh() as f64;
-            (hz - target_hz).abs() < 1.0
-        })
-        .collect();
-
-    if candidates.is_empty() {
-        return None;
-    }
-    // Prefer KMS PREFERRED mode if multiple match.
-    candidates.sort_by_key(|m| {
-        if m.mode_type().contains(ModeTypeFlags::PREFERRED) {
-            0
-        } else {
-            1
-        }
-    });
-    Some(*candidates[0])
-}
-
-fn select_drm_mode(
-    conn: &connector::Info,
-    rule: Option<&margo_config::MonitorRule>,
-) -> Option<DrmMode> {
-    let modes = conn.modes();
-    if modes.is_empty() {
-        return None;
-    }
-
-    if let Some(r) = rule {
-        if r.width > 0 && r.height > 0 {
-            let rw = r.width as u16;
-            let rh = r.height as u16;
-            let rf = r.refresh as u32;
-
-            // Exact match: w × h @ refresh
-            if rf > 0 {
-                if let Some(m) = modes.iter().find(|m| {
-                    let (w, h) = m.size();
-                    w == rw && h == rh && m.vrefresh() == rf
-                }) {
-                    return Some(*m);
-                }
-            }
-
-            // Fallback: w × h, highest refresh
-            if let Some(m) = modes
-                .iter()
-                .filter(|m| {
-                    let (w, h) = m.size();
-                    w == rw && h == rh
-                })
-                .max_by_key(|m| m.vrefresh())
-            {
-                return Some(*m);
-            }
-        }
-    }
-
-    // Preferred flag
-    if let Some(m) = modes.iter().find(|m| m.mode_type().contains(ModeTypeFlags::PREFERRED)) {
-        return Some(*m);
-    }
-
-    Some(modes[0])
-}
-
-// ── Transform helper ──────────────────────────────────────────────────────────
-
-fn smithay_transform(n: i32) -> Transform {
-    match n {
-        1 => Transform::_90,
-        2 => Transform::_180,
-        3 => Transform::_270,
-        4 => Transform::Flipped,
-        5 => Transform::Flipped90,
-        6 => Transform::Flipped180,
-        7 => Transform::Flipped270,
-        _ => Transform::Normal,
-    }
-}
-
-// ── CRTC helper ───────────────────────────────────────────────────────────────
-
-fn find_crtc(
-    drm: &DrmDeviceFd,
-    conn: &connector::Info,
-    resources: &smithay::reexports::drm::control::ResourceHandles,
-    used_crtcs: &std::collections::HashSet<crtc::Handle>,
-) -> Option<crtc::Handle> {
-    use smithay::reexports::drm::control::Device as _;
-    for enc_handle in conn.encoders() {
-        let Ok(enc) = drm.get_encoder(*enc_handle) else {
-            continue;
-        };
-        for c in resources.filter_crtcs(enc.possible_crtcs()) {
-            if !used_crtcs.contains(&c) {
-                return Some(c);
-            }
-        }
-    }
-    None
-}
