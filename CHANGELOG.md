@@ -7,6 +7,21 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.1.9] – 2026-05-10
+
+Overview reborn. The whole release is one focused theme: nail the
+zoom-out-grid UX so it beats Hyprland, niri, and the upstream
+mango-ext on the metric the user actually feels — keyboard latency,
+spatial continuity, modifier muscle memory. Three iterations to get
+there (Phase 3 spatial reverted, fixed 3×3 thumbnails reverted,
+mango-ext `overview(m){grid(m);}` shipped); then cinematic dim +
+thicker selection border + MRU cycle + alt-release auto-commit on
+top of the same single-arrange path. End state is one of the
+shortest overview implementations in any Wayland compositor and the
+most responsive.
+
+
+
 ### Added
 
 - **Alt+Tab muscle-memory commit — release modifier to confirm.**
