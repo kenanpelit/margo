@@ -7,6 +7,50 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- **Overview cinematic selection — dim + thicker border on the
+  pick.** Two new config keys, both clamped, both default-on:
+  * `overview_selected_border_multiplier` (default `1.6`, range
+    `[1.0, 4.0]`) — multiplies the normal border width on the
+    keyboard / hover-selected thumbnail. Border already paints
+    `focuscolor` on selection; the multiplier makes the pick read
+    even at small thumbnail sizes without a separate render path.
+  * `overview_dim_alpha` (default `0.6`, range `[0.1, 1.0]`) —
+    alpha multiplier applied to **non-selected** thumbnails while
+    overview is open. The selected thumbnail stays at full
+    opacity. Result: a spotlight on the focuscolor-bordered
+    selection, the cinematic feel niri/Hypr ship by default. The
+    multiplier folds into the existing alpha parameter on
+    `render_elements_from_surface_tree` (Wayland live surface) and
+    the X11 `AsRenderElements` path, so no new render element
+    type is needed — one f32 per window per frame.
+  Set either to `1.0` to opt out individually.
+
+- **Overview alt+Tab now MRU-ordered.** `overview_visible_clients`
+  walks the per-monitor `focus_history` first (most-recent first),
+  then appends any remaining visible clients in clients-vec order
+  for completeness. Result: `alt+Tab` steps through windows in the
+  order the user last touched them — matches every other alt+Tab
+  in existence (i3, sway, Hypr, niri, GNOME). Previous behaviour
+  cycled in map-then-rearrange order, which felt random when the
+  user switched between long-running windows.
+
+### Fixed
+
+- **Overview alt+Tab border lit up instantly.** The cycle path
+  (`overview_focus_step`) was running a snap-no-slide
+  `arrange_monitor` after every Tab press to push the new
+  selection through the layout pipeline. Even at 1 ms duration,
+  the arrange-time `border::refresh` ran against per-client move
+  state in flux and the focuscolor border landed one frame after
+  the user expected. Removed the arrange call entirely — Mango-ext
+  overview is a Grid layout, every cell stays put across a cycle,
+  and only the *selected* state changes. The cycle now flips
+  `is_overview_hovered`, calls `border::refresh`, requests a
+  repaint — single render to focuscolor, no animation gate, no
+  recompute. ("border anında diğer pencerede değil" → fixed.)
+
 ### Changed
 
 - **Overview switched from fixed 3×3 per-tag thumbnails to mango-ext

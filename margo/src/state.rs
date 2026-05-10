@@ -3900,13 +3900,34 @@ impl MargoState {
             if !self.monitors[mon_idx].is_overview {
                 continue;
             }
-            for (i, c) in self.clients.iter().enumerate() {
-                if c.monitor == mon_idx
+            // MRU first: walk `monitor.focus_history` (most-recent
+            // first, populated by `arrange_monitor`'s focus tracker)
+            // then append any remaining visible clients in clients-vec
+            // order. Result: alt+Tab steps through windows in the
+            // order the user last touched them, matching every other
+            // alt+Tab implementation in existence (i3, sway, Hypr,
+            // niri, GNOME). Without MRU we'd cycle in
+            // map-then-rearrange order, which feels random.
+            let mut seen: std::collections::HashSet<usize> =
+                std::collections::HashSet::new();
+            let visible_here = |i: usize, c: &MargoClient| -> bool {
+                c.monitor == mon_idx
                     && !c.is_initial_map_pending
                     && !c.is_minimized
                     && !c.is_killing
                     && !c.is_in_scratchpad
-                {
+                    && i < self.clients.len()
+            };
+            for &i in &self.monitors[mon_idx].focus_history {
+                if i >= self.clients.len() {
+                    continue;
+                }
+                if visible_here(i, &self.clients[i]) && seen.insert(i) {
+                    out.push(i);
+                }
+            }
+            for (i, c) in self.clients.iter().enumerate() {
+                if visible_here(i, c) && seen.insert(i) {
                     out.push(i);
                 }
             }
@@ -3969,23 +3990,27 @@ impl MargoState {
         }
         self.clients[new_idx].is_overview_hovered = true;
 
-        // Snap-no-slide arrange so the cycle reads as a window
-        // switcher (border focuscolor lights up the new selection
-        // instantly). 1 ms is the layout-pass minimum and the
-        // per-client move animation gate treats it as "snap".
-        self.overview_transition_animation_ms = Some(1);
-        self.arrange_monitor(self.clients[new_idx].monitor);
-        self.overview_transition_animation_ms = None;
+        // Note: deliberately NO `arrange_monitor` here. Mango-ext
+        // overview is a Grid layout — every cell stays put across
+        // a cycle, only the *selected* state changes. Skipping the
+        // arrange means the only state that flips this tick is
+        // `is_overview_hovered`, which `border::refresh` reads on
+        // the very next frame. Result: the focuscolor border lights
+        // up the new selection in a single render, no animation
+        // gate, no per-client move recompute, no opacity
+        // crossfade — what the user calls "instant."
 
-        // Pointer warp to thumbnail centre. Without this the next
-        // mouse motion would clear `is_overview_hovered` because
-        // the cursor wouldn't overlap the new thumbnail's rect.
+        // Pointer warp to thumbnail centre so a subsequent mouse
+        // motion doesn't yank `is_overview_hovered` off our
+        // keyboard pick. Geometry is steady (no in-flight arrange)
+        // so the centre we compute is the cell the user is about
+        // to click.
         let g = self.clients[new_idx].geom;
         if g.width > 0 && g.height > 0 {
             self.input_pointer.x = (g.x + g.width / 2) as f64;
             self.input_pointer.y = (g.y + g.height / 2) as f64;
+            self.clamp_pointer_to_outputs();
         }
-        self.clamp_pointer_to_outputs();
 
         // Don't call `focus_surface` here. While overview is open,
         // `border::refresh` already paints `is_overview_hovered`

@@ -548,6 +548,18 @@ pub struct Config {
     /// Snappy overview open/close transition duration (ms). Falls
     /// back to a hard-coded 180ms when 0.
     pub overview_transition_ms: u32,
+    /// Border-width multiplier for the keyboard-cycle / pointer-hover
+    /// "selected" thumbnail in overview. 1.0 = same as normal border;
+    /// 1.5–2.0 makes the selection pop visually without resorting to
+    /// a separate render path. Clamped to `[1.0, 4.0]`.
+    pub overview_selected_border_multiplier: f32,
+    /// Alpha multiplier applied to non-selected thumbnails while
+    /// overview is open. 1.0 = no dimming (every thumbnail at full
+    /// opacity); 0.55–0.7 gives the cinematic "spotlight on the
+    /// selection" feel that Hypr/Niri ship by default. Clamped to
+    /// `[0.1, 1.0]`. The selected (focuscolor-bordered) thumbnail
+    /// always renders at 1.0.
+    pub overview_dim_alpha: f32,
 
     // hot corners — niri pattern. Each corner names a dispatch action
     // (or empty string = off). Pointer enters the corner pixel and
@@ -772,6 +784,8 @@ impl Default for Config {
             overview_gap_outer: 30,
             overview_zoom: 0.5,
             overview_transition_ms: 180,
+            overview_selected_border_multiplier: 1.6,
+            overview_dim_alpha: 0.6,
             hot_corner_top_left: String::new(),
             hot_corner_top_right: String::new(),
             hot_corner_bottom_left: String::new(),

@@ -2080,6 +2080,25 @@ fn push_client_elements(
 
         let client = state.clients.iter().find(|client| client.window == *window);
 
+        // Overview alpha: while overview is open, every non-selected
+        // thumbnail renders dimmed (config `overview_dim_alpha`,
+        // default 0.6) so the focuscolor-bordered selection reads as
+        // a spotlight. This is the cinematic feel niri/Hypr ship by
+        // default. Selected thumbnail (`is_overview_hovered`, set by
+        // either pointer hover or keyboard cycle) stays at full
+        // opacity. Outside overview every window renders at 1.0.
+        // The factor is multiplied into `render_elements_from_surface_tree`
+        // alpha and into the X11/Resize/OpenClose paths below.
+        let overview_alpha: f32 = if state.is_overview_open() {
+            match client {
+                Some(c) if c.is_overview_hovered => 1.0,
+                Some(_) => state.config.overview_dim_alpha.clamp(0.1, 1.0),
+                None => 1.0,
+            }
+        } else {
+            1.0
+        };
+
         // Screencast blackout: when we're building the element list
         // for a wlr-screencopy capture (`for_screencast = true`) and
         // this window has the windowrule's `block_out_from_screencast
@@ -2463,7 +2482,7 @@ fn push_client_elements(
                     wl_surface,
                     physical_location,
                     scale,
-                    1.0,
+                    overview_alpha,
                     Kind::Unspecified,
                 );
 
@@ -2503,7 +2522,7 @@ fn push_client_elements(
 
                 let rendered = AsRenderElements::<GlesRenderer>::render_elements::<
                     WaylandSurfaceRenderElement<GlesRenderer>,
-                >(window, renderer, physical_location, scale, 1.0);
+                >(window, renderer, physical_location, scale, overview_alpha);
                 // XWayland clients route through the same
                 // `clipped_surface` shader as native Wayland: without
                 // this, the X11 branch pushed the rendered surface

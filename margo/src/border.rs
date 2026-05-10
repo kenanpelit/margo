@@ -209,7 +209,18 @@ pub fn refresh(state: &mut MargoState) {
         } else {
             color_for(state, idx, focused == Some(idx))
         };
-        let effective = if hide { 0.0 } else { width };
+        // Overview-selected thumbnail gets a thicker border so the
+        // keyboard / pointer pick reads at a glance even at small
+        // thumbnail sizes. Multiplier is config-driven, default 1.6
+        // (clamped 1.0–4.0). Hidden borders stay at 0.
+        let mut effective = if hide { 0.0 } else { width };
+        if !hide
+            && state.is_overview_open()
+            && state.clients[idx].is_overview_hovered
+        {
+            let mul = state.config.overview_selected_border_multiplier.clamp(1.0, 4.0);
+            effective *= mul;
+        }
         let radius = state.config.border_radius as f32;
         state.clients[idx].border.update(geom, effective, radius, color);
     }

@@ -308,6 +308,10 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
         "overviewgappo" => cfg.overview_gap_outer = parse_i32(val),
         "overview_zoom" => cfg.overview_zoom = parse_f32(val).clamp(0.1, 1.0),
         "overview_transition_ms" => cfg.overview_transition_ms = parse_u32(val),
+        "overview_selected_border_multiplier" => {
+            cfg.overview_selected_border_multiplier = parse_f32(val).clamp(1.0, 4.0)
+        }
+        "overview_dim_alpha" => cfg.overview_dim_alpha = parse_f32(val).clamp(0.1, 1.0),
         "hot_corner_top_left" => cfg.hot_corner_top_left = val.trim().to_string(),
         "hot_corner_top_right" => cfg.hot_corner_top_right = val.trim().to_string(),
         "hot_corner_bottom_left" => cfg.hot_corner_bottom_left = val.trim().to_string(),

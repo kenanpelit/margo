@@ -503,12 +503,22 @@ matches mango-ext exactly:
 * **Triggers**: keybind / hot corner (1 × 1 px + dwell) / 4-finger
   touchpad swipe. All three route to the same `toggle_overview`
   handler.
-* **alt+Tab MRU cycle** with snap-no-slide arrange — each cycle
-  step bypasses the move animation
-  (`overview_transition_animation_ms = Some(1)`) so the focused-
-  window border lights up `focuscolor` instantly. alt+Return /
+* **alt+Tab MRU cycle** — `overview_visible_clients` walks the
+  per-monitor `focus_history` first (most-recent first), then
+  appends remaining visible clients. Steps through windows in the
+  order the user last touched them, matching every other alt+Tab
+  in existence (i3, sway, Hypr, niri, GNOME). The cycle path
+  itself does NO arrange — only `is_overview_hovered` flips and
+  `border::refresh` runs, so the focuscolor border lights up the
+  new pick on the very next frame ("instant"). alt+Return /
   `overview_activate` commits the highlighted thumbnail and closes
   overview onto its window's tag.
+* **Cinematic selection** — selected thumbnail gets a thicker
+  focuscolor border (`overview_selected_border_multiplier`,
+  default 1.6) so the pick reads at small thumbnail sizes;
+  unselected thumbnails dim their content alpha
+  (`overview_dim_alpha`, default 0.6) for a spotlight feel. Both
+  config-clamped, set either to 1.0 to opt out.
 * **Mouse**: click on window = activate + close; click on empty
   area = close.
 * **Hot corner safety guards**: `update_hot_corner` early-exits on
