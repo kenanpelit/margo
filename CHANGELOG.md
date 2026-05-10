@@ -7,8 +7,33 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.1.1] – 2026-05-10
+
+A focused popup-handling bug-fix release. Three commits, one
+chain of root causes — GTK and Chromium menus (Helium 3-dot,
+Nemo right-click, file-picker dropdowns) were unusable because
+xdg_popup wasn't being driven through the full xdg-shell
+handshake. After this release, popups, right-click context
+menus, and double-click navigation work as expected on every
+xdg-shell client we've tested.
+
 ### Fixed
 
+- **Initial configure for xdg_popups.** Margo's commit handler
+  was pumping the initial `xdg_surface.configure` for toplevels
+  and layer surfaces but never for popups. Without it, GTK and
+  Chromium would create the popup, send a bufferless commit, and
+  sit forever waiting for an ack — the popup was tracked
+  internally but never mapped, and clients gave up silently.
+  Visible symptom: Helium's 3-dot menu, Nemo's right-click
+  context menu, and any GTK chevron dropdown did absolutely
+  nothing on click; `GDK_BACKEND=x11` worked because XWayland
+  takes a different protocol path. The commit handler now mirrors
+  smithay anvil's pattern: find the popup via `PopupManager`, and
+  if `is_initial_configure_sent()` is false, call `send_configure()`
+  on the first commit. Also restores the original double-click
+  navigation in Nemo, which was failing as a side effect of the
+  same broken popup state.
 - **Pointer/keyboard input no longer steals focus during an active
   grab.** Even after wiring up `PopupPointerGrab`/`PopupKeyboardGrab`,
   GTK and Chromium menus would still flicker open and close because
