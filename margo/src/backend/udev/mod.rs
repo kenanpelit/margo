@@ -1117,12 +1117,42 @@ pub(super) fn take_pending_open_close_captures(
     }
 }
 
+/// What kind of frame the caller is building. Replaces the previous
+/// `(include_cursor: bool, for_screencast: bool)` two-bool parameter
+/// pair on [`build_render_elements_inner`] — same data, but the
+/// callsites read as intent (`RenderTarget::Display`) instead of
+/// (`true, false`).
+#[derive(Debug, Clone, Copy)]
+pub(super) enum RenderTarget {
+    /// Live display path: cursor sprite drawn, no screencast blackout filter.
+    Display,
+    /// Display path with cursor suppressed. Used by callers that
+    /// composite the cursor separately (region-selector overlay).
+    DisplayNoCursor,
+    /// Screencast / screencopy capture: `block_out_from_screencast`
+    /// clients are substituted with solid black; cursor inclusion is
+    /// driven by the capture client's request (`overlay_cursor` /
+    /// metadata-mode cursor sidecar).
+    Screencast { include_cursor: bool },
+}
+
+impl RenderTarget {
+    fn flags(self) -> (bool, bool) {
+        // (include_cursor, for_screencast)
+        match self {
+            RenderTarget::Display => (true, false),
+            RenderTarget::DisplayNoCursor => (false, false),
+            RenderTarget::Screencast { include_cursor } => (include_cursor, true),
+        }
+    }
+}
+
 pub(super) fn build_render_elements(
     renderer: &mut GlesRenderer,
     od: &OutputDevice,
     state: &MargoState,
 ) -> Vec<MargoRenderElement> {
-    build_render_elements_inner(renderer, od, state, true, false)
+    build_render_elements_inner(renderer, od, state, RenderTarget::Display)
 }
 
 /// Drain `MargoState::pending_image_copy_frames` and render each
@@ -1198,7 +1228,12 @@ fn drain_image_copy_frames(
                 let buf_size = smithay::utils::Size::<i32, smithay::utils::Buffer>::from(
                     (output_size.w, output_size.h),
                 );
-                let elements = build_render_elements_inner(renderer, od, state, false, true);
+                let elements = build_render_elements_inner(
+                    renderer,
+                    od,
+                    state,
+                    RenderTarget::Screencast { include_cursor: false },
+                );
                 (buf_size, scale, elements)
             }
             crate::PendingImageCopySource::Toplevel(window) => {
@@ -1514,8 +1549,12 @@ fn drain_active_cast_frames(
                     crate::dbus::mutter_screen_cast::CursorMode::Metadata
                 );
 
-                let output_elems =
-                    build_render_elements_inner(renderer, od, state, include_cursor, true);
+                let output_elems = build_render_elements_inner(
+                    renderer,
+                    od,
+                    state,
+                    RenderTarget::Screencast { include_cursor },
+                );
                 // Pointer-only sidecar elements for Metadata mode.
                 // Same shape as Embedded but lifted out of `elements`
                 // so pw_utils strips them from the main damage pass
@@ -1613,8 +1652,12 @@ fn drain_active_cast_frames(
                     crate::dbus::mutter_screen_cast::CursorMode::Metadata
                 );
 
-                let output_elems =
-                    build_render_elements_inner(renderer, od, state, include_cursor, true);
+                let output_elems = build_render_elements_inner(
+                    renderer,
+                    od,
+                    state,
+                    RenderTarget::Screencast { include_cursor },
+                );
                 let (cursor_elems_vec, cursor_loc) = if want_metadata_cursor {
                     let (e, loc) = build_cursor_elements_for_output(renderer, od, state);
                     let v: Vec<CastRenderElement> =
@@ -1733,14 +1776,14 @@ pub fn build_cursor_elements_for_output(
 /// `serve_screencopies` so the regular display render still shows
 /// password managers / private-browsing tabs / 2FA codes intact while
 /// any wlr-screencopy client recording the output sees them blacked out.
-pub fn build_render_elements_inner(
+pub(super) fn build_render_elements_inner(
     renderer: &mut GlesRenderer,
     od: &OutputDevice,
     state: &MargoState,
-    include_cursor: bool,
-    for_screencast: bool,
+    target: RenderTarget,
 ) -> Vec<MargoRenderElement> {
     let _span = tracy_client::span!("build_render_elements");
+    let (include_cursor, for_screencast) = target.flags();
     let output_scale = od.output.current_scale().fractional_scale();
 
     let Some(output_geo) = state.space.output_geometry(&od.output) else {
@@ -2675,8 +2718,9 @@ pub(super) fn serve_screencopies(
             renderer,
             od,
             state,
-            screencopy.overlay_cursor(),
-            true,
+            RenderTarget::Screencast {
+                include_cursor: screencopy.overlay_cursor(),
+            },
         );
         let elements_to_render: &[MargoRenderElement] = &owned_elements;
         let _ = elements; // main display array intentionally unused for screencast
