@@ -59,9 +59,9 @@ pub(super) fn rescan_outputs(
             .unwrap_or(false);
         if !still_connected {
             tracing::info!(
-                "output {} disconnected (CRTC {:?})",
-                od.output.name(),
-                crtc_h
+                output = %od.output.name(),
+                crtc = ?crtc_h,
+                "output disconnected",
             );
             to_remove.push(*crtc_h);
         }
@@ -214,13 +214,14 @@ pub(super) fn setup_connector(
     };
 
     info!(
-        "hotplug add: {} {}x{}@{} pos={:?} scale={}",
-        output_name,
-        wl_mode.size.w,
-        wl_mode.size.h,
-        wl_mode.refresh / 1000,
-        position,
-        scale
+        output = %output_name,
+        width = wl_mode.size.w,
+        height = wl_mode.size.h,
+        refresh_hz = wl_mode.refresh / 1000,
+        pos_x = position.0,
+        pos_y = position.1,
+        scale = scale,
+        "hotplug add",
     );
 
     let output = Output::new(
@@ -399,8 +400,10 @@ fn migrate_clients_off_output(state: &mut MargoState, removed: &Output) {
     }
     if migrated > 0 {
         tracing::info!(
-            "migrated {migrated} clients from {} → {target_name}",
-            removed.name(),
+            migrated = migrated,
+            from = %removed.name(),
+            to = %target_name,
+            "migrated clients off removed output",
         );
     }
 }

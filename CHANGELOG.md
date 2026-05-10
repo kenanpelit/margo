@@ -7,6 +7,30 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Changed
+
+- **Hot-path logging migrated to `tracing` structured fields.**
+  `backend/udev/frame.rs`, `backend/udev/hotplug.rs`, and the gesture +
+  keybinding-match log lines in `input_handler.rs` now emit per-event
+  fields (`output = %name`, `reason = …`, `queued = …`, `error = ?e`)
+  instead of pre-formatted strings. Run with `tracing-subscriber`'s
+  JSON formatter and `journalctl -u margo --output=json | jq` slices
+  per-output traces cleanly. Cold-path callsites (state.rs focus /
+  dispatch chatter, scripting, plugin loader) still use the old
+  format-string shape and convert piecemeal as touched. Roadmap §16
+  do-over wishlist item.
+
+### Docs
+
+- **Roadmap §15 reorganised into "Outstanding work — external
+  triggers"** with three sub-tables: upstream-blocked (smithay PRs),
+  test-setup-deferred (live PipeWire), and hardware-driven (W2.2b
+  pixman, W2.3 tablet). All margo-internal long-tail items are
+  shipped — what's left is gated on something margo can't unblock by
+  itself. §16 do-over wishlist marks the WindowRuleReason and
+  RenderTarget refactors as shipped/partial; structured logging note
+  added.
+
 ## [0.1.3] – 2026-05-10
 
 A "post-W-sweep capability + cleanup" pass. Four features and three

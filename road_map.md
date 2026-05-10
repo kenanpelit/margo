@@ -343,22 +343,45 @@ Behaviour-stable. Listed for completeness — bisect targets if anything regress
 
 ---
 
-## 15. Deferred (re-enter on demand)
+## 15. Outstanding work — external triggers
 
-| Item | Why deferred | Re-enter when |
+All margo-internal long-tail items have shipped. What's still open is
+gated on something margo can't unblock by itself: an upstream PR
+landing, a piece of hardware showing up to dogfood against, or a test
+setup that needs more than a winit nested session. Grouped by trigger
+type so it's obvious *who* unblocks each item.
+
+### Upstream-blocked (smithay PR needed)
+
+| Item | Trigger | Integration cost |
 |---|---|---|
-| **W2.2b** Full pixman software renderer fallback | Original ~400 LOC estimate undersells it; realistic scope is ~1500 LOC plus shader rewrites for SDF border/shadow paths. Every custom render element (RoundedBorder, Shadow, ResizeRender, ClippedSurface, OpenClose, LinearComposite — 7 modules) needs to be made generic over `R: Renderer + Bind<...>` AND parallel render paths in udev + winit backends. | A user files "margo doesn't run in my qemu" with a concrete deployment to test against. |
-| **W2.3** Tablet input | No immediate hardware to dogfood against. ~500 LOC for `tablet_v2` protocol + stylus/pad button mapping + `map-to-focused-window` mode. | A Wacom / Huion user files a request. |
+| **HDR Phase 2 runtime** — fp16 linear-light composite | smithay's `DrmCompositor` exposing fp16 swapchain reformat | ~80 LOC once the API lands |
+| **HDR Phase 3 runtime** — KMS HDR scan-out metadata | smithay's `DrmCompositor` exposing `set_hdr_output_metadata` per-CRTC | ~30 LOC |
+| **HDR Phase 4 runtime** — per-output ICC LUT post-pass | smithay's `compile_custom_texture_shader` exposing a second-sampler hook so the udev backend can bind the baked LUT atlas alongside the input surface texture | ~30 LOC |
+
+### Test-setup-deferred (margo-internal but not winit-testable)
+
+| Item | Trigger | Why now |
+|---|---|---|
+| **`Screencast::Session::Stop` grace period** | live PipeWire test setup to verify the warning actually goes away on rapid stop/start cycles | Cosmetic — pipewire warnings on rapid cycle, no functional impact |
+| **Per-cast wake-only scheduling** | dedicated session because the change touches the render loop's frame-clock | Current global continuous-repaint works; per-cast wake would help multi-cast different-framerate setups but isn't a regression |
+
+### Hardware-driven (waiting on a user request)
+
+| Item | Trigger | Cost |
+|---|---|---|
+| **W2.2b** Full pixman software renderer fallback | A user files "margo doesn't run in my qemu" with a concrete deployment to test against | Original ~400 LOC estimate undersells it; realistic scope is ~1500 LOC plus shader rewrites for SDF border/shadow paths. Every custom render element (RoundedBorder, Shadow, ResizeRender, ClippedSurface, OpenClose, LinearComposite — 7 modules) needs to be made generic over `R: Renderer + Bind<...>` AND parallel render paths in udev + winit backends. |
+| **W2.3** Tablet input | A Wacom / Huion user files a request | ~500 LOC for `tablet_v2` protocol + stylus/pad button mapping + `map-to-focused-window` mode |
 
 ---
 
 ## 16. What could be redone better (do-over wishlist)
 
-- **Render element collection has multiple paths** (display, screencast, dmabuf-screencopy region, snapshot). Each takes the same client list and produces a `MargoRenderElement` vec with subtle differences (`block_out_from_screencast`, region clip, snapshot vs live). A unified iterator with a `RenderTarget` enum parameter would dedup the wrappers. Today's code works; the cost is "every new render element type must be added to N places".
+- **Render element collection has multiple paths** (display, screencast, dmabuf-screencopy region, snapshot) — *partial address shipped*: `RenderTarget::{Display, DisplayNoCursor, Screencast { include_cursor }}` enum replaces the previous `(include_cursor, for_screencast)` bool pair on `build_render_elements_inner`. Remaining axes (region clip on dmabuf-screencopy, snapshot's offscreen render) are different enough machinery that they deserve their own pass.
 - **Animation tick fans out per-type.** `tick_animations` has separate branches for client move, opacity, layer surface, closing client, snapshot. A single `Animation` trait would consolidate. Trade-off: harder per-type custom logic. Probably not worth the refactor.
 - **`Config` is a giant flat struct** with 100+ fields. Sectioned access (`config.input.keyboard.repeat_rate` instead of `config.repeat_rate`) would document grouping. Big migration, low value.
-- **Window-rule application has three trigger sites** (`new_toplevel`, late-`app_id` reapply, reload). One reapply path keyed on a `Reason` enum would be cleaner.
-- **Diagnostic logging** is useful but ad-hoc. A structured-fields format (`tracing` already supports it) would let `journalctl -u margo --output=json | jq` slice per-client traces cleanly.
+- **Window-rule application has three trigger sites** — ✅ shipped. `WindowRuleReason::{InitialMap, AppIdSettled, Reload}` enum routes every reapply through a single `MargoState::reapply_rules(idx, reason)` path with structured-debug logging of the trigger.
+- **Diagnostic logging** — ✅ partial shipped. Hot-path frames in `backend/udev/{frame,hotplug}.rs` and `input_handler.rs` (gesture + keybinding match) emit `tracing` structured fields (`output = %name`, `reason = ...`, `error = ?e`, `"queued frame"`) instead of pre-formatted strings; `RUST_LOG=...` paired with `tracing-subscriber`'s JSON formatter makes `journalctl -u margo --output=json | jq` slice per-output traces cleanly. Cold-path callers (state.rs focus / dispatch noise, scripting, plugin loader) still use the old format-string shape — convertible piecemeal as touched.
 
 ---
 

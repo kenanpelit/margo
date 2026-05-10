@@ -196,7 +196,11 @@ pub(super) fn render_all_outputs(
                     od.output.name(),
                     if ramp.is_some() { "client" } else { "default" }
                 ),
-                Err(e) => warn!("gamma set failed on {}: {e:?}", od.output.name()),
+                Err(e) => warn!(
+                    output = %od.output.name(),
+                    error = ?e,
+                    "gamma set failed"
+                ),
             }
         }
     }
@@ -282,11 +286,11 @@ fn render_output(
                 od.empty_count += 1;
                 if od.empty_count <= 5 || od.empty_count.is_multiple_of(120) {
                     info!(
-                        "render empty output={} reason={} renders={} elements={}",
-                        od.output.name(),
-                        reason,
-                        od.render_count,
-                        elements.len()
+                        output = %od.output.name(),
+                        reason = reason,
+                        renders = od.render_count,
+                        elements = elements.len(),
+                        "render empty",
                     );
                 }
                 return;
@@ -298,12 +302,12 @@ fn render_output(
                     state.note_frame_queued();
                     if od.queued_count <= 10 || od.queued_count.is_multiple_of(300) {
                         info!(
-                            "queued frame output={} reason={} queued={} renders={} elements={}",
-                            od.output.name(),
-                            reason,
-                            od.queued_count,
-                            od.render_count,
-                            elements.len()
+                            output = %od.output.name(),
+                            reason = reason,
+                            queued = od.queued_count,
+                            renders = od.render_count,
+                            elements = elements.len(),
+                            "queued frame",
                         );
                     }
                     let feedback = build_presentation_feedback(&od.output, state, &result.states);
@@ -317,21 +321,23 @@ fn render_output(
                     state.request_repaint();
                     if od.queue_error_count <= 10 || od.queue_error_count.is_multiple_of(300) {
                         warn!(
-                            "queue_frame output={} reason={} errors={} elements={} error={e:?}",
-                            od.output.name(),
-                            reason,
-                            od.queue_error_count,
-                            elements.len()
+                            output = %od.output.name(),
+                            reason = reason,
+                            errors = od.queue_error_count,
+                            elements = elements.len(),
+                            error = ?e,
+                            "queue_frame failed",
                         );
                     }
                 }
             }
         }
         Err(e) => error!(
-            "render_frame output={} reason={} elements={} error={e:?}",
-            od.output.name(),
-            reason,
-            elements.len()
+            output = %od.output.name(),
+            reason = reason,
+            elements = elements.len(),
+            error = ?e,
+            "render_frame failed",
         ),
     }
 }

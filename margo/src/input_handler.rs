@@ -276,8 +276,12 @@ fn dispatch_swipe(
 
     if let Some(binding) = binding {
         info!(
-            "{source} swipe match: fingers={} motion={} mods={:?} action={:?}",
-            fingers, motion, mods, binding.action
+            source = source,
+            fingers = fingers,
+            motion = motion,
+            mods = ?mods,
+            action = ?binding.action,
+            "swipe match",
         );
         let action = binding.action.clone();
         let arg = binding.arg.clone();
@@ -551,7 +555,11 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                     }
 
                     if let Some(kb) = matched {
-                        info!("keybinding match: {:?} {:?}", kb.action, kb.arg);
+                        info!(
+                            action = ?kb.action,
+                            arg = ?kb.arg,
+                            "keybinding match",
+                        );
                         let action = kb.action.clone();
                         let arg = kb.arg.clone();
                         crate::dispatch::dispatch_action(state, &action, &arg);
