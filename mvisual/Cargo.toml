@@ -1,0 +1,15 @@
+[package]
+name = "mvisual"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Interactive GTK4 design tool for margo's 14 tiling layouts × per-tag pinning preview."
+repository.workspace = true
+
+[[bin]]
+name = "mvisual"
+path = "src/main.rs"
+
+[dependencies]
+margo-layouts = { path = "../margo-layouts" }
+gtk4 = "0.9"

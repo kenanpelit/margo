@@ -1,4 +1,4 @@
-use super::{ArrangeCtx, ArrangeResult, Rect};
+use crate::{ArrangeCtx, ArrangeResult, Rect};
 
 // ── Tile (master-stack, horizontal split) ────────────────────────────────────
 
@@ -682,7 +682,7 @@ pub fn dwindle(ctx: &ArrangeCtx) -> ArrangeResult {
 
 // ── Arrange dispatcher ────────────────────────────────────────────────────────
 
-use super::LayoutId;
+use crate::LayoutId;
 
 pub fn arrange(layout: LayoutId, ctx: &ArrangeCtx) -> ArrangeResult {
     match layout {
@@ -707,7 +707,7 @@ pub fn arrange(layout: LayoutId, ctx: &ArrangeCtx) -> ArrangeResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::layout::GapConfig;
+    use crate::GapConfig;
 
     #[test]
     fn scroller_centers_the_focused_client() {

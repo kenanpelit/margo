@@ -1,0 +1,257 @@
+//! Layout arithmetic for margo's 14 tiling algorithms.
+//!
+//! Pure functions — no Wayland, smithay, or wlroots dependencies. The
+//! compositor binary re-exports this crate via `crate::layout::*`; the
+//! `mvisual` design tool consumes the same algorithms to render
+//! interactive previews of every layout × per-tag pinning combination.
+
+mod algorithms;
+pub use algorithms::*;
+
+/// Axis-aligned bounding box.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Rect {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+}
+
+impl Rect {
+    pub fn new(x: i32, y: i32, width: i32, height: i32) -> Self {
+        Rect { x, y, width, height }
+    }
+
+    pub fn area(&self) -> i32 {
+        self.width * self.height
+    }
+}
+
+/// Per-tag layout state stored on each monitor.
+#[derive(Debug, Clone)]
+pub struct Pertag {
+    /// Current tag index (1-based).
+    pub curtag: usize,
+    /// Previous tag index.
+    pub prevtag: usize,
+    /// Layouts per tag (indexed 0 = overview, 1..=MAXTAGS).
+    pub ltidxs: Vec<LayoutId>,
+    /// mfact per tag.
+    pub mfacts: Vec<f32>,
+    /// nmaster per tag.
+    pub nmasters: Vec<u32>,
+    /// Gap config per tag.
+    pub gaps: Vec<GapConfig>,
+    /// `true` for tags where the user explicitly picked the layout
+    /// via `setlayout` / `switch_layout` action. Adaptive layout
+    /// (`Config::auto_layout = true`) skips auto-selection on these
+    /// tags so a deliberate user choice is never overridden by a
+    /// heuristic.
+    pub user_picked_layout: Vec<bool>,
+    /// Spatial-canvas pan offset per tag, in logical pixels. Applied
+    /// as a translate to every client's `canvas_geom` when the tag
+    /// uses the `Canvas` layout — pan moves the *viewport* over the
+    /// canvas, the clients themselves stay anchored. Stored per-tag
+    /// so each tag can hold a different "spatial focus" (a sketch
+    /// canvas on tag 3 keeps its zoomed-in view of the corner the
+    /// user was working on, even after they tab through other tags
+    /// and back). `canvas_pan` / `canvas_reset` dispatch actions
+    /// mutate these.
+    pub canvas_pan_x: Vec<f64>,
+    pub canvas_pan_y: Vec<f64>,
+    /// Per-tag wallpaper hint set by `tagrule = id:N, wallpaper:path`
+    /// (W3.6). Compositor stores the string verbatim; wallpaper
+    /// daemons (swaybg / noctalia / custom) read it from the
+    /// dwl-ipc broadcast or state.json on tag-switch and swap
+    /// accordingly. Empty string = "no per-tag override; use the
+    /// session-default wallpaper".
+    pub wallpapers: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct GapConfig {
+    pub gappih: i32,
+    pub gappiv: i32,
+    pub gappoh: i32,
+    pub gappov: i32,
+}
+
+pub const MAX_TAGS: usize = 9;
+
+impl Pertag {
+    pub fn new(default_layout: LayoutId, default_mfact: f32, default_nmaster: u32) -> Self {
+        Pertag {
+            curtag: 1,
+            prevtag: 1,
+            ltidxs: vec![default_layout; MAX_TAGS + 1],
+            mfacts: vec![default_mfact; MAX_TAGS + 1],
+            nmasters: vec![default_nmaster; MAX_TAGS + 1],
+            gaps: vec![GapConfig::default(); MAX_TAGS + 1],
+            user_picked_layout: vec![false; MAX_TAGS + 1],
+            canvas_pan_x: vec![0.0; MAX_TAGS + 1],
+            canvas_pan_y: vec![0.0; MAX_TAGS + 1],
+            wallpapers: vec![String::new(); MAX_TAGS + 1],
+        }
+    }
+}
+
+/// Layout identifier matching C `enum { TILE, SCROLLER, ... }`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LayoutId {
+    #[default]
+    Tile,
+    Scroller,
+    Grid,
+    Monocle,
+    Deck,
+    CenterTile,
+    RightTile,
+    VerticalScroller,
+    VerticalTile,
+    VerticalGrid,
+    VerticalDeck,
+    TgMix,
+    Canvas,
+    Dwindle,
+    Overview,
+}
+
+impl LayoutId {
+    pub fn symbol(&self) -> &'static str {
+        match self {
+            LayoutId::Tile => "T",
+            LayoutId::Scroller => "S",
+            LayoutId::Grid => "G",
+            LayoutId::Monocle => "M",
+            LayoutId::Deck => "K",
+            LayoutId::CenterTile => "CT",
+            LayoutId::RightTile => "RT",
+            LayoutId::VerticalScroller => "VS",
+            LayoutId::VerticalTile => "VT",
+            LayoutId::VerticalGrid => "VG",
+            LayoutId::VerticalDeck => "VK",
+            LayoutId::TgMix => "TG",
+            LayoutId::Canvas => "CV",
+            LayoutId::Dwindle => "DW",
+            LayoutId::Overview => "󰃇",
+        }
+    }
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            LayoutId::Tile => "tile",
+            LayoutId::Scroller => "scroller",
+            LayoutId::Grid => "grid",
+            LayoutId::Monocle => "monocle",
+            LayoutId::Deck => "deck",
+            LayoutId::CenterTile => "center_tile",
+            LayoutId::RightTile => "right_tile",
+            LayoutId::VerticalScroller => "vertical_scroller",
+            LayoutId::VerticalTile => "vertical_tile",
+            LayoutId::VerticalGrid => "vertical_grid",
+            LayoutId::VerticalDeck => "vertical_deck",
+            LayoutId::TgMix => "tgmix",
+            LayoutId::Canvas => "canvas",
+            LayoutId::Dwindle => "dwindle",
+            LayoutId::Overview => "overview",
+        }
+    }
+
+    pub fn from_symbol(s: &str) -> Option<Self> {
+        let all = [
+            LayoutId::Tile,
+            LayoutId::Scroller,
+            LayoutId::Grid,
+            LayoutId::Monocle,
+            LayoutId::Deck,
+            LayoutId::CenterTile,
+            LayoutId::RightTile,
+            LayoutId::VerticalScroller,
+            LayoutId::VerticalTile,
+            LayoutId::VerticalGrid,
+            LayoutId::VerticalDeck,
+            LayoutId::TgMix,
+            LayoutId::Canvas,
+            LayoutId::Dwindle,
+        ];
+        all.iter().find(|l| l.symbol() == s).copied()
+    }
+
+    pub fn from_name(s: &str) -> Option<Self> {
+        let all = [
+            LayoutId::Tile,
+            LayoutId::Scroller,
+            LayoutId::Grid,
+            LayoutId::Monocle,
+            LayoutId::Deck,
+            LayoutId::CenterTile,
+            LayoutId::RightTile,
+            LayoutId::VerticalScroller,
+            LayoutId::VerticalTile,
+            LayoutId::VerticalGrid,
+            LayoutId::VerticalDeck,
+            LayoutId::TgMix,
+            LayoutId::Canvas,
+            LayoutId::Dwindle,
+        ];
+        all.iter().find(|l| l.name() == s).copied()
+    }
+
+    /// All tile-able layouts (excludes `Overview`, which is rendered
+    /// via a separate code path). Useful for `mvisual` and any
+    /// catalogue UI.
+    pub fn all_tileable() -> &'static [LayoutId] {
+        &[
+            LayoutId::Tile,
+            LayoutId::Scroller,
+            LayoutId::Grid,
+            LayoutId::Monocle,
+            LayoutId::Deck,
+            LayoutId::CenterTile,
+            LayoutId::RightTile,
+            LayoutId::VerticalScroller,
+            LayoutId::VerticalTile,
+            LayoutId::VerticalGrid,
+            LayoutId::VerticalDeck,
+            LayoutId::TgMix,
+            LayoutId::Canvas,
+            LayoutId::Dwindle,
+        ]
+    }
+}
+
+/// Geometry list for a single arrange pass.
+pub type ArrangeResult = Vec<(usize, Rect)>;
+
+/// Context passed to every layout algorithm.
+pub struct ArrangeCtx<'a> {
+    /// Available window area on the monitor.
+    pub work_area: Rect,
+    /// Tiled clients to arrange (indices into the compositor's client list).
+    pub tiled: &'a [usize],
+    /// Number of master windows.
+    pub nmaster: u32,
+    /// Master factor (fraction of width/height for the master area).
+    pub mfact: f32,
+    /// Gap config.
+    pub gaps: &'a GapConfig,
+    /// Scroller proportion for each client.
+    pub scroller_proportions: &'a [f32],
+    /// Default scroller proportion.
+    pub default_scroller_proportion: f32,
+    /// Position of the focused client inside `tiled`, when any.
+    pub focused_tiled_pos: Option<usize>,
+    /// Mango-style side margin used by scroller layouts.
+    pub scroller_structs: i32,
+    /// Keep the focused scroller client centered.
+    pub scroller_focus_center: bool,
+    /// Prefer centering when scrolling to another client.
+    pub scroller_prefer_center: bool,
+    /// Prefer edge overspread for first/last scroller clients.
+    pub scroller_prefer_overspread: bool,
+    /// Active tag's spatial-canvas pan offset (logical pixels).
+    /// Only meaningful for the `Canvas` layout — translates every
+    /// client's `canvas_geom` so the viewport moves over a fixed
+    /// canvas. Zero for non-canvas layouts.
+    pub canvas_pan: (f64, f64),
+}

@@ -3,8 +3,10 @@ members = [
     "margo",
     "margo-config",
     "margo-ipc",
+    "margo-layouts",
     "mlayout",
     "mscreenshot",
+    "mvisual",
 ]
 resolver = "2"
 

@@ -2,6 +2,7 @@
 
 pub mod clipped_surface;
 pub mod hdr_metadata;
+pub mod icc_lut;
 pub mod linear_composite;
 pub mod open_close;
 pub mod resize_render;
