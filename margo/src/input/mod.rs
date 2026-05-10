@@ -55,7 +55,7 @@ pub struct PointerState {
 
 // ── Touch state ───────────────────────────────────────────────────────────────
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct TouchPoint {
     pub id: i32,
     pub x: f64,
@@ -65,9 +65,27 @@ pub struct TouchPoint {
     pub start_time: u32,
 }
 
+/// One finger that has been lifted off the screen mid-gesture. Held in
+/// `TouchState::releases` until every finger is up — at that point
+/// `handle_touch_up` averages the displacement across releases and
+/// derives a swipe motion code, the same way the touchpad path does.
+#[derive(Debug, Clone)]
+pub struct TouchRelease {
+    pub start_x: f64,
+    pub start_y: f64,
+    pub end_x: f64,
+    pub end_y: f64,
+}
+
 #[derive(Debug, Default)]
 pub struct TouchState {
     pub points: Vec<TouchPoint>,
+    /// Set as soon as ≥ 2 fingers are simultaneously down — locks in
+    /// "this is going to be a multi-finger gesture, accumulate
+    /// releases for end-of-gesture analysis". Cleared when every
+    /// finger is up.
+    pub gesture_armed: bool,
+    pub releases: Vec<TouchRelease>,
 }
 
 // ── Gesture state ─────────────────────────────────────────────────────────────

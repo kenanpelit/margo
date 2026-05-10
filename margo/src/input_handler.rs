@@ -19,7 +19,7 @@ use smithay::{
 use tracing::{debug, info};
 
 use crate::{
-    input::find_keybinding,
+    input::{find_keybinding, TouchPoint, TouchRelease},
     state::{FocusTarget, MargoState},
 };
 
@@ -102,6 +102,9 @@ pub fn handle_input<B: InputBackend>(state: &mut MargoState, event: InputEvent<B
         InputEvent::GestureSwipeBegin { event } => handle_swipe_begin(state, event),
         InputEvent::GestureSwipeUpdate { event } => handle_swipe_update(state, event),
         InputEvent::GestureSwipeEnd { event: _ } => handle_swipe_end(state),
+        InputEvent::TouchDown { event } => handle_touch_down(state, event),
+        InputEvent::TouchMotion { event } => handle_touch_motion(state, event),
+        InputEvent::TouchUp { event } => handle_touch_up(state, event),
         _ => {}
     }
 }
@@ -200,10 +203,52 @@ fn handle_swipe_end(state: &mut MargoState) {
     if !g.swipe_active {
         return;
     }
-    let total = (g.dx * g.dx + g.dy * g.dy).sqrt();
-    // Honour `Config::swipe_min_threshold` if the user set it to a
-    // non-trivial value; fall back to the hardcoded default otherwise
-    // (1 — the parser default — would dispatch on accidental jitter).
+    dispatch_swipe(state, g.dx, g.dy, g.fingers, "touchpad");
+}
+
+/// Map a 2D displacement into the 0..=7 motion code the gesture
+/// binding table uses (matches `margo-config::parse_motion()`):
+/// UP=0, DOWN=1, RIGHT=2, LEFT=3, UP_RIGHT=4, UP_LEFT=5, DOWN_LEFT=6,
+/// DOWN_RIGHT=7. Diagonal threshold: each axis must contribute > 40 %
+/// of the total magnitude.
+fn derive_motion_code(dx: f64, dy: f64) -> u32 {
+    let total = (dx * dx + dy * dy).sqrt();
+    let ax = dx.abs();
+    let ay = dy.abs();
+    let diag = ax > 0.4 * total && ay > 0.4 * total;
+    if diag {
+        match (dx.is_sign_positive(), dy.is_sign_positive()) {
+            (true, false) => 4,  // UP_RIGHT
+            (false, false) => 5, // UP_LEFT
+            (false, true) => 6,  // DOWN_LEFT
+            (true, true) => 7,   // DOWN_RIGHT
+        }
+    } else if ax > ay {
+        if dx > 0.0 { 2 } else { 3 } // RIGHT / LEFT
+    } else if dy < 0.0 {
+        0 // UP
+    } else {
+        1 // DOWN
+    }
+}
+
+/// Common dispatch path used by **both** the touchpad swipe gesture
+/// (libinput `GestureSwipeEnd`) and the touchscreen multi-finger
+/// swipe (`InputEvent::TouchUp` after ≥ 2 fingers had touched). Looks
+/// up `(fingers, motion, mods)` in `Config::gesture_bindings` and
+/// fires the matched action.
+///
+/// `source` is just a log tag so the trace clearly says which input
+/// path matched — handy when binding-debugging on a 2-in-1 with both
+/// a touchpad and a touchscreen.
+fn dispatch_swipe(
+    state: &mut MargoState,
+    dx: f64,
+    dy: f64,
+    fingers: u32,
+    source: &'static str,
+) {
+    let total = (dx * dx + dy * dy).sqrt();
     let cfg_threshold = state.config.swipe_min_threshold as f64;
     let threshold = if cfg_threshold > 1.0 {
         cfg_threshold
@@ -212,31 +257,12 @@ fn handle_swipe_end(state: &mut MargoState) {
     };
     if total < threshold {
         debug!(
-            "swipe ignored (too short): total={:.1} threshold={:.1} fingers={}",
-            total, threshold, g.fingers
+            "{source} swipe ignored (too short): total={:.1} threshold={:.1} fingers={}",
+            total, threshold, fingers
         );
         return;
     }
-    // Map dx/dy to a motion code matching margo-config's parse_motion()
-    // (UP=0, DOWN=1, RIGHT=2, LEFT=3, UP_RIGHT=4, UP_LEFT=5, DOWN_LEFT=6, DOWN_RIGHT=7).
-    // Diagonal threshold: each axis must contribute > 40% of total magnitude.
-    let ax = g.dx.abs();
-    let ay = g.dy.abs();
-    let diag = ax > 0.4 * total && ay > 0.4 * total;
-    let motion = if diag {
-        match (g.dx.is_sign_positive(), g.dy.is_sign_positive()) {
-            (true, false) => 4,  // UP_RIGHT
-            (false, false) => 5, // UP_LEFT
-            (false, true) => 6,  // DOWN_LEFT
-            (true, true) => 7,   // DOWN_RIGHT
-        }
-    } else if ax > ay {
-        if g.dx > 0.0 { 2 } else { 3 } // RIGHT / LEFT
-    } else if g.dy < 0.0 {
-        0 // UP
-    } else {
-        1 // DOWN
-    };
+    let motion = derive_motion_code(dx, dy);
 
     let mods = state
         .seat
@@ -245,13 +271,13 @@ fn handle_swipe_end(state: &mut MargoState) {
         .unwrap_or_else(margo_config::Modifiers::empty);
 
     let binding = state.config.gesture_bindings.iter().find(|b| {
-        b.fingers == g.fingers && b.motion == motion && b.modifiers == mods
+        b.fingers == fingers && b.motion == motion && b.modifiers == mods
     });
 
     if let Some(binding) = binding {
         info!(
-            "swipe match: fingers={} motion={} mods={:?} action={:?}",
-            g.fingers, motion, mods, binding.action
+            "{source} swipe match: fingers={} motion={} mods={:?} action={:?}",
+            fingers, motion, mods, binding.action
         );
         let action = binding.action.clone();
         let arg = binding.arg.clone();
@@ -259,9 +285,138 @@ fn handle_swipe_end(state: &mut MargoState) {
         state.request_repaint();
     } else {
         debug!(
-            "swipe unmatched: fingers={} motion={} mods={:?}",
-            g.fingers, motion, mods
+            "{source} swipe unmatched: fingers={} motion={} mods={:?}",
+            fingers, motion, mods
         );
+    }
+}
+
+// ── Touchscreen handling ────────────────────────────────────────────────────
+//
+// Direct touch events (true touchscreen / 2-in-1 panel; not touchpad
+// gestures, which arrive as `InputEvent::GestureSwipe*` and have
+// already been distilled by libinput). Multi-finger swipe gets routed
+// to the same `gesture_bindings` table that touchpad swipe uses, so a
+// binding written as `gesture = swipe, 3, right, view_tag` fires for
+// either input path.
+
+fn handle_touch_down<B: InputBackend, E: smithay::backend::input::TouchDownEvent<B>>(
+    state: &mut MargoState,
+    event: E,
+) {
+    let id: i32 = event.slot().into();
+    // libinput delivers absolute coords as `[0, 1]` normalised; we
+    // only need them as a magnitude, so the unit doesn't matter as
+    // long as DOWN/MOTION/UP agree.
+    let pos = event.position_transformed(smithay::utils::Size::from((1, 1)));
+    let (x, y) = (pos.x, pos.y);
+    let now = event.time_msec();
+    state.input_touch.points.push(TouchPoint {
+        id,
+        x,
+        y,
+        start_x: x,
+        start_y: y,
+        start_time: now,
+    });
+    if state.input_touch.points.len() >= 2 {
+        state.input_touch.gesture_armed = true;
+    }
+}
+
+fn handle_touch_motion<B: InputBackend, E: smithay::backend::input::TouchMotionEvent<B>>(
+    state: &mut MargoState,
+    event: E,
+) {
+    let id: i32 = event.slot().into();
+    let pos = event.position_transformed(smithay::utils::Size::from((1, 1)));
+    if let Some(p) = state.input_touch.points.iter_mut().find(|p| p.id == id) {
+        p.x = pos.x;
+        p.y = pos.y;
+    }
+}
+
+fn handle_touch_up<B: InputBackend, E: smithay::backend::input::TouchUpEvent<B>>(
+    state: &mut MargoState,
+    event: E,
+) {
+    let id: i32 = event.slot().into();
+    let removed = state
+        .input_touch
+        .points
+        .iter()
+        .position(|p| p.id == id)
+        .map(|i| state.input_touch.points.remove(i));
+
+    if state.input_touch.gesture_armed {
+        if let Some(p) = removed {
+            state.input_touch.releases.push(TouchRelease {
+                start_x: p.start_x,
+                start_y: p.start_y,
+                end_x: p.x,
+                end_y: p.y,
+            });
+        }
+    }
+
+    // Gesture completes when every finger is up.
+    if !state.input_touch.points.is_empty() {
+        return;
+    }
+    if !state.input_touch.gesture_armed {
+        return;
+    }
+    let releases = std::mem::take(&mut state.input_touch.releases);
+    state.input_touch.gesture_armed = false;
+    if releases.len() < 2 {
+        // Not a multi-finger gesture; could be a tap that briefly
+        // overlapped a pre-existing touch. Drop without dispatching.
+        return;
+    }
+
+    // Average displacement across every finger that contributed —
+    // smooths out the natural finger-to-finger variation in a
+    // hand-driven swipe.
+    let n = releases.len() as f64;
+    let avg_dx: f64 = releases.iter().map(|r| r.end_x - r.start_x).sum::<f64>() / n;
+    let avg_dy: f64 = releases.iter().map(|r| r.end_y - r.start_y).sum::<f64>() / n;
+    dispatch_swipe(state, avg_dx, avg_dy, releases.len() as u32, "touchscreen");
+}
+
+#[cfg(test)]
+mod gesture_tests {
+    use super::derive_motion_code;
+
+    #[test]
+    fn cardinal_directions_map_to_codes_0_through_3() {
+        assert_eq!(derive_motion_code(0.0, -100.0), 0); // UP
+        assert_eq!(derive_motion_code(0.0, 100.0), 1); // DOWN
+        assert_eq!(derive_motion_code(100.0, 0.0), 2); // RIGHT
+        assert_eq!(derive_motion_code(-100.0, 0.0), 3); // LEFT
+    }
+
+    #[test]
+    fn balanced_diagonals_map_to_codes_4_through_7() {
+        assert_eq!(derive_motion_code(70.0, -70.0), 4); // UP_RIGHT
+        assert_eq!(derive_motion_code(-70.0, -70.0), 5); // UP_LEFT
+        assert_eq!(derive_motion_code(-70.0, 70.0), 6); // DOWN_LEFT
+        assert_eq!(derive_motion_code(70.0, 70.0), 7); // DOWN_RIGHT
+    }
+
+    #[test]
+    fn small_off_axis_component_is_not_diagonal() {
+        // 80 px right, 20 px down — secondary axis at 25 % of magnitude,
+        // below the 40 % threshold. Should resolve to a pure direction.
+        assert_eq!(derive_motion_code(80.0, 20.0), 2); // RIGHT, not DOWN_RIGHT
+        assert_eq!(derive_motion_code(20.0, -80.0), 0); // UP, not UP_RIGHT
+    }
+
+    #[test]
+    fn zero_displacement_falls_through_to_down() {
+        // Defensive: an exact-zero swipe shouldn't crash. The current
+        // code path lands on DOWN (1) — we just lock in that the
+        // function is total over (0, 0).
+        assert_eq!(derive_motion_code(0.0, 0.0), 1);
     }
 }
 
