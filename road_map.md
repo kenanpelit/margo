@@ -1,12 +1,12 @@
 # Margo Road Map
 
-> **Last updated:** 2026-05-10 — xdg fullscreen request handler shipped
+> **Last updated:** 2026-05-10 — Phase 1 closed at **v0.1.6**; Phase 2 (Quality & growth) opens.
 > **Branch:** `main` (single-branch — Rust port complete; the C tree remains as legacy reference under `src/`)
-> **Status:** Daily-driver Wayland compositor. P0 → P7 fully shipped; W1–W4 catch-and-surpass-niri sweep substantially complete.
+> **Status:** Daily-driver Wayland compositor at niri-class feature parity. Phase 1 (catch-and-surpass-niri sweep) closed; Phase 2 (quality, polish, growth) open.
 
-Margo is a Rust + Smithay Wayland compositor with a dwm/dwl-style tag workflow, 14 layout algorithms, niri-grade animations + spring physics, on-demand redraw, runtime DRM mode change, an embedded Rhai scripting engine with mid-event-loop hooks, `wp_color_management_v1` HDR Phase 1 + Phase 2/3 scaffolding, and a built-in xdp-gnome screencast backend that lights up Window / Entire Screen tabs in browser share dialogs without a running gnome-shell.
+Margo is a Rust + Smithay Wayland compositor with a dwm/dwl-style tag workflow, 14 layout algorithms, niri-grade animations + spring physics, on-demand redraw, runtime DRM mode change, an embedded Rhai scripting engine with mid-event-loop hooks, full `wp_color_management_v1` HDR scaffolding (Phase 1 shipped, Phase 2/3/4 staged for upstream activation), a built-in xdp-gnome screencast backend, and a GTK4 design tool (`mvisual`) that previews the full 14-layout catalogue × per-tag pinning matrix.
 
-This document is the **source of truth** for what's shipped, what's queued, and what's worth a second pass. It is organised by capability area, not chronologically — [Appendix A](#appendix-a--phase-ledger) preserves the original P0–P7 sprint history for archaeology.
+This document is the **source of truth** for what's shipped, what's queued, and what's worth a second pass. **§1–§13** preserve per-capability detail (archaeology); **§14** ledgers Phase 1 cross-cuttingly; **§15** opens Phase 2 with five work streams. Side-by-side comparison against niri / Hyprland / mango-ext at the end of Phase 1 lives in §14.2.
 
 ---
 
@@ -23,6 +23,8 @@ This document is the **source of truth** for what's shipped, what's queued, and 
 | Long-term goals (P5/P6) | spatial canvas ✓, adaptive layout ✓, drop shadow ✓, scripting Phase 3 ✓, HDR Phase 1 ✓ | ✅ 5/5 |
 | Built-in screencast portal (P7) | 5 Mutter D-Bus shims, PipeWire pipeline, frame pacing, damage, cursor (embedded + metadata), full-decoration casts, HiDPI, windows_changed signal | ✅ 9/9 phases |
 | Catch-and-surpass-niri sweep (W1–W4) | snapshot tests, clippy gate, CONTRIBUTING, screenshot region UI, EGL graceful fallback, AccessKit, xwayland-satellite, cargo features, tracy, HDR Phase 3 metadata, mctl run, plugin packaging, dwl-ipc state extension, layout-cycle notify, per-tag wallpaper, mctl migrate, mvisual design tool, HDR Phase 4 ICC LUT, **udev backend split** | ✅ 19/22 (5 deferred / upstream-blocked) |
+| **Phase 1 (catch-and-surpass)** — closed at v0.1.6 | full ledger in §14 | ✅ |
+| **Phase 2 (quality & growth)** — open | 5 streams: code quality, tests, bugs, features, external triggers (§15) | 🔵 active |
 
 ---
 
@@ -317,61 +319,234 @@ Behaviour-stable. Listed for completeness — bisect targets if anything regress
 
 ---
 
-## 14. Queued work
+## 14. Phase 1 — Catch-and-surpass-niri sweep (closed at v0.1.6)
 
-### Test infrastructure (W1)
-- (none queued — W1.1 layout snapshots, W1.3 window-rule snapshots both shipped; see §10)
+Phase 1 took margo from a Rust port of mango (dwl fork) to a Wayland
+compositor at feature parity with niri / Hyprland on every axis that
+matters for a daily-driver — and ahead on a few. Twenty-two W-items
+plus seven post-sweep capability + polish drops shipped between v0.1.0
+and v0.1.6. Detail per area lives in §1-§13; this section is the
+cross-cutting ledger plus the comparison snapshot at Phase 1 close.
 
-### Architecture (W4)
-- **W4.1 — shipped (alt-module split, not separate crate).** `margo/src/backend/udev.rs` (3934 LOC, single file) split into 4 sub-modules + the orchestrator: `helpers.rs` (77, transform / CRTC pick / refresh-duration / monotonic clock), `mode.rs` (234, mode select + apply via `DrmCompositor::use_mode`), `hotplug.rs` (405, rescan + setup_connector + migrate-clients-off-output), `frame.rs` (331, render dispatch + presentation feedback + scanout flags), and the trimmed `mod.rs` (2873, ~27 % shrink). Type visibility lifted to `pub(super)` for `OutputDevice` / `BackendData` / `GammaProps` so submodules reach the shared state without trait indirection. **Decision: separate-crate split was rejected.** The road map's earlier framing claimed "niri has 7 backend crates" but those turn out to be smithay's `feature` flags, not crates — niri itself is one binary. The real win (incremental compile + readability) lands at this granularity without trait-abstracting `MargoState` (which would be ~3000 LOC churn for no downstream consumer). All 181 tests + clippy stay green at every extract.
-- **W4.2 — Phase 1–8 shipped, complete.** Eight passes extract **17 handlers** into `margo/src/state/handlers/` (~2090 LOC moved): `xdg_decoration` (62), `session_lock` (96), `xdg_activation` (113), `layer_shell` (262), `color_management` (21), `idle` (50), `pointer_constraints` (77), `input_method` (57), `selection` (79, bundles SelectionHandler + DataDevice + PrimarySelection + DataControl + DndGrab), `gamma_control` (48), `screencopy` (30), `dmabuf` (64, bundles DmabufHandler + DrmSyncobjHandler), `output_management` (163), `x11` (203, bundles XWaylandShellHandler + XwmHandler + selection bridging), `xdg_shell` (~430, toplevel lifecycle + popup grabs + close animation snapshot + fullscreen/maximize routing), **`compositor` (~233, surface commit hub — session-lock priority, deferred-map, initial-configure pump for toplevels/layers/popups, layer-shell focus refresh; bundles BufferHandler)**, and **`image_copy_capture` (~208, ext-image-capture-source-v1 + ext-image-copy-capture-v1 — Window/Screen tab screencast scaffolding bundling four traits: ImageCaptureSourceHandler, OutputCaptureSourceHandler, ToplevelCaptureSourceHandler, ImageCopyCaptureHandler)**. Pattern: each submodule reaches into `MargoState` via `crate::state::MargoState`; the `delegate_*!` macros stay co-located with their impls. state.rs went **7651 → 5905 LOC** (-1746, ~23 % shrink). Behaviour-preserving — all 110 tests + clippy gate stay green at every step.
-- **W4.3 — shipped.** mkdocs-material site at <https://kenanpelit.github.io/margo/>. Config: `mkdocs.yml` at repo root with deep_purple/deep_orange Material palette, GitHub-style slug rules (`pymdownx.slugs.slugify(case='lower')`) so cross-doc anchor links from `road_map.md` keep working. New site pages: `docs/index.md` (landing with hero + capability grid), `docs/install.md` (Arch / source / Nix flake), `docs/configuration.md` (window rules / tag rules / layer rules / animations / keybinds), `docs/companion-tools.md` (`mctl` / `mlayout` / `mscreenshot`), `docs/scripting.md` (Rhai bindings + hooks + plugin packaging — user-facing intro pointing to `scripting-design.md`). Existing design docs (`hdr-design.md`, `portal-design.md`, `scripting-design.md`, `manual-checklist.md`) surface in nav as-is. CI: `.github/workflows/docs.yml` deploys to GitHub Pages; syncs `road_map.md` + `CONTRIBUTING.md` into `docs/` before `mkdocs build --strict` so source-of-truth stays at repo root. README adds a docs-site link badge + callout. ~880 LOC of new docs content + ~80 LOC config/CI.
-- **W4.5 — shipped.** `mvisual` GTK4 design tool — workspace binary (~620 LOC) + new shared `margo-layouts` crate (~1040 LOC, extracted from `margo/src/layout/` so the binary and the design tool consume the same pure arithmetic). Wider than niri-visual-tests on two axes: **(1)** all 14 tile-able layouts render side-by-side as live thumbnails — direct visual comparison, not click-cycle inspection; **(2)** a 1‒9 tag rail acts as the compositor's `Pertag` so you can pin a different layout per tag and rehearse the workflow before committing to a config. Live re-arrange on every parameter tweak (window count / mfact / nmaster / inner+outer gaps / focus index / scroller proportion). 38 layout snapshot tests + 2 inline algorithm tests + 3 mvisual unit tests stay green through the extract — behaviour-preserving by construction.
+### 14.1 W-sweep + post-sweep ledger
 
-### HDR
-- **Phase 2 runtime activation** — upstream-blocked on smithay's `DrmCompositor` exposing fp16 swapchain reformat. ~80 LOC integration once it lands.
-- **Phase 3 runtime activation** — upstream-blocked on smithay's `DrmCompositor` exposing `set_hdr_output_metadata`. ~30 LOC integration.
-- **Phase 4 runtime activation** — upstream-blocked on smithay's `compile_custom_texture_shader` exposing a second-sampler hook so the udev backend can bind a baked LUT atlas alongside the input surface texture. ~30 LOC integration once the API lands.
+| Item | Shipped (commit / release) | What landed |
+|---|---|---|
+| **W1.1** Layout snapshot suite | 0.1.0 | 38 insta snapshots × 14 layouts; pure-text diff at PR review |
+| **W1.2** Layout property tests | 0.1.0 | 14 invariants × 14 layouts × focus / cardinality / disjoint |
+| **W1.3** Window-rule snapshot tests | `a85206f` | matcher decision-table + xdg-flow lock |
+| **W1.4** Clippy gate | 0.1.0 | 51 → 0 warnings; CI enforces `-D warnings` |
+| **W1.5** CONTRIBUTING + PR template | 0.1.0 | quick-start build + lint posture + AI policy |
+| **W1.6** Integration test fixture | `a3e30d3` → 0.1.0 | calloop+wayland-client harness; 37 tests across 15 W4.2 handlers |
+| **W2.1** Screenshot region UI | 0.1.0 | in-compositor selector with cursor-on-top dim overlay |
+| **W2.2a** Graceful EGL failure | 0.1.0 | actionable diagnostic + winit fallback |
+| **W2.4** AccessKit a11y | 0.1.0 | freedesktop a11y bus, screen-reader window list |
+| **W2.5** xwayland-satellite mode | 0.1.0 | `--xwayland-satellite[=BIN]` + `--no-xwayland` |
+| **W2.6** Cargo features | 0.1.0 | `dbus` / `xdp-gnome-screencast` / `a11y` / `profile-with-tracy` |
+| **W2.7** Tracy profiler | 0.1.0 | hot-path `span!` macros, no-op default |
+| **W3.1** HDR Phase 3 metadata | 0.1.0 | `StaticMetadataDescriptor` + `EdidHdrBlock` parser |
+| **W3.2** mctl run / live scripting | 0.1.0 | live engine, hooks persist after eval |
+| **W3.3** Plugin packaging | 0.1.0 | `~/.config/margo/plugins/<name>/` discovery |
+| **W3.4** dwl-ipc state extension | 0.1.0 | scratchpad counts + focus_history MRU per output |
+| **W3.5** Layout-cycle notify | 0.1.0 | enriched toast (`scroller (1/6) → next: tile`) |
+| **W3.6** Per-tag wallpaper | 0.1.0 | `tagrule = id:N, wallpaper:path` |
+| **W4.1** Backend split | `4350657` (0.1.2) | helpers/mode/hotplug/frame submodules; mod.rs −27 % |
+| **W4.2** state.rs handler split | 0.1.0 | 17 handlers extracted; state.rs 7651 → 5905 LOC (−23 %) |
+| **W4.3** mkdocs site | 0.1.0 | <https://kenanpelit.github.io/margo/> with gh-pages CI |
+| **W4.4** mctl migrate | 0.1.0 | Hyprland / Sway → margo translation, 9 tests |
+| **W4.5** mvisual GTK design tool | `57c7d3d` (0.1.2) | 14 layouts × 9 tag rail; `margo-layouts` crate extract |
+| HDR Phase 4 ICC LUT scaffolding | `57c7d3d` (0.1.2) | colord D-Bus + lcms2 + 33³ atlas + GLSL trilinear shader |
+| `presentation-time` real VBlank seq | `f54e787` (0.1.3) | per-output monotonic counter, not hardcoded 0 |
+| `WindowRuleReason` enum | `ed7f6ed` (0.1.3) | unified reapply path with structured-debug log |
+| `RenderTarget` enum (partial) | `52ffc51` (0.1.3) | `(cursor, screencast)` bool pair → enum |
+| `mctl theme <preset>` | `0dc1e84` (0.1.3) | live preset swap (default / minimal / gaudy) |
+| `mctl session save/load` | `5024a56` (0.1.3) | per-monitor JSON persistence with atomic write |
+| Touchscreen multi-finger swipe | `c6fc327` (0.1.3) | mango touch port → same `gesture_bindings` table |
+| Hot-path structured logging | `4446f68` (0.1.4) | `tracing` fields; `journalctl --output=json` slices cleanly |
+| mctl theme/session/run subcommands | `8ce590d` + `77389a1` (0.1.4 + 0.1.5) | clap surface + arg-slot fix |
+| mvisual NON_UNIQUE flag | `53fdf2f` (0.1.6) | window-flash fix (single-instance race) |
 
-### Screencast portal
-- **`IpcOutputMap` lazy refresh** on hotplug during active casts. ✅ shipped — `MargoState::ipc_outputs` now owns one shared `Arc<Mutex<IpcOutputMap>>`; both `DisplayConfig` and `ScreenCast` services receive a clone (was: each got its own startup snapshot, neither refreshed). New `MargoState::refresh_ipc_outputs()` rebuilds the snapshot from live monitors and is called from `remove_output` (hotplug-out) and from both `setup_connector` paths in udev (hotplug-in initial + live). xdp-gnome's chooser dialog now reflects the live output set without a margo restart.
-- **`ScreenCast::Session::Stop` grace period** to avoid pipewire warnings on rapid stop/start cycles. *Deferred* — requires a live PipeWire test setup to verify; cosmetic warning, no functional impact.
-- **Per-cast wake-only scheduling** — current continuous-repaint is global. *Deferred* — same testing constraint plus the change touches the render loop's frame-clock; deserves a dedicated session.
+**Five items remain open**, all gated on external trigger (see §15.5):
+HDR Phase 2 / 3 / 4 runtime activation (smithay PRs needed), W2.2b
+pixman software fallback (qemu user request), W2.3 tablet input
+(Wacom / Huion user request).
 
-### Protocol depth
-- **`presentation-time` page-flip seq** — ✅ shipped. Per-output monotonic `OutputDevice::vblank_seq` bumped at the head of every `DrmEvent::VBlank` handler; published as the `seq` field on `wp_presentation_feedback.presented`. The wp_presentation contract is "implementation-defined monotonic counter" — kernel `drm_event_vblank.sequence` would also satisfy it but smithay 0.7 doesn't surface it. Per-output bump is observably equivalent for frame-pacing-sensitive consumers (mpv `--vo=gpu-next`, kitty render loop).
+### 14.2 Comparison at end of Phase 1
+
+Audit results from a side-by-side scan of `~/.kod/Hyprland`,
+`~/.kod/niri`, `~/.kod/mango-ext`, `/repo/archive/.kod/margo` on
+2026-05-10 (Phase 1 close):
+
+| | margo (0.1.6) | niri | Hyprland | mango-ext |
+|---|---|---|---|---|
+| Language | Rust | Rust | C++26 | C |
+| Source LOC | **42k** | 80k | 91k | 26k |
+| Crate / module model | **7-crate workspace** | 4-crate (+ god-object) | tek-paket, modüler | **single-TU** |
+| Largest source file | state.rs 6.1k | niri.rs **6.5k** | Renderer.cpp 3.4k | mango.c **8.2k** |
+| `#[test]` / test fn | **151** | 195 | 49 file | **0** |
+| Snapshot tests (`.snap`) | 22 | **5280** | – | – |
+| Integration fixture | W1.6 calloop+wayland-client | 14 dosya | minimal | yok |
+| CI workflow | clippy gate + smoke | 2 | **11** | wiki sync only |
+| HDR (`wp_color_management_v1`) | **Phase 1 ✅, Phase 2/3/4 scaffold** | – | – | – |
+| Screencast portal (xdp-gnome) | **built-in** (5 D-Bus shim) | built-in | external | – |
+| Scripting | **Rhai sandbox** + plugin pack | – | Lua + INI | – |
+| GTK design tool | **mvisual (14 × 9)** | niri-visual-tests (1 × 1) | – | – |
+| Layout count | **14** | 2 | 5 | **14** |
+| Tag-based dwm flow | ✅ | – | – | ✅ |
+| Migrate from Hyprland/Sway | **`mctl migrate`** | – | – | – |
+| Workspace persistence | **`mctl session save/load`** | – | – | – |
+| Live theme swap | **`mctl theme`** | – | config edit | – |
+| Touchscreen gestures | ✅ multi-finger | – | trackpad-only | ✅ 8-direction |
+| Plugin ABI | Rhai sandbox (pure Rust) | – | C ABI ("no ABI guarantee") | – |
+| All-time contributors | **1** | 21 | 5+ (Vaxry dominant) | **1** |
+| Commits last 30 days | **223** | 96 | 127 | 47 |
+
+**Margo's unique wins:** HDR scaffolding (only project of the four),
+scripting + plugin combo (sandboxed pure-Rust, structurally above
+Hyprland's fragile C ABI), mvisual scope (14 × 9 vs niri's 1 × 1),
+`mctl migrate` (only project), dwl-ipc-v2 wire compat (noctalia /
+waybar-dwl ecosystem).
+
+**Margo's lag at Phase 1 close:** snapshot test coverage (22 vs niri's
+5280), community size (solo project, bus factor 1).
+
+**Phase 2's mandate:** close the test-coverage gap, harden what
+shipped, fix UX papercuts, grow community — no more axis features
+unless they ride on something the existing surface already needs.
 
 ---
 
-## 15. Outstanding work — external triggers
+## 15. Phase 2 — Quality & growth (open)
 
-All margo-internal long-tail items have shipped. What's still open is
-gated on something margo can't unblock by itself: an upstream PR
-landing, a piece of hardware showing up to dogfood against, or a test
-setup that needs more than a winit nested session. Grouped by trigger
-type so it's obvious *who* unblocks each item.
+Phase 1's mandate was breadth: ship enough capability to stand next to
+niri and Hyprland. **Phase 2's mandate is depth.** Harden what shipped,
+close the test-coverage gap (22 → 200+ snapshots), fix UX papercuts,
+grow capability along axes Phase 1 left thin, and lower the bus
+factor. Five work streams below; §16 (do-over wishlist) feeds §15.1,
+§17 (smoke test) is the Phase 2 dogfood checklist.
 
-### Upstream-blocked (smithay PR needed)
+### 15.1 Code quality — refactor & polish
+
+| # | Item | Source | Cost |
+|---|---|---|---|
+| **Q1** | state.rs further split (current 6.1k → target sub-3k) | §16 + W4.2 follow-up | mid (~500 LOC churn) |
+| **Q2** | Animation tick unification (per-type → trait-object) | §16 do-over | mid (~300 LOC) |
+| **Q3** | Config sectioned access (`config.input.keyboard.repeat_rate`) | §16 do-over | high (parser + 100+ callsites) |
+| **Q4** | Render-element iterator: region clip + snapshot path | §16 partial | mid (~250 LOC) |
+| **Q5** | Cold-path structured-logging migration (state.rs, scripting, plugin) | §16 partial | low (mechanical) |
+| **Q6** | Dependency footprint audit (52 direct deps) | hygiene | low (`cargo-udeps` + `cargo-audit`) |
+| **Q7** | Multi-output frame clock — per-output `next_frame_at` | §3 worth-revisiting | mid (~200 LOC) |
+| **Q8** | 50ms hotplug rescan coalescer | §13 worth-revisiting | low (~30 LOC) |
+| **Q9** | Snapshot capture timing — "on arrange-emit" not every frame | §13 worth-revisiting | low (~50 LOC) |
+| **Q10** | Real `xdg_popup.grab` chain integration with smithay's `PopupGrab` | §2 worth-revisiting | high (FocusTarget refactor) |
+| **Q11** | Second-pass config parser with proper grammar (pest / nom / chumsky) | §1 worth-revisiting | high (whole-parser rewrite) |
+
+### 15.2 Test coverage — closing the niri gap
+
+niri ships 5280 textual `insta` snapshots; margo ships 22. The gap
+isn't ambition, it's surface: niri tests every layout / column /
+window / floating combination through snapshots while margo locks
+fewer scenarios. Phase 2 target: **22 → 200+ snapshots by v0.2.0**
+with emphasis on testable surface area, not snapshot count for its
+own sake.
+
+| # | Item | Why | Target |
+|---|---|---|---|
+| **T1** | Window-rule snapshot expansion (W1.3 follow-up) | currently 6 rules × ~100 candidates | 30+ rules with regex edge cases |
+| **T2** | Animation curve snapshot tests | spring/curve regression catch | per-curve sampled-output snapshots |
+| **T3** | Focus-routing fixture | popup grab + sloppy + workspace move | 20+ scenarios |
+| **T4** | Layout reflow on hotplug | margo-internal long-tail | 5+ reflow scenarios |
+| **T5** | mctl migrate snapshot expansion (W4.4 follow-up) | 9 unit tests today | 50+ Hyprland / Sway corpus tests |
+| **T6** | Screenshot UX snapshot | region selector geometry | per-mode snapshots |
+| **T7** | mvisual UI image snapshot (first image-based test in margo) | catalogue regression | 5-10 reference images |
+| **T8** | Theme preset snapshot tests | render output per preset | 3 presets × 5 scenarios |
+| **T9** | Session save/load round-trip | JSON schema lock | every field in `SessionSnapshot` |
+| **T10** | Touchscreen gesture replay fixture | currently blind-developed (no hardware) | synthetic event stream → expected dispatch |
+
+### 15.3 Bug fixes & papercuts
+
+Active issues live on GitHub. This table tracks ones the maintainer
+has noted but not yet filed.
+
+| # | Item | Severity | Notes |
+|---|---|---|---|
+| **B1** | mvisual: window resize doesn't re-flow thumbnails | low | thumbnails stretch; should reflow |
+| **B2** | mvisual: keyboard nav between thumbnails | low | tag rail has it; thumbs don't |
+| **B3** | session-save: scratchpad presence not captured | low | known omission, scope-deliberate but worth revisiting |
+| **B4** | theme presets: animation curve fields untouched | mid | extend `ThemeBaseline` |
+| **B5** | Per-output gamma stays after `mctl theme default` reset | low | edge case |
+| **B6** | `on_output_change` Rhai hook missing | low | §7 worth-revisiting |
+| **B7** | Touchscreen gesture: hardware verification needed | high | currently blind-developed |
+| **B8** | dwl-ipc dispatch arg-slot mapping is undocumented + footgunny | mid | three CLI bugs landed before fix; document or refactor |
+
+### 15.4 New features
+
+| # | Item | Direction | Cost |
+|---|---|---|---|
+| **F1** | Per-tag rule editor in mvisual (visual config write-back) | UX, niri parity+ | mid (gtk4-rs + parser write) |
+| **F2** | Theme manifest in config (named user themes beyond 3 built-ins) | extensibility | mid (parser + apply) |
+| **F3** | `mctl plugin enable / disable / list` | scripting follow-on | low |
+| **F4** | Plugin marketplace (community plugins served from gh repo) | community | high (ecosystem) |
+| **F5** | Workspace persistence: include open windows (best-effort respawn) | session | mid (spawn-line registry) |
+| **F6** | Color-management UI in mvisual (ICC profile assignment via colord) | HDR follow-on | mid |
+| **F7** | `mctl benchmark` suite (frame budget, animation tick cost, criterion harness) | perf observability | mid |
+| **F8** | Cross-monitor window send animation | UX | low |
+| **F9** | Per-output XDG config splitting (different keybinds per ext display) | power user | mid |
+| **F10** | `mctl actions` filter by group/tag | tooling | low |
+
+### 15.5 Awaiting external trigger
+
+All margo-internal long-tail items shipped in Phase 1. What's still
+open is gated on something margo can't unblock by itself: an upstream
+PR landing, a piece of hardware showing up to dogfood against, or a
+test setup that needs more than a winit nested session.
+
+#### 15.5.1 Upstream-blocked (smithay PR needed)
 
 | Item | Trigger | Integration cost |
 |---|---|---|
-| **HDR Phase 2 runtime** — fp16 linear-light composite | smithay's `DrmCompositor` exposing fp16 swapchain reformat | ~80 LOC once the API lands |
+| **HDR Phase 2 runtime** — fp16 linear-light composite | smithay's `DrmCompositor` exposing fp16 swapchain reformat | ~80 LOC once API lands |
 | **HDR Phase 3 runtime** — KMS HDR scan-out metadata | smithay's `DrmCompositor` exposing `set_hdr_output_metadata` per-CRTC | ~30 LOC |
-| **HDR Phase 4 runtime** — per-output ICC LUT post-pass | smithay's `compile_custom_texture_shader` exposing a second-sampler hook so the udev backend can bind the baked LUT atlas alongside the input surface texture | ~30 LOC |
+| **HDR Phase 4 runtime** — per-output ICC LUT post-pass | smithay's `compile_custom_texture_shader` exposing second-sampler hook | ~30 LOC |
 
-### Test-setup-deferred (margo-internal but not winit-testable)
+#### 15.5.2 Test-setup-deferred
 
 | Item | Trigger | Why now |
 |---|---|---|
-| **`Screencast::Session::Stop` grace period** | live PipeWire test setup to verify the warning actually goes away on rapid stop/start cycles | Cosmetic — pipewire warnings on rapid cycle, no functional impact |
-| **Per-cast wake-only scheduling** | dedicated session because the change touches the render loop's frame-clock | Current global continuous-repaint works; per-cast wake would help multi-cast different-framerate setups but isn't a regression |
+| `Screencast::Session::Stop` grace period | live PipeWire test setup | Cosmetic — pipewire warnings on rapid stop/start cycles |
+| Per-cast wake-only scheduling | dedicated session — touches frame-clock | Global continuous-repaint works; per-cast wake helps multi-cast different-refresh |
 
-### Hardware-driven (waiting on a user request)
+#### 15.5.3 Hardware-driven
 
 | Item | Trigger | Cost |
 |---|---|---|
-| **W2.2b** Full pixman software renderer fallback | A user files "margo doesn't run in my qemu" with a concrete deployment to test against | Original ~400 LOC estimate undersells it; realistic scope is ~1500 LOC plus shader rewrites for SDF border/shadow paths. Every custom render element (RoundedBorder, Shadow, ResizeRender, ClippedSurface, OpenClose, LinearComposite — 7 modules) needs to be made generic over `R: Renderer + Bind<...>` AND parallel render paths in udev + winit backends. |
-| **W2.3** Tablet input | A Wacom / Huion user files a request | ~500 LOC for `tablet_v2` protocol + stylus/pad button mapping + `map-to-focused-window` mode |
+| **W2.2b** Full pixman software renderer fallback | qemu / headless user reports | ~1500 LOC + 7 render-element generic-Renderer rewrites (`R: Renderer + Bind<...>`) plus parallel udev/winit paths |
+| **W2.3** Tablet input | Wacom / Huion user request | ~500 LOC for `tablet_v2` + stylus/pad mapping + `map-to-focused-window` mode |
+
+### 15.6 Phase 2 success criteria
+
+- [ ] Snapshot test count: **22 → 200+**
+- [ ] state.rs reduced from 6.1k LOC to **<3k** via further extraction (Q1)
+- [ ] Cold-path structured-logging migration complete (Q5)
+- [ ] At least **2 community contributors** with merged PRs (currently 1)
+- [ ] Plugin marketplace open with ≥3 community plugins
+- [ ] Phase 2 closing release: **v0.2.0** (semver minor — feature-complete in stream of work, no breaking changes)
+
+### 15.7 Phase 2 explicitly out-of-scope
+
+Three things will *not* land in Phase 2 — listed so future drift gets
+caught on review:
+
+- **Niri-style scrolling layout.** Margo's tag-based model is a
+  deliberate alternative; adding scrolling-on-top would dilute the
+  "dwm-grade tag workflow" positioning and confuse users between two
+  models in one binary.
+- **Hyprland-style Lua scripting.** Rhai is enough; pure-Rust
+  sandboxing is structurally above Lua's C ABI. Adding Lua would mean
+  carrying both engines.
+- **Custom Wayland protocol extensions** beyond dwl-ipc-v2's existing
+  scope. Niri tried this; the wire-compat ecosystem (noctalia /
+  waybar-dwl) is more valuable than wire innovation.
 
 ---
 
@@ -428,10 +603,40 @@ For archaeology only; capability detail lives in §1–§13.
 
 ---
 
-## Appendix B — Catch-and-surpass-niri scoring
+## Appendix B — Catch-and-surpass-niri scoring (Phase 1 close)
 
-A side-by-side audit of margo (~33k LOC, **71 unit tests** post-sweep) against niri (~93k LOC, 61 unit tests, **5,280 visual snapshot files**, 47 docs, AccessKit, pixman, full tablet stack, modular per-backend crates) shows niri is the more battle-tested codebase by a wide margin. Margo wins on **tag-based dwm-style workflow**, **embedded Rhai scripting + plugin packaging**, **dwl-ipc-v2 wire compat**, **HDR Phase 1 + Phase 2/3 scaffolding**, **14-layout catalogue**, **per-tag wallpaper hint** — none of which niri has, all of which exist because margo is built around a specific user's workflow.
+**Phase 1 close position (v0.1.6, 2026-05-10):** A four-way side-by-side
+audit (margo / niri / Hyprland / mango-ext) — full table in §14.2 —
+shows margo at niri-class feature parity with **42k LOC**, **151
+`#[test]` + 22 snapshot files**, sub-3.4k median source-file size.
+Margo holds **structurally unique wins** on five axes that no other
+project in the audit covers: HDR Phase 1 + 2/3/4 scaffolding, sandboxed
+Rhai scripting + plugin packaging, mvisual's 14×9 design-tool scope
+(vs niri-visual-tests' 1×1), `mctl migrate` from Hyprland / Sway, and
+dwl-ipc-v2 wire compat (noctalia / waybar-dwl ecosystem reach).
 
-Post-W-sweep position: margo has visual snapshot regression coverage on par with niri for layouts (W1.1), feature parity on screenshot UX (W2.1), AccessKit a11y (W2.4), xwayland-satellite mode (W2.5), cargo features (W2.6), tracy profiler (W2.7), HDR Phase 3 metadata scaffolding (W3.1), `mctl run` + plugin packaging (W3.2 + W3.3), dwl-ipc state extension (W3.4), enriched layout-cycle notify (W3.5), per-tag wallpaper (W3.6), and `mctl migrate` from Hyprland / Sway (W4.4). What's left is 2 deferred (W2.2b pixman, W2.3 tablet) and 3 upstream-blocked (HDR Phase 2/3/4 runtime) — every internal long-tail item is shipped. Post-sweep additions: `mctl theme` live preset switch, `mctl session save/load` per-monitor tag/layout JSON persistence, touchscreen multi-finger swipe (mango port) routed to the same `gesture_bindings` table touchpad swipe uses.
+The "personal-driver-only" framing the project opened with has flipped.
+Margo is now **"a Rust + Smithay Wayland compositor with the maturity
+of niri, the tag-based workflow of dwm/dwl, and working HDR scaffolding
+ahead of every other Wayland compositor in this audit"** — a position
+neither niri (scroller-only by design) nor Hyprland (no HDR, fragile
+plugin ABI) nor mango-ext (single-TU C, zero tests) competes in.
 
-The "personal-driver-only" framing has flipped: margo is now "a Rust + Smithay Wayland compositor with the maturity of niri AND a dwm/dwl-style tag workflow AND working HDR scaffolding" — a category niri doesn't and won't compete in (niri's design intent is scroller-only, no tags).
+**Where margo still trails:**
+
+- **Snapshot-test coverage** — 22 vs niri's **5280**. The bar isn't
+  "test count for its own sake", it's "every layout × column × focus
+  combination locked behind a text snapshot the way niri does it". §15.2
+  carries Phase 2's plan to close this gap to ~200+ targeted snapshots.
+- **Community size** — solo project (1 contributor) vs niri's 21 / 17
+  active. Phase 2 success criterion §15.6 names "≥2 community
+  contributors with merged PRs" as the primary growth lever; secondary
+  lever is the plugin marketplace (F4) which gives drive-by contributors
+  a low-stakes entry point.
+- **Public dogfood reach** — niri ships in distros' default repos;
+  margo lives in a single-user Arch PKGBUILD. Packaging push (Nix flake
+  exists; Arch AUR + Fedora COPR are next) is implicit Phase 2 work,
+  not on the W-ledger.
+
+**Phase 1 closes here.** Phase 2 (§15) is the deeper work: harden, test,
+polish, grow.
