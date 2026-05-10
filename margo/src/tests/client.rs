@@ -17,6 +17,19 @@ use smithay::reexports::wayland_protocols::xdg::shell::client::{
     xdg_toplevel::{self, XdgToplevel},
     xdg_wm_base::{self, XdgWmBase},
 };
+use smithay::reexports::wayland_protocols::ext::session_lock::v1::client::{
+    ext_session_lock_manager_v1::ExtSessionLockManagerV1,
+    ext_session_lock_surface_v1::{self, ExtSessionLockSurfaceV1},
+    ext_session_lock_v1::{self, ExtSessionLockV1},
+};
+use smithay::reexports::wayland_protocols::wp::idle_inhibit::zv1::client::{
+    zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1,
+    zwp_idle_inhibitor_v1::{self, ZwpIdleInhibitorV1},
+};
+use smithay::reexports::wayland_protocols::xdg::decoration::zv1::client::{
+    zxdg_decoration_manager_v1::ZxdgDecorationManagerV1,
+    zxdg_toplevel_decoration_v1::{self, ZxdgToplevelDecorationV1},
+};
 use smithay::reexports::wayland_protocols_wlr::layer_shell::v1::client::{
     zwlr_layer_shell_v1::{self, ZwlrLayerShellV1},
     zwlr_layer_surface_v1::{self, ZwlrLayerSurfaceV1},
@@ -238,6 +251,41 @@ impl Client {
     /// so the next round-trip reflects them.
     pub fn flush(&mut self) {
         self.connection.flush().expect("client flush");
+    }
+
+    /// Create an idle-inhibitor on a fresh wl_surface. Returns the
+    /// inhibitor proxy plus the wl_surface; tests destroy them in
+    /// either order to assert margo's `inhibit` / `uninhibit`
+    /// counter math.
+    pub fn create_idle_inhibitor(&mut self) -> (ZwpIdleInhibitorV1, WlSurface) {
+        let (_compositor, surface) = self.create_surface();
+        let manager: ZwpIdleInhibitManagerV1 = self.bind_global(1);
+        let inhibitor = manager.create_inhibitor(&surface, &self.qh, ());
+        self.connection.flush().expect("client flush");
+        (inhibitor, surface)
+    }
+
+    /// Bind the xdg-decoration manager and request a decoration
+    /// proxy for an existing xdg_toplevel. Returns the proxy; tests
+    /// follow up with `set_mode` / `unset_mode` and assert against
+    /// `MargoState`'s response.
+    pub fn create_decoration(
+        &mut self,
+        toplevel: &XdgToplevel,
+    ) -> ZxdgToplevelDecorationV1 {
+        let manager: ZxdgDecorationManagerV1 = self.bind_global(1);
+        let decoration = manager.get_toplevel_decoration(toplevel, &self.qh, ());
+        self.connection.flush().expect("client flush");
+        decoration
+    }
+
+    /// Create + acquire an ext-session-lock. Returns the lock
+    /// proxy so tests can inspect or release it.
+    pub fn create_session_lock(&mut self) -> ExtSessionLockV1 {
+        let manager: ExtSessionLockManagerV1 = self.bind_global(1);
+        let lock = manager.lock(&self.qh, ());
+        self.connection.flush().expect("client flush");
+        lock
     }
 
     /// Create a fresh layer-shell surface — bind the layer-shell
@@ -477,6 +525,99 @@ impl Dispatch<ZwlrLayerSurfaceV1, ()> for ClientState {
         // Auto-ack any configure so the server doesn't time us out.
         if let zwlr_layer_surface_v1::Event::Configure { serial, .. } = event {
             layer_surface.ack_configure(serial);
+        }
+    }
+}
+
+impl Dispatch<ZwpIdleInhibitManagerV1, ()> for ClientState {
+    fn event(
+        _: &mut Self,
+        _: &ZwpIdleInhibitManagerV1,
+        _: <ZwpIdleInhibitManagerV1 as Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<ZwpIdleInhibitorV1, ()> for ClientState {
+    fn event(
+        _: &mut Self,
+        _: &ZwpIdleInhibitorV1,
+        _: zwp_idle_inhibitor_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<ZxdgDecorationManagerV1, ()> for ClientState {
+    fn event(
+        _: &mut Self,
+        _: &ZxdgDecorationManagerV1,
+        _: <ZxdgDecorationManagerV1 as Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<ZxdgToplevelDecorationV1, ()> for ClientState {
+    fn event(
+        _: &mut Self,
+        _: &ZxdgToplevelDecorationV1,
+        _: zxdg_toplevel_decoration_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        // Mode events arrive whenever the server resolves a
+        // configure-with-decoration; tests inspect MargoState
+        // directly rather than tracking this on the client side.
+    }
+}
+
+impl Dispatch<ExtSessionLockManagerV1, ()> for ClientState {
+    fn event(
+        _: &mut Self,
+        _: &ExtSessionLockManagerV1,
+        _: <ExtSessionLockManagerV1 as Proxy>::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<ExtSessionLockV1, ()> for ClientState {
+    fn event(
+        _: &mut Self,
+        _: &ExtSessionLockV1,
+        _: ext_session_lock_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        // Locked / Finished events arrive on the lock proxy; tests
+        // check `state.session_locked` rather than tracking these
+        // explicitly.
+    }
+}
+
+impl Dispatch<ExtSessionLockSurfaceV1, ()> for ClientState {
+    fn event(
+        _: &mut Self,
+        surface: &ExtSessionLockSurfaceV1,
+        event: ext_session_lock_surface_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let ext_session_lock_surface_v1::Event::Configure { serial, .. } = event {
+            surface.ack_configure(serial);
         }
     }
 }

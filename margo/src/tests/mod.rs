@@ -33,5 +33,9 @@ mod fixture;
 mod server;
 
 mod globals;
+mod idle;
 mod layer_shell;
+mod session_lock;
+mod xdg_activation;
+mod xdg_decoration;
 mod xdg_shell;
