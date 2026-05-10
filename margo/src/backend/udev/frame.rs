@@ -142,17 +142,23 @@ pub(super) fn build_presentation_feedback(
     feedback
 }
 
-/// Signal `presented(now, refresh, 0, Vsync)` on a feedback builder
+/// Signal `presented(now, refresh, seq, Vsync)` on a feedback builder
 /// previously stashed on the OutputDevice. Called from the
 /// `DrmEvent::VBlank` handler, so `now` reflects the actual page-flip
 /// moment — not the submit time, which is the cheap approximation we
 /// used to do.
 ///
-/// `seq` is left at 0 because smithay 0.7's `DrmEvent::VBlank(crtc)`
-/// doesn't carry the kernel's page-flip sequence number.
+/// `seq` is the per-output monotonic VBlank counter from
+/// `OutputDevice::vblank_seq`. Smithay 0.7's `DrmEvent::VBlank(crtc)`
+/// doesn't surface the kernel's `drm_event_vblank.sequence`, but the
+/// `wp_presentation` protocol contract is "implementation-defined
+/// monotonic counter" — a per-output increment satisfies that and
+/// is observably equivalent for frame-pacing-sensitive consumers
+/// (mpv `--vo=gpu-next`, kitty render loop).
 pub(super) fn flush_presentation_feedback(
     output: &Output,
     feedback: smithay::desktop::utils::OutputPresentationFeedback,
+    seq: u64,
 ) {
     use smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback;
 
@@ -162,7 +168,7 @@ pub(super) fn flush_presentation_feedback(
     feedback.presented::<_, smithay::utils::Monotonic>(
         now,
         smithay::wayland::presentation::Refresh::fixed(refresh),
-        0,
+        seq,
         wp_presentation_feedback::Kind::Vsync,
     );
 }

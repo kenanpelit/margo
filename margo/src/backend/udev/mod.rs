@@ -111,15 +111,26 @@ pub struct OutputDevice {
     /// `wp_presentation_feedback` builders that have been collected at
     /// submit time but not yet signalled. We hold them here until the
     /// matching `DrmEvent::VBlank` fires, then call `.presented(now,
-    /// refresh, 0, Vsync)` at that point — the timestamp is the actual
-    /// page-flip moment instead of "when we queued the flip", which is
-    /// off by one frame interval. Smithay 0.7's `DrmEvent::VBlank`
-    /// doesn't expose the kernel's page-flip seq, so the seq value
-    /// stays 0; clients that need true monotonic seq will see this as
-    /// a future-iteration upgrade. Stored as a Vec because in pathological
-    /// cases (smithay reports back-to-back VBlanks) we'd otherwise drop
-    /// feedbacks; in practice it's almost always 0 or 1 entry.
+    /// refresh, seq, Vsync)` at that point — the timestamp is the
+    /// actual page-flip moment instead of "when we queued the flip",
+    /// which is off by one frame interval. Stored as a Vec because in
+    /// pathological cases (smithay reports back-to-back VBlanks)
+    /// we'd otherwise drop feedbacks; in practice it's almost always
+    /// 0 or 1 entry.
     pub(super) pending_presentation: Vec<smithay::desktop::utils::OutputPresentationFeedback>,
+    /// Monotonically-increasing per-output VBlank sequence number,
+    /// incremented every time `DrmEvent::VBlank(crtc)` fires for
+    /// this output's CRTC. Published as the `seq` field of every
+    /// `wp_presentation_feedback.presented` event. The protocol asks
+    /// for "an implementation-defined monotonic counter" — the kernel
+    /// `drm_event_vblank.sequence` would also satisfy this contract
+    /// but smithay 0.7's `DrmEvent::VBlank(crtc)` doesn't surface it,
+    /// and a per-output counter is observably equivalent for the
+    /// frame-pacing-sensitive consumers (mpv `--vo=gpu-next`,
+    /// kitty's render loop, gnome-shell's `getRefreshRate` polling).
+    /// Increments at the head of the VBlank handler so the
+    /// presentation-feedback flush sees the post-flip value.
+    pub(super) vblank_seq: u64,
 }
 
 // ── DRM gamma properties ──────────────────────────────────────────────────────
@@ -577,6 +588,7 @@ pub fn run(
                 gamma: gamma_props,
                 connector: *conn_handle,
                 pending_presentation: Vec::new(),
+                vblank_seq: 0,
             },
         );
     }
@@ -626,18 +638,24 @@ pub fn run(
                     // we signal `presented(...)` — the per-surface
                     // callbacks may end up taking their own borrows
                     // on backend_data via wayland-server dispatch.
-                    let mut to_flush: Vec<(Output, smithay::desktop::utils::OutputPresentationFeedback)> = Vec::new();
+                    let mut to_flush: Vec<(Output, smithay::desktop::utils::OutputPresentationFeedback, u64)> = Vec::new();
                     {
                         let mut bd = backend_data.borrow_mut();
                         if let Some(od) = bd.outputs.get_mut(&crtc) {
+                            // Bump the per-output VBlank counter
+                            // BEFORE building the feedback tuples so
+                            // every drained feedback sees the
+                            // post-flip seq the protocol promises.
+                            od.vblank_seq = od.vblank_seq.wrapping_add(1);
                             // Without this, queue_frame for the next
                             // frame will fail and the render loop
                             // stalls.
                             if let Err(e) = od.compositor.frame_submitted() {
                                 warn!("frame_submitted: {e:?}");
                             }
+                            let seq = od.vblank_seq;
                             for feedback in od.pending_presentation.drain(..) {
-                                to_flush.push((od.output.clone(), feedback));
+                                to_flush.push((od.output.clone(), feedback, seq));
                             }
                         }
                     }
@@ -651,8 +669,8 @@ pub fn run(
                     // exactly one entry; the Vec covers the rare
                     // case of back-to-back VBlanks queued before
                     // we drained the previous one.
-                    for (output, feedback) in to_flush {
-                        flush_presentation_feedback(&output, feedback);
+                    for (output, feedback, seq) in to_flush {
+                        flush_presentation_feedback(&output, feedback, seq);
                     }
                     // Drop the in-flight count and, if the scene is still
                     // dirty (animation, deferred input, late commit), let
