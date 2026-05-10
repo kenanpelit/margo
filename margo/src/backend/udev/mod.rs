@@ -1847,28 +1847,46 @@ pub(super) fn build_render_elements_inner(
     };
 
     let layer_map = layer_map_for_output(&od.output);
-    let upper_layers: Vec<_> = layer_map
-        .layers()
-        .rev()
-        .filter(|surface| surface.layer() == WlrLayer::Overlay)
-        .chain(
-            layer_map
-                .layers()
-                .rev()
-                .filter(|surface| surface.layer() == WlrLayer::Top),
-        )
-        .collect();
-    let lower_layers: Vec<_> = layer_map
-        .layers()
-        .rev()
-        .filter(|surface| surface.layer() == WlrLayer::Bottom)
-        .chain(
-            layer_map
-                .layers()
-                .rev()
-                .filter(|surface| surface.layer() == WlrLayer::Background),
-        )
-        .collect();
+    // Exclusive fullscreen suppresses every layer-shell surface on the
+    // affected output — the focused window literally covers the
+    // panel, bar pixels included. WorkArea fullscreen leaves the bar
+    // visible and merely sizes the window to `work_area`.
+    let suppress_layers = state
+        .monitors
+        .iter()
+        .position(|m| m.output == od.output)
+        .map(|mon_idx| state.monitor_has_exclusive_fullscreen(mon_idx))
+        .unwrap_or(false);
+    let upper_layers: Vec<_> = if suppress_layers {
+        Vec::new()
+    } else {
+        layer_map
+            .layers()
+            .rev()
+            .filter(|surface| surface.layer() == WlrLayer::Overlay)
+            .chain(
+                layer_map
+                    .layers()
+                    .rev()
+                    .filter(|surface| surface.layer() == WlrLayer::Top),
+            )
+            .collect()
+    };
+    let lower_layers: Vec<_> = if suppress_layers {
+        Vec::new()
+    } else {
+        layer_map
+            .layers()
+            .rev()
+            .filter(|surface| surface.layer() == WlrLayer::Bottom)
+            .chain(
+                layer_map
+                    .layers()
+                    .rev()
+                    .filter(|surface| surface.layer() == WlrLayer::Background),
+            )
+            .collect()
+    };
     let border_program = crate::render::rounded_border::shader(renderer).map(|program| program.0);
     let clipped_surface_program =
         crate::render::clipped_surface::shader(renderer).map(|program| program.0);

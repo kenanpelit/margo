@@ -276,6 +276,9 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
         "switch_layout" => state.switch_layout(),
         "togglefloating" => state.toggle_floating(),
         "togglefullscreen" => state.toggle_fullscreen(),
+        "togglefullscreen_exclusive" | "togglefullscreen-exclusive" | "togglefullscreenexclusive" => {
+            state.toggle_fullscreen_exclusive()
+        }
         // niri-float-sticky equivalent — pin the focused client to
         // every tag on its monitor. Toggle via the same action;
         // second press restores the previous tag set.

@@ -125,6 +125,38 @@ fn focus_target_label(t: &FocusTarget) -> String {
     }
 }
 
+// ── Fullscreen mode ──────────────────────────────────────────────────────────
+
+/// How "fullscreen" a client is.
+///
+/// Two distinct modes — both reachable from a key bind today:
+///
+/// ```text
+/// bind = super,f,togglefullscreen            # WorkArea
+/// bind = super+shift,f,togglefullscreen_exclusive  # Exclusive
+/// ```
+///
+/// Mode-by-mode:
+///
+/// * `WorkArea` — the standard "fill the available space" feeling.
+///   Pencere `MargoMonitor::work_area` boyutuna büyür (yani
+///   layer-shell exclusion zone'undan sonra kalan alan); bar /
+///   notification overlay görünür kalır. Çoğu compositor'un default
+///   `F11` davranışı.
+///
+/// * `Exclusive` — gerçek "tam ekran". Pencere `monitor_area`'yı
+///   tam kaplar; render path o output için tüm layer-shell katmanlarını
+///   (Overlay / Top / Bottom / Background) suppress eder, böylece bar
+///   pencerenin üstüne çıkamaz. mpv / browser fullscreen movie / oyun
+///   için doğru davranış.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub enum FullscreenMode {
+    #[default]
+    Off,
+    WorkArea,
+    Exclusive,
+}
+
 // ── Theme presets ────────────────────────────────────────────────────────────
 
 /// Snapshot of the theme-relevant `Config` fields. Captured the first
@@ -535,7 +567,22 @@ pub struct MargoClient {
     pub tags: u32,
     pub old_tags: u32,
     pub is_floating: bool,
+    /// Whether the client is in any fullscreen mode. Kept as a bool
+    /// for backward-compat with existing callsites; the *kind* of
+    /// fullscreen lives in [`fullscreen_mode`]. Setters keep the two
+    /// fields in lock-step (`is_fullscreen == fullscreen_mode != Off`).
     pub is_fullscreen: bool,
+    /// Which fullscreen mode the client is currently in:
+    ///
+    /// * `Off`       — not fullscreen.
+    /// * `WorkArea`  — pencere bar exclusion zone'una kadar büyür;
+    ///                 bar (top / overlay layer-shell) görünür kalır.
+    ///                 Default `togglefullscreen` action.
+    /// * `Exclusive` — pencere `monitor_area`'nın tamamını kaplar;
+    ///                 render path o output'taki layer-shell yüzeylerini
+    ///                 suppress eder, bar gizlenir. Triggered by
+    ///                 `togglefullscreen_exclusive`.
+    pub fullscreen_mode: FullscreenMode,
     pub is_fake_fullscreen: bool,
     pub is_maximized_screen: bool,
     pub is_minimized: bool,
@@ -676,6 +723,7 @@ impl MargoClient {
             old_tags: 0,
             is_floating: false,
             is_fullscreen: false,
+            fullscreen_mode: FullscreenMode::Off,
             is_fake_fullscreen: false,
             is_maximized_screen: false,
             is_minimized: false,
@@ -2980,10 +3028,27 @@ impl MargoState {
                 if c.monitor != mon_idx || !visible_in_pass(c) {
                     continue;
                 }
-                if c.is_fullscreen {
-                    self.clients[i].geom = monitor_area;
-                } else if c.is_floating && c.float_geom.width > 0 {
-                    self.clients[i].geom = self.clients[i].float_geom;
+                // Fullscreen geometry per mode:
+                //   * Exclusive — full panel, bar will be suppressed
+                //     by the render path so the window literally
+                //     covers everything.
+                //   * WorkArea  — `monitors[mon_idx].work_area`, i.e.
+                //     the rect after layer-shell exclusion zones
+                //     are subtracted; bar stays drawn on top.
+                //   * Off       — fall through to the normal layout /
+                //     floating geometry.
+                match c.fullscreen_mode {
+                    FullscreenMode::Exclusive => {
+                        self.clients[i].geom = monitor_area;
+                    }
+                    FullscreenMode::WorkArea => {
+                        self.clients[i].geom = work_area;
+                    }
+                    FullscreenMode::Off => {
+                        if c.is_floating && c.float_geom.width > 0 {
+                            self.clients[i].geom = self.clients[i].float_geom;
+                        }
+                    }
                 }
             }
         }
@@ -4992,6 +5057,23 @@ impl MargoState {
         );
     }
 
+    /// Toggle the focused client between [`FullscreenMode::Exclusive`] and
+    /// [`FullscreenMode::Off`]. Bound to `togglefullscreen_exclusive`. The
+    /// difference vs `togglefullscreen` is that the render path will
+    /// suppress every layer-shell surface on this output while
+    /// `Exclusive` is active — the bar disappears, the focused window
+    /// covers the panel pixels too.
+    pub fn toggle_fullscreen_exclusive(&mut self) {
+        if let Some(idx) = self.focused_client_idx() {
+            let target = if self.clients[idx].fullscreen_mode == FullscreenMode::Exclusive {
+                FullscreenMode::Off
+            } else {
+                FullscreenMode::Exclusive
+            };
+            self.set_client_fullscreen_mode(idx, target);
+        }
+    }
+
     pub fn toggle_fullscreen(&mut self) {
         if let Some(idx) = self.focused_client_idx() {
             let target = !self.clients[idx].is_fullscreen;
@@ -5027,6 +5109,36 @@ impl MargoState {
     /// before this fix because XWayland clients trust geom
     /// without a state-change packet.
     pub fn set_client_fullscreen(&mut self, idx: usize, fullscreen: bool) {
+        // Backward-compat shim: `bool` API maps to `WorkArea` mode.
+        // XDG `set_fullscreen()` requests + the existing keybind path
+        // both still go through here. Real two-way distinction lives
+        // in [`set_client_fullscreen_mode`].
+        let mode = if fullscreen {
+            FullscreenMode::WorkArea
+        } else {
+            FullscreenMode::Off
+        };
+        self.set_client_fullscreen_mode(idx, mode);
+    }
+
+    /// Apply a [`FullscreenMode`] to a client. The single source of truth
+    /// for fullscreen — `set_client_fullscreen` is a shim, the dispatch
+    /// actions `togglefullscreen` / `togglefullscreen_exclusive` route
+    /// through here.
+    ///
+    /// Three rotating concerns:
+    ///
+    /// 1. `MargoClient` state — `fullscreen_mode` + the
+    ///    backward-compat `is_fullscreen` bool stay in lock-step.
+    /// 2. xdg_toplevel pending state — Wayland clients get the
+    ///    `Fullscreen` state bit + a size hint matching the mode
+    ///    (`work_area` for WorkArea, `monitor_area` for Exclusive).
+    ///    X11 surfaces are skipped; NetWMState round-trip isn't
+    ///    wired today (known limitation, see `state/handlers/x11.rs`).
+    /// 3. Layout pass + IPC broadcast — `arrange_monitor` reads the
+    ///    new mode to size the geometry, then dwl-ipc clients
+    ///    (noctalia / waybar-dwl) see the updated state.json.
+    pub fn set_client_fullscreen_mode(&mut self, idx: usize, mode: FullscreenMode) {
         if idx >= self.clients.len() {
             return;
         }
@@ -5034,36 +5146,65 @@ impl MargoState {
         if mon_idx >= self.monitors.len() {
             return;
         }
-        self.clients[idx].is_fullscreen = fullscreen;
+        self.clients[idx].fullscreen_mode = mode;
+        self.clients[idx].is_fullscreen = mode != FullscreenMode::Off;
 
-        // Update the xdg_toplevel pending state for Wayland
-        // clients. X11 surfaces skip this — they don't carry a
-        // ToplevelSurface; their fullscreen state is signalled
-        // via NetWMState which the rest of margo doesn't
-        // currently round-trip through (a known limitation —
-        // log at trace so it's findable).
         if let WindowSurface::Wayland(toplevel) =
             self.clients[idx].window.underlying_surface()
         {
             use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
-            let monitor_size = self.monitors[mon_idx].monitor_area;
+            // The size hint matches the mode: WorkArea respects the
+            // bar's exclusion zone, Exclusive covers the entire
+            // panel. Clients honour this for their initial buffer
+            // allocation; the actual rect lands via `arrange_monitor`.
+            let target_size = match mode {
+                FullscreenMode::Off => None,
+                FullscreenMode::WorkArea => {
+                    let wa = self.monitors[mon_idx].work_area;
+                    Some(smithay::utils::Size::from((wa.width, wa.height)))
+                }
+                FullscreenMode::Exclusive => {
+                    let ma = self.monitors[mon_idx].monitor_area;
+                    Some(smithay::utils::Size::from((ma.width, ma.height)))
+                }
+            };
             toplevel.with_pending_state(|state| {
-                if fullscreen {
-                    state.states.set(xdg_toplevel::State::Fullscreen);
-                    state.size = Some(smithay::utils::Size::from((
-                        monitor_size.width,
-                        monitor_size.height,
-                    )));
-                } else {
+                if mode == FullscreenMode::Off {
                     state.states.unset(xdg_toplevel::State::Fullscreen);
-                    state.size = None; // layout pass picks the new size
+                    state.size = None;
+                } else {
+                    state.states.set(xdg_toplevel::State::Fullscreen);
+                    state.size = target_size;
                 }
             });
             toplevel.send_pending_configure();
         }
 
+        tracing::info!(
+            target: "fullscreen",
+            client = idx,
+            mode = ?mode,
+            "applied",
+        );
+
         self.arrange_monitor(mon_idx);
         crate::protocols::dwl_ipc::broadcast_monitor(self, mon_idx);
+    }
+
+    /// Does any client on `mon_idx` currently hold an exclusive
+    /// fullscreen lease? Used by the render path to decide whether
+    /// to suppress layer-shell surfaces (bar / notification overlay)
+    /// for that output.
+    pub fn monitor_has_exclusive_fullscreen(&self, mon_idx: usize) -> bool {
+        if mon_idx >= self.monitors.len() {
+            return false;
+        }
+        let active_tagset = self.monitors[mon_idx].current_tagset();
+        self.clients.iter().any(|c| {
+            c.monitor == mon_idx
+                && c.fullscreen_mode == FullscreenMode::Exclusive
+                && c.is_visible_on(mon_idx, active_tagset)
+        })
     }
 
     // ── Scratchpad ────────────────────────────────────────────────────────────

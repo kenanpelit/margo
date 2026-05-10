@@ -271,8 +271,16 @@ pub const ACTIONS: &[Action] = &[
         aliases: &[],
         args: "",
         group: Group::Window,
-        summary: "Toggle the focused window's fullscreen state.",
-        detail: "",
+        summary: "Toggle work-area fullscreen (bar stays visible).",
+        detail: "Window resizes to the monitor's work_area — i.e. everything below the bar / above an overlay. Layer-shell surfaces (noctalia bar, notifications) keep rendering on top. Standard `F11` feel.",
+    },
+    Action {
+        name: "togglefullscreen_exclusive",
+        aliases: &["togglefullscreen-exclusive", "togglefullscreenexclusive"],
+        args: "",
+        group: Group::Window,
+        summary: "Toggle exclusive fullscreen (bar hidden, full panel).",
+        detail: "Window covers the entire output (`monitor_area`) and the render path suppresses every layer-shell surface for that monitor — the bar literally disappears while exclusive fullscreen is active. Right behaviour for mpv / browser fullscreen movie / fullscreen games.",
     },
     Action {
         name: "sticky_window",
