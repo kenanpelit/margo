@@ -4161,56 +4161,69 @@ impl MargoState {
         self.clients[new_idx].is_overview_hovered = true;
 
         // In spatial overview, pan the camera so the newly-hovered
-        // client is centred. Without this, cycling to a client whose
-        // thumbnail lives off-screen (after the user zoomed in past
-        // auto-fit) would warp the pointer to a coordinate outside
-        // the panel — cursor would jam against the output edge and
-        // the next motion handler would clear `is_overview_hovered`
-        // since the cursor doesn't actually overlap the client's
-        // rect any more. After the camera pan, the client lands at
-        // the work-area centre; then we re-arrange so `client.geom`
-        // reflects the post-pan screen rect; then we warp the pointer
-        // to that fresh rect's centre, clamped to the output.
+        // *window* (not its tag) is centred on the work area. Two
+        // important details:
+        //
+        //   * We pan to the **client's world centre**, not the tag
+        //     slot centre. Tag-centre felt like "tag jumping" because
+        //     a client at the corner of a sparsely-populated tag
+        //     would still leave the camera off-target. Window-centre
+        //     panning makes alt+Tab feel like a real window switcher
+        //     — selection lands centred every time.
+        //
+        //   * We bypass the move animation for the duration of this
+        //     pan (`overview_transition_animation_ms = Some(1)` —
+        //     1 ms is treated as "snap, no slide"). Without this, every
+        //     cycle step kicked the per-client move animation across
+        //     the entire visible client set, producing a frame-long
+        //     "everyone slides" frame where the hover-coloured border
+        //     was indistinguishable from the others. Snap on cycle =
+        //     instant geometry update = the new hover client lights up
+        //     in `focuscolor` immediately, every other client stays
+        //     in `bordercolor`. User reads the cycle clearly.
         let is_spatial = crate::spatial_overview::OverviewMode::from_config_str(
             &self.config.overview_mode,
         ) == crate::spatial_overview::OverviewMode::Spatial;
         if is_spatial {
-            // Compute the new client's world-space centre and pan the
-            // camera target there. Need its tag to find the world
-            // anchor; pick the lowest tag bit set (clients on multiple
-            // tags via `sticky_window` will follow the first tag's
-            // slot — multi-tag spatial layout is a Phase 3.5 follow-up).
-            let (tag_bit, mon_idx) = {
-                let c = &self.clients[new_idx];
-                (c.tags & c.tags.wrapping_neg(), c.monitor)
-            };
-            if tag_bit != 0 && mon_idx < self.monitors.len() {
-                let tag = (tag_bit.trailing_zeros() + 1).min(crate::layout::MAX_TAGS as u32);
-                let mw = self.monitors[mon_idx].monitor_area.width;
-                let mh = self.monitors[mon_idx].monitor_area.height;
-                // Tag-local rect is whatever arrange just produced;
-                // we don't have it directly, but the tag-slot world
-                // *centre* is a fine pan target — every client in
-                // that tag becomes centred-visible.
-                let (ax, ay) = crate::spatial_overview::tag_anchor(tag, mw, mh);
-                let cx = ax + mw as f64 / 2.0;
-                let cy = ay + mh as f64 / 2.0;
-                self.spatial.snap_to(cx, cy, self.spatial.zoom);
-                // Re-arrange so client.geom reflects the new camera.
+            // Compute the new client's world-space centre. The
+            // client's *current* `geom` is the screen rect from the
+            // last arrange — invert through the *current* camera to
+            // recover its world position, then re-snap the camera so
+            // that world point lands at the work-area centre.
+            let mon_idx = self.clients[new_idx].monitor;
+            if mon_idx < self.monitors.len() {
+                let work_area = self.monitors[mon_idx].work_area;
+                let g = self.clients[new_idx].geom;
+                let cur_screen_centre =
+                    ((g.x + g.width / 2) as f64, (g.y + g.height / 2) as f64);
+                let world_centre = crate::spatial_overview::screen_to_world(
+                    cur_screen_centre,
+                    &self.spatial,
+                    work_area,
+                );
+                self.spatial
+                    .snap_to(world_centre.0, world_centre.1, self.spatial.zoom);
+                // Re-arrange under the snapped camera, *without* the
+                // move animation. open_overview already uses the same
+                // `Some(1)` trick to skip the slide; we restore it
+                // after this single arrange so the user's normal
+                // animation duration applies elsewhere.
+                self.overview_transition_animation_ms = Some(1);
                 self.arrange_monitor(mon_idx);
+                self.overview_transition_animation_ms = None;
             }
         }
 
-        // Pointer warp to the (possibly-just-updated) thumbnail centre.
+        // Pointer warp to the post-pan thumbnail centre. After the
+        // snap above, the new hover client is at work-area centre on
+        // every output that contains it; the warp keeps cursor and
+        // border in lock-step so the next motion event doesn't yank
+        // hover off the keyboard-selected thumbnail.
         let g = self.clients[new_idx].geom;
         if g.width > 0 && g.height > 0 {
             self.input_pointer.x = (g.x + g.width / 2) as f64;
             self.input_pointer.y = (g.y + g.height / 2) as f64;
         }
-        // Clamp to keep the cursor on a real output — spatial maths
-        // can put `client.geom` slightly past an edge during a fast
-        // pan, and the cursor needs to stay where it can intercept
-        // motion events.
         self.clamp_pointer_to_outputs();
 
         // Don't call `focus_surface` here. While overview is open,
