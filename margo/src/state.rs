@@ -1582,6 +1582,14 @@ pub struct MargoState {
     /// arrange is done. None ⇒ fall back to the configured duration.
     pub overview_transition_animation_ms: Option<u32>,
 
+    /// World-space camera for the spatial overview (Phase 3). One
+    /// camera per `MargoState` — multi-monitor world topology is a
+    /// Phase 3.5 extension. Even when overview is closed the camera
+    /// stays loaded; `open_overview` snaps it to the active tag's
+    /// world centre so the open transition reads as "zoom out from
+    /// where I was". See `docs/design/spatial-overview.md`.
+    pub spatial: crate::spatial_overview::SpatialCamera,
+
     /// Which hot corner the pointer is currently dwelling in (if any).
     /// `None` while pointer is anywhere else; set on entry, cleared on
     /// exit. Together with [`hot_corner_armed_at`] drives the dwell
@@ -1786,6 +1794,7 @@ impl MargoState {
             region_selector: None,
             layer_animations: std::collections::HashMap::new(),
             overview_transition_animation_ms: None,
+            spatial: crate::spatial_overview::SpatialCamera::default(),
             hot_corner_dwelling: None,
             hot_corner_armed_at: None,
             config,
@@ -2758,6 +2767,145 @@ impl MargoState {
         }
     }
 
+    /// Spatial overview arrangement (Phase 3 commit 2). For each
+    /// tag (1..=9), arrange that tag's clients in its *configured*
+    /// layout inside a monitor-sized slot, then transform world →
+    /// screen via [`spatial_overview::world_to_screen`] using
+    /// `self.spatial` (the per-state camera).
+    ///
+    /// Result: every visible client lands on screen at its
+    /// camera-transformed rect. The render path, hit-test path,
+    /// and border path all read `client.geom` exactly as in the
+    /// non-overview case — the spatial transform is invisible to
+    /// downstream consumers.
+    fn arrange_spatial_overview_geometries(&self, mon_idx: usize) -> layout::ArrangeResult {
+        use crate::spatial_overview;
+        if mon_idx >= self.monitors.len() {
+            return Vec::new();
+        }
+        let mon = &self.monitors[mon_idx];
+        // World layout sizes off the monitor's logical area — every
+        // tag slot is monitor-sized so a tag at zoom 1.0 fills the
+        // panel exactly (zoomed-in view of the active tag is
+        // indistinguishable from non-overview).
+        let monitor_w = mon.monitor_area.width;
+        let monitor_h = mon.monitor_area.height;
+        let work_area = mon.work_area;
+
+        // Per-tag layout's gap config — halved like the legacy
+        // per-tag thumbnail pass for visual density at low zoom.
+        let user_inner = if self.enable_gaps { mon.gappih } else { 0 };
+        let inner_pad = (user_inner / 2).max(2);
+        let cell_gaps = layout::GapConfig {
+            gappih: inner_pad,
+            gappiv: inner_pad,
+            gappoh: inner_pad,
+            gappov: inner_pad,
+        };
+
+        let mut results: layout::ArrangeResult = Vec::new();
+        for tag in 1..=(crate::layout::MAX_TAGS as u32) {
+            let tag_bit = 1u32 << (tag - 1);
+            let pertag_slot = tag as usize;
+            let tag_layout = mon
+                .pertag
+                .ltidxs
+                .get(pertag_slot)
+                .copied()
+                .unwrap_or(layout::LayoutId::Tile);
+            let tag_mfact = mon
+                .pertag
+                .mfacts
+                .get(pertag_slot)
+                .copied()
+                .unwrap_or(self.config.default_mfact);
+            let tag_nmaster = mon
+                .pertag
+                .nmasters
+                .get(pertag_slot)
+                .copied()
+                .unwrap_or(self.config.default_nmaster);
+
+            let cell_tiled: Vec<usize> = self
+                .clients
+                .iter()
+                .enumerate()
+                .filter(|(_, c)| {
+                    !c.is_initial_map_pending
+                        && c.monitor == mon_idx
+                        && (c.tags & tag_bit) != 0
+                        && !c.is_minimized
+                        && !c.is_killing
+                        && !c.is_in_scratchpad
+                })
+                .map(|(i, _)| i)
+                .collect();
+            if cell_tiled.is_empty() {
+                continue;
+            }
+
+            let cell_props: Vec<f32> = cell_tiled
+                .iter()
+                .map(|&i| self.clients[i].scroller_proportion)
+                .collect();
+
+            // Tag-local arrange — work area is monitor-sized, in
+            // tag-local coordinates starting at (0, 0).
+            let tag_local_work = layout::Rect {
+                x: 0,
+                y: 0,
+                width: monitor_w,
+                height: monitor_h,
+            };
+            let ctx = layout::ArrangeCtx {
+                work_area: tag_local_work,
+                tiled: &cell_tiled,
+                nmaster: tag_nmaster,
+                mfact: tag_mfact,
+                gaps: &cell_gaps,
+                scroller_proportions: &cell_props,
+                default_scroller_proportion: self.config.scroller_default_proportion,
+                focused_tiled_pos: None,
+                scroller_structs: self.config.scroller_structs,
+                scroller_focus_center: false,
+                scroller_prefer_center: false,
+                scroller_prefer_overspread: false,
+                canvas_pan: (0.0, 0.0),
+            };
+            let local_geoms = layout::arrange(tag_layout, &ctx);
+
+            // Transform every (client_idx, local_rect) through
+            // tag_anchor + world_to_screen. Border / render / hit
+            // test all read `client.geom` post-transform — they
+            // don't need to know spatial mode is on.
+            for (idx, local_rect) in local_geoms {
+                let world =
+                    spatial_overview::client_world_rect(tag, local_rect, monitor_w, monitor_h);
+                let tl = spatial_overview::world_to_screen(
+                    (world.x as f64, world.y as f64),
+                    &self.spatial,
+                    work_area,
+                );
+                let br = spatial_overview::world_to_screen(
+                    (
+                        (world.x + world.width) as f64,
+                        (world.y + world.height) as f64,
+                    ),
+                    &self.spatial,
+                    work_area,
+                );
+                let screen_rect = layout::Rect {
+                    x: tl.0.round() as i32,
+                    y: tl.1.round() as i32,
+                    width: ((br.0 - tl.0).max(1.0)).round() as i32,
+                    height: ((br.1 - tl.1).max(1.0)).round() as i32,
+                };
+                results.push((idx, screen_rect));
+            }
+        }
+        results
+    }
+
     pub fn arrange_monitor(&mut self, mon_idx: usize) {
         let _span = tracy_client::span!("arrange_monitor");
         if mon_idx >= self.monitors.len() {
@@ -2903,7 +3051,20 @@ impl MargoState {
             canvas_pan,
         };
 
-        let geometries = layout::arrange(layout, &ctx);
+        // Phase 3: in spatial overview mode, every tag's clients
+        // arrange in their own *configured* layout inside a
+        // monitor-sized world slot; world coords transform through
+        // the camera into screen rects. Grid mode (legacy) keeps the
+        // single-Grid-of-everything pass. See
+        // `docs/design/spatial-overview.md`.
+        let geometries = if is_overview
+            && crate::spatial_overview::OverviewMode::from_config_str(&self.config.overview_mode)
+                == crate::spatial_overview::OverviewMode::Spatial
+        {
+            self.arrange_spatial_overview_geometries(mon_idx)
+        } else {
+            layout::arrange(layout, &ctx)
+        };
         let now = crate::utils::now_ms();
         for (client_idx, mut rect) in geometries {
             // Apply per-client size constraints from window rules. The layout
@@ -3765,6 +3926,30 @@ impl MargoState {
 
         if flipped.is_empty() {
             return;
+        }
+
+        // Phase 3: in spatial mode, snap the world-space camera onto
+        // the active tag's slot centre at the configured zoom. Opens
+        // with "the tag you were on stays centred, every other tag
+        // visible at zoom-out". Grid mode skips this — its branch
+        // doesn't read `self.spatial`.
+        if crate::spatial_overview::OverviewMode::from_config_str(&self.config.overview_mode)
+            == crate::spatial_overview::OverviewMode::Spatial
+        {
+            // Pick the first flipped monitor as the anchor — multi-
+            // monitor spatial topology is a Phase 3.5 follow-up.
+            if let Some(&mon_idx) = flipped.first() {
+                let mon = &self.monitors[mon_idx];
+                let active_tag = (mon.pertag.curtag.max(1) as u32).min(crate::layout::MAX_TAGS as u32);
+                let monitor_w = mon.monitor_area.width;
+                let monitor_h = mon.monitor_area.height;
+                let (ax, ay) =
+                    crate::spatial_overview::tag_anchor(active_tag, monitor_w, monitor_h);
+                let cx = ax + monitor_w as f64 / 2.0;
+                let cy = ay + monitor_h as f64 / 2.0;
+                let zoom = self.config.overview_zoom.clamp(0.1, 1.0) as f64;
+                self.spatial.snap_to(cx, cy, zoom);
+            }
         }
 
         // Snappy 180 ms slide into the grid (vs the user's possibly

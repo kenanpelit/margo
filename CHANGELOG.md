@@ -9,6 +9,28 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- **Phase 3 — Spatial Overview wired into arrange + state (2 / 3).**
+  Spatial mode is now the default at config level (`overview_mode =
+  spatial` — opt out with `overview_mode = grid`). On open,
+  `arrange_monitor` branches into the new
+  `arrange_spatial_overview_geometries` helper:
+  * Every tag's clients arrange in **that tag's** configured layout
+    (Tile / Scroller / Grid / Canvas / …) inside a monitor-sized
+    world slot — no override to a single Grid.
+  * Each client's world rect (tag anchor + local layout output) is
+    transformed through `SpatialCamera::world_to_screen` to land
+    its `geom` on screen. Render, border, hit-test paths all read
+    `client.geom` unchanged — they don't know spatial mode is on.
+  * `open_overview` snaps `MargoState::spatial` to the active tag's
+    world centre at `overview_zoom` so the open transition reads
+    as "stay where I was, zoom out".
+
+  Camera is loaded at default centred-zero state from
+  `MargoState::new`; pan/zoom input handlers + frame-tick momentum
+  arrive in commit 3 (final slice). Until commit 3 ships, spatial
+  overview displays correctly but is static — exactly the visual
+  the design doc calls for, just without live navigation.
+
 - **Phase 3 — Infinite Spatial Overview, foundation (1 / 3).** New
   module `margo/src/spatial_overview.rs` (~450 LOC, 12 unit tests)
   carrying the foundation for the spatial canvas overview that
