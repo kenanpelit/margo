@@ -13,9 +13,11 @@
 //! `delegate_*!` macros stay co-located with their impls.
 
 mod color_management;
+mod compositor;
 mod dmabuf;
 mod gamma_control;
 mod idle;
+mod image_copy_capture;
 mod input_method;
 mod layer_shell;
 mod output_management;

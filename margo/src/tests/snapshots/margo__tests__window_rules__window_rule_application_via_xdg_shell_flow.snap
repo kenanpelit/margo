@@ -1,0 +1,16 @@
+---
+source: margo/src/tests/window_rules.rs
+expression: report
+---
+Spotify                          | Spotify Premium                    | tags=0x10 no_animation=true
+Spotify                          | Now Playing — Some Track           | tags=0x10 no_animation=true
+firefox                          | Picture-in-Picture                 | tags=0x1 floating=true no_border=true no_shadow=true
+firefox                          | Mozilla Firefox                    | tags=0x1
+firefox                          | Open File                          | tags=0x1 floating=true
+Helium                           | DuckDuckGo — Privacy               | tags=0x1 csd=true
+Brave-browser                    | New Tab                            | tags=0x1 csd=true
+com.github.hluk.copyq            | CopyQ                              | tags=0x1 floating=true no_focus=true scratchpad=true
+dev.zed.Zed                      | Settings                           | tags=0x1
+nemo                             | Settings                           | tags=0x1 no_blur=true
+kitty                            | Choose Theme                       | tags=0x1 floating=true
+kitty                            | kitty                              | tags=0x1

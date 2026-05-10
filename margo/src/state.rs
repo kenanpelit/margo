@@ -9,15 +9,11 @@ use std::{cell::RefCell, path::PathBuf, rc::Rc, sync::Arc};
 
 use anyhow::{Context, Result};
 use smithay::{
-    backend::{
-        allocator::dmabuf::Dmabuf,
-        renderer::utils::on_commit_buffer_handler,
-    },
-    delegate_compositor,
+    backend::allocator::dmabuf::Dmabuf,
     delegate_output,
     delegate_seat, delegate_shm,
     delegate_presentation,
-    desktop::{PopupManager, Space, Window, WindowSurface, WindowSurfaceType, layer_map_for_output},
+    desktop::{layer_map_for_output, PopupManager, Space, Window, WindowSurface},
     input::{
         Seat, SeatHandler, SeatState,
         dnd::{DndFocus, Source},
@@ -38,16 +34,12 @@ use smithay::{
             DisplayHandle, Resource,
             backend::{ClientData, ClientId, DisconnectReason},
             protocol::wl_surface::WlSurface,
-            Client, Display,
+            Display,
         },
     },
     utils::{Clock, Logical, Monotonic, Point, Serial, Size, SERIAL_COUNTER},
     wayland::{
-        buffer::BufferHandler,
-        compositor::{
-            get_parent, is_sync_subsurface, with_states, CompositorClientState, CompositorHandler,
-            CompositorState,
-        },
+        compositor::{with_states, CompositorClientState, CompositorState},
         output::{OutputHandler, OutputManagerState},
         seat::WaylandFocus,
         selection::{
@@ -57,7 +49,7 @@ use smithay::{
         },
         shell::{
             wlr_layer::{
-                LayerSurface as WlrLayerSurface, LayerSurfaceData, WlrLayerShellState,
+                LayerSurface as WlrLayerSurface, WlrLayerShellState,
             },
             xdg::{
                 decoration::XdgDecorationState,
@@ -77,7 +69,7 @@ use smithay::{
         drm_syncobj::DrmSyncobjState,
         xwayland_shell::XWaylandShellState,
     },
-    xwayland::{X11Surface, X11Wm, XWaylandClientData},
+    xwayland::{X11Surface, X11Wm},
 };
 
 use margo_config::{parse_config, Config, WindowRule};
@@ -3693,7 +3685,7 @@ impl MargoState {
         true
     }
 
-    fn matching_window_rules(&self, app_id: &str, title: &str) -> Vec<WindowRule> {
+    pub(crate) fn matching_window_rules(&self, app_id: &str, title: &str) -> Vec<WindowRule> {
         self.config
             .window_rules
             .iter()
@@ -3853,7 +3845,12 @@ impl MargoState {
         );
     }
 
-    fn window_rule_matches(&self, rule: &WindowRule, app_id: &str, title: &str) -> bool {
+    pub(crate) fn window_rule_matches(
+        &self,
+        rule: &WindowRule,
+        app_id: &str,
+        title: &str,
+    ) -> bool {
         // Positive matches: every present pattern must match.
         let app_ok = rule
             .id
@@ -5453,186 +5450,6 @@ impl MargoState {
     }
 }
 
-// ── Smithay delegate: Compositor ──────────────────────────────────────────────
-
-impl CompositorHandler for MargoState {
-    fn compositor_state(&mut self) -> &mut CompositorState {
-        &mut self.compositor_state
-    }
-    fn client_compositor_state<'a>(&self, client: &'a Client) -> &'a CompositorClientState {
-        if let Some(state) = client.get_data::<XWaylandClientData>() {
-            return &state.compositor_state;
-        }
-        if let Some(state) = client.get_data::<MargoClientData>() {
-            return &state.compositor_state;
-        }
-        panic!("client_compositor_state: unknown client data type")
-    }
-    fn commit(&mut self, surface: &WlSurface) {
-        on_commit_buffer_handler::<Self>(surface);
-        if !is_sync_subsurface(surface) {
-            let mut root = surface.clone();
-            while let Some(parent) = get_parent(&root) {
-                root = parent;
-            }
-
-            if self.session_locked
-                && self
-                    .lock_surfaces
-                    .iter()
-                    .any(|(_, s)| s.wl_surface() == &root)
-                {
-                    tracing::info!(
-                        "session_lock: commit on lock surface {:?}, surfaces total={}",
-                        root.id(),
-                        self.lock_surfaces.len()
-                    );
-                    // First commit on a lock surface = it's now mapped (has
-                    // a buffer attached). Run focus refresh AT THIS POINT
-                    // so `wl_keyboard.enter` lands on a fully-formed
-                    // surface — Qt's QtWayland plugin doesn't always wire
-                    // forceActiveFocus on the QML TextInput until the
-                    // QQuickWindow has received both surface activation
-                    // AND a paint event, so re-issuing focus once the
-                    // first buffer commits is what flips the password
-                    // field from "renders but is dead" to "accepts the
-                    // first keystroke." `refresh_keyboard_focus` also
-                    // makes sure the surface that gets focus is the one
-                    // on the cursor's output (not always the first
-                    // surface in `lock_surfaces`).
-                    self.refresh_keyboard_focus();
-                    self.request_repaint();
-                    return;
-                }
-
-            // First check if this commit belongs to a client we've
-            // deferred (created in `new_toplevel`, not yet mapped
-            // because we wanted to wait for app_id before applying
-            // window rules). If so, finalise the initial map now.
-            let deferred_idx = self
-                .clients
-                .iter()
-                .position(|c| {
-                    c.is_initial_map_pending
-                        && c.window.wl_surface().as_deref() == Some(&root)
-                });
-            if let Some(idx) = deferred_idx {
-                self.finalize_initial_map(idx);
-            }
-
-            let committed_window = self
-                .space
-                .elements()
-                .find(|w| w.wl_surface().as_deref() == Some(&root))
-                .cloned();
-            if let Some(window) = committed_window {
-                window.on_commit();
-                // Send the initial configure on first commit if not yet sent.
-                // xdg-shell clients perform an initial bufferless commit after
-                // role assignment and then wait for this configure.
-                if let WindowSurface::Wayland(toplevel) = window.underlying_surface() {
-                    self.refresh_wayland_toplevel_identity(&window, toplevel);
-                    let initial_sent = with_states(toplevel.wl_surface(), |states| {
-                        states
-                            .data_map
-                            .get::<XdgToplevelSurfaceData>()
-                            .and_then(|d| d.lock().ok().map(|d| d.initial_configure_sent))
-                            .unwrap_or(false)
-                    });
-                    if !initial_sent {
-                        tracing::debug!("sending initial configure for toplevel");
-                        toplevel.send_configure();
-                    } else {
-                        tracing::trace!("commit on already-configured toplevel");
-                    }
-                }
-                // Re-derive border geometry from the freshly-committed
-                // window_geometry. Clients (notably Electron — Helium /
-                // Spotify) sometimes commit at a smaller size than we
-                // asked them to, and without this refresh the border
-                // stays drawn around the larger layout-reserved rect,
-                // leaving a wallpaper strip between the visible window
-                // and its frame.
-                crate::border::refresh(self);
-            }
-
-            let layer_output = self.space.outputs().find_map(|output| {
-                let map = layer_map_for_output(output);
-                if map.layer_for_surface(&root, WindowSurfaceType::TOPLEVEL).is_some() {
-                    Some(output.clone())
-                } else {
-                    None
-                }
-            });
-
-            if let Some(output) = layer_output {
-                let initial_sent = with_states(&root, |states| {
-                    states
-                        .data_map
-                        .get::<LayerSurfaceData>()
-                        .and_then(|d| d.lock().ok().map(|d| d.initial_configure_sent))
-                        .unwrap_or(false)
-                });
-
-                {
-                    let mut map = layer_map_for_output(&output);
-                    map.arrange();
-                    if !initial_sent {
-                        if let Some(layer) = map.layer_for_surface(&root, WindowSurfaceType::TOPLEVEL) {
-                            tracing::debug!("sending initial configure for layer surface");
-                            layer.layer_surface().send_configure();
-                        }
-                    }
-                }
-
-                self.refresh_output_work_area(&output);
-
-                // A layer commit can flip `keyboard_interactivity` —
-                // noctalia's bar / launcher / settings / control-center
-                // all live on a single per-screen MainScreen layer and
-                // mutate `WlrLayershell.keyboardFocus` between
-                // `Exclusive` and `None` instead of destroying the
-                // surface. Without recomputing focus here, closing one
-                // of those panels with Esc leaves keyboard focus
-                // pinned to the (still-alive) layer surface in `None`
-                // mode — keys go nowhere until the user nudges the
-                // mouse, which is exactly what made "rofi works but
-                // the noctalia launcher does not" reproducible.
-                self.refresh_keyboard_focus();
-            }
-        }
-        // Initial configure for xdg_popups. Toplevel and layer surfaces
-        // get their initial-configure pumped above; popups need the same
-        // treatment or GTK / Chromium will sit forever waiting for an
-        // ack and never attach a buffer — that's the "right-click menu
-        // never opens" / "Helium 3-dot menu does nothing" / "Nemo
-        // context menu invisible" symptom. Pattern lifted from anvil.
-        if let Some(smithay::desktop::PopupKind::Xdg(xdg)) =
-            self.popups.find_popup(surface)
-        {
-            if !xdg.is_initial_configure_sent() {
-                if let Err(err) = xdg.send_configure() {
-                    tracing::warn!(?err, "popup initial configure failed");
-                } else {
-                    tracing::debug!("sent initial configure for xdg_popup");
-                }
-            }
-        }
-        self.popups.commit(surface);
-        self.request_repaint();
-    }
-}
-delegate_compositor!(MargoState);
-
-impl BufferHandler for MargoState {
-    fn buffer_destroyed(
-        &mut self,
-        _buffer: &smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer,
-    ) {
-    }
-}
-
-
 // ── Deferred initial map (out-of-trait helper) ───────────────────────────────
 
 impl MargoState {
@@ -6085,241 +5902,4 @@ smithay::delegate_viewporter!(MargoState);
 
 
 delegate_presentation!(MargoState);
-
-// ── ext-image-capture-source-v1 + ext-image-copy-capture-v1 handlers ─────────
-//
-// Step 1 of the per-window screencast stack: scaffold the protocol
-// surface so xdp-wlr 0.8+ sees the globals and exposes the Window
-// tab in meeting clients. Frame rendering ("actually copy pixels
-// into the client's buffer") is the follow-up commit; today every
-// frame request fails with `Unspecified` so capture sessions open
-// + close cleanly without dispatching against an unrendered buffer.
-//
-// What landing this commit alone gets us:
-//
-//   * `ext_image_capture_source_v1` global advertised.
-//   * `ext_output_image_capture_source_manager_v1` global —
-//     clients can mint a source from any wl_output.
-//   * `ext_foreign_toplevel_image_capture_source_manager_v1` global
-//     — clients can mint a source from any toplevel listed by
-//     `ext-foreign-toplevel-list-v1` (which margo already speaks).
-//   * `ext_image_copy_capture_manager_v1` global — sessions can
-//     be opened against any of the above sources.
-//
-// What still needs Step 2 (rendering):
-//
-//   * `capture_constraints` returning real format/size constraints
-//     so the client allocates a matching buffer.
-//   * `frame()` callback rendering the source into the supplied
-//     buffer, then `Frame::success(...)`.
-//
-// Today both `capture_constraints` returns `None` (rejecting capture)
-// and `frame()` immediately fails — the protocol surface exists but
-// no pixels flow yet. Browser meeting clients see the Window tab
-// populated but actual share will fall back to the wlr-screencopy
-// monitor path.
-use smithay::wayland::image_capture_source::{
-    ImageCaptureSource, ImageCaptureSourceHandler, ImageCaptureSourceState,
-    OutputCaptureSourceHandler, OutputCaptureSourceState, ToplevelCaptureSourceHandler,
-    ToplevelCaptureSourceState,
-};
-use smithay::wayland::image_copy_capture::{
-    BufferConstraints, CursorSession, Frame, ImageCopyCaptureHandler, ImageCopyCaptureState,
-    Session, SessionRef,
-};
-
-impl ImageCaptureSourceHandler for MargoState {
-    fn source_destroyed(&mut self, source: ImageCaptureSource) {
-        // Nothing to clean up on the compositor side yet — sources
-        // are stateless until rendering wires up a per-source
-        // tracker.
-        let _ = source;
-    }
-}
-
-impl OutputCaptureSourceHandler for MargoState {
-    fn output_capture_source_state(&mut self) -> &mut OutputCaptureSourceState {
-        &mut self.output_capture_source_state
-    }
-
-    fn output_source_created(
-        &mut self,
-        source: ImageCaptureSource,
-        output: &smithay::output::Output,
-    ) {
-        // Stash the output's downgrade handle on the source so
-        // Step 2's frame() can find which output the client wants.
-        source
-            .user_data()
-            .insert_if_missing(|| output.downgrade());
-    }
-}
-
-impl ToplevelCaptureSourceHandler for MargoState {
-    fn toplevel_capture_source_state(&mut self) -> &mut ToplevelCaptureSourceState {
-        &mut self.toplevel_capture_source_state
-    }
-
-    fn toplevel_source_created(
-        &mut self,
-        source: ImageCaptureSource,
-        toplevel: smithay::wayland::foreign_toplevel_list::ForeignToplevelHandle,
-    ) {
-        // Stash the toplevel handle so Step 2's frame() can map
-        // the source back to a `MargoClient` index. Cloning a
-        // ForeignToplevelHandle is cheap (Arc-backed).
-        source.user_data().insert_if_missing(|| toplevel);
-    }
-}
-
-impl ImageCopyCaptureHandler for MargoState {
-    fn image_copy_capture_state(&mut self) -> &mut ImageCopyCaptureState {
-        &mut self.image_copy_capture_state
-    }
-
-    fn capture_constraints(&mut self, source: &ImageCaptureSource) -> Option<BufferConstraints> {
-        // Two source kinds: output (display capture) and toplevel
-        // (per-window capture). The user_data carries a different
-        // handle for each — we picked the one that matches.
-
-        // Output source (Screen tab in meeting clients)
-        if let Some(weak_output) = source.user_data().get::<smithay::output::WeakOutput>() {
-            let output = weak_output.upgrade()?;
-            let mode = output.current_mode()?;
-            let size = smithay::utils::Size::<i32, smithay::utils::Buffer>::from(
-                (mode.size.w, mode.size.h),
-            );
-            return Some(BufferConstraints {
-                size,
-                shm: vec![
-                    smithay::reexports::wayland_server::protocol::wl_shm::Format::Argb8888,
-                    smithay::reexports::wayland_server::protocol::wl_shm::Format::Xrgb8888,
-                ],
-                dma: None,
-            });
-        }
-
-        // Toplevel source (Window tab) — find the MargoClient
-        // backing this ForeignToplevelHandle and report its
-        // current geometry. Bbox-with-popups would clip popups;
-        // the live capture only catches the toplevel proper.
-        let handle = source
-            .user_data()
-            .get::<smithay::wayland::foreign_toplevel_list::ForeignToplevelHandle>()?;
-        let client = self
-            .clients
-            .iter()
-            .find(|c| {
-                c.foreign_toplevel_handle
-                    .as_ref()
-                    .is_some_and(|h| h.matches(handle))
-            })?;
-
-        // Window size — geometry().size is the surface-side
-        // logical size; for screencast we want pixels in the
-        // buffer-coord domain. They're numerically the same when
-        // scale=1 and identical for arrange-tracked geometry.
-        let size = smithay::utils::Size::<i32, smithay::utils::Buffer>::from((
-            client.geom.width.max(1),
-            client.geom.height.max(1),
-        ));
-        Some(BufferConstraints {
-            size,
-            shm: vec![
-                smithay::reexports::wayland_server::protocol::wl_shm::Format::Argb8888,
-                smithay::reexports::wayland_server::protocol::wl_shm::Format::Xrgb8888,
-            ],
-            dma: None,
-        })
-    }
-
-    fn new_session(&mut self, session: Session) {
-        // Hold the session so it doesn't drop (drop sends
-        // `stopped` to the client). Sessions live until the
-        // client tears them down or the source becomes invalid.
-        self.image_copy_capture_sessions.push(session);
-    }
-
-    fn new_cursor_session(&mut self, session: CursorSession) {
-        // Cursor capture is a separate sub-protocol; we don't
-        // route the cursor through ext-image-copy-capture yet
-        // (margo's cursor lives on a hardware plane when
-        // possible). Drop = `stopped` to the client.
-        let _ = session;
-    }
-
-    fn frame(&mut self, session: &SessionRef, frame: Frame) {
-        // Route the frame to either an output or a toplevel
-        // render path based on which user_data the source
-        // carries.
-        let source = session.source();
-
-        // Output source — match by name so the udev side can
-        // resolve back to an OutputDevice.
-        if let Some(weak_output) = source.user_data().get::<smithay::output::WeakOutput>() {
-            if let Some(output) = weak_output.upgrade() {
-                self.pending_image_copy_frames
-                    .push(crate::PendingImageCopyFrame {
-                        source: crate::PendingImageCopySource::Output(output.name()),
-                        frame: Some(frame),
-                    });
-                self.request_repaint();
-                return;
-            }
-        }
-
-        // Toplevel source — clone the matching client's Window
-        // (Arc-backed, cheap) so the udev side can render it
-        // directly. Index into self.clients can shift between
-        // request and drain, so don't store an index.
-        if let Some(handle) = source
-            .user_data()
-            .get::<smithay::wayland::foreign_toplevel_list::ForeignToplevelHandle>()
-        {
-            if let Some(client) = self
-                .clients
-                .iter()
-                .find(|c| {
-                c.foreign_toplevel_handle
-                    .as_ref()
-                    .is_some_and(|h| h.matches(handle))
-            })
-            {
-                let window = client.window.clone();
-                self.pending_image_copy_frames
-                    .push(crate::PendingImageCopyFrame {
-                        source: crate::PendingImageCopySource::Toplevel(window),
-                        frame: Some(frame),
-                    });
-                self.request_repaint();
-                return;
-            }
-            // Toplevel went away (closed) between session
-            // creation and frame request.
-            frame.fail(
-                smithay::wayland::image_copy_capture::CaptureFailureReason::Stopped,
-            );
-            return;
-        }
-
-        // Source carries neither user_data tag — shouldn't
-        // happen unless someone wires a custom source we don't
-        // recognise.
-        frame.fail(
-            smithay::wayland::image_copy_capture::CaptureFailureReason::Unknown,
-        );
-    }
-}
-
-smithay::delegate_image_capture_source!(MargoState);
-smithay::delegate_output_capture_source!(MargoState);
-smithay::delegate_toplevel_capture_source!(MargoState);
-smithay::delegate_image_copy_capture!(MargoState);
-
-// Suppress the unused-import warning until Step 2 starts using
-// `ImageCaptureSourceState`'s methods directly.
-#[allow(dead_code)]
-fn _force_unused_state_alive(s: &ImageCaptureSourceState) {
-    let _ = s;
-}
 
