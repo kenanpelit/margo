@@ -7,7 +7,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
-A "post-W-sweep capability + cleanup" pass. Five features and three
+## [0.1.3] – 2026-05-10
+
+A "post-W-sweep capability + cleanup" pass. Four features and three
 refactors land between the 0.1.2 release and now; together they close
 out every internal long-tail item the road map flagged.
 
