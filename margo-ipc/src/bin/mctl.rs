@@ -209,6 +209,32 @@ enum Command {
     #[command(display_order = 30)]
     Reload,
 
+    /// Live-swap the visual theme preset. Built-ins: `default`,
+    /// `minimal`, `gaudy`. The first preset switch captures a
+    /// baseline of the on-disk theme values; `theme default`
+    /// restores them. `mctl reload` invalidates the baseline so
+    /// reload + `default` lands the freshly-parsed values.
+    #[command(display_order = 32)]
+    Theme {
+        /// Preset name: `default`, `minimal`, or `gaudy`.
+        preset: String,
+    },
+
+    /// Save per-monitor tag/layout state to
+    /// `$XDG_STATE_HOME/margo/session.json` (defaults to
+    /// `~/.local/state/margo/session.json`). Captures every
+    /// monitor's seltags, tagset, per-tag layout/mfact/nmaster,
+    /// and canvas-pan. Open windows are not captured — clients are
+    /// bound to processes, the spawn line lives in user-space.
+    #[command(name = "session-save", display_order = 33, alias = "session_save")]
+    SessionSave,
+
+    /// Restore per-monitor tag/layout state from
+    /// `$XDG_STATE_HOME/margo/session.json`. Matches monitors by
+    /// output name; entries for absent monitors get logged + skipped.
+    #[command(name = "session-load", display_order = 34, alias = "session_load")]
+    SessionLoad,
+
     /// Stream state updates from margo (runs until Ctrl-C)
     #[command(
         display_order = 2,
@@ -796,6 +822,39 @@ fn main() -> Result<()> {
         Command::Reload => {
             ipc_out.dispatch(
                 "reload_config".to_string(),
+                String::new(),
+                String::new(),
+                String::new(),
+                String::new(),
+                String::new(),
+            );
+            eq.roundtrip(&mut state)?;
+        }
+        Command::Theme { preset } => {
+            ipc_out.dispatch(
+                "theme".to_string(),
+                preset,
+                String::new(),
+                String::new(),
+                String::new(),
+                String::new(),
+            );
+            eq.roundtrip(&mut state)?;
+        }
+        Command::SessionSave => {
+            ipc_out.dispatch(
+                "session_save".to_string(),
+                String::new(),
+                String::new(),
+                String::new(),
+                String::new(),
+                String::new(),
+            );
+            eq.roundtrip(&mut state)?;
+        }
+        Command::SessionLoad => {
+            ipc_out.dispatch(
+                "session_load".to_string(),
                 String::new(),
                 String::new(),
                 String::new(),
