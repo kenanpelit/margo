@@ -741,12 +741,15 @@ fn main() -> Result<()> {
                 }
             };
             let abs_str = abs.to_string_lossy().to_string();
+            // arg.v is fed from slot 4 (see dwl_ipc.rs Dispatch
+            // handler). Slots 1-3 are numeric-parsed and dropped
+            // on a non-numeric path, so the script path goes here.
             ipc_out.dispatch(
                 "run_script".to_string(),
+                String::new(),
+                String::new(),
+                String::new(),
                 abs_str,
-                String::new(),
-                String::new(),
-                String::new(),
                 String::new(),
             );
             eq.roundtrip(&mut state)?;
@@ -831,12 +834,17 @@ fn main() -> Result<()> {
             eq.roundtrip(&mut state)?;
         }
         Command::Theme { preset } => {
+            // dwl-ipc-v2 dispatch maps the 5 string slots as:
+            //   arg1=i  arg2=i2  arg3=f  arg4=v  arg5=v2
+            // The handler reads `arg.v`, so the preset string has to
+            // land in slot 4. Slots 1-3 stay empty (they'd be
+            // numeric-parsed and dropped on a non-numeric value).
             ipc_out.dispatch(
                 "theme".to_string(),
+                String::new(),
+                String::new(),
+                String::new(),
                 preset,
-                String::new(),
-                String::new(),
-                String::new(),
                 String::new(),
             );
             eq.roundtrip(&mut state)?;
