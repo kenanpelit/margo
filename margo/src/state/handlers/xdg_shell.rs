@@ -42,7 +42,7 @@ use smithay::{
         wayland_protocols::xdg::shell::server::xdg_toplevel,
         wayland_server::protocol::{wl_output::WlOutput, wl_seat::WlSeat},
     },
-    utils::{Logical, Point, Serial, Size, SERIAL_COUNTER},
+    utils::{Logical, Point, Serial, Size},
     wayland::{
         seat::WaylandFocus,
         shell::xdg::{
@@ -212,35 +212,94 @@ impl XdgShellHandler for MargoState {
     }
 
     fn grab(&mut self, surface: PopupSurface, seat: WlSeat, serial: Serial) {
-        // Honour `xdg_popup.grab` enough that portal file pickers,
-        // browser dropdowns and right-click menus actually receive
-        // keyboard input. The previous empty stub silently ate every
-        // popup-grab request, which is why arrow-keys / Enter / Esc
-        // never reached popups on the user side — keyboard focus
-        // stayed on the parent toplevel.
+        // Proper xdg_popup.grab: set up smithay's PopupGrab so the
+        // pointer + keyboard track the popup chain. Without the
+        // pointer half, browser context menus / Helium's 3-dot menu
+        // / Nemo's right-click menu open and INSTANTLY dismiss
+        // because pointer events keep going to the toplevel — the
+        // toplevel sees a click "outside" the popup it just opened
+        // and tears the popup down (the visible "menu doesn't
+        // open" symptom).
         //
-        // Side-step smithay's full `PopupKeyboardGrab` /
-        // `PopupPointerGrab` chain (it expects `From<PopupKind> for
-        // FocusTarget` plus `From<FocusTarget> for WlSurface`, and
-        // our FocusTarget can't satisfy the latter — SessionLock
-        // targets don't always have a stable wl_surface). Push
-        // keyboard focus to the popup's wl_surface directly through
-        // smithay's `KeyboardTarget for WlSurface` impl. Nested
-        // popups walk the same path on each `xdg_popup.grab` so
-        // focus tracks the latest level.
+        // The standard smithay pattern:
+        //   1. Resolve the popup's root toplevel (walks
+        //      xdg_surface.parent up to the root).
+        //   2. Map that root wl_surface back to a `FocusTarget`
+        //      (`FocusTarget::Window` for an xdg toplevel).
+        //   3. `popups.grab_popup(root, kind, seat, serial)` —
+        //      smithay validates the serial, ensures the popup is
+        //      the topmost in the chain, sets up the bookkeeping.
+        //   4. `keyboard.set_grab(PopupKeyboardGrab)` — keyboard
+        //      stays on the popup chain; clicks outside dismiss.
+        //   5. `pointer.set_grab(PopupPointerGrab)` — pointer
+        //      events drill through the popup chain; pointer.button
+        //      OUTSIDE the popup hierarchy dismisses the chain.
         let Some(seat) = Seat::<MargoState>::from_resource(&seat) else {
             return;
         };
-        let Some(keyboard) = seat.get_keyboard() else {
+
+        let kind = smithay::desktop::PopupKind::Xdg(surface);
+        let Ok(root_wl_surface) = smithay::desktop::find_popup_root_surface(&kind) else {
+            // Stale popup — parent already dismissed. Letting it
+            // fall through to the helper would just produce a
+            // noisier error.
             return;
         };
-        let _ = serial;
-        let popup_surface = surface.wl_surface().clone();
-        keyboard.set_focus(
-            self,
-            Some(FocusTarget::Popup(popup_surface)),
-            SERIAL_COUNTER.next_serial(),
-        );
+
+        // Resolve the root surface back to a FocusTarget. For xdg
+        // toplevels it must be FocusTarget::Window. We search the
+        // client list for a window whose wl_surface matches; if no
+        // match (X11 client, or weird race), abort the grab silently.
+        let root_focus = self.clients.iter().find_map(|c| {
+            c.window
+                .wl_surface()
+                .as_deref()
+                .filter(|s| **s == root_wl_surface)
+                .map(|_| FocusTarget::Window(c.window.clone()))
+        });
+        let Some(root) = root_focus else {
+            return;
+        };
+
+        let mut grab = match self.popups.grab_popup(root, kind, &seat, serial) {
+            Ok(g) => g,
+            Err(err) => {
+                tracing::debug!(?err, "xdg_popup.grab rejected");
+                return;
+            }
+        };
+
+        if let Some(keyboard) = seat.get_keyboard() {
+            // If somebody else (like a different popup chain) is
+            // already grabbing the keyboard, only honour our request
+            // if it chains directly off that grab — otherwise it'd
+            // be a focus-steal disguised as a popup.
+            if keyboard.is_grabbed()
+                && !(keyboard.has_grab(serial)
+                    || keyboard.has_grab(grab.previous_serial().unwrap_or(serial)))
+            {
+                let _ = grab.ungrab(smithay::desktop::PopupUngrabStrategy::All);
+                return;
+            }
+            keyboard.set_focus(self, grab.current_grab(), serial);
+            keyboard.set_grab(self, smithay::desktop::PopupKeyboardGrab::new(&grab), serial);
+        }
+
+        if let Some(pointer) = seat.get_pointer() {
+            if pointer.is_grabbed()
+                && !(pointer.has_grab(serial)
+                    || pointer.has_grab(grab.previous_serial().unwrap_or(serial)))
+            {
+                let _ = grab.ungrab(smithay::desktop::PopupUngrabStrategy::All);
+                return;
+            }
+            pointer.set_grab(
+                self,
+                smithay::desktop::PopupPointerGrab::new(&grab),
+                serial,
+                smithay::input::pointer::Focus::Keep,
+            );
+        }
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {

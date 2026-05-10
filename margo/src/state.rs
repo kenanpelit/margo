@@ -184,6 +184,39 @@ impl FocusTarget {
     }
 }
 
+// `PopupManager::grab_popup` requires the seat's `KeyboardFocus` to
+// be `From<PopupKind>` so margo can hand a popup wl_surface in as the
+// grab target. Wrap the popup's wl_surface in a `FocusTarget::Popup`.
+impl From<smithay::desktop::PopupKind> for FocusTarget {
+    fn from(kind: smithay::desktop::PopupKind) -> Self {
+        FocusTarget::Popup(kind.wl_surface().clone())
+    }
+}
+
+// `PopupManager::grab_popup` also requires the seat's `PointerFocus`
+// (`WlSurface` for margo) to be `From<KeyboardFocus>`. The standard
+// extraction works for every variant — every FocusTarget kind maps
+// to exactly one wl_surface (toplevels carry one in their underlying
+// WindowSurface; layer / lock / popup expose one directly). The
+// only edge case is a Window with an X11 surface, which has NO
+// wl_surface — in practice grab_popup is never called against an
+// X11 window root (only XDG toplevels open xdg_popups), so the
+// expect is a never-fire diagnostic rather than an assertion that
+// could panic in a real session.
+impl From<FocusTarget> for WlSurface {
+    fn from(target: FocusTarget) -> Self {
+        match target {
+            FocusTarget::Window(w) => w
+                .wl_surface()
+                .map(|cow| cow.into_owned())
+                .expect("FocusTarget::Window passed to grab_popup must have a wl_surface (i.e. be a Wayland toplevel, not X11)"),
+            FocusTarget::Popup(s) => s,
+            FocusTarget::LayerSurface(l) => l.wl_surface().clone(),
+            FocusTarget::SessionLock(s) => s.wl_surface().clone(),
+        }
+    }
+}
+
 impl KeyboardTarget<MargoState> for FocusTarget {
     fn enter(
         &self,

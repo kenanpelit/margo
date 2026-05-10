@@ -7,6 +7,29 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`xdg_popup.grab` now sets up a real popup grab.** Browser
+  context menus (Helium / Chromium right-click), Helium's 3-dot
+  toolbar menu, Nemo's right-click context menu, GTK file-picker
+  dropdowns, and any other popup that requests `xdg_popup.grab`
+  could open and instantly dismiss because margo was only
+  flipping keyboard focus to the popup wl_surface — pointer
+  events kept being delivered to the parent toplevel, so the
+  toplevel saw a click "outside" the popup it had just opened
+  and tore the popup down. The visible symptom was "menu doesn't
+  open" / "right-click doesn't work" / "double-click does
+  nothing". Margo now goes through the standard smithay path:
+  `PopupManager::grab_popup` validates the serial, ensures the
+  popup is the topmost in its chain, and returns a `PopupGrab`;
+  margo then installs that grab on both the keyboard
+  (`PopupKeyboardGrab`) and pointer (`PopupPointerGrab`) so
+  events drill through the popup hierarchy and clicks outside
+  dismiss the chain. Implementing this required two trivial
+  `From` impls — `From<PopupKind> for FocusTarget` and
+  `From<FocusTarget> for WlSurface` — that the previous
+  workaround had explicitly side-stepped.
+
 ## [0.1.0] – 2026-05-10
 
 First public release. margo crosses from "in-progress Rust port of mango"
