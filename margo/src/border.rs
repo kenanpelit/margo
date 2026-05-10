@@ -23,6 +23,14 @@ pub struct ClientBorder {
     width: f32,
     radius: f32,
     color: [f32; 4],
+    /// Secondary (inner band) colour. Equal to `color` when the
+    /// dual-band feature is unused — see `render/rounded_border.rs`
+    /// shader for the degeneracy that keeps single-colour render
+    /// output bit-identical to pre-dual builds.
+    color_secondary: [f32; 4],
+    /// Width of the secondary band in logical pixels. Zero collapses
+    /// the rendering to single-colour mode.
+    secondary_width: f32,
 }
 
 impl Default for ClientBorder {
@@ -34,17 +42,35 @@ impl Default for ClientBorder {
             width: 0.0,
             radius: 0.0,
             color: [0.0; 4],
+            color_secondary: [0.0; 4],
+            secondary_width: 0.0,
         }
     }
 }
 
 impl ClientBorder {
-    pub fn update(&mut self, geom: Rect, width: f32, radius: f32, color: [f32; 4]) {
-        if self.geom != geom || self.width != width || self.radius != radius || self.color != color {
+    pub fn update(
+        &mut self,
+        geom: Rect,
+        width: f32,
+        radius: f32,
+        color: [f32; 4],
+        color_secondary: [f32; 4],
+        secondary_width: f32,
+    ) {
+        if self.geom != geom
+            || self.width != width
+            || self.radius != radius
+            || self.color != color
+            || self.color_secondary != color_secondary
+            || self.secondary_width != secondary_width
+        {
             self.geom = geom;
             self.width = width;
             self.radius = radius;
             self.color = color;
+            self.color_secondary = color_secondary;
+            self.secondary_width = secondary_width;
             self.commit.increment();
         }
     }
@@ -66,6 +92,33 @@ fn color_for(state: &MargoState, client_idx: usize, focused: bool) -> [f32; 4] {
     } else {
         cfg.bordercolor.0
     }
+}
+
+/// Pick the secondary (inner) band colour to pair with the primary
+/// returned by `color_for`. The secondary set deliberately covers
+/// only the **focus / unfocus / urgent** cases — these are the
+/// states a dual-tone border accentuates (the user wants their
+/// focused window to stand out, or a screaming `urgent` flag to
+/// have an unmistakable inner ring). Overlay / global / fullscreen
+/// keep their existing single-tone look so opt-in users don't lose
+/// the at-a-glance recognition those colours provide.
+///
+/// Falls back to the primary colour when no secondary is configured
+/// — paired with the shader's two-band degeneracy this means the
+/// render output stays bit-identical for single-colour configs.
+fn secondary_color_for(state: &MargoState, client_idx: usize, focused: bool, primary: [f32; 4]) -> [f32; 4] {
+    let c = &state.clients[client_idx];
+    let cfg = &state.config;
+    let secondary = if c.is_urgent {
+        cfg.urgentcolor_secondary
+    } else if c.is_overlay || c.is_global || c.is_fullscreen {
+        None
+    } else if focused {
+        cfg.focuscolor_secondary
+    } else {
+        cfg.bordercolor_secondary
+    };
+    secondary.map(|c| c.0).unwrap_or(primary)
 }
 
 pub fn refresh(state: &mut MargoState) {
@@ -206,9 +259,34 @@ pub fn refresh(state: &mut MargoState) {
         } else {
             color_for(state, idx, focused == Some(idx))
         };
+        // Secondary band: solid colour resolved from config; not
+        // crossfaded during focus transitions (the inner accent is
+        // typically a calmer base — leaving it steady while the
+        // primary fades in / out reads as "the highlight is moving",
+        // which matches what the user sees).
+        let color_secondary = if hide {
+            [0.0; 4]
+        } else {
+            secondary_color_for(state, idx, focused == Some(idx), color)
+        };
         let effective = if hide { 0.0 } else { width };
         let radius = state.config.border_radius as f32;
-        state.clients[idx].border.update(geom, effective, radius, color);
+        // Secondary band width — clamp to the effective border width
+        // so a config typo (`border_secondary_px = 99` against
+        // `borderpx = 4`) can't paint past the inner edge.
+        let secondary_width = if hide {
+            0.0
+        } else {
+            (state.config.border_secondary_px as f32).min(effective)
+        };
+        state.clients[idx].border.update(
+            geom,
+            effective,
+            radius,
+            color,
+            color_secondary,
+            secondary_width,
+        );
     }
 }
 
@@ -248,8 +326,10 @@ pub fn render_element_for_client(
         b.id.clone(),
         geom,
         b.color,
+        b.color_secondary,
         b.radius,
         b.width,
+        b.secondary_width,
         1.0,
         b.commit,
         program,

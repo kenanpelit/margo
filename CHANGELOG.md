@@ -7,6 +7,25 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- **Dual-color border** — opt-in concentric two-band rendering.
+  When `border_secondary_px > 0` and a `*color_secondary` (one of
+  `bordercolor_secondary` / `focuscolor_secondary` /
+  `urgentcolor_secondary`) is set, the rounded-border SDF shader
+  splits the ring into an outer band (primary colour) and an
+  inner band (secondary colour) with anti-aliased seams between
+  them. The two-band formula degenerates to the original
+  single-colour ring whenever a secondary is unset, so existing
+  configs render bit-identically to pre-feature builds. Common
+  shapes: 1-px highlight + 3-px body, neon-piping (bright outer
+  + dark inner), Catppuccin two-tone. Overlay / global /
+  fullscreen accents stay single-tone on purpose so they remain
+  instantly recognisable. New config keys: `border_secondary_px`,
+  `bordercolor_secondary`, `focuscolor_secondary`,
+  `urgentcolor_secondary`. Documented inline in
+  `config.example.conf`.
+
 ## [0.1.0] – 2026-05-10
 
 First public release. margo crosses from "in-progress Rust port of mango"
