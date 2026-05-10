@@ -92,7 +92,7 @@ hide:
 
     What's shipped, what's queued.
 
-    [:octicons-arrow-right-24: Roadmap](roadmap.md)
+    [:octicons-arrow-right-24: Roadmap](roadmap.md) · [Changelog](changelog.md)
 
 </div>
 

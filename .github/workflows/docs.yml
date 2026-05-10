@@ -7,6 +7,7 @@ on:
       - 'docs/**'
       - 'mkdocs.yml'
       - 'road_map.md'
+      - 'CHANGELOG.md'
       - 'CONTRIBUTING.md'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
@@ -38,12 +39,13 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Sync repo-root markdown into docs/
-        # The roadmap and CONTRIBUTING file are source-of-truth at the
-        # repo root (referenced by README, by mctl + by every PR).
-        # Copy them into docs/ at build time so the site renders the
-        # current version without forcing two copies in git.
+        # The roadmap, CHANGELOG, and CONTRIBUTING file are source-of-
+        # truth at the repo root (referenced by README, by mctl + by
+        # every PR). Copy them into docs/ at build time so the site
+        # renders the current version without forcing two copies in git.
         run: |
           cp road_map.md     docs/roadmap.md
+          cp CHANGELOG.md    docs/changelog.md
           cp CONTRIBUTING.md docs/contributing.md
 
       - name: Build site

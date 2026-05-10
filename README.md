@@ -182,6 +182,8 @@ Engine: [Rhai] (pure Rust, sandboxed by default). Full reference: [`docs/scripti
 
 ## Documentation
 
+- **[Documentation site](https://kenanpelit.github.io/margo/)** — install, configuration, scripting, design notes, manual checklist (mkdocs-material).
+- **[`CHANGELOG.md`](CHANGELOG.md)** — release-by-release feature history (Keep-a-Changelog format).
 - **[`road_map.md`](road_map.md)** — what's shipped, what's queued, design trade-offs.
 - **[`docs/`](docs/)** — design notes for in-flight features (HDR, portal, scripting) and the post-install validation checklist.
 - `mctl --help`, `mctl actions --verbose`, `mlayout --help`, `mscreenshot --help` — generated from source, always current.

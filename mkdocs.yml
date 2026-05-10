@@ -68,6 +68,7 @@ nav:
       - Built-in portal: portal-design.md
       - Scripting engine: scripting-design.md
   - Roadmap: roadmap.md
+  - Changelog: changelog.md
   - Contributing: contributing.md
 
 markdown_extensions:
