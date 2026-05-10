@@ -334,9 +334,9 @@ Behaviour-stable. Listed for completeness — bisect targets if anything regress
 - **Phase 4** — per-output ICC profiles (~250 LOC).
 
 ### Screencast portal
-- **`IpcOutputMap` lazy refresh** on hotplug during active casts (~30 LOC).
-- **`ScreenCast::Session::Stop` grace period** to avoid pipewire warnings on rapid stop/start cycles.
-- **Per-cast wake-only scheduling** — current continuous-repaint is global.
+- **`IpcOutputMap` lazy refresh** on hotplug during active casts. ✅ shipped — `MargoState::ipc_outputs` now owns one shared `Arc<Mutex<IpcOutputMap>>`; both `DisplayConfig` and `ScreenCast` services receive a clone (was: each got its own startup snapshot, neither refreshed). New `MargoState::refresh_ipc_outputs()` rebuilds the snapshot from live monitors and is called from `remove_output` (hotplug-out) and from both `setup_connector` paths in udev (hotplug-in initial + live). xdp-gnome's chooser dialog now reflects the live output set without a margo restart.
+- **`ScreenCast::Session::Stop` grace period** to avoid pipewire warnings on rapid stop/start cycles. *Deferred* — requires a live PipeWire test setup to verify; cosmetic warning, no functional impact.
+- **Per-cast wake-only scheduling** — current continuous-repaint is global. *Deferred* — same testing constraint plus the change touches the render loop's frame-clock; deserves a dedicated session.
 
 ### Protocol depth
 - **`presentation-time` page-flip seq** — currently uses `now()`; plumb `crtc->page_flip_seq` from the smithay flip event into `publish_presentation_feedback`.

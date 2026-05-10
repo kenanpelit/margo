@@ -530,6 +530,10 @@ pub fn run(
             focus_history: std::collections::VecDeque::new(),
         });
         state.apply_tag_rules_to_monitor(state.monitors.len() - 1);
+        // Hotplug-in (initial-setup path): refresh the shared
+        // ipc_outputs snapshot so DisplayConfig + ScreenCast see
+        // the new monitor immediately.
+        state.refresh_ipc_outputs();
 
         // Best-effort GAMMA_LUT discovery. If the connector/driver doesn't
         // expose it (some VC4/Mali-DP setups), `gamma` stays None and
@@ -1144,6 +1148,10 @@ fn setup_connector(
             focus_history: std::collections::VecDeque::new(),
     });
     state.apply_tag_rules_to_monitor(state.monitors.len() - 1);
+    // Hotplug-in (live-connector path): keep the shared
+    // ipc_outputs snapshot in sync so xdp-gnome's chooser
+    // dialog picks up the new monitor without a margo restart.
+    state.refresh_ipc_outputs();
 
     let mut gamma_props = GammaProps::discover(drm, crtc);
     if let Some(gamma) = gamma_props.as_mut() {

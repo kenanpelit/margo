@@ -1190,6 +1190,17 @@ pub struct MargoState {
     /// Gated on the `dbus` feature.
     #[cfg(feature = "dbus")]
     pub dbus_servers: crate::dbus::DBusServers,
+    /// Shared snapshot of monitors used by the Mutter D-Bus shims
+    /// (`DisplayConfig` + `ScreenCast`). The same Arc handed to
+    /// both services so a hotplug-driven `refresh_ipc_outputs()`
+    /// updates both views at once. Previously each service got
+    /// its own `ipc_output::snapshot(&margo)` at startup and
+    /// neither refreshed — a monitor unplugged mid-cast left
+    /// xdp-gnome's chooser dialog still listing the gone output.
+    /// Lazy in the sense that we only re-snapshot when the
+    /// monitor list actually changes, not every frame.
+    #[cfg(feature = "dbus")]
+    pub ipc_outputs: std::sync::Arc<std::sync::Mutex<crate::dbus::ipc_output::IpcOutputMap>>,
     /// GBM device the udev backend opened for buffer allocation.
     /// Populated at backend init; D-Bus / screencast threads pull
     /// it for `Cast::new` to allocate dmabuf-backed PipeWire
@@ -1511,6 +1522,10 @@ impl MargoState {
             screencasting: None,
             #[cfg(feature = "dbus")]
             dbus_servers: crate::dbus::DBusServers::default(),
+            #[cfg(feature = "dbus")]
+            ipc_outputs: std::sync::Arc::new(std::sync::Mutex::new(
+                crate::dbus::ipc_output::IpcOutputMap::new(),
+            )),
             cast_gbm: None,
             cast_render_formats: Default::default(),
             image_capture_source_state,
@@ -1729,6 +1744,26 @@ impl MargoState {
         }
     }
 
+    /// Re-build the shared `ipc_outputs` snapshot from the live
+    /// `monitors` list. No-op without the `dbus` feature. Called
+    /// from `remove_output` (hotplug-out) and from the udev
+    /// backend's `setup_connector` (hotplug-in) so xdp-gnome's
+    /// chooser dialog always reflects the actual output set —
+    /// without this, a monitor unplugged mid-cast would still
+    /// appear in the Entire Screen tab.
+    #[cfg(feature = "dbus")]
+    pub fn refresh_ipc_outputs(&self) {
+        let snap = crate::dbus::ipc_output::snapshot(self);
+        if let Ok(mut guard) = self.ipc_outputs.lock() {
+            *guard = snap;
+        }
+    }
+
+    /// No-op stub when dbus is off. Lets call sites in udev /
+    /// state stay un-cfg-gated.
+    #[cfg(not(feature = "dbus"))]
+    pub fn refresh_ipc_outputs(&self) {}
+
     pub fn publish_output_topology(&mut self) {
         let mut snap = std::collections::HashMap::new();
         for mon in &self.monitors {
@@ -1760,6 +1795,9 @@ impl MargoState {
         self.space.unmap_output(output);
         self.lock_surfaces.retain(|(o, _)| o != output);
         self.pending_gamma.retain(|(o, _)| o != output);
+        // Hotplug-out: refresh the shared D-Bus snapshot so
+        // xdp-gnome's chooser dialog drops the now-gone output.
+        self.refresh_ipc_outputs();
         self.request_repaint();
     }
 

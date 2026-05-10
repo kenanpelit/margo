@@ -597,12 +597,18 @@ fn main() -> Result<()> {
     // ScreenCast chooser's Entire Screen tab.
     #[cfg(feature = "dbus")]
     {
-        use crate::dbus::ipc_output;
         use crate::dbus::mutter_display_config::DisplayConfig;
         use crate::dbus::Start as _;
 
-        let outputs = std::sync::Arc::new(std::sync::Mutex::new(ipc_output::snapshot(&margo)));
-        match DisplayConfig::new(outputs).start() {
+        // Snapshot the live monitor list into the shared
+        // `ipc_outputs` Arc once, so DisplayConfig sees the
+        // current outputs without holding a stale per-service
+        // copy. Subsequent hotplugs route through
+        // `MargoState::refresh_ipc_outputs()` which mutates the
+        // SAME Arc — both DisplayConfig and ScreenCast pick the
+        // new state up on their next read.
+        margo.refresh_ipc_outputs();
+        match DisplayConfig::new(margo.ipc_outputs.clone()).start() {
             Ok(conn) => margo.dbus_servers.conn_display_config = Some(conn),
             Err(e) => warn!("DisplayConfig D-Bus start failed: {e}"),
         }
@@ -723,12 +729,15 @@ fn main() -> Result<()> {
     // `crate::screencasting::pw_utils::Cast`.
     #[cfg(feature = "xdp-gnome-screencast")]
     {
-        use crate::dbus::ipc_output;
         use crate::dbus::mutter_screen_cast::{ScreenCast, ScreenCastToCompositor};
         use crate::dbus::Start as _;
 
         let (sc_tx, sc_rx) = calloop::channel::channel::<ScreenCastToCompositor>();
-        let outputs = std::sync::Arc::new(std::sync::Mutex::new(ipc_output::snapshot(&margo)));
+        // Same shared `ipc_outputs` Arc DisplayConfig got above;
+        // hotplug-driven `refresh_ipc_outputs()` mutates the map
+        // in place, so ScreenCast's chooser reflects the live
+        // output set without a margo restart.
+        let outputs = margo.ipc_outputs.clone();
 
         if let Err(e) = event_loop
             .handle()
