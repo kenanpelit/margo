@@ -3557,6 +3557,108 @@ impl MargoState {
         }
     }
 
+    /// All clients that are currently shown as overview thumbnails,
+    /// in monitor-then-client order — i.e. the same iteration order
+    /// `arrange_monitor` walks when assigning grid slots. This is the
+    /// canonical ring `overview_focus_next/prev` rotate through.
+    /// Returns indices into `self.clients`. Empty when overview is
+    /// closed or no monitor has any visible client.
+    fn overview_visible_clients(&self) -> Vec<usize> {
+        let mut out = Vec::new();
+        for mon_idx in 0..self.monitors.len() {
+            if !self.monitors[mon_idx].is_overview {
+                continue;
+            }
+            for (i, c) in self.clients.iter().enumerate() {
+                if c.monitor == mon_idx
+                    && !c.is_initial_map_pending
+                    && !c.is_minimized
+                    && !c.is_killing
+                    && !c.is_in_scratchpad
+                {
+                    out.push(i);
+                }
+            }
+        }
+        out
+    }
+
+    pub fn overview_focus_next(&mut self) {
+        self.overview_focus_step(1);
+    }
+
+    pub fn overview_focus_prev(&mut self) {
+        self.overview_focus_step(-1);
+    }
+
+    /// Cycle the overview hover one step in `dir` (+1 = next, -1 =
+    /// prev). If no thumbnail is currently hovered, +1 lands on the
+    /// first thumbnail and -1 on the last — same wrap-around model
+    /// as alt+Tab on every other DE. Pointer warps to the new
+    /// thumbnail's centre so the next click activates whatever
+    /// alt+Tab last highlighted, even if the user used pure
+    /// keyboard for the cycle.
+    fn overview_focus_step(&mut self, dir: i32) {
+        if !self.is_overview_open() {
+            return;
+        }
+        let list = self.overview_visible_clients();
+        if list.is_empty() {
+            return;
+        }
+        let cur = list
+            .iter()
+            .position(|&i| self.clients[i].is_overview_hovered);
+        let n = list.len() as i32;
+        let next_pos = match cur {
+            Some(p) => (((p as i32 + dir).rem_euclid(n)) + n).rem_euclid(n),
+            None => {
+                if dir > 0 {
+                    0
+                } else {
+                    n - 1
+                }
+            }
+        } as usize;
+        let new_idx = list[next_pos];
+
+        for &i in &list {
+            self.clients[i].is_overview_hovered = false;
+        }
+        self.clients[new_idx].is_overview_hovered = true;
+
+        // Warp pointer to thumbnail centre. update_overview_hover()
+        // (input_handler) re-syncs hover off the cursor on the next
+        // motion event, so without this warp the very next mouse
+        // jiggle would yank hover back to whatever's under the
+        // physical cursor — very surprising mid-keyboard-cycle.
+        let g = self.clients[new_idx].geom;
+        if g.width > 0 && g.height > 0 {
+            self.input_pointer.x = (g.x + g.width / 2) as f64;
+            self.input_pointer.y = (g.y + g.height / 2) as f64;
+        }
+
+        crate::border::refresh(self);
+        self.request_repaint();
+    }
+
+    /// Close overview activating whichever thumbnail keyboard
+    /// navigation last highlighted (or the cursor-hovered one).
+    /// No-op outside overview. With no hover set, falls through to
+    /// `close_overview(None)` which restores the pre-overview tag
+    /// without changing focus.
+    pub fn overview_activate(&mut self) {
+        if !self.is_overview_open() {
+            return;
+        }
+        let window = self
+            .clients
+            .iter()
+            .find(|c| c.is_overview_hovered)
+            .map(|c| c.window.clone());
+        self.close_overview(window);
+    }
+
     fn apply_window_rules(&self, client: &mut MargoClient) {
         let rules = self.matching_window_rules(&client.app_id, &client.title);
         Self::apply_matched_window_rules(&self.monitors, client, &rules);

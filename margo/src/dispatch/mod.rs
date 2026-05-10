@@ -267,6 +267,15 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
             }
         }
         "toggleoverview" => state.toggle_overview(),
+        // Keyboard navigation while overview is open. The action
+        // handlers are no-ops outside overview, but the keybinding
+        // dispatcher still intercepts the keystroke — pick combos
+        // (alt+Tab, mod+J/K, ...) that don't collide with normal
+        // text input. Binding bare Return would swallow Enter
+        // everywhere, including terminals.
+        "overview_focus_next" => state.overview_focus_next(),
+        "overview_focus_prev" => state.overview_focus_prev(),
+        "overview_activate" => state.overview_activate(),
         // Spatial-canvas pan (PaperWM-ish). Two integer args:
         // dx and dy logical-pixel deltas. Stored per-tag so each
         // tag remembers its viewport offset.

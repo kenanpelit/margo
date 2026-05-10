@@ -124,3 +124,17 @@ fn overview_animation_override_clears_after_close() {
         "transition override must be cleared after close_overview",
     );
 }
+
+/// Keyboard navigation actions are no-ops when overview is closed.
+/// Binding alt+Tab globally is fine because outside overview the
+/// action does nothing; the keybinding dispatcher still eats the
+/// keystroke, which is acceptable as long as state stays clean.
+#[test]
+fn overview_focus_next_is_noop_when_closed() {
+    let mut fx = Fixture::new();
+    fx.add_output("DP-1", (1920, 1080));
+    fx.server.state.overview_focus_next();
+    fx.server.state.overview_focus_prev();
+    fx.server.state.overview_activate();
+    assert!(!fx.server.state.is_overview_open());
+}
