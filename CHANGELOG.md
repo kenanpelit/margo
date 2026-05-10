@@ -9,6 +9,23 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- **Pointer/keyboard input no longer steals focus during an active
+  grab.** Even after wiring up `PopupPointerGrab`/`PopupKeyboardGrab`,
+  GTK and Chromium menus would still flicker open and close because
+  `handle_pointer_button` and `apply_sloppy_focus` called
+  `state.focus_surface(...)` *before* forwarding the click. The
+  toplevel-level `focus_under()` lookup can't see popups (popups
+  aren't in `state.space.elements()`), so it returned whichever
+  toplevel the popup happened to overlap geometrically — and our
+  side effects (`selected`, dwl-ipc broadcast, scripting hooks,
+  border crossfade, sloppy-focus arrange) ran against the wrong
+  window while the popup was still up. The visible symptoms were
+  "menu opens for one frame, then closes", right-click producing a
+  brief flash, and Nemo double-clicks getting routed as window
+  focus swaps. Both call sites now skip our focus logic when
+  `pointer.is_grabbed()` or `keyboard.is_grabbed()` — smithay's
+  active grab owns focus routing for the duration, and dismissal
+  re-establishes focus through the normal motion path.
 - **`xdg_popup.grab` now sets up a real popup grab.** Browser
   context menus (Helium / Chromium right-click), Helium's 3-dot
   toolbar menu, Nemo's right-click context menu, GTK file-picker

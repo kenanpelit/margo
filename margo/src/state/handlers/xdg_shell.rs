@@ -114,7 +114,10 @@ impl XdgShellHandler for MargoState {
     }
 
     fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
-        let _ = self.popups.track_popup(PopupKind::Xdg(surface));
+        match self.popups.track_popup(PopupKind::Xdg(surface)) {
+            Ok(()) => tracing::info!("new_popup: tracked"),
+            Err(e) => tracing::warn!(?e, "new_popup: track_popup failed"),
+        }
     }
 
     fn reposition_request(
@@ -212,6 +215,7 @@ impl XdgShellHandler for MargoState {
     }
 
     fn grab(&mut self, surface: PopupSurface, seat: WlSeat, serial: Serial) {
+        tracing::info!("xdg_popup.grab fired serial={:?}", serial);
         // Proper xdg_popup.grab: set up smithay's PopupGrab so the
         // pointer + keyboard track the popup chain. Without the
         // pointer half, browser context menus / Helium's 3-dot menu

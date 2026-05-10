@@ -509,6 +509,24 @@ fn apply_sloppy_focus(state: &mut MargoState, target: Option<&FocusTarget>) {
     if !state.config.sloppyfocus {
         return;
     }
+    // While a popup grab is up, motion over an underlying toplevel
+    // must not refocus it: PopupKeyboardGrab will drop our
+    // `keyboard.set_focus()` anyway, but the surrounding side
+    // effects (selected, dwl-ipc broadcast, scripting hooks,
+    // border crossfade) still run and shake the popup loose.
+    if state
+        .seat
+        .get_keyboard()
+        .map(|k| k.is_grabbed())
+        .unwrap_or(false)
+        || state
+            .seat
+            .get_pointer()
+            .map(|p| p.is_grabbed())
+            .unwrap_or(false)
+    {
+        return;
+    }
     let Some(FocusTarget::Window(window)) = target else {
         return;
     };
@@ -616,7 +634,33 @@ fn handle_pointer_button<B: InputBackend, E: PointerButtonEvent<B>>(
         }
     }
 
-    if btn_state == ButtonState::Pressed {
+    // Skip our own focus-on-click logic while smithay holds an
+    // active pointer or keyboard grab. The interesting case is an
+    // xdg_popup grab (right-click menu, GTK/Chromium chevron menus):
+    // PopupPointerGrab routes the click to the popup or dismisses
+    // it on outside-click. Our `focus_under(pos)` only knows about
+    // toplevels/layers — it can't see the popup — so it would
+    // return whatever window geometrically sits beneath the popup
+    // and `focus_surface(...)` would yank `selected` over to the
+    // wrong toplevel. Symptoms: GTK/Chromium menus visibly opening
+    // for one frame and closing again, right-click never producing
+    // a stable menu, double-clicks being interpreted as window
+    // focus swaps. Let the grab own the click; if it dismisses,
+    // smithay also drops keyboard/pointer focus and our normal
+    // motion handling re-establishes focus on the next event.
+    let pointer_grabbed = state
+        .seat
+        .get_pointer()
+        .map(|p| p.is_grabbed())
+        .unwrap_or(false);
+    let keyboard_grabbed = state
+        .seat
+        .get_keyboard()
+        .map(|k| k.is_grabbed())
+        .unwrap_or(false);
+    let in_grab = pointer_grabbed || keyboard_grabbed;
+
+    if btn_state == ButtonState::Pressed && !in_grab {
         if state.is_overview_open() {
             match focus_under(state, pos).map(|(target, _)| target) {
                 Some(FocusTarget::Window(window)) => {
