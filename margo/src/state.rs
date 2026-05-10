@@ -125,6 +125,29 @@ fn focus_target_label(t: &FocusTarget) -> String {
     }
 }
 
+// ── Window-rule reapply trigger ──────────────────────────────────────────────
+
+/// Tags the three sites that drive a post-mount window-rule reapply.
+/// Lets [`MargoState::reapply_rules`] log the trigger reason and gives
+/// future per-trigger policy (e.g. "don't move clients on `Reload`,
+/// only on `InitialMap`") a single place to live.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum WindowRuleReason {
+    /// Initial XDG toplevel map — `finalize_initial_map` runs rules
+    /// once after `app_id` and `title` settle.
+    InitialMap,
+    /// Late `app_id` (or title) change after the initial commit.
+    /// Browsers + Electron apps frequently set their own app_id
+    /// asynchronously after the first frame; rules keyed on app_id
+    /// have to re-run when the value finally lands.
+    AppIdSettled,
+    /// Config reload — rules pulled from the new `Config` get
+    /// reapplied to every existing client. Conservative trigger:
+    /// runs even when the rule set didn't change, so `mctl reload`
+    /// is always idempotent.
+    Reload,
+}
+
 // ── Focus target ─────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq)]
@@ -2513,7 +2536,7 @@ impl MargoState {
         self.enable_gaps = new_config.enable_gaps;
         self.config = new_config;
         for idx in 0..self.clients.len() {
-            self.apply_window_rules_to_client(idx);
+            self.reapply_rules(idx, WindowRuleReason::Reload);
         }
         for mon_idx in 0..self.monitors.len() {
             self.apply_tag_rules_to_monitor(mon_idx);
@@ -3702,12 +3725,27 @@ impl MargoState {
         self.close_overview(window);
     }
 
+    /// Why a window-rule reapply is happening. Lets the single
+    /// reapply path log meaningfully and (in future) skip rule subsets
+    /// that don't make sense for a given trigger (e.g. `tags:`
+    /// shouldn't move a client on `Reload`).
     fn apply_window_rules(&self, client: &mut MargoClient) {
+        // Pre-mount path (X11 + initial XDG before the client is in
+        // `self.clients`). The post-mount equivalent is
+        // [`reapply_rules`].
         let rules = self.matching_window_rules(&client.app_id, &client.title);
         Self::apply_matched_window_rules(&self.monitors, client, &rules);
     }
 
-    fn apply_window_rules_to_client(&mut self, idx: usize) -> bool {
+    /// Single post-mount window-rule reapply path. All three trigger
+    /// sites — initial XDG mount, late `app_id` settle, config reload —
+    /// route through this with a [`WindowRuleReason`] tag so the debug
+    /// log says *why* a rule fired.
+    pub(crate) fn reapply_rules(
+        &mut self,
+        idx: usize,
+        reason: WindowRuleReason,
+    ) -> bool {
         if idx >= self.clients.len() {
             return false;
         }
@@ -3717,9 +3755,25 @@ impl MargoState {
         };
         let rules = self.matching_window_rules(&app_id, &title);
         if rules.is_empty() {
+            tracing::trace!(
+                target: "windowrule",
+                reason = ?reason,
+                app_id = %app_id,
+                title = %title,
+                "reapply: no rules match",
+            );
             return false;
         }
         Self::apply_matched_window_rules(&self.monitors, &mut self.clients[idx], &rules);
+        tracing::debug!(
+            target: "windowrule",
+            reason = ?reason,
+            count = rules.len(),
+            app_id = %app_id,
+            title = %title,
+            "reapply: applied {} rules",
+            rules.len(),
+        );
         true
     }
 
@@ -3987,7 +4041,7 @@ impl MargoState {
         let should_reapply_rules = (app_id_changed && !app_id.is_empty())
             || (title_changed && !title.is_empty() && title_rules_exist);
 
-        if should_reapply_rules && self.apply_window_rules_to_client(idx) {
+        if should_reapply_rules && self.reapply_rules(idx, WindowRuleReason::AppIdSettled) {
             let new_monitor = self.clients[idx].monitor;
             if old_monitor != new_monitor {
                 self.arrange_monitor(old_monitor);
@@ -5512,7 +5566,7 @@ impl MargoState {
         }
 
         // Now run rules with the live app_id/title.
-        let _changed = self.apply_window_rules_to_client(idx);
+        let _changed = self.reapply_rules(idx, WindowRuleReason::InitialMap);
 
         // Tag-home redirect: if rules picked tag N but didn't pin a
         // monitor, route to the tag's home output.
