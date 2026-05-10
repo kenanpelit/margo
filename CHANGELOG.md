@@ -7,6 +7,48 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.1.7] – 2026-05-10
+
+First Phase 2 release. Single user-facing feature: a real fix for
+fullscreen — the prior `togglefullscreen` looked full-screen but the
+bar (noctalia / wlr-bar) kept rendering on top, covering the
+window's top portion. Now there are two distinct fullscreen modes,
+each on its own keybind.
+
+### Added
+
+- **`togglefullscreen_exclusive` dispatch action.** True fullscreen:
+  window resizes to `monitor_area` (entire output) and the render
+  path suppresses every layer-shell surface on that monitor — the
+  bar literally disappears while exclusive fullscreen is active.
+  Right behaviour for mpv / browser fullscreen movie / fullscreen
+  games. Aliases: `togglefullscreen-exclusive`,
+  `togglefullscreenexclusive`.
+
+  ```ini
+  bind = super,f,togglefullscreen
+  bind = super+shift,f,togglefullscreen_exclusive
+  ```
+
+### Changed
+
+- **`togglefullscreen` now respects `work_area`.** The default
+  fullscreen action used to size the window to the full
+  `monitor_area` even though the layer-shell bar kept rendering on
+  top — the window's top region was permanently covered. Now the
+  window resizes to `monitors[].work_area` (after layer-shell
+  exclusion zones), so the bar stays visible and the window covers
+  every other pixel below it. Standard `F11` feel.
+- **`MargoClient` gains a `fullscreen_mode: FullscreenMode { Off,
+  WorkArea, Exclusive }` field** alongside the existing
+  `is_fullscreen: bool`. The bool is kept in lock-step
+  (`is_fullscreen == fullscreen_mode != Off`) for backward-compat
+  with 20+ callsites in render / IPC / window-rule paths;
+  `set_client_fullscreen_mode(idx, mode)` is the new source of
+  truth and `set_client_fullscreen(idx, bool)` shims to
+  `WorkArea`. `xdg_toplevel` size hint matches the active mode so
+  client first-frame buffer allocations land correctly.
+
 ## [0.1.6] – 2026-05-10
 
 A `mvisual` UX hot-fix. `cargo run -p mvisual` flashed a window for a
