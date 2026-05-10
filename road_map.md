@@ -480,32 +480,36 @@ test setup that needs more than a winit nested session.
 | **W2.2b** Full pixman software renderer fallback | qemu / headless user reports | ~1500 LOC + 7 render-element generic-Renderer rewrites (`R: Renderer + Bind<...>`) plus parallel udev/winit paths |
 | **W2.3** Tablet input | Wacom / Huion user request | ~500 LOC for `tablet_v2` + stylus/pad mapping + `map-to-focused-window` mode |
 
-### 15.6 Overview — Mango/Hypr per-tag thumbnail (current)
+### 15.6 Overview — MangoWM `overview(m) { grid(m); }` (current)
 
-Direct-driver feedback after a Phase 3 detour: every alternative
-overview model that wasn't a Mango-style per-tag thumbnail grid
-got rejected on the first or second test session. The five-commit
+Two iterations of overview UX converged on the simplest possible
+shape after live testing: mango-ext's own one-liner. The Phase 3
 "Infinite Spatial Overview" attempt (camera, momentum, world coords,
-pan/zoom dispatches) was reverted in one pass because the live
-camera felt fiddly and the geometric continuity of a fixed grid
-read better. Final shape:
+pan/zoom dispatches — five commits) was reverted in one pass; the
+follow-up "fixed 3×3 per-tag thumbnail grid" was then also rejected
+because a tag with 1-2 windows ended up at ~⅓ × ⅓ of the screen,
+not the native MangoWM "big windows zoomed out" feel. Final shape
+matches mango-ext exactly:
 
-* **Fixed 3×3 cell layout** over the work area. Tag 1 top-left,
-  tag 9 bottom-right (1-9 keypad mental model). Empty tags get an
-  empty cell — same cell index every time, so spatial memory
-  carries across openings.
-* **Each thumbnail runs that tag's configured layout** — `Pertag::
-  ltidxs[N]`, `mfacts[N]`, `nmasters[N]`. A scroller tag stays
-  scroller-shaped at thumbnail size; a grid tag stays grid-shaped.
-* **Triggers**: keybind / hot corner (1×1 px + dwell) / 4-finger
+* **Single Grid layout over all visible clients**, with `tagset =
+  !0` so every tag's windows fold into one arrangement, and the
+  tiled filter relaxed to include floating windows
+  (`is_overview || c.is_tiled()`). Cell count = window count, not 9.
+  - 1 window → ≈ 90% × 90% of the screen, centred
+  - 2 windows → side-by-side halves
+  - 4 windows → 2 × 2 quarters
+  - 9 windows → 3 × 3 evenly
+  - Cells shrink as window count grows — natural Mango/Hypr feel.
+* **Triggers**: keybind / hot corner (1 × 1 px + dwell) / 4-finger
   touchpad swipe. All three route to the same `toggle_overview`
   handler.
 * **alt+Tab MRU cycle** with snap-no-slide arrange — each cycle
-  step bypasses the move animation (`overview_transition_animation_ms
-  = Some(1)`) so the focused-window border lights up `focuscolor`
-  instantly. alt+Return / `overview_activate` commits the
-  highlighted thumbnail and closes overview onto its window's tag.
-* **Mouse**: click on thumbnail = activate + close; click on empty
+  step bypasses the move animation
+  (`overview_transition_animation_ms = Some(1)`) so the focused-
+  window border lights up `focuscolor` instantly. alt+Return /
+  `overview_activate` commits the highlighted thumbnail and closes
+  overview onto its window's tag.
+* **Mouse**: click on window = activate + close; click on empty
   area = close.
 * **Hot corner safety guards**: `update_hot_corner` early-exits on
   `session_locked`, on an active screenshot region selector, and on
@@ -519,7 +523,7 @@ read better. Final shape:
 - [ ] Cold-path structured-logging migration complete (Q5)
 - [ ] At least **2 community contributors** with merged PRs (currently 1)
 - [ ] Plugin marketplace open with ≥3 community plugins
-- [x] **Mango/Hypr-style overview shipped** (per-tag thumbnail grid, alt+Tab MRU cycle with focuscolor border tracking, hot corner with safety guards, 4-finger touchpad trigger). Phase 3 "Infinite Spatial Overview" attempt was reverted after live testing — the fixed-grid + window-cycle pattern read better than the camera-pan canvas.
+- [x] **MangoWM-style overview shipped** (`overview(m) { grid(m); }` — single dynamic Grid over all visible clients, alt+Tab MRU cycle with focuscolor border tracking, hot corner with safety guards, 4-finger touchpad trigger). Two preceding iterations were rejected after live testing: Phase 3 "Infinite Spatial Overview" (camera/pan/zoom) and the intermediate fixed 3×3 per-tag thumbnail grid both felt non-native compared to mango-ext's one-liner.
 - [ ] Phase 2 closing release: **v0.2.0** (semver minor — feature-complete in stream of work, no breaking changes)
 
 ### 15.9 Phase 2 explicitly out-of-scope

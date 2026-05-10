@@ -2759,123 +2759,6 @@ impl MargoState {
     }
 
 
-    /// Overview rendering — Mango/Hypr-style per-tag thumbnail grid.
-    /// Fixed 3×3 cell layout over the work area; tag 1 top-left,
-    /// tag 9 bottom-right. Each cell hosts its tag's clients in
-    /// that tag's *configured* layout (the per-tag `Pertag` —
-    /// `ltidxs[N]`, `mfacts[N]`, `nmasters[N]`). Empty tags simply
-    /// produce an empty cell.
-    ///
-    /// Why fixed 3×3 (not dynamic): spatial memory continuity. With
-    /// a dynamic grid the user has to re-locate the active tag every
-    /// time a tag empties out. With a fixed grid, tag 5 is always in
-    /// the centre, tag 1 always top-left, etc. — alt+Tab cycle and
-    /// hot-corner trigger become muscle memory after a few uses.
-    ///
-    /// `border::refresh` reads `is_overview_hovered` to paint the
-    /// keyboard-cycle's selected client in `focuscolor`; the cycle
-    /// path itself uses `overview_transition_animation_ms = Some(1)`
-    /// to bypass the move animation, so each Tab press lands the
-    /// hover colour instantly.
-    fn arrange_overview_per_tag_grid(
-        &self,
-        mon_idx: usize,
-        work_area: layout::Rect,
-        gaps: &layout::GapConfig,
-    ) -> layout::ArrangeResult {
-        const COLS: i32 = 3;
-        const ROWS: i32 = 3;
-        let mon = &self.monitors[mon_idx];
-        let pad = self.config.overview_gap_outer.max(0);
-        let cell_w = ((work_area.width - pad * (COLS + 1)) / COLS).max(1);
-        let cell_h = ((work_area.height - pad * (ROWS + 1)) / ROWS).max(1);
-
-        // Inner gap halved so thumbnail content reads denser at
-        // small cell size.
-        let inner_pad = (gaps.gappih / 2).max(2);
-        let cell_gaps = layout::GapConfig {
-            gappih: inner_pad,
-            gappiv: inner_pad,
-            gappoh: inner_pad,
-            gappov: inner_pad,
-        };
-
-        let mut results: layout::ArrangeResult = Vec::new();
-        for tag_idx in 0..crate::layout::MAX_TAGS as i32 {
-            let row = tag_idx / COLS;
-            let col = tag_idx % COLS;
-            let cell_rect = layout::Rect {
-                x: work_area.x + pad + col * (cell_w + pad),
-                y: work_area.y + pad + row * (cell_h + pad),
-                width: cell_w,
-                height: cell_h,
-            };
-
-            let tag_bit = 1u32 << tag_idx;
-            // Pertag uses 1-based slots (slot 0 unused).
-            let pertag_slot = tag_idx as usize + 1;
-            let tag_layout = mon
-                .pertag
-                .ltidxs
-                .get(pertag_slot)
-                .copied()
-                .unwrap_or(layout::LayoutId::Tile);
-            let tag_mfact = mon
-                .pertag
-                .mfacts
-                .get(pertag_slot)
-                .copied()
-                .unwrap_or(self.config.default_mfact);
-            let tag_nmaster = mon
-                .pertag
-                .nmasters
-                .get(pertag_slot)
-                .copied()
-                .unwrap_or(self.config.default_nmaster);
-
-            let cell_tiled: Vec<usize> = self
-                .clients
-                .iter()
-                .enumerate()
-                .filter(|(_, c)| {
-                    !c.is_initial_map_pending
-                        && c.monitor == mon_idx
-                        && (c.tags & tag_bit) != 0
-                        && !c.is_minimized
-                        && !c.is_killing
-                        && !c.is_in_scratchpad
-                })
-                .map(|(i, _)| i)
-                .collect();
-            if cell_tiled.is_empty() {
-                continue;
-            }
-
-            let cell_props: Vec<f32> = cell_tiled
-                .iter()
-                .map(|&i| self.clients[i].scroller_proportion)
-                .collect();
-
-            let ctx = layout::ArrangeCtx {
-                work_area: cell_rect,
-                tiled: &cell_tiled,
-                nmaster: tag_nmaster,
-                mfact: tag_mfact,
-                gaps: &cell_gaps,
-                scroller_proportions: &cell_props,
-                default_scroller_proportion: self.config.scroller_default_proportion,
-                focused_tiled_pos: None,
-                scroller_structs: self.config.scroller_structs,
-                scroller_focus_center: false,
-                scroller_prefer_center: false,
-                scroller_prefer_overspread: false,
-                canvas_pan: (0.0, 0.0),
-            };
-            results.extend(layout::arrange(tag_layout, &ctx));
-        }
-        results
-    }
-
     pub fn arrange_monitor(&mut self, mon_idx: usize) {
         let _span = tracy_client::span!("arrange_monitor");
         if mon_idx >= self.monitors.len() {
@@ -3021,20 +2904,15 @@ impl MargoState {
             canvas_pan,
         };
 
-        // Overview path — Mango/Hypr-style zoom-out canvas. Every
-        // tag becomes its own thumbnail in a fixed 3×3 grid (tag 1
-        // top-left, tag 9 bottom-right — the 1-9 keypad mental
-        // model). Each thumbnail runs its tag's *configured* layout
-        // (Tile / Scroller / Grid / Canvas / …) inside the cell, so
-        // a scroller tag stays scroller-shaped at thumbnail size,
-        // a grid tag stays grid-shaped. Spatial-memory continuity:
-        // a window in the top-left of tag 1 will be in the top-left
-        // of the top-left thumbnail.
-        let geometries = if is_overview {
-            self.arrange_overview_per_tag_grid(mon_idx, work_area, &gaps)
-        } else {
-            layout::arrange(layout, &ctx)
-        };
+        // Overview path — mango-ext pattern (`overview(m) { grid(m); }`).
+        // Above we forced `layout = Grid` and `tagset = !0` when
+        // `is_overview`, and the `tiled` filter at line ~2977 admits
+        // floating clients in overview too. So a single Grid arrange
+        // over every visible window produces the right shape: 1 window
+        // ≈ 90%×90% centred, 2 → side-by-side halves, 4 → 2×2 quarters,
+        // 9 → 3×3 evenly. Cells shrink as window count grows, which is
+        // the natural Mango/Hypr feel — no fixed 3×3 per-tag thumbnails.
+        let geometries = layout::arrange(layout, &ctx);
         let now = crate::utils::now_ms();
         for (client_idx, mut rect) in geometries {
             // Apply per-client size constraints from window rules. The layout

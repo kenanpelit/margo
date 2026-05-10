@@ -9,6 +9,26 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Changed
 
+- **Overview switched from fixed 3×3 per-tag thumbnails to mango-ext
+  `overview(m) { grid(m); }` semantics.** The per-tag thumbnail grid
+  always carved the work area into 9 cells regardless of window
+  count, so a tag with 1-2 windows ended up at ~⅓ × ⅓ of the screen
+  — "küçük gözüküyor, natif değil." Mango-ext's overview is just a
+  Grid layout over all visible clients (`tagset = !0` + Grid +
+  floating-included filter), so cell count = window count. Net
+  effect: 1 window ≈ 90% × 90% of the screen, 2 → side-by-side
+  halves, 4 → 2 × 2 quarters, 9 → 3 × 3 evenly. Cells shrink as
+  window count grows, matching the native MangoWM feel.
+  * Removed `MargoState::arrange_overview_per_tag_grid` helper
+    (~95 LOC including doc) and its `is_overview` branch in
+    `arrange_monitor`.
+  * The `is_overview` setup at the top of `arrange_monitor`
+    (`layout = Grid` + `tagset = !0` + `is_tiled` filter relaxed)
+    is now sufficient — a single `layout::arrange(layout, &ctx)`
+    call produces the dynamic grid.
+  * hot-corner / alt+Tab cycle / alt+Return commit / 4-finger
+    swipe / snap-no-slide cycle animation all unchanged.
+
 - **Overview reverted from "Infinite Spatial" back to Mango-style
   per-tag thumbnail grid.** Five commits of camera-pan canvas
   (foundation + state + nav + auto-fit + window-centred cycle) were
