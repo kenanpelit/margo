@@ -38,10 +38,8 @@ impl RoundedBorderShader {
             FRAG_SRC,
             &[
                 UniformName::new("u_color", UniformType::_4f),
-                UniformName::new("u_color_secondary", UniformType::_4f),
                 UniformName::new("u_radius", UniformType::_1f),
                 UniformName::new("u_border_width", UniformType::_1f),
-                UniformName::new("u_secondary_width", UniformType::_1f),
             ],
         )?;
         Ok(Self(program))
@@ -81,36 +79,23 @@ pub struct RoundedBorderElement {
     id: Id,
     /// Outer logical rect of the border frame.
     geometry: Rectangle<i32, Logical>,
-    /// Primary (outer) band colour.
     color: [f32; 4],
-    /// Secondary (inner) band colour. Equal to `color` when the
-    /// dual-band feature is unused — the shader's two-band formula
-    /// degenerates to the single-band case in that scenario, so no
-    /// branching is needed.
-    color_secondary: [f32; 4],
     /// Outer corner radius in logical pixels.
     radius: f32,
-    /// Total border thickness in logical pixels (primary + secondary
-    /// bands combined).
+    /// Border thickness in logical pixels.
     border_width: f32,
-    /// Width of the secondary (inner) band in logical pixels.
-    /// `0.0` collapses the rendering to single-colour mode.
-    secondary_width: f32,
     alpha: f32,
     commit: CommitCounter,
     program: GlesPixelProgram,
 }
 
 impl RoundedBorderElement {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: Id,
         geometry: Rectangle<i32, Logical>,
         color: [f32; 4],
-        color_secondary: [f32; 4],
         radius: f32,
         border_width: f32,
-        secondary_width: f32,
         alpha: f32,
         commit: CommitCounter,
         program: GlesPixelProgram,
@@ -119,10 +104,8 @@ impl RoundedBorderElement {
             id,
             geometry,
             color,
-            color_secondary,
             radius,
             border_width,
-            secondary_width,
             alpha,
             commit,
             program,
@@ -212,7 +195,6 @@ impl RenderElement<GlesRenderer> for RoundedBorderElement {
         };
         let physical_radius = self.radius * scale;
         let physical_border = self.border_width * scale;
-        let physical_secondary = self.secondary_width.clamp(0.0, self.border_width) * scale;
 
         frame.render_pixel_shader_to(
             &self.program,
@@ -223,10 +205,8 @@ impl RenderElement<GlesRenderer> for RoundedBorderElement {
             self.alpha,
             &[
                 Uniform::new("u_color", self.color),
-                Uniform::new("u_color_secondary", self.color_secondary),
                 Uniform::new("u_radius", physical_radius),
                 Uniform::new("u_border_width", physical_border),
-                Uniform::new("u_secondary_width", physical_secondary),
             ],
         )
     }
@@ -248,10 +228,8 @@ precision mediump float;
 uniform float alpha;
 uniform vec2 size;
 uniform vec4 u_color;
-uniform vec4 u_color_secondary;
 uniform float u_radius;
 uniform float u_border_width;
-uniform float u_secondary_width;
 
 varying vec2 v_coords;
 
@@ -261,52 +239,26 @@ float sd_rounded_rect(vec2 p, vec2 b, float r) {
 }
 
 void main() {
-    // Fragment position in pixels, centred. The shader gets fed
-    // pixel-space radii / widths from `RoundedBorderElement::draw`,
-    // so all distances below are in physical pixels.
+    // Fragment position in pixels, centered.
     vec2 p = v_coords * size - size * 0.5;
     vec2 outer_b = size * 0.5;
 
     float outer_d = sd_rounded_rect(p, outer_b, u_radius);
 
-    // Mid edge: separates the primary band (outside) from the
-    // secondary band (inside). When u_secondary_width == 0, mid
-    // coincides with inner and the secondary band has zero area
-    // — output collapses to single-colour exactly as in the
-    // pre-dual builds.
-    float mid_inset = u_border_width - u_secondary_width;
-    vec2 mid_b = outer_b - vec2(mid_inset);
-    float mid_r = max(u_radius - mid_inset, 0.0);
-    float mid_d = sd_rounded_rect(p, mid_b, mid_r);
-
-    // Inner edge: the hole.
+    // Inner geometry (the hole).
     vec2 inner_b = outer_b - vec2(u_border_width);
     float inner_r = max(u_radius - u_border_width, 0.0);
     float inner_d = sd_rounded_rect(p, inner_b, inner_r);
 
-    // 1-pixel anti-aliased coverage at each edge.
+    // Anti-aliased ring mask: inside outer (negative outer_d) AND outside
+    // inner (positive inner_d). 1px transition each.
     float aa = 1.0;
     float outer_a = 1.0 - smoothstep(-aa, aa, outer_d);
-    float mid_a = 1.0 - smoothstep(-aa, aa, mid_d);
     float inner_a = 1.0 - smoothstep(-aa, aa, inner_d);
+    float ring = outer_a * (1.0 - inner_a);
 
-    // Primary band: between outer and mid edges.
-    float primary_band = outer_a * (1.0 - mid_a);
-    // Secondary band: between mid and inner edges.
-    float secondary_band = mid_a * (1.0 - inner_a);
-
-    // Premultiplied accumulation. When u_color_secondary == u_color
-    // the sum collapses to (outer_a * (1 - inner_a)) * u_color —
-    // bit-identical to the original single-band rendering.
-    float pa = primary_band * u_color.a;
-    float sa = secondary_band * u_color_secondary.a;
-    float a = pa + sa;
-    vec3 rgb = vec3(0.0);
-    if (a > 0.0) {
-        rgb = (u_color.rgb * pa + u_color_secondary.rgb * sa) / a;
-    }
-
-    float final_a = a * alpha;
-    gl_FragColor = vec4(rgb * final_a, final_a);
+    // Pre-multiplied alpha output.
+    float a = u_color.a * alpha * ring;
+    gl_FragColor = vec4(u_color.rgb * a, a);
 }
 "#;

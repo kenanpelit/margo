@@ -576,29 +576,6 @@ pub struct Config {
     pub overlaycolor: Rgba,
     pub shadowscolor: Rgba,
 
-    // Dual-color border (concentric two-band). When `_secondary`
-    // is `None`, the border falls back to the single-colour path
-    // — bit-identical render output to the pre-dual builds, so
-    // existing configs are unaffected.
-    //
-    // Visual model:
-    //   ┌─────────────────────────────┐  ← `bordercolor` band
-    //   │ ┌─────────────────────────┐ │     thickness =
-    //   │ │ ┌─────────────────────┐ │ │       borderpx − border_secondary_px
-    //   │ │ │                     │ │ │
-    //   │ │ │      window         │ │ │  ← `bordercolor_secondary`
-    //   │ │ │                     │ │ │     band, thickness =
-    //   │ │ └─────────────────────┘ │ │       border_secondary_px
-    //   │ └─────────────────────────┘ │
-    //   └─────────────────────────────┘
-    //
-    // `border_secondary_px` is in logical pixels and must be ≤
-    // `borderpx`; values > `borderpx` are clamped at render time.
-    pub bordercolor_secondary: Option<Rgba>,
-    pub focuscolor_secondary: Option<Rgba>,
-    pub urgentcolor_secondary: Option<Rgba>,
-    pub border_secondary_px: u32,
-
     // blur / shadows / visual effects
     pub blur: bool,
     pub blur_layer: bool,
@@ -806,14 +783,6 @@ impl Default for Config {
             globalcolor: Rgba([0xb1_u8 as f32 / 255.0, 0x53_u8 as f32 / 255.0, 0xa7_u8 as f32 / 255.0, 1.0]),
             overlaycolor: Rgba([0x14_u8 as f32 / 255.0, 0xa5_u8 as f32 / 255.0, 0x7c_u8 as f32 / 255.0, 1.0]),
             shadowscolor: Rgba([0.0, 0.0, 0.0, 1.0]),
-
-            // Dual-color border defaults: opt-in. When None, the
-            // shader takes the single-color path with no width
-            // / colour mismatch.
-            bordercolor_secondary: None,
-            focuscolor_secondary: None,
-            urgentcolor_secondary: None,
-            border_secondary_px: 0,
 
             blur: false,
             blur_layer: false,

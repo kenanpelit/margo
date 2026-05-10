@@ -333,7 +333,6 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
         "gappoh" => cfg.gappoh = parse_u32(val),
         "gappov" => cfg.gappov = parse_u32(val),
         "borderpx" => cfg.borderpx = parse_u32(val),
-        "border_secondary_px" => cfg.border_secondary_px = parse_u32(val),
 
         // canvas
         "canvas_tiling" => cfg.canvas_tiling = parse_bool(val),
@@ -350,12 +349,9 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
         // colours
         "rootcolor" => cfg.rootcolor = parse_color(val)?,
         "bordercolor" => cfg.bordercolor = parse_color(val)?,
-        "bordercolor_secondary" => cfg.bordercolor_secondary = Some(parse_color(val)?),
         "focuscolor" => cfg.focuscolor = parse_color(val)?,
-        "focuscolor_secondary" => cfg.focuscolor_secondary = Some(parse_color(val)?),
         "maximizescreencolor" => cfg.maximizescreencolor = parse_color(val)?,
         "urgentcolor" => cfg.urgentcolor = parse_color(val)?,
-        "urgentcolor_secondary" => cfg.urgentcolor_secondary = Some(parse_color(val)?),
         "scratchpadcolor" => cfg.scratchpadcolor = parse_color(val)?,
         "globalcolor" => cfg.globalcolor = parse_color(val)?,
         "overlaycolor" => cfg.overlaycolor = parse_color(val)?,
@@ -1287,60 +1283,6 @@ mod tests {
         assert_eq!(cfg.gappoh, 8);
         assert_eq!(cfg.gappov, 8);
 
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn dual_color_border_fields_parse() {
-        // `bordercolor_secondary` + `focuscolor_secondary` +
-        // `urgentcolor_secondary` are `Option<Rgba>` — `None` when
-        // the key is omitted, `Some(_)` when present. The render
-        // path's two-band shader degenerates to single-colour when
-        // any of these stays None, so the negative-default invariant
-        // is what guarantees "existing configs are bit-identical".
-        let dir = std::env::temp_dir().join(format!(
-            "margo-dual-border-test-{}",
-            std::process::id()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        let main = dir.join("config.conf");
-        std::fs::write(
-            &main,
-            "borderpx = 4\n\
-             border_secondary_px = 1\n\
-             bordercolor_secondary = 0x1e1e2eff\n\
-             focuscolor_secondary  = 0x313244ff\n",
-        )
-        .unwrap();
-        let cfg = parse_config(Some(&main)).unwrap();
-        assert_eq!(cfg.borderpx, 4);
-        assert_eq!(cfg.border_secondary_px, 1);
-        let primary = cfg.bordercolor_secondary.expect("primary secondary set");
-        assert!((primary.0[3] - 1.0).abs() < f32::EPSILON, "alpha");
-        let focus = cfg.focuscolor_secondary.expect("focus secondary set");
-        assert!((focus.0[3] - 1.0).abs() < f32::EPSILON, "alpha");
-        // urgent stays unset → None, not Some(default).
-        assert!(cfg.urgentcolor_secondary.is_none());
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn dual_color_border_defaults_off() {
-        // Empty config → all `*color_secondary` fields are None and
-        // `border_secondary_px` is 0. This is what keeps the
-        // default render path identical to single-colour mode.
-        let dir = std::env::temp_dir().join(format!(
-            "margo-default-border-test-{}",
-            std::process::id()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        let main = dir.join("config.conf");
-        std::fs::write(&main, "borderpx = 4\n").unwrap();
-        let cfg = parse_config(Some(&main)).unwrap();
-        assert_eq!(cfg.border_secondary_px, 0);
-        assert!(cfg.bordercolor_secondary.is_none());
-        assert!(cfg.focuscolor_secondary.is_none());
-        assert!(cfg.urgentcolor_secondary.is_none());
         let _ = std::fs::remove_dir_all(dir);
     }
 }
