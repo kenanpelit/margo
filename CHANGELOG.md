@@ -9,6 +9,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Changed
 
+- **Niri-overview port — Round 2b (per-tag thumbnails).** Overview
+  no longer dumps every visible window into one Grid; instead, each
+  tag (1-9) gets its own thumbnail cell in a 3×3 layout over the
+  zoomed work area, and *each cell runs that tag's configured
+  layout* — a scroller tag stays scroller-shaped at thumbnail size,
+  a grid tag stays grid-shaped, etc. Per-tag `mfact` / `nmaster` /
+  layout from `Pertag::ltidxs` flow through unchanged. Empty tags
+  get an empty cell. Tag → cell mapping: tag 1 top-left, tag 9
+  bottom-right (matches the 1-9 keypad mental model). New
+  `MargoState::arrange_overview_per_tag_grid` helper drives the
+  cell-by-cell arrange; `arrange_monitor` branches into it when
+  `is_overview` is set. Round 3's drag-and-drop will hit-test
+  against these cell rects to drop windows onto target tags.
+
 - **Niri-overview port — Round 2a (geometric zoom + transition wiring).**
   `overview_zoom` (added in 0.1.8) is now consumed by
   `arrange_monitor`: while overview is open, the work area shrinks

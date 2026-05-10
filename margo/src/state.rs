@@ -2758,6 +2758,133 @@ impl MargoState {
         }
     }
 
+    /// Overview-mode arrangement: every tag becomes its own thumbnail
+    /// in a 3×3 grid over the (already-zoomed) work area. Each cell
+    /// runs that tag's *configured* layout — `Pertag::ltidxs` per-tag
+    /// `LayoutId`, `mfacts`, `nmasters` — over the cell rect, so a
+    /// scroller tag stays scroller-shaped at thumbnail size, a grid
+    /// tag stays grid-shaped, etc. niri's overview shape
+    /// ("every workspace looks like itself, zoomed out") adapted to
+    /// margo's tag model.
+    ///
+    /// Tag → cell mapping: tag 1 top-left, tag 9 bottom-right
+    /// (matches the standard 1-9 keypad mental model). Rounds 3+ will
+    /// hit-test mouse drops against these cell rects to retag the
+    /// dropped window.
+    fn arrange_overview_per_tag_grid(
+        &self,
+        mon_idx: usize,
+        work_area: layout::Rect,
+        gaps: &layout::GapConfig,
+    ) -> layout::ArrangeResult {
+        const COLS: usize = 3;
+        const ROWS: usize = 3;
+        let mon = &self.monitors[mon_idx];
+        let pad = gaps.gappoh.max(gaps.gappov).max(0);
+        let pad_total_w = pad * (COLS as i32 + 1);
+        let pad_total_h = pad * (ROWS as i32 + 1);
+        let cell_w = ((work_area.width - pad_total_w) / COLS as i32).max(1);
+        let cell_h = ((work_area.height - pad_total_h) / ROWS as i32).max(1);
+
+        // Halve the per-cell inner gap so thumbnails read denser than
+        // the user's normal gap config. `2` is the floor — anything
+        // smaller is invisible at thumbnail scale.
+        let inner_pad = (gaps.gappih / 2).max(2);
+        let cell_gaps = layout::GapConfig {
+            gappih: inner_pad,
+            gappiv: inner_pad,
+            gappoh: inner_pad,
+            gappov: inner_pad,
+        };
+
+        let mut results: layout::ArrangeResult = Vec::new();
+        for tag_idx in 0..crate::layout::MAX_TAGS {
+            let row = tag_idx / COLS;
+            let col = tag_idx % COLS;
+            let cell_rect = layout::Rect {
+                x: work_area.x + pad + col as i32 * (cell_w + pad),
+                y: work_area.y + pad + row as i32 * (cell_h + pad),
+                width: cell_w,
+                height: cell_h,
+            };
+
+            let tag_bit = 1u32 << tag_idx;
+            // Pertag indices are 1-based (slot 0 unused); map tag_idx ∈ 0..9 → 1..=9.
+            let pertag_slot = tag_idx + 1;
+            let tag_layout = mon
+                .pertag
+                .ltidxs
+                .get(pertag_slot)
+                .copied()
+                .unwrap_or(layout::LayoutId::Tile);
+            let tag_mfact = mon
+                .pertag
+                .mfacts
+                .get(pertag_slot)
+                .copied()
+                .unwrap_or(self.config.default_mfact);
+            let tag_nmaster = mon
+                .pertag
+                .nmasters
+                .get(pertag_slot)
+                .copied()
+                .unwrap_or(self.config.default_nmaster);
+
+            let cell_tiled: Vec<usize> = self
+                .clients
+                .iter()
+                .enumerate()
+                .filter(|(_, c)| {
+                    !c.is_initial_map_pending
+                        && c.monitor == mon_idx
+                        && (c.tags & tag_bit) != 0
+                        && !c.is_minimized
+                        && !c.is_killing
+                        && !c.is_in_scratchpad
+                })
+                .map(|(i, _)| i)
+                .collect();
+
+            if cell_tiled.is_empty() {
+                continue;
+            }
+
+            let cell_props: Vec<f32> = cell_tiled
+                .iter()
+                .map(|&i| self.clients[i].scroller_proportion)
+                .collect();
+
+            let ctx = layout::ArrangeCtx {
+                work_area: cell_rect,
+                tiled: &cell_tiled,
+                nmaster: tag_nmaster,
+                mfact: tag_mfact,
+                gaps: &cell_gaps,
+                scroller_proportions: &cell_props,
+                default_scroller_proportion: self.config.scroller_default_proportion,
+                // Per-cell focused position is unknown at this layer
+                // — `arrange_monitor`'s cell-spanning focused index
+                // wouldn't apply inside a single cell. Pass `None`;
+                // scroller layouts fall back to anchor-left, which is
+                // fine for thumbnail rendering.
+                focused_tiled_pos: None,
+                scroller_structs: self.config.scroller_structs,
+                // Disable focus-centering inside cells — overview
+                // thumbnails are read at-a-glance, the user shouldn't
+                // see the scroller layout shifting around inside a
+                // tag thumbnail every time focus moves.
+                scroller_focus_center: false,
+                scroller_prefer_center: false,
+                scroller_prefer_overspread: false,
+                canvas_pan: (0.0, 0.0),
+            };
+
+            results.extend(layout::arrange(tag_layout, &ctx));
+        }
+
+        results
+    }
+
     pub fn arrange_monitor(&mut self, mon_idx: usize) {
         let _span = tracy_client::span!("arrange_monitor");
         if mon_idx >= self.monitors.len() {
@@ -2783,7 +2910,15 @@ impl MargoState {
 
         let mon = &self.monitors[mon_idx];
         let is_overview = mon.is_overview;
-        let layout = if is_overview { crate::layout::LayoutId::Grid } else { mon.current_layout() };
+        // Overview now arranges every tag's clients into its own
+        // per-tag thumbnail (3×3 grid by default — tag 1 top-left,
+        // tag 9 bottom-right). The single-Grid-of-everything path
+        // that used to live here was removed because it lost the
+        // "which tag does this window belong to" information at a
+        // glance — niri-style per-workspace thumbnails read clearer
+        // and let the upcoming Round 3 hit-test "drop window onto
+        // tag thumbnail" with no extra geometry maths.
+        let layout = mon.current_layout();
         let tagset = if is_overview { !0 } else { mon.current_tagset() };
         let nmaster = mon.current_nmaster();
         let mfact = mon.current_mfact();
@@ -2896,7 +3031,20 @@ impl MargoState {
             canvas_pan,
         };
 
-        let geometries = layout::arrange(layout, &ctx);
+        // In overview, replace the single-Grid-of-everything output with
+        // per-tag thumbnails: 9 cells (3×3 grid) over the zoomed
+        // work_area, each cell hosting only that tag's clients laid out
+        // in *that tag's* configured layout (Tile / Scroller / Grid /
+        // …) at its configured mfact / nmaster. This is the niri
+        // "every workspace becomes its own zoomed-out tile" feel —
+        // adapted to margo's tag model. Empty tags get an empty cell;
+        // Round 3's mouse drag-drop will hit-test against these cell
+        // rects to drop a window onto a target tag.
+        let geometries = if is_overview {
+            self.arrange_overview_per_tag_grid(mon_idx, work_area, &gaps)
+        } else {
+            layout::arrange(layout, &ctx)
+        };
         let now = crate::utils::now_ms();
         for (client_idx, mut rect) in geometries {
             // Apply per-client size constraints from window rules. The layout
