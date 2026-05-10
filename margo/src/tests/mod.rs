@@ -39,7 +39,6 @@ mod globals;
 mod idle;
 mod layer_shell;
 mod output_management;
-mod overview;
 mod pointer_constraints;
 mod screencopy;
 mod selection;

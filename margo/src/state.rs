@@ -1277,15 +1277,6 @@ pub struct MargoState {
     pub lock_surfaces: Vec<(Output, smithay::wayland::session_lock::LockSurface)>,
 
     pub session_locked: bool,
-    /// Cached count of monitors currently in overview mode. Maintained
-    /// by `open_overview`/`close_overview` so `is_overview_open()`
-    /// becomes a single integer compare instead of an iterate-every-
-    /// monitor scan — `arrange_monitor` calls this on every layout
-    /// pass, so the saving compounds quickly on multi-monitor setups
-    /// even though each iteration is cheap. The integer also lets the
-    /// dwl-ipc broadcast path skip work entirely when 0 monitors
-    /// changed during a toggle.
-    pub overview_open_count: u32,
     pub enable_gaps: bool,
     pub cursor_status: CursorImageStatus,
     pub cursor_manager: CursorManager,
@@ -1512,7 +1503,6 @@ impl MargoState {
             clients: vec![],
             monitors: vec![],
             session_locked: false,
-            overview_open_count: 0,
             idle_notifier_state,
             idle_inhibit_state,
             idle_inhibitors: std::collections::HashSet::new(),
@@ -3362,46 +3352,29 @@ impl MargoState {
         };
     }
 
-    /// O(1) — reads the cached `overview_open_count` field. The
-    /// previous implementation iterated every monitor on every call,
-    /// which `arrange_monitor` then evaluated through its `is_overview`
-    /// branch on every render pass. Caching shaves a hot-loop scalar
-    /// per arrange.
     pub fn is_overview_open(&self) -> bool {
-        self.overview_open_count > 0
+        self.monitors.iter().any(|mon| mon.is_overview)
     }
 
     pub fn open_overview(&mut self) {
-        // Only arrange the monitors whose `is_overview` ACTUALLY
-        // flipped this call. The previous implementation hit
-        // `arrange_all()` on every open even when 1 of N monitors
-        // was already in overview — costing the unchanged monitors a
-        // full re-layout for nothing. Same broadcast-debounce idea:
-        // a single dwl-ipc burst at the end instead of one per
-        // monitor.
-        let mut flipped: Vec<usize> = Vec::with_capacity(self.monitors.len());
-        for (idx, mon) in self.monitors.iter_mut().enumerate() {
+        let mut changed = false;
+        for mon in &mut self.monitors {
             if !mon.is_overview {
                 mon.overview_backup_tagset = mon.current_tagset().max(1);
                 mon.is_overview = true;
-                flipped.push(idx);
+                changed = true;
             }
         }
-        if flipped.is_empty() {
-            return;
+
+        if changed {
+            self.arrange_all();
+            crate::protocols::dwl_ipc::broadcast_all(self);
         }
-        self.overview_open_count += flipped.len() as u32;
-        for &mon_idx in &flipped {
-            self.arrange_monitor(mon_idx);
-        }
-        crate::protocols::dwl_ipc::broadcast_all(self);
     }
 
     pub fn close_overview(&mut self, activate_window: Option<Window>) {
-        // Same surgical-arrange pattern as open_overview — only the
-        // monitors that flip get re-arranged, broadcast batches at
-        // the end.
-        if self.overview_open_count == 0 {
+        let was_open = self.is_overview_open();
+        if !was_open {
             return;
         }
 
@@ -3410,7 +3383,6 @@ impl MargoState {
             .as_ref()
             .and_then(|window| self.clients.iter().position(|client| &client.window == window));
 
-        let mut flipped: Vec<usize> = Vec::with_capacity(self.monitors.len());
         for mon_idx in 0..self.monitors.len() {
             if !self.monitors[mon_idx].is_overview {
                 continue;
@@ -3435,15 +3407,9 @@ impl MargoState {
             self.monitors[mon_idx].is_overview = false;
             self.monitors[mon_idx].tagset[seltags] = target_tagset;
             self.update_pertag_for_tagset(mon_idx, target_tagset);
-            flipped.push(mon_idx);
         }
-        self.overview_open_count = self
-            .overview_open_count
-            .saturating_sub(flipped.len() as u32);
 
-        for &mon_idx in &flipped {
-            self.arrange_monitor(mon_idx);
-        }
+        self.arrange_all();
 
         let focus_idx = activate_idx.or(previous_focus).filter(|&idx| {
             self.monitors
@@ -3471,11 +3437,8 @@ impl MargoState {
         crate::protocols::dwl_ipc::broadcast_all(self);
     }
 
-    /// Single-call toggle. Picks the cheapest path: if some monitors
-    /// are in overview, close; otherwise open. Both paths now do the
-    /// minimum arrange work necessary for the flipped monitors only.
     pub fn toggle_overview(&mut self) {
-        if self.overview_open_count > 0 {
+        if self.is_overview_open() {
             self.close_overview(None);
         } else {
             self.open_overview();
