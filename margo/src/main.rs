@@ -851,14 +851,41 @@ fn main() -> Result<()> {
             // call. The compiler treats these as independent
             // because they're distinct named fields.
             let curves = &state.animation_curves;
-            state::tick_animations(
+            let any_anim = state::tick_animations(
                 &mut state.clients,
                 curves,
                 now,
                 spec,
                 &mut state.closing_clients,
                 &mut state.layer_animations,
-            )
+            );
+
+            // Phase 3 spatial-overview camera momentum tick. Runs on
+            // the same animation hop so the camera follows the same
+            // frame-pacing as windows; ~16 ms at 60 Hz. If any
+            // momentum was active, mark the frame dirty so the next
+            // render picks up the new camera (and the arrange
+            // pass after that re-transforms client.geom).
+            if state.is_overview_open() {
+                let cam_was_moving = state.spatial.vx != 0.0
+                    || state.spatial.vy != 0.0
+                    || state.spatial.vzoom != 0.0
+                    || (state.spatial.x - state.spatial.target_x).abs() > 0.5
+                    || (state.spatial.y - state.spatial.target_y).abs() > 0.5
+                    || (state.spatial.zoom - state.spatial.target_zoom).abs() > 0.001;
+                if cam_was_moving {
+                    state.spatial.tick(1.0 / 60.0);
+                    state.arrange_all();
+                    // Force the outer "did anything change?" to true
+                    // so the next frame schedules and we keep ticking
+                    // until the camera settles.
+                    true
+                } else {
+                    any_anim
+                }
+            } else {
+                any_anim
+            }
         };
         if animations_changed {
             let animated: Vec<_> = state

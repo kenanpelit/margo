@@ -1582,6 +1582,12 @@ pub struct MargoState {
     /// arrange is done. None ⇒ fall back to the configured duration.
     pub overview_transition_animation_ms: Option<u32>,
 
+    /// `true` while the left mouse button is held over empty
+    /// overview space — every motion delta during the drag is fed
+    /// into `self.spatial.pan_by_screen_delta`. Cleared on button
+    /// release.
+    pub spatial_panning: bool,
+
     /// World-space camera for the spatial overview (Phase 3). One
     /// camera per `MargoState` — multi-monitor world topology is a
     /// Phase 3.5 extension. Even when overview is closed the camera
@@ -1795,6 +1801,7 @@ impl MargoState {
             layer_animations: std::collections::HashMap::new(),
             overview_transition_animation_ms: None,
             spatial: crate::spatial_overview::SpatialCamera::default(),
+            spatial_panning: false,
             hot_corner_dwelling: None,
             hot_corner_armed_at: None,
             config,
@@ -4176,6 +4183,63 @@ impl MargoState {
             list_len = list.len(),
             "cycle",
         );
+    }
+
+    /// Keyboard pan for the spatial overview camera. `dx_screen` /
+    /// `dy_screen` are screen-space deltas (one "screen step" of
+    /// ~25% of the work area is a sensible bind for arrow keys).
+    /// No-op outside spatial overview.
+    pub fn overview_pan_screen(&mut self, dx_screen: f64, dy_screen: f64) {
+        if !self.is_overview_open() {
+            return;
+        }
+        if crate::spatial_overview::OverviewMode::from_config_str(&self.config.overview_mode)
+            != crate::spatial_overview::OverviewMode::Spatial
+        {
+            return;
+        }
+        self.spatial.pan_by_screen_delta(dx_screen, dy_screen);
+        self.arrange_all();
+        self.request_repaint();
+    }
+
+    /// Multiply the camera's target zoom by `factor`, clamped to
+    /// `[ZOOM_MIN, ZOOM_MAX]`. Centred on the work area centre (no
+    /// anchor) — keyboard zoom isn't cursor-anchored the way
+    /// scroll-wheel zoom is. No-op outside spatial overview.
+    pub fn overview_zoom_by(&mut self, factor: f64) {
+        if !self.is_overview_open() {
+            return;
+        }
+        if crate::spatial_overview::OverviewMode::from_config_str(&self.config.overview_mode)
+            != crate::spatial_overview::OverviewMode::Spatial
+        {
+            return;
+        }
+        self.spatial.zoom_to_target(self.spatial.target_zoom * factor);
+        self.arrange_all();
+        self.request_repaint();
+    }
+
+    /// Re-centre the camera on the active tag's slot at the
+    /// configured `overview_zoom`. Useful as a "reset view" bind
+    /// when the user has wandered off into a corner.
+    pub fn overview_reset_camera(&mut self) {
+        if !self.is_overview_open() {
+            return;
+        }
+        let Some(mon_idx) = self.monitors.iter().position(|m| m.is_overview) else {
+            return;
+        };
+        let mon = &self.monitors[mon_idx];
+        let tag = (mon.pertag.curtag.max(1) as u32).min(crate::layout::MAX_TAGS as u32);
+        let mw = mon.monitor_area.width;
+        let mh = mon.monitor_area.height;
+        let (ax, ay) = crate::spatial_overview::tag_anchor(tag, mw, mh);
+        let zoom = self.config.overview_zoom.clamp(0.1, 1.0) as f64;
+        self.spatial.snap_to(ax + mw as f64 / 2.0, ay + mh as f64 / 2.0, zoom);
+        self.arrange_all();
+        self.request_repaint();
     }
 
     /// Close overview activating whichever thumbnail keyboard

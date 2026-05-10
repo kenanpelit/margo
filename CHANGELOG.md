@@ -9,6 +9,49 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- **Phase 3 — Spatial Overview live navigation (3 / 3, final).**
+  Mouse + scroll + keyboard navigation all wired through the
+  spatial camera; momentum decays every frame on the animation
+  tick. Phase 3 is now fully usable.
+  * **Mouse left-drag on empty overview space** pans the camera —
+    every motion event streams its delta through
+    `pan_by_screen_delta` so velocity feeds momentum on release.
+  * **Scroll wheel** zooms around the cursor (world point under
+    the cursor stays fixed, niri/paperwm/Aerospace default).
+  * **Keyboard:** seven new dispatch actions —
+    `overview_pan_left/right/up/down` step ¼ of the panel each,
+    `overview_zoom_in/out` × 1.2 / × 1/1.2, `overview_zoom_reset`
+    snaps to active tag at config zoom. Bind any of them inside
+    overview for accessibility / no-mouse flows.
+  * **Frame tick:** the same `tick_animations` hop that drives
+    window animations now also ticks `MargoState::spatial`. While
+    momentum is non-zero or the camera is interpolating toward a
+    target, `arrange_all` runs and the next frame schedules — so
+    the camera keeps coasting until friction settles it
+    (`FRICTION = 0.92` per frame, `VELOCITY_FLOOR = 0.5 px/frame`
+    snap-to-rest).
+  * **mctl actions** catalogue grew seven entries documenting the
+    pan/zoom/reset surface.
+
+  Phase 3 is now feature-complete. Bind freely:
+
+  ```ini
+  overview_mode        = spatial      # default
+  overview_zoom        = 0.5
+  overview_transition_ms = 180
+  hot_corner_top_left  = toggle_overview
+  bind = alt,Tab,overview_focus_next
+  bind = alt+shift,Tab,overview_focus_prev
+  bind = alt,Return,overview_activate
+  bind = super,Left,overview_pan_left
+  bind = super,Right,overview_pan_right
+  bind = super,Up,overview_pan_up
+  bind = super,Down,overview_pan_down
+  bind = super,equal,overview_zoom_in
+  bind = super,minus,overview_zoom_out
+  bind = super,0,overview_zoom_reset
+  ```
+
 - **Phase 3 — Spatial Overview wired into arrange + state (2 / 3).**
   Spatial mode is now the default at config level (`overview_mode =
   spatial` — opt out with `overview_mode = grid`). On open,
