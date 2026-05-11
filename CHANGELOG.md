@@ -9,6 +9,29 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- **Animation curve snapshot tests (roadmap T2).** Nine new
+  tests lock the 4-point Bezier evaluator + spring-baked curve
+  shapes against accidental coefficient drift:
+  * `near_linear_bezier_endpoints_exact` — sanity check.
+  * `ease_out_expo_shape_locked` — sample(0.25/0.50/0.75)
+    bands locked. A real coefficient swap (`p0` ↔ `p2`) pulls
+    each sample out of its band.
+  * `ease_in_quad_shape_locked` — mirror of the above.
+  * `bezier_bake_is_non_decreasing_in_y` — 4 curves × 256
+    points: non-monotone tables produce mid-flight stutter,
+    so the property is locked in stone.
+  * `sample_endpoints_round_to_zero_and_one` — binary-search
+    ceiling behaviour documented + tested.
+  * `spring_bake_overshoot_clamped_to_1_05` — under-damped
+    spring overshoots get clamped at 1.05 to bound the
+    consumer's slot stretch.
+  * `critically_damped_spring_is_monotone` — `damping = 1.0`
+    spring reaches target without bouncing.
+  * `animation_curves_dispatches_every_variant` — full
+    AnimationType ↔ curve dispatch exercised.
+  * `sample_clamps_out_of_range_t` — defensive boundary check.
+  Workspace test count: 155 → 164.
+
 - **Session save/load round-trip test suite (roadmap T9).** Nine
   new tests cover the JSON contract:
   * `save_to_then_load_from_round_trips_every_field` — every

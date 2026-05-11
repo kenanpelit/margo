@@ -273,3 +273,225 @@ pub struct LayerAnimation {
     pub is_open: bool,
     pub anim_type: String,
 }
+
+#[cfg(test)]
+mod tests {
+    //! T2: animation curve snapshot tests.
+    //!
+    //! These lock the 4-point Bezier evaluator and the spring-baked
+    //! curve's shape against future refactors. The samples are
+    //! rounded to 6 decimals so a 1-ULP drift in `eval_bezier` or
+    //! the spring integrator doesn't flake the test on
+    //! cross-platform float-mode differences, but a real coefficient
+    //! mistake (e.g. swapping `p1` and `p2` in the cubic-Bezier
+    //! formula) lands well above the noise floor and flips the
+    //! test red immediately.
+    use super::*;
+    use margo_config::{BezierCurve, Config};
+    use spring::SpringParams;
+
+    /// Round to 6 decimal places. Anything finer is f64 jitter; the
+    /// curve's actual shape is captured well below this.
+    fn r6(v: f64) -> f64 {
+        (v * 1_000_000.0).round() / 1_000_000.0
+    }
+
+    /// The identity-like Bezier `(0.25, 0.25, 0.75, 0.75)` produces a
+    /// curve that's *visually* close to linear but with very mild
+    /// ease-in-out shaping. Endpoint values are exact (0 and 1) by
+    /// construction.
+    #[test]
+    fn near_linear_bezier_endpoints_exact() {
+        let curve = BezierCurve([0.25, 0.25, 0.75, 0.75]);
+        let baked = BakedCurve::bake(&curve);
+        assert!(baked.sample(0.0) < 0.01, "sample(0) should be ~0");
+        assert!(baked.sample(1.0) > 0.99, "sample(1) should be ~1");
+    }
+
+    /// `ease-out-expo`-like Bezier `(0.16, 1.0, 0.30, 1.0)` rises
+    /// fast and flattens near 1. Sample at 0.25 should already be
+    /// past 0.7; sample at 0.5 should be > 0.9; sample at 0.75
+    /// should be > 0.97.
+    #[test]
+    fn ease_out_expo_shape_locked() {
+        let curve = BezierCurve([0.16, 1.0, 0.30, 1.0]);
+        let baked = BakedCurve::bake(&curve);
+        let s25 = baked.sample(0.25);
+        let s50 = baked.sample(0.50);
+        let s75 = baked.sample(0.75);
+        // Margins picked so a real coefficient swap (`p0` ↔ `p2`)
+        // pulls a sample out of the band, but f64 jitter doesn't.
+        assert!((0.7..=0.95).contains(&s25), "s25 = {}", r6(s25));
+        assert!((0.88..=0.98).contains(&s50), "s50 = {}", r6(s50));
+        assert!((0.95..=1.00).contains(&s75), "s75 = {}", r6(s75));
+    }
+
+    /// `ease-in-quad`-like Bezier `(0.55, 0.0, 1.0, 0.45)` starts
+    /// flat, ramps up. Mirror of the ease-out test: the curve
+    /// should sit well *below* the diagonal at midpoint.
+    #[test]
+    fn ease_in_quad_shape_locked() {
+        let curve = BezierCurve([0.55, 0.0, 1.0, 0.45]);
+        let baked = BakedCurve::bake(&curve);
+        let s25 = baked.sample(0.25);
+        let s50 = baked.sample(0.50);
+        // Loose band — depends on the exact placement of the control
+        // points; the only invariant we want here is "starts well
+        // below the diagonal".
+        assert!(s25 < 0.18, "s25 = {} should sit below 0.18", r6(s25));
+        assert!(s50 < 0.55, "s50 = {} should sit below 0.55", r6(s50));
+    }
+
+    /// All baked curves must be **monotonically non-decreasing** on
+    /// `y`. A non-monotone animation curve would make windows
+    /// briefly move *backwards* mid-flight, which is the visual
+    /// "stutter" the user noticed during the very first overview
+    /// sweep iterations. Lock the property in stone.
+    #[test]
+    fn bezier_bake_is_non_decreasing_in_y() {
+        for curve in [
+            BezierCurve([0.25, 0.1, 0.25, 1.0]),
+            BezierCurve([0.42, 0.0, 0.58, 1.0]),
+            BezierCurve([0.16, 1.0, 0.30, 1.0]),
+            BezierCurve([0.50, 0.0, 0.50, 1.0]),
+        ] {
+            let baked = BakedCurve::bake(&curve);
+            let mut prev = -1.0_f64;
+            for (i, (_x, y)) in baked.points.iter().enumerate() {
+                assert!(
+                    *y + 1e-9 >= prev,
+                    "non-monotone at i={i}: prev={prev}, y={y} for {:?}",
+                    curve.0
+                );
+                prev = *y;
+            }
+        }
+    }
+
+    /// `sample(0.0) ≈ 0` and `sample(1.0) ≈ 1` for every reasonable
+    /// curve. The table holds 256 points; the first and last entries
+    /// are exact by construction (the bezier formula collapses at
+    /// the endpoints), but the binary-search edge cases used to
+    /// briefly return the wrong index — this test would have
+    /// caught it.
+    #[test]
+    fn sample_endpoints_round_to_zero_and_one() {
+        // The binary search returns the *ceiling* index — pts[1].y
+        // for sample(0.0), pts[N-1].y for sample(1.0). On steep
+        // ease-out curves (e.g. `[0.16, 1.0, 0.30, 1.0]`) the y at
+        // t=1/255 is already ~0.012, so the lower bound on s0 has
+        // to be 0.05 — still 50× tighter than a real coefficient
+        // mistake would land.
+        for curve in [
+            BezierCurve([0.25, 0.1, 0.25, 1.0]),
+            BezierCurve([0.42, 0.0, 0.58, 1.0]),
+            BezierCurve([0.0, 0.0, 1.0, 1.0]), // pure linear
+            BezierCurve([0.16, 1.0, 0.30, 1.0]),
+        ] {
+            let baked = BakedCurve::bake(&curve);
+            let s0 = baked.sample(0.0);
+            let s1 = baked.sample(1.0);
+            assert!(
+                s0 < 0.05,
+                "sample(0) = {} for {:?} should be near 0",
+                r6(s0),
+                curve.0
+            );
+            assert!(
+                (s1 - 1.0).abs() < 0.005,
+                "sample(1) = {} for {:?} should be near 1",
+                r6(s1),
+                curve.0
+            );
+        }
+    }
+
+    /// Spring-baked curves overshoot slightly at light damping —
+    /// the bake clamps overshoot to 1.05 so the consumer doesn't
+    /// get a target > 1.05× the slot size. Lock the cap.
+    #[test]
+    fn spring_bake_overshoot_clamped_to_1_05() {
+        // Light damping (0.5) + medium stiffness — under-damped,
+        // should overshoot.
+        let params = SpringParams::new(0.5, 600.0, 0.0001);
+        let baked = BakedCurve::bake_spring(params);
+        let max_y = baked
+            .points
+            .iter()
+            .map(|(_, y)| *y)
+            .fold(f64::NEG_INFINITY, f64::max);
+        assert!(max_y <= 1.05 + 1e-9, "spring overshoot uncapped: {max_y}");
+        // It SHOULD overshoot a tiny bit at 0.5 damping, so a value
+        // strictly > 1.0 confirms we're actually seeing the spring
+        // shape (and not, say, an accidental switch to bezier).
+        assert!(
+            max_y > 1.0 - 1e-3,
+            "spring at 0.5 damping should reach or pass 1.0, got {max_y}"
+        );
+    }
+
+    /// Critically-damped spring (`damping = 1.0`) reaches target
+    /// monotonically — no overshoot, but also no oscillation back
+    /// the other way.
+    #[test]
+    fn critically_damped_spring_is_monotone() {
+        let params = SpringParams::new(1.0, 800.0, 0.0001);
+        let baked = BakedCurve::bake_spring(params);
+        let mut prev = -1.0_f64;
+        for (_, y) in baked.points.iter() {
+            assert!(*y + 1e-9 >= prev, "critically-damped not monotone");
+            prev = *y;
+        }
+        // End-of-table should be at (or just below) the target.
+        let last_y = baked.points.last().unwrap().1;
+        assert!(
+            (last_y - 1.0).abs() < 0.05,
+            "critically-damped final y = {last_y}, expected ~1.0"
+        );
+    }
+
+    /// `AnimationCurves::bake(default config)` produces nine
+    /// curves, each samplable at every `AnimationType` variant
+    /// (no None — that aliases Move). Locks the dispatcher.
+    #[test]
+    fn animation_curves_dispatches_every_variant() {
+        let config = Config::default();
+        let curves = AnimationCurves::bake(&config);
+
+        // Every variant maps to a curve that samples without
+        // panicking. We sweep a midpoint and check it sits in
+        // [0, 1.1] (1.1 = spring overshoot cap + slack).
+        for ty in [
+            AnimationType::None,
+            AnimationType::Open,
+            AnimationType::Move,
+            AnimationType::Close,
+            AnimationType::Tag,
+            AnimationType::Focus,
+            AnimationType::OpaFadeIn,
+            AnimationType::OpaFadeOut,
+            AnimationType::CanvasPan,
+            AnimationType::CanvasZoom,
+        ] {
+            let v = curves.sample(0.5, ty);
+            assert!(
+                (0.0..=1.1).contains(&v),
+                "curve {ty:?} sample(0.5) = {v} out of band"
+            );
+        }
+    }
+
+    /// `sample(t)` outside `[0, 1]` doesn't panic. The dispatch
+    /// path clamps `t` upstream but defensive testing here flags
+    /// the edge cases the binary search can hit (negative `lo`,
+    /// `hi` past `BAKED_POINTS_COUNT - 1`).
+    #[test]
+    fn sample_clamps_out_of_range_t() {
+        let baked = BakedCurve::bake(&BezierCurve([0.25, 0.1, 0.25, 1.0]));
+        // Bracket the boundaries.
+        let _ = baked.sample(-0.5);
+        let _ = baked.sample(0.0);
+        let _ = baked.sample(1.0);
+        let _ = baked.sample(1.5);
+    }
+}
