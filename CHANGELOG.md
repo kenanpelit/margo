@@ -7,6 +7,23 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.3.0] – 2026-05-11
+
+### Highlights
+
+Phase 2 closing release. Three technical success criteria from
+§15.8 of the roadmap landed on this branch:
+
+* **Snapshot test count ≥ 200** — at **244** workspace-wide (margo
+  230, margo-config 14). T1 (window-rule matcher), T2 (animation
+  curves), T6 (screenshot region), T8 (theme preset), T9 (session
+  round-trip) drove the expansion.
+* **state.rs < 3k LOC** — at **2944** after eleven sibling-module
+  extractions (see `Changed` below).
+* **Cold-path structured-logging migration complete (Q5)** — every
+  `tracing` call in `state.rs`, `dispatch/mod.rs`, `scripting.rs`,
+  `plugin.rs` now emits structured fields.
+
 ### Added
 
 - **Screenshot region selector geometry tests (roadmap T6).** 14
