@@ -5,7 +5,17 @@
 // submodule reaches into `MargoState` via `crate::state::MargoState`.
 mod handlers;
 
-use std::{cell::RefCell, path::PathBuf, rc::Rc, sync::Arc};
+// Roadmap Q1 — extracting pure state-internal helpers out of the
+// 6800-line state.rs into siblings under `state/`. Theme is the
+// first step; others follow in the same form.
+mod animation_tick;
+mod focus_target;
+mod theme;
+
+pub use self::animation_tick::{tick_animations, AnimTickSpec};
+pub use self::focus_target::FocusTarget;
+
+use std::{cell::RefCell, path::PathBuf, rc::Rc};
 
 use anyhow::{Context, Result};
 use smithay::{
@@ -16,15 +26,7 @@ use smithay::{
     desktop::{layer_map_for_output, PopupManager, Space, Window, WindowSurface},
     input::{
         Seat, SeatHandler, SeatState,
-        dnd::{DndFocus, Source},
-        keyboard::{KeyboardTarget, KeysymHandle, ModifiersState},
-        pointer::{
-            AxisFrame, ButtonEvent, CursorImageStatus, GestureHoldBeginEvent, GestureHoldEndEvent,
-            GesturePinchBeginEvent, GesturePinchEndEvent, GesturePinchUpdateEvent,
-            GestureSwipeBeginEvent, GestureSwipeEndEvent, GestureSwipeUpdateEvent,
-            MotionEvent, PointerTarget, RelativeMotionEvent,
-        },
-        touch::TouchTarget,
+        pointer::CursorImageStatus,
     },
     output::Output,
     reexports::{
@@ -37,27 +39,24 @@ use smithay::{
             Display,
         },
     },
-    utils::{Clock, Logical, Monotonic, Point, Serial, Size, SERIAL_COUNTER},
+    utils::{Clock, Monotonic, Size, SERIAL_COUNTER},
     wayland::{
         compositor::{with_states, CompositorClientState, CompositorState},
         output::{OutputHandler, OutputManagerState},
         seat::WaylandFocus,
         selection::{
-            data_device::{set_data_device_focus, DataDeviceState, WlOfferData},
+            data_device::{set_data_device_focus, DataDeviceState},
             primary_selection::{set_primary_focus, PrimarySelectionState},
             wlr_data_control::DataControlState,
         },
         shell::{
-            wlr_layer::{
-                LayerSurface as WlrLayerSurface, WlrLayerShellState,
-            },
+            wlr_layer::WlrLayerShellState,
             xdg::{
                 decoration::XdgDecorationState,
                 ToplevelSurface, XdgShellState, XdgToplevelSurfaceData,
             },
         },
         shm::{ShmHandler, ShmState},
-        session_lock::LockSurface,
         input_method::InputMethodManagerState,
         pointer_constraints::PointerConstraintsState,
         presentation::PresentationState,
@@ -187,98 +186,13 @@ pub enum FullscreenMode {
     Exclusive,
 }
 
-// ── Theme presets ────────────────────────────────────────────────────────────
-
-/// Snapshot of the theme-relevant `Config` fields. Captured the first
-/// time `apply_theme_preset` runs so `mctl theme default` can revert
-/// to "what the config file said". Reset to `None` on `mctl reload`
-/// so the baseline always tracks the latest parse.
-#[derive(Debug, Clone)]
-pub(crate) struct ThemeBaseline {
-    pub(crate) borderpx: u32,
-    pub(crate) border_radius: i32,
-    pub(crate) shadows: bool,
-    pub(crate) layer_shadows: bool,
-    pub(crate) shadow_only_floating: bool,
-    pub(crate) shadows_size: u32,
-    pub(crate) shadows_blur: f32,
-    pub(crate) blur: bool,
-    pub(crate) blur_layer: bool,
-}
-
-impl ThemeBaseline {
-    pub(crate) fn capture(c: &Config) -> Self {
-        Self {
-            borderpx: c.borderpx,
-            border_radius: c.border_radius,
-            shadows: c.shadows,
-            layer_shadows: c.layer_shadows,
-            shadow_only_floating: c.shadow_only_floating,
-            shadows_size: c.shadows_size,
-            shadows_blur: c.shadows_blur,
-            blur: c.blur,
-            blur_layer: c.blur_layer,
-        }
-    }
-
-    pub(crate) fn apply_to(&self, c: &mut Config) {
-        c.borderpx = self.borderpx;
-        c.border_radius = self.border_radius;
-        c.shadows = self.shadows;
-        c.layer_shadows = self.layer_shadows;
-        c.shadow_only_floating = self.shadow_only_floating;
-        c.shadows_size = self.shadows_size;
-        c.shadows_blur = self.shadows_blur;
-        c.blur = self.blur;
-        c.blur_layer = self.blur_layer;
-    }
-}
-
-#[cfg(test)]
-mod theme_baseline_tests {
-    use super::*;
-
-    #[test]
-    fn round_trip_preserves_every_captured_field() {
-        let mut c = Config {
-            borderpx: 3,
-            border_radius: 8,
-            shadows: true,
-            layer_shadows: true,
-            shadow_only_floating: true,
-            shadows_size: 22,
-            shadows_blur: 14.0,
-            blur: true,
-            blur_layer: false,
-            ..Config::default()
-        };
-
-        let baseline = ThemeBaseline::capture(&c);
-
-        // Stomp every field with a different value.
-        c.borderpx = 1;
-        c.border_radius = 0;
-        c.shadows = false;
-        c.layer_shadows = false;
-        c.shadow_only_floating = false;
-        c.shadows_size = 0;
-        c.shadows_blur = 0.0;
-        c.blur = false;
-        c.blur_layer = true;
-
-        baseline.apply_to(&mut c);
-
-        assert_eq!(c.borderpx, 3);
-        assert_eq!(c.border_radius, 8);
-        assert!(c.shadows);
-        assert!(c.layer_shadows);
-        assert!(c.shadow_only_floating);
-        assert_eq!(c.shadows_size, 22);
-        assert!((c.shadows_blur - 14.0).abs() < f32::EPSILON);
-        assert!(c.blur);
-        assert!(!c.blur_layer);
-    }
-}
+// ── Theme presets — moved to `state/theme.rs` ─────────────────────────────
+//
+// ThemeBaseline + tests now live in a sibling module under
+// `state/theme.rs` so adding a new theme field doesn't recompile the
+// whole 6800-line state.rs. Re-import at module scope so callers
+// inside this file keep their existing `ThemeBaseline` path.
+pub(crate) use self::theme::ThemeBaseline;
 
 // ── Window-rule reapply trigger ──────────────────────────────────────────────
 
@@ -301,265 +215,6 @@ pub(crate) enum WindowRuleReason {
     /// runs even when the rule set didn't change, so `mctl reload`
     /// is always idempotent.
     Reload,
-}
-
-// ── Focus target ─────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum FocusTarget {
-    Window(Window),
-    LayerSurface(WlrLayerSurface),
-    SessionLock(LockSurface),
-    /// XDG popup that grabbed input. We don't track the
-    /// `desktop::PopupKind` itself because that wrapper would force a
-    /// dependency cycle with the popup manager; the bare wl_surface is
-    /// enough — it's what `KeyboardTarget`'s default impl forwards
-    /// keys to.
-    Popup(WlSurface),
-}
-
-impl smithay::utils::IsAlive for FocusTarget {
-    fn alive(&self) -> bool {
-        match self {
-            FocusTarget::Window(w) => w.alive(),
-            FocusTarget::LayerSurface(l) => l.alive(),
-            FocusTarget::SessionLock(s) => s.alive(),
-            FocusTarget::Popup(s) => s.alive(),
-        }
-    }
-}
-
-impl WaylandFocus for FocusTarget {
-    fn wl_surface(&self) -> Option<std::borrow::Cow<'_, WlSurface>> {
-        match self {
-            FocusTarget::Window(w) => w.wl_surface(),
-            FocusTarget::LayerSurface(l) => Some(std::borrow::Cow::Borrowed(l.wl_surface())),
-            FocusTarget::SessionLock(s) => Some(std::borrow::Cow::Borrowed(s.wl_surface())),
-            FocusTarget::Popup(s) => Some(std::borrow::Cow::Borrowed(s)),
-        }
-    }
-}
-
-impl FocusTarget {
-    fn inner_wl_surface(&self) -> Option<&WlSurface> {
-        match self {
-            Self::Window(w) => match w.underlying_surface() {
-                WindowSurface::Wayland(s) => Some(s.wl_surface()),
-                WindowSurface::X11(_) => None, // X11 focus via WaylandFocus::wl_surface
-            },
-            Self::LayerSurface(l) => Some(l.wl_surface()),
-            Self::SessionLock(s) => Some(s.wl_surface()),
-            Self::Popup(s) => Some(s),
-        }
-    }
-}
-
-// `PopupManager::grab_popup` requires the seat's `KeyboardFocus` to
-// be `From<PopupKind>` so margo can hand a popup wl_surface in as the
-// grab target. Wrap the popup's wl_surface in a `FocusTarget::Popup`.
-impl From<smithay::desktop::PopupKind> for FocusTarget {
-    fn from(kind: smithay::desktop::PopupKind) -> Self {
-        FocusTarget::Popup(kind.wl_surface().clone())
-    }
-}
-
-// `PopupManager::grab_popup` also requires the seat's `PointerFocus`
-// (`WlSurface` for margo) to be `From<KeyboardFocus>`. The standard
-// extraction works for every variant — every FocusTarget kind maps
-// to exactly one wl_surface (toplevels carry one in their underlying
-// WindowSurface; layer / lock / popup expose one directly). The
-// only edge case is a Window with an X11 surface, which has NO
-// wl_surface — in practice grab_popup is never called against an
-// X11 window root (only XDG toplevels open xdg_popups), so the
-// expect is a never-fire diagnostic rather than an assertion that
-// could panic in a real session.
-impl From<FocusTarget> for WlSurface {
-    fn from(target: FocusTarget) -> Self {
-        match target {
-            FocusTarget::Window(w) => w
-                .wl_surface()
-                .map(|cow| cow.into_owned())
-                .expect("FocusTarget::Window passed to grab_popup must have a wl_surface (i.e. be a Wayland toplevel, not X11)"),
-            FocusTarget::Popup(s) => s,
-            FocusTarget::LayerSurface(l) => l.wl_surface().clone(),
-            FocusTarget::SessionLock(s) => s.wl_surface().clone(),
-        }
-    }
-}
-
-impl KeyboardTarget<MargoState> for FocusTarget {
-    fn enter(
-        &self,
-        seat: &Seat<MargoState>,
-        data: &mut MargoState,
-        keys: Vec<KeysymHandle<'_>>,
-        serial: Serial,
-    ) {
-        // Debug level: this fires on every sloppy-focus crossing and
-        // every overview hover sweep. INFO floods the journal in
-        // normal use; the structured `target` field lets
-        // `journalctl --output=json | jq` slice cleanly when the
-        // user actually wants to debug focus routing.
-        tracing::debug!(target = ?self, "FocusTarget::enter");
-        if let Some(s) = self.inner_wl_surface() {
-            tracing::debug!("FocusTarget::enter forwarding to WlSurface");
-            KeyboardTarget::enter(s, seat, data, keys, serial);
-        }
-    }
-    fn leave(&self, seat: &Seat<MargoState>, data: &mut MargoState, serial: Serial) {
-        tracing::debug!(target = ?self, "FocusTarget::leave");
-        if let Some(s) = self.inner_wl_surface() {
-            KeyboardTarget::leave(s, seat, data, serial);
-        }
-    }
-    fn key(
-        &self,
-        seat: &Seat<MargoState>,
-        data: &mut MargoState,
-        key: KeysymHandle<'_>,
-        state: smithay::backend::input::KeyState,
-        serial: Serial,
-        time: u32,
-    ) {
-        if let Some(s) = self.inner_wl_surface() {
-            KeyboardTarget::key(s, seat, data, key, state, serial, time);
-        }
-    }
-    fn modifiers(
-        &self,
-        seat: &Seat<MargoState>,
-        data: &mut MargoState,
-        modifiers: ModifiersState,
-        serial: Serial,
-    ) {
-        if let Some(s) = self.inner_wl_surface() {
-            KeyboardTarget::modifiers(s, seat, data, modifiers, serial);
-        }
-    }
-}
-
-impl PointerTarget<MargoState> for FocusTarget {
-    fn enter(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &MotionEvent) {
-        if let Some(s) = self.inner_wl_surface() { PointerTarget::enter(s, seat, data, event); }
-    }
-    fn motion(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &MotionEvent) {
-        if let Some(s) = self.inner_wl_surface() { PointerTarget::motion(s, seat, data, event); }
-    }
-    fn relative_motion(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &RelativeMotionEvent) {
-        if let Some(s) = self.inner_wl_surface() { PointerTarget::relative_motion(s, seat, data, event); }
-    }
-    fn button(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &ButtonEvent) {
-        if let Some(s) = self.inner_wl_surface() { PointerTarget::button(s, seat, data, event); }
-    }
-    fn axis(&self, seat: &Seat<MargoState>, data: &mut MargoState, frame: AxisFrame) {
-        if let Some(s) = self.inner_wl_surface() { PointerTarget::axis(s, seat, data, frame); }
-    }
-    fn frame(&self, seat: &Seat<MargoState>, data: &mut MargoState) {
-        if let Some(s) = self.inner_wl_surface() { PointerTarget::frame(s, seat, data); }
-    }
-    fn leave(&self, seat: &Seat<MargoState>, data: &mut MargoState, serial: Serial, time: u32) {
-        if let Some(s) = self.inner_wl_surface() { PointerTarget::leave(s, seat, data, serial, time); }
-    }
-    fn gesture_swipe_begin(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &GestureSwipeBeginEvent) {
-        if let Some(s) = self.inner_wl_surface() { PointerTarget::gesture_swipe_begin(s, seat, data, event); }
-    }
-    fn gesture_swipe_update(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &GestureSwipeUpdateEvent) {
-        if let Some(s) = self.inner_wl_surface() { PointerTarget::gesture_swipe_update(s, seat, data, event); }
-    }
-    fn gesture_swipe_end(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &GestureSwipeEndEvent) {
-        if let Some(s) = self.inner_wl_surface() { PointerTarget::gesture_swipe_end(s, seat, data, event); }
-    }
-    fn gesture_pinch_begin(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &GesturePinchBeginEvent) {
-        if let Some(s) = self.inner_wl_surface() { PointerTarget::gesture_pinch_begin(s, seat, data, event); }
-    }
-    fn gesture_pinch_update(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &GesturePinchUpdateEvent) {
-        if let Some(s) = self.inner_wl_surface() { PointerTarget::gesture_pinch_update(s, seat, data, event); }
-    }
-    fn gesture_pinch_end(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &GesturePinchEndEvent) {
-        if let Some(s) = self.inner_wl_surface() { PointerTarget::gesture_pinch_end(s, seat, data, event); }
-    }
-    fn gesture_hold_begin(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &GestureHoldBeginEvent) {
-        if let Some(s) = self.inner_wl_surface() { PointerTarget::gesture_hold_begin(s, seat, data, event); }
-    }
-    fn gesture_hold_end(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &GestureHoldEndEvent) {
-        if let Some(s) = self.inner_wl_surface() { PointerTarget::gesture_hold_end(s, seat, data, event); }
-    }
-}
-
-impl TouchTarget<MargoState> for FocusTarget {
-    fn down(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &smithay::input::touch::DownEvent, seq: Serial) {
-        if let Some(s) = self.inner_wl_surface() { TouchTarget::down(s, seat, data, event, seq); }
-    }
-    fn up(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &smithay::input::touch::UpEvent, seq: Serial) {
-        if let Some(s) = self.inner_wl_surface() { TouchTarget::up(s, seat, data, event, seq); }
-    }
-    fn motion(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &smithay::input::touch::MotionEvent, seq: Serial) {
-        if let Some(s) = self.inner_wl_surface() { TouchTarget::motion(s, seat, data, event, seq); }
-    }
-    fn frame(&self, seat: &Seat<MargoState>, data: &mut MargoState, seq: Serial) {
-        if let Some(s) = self.inner_wl_surface() { TouchTarget::frame(s, seat, data, seq); }
-    }
-    fn cancel(&self, seat: &Seat<MargoState>, data: &mut MargoState, seq: Serial) {
-        if let Some(s) = self.inner_wl_surface() { TouchTarget::cancel(s, seat, data, seq); }
-    }
-    fn shape(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &smithay::input::touch::ShapeEvent, seq: Serial) {
-        if let Some(s) = self.inner_wl_surface() { TouchTarget::shape(s, seat, data, event, seq); }
-    }
-    fn orientation(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &smithay::input::touch::OrientationEvent, seq: Serial) {
-        if let Some(s) = self.inner_wl_surface() { TouchTarget::orientation(s, seat, data, event, seq); }
-    }
-}
-
-impl DndFocus<MargoState> for FocusTarget {
-    type OfferData<S: Source> = WlOfferData<S>;
-
-    fn enter<S: Source>(
-        &self,
-        data: &mut MargoState,
-        dh: &DisplayHandle,
-        source: Arc<S>,
-        seat: &Seat<MargoState>,
-        location: Point<f64, Logical>,
-        serial: &Serial,
-    ) -> Option<WlOfferData<S>> {
-        self.inner_wl_surface()
-            .and_then(|s| DndFocus::enter(s, data, dh, source, seat, location, serial))
-    }
-
-    fn motion<S: Source>(
-        &self,
-        data: &mut MargoState,
-        offer: Option<&mut WlOfferData<S>>,
-        seat: &Seat<MargoState>,
-        location: Point<f64, Logical>,
-        time: u32,
-    ) {
-        if let Some(s) = self.inner_wl_surface() {
-            DndFocus::motion(s, data, offer, seat, location, time);
-        }
-    }
-
-    fn leave<S: Source>(
-        &self,
-        data: &mut MargoState,
-        offer: Option<&mut WlOfferData<S>>,
-        seat: &Seat<MargoState>,
-    ) {
-        if let Some(s) = self.inner_wl_surface() {
-            DndFocus::leave(s, data, offer, seat);
-        }
-    }
-
-    fn drop<S: Source>(
-        &self,
-        data: &mut MargoState,
-        offer: Option<&mut WlOfferData<S>>,
-        seat: &Seat<MargoState>,
-    ) {
-        if let Some(s) = self.inner_wl_surface() {
-            DndFocus::drop(s, data, offer, seat);
-        }
-    }
 }
 
 // ── Margo: per-window compositor state ───────────────────────────────────────
@@ -971,229 +626,13 @@ impl MargoMonitor {
     pub fn current_nmaster(&self) -> u32 { self.pertag.nmasters[self.pertag.curtag] }
 }
 
-// ── Animation tick ────────────────────────────────────────────────────────────
+// ── Animation tick — moved to `state/animation_tick.rs` ────────────────────
+//
+// `tick_animations` + `AnimTickSpec` are re-exported above. Edit
+// the body in `state/animation_tick.rs` — touching state.rs no
+// longer recompiles the animation tick path, and vice-versa.
 
-/// Per-call parameters for [`tick_animations`]. Bundles the move-animation
-/// duration (used for both bezier ticks and resize-snapshot expiry) with
-/// the spring physics configuration, so the call site doesn't have to
-/// thread four scalars individually.
-#[derive(Debug, Clone, Copy)]
-pub struct AnimTickSpec {
-    /// Total bezier duration in `now_ms` units. Also bounds resize
-    /// snapshot life-time regardless of which clock is in use.
-    pub duration_move: u32,
-    /// `true` → spring physics integrator drives the move animation;
-    /// `false` → original bezier sampling.
-    pub use_spring: bool,
-    /// Pre-built spring (stiffness/damping/mass already resolved from
-    /// the damping ratio). Ignored when `use_spring` is false.
-    pub spring: crate::animation::spring::Spring,
-}
-
-pub fn tick_animations(
-    clients: &mut [MargoClient],
-    curves: &AnimationCurves,
-    now_ms: u32,
-    spec: AnimTickSpec,
-    closing_clients: &mut Vec<ClosingClient>,
-    layer_animations: &mut std::collections::HashMap<
-        smithay::reexports::wayland_server::backend::ObjectId,
-        LayerSurfaceAnim,
-    >,
-) -> bool {
-    let _span = tracy_client::span!("tick_animations");
-    let mut changed = false;
-    // Advance focus highlight (border colour + opacity) crossfades.
-    // `OpacityAnimation` does double duty: focused_opacity ↔ unfocused_opacity
-    // for the alpha, focuscolor ↔ bordercolor for the border. Both
-    // sample the `Focus` curve. Border refresh reads the current
-    // colour from this struct on every refresh so the cross-fade
-    // shows even between renders.
-    for c in clients.iter_mut() {
-        let oa = &mut c.opacity_animation;
-        if !oa.running {
-            continue;
-        }
-        let elapsed = now_ms.wrapping_sub(oa.time_started);
-        if elapsed >= oa.duration {
-            oa.running = false;
-            oa.current_opacity = oa.target_opacity;
-            oa.current_border_color = oa.target_border_color;
-            changed = true;
-            continue;
-        }
-        let t = elapsed as f64 / oa.duration as f64;
-        let s = curves.sample(t, AnimationType::Focus) as f32;
-        oa.current_opacity = oa.initial_opacity + (oa.target_opacity - oa.initial_opacity) * s;
-        for i in 0..4 {
-            let a = oa.initial_border_color[i];
-            let b = oa.target_border_color[i];
-            oa.current_border_color[i] = a + (b - a) * s;
-        }
-        changed = true;
-    }
-
-    // Advance opening animations on each client. Settles drop both
-    // the animation state and the captured texture so the live
-    // wl_surface takes over on the next frame.
-    for c in clients.iter_mut() {
-        if let Some(anim) = c.opening_animation.as_mut() {
-            let elapsed = now_ms.wrapping_sub(anim.time_started);
-            if elapsed >= anim.duration {
-                c.opening_animation = None;
-                c.opening_texture = None;
-                c.opening_capture_pending = false;
-                changed = true;
-            } else {
-                let raw = elapsed as f64 / anim.duration as f64;
-                anim.progress = curves.sample(raw, AnimationType::Open) as f32;
-                changed = true;
-            }
-        }
-    }
-
-    // Advance layer-surface open/close animations. Settled entries
-    // are removed from the map; the open path then falls back to
-    // unmodulated layer rendering, the close path stops drawing the
-    // texture (the underlying smithay layer was already unmapped at
-    // `layer_destroyed` time).
-    {
-        let mut to_drop: Vec<smithay::reexports::wayland_server::backend::ObjectId> = Vec::new();
-        for (id, anim) in layer_animations.iter_mut() {
-            let elapsed = now_ms.wrapping_sub(anim.time_started);
-            if elapsed >= anim.duration {
-                to_drop.push(id.clone());
-                continue;
-            }
-            let raw = elapsed as f64 / anim.duration as f64;
-            let action = if anim.is_close {
-                AnimationType::Close
-            } else {
-                AnimationType::Open
-            };
-            anim.progress = curves.sample(raw, action) as f32;
-            changed = true;
-        }
-        for id in to_drop {
-            layer_animations.remove(&id);
-            changed = true;
-        }
-    }
-
-    // Advance close animations and pop entries that have settled.
-    // Iterate in reverse so we can `swap_remove` cleanly without
-    // resampling indices. (Order doesn't matter visually — closing
-    // clients don't interact with each other beyond stacking, which
-    // we don't preserve in this list anyway.)
-    let mut i = 0;
-    while i < closing_clients.len() {
-        let cc = &mut closing_clients[i];
-        let elapsed = now_ms.wrapping_sub(cc.time_started);
-        if elapsed >= cc.duration {
-            closing_clients.swap_remove(i);
-            changed = true;
-            continue;
-        }
-        let raw = elapsed as f64 / cc.duration as f64;
-        cc.progress = curves.sample(raw, AnimationType::Close) as f32;
-        changed = true;
-        i += 1;
-    }
-
-    for c in clients.iter_mut() {
-        // Resize-snapshot expiry. Bezier mode caps the snapshot's life
-        // at `duration_move` (its crossfade alpha is fully transparent
-        // by then anyway). Spring mode has no fixed duration — the
-        // snapshot is dropped when the spring settles, inside the
-        // settle branch below — so we only run the wall-clock cap on
-        // bezier here. Otherwise a long spring overshoot would lose
-        // its snapshot mid-flight and the live surface (still at the
-        // pre-resize size) would suddenly pop into view.
-        if !spec.use_spring {
-            if let Some(snapshot) = c.resize_snapshot.as_ref() {
-                let dur = std::time::Duration::from_millis(spec.duration_move as u64);
-                if snapshot.captured_at.elapsed() >= dur {
-                    c.resize_snapshot = None;
-                    changed = true;
-                }
-            }
-        }
-
-        let anim = &mut c.animation;
-        if !anim.running { continue; }
-        changed = true;
-
-        if spec.use_spring {
-            // Spring path — niri-style analytical solution.
-            //
-            // The animation already has a precomputed `duration` from
-            // arrange_monitor (`Spring::clamped_duration`). We sample
-            // the closed-form oscillator at `elapsed` and lerp from
-            // initial → current using its [0, 1] progress. This
-            // guarantees the animation ends at exactly `duration` ms;
-            // the previous numerical integrator could leave the
-            // running flag set indefinitely when c.geom rounded onto
-            // its target while velocity was still above the velocity-
-            // epsilon, producing a CPU-bound tick→render→tick loop.
-            let elapsed_ms = now_ms.wrapping_sub(anim.time_started);
-            if elapsed_ms >= anim.duration {
-                // Hard end. Snap to the exact target — `value_at` may
-                // miss it by a fraction of a pixel, and we don't want
-                // the difference surviving into the next frame.
-                anim.running = false;
-                c.geom = anim.current;
-                c.resize_snapshot = None;
-                continue;
-            }
-            // 1D progress spring goes 0 → 1 over `duration`. Apply that
-            // single progress to all four channels so x/y/w/h move
-            // together — for window movement that's exactly what we
-            // want (the user perceives a single object travelling, not
-            // four independent ones).
-            let progress_spring = crate::animation::spring::Spring {
-                from: 0.0,
-                to: 1.0,
-                initial_velocity: 0.0,
-                params: crate::animation::spring::SpringParams {
-                    damping: spec.spring.params.damping,
-                    mass: spec.spring.params.mass,
-                    stiffness: spec.spring.params.stiffness,
-                    epsilon: spec.spring.params.epsilon,
-                },
-            };
-            let t = std::time::Duration::from_millis(elapsed_ms as u64);
-            let p = progress_spring.value_at(t).clamp(0.0, 1.0);
-            c.geom.x = lerp_i32(anim.initial.x, anim.current.x, p);
-            c.geom.y = lerp_i32(anim.initial.y, anim.current.y, p);
-            c.geom.width = lerp_i32(anim.initial.width, anim.current.width, p);
-            c.geom.height = lerp_i32(anim.initial.height, anim.current.height, p);
-        } else {
-            // Bezier path (original behaviour).
-            let elapsed = now_ms.wrapping_sub(anim.time_started);
-            if elapsed >= anim.duration {
-                anim.running = false;
-                c.geom = anim.current;
-                // Slot animation settled: also drop any lingering
-                // snapshot (defensive — the expiry check above usually
-                // catches it first).
-                c.resize_snapshot = None;
-                continue;
-            }
-            let t = elapsed as f64 / anim.duration as f64;
-            let s = curves.sample(t, anim.action);
-            c.geom.x = lerp_i32(anim.initial.x, anim.current.x, s);
-            c.geom.y = lerp_i32(anim.initial.y, anim.current.y, s);
-            c.geom.width = lerp_i32(anim.initial.width, anim.current.width, s);
-            c.geom.height = lerp_i32(anim.initial.height, anim.current.height, s);
-        }
-    }
-    changed
-}
-
-#[inline]
-fn lerp_i32(a: i32, b: i32, t: f64) -> i32 {
-    (a as f64 + (b - a) as f64 * t) as i32
-}
+#[allow(dead_code)]
 
 // ── Top-level compositor state ────────────────────────────────────────────────
 
