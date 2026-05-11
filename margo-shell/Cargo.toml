@@ -29,8 +29,30 @@ chrono = { version = "0.4", default-features = false, features = [
 ] }
 serde = { version = "1.0", default-features = false, features = [] }
 sysinfo = { version = "0.37", features = ["linux-netdevs"] }
-tokio = { version = "1", default-features = false, features = ["net", "macros"] }
-zbus = { version = "5", default-features = false, features = ["tokio"] }
+# Note: when zbus had the `tokio` feature enabled it pulled in
+# rt-multi-thread / fs / process / time transitively. Now that we
+# dropped that (zbus runs on async-io to avoid panicking margo —
+# which also depends on zbus), list the features margo-shell
+# actually uses explicitly.
+tokio = { version = "1", default-features = false, features = [
+  "net",
+  "macros",
+  "fs",
+  "process",
+  "rt",
+  "rt-multi-thread",
+  "time",
+  "io-util",
+  "sync",
+] }
+# zbus reactor must stay on the default (async-io) backend — the
+# margo binary also depends on zbus and runs it from its calloop
+# loop without a tokio runtime. Cargo unifies features across the
+# workspace, so enabling `tokio` here would force margo to run zbus
+# under tokio and panic at startup with "there is no reactor running".
+# async-io spawns its own thread; margo-shell's tokio runtime treats
+# zbus futures as ordinary async work.
+zbus = { version = "5" }
 libpulse-binding = { version = "2.28", features = ["pa_v15"] }
 log = { version = "0.4", features = [] }
 flexi_logger = "0.31"
