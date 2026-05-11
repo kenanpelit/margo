@@ -65,26 +65,39 @@ enum Command {
         long_about = "Dispatch a compositor command by name.\n\
                       \n\
                       The action <NAME> is the same string used in `bind = MODS,KEY,<NAME>,<args>` \
-                      lines in `config.conf`. Up to 5 trailing args are forwarded as the bind's \
-                      arg slots (v, v2, v3, i, i2 — see `mctl actions --verbose` for shapes).\n\
+                      lines in `config.conf`. Up to 5 trailing args fill the dwl-ipc dispatch slots:\n\
+                      \n  \
+                        ARGS[0] → slot 1 → arg.i   (i32, parsed; empty / non-numeric ⇒ 0)\n  \
+                        ARGS[1] → slot 2 → arg.i2  (i32, parsed; rarely used)\n  \
+                        ARGS[2] → slot 3 → arg.f   (f32, parsed; empty / non-numeric ⇒ 0.0)\n  \
+                        ARGS[3] → slot 4 → arg.v   (string; primary string payload)\n  \
+                        ARGS[4] → slot 5 → arg.v2  (string; secondary)\n\
+                      \n  \
+                      String-taking actions (`spawn`, `theme`, `run_script`, scratchpad commands) \
+                      read from slot 4, so the string goes in position 3 (with slots 1-3 left empty). \
+                      See `margo_config::Arg` doc comment for the full wire-↔-field table.\n\
                       \n\
                       EXAMPLES:\n  \
-                        mctl dispatch killclient            # close focused window\n  \
+                        mctl dispatch killclient                       # close focused window\n  \
                         mctl dispatch togglefullscreen\n  \
-                        mctl dispatch focusdir right        # focus next window to the right\n  \
-                        mctl dispatch view 128              # switch to tag 8\n  \
-                        mctl dispatch tagview 4             # move focused to tag 3 + follow\n  \
-                        mctl dispatch setlayout scroller\n  \
-                        mctl dispatch movewin 40 0          # move floating window 40 px right\n  \
-                        mctl dispatch spawn 'firefox --new-window https://…'\n  \
+                        mctl dispatch focusdir right                   # focus next window to the right\n  \
+                        mctl dispatch view 128                         # arg.i = 128 → tag 8\n  \
+                        mctl dispatch tagview 4                        # arg.i = 4 → tag 3 + follow\n  \
+                        mctl dispatch setlayout 2                      # arg.i = 2 (layout index)\n  \
+                        mctl dispatch movewin 40 0                     # arg.i = 40, arg.i2 = 0\n  \
+                        mctl dispatch spawn '' '' '' 'firefox …'       # string in slot 4 (arg.v)\n  \
+                        mctl dispatch theme '' '' '' default           # preset name in slot 4\n  \
                       \n\
-                      Run `mctl actions` for the complete list."
+                      Run `mctl actions --verbose` for per-action arg shapes."
     )]
     Dispatch {
         /// Dispatch action name (e.g. `view`, `togglefloating`, `setlayout`, `killclient`).
         /// `mctl actions` prints every accepted name.
         name: String,
-        /// Up to 5 positional arguments forwarded to the action.
+        /// Up to 5 positional arguments → dispatch slots 1-5 in order.
+        /// See the long help (`mctl dispatch --help`) for the slot ↔
+        /// field mapping; the common pitfall is putting a string in
+        /// slot 1 (numeric) instead of slot 4 (string).
         #[arg(trailing_var_arg = true)]
         args: Vec<String>,
     },

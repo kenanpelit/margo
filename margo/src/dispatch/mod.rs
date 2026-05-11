@@ -1,3 +1,43 @@
+//! Action dispatcher.
+//!
+//! Each `match` arm below maps an action name (`view`, `setlayout`,
+//! `spawn`, …) to its compositor-side implementation. The action
+//! name comes from one of three sources:
+//!
+//!   1. **Keybinds** parsed from `config.conf` — the parser produces
+//!      a `KeyBinding { action, arg, .. }` and the keyboard handler
+//!      calls this function directly.
+//!   2. **dwl-ipc dispatch requests** from `mctl dispatch <name> [args…]`.
+//!      The IPC handler decodes the 5 string slots into an `Arg`
+//!      and calls in.
+//!   3. **Gesture / mouse / axis binds** — same handler shape, just
+//!      a different action name pool.
+//!
+//! ## Reading `arg`
+//!
+//! The slot-to-field mapping is documented in detail on the
+//! `margo_config::Arg` struct (see `margo-config/src/types.rs`).
+//! TL;DR for handler authors:
+//!
+//! * `arg.i` / `arg.i2` — numeric args 1 / 2 (i32, default 0).
+//! * `arg.f`            — numeric arg 3 (f32, default 0.0).
+//! * `arg.v` / `arg.v2` — primary / secondary string. `Some` when
+//!   the wire slot was non-empty.
+//! * `arg.v3` / `arg.ui` / `arg.ui2` / `arg.f2` — bind-only,
+//!   populated by the config parser. NOT on the IPC wire.
+//!
+//! ## Footgun
+//!
+//! When passing a string from `mctl` (slot 4 → `arg.v`), the three
+//! preceding slots **must be empty strings** — they're numeric-
+//! parsed and dropped on a non-numeric value, so the right behavior
+//! is to leave them blank. Three CLI bugs (`mctl theme default`,
+//! `mctl session load <path>`, `mctl run <script>`) landed in
+//! 0.1.5 / 0.1.6 with the string in slot 1; their fix was to move
+//! the payload to slot 4. Look at `mctl::Command::Theme` /
+//! `Command::Run` / `Command::SessionLoad` for the canonical
+//! "empty,empty,empty,STRING,empty" pattern.
+
 #![allow(dead_code)]
 use margo_config::Arg;
 use tracing::debug;

@@ -156,16 +156,63 @@ pub struct KeySymCode {
 }
 
 // ── Argument passed to action callbacks ─────────────────────────────────────
+//
+// Polymorphic action argument. Mirrors dwl's `union Arg`, but on
+// the dispatch boundary we present each typed slot as a named
+// field so a Rust callee picks the right one without UB.
+//
+// **dwl-ipc wire ↔ field mapping** (footgunny — three CLI bugs
+// landed before this was finally written down):
+//
+// | dwl-ipc slot | `Arg` field | parsed as | when to use |
+// |--------------|-------------|-----------|-------------|
+// | `arg1` (`""` allowed) | `i`   | `i32::parse_or(0)` | numeric (`incnmaster`, `view`, `tag`) |
+// | `arg2` | `i2`  | `i32::parse_or(0)` | secondary numeric (rare) |
+// | `arg3` | `f`   | `f32::parse_or(0.0)` | floating-point (`setmfact 0.05`) |
+// | `arg4` | `v`   | `Option<String>` (Some when non-empty) | primary string (`spawn`, `theme`, `run_script`, scratchpad app_id, etc.) |
+// | `arg5` | `v2`  | `Option<String>` (Some when non-empty) | secondary string (scratchpad title pattern) |
+//
+// `v3`, `ui`, `ui2`, `f2` are set in-process by the config parser
+// (binds parsed from the file) and don't traverse the wire — those
+// slots are dispatch-internal only.
+//
+// **Common pitfall**: passing a string in slot 1 instead of slot 4.
+// `mctl dispatch theme default` used to stuff `"default"` into
+// slot 1 (which is parsed as i32 → 0 → falls through to the
+// "no preset" path). The fix in all three CLI commands
+// (`Theme`, `SessionLoad`, `Run`) is: keep slots 1-3 EMPTY strings
+// and put the string payload in slot 4. See `mctl.rs::Command::Theme`
+// for the canonical example.
+//
+// Reading the typed value: in dispatch handlers, prefer
+// `arg.v.as_deref()` over `arg.v.as_ref()` so the string path
+// matches the empty → `None` convention the wire layer uses. For
+// numeric, just read `arg.i` / `arg.f` — they default to 0 when
+// the slot was empty.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct Arg {
+    /// Slot 1. Wire `arg1`. Primary i32. Empty wire slot ⇒ 0.
     pub i: i32,
+    /// Slot 2. Wire `arg2`. Secondary i32. Rarely used.
     pub i2: i32,
+    /// Slot 3. Wire `arg3`. f32 (mfact deltas, ratios). Empty ⇒ 0.0.
     pub f: f32,
+    /// Bind-only secondary f32; not on the IPC wire.
     pub f2: f32,
+    /// Slot 4. Wire `arg4`. Primary string payload — `Some` when
+    /// non-empty, `None` otherwise. This is the slot most string-
+    /// taking actions read from (`spawn`, `theme`, `run_script`,
+    /// scratchpad `app_id`, `session_save` target, …).
     pub v: Option<String>,
+    /// Slot 5. Wire `arg5`. Secondary string (scratchpad title
+    /// regex, spawn additional arg, …). `Some` when non-empty.
     pub v2: Option<String>,
+    /// Bind-only tertiary string; not on the IPC wire. Used for
+    /// scratchpad spawn commands parsed from config.
     pub v3: Option<String>,
+    /// Bind-only u32 (tag bitmasks parsed from config). Not on wire.
     pub ui: u32,
+    /// Bind-only secondary u32. Not on wire.
     pub ui2: u32,
 }
 
