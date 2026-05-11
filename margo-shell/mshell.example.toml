@@ -102,10 +102,13 @@ remove_idle_btn        = false
 [media_player]
 max_title_length = 60
 
-[keyboard_layout]
-# Margo state.json'da xkb layout'unu surface etmiyor — modülü etkisiz.
-# Surface edilirse `Modules.right`'a "KeyboardLayout" ekle.
-labels = ["TR", "EN"]
+[keyboard_layout.labels]
+# xkb layout adı → bar'da gösterilecek kısa etiket.
+# Margo state.json'da xkb layout'unu surface etmiyor — modül henüz
+# etkisiz. Surface edilince `Modules.right`'a "KeyboardLayout" ekle,
+# bu eşleme aktifleşir.
+tr = "TR"
+us = "EN"
 
 [updates]
 check_cmd  = "checkupdates 2>/dev/null | wc -l"
