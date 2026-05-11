@@ -53,13 +53,20 @@ enum Command {
 }
 
 fn get_log_spec(log_level: &str) -> LogSpecification {
-    let new_spec = LogSpecification::env_or_parse(log_level);
+    // Use MSHELL_LOG as the env-override hook instead of RUST_LOG.
+    // Sharing RUST_LOG with margo (the compositor binary that
+    // launches us via exec-once) was a silent footgun: a user
+    // debugging margo with `RUST_LOG=margo=debug` would unknowingly
+    // mute every mshell::* log because flexi_logger's env_or_parse
+    // would adopt that spec verbatim and drop everything outside
+    // the `margo` crate namespace.
+    let spec_source = std::env::var("MSHELL_LOG")
+        .unwrap_or_else(|_| log_level.to_string());
 
-    match new_spec {
+    match LogSpecification::parse(&spec_source) {
         Ok(spec) => spec,
         Err(err) => {
-            warn!("Failed to parse log level: {err}, use the default");
-
+            warn!("Failed to parse log level {spec_source:?}: {err}, using default");
             LogSpecification::default()
         }
     }
