@@ -233,29 +233,35 @@ enum Command {
         force: bool,
     },
 
-    /// Live-swap the visual theme preset. Built-ins: `default`,
-    /// `minimal`, `gaudy`. The first preset switch captures a
-    /// baseline of the on-disk theme values; `theme default`
-    /// restores them. `mctl reload` invalidates the baseline so
-    /// reload + `default` lands the freshly-parsed values.
+    /// Live-swap the visual theme preset
+    ///
+    /// Built-ins: `default`, `minimal`, `gaudy`. The first preset
+    /// switch captures a baseline of the on-disk theme values;
+    /// `theme default` restores them. `mctl reload` invalidates
+    /// the baseline so reload + `default` lands the freshly-parsed
+    /// values.
     #[command(display_order = 32)]
     Theme {
         /// Preset name: `default`, `minimal`, or `gaudy`.
         preset: String,
     },
 
-    /// Save per-monitor tag/layout state to
-    /// `$XDG_STATE_HOME/margo/session.json` (defaults to
+    /// Save per-monitor tag/layout state to session.json
+    ///
+    /// Writes to `$XDG_STATE_HOME/margo/session.json` (defaults to
     /// `~/.local/state/margo/session.json`). Captures every
     /// monitor's seltags, tagset, per-tag layout/mfact/nmaster,
-    /// and canvas-pan. Open windows are not captured — clients are
-    /// bound to processes, the spawn line lives in user-space.
+    /// canvas-pan, and currently-parked scratchpad entries. Open
+    /// windows are not captured — clients are bound to processes,
+    /// the spawn line lives in user-space.
     #[command(name = "session-save", display_order = 33, alias = "session_save")]
     SessionSave,
 
-    /// Restore per-monitor tag/layout state from
-    /// `$XDG_STATE_HOME/margo/session.json`. Matches monitors by
-    /// output name; entries for absent monitors get logged + skipped.
+    /// Restore per-monitor tag/layout state from session.json
+    ///
+    /// Matches monitors by output name; entries for absent
+    /// monitors get logged + skipped. Scratchpad presence is
+    /// re-flagged on live clients matching by `app_id`.
     #[command(name = "session-load", display_order = 34, alias = "session_load")]
     SessionLoad,
 
@@ -339,19 +345,21 @@ enum Command {
         action: TwilightCmd,
     },
 
-    /// Show the diagnostics from the running compositor's most-recent
-    /// config reload — niri-style. Hyprland's `hyprctl configerrors`
-    /// analogue. Empty when the last reload was clean.
+    /// Show config diagnostics from the last reload (niri-style)
     ///
-    /// Reads from the live compositor (via the same state.json IPC
-    /// `mctl status` uses), so it reflects what the compositor
-    /// actually applied, not what `check-config` thinks about the
-    /// file on disk right now.
+    /// Hyprland's `hyprctl configerrors` analogue. Empty when the
+    /// last reload was clean. Reads from the live compositor (via
+    /// the same state.json IPC `mctl status` uses), so it reflects
+    /// what the compositor actually applied — not what
+    /// `check-config` thinks about the file on disk right now.
     #[command(display_order = 38)]
     ConfigErrors,
 
-    /// Validate `~/.config/margo/config.conf`: unknown keys, regex errors,
-    /// duplicate binds, missing source files, lone-mango leftovers
+    /// Validate the user's config (niri-style diagnostics)
+    ///
+    /// Catches unknown keys, regex errors, duplicate binds, missing
+    /// source files, lone-mango leftovers. `--help` prints the full
+    /// rule list + exit-code semantics.
     #[command(
         long_about = "Sanity-check a margo config file without launching the compositor.\n\
                       \n\
@@ -377,10 +385,11 @@ enum Command {
         config: Option<std::path::PathBuf>,
     },
 
-    /// Read the user's config and report which window rules WOULD apply
-    /// to a given app_id / title pair. Doesn't query the running
-    /// compositor — pure config introspection so you can sanity-check
-    /// `windowrule` patterns without launching the app.
+    /// Dry-run windowrules against an app_id / title pair
+    ///
+    /// Pure config introspection — doesn't query the running
+    /// compositor. Useful for sanity-checking `windowrule` patterns
+    /// without launching the app.
     #[command(
         long_about = "Walk `~/.config/margo/config.conf` (or the file passed via \
                       `--config`) and print the windowrules that match a given \
