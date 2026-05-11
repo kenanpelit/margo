@@ -766,8 +766,14 @@ impl Outputs {
             {
                 let (wallpaper_id, wallpaper_task) = new_layer_surface(LayerShellSettings {
                     namespace: "mshell-wallpaper".to_string(),
-                    size: Some((0, 0)),
-                    layer: Layer::Background,
+                    // size (0, 0) + 4-anchor = "compositor sizes me
+                    // to the output". Some iced/wlr-layer-shell
+                    // combos balk at (0, 0) and never commit a
+                    // buffer; (1, 1) is the equivalent-but-safer
+                    // initial value — the compositor still expands
+                    // to the output thanks to the four anchors.
+                    size: Some((1, 1)),
+                    layer: Layer::Bottom,
                     keyboard_interactivity: KeyboardInteractivity::None,
                     exclusive_zone: 0,
                     anchor: Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT,

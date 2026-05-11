@@ -961,7 +961,10 @@ impl App {
             Some(HasOutput::Menu(None)) => Row::new().into(),
             Some(HasOutput::Toast) => self.notifications.toast_view().map(Message::Notifications),
             Some(HasOutput::Osd) => self.osd.view().map(Message::Osd),
-            Some(HasOutput::Wallpaper) => self.wallpaper_view(id),
+            Some(HasOutput::Wallpaper) => {
+                self.wallpaper_view_logged();
+                self.wallpaper_view(id)
+            }
             None => Row::new().into(),
         }
     }
@@ -1041,6 +1044,16 @@ impl App {
             .iter()
             .map(|(name, _, _)| (name.clone(), String::new()))
             .collect()
+    }
+
+    /// Render the wallpaper for the surface bound to `id`. Diagnostic
+    /// counters tracked via the `log` crate let us tell apart "iced
+    /// never called view()" from "view() ran but image render failed".
+    fn wallpaper_view_logged(&self) {
+        // One-line tap before the real view body so a single
+        // `grep wallpaper_view: called` in the log proves iced
+        // exercises this surface at all.
+        log::info!(target: "wp_view", "wallpaper_view: called");
     }
 
     /// Render the wallpaper for the surface bound to `id`. Looks up
