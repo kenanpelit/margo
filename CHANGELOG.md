@@ -7,6 +7,45 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.2.1] – 2026-05-11
+
+Rust 2024 edition migration + clippy zero-warnings sweep. No
+behavioural change — every patched site uses the modern 2024
+idiom the compiler now stabilises (let_chains, struct-init
+spread, end-of-file test modules).
+
+### Changed
+
+- **Workspace migrated to Rust 2024 edition.** `cargo fix
+  --edition --workspace` handled the mechanical temp-lifetime
+  rewrites across 9 files; the rest of this commit is the
+  modern-idiom follow-up:
+  * 7 collapsible nested `if let` blocks rewritten as
+    `if let A && let B` (let_chains is stable in 2024).
+    Sites: `margo-config::parser`, `margo-ipc::migrate`,
+    `margo-ipc::bin::mctl` (×3), `mlayout::main`,
+    `mscreenshot::main`.
+  * 2 `let foo = …; foo` blocks collapsed to direct return
+    (`margo::input_handler`, `margo::state`).
+  * `theme_baseline_tests` rewrote `Config::default() + 9
+    reassignments` into the
+    `Config { borderpx: 3, ..Config::default() }` struct-init
+    spread idiom.
+  * `gesture_tests` mod moved from mid-file to end-of-file
+    (`clippy::items_after_test_module`).
+  * `gamma_lut::extreme_inputs_clamp_safely` test's
+    tautological `assert!(v <= u16::MAX)` (always true for
+    `u16`) replaced with `std::hint::black_box(v)` so the
+    optimiser can't elide the iteration without losing the
+    "no panic / no NaN cast" intent.
+
+After: `cargo clippy --all-targets` is zero warnings,
+`cargo test --workspace` still 146 passing. Zero `#[allow(...)]`
+escape hatches added — every warning got a real-code fix.
+
+The 2024 idioms are now in place to enable future `let_chains` /
+`gen` / async-closure work without per-site nags.
+
 ## [0.2.0] – 2026-05-11
 
 First minor bump beyond the 0.1.x sweep. Two headline features —
