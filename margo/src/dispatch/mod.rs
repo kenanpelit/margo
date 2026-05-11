@@ -268,19 +268,19 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
             let k = if arg.i > 0 { arg.i as u32 } else { 4000 };
             let g = if arg.i2 > 0 { arg.i2 as u32 } else { 100 };
             state.twilight.set_preview(k, g);
-            let _ = state.tick_twilight();
+            state.force_tick_twilight();
             tracing::info!("twilight preview: {k}K @ {g}%");
         }
         "twilight_test" => {
             // arg.i = duration seconds (clamped 1–60 in the CLI)
             let dur_s = if arg.i > 0 { arg.i as u64 } else { 5 };
             state.twilight.start_test(dur_s.saturating_mul(1000));
-            let _ = state.tick_twilight();
+            state.force_tick_twilight();
             tracing::info!("twilight test: sweeping day→night over {dur_s}s");
         }
         "twilight_reset" => {
             state.twilight.reset();
-            let _ = state.tick_twilight();
+            state.force_tick_twilight();
             tracing::info!("twilight reset to schedule");
         }
         "twilight_set" => {
@@ -318,7 +318,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                     };
                     if applied.is_some() {
                         state.twilight.reset();
-                        let _ = state.tick_twilight();
+                        state.force_tick_twilight();
                         tracing::info!("twilight_set {field}={val}");
                     } else {
                         tracing::warn!(

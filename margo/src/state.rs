@@ -2899,6 +2899,38 @@ impl MargoState {
         Ok(())
     }
 
+    /// Force-tick twilight from a dispatch path and schedule the
+    /// next tick at the duration the tick body just asked for.
+    ///
+    /// The plain `tick_twilight` returns a `Duration` so the calloop
+    /// timer (the steady-state caller) can `ToDuration` itself. But
+    /// the dispatchers behind `mctl twilight preview / test / reset`
+    /// don't run from that timer — they run from the input-handler
+    /// path. If we only force-ticked there without rearming, the
+    /// next live update wouldn't happen until the calloop timer's
+    /// already-scheduled fire (60 s away by default at steady state).
+    /// That's the "test command is instant" symptom — sweep
+    /// progress was sampled once at start, then nothing until the
+    /// timer eventually fired half a minute later, by which time
+    /// the sweep had already elapsed and we landed on Scheduled.
+    ///
+    /// Fix: insert a fresh single-shot Timer source from here that
+    /// re-rearms itself the same way the kick-off timer in
+    /// `main.rs` does. Multiple in-flight timers are fine — calloop
+    /// keeps them separate, and on each fire `tick_twilight` is
+    /// idempotent (it reads live config + override state).
+    pub fn force_tick_twilight(&mut self) {
+        let next = self.tick_twilight();
+        let timer = calloop::timer::Timer::from_duration(next);
+        let _ = self.loop_handle.insert_source(
+            timer,
+            move |_, _, state: &mut MargoState| {
+                let next = state.tick_twilight();
+                calloop::timer::TimeoutAction::ToDuration(next)
+            },
+        );
+    }
+
     /// Advance twilight one tick + apply the resulting ramp to every
     /// connected output. Called from the calloop timer (steady-state
     /// path), from `reload_config` (force resample on config change),
