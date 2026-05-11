@@ -1059,12 +1059,51 @@ impl MargoState {
         } else {
             (current + len - 1) % len
         };
-
-        let tagset = self.monitors[next].current_tagset();
-        if let Some(idx) = self.clients.iter().position(|c| c.is_visible_on(next, tagset)) {
-            let window = self.clients[idx].window.clone();
-            self.focus_surface(Some(FocusTarget::Window(window)));
+        if next == current {
+            return;
         }
+
+        // Warp the cursor to the target monitor before changing
+        // focus. Without this, sloppy-focus snaps focus right back
+        // to whatever client the pointer is hovering on the source
+        // output as soon as any motion event arrives — the
+        // "Super+A bastım hiçbir şey olmuyor" symptom. The cursor
+        // also has to actually leave the source monitor or the
+        // user sees no feedback at all when the target side is
+        // empty.
+        let area = self.monitors[next].monitor_area;
+        self.input_pointer.x = (area.x + area.width / 2) as f64;
+        self.input_pointer.y = (area.y + area.height / 2) as f64;
+        self.clamp_pointer_to_outputs();
+
+        // Focus selection on the target monitor, in priority order:
+        //   1. The monitor's stored `selected` if that client is
+        //      still visible (Super+A → ... → Super+A geri dönüşte
+        //      aynı pencere muscle memory).
+        //   2. First visible client on the active tagset.
+        //   3. None — clear focus so subsequent key events don't
+        //      keep flowing into the *source* monitor's client.
+        let tagset = self.monitors[next].current_tagset();
+        let target_idx = self.monitors[next]
+            .selected
+            .filter(|&i| i < self.clients.len() && self.clients[i].is_visible_on(next, tagset))
+            .or_else(|| {
+                self.clients
+                    .iter()
+                    .position(|c| c.is_visible_on(next, tagset))
+            });
+
+        if let Some(idx) = target_idx {
+            let window = self.clients[idx].window.clone();
+            self.monitors[next].selected = Some(idx);
+            self.focus_surface(Some(FocusTarget::Window(window)));
+        } else {
+            self.focus_surface(None);
+        }
+
+        crate::protocols::dwl_ipc::broadcast_monitor(self, current);
+        crate::protocols::dwl_ipc::broadcast_monitor(self, next);
+        self.request_repaint();
     }
 
     pub fn tag_mon(&mut self, direction: i32) {
@@ -1086,6 +1125,35 @@ impl MargoState {
         self.clients[idx].tags = tagset;
         self.arrange_monitor(current_mon);
         self.arrange_monitor(target_mon);
+
+        // Follow the window across monitors. Without this the
+        // cursor (and therefore sloppy-focus + the visible
+        // selection) stays on the source output — the user moves a
+        // window with `tagmon` or the matching 3-finger gesture and
+        // the pointer is suddenly stranded on the empty side. Warp
+        // first, then refocus through the standard path so border /
+        // dwl-ipc / scripting hooks all see a single coherent
+        // "window is here now" event.
+        let g = self.clients[idx].geom;
+        if g.width > 0 && g.height > 0 {
+            self.input_pointer.x = (g.x + g.width / 2) as f64;
+            self.input_pointer.y = (g.y + g.height / 2) as f64;
+        } else {
+            // Degenerate slot — fall back to the target monitor's
+            // centre so we at least leave the source output.
+            let area = self.monitors[target_mon].monitor_area;
+            self.input_pointer.x = (area.x + area.width / 2) as f64;
+            self.input_pointer.y = (area.y + area.height / 2) as f64;
+        }
+        self.clamp_pointer_to_outputs();
+
+        let window = self.clients[idx].window.clone();
+        self.monitors[target_mon].selected = Some(idx);
+        self.focus_surface(Some(FocusTarget::Window(window)));
+
+        crate::protocols::dwl_ipc::broadcast_monitor(self, current_mon);
+        crate::protocols::dwl_ipc::broadcast_monitor(self, target_mon);
+        self.request_repaint();
     }
 }
 
