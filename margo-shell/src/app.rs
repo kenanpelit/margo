@@ -78,6 +78,18 @@ pub struct App {
     /// Last-seen wallpaper path per output, used to skip re-decoding
     /// when state.json gets rewritten but the path is unchanged.
     pub wallpaper_paths: HashMap<String, String>,
+    /// Shuffle state: pool of candidate image paths (scanned from
+    /// `[wallpaper.shuffle].directory`). Empty until the first scan
+    /// completes; built lazily on the first Message::WallpaperRefresh
+    /// when shuffle is enabled.
+    pub shuffle_pool: Vec<std::path::PathBuf>,
+    /// Sequential-mode cursor over the pool. Random mode ignores it.
+    pub shuffle_cursor: usize,
+    /// Stable per-output shuffle assignments. Kept across
+    /// `WallpaperRefresh` ticks so tag changes don't flip pictures;
+    /// only the periodic timer (or per_output=false single-pick)
+    /// updates it.
+    pub shuffle_assignments: HashMap<String, std::path::PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -113,6 +125,74 @@ pub enum Message {
         path: String,
         handle: Option<iced::widget::image::Handle>,
     },
+    /// Periodic shuffle rotate (cadence from
+    /// `[wallpaper.shuffle].interval_secs`). Carries no payload; the
+    /// handler reshuffles the per-output assignments and pushes a
+    /// fresh `WallpaperRefresh` so the standard decode path runs.
+    WallpaperShuffleTick,
+}
+
+/// Pick one image from the pool. `Random` mode draws uniformly;
+/// `Sequential` advances `cursor` modulo the pool size.
+fn pick_from_pool(
+    pool: &[std::path::PathBuf],
+    cursor: &mut usize,
+    mode: config::WallpaperShuffleMode,
+) -> std::path::PathBuf {
+    debug_assert!(!pool.is_empty(), "pool should be non-empty here");
+    let pick = match mode {
+        config::WallpaperShuffleMode::Random => {
+            use rand::Rng;
+            let idx = rand::thread_rng().gen_range(0..pool.len());
+            pool[idx].clone()
+        }
+        config::WallpaperShuffleMode::Sequential => {
+            let pick = pool[*cursor % pool.len()].clone();
+            *cursor = (*cursor + 1) % pool.len();
+            pick
+        }
+    };
+    pick
+}
+
+/// Scan `directory` for image files. Recognises `.jpg`, `.jpeg`,
+/// `.png`, `.webp` (case-insensitive). Non-recursive. Returns paths
+/// sorted by name so Sequential mode is deterministic across runs.
+fn scan_wallpaper_directory(directory: &str) -> Vec<std::path::PathBuf> {
+    let expanded = match shellexpand::full(directory) {
+        Ok(p) => p.to_string(),
+        Err(e) => {
+            log::warn!("wallpaper.shuffle.directory expand failed: {e}");
+            return Vec::new();
+        }
+    };
+    let mut paths: Vec<std::path::PathBuf> = Vec::new();
+    let entries = match std::fs::read_dir(&expanded) {
+        Ok(e) => e,
+        Err(e) => {
+            log::warn!("wallpaper.shuffle.directory {expanded} read failed: {e}");
+            return Vec::new();
+        }
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let is_image = path
+            .extension()
+            .and_then(|s| s.to_str())
+            .map(|ext| {
+                let lower = ext.to_ascii_lowercase();
+                matches!(lower.as_str(), "jpg" | "jpeg" | "png" | "webp")
+            })
+            .unwrap_or(false);
+        if is_image {
+            paths.push(path);
+        }
+    }
+    paths.sort();
+    paths
 }
 
 /// `#RRGGBB` → iced::Color. Returns None on parse failure.
@@ -183,6 +263,9 @@ impl App {
                     visible: true,
                     wallpaper_handles: HashMap::new(),
                     wallpaper_paths: HashMap::new(),
+                    shuffle_pool: Vec::new(),
+                    shuffle_cursor: 0,
+                    shuffle_assignments: HashMap::new(),
                 },
                 Task::none(),
             )
@@ -624,6 +707,7 @@ impl App {
                 // Diff against the last-seen paths; for each entry
                 // that actually changed, kick off an async decode.
                 // Empty path → drop the handle (renders fallback bg).
+                let map = self.maybe_apply_shuffle(map);
                 let mut tasks = vec![];
                 for (output, path) in map.iter() {
                     if self.wallpaper_paths.get(output) == Some(path) {
@@ -668,6 +752,13 @@ impl App {
                 self.wallpaper_paths.retain(|k, _| map.contains_key(k));
                 self.wallpaper_handles.retain(|k, _| map.contains_key(k));
                 Task::batch(tasks)
+            }
+            Message::WallpaperShuffleTick => {
+                // Force-reshuffle on the next refresh.
+                self.shuffle_assignments.clear();
+                Task::done(Message::WallpaperRefresh(
+                    self.last_wallpaper_map(),
+                ))
             }
             Message::WallpaperDecoded {
                 output,
@@ -858,6 +949,83 @@ impl App {
         }
     }
 
+    /// If `[wallpaper.shuffle]` is enabled, override the incoming
+    /// per-output path map with mshell-chosen picks. Otherwise pass
+    /// the map through untouched.
+    ///
+    /// Pool is lazy-loaded on first call (and on `WallpaperShuffleTick`
+    /// after the assignments map is cleared). Per-output assignments
+    /// are sticky across ticks so tag swaps don't reshuffle.
+    fn maybe_apply_shuffle(
+        &mut self,
+        incoming: HashMap<String, String>,
+    ) -> HashMap<String, String> {
+        let cfg = &self.general_config.wallpaper.shuffle;
+        if !cfg.enabled {
+            return incoming;
+        }
+
+        // Lazy pool scan. Empty directory → log warn, fall through to
+        // the original map (better than rendering blank).
+        if self.shuffle_pool.is_empty() {
+            self.shuffle_pool =
+                scan_wallpaper_directory(&self.general_config.wallpaper.shuffle.directory);
+            log::info!(
+                "wallpaper.shuffle: scanned {} images from {}",
+                self.shuffle_pool.len(),
+                self.general_config.wallpaper.shuffle.directory
+            );
+        }
+        if self.shuffle_pool.is_empty() {
+            return incoming;
+        }
+
+        let pool = self.shuffle_pool.clone();
+        let mode = self.general_config.wallpaper.shuffle.mode;
+        let per_output = self.general_config.wallpaper.shuffle.per_output;
+
+        // Decide which outputs need a fresh pick — incoming map's
+        // keys are the truth source (margo backend filled it from
+        // state.json's outputs[]).
+        let mut shared_pick: Option<std::path::PathBuf> = None;
+        let mut out_map = HashMap::with_capacity(incoming.len());
+        for output in incoming.keys() {
+            let pick = if per_output {
+                self.shuffle_assignments
+                    .entry(output.clone())
+                    .or_insert_with(|| pick_from_pool(&pool, &mut self.shuffle_cursor, mode))
+                    .clone()
+            } else {
+                let pick = shared_pick.get_or_insert_with(|| {
+                    pick_from_pool(&pool, &mut self.shuffle_cursor, mode)
+                });
+                self.shuffle_assignments
+                    .insert(output.clone(), pick.clone());
+                pick.clone()
+            };
+            out_map.insert(output.clone(), pick.to_string_lossy().into_owned());
+        }
+        // Drop assignments for outputs that vanished.
+        self.shuffle_assignments
+            .retain(|k, _| incoming.contains_key(k));
+        out_map
+    }
+
+    /// Reconstruct the "incoming" map the way WallpaperRefresh expects
+    /// it — used by the shuffle-tick path to re-run the override flow
+    /// without waiting for the next state.json change.
+    fn last_wallpaper_map(&self) -> HashMap<String, String> {
+        // Keyed by output name. We don't have direct access to the
+        // compositor's wallpaper map from here, but the outputs list
+        // is authoritative for "which outputs exist". An empty string
+        // value preserves the same call signature; shuffle override
+        // ignores values anyway.
+        self.outputs
+            .iter()
+            .map(|(name, _, _)| (name.clone(), String::new()))
+            .collect()
+    }
+
     /// Render the wallpaper for the surface bound to `id`. Looks up
     /// the output's name → fetches its path from the compositor's
     /// last-seen wallpaper map → loads (or fetches from cache) the
@@ -920,6 +1088,21 @@ impl App {
                 ) => Message::WallpaperRefresh(state.wallpapers.clone()),
                 _ => Message::None,
             }),
+            // Wallpaper shuffle timer — only emits when both
+            // [wallpaper.shuffle].enabled and interval_secs > 0.
+            // `iced::time::every` returns an empty Subscription
+            // for zero-duration; we still guard explicitly so the
+            // pulse only fires when shuffle is actually active.
+            if self.general_config.wallpaper.shuffle.enabled
+                && self.general_config.wallpaper.shuffle.interval_secs > 0
+            {
+                iced::time::every(std::time::Duration::from_secs(
+                    self.general_config.wallpaper.shuffle.interval_secs,
+                ))
+                .map(|_| Message::WallpaperShuffleTick)
+            } else {
+                Subscription::none()
+            },
             iced::output_events().map(Message::OutputEvent),
             listen_with(move |evt, _, _| match evt {
                 iced::event::Event::Keyboard(keyboard::Event::KeyPressed { key, .. }) => {

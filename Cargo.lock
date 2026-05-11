@@ -3586,6 +3586,7 @@ dependencies = [
  "margo-ipc",
  "pin-project-lite",
  "pipewire",
+ "rand 0.8.6",
  "regex",
  "reqwest",
  "rust-embed",

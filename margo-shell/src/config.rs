@@ -94,6 +94,10 @@ pub struct WallpaperConfig {
     /// the image is None, Contain-letterboxed, or partially
     /// transparent). Hex string.
     pub fallback_color: String,
+    /// Optional shuffle / rotate behaviour. When enabled, mshell
+    /// picks wallpapers from a directory and **bypasses** the path
+    /// margo writes to `state.json` (the tagrule-based wallpaper).
+    pub shuffle: WallpaperShuffleConfig,
 }
 
 impl Default for WallpaperConfig {
@@ -102,8 +106,56 @@ impl Default for WallpaperConfig {
             enabled: true,
             fit: WallpaperFit::default(),
             fallback_color: "#1e1e2e".to_owned(),
+            shuffle: WallpaperShuffleConfig::default(),
         }
     }
+}
+
+/// Wallpaper shuffle / slideshow configuration.
+///
+/// When `enabled`, the path margo writes to `state.json` (driven by
+/// `tagrule = id:N,wallpaper:…`) is ignored; mshell scans `directory`,
+/// shuffles the list once at startup, and assigns one image to each
+/// output (or all outputs share one if `per_output = false`).
+///
+/// If `interval_secs > 0`, mshell rotates to the next image at that
+/// cadence on top of the initial pick.
+#[derive(Deserialize, Clone, Debug)]
+#[serde(default)]
+pub struct WallpaperShuffleConfig {
+    pub enabled: bool,
+    /// Source directory. `~` is expanded. Reads `.jpg`, `.jpeg`,
+    /// `.png`, `.webp`, case-insensitive.
+    pub directory: String,
+    /// Each output gets its own random pick when `true`; when
+    /// `false`, mshell picks one image and shares it across every
+    /// output (single coherent backdrop on multi-monitor setups).
+    pub per_output: bool,
+    /// Rotate cadence in seconds. `0` = pick once at process start
+    /// and never rotate.
+    pub interval_secs: u64,
+    /// `Random` reshuffles independently each pick. `Sequential`
+    /// walks the directory listing in order, wrapping around.
+    pub mode: WallpaperShuffleMode,
+}
+
+impl Default for WallpaperShuffleConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            directory: "~/Pictures/wallpapers".to_owned(),
+            per_output: true,
+            interval_secs: 0,
+            mode: WallpaperShuffleMode::default(),
+        }
+    }
+}
+
+#[derive(Deserialize, Default, Copy, Clone, Debug, PartialEq, Eq)]
+pub enum WallpaperShuffleMode {
+    #[default]
+    Random,
+    Sequential,
 }
 
 #[derive(Deserialize, Default, Copy, Clone, Debug, PartialEq, Eq)]

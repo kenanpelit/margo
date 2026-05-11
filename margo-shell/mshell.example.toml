@@ -42,6 +42,17 @@ enabled        = true       # false = mshell wallpaper çizmez (swaybg/swww kull
 fit            = "Cover"    # "Cover" / "Contain" / "Fill" / "None"
 fallback_color = "#1e1e2e"  # path boş/yok ise bu renk gösterilir
 
+# Shuffle / slideshow — açıkken margo'nun state.json'daki path'lerini
+# (tagrule = id:N,wallpaper:…) bypass eder; mshell `directory`'den
+# rastgele/sırayla seçer. Her output kendi seçimini alır
+# (per_output=true). `interval_secs > 0` ise periyodik rotate eder.
+[wallpaper.shuffle]
+enabled       = false                          # true = shuffle moduna geç
+directory     = "~/Pictures/wallpapers/others" # kaynak klasör (~ expand edilir)
+mode          = "Random"                       # "Random" / "Sequential"
+per_output    = true                           # true: her output farklı, false: hepsi aynı
+interval_secs = 0                              # 0 = sadece başlangıçta seç; >0 = saniye cinsinden döndürme aralığı
+
 # ══════════════════════════════════════════════════════════════════════════
 #  Module layout
 # ══════════════════════════════════════════════════════════════════════════
