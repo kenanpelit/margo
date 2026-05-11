@@ -63,7 +63,18 @@ impl Localizer {
     pub fn resolve(language: Option<&str>, region: Option<&str>) -> Self {
         let langid = resolve_language(language);
         let chrono = resolve_region(region);
-        let units = resolve_units(chrono);
+        // If the user set `region` in their config they're explicitly
+        // picking a locale; honour the units that locale implies and
+        // skip the LC_MEASUREMENT/LC_ALL env chain. Without this an
+        // `LC_ALL=en_US.UTF-8` desktop (common on systems whose
+        // primary UI language is English but who live elsewhere)
+        // would force Imperial units (°F, mph) despite the user
+        // writing `region = "tr-TR"` in mshell.toml.
+        let units = if region.is_some() {
+            derive_units(chrono)
+        } else {
+            resolve_units(chrono)
+        };
         let loader = load_loader(&langid);
         Self {
             chrono,
