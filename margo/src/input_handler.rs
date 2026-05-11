@@ -583,31 +583,39 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                     }
                 }
 
-                // Modifier-release auto-commit for alt+Tab cycle. Triggers
-                // exactly when:
-                //   1. An `overview_focus_*` keybind has fired since the
-                //      last commit/close (`overview_cycle_pending`).
-                //   2. Overview is still open.
-                //   3. The current modifier state no longer overlaps the
-                //      snapshot taken at cycle time — i.e. the user has
-                //      released *every* modifier they were holding when
-                //      they last tapped Tab. This catches the standard
-                //      "release Alt to confirm" pattern even if the user
-                //      was holding Alt+Shift (alt+shift+Tab walks back) —
-                //      Shift release alone won't commit, but releasing
-                //      both Alt and Shift will.
+                // Modifier-release auto-commit for alt+Tab cycle. We can't
+                // rely on the `modifiers` parameter on a release event
+                // because xkbcommon updates its modifier state AFTER the
+                // filter callback runs — `modifiers.alt` is still `true`
+                // when the Alt_L release reaches us. Instead, identify
+                // *which* modifier was released by looking at the
+                // released keysym(s) directly, subtract that bit from
+                // the pending-cycle snapshot, and commit when the
+                // snapshot empties.
+                //
+                // Alt+Tab: snap = {ALT}. Alt release → snap = {} → commit.
+                // Alt+Shift+Tab walking back: snap = {ALT, SHIFT}. Shift
+                // release alone → snap = {ALT} → no commit. Then Alt
+                // release → snap = {} → commit. Releasing modifiers in
+                // any order still confirms the pick.
                 if key_state == KeyState::Released
                     && state.overview_cycle_pending
                     && state.is_overview_open()
+                    && !state.overview_cycle_modifier_mask.is_empty()
                 {
-                    let now = smithay_mods_to_margo(modifiers);
-                    let snap = state.overview_cycle_modifier_mask;
-                    if !snap.is_empty() && now.intersection(snap).is_empty() {
-                        state.overview_cycle_pending = false;
-                        state.overview_cycle_modifier_mask =
-                            margo_config::Modifiers::empty();
-                        state.overview_activate();
-                        return FilterResult::Intercept(());
+                    let released_bit = handle
+                        .raw_syms()
+                        .iter()
+                        .find_map(|s| released_modifier_bit(s.raw()));
+                    if let Some(bit) = released_bit {
+                        if state.overview_cycle_modifier_mask.contains(bit) {
+                            state.overview_cycle_modifier_mask.remove(bit);
+                            if state.overview_cycle_modifier_mask.is_empty() {
+                                state.overview_cycle_pending = false;
+                                state.overview_activate();
+                                return FilterResult::Intercept(());
+                            }
+                        }
                     }
                 }
 
@@ -1095,6 +1103,37 @@ fn handle_pointer_axis<B: InputBackend, E: PointerAxisEvent<B>>(
         ptr.frame(state);
     }
     state.request_repaint();
+}
+
+/// Map a released modifier keysym to the matching `margo_config::Modifiers`
+/// bit. We need this because xkbcommon updates the keyboard's modifier
+/// state *after* the filter callback runs for a release event — so a
+/// `KeyState::Released` event for `Alt_L` is delivered with
+/// `ModifiersState::alt` still set to `true`. Reading the keysym we just
+/// got the release for is unambiguous; we then subtract its bit from
+/// our pending-cycle snapshot and commit when the snapshot empties.
+fn released_modifier_bit(keysym: u32) -> Option<margo_config::Modifiers> {
+    // X11 keysym constants. These are stable across xkbcommon versions
+    // and avoid pulling a dedicated keysym module into this hot path.
+    const SHIFT_L: u32 = 0xffe1;
+    const SHIFT_R: u32 = 0xffe2;
+    const CONTROL_L: u32 = 0xffe3;
+    const CONTROL_R: u32 = 0xffe4;
+    const META_L: u32 = 0xffe7;
+    const META_R: u32 = 0xffe8;
+    const ALT_L: u32 = 0xffe9;
+    const ALT_R: u32 = 0xffea;
+    const SUPER_L: u32 = 0xffeb;
+    const SUPER_R: u32 = 0xffec;
+    const HYPER_L: u32 = 0xffed;
+    const HYPER_R: u32 = 0xffee;
+    match keysym {
+        SHIFT_L | SHIFT_R => Some(margo_config::Modifiers::SHIFT),
+        CONTROL_L | CONTROL_R => Some(margo_config::Modifiers::CTRL),
+        ALT_L | ALT_R | META_L | META_R => Some(margo_config::Modifiers::ALT),
+        SUPER_L | SUPER_R | HYPER_L | HYPER_R => Some(margo_config::Modifiers::LOGO),
+        _ => None,
+    }
 }
 
 fn smithay_mods_to_margo(m: &ModifiersState) -> margo_config::Modifiers {

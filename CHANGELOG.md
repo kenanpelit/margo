@@ -9,6 +9,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- **Alt-release auto-commit now actually fires on the Alt-release
+  event.** Previous attempt read `modifiers` from the release-event
+  filter callback and checked whether the snapshot still overlapped.
+  Problem: xkbcommon updates its modifier state *after* the filter
+  runs, so on the `Alt_L` release event the callback still sees
+  `modifiers.alt = true`. The intersection check never went empty and
+  overview stayed open until a second alt+Tab press happened. New
+  approach reads the *released keysym* (`handle.raw_syms()`) and maps
+  it to its `margo_config::Modifiers` bit directly, subtracts that
+  bit from the pending-cycle snapshot, and commits when the snapshot
+  empties. Works regardless of which order the user releases
+  modifiers — Alt+Shift+Tab still needs both keys released, but in
+  either order.
+
 - **Alt+Tab opening overview now auto-commits on Alt release.** When
   the user pressed Alt+Tab with overview closed, `overview_focus_step`
   called `open_overview()` first — and `open_overview` reset
