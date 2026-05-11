@@ -824,6 +824,7 @@ pub fn run(
     // ── 10. Udev hotplug source ───────────────────────────────────────────────
     let udev_backend = UdevBackend::new(&seat_name)
         .map_err(|e| anyhow::anyhow!("UdevBackend::new: {e}"))?;
+    let loop_handle_for_udev = event_loop.handle();
     event_loop
         .handle()
         .insert_source(udev_backend, {
@@ -833,8 +834,63 @@ pub fn run(
                     info!("udev added: {:?}", path);
                 }
                 UdevEvent::Changed { device_id: _ } => {
-                    info!("udev device changed, rescanning outputs");
-                    rescan_outputs(&backend_data, state);
+                    // 50 ms sliding-window debounce. udev fires `Changed`
+                    // events in bursts — a gamma-daemon retune, a kernel
+                    // property tweak, a hotplug ack chain — and the
+                    // previous "rescan per event" path could spend
+                    // ~50 ms in `rescan_outputs` while a hundred more
+                    // events queued up behind it. We arm one timer per
+                    // burst; it re-checks the last-event timestamp and
+                    // either runs `rescan_outputs` once or re-arms for
+                    // another 50 ms if more events arrived in the
+                    // window.
+                    state.hotplug_last_event_at = Some(std::time::Instant::now());
+                    if state.hotplug_rescan_pending {
+                        // Burst still in flight, existing timer will
+                        // pick up the freshly-updated timestamp.
+                        return;
+                    }
+                    state.hotplug_rescan_pending = true;
+                    let timer = calloop::timer::Timer::from_duration(
+                        std::time::Duration::from_millis(50),
+                    );
+                    let backend_data_for_timer = backend_data.clone();
+                    if let Err(e) = loop_handle_for_udev.insert_source(
+                        timer,
+                        move |_, _, state: &mut MargoState| {
+                            let now = std::time::Instant::now();
+                            let stale = state
+                                .hotplug_last_event_at
+                                .map(|t| {
+                                    now.duration_since(t)
+                                        >= std::time::Duration::from_millis(50)
+                                })
+                                .unwrap_or(true);
+                            if stale {
+                                info!("udev hotplug burst settled, rescanning outputs");
+                                rescan_outputs(&backend_data_for_timer, state);
+                                state.hotplug_rescan_pending = false;
+                                state.hotplug_last_event_at = None;
+                                calloop::timer::TimeoutAction::Drop
+                            } else {
+                                // Slide the window — another event arrived
+                                // within the debounce, keep waiting.
+                                calloop::timer::TimeoutAction::ToDuration(
+                                    std::time::Duration::from_millis(50),
+                                )
+                            }
+                        },
+                    ) {
+                        // Timer insertion failed (e.g. loop shutting
+                        // down). Fall back to the immediate rescan so
+                        // we don't drop the event entirely.
+                        tracing::warn!(
+                            "hotplug coalescer: timer insert failed ({e:?}); running rescan immediately"
+                        );
+                        rescan_outputs(&backend_data, state);
+                        state.hotplug_rescan_pending = false;
+                        state.hotplug_last_event_at = None;
+                    }
                 }
                 UdevEvent::Removed { device_id: _ } => {}
             }

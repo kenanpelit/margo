@@ -1620,6 +1620,20 @@ pub struct MargoState {
     /// exit. Together with [`hot_corner_armed_at`] drives the dwell
     /// threshold before the corner's action fires.
     pub hot_corner_dwelling: Option<HotCorner>,
+
+    /// Last udev `Changed` event timestamp, used by the hotplug
+    /// debouncer in `backend/udev/mod.rs`. A burst of udev events
+    /// (gamma daemon racing the lock screen, kernel firing
+    /// `udev_device_get_changed` for every property tweak, …) used
+    /// to call `rescan_outputs` synchronously per event — hundreds
+    /// of times in 100 ms during the worst-case crash that
+    /// surfaced this. `Some` ⇒ a coalesce timer is currently armed
+    /// and a rescan will fire ~50 ms after the last event.
+    pub hotplug_last_event_at: Option<std::time::Instant>,
+    /// Sentinel: a debounce timer is already armed in the event
+    /// loop. Set true when the first event of a burst arrives,
+    /// cleared by the timer once it actually runs the rescan.
+    pub hotplug_rescan_pending: bool,
     /// `Instant` the pointer entered the current dwell corner. The
     /// dwell threshold (`Config::hot_corner_dwell_ms`) is checked in
     /// the same `pointer_motion` handler that sets / clears
@@ -1826,6 +1840,8 @@ impl MargoState {
             overview_cycle_pending: false,
             overview_cycle_modifier_mask: margo_config::Modifiers::empty(),
             hot_corner_dwelling: None,
+            hotplug_last_event_at: None,
+            hotplug_rescan_pending: false,
             hot_corner_armed_at: None,
             config,
             theme_baseline: None,
