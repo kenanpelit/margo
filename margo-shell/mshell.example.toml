@@ -1,88 +1,157 @@
-# mshell — margo-shell example config
-# ═════════════════════════════════════
+# mshell — margo-shell (Catppuccin Mocha, full-featured)
+# ═══════════════════════════════════════════════════════
 #
-# Bu dosyayı şuraya kopyala:
-#
-#     mkdir -p ~/.config/margo
-#     cp /usr/share/doc/margo-git/mshell.example.toml ~/.config/margo/mshell.toml
-#
-# Sonra margo'nun config.conf'una ekle:
-#
+# Bu dosyayı şuraya kopyala: ~/.config/margo/mshell.toml
+# Margo başlangıcında autostart: `~/.config/margo/config.conf`'a ekle:
 #     exec-once = mshell
 #
-# mshell config'i inotify ile izler — kaydet, anında uygulanır
-# (yeniden başlatmaya gerek yok).
+# Live-reload: bu dosyayı kaydet → mshell inotify ile yakalayıp
+# anında uygular (yeniden başlatmaya gerek yok).
 #
-# Tüm alanların referansı: docs/src/reference/config-reference.md
-# (KeyboardSubmap modülü margo-shell'de yok — Hyprland-only kavram
-# tamamen kaldırıldı.)
+# Tüm alanların referansı: margo-shell/src/config.rs
+# Hyprland/Niri'ye özgü modüller (KeyboardSubmap vs.) bu fork'ta yok.
 
-log_level    = "warn"          # error / warn / info / debug / trace
-language     = "tr-TR"         # opsiyonel, BCP-47; auto-detect: kaldır
-position     = "Top"           # "Top" veya "Bottom"
-layer        = "Top"           # "Bottom" / "Top" / "Overlay"
-outputs      = "All"           # "All" / "Active" / { Targets = ["eDP-1"] }
-enable_esc_key = true          # ESC menüleri kapatır
+log_level      = "warn"          # error / warn / info / debug / trace
+language       = "tr-TR"
+region         = "tr-TR"
+position       = "Top"
+layer          = "Top"
+outputs        = "All"           # "All" / "Active" / { Targets = ["eDP-1", "DP-3"] }
+enable_esc_key = true
 
+# ══════════════════════════════════════════════════════════════════════════
+#  Animations & OSD
+# ══════════════════════════════════════════════════════════════════════════
 [animations]
 enabled = true
 
 [osd]
 enabled = true
-timeout = 1200
+timeout = 1500
 
-# ── Modül yerleşimi ──────────────────────────────────────────────────────────
-# Sol: workspaces + pencere başlığı
-# Orta: saat
-# Sağ: sistem bilgisi → ayarlar (grup), sonra tray, sonra notifications
+# ══════════════════════════════════════════════════════════════════════════
+#  Module layout
+# ══════════════════════════════════════════════════════════════════════════
+#  Sol:  workspaces + active window
+#  Orta: clock+weather
+#  Sağ:  custom widgets → system info → settings → tray → notifications
+#  Modül grupları (iç içe [[...]]) Islands stilinde tek "kapsül" olur.
+# ══════════════════════════════════════════════════════════════════════════
+
 [modules]
-left   = ["Workspaces", "WindowTitle"]
-center = ["Tempo"]
-right  = [["SystemInfo", "Settings"], "Tray", "Notifications"]
+left   = [["Workspaces"], "WindowTitle"]
+center = ["MediaPlayer", "Tempo"]
+right  = [
+  ["Custom:netspeed", "Custom:vpn"],
+  ["SystemInfo", "Settings"],
+  "Tray",
+  "Privacy",
+  "Notifications",
+]
 
-# ── Workspaces (margo tag 1..=9) ─────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════
+#  Workspaces (margo tag 1..=9)
+# ══════════════════════════════════════════════════════════════════════════
 [workspaces]
-visibility_mode          = "MonitorSpecific"
+visibility_mode          = "MonitorSpecific"   # "All" / "MonitorSpecific" / "MonitorSpecificExclusive"
 group_by_monitor         = false
-enable_workspace_filling = true
+enable_workspace_filling = true                # boş tag'leri de göster
 max_workspaces           = 9
 workspace_names          = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
 enable_virtual_desktops  = false
+invert_scroll_direction  = "Trackpad"          # "All" / "Mouse" / "Trackpad"
 
+# ══════════════════════════════════════════════════════════════════════════
+#  Window title
+# ══════════════════════════════════════════════════════════════════════════
 [window_title]
-mode                        = "Title"
-truncate_title_after_length = 80
+mode                        = "Title"          # "Title" / "Class"
+truncate_title_after_length = 60
 
+# ══════════════════════════════════════════════════════════════════════════
+#  System info — CPU + RAM + Temp + IP + Download/Upload
+# ══════════════════════════════════════════════════════════════════════════
 [system_info]
-indicators = ["Cpu", "Memory", "Temperature"]
-interval   = 5
+indicators = [
+  "Cpu",
+  "Memory",
+  "Temperature",
+  "DownloadSpeed",
+  "UploadSpeed",
+]
+interval = 3
 
 [system_info.cpu]
-warn_threshold  = 70
-alert_threshold = 90
+warn_threshold  = 65
+alert_threshold = 88
+format          = "Percentage"               # "Percentage" / "Frequency"
 
 [system_info.memory]
 warn_threshold  = 70
-alert_threshold = 90
+alert_threshold = 88
+format          = "Percentage"               # "Percentage" / "Fraction"
 
 [system_info.temperature]
-warn_threshold  = 75
+warn_threshold  = 72
 alert_threshold = 88
+sensor          = ""                         # boş = otomatik
 
+[system_info.disk]
+warn_threshold  = 80
+alert_threshold = 92
+format          = "Percentage"
+mounts          = ["/", "/home"]             # opsiyonel disk listesi
+
+# ══════════════════════════════════════════════════════════════════════════
+#  Tempo — saat + hava + zaman dilimi cycle
+# ══════════════════════════════════════════════════════════════════════════
 [tempo]
-clock_format      = "%H:%M  %a %d %b"
-formats           = ["%H:%M", "%H:%M:%S", "%a %d %b %H:%M"]
-timezones         = ["Europe/Istanbul"]
-weather_indicator = "IconAndTemperature"
+clock_format = "%H:%M  %a %d %b"
+formats = [
+  "%H:%M",
+  "%H:%M:%S",
+  "%a %d %b %H:%M",
+  "%d.%m.%Y %H:%M",
+]
+timezones = [
+  "Europe/Istanbul",
+  "Europe/Berlin",
+  "America/New_York",
+  "Asia/Tokyo",
+]
+weather_indicator = "IconAndTemperature"     # "IconAndTemperature" / "Icon" / "None"
 weather_location  = "Current"
+# Sabit şehir istersen:
+#   weather_location = { City = "Istanbul" }
+# veya koordinat:
+#   weather_location = { Coordinates = [41.0082, 28.9784] }
 
+# ══════════════════════════════════════════════════════════════════════════
+#  Tray  (boş tabela = tüm ikonlar; blocklist = regex listesi)
+# ══════════════════════════════════════════════════════════════════════════
 [tray]
-# Boş = tüm system-tray ikonları görünür.
+blocklist = []                               # örn. ["NetworkManager", "blueman"]
 
+# ══════════════════════════════════════════════════════════════════════════
+#  Notifications  — toast popup + grouping
+# ══════════════════════════════════════════════════════════════════════════
 [notifications]
-# Default değerler; max 3 toast, urgency=critical hep görünür.
+format           = "%H:%M"
+show_timestamps  = true
+show_bodies      = true
+grouped          = true
+toast            = true
+toast_position   = "top_right"               # snake_case: top_left / top_right / bottom_left / bottom_right
+toast_timeout    = 5000                      # ms
+toast_limit      = 4
+toast_max_height = 180
+blocklist        = []                        # regex pattern listesi (uygulama adına eşler)
 
+# ══════════════════════════════════════════════════════════════════════════
+#  Settings paneli — power / battery / audio / network / bluetooth / brightness
+# ══════════════════════════════════════════════════════════════════════════
 [settings]
+# Power komutları
 lock_cmd      = "loginctl lock-session"
 shutdown_cmd  = "systemctl poweroff"
 suspend_cmd   = "systemctl suspend"
@@ -90,78 +159,185 @@ hibernate_cmd = "systemctl hibernate"
 reboot_cmd    = "systemctl reboot"
 logout_cmd    = "loginctl terminate-user $USER"
 
+# Indicator format'ları — Icon / Percentage / IconAndPercentage / Time / IconAndTime
+battery_format                = "IconAndPercentage"
+peripheral_battery_format     = "IconAndPercentage"
+audio_indicator_format        = "Icon"
+microphone_indicator_format   = "Icon"
+network_indicator_format      = "Icon"
+bluetooth_indicator_format    = "Icon"
+brightness_indicator_format   = "IconAndPercentage"
+
+battery_hide_when_full         = true
+peripheral_indicators          = "All"       # "All" veya { Specific = ["Mouse", "Keyboard", "Headphone"] }
+peripheral_expanded_by_default = false
+
+# "More…" buton komutları (her panel için)
 audio_sinks_more_cmd   = "pavucontrol"
 audio_sources_more_cmd = "pavucontrol -t 4"
 wifi_more_cmd          = "nm-connection-editor"
+vpn_more_cmd           = "nm-connection-editor"
 bluetooth_more_cmd     = "blueman-manager"
 
-battery_hide_when_full = true
-remove_airplane_btn    = false
-remove_idle_btn        = false
+remove_airplane_btn = false
+remove_idle_btn     = false
 
+# Panel'de hangi indicator'lar görünsün — bu sıra bar'a yansır
+indicators = [
+  "IdleInhibitor",
+  "PowerProfile",
+  "Audio",
+  "Microphone",
+  "Bluetooth",
+  "Network",
+  "Vpn",
+  "Battery",
+  "PeripheralBattery",
+  "Brightness",
+]
+
+# Settings panel'inin altına eklenen özel butonlar
+[[settings.CustomButton]]
+name           = "Hotspot"
+icon           = "󱀂"                           # nerd font icon
+command        = "nmcli connection up Hotspot 2>/dev/null || nmcli connection down Hotspot"
+status_command = "nmcli -t -f NAME,STATE connection show --active | grep -q '^Hotspot:' && echo on"
+tooltip        = "Wi-Fi hotspot'u aç/kapat"
+
+[[settings.CustomButton]]
+name           = "Night"
+icon           = ""
+command        = "mctl dispatch twilight"
+status_command = "mctl twilight --status 2>/dev/null | grep -q 'enabled:true' && echo on"
+tooltip        = "Twilight (gece modu) toggle"
+
+# ══════════════════════════════════════════════════════════════════════════
+#  Media player (MPRIS — Spotify, mpv, Helium)
+# ══════════════════════════════════════════════════════════════════════════
 [media_player]
-max_title_length = 60
+max_title_length = 50
+indicator_format = "IconAndTitle"            # "Icon" / "IconAndTitle"
 
+# ══════════════════════════════════════════════════════════════════════════
+#  Keyboard layout — xkb adı → bar'da gösterilecek kısa etiket
+#  (margo state.json'da xkb layout'unu surface etmiyor; modül şu an
+#  passive. Surface edilince Modules listesine "KeyboardLayout" ekle.)
+# ══════════════════════════════════════════════════════════════════════════
 [keyboard_layout.labels]
-# xkb layout adı → bar'da gösterilecek kısa etiket.
-# Margo state.json'da xkb layout'unu surface etmiyor — modül henüz
-# etkisiz. Surface edilince `Modules.right`'a "KeyboardLayout" ekle,
-# bu eşleme aktifleşir.
 tr = "TR"
 us = "EN"
 
+# ══════════════════════════════════════════════════════════════════════════
+#  Updates indicator (pacman — checkupdates)
+# ══════════════════════════════════════════════════════════════════════════
 [updates]
 check_cmd  = "checkupdates 2>/dev/null | wc -l"
 update_cmd = "alacritty -e sh -c 'sudo pacman -Syu; read -p \"Press enter to close…\"'"
 interval   = 3600
 
-# ── Görünüm — Catppuccin Mocha ───────────────────────────────────────────────
-[appearance]
-style         = "Islands"
-opacity       = 0.92
-font_name     = "JetBrainsMono Nerd Font"
-scale_factor  = 1.0
+# ══════════════════════════════════════════════════════════════════════════
+#  Custom modules — her giriş ayrı bir bar widget'ı
+#  type = "Button" → tıklanınca `command` çalışır
+#  type = "Text"   → listen_cmd JSON satırları üretir, UI günceller
+# ══════════════════════════════════════════════════════════════════════════
 
-background_color = "#1e1e2e"
-text_color       = "#cdd6f4"
+# 1) Ağ hız metresi (Text — listen_cmd ile)
+[[CustomModule]]
+name       = "netspeed"
+type       = "Text"
+icon       = "󰓅"
+listen_cmd = """sh -c 'while :; do \
+  rx=$(cat /sys/class/net/wlp0s20f3/statistics/rx_bytes 2>/dev/null || echo 0); \
+  sleep 1; \
+  rx2=$(cat /sys/class/net/wlp0s20f3/statistics/rx_bytes 2>/dev/null || echo 0); \
+  kbps=$(( (rx2 - rx) / 1024 )); \
+  printf "{\\"text\\":\\"%s KB/s\\",\\"alt\\":\\"net\\"}\\n" "$kbps"; \
+done'"""
+
+# 2) VPN durumu (Button — tıklanınca toggle, listen_cmd ile status)
+[[CustomModule]]
+name       = "vpn"
+type       = "Button"
+icon       = "󰒃"
+command    = "nmcli connection show --active | grep -q vpn && nmcli connection down vpn || nmcli connection up vpn"
+listen_cmd = """sh -c 'while :; do \
+  if nmcli -t -f TYPE,STATE connection show --active | grep -q "^vpn:activated"; then \
+    printf "{\\"text\\":\\"VPN\\",\\"alt\\":\\"on\\"}\\n"; \
+  else \
+    printf "{\\"text\\":\\"VPN\\",\\"alt\\":\\"off\\"}\\n"; \
+  fi; \
+  sleep 5; \
+done'"""
+
+[CustomModule.icons]
+"on"  = "󰒃"
+"off" = "󰦞"
+
+# ══════════════════════════════════════════════════════════════════════════
+#  Görünüm — Catppuccin Mocha (Islands style)
+# ══════════════════════════════════════════════════════════════════════════
+[appearance]
+style        = "Islands"                     # "Islands" / "Solid" / "Gradient"
+opacity      = 0.95
+font_name    = "JetBrainsMono Nerd Font"
+scale_factor = 1.0
+
+# Menu — açılır panellerin görünümü
+[appearance.menu]
+opacity  = 0.96
+backdrop = 0.65                              # 0.0 = blur yok, 1.0 = tam karartı (sayısal değer; bool DEĞİL)
+
+# Background — Catppuccin surface tonları (Islands her modülün arkasına
+# uygun surface seçer; tüm tonları doldurmak görüntüyü tutarlı yapar)
+[appearance.background_color]
+base      = "#1e1e2e"                        # base — bar ana zemini
+weakest   = "#181825"                        # mantle
+weaker    = "#11111b"                        # crust
+weak      = "#313244"                        # surface0 — modül kapsülleri
+neutral   = "#45475a"                        # surface1 — hover
+strong    = "#585b70"                        # surface2 — pressed
+stronger  = "#6c7086"                        # overlay0
+strongest = "#7f849c"                        # overlay1
+text      = "#cdd6f4"
+
+[appearance.text_color]
+base   = "#cdd6f4"
+strong = "#f5e0dc"
+weak   = "#a6adc8"
 
 [appearance.primary_color]
-base   = "#cba6f7"
+base   = "#cba6f7"                           # mauve
 strong = "#dbbcff"
 weak   = "#a385d8"
 text   = "#1e1e2e"
 
 [appearance.success_color]
-base   = "#a6e3a1"
+base   = "#a6e3a1"                           # green
 strong = "#c9f5c4"
 weak   = "#7ccb74"
 text   = "#1e1e2e"
 
 [appearance.warning_color]
-base   = "#fab387"
+base   = "#fab387"                           # peach
 strong = "#ffd3a8"
 weak   = "#d8895f"
 text   = "#1e1e2e"
 
 [appearance.danger_color]
-base   = "#f38ba8"
+base   = "#f38ba8"                           # red
 strong = "#ffb1c5"
 weak   = "#c5697f"
 text   = "#1e1e2e"
 
-# Tag 1..=9 renkleri
+# Tag (workspace) renkleri — sırayla 1..=9
 workspace_colors = [
-  "#cba6f7",
-  "#89b4fa",
-  "#94e2d5",
-  "#a6e3a1",
-  "#f9e2af",
-  "#fab387",
-  "#f38ba8",
-  "#cdd6f4",
-  "#74c7ec",
+  { base = "#cba6f7", text = "#1e1e2e" },    # 1  mauve   — main
+  { base = "#89b4fa", text = "#1e1e2e" },    # 2  blue    — code
+  { base = "#94e2d5", text = "#1e1e2e" },    # 3  teal    — web
+  { base = "#a6e3a1", text = "#1e1e2e" },    # 4  green   — media
+  { base = "#f9e2af", text = "#1e1e2e" },    # 5  yellow  — chat
+  { base = "#fab387", text = "#1e1e2e" },    # 6  peach   — read
+  { base = "#f38ba8", text = "#1e1e2e" },    # 7  red     — game
+  { base = "#cdd6f4", text = "#1e1e2e" },    # 8  text    — misc
+  { base = "#74c7ec", text = "#1e1e2e" },    # 9  sapphire — system
 ]
-
-[appearance.menu]
-opacity       = 0.95
-backdrop_blur = true
