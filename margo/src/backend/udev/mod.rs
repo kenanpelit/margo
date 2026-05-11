@@ -871,6 +871,14 @@ pub fn run(
                                 rescan_outputs(&backend_data_for_timer, state);
                                 state.hotplug_rescan_pending = false;
                                 state.hotplug_last_event_at = None;
+                                // Fire on_output_change so Rhai scripts can
+                                // react to topology / mode / scale changes.
+                                // Empty arg for now: the udev event only
+                                // gives us a device id, not a specific
+                                // connector — Rhai handlers should walk
+                                // monitor_count() / output_geometry() to
+                                // see what landed.
+                                crate::scripting::fire_output_change(state, "");
                                 calloop::timer::TimeoutAction::Drop
                             } else {
                                 // Slide the window — another event arrived

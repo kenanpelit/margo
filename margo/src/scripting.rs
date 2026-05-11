@@ -90,6 +90,15 @@ pub struct ScriptingHooks {
     /// to be removed from `clients`, so `focused_*()` can't reach
     /// it; the focus has typically already moved to a sibling).
     pub on_window_close: Vec<FnPtr>,
+    /// `on_output_change(|name| { ... })` — fires after udev's
+    /// hotplug coalescer settles and `rescan_outputs` has updated
+    /// the monitor list. The arg is the affected output's connector
+    /// name when knowable (`"DP-3"`, `"eDP-1"`), or empty string
+    /// when the rescan covered the whole topology and no single
+    /// output dominated the change. Handlers can query
+    /// `monitor_count()`, `output_geometry(name)`, etc. from the
+    /// scripting API to react.
+    pub on_output_change: Vec<FnPtr>,
 }
 
 /// Build an engine pre-loaded with the binding surface (Phase 2)
@@ -253,6 +262,13 @@ fn build_engine() -> Engine {
         with_state(|s| {
             if let Some(sc) = s.scripting.as_mut() {
                 sc.hooks.on_window_close.push(handler);
+            }
+        });
+    });
+    engine.register_fn("on_output_change", |handler: FnPtr| {
+        with_state(|s| {
+            if let Some(sc) = s.scripting.as_mut() {
+                sc.hooks.on_output_change.push(handler);
             }
         });
     });
@@ -603,6 +619,54 @@ fn run_compiled(state: &mut MargoState) {
 /// strings — the closing window is rarely the focused one (focus
 /// has usually already shifted to a sibling), so the args are the
 /// only reliable identity channel.
+/// Invoke every registered `on_output_change` hook. Called from the
+/// hotplug coalescer's timer body after `rescan_outputs` settles, so
+/// handlers see the final post-rescan monitor list. `output_name`
+/// is the connector that prompted the rescan when knowable
+/// (UdevEvent::Changed only gives us a device id, not the connector
+/// per-se, so we pass the empty string for now; future refinement
+/// can plumb the affected connector through `rescan_outputs`'s
+/// diff).
+pub fn fire_output_change(state: &mut MargoState, output_name: &str) {
+    let Some(mut sc) = state.scripting.take() else {
+        return;
+    };
+    let hooks = std::mem::take(&mut sc.hooks.on_output_change);
+    if hooks.is_empty() {
+        state.scripting = Some(sc);
+        return;
+    }
+
+    {
+        struct StateGuard;
+        impl Drop for StateGuard {
+            fn drop(&mut self) {
+                STATE_PTR.with(|s| s.set(std::ptr::null_mut()));
+            }
+        }
+        STATE_PTR.with(|s| s.set(state as *mut _));
+        let _guard = StateGuard;
+
+        let name = output_name.to_string();
+        for h in &hooks {
+            let res: Result<Dynamic, Box<rhai::EvalAltResult>> =
+                h.call(&sc.engine, &sc.ast, (name.clone(),));
+            if let Err(e) = res {
+                warn!("init.rhai on_output_change error: {e}");
+            }
+        }
+    }
+
+    if sc.hooks.on_output_change.is_empty() {
+        sc.hooks.on_output_change = hooks;
+    } else {
+        let mut combined = hooks;
+        combined.extend(std::mem::take(&mut sc.hooks.on_output_change));
+        sc.hooks.on_output_change = combined;
+    }
+    state.scripting = Some(sc);
+}
+
 pub fn fire_window_close(state: &mut MargoState, app_id: &str, title: &str) {
     let Some(mut sc) = state.scripting.take() else {
         return;

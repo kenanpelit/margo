@@ -429,9 +429,9 @@ has noted but not yet filed.
 |---|---|---|---|
 | **B1** | mvisual: window resize doesn't re-flow thumbnails | low | thumbnails stretch; should reflow |
 | **B2** | mvisual: keyboard nav between thumbnails | low | tag rail has it; thumbs don't |
-| **B3** | session-save: scratchpad presence not captured | low | known omission, scope-deliberate but worth revisiting |
+| **B3** | session-save: scratchpad presence not captured | ✅ shipped | `ScratchpadEntry` rows in `SessionSnapshot.scratchpads`; live clients re-flagged on load by `app_id`; not-yet-spawned apps fall through to the windowrule pipeline on first map. |
 | **B4** | theme presets: animation curve fields untouched | mid | extend `ThemeBaseline` |
-| **B5** | Per-output gamma stays after `mctl theme default` reset | low | edge case |
+| **B5** | Per-output gamma stays after `mctl theme default` reset | low | **deferred — needs reproducer.** `apply_theme_preset` doesn't touch the gamma path; ramps are owned by `wlr_gamma_control_v1` clients (sunsetr / gammastep). Filed for revisit when someone hands us a step-by-step repro. |
 | **B6** | `on_output_change` Rhai hook missing | low | §7 worth-revisiting |
 | **B7** | Touchscreen gesture: hardware verification needed | high | currently blind-developed |
 | **B8** | dwl-ipc dispatch arg-slot mapping is undocumented + footgunny | mid | three CLI bugs landed before fix; document or refactor |
