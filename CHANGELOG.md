@@ -98,6 +98,30 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Changed
 
+- **state.rs split to <3k LOC (roadmap Q1).** Reduced from 6858 →
+  **2944** LOC (−57 %) by lifting eleven self-contained pieces into
+  siblings under `margo/src/state/`:
+
+  | File | LOC | Content |
+  |---|---:|---|
+  | `dispatch.rs` | 1274 | every keybind / IPC action: kill, focus_stack, view_tag, set_layout, toggle_floating, fullscreen, gaps, zoom, focus_mon, tag_mon, etc. |
+  | `scratchpad.rs` | 496 | named + anonymous scratchpads, `summon`, `unscratchpad_focused` |
+  | `data.rs` | 450 | `MargoClient`, `MargoMonitor`, `ResizeSnapshot`, `ClosingClient`, `LayerSurfaceAnim`, `FullscreenMode`, `HotCorner`, rule-match helpers |
+  | `overview.rs` | 445 | open / close / toggle, alt-Tab cycle, `overview_visible_clients_for_monitor` |
+  | `focus_target.rs` | 295 | `FocusTarget` enum + every smithay trait impl (`IsAlive`, `WaylandFocus`, `Keyboard/Pointer/Touch/DndTarget`) |
+  | `state_file.rs` | 247 | `write_state_file` + `build_state_snapshot` (the JSON mctl reads) |
+  | `animation_tick.rs` | 245 | per-frame `tick_animations` body — opacity, open, layer slide, close, move/resize (bezier + spring) |
+  | `screencast.rs` | 217 | `on_pw_msg` + `stop_cast` + `start_cast`, all `#[cfg(feature = "xdp-gnome-screencast")]` |
+  | `twilight_methods.rs` | 132 | `force_tick_twilight` + `tick_twilight` + `apply/clear_twilight_ramp` |
+  | `theme.rs` | 102 | `ThemeBaseline` snapshot + tests |
+  | `debug_dump.rs` | 78 | `MargoState::debug_dump` (SIGUSR1 / mctl debug-dump) |
+
+  Pure lift-and-shift: every method is still an inherent impl on
+  `MargoState` and every call site is unchanged. Workspace test
+  count holds at 244. Touching the overview cycle no longer
+  recompiles the screencast path, twilight ramp, or state.json
+  serializer — Phase 2 success criterion §15.8 ticked.
+
 - **Cold-path structured-logging migration complete (roadmap
   Q5).** Every `tracing::info!/warn!/error!/debug!` call in
   `state.rs` (21 sites), `dispatch/mod.rs` (10 sites),
