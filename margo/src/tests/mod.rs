@@ -45,6 +45,7 @@ mod selection;
 mod session_lock;
 mod x11;
 mod overview;
+mod theme;
 mod window_rules;
 mod xdg_activation;
 mod xdg_decoration;

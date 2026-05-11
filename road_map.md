@@ -549,7 +549,7 @@ matches mango-ext exactly:
 
 ### 15.8 Phase 2 success criteria
 
-- [ ] Snapshot test count: **22 → 200+**
+- [x] **Snapshot test count: 22 → 200+** — ✅ at **207** workspace-wide (margo: 193, margo-config: 14). The expansion landed across T9 (session round-trip, +9), T2 (animation curves, +9), T1 (window-rule matcher edge cases, +16), T8 (theme preset, +13), T6 (screenshot region geometry, +14), Q5 (no test delta — logging refactor).
 - [ ] state.rs reduced from 6.1k LOC to **<3k** via further extraction (Q1)
 - [x] **Cold-path structured-logging migration complete (Q5)** — every `tracing::info!/warn!/error!/debug!` call in `state.rs`, `dispatch/mod.rs`, `scripting.rs`, `plugin.rs` now uses structured fields (`field = ?value, "msg"`) so `journalctl --output=json | jq` slices cleanly. `FocusTarget::enter/leave` also dropped from INFO to DEBUG so they stop flooding the journal under sloppy focus.
 - [ ] At least **2 community contributors** with merged PRs (currently 1)

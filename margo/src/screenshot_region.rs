@@ -321,3 +321,175 @@ impl ActiveRegionSelector {
         out
     }
 }
+
+#[cfg(test)]
+mod tests {
+    //! T6 — geometry tests for the screenshot region selector.
+    //!
+    //! `selection_rect` normalises (anchor, current) into a
+    //! positive-w/h LayoutRect regardless of which corner the user
+    //! dragged from. The maths is symmetric across the four
+    //! quadrants; any sign-flip regression (forgetting one `.min` /
+    //! `.max` swap) lands here as a wrong-quadrant rect.
+
+    use super::*;
+
+    fn sel_at(x: f64, y: f64) -> ActiveRegionSelector {
+        ActiveRegionSelector::at((x, y), SelectorMode::Rec)
+    }
+
+    fn drag(from: (f64, f64), to: (f64, f64)) -> ActiveRegionSelector {
+        let mut s = sel_at(from.0, from.1);
+        s.begin_drag(from);
+        s.update_drag(to);
+        s
+    }
+
+    // ── normalisation across drag directions ────────────────────────────────
+
+    #[test]
+    fn drag_top_left_to_bottom_right_produces_positive_rect() {
+        let s = drag((100.0, 50.0), (300.0, 200.0));
+        let r = s.selection_rect().expect("non-degenerate");
+        assert_eq!(r.x, 100);
+        assert_eq!(r.y, 50);
+        assert_eq!(r.width, 200);
+        assert_eq!(r.height, 150);
+    }
+
+    #[test]
+    fn drag_bottom_right_to_top_left_normalises_origin() {
+        // Inverse drag — anchor at bottom-right, drag up-left to
+        // top-left. selection_rect should still report top-left as
+        // (x0, y0) and positive w/h.
+        let s = drag((300.0, 200.0), (100.0, 50.0));
+        let r = s.selection_rect().expect("non-degenerate");
+        assert_eq!(r.x, 100);
+        assert_eq!(r.y, 50);
+        assert_eq!(r.width, 200);
+        assert_eq!(r.height, 150);
+    }
+
+    #[test]
+    fn drag_top_right_to_bottom_left_normalises_origin() {
+        let s = drag((400.0, 0.0), (50.0, 250.0));
+        let r = s.selection_rect().expect("non-degenerate");
+        assert_eq!(r.x, 50);
+        assert_eq!(r.y, 0);
+        assert_eq!(r.width, 350);
+        assert_eq!(r.height, 250);
+    }
+
+    #[test]
+    fn drag_bottom_left_to_top_right_normalises_origin() {
+        let s = drag((50.0, 250.0), (400.0, 0.0));
+        let r = s.selection_rect().expect("non-degenerate");
+        assert_eq!(r.x, 50);
+        assert_eq!(r.y, 0);
+        assert_eq!(r.width, 350);
+        assert_eq!(r.height, 250);
+    }
+
+    // ── degeneracy ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn zero_area_selection_returns_none() {
+        // No drag at all: anchor == current, w = 0, h = 0 → None.
+        let s = sel_at(100.0, 100.0);
+        assert!(s.selection_rect().is_none());
+    }
+
+    #[test]
+    fn single_pixel_drag_is_below_threshold() {
+        // Sub-pixel drag — round(x1-x0) < 1 → degenerate.
+        let s = drag((100.0, 100.0), (100.2, 100.3));
+        assert!(s.selection_rect().is_none());
+    }
+
+    #[test]
+    fn vertical_line_drag_has_zero_width_and_is_rejected() {
+        // Horizontal motion zero, vertical 50 px → w=0, rejected.
+        let s = drag((100.0, 100.0), (100.0, 150.0));
+        assert!(s.selection_rect().is_none());
+    }
+
+    #[test]
+    fn horizontal_line_drag_has_zero_height_and_is_rejected() {
+        let s = drag((100.0, 100.0), (200.0, 100.0));
+        assert!(s.selection_rect().is_none());
+    }
+
+    // ── geom string formatting ──────────────────────────────────────────────
+
+    #[test]
+    fn geom_string_matches_grim_format() {
+        let s = drag((100.0, 50.0), (300.0, 200.0));
+        let g = s.geom_string().expect("formatted");
+        assert_eq!(g, "100,50 200x150");
+    }
+
+    #[test]
+    fn geom_string_none_for_degenerate_selection() {
+        let s = sel_at(50.0, 50.0);
+        assert!(s.geom_string().is_none());
+    }
+
+    // ── drag lifecycle ──────────────────────────────────────────────────────
+
+    #[test]
+    fn end_drag_preserves_selection_rect() {
+        // After button-up: rect should still be readable for
+        // post-drag confirm.
+        let mut s = drag((100.0, 100.0), (200.0, 200.0));
+        s.end_drag();
+        let r = s.selection_rect().expect("non-degenerate after end_drag");
+        assert_eq!(r.x, 100);
+        assert_eq!(r.width, 100);
+        assert!(!s.dragging);
+    }
+
+    #[test]
+    fn update_drag_outside_drag_is_a_noop() {
+        // No `begin_drag` was called — `dragging` stays false and
+        // update_drag must not move `current`.
+        let mut s = sel_at(100.0, 100.0);
+        s.update_drag((300.0, 300.0));
+        assert!(s.selection_rect().is_none(), "no drag started, no rect");
+        assert_eq!(s.current, (100.0, 100.0));
+    }
+
+    #[test]
+    fn begin_drag_resets_anchor_to_click_point() {
+        // Selector was opened at one position, but the user
+        // *clicked* at a different point — anchor must snap to the
+        // click. Stops rectangles starting at "wherever the cursor
+        // happened to be when screenshot mode armed".
+        let mut s = sel_at(10.0, 10.0);
+        s.begin_drag((200.0, 150.0));
+        s.update_drag((400.0, 250.0));
+        let r = s.selection_rect().expect("non-degenerate");
+        assert_eq!(r.x, 200);
+        assert_eq!(r.y, 150);
+        assert_eq!(r.width, 200);
+        assert_eq!(r.height, 100);
+    }
+
+    // ── floating-point edge cases ───────────────────────────────────────────
+
+    #[test]
+    fn round_to_nearest_pixel_not_truncated() {
+        // 100.4 → 100, 100.5 → 101 (round half-to-even on Rust).
+        // The selector rounds at the end, so a 0.5-pixel anchor +
+        // 100.4 current produces width = round(100.4 - 0.5) = 100.
+        let s = drag((0.5, 0.5), (100.4, 50.4));
+        let r = s.selection_rect().expect("non-degenerate");
+        // x0 = round(0.5) = 0 (banker's rounding to even)
+        // y0 = round(0.5) = 0
+        // w  = round(100.4 - 0.5) = 100
+        // h  = round(50.4 - 0.5) = 50
+        assert!(r.x <= 1, "x in [0, 1] got {}", r.x);
+        assert!(r.y <= 1, "y in [0, 1] got {}", r.y);
+        assert!((99..=101).contains(&r.width));
+        assert!((49..=51).contains(&r.height));
+    }
+}

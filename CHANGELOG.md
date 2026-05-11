@@ -9,6 +9,27 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- **Screenshot region selector geometry tests (roadmap T6).** 14
+  new tests lock `ActiveRegionSelector::selection_rect`
+  normalisation across all four drag directions (TL→BR, BR→TL,
+  TR→BL, BL→TR), degeneracy handling (zero area, sub-pixel,
+  vertical/horizontal line), `grim -g` geom-string format,
+  drag-lifecycle (`begin_drag` snaps anchor, `update_drag`
+  no-ops without `begin`, `end_drag` preserves rect), and
+  half-pixel rounding edge cases.
+
+- **Theme preset tests (roadmap T8).** 13 new tests cover
+  `apply_theme_preset` for `default` / `minimal` / `gaudy`:
+  * Lazy baseline capture on first call.
+  * Field-deltas locked per preset.
+  * Preset chains (minimal→gaudy→default, gaudy→minimal→default)
+    restore the captured baseline.
+  * `default` is idempotent under repeated calls.
+  * Baseline survives intermediate manual config tweaks
+    (doesn't refresh from post-tweak state).
+  * Unknown preset returns `Err` with a clear "try `default`,
+    `minimal`, `gaudy`" hint.
+
 - **Window-rule matcher edge-case tests (roadmap T1).** 16 new
   focused unit tests lock the algebra cell-by-cell, complementing
   the existing two snapshot tests that lock the integration shape:
