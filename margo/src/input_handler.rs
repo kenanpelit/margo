@@ -841,6 +841,21 @@ fn apply_sloppy_focus(state: &mut MargoState, target: Option<&FocusTarget>) {
     if !state.config.sloppyfocus {
         return;
     }
+    // Overview is open: pointer hover MUST NOT trigger an actual
+    // focus change. `is_overview_hovered` + `border::refresh` already
+    // paint the selected thumbnail's focuscolor border, which is the
+    // visual feedback the user expects. Letting sloppy focus fire
+    // here would push the hovered window onto `focus_history`, and
+    // the next `arrange_monitor` (mouse motion already requests one
+    // via `request_repaint`) would recompute the tiled vec in MRU
+    // order and visibly re-shuffle the grid mid-hover — the user's
+    // "touchpad ile gezerken sıralama değişiyor" symptom. Commit on
+    // overview close (`overview_activate` → `close_overview` →
+    // `focus_surface`) is the only place focus_history should mutate
+    // during an overview session.
+    if state.is_overview_open() {
+        return;
+    }
     // While a popup grab is up, motion over an underlying toplevel
     // must not refocus it: PopupKeyboardGrab will drop our
     // `keyboard.set_focus()` anyway, but the surrounding side
