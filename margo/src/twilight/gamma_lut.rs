@@ -40,22 +40,23 @@ pub fn build_ramp(temp_k: u32, gamma_pct: u32, len: usize) -> Vec<u16> {
     let brightness = (gamma_pct as f32).clamp(10.0, 200.0) / 100.0;
     let (r_w, g_w, b_w) = temp_to_rgb_weights(temp);
 
-    // sRGB-ish encode curve. Pure 2.2 is close enough — the actual
-    // sRGB piecewise EOTF differs by < 1 LSB at u16 quantisation in
-    // the mid-band and the user can't perceive the difference at
-    // typical day↔night swing.
-    const GAMMA_ENCODE: f32 = 1.0 / 2.2;
-
+    // DRM `GAMMA_LUT` is a linear pass-through transform: kernel reads
+    // u16 input, writes the entry's u16 output to the scanout pipe.
+    // The display's own EOTF (sRGB / Rec.2020 / whatever the panel
+    // honours) is the next layer downstream — we MUST NOT
+    // double-encode here. Redshift / gammastep / sunsetr / hyprsunset
+    // all skip the gamma-encode step for the same reason; an early
+    // version of this module ran the ramp through `pow(1/2.2)` and
+    // produced the classic "CRT-with-blown-blacks" look (every dark
+    // value got lifted, contrast crushed). Linear-only is correct.
     let n = len.max(2);
     let mut out = Vec::with_capacity(n * 3);
     let denom = (n - 1) as f32;
     for i in 0..n {
         let lin = i as f32 / denom;
-        // Apply the channel weight + brightness in linear light, then
-        // encode through the gamma curve.
-        let r = ((lin * r_w * brightness).clamp(0.0, 1.0)).powf(GAMMA_ENCODE);
-        let g = ((lin * g_w * brightness).clamp(0.0, 1.0)).powf(GAMMA_ENCODE);
-        let b = ((lin * b_w * brightness).clamp(0.0, 1.0)).powf(GAMMA_ENCODE);
+        let r = (lin * r_w * brightness).clamp(0.0, 1.0);
+        let g = (lin * g_w * brightness).clamp(0.0, 1.0);
+        let b = (lin * b_w * brightness).clamp(0.0, 1.0);
         out.push((r * 65535.0).round() as u16);
         out.push((g * 65535.0).round() as u16);
         out.push((b * 65535.0).round() as u16);
@@ -152,25 +153,25 @@ mod tests {
         assert!(r < b, "10000K red should be below blue: r={r} b={b}");
     }
 
-    /// `gamma_pct = 50` should darken roughly proportionally.
+    /// `gamma_pct = 50` should darken proportionally — the LUT is
+    /// linear (no gamma encode) so 50 % brightness halves the
+    /// output u16 at every entry.
     #[test]
     fn gamma_pct_dims() {
         let bright = build_ramp(6500, 100, 256);
         let dim = build_ramp(6500, 50, 256);
         let last = 255 * 3;
-        // Sum of channels at fullscale should drop noticeably.
         let bright_sum: u32 = (0..3).map(|i| bright[last + i] as u32).sum();
         let dim_sum: u32 = (0..3).map(|i| dim[last + i] as u32).sum();
         assert!(
             dim_sum < bright_sum,
             "dim_sum={dim_sum} not below bright_sum={bright_sum}"
         );
-        // After gamma encoding 50% linear ≈ 73 % perceptual — so
-        // the drop is real but not 50 %.
+        // Linear LUT: dim should be ~50 % of bright at fullscale.
         let ratio = dim_sum as f32 / bright_sum as f32;
         assert!(
-            (0.5..0.85).contains(&ratio),
-            "ratio {ratio} outside the expected post-gamma 50→73% band"
+            (0.45..0.55).contains(&ratio),
+            "linear ramp ratio {ratio} not near 0.5"
         );
     }
 
