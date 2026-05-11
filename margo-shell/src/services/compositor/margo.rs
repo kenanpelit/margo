@@ -219,6 +219,8 @@ fn state_from_json(json: &Value) -> CompositorState {
     let mut monitors: Vec<CompositorMonitor> = Vec::new();
     let mut active_workspace_id: Option<i32> = None;
     let mut active_window: Option<ActiveWindow> = None;
+    let mut wallpapers: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
 
     for (mon_idx, out) in outputs.iter().enumerate() {
         let mon_name = out
@@ -234,6 +236,13 @@ fn state_from_json(json: &Value) -> CompositorState {
             .get("active")
             .and_then(Value::as_bool)
             .unwrap_or(false);
+        // Per-output wallpaper (active tag's path); empty string means
+        // "no wallpaper set". margo rewrites state.json on every tag
+        // change, so this map updates automatically with margo's
+        // per-tag wallpaper rules.
+        if let Some(wp) = out.get("wallpaper").and_then(Value::as_str) {
+            wallpapers.insert(mon_name.clone(), wp.to_string());
+        }
 
         let lowest = if active_mask == 0 {
             0
@@ -298,5 +307,6 @@ fn state_from_json(json: &Value) -> CompositorState {
         active_workspace_id,
         active_window,
         keyboard_layout: String::new(),
+        wallpapers,
     }
 }

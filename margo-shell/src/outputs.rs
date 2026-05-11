@@ -24,6 +24,12 @@ pub struct ShellInfo {
     pub toast_id: Option<SurfaceId>,
     /// Optional layer surface used to render the OSD overlay.
     pub osd_id: Option<SurfaceId>,
+    /// Optional Background-layer surface used to render the wallpaper.
+    /// Persistent — created on output add, destroyed only on output
+    /// remove. Image updates happen via app state, not surface
+    /// lifecycle, so no margo open/close animation fires on tag
+    /// changes.
+    pub wallpaper_id: Option<SurfaceId>,
     /// Logical height of this output (for computing toast input regions).
     pub output_logical_height: Option<u32>,
 }
@@ -40,6 +46,9 @@ impl ShellInfo {
         if let Some(osd_id) = self.osd_id {
             tasks.push(destroy_layer_surface(osd_id));
         }
+        if let Some(wallpaper_id) = self.wallpaper_id {
+            tasks.push(destroy_layer_surface(wallpaper_id));
+        }
         Task::batch(tasks)
     }
 }
@@ -52,6 +61,7 @@ pub enum HasOutput<'a> {
     Menu(Option<&'a OpenMenu>),
     Toast,
     Osd,
+    Wallpaper,
 }
 
 impl Outputs {
@@ -74,6 +84,7 @@ impl Outputs {
                 id: SurfaceId::MAIN,
                 menu: Menu::new(),
                 toast_id: None,
+                wallpaper_id: None,
                 osd_id: None,
                 position,
                 layer,
@@ -148,6 +159,8 @@ impl Outputs {
                     Some(HasOutput::Toast)
                 } else if info.osd_id == Some(id) {
                     Some(HasOutput::Osd)
+                } else if info.wallpaper_id == Some(id) {
+                    Some(HasOutput::Wallpaper)
                 } else {
                     None
                 }
@@ -210,6 +223,7 @@ impl Outputs {
                     id,
                     menu: Menu::new(),
                     toast_id: None,
+                wallpaper_id: None,
                     osd_id: None,
                     position,
                     layer,
@@ -291,6 +305,7 @@ impl Outputs {
                             id,
                             menu: Menu::new(),
                             toast_id: None,
+                wallpaper_id: None,
                             osd_id: None,
                             position,
                             layer,
@@ -732,6 +747,52 @@ impl Outputs {
 
                 shell_info.osd_id = Some(osd_id);
                 tasks.push(osd_task);
+            }
+        }
+        Task::batch(tasks)
+    }
+
+    /// Create a Background-layer surface per output for the wallpaper.
+    /// Anchored on all four sides with size (0,0) so the compositor
+    /// fills the surface to match the output. Persistent — never
+    /// destroyed unless the output disappears. Background layers
+    /// are click-through by default in iced_layershell, so the
+    /// wallpaper never steals input from windows above.
+    pub fn show_wallpaper_layer<Message: 'static>(&mut self) -> Task<Message> {
+        let mut tasks = vec![];
+        for (_, shell_info, output_id) in &mut self.0 {
+            if let Some(shell_info) = shell_info
+                && shell_info.wallpaper_id.is_none()
+            {
+                let (wallpaper_id, wallpaper_task) = new_layer_surface(LayerShellSettings {
+                    namespace: "mshell-wallpaper".to_string(),
+                    size: Some((0, 0)),
+                    layer: Layer::Background,
+                    keyboard_interactivity: KeyboardInteractivity::None,
+                    exclusive_zone: 0,
+                    anchor: Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT,
+                    output: *output_id,
+                    ..Default::default()
+                });
+
+                shell_info.wallpaper_id = Some(wallpaper_id);
+                tasks.push(wallpaper_task);
+            }
+        }
+        Task::batch(tasks)
+    }
+
+    /// Tear down every output's wallpaper surface. Used when the
+    /// user flips `[wallpaper].enabled` from true→false at runtime
+    /// (live config reload).
+    #[allow(dead_code)]
+    pub fn hide_wallpaper_layer<Message: 'static>(&mut self) -> Task<Message> {
+        let mut tasks = vec![];
+        for (_, shell_info, _) in &mut self.0 {
+            if let Some(shell_info) = shell_info
+                && let Some(wallpaper_id) = shell_info.wallpaper_id.take()
+            {
+                tasks.push(destroy_layer_surface(wallpaper_id));
             }
         }
         Task::batch(tasks)

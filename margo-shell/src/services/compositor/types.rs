@@ -44,6 +44,11 @@ pub struct CompositorState {
     pub active_workspace_id: Option<i32>,
     pub active_window: Option<ActiveWindow>,
     pub keyboard_layout: String,
+    /// Per-output wallpaper paths from `state.json`'s
+    /// `outputs[i].wallpaper` field. Margo writes the active tag's
+    /// configured wallpaper here; an empty string means
+    /// "use session default" (no wallpaper). Output name → path.
+    pub wallpapers: std::collections::HashMap<String, String>,
 }
 
 #[derive(Debug, Clone)]

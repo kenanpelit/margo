@@ -49,6 +49,7 @@ pub struct GeneralConfig {
     pub modules: Modules,
     pub layer: config::Layer,
     enable_esc_key: bool,
+    pub wallpaper: config::WallpaperConfig,
 }
 
 pub struct App {
@@ -70,6 +71,13 @@ pub struct App {
     pub notifications: Notifications,
     pub osd: Osd,
     pub visible: bool,
+    /// Decoded wallpaper images per output (name → handle). Updated
+    /// lazily when the compositor state's `wallpapers` map changes —
+    /// see `Message::WallpaperUpdated`.
+    pub wallpaper_handles: HashMap<String, iced::widget::image::Handle>,
+    /// Last-seen wallpaper path per output, used to skip re-decoding
+    /// when state.json gets rewritten but the path is unchanged.
+    pub wallpaper_paths: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone)]
@@ -96,6 +104,27 @@ pub enum Message {
     ResumeFromSleep,
     None,
     ToggleVisibility,
+    /// CompositorService announced a new wallpaper map. Diff against
+    /// `wallpaper_paths`, kick off loads for changed entries.
+    WallpaperRefresh(std::collections::HashMap<String, String>),
+    /// Async image-decode result. `output_name` → `path` → handle.
+    WallpaperDecoded {
+        output: String,
+        path: String,
+        handle: Option<iced::widget::image::Handle>,
+    },
+}
+
+/// `#RRGGBB` → iced::Color. Returns None on parse failure.
+fn parse_hex_color(s: &str) -> Option<iced::Color> {
+    let s = s.strip_prefix('#').unwrap_or(s);
+    if s.len() != 6 {
+        return None;
+    }
+    let r = u8::from_str_radix(&s[0..2], 16).ok()? as f32 / 255.0;
+    let g = u8::from_str_radix(&s[2..4], 16).ok()? as f32 / 255.0;
+    let b = u8::from_str_radix(&s[4..6], 16).ok()? as f32 / 255.0;
+    Some(iced::Color::from_rgb(r, g, b))
 }
 
 impl App {
@@ -135,6 +164,7 @@ impl App {
                         modules: config.modules,
                         layer: config.layer,
                         enable_esc_key: config.enable_esc_key,
+                        wallpaper: config.wallpaper,
                     },
                     outputs,
                     custom,
@@ -151,6 +181,8 @@ impl App {
                     media_player: MediaPlayer::new(config.media_player),
                     osd: Osd::new(config.osd),
                     visible: true,
+                    wallpaper_handles: HashMap::new(),
+                    wallpaper_paths: HashMap::new(),
                 },
                 Task::none(),
             )
@@ -167,6 +199,7 @@ impl App {
         self.general_config = GeneralConfig {
             outputs: config.outputs,
             modules: config.modules,
+            wallpaper: config.wallpaper.clone(),
             layer: config.layer,
             enable_esc_key: config.enable_esc_key,
         };
@@ -467,7 +500,7 @@ impl App {
 
                     let (bar_style, bar_position, scale_factor) =
                         use_theme(|t| (t.bar_style, t.bar_position, t.scale_factor));
-                    self.outputs.add(
+                    let mut tasks = vec![self.outputs.add(
                         bar_style,
                         &self.general_config.outputs,
                         bar_position,
@@ -475,7 +508,16 @@ impl App {
                         name,
                         info.id,
                         scale_factor,
-                    )
+                    )];
+                    // Bring the wallpaper Background-layer surface up
+                    // for this newly-attached output, if the user
+                    // wants mshell to render wallpapers. Persistent
+                    // surface — only destroyed when the output goes
+                    // away.
+                    if self.general_config.wallpaper.enabled {
+                        tasks.push(self.outputs.show_wallpaper_layer());
+                    }
+                    Task::batch(tasks)
                 }
                 OutputEvent::Removed(output_id) => {
                     info!("Output destroyed");
@@ -578,6 +620,73 @@ impl App {
                 _ => Task::none(),
             },
             Message::None => Task::none(),
+            Message::WallpaperRefresh(map) => {
+                // Diff against the last-seen paths; for each entry
+                // that actually changed, kick off an async decode.
+                // Empty path → drop the handle (renders fallback bg).
+                let mut tasks = vec![];
+                for (output, path) in map.iter() {
+                    if self.wallpaper_paths.get(output) == Some(path) {
+                        continue;
+                    }
+                    self.wallpaper_paths
+                        .insert(output.clone(), path.clone());
+                    if path.is_empty() {
+                        self.wallpaper_handles.remove(output);
+                        continue;
+                    }
+                    let output_owned = output.clone();
+                    let path_owned = path.clone();
+                    tasks.push(Task::perform(
+                        async move {
+                            // image::Handle::from_path is sync but the
+                            // disk read happens inside iced's renderer
+                            // on first paint. Doing the path check
+                            // here keeps the UI thread out of a
+                            // surprise IO stall when the path is bad.
+                            let exists = std::path::Path::new(&path_owned).exists();
+                            let handle = if exists {
+                                Some(iced::widget::image::Handle::from_path(&path_owned))
+                            } else {
+                                log::warn!(
+                                    "wallpaper path missing: {} (output {})",
+                                    path_owned, output_owned
+                                );
+                                None
+                            };
+                            (output_owned, path_owned, handle)
+                        },
+                        |(output, path, handle)| Message::WallpaperDecoded {
+                            output,
+                            path,
+                            handle,
+                        },
+                    ));
+                }
+                // Also drop entries for outputs no longer in the map
+                // (output unplugged).
+                self.wallpaper_paths.retain(|k, _| map.contains_key(k));
+                self.wallpaper_handles.retain(|k, _| map.contains_key(k));
+                Task::batch(tasks)
+            }
+            Message::WallpaperDecoded {
+                output,
+                path,
+                handle,
+            } => {
+                // Race guard: between schedule and resolve the user
+                // may have switched tags again. Only commit if the
+                // path is still current.
+                if self.wallpaper_paths.get(&output) != Some(&path) {
+                    return Task::none();
+                }
+                if let Some(handle) = handle {
+                    self.wallpaper_handles.insert(output, handle);
+                } else {
+                    self.wallpaper_handles.remove(&output);
+                }
+                Task::none()
+            }
             Message::ToggleVisibility => {
                 self.visible = !self.visible;
                 let (bar_style, scale_factor) = use_theme(|t| (t.bar_style, t.scale_factor));
@@ -744,8 +853,47 @@ impl App {
             Some(HasOutput::Menu(None)) => Row::new().into(),
             Some(HasOutput::Toast) => self.notifications.toast_view().map(Message::Notifications),
             Some(HasOutput::Osd) => self.osd.view().map(Message::Osd),
+            Some(HasOutput::Wallpaper) => self.wallpaper_view(id),
             None => Row::new().into(),
         }
+    }
+
+    /// Render the wallpaper for the surface bound to `id`. Looks up
+    /// the output's name → fetches its path from the compositor's
+    /// last-seen wallpaper map → loads (or fetches from cache) the
+    /// image handle → wraps it in a container painted with the
+    /// fallback colour. iced_layershell's Background surface is
+    /// full-output, so a Fill-length container + content_fit covers
+    /// everything underneath.
+    fn wallpaper_view(&'_ self, id: SurfaceId) -> Element<'_, Message> {
+        use iced::widget::{container, image as image_widget};
+        use iced::{Color, Length};
+
+        let fit: iced::ContentFit = self.general_config.wallpaper.fit.into();
+        let fallback = parse_hex_color(&self.general_config.wallpaper.fallback_color)
+            .unwrap_or(Color::BLACK);
+
+        let inner: Element<'_, Message> = self
+            .outputs
+            .get_monitor_name(id)
+            .and_then(|name| self.wallpaper_handles.get(name))
+            .map(|handle| {
+                image_widget::Image::new(handle.clone())
+                    .content_fit(fit)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .into()
+            })
+            .unwrap_or_else(|| Row::new().into());
+
+        container(inner)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(move |_| container::Style {
+                background: Some(iced::Background::Color(fallback)),
+                ..Default::default()
+            })
+            .into()
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
@@ -756,6 +904,20 @@ impl App {
             config::subscription(&self.config_path),
             crate::services::logind::LogindService::subscribe().map(|event| match event {
                 crate::services::ServiceEvent::Update(_) => Message::ResumeFromSleep,
+                _ => Message::None,
+            }),
+            // Compositor wallpapers — relay state.json's per-output
+            // wallpaper map into Message::WallpaperRefresh. The
+            // workspaces module already subscribes to the same
+            // CompositorService; iced fans the broadcaster out to
+            // each subscriber so this is cheap.
+            crate::services::compositor::CompositorService::subscribe().map(|event| match event {
+                crate::services::ServiceEvent::Init(svc) => {
+                    Message::WallpaperRefresh(svc.state.wallpapers.clone())
+                }
+                crate::services::ServiceEvent::Update(
+                    crate::services::compositor::CompositorEvent::StateChanged(state),
+                ) => Message::WallpaperRefresh(state.wallpapers.clone()),
                 _ => Message::None,
             }),
             iced::output_events().map(Message::OutputEvent),

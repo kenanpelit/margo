@@ -30,6 +30,19 @@ enabled = true
 timeout = 1500
 
 # ══════════════════════════════════════════════════════════════════════════
+#  Wallpaper — margo'nun per-tag wallpaper konfigürasyonunu render et
+#  Margo `~/.config/margo/config.conf` içinde:
+#      tagrule = id:1,wallpaper:/path/to/img1.jpg
+#      tagrule = id:2,wallpaper:/path/to/img2.jpg
+#  state.json'a yansır; mshell inotify ile yakalar, Background layer
+#  surface'inde gösterir. Tag değiştiğinde wallpaper otomatik değişir.
+# ══════════════════════════════════════════════════════════════════════════
+[wallpaper]
+enabled        = true       # false = mshell wallpaper çizmez (swaybg/swww kullan)
+fit            = "Cover"    # "Cover" / "Contain" / "Fill" / "None"
+fallback_color = "#1e1e2e"  # path boş/yok ise bu renk gösterilir
+
+# ══════════════════════════════════════════════════════════════════════════
 #  Module layout
 # ══════════════════════════════════════════════════════════════════════════
 #  Sol:  workspaces + active window

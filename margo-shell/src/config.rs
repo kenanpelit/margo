@@ -46,6 +46,7 @@ pub struct Config {
     pub animations: AnimationsConfig,
     pub enable_esc_key: bool,
     pub osd: OsdConfig,
+    pub wallpaper: WallpaperConfig,
 }
 
 impl Default for Config {
@@ -73,6 +74,54 @@ impl Default for Config {
             custom_modules: vec![],
             enable_esc_key: false,
             osd: OsdConfig::default(),
+            wallpaper: WallpaperConfig::default(),
+        }
+    }
+}
+
+#[derive(Deserialize, Clone, Debug)]
+#[serde(default)]
+pub struct WallpaperConfig {
+    /// Enable the wallpaper renderer. When false, mshell does not
+    /// create any Background-layer surface and the user can run
+    /// `swaybg`/`swww` etc. as before.
+    pub enabled: bool,
+    /// How to scale the image to the output. "Cover" fills the
+    /// entire output (may crop), "Contain" letterboxes, "Fill"
+    /// stretches, "None" shows at 1:1.
+    pub fit: WallpaperFit,
+    /// Background colour painted *behind* the image (visible when
+    /// the image is None, Contain-letterboxed, or partially
+    /// transparent). Hex string.
+    pub fallback_color: String,
+}
+
+impl Default for WallpaperConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            fit: WallpaperFit::default(),
+            fallback_color: "#1e1e2e".to_owned(),
+        }
+    }
+}
+
+#[derive(Deserialize, Default, Copy, Clone, Debug, PartialEq, Eq)]
+pub enum WallpaperFit {
+    #[default]
+    Cover,
+    Contain,
+    Fill,
+    None,
+}
+
+impl From<WallpaperFit> for iced::ContentFit {
+    fn from(fit: WallpaperFit) -> Self {
+        match fit {
+            WallpaperFit::Cover => iced::ContentFit::Cover,
+            WallpaperFit::Contain => iced::ContentFit::Contain,
+            WallpaperFit::Fill => iced::ContentFit::Fill,
+            WallpaperFit::None => iced::ContentFit::None,
         }
     }
 }
