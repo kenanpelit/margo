@@ -9,6 +9,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- **Alt+Tab opening overview now auto-commits on Alt release.** When
+  the user pressed Alt+Tab with overview closed, `overview_focus_step`
+  called `open_overview()` first — and `open_overview` reset
+  `overview_cycle_pending` + `overview_cycle_modifier_mask` to default
+  "fresh open" values. That clobbered the snapshot the input handler
+  had just set milliseconds earlier in the keybind-match path. So
+  the Alt-release branch read `cycle_pending = false`, did nothing,
+  and overview stayed open after the user let go of Alt. Fix: drop
+  the defensive reset from `open_overview`. `close_overview` and
+  `overview_activate` already handle the flag's lifetime on the way
+  out; opens reached through `overview_focus_step` carry the
+  freshly-set snapshot through to the release branch.
+
 - **Alt+Tab first press now jumps to the *previously*-used window,
   not back to the focused one.** The cycle anchor was
   `is_overview_hovered.position()` only — which is `None` on the

@@ -3791,11 +3791,16 @@ impl MargoState {
             return;
         }
 
-        // Fresh open ⇒ no pending alt+Tab cycle yet. The input handler
-        // will set this flag the moment a `overview_focus_*` keybind
-        // fires.
-        self.overview_cycle_pending = false;
-        self.overview_cycle_modifier_mask = margo_config::Modifiers::empty();
+        // NOTE: we deliberately don't reset `overview_cycle_pending`
+        // here. `open_overview` is reachable from inside
+        // `overview_focus_step` (alt+Tab while overview is closed → we
+        // open + cycle in one call), and the input handler has ALREADY
+        // set `overview_cycle_pending` + `overview_cycle_modifier_mask`
+        // by the time we get here. Resetting them would clobber the
+        // alt+Tab muscle memory — Alt release wouldn't auto-commit
+        // because the flag the release branch reads is false.
+        // `close_overview` and `overview_activate` handle the lifetime
+        // of the flag on the way out.
 
         // Snappy 180 ms slide into the grid (vs the user's possibly
         // 250+ ms `animation_duration_move`). The per-client move
