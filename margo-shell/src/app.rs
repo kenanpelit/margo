@@ -743,21 +743,34 @@ impl App {
                     let path_owned = path.clone();
                     tasks.push(Task::perform(
                         async move {
-                            // image::Handle::from_path is sync but the
-                            // disk read happens inside iced's renderer
-                            // on first paint. Doing the path check
-                            // here keeps the UI thread out of a
-                            // surprise IO stall when the path is bad.
-                            let exists = std::path::Path::new(&path_owned).exists();
-                            let handle = if exists {
-                                Some(iced::widget::image::Handle::from_path(&path_owned))
-                            } else {
-                                log::warn!(
-                                    "wallpaper path missing: {} (output {})",
-                                    path_owned, output_owned
-                                );
-                                None
+                            // EAGER load: read the file off the UI
+                            // thread and hand iced a Handle::from_bytes
+                            // instead of Handle::from_path. The from_path
+                            // variant defers the disk read + decode to
+                            // iced's renderer; a silent decode failure
+                            // there leaves the surface transparent and
+                            // logs nothing. Bytes-based Handle decodes
+                            // at render time too, but at least the
+                            // read error is observable here so we can
+                            // log it and the no-image-no-error symptom
+                            // disappears.
+                            let bytes = match tokio::fs::read(&path_owned).await {
+                                Ok(b) => Some(b),
+                                Err(e) => {
+                                    log::warn!(
+                                        "wallpaper read failed: {} (output {}): {}",
+                                        path_owned, output_owned, e
+                                    );
+                                    None
+                                }
                             };
+                            let handle = bytes.map(|b| {
+                                log::info!(
+                                    "wallpaper bytes loaded: {} ({} bytes) output={}",
+                                    path_owned, b.len(), output_owned
+                                );
+                                iced::widget::image::Handle::from_bytes(b)
+                            });
                             (output_owned, path_owned, handle)
                         },
                         |(output, path, handle)| Message::WallpaperDecoded {
@@ -1124,16 +1137,9 @@ impl App {
         use iced::widget::{container, image as image_widget};
         use iced::{Color, Length};
 
-        // DIAGNOSTIC: force fallback colour to bright red to prove
-        // the Background-layer surface composes at all. If wallpaper
-        // surface paints red across an output, the surface lifecycle
-        // + iced render path are healthy and the bug is in Image
-        // widget integration. If still no red, the surface isn't
-        // being committed (iced_layershell + Background/Bottom +
-        // (1,1) seed size combo broken).
         let fit: iced::ContentFit = self.general_config.wallpaper.fit.into();
-        let _ = parse_hex_color(&self.general_config.wallpaper.fallback_color);
-        let fallback = Color::from_rgb(1.0, 0.0, 0.0);
+        let fallback = parse_hex_color(&self.general_config.wallpaper.fallback_color)
+            .unwrap_or(Color::BLACK);
 
         // mshell stores outputs keyed by "<name> <make> <model>" (set
         // in OutputEvent::Added) but margo's state.json gives bare
