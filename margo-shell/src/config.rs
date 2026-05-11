@@ -440,6 +440,7 @@ impl Default for NotificationsModuleConfig {
 }
 
 #[derive(Deserialize, Clone, Debug, Default)]
+#[serde(default)]
 pub struct TrayModuleConfig {
     pub blocklist: Vec<RegexCfg>,
 }
