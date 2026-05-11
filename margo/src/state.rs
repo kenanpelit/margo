@@ -2951,16 +2951,21 @@ impl MargoState {
                 && (!is_overview || (!c.is_minimized && !c.is_killing && !c.is_in_scratchpad))
         };
 
-        let tiled: Vec<usize> = self
-            .clients
-            .iter()
-            .enumerate()
-            .filter(|(_, c)| {
-                visible_in_pass(c)
-                    && (is_overview || c.is_tiled())
-            })
-            .map(|(i, _)| i)
-            .collect();
+        let tiled: Vec<usize> = if is_overview {
+            // In overview, the visual cell order should match what
+            // alt+Tab walks — so the user can read the grid as
+            // "left = most-recently-touched, right = older" (or tag
+            // 1-9 / mixed, depending on `overview_cycle_order`).
+            // Re-uses the same ordering the cycle path computes.
+            self.overview_visible_clients_for_monitor(mon_idx)
+        } else {
+            self.clients
+                .iter()
+                .enumerate()
+                .filter(|(_, c)| visible_in_pass(c) && c.is_tiled())
+                .map(|(i, _)| i)
+                .collect()
+        };
 
         let scroller_proportions: Vec<f32> =
             tiled.iter().map(|&i| self.clients[i].scroller_proportion).collect();
@@ -4019,85 +4024,101 @@ impl MargoState {
     ///   remaining tags in strict tag order. "MRU where you live,
     ///   tag elsewhere."
     fn overview_visible_clients(&self) -> Vec<usize> {
-        use margo_config::OverviewCycleOrder;
         let mut out = Vec::new();
         for mon_idx in 0..self.monitors.len() {
             if !self.monitors[mon_idx].is_overview {
                 continue;
             }
-            let visible_here = |i: usize, c: &MargoClient| -> bool {
-                c.monitor == mon_idx
-                    && !c.is_initial_map_pending
-                    && !c.is_minimized
-                    && !c.is_killing
-                    && !c.is_in_scratchpad
-                    && i < self.clients.len()
-            };
-            let mut seen: std::collections::HashSet<usize> =
-                std::collections::HashSet::new();
+            out.extend(self.overview_visible_clients_for_monitor(mon_idx));
+        }
+        out
+    }
 
-            let push_mru = |out: &mut Vec<usize>,
-                            seen: &mut std::collections::HashSet<usize>,
-                            tag_filter: u32| {
-                for &i in &self.monitors[mon_idx].focus_history {
-                    if i >= self.clients.len() {
-                        continue;
-                    }
-                    let c = &self.clients[i];
-                    if tag_filter != 0 && (c.tags & tag_filter) == 0 {
+    /// Per-monitor variant of `overview_visible_clients`. Returns the
+    /// thumbnail order both `overview_focus_step` (cycle) and
+    /// `arrange_monitor` (visual grid) use, so left-to-right in the
+    /// overview reflects MRU / tag / mixed depending on
+    /// `Config::overview_cycle_order`. Decoupled from the multi-monitor
+    /// path so the arrange-time call site can request just this
+    /// monitor's slice.
+    pub(crate) fn overview_visible_clients_for_monitor(
+        &self,
+        mon_idx: usize,
+    ) -> Vec<usize> {
+        use margo_config::OverviewCycleOrder;
+        let mut out = Vec::new();
+        let mut seen: std::collections::HashSet<usize> =
+            std::collections::HashSet::new();
+
+        let visible_here = |i: usize, c: &MargoClient| -> bool {
+            c.monitor == mon_idx
+                && !c.is_initial_map_pending
+                && !c.is_minimized
+                && !c.is_killing
+                && !c.is_in_scratchpad
+                && i < self.clients.len()
+        };
+
+        let push_mru = |out: &mut Vec<usize>,
+                        seen: &mut std::collections::HashSet<usize>,
+                        tag_filter: u32| {
+            for &i in &self.monitors[mon_idx].focus_history {
+                if i >= self.clients.len() {
+                    continue;
+                }
+                let c = &self.clients[i];
+                if tag_filter != 0 && (c.tags & tag_filter) == 0 {
+                    continue;
+                }
+                if visible_here(i, c) && seen.insert(i) {
+                    out.push(i);
+                }
+            }
+        };
+        let push_tag_order = |out: &mut Vec<usize>,
+                              seen: &mut std::collections::HashSet<usize>,
+                              skip_tags: u32| {
+            for tag_idx in 0..crate::layout::MAX_TAGS as u32 {
+                let tag_bit = 1u32 << tag_idx;
+                if (skip_tags & tag_bit) != 0 {
+                    continue;
+                }
+                for (i, c) in self.clients.iter().enumerate() {
+                    if (c.tags & tag_bit) == 0 {
                         continue;
                     }
                     if visible_here(i, c) && seen.insert(i) {
                         out.push(i);
                     }
                 }
-            };
-            let push_tag_order = |out: &mut Vec<usize>,
-                                  seen: &mut std::collections::HashSet<usize>,
-                                  skip_tags: u32| {
-                for tag_idx in 0..crate::layout::MAX_TAGS as u32 {
-                    let tag_bit = 1u32 << tag_idx;
-                    if (skip_tags & tag_bit) != 0 {
-                        continue;
-                    }
-                    for (i, c) in self.clients.iter().enumerate() {
-                        if (c.tags & tag_bit) == 0 {
-                            continue;
-                        }
-                        if visible_here(i, c) && seen.insert(i) {
-                            out.push(i);
-                        }
-                    }
-                }
-            };
+            }
+        };
 
-            match self.config.overview_cycle_order {
-                OverviewCycleOrder::Mru => {
-                    push_mru(&mut out, &mut seen, 0);
-                    // Trailing tail: anything `focus_history` never
-                    // touched (newly-mapped, never-focused) goes at
-                    // the end in clients-vec order. Without this a
-                    // brand-new window would be unreachable via
-                    // alt+Tab until it gained focus once.
-                    for (i, c) in self.clients.iter().enumerate() {
-                        if visible_here(i, c) && seen.insert(i) {
-                            out.push(i);
-                        }
+        match self.config.overview_cycle_order {
+            OverviewCycleOrder::Mru => {
+                push_mru(&mut out, &mut seen, 0);
+                // Trailing tail: anything `focus_history` never
+                // touched (newly-mapped, never-focused) goes at the
+                // end in clients-vec order. Without this a brand-new
+                // window would be unreachable via alt+Tab until it
+                // gained focus once.
+                for (i, c) in self.clients.iter().enumerate() {
+                    if visible_here(i, c) && seen.insert(i) {
+                        out.push(i);
                     }
                 }
-                OverviewCycleOrder::Tag => {
-                    push_tag_order(&mut out, &mut seen, 0);
-                }
-                OverviewCycleOrder::Mixed => {
-                    // Current tag(set) in MRU order: covers the
-                    // common case where the user is rapidly
-                    // alternating between two windows on the active
-                    // tag. Remaining tags fall back to strict tag
-                    // order for predictability.
-                    let cur_tagset = self.monitors[mon_idx].current_tagset();
-                    push_mru(&mut out, &mut seen, cur_tagset);
-                    push_tag_order(&mut out, &mut seen, cur_tagset);
-                }
+            }
+            OverviewCycleOrder::Tag => {
+                push_tag_order(&mut out, &mut seen, 0);
+            }
+            OverviewCycleOrder::Mixed => {
+                // Current tag(set) in MRU order: covers the common
+                // case where the user is rapidly alternating between
+                // two windows on the active tag. Remaining tags fall
+                // back to strict tag order for predictability.
+                let cur_tagset = self.monitors[mon_idx].current_tagset();
+                push_mru(&mut out, &mut seen, cur_tagset);
+                push_tag_order(&mut out, &mut seen, cur_tagset);
             }
         }
         out
