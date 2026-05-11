@@ -1629,6 +1629,16 @@ pub struct MargoState {
     /// of times in 100 ms during the worst-case crash that
     /// surfaced this. `Some` ⇒ a coalesce timer is currently armed
     /// and a rescan will fire ~50 ms after the last event.
+    /// Twilight (blue-light filter) state. Always present; activity
+    /// is gated by `Config::twilight`. `tick_twilight()` advances
+    /// this on the calloop timer and pushes gamma ramps into
+    /// `pending_gamma` for every connected output.
+    pub twilight: crate::twilight::TwilightState,
+    /// `Some` while the twilight tick timer is in flight. We
+    /// re-insert on every tick (single-shot pattern) and key off
+    /// this to avoid double-arming.
+    pub twilight_timer_armed: bool,
+
     pub hotplug_last_event_at: Option<std::time::Instant>,
     /// Sentinel: a debounce timer is already armed in the event
     /// loop. Set true when the first event of a burst arrives,
@@ -1840,6 +1850,8 @@ impl MargoState {
             overview_cycle_pending: false,
             overview_cycle_modifier_mask: margo_config::Modifiers::empty(),
             hot_corner_dwelling: None,
+            twilight: crate::twilight::TwilightState::default(),
+            twilight_timer_armed: false,
             hotplug_last_event_at: None,
             hotplug_rescan_pending: false,
             hot_corner_armed_at: None,
@@ -2322,6 +2334,32 @@ impl MargoState {
             "clients": clients,
             "layouts": layout_names,
             "config_errors": config_errors,
+            "twilight": {
+                "enabled": self.config.twilight,
+                "mode": match self.config.twilight_mode {
+                    margo_config::TwilightMode::Geo => "geo",
+                    margo_config::TwilightMode::Manual => "manual",
+                    margo_config::TwilightMode::Static => "static",
+                },
+                "current_temp_k": self.twilight.last_target.map(|t| t.temp_k),
+                "current_gamma_pct": self.twilight.last_target.map(|t| t.gamma_pct),
+                "phase": match self.twilight.last_phase {
+                    Some(crate::twilight::schedule::Phase::Day) => "day",
+                    Some(crate::twilight::schedule::Phase::Night) => "night",
+                    Some(crate::twilight::schedule::Phase::TransitionToDay { .. }) => "transition_to_day",
+                    Some(crate::twilight::schedule::Phase::TransitionToNight { .. }) => "transition_to_night",
+                    None => "idle",
+                },
+                "source": match self.twilight.source {
+                    crate::twilight::Source::Scheduled => "scheduled",
+                    crate::twilight::Source::Preview => "preview",
+                    crate::twilight::Source::Test { .. } => "test",
+                },
+                "day_temp_k": self.config.twilight_day_temp,
+                "night_temp_k": self.config.twilight_night_temp,
+                "day_gamma_pct": self.config.twilight_day_gamma,
+                "night_gamma_pct": self.config.twilight_night_gamma,
+            },
         })
     }
 
@@ -2852,8 +2890,81 @@ impl MargoState {
         self.arrange_all();
         crate::protocols::dwl_ipc::broadcast_all(self);
         self.request_repaint();
+        // Config swap may have flipped twilight on/off or changed
+        // day/night temps — force a resample so the new values
+        // take effect immediately instead of waiting for the next
+        // tick.
+        self.tick_twilight();
         tracing::info!("config reloaded");
         Ok(())
+    }
+
+    /// Advance twilight one tick + apply the resulting ramp to every
+    /// connected output. Called from the calloop timer (steady-state
+    /// path), from `reload_config` (force resample on config change),
+    /// and from the `mctl twilight` dispatchers (force resample after
+    /// preview / test / reset). Returns the desired sleep before the
+    /// next automatic tick — the caller schedules a `calloop::timer`
+    /// for that duration.
+    pub fn tick_twilight(&mut self) -> std::time::Duration {
+        let cfg = &self.config;
+        let inputs = crate::twilight::TickInputs {
+            enabled: cfg.twilight,
+            schedule: crate::twilight::schedule_from_config(cfg),
+            settings: crate::twilight::settings_from_config(cfg),
+            is_static: matches!(cfg.twilight_mode, margo_config::TwilightMode::Static),
+            idle_interval_s: cfg.twilight_update_interval,
+            now: std::time::SystemTime::now(),
+        };
+        let out = self.twilight.tick(inputs);
+
+        if let Some(target) = out.target {
+            self.apply_twilight_ramp(target.temp_k, target.gamma_pct);
+        } else if !cfg.twilight {
+            // Twilight just got disabled — clear ramps back to
+            // identity so the screen doesn't stay tinted.
+            self.clear_twilight_ramp();
+        }
+
+        std::time::Duration::from_millis(out.next_tick_ms.max(50))
+    }
+
+    /// Build the LUT once and push the same ramp to every monitor.
+    /// Re-uses the `pending_gamma` channel the `wlr_gamma_control_v1`
+    /// server already feeds, so the udev frame handler picks it up
+    /// on the very next render.
+    fn apply_twilight_ramp(&mut self, temp_k: u32, gamma_pct: u32) {
+        // LUT length per channel. The kernel's actual `GAMMA_LUT_SIZE`
+        // varies per CRTC; 256 is the universal lower bound and the
+        // most common value, and the udev backend resamples the
+        // table to the per-CRTC size on apply. We could query the
+        // actual size for each output but the visual difference is
+        // imperceptible — 256 entries is already 1.6× the perceptual
+        // JND on a 10-bit panel.
+        const RAMP_LEN: usize = 256;
+        let ramp = crate::twilight::gamma_lut::build_ramp(temp_k, gamma_pct, RAMP_LEN);
+
+        // Same channel-interleaved Vec is fine for every output —
+        // the consumer makes its own copy when assigning to the
+        // CRTC's `GAMMA_LUT` blob.
+        for mon in &self.monitors {
+            // Drop any pending entry for this output first so we
+            // never queue stale ramps behind the latest one.
+            self.pending_gamma.retain(|(o, _)| o != &mon.output);
+            self.pending_gamma
+                .push((mon.output.clone(), Some(ramp.clone())));
+        }
+        self.request_repaint();
+    }
+
+    /// Restore the kernel's default identity ramp on every output.
+    /// Used when twilight is disabled mid-session.
+    fn clear_twilight_ramp(&mut self) {
+        for mon in &self.monitors {
+            self.pending_gamma.retain(|(o, _)| o != &mon.output);
+            self.pending_gamma.push((mon.output.clone(), None));
+        }
+        self.request_repaint();
     }
 
     pub(crate) fn refresh_output_work_area(&mut self, output: &Output) {

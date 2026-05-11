@@ -257,6 +257,77 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                 }
             }
         }
+
+        // ── Twilight (built-in blue-light filter) ───────────────────
+        // All four follow the same shape: mutate `state.twilight`
+        // and then force a resample via `tick_twilight()` so the
+        // change lands on the very next frame instead of waiting
+        // for the calloop timer.
+        "twilight_preview" => {
+            // arg.i = Kelvin, arg.i2 = gamma % (0 ⇒ keep current 100)
+            let k = if arg.i > 0 { arg.i as u32 } else { 4000 };
+            let g = if arg.i2 > 0 { arg.i2 as u32 } else { 100 };
+            state.twilight.set_preview(k, g);
+            let _ = state.tick_twilight();
+            tracing::info!("twilight preview: {k}K @ {g}%");
+        }
+        "twilight_test" => {
+            // arg.i = duration seconds (clamped 1–60 in the CLI)
+            let dur_s = if arg.i > 0 { arg.i as u64 } else { 5 };
+            state.twilight.start_test(dur_s.saturating_mul(1000));
+            let _ = state.tick_twilight();
+            tracing::info!("twilight test: sweeping day→night over {dur_s}s");
+        }
+        "twilight_reset" => {
+            state.twilight.reset();
+            let _ = state.tick_twilight();
+            tracing::info!("twilight reset to schedule");
+        }
+        "twilight_set" => {
+            // arg.v = "field=value" (e.g. "day_temp=5500"). Live
+            // config tweak — survives until next reload, not
+            // persisted to disk.
+            if let Some(spec) = arg.v.as_deref() {
+                if let Some((field, raw_val)) = spec.split_once('=') {
+                    let field = field.trim();
+                    let val = raw_val.trim();
+                    let applied = match field {
+                        "day_temp" => {
+                            val.parse::<u32>().ok().map(|v| {
+                                state.config.twilight_day_temp = v.clamp(1000, 25000)
+                            })
+                        }
+                        "night_temp" => val.parse::<u32>().ok().map(|v| {
+                            state.config.twilight_night_temp = v.clamp(1000, 25000)
+                        }),
+                        "day_gamma" => val
+                            .parse::<u32>()
+                            .ok()
+                            .map(|v| state.config.twilight_day_gamma = v.clamp(10, 200)),
+                        "night_gamma" => val.parse::<u32>().ok().map(|v| {
+                            state.config.twilight_night_gamma = v.clamp(10, 200)
+                        }),
+                        "enabled" | "twilight" => val
+                            .parse::<u32>()
+                            .ok()
+                            .map(|v| state.config.twilight = v != 0),
+                        "transition_s" => val.parse::<u32>().ok().map(|v| {
+                            state.config.twilight_transition_s = v.clamp(30, 7200)
+                        }),
+                        _ => None,
+                    };
+                    if applied.is_some() {
+                        state.twilight.reset();
+                        let _ = state.tick_twilight();
+                        tracing::info!("twilight_set {field}={val}");
+                    } else {
+                        tracing::warn!(
+                            "twilight_set: unknown field or bad value: {spec:?}"
+                        );
+                    }
+                }
+            }
+        }
         // W3.2 — one-shot Rhai script eval. `mctl run <file>` is
         // the user-facing wrapper; it just calls dispatch with
         // this action + path arg. Fully sandboxed via the

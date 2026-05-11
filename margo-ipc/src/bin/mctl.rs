@@ -321,6 +321,24 @@ enum Command {
         names: bool,
     },
 
+    /// Twilight (built-in blue-light filter) control.
+    ///
+    /// Subcommands:
+    ///
+    ///   status              # current temp / gamma / phase / source
+    ///   preview <K> [pct]   # pin a temperature until `reset`
+    ///   test [seconds]      # animate day→night across `seconds` (default 5)
+    ///   set <field>=<value> # live tweak (day_temp, night_temp, day_gamma, …)
+    ///   reset               # clear preview/test, resume schedule
+    ///
+    /// `mctl twilight status --json` prints the raw state.json
+    /// `twilight` object for scripting consumption.
+    #[command(display_order = 37, alias = "tl")]
+    Twilight {
+        #[command(subcommand)]
+        action: TwilightCmd,
+    },
+
     /// Show the diagnostics from the running compositor's most-recent
     /// config reload — niri-style. Hyprland's `hyprctl configerrors`
     /// analogue. Empty when the last reload was clean.
@@ -499,6 +517,44 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+}
+
+#[derive(Subcommand, Debug)]
+enum TwilightCmd {
+    /// Print the current twilight state (temperature, gamma, phase,
+    /// source). Reads `state.json` — works even when the compositor
+    /// is paused on a heavy frame.
+    Status {
+        /// Emit the raw `state.json` `twilight` object as JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Pin a temperature (and optional gamma %) until `reset`. The
+    /// schedule is bypassed for the duration.
+    Preview {
+        /// Colour temperature in Kelvin (1000–25000).
+        kelvin: u32,
+        /// Brightness percentage (10–200). Defaults to 100.
+        #[arg(default_value_t = 100)]
+        gamma: u32,
+    },
+    /// Sweep day → night over `seconds`. Falls back to the
+    /// schedule when done.
+    Test {
+        /// Sweep duration in seconds (1–60). Defaults to 5.
+        #[arg(default_value_t = 5)]
+        seconds: u32,
+    },
+    /// Live-tweak one config field. Persists until reload — the
+    /// on-disk config isn't touched.
+    Set {
+        /// `field=value`. Supported fields: `day_temp`,
+        /// `night_temp`, `day_gamma`, `night_gamma`, `transition_s`,
+        /// `enabled` (alias `twilight`, 0/1).
+        spec: String,
+    },
+    /// Clear any preview / test override, resume the schedule.
+    Reset,
 }
 
 // ── IPC state machine ─────────────────────────────────────────────────────────
@@ -686,6 +742,11 @@ fn main() -> Result<()> {
         }
         Command::ConfigErrors => {
             return cmd_config_errors();
+        }
+        Command::Twilight {
+            action: TwilightCmd::Status { json },
+        } => {
+            return cmd_twilight_status(*json);
         }
         _ => {}
     }
@@ -916,6 +977,60 @@ fn main() -> Result<()> {
                 String::new(),
                 String::new(),
             );
+            eq.roundtrip(&mut state)?;
+        }
+        Command::Twilight { action } => {
+            // Status is handled higher up (no IPC needed). The
+            // remaining four actions are dispatched to the
+            // compositor. Slot mapping per `Arg` doc:
+            //   preview → slot 1 = Kelvin, slot 2 = gamma %
+            //   test    → slot 1 = duration_s
+            //   set     → slot 4 = "field=value"
+            //   reset   → no args
+            match action {
+                TwilightCmd::Status { .. } => unreachable!(),
+                TwilightCmd::Preview { kelvin, gamma } => {
+                    ipc_out.dispatch(
+                        "twilight_preview".to_string(),
+                        kelvin.to_string(),
+                        gamma.to_string(),
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                    );
+                }
+                TwilightCmd::Test { seconds } => {
+                    let s = seconds.clamp(1, 60);
+                    ipc_out.dispatch(
+                        "twilight_test".to_string(),
+                        s.to_string(),
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                    );
+                }
+                TwilightCmd::Set { spec } => {
+                    ipc_out.dispatch(
+                        "twilight_set".to_string(),
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                        spec,
+                        String::new(),
+                    );
+                }
+                TwilightCmd::Reset => {
+                    ipc_out.dispatch(
+                        "twilight_reset".to_string(),
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                    );
+                }
+            }
             eq.roundtrip(&mut state)?;
         }
         Command::Theme { preset } => {
@@ -1332,6 +1447,59 @@ fn print_rule(rule: &margo_config::WindowRule) {
     if !bits.is_empty() {
         println!("    {}", bits.join("  "));
     }
+}
+
+fn cmd_twilight_status(as_json: bool) -> Result<()> {
+    let state = read_state_file()
+        .map_err(|e| anyhow::anyhow!("cannot read margo state.json: {e}"))?;
+    let tw = state
+        .get("twilight")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    if tw.is_null() {
+        eprintln!("twilight: not advertised by this compositor (older margo?)");
+        std::process::exit(1);
+    }
+    if as_json {
+        println!("{}", serde_json::to_string_pretty(&tw)?);
+        return Ok(());
+    }
+    let enabled = tw.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false);
+    let mode = tw.get("mode").and_then(|v| v.as_str()).unwrap_or("?");
+    let phase = tw.get("phase").and_then(|v| v.as_str()).unwrap_or("?");
+    let source = tw.get("source").and_then(|v| v.as_str()).unwrap_or("?");
+    let cur_k = tw.get("current_temp_k").and_then(|v| v.as_u64());
+    let cur_g = tw.get("current_gamma_pct").and_then(|v| v.as_u64());
+    let day_k = tw.get("day_temp_k").and_then(|v| v.as_u64()).unwrap_or(0);
+    let nig_k = tw.get("night_temp_k").and_then(|v| v.as_u64()).unwrap_or(0);
+    let day_g = tw.get("day_gamma_pct").and_then(|v| v.as_u64()).unwrap_or(0);
+    let nig_g = tw.get("night_gamma_pct").and_then(|v| v.as_u64()).unwrap_or(0);
+
+    let colored = std::io::IsTerminal::is_terminal(&std::io::stdout());
+    let (b, dim, r) = if colored {
+        ("\x1b[1m", "\x1b[2m", "\x1b[0m")
+    } else {
+        ("", "", "")
+    };
+    println!(
+        "{b}twilight{r}: {} ({dim}{}{r})",
+        if enabled { "ON" } else { "off" },
+        mode
+    );
+    println!(
+        "  {dim}phase{r}   = {phase}    {dim}source{r} = {source}"
+    );
+    match (cur_k, cur_g) {
+        (Some(k), Some(g)) => {
+            println!("  {dim}current{r} = {b}{k}K{r} @ {b}{g}%{r}");
+        }
+        _ => {
+            println!("  {dim}current{r} = (none — gamma untouched)");
+        }
+    }
+    println!("  {dim}day{r}     = {day_k}K @ {day_g}%");
+    println!("  {dim}night{r}   = {nig_k}K @ {nig_g}%");
+    Ok(())
 }
 
 fn cmd_config_errors() -> Result<()> {

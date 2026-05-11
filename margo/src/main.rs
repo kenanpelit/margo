@@ -38,6 +38,7 @@ mod screenshot_region;
 mod scripting;
 mod session;
 mod state;
+mod twilight;
 mod utils;
 
 // W1.6 — integration test fixture (calloop-driven Server +
@@ -809,6 +810,22 @@ fn main() -> Result<()> {
     // hooks layer on top. Plugins with `enabled = false` in
     // their manifest are skipped.
     scripting::init_plugins(&mut margo);
+
+    // ── Twilight kick-off ─────────────────────────────────────────────────────
+    // First tick runs synchronously so the initial gamma ramp lands
+    // before the user sees the first frame. After that, a calloop
+    // timer re-arms itself on every tick at the interval returned
+    // by `tick_twilight` (60 s idle, ~250 ms in transition).
+    {
+        let initial_delay = margo.tick_twilight();
+        let loop_handle = event_loop.handle();
+        let timer = calloop::timer::Timer::from_duration(initial_delay);
+        let _ = loop_handle.insert_source(timer, move |_, _, state: &mut MargoState| {
+            let next = state.tick_twilight();
+            calloop::timer::TimeoutAction::ToDuration(next)
+        });
+        margo.twilight_timer_armed = true;
+    }
 
     // ── Run the event loop ────────────────────────────────────────────────────
     event_loop.run(None, &mut margo, |state| {

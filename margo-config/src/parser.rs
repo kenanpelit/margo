@@ -325,6 +325,42 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
                 }
             }
         }
+
+        // ── Twilight (blue-light filter) ───────────────────────────
+        "twilight" => cfg.twilight = parse_bool(val),
+        "twilight_mode" => {
+            cfg.twilight_mode = match val.trim().to_ascii_lowercase().as_str() {
+                "geo" => crate::types::TwilightMode::Geo,
+                "manual" => crate::types::TwilightMode::Manual,
+                "static" => crate::types::TwilightMode::Static,
+                other => {
+                    tracing::warn!(
+                        "config: unknown twilight_mode={other:?}; keeping default (geo)"
+                    );
+                    crate::types::TwilightMode::Geo
+                }
+            }
+        }
+        "twilight_day_temp" => cfg.twilight_day_temp = parse_u32(val).clamp(1000, 25000),
+        "twilight_night_temp" => cfg.twilight_night_temp = parse_u32(val).clamp(1000, 25000),
+        "twilight_day_gamma" => cfg.twilight_day_gamma = parse_u32(val).clamp(10, 200),
+        "twilight_night_gamma" => cfg.twilight_night_gamma = parse_u32(val).clamp(10, 200),
+        "twilight_transition_s" => cfg.twilight_transition_s = parse_u32(val).clamp(30, 7200),
+        "twilight_update_interval" => {
+            cfg.twilight_update_interval = parse_u32(val).clamp(10, 300)
+        }
+        "twilight_latitude" => cfg.twilight_latitude = parse_f32(val).clamp(-90.0, 90.0),
+        "twilight_longitude" => {
+            cfg.twilight_longitude = parse_f32(val).clamp(-180.0, 180.0)
+        }
+        "twilight_sunrise" => cfg.twilight_sunrise_sec = parse_hms_to_seconds(val),
+        "twilight_sunset" => cfg.twilight_sunset_sec = parse_hms_to_seconds(val),
+        "twilight_static_temp" => {
+            cfg.twilight_static_temp = parse_u32(val).clamp(1000, 25000)
+        }
+        "twilight_static_gamma" => {
+            cfg.twilight_static_gamma = parse_u32(val).clamp(10, 200)
+        }
         "hot_corner_top_left" => cfg.hot_corner_top_left = val.trim().to_string(),
         "hot_corner_top_right" => cfg.hot_corner_top_right = val.trim().to_string(),
         "hot_corner_bottom_left" => cfg.hot_corner_bottom_left = val.trim().to_string(),
@@ -1173,6 +1209,42 @@ fn parse_u32_s(s: &str) -> u32 {
     parse_u32(s)
 }
 
+/// Parse `HH:MM` or `HH:MM:SS` into seconds-since-midnight. Returns
+/// 0 on malformed input — caller treats 0 as "unset" so a typo
+/// silently falls back to the default schedule mode.
+fn parse_hms_to_seconds(s: &str) -> u32 {
+    let h: u32;
+    let mut m = 0u32;
+    let mut sec = 0u32;
+    let parts: Vec<&str> = s.trim().split(':').collect();
+    if parts.is_empty() || parts.len() > 3 {
+        return 0;
+    }
+    if let Ok(v) = parts[0].parse::<u32>() {
+        h = v;
+    } else {
+        return 0;
+    }
+    if parts.len() >= 2 {
+        if let Ok(v) = parts[1].parse::<u32>() {
+            m = v;
+        } else {
+            return 0;
+        }
+    }
+    if parts.len() == 3 {
+        if let Ok(v) = parts[2].parse::<u32>() {
+            sec = v;
+        } else {
+            return 0;
+        }
+    }
+    if h >= 24 || m >= 60 || sec >= 60 {
+        return 0;
+    }
+    h * 3600 + m * 60 + sec
+}
+
 // ── Public key catalogue ─────────────────────────────────────────────────────
 //
 // Canonical list of recognised top-level option keys, mirrored from
@@ -1351,6 +1423,20 @@ pub const OPTION_KEYS: &[&str] = &[
     "touch_edge_size_top",
     "touch_timeoutms",
     "trackpad_natural_scrolling",
+    "twilight",
+    "twilight_day_gamma",
+    "twilight_day_temp",
+    "twilight_latitude",
+    "twilight_longitude",
+    "twilight_mode",
+    "twilight_night_gamma",
+    "twilight_night_temp",
+    "twilight_static_gamma",
+    "twilight_static_temp",
+    "twilight_sunrise",
+    "twilight_sunset",
+    "twilight_transition_s",
+    "twilight_update_interval",
     "unfocused_opacity",
     "urgentcolor",
     "view_current_to_back",

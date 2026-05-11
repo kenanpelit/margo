@@ -114,6 +114,24 @@ pub enum ShortcutsInhibit {
     DenyNew,
 }
 
+/// Twilight (blue-light filter) schedule mode.
+///
+/// * `Geo` — sun-elevation-driven. Uses lat/lon to figure out where
+///   in the day/night cycle we are.
+/// * `Manual` — explicit `twilight_sunrise` / `twilight_sunset`
+///   wall-clock times. Useful at high latitudes where the solar
+///   curve degenerates, or for users who prefer a fixed clock.
+/// * `Static` — a single fixed temperature and gamma 24/7. Reads
+///   `twilight_static_temp` / `twilight_static_gamma` and ignores
+///   the schedule.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum TwilightMode {
+    #[default]
+    Geo,
+    Manual,
+    Static,
+}
+
 /// Order `alt+Tab` walks the overview thumbnails in.
 ///
 /// * `Mru` — most-recently-used first, driven by `focus_history`.
@@ -630,6 +648,42 @@ pub struct Config {
     /// [`OverviewCycleOrder`] for the three modes. Default `Mru`.
     pub overview_cycle_order: OverviewCycleOrder,
 
+    // ── Twilight (blue-light filter) ───────────────────────────────
+    /// Master switch. `false` disables every twilight code path —
+    /// no timer, no gamma writes, no `pending_gamma` traffic. Off
+    /// by default so the user opts in.
+    pub twilight: bool,
+    pub twilight_mode: TwilightMode,
+    /// Kelvin. Daylight reference, default `6500` (D65).
+    pub twilight_day_temp: u32,
+    /// Kelvin. Night reference; users typically pick 2800–3500.
+    pub twilight_night_temp: u32,
+    /// Brightness percentage at day. `100` = pass-through.
+    pub twilight_day_gamma: u32,
+    /// Brightness percentage at night. Typical 85–95.
+    pub twilight_night_gamma: u32,
+    /// Total transition window in seconds. The schedule centres the
+    /// transition on sunrise / sunset (manual mode) or the sun-
+    /// elevation crossing of −2° / +6° (geo mode).
+    pub twilight_transition_s: u32,
+    /// Idle tick interval in seconds. Only matters at stable
+    /// Day / Night phases; during a transition the tick is fixed
+    /// at ~250 ms regardless.
+    pub twilight_update_interval: u32,
+    /// Geo mode latitude (degrees north positive).
+    pub twilight_latitude: f32,
+    /// Geo mode longitude (degrees east positive).
+    pub twilight_longitude: f32,
+    /// Manual-mode sunrise in seconds since local midnight.
+    /// 0 ⇒ "unset, fall back to geo mode if mode = manual".
+    pub twilight_sunrise_sec: u32,
+    /// Manual-mode sunset in seconds since local midnight.
+    pub twilight_sunset_sec: u32,
+    /// Static-mode temperature override.
+    pub twilight_static_temp: u32,
+    /// Static-mode gamma percentage.
+    pub twilight_static_gamma: u32,
+
     // hot corners — niri pattern. Each corner names a dispatch action
     // (or empty string = off). Pointer enters the corner pixel and
     // dwell threshold (`hot_corner_dwell_ms`) fires the action.
@@ -856,6 +910,20 @@ impl Default for Config {
             overview_selected_border_multiplier: 1.6,
             overview_dim_alpha: 0.6,
             overview_cycle_order: OverviewCycleOrder::Mru,
+            twilight: false,
+            twilight_mode: TwilightMode::Geo,
+            twilight_day_temp: 6500,
+            twilight_night_temp: 3300,
+            twilight_day_gamma: 100,
+            twilight_night_gamma: 90,
+            twilight_transition_s: 2700,   // 45 min, sunsetr's documented default
+            twilight_update_interval: 60,
+            twilight_latitude: 0.0,
+            twilight_longitude: 0.0,
+            twilight_sunrise_sec: 0,
+            twilight_sunset_sec: 0,
+            twilight_static_temp: 4000,
+            twilight_static_gamma: 95,
             hot_corner_top_left: String::new(),
             hot_corner_top_right: String::new(),
             hot_corner_bottom_left: String::new(),

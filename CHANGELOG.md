@@ -9,6 +9,40 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- **Twilight — built-in blue-light filter / colour-temperature
+  scheduler.** Replaces external tools (sunsetr / gammastep /
+  redshift) with a tick that lives inside the compositor's event
+  loop. One less moving part, smoother ramps, live config swap.
+  * Three modes: `geo` (sun-elevation from lat/lon — inline NOAA
+    math, no `sunrise` or `chrono` deps), `manual` (HH:MM
+    sunrise/sunset), `static` (one fixed temp/gamma 24/7).
+  * Temperature interp in *mired space*; gamma linear. Tanner
+    Helland blackbody fit → 16-bit per-channel RGB LUT, sRGB
+    encode curve baked in, monotonic per channel.
+  * Adaptive tick: 60 s at steady Day / Night, ~250 ms during a
+    transition, ~50 ms during a forced `mctl twilight test`
+    sweep.
+  * Reuses the existing `wlr_gamma_control_v1` plumbing —
+    `pending_gamma` is fed from the tick, the udev frame handler
+    pushes ramps to `GAMMA_LUT` on the next render. Zero new
+    surface.
+  * 14 new config keys (`twilight`, `twilight_mode`,
+    `twilight_day_temp`, `twilight_night_temp`,
+    `twilight_day_gamma`, `twilight_night_gamma`,
+    `twilight_transition_s`, `twilight_update_interval`,
+    `twilight_latitude`, `twilight_longitude`,
+    `twilight_sunrise`, `twilight_sunset`,
+    `twilight_static_temp`, `twilight_static_gamma`)
+    + new `TwilightMode` enum. All clamped at parse time;
+    `parser::OPTION_KEYS` extended so the validator picks them
+    up automatically.
+  * Live control via `mctl twilight {status, preview, test, set,
+    reset}`. `status` reads `state.json` (no IPC roundtrip);
+    the rest dispatch through the compositor.
+  * Disabled by default — flip `twilight = 1` to opt in.
+  * 21 new unit tests across gamma LUT, schedule, interpolation,
+    override stack. Workspace test count 123 → 144.
+
 - **Config validation with niri-style diagnostics.** Three pieces:
   * **`margo-config::validator`** — new module that re-walks the
     config file and emits structured `ConfigDiagnostic`s with file,
