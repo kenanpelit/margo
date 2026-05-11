@@ -1,0 +1,86 @@
+[package]
+name = "margo-shell"
+description = "Desktop shell (bar + notifications + OSD + settings) for the margo Wayland compositor"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+repository.workspace = true
+
+[[bin]]
+name = "mshell"
+path = "src/main.rs"
+
+[dependencies]
+iced = { package = "iced_layershell", git = "https://github.com/MalpenZibo/iced_layershell", tag = "v0.1.5", features = [
+  "tokio",
+  "advanced",
+  "wgpu",
+  "tiny-skia",
+  "image",
+  "svg",
+  "canvas",
+] }
+iced_anim = "0.3"
+chrono = { version = "0.4", default-features = false, features = [
+  "clock",
+  "serde",
+  "unstable-locales",
+] }
+serde = { version = "1.0", default-features = false, features = [] }
+sysinfo = { version = "0.37", features = ["linux-netdevs"] }
+tokio = { version = "1", default-features = false, features = ["net", "macros"] }
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+libpulse-binding = { version = "2.28", features = ["pa_v15"] }
+log = { version = "0.4", features = [] }
+flexi_logger = "0.31"
+pipewire = "0.9"
+itertools = "0.14"
+unicode-segmentation = "1.13.2"
+hex_color = { version = "3", features = ["serde"] }
+anyhow = "1"
+udev = { version = "0.9", features = ["send", "sync"] }
+toml = "0.9"
+freedesktop-icons = "0.4"
+linicon-theme = "1.2.0"
+serde_json = "1"
+regex = "1.12.2"
+serde_with = { version = "3.12", default-features = false, features = [
+  "macros",
+] }
+tokio-stream = { version = "0.1", default-features = false, features = ["sync"] }
+clap = { version = "4.5", default-features = false, features = [
+  "std",
+  "derive",
+] }
+shellexpand = { version = "3", features = ["path"] }
+inotify = { version = "0.11.1", default-features = false, features = [
+  "stream",
+] }
+pin-project-lite = "0.2.16"
+reqwest = { version = "0.13", default-features = false, features = [
+  "json",
+  "rustls",
+] }
+url = "2.5.7"
+signal-hook = "0.4.3"
+signal-hook-tokio = { version = "0.4", features = ["futures-v0_3"] }
+libc = "0.2.182"
+chrono-tz = "0.10.4"
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client"] }
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
+i18n-embed = { version = "0.16", default-features = false, features = [
+  "fluent-system",
+  "rust-embed",
+] }
+i18n-embed-fl = "0.10"
+rust-embed = "8"
+unic-langid = "0.9"
+
+# margo-shell talks to the compositor over margo's IPC + state.json,
+# so we pull the IPC types straight from the sibling crate.
+margo-ipc = { path = "../margo-ipc" }
+
+[build-dependencies]
+allsorts = "0.16"

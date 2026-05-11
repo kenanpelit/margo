@@ -1,0 +1,727 @@
+use super::{ReadOnlyService, Service, ServiceEvent};
+use dbus::{
+    DBusMenuProxy, Layout, StatusNotifierItemProxy, StatusNotifierWatcher,
+    StatusNotifierWatcherProxy,
+};
+use freedesktop_icons::lookup;
+use iced::{
+    Subscription, Task,
+    futures::{
+        SinkExt, Stream, StreamExt,
+        channel::mpsc::Sender,
+        stream::{pending, select_all},
+        stream_select,
+    },
+    stream::channel,
+    widget::{image, svg},
+};
+use linicon_theme::get_icon_theme;
+use log::{debug, error, info, trace};
+use std::{
+    any::TypeId,
+    borrow::Cow,
+    collections::BTreeSet,
+    env,
+    ffi::OsString,
+    fs,
+    ops::Deref,
+    path::{Path, PathBuf},
+    sync::LazyLock,
+};
+
+pub mod dbus;
+
+static SYSTEM_ICON_NAMES: LazyLock<BTreeSet<OsString>> = LazyLock::new(load_system_icon_names);
+static SYSTEM_ICON_ENTRIES: LazyLock<Vec<(Cow<'static, str>, Cow<'static, str>)>> =
+    LazyLock::new(|| {
+        let capacity = SYSTEM_ICON_NAMES.len();
+        let mut entries = Vec::with_capacity(capacity);
+        for name in SYSTEM_ICON_NAMES.iter() {
+            if let Some(name_str) = name.to_str() {
+                let normalized = normalize_icon_name(name_str);
+                let normalized_cow = if normalized.as_ref() == name_str {
+                    Cow::Borrowed(name_str)
+                } else {
+                    match normalized {
+                        Cow::Borrowed(s) => Cow::Owned(s.to_string()),
+                        Cow::Owned(s) => Cow::Owned(s),
+                    }
+                };
+                entries.push((Cow::Owned(name_str.to_string()), normalized_cow));
+            }
+        }
+        entries
+    });
+
+fn get_icon_from_name(icon_name: &str) -> Option<TrayIcon> {
+    let icon_name = icon_name.trim();
+    if icon_name.is_empty() {
+        return None;
+    }
+
+    if let Some(path) = find_icon_path(icon_name) {
+        return tray_icon_from_path(path);
+    }
+
+    if let Some(candidates) = similar_icon_names(icon_name) {
+        for candidate in candidates {
+            if let Some(path) = find_icon_path(&candidate) {
+                return tray_icon_from_path(path);
+            }
+        }
+    }
+
+    if let Some(prefix_candidate) = prefix_match_icon(icon_name)
+        && let Some(path) = find_icon_path(&prefix_candidate)
+    {
+        return tray_icon_from_path(path);
+    }
+
+    None
+}
+
+fn tray_icon_from_path(path: PathBuf) -> Option<TrayIcon> {
+    if path.extension().is_some_and(|ext| ext == "svg") {
+        debug!("svg icon found. Path: {path:?}");
+
+        Some(TrayIcon::Svg(svg::Handle::from_path(path)))
+    } else {
+        debug!("raster icon found. Path: {path:?}");
+
+        Some(TrayIcon::Image(image::Handle::from_path(path)))
+    }
+}
+
+fn find_icon_path(icon_name: &str) -> Option<PathBuf> {
+    let base_lookup = lookup(icon_name).with_cache();
+
+    match get_icon_theme() {
+        Some(theme) => base_lookup.with_theme(&theme).find().or_else(|| {
+            let fallback_lookup = lookup(icon_name).with_cache();
+            fallback_lookup.find()
+        }),
+        None => base_lookup.find(),
+    }
+}
+
+fn similar_icon_names(icon_name: &str) -> Option<Vec<Cow<'static, str>>> {
+    if SYSTEM_ICON_ENTRIES.is_empty() {
+        return None;
+    }
+
+    let normalized = normalize_icon_name(icon_name);
+    let normalized_no_separators = strip_icon_separators(normalized.as_ref());
+    let mut matches: Vec<Cow<'static, str>> = Vec::with_capacity(5);
+
+    for (candidate_name, candidate_normalized) in SYSTEM_ICON_ENTRIES.iter() {
+        if candidate_normalized.as_ref() == normalized.as_ref() {
+            continue;
+        }
+
+        if candidate_normalized.as_ref().contains(normalized.as_ref())
+            || normalized.as_ref().contains(candidate_normalized.as_ref())
+            || candidate_normalized
+                .as_ref()
+                .contains(normalized_no_separators.as_ref())
+        {
+            matches.push(Cow::Borrowed(candidate_name.as_ref()));
+            if matches.len() >= 5 {
+                break;
+            }
+        }
+    }
+
+    if matches.is_empty() {
+        None
+    } else {
+        Some(matches)
+    }
+}
+
+fn normalize_icon_name(name: &str) -> Cow<'_, str> {
+    // Fast path: if name is already normalized (only lowercase alphanumeric, no separators)
+    if name
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+    {
+        return Cow::Borrowed(name);
+    }
+
+    // Slow path: normalize the name (lowercase and strip non-alphanumeric characters including separators)
+    Cow::Owned(
+        name.to_lowercase()
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .collect(),
+    )
+}
+
+fn strip_icon_separators(name: &str) -> Cow<'_, str> {
+    if name.bytes().all(|byte| byte != b'-' && byte != b'_') {
+        return Cow::Borrowed(name);
+    }
+
+    Cow::Owned(name.chars().filter(|ch| *ch != '-' && *ch != '_').collect())
+}
+
+fn prefix_match_icon(icon_name: &str) -> Option<Cow<'static, str>> {
+    if SYSTEM_ICON_ENTRIES.is_empty() {
+        return None;
+    }
+
+    let normalized = normalize_icon_name(icon_name);
+
+    // Early exit: check for exact match first
+    if let Some(exact) = SYSTEM_ICON_ENTRIES
+        .iter()
+        .find(|(_, norm)| norm.as_ref() == normalized.as_ref())
+    {
+        return Some(Cow::Borrowed(exact.0.as_ref()));
+    }
+
+    // Iterate directly over chars to avoid Vec allocation
+    let mut candidates: Vec<_> = SYSTEM_ICON_ENTRIES.iter().collect();
+    for (idx, ch) in normalized.chars().enumerate() {
+        candidates.retain(|(_, name)| name.chars().nth(idx) == Some(ch));
+
+        match candidates.len() {
+            0 => break,
+            1 => return Some(Cow::Borrowed(candidates[0].0.as_ref())),
+            _ => continue,
+        }
+    }
+
+    candidates
+        .first()
+        .map(|(name, _)| Cow::Borrowed(name.as_ref()))
+}
+
+fn load_system_icon_names() -> BTreeSet<OsString> {
+    let mut names = BTreeSet::new();
+
+    for dir in icon_directories() {
+        if !dir.is_dir() {
+            continue;
+        }
+
+        collect_icon_names_recursive(&dir, &mut names);
+    }
+
+    names
+}
+
+fn collect_icon_names_recursive(dir: &Path, names: &mut BTreeSet<OsString>) {
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Ok(file_type) = entry.file_type() {
+                if file_type.is_dir() {
+                    collect_icon_names_recursive(&path, names);
+                } else if file_type.is_file()
+                    && let Some(stem) = path.file_stem()
+                {
+                    names.insert(stem.to_os_string());
+                }
+            }
+        }
+    }
+}
+
+fn icon_directories() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+
+    if let Ok(data_home) = env::var("XDG_DATA_HOME") {
+        let base = PathBuf::from(data_home);
+        dirs.push(base.join("icons"));
+        dirs.push(base.join("pixmaps"));
+    }
+
+    if let Ok(home) = env::var("HOME") {
+        let base = PathBuf::from(home);
+        dirs.push(base.join(".local/share/icons"));
+        dirs.push(base.join(".local/share/pixmaps"));
+    }
+
+    let data_dirs =
+        env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".into());
+    for dir in data_dirs.split(':') {
+        if dir.is_empty() {
+            continue;
+        }
+        let base = PathBuf::from(dir);
+        dirs.push(base.join("icons"));
+        dirs.push(base.join("pixmaps"));
+    }
+
+    dirs.push(PathBuf::from("/usr/share/icons"));
+    dirs.push(PathBuf::from("/usr/share/pixmaps"));
+
+    dirs.sort();
+    dirs.dedup();
+    dirs
+}
+
+#[derive(Debug, Clone)]
+pub enum TrayIcon {
+    Image(image::Handle),
+    Svg(svg::Handle),
+}
+
+fn pixmap_to_icon(icons: Vec<dbus::Icon>) -> Option<TrayIcon> {
+    icons
+        .into_iter()
+        .filter(|i| {
+            // SNI clients sometimes return entries with zero dimensions or a
+            // bytes payload that doesn't match width*height*4 (e.g. when only
+            // IconName is populated). Feeding those to iced's atlas uploader
+            // panics in the padding loop, so drop them up front.
+            if i.width <= 0 || i.height <= 0 {
+                debug!(
+                    "unable to convert pixmap to icon: invalid dimensions {}x{}",
+                    i.width, i.height
+                );
+                return false;
+            }
+            let expected = (i.width as usize)
+                .checked_mul(i.height as usize)
+                .and_then(|v| v.checked_mul(4));
+
+            if Some(i.bytes.len()) != expected {
+                debug!(
+                    "pixmap byte mismatch ({}x{} expected {:?} bytes, got {})",
+                    i.width,
+                    i.height,
+                    expected,
+                    i.bytes.len()
+                );
+                return false;
+            }
+
+            true
+        })
+        .max_by_key(|i| {
+            trace!("tray icon w {}, h {}", i.width, i.height);
+            (i.width, i.height)
+        })
+        .map(|mut i| {
+            // Convert ARGB to RGBA
+            for pixel in i.bytes.chunks_exact_mut(4) {
+                pixel.rotate_left(1);
+            }
+            TrayIcon::Image(image::Handle::from_rgba(
+                i.width as u32,
+                i.height as u32,
+                i.bytes,
+            ))
+        })
+}
+
+#[derive(Debug, Clone)]
+pub enum TrayEvent {
+    Registered(StatusNotifierItem),
+    IconChanged(String, TrayIcon),
+    MenuLayoutChanged(String, Layout),
+    Unregistered(String),
+    None,
+}
+
+#[derive(Debug, Clone)]
+pub struct StatusNotifierItem {
+    pub name: String,
+    pub icon: Option<TrayIcon>,
+    pub menu: Layout,
+    item_proxy: StatusNotifierItemProxy<'static>,
+    menu_proxy: DBusMenuProxy<'static>,
+}
+
+impl StatusNotifierItem {
+    pub async fn new(conn: &zbus::Connection, name: String) -> anyhow::Result<Self> {
+        let (dest, path) = if let Some(idx) = name.find('/') {
+            (&name[..idx], &name[idx..])
+        } else {
+            (name.as_ref(), "/StatusNotifierItem")
+        };
+
+        let item_proxy = StatusNotifierItemProxy::builder(conn)
+            .destination(dest.to_owned())?
+            .path(path.to_owned())?
+            .build()
+            .await?;
+
+        debug!("item_proxy {item_proxy:?}");
+
+        let icon = match item_proxy.icon_pixmap().await.ok().and_then(pixmap_to_icon) {
+            Some(icon) => Some(icon),
+            None => item_proxy
+                .icon_name()
+                .await
+                .ok()
+                .as_deref()
+                .and_then(get_icon_from_name),
+        };
+
+        let menu_path = item_proxy.menu().await?;
+        let menu_proxy = dbus::DBusMenuProxy::builder(conn)
+            .destination(dest.to_owned())?
+            .path(menu_path.to_owned())?
+            .build()
+            .await?;
+
+        let (_, menu) = menu_proxy.get_layout(0, -1, &[]).await?;
+
+        Ok(Self {
+            name,
+            icon,
+            menu,
+            item_proxy,
+            menu_proxy,
+        })
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct TrayData(Vec<StatusNotifierItem>);
+
+impl Deref for TrayData {
+    type Target = Vec<StatusNotifierItem>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TrayService {
+    pub data: TrayData,
+    _conn: zbus::Connection,
+}
+
+impl Deref for TrayService {
+    type Target = TrayData;
+
+    fn deref(&self) -> &Self::Target {
+        &self.data
+    }
+}
+
+enum State {
+    Init,
+    Active(zbus::Connection),
+    Error,
+}
+
+impl TrayService {
+    async fn initialize_data(conn: &zbus::Connection) -> anyhow::Result<TrayData> {
+        debug!("initializing tray data");
+        let proxy = StatusNotifierWatcherProxy::new(conn).await?;
+
+        let items = proxy.registered_status_notifier_items().await?;
+
+        let mut status_items = Vec::with_capacity(items.len());
+        for item in items {
+            let item = StatusNotifierItem::new(conn, item).await?;
+            status_items.push(item);
+        }
+
+        Ok(TrayData(status_items))
+    }
+
+    async fn events(
+        conn: &zbus::Connection,
+    ) -> anyhow::Result<impl Stream<Item = TrayEvent> + use<>> {
+        let watcher = StatusNotifierWatcherProxy::new(conn).await?;
+
+        let registered = watcher
+            .receive_status_notifier_item_registered()
+            .await?
+            .filter_map({
+                let conn = conn.clone();
+                move |e| {
+                    let conn = conn.clone();
+                    async move {
+                        debug!("registered {e:?}");
+                        match e.args() {
+                            Ok(args) => {
+                                let item =
+                                    StatusNotifierItem::new(&conn, args.service.to_string()).await;
+
+                                item.map(TrayEvent::Registered).ok()
+                            }
+                            _ => None,
+                        }
+                    }
+                }
+            })
+            .boxed();
+        let unregistered = watcher
+            .receive_status_notifier_item_unregistered()
+            .await?
+            .filter_map(|e| async move {
+                debug!("unregistered {e:?}");
+
+                match e.args() {
+                    Ok(args) => Some(TrayEvent::Unregistered(args.service.to_string())),
+                    _ => None,
+                }
+            })
+            .boxed();
+
+        let items = watcher.registered_status_notifier_items().await?;
+        let mut icon_pixel_change = Vec::with_capacity(items.len());
+        let mut icon_name_change = Vec::with_capacity(items.len());
+        let mut menu_layout_change = Vec::with_capacity(items.len());
+
+        for name in items {
+            let item = StatusNotifierItem::new(conn, name.to_string()).await?;
+
+            icon_pixel_change.push(
+                item.item_proxy
+                    .receive_icon_pixmap_changed()
+                    .await
+                    .filter_map({
+                        let name = name.clone();
+                        move |icon| {
+                            let name = name.clone();
+                            async move {
+                                let icons = icon.get().await.ok()?;
+                                pixmap_to_icon(icons)
+                                    .map(|icon| TrayEvent::IconChanged(name.to_owned(), icon))
+                            }
+                        }
+                    })
+                    .boxed(),
+            );
+
+            icon_name_change.push(
+                item.item_proxy
+                    .receive_icon_name_changed()
+                    .await
+                    .filter_map({
+                        let name = name.clone();
+                        move |icon_name| {
+                            let name = name.clone();
+                            async move {
+                                icon_name
+                                    .get()
+                                    .await
+                                    .ok()
+                                    .as_deref()
+                                    .and_then(get_icon_from_name)
+                                    .map(|icon| TrayEvent::IconChanged(name.to_owned(), icon))
+                            }
+                        }
+                    })
+                    .boxed(),
+            );
+
+            let layout_updated = item.menu_proxy.receive_layout_updated().await;
+            if let Ok(layout_updated) = layout_updated {
+                menu_layout_change.push(
+                    layout_updated
+                        .filter_map({
+                            let name = name.clone();
+                            let menu_proxy = item.menu_proxy.clone();
+                            move |_| {
+                                debug!("layout update event name {}", &name);
+
+                                let name = name.clone();
+                                let menu_proxy = menu_proxy.clone();
+                                async move {
+                                    menu_proxy.get_layout(0, -1, &[]).await.ok().map(
+                                        |(_, layout)| {
+                                            TrayEvent::MenuLayoutChanged(name.to_owned(), layout)
+                                        },
+                                    )
+                                }
+                            }
+                        })
+                        .boxed(),
+                );
+            }
+        }
+
+        Ok(stream_select!(
+            registered,
+            unregistered,
+            select_all(icon_pixel_change),
+            select_all(icon_name_change),
+            select_all(menu_layout_change)
+        )
+        .boxed())
+    }
+
+    async fn start_listening(state: State, output: &mut Sender<ServiceEvent<Self>>) -> State {
+        match state {
+            State::Init => match StatusNotifierWatcher::start_server().await {
+                Ok(conn) => {
+                    let data = TrayService::initialize_data(&conn).await;
+
+                    match data {
+                        Ok(data) => {
+                            info!("Tray service initialized");
+
+                            let _ = output
+                                .send(ServiceEvent::Init(TrayService {
+                                    data,
+                                    _conn: conn.clone(),
+                                }))
+                                .await;
+
+                            State::Active(conn)
+                        }
+                        Err(err) => {
+                            error!("Failed to initialize tray service: {err}");
+
+                            State::Error
+                        }
+                    }
+                }
+                Err(err) => {
+                    error!("Failed to connect to system bus: {err}");
+
+                    State::Error
+                }
+            },
+            State::Active(conn) => {
+                info!("Listening for tray events");
+
+                match TrayService::events(&conn).await {
+                    Ok(mut events) => {
+                        while let Some(event) = events.next().await {
+                            debug!("tray data {event:?}");
+
+                            let reload_events = matches!(event, TrayEvent::Registered(_));
+
+                            let _ = output.send(ServiceEvent::Update(event)).await;
+
+                            if reload_events {
+                                break;
+                            }
+                        }
+
+                        State::Active(conn)
+                    }
+                    Err(err) => {
+                        error!("Failed to listen for tray events: {err}");
+                        State::Error
+                    }
+                }
+            }
+            State::Error => {
+                error!("Tray service error");
+
+                let _ = pending::<u8>().next().await;
+                State::Error
+            }
+        }
+    }
+
+    async fn menu_voice_selected(
+        menu_proxy: &DBusMenuProxy<'_>,
+        id: i32,
+    ) -> anyhow::Result<Layout> {
+        let value = zbus::zvariant::Value::I32(32).try_to_owned()?;
+        menu_proxy
+            .event(
+                id,
+                "clicked",
+                &value,
+                chrono::offset::Local::now().timestamp_subsec_micros(),
+            )
+            .await?;
+
+        let (_, layout) = menu_proxy.get_layout(0, -1, &[]).await?;
+
+        Ok(layout)
+    }
+}
+
+impl ReadOnlyService for TrayService {
+    type UpdateEvent = TrayEvent;
+    type Error = ();
+
+    fn update(&mut self, event: Self::UpdateEvent) {
+        match event {
+            TrayEvent::Registered(new_item) => {
+                match self
+                    .data
+                    .0
+                    .iter_mut()
+                    .find(|item| item.name == new_item.name)
+                {
+                    Some(existing_item) => {
+                        *existing_item = new_item;
+                    }
+                    _ => {
+                        self.data.0.push(new_item);
+                    }
+                }
+            }
+            TrayEvent::IconChanged(name, handle) => {
+                if let Some(item) = self.data.0.iter_mut().find(|item| item.name == name) {
+                    item.icon = Some(handle);
+                }
+            }
+            TrayEvent::MenuLayoutChanged(name, layout) => {
+                if let Some(item) = self.data.0.iter_mut().find(|item| item.name == name) {
+                    debug!("menu layout updated, {layout:?}");
+                    item.menu = layout;
+                }
+            }
+            TrayEvent::Unregistered(name) => {
+                self.data.0.retain(|item| item.name != name);
+            }
+            TrayEvent::None => {}
+        }
+    }
+
+    fn subscribe() -> iced::Subscription<ServiceEvent<Self>> {
+        Subscription::run_with(TypeId::of::<Self>(), |_| {
+            channel(100, async |mut output| {
+                let mut state = State::Init;
+
+                loop {
+                    state = TrayService::start_listening(state, &mut output).await;
+                }
+            })
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum TrayCommand {
+    MenuSelected(String, i32),
+}
+
+impl Service for TrayService {
+    type Command = TrayCommand;
+
+    fn command(&mut self, command: Self::Command) -> Task<ServiceEvent<Self>> {
+        match command {
+            TrayCommand::MenuSelected(name, id) => {
+                let menu = self.data.iter().find(|item| item.name == name);
+                if let Some(menu) = menu {
+                    let name_cb = name.clone();
+                    Task::perform(
+                        {
+                            let proxy = menu.menu_proxy.clone();
+
+                            async move {
+                                debug!("Click tray menu voice {name} : {id}");
+                                TrayService::menu_voice_selected(&proxy, id).await
+                            }
+                        },
+                        move |new_layout| match new_layout {
+                            Ok(new_layout) => ServiceEvent::Update(TrayEvent::MenuLayoutChanged(
+                                name_cb.clone(),
+                                new_layout,
+                            )),
+                            _ => ServiceEvent::Update(TrayEvent::None),
+                        },
+                    )
+                } else {
+                    Task::none()
+                }
+            }
+        }
+    }
+}

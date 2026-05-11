@@ -4,6 +4,7 @@ members = [
     "margo-config",
     "margo-ipc",
     "margo-layouts",
+    "margo-shell",
     "mlayout",
     "mscreenshot",
     "mvisual",

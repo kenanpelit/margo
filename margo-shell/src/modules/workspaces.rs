@@ -1,0 +1,536 @@
+use crate::{
+    config::{InvertScrollDirection, WorkspaceVisibilityMode, WorkspacesModuleConfig},
+    outputs::Outputs,
+    services::{
+        ReadOnlyService, Service, ServiceEvent,
+        compositor::{CompositorCommand, CompositorService, CompositorState},
+    },
+    theme::use_theme,
+};
+use iced::{
+    Element, Length, Subscription, SurfaceId, alignment,
+    widget::{MouseArea, Row, button, container, text},
+};
+use iced_anim::{AnimationBuilder, transition::Easing};
+use itertools::Itertools;
+use std::collections::HashMap;
+
+#[derive(PartialEq, Eq, Debug, Clone)]
+pub enum Displayed {
+    Active,
+    Visible,
+    Hidden,
+}
+
+#[derive(Debug, Clone)]
+pub struct UiWorkspace {
+    pub id: i32,
+    pub index: i32,
+    pub name: String,
+    pub monitor_id: Option<i128>,
+    pub monitor: String,
+    pub displayed: Displayed,
+    pub windows: u16,
+}
+
+#[derive(Debug, Clone)]
+struct VirtualDesktop {
+    pub active: bool,
+    pub windows: u16,
+}
+
+#[derive(Debug, Clone)]
+pub enum Message {
+    ServiceEvent(ServiceEvent<CompositorService>),
+    ChangeWorkspace(i32),
+    ToggleSpecialWorkspace(i32),
+    Scroll(i32),
+    ConfigReloaded(WorkspacesModuleConfig),
+    ScrollAccumulator(f32),
+}
+
+pub struct Workspaces {
+    config: WorkspacesModuleConfig,
+    service: Option<CompositorService>,
+    ui_workspaces: Vec<UiWorkspace>,
+    scroll_accumulator: f32,
+}
+
+fn calculate_ui_workspaces(
+    config: &WorkspacesModuleConfig,
+    state: &CompositorState,
+) -> Vec<UiWorkspace> {
+    let active_id = state.active_workspace_id;
+    let monitors = &state.monitors;
+    let monitor_order = monitors
+        .iter()
+        .enumerate()
+        .map(|(idx, monitor)| (monitor.name.clone(), idx))
+        .collect::<HashMap<_, _>>();
+
+    let workspaces = state
+        .workspaces
+        .clone()
+        .into_iter()
+        .unique_by(|w| w.id)
+        .collect_vec();
+
+    let mut result: Vec<UiWorkspace> = Vec::with_capacity(workspaces.len());
+    // margo has no special / scratchpad-as-workspace concept (tags
+    // are positive 1..=9); everything in `workspaces` is a normal
+    // tag.
+    let normal: Vec<_> = workspaces.into_iter().collect();
+
+    if config.enable_virtual_desktops {
+        let monitor_count = monitors.len().max(1);
+        let mut virtual_desktops: HashMap<i32, VirtualDesktop> = HashMap::new();
+
+        for w in normal.iter() {
+            let vdesk_id = ((w.id - 1) / monitor_count as i32) + 1;
+            let is_active = Some(w.id) == active_id;
+
+            if let Some(vdesk) = virtual_desktops.get_mut(&vdesk_id) {
+                vdesk.windows += w.windows;
+                vdesk.active = vdesk.active || is_active;
+            } else {
+                virtual_desktops.insert(
+                    vdesk_id,
+                    VirtualDesktop {
+                        active: is_active,
+                        windows: w.windows,
+                    },
+                );
+            }
+        }
+
+        virtual_desktops.into_iter().for_each(|(id, vdesk)| {
+            let idx = (id - 1) as usize;
+            let display_name = config
+                .workspace_names
+                .get(idx)
+                .cloned()
+                .unwrap_or_else(|| id.to_string());
+
+            result.push(UiWorkspace {
+                id,
+                index: id,
+                name: display_name,
+                monitor_id: None,
+                monitor: "".to_string(),
+                displayed: if vdesk.active {
+                    Displayed::Active
+                } else {
+                    Displayed::Hidden
+                },
+                windows: vdesk.windows,
+            });
+        });
+    } else {
+        for w in normal.iter() {
+            let display_name = if w.id > 0 {
+                let idx = (w.id - 1) as usize;
+                config
+                    .workspace_names
+                    .get(idx)
+                    .cloned()
+                    .or_else(|| Some(w.name.clone()))
+                    .unwrap_or_else(|| w.id.to_string())
+            } else {
+                w.name.clone()
+            };
+
+            let is_active = active_id == Some(w.id);
+            let is_visible = monitors.iter().any(|m| m.active_workspace_id == w.id);
+
+            result.push(UiWorkspace {
+                id: w.id,
+                index: w.index,
+                name: display_name,
+                monitor_id: w.monitor_id,
+                monitor: w.monitor.clone(),
+                displayed: match (is_active, is_visible) {
+                    (true, _) => Displayed::Active,
+                    (false, true) => Displayed::Visible,
+                    (false, false) => Displayed::Hidden,
+                },
+                windows: w.windows,
+            });
+        }
+    }
+
+    if config.enable_workspace_filling && !result.is_empty() {
+        let existing_indices = result.iter().map(|w| w.index).collect_vec();
+        let mut max_index = *existing_indices
+            .iter()
+            .filter(|&&idx| idx > 0)
+            .max()
+            .unwrap_or(&0);
+
+        if let Some(max_cfg) = config.max_workspaces
+            && max_cfg > max_index as u32
+        {
+            max_index = max_cfg as i32;
+        }
+
+        let missing_indices: Vec<i32> = (1..=max_index)
+            .filter(|idx| !existing_indices.contains(idx))
+            .collect();
+
+        for index in missing_indices {
+            let display_name = if index > 0 {
+                let name_idx = (index - 1) as usize;
+                config
+                    .workspace_names
+                    .get(name_idx)
+                    .cloned()
+                    .unwrap_or_else(|| index.to_string())
+            } else {
+                index.to_string()
+            };
+
+            result.push(UiWorkspace {
+                id: index,
+                index,
+                name: display_name,
+                monitor_id: None,
+                monitor: "".to_string(),
+                displayed: Displayed::Hidden,
+                windows: 0,
+            });
+        }
+    }
+
+    if config.group_by_monitor {
+        result.sort_by(|a, b| {
+            let a_order = monitor_order.get(&a.monitor).copied().unwrap_or(usize::MAX);
+            let b_order = monitor_order.get(&b.monitor).copied().unwrap_or(usize::MAX);
+
+            a_order
+                .cmp(&b_order)
+                .then(a.index.cmp(&b.index))
+                .then(a.id.cmp(&b.id))
+        });
+    } else {
+        result.sort_by(|a, b| a.index.cmp(&b.index).then(a.id.cmp(&b.id)));
+    }
+
+    result
+}
+
+impl Workspaces {
+    pub fn new(config: WorkspacesModuleConfig) -> Self {
+        Self {
+            config,
+            service: None,
+            ui_workspaces: Vec::new(),
+            scroll_accumulator: 0.,
+        }
+    }
+
+    pub fn update(&mut self, message: Message) -> iced::Task<Message> {
+        match message {
+            Message::ServiceEvent(event) => {
+                match event {
+                    ServiceEvent::Init(s) => {
+                        self.service = Some(s);
+                        self.recalculate_ui_workspaces();
+                    }
+                    ServiceEvent::Update(e) => {
+                        if let Some(s) = &mut self.service {
+                            s.update(e);
+                            self.recalculate_ui_workspaces();
+                        }
+                    }
+                    _ => {}
+                }
+                iced::Task::none()
+            }
+            Message::ChangeWorkspace(id) => {
+                if let Some(service) = &mut self.service {
+                    let already_active = self
+                        .ui_workspaces
+                        .iter()
+                        .any(|w| w.displayed == Displayed::Active && w.id == id);
+
+                    if !already_active {
+                        if self.config.enable_virtual_desktops {
+                            return service
+                                .command(CompositorCommand::CustomDispatch(
+                                    "vdesk".to_string(),
+                                    id.to_string(),
+                                ))
+                                .map(Message::ServiceEvent);
+                        } else {
+                            return service
+                                .command(CompositorCommand::FocusWorkspace(id))
+                                .map(Message::ServiceEvent);
+                        }
+                    }
+                }
+                iced::Task::none()
+            }
+            Message::ToggleSpecialWorkspace(_) => {
+                // margo has no special workspaces — silently ignore.
+                iced::Task::none()
+            }
+            Message::Scroll(direction) => {
+                self.scroll_accumulator = 0.;
+
+                /* TODO: should we use the native service implementation instead?
+                if let Some(service) = &mut self.service {
+                    return service
+                        .command(CompositorCommand::ScrollWorkspace(direction))
+                        .map(Message::ServiceEvent);
+                }
+                return iced::Task::none();*/
+                let Some(pos) = self
+                    .ui_workspaces
+                    .iter()
+                    .position(|w| w.displayed == Displayed::Active)
+                else {
+                    return iced::Task::none();
+                };
+
+                let current_monitor = self.ui_workspaces[pos].monitor.clone();
+                let current_monitor_id = self.ui_workspaces[pos].monitor_id;
+
+                let restrict_to_monitor = matches!(
+                    self.config.visibility_mode,
+                    WorkspaceVisibilityMode::MonitorSpecific
+                        | WorkspaceVisibilityMode::MonitorSpecificExclusive
+                );
+
+                let in_current_group = |w: &&UiWorkspace| -> bool {
+                    if !restrict_to_monitor {
+                        return true;
+                    }
+
+                    if let Some(w_monitor_id) = w.monitor_id
+                        && let Some(active_monitor_id) = current_monitor_id
+                    {
+                        return w_monitor_id == active_monitor_id;
+                    }
+
+                    if !w.monitor.is_empty() && !current_monitor.is_empty() {
+                        return w.monitor == current_monitor;
+                    }
+
+                    // monitor doesn't seem to contain any useful info, so assume it's part of the group
+                    true
+                };
+
+                // Navigate by position in the already-sorted ui_workspaces
+                // vector, which represents exact visual order regardless of
+                // group_by_monitor or visibility_mode configuration.
+                let next_workspace = if direction > 0 {
+                    self.ui_workspaces[..pos]
+                        .iter()
+                        .rev()
+                        .find(|w| in_current_group(w))
+                } else {
+                    self.ui_workspaces[pos + 1..]
+                        .iter()
+                        .find(|w| in_current_group(w))
+                };
+
+                if let Some(next) = next_workspace {
+                    return self.update(Message::ChangeWorkspace(next.id));
+                }
+                iced::Task::none()
+            }
+            Message::ConfigReloaded(cfg) => {
+                self.config = cfg;
+                self.recalculate_ui_workspaces();
+                iced::Task::none()
+            }
+            Message::ScrollAccumulator(value) => {
+                if value == 0. {
+                    self.scroll_accumulator = 0.;
+                } else {
+                    self.scroll_accumulator += value;
+                }
+
+                iced::Task::none()
+            }
+        }
+    }
+
+    fn recalculate_ui_workspaces(&mut self) {
+        if let Some(service) = &self.service {
+            self.ui_workspaces = calculate_ui_workspaces(&self.config, service);
+        }
+    }
+
+    pub fn view<'a>(&'a self, id: SurfaceId, outputs: &Outputs) -> Element<'a, Message> {
+        let monitor_name = outputs.get_monitor_name(id);
+
+        let row = use_theme(|theme| {
+            Row::with_children(
+                self.ui_workspaces
+                    .iter()
+                    .filter_map(|w| {
+                        let show = match self.config.visibility_mode {
+                            WorkspaceVisibilityMode::All => true,
+                            WorkspaceVisibilityMode::MonitorSpecific => {
+                                monitor_name
+                                    .unwrap_or_else(|| &w.monitor)
+                                    .contains(&w.monitor)
+                                    || !outputs.has_name(&w.monitor)
+                            }
+                            WorkspaceVisibilityMode::MonitorSpecificExclusive => monitor_name
+                                .unwrap_or_else(|| &w.monitor)
+                                .contains(&w.monitor),
+                        };
+
+                        if show {
+                            let empty = w.windows == 0;
+                            let color_index = if self.config.enable_virtual_desktops {
+                                Some(w.id as i128)
+                            } else {
+                                w.monitor_id
+                            };
+
+                            let color = color_index.map(|i| {
+                                if w.id > 0 {
+                                    theme.workspace_colors.get(i as usize).copied()
+                                } else {
+                                    theme
+                                        .special_workspace_colors
+                                        .as_ref()
+                                        .unwrap_or(&theme.workspace_colors)
+                                        .get(i as usize)
+                                        .copied()
+                                }
+                            });
+
+                            {
+                                let target_width = match (w.id < 0, &w.displayed) {
+                                    (true, _) => None,
+                                    (_, Displayed::Active) => Some(theme.space.xl),
+                                    (_, Displayed::Visible) => Some(theme.space.lg),
+                                    (_, Displayed::Hidden) => Some(theme.space.md),
+                                };
+                                let name = w.name.clone();
+                                let padding = if w.id < 0 {
+                                    match w.displayed {
+                                        Displayed::Active => [0.0, theme.space.md],
+                                        Displayed::Visible => [0.0, theme.space.sm],
+                                        Displayed::Hidden => [0.0, theme.space.xs],
+                                    }
+                                } else {
+                                    [0.0, 0.0]
+                                };
+                                let on_press = if w.id > 0 {
+                                    Message::ChangeWorkspace(w.id)
+                                } else {
+                                    Message::ToggleSpecialWorkspace(w.id)
+                                };
+                                let font_size = theme.font_size.xs;
+                                let height = theme.space.md;
+
+                                Some(match target_width {
+                                    Some(tw) if theme.animations_enabled => {
+                                        AnimationBuilder::new(tw, move |w| {
+                                            use_theme(|theme| {
+                                                button(
+                                                    container(text(name.clone()).size(font_size))
+                                                        .align_x(alignment::Horizontal::Center)
+                                                        .align_y(alignment::Vertical::Center),
+                                                )
+                                                .style(theme.workspace_button_style(empty, color))
+                                                .padding(padding)
+                                                .on_press(on_press.clone())
+                                                .width(Length::Fixed(w))
+                                                .height(height)
+                                                .into()
+                                            })
+                                        })
+                                        .animates_layout(true)
+                                        .animation(Easing::EASE.very_quick())
+                                        .into()
+                                    }
+                                    Some(tw) => button(
+                                        container(text(name).size(font_size))
+                                            .align_x(alignment::Horizontal::Center)
+                                            .align_y(alignment::Vertical::Center),
+                                    )
+                                    .style(theme.workspace_button_style(empty, color))
+                                    .padding(padding)
+                                    .on_press(on_press)
+                                    .width(Length::Fixed(tw))
+                                    .height(height)
+                                    .into(),
+                                    None => button(
+                                        container(text(name).size(font_size))
+                                            .align_x(alignment::Horizontal::Center)
+                                            .align_y(alignment::Vertical::Center),
+                                    )
+                                    .style(theme.workspace_button_style(empty, color))
+                                    .padding(padding)
+                                    .on_press(on_press)
+                                    .width(Length::Shrink)
+                                    .height(height)
+                                    .into(),
+                                })
+                            }
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>(),
+            )
+            .spacing(theme.space.xxs)
+        });
+
+        MouseArea::new(row)
+            .on_scroll(move |direction| match direction {
+                iced::mouse::ScrollDelta::Lines { y, .. } => {
+                    if y.is_sign_positive() {
+                        match self.config.invert_scroll_direction {
+                            Some(InvertScrollDirection::All | InvertScrollDirection::Mouse) => {
+                                Message::Scroll(-1)
+                            }
+                            Some(InvertScrollDirection::Trackpad) => Message::Scroll(1),
+                            None => Message::Scroll(1),
+                        }
+                    } else {
+                        match self.config.invert_scroll_direction {
+                            Some(InvertScrollDirection::All | InvertScrollDirection::Mouse) => {
+                                Message::Scroll(1)
+                            }
+                            Some(InvertScrollDirection::Trackpad) => Message::Scroll(-1),
+                            None => Message::Scroll(-1),
+                        }
+                    }
+                }
+                iced::mouse::ScrollDelta::Pixels { y, .. } => {
+                    let sensibility = 3.;
+
+                    if self.scroll_accumulator.abs() < sensibility {
+                        Message::ScrollAccumulator(y)
+                    } else if self.scroll_accumulator.is_sign_positive() {
+                        match self.config.invert_scroll_direction {
+                            Some(InvertScrollDirection::All | InvertScrollDirection::Trackpad) => {
+                                Message::Scroll(-1)
+                            }
+                            Some(InvertScrollDirection::Mouse) => Message::Scroll(1),
+                            None => Message::Scroll(1),
+                        }
+                    } else {
+                        match self.config.invert_scroll_direction {
+                            Some(InvertScrollDirection::All | InvertScrollDirection::Trackpad) => {
+                                Message::Scroll(1)
+                            }
+                            Some(InvertScrollDirection::Mouse) => Message::Scroll(-1),
+                            None => Message::Scroll(-1),
+                        }
+                    }
+                }
+            })
+            .into()
+    }
+
+    pub fn subscription(&self) -> Subscription<Message> {
+        CompositorService::subscribe().map(Message::ServiceEvent)
+    }
+}
