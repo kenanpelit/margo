@@ -242,3 +242,235 @@ fn window_rule_application_via_xdg_shell_flow() {
     }
     assert_snapshot!(report);
 }
+
+// ── T1 expansion: matcher edge-case unit tests ───────────────────────────────
+//
+// Focused on `matches_rule_text` + `window_rule_matches`'s positive /
+// negative pattern interactions. The snapshot tests above lock the
+// integration shape across a curated candidate matrix; these lock
+// the algebra cell-by-cell so a regression in any single branch
+// (anchor handling, exclude precedence, empty-pattern semantics)
+// flags here even if the curated matrix doesn't happen to exercise
+// the broken cell.
+
+#[cfg(test)]
+mod edge_cases {
+    use super::*;
+
+    /// Build a one-rule fixture and ask the matcher whether the rule
+    /// applies to the given `(app_id, title)`. Hides the Fixture
+    /// boilerplate.
+    fn matches(rule: WindowRule, app_id: &str, title: &str) -> bool {
+        let mut config = Config::default();
+        config.window_rules = vec![rule.clone()];
+        let fx = Fixture::with_config(config);
+        fx.server.state.window_rule_matches(&rule, app_id, title)
+    }
+
+    // ── id-pattern semantics ─────────────────────────────────────────────────
+
+    #[test]
+    fn anchored_id_matches_exact_only() {
+        let rule = WindowRule {
+            id: Some("^Spotify$".into()),
+            ..Default::default()
+        };
+        assert!(matches(rule.clone(), "Spotify", ""));
+        assert!(!matches(rule.clone(), "SpotifyPremium", ""));
+        assert!(!matches(rule, "FooSpotify", ""));
+    }
+
+    #[test]
+    fn unanchored_id_matches_substring() {
+        let rule = WindowRule {
+            id: Some("Spotify".into()),
+            ..Default::default()
+        };
+        assert!(matches(rule.clone(), "Spotify", ""));
+        assert!(matches(rule.clone(), "Spotify Premium", ""));
+        assert!(matches(rule, "MySpotifyApp", ""));
+    }
+
+    #[test]
+    fn id_matching_is_case_sensitive() {
+        // Regex semantics: no /i flag means literal case match.
+        let rule = WindowRule {
+            id: Some("Spotify".into()),
+            ..Default::default()
+        };
+        assert!(!matches(rule, "spotify", ""));
+    }
+
+    #[test]
+    fn regex_alternation_in_id_works() {
+        let rule = WindowRule {
+            id: Some("^(Helium|Chromium|Brave-browser)$".into()),
+            ..Default::default()
+        };
+        assert!(matches(rule.clone(), "Helium", ""));
+        assert!(matches(rule.clone(), "Chromium", ""));
+        assert!(matches(rule.clone(), "Brave-browser", ""));
+        assert!(!matches(rule.clone(), "Firefox", ""));
+        // Anchored: substring inside one of the alternatives must NOT match.
+        assert!(!matches(rule, "Helium-stable", ""));
+    }
+
+    #[test]
+    fn character_class_in_title_matches() {
+        let rule = WindowRule {
+            title: Some("^Tab [0-9]+$".into()),
+            ..Default::default()
+        };
+        assert!(matches(rule.clone(), "app", "Tab 5"));
+        assert!(matches(rule.clone(), "app", "Tab 123"));
+        assert!(!matches(rule.clone(), "app", "Tab five"));
+        assert!(!matches(rule, "app", "Tab 5 — Discord"));
+    }
+
+    // ── empty / absent pattern semantics ─────────────────────────────────────
+
+    #[test]
+    fn rule_with_no_patterns_matches_everything() {
+        let rule = WindowRule::default();
+        assert!(matches(rule.clone(), "anything", ""));
+        assert!(matches(rule.clone(), "", "anything"));
+        assert!(matches(rule, "", ""));
+    }
+
+    #[test]
+    fn empty_pattern_string_matches_anything() {
+        // `Some("")` should be filtered out by the matcher's
+        // `filter(|p| !p.is_empty())` — i.e. equivalent to None.
+        let rule = WindowRule {
+            id: Some(String::new()),
+            title: Some(String::new()),
+            ..Default::default()
+        };
+        assert!(matches(rule.clone(), "Spotify", "anything"));
+        // Even an empty (app_id, title) shouldn't be rejected, since
+        // there's no positive constraint.
+        assert!(matches(rule, "", ""));
+    }
+
+    #[test]
+    fn empty_value_against_non_empty_pattern_fails() {
+        let rule = WindowRule {
+            id: Some("Spotify".into()),
+            ..Default::default()
+        };
+        // Empty value can't match a non-empty pattern — protects
+        // against the "newly-mapped Electron toplevel before app_id
+        // settles" corner case.
+        assert!(!matches(rule, "", ""));
+    }
+
+    // ── multi-field AND semantics ────────────────────────────────────────────
+
+    #[test]
+    fn id_and_title_both_must_match() {
+        let rule = WindowRule {
+            id: Some("Spotify".into()),
+            title: Some("Premium".into()),
+            ..Default::default()
+        };
+        assert!(matches(rule.clone(), "Spotify", "Spotify Premium"));
+        assert!(!matches(rule.clone(), "Spotify", "Free Edition"));
+        assert!(!matches(rule.clone(), "Firefox", "Premium"));
+        assert!(!matches(rule, "Firefox", "Free Edition"));
+    }
+
+    #[test]
+    fn id_only_rule_ignores_title() {
+        let rule = WindowRule {
+            id: Some("Spotify".into()),
+            ..Default::default()
+        };
+        assert!(matches(rule.clone(), "Spotify", "any title"));
+        assert!(matches(rule, "Spotify", ""));
+    }
+
+    #[test]
+    fn title_only_rule_ignores_id() {
+        let rule = WindowRule {
+            title: Some("Picture-in-Picture".into()),
+            ..Default::default()
+        };
+        assert!(matches(rule.clone(), "anything", "Picture-in-Picture"));
+        assert!(matches(rule, "", "Picture-in-Picture"));
+    }
+
+    // ── exclude_* precedence ─────────────────────────────────────────────────
+
+    #[test]
+    fn exclude_id_blocks_otherwise_matching_rule() {
+        let rule = WindowRule {
+            title: Some("Settings".into()),
+            exclude_id: Some("dev.zed.Zed".into()),
+            ..Default::default()
+        };
+        // Positive `title` would match; exclude_id should veto.
+        assert!(!matches(rule.clone(), "dev.zed.Zed", "Settings"));
+        // Non-Zed Settings windows match cleanly.
+        assert!(matches(rule, "nemo", "Settings"));
+    }
+
+    #[test]
+    fn exclude_title_blocks_otherwise_matching_rule() {
+        let rule = WindowRule {
+            title: Some("Picture-in-Picture".into()),
+            exclude_title: Some("Mozilla Firefox".into()),
+            ..Default::default()
+        };
+        // PiP window without Mozilla in the title: matches.
+        assert!(matches(rule.clone(), "firefox", "Picture-in-Picture"));
+        // PiP with Mozilla Firefox in the title (e.g. main window
+        // showing the PiP indicator text): blocked.
+        assert!(!matches(
+            rule,
+            "firefox",
+            "Mozilla Firefox — Picture-in-Picture"
+        ));
+    }
+
+    #[test]
+    fn exclude_id_unmatched_does_not_block() {
+        let rule = WindowRule {
+            id: Some("Spotify".into()),
+            exclude_id: Some("FooApp".into()),
+            ..Default::default()
+        };
+        // exclude_id pattern doesn't match → positive id wins.
+        assert!(matches(rule, "Spotify", ""));
+    }
+
+    // ── invalid-regex fallback path ──────────────────────────────────────────
+
+    #[test]
+    fn invalid_regex_falls_back_to_substring() {
+        // `[invalid` is an unclosed character class — regex::Regex
+        // refuses to compile. The matcher's fallback strips anchors
+        // and treats the rest as substring.
+        let rule = WindowRule {
+            id: Some("[invalid".into()),
+            ..Default::default()
+        };
+        // The fallback `value.contains("[invalid")` would only hit
+        // an app_id containing that literal substring; "[invalidApp"
+        // does, "OtherApp" doesn't.
+        assert!(matches(rule.clone(), "[invalidApp", ""));
+        assert!(!matches(rule, "OtherApp", ""));
+    }
+
+    #[test]
+    fn invalid_regex_with_anchors_strips_them() {
+        // Even when the regex is invalid, the leading `^` and
+        // trailing `$` get stripped before the substring compare,
+        // so a quoted "^[invalid$" pattern still recognises
+        // `[invalid` inside the app_id.
+        let rule = WindowRule {
+            id: Some("^[invalid$".into()),
+            ..Default::default()
+        };
+        assert!(matches(rule, "[invalid", ""));
+    }
+}

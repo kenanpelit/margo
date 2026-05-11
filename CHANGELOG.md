@@ -9,6 +9,25 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- **Window-rule matcher edge-case tests (roadmap T1).** 16 new
+  focused unit tests lock the algebra cell-by-cell, complementing
+  the existing two snapshot tests that lock the integration shape:
+  * **id pattern semantics** — anchored vs unanchored, case
+    sensitivity, regex alternation, character classes.
+  * **empty / absent pattern semantics** — `None`, `Some("")`,
+    empty value against non-empty pattern (the "newly-mapped
+    Electron toplevel before app_id settles" corner case).
+  * **multi-field AND semantics** — id + title both required;
+    id-only ignores title; title-only ignores id; no patterns
+    matches everything.
+  * **exclude_* precedence** — `exclude_id` and `exclude_title`
+    veto otherwise-matching rules; unmatched exclude does NOT
+    block.
+  * **invalid-regex fallback** — `[invalid` (unclosed character
+    class) falls back to substring, including the
+    anchor-stripping path (`^[invalid$` → `[invalid` substring).
+  Workspace test count: 164 → 180.
+
 - **Animation curve snapshot tests (roadmap T2).** Nine new
   tests lock the 4-point Bezier evaluator + spring-baked curve
   shapes against accidental coefficient drift:
