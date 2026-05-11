@@ -1582,6 +1582,20 @@ pub struct MargoState {
     /// arrange is done. None ⇒ fall back to the configured duration.
     pub overview_transition_animation_ms: Option<u32>,
 
+    /// Diagnostics from the most recent `reload_config` validation pass.
+    /// Empty when the last reload was clean (or no reload has happened
+    /// yet). Populated by `reload_config` after running
+    /// `margo_config::validator::validate_config`. Queryable from
+    /// userspace via `mctl config-errors`. The compositor keeps its
+    /// previous config when `has_errors()` is true, so this field
+    /// doubles as "why did the last reload not apply?".
+    pub last_reload_diagnostics: Vec<margo_config::diagnostics::ConfigDiagnostic>,
+    /// `Instant` the config-error overlay first appeared on screen.
+    /// Cleared on a clean reload or after `CONFIG_ERROR_OVERLAY_MS`.
+    /// Drives the niri-style red-bordered banner the next phase
+    /// (`C2`) will render.
+    pub config_error_overlay_until: Option<std::time::Instant>,
+
     /// Alt+Tab muscle-memory: when an `overview_focus_next/prev` keybind
     /// fires, the input handler snapshots which modifier(s) the user is
     /// holding and sets `overview_cycle_pending = true`. On the next key
@@ -1799,6 +1813,8 @@ impl MargoState {
             region_selector: None,
             layer_animations: std::collections::HashMap::new(),
             overview_transition_animation_ms: None,
+            last_reload_diagnostics: Vec::new(),
+            config_error_overlay_until: None,
             overview_cycle_pending: false,
             overview_cycle_modifier_mask: margo_config::Modifiers::empty(),
             hot_corner_dwelling: None,
@@ -2250,6 +2266,29 @@ impl MargoState {
             .or_else(|| self.monitors.first().map(|m| m.name.clone()))
             .unwrap_or_default();
 
+        // Diagnostics from the most recent reload (or initial parse).
+        // Exposed in state.json so `mctl config-errors` can fetch
+        // them without a dedicated IPC roundtrip.
+        let config_errors: Vec<_> = self
+            .last_reload_diagnostics
+            .iter()
+            .map(|d| {
+                json!({
+                    "path": d.path.display().to_string(),
+                    "line": d.line,
+                    "col": d.col,
+                    "end_col": d.end_col,
+                    "severity": match d.severity {
+                        margo_config::diagnostics::Severity::Error => "error",
+                        margo_config::diagnostics::Severity::Warning => "warning",
+                    },
+                    "code": d.code,
+                    "message": d.message,
+                    "line_text": d.line_text,
+                })
+            })
+            .collect();
+
         json!({
             "version": 1,
             "tag_count": MAX_TAGS,
@@ -2258,6 +2297,7 @@ impl MargoState {
             "outputs": outputs,
             "clients": clients,
             "layouts": layout_names,
+            "config_errors": config_errors,
         })
     }
 
@@ -2697,8 +2737,45 @@ impl MargoState {
     }
 
     pub fn reload_config(&mut self) -> Result<()> {
+        // Validate first. The parser is permissive (silent defaults
+        // on malformed values), so a "successful" parse can still mean
+        // the user's intent was misread. Run the structured validator
+        // and bail before swapping config if it found errors —
+        // compositor stays on the previous good config.
+        match margo_config::validator::validate_config(self.config_path.as_deref()) {
+            Ok(report) => {
+                self.last_reload_diagnostics = report.diagnostics.clone();
+                if report.has_errors() {
+                    // Trigger the C2 on-screen banner. 10 s ought to be
+                    // long enough to read "your config is broken, run
+                    // mctl check-config" without being a pest.
+                    self.config_error_overlay_until = Some(
+                        std::time::Instant::now()
+                            + std::time::Duration::from_secs(10),
+                    );
+                    self.request_repaint();
+                    let err_count = report.errors().count();
+                    return Err(anyhow::anyhow!(
+                        "config has {err_count} error(s) — run `mctl check-config` for details"
+                    ));
+                }
+            }
+            Err(e) => {
+                tracing::warn!("config validator could not read file: {e}");
+                // Fall through: let parse_config produce the canonical
+                // error so the caller's message says "I/O failure"
+                // rather than "validator missing".
+            }
+        }
+
         let new_config = parse_config(self.config_path.as_deref())
             .with_context(|| "reload margo config")?;
+
+        // Successful reload — clear any stale diagnostics + overlay
+        // (warnings from the validation pass above are still in
+        // last_reload_diagnostics, intentionally; the user can still
+        // query them via mctl config-errors).
+        self.config_error_overlay_until = None;
 
         if let Some(keyboard) = self.seat.get_keyboard() {
             let xkb_options = if new_config.xkb_rules.options.is_empty() {

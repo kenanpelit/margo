@@ -206,8 +206,19 @@ enum Command {
     Quit,
 
     /// Reload `~/.config/margo/config.conf`
+    ///
+    /// By default runs `check-config` first; refuses to reload when
+    /// the file has errors (so the compositor doesn't try to apply a
+    /// broken config). Pass `--force` to skip the pre-check.
     #[command(display_order = 30)]
-    Reload,
+    Reload {
+        /// Skip the pre-reload validation pass and dispatch the IPC
+        /// reload unconditionally. Useful if the validator is wrong
+        /// or the user wants to test the parser's recovery behaviour
+        /// directly.
+        #[arg(long)]
+        force: bool,
+    },
 
     /// Live-swap the visual theme preset. Built-ins: `default`,
     /// `minimal`, `gaudy`. The first preset switch captures a
@@ -296,6 +307,17 @@ enum Command {
         #[arg(long, conflicts_with_all = ["verbose", "group"])]
         names: bool,
     },
+
+    /// Show the diagnostics from the running compositor's most-recent
+    /// config reload — niri-style. Hyprland's `hyprctl configerrors`
+    /// analogue. Empty when the last reload was clean.
+    ///
+    /// Reads from the live compositor (via the same state.json IPC
+    /// `mctl status` uses), so it reflects what the compositor
+    /// actually applied, not what `check-config` thinks about the
+    /// file on disk right now.
+    #[command(display_order = 38)]
+    ConfigErrors,
 
     /// Validate `~/.config/margo/config.conf`: unknown keys, regex errors,
     /// duplicate binds, missing source files, lone-mango leftovers
@@ -649,6 +671,9 @@ fn main() -> Result<()> {
         Command::Focused { json } => {
             return cmd_focused(*json);
         }
+        Command::ConfigErrors => {
+            return cmd_config_errors();
+        }
         _ => {}
     }
 
@@ -822,7 +847,54 @@ fn main() -> Result<()> {
             ipc_out.quit();
             eq.roundtrip(&mut state)?;
         }
-        Command::Reload => {
+        Command::Reload { force } => {
+            // Pre-flight: validate before we touch IPC. The compositor
+            // also fail-soft loads (it'll keep the previous config if
+            // the new one parses to garbage), but stopping here is far
+            // friendlier — the user sees a coloured caret-and-line
+            // diagnostic in the terminal rather than a tracing log
+            // line buried in journalctl. `--force` keeps the old
+            // permissive behaviour.
+            if !force {
+                let report = margo_config::validator::validate_config(None)
+                    .unwrap_or_else(|e| {
+                        eprintln!("error: validator could not read config: {e}");
+                        std::process::exit(2);
+                    });
+                if report.has_errors() {
+                    let colored =
+                        std::io::IsTerminal::is_terminal(&std::io::stderr());
+                    for d in &report.diagnostics {
+                        if d.is_error() {
+                            eprint!("{}", d.render(colored));
+                            eprintln!();
+                        }
+                    }
+                    let err_count = report.errors().count();
+                    eprintln!(
+                        "mctl reload: refusing to reload — {} error{} in config. \
+                         Fix them and retry, or pass `--force` to reload anyway.",
+                        err_count,
+                        if err_count == 1 { "" } else { "s" }
+                    );
+                    std::process::exit(1);
+                }
+                if report.has_warnings() {
+                    let colored =
+                        std::io::IsTerminal::is_terminal(&std::io::stderr());
+                    for d in &report.diagnostics {
+                        if !d.is_error() {
+                            eprint!("{}", d.render(colored));
+                            eprintln!();
+                        }
+                    }
+                    eprintln!(
+                        "mctl reload: proceeding with {} warning{}.",
+                        report.warnings().count(),
+                        if report.warnings().count() == 1 { "" } else { "s" }
+                    );
+                }
+            }
             ipc_out.dispatch(
                 "reload_config".to_string(),
                 String::new(),
@@ -909,6 +981,7 @@ fn main() -> Result<()> {
         | Command::Completions { .. }
         | Command::Rules { .. }
         | Command::CheckConfig { .. }
+        | Command::ConfigErrors
         | Command::Clients { .. }
         | Command::Outputs { .. }
         | Command::Focused { .. } => {
@@ -1248,7 +1321,77 @@ fn print_rule(rule: &margo_config::WindowRule) {
     }
 }
 
+fn cmd_config_errors() -> Result<()> {
+    use margo_config::diagnostics::{ConfigDiagnostic, Severity};
+    let state = read_state_file()
+        .map_err(|e| anyhow::anyhow!("cannot read margo state.json: {e}"))?;
+    let entries = state
+        .get("config_errors")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    if entries.is_empty() {
+        println!("no config errors");
+        return Ok(());
+    }
+    let colored = std::io::IsTerminal::is_terminal(&std::io::stderr());
+    let mut errs = 0usize;
+    let mut warns = 0usize;
+    for entry in &entries {
+        let severity = match entry.get("severity").and_then(|v| v.as_str()) {
+            Some("error") => {
+                errs += 1;
+                Severity::Error
+            }
+            _ => {
+                warns += 1;
+                Severity::Warning
+            }
+        };
+        let d = ConfigDiagnostic {
+            path: entry
+                .get("path")
+                .and_then(|v| v.as_str())
+                .map(std::path::PathBuf::from)
+                .unwrap_or_default(),
+            line: entry.get("line").and_then(|v| v.as_u64()).unwrap_or(0) as usize,
+            col: entry.get("col").and_then(|v| v.as_u64()).unwrap_or(0) as usize,
+            end_col: entry.get("end_col").and_then(|v| v.as_u64()).unwrap_or(0) as usize,
+            severity,
+            code: entry
+                .get("code")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            message: entry
+                .get("message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            line_text: entry
+                .get("line_text")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+        };
+        eprint!("{}", d.render(colored));
+        eprintln!();
+    }
+    println!(
+        "result: {} error{}, {} warning{}",
+        errs,
+        if errs == 1 { "" } else { "s" },
+        warns,
+        if warns == 1 { "" } else { "s" },
+    );
+    if errs > 0 {
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
 fn cmd_check_config(config_override: Option<&std::path::Path>) -> Result<()> {
+    use margo_config::diagnostics::{ConfigDiagnostic, Severity};
     use std::collections::HashMap;
 
     let cfg_path = config_override
@@ -1261,139 +1404,164 @@ fn cmd_check_config(config_override: Option<&std::path::Path>) -> Result<()> {
         });
 
     if !cfg_path.exists() {
-        eprintln!("ERROR: config file not found: {}", cfg_path.display());
+        eprintln!("error: config file not found: {}", cfg_path.display());
         std::process::exit(2);
     }
 
-    let mut errors: Vec<String> = Vec::new();
-    let mut warnings: Vec<String> = Vec::new();
+    // Pass 1 — structured validator. Picks up trailing/leading/doubled
+    // commas in CSV-shaped values, missing `=`, unknown top-level keys,
+    // unresolved include/source paths.
+    let mut report = margo_config::validator::validate_config(Some(&cfg_path))
+        .unwrap_or_else(|e| {
+            eprintln!("error: validator could not read config: {e}");
+            std::process::exit(2);
+        });
 
-    // Pass 1 — let margo-config's parser do its thing. It already
-    // logs `unknown config key`, `unknown windowrule option`, etc.
-    // through the `tracing` macro, which we route to stderr below.
-    // We don't fail on parse errors here; the parser is permissive
-    // and reports per-line problems via `error!` while continuing.
-    let cfg = match margo_config::parse_config(Some(&cfg_path)) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("ERROR: parse failed: {e}");
-            std::process::exit(1);
-        }
-    };
+    // Pass 2 — try to fully parse for the summary line. If the parser
+    // itself bails (rare; it's permissive) record an E000 diagnostic
+    // and keep going so the rest of the diagnostic stream still prints.
+    let cfg = margo_config::parse_config(Some(&cfg_path)).ok();
 
-    // Pass 2 — walk source lines manually for things the parser
-    // can't (or doesn't) catch.
+    // Pass 3 — duplicate-bind and regex-pattern checks. These need
+    // semantic understanding the line-walker doesn't have, so we keep
+    // them here but emit structured `ConfigDiagnostic`s into the same
+    // report stream as Pass 1 so the renderer is uniform.
     let text = std::fs::read_to_string(&cfg_path)?;
-    let mut bind_seen: HashMap<(String, String), Vec<usize>> = HashMap::new();
+    let mut bind_seen: HashMap<(String, String), Vec<(usize, String)>> = HashMap::new();
 
-    for (lineno, raw) in text.lines().enumerate() {
-        let line = raw.trim();
+    for (lineno_zero, raw) in text.lines().enumerate() {
+        let lineno = lineno_zero + 1;
+        let line = raw.trim_start();
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
-        let Some((key_raw, val_raw)) = line.split_once('=') else {
-            continue;
-        };
-        let key = key_raw.trim();
-        let val = val_raw.trim();
+        let Some(eq_pos) = raw.find('=') else { continue };
+        let key = raw[..eq_pos].trim();
+        let val = raw[eq_pos + 1..].trim();
 
-        // Bind dedup. Key: (modifier-string, key-name) lowercased.
-        // We only catch lines that share a `bind = MODS,KEY,...`
-        // shape, ignoring args (different action with same key is
-        // still a duplicate — one shadows the other).
         if key == "bind" {
             let mut parts = val.splitn(3, ',');
             let mods = parts.next().unwrap_or("").trim().to_lowercase();
             let keysym = parts.next().unwrap_or("").trim().to_lowercase();
             if !mods.is_empty() && !keysym.is_empty() {
-                bind_seen.entry((mods, keysym)).or_default().push(lineno + 1);
+                bind_seen
+                    .entry((mods, keysym))
+                    .or_default()
+                    .push((lineno, raw.to_string()));
             }
         }
 
-        // Source / include checking. The parser silently swallows
-        // missing optional includes; surface them so the user can
-        // tell that their `source = …` line did nothing.
-        if key == "include" || key == "source" {
-            let resolved = if let Some(rest) = val.strip_prefix("~/") {
-                let home = std::env::var("HOME").unwrap_or_default();
-                std::path::PathBuf::from(home).join(rest)
-            } else if let Some(rel) = val.strip_prefix("./") {
-                cfg_path.parent().unwrap_or(std::path::Path::new(".")).join(rel)
-            } else {
-                std::path::PathBuf::from(val)
-            };
-            if !resolved.exists() {
-                warnings.push(format!(
-                    "{}:{}: source/include '{}' does not exist (resolved to {})",
-                    cfg_path.display(),
-                    lineno + 1,
-                    val,
-                    resolved.display()
-                ));
-            }
-        }
-
-        // Regex sanity for window/layer rule patterns. The compositor
-        // falls back to substring match when a pattern won't compile,
-        // but the user almost always wants to know about it.
         if key == "windowrule" || key == "layerrule" {
-            for (k, v) in val.split(',').filter_map(|p| p.split_once(':')) {
-                let k = k.trim();
-                if matches!(k, "appid" | "app_id" | "title" | "exclude_appid" | "exclude_id"
-                    | "exclude_title" | "not_appid" | "not_title" | "layer_name")
-                {
-                    if let Err(e) = regex::Regex::new(v.trim()) {
-                        errors.push(format!(
-                            "{}:{}: regex compile error in `{}:{}` — {}",
-                            cfg_path.display(),
-                            lineno + 1,
-                            k,
-                            v.trim(),
-                            e,
-                        ));
+            for (k_raw, v_raw) in val.split(',').filter_map(|p| p.split_once(':')) {
+                let k = k_raw.trim();
+                if matches!(
+                    k,
+                    "appid"
+                        | "app_id"
+                        | "title"
+                        | "exclude_appid"
+                        | "exclude_id"
+                        | "exclude_title"
+                        | "not_appid"
+                        | "not_title"
+                        | "layer_name"
+                ) {
+                    if let Err(e) = regex::Regex::new(v_raw.trim()) {
+                        let pat_col = raw
+                            .find(v_raw.trim())
+                            .map(|i| i + 1)
+                            .unwrap_or(eq_pos + 2);
+                        report.push(ConfigDiagnostic {
+                            path: cfg_path.clone(),
+                            line: lineno,
+                            col: pat_col,
+                            end_col: pat_col + v_raw.trim().len(),
+                            severity: Severity::Error,
+                            code: "E004".into(),
+                            message: format!("regex compile error in `{k}:{}` — {e}", v_raw.trim()),
+                            line_text: raw.to_string(),
+                        });
                     }
                 }
             }
         }
     }
 
-    for (key, lines) in &bind_seen {
-        if lines.len() > 1 {
-            warnings.push(format!(
-                "duplicate bind: `{}` + `{}` defined on lines {} (later definition wins)",
-                key.0,
-                key.1,
-                lines.iter().map(|l| l.to_string()).collect::<Vec<_>>().join(", "),
-            ));
+    for (key, hits) in &bind_seen {
+        if hits.len() > 1 {
+            // Report on the *later* line(s); the first one is the one
+            // that's getting shadowed. niri-style: the diagnostic
+            // points at the line that "won" so the user knows which
+            // entry is the active one.
+            let (lineno, line_text) = hits.last().unwrap();
+            report.push(ConfigDiagnostic {
+                path: cfg_path.clone(),
+                line: *lineno,
+                col: 1,
+                end_col: line_text.len() + 1,
+                severity: Severity::Warning,
+                code: "W002".into(),
+                message: format!(
+                    "duplicate bind `{}+{}` (also defined on line{} {}; this definition wins)",
+                    key.0,
+                    key.1,
+                    if hits.len() > 2 { "s" } else { "" },
+                    hits.iter()
+                        .take(hits.len() - 1)
+                        .map(|(l, _)| l.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                ),
+                line_text: line_text.clone(),
+            });
         }
+    }
+
+    // Stable render order: by line, then severity (errors first).
+    report.diagnostics.sort_by(|a, b| {
+        a.line
+            .cmp(&b.line)
+            .then(a.col.cmp(&b.col))
+            .then_with(|| match (a.severity, b.severity) {
+                (Severity::Error, Severity::Warning) => std::cmp::Ordering::Less,
+                (Severity::Warning, Severity::Error) => std::cmp::Ordering::Greater,
+                _ => std::cmp::Ordering::Equal,
+            })
+    });
+
+    let colored = std::io::IsTerminal::is_terminal(&std::io::stderr());
+    let err_count = report.errors().count();
+    let warn_count = report.warnings().count();
+
+    for d in &report.diagnostics {
+        eprint!("{}", d.render(colored));
+        eprintln!();
     }
 
     println!("config: {}", cfg_path.display());
-    println!(
-        "summary: binds={} windowrules={} layerrules={} monitorrules={} tagrules={}",
-        cfg.key_bindings.len(),
-        cfg.window_rules.len(),
-        cfg.layer_rules.len(),
-        cfg.monitor_rules.len(),
-        cfg.tag_rules.len(),
-    );
-    println!();
+    if let Some(cfg) = cfg.as_ref() {
+        println!(
+            "summary: binds={} windowrules={} layerrules={} monitorrules={} tagrules={}",
+            cfg.key_bindings.len(),
+            cfg.window_rules.len(),
+            cfg.layer_rules.len(),
+            cfg.monitor_rules.len(),
+            cfg.tag_rules.len(),
+        );
+    }
 
-    if warnings.is_empty() && errors.is_empty() {
+    if err_count == 0 && warn_count == 0 {
         println!("✓ no problems detected");
         return Ok(());
     }
-    if !warnings.is_empty() {
-        println!("── WARNINGS ({}) ──", warnings.len());
-        for w in &warnings {
-            println!("  ⚠ {w}");
-        }
-    }
-    if !errors.is_empty() {
-        println!("\n── ERRORS ({}) ──", errors.len());
-        for e in &errors {
-            println!("  ✗ {e}");
-        }
+    println!(
+        "result: {} error{}, {} warning{}",
+        err_count,
+        if err_count == 1 { "" } else { "s" },
+        warn_count,
+        if warn_count == 1 { "" } else { "s" },
+    );
+    if err_count > 0 {
         std::process::exit(1);
     }
     Ok(())

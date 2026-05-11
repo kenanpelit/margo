@@ -7,6 +7,38 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- **Config validation with niri-style diagnostics.** Three pieces:
+  * **`margo-config::validator`** — new module that re-walks the
+    config file and emits structured `ConfigDiagnostic`s with file,
+    line, column, severity, code, and the offending line snippet.
+    Catches trailing/leading/doubled commas in CSV-shaped values
+    (`bind`, `gesturebind`, `windowrule`, …), missing `=`
+    separators, unresolved `source`/`include` paths, and unknown
+    top-level keys. The allowlist is sourced from
+    `parser::OPTION_KEYS` — adding a new option to the parser
+    automatically expands what the validator accepts.
+  * **`mctl check-config` rewrite** — now drives the new validator
+    plus the existing regex / duplicate-bind checks and renders
+    every diagnostic in niri format (caret arrow, gutter, ANSI
+    colour when the terminal supports it). Exit code 1 on errors,
+    0 with warnings only.
+  * **`mctl reload --force`** — pre-flight validation by default;
+    refuses to reload when the file has errors and prints them in
+    the same niri format. `--force` keeps the old "fire and see
+    what happens" behaviour.
+  * **Compositor fail-soft on reload** — `reload_config` runs the
+    validator before parsing; if there are errors it keeps the
+    previous config, sets `last_reload_diagnostics`, and triggers
+    a 10 s on-screen overlay flag (renderer wiring lands in a
+    follow-up commit). The compositor never applies a broken
+    config.
+  * **`mctl config-errors`** — queries the live compositor for
+    `last_reload_diagnostics` via state.json (Hyprland's
+    `hyprctl configerrors` analogue). Empty when the last reload
+    was clean.
+
 ### Fixed
 
 - **Alt-release auto-commit now actually fires on the Alt-release
