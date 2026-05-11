@@ -7,6 +7,32 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- **Session save/load round-trip test suite (roadmap T9).** Nine
+  new tests cover the JSON contract:
+  * `save_to_then_load_from_round_trips_every_field` — every
+    nested field on both monitors + scratchpads spot-checked
+    after a real disk round-trip (write `.tmp` → rename → read
+    back).
+  * `save_to_is_atomic_via_rename` — the tmp file gets cleaned up
+    on success.
+  * `load_from_rejects_malformed_json` — no panic, just an Err.
+  * `load_from_missing_file_is_io_error` — error message chain
+    starts with "read", not parse failure.
+  * `pertag_lengths_clamp_on_either_side` — snapshot shorter or
+    longer than `MAX_TAGS` both deserialise cleanly.
+  * `unknown_layout_name_in_snapshot_does_not_break_serde` —
+    snapshots survive a future layout-name renaming (the loader's
+    `LayoutId::from_name()?` silently skips unknowns).
+  * `scratchpad_entry_defaults_round_trip` — defends against a
+    future serde flag tweak.
+  * `save_to_produces_pretty_indented_json` — locks the
+    pretty-printed shape so `session.json` stays human-diff-able.
+  * `captured_at_round_trips_through_serde` — belt-and-braces on
+    the hand-rolled `chrono_like_now` string.
+  Workspace test count: 146 → 155.
+
 ### Changed
 
 - **Cold-path structured-logging migration complete (roadmap

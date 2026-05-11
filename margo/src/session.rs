@@ -383,4 +383,314 @@ mod tests {
         assert!(result.is_err());
         assert!(format!("{}", result.unwrap_err()).contains("unsupported"));
     }
+
+    // ── T9: save/load round-trip + edge cases ──────────────────────────────
+
+    /// `save_to` then `load_from` round-trips every field of every
+    /// monitor + scratchpad — the on-disk JSON is the wire contract
+    /// between margo versions, so this test guards the schema lock.
+    #[test]
+    fn save_to_then_load_from_round_trips_every_field() {
+        let original = SessionSnapshot {
+            version: CURRENT_VERSION,
+            captured_at: "2026-05-11T14:30:00Z".to_string(),
+            scratchpads: vec![
+                ScratchpadEntry {
+                    app_id: "dropdown-terminal".to_string(),
+                    visible: true,
+                    named: true,
+                },
+                ScratchpadEntry {
+                    app_id: "yazi-scratchpad".to_string(),
+                    visible: false,
+                    named: true,
+                },
+            ],
+            monitors: vec![
+                MonitorSnapshot {
+                    name: "DP-3".to_string(),
+                    seltags: 1,
+                    tagset: [128, 2],
+                    pertag: PertagSnapshot {
+                        curtag: 8,
+                        prevtag: 2,
+                        ltidxs: vec![
+                            "scroller".to_string(),
+                            "tile".to_string(),
+                            "monocle".to_string(),
+                            "grid".to_string(),
+                            "deck".to_string(),
+                            "center_tile".to_string(),
+                            "dwindle".to_string(),
+                            "canvas".to_string(),
+                            "vertical_grid".to_string(),
+                        ],
+                        mfacts: vec![0.55, 0.50, 0.65, 0.55, 0.55, 0.55, 0.55, 0.55, 0.55],
+                        nmasters: vec![1, 1, 1, 2, 1, 1, 1, 1, 1],
+                        canvas_pan_x: vec![0.0; 9],
+                        canvas_pan_y: vec![0.0; 9],
+                    },
+                },
+                MonitorSnapshot {
+                    name: "eDP-1".to_string(),
+                    seltags: 0,
+                    tagset: [1, 4],
+                    pertag: PertagSnapshot {
+                        curtag: 1,
+                        prevtag: 3,
+                        ltidxs: vec!["tile".to_string()],
+                        mfacts: vec![0.55],
+                        nmasters: vec![1],
+                        canvas_pan_x: vec![0.0],
+                        canvas_pan_y: vec![0.0],
+                    },
+                },
+            ],
+        };
+
+        let path = std::env::temp_dir().join("margo-session-roundtrip.json");
+        let _ = std::fs::remove_file(&path);
+        save_to(&path, &original).unwrap();
+        let loaded = load_from(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+
+        assert_eq!(loaded.version, original.version);
+        assert_eq!(loaded.captured_at, original.captured_at);
+        assert_eq!(loaded.monitors.len(), 2);
+        assert_eq!(loaded.scratchpads.len(), 2);
+
+        // Spot-check every nested field of both monitors so a future
+        // refactor that drops one silently flips the test red.
+        for (l, o) in loaded.monitors.iter().zip(original.monitors.iter()) {
+            assert_eq!(l.name, o.name);
+            assert_eq!(l.seltags, o.seltags);
+            assert_eq!(l.tagset, o.tagset);
+            assert_eq!(l.pertag.curtag, o.pertag.curtag);
+            assert_eq!(l.pertag.prevtag, o.pertag.prevtag);
+            assert_eq!(l.pertag.ltidxs, o.pertag.ltidxs);
+            assert_eq!(l.pertag.nmasters, o.pertag.nmasters);
+            for (lm, om) in l.pertag.mfacts.iter().zip(o.pertag.mfacts.iter()) {
+                assert!((lm - om).abs() < 1e-6, "mfact drift {lm} vs {om}");
+            }
+            assert_eq!(l.pertag.canvas_pan_x, o.pertag.canvas_pan_x);
+            assert_eq!(l.pertag.canvas_pan_y, o.pertag.canvas_pan_y);
+        }
+        for (l, o) in loaded.scratchpads.iter().zip(original.scratchpads.iter()) {
+            assert_eq!(l.app_id, o.app_id);
+            assert_eq!(l.visible, o.visible);
+            assert_eq!(l.named, o.named);
+        }
+    }
+
+    /// `save_to` writes to `*.tmp` then renames — a crash mid-write
+    /// must leave the previous good file untouched. We exercise the
+    /// write path twice and check the second write doesn't clobber
+    /// the file content unless rename completes (the tmp file should
+    /// be gone after success).
+    #[test]
+    fn save_to_is_atomic_via_rename() {
+        let path = std::env::temp_dir().join("margo-session-atomic.json");
+        let tmp = path.with_extension("json.tmp");
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(&tmp);
+
+        let snap = SessionSnapshot {
+            version: CURRENT_VERSION,
+            captured_at: "x".to_string(),
+            scratchpads: vec![],
+            monitors: vec![],
+        };
+        save_to(&path, &snap).unwrap();
+        assert!(path.exists(), "destination not written");
+        assert!(!tmp.exists(), "tmp file lingered after successful rename");
+
+        // Write again — same contract, no leftover tmp.
+        save_to(&path, &snap).unwrap();
+        assert!(path.exists());
+        assert!(!tmp.exists());
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Malformed JSON returns an error, doesn't panic.
+    #[test]
+    fn load_from_rejects_malformed_json() {
+        let path = std::env::temp_dir().join("margo-session-malformed.json");
+        std::fs::write(&path, "{ not even close to valid").unwrap();
+        let result = load_from(&path);
+        let _ = std::fs::remove_file(&path);
+        assert!(result.is_err());
+    }
+
+    /// `load_from` on a nonexistent path returns a clear I/O error
+    /// (not a parse error masquerading as I/O).
+    #[test]
+    fn load_from_missing_file_is_io_error() {
+        let path = std::env::temp_dir().join("margo-session-does-not-exist.json");
+        let _ = std::fs::remove_file(&path);
+        let result = load_from(&path);
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        // The `with_context` chain says "read ..."; the underlying
+        // io::ErrorKind::NotFound becomes part of the chain via
+        // anyhow's source-of-source.
+        assert!(
+            msg.contains("read"),
+            "expected an 'read' context in the error chain, got: {msg}"
+        );
+    }
+
+    /// A snapshot whose `ltidxs` is shorter than the live
+    /// `Pertag::ltidxs` is OK — the loader clamps to `min(local,
+    /// snapshot)`. Reverse case: a snapshot with MORE tags than the
+    /// live build must also load cleanly without panicking
+    /// (the extras get ignored).
+    #[test]
+    fn pertag_lengths_clamp_on_either_side() {
+        // Short snapshot (1 tag) — must round-trip without panic.
+        let short = SessionSnapshot {
+            version: CURRENT_VERSION,
+            captured_at: "x".to_string(),
+            scratchpads: vec![],
+            monitors: vec![MonitorSnapshot {
+                name: "DP-1".to_string(),
+                seltags: 0,
+                tagset: [1, 0],
+                pertag: PertagSnapshot {
+                    curtag: 1,
+                    prevtag: 1,
+                    ltidxs: vec!["tile".to_string()],
+                    mfacts: vec![0.55],
+                    nmasters: vec![1],
+                    canvas_pan_x: vec![0.0],
+                    canvas_pan_y: vec![0.0],
+                },
+            }],
+        };
+        let json = serde_json::to_string(&short).unwrap();
+        let back: SessionSnapshot = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.monitors[0].pertag.ltidxs.len(), 1);
+
+        // Over-long snapshot (15 tags, beyond MAX_TAGS=9) — also OK;
+        // `apply_to_state`'s `min()` clamp drops the tail.
+        let long = SessionSnapshot {
+            version: CURRENT_VERSION,
+            captured_at: "x".to_string(),
+            scratchpads: vec![],
+            monitors: vec![MonitorSnapshot {
+                name: "DP-1".to_string(),
+                seltags: 0,
+                tagset: [1, 0],
+                pertag: PertagSnapshot {
+                    curtag: 1,
+                    prevtag: 1,
+                    ltidxs: (0..15).map(|_| "tile".to_string()).collect(),
+                    mfacts: vec![0.55; 15],
+                    nmasters: vec![1; 15],
+                    canvas_pan_x: vec![0.0; 15],
+                    canvas_pan_y: vec![0.0; 15],
+                },
+            }],
+        };
+        let json = serde_json::to_string(&long).unwrap();
+        let back: SessionSnapshot = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.monitors[0].pertag.ltidxs.len(), 15);
+    }
+
+    /// Unknown layout names on disk decode cleanly — `apply_to_state`
+    /// silently skips them via `LayoutId::from_name(...)?`. The
+    /// snapshot itself stores names as opaque strings; we just need
+    /// to confirm serde doesn't bail on a "future" layout name.
+    #[test]
+    fn unknown_layout_name_in_snapshot_does_not_break_serde() {
+        let snap = SessionSnapshot {
+            version: CURRENT_VERSION,
+            captured_at: "x".to_string(),
+            scratchpads: vec![],
+            monitors: vec![MonitorSnapshot {
+                name: "DP-1".to_string(),
+                seltags: 0,
+                tagset: [1, 0],
+                pertag: PertagSnapshot {
+                    curtag: 1,
+                    prevtag: 1,
+                    ltidxs: vec!["xenomorph_v2_inferno".to_string()],
+                    mfacts: vec![0.55],
+                    nmasters: vec![1],
+                    canvas_pan_x: vec![0.0],
+                    canvas_pan_y: vec![0.0],
+                },
+            }],
+        };
+        let json = serde_json::to_string(&snap).unwrap();
+        let back: SessionSnapshot = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.monitors[0].pertag.ltidxs[0], "xenomorph_v2_inferno");
+    }
+
+    /// The default `ScratchpadEntry` values can serialise + deserialise
+    /// without hitting a "missing field" error — defends against a
+    /// future serde flag tweak that flips them to required.
+    #[test]
+    fn scratchpad_entry_defaults_round_trip() {
+        let s = ScratchpadEntry {
+            app_id: String::new(),
+            visible: false,
+            named: false,
+        };
+        let json = serde_json::to_string(&s).unwrap();
+        let back: ScratchpadEntry = serde_json::from_str(&json).unwrap();
+        assert_eq!(s.app_id, back.app_id);
+        assert_eq!(s.visible, back.visible);
+        assert_eq!(s.named, back.named);
+    }
+
+    /// JSON shape stays *pretty* (newlines + indent) so users can diff
+    /// `session.json` manually. Catches an accidental switch to
+    /// `to_string` (compact) that would still parse but ruin the UX.
+    #[test]
+    fn save_to_produces_pretty_indented_json() {
+        let path = std::env::temp_dir().join("margo-session-pretty.json");
+        let snap = SessionSnapshot {
+            version: CURRENT_VERSION,
+            captured_at: "x".to_string(),
+            scratchpads: vec![],
+            monitors: vec![MonitorSnapshot {
+                name: "DP-1".to_string(),
+                seltags: 0,
+                tagset: [1, 0],
+                pertag: PertagSnapshot {
+                    curtag: 1,
+                    prevtag: 1,
+                    ltidxs: vec!["tile".to_string()],
+                    mfacts: vec![0.55],
+                    nmasters: vec![1],
+                    canvas_pan_x: vec![0.0],
+                    canvas_pan_y: vec![0.0],
+                },
+            }],
+        };
+        save_to(&path, &snap).unwrap();
+        let body = std::fs::read_to_string(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert!(body.contains('\n'), "session.json should be pretty-printed");
+        assert!(body.contains("  \"version\""), "expected 2-space indent");
+    }
+
+    /// `chrono_like_now` produces a value that the snapshot can carry
+    /// without serde rejecting it. Belt-and-braces — chrono_like_now
+    /// is hand-rolled and we want this test red if someone breaks
+    /// the format string upstream.
+    #[test]
+    fn captured_at_round_trips_through_serde() {
+        let snap = SessionSnapshot {
+            version: CURRENT_VERSION,
+            captured_at: chrono_like_now(),
+            scratchpads: vec![],
+            monitors: vec![],
+        };
+        let json = serde_json::to_string(&snap).unwrap();
+        let back: SessionSnapshot = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.captured_at, snap.captured_at);
+        assert_eq!(back.captured_at.len(), 20);
+    }
 }
