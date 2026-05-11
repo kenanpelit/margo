@@ -43,7 +43,6 @@ struct VirtualDesktop {
 pub enum Message {
     ServiceEvent(ServiceEvent<CompositorService>),
     ChangeWorkspace(i32),
-    ToggleSpecialWorkspace(i32),
     Scroll(i32),
     ConfigReloaded(WorkspacesModuleConfig),
     ScrollAccumulator(f32),
@@ -269,10 +268,6 @@ impl Workspaces {
                 }
                 iced::Task::none()
             }
-            Message::ToggleSpecialWorkspace(_) => {
-                // margo has no special workspaces — silently ignore.
-                iced::Task::none()
-            }
             Message::Scroll(direction) => {
                 self.scroll_accumulator = 0.;
 
@@ -420,11 +415,11 @@ impl Workspaces {
                                 } else {
                                     [0.0, 0.0]
                                 };
-                                let on_press = if w.id > 0 {
-                                    Message::ChangeWorkspace(w.id)
-                                } else {
-                                    Message::ToggleSpecialWorkspace(w.id)
-                                };
+                                // margo tag IDs are always positive
+                                // (1..=9); the upstream special-
+                                // workspace branch (negative IDs) is
+                                // unreachable.
+                                let on_press = Message::ChangeWorkspace(w.id);
                                 let font_size = theme.font_size.xs;
                                 let height = theme.space.md;
 
