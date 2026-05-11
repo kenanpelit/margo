@@ -71,25 +71,25 @@ pub struct App {
     pub notifications: Notifications,
     pub osd: Osd,
     pub visible: bool,
-    /// Decoded wallpaper images per output (name → handle). Updated
-    /// lazily when the compositor state's `wallpapers` map changes —
-    /// see `Message::WallpaperUpdated`.
-    pub wallpaper_handles: HashMap<String, iced::widget::image::Handle>,
-    /// Last-seen wallpaper path per output, used to skip re-decoding
-    /// when state.json gets rewritten but the path is unchanged.
-    pub wallpaper_paths: HashMap<String, String>,
-    /// Shuffle state: pool of candidate image paths (scanned from
-    /// `[wallpaper.shuffle].directory`). Empty until the first scan
-    /// completes; built lazily on the first Message::WallpaperRefresh
-    /// when shuffle is enabled.
-    pub shuffle_pool: Vec<std::path::PathBuf>,
-    /// Sequential-mode cursor over the pool. Random mode ignores it.
-    pub shuffle_cursor: usize,
-    /// Stable per-output shuffle assignments. Kept across
-    /// `WallpaperRefresh` ticks so tag changes don't flip pictures;
-    /// only the periodic timer (or per_output=false single-pick)
-    /// updates it.
+    /// Dedicated wallpaper renderer thread (separate Wayland
+    /// connection, direct wl_shm buffer attach). iced's Image
+    /// widget on a Background-layer surface silently refused to
+    /// upload pixels; the renderer is the pandora/wpaperd pattern
+    /// instead. Cheap to clone (wraps an mpsc::Sender).
+    pub wallpaper_renderer: crate::wallpaper::WallpaperRenderer,
+    /// Last path sent per output, so we don't re-decode on every
+    /// state.json tick. Plain string map; the renderer thread also
+    /// dedupes internally, this just avoids the channel churn.
+    pub wallpaper_last_path: HashMap<String, String>,
+    /// Shuffle assignments owned by the main thread (we still pick
+    /// the path here so the renderer thread doesn't need to know
+    /// about config; it just receives "set this path on this
+    /// output").
     pub shuffle_assignments: HashMap<String, std::path::PathBuf>,
+    /// Cached directory listing for shuffle mode.
+    pub shuffle_pool: Vec<std::path::PathBuf>,
+    /// Cursor for Sequential shuffle mode.
+    pub shuffle_cursor: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -125,15 +125,10 @@ pub enum Message {
         active_tags: std::collections::HashMap<String, u32>,
     },
     /// Async image-decode result. `output_name` → `path` → handle.
-    WallpaperDecoded {
-        output: String,
-        path: String,
-        handle: Option<iced::widget::image::Handle>,
-    },
     /// Periodic shuffle rotate (cadence from
-    /// `[wallpaper.shuffle].interval_secs`). Carries no payload; the
-    /// handler reshuffles the per-output assignments and pushes a
-    /// fresh `WallpaperRefresh` so the standard decode path runs.
+    /// `[wallpaper.shuffle].interval_secs`). Carries no payload;
+    /// the handler reshuffles the per-output assignments and
+    /// pushes a fresh `WallpaperRefresh`.
     WallpaperShuffleTick,
 }
 
@@ -200,18 +195,6 @@ fn scan_wallpaper_directory(directory: &str) -> Vec<std::path::PathBuf> {
     paths
 }
 
-/// `#RRGGBB` → iced::Color. Returns None on parse failure.
-fn parse_hex_color(s: &str) -> Option<iced::Color> {
-    let s = s.strip_prefix('#').unwrap_or(s);
-    if s.len() != 6 {
-        return None;
-    }
-    let r = u8::from_str_radix(&s[0..2], 16).ok()? as f32 / 255.0;
-    let g = u8::from_str_radix(&s[2..4], 16).ok()? as f32 / 255.0;
-    let b = u8::from_str_radix(&s[4..6], 16).ok()? as f32 / 255.0;
-    Some(iced::Color::from_rgb(r, g, b))
-}
-
 impl App {
     pub fn new(
         (logger, config, config_path): (LoggerHandle, Config, PathBuf),
@@ -266,11 +249,11 @@ impl App {
                     media_player: MediaPlayer::new(config.media_player),
                     osd: Osd::new(config.osd),
                     visible: true,
-                    wallpaper_handles: HashMap::new(),
-                    wallpaper_paths: HashMap::new(),
+                    wallpaper_renderer: crate::wallpaper::WallpaperRenderer::spawn(),
+                    wallpaper_last_path: HashMap::new(),
+                    shuffle_assignments: HashMap::new(),
                     shuffle_pool: Vec::new(),
                     shuffle_cursor: 0,
-                    shuffle_assignments: HashMap::new(),
                 },
                 Task::none(),
             )
@@ -584,7 +567,7 @@ impl App {
 
                     let (bar_style, bar_position, scale_factor) =
                         use_theme(|t| (t.bar_style, t.bar_position, t.scale_factor));
-                    let mut tasks = vec![self.outputs.add(
+                    let tasks = vec![self.outputs.add(
                         bar_style,
                         &self.general_config.outputs,
                         bar_position,
@@ -594,20 +577,14 @@ impl App {
                         scale_factor,
                     )];
                     // `Outputs::add` (re-)created the ShellInfo with
-                    // None size. Stamp the real logical size in
-                    // BEFORE show_wallpaper_layer reads it.
+                    // None size. Stamp the real logical size in.
                     if let Some((w, h)) = info.logical_size {
                         self.outputs
                             .set_output_logical_size(info.id, w as u32, h as u32);
                     }
-                    // Bring the wallpaper Background-layer surface up
-                    // for this newly-attached output, if the user
-                    // wants mshell to render wallpapers. Persistent
-                    // surface — only destroyed when the output goes
-                    // away.
-                    if self.general_config.wallpaper.enabled {
-                        tasks.push(self.outputs.show_wallpaper_layer());
-                    }
+                    // Wallpaper layer surface is owned by the
+                    // dedicated `crate::wallpaper` thread; nothing to
+                    // do here.
                     Task::batch(tasks)
                 }
                 OutputEvent::Removed(output_id) => {
@@ -717,114 +694,38 @@ impl App {
                     wallpapers.len(),
                     active_tags.len()
                 );
-                // Precedence chain:
-                //   1. shuffle.enabled → mshell-chosen pool picks
+                // Precedence chain (resolved per output):
+                //   1. shuffle.enabled → mshell-chosen pool pick
                 //   2. [wallpaper.tags] in mshell.toml → tag-based
-                //      override (mshell-owned config; the user no
-                //      longer needs `tagrule = id:N,wallpaper:…` in
-                //      margo config.conf)
-                //   3. state.json wallpapers map (backward-compat
-                //      with margo tagrule paths)
+                //   3. state.json wallpapers map (margo fallback)
                 let map = self.resolve_wallpaper_map(wallpapers, &active_tags);
-                info!("WallpaperRefresh: resolved {} entries", map.len());
-                let mut tasks = vec![];
                 for (output, path) in map.iter() {
-                    if self.wallpaper_paths.get(output) == Some(path) {
-                        continue;
-                    }
-                    self.wallpaper_paths
-                        .insert(output.clone(), path.clone());
-                    info!("WallpaperRefresh: scheduling decode output={} path={}", output, path);
                     if path.is_empty() {
-                        self.wallpaper_handles.remove(output);
                         continue;
                     }
-                    let output_owned = output.clone();
-                    let path_owned = path.clone();
-                    tasks.push(Task::perform(
-                        async move {
-                            // EAGER load: read the file off the UI
-                            // thread and hand iced a Handle::from_bytes
-                            // instead of Handle::from_path. The from_path
-                            // variant defers the disk read + decode to
-                            // iced's renderer; a silent decode failure
-                            // there leaves the surface transparent and
-                            // logs nothing. Bytes-based Handle decodes
-                            // at render time too, but at least the
-                            // read error is observable here so we can
-                            // log it and the no-image-no-error symptom
-                            // disappears.
-                            let bytes = match tokio::fs::read(&path_owned).await {
-                                Ok(b) => Some(b),
-                                Err(e) => {
-                                    log::warn!(
-                                        "wallpaper read failed: {} (output {}): {}",
-                                        path_owned, output_owned, e
-                                    );
-                                    None
-                                }
-                            };
-                            let handle = bytes.map(|b| {
-                                log::info!(
-                                    "wallpaper bytes loaded: {} ({} bytes) output={}",
-                                    path_owned, b.len(), output_owned
-                                );
-                                iced::widget::image::Handle::from_bytes(b)
-                            });
-                            (output_owned, path_owned, handle)
-                        },
-                        |(output, path, handle)| Message::WallpaperDecoded {
-                            output,
-                            path,
-                            handle,
-                        },
-                    ));
+                    if self.wallpaper_last_path.get(output) == Some(path) {
+                        continue;
+                    }
+                    info!("WallpaperRefresh: dispatch output={} path={}", output, path);
+                    self.wallpaper_last_path
+                        .insert(output.clone(), path.clone());
+                    self.wallpaper_renderer
+                        .set(output.clone(), std::path::PathBuf::from(path));
                 }
-                // Also drop entries for outputs no longer in the map
-                // (output unplugged).
-                self.wallpaper_paths.retain(|k, _| map.contains_key(k));
-                self.wallpaper_handles.retain(|k, _| map.contains_key(k));
-                Task::batch(tasks)
+                // Drop entries for outputs no longer in the map
+                // (unplugged) so a re-add re-dispatches.
+                self.wallpaper_last_path
+                    .retain(|k, _| map.contains_key(k));
+                Task::none()
             }
             Message::WallpaperShuffleTick => {
-                // Force-reshuffle on the next refresh. Re-uses the
-                // currently-tracked output names as the seed map;
-                // active_tags is empty because shuffle ignores it
-                // anyway (precedence chain step 1 wins).
+                // Force-reshuffle on the next refresh.
                 self.shuffle_assignments.clear();
+                self.wallpaper_last_path.clear();
                 Task::done(Message::WallpaperRefresh {
                     wallpapers: self.last_wallpaper_map(),
                     active_tags: HashMap::new(),
                 })
-            }
-            Message::WallpaperDecoded {
-                output,
-                path,
-                handle,
-            } => {
-                // Race guard: between schedule and resolve the user
-                // may have switched tags again. Only commit if the
-                // path is still current.
-                if self.wallpaper_paths.get(&output) != Some(&path) {
-                    info!(
-                        "WallpaperDecoded: stale (output={} path={}) — current is {:?}",
-                        output,
-                        path,
-                        self.wallpaper_paths.get(&output)
-                    );
-                    return Task::none();
-                }
-                if let Some(handle) = handle {
-                    info!("WallpaperDecoded: committed output={} path={}", output, path);
-                    self.wallpaper_handles.insert(output, handle);
-                } else {
-                    info!(
-                        "WallpaperDecoded: handle=None (file missing) output={} path={}",
-                        output, path
-                    );
-                    self.wallpaper_handles.remove(&output);
-                }
-                Task::none()
             }
             Message::ToggleVisibility => {
                 self.visible = !self.visible;
@@ -992,10 +893,6 @@ impl App {
             Some(HasOutput::Menu(None)) => Row::new().into(),
             Some(HasOutput::Toast) => self.notifications.toast_view().map(Message::Notifications),
             Some(HasOutput::Osd) => self.osd.view().map(Message::Osd),
-            Some(HasOutput::Wallpaper) => {
-                self.wallpaper_view_logged();
-                self.wallpaper_view(id)
-            }
             None => Row::new().into(),
         }
     }
@@ -1114,70 +1011,6 @@ impl App {
             .iter()
             .map(|(name, _, _)| (name.clone(), String::new()))
             .collect()
-    }
-
-    /// Render the wallpaper for the surface bound to `id`. Diagnostic
-    /// counters tracked via the `log` crate let us tell apart "iced
-    /// never called view()" from "view() ran but image render failed".
-    fn wallpaper_view_logged(&self) {
-        // One-line tap before the real view body so a single
-        // `grep wallpaper_view: called` in the log proves iced
-        // exercises this surface at all.
-        log::info!(target: "wp_view", "wallpaper_view: called");
-    }
-
-    /// Render the wallpaper for the surface bound to `id`. Looks up
-    /// the output's name → fetches its path from the compositor's
-    /// last-seen wallpaper map → loads (or fetches from cache) the
-    /// image handle → wraps it in a container painted with the
-    /// fallback colour. iced_layershell's Background surface is
-    /// full-output, so a Fill-length container + content_fit covers
-    /// everything underneath.
-    fn wallpaper_view(&'_ self, id: SurfaceId) -> Element<'_, Message> {
-        use iced::widget::{container, image as image_widget};
-        use iced::{Color, Length};
-
-        let fit: iced::ContentFit = self.general_config.wallpaper.fit.into();
-        let fallback = parse_hex_color(&self.general_config.wallpaper.fallback_color)
-            .unwrap_or(Color::BLACK);
-
-        // mshell stores outputs keyed by "<name> <make> <model>" (set
-        // in OutputEvent::Added) but margo's state.json gives bare
-        // output names ("DP-3", "eDP-1") — wallpaper_handles is keyed
-        // by the bare form. Extract the first whitespace-separated
-        // token from the stored composite to match. Wayland's
-        // canonical output names never contain whitespace.
-        let bare_name = self
-            .outputs
-            .get_monitor_name(id)
-            .and_then(|s| s.split_whitespace().next());
-
-        let inner: Element<'_, Message> = bare_name
-            .and_then(|name| self.wallpaper_handles.get(name))
-            .map(|handle| {
-                image_widget::Image::new(handle.clone())
-                    .content_fit(fit)
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-                    .into()
-            })
-            .unwrap_or_else(|| {
-                if let Some(name) = bare_name {
-                    log::info!("wallpaper_view: no handle for {} (handles: {:?})",
-                        name,
-                        self.wallpaper_handles.keys().collect::<Vec<_>>());
-                }
-                Row::new().into()
-            });
-
-        container(inner)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .style(move |_| container::Style {
-                background: Some(iced::Background::Color(fallback)),
-                ..Default::default()
-            })
-            .into()
     }
 
     pub fn subscription(&self) -> Subscription<Message> {

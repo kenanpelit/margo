@@ -24,18 +24,12 @@ pub struct ShellInfo {
     pub toast_id: Option<SurfaceId>,
     /// Optional layer surface used to render the OSD overlay.
     pub osd_id: Option<SurfaceId>,
-    /// Optional Background-layer surface used to render the wallpaper.
-    /// Persistent — created on output add, destroyed only on output
-    /// remove. Image updates happen via app state, not surface
-    /// lifecycle, so no margo open/close animation fires on tag
-    /// changes.
-    pub wallpaper_id: Option<SurfaceId>,
-    /// Logical width + height of this output. Used by:
-    ///   * toast input-region math (bottom-aligned positioning needs
-    ///     the height to offset from)
-    ///   * wallpaper Background surface — wpaperd-style explicit
-    ///     `set_size(w, h)` instead of `(0, 0)` so the buffer always
-    ///     commits.
+    /// Logical width + height of this output. Used by toast
+    /// input-region math (bottom-aligned positioning needs the
+    /// height to offset from). Wallpaper rendering moved to a
+    /// dedicated `crate::wallpaper` thread that runs its own
+    /// Wayland connection — iced's Background-layer surface +
+    /// Image widget combo never produced pixels reliably.
     pub output_logical_size: Option<(u32, u32)>,
 }
 
@@ -51,9 +45,6 @@ impl ShellInfo {
         if let Some(osd_id) = self.osd_id {
             tasks.push(destroy_layer_surface(osd_id));
         }
-        if let Some(wallpaper_id) = self.wallpaper_id {
-            tasks.push(destroy_layer_surface(wallpaper_id));
-        }
         Task::batch(tasks)
     }
 }
@@ -66,7 +57,6 @@ pub enum HasOutput<'a> {
     Menu(Option<&'a OpenMenu>),
     Toast,
     Osd,
-    Wallpaper,
 }
 
 impl Outputs {
@@ -89,7 +79,6 @@ impl Outputs {
                 id: SurfaceId::MAIN,
                 menu: Menu::new(),
                 toast_id: None,
-                wallpaper_id: None,
                 osd_id: None,
                 position,
                 layer,
@@ -164,8 +153,6 @@ impl Outputs {
                     Some(HasOutput::Toast)
                 } else if info.osd_id == Some(id) {
                     Some(HasOutput::Osd)
-                } else if info.wallpaper_id == Some(id) {
-                    Some(HasOutput::Wallpaper)
                 } else {
                     None
                 }
@@ -228,7 +215,6 @@ impl Outputs {
                     id,
                     menu: Menu::new(),
                     toast_id: None,
-                wallpaper_id: None,
                     osd_id: None,
                     position,
                     layer,
@@ -310,7 +296,6 @@ impl Outputs {
                             id,
                             menu: Menu::new(),
                             toast_id: None,
-                wallpaper_id: None,
                             osd_id: None,
                             position,
                             layer,
@@ -759,75 +744,6 @@ impl Outputs {
         Task::batch(tasks)
     }
 
-    /// Create a Background-layer surface per output for the wallpaper.
-    ///
-    /// Mirrors wpaperd's working setup (which has shipped reliably
-    /// against wlroots compositors for years):
-    ///
-    /// * Namespace **per-output** (`mshell-wallpaper-eDP-1`) so two
-    ///   surfaces don't share one identifier and confuse compositors
-    ///   that key state by namespace.
-    /// * Anchor TOP|BOTTOM|LEFT|RIGHT (covers the whole output).
-    /// * **`exclusive_zone(-1)`** — ignore other layers' exclusion
-    ///   zones; the wallpaper extends *under* the bar instead of
-    ///   stopping at its edge.
-    /// * **Explicit `size`** — pass the output's real logical
-    ///   dimensions instead of `(0, 0)`. Some wlr-layer-shell
-    ///   implementations don't reliably expand a zero-seed surface
-    ///   even with four anchors set; wpaperd hands the compositor
-    ///   the actual numbers and that always commits a buffer.
-    pub fn show_wallpaper_layer<Message: 'static>(&mut self) -> Task<Message> {
-        let mut tasks = vec![];
-        for (name, shell_info, output_id) in &mut self.0 {
-            if let Some(shell_info) = shell_info
-                && shell_info.wallpaper_id.is_none()
-            {
-                // Bare output name (first whitespace-separated token).
-                // mshell stores composite "<name> <make> <model>";
-                // the bare form is what margo/Wayland actually uses
-                // as the layer's output identifier.
-                let bare = name.split_whitespace().next().unwrap_or(name);
-                let namespace = format!("mshell-wallpaper-{bare}");
-                // Output's logical size — set on output add via
-                // `set_output_logical_size`. Fall back to a big
-                // pre-config value so the surface always commits a
-                // valid buffer even if the size signal is late.
-                let (w, h) = shell_info
-                    .output_logical_size
-                    .unwrap_or((3840, 2160));
-                let (wallpaper_id, wallpaper_task) = new_layer_surface(LayerShellSettings {
-                    namespace,
-                    size: Some((w, h)),
-                    layer: Layer::Background,
-                    keyboard_interactivity: KeyboardInteractivity::None,
-                    exclusive_zone: -1,
-                    anchor: Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT,
-                    output: *output_id,
-                    ..Default::default()
-                });
-
-                shell_info.wallpaper_id = Some(wallpaper_id);
-                tasks.push(wallpaper_task);
-            }
-        }
-        Task::batch(tasks)
-    }
-
-    /// Tear down every output's wallpaper surface. Used when the
-    /// user flips `[wallpaper].enabled` from true→false at runtime
-    /// (live config reload).
-    #[allow(dead_code)]
-    pub fn hide_wallpaper_layer<Message: 'static>(&mut self) -> Task<Message> {
-        let mut tasks = vec![];
-        for (_, shell_info, _) in &mut self.0 {
-            if let Some(shell_info) = shell_info
-                && let Some(wallpaper_id) = shell_info.wallpaper_id.take()
-            {
-                tasks.push(destroy_layer_surface(wallpaper_id));
-            }
-        }
-        Task::batch(tasks)
-    }
 
     pub fn hide_osd_layer<Message: 'static>(&mut self) -> Task<Message> {
         let mut tasks = vec![];

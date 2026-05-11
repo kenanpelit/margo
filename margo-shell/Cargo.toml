@@ -58,6 +58,20 @@ log = { version = "0.4", features = [] }
 flexi_logger = "0.31"
 pipewire = "0.9"
 rand = "0.8"
+# Wallpaper rendering pipeline — fully independent of iced/wgpu.
+# We spawn a dedicated thread that runs its own Wayland connection,
+# binds wlr-layer-shell directly, decodes images to ARGB8888 with
+# the `image` crate, and attaches buffers via `wl_shm`. iced's
+# Image widget repeatedly failed to upload pixels onto a
+# Background-layer surface even with eager `Handle::from_rgba`;
+# wpaperd and pandora both ship this same shm-direct pattern and
+# it has been the canonical Wayland wallpaper approach for years.
+image = { version = "0.25", default-features = false, features = [
+  "jpeg", "png", "webp",
+] }
+smithay-client-toolkit = { version = "0.19", default-features = false, features = [
+  "calloop",
+] }
 itertools = "0.14"
 unicode-segmentation = "1.13.2"
 hex_color = { version = "3", features = ["serde"] }

@@ -22,6 +22,7 @@ mod outputs;
 mod services;
 mod theme;
 mod utils;
+mod wallpaper;
 
 const NERD_FONT: &[u8] = include_bytes!("../target/generated/SymbolsNerdFont-Regular-Subset.ttf");
 const NERD_FONT_MONO: &[u8] =
