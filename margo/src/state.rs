@@ -4047,9 +4047,27 @@ impl MargoState {
         if list.is_empty() {
             return;
         }
+        // Anchor the cycle. Priority:
+        //   1. An already-hovered thumbnail (keyboard cycle in progress).
+        //   2. The currently-focused client's position in the list.
+        //      With MRU order that's index 0 (the focused window is
+        //      the freshest entry in `focus_history`), so the first
+        //      `dir = +1` press lands on index 1 = the previously-used
+        //      window. This is the standard alt+Tab behaviour every
+        //      other DE ships: one tap moves you to the *other* MRU
+        //      window, not back to yourself. With `tag` / `mixed`
+        //      modes the focused window's index can be anywhere in
+        //      the list, but the same "step away from focused" rule
+        //      gives the user a meaningful first move.
+        //   3. Fall through to position 0 / n-1 only if no client is
+        //      focused (empty workspace, lock screen edge cases).
         let cur = list
             .iter()
-            .position(|&i| self.clients[i].is_overview_hovered);
+            .position(|&i| self.clients[i].is_overview_hovered)
+            .or_else(|| {
+                self.focused_client_idx()
+                    .and_then(|f| list.iter().position(|&i| i == f))
+            });
         let n = list.len() as i32;
         let next_pos = match cur {
             Some(p) => (((p as i32 + dir).rem_euclid(n)) + n).rem_euclid(n),

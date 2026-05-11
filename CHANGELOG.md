@@ -7,6 +7,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Alt+Tab first press now jumps to the *previously*-used window,
+  not back to the focused one.** The cycle anchor was
+  `is_overview_hovered.position()` only — which is `None` on the
+  very first press while overview is freshly open. The `None`
+  fallback landed at index 0, and in MRU mode index 0 is the
+  currently-focused window (most-recent entry in `focus_history`).
+  So the first Tab tap looked like a no-op: highlight didn't
+  move, then the *second* press moved one step. Standard alt+Tab
+  on every other DE (i3 / sway / Hypr / niri / GNOME) is "one tap
+  = jump to the other window."
+  Fix: when there's no in-progress hover, anchor on the focused
+  client's *position in the list*. `dir = +1` then moves to
+  index 1, which in MRU is the previously-used window. Same fix
+  benefits `tag` / `mixed` modes: the user's first cycle step
+  moves away from where they already are, not onto it.
+
 ### Added
 
 - **`overview_cycle_order` config — let the user pick the alt+Tab
