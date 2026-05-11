@@ -98,15 +98,15 @@ impl Dispatch<ZdwlIpcManagerV2, ()> for MargoState {
                 let ipc_output = data_init.init(id, ());
 
                 // Find which monitor this wl_output belongs to
-                let mon_idx = if let Some(smithay_output) = Output::from_resource(&output) {
+                let mon_idx = match Output::from_resource(&output) { Some(smithay_output) => {
                     state
                         .monitors
                         .iter()
                         .position(|m| m.output == smithay_output)
                         .unwrap_or(0)
-                } else {
+                } _ => {
                     0
-                };
+                }};
 
                 // Send initial state for this output
                 if mon_idx < state.monitors.len() {

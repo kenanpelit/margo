@@ -268,17 +268,17 @@ fn main() -> Result<()> {
     //   pkill -USR1 margo
     // The dump goes through `tracing::info!` so it lands wherever the
     // user's MARGO_LOG filter sends regular output.
-    if let Ok(signals) = smithay::reexports::calloop::signals::Signals::new(&[
+    match smithay::reexports::calloop::signals::Signals::new(&[
         smithay::reexports::calloop::signals::Signal::SIGUSR1,
-    ]) {
+    ]) { Ok(signals) => {
         if let Err(e) = loop_handle.insert_source(signals, |_, _, state: &mut MargoState| {
             state.debug_dump();
         }) {
             warn!("SIGUSR1 source: {e}");
         }
-    } else {
+    } _ => {
         warn!("could not register SIGUSR1 — `pkill -USR1 margo` won't work");
-    }
+    }}
 
     // Wayland display source: when the display fd is readable, dispatch
     // pending client requests, then flush any responses. Without
@@ -560,7 +560,7 @@ fn main() -> Result<()> {
         // hand work to the calloop thread without taking a
         // borrow on MargoState.
         let (svc_tx, svc_rx) = calloop::channel::channel::<NewClient>();
-        if let Err(e) = event_loop
+        match event_loop
             .handle()
             .insert_source(svc_rx, |event, _, state: &mut MargoState| match event {
                 calloop::channel::Event::Msg(client) => {
@@ -583,14 +583,14 @@ fn main() -> Result<()> {
                 }
                 calloop::channel::Event::Closed => (),
             })
-        {
+        { Err(e) => {
             warn!("ServiceChannel calloop source insert failed: {e}");
-        } else {
+        } _ => {
             match ServiceChannel::new(svc_tx).start() {
                 Ok(conn) => margo.dbus_servers.conn_service_channel = Some(conn),
                 Err(e) => warn!("ServiceChannel D-Bus start failed: {e}"),
             }
-        }
+        }}
     }
 
     // ── DisplayConfig D-Bus shim ──────────────────────────────────────────────
@@ -636,7 +636,7 @@ fn main() -> Result<()> {
         let (intr_tx, intr_rx) = calloop::channel::channel::<IntrospectToCompositor>();
         let (resp_tx, resp_rx) = async_channel::unbounded::<CompositorToIntrospect>();
 
-        if let Err(e) = event_loop
+        match event_loop
             .handle()
             .insert_source(intr_rx, move |event, _, state: &mut MargoState| {
                 if let calloop::channel::Event::Msg(IntrospectToCompositor::GetWindows) = event {
@@ -658,14 +658,14 @@ fn main() -> Result<()> {
                     let _ = resp_tx.try_send(CompositorToIntrospect::Windows(map));
                 }
             })
-        {
+        { Err(e) => {
             warn!("Introspect calloop source insert failed: {e}");
-        } else {
+        } _ => {
             match Introspect::new(intr_tx, resp_rx).start() {
                 Ok(conn) => margo.dbus_servers.conn_introspect = Some(conn),
                 Err(e) => warn!("Introspect D-Bus start failed: {e}"),
             }
-        }
+        }}
     }
 
     // ── Gnome Shell Screenshot D-Bus shim ─────────────────────────────────────
@@ -683,7 +683,7 @@ fn main() -> Result<()> {
         let (shot_tx, shot_rx) = calloop::channel::channel::<ScreenshotToCompositor>();
         let (resp_tx, resp_rx) = async_channel::unbounded::<CompositorToScreenshot>();
 
-        if let Err(e) = event_loop
+        match event_loop
             .handle()
             .insert_source(shot_rx, move |event, _, _state: &mut MargoState| {
                 let calloop::channel::Event::Msg(msg) = event else {
@@ -708,14 +708,14 @@ fn main() -> Result<()> {
                     }
                 }
             })
-        {
+        { Err(e) => {
             warn!("Screenshot calloop source insert failed: {e}");
-        } else {
+        } _ => {
             match Screenshot::new(shot_tx, resp_rx).start() {
                 Ok(conn) => margo.dbus_servers.conn_screen_shot = Some(conn),
                 Err(e) => warn!("Screenshot D-Bus start failed: {e}"),
             }
-        }
+        }}
     }
 
     // ── Mutter ScreenCast D-Bus shim — the main event ─────────────────────────
@@ -741,7 +741,7 @@ fn main() -> Result<()> {
         // output set without a margo restart.
         let outputs = margo.ipc_outputs.clone();
 
-        if let Err(e) = event_loop
+        match event_loop
             .handle()
             .insert_source(sc_rx, |event, _, state: &mut MargoState| {
                 let calloop::channel::Event::Msg(msg) = event else {
@@ -768,14 +768,14 @@ fn main() -> Result<()> {
                     }
                 }
             })
-        {
+        { Err(e) => {
             warn!("ScreenCast calloop source insert failed: {e}");
-        } else {
+        } _ => {
             match ScreenCast::new(outputs, sc_tx).start() {
                 Ok(conn) => margo.dbus_servers.conn_screen_cast = Some(conn),
                 Err(e) => warn!("ScreenCast D-Bus start failed: {e}"),
             }
-        }
+        }}
     }
 
     // ── exec_once commands ────────────────────────────────────────────────────

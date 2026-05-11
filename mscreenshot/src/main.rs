@@ -424,10 +424,11 @@ fn edit(input: &Path) -> Result<Option<PathBuf>> {
 }
 
 fn pick_editor() -> Option<String> {
-    if let Ok(forced) = std::env::var("SCREENSHOT_EDITOR") {
-        if !forced.is_empty() && which(&forced) {
-            return Some(forced);
-        }
+    if let Ok(forced) = std::env::var("SCREENSHOT_EDITOR")
+        && !forced.is_empty()
+        && which(&forced)
+    {
+        return Some(forced);
     }
     for cand in ["swappy", "satty", "gimp", "krita"] {
         if which(cand) {

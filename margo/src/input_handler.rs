@@ -387,43 +387,6 @@ fn handle_touch_up<B: InputBackend, E: smithay::backend::input::TouchUpEvent<B>>
     dispatch_swipe(state, avg_dx, avg_dy, releases.len() as u32, "touchscreen");
 }
 
-#[cfg(test)]
-mod gesture_tests {
-    use super::derive_motion_code;
-
-    #[test]
-    fn cardinal_directions_map_to_codes_0_through_3() {
-        assert_eq!(derive_motion_code(0.0, -100.0), 0); // UP
-        assert_eq!(derive_motion_code(0.0, 100.0), 1); // DOWN
-        assert_eq!(derive_motion_code(100.0, 0.0), 2); // RIGHT
-        assert_eq!(derive_motion_code(-100.0, 0.0), 3); // LEFT
-    }
-
-    #[test]
-    fn balanced_diagonals_map_to_codes_4_through_7() {
-        assert_eq!(derive_motion_code(70.0, -70.0), 4); // UP_RIGHT
-        assert_eq!(derive_motion_code(-70.0, -70.0), 5); // UP_LEFT
-        assert_eq!(derive_motion_code(-70.0, 70.0), 6); // DOWN_LEFT
-        assert_eq!(derive_motion_code(70.0, 70.0), 7); // DOWN_RIGHT
-    }
-
-    #[test]
-    fn small_off_axis_component_is_not_diagonal() {
-        // 80 px right, 20 px down — secondary axis at 25 % of magnitude,
-        // below the 40 % threshold. Should resolve to a pure direction.
-        assert_eq!(derive_motion_code(80.0, 20.0), 2); // RIGHT, not DOWN_RIGHT
-        assert_eq!(derive_motion_code(20.0, -80.0), 0); // UP, not UP_RIGHT
-    }
-
-    #[test]
-    fn zero_displacement_falls_through_to_down() {
-        // Defensive: an exact-zero swipe shouldn't crash. The current
-        // code path lands on DOWN (1) — we just lock in that the
-        // function is total over (0, 0).
-        assert_eq!(derive_motion_code(0.0, 0.0), 1);
-    }
-}
-
 fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoState, event: E) {
     let serial = SERIAL_COUNTER.next_serial();
     let time = event.time_msec();
@@ -1066,11 +1029,11 @@ fn handle_pointer_button<B: InputBackend, E: PointerButtonEvent<B>>(
                 }
                 None => state.close_overview(None),
             }
-        } else if let Some((target, _)) = focus_under(state, pos) {
+        } else { match focus_under(state, pos) { Some((target, _)) => {
             state.focus_surface(Some(target));
-        } else {
+        } _ => {
             state.focus_surface(None);
-        }
+        }}}
     }
     state.request_repaint();
     if let Some(ptr) = state.seat.get_pointer() {
@@ -1189,11 +1152,9 @@ fn exclusive_keyboard_layer(state: &MargoState) -> Option<FocusTarget> {
 
         let mapped = state.space.outputs().find_map(|output| {
             let map = layer_map_for_output(output);
-            let found = map
-                .layers()
+            map.layers()
                 .find(|mapped| mapped.layer_surface() == &layer)
-                .map(|mapped| mapped.layer_surface().clone());
-            found
+                .map(|mapped| mapped.layer_surface().clone())
         });
 
         if let Some(surface) = mapped {
@@ -1341,4 +1302,41 @@ fn layer_focus_under(
     }
 
     None
+}
+
+#[cfg(test)]
+mod gesture_tests {
+    use super::derive_motion_code;
+
+    #[test]
+    fn cardinal_directions_map_to_codes_0_through_3() {
+        assert_eq!(derive_motion_code(0.0, -100.0), 0); // UP
+        assert_eq!(derive_motion_code(0.0, 100.0), 1); // DOWN
+        assert_eq!(derive_motion_code(100.0, 0.0), 2); // RIGHT
+        assert_eq!(derive_motion_code(-100.0, 0.0), 3); // LEFT
+    }
+
+    #[test]
+    fn balanced_diagonals_map_to_codes_4_through_7() {
+        assert_eq!(derive_motion_code(70.0, -70.0), 4); // UP_RIGHT
+        assert_eq!(derive_motion_code(-70.0, -70.0), 5); // UP_LEFT
+        assert_eq!(derive_motion_code(-70.0, 70.0), 6); // DOWN_LEFT
+        assert_eq!(derive_motion_code(70.0, 70.0), 7); // DOWN_RIGHT
+    }
+
+    #[test]
+    fn small_off_axis_component_is_not_diagonal() {
+        // 80 px right, 20 px down — secondary axis at 25 % of magnitude,
+        // below the 40 % threshold. Should resolve to a pure direction.
+        assert_eq!(derive_motion_code(80.0, 20.0), 2); // RIGHT, not DOWN_RIGHT
+        assert_eq!(derive_motion_code(20.0, -80.0), 0); // UP, not UP_RIGHT
+    }
+
+    #[test]
+    fn zero_displacement_falls_through_to_down() {
+        // Defensive: an exact-zero swipe shouldn't crash. The current
+        // code path lands on DOWN (1) — we just lock in that the
+        // function is total over (0, 0).
+        assert_eq!(derive_motion_code(0.0, 0.0), 1);
+    }
 }

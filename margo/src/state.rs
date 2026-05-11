@@ -240,16 +240,18 @@ mod theme_baseline_tests {
 
     #[test]
     fn round_trip_preserves_every_captured_field() {
-        let mut c = Config::default();
-        c.borderpx = 3;
-        c.border_radius = 8;
-        c.shadows = true;
-        c.layer_shadows = true;
-        c.shadow_only_floating = true;
-        c.shadows_size = 22;
-        c.shadows_blur = 14.0;
-        c.blur = true;
-        c.blur_layer = false;
+        let mut c = Config {
+            borderpx: 3,
+            border_radius: 8,
+            shadows: true,
+            layer_shadows: true,
+            shadow_only_floating: true,
+            shadows_size: 22,
+            shadows_blur: 14.0,
+            blur: true,
+            blur_layer: false,
+            ..Config::default()
+        };
 
         let baseline = ThemeBaseline::capture(&c);
 
@@ -3779,11 +3781,9 @@ impl MargoState {
             }
             let mapped = self.space.outputs().find_map(|output| {
                 let map = layer_map_for_output(output);
-                let found = map
-                    .layers()
+                map.layers()
                     .find(|m| m.layer_surface() == &layer)
-                    .map(|m| m.layer_surface().clone());
-                found
+                    .map(|m| m.layer_surface().clone())
             });
             if let Some(s) = mapped {
                 return Some(FocusTarget::LayerSurface(s));

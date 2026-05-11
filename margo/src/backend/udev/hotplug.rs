@@ -139,16 +139,16 @@ pub(super) fn rescan_outputs(
         // global repaint timer happens to tick *and* something on the
         // existing outputs marks itself dirty.
         let elements = build_render_elements(&mut bd.renderer, &od, state);
-        if let Err(e) = od.compositor.render_frame(
+        match od.compositor.render_frame(
             &mut bd.renderer,
             &elements,
             [0.1, 0.1, 0.1, 1.0],
             FrameFlags::DEFAULT,
-        ) {
+        ) { Err(e) => {
             tracing::warn!("hotplug initial render failed for {}: {e:?}", od.output.name());
-        } else {
+        } _ => {
             let _ = od.compositor.queue_frame(());
-        }
+        }}
         bd.outputs.insert(crtc_h, od);
     }
     drop(bd);

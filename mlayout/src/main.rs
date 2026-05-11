@@ -975,10 +975,10 @@ fn cmd_pick(
         bail!("no layouts found in {}", config_dir.display());
     }
 
-    if !no_gui {
-        if let Some(picker) = detect_graphical_picker() {
-            return run_graphical_pick(&picker, config_dir, layouts, no_reload);
-        }
+    if !no_gui
+        && let Some(picker) = detect_graphical_picker()
+    {
+        return run_graphical_pick(&picker, config_dir, layouts, no_reload);
     }
     run_inline_pick(config_dir, layouts, no_reload)
 }

@@ -646,10 +646,10 @@ impl Dispatch<wl_output::WlOutput, u32> for IpcState {
         _: &Connection,
         _qh: &QueueHandle<Self>,
     ) {
-        if let wl_output::Event::Name { name } = event {
-            if let Some(o) = state.outputs.iter_mut().find(|o| o.wl_output.as_ref() == Some(proxy)) {
-                o.name = name;
-            }
+        if let wl_output::Event::Name { name } = event
+            && let Some(o) = state.outputs.iter_mut().find(|o| o.wl_output.as_ref() == Some(proxy))
+        {
+            o.name = name;
         }
     }
 }
@@ -1087,19 +1087,19 @@ fn main() -> Result<()> {
             // back to the dwl-ipc snapshot if the file isn't there
             // (margo-version mismatch, race on boot, etc.).
             let used_state_file = if json {
-                if let Ok(rich) = read_state_file() {
+                match read_state_file() { Ok(rich) => {
                     println!("{}", serde_json::to_string_pretty(&rich)?);
                     true
-                } else {
+                } _ => {
                     print_status_json(&state)?;
                     true
-                }
-            } else if let Ok(rich) = read_state_file() {
+                }}
+            } else { match read_state_file() { Ok(rich) => {
                 print_status_rich(&rich, args.output.as_deref());
                 true
-            } else {
+            } _ => {
                 false
-            };
+            }}};
             if !used_state_file {
                 print_status(&state, target_idx);
             }
@@ -1196,13 +1196,13 @@ fn cmd_actions(verbose: bool, group_filter: Option<&str>, names_only: bool) -> R
         }
     }
 
-    if !matched_any {
-        if let Some(filter) = group_filter {
-            bail!(
-                "no group matches '{filter}'. Available: \
-                 Tag, Focus, Layout, Scroller, Window, Scratchpad, Overview, System"
-            );
-        }
+    if !matched_any
+        && let Some(filter) = group_filter
+    {
+        bail!(
+            "no group matches '{filter}'. Available: \
+             Tag, Focus, Layout, Scroller, Window, Scratchpad, Overview, System"
+        );
     }
     Ok(())
 }
@@ -1402,15 +1402,15 @@ fn classify_rule(rule: &margo_config::WindowRule, appid: &str, title: &str) -> V
     if !pattern_match(rule.title.as_deref().unwrap_or(""), title) {
         return Verdict::Reject("title pattern miss");
     }
-    if let Some(p) = rule.exclude_id.as_deref().filter(|p| !p.is_empty()) {
-        if pattern_match(p, appid) {
-            return Verdict::Reject("exclude_id matched");
-        }
+    if let Some(p) = rule.exclude_id.as_deref().filter(|p| !p.is_empty())
+        && pattern_match(p, appid)
+    {
+        return Verdict::Reject("exclude_id matched");
     }
-    if let Some(p) = rule.exclude_title.as_deref().filter(|p| !p.is_empty()) {
-        if pattern_match(p, title) {
-            return Verdict::Reject("exclude_title matched");
-        }
+    if let Some(p) = rule.exclude_title.as_deref().filter(|p| !p.is_empty())
+        && pattern_match(p, title)
+    {
+        return Verdict::Reject("exclude_title matched");
     }
     Verdict::Match
 }
@@ -1655,23 +1655,22 @@ fn cmd_check_config(config_override: Option<&std::path::Path>) -> Result<()> {
                         | "not_appid"
                         | "not_title"
                         | "layer_name"
-                ) {
-                    if let Err(e) = regex::Regex::new(v_raw.trim()) {
-                        let pat_col = raw
-                            .find(v_raw.trim())
-                            .map(|i| i + 1)
-                            .unwrap_or(eq_pos + 2);
-                        report.push(ConfigDiagnostic {
-                            path: cfg_path.clone(),
-                            line: lineno,
-                            col: pat_col,
-                            end_col: pat_col + v_raw.trim().len(),
-                            severity: Severity::Error,
-                            code: "E004".into(),
-                            message: format!("regex compile error in `{k}:{}` — {e}", v_raw.trim()),
-                            line_text: raw.to_string(),
-                        });
-                    }
+                ) && let Err(e) = regex::Regex::new(v_raw.trim())
+                {
+                    let pat_col = raw
+                        .find(v_raw.trim())
+                        .map(|i| i + 1)
+                        .unwrap_or(eq_pos + 2);
+                    report.push(ConfigDiagnostic {
+                        path: cfg_path.clone(),
+                        line: lineno,
+                        col: pat_col,
+                        end_col: pat_col + v_raw.trim().len(),
+                        severity: Severity::Error,
+                        code: "E004".into(),
+                        message: format!("regex compile error in `{k}:{}` — {e}", v_raw.trim()),
+                        line_text: raw.to_string(),
+                    });
                 }
             }
         }
@@ -1909,10 +1908,10 @@ fn print_status_rich(state: &serde_json::Value, output_filter: Option<&str>) {
     let mut printed_any = false;
     for out in outputs {
         let name = out["name"].as_str().unwrap_or("");
-        if let Some(filter) = output_filter {
-            if name != filter {
-                continue;
-            }
+        if let Some(filter) = output_filter
+            && name != filter
+        {
+            continue;
         }
         let active = out["active"].as_bool().unwrap_or(false);
         let layout_idx = out["layout_idx"].as_u64().unwrap_or(0) as usize;
@@ -2082,10 +2081,10 @@ fn cmd_clients(
                     return false;
                 }
             }
-            if let Some(mon) = monitor_filter {
-                if c["monitor"].as_str().unwrap_or("") != mon {
-                    return false;
-                }
+            if let Some(mon) = monitor_filter
+                && c["monitor"].as_str().unwrap_or("") != mon
+            {
+                return false;
             }
             if let Some(needle) = appid_filter {
                 let needle = needle.to_lowercase();

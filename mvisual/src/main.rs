@@ -445,7 +445,7 @@ fn build_params_panel(
 
     // ── Wire signals ───────────────────────────────────────────────────────
     macro_rules! wire {
-        ($widget:expr, $sig:ident, $apply:expr) => {{
+        ($widget:expr_2021, $sig:ident, $apply:expr_2021) => {{
             let s = state.clone();
             let sup = suppress.clone();
             let uic = ui_cell.clone();

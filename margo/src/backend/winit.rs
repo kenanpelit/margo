@@ -267,16 +267,16 @@ pub fn run(
                         // once on first frame; if compile fails (driver
                         // limitation) silently fall back to no borders.
                         let border_elements: Vec<_> =
-                            if let Some(prog) = crate::render::rounded_border::shader(renderer) {
+                            match crate::render::rounded_border::shader(renderer) { Some(prog) => {
                                 crate::border::render_elements(
                                     state,
                                     smithay::utils::Point::from((0, 0)),
                                     smithay::utils::Scale::from(1.0_f64),
                                     prog.0,
                                 )
-                            } else {
+                            } _ => {
                                 Vec::new()
-                            };
+                            }};
 
                         let mut extras: Vec<WinitExtra> =
                             Vec::with_capacity(cursor_elements.len() + border_elements.len());

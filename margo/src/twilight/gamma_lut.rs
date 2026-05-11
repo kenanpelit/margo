@@ -201,17 +201,28 @@ mod tests {
         }
     }
 
-    /// Extreme inputs clamp safely, no panic, no NaN, no truncation
-    /// past u16::MAX.
+    /// Extreme inputs clamp safely, no panic, no NaN, no underflow
+    /// past 0. (Upper bound is u16::MAX by type — the cast guards
+    /// that; only the lower bound is non-trivial because the
+    /// channel-weight multiply could produce NaN if the
+    /// Tanner-Helland branch failed to clamp.)
     #[test]
     fn extreme_inputs_clamp_safely() {
         let ramp = build_ramp(0, 0, 256);
         assert_eq!(ramp.len(), 256 * 3);
         let ramp = build_ramp(u32::MAX, u32::MAX, 256);
         assert_eq!(ramp.len(), 256 * 3);
+        // No element should be left at "uninitialised" sentinel values
+        // (a NaN cast to u16 yields 0; that's still valid for the
+        // start of a ramp, so all we can usefully check is "no panic
+        // got us here" — the length asserts above already cover that).
+        // The strict bound `v <= u16::MAX` is a tautology because
+        // `v: u16`; clippy's `absurd_extreme_comparisons` is correct
+        // to flag it. Leaving the loop empty would lose the
+        // "iterated cleanly" intent, so we touch each value with
+        // `std::hint::black_box` to keep the optimiser honest.
         for v in ramp {
-            // u16 by construction; just sanity-check.
-            assert!(v <= u16::MAX);
+            std::hint::black_box(v);
         }
     }
 

@@ -343,10 +343,10 @@ fn map_action(
     }
     // Focus directions: hyprland `movefocus l|r|u|d`,
     // sway `focus left|right|up|down`.
-    if action == "movefocus" || action == "focus" {
-        if let Some(dir) = focus_direction(arg) {
-            return Some(("focusdir".to_string(), dir.to_string()));
-        }
+    if (action == "movefocus" || action == "focus")
+        && let Some(dir) = focus_direction(arg)
+    {
+        return Some(("focusdir".to_string(), dir.to_string()));
     }
     // Workspace / view: hyprland `workspace N`,
     // sway `workspace N` / `workspace number N`.
@@ -367,10 +367,10 @@ fn map_action(
         // variants. Avoids fighting the prefix-stripping
         // chain when the format has optional words like
         // "number" between the verb and the digit.
-        if let Some(last) = arg.split_whitespace().last() {
-            if let Some(mask) = workspace_to_tag_mask(last) {
-                return Some(("tag".to_string(), mask.to_string()));
-            }
+        if let Some(last) = arg.split_whitespace().last()
+            && let Some(mask) = workspace_to_tag_mask(last)
+        {
+            return Some(("tag".to_string(), mask.to_string()));
         }
     }
     if action == "togglesplit" || action == "toggle-split" {
