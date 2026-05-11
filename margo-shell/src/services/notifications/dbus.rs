@@ -123,12 +123,24 @@ impl NotificationDaemon {
             icon,
         };
 
-        debug!("New notification: {:?}", notification);
+        info!(
+            "notify({}): app={:?} urgency={:?} actions={:?}",
+            id, notification.app_name, notification.urgency, notification.actions
+        );
+        debug!("New notification full: {:?}", notification);
 
         // Send event through channel
-        let _ = self
+        if let Err(e) = self
             .event_tx
-            .send(NotificationEvent::Received(Box::new(notification)));
+            .send(NotificationEvent::Received(Box::new(notification)))
+        {
+            // No active subscribers — the iced Subscription hasn't
+            // wired up yet, or the module isn't in the [modules]
+            // layout. The notification is acknowledged on D-Bus
+            // (id returned) but won't render. Helps diagnose
+            // "notify-send returns OK but no toast shows".
+            warn!("broadcast Received: no subscribers ({e})");
+        }
 
         id
     }
@@ -176,11 +188,25 @@ impl NotificationDaemon {
         let dbus_proxy = DBusProxy::new(&connection).await?;
         let flags = RequestNameFlags::AllowReplacement | RequestNameFlags::ReplaceExisting;
         match dbus_proxy.request_name(NAME, flags).await? {
-            RequestNameReply::PrimaryOwner | RequestNameReply::AlreadyOwner => {
-                info!("Acquired notification daemon bus name");
+            RequestNameReply::PrimaryOwner => {
+                info!("Acquired notification daemon bus name (primary)");
+            }
+            RequestNameReply::AlreadyOwner => {
+                info!("Re-acquired notification daemon bus name (already owner)");
             }
             RequestNameReply::InQueue | RequestNameReply::Exists => {
-                warn!("Bus name '{NAME}' already owned");
+                // Another daemon already owns the name (mako/dunst/
+                // swaync/etc.). With AllowReplacement+ReplaceExisting
+                // we asked it to step aside; if it didn't have
+                // AllowReplacement set, we sit in the queue and
+                // notify-send calls keep going to the other daemon
+                // — toasts won't appear from mshell. Surface this
+                // loudly so the user notices.
+                warn!(
+                    "Bus name '{NAME}' already owned by another daemon \
+                     (mako/dunst/swaync?). mshell notifications won't \
+                     work until you kill that daemon and restart mshell."
+                );
             }
         }
 

@@ -18,7 +18,7 @@ use iced::{
     widget::{Space, button, column, container, image, row, scrollable, sensor, svg, text},
 };
 use itertools::Itertools;
-use log::error;
+use log::{error, info};
 use std::{
     collections::{HashSet, VecDeque},
     time::Duration,
@@ -215,12 +215,14 @@ impl Notifications {
 
     fn toast_action_for_update_event(&mut self, update_event: &NotificationEvent) -> Action {
         if !self.config.toast {
+            info!("toast suppressed: config.toast=false");
             return Action::None;
         }
 
         match update_event {
             NotificationEvent::Received(notification) => {
                 if self.config.toast_limit == 0 {
+                    info!("toast suppressed: toast_limit=0");
                     self.toasts.clear();
                     return Action::None;
                 }
@@ -229,6 +231,12 @@ impl Notifications {
                     self.toasts.pop_front();
                 }
                 self.toasts.push_back(notification.id);
+                info!(
+                    "toast queued id={} (active={}/{} limit)",
+                    notification.id,
+                    self.toasts.len(),
+                    self.config.toast_limit
+                );
 
                 let notification_id = notification.id;
                 // Critical notifications are persistent per the freedesktop
