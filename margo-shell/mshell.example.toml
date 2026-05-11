@@ -1,0 +1,164 @@
+# mshell — margo-shell example config
+# ═════════════════════════════════════
+#
+# Bu dosyayı şuraya kopyala:
+#
+#     mkdir -p ~/.config/margo
+#     cp /usr/share/doc/margo-git/mshell.example.toml ~/.config/margo/mshell.toml
+#
+# Sonra margo'nun config.conf'una ekle:
+#
+#     exec-once = mshell
+#
+# mshell config'i inotify ile izler — kaydet, anında uygulanır
+# (yeniden başlatmaya gerek yok).
+#
+# Tüm alanların referansı: docs/src/reference/config-reference.md
+# (KeyboardSubmap modülü margo-shell'de yok — Hyprland-only kavram
+# tamamen kaldırıldı.)
+
+log_level    = "warn"          # error / warn / info / debug / trace
+language     = "tr-TR"         # opsiyonel, BCP-47; auto-detect: kaldır
+position     = "Top"           # "Top" veya "Bottom"
+layer        = "Top"           # "Bottom" / "Top" / "Overlay"
+outputs      = "All"           # "All" / "Active" / { Targets = ["eDP-1"] }
+enable_esc_key = true          # ESC menüleri kapatır
+
+[animations]
+enabled = true
+
+[osd]
+enabled = true
+timeout = 1200
+
+# ── Modül yerleşimi ──────────────────────────────────────────────────────────
+# Sol: workspaces + pencere başlığı
+# Orta: saat
+# Sağ: sistem bilgisi → ayarlar (grup), sonra tray, sonra notifications
+[modules]
+left   = ["Workspaces", "WindowTitle"]
+center = ["Tempo"]
+right  = [["SystemInfo", "Settings"], "Tray", "Notifications"]
+
+# ── Workspaces (margo tag 1..=9) ─────────────────────────────────────────────
+[workspaces]
+visibility_mode          = "MonitorSpecific"
+group_by_monitor         = false
+enable_workspace_filling = true
+max_workspaces           = 9
+workspace_names          = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+enable_virtual_desktops  = false
+
+[window_title]
+mode                        = "Title"
+truncate_title_after_length = 80
+
+[system_info]
+indicators = ["Cpu", "Memory", "Temperature"]
+interval   = 5
+
+[system_info.cpu]
+warn_threshold  = 70
+alert_threshold = 90
+
+[system_info.memory]
+warn_threshold  = 70
+alert_threshold = 90
+
+[system_info.temperature]
+warn_threshold  = 75
+alert_threshold = 88
+
+[tempo]
+clock_format      = "%H:%M  %a %d %b"
+formats           = ["%H:%M", "%H:%M:%S", "%a %d %b %H:%M"]
+timezones         = ["Europe/Istanbul"]
+weather_indicator = "IconAndTemperature"
+weather_location  = "Current"
+
+[tray]
+# Boş = tüm system-tray ikonları görünür.
+
+[notifications]
+# Default değerler; max 3 toast, urgency=critical hep görünür.
+
+[settings]
+lock_cmd      = "loginctl lock-session"
+shutdown_cmd  = "systemctl poweroff"
+suspend_cmd   = "systemctl suspend"
+hibernate_cmd = "systemctl hibernate"
+reboot_cmd    = "systemctl reboot"
+logout_cmd    = "loginctl terminate-user $USER"
+
+audio_sinks_more_cmd   = "pavucontrol"
+audio_sources_more_cmd = "pavucontrol -t 4"
+wifi_more_cmd          = "nm-connection-editor"
+bluetooth_more_cmd     = "blueman-manager"
+
+battery_hide_when_full = true
+remove_airplane_btn    = false
+remove_idle_btn        = false
+
+[media_player]
+max_title_length = 60
+
+[keyboard_layout]
+# Margo state.json'da xkb layout'unu surface etmiyor — modülü etkisiz.
+# Surface edilirse `Modules.right`'a "KeyboardLayout" ekle.
+labels = ["TR", "EN"]
+
+[updates]
+check_cmd  = "checkupdates 2>/dev/null | wc -l"
+update_cmd = "alacritty -e sh -c 'sudo pacman -Syu; read -p \"Press enter to close…\"'"
+interval   = 3600
+
+# ── Görünüm — Catppuccin Mocha ───────────────────────────────────────────────
+[appearance]
+style         = "Islands"
+opacity       = 0.92
+font_name     = "JetBrainsMono Nerd Font"
+scale_factor  = 1.0
+
+background_color = "#1e1e2e"
+text_color       = "#cdd6f4"
+
+[appearance.primary_color]
+base   = "#cba6f7"
+strong = "#dbbcff"
+weak   = "#a385d8"
+text   = "#1e1e2e"
+
+[appearance.success_color]
+base   = "#a6e3a1"
+strong = "#c9f5c4"
+weak   = "#7ccb74"
+text   = "#1e1e2e"
+
+[appearance.warning_color]
+base   = "#fab387"
+strong = "#ffd3a8"
+weak   = "#d8895f"
+text   = "#1e1e2e"
+
+[appearance.danger_color]
+base   = "#f38ba8"
+strong = "#ffb1c5"
+weak   = "#c5697f"
+text   = "#1e1e2e"
+
+# Tag 1..=9 renkleri
+workspace_colors = [
+  "#cba6f7",
+  "#89b4fa",
+  "#94e2d5",
+  "#a6e3a1",
+  "#f9e2af",
+  "#fab387",
+  "#f38ba8",
+  "#cdd6f4",
+  "#74c7ec",
+]
+
+[appearance.menu]
+opacity       = 0.95
+backdrop_blur = true

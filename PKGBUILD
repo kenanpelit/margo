@@ -1,6 +1,6 @@
 # Maintainer: Kenan Pelit <kenanpelit@gmail.com>
 pkgname=margo-git
-pkgver=r151.ffd7151
+pkgver=r1.0
 pkgrel=1
 pkgdesc="A feature-rich Wayland compositor (Rust/Smithay rewrite of mango)"
 url="https://github.com/kenanpelit/margo"
@@ -35,6 +35,13 @@ depends=(
   grim
   slurp
   wl-clipboard
+  # mshell (margo-shell) runtime deps — audio/media/screencast
+  # panels link directly against these. The binary ships in this
+  # same package; missing daemons mean an empty panel, not a
+  # crash, but the .so dependencies are real link-time pulls.
+  libpulse
+  pipewire    # provides libpipewire + libspa
+  dbus
 )
 makedepends=(
   rust
@@ -56,6 +63,18 @@ optdepends=(
   "copyq: clipboard manager via wlr-data-control"
   "swappy: post-capture annotation editor for mscreenshot"
   "satty: alternative annotation editor for mscreenshot"
+  # mshell panels — runtime daemons + companion GUIs
+  "networkmanager: WiFi/VPN panel backend (nmcli, libnm)"
+  "iwd: alternative WiFi backend for mshell network panel"
+  "bluez: bluetooth panel backend"
+  "bluez-utils: bluetoothctl helper for the bluetooth panel"
+  "pipewire-pulse: PulseAudio shim — audio panel reads PA via this"
+  "wireplumber: PipeWire session/policy manager"
+  "pavucontrol: detailed audio mixer for the panel's More… button"
+  "nm-connection-editor: WiFi/VPN editor for the panel's More… button"
+  "blueman: bluetooth manager GUI for the panel's More… button"
+  "ttf-jetbrains-mono-nerd: default font referenced by mshell.toml"
+  "checkupdates: pacman update count for the updates module"
 )
 provides=("margo=$pkgver" "wayland-compositor")
 conflicts=("margo")
@@ -110,6 +129,8 @@ package() {
   install -Dm755 "$CARGO_TARGET_DIR/release/mctl" "$pkgdir/usr/bin/mctl"
   install -Dm755 "$CARGO_TARGET_DIR/release/mlayout" "$pkgdir/usr/bin/mlayout"
   install -Dm755 "$CARGO_TARGET_DIR/release/mscreenshot" "$pkgdir/usr/bin/mscreenshot"
+  install -Dm755 "$CARGO_TARGET_DIR/release/mvisual" "$pkgdir/usr/bin/mvisual"
+  install -Dm755 "$CARGO_TARGET_DIR/release/mshell" "$pkgdir/usr/bin/mshell"
 
   # Wayland session entry (display-manager picker)
   install -Dm644 "margo.desktop" \
@@ -119,6 +140,14 @@ package() {
   # implemented), or copy-pasted into ~/.config/margo/config.conf.
   install -Dm644 "margo/src/config.example.conf" \
     "$pkgdir/usr/share/doc/$pkgname/config.example.conf"
+
+  # mshell — example TOML config. Goes next to the compositor's
+  # config.conf at ~/.config/margo/mshell.toml (NOT a subdir);
+  # ship a starter here so `cp` is one command away.
+  if [[ -f "margo-shell/mshell.example.toml" ]]; then
+    install -Dm644 "margo-shell/mshell.example.toml" \
+      "$pkgdir/usr/share/doc/$pkgname/mshell.example.toml"
+  fi
 
   # mlayout: README + example layout files. Users copy these
   # into ~/.config/margo/ as starting points for their own setups.
@@ -173,14 +202,21 @@ package() {
     fi
   done
 
-  # Licenses — margo inherits portions of dwl/dwm/sway/tinywl/wlroots, so
-  # ship every header so downstream attribution is preserved.
+  # Licenses — margo inherits portions of dwl/dwm/sway/tinywl/wlroots/
+  # mango (compositor) and the iced-bar pattern that margo-shell forks
+  # (shell). Ship every header so downstream attribution is preserved.
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
-  for lic in LICENSE.dwl LICENSE.dwm LICENSE.sway LICENSE.tinywl LICENSE.wlroots; do
+  for lic in LICENSE.dwl LICENSE.dwm LICENSE.sway LICENSE.tinywl \
+             LICENSE.wlroots LICENSE.mango; do
     if [[ -f "$lic" ]]; then
       install -Dm644 "$lic" "$pkgdir/usr/share/licenses/$pkgname/$lic"
     fi
   done
+  # margo-shell's upstream attribution lives in the crate dir.
+  if [[ -f "margo-shell/LICENSE.ashell" ]]; then
+    install -Dm644 "margo-shell/LICENSE.ashell" \
+      "$pkgdir/usr/share/licenses/$pkgname/LICENSE.ashell"
+  fi
 }
 
 # vim:set sw=2 et:
