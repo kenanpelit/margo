@@ -18,7 +18,7 @@ use std::time::Duration;
 use std::{collections::HashMap, error::Error, ops::Deref, path::Path};
 use tokio::time::sleep;
 
-pub const DEFAULT_CONFIG_FILE_PATH: &str = "~/.config/margo-shell/config.toml";
+pub const DEFAULT_CONFIG_FILE_PATH: &str = "~/.config/margo/mshell.toml";
 
 #[derive(Deserialize, Clone, Debug)]
 #[serde(default)]
@@ -1116,7 +1116,7 @@ pub fn get_config(path: Option<PathBuf>) -> Result<(Config, PathBuf), Box<dyn Er
             })
         }
         None => expand_path(PathBuf::from(DEFAULT_CONFIG_FILE_PATH)).map(|expanded| {
-            // Safety: DEFAULT_CONFIG_FILE_PATH is "~/.config/margo-shell/config.toml" which
+            // Safety: DEFAULT_CONFIG_FILE_PATH is "~/.config/margo/mshell.toml" which
             // always has directory components. shellexpand only expands ~/$HOME and never
             // strips path components, so .parent() always returns Some.
             let parent = expanded
