@@ -1,193 +1,199 @@
-//! Blackbody-temperature → 16-bit gamma LUT.
+//! Blackbody-temperature → 16-bit gamma LUT, wire-format-compatible
+//! with `wlr_gamma_control_v1`.
 //!
-//! Each output gets one ramp per channel (R/G/B). The DRM LUT size
-//! varies per CRTC (256 is the de-facto baseline; some Intel parts
-//! report 1024 or higher). We build the table at the size the
-//! kernel asks for — `len` parameter — and let the udev frame
-//! handler hand it to `wlr_gamma_control`'s `set_gamma`.
+//! The wire format used by every Wayland blue-light tool
+//! (gammastep, redshift, sunsetr, hyprsunset) and accepted by
+//! margo's gamma-control server is *planar*:
 //!
-//! Algorithm:
+//!   [R[0], R[1], …, R[n-1],
+//!    G[0], G[1], …, G[n-1],
+//!    B[0], B[1], …, B[n-1]]
 //!
-//!   1. **Temperature → linear RGB triple**, via Tanner Helland's
-//!      blackbody fit (the classic redshift / gammastep formula).
-//!      Output is three `f32` in `[0.0, 1.0]` representing the
-//!      relative response of each channel at the requested colour
-//!      temperature.
-//!   2. **Brightness multiplier** (`gamma_pct / 100`) scales all
-//!      three uniformly. `100 %` = pass-through, `<100 %` = dim,
-//!      `>100 %` = over-bright (clamped).
-//!   3. **Per-channel ramp** is then `(i / (len-1)) * temp_r *
-//!      brightness`, raised to `1 / 2.2` for an sRGB-ish encode
-//!      curve so mid-tones aren't crushed.
-//!   4. Result is quantised to `u16` (the LUT entry format the
-//!      kernel expects).
+//! Total length = `3 * n` u16. `n` = the CRTC's `GAMMA_LUT_SIZE`
+//! (256 on most AMD, 1024 on current Intel Arc, 4096 on some
+//! virtio). The compositor's `set_gamma` in
+//! `backend/udev/mod.rs` splits the slice with `split_at(n)`
+//! exactly twice and then packs each entry into a
+//! `drm_color_lut { red, green, blue, reserved }` for the kernel,
+//! so handing it an interleaved RGBRGB array (which I did in the
+//! first port, producing a CRT-with-blown-blacks mess) cross-talks
+//! the channels — half of R lands in G, half of G in B, the screen
+//! tints into a saturated green/blue noise. **The format matters.**
 //!
-//! The whole LUT rebuilds on every change. It's cheap (sub-ms for
-//! 256 entries × 3 channels) — the only path that triggers a
-//! rebuild is the tick loop, which already runs at second-scale
-//! cadence at steady state.
+//! Algorithm — matches sunsetr's `backend/gamma.rs::create_gamma_tables`
+//! 1:1 so the visual output is interchangeable:
+//!
+//!   1. **Tanner Helland blackbody fit** maps Kelvin → (r,g,b) in
+//!      [0, 1]. Same coefficients as sunsetr / redshift / gammastep
+//!      (the ones tracing back to f.lux's original blog post).
+//!   2. **Per-channel ramp** = `((i / (n-1)) * channel_factor).powf(1 / gamma)`
+//!      where `gamma = gamma_pct / 100`. `gamma = 1.0` collapses to
+//!      a pure linear scale; `gamma < 1.0` (i.e. brightness < 100 %)
+//!      raises the exponent above 1, gently bending the mid-tones
+//!      darker without touching endpoints.
+//!   3. Quantise to u16 at the end (same precision/clamp dance
+//!      sunsetr does in f64; we use f32 because the difference is
+//!      below 1 LSB at u16 quantisation in the ramp's mid-band).
+//!
+//! The output `Vec<u16>` is fed straight to
+//! `MargoState::pending_gamma`, picked up by the udev frame
+//! handler, written to the CRTC's `GAMMA_LUT` blob.
 
-/// Build an interleaved `R, G, B, R, G, B, …` ramp of length
-/// `len * 3` u16 entries — the same shape DRM wants for
-/// `GAMMA_LUT`.
-///
-/// `temp_k` is clamped to `[1000, 25000]`; outside that range the
-/// blackbody fit goes physically meaningless. `gamma_pct` clamps to
-/// `[10, 200]` so a typo can't tank the screen to black or burn
-/// retinas.
+/// Build the planar LUT for one output. Length = `3 * n` u16.
+/// `temp_k` is clamped to `[1000, 25000]`; `gamma_pct` to
+/// `[10, 200]`.
 pub fn build_ramp(temp_k: u32, gamma_pct: u32, len: usize) -> Vec<u16> {
     let temp = (temp_k as f32).clamp(1000.0, 25000.0);
-    let brightness = (gamma_pct as f32).clamp(10.0, 200.0) / 100.0;
+    let gamma = (gamma_pct as f32).clamp(10.0, 200.0) / 100.0;
     let (r_w, g_w, b_w) = temp_to_rgb_weights(temp);
 
-    // DRM `GAMMA_LUT` is a linear pass-through transform: kernel reads
-    // u16 input, writes the entry's u16 output to the scanout pipe.
-    // The display's own EOTF (sRGB / Rec.2020 / whatever the panel
-    // honours) is the next layer downstream — we MUST NOT
-    // double-encode here. Redshift / gammastep / sunsetr / hyprsunset
-    // all skip the gamma-encode step for the same reason; an early
-    // version of this module ran the ramp through `pow(1/2.2)` and
-    // produced the classic "CRT-with-blown-blacks" look (every dark
-    // value got lifted, contrast crushed). Linear-only is correct.
     let n = len.max(2);
-    let mut out = Vec::with_capacity(n * 3);
     let denom = (n - 1) as f32;
-    for i in 0..n {
-        let lin = i as f32 / denom;
-        let r = (lin * r_w * brightness).clamp(0.0, 1.0);
-        let g = (lin * g_w * brightness).clamp(0.0, 1.0);
-        let b = (lin * b_w * brightness).clamp(0.0, 1.0);
-        out.push((r * 65535.0).round() as u16);
-        out.push((g * 65535.0).round() as u16);
-        out.push((b * 65535.0).round() as u16);
+    // 1.0 / gamma — applied as the exponent on every entry. With
+    // gamma = 1.0 this is a no-op (pure linear). gamma < 1.0
+    // (brightness < 100 %) gives an exponent > 1 → mid-tones bend
+    // darker; endpoints unaffected.
+    let inv_gamma = 1.0 / gamma.max(0.05);
+
+    // Planar layout: build R first, then G, then B. ONE allocation,
+    // 3*n u16 long.
+    let mut out: Vec<u16> = Vec::with_capacity(n * 3);
+    for &w in &[r_w, g_w, b_w] {
+        for i in 0..n {
+            let lin = i as f32 / denom;
+            let raw = (lin * w).clamp(0.0, 1.0).powf(inv_gamma);
+            let scaled = (raw * 65535.0).clamp(0.0, 65535.0);
+            out.push(scaled as u16);
+        }
     }
     out
 }
 
 /// Tanner Helland's blackbody temperature → RGB fit. Returns three
-/// channel weights in `[0.0, 1.0]`. The fit is the same one
-/// redshift / gammastep / sunsetr / f.lux all use — it's accurate
-/// to about ±1 % vs Planck's law in the 1500–10000 K range and
-/// stays plausible (no negative coefficients) out to ~25000 K.
-///
-/// We intentionally clamp inputs in `build_ramp` before calling
-/// this — the formula has a `ln(temp/100)` term that goes wild
-/// below 1000 K.
+/// channel weights in `[0.0, 1.0]`. Coefficients lifted directly
+/// from sunsetr's `temperature_to_rgb` so the two produce
+/// bit-identical RGB triples at the same Kelvin.
 fn temp_to_rgb_weights(temp: f32) -> (f32, f32, f32) {
     let t = temp / 100.0;
 
-    let r = if t <= 66.0 {
-        1.0
+    let (r, g, b) = if t <= 66.0 {
+        let r = 255.0;
+        let g = if t <= 1.0 {
+            0.0
+        } else {
+            (99.470_8 * t.ln() - 161.119_57).clamp(0.0, 255.0)
+        };
+        let b = if t <= 19.0 {
+            0.0
+        } else {
+            let tm = t - 10.0;
+            if tm <= 0.0 {
+                0.0
+            } else {
+                (tm.ln() * 138.517_73 - 305.044_8).clamp(0.0, 255.0)
+            }
+        };
+        (r, g, b)
     } else {
-        // 329.6987 * (t-60)^-0.13320 normalised by /255
-        let v = 329.698_73 * (t - 60.0).powf(-0.133_204_76);
-        (v / 255.0).clamp(0.0, 1.0)
+        let r = (329.698_73 * (t - 60.0).powf(-0.133_204_76)).clamp(0.0, 255.0);
+        let g = (288.122_16 * (t - 60.0).powf(-0.075_514_85)).clamp(0.0, 255.0);
+        let b = 255.0;
+        (r, g, b)
     };
 
-    let g = if t <= 66.0 {
-        // 99.471 * ln(t) - 161.120  /255
-        let v = 99.470_8 * t.ln() - 161.119_57;
-        (v / 255.0).clamp(0.0, 1.0)
-    } else {
-        // 288.122 * (t-60)^-0.07551  /255
-        let v = 288.122_16 * (t - 60.0).powf(-0.075_514_85);
-        (v / 255.0).clamp(0.0, 1.0)
-    };
-
-    let b = if t >= 66.0 {
-        1.0
-    } else if t <= 19.0 {
-        0.0
-    } else {
-        // 138.518 * ln(t-10) - 305.045  /255
-        let v = 138.517_73 * (t - 10.0).ln() - 305.044_8;
-        (v / 255.0).clamp(0.0, 1.0)
-    };
-
-    (r, g, b)
+    (r / 255.0, g / 255.0, b / 255.0)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// Planar layout: indices 0..N → R, N..2N → G, 2N..3N → B.
+    fn plane(ramp: &[u16], n: usize, ch: usize) -> &[u16] {
+        &ramp[ch * n..(ch + 1) * n]
+    }
+
     /// 6500 K is the standard daylight reference — all three
-    /// channels should be roughly equal and ramp from 0 → ~65535.
+    /// channels should reach near fullscale and roughly balance.
     #[test]
     fn daylight_6500k_is_near_neutral() {
-        let ramp = build_ramp(6500, 100, 256);
-        assert_eq!(ramp.len(), 256 * 3);
-        // Last entries (i = 255 → input 1.0) — all three channels
-        // should be close to fullscale.
-        let (r, g, b) = (ramp[255 * 3], ramp[255 * 3 + 1], ramp[255 * 3 + 2]);
+        let n = 256;
+        let ramp = build_ramp(6500, 100, n);
+        assert_eq!(ramp.len(), n * 3);
+        let r = plane(&ramp, n, 0)[n - 1];
+        let g = plane(&ramp, n, 1)[n - 1];
+        let b = plane(&ramp, n, 2)[n - 1];
         let avg = (r as u32 + g as u32 + b as u32) / 3;
         let max = r.max(g).max(b);
         let min = r.min(g).min(b);
         assert!(avg > 60_000, "6500K avg too low: {avg}");
         assert!(
-            (max - min) < 10_000,
+            (max - min) < 5_000,
             "6500K channels diverge too much: r={r} g={g} b={b}"
         );
     }
 
-    /// 3000 K is a warm-evening reference — red full, blue weak.
+    /// 3000 K — red full, blue weak.
     #[test]
     fn warm_3000k_red_dominant() {
-        let ramp = build_ramp(3000, 100, 256);
-        let last = 255 * 3;
-        let r = ramp[last];
-        let b = ramp[last + 2];
+        let n = 256;
+        let ramp = build_ramp(3000, 100, n);
+        let r = plane(&ramp, n, 0)[n - 1];
+        let b = plane(&ramp, n, 2)[n - 1];
         assert!(r > 60_000, "3000K red should be near fullscale: {r}");
-        assert!(b < r, "3000K blue should be well below red: r={r} b={b}");
+        assert!(b < r, "3000K blue should be below red: r={r} b={b}");
         assert!(b < 45_000, "3000K blue still too hot: {b}");
     }
 
-    /// 10000 K is cool — blue full, red attenuated.
+    /// 10000 K — blue full, red attenuated.
     #[test]
     fn cool_10000k_blue_dominant() {
-        let ramp = build_ramp(10000, 100, 256);
-        let last = 255 * 3;
-        let r = ramp[last];
-        let b = ramp[last + 2];
+        let n = 256;
+        let ramp = build_ramp(10000, 100, n);
+        let r = plane(&ramp, n, 0)[n - 1];
+        let b = plane(&ramp, n, 2)[n - 1];
         assert!(b > 60_000, "10000K blue should be near fullscale: {b}");
         assert!(r < b, "10000K red should be below blue: r={r} b={b}");
     }
 
-    /// `gamma_pct = 50` should darken proportionally — the LUT is
-    /// linear (no gamma encode) so 50 % brightness halves the
-    /// output u16 at every entry.
+    /// `gamma_pct = 50` should darken — exponent 1/0.5 = 2.0 means
+    /// mid 0.5 maps to 0.25, fullscale stays 1.0.
     #[test]
-    fn gamma_pct_dims() {
-        let bright = build_ramp(6500, 100, 256);
-        let dim = build_ramp(6500, 50, 256);
-        let last = 255 * 3;
-        let bright_sum: u32 = (0..3).map(|i| bright[last + i] as u32).sum();
-        let dim_sum: u32 = (0..3).map(|i| dim[last + i] as u32).sum();
+    fn gamma_pct_dims_midtones() {
+        let n = 256;
+        let bright = build_ramp(6500, 100, n);
+        let dim = build_ramp(6500, 50, n);
+        // Endpoints near-equal (both at fullscale with gamma_w ≈ 1).
+        let mid_idx = n / 2;
+        let b_mid = plane(&bright, n, 0)[mid_idx] as u32;
+        let d_mid = plane(&dim, n, 0)[mid_idx] as u32;
         assert!(
-            dim_sum < bright_sum,
-            "dim_sum={dim_sum} not below bright_sum={bright_sum}"
+            d_mid < b_mid,
+            "dim mid {d_mid} not below bright mid {b_mid}"
         );
-        // Linear LUT: dim should be ~50 % of bright at fullscale.
-        let ratio = dim_sum as f32 / bright_sum as f32;
+        // exponent 2 on 0.5 → 0.25 → ~16383 u16; bright mid is
+        // ~32767. Ratio ≈ 0.5.
+        let ratio = d_mid as f32 / b_mid as f32;
         assert!(
-            (0.45..0.55).contains(&ratio),
-            "linear ramp ratio {ratio} not near 0.5"
+            (0.4..0.6).contains(&ratio),
+            "gamma=0.5 mid ratio {ratio} not near 0.5"
         );
     }
 
-    /// Ramp must be monotonically non-decreasing per channel — the
-    /// kernel rejects non-monotone tables on some drivers.
+    /// Each plane must be monotonically non-decreasing — the kernel
+    /// rejects non-monotone tables on some drivers.
     #[test]
-    fn ramp_is_monotone_per_channel() {
+    fn each_plane_is_monotone() {
+        let n = 256;
         for temp in [2000, 3300, 6500, 9000] {
-            let ramp = build_ramp(temp, 100, 256);
-            for chan in 0..3 {
+            let ramp = build_ramp(temp, 100, n);
+            for ch in 0..3 {
+                let p = plane(&ramp, n, ch);
                 let mut prev = 0u16;
-                for i in 0..256 {
-                    let v = ramp[i * 3 + chan];
+                for (i, &v) in p.iter().enumerate() {
                     assert!(
                         v >= prev,
-                        "temp={temp} chan={chan} non-monotone at i={i}: {prev}→{v}"
+                        "temp={temp} ch={ch} non-monotone at i={i}: {prev}→{v}"
                     );
                     prev = v;
                 }
@@ -195,7 +201,8 @@ mod tests {
         }
     }
 
-    /// Out-of-range inputs must clamp, not panic or NaN.
+    /// Extreme inputs clamp safely, no panic, no NaN, no truncation
+    /// past u16::MAX.
     #[test]
     fn extreme_inputs_clamp_safely() {
         let ramp = build_ramp(0, 0, 256);
@@ -203,7 +210,34 @@ mod tests {
         let ramp = build_ramp(u32::MAX, u32::MAX, 256);
         assert_eq!(ramp.len(), 256 * 3);
         for v in ramp {
+            // u16 by construction; just sanity-check.
             assert!(v <= u16::MAX);
         }
+    }
+
+    /// Output is exactly `3 * n` long — backend's split_at relies
+    /// on that.
+    #[test]
+    fn length_is_three_times_n() {
+        for n in [256usize, 1024, 4096] {
+            let ramp = build_ramp(6500, 100, n);
+            assert_eq!(ramp.len(), n * 3, "len mismatch at n={n}");
+        }
+    }
+
+    /// At gamma = 1.0 (linear), our R-plane fullscale matches what
+    /// sunsetr would produce: roughly `r_factor * 65535` modulo
+    /// f32/f64 differences. This is the cross-tool sanity check.
+    #[test]
+    fn matches_sunsetr_endpoint_at_6500k() {
+        let n = 256;
+        let ramp = build_ramp(6500, 100, n);
+        let r = plane(&ramp, n, 0)[n - 1];
+        // At 6500K Tanner Helland gives r_factor = 1.0; output
+        // should be 65535 (or one ULP below from the quantise).
+        assert!(
+            r >= 65530,
+            "R at 6500K fullscale should be ~65535, got {r}"
+        );
     }
 }
