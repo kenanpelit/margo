@@ -30,8 +30,13 @@ pub struct ShellInfo {
     /// lifecycle, so no margo open/close animation fires on tag
     /// changes.
     pub wallpaper_id: Option<SurfaceId>,
-    /// Logical height of this output (for computing toast input regions).
-    pub output_logical_height: Option<u32>,
+    /// Logical width + height of this output. Used by:
+    ///   * toast input-region math (bottom-aligned positioning needs
+    ///     the height to offset from)
+    ///   * wallpaper Background surface — wpaperd-style explicit
+    ///     `set_size(w, h)` instead of `(0, 0)` so the buffer always
+    ///     commits.
+    pub output_logical_size: Option<(u32, u32)>,
 }
 
 impl ShellInfo {
@@ -90,7 +95,7 @@ impl Outputs {
                 layer,
                 style,
                 scale_factor,
-                output_logical_height: None,
+                output_logical_size: None,
             }),
             None,
         )])
@@ -229,7 +234,7 @@ impl Outputs {
                     layer,
                     style,
                     scale_factor,
-                    output_logical_height: None,
+                    output_logical_size: None,
                 }),
                 Some(output_id),
             ));
@@ -311,7 +316,7 @@ impl Outputs {
                             layer,
                             style,
                             scale_factor,
-                            output_logical_height: None,
+                            output_logical_size: None,
                         }),
                         None,
                     ));
@@ -686,8 +691,8 @@ impl Outputs {
                     config::ToastPosition::TopLeft | config::ToastPosition::TopRight => 0,
                     config::ToastPosition::BottomLeft | config::ToastPosition::BottomRight => {
                         shell_info
-                            .output_logical_height
-                            .map_or(0, |h| (h as i32) - content_h)
+                            .output_logical_size
+                            .map_or(0, |(_, h)| (h as i32) - content_h)
                     }
                 };
                 tasks.push(set_input_region(
@@ -704,13 +709,15 @@ impl Outputs {
         Task::batch(tasks)
     }
 
-    /// Store the logical height for an output (used for bottom-aligned toast input regions).
-    pub fn set_output_logical_height(&mut self, output_id: OutputId, height: u32) {
+    /// Store the logical (width, height) for an output. Used by:
+    ///   * bottom-aligned toast input regions
+    ///   * wallpaper Background surface `set_size`
+    pub fn set_output_logical_size(&mut self, output_id: OutputId, width: u32, height: u32) {
         for (_, shell_info, oid) in &mut self.0 {
             if *oid == Some(output_id)
                 && let Some(info) = shell_info
             {
-                info.output_logical_height = Some(height);
+                info.output_logical_size = Some((width, height));
             }
         }
     }
@@ -753,29 +760,47 @@ impl Outputs {
     }
 
     /// Create a Background-layer surface per output for the wallpaper.
-    /// Anchored on all four sides with size (0,0) so the compositor
-    /// fills the surface to match the output. Persistent — never
-    /// destroyed unless the output disappears. Background layers
-    /// are click-through by default in iced_layershell, so the
-    /// wallpaper never steals input from windows above.
+    ///
+    /// Mirrors wpaperd's working setup (which has shipped reliably
+    /// against wlroots compositors for years):
+    ///
+    /// * Namespace **per-output** (`mshell-wallpaper-eDP-1`) so two
+    ///   surfaces don't share one identifier and confuse compositors
+    ///   that key state by namespace.
+    /// * Anchor TOP|BOTTOM|LEFT|RIGHT (covers the whole output).
+    /// * **`exclusive_zone(-1)`** — ignore other layers' exclusion
+    ///   zones; the wallpaper extends *under* the bar instead of
+    ///   stopping at its edge.
+    /// * **Explicit `size`** — pass the output's real logical
+    ///   dimensions instead of `(0, 0)`. Some wlr-layer-shell
+    ///   implementations don't reliably expand a zero-seed surface
+    ///   even with four anchors set; wpaperd hands the compositor
+    ///   the actual numbers and that always commits a buffer.
     pub fn show_wallpaper_layer<Message: 'static>(&mut self) -> Task<Message> {
         let mut tasks = vec![];
-        for (_, shell_info, output_id) in &mut self.0 {
+        for (name, shell_info, output_id) in &mut self.0 {
             if let Some(shell_info) = shell_info
                 && shell_info.wallpaper_id.is_none()
             {
+                // Bare output name (first whitespace-separated token).
+                // mshell stores composite "<name> <make> <model>";
+                // the bare form is what margo/Wayland actually uses
+                // as the layer's output identifier.
+                let bare = name.split_whitespace().next().unwrap_or(name);
+                let namespace = format!("mshell-wallpaper-{bare}");
+                // Output's logical size — set on output add via
+                // `set_output_logical_size`. Fall back to a big
+                // pre-config value so the surface always commits a
+                // valid buffer even if the size signal is late.
+                let (w, h) = shell_info
+                    .output_logical_size
+                    .unwrap_or((3840, 2160));
                 let (wallpaper_id, wallpaper_task) = new_layer_surface(LayerShellSettings {
-                    namespace: "mshell-wallpaper".to_string(),
-                    // size (0, 0) + 4-anchor = "compositor sizes me
-                    // to the output". Some iced/wlr-layer-shell
-                    // combos balk at (0, 0) and never commit a
-                    // buffer; (1, 1) is the equivalent-but-safer
-                    // initial value — the compositor still expands
-                    // to the output thanks to the four anchors.
-                    size: Some((1, 1)),
-                    layer: Layer::Bottom,
+                    namespace,
+                    size: Some((w, h)),
+                    layer: Layer::Background,
                     keyboard_interactivity: KeyboardInteractivity::None,
-                    exclusive_zone: 0,
+                    exclusive_zone: -1,
                     anchor: Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT,
                     output: *output_id,
                     ..Default::default()

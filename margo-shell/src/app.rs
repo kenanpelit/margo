@@ -582,10 +582,6 @@ impl App {
                     info!("Output created: {info:?}");
                     let name = &format!("{} {} {}", info.name, info.make, info.model);
 
-                    if let Some((_, h)) = info.logical_size {
-                        self.outputs.set_output_logical_height(info.id, h as u32);
-                    }
-
                     let (bar_style, bar_position, scale_factor) =
                         use_theme(|t| (t.bar_style, t.bar_position, t.scale_factor));
                     let mut tasks = vec![self.outputs.add(
@@ -597,6 +593,13 @@ impl App {
                         info.id,
                         scale_factor,
                     )];
+                    // `Outputs::add` (re-)created the ShellInfo with
+                    // None size. Stamp the real logical size in
+                    // BEFORE show_wallpaper_layer reads it.
+                    if let Some((w, h)) = info.logical_size {
+                        self.outputs
+                            .set_output_logical_size(info.id, w as u32, h as u32);
+                    }
                     // Bring the wallpaper Background-layer surface up
                     // for this newly-attached output, if the user
                     // wants mshell to render wallpapers. Persistent
@@ -1121,9 +1124,16 @@ impl App {
         use iced::widget::{container, image as image_widget};
         use iced::{Color, Length};
 
+        // DIAGNOSTIC: force fallback colour to bright red to prove
+        // the Background-layer surface composes at all. If wallpaper
+        // surface paints red across an output, the surface lifecycle
+        // + iced render path are healthy and the bug is in Image
+        // widget integration. If still no red, the surface isn't
+        // being committed (iced_layershell + Background/Bottom +
+        // (1,1) seed size combo broken).
         let fit: iced::ContentFit = self.general_config.wallpaper.fit.into();
-        let fallback = parse_hex_color(&self.general_config.wallpaper.fallback_color)
-            .unwrap_or(Color::BLACK);
+        let _ = parse_hex_color(&self.general_config.wallpaper.fallback_color);
+        let fallback = Color::from_rgb(1.0, 0.0, 0.0);
 
         // mshell stores outputs keyed by "<name> <make> <model>" (set
         // in OutputEvent::Added) but margo's state.json gives bare
