@@ -67,11 +67,15 @@ fn calculate_ui_workspaces(
         .map(|(idx, monitor)| (monitor.name.clone(), idx))
         .collect::<HashMap<_, _>>();
 
+    // margo is tag-based: every output independently has tags 1..=9,
+    // so the same workspace id legitimately appears once per monitor.
+    // Dedupe on (id, monitor) instead of just id — otherwise the
+    // second/external output's workspace cells get silently dropped.
     let workspaces = state
         .workspaces
         .clone()
         .into_iter()
-        .unique_by(|w| w.id)
+        .unique_by(|w| (w.id, w.monitor.clone()))
         .collect_vec();
 
     let mut result: Vec<UiWorkspace> = Vec::with_capacity(workspaces.len());
@@ -138,8 +142,20 @@ fn calculate_ui_workspaces(
                 w.name.clone()
             };
 
-            let is_active = active_id == Some(w.id);
-            let is_visible = monitors.iter().any(|m| m.active_workspace_id == w.id);
+            // margo: aynı tag id'si (1..=9) her output'ta bağımsız
+            // olarak yaşıyor. Active/visible'ı global `active_id` ile
+            // karşılaştırırsak iki monitör için aynı tag'in her
+            // ikisinin hücresi de yanar. Workspace'in kendi
+            // `monitor` adına bakarak o output'un `active_workspace_id`
+            // değeri ile eşleyelim.
+            let is_active = monitors
+                .iter()
+                .any(|m| m.name == w.monitor && m.active_workspace_id == w.id);
+            let is_visible = is_active;
+            // Unused-on-margo: ashell upstream'inde `active_id` global
+            // bir tek değer (fokuslu monitorun aktif workspace'i).
+            // Ekosistemde başka kullanım kalırsa diye dokunmuyoruz.
+            let _ = active_id;
 
             result.push(UiWorkspace {
                 id: w.id,
