@@ -403,7 +403,7 @@ factor. Five work streams below; §16 (do-over wishlist) feeds §15.1,
 niri ships 5280 textual `insta` snapshots; margo ships 22. The gap
 isn't ambition, it's surface: niri tests every layout / column /
 window / floating combination through snapshots while margo locks
-fewer scenarios. Phase 2 target: **22 → 200+ snapshots by v0.2.0**
+fewer scenarios. Phase 2 target: **22 → 200+ snapshots by v0.3.0**
 with emphasis on testable surface area, not snapshot count for its
 own sake.
 
@@ -557,7 +557,8 @@ matches mango-ext exactly:
 - [x] **MangoWM-style overview shipped** (`overview(m) { grid(m); }` — single dynamic Grid over all visible clients, alt+Tab MRU cycle with focuscolor border tracking, hot corner with safety guards, 4-finger touchpad trigger). Two preceding iterations were rejected after live testing: Phase 3 "Infinite Spatial Overview" (camera/pan/zoom) and the intermediate fixed 3×3 per-tag thumbnail grid both felt non-native compared to mango-ext's one-liner. Cycle order is now user-selectable (`overview_cycle_order = mru | tag | mixed`), the visual grid order matches the cycle order, alt+Tab supports modifier-release auto-commit (Win/GNOME muscle memory), cinematic dim + thicker focuscolor border on the selection emphasise the pick, and pointer hover no longer reshuffles the grid mid-hover.
 - [x] **Twilight (built-in blue-light filter) shipped** — three modes (geo / manual / static), inline NOAA solar math (no `sunrise` / `chrono` deps), mired-space temperature interpolation + Tanner-Helland blackbody LUT, adaptive 60 s ↔ 250 ms tick, fed straight into the existing `pending_gamma` → `GAMMA_LUT` plumbing. 14 config keys + `TwilightMode` enum, `mctl twilight {status,preview,test,set,reset}` live control surface, 21 unit tests. Opt-in via `twilight = 1`.
 - [x] **Config validation with niri-style diagnostics shipped** — `margo-config::validator` module emits structured diagnostics (file, line, column, severity, code, snippet); `mctl check-config` renders them niri-style; `mctl reload` refuses to apply when errors are present (compositor stays on previous good config); `mctl config-errors` queries the running compositor (Hyprland `hyprctl configerrors` analogue); on-screen red-bordered overlay banner pinned to the active output for 10 s on a rejected reload; warnings surface through a distinct notify-send branch so they're not silently ignored. The validator's allowlist auto-tracks the parser's `OPTION_KEYS` slice, so adding a new option Just Works.
-- [ ] Phase 2 closing release: **v0.2.0** (semver minor — feature-complete in stream of work, no breaking changes)
+- [x] **v0.2.0 shipped** — first minor bump past the 0.1.x sweep. Headlines: built-in twilight, niri-style config validation with fail-soft reload, overview cinematic polish, mctl docs sweep. Workspace test 123 → 146. Pure feature release, no breaking changes.
+- [ ] Phase 2 closing release: **v0.3.0** — snapshot test count ≥ 200, state.rs <3k LOC, cold-path logging migration complete, ≥2 community contributors. Semver minor (still pre-1.0; no breaking-change policy yet).
 
 ### 15.9 Phase 2 explicitly out-of-scope
 

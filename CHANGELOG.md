@@ -7,6 +7,33 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.2.0] – 2026-05-11
+
+First minor bump beyond the 0.1.x sweep. Two headline features —
+**Twilight** (built-in blue-light filter, full replacement for
+sunsetr / gammastep / redshift) and **niri-style config
+validation** (structured diagnostics + on-screen overlay +
+compositor fail-soft) — plus the overview cinematic finishing
+touches and a fistful of bug fixes from live use.
+
+### Highlights
+
+| Feature | Tagline |
+|---|---|
+| **Twilight** | Built-in colour-temperature scheduler inside the compositor's own event loop. Zero new deps, planar `wlr_gamma_control_v1` wire format, mired-space interpolation, adaptive tick (60 s ↔ 250 ms), `mctl twilight {status,preview,test,set,reset}` live control. |
+| **Config validation** | niri-style diagnostics on `mctl check-config`, fail-soft reload (compositor keeps the previous good config), `mctl config-errors` query, 10 s on-screen red-bordered banner overlay, warning-aware notify. |
+| **Overview muscle memory** | Modifier-release auto-commit, cinematic dim + thicker focuscolor border on the pick, visual grid order = cycle order, pointer hover no longer reshuffles the grid. |
+| **Quick wins** | 50 ms hotplug rescan coalescer, scratchpad persistence in session-save, `on_output_change` Rhai hook, dwl-ipc arg-slot mapping finally documented. |
+
+### Compared to 0.1.9
+
+* +21 twilight tests, +6 validator tests → workspace 123 → 146.
+* +14 config keys (twilight) + 2 cinematic + `overview_cycle_order`.
+* `Cargo.toml` `[profile.release]` now keeps line tables in the
+  installed binary so future coredumps symbolize cleanly.
+* mctl subcommand list reformatted — one neat row per command, no
+  more mid-row wraps.
+
 ### Added
 
 - **Twilight — built-in blue-light filter / colour-temperature
