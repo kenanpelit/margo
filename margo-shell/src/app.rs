@@ -704,10 +704,15 @@ impl App {
             },
             Message::None => Task::none(),
             Message::WallpaperRefresh(map) => {
+                info!(
+                    "WallpaperRefresh: incoming map has {} outputs",
+                    map.len()
+                );
                 // Diff against the last-seen paths; for each entry
                 // that actually changed, kick off an async decode.
                 // Empty path → drop the handle (renders fallback bg).
                 let map = self.maybe_apply_shuffle(map);
+                info!("WallpaperRefresh: after shuffle {} entries", map.len());
                 let mut tasks = vec![];
                 for (output, path) in map.iter() {
                     if self.wallpaper_paths.get(output) == Some(path) {
@@ -715,6 +720,7 @@ impl App {
                     }
                     self.wallpaper_paths
                         .insert(output.clone(), path.clone());
+                    info!("WallpaperRefresh: scheduling decode output={} path={}", output, path);
                     if path.is_empty() {
                         self.wallpaper_handles.remove(output);
                         continue;
@@ -769,11 +775,22 @@ impl App {
                 // may have switched tags again. Only commit if the
                 // path is still current.
                 if self.wallpaper_paths.get(&output) != Some(&path) {
+                    info!(
+                        "WallpaperDecoded: stale (output={} path={}) — current is {:?}",
+                        output,
+                        path,
+                        self.wallpaper_paths.get(&output)
+                    );
                     return Task::none();
                 }
                 if let Some(handle) = handle {
+                    info!("WallpaperDecoded: committed output={} path={}", output, path);
                     self.wallpaper_handles.insert(output, handle);
                 } else {
+                    info!(
+                        "WallpaperDecoded: handle=None (file missing) output={} path={}",
+                        output, path
+                    );
                     self.wallpaper_handles.remove(&output);
                 }
                 Task::none()
@@ -1041,9 +1058,18 @@ impl App {
         let fallback = parse_hex_color(&self.general_config.wallpaper.fallback_color)
             .unwrap_or(Color::BLACK);
 
-        let inner: Element<'_, Message> = self
+        // mshell stores outputs keyed by "<name> <make> <model>" (set
+        // in OutputEvent::Added) but margo's state.json gives bare
+        // output names ("DP-3", "eDP-1") — wallpaper_handles is keyed
+        // by the bare form. Extract the first whitespace-separated
+        // token from the stored composite to match. Wayland's
+        // canonical output names never contain whitespace.
+        let bare_name = self
             .outputs
             .get_monitor_name(id)
+            .and_then(|s| s.split_whitespace().next());
+
+        let inner: Element<'_, Message> = bare_name
             .and_then(|name| self.wallpaper_handles.get(name))
             .map(|handle| {
                 image_widget::Image::new(handle.clone())
@@ -1052,7 +1078,14 @@ impl App {
                     .height(Length::Fill)
                     .into()
             })
-            .unwrap_or_else(|| Row::new().into());
+            .unwrap_or_else(|| {
+                if let Some(name) = bare_name {
+                    log::info!("wallpaper_view: no handle for {} (handles: {:?})",
+                        name,
+                        self.wallpaper_handles.keys().collect::<Vec<_>>());
+                }
+                Row::new().into()
+            });
 
         container(inner)
             .width(Length::Fill)
