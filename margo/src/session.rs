@@ -40,6 +40,32 @@ pub struct SessionSnapshot {
     pub version: u32,
     pub captured_at: String,
     pub monitors: Vec<MonitorSnapshot>,
+    /// Per-`app_id` scratchpad state for clients currently parked in
+    /// a scratchpad. On load we walk live clients matching by
+    /// `app_id` and re-flag them; clients that aren't open yet at
+    /// load time are silently skipped (their spawn line lives in
+    /// user space, see §0 caveats). Default empty so a snapshot
+    /// produced before this field landed deserialises cleanly.
+    #[serde(default)]
+    pub scratchpads: Vec<ScratchpadEntry>,
+}
+
+/// One client's scratchpad state at capture time. We deliberately
+/// don't record window geometry — the next show of the scratchpad
+/// re-runs the same toggle-named-scratchpad path the user's binds
+/// fire, which already produces the right position.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScratchpadEntry {
+    /// `app_id` of the client. Match key on load.
+    pub app_id: String,
+    /// Was the scratchpad visible (drawn on top) at capture time?
+    /// `false` ⇒ parked off-screen, awaiting a toggle.
+    pub visible: bool,
+    /// Was this a named-scratchpad slot (`toggle_named_scratchpad`)
+    /// or a plain `toggle_scratchpad` window? Distinguishing matters
+    /// for the loader: named slots restore both the "is in
+    /// scratchpad" flag AND the "is named" flag.
+    pub named: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -112,10 +138,21 @@ impl SessionSnapshot {
                 },
             })
             .collect();
+        let scratchpads = state
+            .clients
+            .iter()
+            .filter(|c| c.is_in_scratchpad && !c.app_id.is_empty())
+            .map(|c| ScratchpadEntry {
+                app_id: c.app_id.clone(),
+                visible: c.is_scratchpad_show,
+                named: c.is_named_scratchpad,
+            })
+            .collect();
         Self {
             version: CURRENT_VERSION,
             captured_at,
             monitors,
+            scratchpads,
         }
     }
 }
@@ -214,6 +251,45 @@ pub fn apply_to_state(state: &mut MargoState, snap: &SessionSnapshot) -> usize {
         applied += 1;
     }
 
+    // Scratchpad restore. Walk the saved entries and re-flag any live
+    // client whose `app_id` matches. Apps that aren't open yet at
+    // load time are silently skipped — the user's spawn line (an
+    // exec-once, a tag rule, a script) will re-create them, and on
+    // first map the windowrule pipeline can put them back in the
+    // scratchpad via the matching `is_named_scratchpad` rule. So the
+    // session restore is best-effort: anything currently running
+    // goes back where it was; anything that the session has yet to
+    // launch will land at the right place on its own through the
+    // usual rule path.
+    if !snap.scratchpads.is_empty() {
+        let mut scratchpad_restored = 0;
+        // Build app_id → entry lookup once so the inner loop is O(n_clients)
+        // not O(n_clients × n_entries).
+        let entries: std::collections::HashMap<&str, &ScratchpadEntry> = snap
+            .scratchpads
+            .iter()
+            .map(|e| (e.app_id.as_str(), e))
+            .collect();
+        for client in state.clients.iter_mut() {
+            if client.is_in_scratchpad {
+                continue;
+            }
+            if let Some(entry) = entries.get(client.app_id.as_str()) {
+                client.is_in_scratchpad = true;
+                client.is_scratchpad_show = entry.visible;
+                client.is_named_scratchpad = entry.named;
+                scratchpad_restored += 1;
+            }
+        }
+        if scratchpad_restored > 0 {
+            tracing::info!(
+                target: "session",
+                count = scratchpad_restored,
+                "restored scratchpad state"
+            );
+        }
+    }
+
     if applied > 0 {
         state.arrange_all();
         state.request_repaint();
@@ -243,6 +319,18 @@ mod tests {
         let snap = SessionSnapshot {
             version: CURRENT_VERSION,
             captured_at: "2026-05-10T12:34:56Z".to_string(),
+            scratchpads: vec![
+                ScratchpadEntry {
+                    app_id: "dropdown-terminal".to_string(),
+                    visible: false,
+                    named: true,
+                },
+                ScratchpadEntry {
+                    app_id: "clipse".to_string(),
+                    visible: true,
+                    named: true,
+                },
+            ],
             monitors: vec![MonitorSnapshot {
                 name: "DP-1".to_string(),
                 seltags: 0,
@@ -268,6 +356,21 @@ mod tests {
         assert_eq!(back.monitors[0].name, "DP-1");
         assert_eq!(back.monitors[0].pertag.ltidxs[1], "scroller");
         assert!((back.monitors[0].pertag.mfacts[1] - 0.6).abs() < 1e-6);
+        assert_eq!(back.scratchpads.len(), 2);
+        assert_eq!(back.scratchpads[0].app_id, "dropdown-terminal");
+        assert!(!back.scratchpads[0].visible);
+        assert!(back.scratchpads[0].named);
+        assert!(back.scratchpads[1].visible);
+    }
+
+    #[test]
+    fn pre_scratchpad_snapshot_deserializes_with_empty_vec() {
+        // A snapshot produced before this field landed must still
+        // parse — the field is `#[serde(default)]` so the absence in
+        // the JSON gets an empty `Vec`.
+        let old = r#"{"version":1,"captured_at":"x","monitors":[]}"#;
+        let snap: SessionSnapshot = serde_json::from_str(old).unwrap();
+        assert!(snap.scratchpads.is_empty());
     }
 
     #[test]
