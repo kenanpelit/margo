@@ -152,7 +152,9 @@ pub async fn run_listener(
     // Send one snapshot immediately so the bar isn't blank during
     // the first idle period (state.json may not change for several
     // seconds in steady state).
+    let mut last_state: Option<CompositorState> = None;
     if let Ok(state) = read_state(&path).await {
+        last_state = Some(state.clone());
         let svc = CompositorService { state };
         let _ = tx.send(ServiceEvent::Init(svc));
     }
@@ -167,17 +169,28 @@ pub async fn run_listener(
         if name != "state.json" {
             continue;
         }
-        // Debounce: margo writes the file on every focus/tag/border
-        // tick. inotify will deliver an event per write; collapse
-        // bursts within 50 ms into one broadcast to avoid spamming
-        // the UI thread when the user holds a key.
+        // Debounce: margo writes the file on every focus / tag /
+        // border tick *and* every twilight gamma step (~1 Hz when
+        // animating). inotify delivers one event per write; collapse
+        // bursts within 100 ms into one broadcast so the iced bar
+        // doesn't re-render at write-rate.
         if let Ok(elapsed) = last_emit.elapsed() {
-            if elapsed < Duration::from_millis(50) {
-                sleep(Duration::from_millis(50) - elapsed).await;
+            if elapsed < Duration::from_millis(100) {
+                sleep(Duration::from_millis(100) - elapsed).await;
             }
         }
         match read_state(&path).await {
             Ok(state) => {
+                // Diff against the last broadcast: state.json carries
+                // fields mshell doesn't render (twilight gamma, focus
+                // history, scanout flags), so most writes produce an
+                // identical `CompositorState`. Skipping no-op events
+                // keeps the bar from flickering on every margo tick.
+                if last_state.as_ref() == Some(&state) {
+                    last_emit = SystemTime::now();
+                    continue;
+                }
+                last_state = Some(state.clone());
                 let _ = tx.send(ServiceEvent::Update(CompositorEvent::StateChanged(
                     Box::new(state),
                 )));

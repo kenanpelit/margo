@@ -37,7 +37,7 @@ pub struct ActiveWindow {
     pub address: String,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct CompositorState {
     pub workspaces: Vec<CompositorWorkspace>,
     pub monitors: Vec<CompositorMonitor>,
