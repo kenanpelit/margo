@@ -140,18 +140,58 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
         }
         "reload" | "reload_config" => match state.reload_config() {
             Ok(()) => {
-                tracing::info!("config reloaded");
-                let _ = crate::utils::spawn([
-                    "notify-send",
-                    "-a",
-                    "margo",
-                    "-i",
-                    "preferences-system",
-                    "-t",
-                    "2500",
-                    "Margo",
-                    "Config reloaded ✓",
-                ]);
+                // Reload succeeded — but warnings from the validator
+                // pass survive into `last_reload_diagnostics` (the
+                // compositor only refused to apply on *errors*).
+                // Surface them so the user knows the reload technically
+                // worked but with N typos / orphan keys silently
+                // defaulted. Body text routes the user to `mctl
+                // config-errors` for the full list.
+                let warn_count = state
+                    .last_reload_diagnostics
+                    .iter()
+                    .filter(|d| {
+                        matches!(
+                            d.severity,
+                            margo_config::diagnostics::Severity::Warning,
+                        )
+                    })
+                    .count();
+                if warn_count > 0 {
+                    tracing::info!(
+                        "config reloaded with {warn_count} warning(s)"
+                    );
+                    let body = format!(
+                        "Reload OK but {warn_count} warning{} — run `mctl config-errors`",
+                        if warn_count == 1 { "" } else { "s" }
+                    );
+                    let _ = crate::utils::spawn([
+                        "notify-send",
+                        "-a",
+                        "margo",
+                        "-i",
+                        "dialog-warning",
+                        "-u",
+                        "normal",
+                        "-t",
+                        "5000",
+                        "Margo: config reloaded with warnings",
+                        body.as_str(),
+                    ]);
+                } else {
+                    tracing::info!("config reloaded");
+                    let _ = crate::utils::spawn([
+                        "notify-send",
+                        "-a",
+                        "margo",
+                        "-i",
+                        "preferences-system",
+                        "-t",
+                        "2500",
+                        "Margo",
+                        "Config reloaded ✓",
+                    ]);
+                }
             }
             Err(e) => {
                 tracing::error!("reload config: {e:?}");
