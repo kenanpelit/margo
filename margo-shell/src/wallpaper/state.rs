@@ -3,8 +3,9 @@
 //! Owns a Wayland connection, binds `wl_compositor`, `wl_shm`,
 //! `wlr_layer_shell_v1`, and `wl_output`. For each named output it
 //! creates a Background-layer surface, waits for the compositor's
-//! configure event, then on every `Command::Set` decodes the image,
-//! writes ARGB8888 into an `wl_shm` pool, and attach/commits.
+//! configure event, then on every `Command::Set` decodes the image
+//! (or paints a solid fallback colour when `path = None`), writes
+//! ARGB8888 into an `wl_shm` pool, and attach/commits.
 
 use std::path::PathBuf;
 use std::sync::mpsc;
@@ -40,6 +41,7 @@ use smithay_client_toolkit::{
 };
 
 use super::Command;
+use crate::config::WallpaperFit;
 
 pub fn run(rx: mpsc::Receiver<Command>) -> Result<()> {
     let conn = Connection::connect_to_env().context("connect to Wayland")?;
@@ -51,8 +53,8 @@ pub fn run(rx: mpsc::Receiver<Command>) -> Result<()> {
         EventLoop::try_new().context("calloop EventLoop")?;
     let loop_handle = event_loop.handle();
 
-    // Bridge the mpsc::Receiver into a calloop::channel so the
-    // event loop wakes both for Wayland events and incoming commands.
+    // Bridge std::mpsc → calloop::channel so a single event loop
+    // wakes on both Wayland events and incoming commands.
     let (cmd_tx, cmd_rx) = channel::channel::<Command>();
     std::thread::Builder::new()
         .name("mshell-wallpaper-bridge".to_owned())
@@ -111,28 +113,34 @@ pub fn run(rx: mpsc::Receiver<Command>) -> Result<()> {
 struct OutputEntry {
     wl_output: WlOutput,
     name: Option<String>,
-    /// Output's logical size (set from `OutputHandler::update_output`
-    /// once we see the wl_output `geometry`/`mode`/`scale` events
-    /// settle into a `done`).
+    /// Output's logical size — useful as a pre-configure fallback
+    /// so the layer surface gets created with reasonable dimensions
+    /// before the compositor's first configure event.
     logical_size: Option<(u32, u32)>,
     surface: Option<LayerSurface>,
     /// Reusable shm pool sized for the current surface dimensions.
     pool: Option<SlotPool>,
-    /// Last layered configure (committed size) — when a new image
-    /// comes in we render into a buffer of this exact size.
+    /// Last layered configure — when a new image comes in we
+    /// render into a buffer of this exact size.
     configured_size: Option<(u32, u32)>,
-    /// Path the user *wants* on this output. May arrive before
-    /// `configured_size` is known; in that case we defer the render
-    /// until the configure ack lands.
-    desired_path: Option<PathBuf>,
-    /// Path actually committed in the current buffer, so we skip
-    /// repeat decodes for the same `Command::Set`.
-    rendered_path: Option<PathBuf>,
+    /// Pending render request. May arrive before `configured_size`
+    /// is known; in that case we defer the render until the
+    /// configure ack lands.
+    desired: Option<RenderRequest>,
+    /// Last committed render so we skip duplicate work.
+    rendered: Option<RenderRequest>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct RenderRequest {
+    /// `None` → paint a solid `fallback_color` buffer (also the
+    /// recovery path for missing-file / decode-error).
+    path: Option<PathBuf>,
+    fit: WallpaperFit,
+    fallback_color: [u8; 3],
 }
 
 impl OutputEntry {
-    /// Whether the renderable surface is fully ready (layer surface
-    /// created + first configure done).
     fn ready(&self) -> bool {
         self.surface.is_some() && self.configured_size.is_some()
     }
@@ -158,23 +166,31 @@ pub struct State {
 impl State {
     fn handle_command(&mut self, cmd: Command) {
         match cmd {
-            Command::Set { output_name, path } => {
+            Command::Set {
+                output_name,
+                path,
+                fit,
+                fallback_color,
+            } => {
                 log::info!(
-                    "wallpaper renderer: set output={} path={}",
+                    "wallpaper renderer: set output={} path={} fit={:?}",
                     output_name,
-                    path.display()
+                    path.as_ref()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_else(|| "<solid>".into()),
+                    fit
                 );
                 if let Some(entry) = self
                     .outputs
                     .iter_mut()
                     .find(|o| o.name.as_deref() == Some(&output_name))
                 {
-                    entry.desired_path = Some(path);
+                    entry.desired = Some(RenderRequest {
+                        path,
+                        fit,
+                        fallback_color,
+                    });
                     if entry.surface.is_none() {
-                        // Try to create the surface now — needs the
-                        // output to have its name + size set; if not
-                        // ready yet, the next update_output() call
-                        // will retry.
                         Self::try_create_surface(
                             &self.layer_shell,
                             &self.compositor_state,
@@ -224,9 +240,6 @@ impl State {
         layer.set_anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT);
         layer.set_exclusive_zone(-1);
         layer.set_keyboard_interactivity(KeyboardInteractivity::None);
-        // Initial size hint — the compositor's configure will give
-        // us the real one. Use the output's logical size if known,
-        // otherwise (0, 0) tells the compositor to size us itself.
         let (w, h) = entry.logical_size.unwrap_or((0, 0));
         layer.set_size(w, h);
         layer.commit();
@@ -238,59 +251,51 @@ impl State {
         if !entry.ready() {
             return;
         }
-        let Some(path) = entry.desired_path.clone() else {
+        let Some(req) = entry.desired.clone() else {
             return;
         };
-        if entry.rendered_path.as_ref() == Some(&path) {
-            return; // already showing this image
+        if entry.rendered.as_ref() == Some(&req) {
+            return;
         }
         let (w, h) = entry.configured_size.expect("ready() guards this");
         if w == 0 || h == 0 {
             return;
         }
-        if let Err(e) = paint_image(shm, entry, &path, w, h) {
+        if let Err(e) = paint(shm, entry, &req, w, h) {
             log::warn!(
-                "wallpaper renderer: paint failed for {} on {}: {e:#}",
-                path.display(),
-                entry.name.as_deref().unwrap_or("?")
+                "wallpaper renderer: paint failed on {} req={:?}: {e:#}",
+                entry.name.as_deref().unwrap_or("?"),
+                req
             );
+            // On failure fall back to a solid colour buffer so the
+            // user doesn't stare at a black/transparent surface.
+            let fallback_req = RenderRequest {
+                path: None,
+                fit: req.fit,
+                fallback_color: req.fallback_color,
+            };
+            if let Err(e2) = paint(shm, entry, &fallback_req, w, h) {
+                log::error!(
+                    "wallpaper renderer: solid fallback also failed on {}: {e2:#}",
+                    entry.name.as_deref().unwrap_or("?")
+                );
+            } else {
+                entry.rendered = Some(fallback_req);
+            }
         } else {
-            entry.rendered_path = Some(path);
+            entry.rendered = Some(req);
         }
     }
 }
 
-/// Decode the image, scale-fit to (w, h) with Cover semantics, blit
-/// into an shm-backed `wl_buffer`, attach + damage + commit.
-fn paint_image(
-    shm: &Shm,
-    entry: &mut OutputEntry,
-    path: &std::path::Path,
-    w: u32,
-    h: u32,
-) -> Result<()> {
-    use image::{imageops::FilterType, GenericImageView};
-
-    let bytes = std::fs::read(path).with_context(|| format!("read {}", path.display()))?;
-    let img = image::load_from_memory(&bytes)
-        .with_context(|| format!("decode {}", path.display()))?;
-    let (iw, ih) = img.dimensions();
-
-    // Cover fit: scale so the image fully covers the output rect,
-    // then centre-crop. Matches the default for shell wallpapers.
-    let scale = (w as f32 / iw as f32).max(h as f32 / ih as f32);
-    let sw = ((iw as f32 * scale).ceil() as u32).max(w);
-    let sh = ((ih as f32 * scale).ceil() as u32).max(h);
-    let scaled = img.resize_exact(sw, sh, FilterType::Triangle);
-    let off_x = (sw - w) / 2;
-    let off_y = (sh - h) / 2;
-    let cropped = scaled.crop_imm(off_x, off_y, w, h).to_rgba8();
-
-    // Pool / buffer. wl_shm Argb8888 is little-endian B G R A in
-    // memory; the `image` crate hands us RGBA so we swizzle.
+/// Single render entry-point — handles image and solid-colour
+/// paths. Returns Ok only when a buffer was successfully attached
+/// and committed.
+fn paint(shm: &Shm, entry: &mut OutputEntry, req: &RenderRequest, w: u32, h: u32) -> Result<()> {
     let stride = (w * 4) as i32;
     let pool_size = (stride as u32 * h) as usize;
 
+    // (Re)allocate the pool when the surface is resized.
     let pool = match entry.pool.as_mut() {
         Some(p) if p.len() >= pool_size => p,
         _ => {
@@ -306,13 +311,29 @@ fn paint_image(
         .create_buffer(w as i32, h as i32, stride, Format::Argb8888)
         .context("SlotPool::create_buffer")?;
 
-    debug_assert_eq!(canvas.len(), cropped.as_raw().len());
-    // RGBA → BGRA swap (Argb8888 wire is BGRA in little-endian).
-    for (dst, src) in canvas.chunks_exact_mut(4).zip(cropped.as_raw().chunks_exact(4)) {
-        dst[0] = src[2]; // B
-        dst[1] = src[1]; // G
-        dst[2] = src[0]; // R
-        dst[3] = src[3]; // A
+    let [r, g, b] = req.fallback_color;
+    // Fill the canvas with the solid fallback first. wl_shm
+    // Argb8888 wire is little-endian BGRA in memory.
+    for px in canvas.chunks_exact_mut(4) {
+        px[0] = b;
+        px[1] = g;
+        px[2] = r;
+        px[3] = 0xff;
+    }
+
+    let mut painted_image = false;
+    if let Some(path) = req.path.as_ref() {
+        match render_image(canvas, path, req.fit, w, h) {
+            Ok(()) => painted_image = true,
+            Err(e) => {
+                log::warn!(
+                    "wallpaper renderer: image render failed ({}): {e:#} — falling back to solid",
+                    path.display()
+                );
+                // canvas still holds the solid fallback we wrote
+                // above, so the buffer is well-defined.
+            }
+        }
     }
 
     let surface = entry.surface.as_ref().unwrap();
@@ -322,14 +343,112 @@ fn paint_image(
         .context("attach buffer to surface")?;
     wl_surface.damage_buffer(0, 0, w as i32, h as i32);
     wl_surface.commit();
+
     log::info!(
-        "wallpaper renderer: painted {} ({}x{}) on {}",
-        path.display(),
+        "wallpaper renderer: {} on {} ({}x{})",
+        if painted_image {
+            format!("painted {}", req.path.as_ref().unwrap().display())
+        } else {
+            format!("painted solid #{:02x}{:02x}{:02x}", r, g, b)
+        },
+        entry.name.as_deref().unwrap_or("?"),
         w,
-        h,
-        entry.name.as_deref().unwrap_or("?")
+        h
     );
     Ok(())
+}
+
+/// Decode an image and blit it into `canvas` with the requested
+/// fit mode. `canvas` is `(w * h * 4)` BGRA bytes, already
+/// initialised with the fallback colour so letterboxed modes get
+/// proper backing pixels for free.
+fn render_image(
+    canvas: &mut [u8],
+    path: &std::path::Path,
+    fit: WallpaperFit,
+    w: u32,
+    h: u32,
+) -> Result<()> {
+    use image::{imageops::FilterType, GenericImageView};
+
+    let bytes = std::fs::read(path).with_context(|| format!("read {}", path.display()))?;
+    let img = image::load_from_memory(&bytes)
+        .with_context(|| format!("decode {}", path.display()))?;
+    let (iw, ih) = img.dimensions();
+
+    let (target_w, target_h, off_x, off_y) = match fit {
+        WallpaperFit::Cover => {
+            // Scale so the image fully covers the output; centre-
+            // crop the overflow.
+            let scale = (w as f32 / iw as f32).max(h as f32 / ih as f32);
+            let sw = ((iw as f32 * scale).ceil() as u32).max(w);
+            let sh = ((ih as f32 * scale).ceil() as u32).max(h);
+            let scaled = img.resize_exact(sw, sh, FilterType::Triangle);
+            let off_x = (sw - w) / 2;
+            let off_y = (sh - h) / 2;
+            let cropped = scaled.crop_imm(off_x, off_y, w, h).to_rgba8();
+            blit_centered(canvas, &cropped, w, h, 0, 0);
+            return Ok(());
+        }
+        WallpaperFit::Contain => {
+            // Scale so the image fits inside; letterbox with
+            // fallback colour.
+            let scale = (w as f32 / iw as f32).min(h as f32 / ih as f32);
+            let sw = ((iw as f32 * scale).round() as u32).max(1);
+            let sh = ((ih as f32 * scale).round() as u32).max(1);
+            let scaled = img.resize_exact(sw, sh, FilterType::Triangle).to_rgba8();
+            let off_x = (w.saturating_sub(sw)) / 2;
+            let off_y = (h.saturating_sub(sh)) / 2;
+            blit_centered(canvas, &scaled, w, h, off_x as i32, off_y as i32);
+            return Ok(());
+        }
+        WallpaperFit::Fill => (w, h, 0, 0),
+        WallpaperFit::None => {
+            // 1:1, centred (or top-left if image is bigger than
+            // surface — the simple crop_imm path).
+            let off_x = (w.saturating_sub(iw)) / 2;
+            let off_y = (h.saturating_sub(ih)) / 2;
+            let cw = iw.min(w);
+            let ch = ih.min(h);
+            let crop_x = (iw.saturating_sub(w)) / 2;
+            let crop_y = (ih.saturating_sub(h)) / 2;
+            let cropped = img.crop_imm(crop_x, crop_y, cw, ch).to_rgba8();
+            blit_centered(canvas, &cropped, w, h, off_x as i32, off_y as i32);
+            return Ok(());
+        }
+    };
+
+    let _ = (target_w, target_h, off_x, off_y);
+    // Fill path — exact resize, full-surface blit.
+    let scaled = img.resize_exact(w, h, FilterType::Triangle).to_rgba8();
+    blit_centered(canvas, &scaled, w, h, 0, 0);
+    Ok(())
+}
+
+/// Copy an RGBA `src` image into the BGRA `canvas` at offset
+/// `(off_x, off_y)`. Pixels outside the canvas are clipped. Source
+/// must be `image::RgbaImage` (raw `width * height * 4` RGBA bytes).
+fn blit_centered(canvas: &mut [u8], src: &image::RgbaImage, w: u32, h: u32, off_x: i32, off_y: i32) {
+    let (sw, sh) = src.dimensions();
+    let src_raw = src.as_raw();
+    for sy in 0..sh as i32 {
+        let dy = sy + off_y;
+        if dy < 0 || dy >= h as i32 {
+            continue;
+        }
+        for sx in 0..sw as i32 {
+            let dx = sx + off_x;
+            if dx < 0 || dx >= w as i32 {
+                continue;
+            }
+            let s_idx = (sy as usize * sw as usize + sx as usize) * 4;
+            let d_idx = (dy as usize * w as usize + dx as usize) * 4;
+            canvas[d_idx] = src_raw[s_idx + 2]; // B
+            canvas[d_idx + 1] = src_raw[s_idx + 1]; // G
+            canvas[d_idx + 2] = src_raw[s_idx]; // R
+            canvas[d_idx + 3] = src_raw[s_idx + 3]; // A
+        }
+    }
 }
 
 // ── smithay-client-toolkit handler impls ──────────────────────────────────
@@ -410,8 +529,8 @@ impl OutputHandler for State {
             surface: None,
             pool: None,
             configured_size: None,
-            desired_path: None,
-            rendered_path: None,
+            desired: None,
+            rendered: None,
         };
         Self::try_create_surface(&self.layer_shell, &self.compositor_state, qh, &mut entry);
         self.outputs.push(entry);
@@ -474,8 +593,6 @@ impl LayerShellHandler for State {
         else {
             return;
         };
-        // wlr-layer-shell ack happens inside smithay-client-toolkit's
-        // LayerSurface; we just record the size and (re-)render.
         let (w, h) = (
             if w == 0 {
                 entry.logical_size.map(|(w, _)| w).unwrap_or(0)
@@ -491,11 +608,9 @@ impl LayerShellHandler for State {
         if w == 0 || h == 0 {
             return;
         }
-        // Resize invalidates the pool — drop it so the next paint
-        // allocates a correctly-sized one.
         if entry.configured_size != Some((w, h)) {
             entry.pool = None;
-            entry.rendered_path = None;
+            entry.rendered = None;
         }
         entry.configured_size = Some((w, h));
         log::info!(

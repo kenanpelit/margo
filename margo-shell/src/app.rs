@@ -134,6 +134,20 @@ pub enum Message {
 
 /// Pick one image from the pool. `Random` mode draws uniformly;
 /// `Sequential` advances `cursor` modulo the pool size.
+/// `#RRGGBB` → `[r, g, b]`. Returns None on parse failure so the
+/// caller can apply a hard-coded fallback.
+fn parse_hex_rgb(s: &str) -> Option<[u8; 3]> {
+    let s = s.strip_prefix('#').unwrap_or(s);
+    if s.len() != 6 {
+        return None;
+    }
+    Some([
+        u8::from_str_radix(&s[0..2], 16).ok()?,
+        u8::from_str_radix(&s[2..4], 16).ok()?,
+        u8::from_str_radix(&s[4..6], 16).ok()?,
+    ])
+}
+
 fn pick_from_pool(
     pool: &[std::path::PathBuf],
     cursor: &mut usize,
@@ -689,6 +703,12 @@ impl App {
             },
             Message::None => Task::none(),
             Message::WallpaperRefresh { wallpapers, active_tags } => {
+                // [wallpaper].enabled = false → skip everything;
+                // user wants to run swaybg/swww or no wallpaper at
+                // all.
+                if !self.general_config.wallpaper.enabled {
+                    return Task::none();
+                }
                 info!(
                     "WallpaperRefresh: {} wallpapers, {} active tags",
                     wallpapers.len(),
@@ -699,18 +719,22 @@ impl App {
                 //   2. [wallpaper.tags] in mshell.toml → tag-based
                 //   3. state.json wallpapers map (margo fallback)
                 let map = self.resolve_wallpaper_map(wallpapers, &active_tags);
+                let fit = self.general_config.wallpaper.fit;
+                let fallback = parse_hex_rgb(&self.general_config.wallpaper.fallback_color)
+                    .unwrap_or([0x1e, 0x1e, 0x2e]);
                 for (output, path) in map.iter() {
-                    if path.is_empty() {
-                        continue;
-                    }
                     if self.wallpaper_last_path.get(output) == Some(path) {
                         continue;
                     }
                     info!("WallpaperRefresh: dispatch output={} path={}", output, path);
                     self.wallpaper_last_path
                         .insert(output.clone(), path.clone());
-                    self.wallpaper_renderer
-                        .set(output.clone(), std::path::PathBuf::from(path));
+                    let path_arg = if path.is_empty() {
+                        None
+                    } else {
+                        Some(std::path::PathBuf::from(path))
+                    };
+                    self.wallpaper_renderer.set(output.clone(), path_arg, fit, fallback);
                 }
                 // Drop entries for outputs no longer in the map
                 // (unplugged) so a re-add re-dispatches.

@@ -25,9 +25,20 @@ use std::thread;
 
 #[derive(Debug, Clone)]
 pub enum Command {
-    /// Set the wallpaper image for a specific output. `output_name`
-    /// is the bare Wayland output name (`eDP-1`, `DP-3`, …).
-    Set { output_name: String, path: PathBuf },
+    /// Set / clear the wallpaper for a specific output.
+    ///
+    /// `output_name` is the bare Wayland output name
+    /// (`eDP-1`, `DP-3`, …). `path = None` (or a path that can't
+    /// be read) renders a solid `fallback_color` buffer instead.
+    Set {
+        output_name: String,
+        path: Option<PathBuf>,
+        fit: crate::config::WallpaperFit,
+        /// Solid RGB shown behind the image (visible with `Contain`/
+        /// `None` letterboxing) or as the whole buffer when `path`
+        /// is `None`.
+        fallback_color: [u8; 3],
+    },
     /// Shut the renderer down — destroys all surfaces and exits the
     /// thread. mshell rarely needs to call this (margo session
     /// teardown handles the process exit) but it's exposed for
@@ -60,12 +71,21 @@ impl WallpaperRenderer {
         Self { tx }
     }
 
-    /// Queue a wallpaper change for an output. Drops silently if
-    /// the renderer thread has exited.
-    pub fn set(&self, output_name: impl Into<String>, path: impl Into<PathBuf>) {
+    /// Queue a wallpaper change for an output. `path = None` paints
+    /// a solid `fallback_color` buffer (also used when decode/read
+    /// fails). Drops silently if the renderer thread has exited.
+    pub fn set(
+        &self,
+        output_name: impl Into<String>,
+        path: Option<PathBuf>,
+        fit: crate::config::WallpaperFit,
+        fallback_color: [u8; 3],
+    ) {
         let _ = self.tx.send(Command::Set {
             output_name: output_name.into(),
-            path: path.into(),
+            path,
+            fit,
+            fallback_color,
         });
     }
 }

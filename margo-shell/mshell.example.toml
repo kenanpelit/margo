@@ -30,17 +30,25 @@ enabled = true
 timeout = 1500
 
 # ══════════════════════════════════════════════════════════════════════════
-#  Wallpaper — margo'nun per-tag wallpaper konfigürasyonunu render et
-#  Margo `~/.config/margo/config.conf` içinde:
-#      tagrule = id:1,wallpaper:/path/to/img1.jpg
-#      tagrule = id:2,wallpaper:/path/to/img2.jpg
-#  state.json'a yansır; mshell inotify ile yakalar, Background layer
-#  surface'inde gösterir. Tag değiştiğinde wallpaper otomatik değişir.
+#  Wallpaper — mshell-içi renderer (ayrı Wayland thread + wl_shm)
+#
+#  Mimari:
+#    • mshell ayrı bir thread'de kendi wayland-client connection'ı kurar
+#    • Her output için `mshell-wallpaper-{name}` namespace'li bir
+#      wlr_layer_shell_v1 Background surface açar
+#    • `image` crate ile JPEG/PNG/WebP decode → ARGB8888 wl_shm buffer
+#    • surface.attach + damage + commit ile doğrudan compositor'a çizer
+#    • iced/wgpu pipeline TAMAMEN bypass — wpaperd / pandora pattern'ı
+#
+#  Precedence (en güçlü kazanır):
+#    1. [wallpaper.shuffle].enabled  → klasörden rastgele
+#    2. [wallpaper.tags][N]          → mshell.toml'da tag-bazlı
+#    3. state.json outputs[i].wallpaper → margo tagrule (geriye uyum)
 # ══════════════════════════════════════════════════════════════════════════
 [wallpaper]
-enabled        = true       # false = mshell wallpaper çizmez (swaybg/swww kullan)
+enabled        = true       # false = mshell hiç wallpaper çizmez (swaybg/swww kullan)
 fit            = "Cover"    # "Cover" / "Contain" / "Fill" / "None"
-fallback_color = "#1e1e2e"  # path boş/yok ise bu renk gösterilir
+fallback_color = "#1e1e2e"  # solid renk: path boş, dosya yok, ya da Contain letterbox
 
 # Per-tag wallpaper assignments — mshell-owned.
 # Active tag değiştiğinde mshell otomatik olarak ilgili path'i yükler.
