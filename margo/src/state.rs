@@ -2929,30 +2929,48 @@ impl MargoState {
         std::time::Duration::from_millis(out.next_tick_ms.max(50))
     }
 
-    /// Build the LUT once and push the same ramp to every monitor.
-    /// Re-uses the `pending_gamma` channel the `wlr_gamma_control_v1`
-    /// server already feeds, so the udev frame handler picks it up
-    /// on the very next render.
+    /// Build a ramp per output (each CRTC may declare a different
+    /// `GAMMA_LUT_SIZE` — Intel Arc reports 1024, older AMD parts
+    /// often 256, virtio sometimes 4096) and push them to
+    /// `pending_gamma`. The udev frame handler picks each one up
+    /// on the very next render and hands it to `g.set_gamma`,
+    /// which validates the length against the kernel's declared
+    /// size and rejects mismatches.
     fn apply_twilight_ramp(&mut self, temp_k: u32, gamma_pct: u32) {
-        // LUT length per channel. The kernel's actual `GAMMA_LUT_SIZE`
-        // varies per CRTC; 256 is the universal lower bound and the
-        // most common value, and the udev backend resamples the
-        // table to the per-CRTC size on apply. We could query the
-        // actual size for each output but the visual difference is
-        // imperceptible — 256 entries is already 1.6× the perceptual
-        // JND on a 10-bit panel.
-        const RAMP_LEN: usize = 256;
-        let ramp = crate::twilight::gamma_lut::build_ramp(temp_k, gamma_pct, RAMP_LEN);
+        // Memo: most outputs share the same gamma_size, so cache
+        // the last build so we don't pay the LUT compute again for
+        // identical sizes within a single tick.
+        let mut last_size: u32 = 0;
+        let mut cached: Vec<u16> = Vec::new();
 
-        // Same channel-interleaved Vec is fine for every output —
-        // the consumer makes its own copy when assigning to the
-        // CRTC's `GAMMA_LUT` blob.
-        for mon in &self.monitors {
+        // Clone the outputs we need to push to up-front so we can
+        // mutate `pending_gamma` without overlapping borrows.
+        let targets: Vec<(Output, u32)> = self
+            .monitors
+            .iter()
+            .map(|m| (m.output.clone(), m.gamma_size))
+            .collect();
+
+        for (output, size) in targets {
+            // gamma_size == 0 means the output's CRTC doesn't expose
+            // GAMMA_LUT at all (winit backend, headless, certain
+            // virtual connectors). Skip — sending a ramp would just
+            // log a warning every tick.
+            if size == 0 {
+                continue;
+            }
+            if size != last_size {
+                cached = crate::twilight::gamma_lut::build_ramp(
+                    temp_k,
+                    gamma_pct,
+                    size as usize,
+                );
+                last_size = size;
+            }
             // Drop any pending entry for this output first so we
             // never queue stale ramps behind the latest one.
-            self.pending_gamma.retain(|(o, _)| o != &mon.output);
-            self.pending_gamma
-                .push((mon.output.clone(), Some(ramp.clone())));
+            self.pending_gamma.retain(|(o, _)| o != &output);
+            self.pending_gamma.push((output, Some(cached.clone())));
         }
         self.request_repaint();
     }
