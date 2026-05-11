@@ -532,7 +532,16 @@ matches mango-ext exactly:
   (`overview_dim_alpha`, default 0.6) for a spotlight feel. Both
   config-clamped, set either to 1.0 to opt out.
 * **Mouse**: click on window = activate + close; click on empty
-  area = close.
+  area = close. Pointer hover paints the focuscolor border on the
+  hovered thumbnail but does NOT touch `focus_history` (sloppy
+  focus is suppressed while overview is open). Without this guard
+  the per-monitor MRU recomputed on every motion event and the
+  grid visibly re-shuffled mid-hover.
+* **Visual grid order = cycle order.** `arrange_monitor`'s tiled
+  vec in overview comes from
+  `overview_visible_clients_for_monitor`, the same helper the
+  keyboard cycle uses. So left-to-right reading order matches the
+  alt+Tab walk regardless of `overview_cycle_order` mode.
 * **Hot corner safety guards**: `update_hot_corner` early-exits on
   `session_locked`, on an active screenshot region selector, and on
   any pointer / keyboard grab. Prevents the lock-screen leak the
@@ -545,7 +554,8 @@ matches mango-ext exactly:
 - [ ] Cold-path structured-logging migration complete (Q5)
 - [ ] At least **2 community contributors** with merged PRs (currently 1)
 - [ ] Plugin marketplace open with ≥3 community plugins
-- [x] **MangoWM-style overview shipped** (`overview(m) { grid(m); }` — single dynamic Grid over all visible clients, alt+Tab MRU cycle with focuscolor border tracking, hot corner with safety guards, 4-finger touchpad trigger). Two preceding iterations were rejected after live testing: Phase 3 "Infinite Spatial Overview" (camera/pan/zoom) and the intermediate fixed 3×3 per-tag thumbnail grid both felt non-native compared to mango-ext's one-liner.
+- [x] **MangoWM-style overview shipped** (`overview(m) { grid(m); }` — single dynamic Grid over all visible clients, alt+Tab MRU cycle with focuscolor border tracking, hot corner with safety guards, 4-finger touchpad trigger). Two preceding iterations were rejected after live testing: Phase 3 "Infinite Spatial Overview" (camera/pan/zoom) and the intermediate fixed 3×3 per-tag thumbnail grid both felt non-native compared to mango-ext's one-liner. Cycle order is now user-selectable (`overview_cycle_order = mru | tag | mixed`), the visual grid order matches the cycle order, alt+Tab supports modifier-release auto-commit (Win/GNOME muscle memory), cinematic dim + thicker focuscolor border on the selection emphasise the pick, and pointer hover no longer reshuffles the grid mid-hover.
+- [x] **Config validation with niri-style diagnostics shipped** — `margo-config::validator` module emits structured diagnostics (file, line, column, severity, code, snippet); `mctl check-config` renders them niri-style; `mctl reload` refuses to apply when errors are present (compositor stays on previous good config); `mctl config-errors` queries the running compositor (Hyprland `hyprctl configerrors` analogue); on-screen red-bordered overlay banner pinned to the active output for 10 s on a rejected reload; warnings surface through a distinct notify-send branch so they're not silently ignored. The validator's allowlist auto-tracks the parser's `OPTION_KEYS` slice, so adding a new option Just Works.
 - [ ] Phase 2 closing release: **v0.2.0** (semver minor — feature-complete in stream of work, no breaking changes)
 
 ### 15.9 Phase 2 explicitly out-of-scope
