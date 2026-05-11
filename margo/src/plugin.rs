@@ -142,7 +142,7 @@ pub fn discover() -> Vec<Plugin> {
     let entries = match std::fs::read_dir(&root) {
         Ok(e) => e,
         Err(e) => {
-            warn!("plugins: read_dir({}): {e}", root.display());
+            warn!(path = %root.display(), error = ?e, "plugins: read_dir failed");
             return Vec::new();
         }
     };
@@ -160,7 +160,7 @@ pub fn discover() -> Vec<Plugin> {
         let manifest = match parse_manifest(&manifest_path) {
             Ok(m) => m,
             Err(e) => {
-                warn!("plugins: skipping {} — {e}", dir.display());
+                warn!(plugin_dir = %dir.display(), error = ?e, "plugins: skipping (manifest parse failed)");
                 continue;
             }
         };
@@ -204,7 +204,7 @@ fn parse_manifest(path: &Path) -> anyhow::Result<PluginManifest> {
                 m.min_margo_version = Some(v.to_string());
             }
             other => {
-                info!("plugins: unknown manifest key `{other}` (ignored)");
+                info!(key = %other, "plugins: unknown manifest key (ignored)");
             }
         }
     }

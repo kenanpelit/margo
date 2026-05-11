@@ -395,14 +395,19 @@ impl KeyboardTarget<MargoState> for FocusTarget {
         keys: Vec<KeysymHandle<'_>>,
         serial: Serial,
     ) {
-        tracing::info!("FocusTarget::enter called for {:?}", self);
+        // Debug level: this fires on every sloppy-focus crossing and
+        // every overview hover sweep. INFO floods the journal in
+        // normal use; the structured `target` field lets
+        // `journalctl --output=json | jq` slice cleanly when the
+        // user actually wants to debug focus routing.
+        tracing::debug!(target = ?self, "FocusTarget::enter");
         if let Some(s) = self.inner_wl_surface() {
-            tracing::info!("FocusTarget::enter forwarding to WlSurface");
+            tracing::debug!("FocusTarget::enter forwarding to WlSurface");
             KeyboardTarget::enter(s, seat, data, keys, serial);
         }
     }
     fn leave(&self, seat: &Seat<MargoState>, data: &mut MargoState, serial: Serial) {
-        tracing::info!("FocusTarget::leave called for {:?}", self);
+        tracing::debug!(target = ?self, "FocusTarget::leave");
         if let Some(s) = self.inner_wl_surface() {
             KeyboardTarget::leave(s, seat, data, serial);
         }
@@ -1916,9 +1921,9 @@ impl MargoState {
         };
         let mode = sel.mode.subcommand();
         let cmd = format!("MARGO_REGION_GEOM='{}' mscreenshot {}", geom, mode);
-        tracing::info!("region selector confirm: {cmd}");
+        tracing::info!(cmd = %cmd, "region selector confirm");
         if let Err(e) = crate::utils::spawn_shell(&cmd) {
-            tracing::error!("spawn mscreenshot: {e}");
+            tracing::error!(error = ?e, "spawn mscreenshot failed");
         }
         self.request_repaint();
     }
@@ -1989,7 +1994,11 @@ impl MargoState {
         self.focus_first_visible_or_clear(target);
         self.publish_output_topology();
         self.write_state_file();
-        tracing::info!("disabled output {src_name} → migrated clients to {target_name}");
+        tracing::info!(
+            from = %src_name,
+            to = %target_name,
+            "disabled output: migrated clients"
+        );
     }
 
     /// Re-enable a previously soft-disabled monitor. New windows can
@@ -2006,7 +2015,7 @@ impl MargoState {
         self.arrange_monitor(mon_idx);
         self.publish_output_topology();
         self.write_state_file();
-        tracing::info!("re-enabled output {}", self.monitors[mon_idx].name);
+        tracing::info!(output = %self.monitors[mon_idx].name, "re-enabled output");
     }
 
     /// Notify xdp-gnome's window picker that the toplevel set changed
@@ -2069,7 +2078,7 @@ impl MargoState {
         self.screencopy_state.remove_output(output);
 
         if let Some(pos) = self.monitors.iter().position(|m| m.output == *output) {
-            tracing::info!("removing monitor: {}", self.monitors[pos].name);
+            tracing::info!(monitor = %self.monitors[pos].name, "removing monitor");
             self.monitors.remove(pos);
         }
         self.space.unmap_output(output);
@@ -2144,7 +2153,7 @@ impl MargoState {
     pub fn write_state_file(&self) {
         let path = state_file_path();
         if let Err(err) = self.write_state_file_inner(&path) {
-            tracing::debug!("write_state_file({}): {err}", path.display());
+            tracing::debug!(path = %path.display(), error = ?err, "write_state_file failed");
         }
     }
 
@@ -2563,12 +2572,12 @@ impl MargoState {
         let (target, size, refresh, alpha) = match target {
             StreamTargetId::Output { name } => {
                 let Some(mon) = self.monitors.iter().find(|m| m.name == name) else {
-                    tracing::warn!("StartCast: requested output {name} is missing");
+                    tracing::warn!(output = %name, "StartCast: requested output is missing");
                     self.stop_cast(session_id);
                     return;
                 };
                 let Some(mode) = mon.output.current_mode() else {
-                    tracing::warn!("StartCast: output {name} has no current mode");
+                    tracing::warn!(output = %name, "StartCast: output has no current mode");
                     self.stop_cast(session_id);
                     return;
                 };
@@ -2598,13 +2607,13 @@ impl MargoState {
                     .iter()
                     .find(|c| std::ptr::addr_of!(**c) as u64 == id)
                 else {
-                    tracing::warn!("StartCast: requested window {id} is missing");
+                    tracing::warn!(window_id = %id, "StartCast: requested window is missing");
                     self.stop_cast(session_id);
                     return;
                 };
                 let geom = client.geom;
                 if geom.width <= 0 || geom.height <= 0 {
-                    tracing::warn!("StartCast: window {id} has degenerate geometry");
+                    tracing::warn!(window_id = %id, "StartCast: window has degenerate geometry");
                     self.stop_cast(session_id);
                     return;
                 }
@@ -2646,7 +2655,7 @@ impl MargoState {
             ) {
                 Ok(pw) => casting.pipewire = Some(pw),
                 Err(err) => {
-                    tracing::warn!("StartCast: PipeWire init failed: {err:?}");
+                    tracing::warn!(error = ?err, "StartCast: PipeWire init failed");
                     self.stop_cast(session_id);
                     return;
                 }
@@ -2673,7 +2682,7 @@ impl MargoState {
                 );
             }
             Err(err) => {
-                tracing::warn!("StartCast: pw.start_cast failed: {err:?}");
+                tracing::warn!(error = ?err, "StartCast: pw.start_cast failed");
                 self.stop_cast(session_id);
             }
         }
@@ -2724,9 +2733,9 @@ impl MargoState {
             );
         }
         if self.clients.len() > 32 {
-            tracing::info!("  … and {} more (truncated)", self.clients.len() - 32);
+            tracing::info!(more = self.clients.len() - 32, "client dump truncated");
         }
-        tracing::info!("idle inhibitors: {}", self.idle_inhibitors.len());
+        tracing::info!(count = self.idle_inhibitors.len(), "idle inhibitors");
         let kbd = self.seat.get_keyboard();
         if let Some(kb) = kbd.as_ref() {
             tracing::info!(
@@ -2741,7 +2750,7 @@ impl MargoState {
             .outputs()
             .map(|o| smithay::desktop::layer_map_for_output(o).layers().count())
             .sum();
-        tracing::info!("layer surfaces (all outputs): {layer_count}");
+        tracing::info!(count = layer_count, "layer surfaces (all outputs)");
         tracing::info!("─── end debug dump ───");
     }
 
@@ -2825,7 +2834,7 @@ impl MargoState {
                 }
             }
             Err(e) => {
-                tracing::warn!("config validator could not read file: {e}");
+                tracing::warn!(error = ?e, "config validator could not read file");
                 // Fall through: let parse_config produce the canonical
                 // error so the caller's message says "I/O failure"
                 // rather than "validator missing".
@@ -5968,7 +5977,7 @@ impl MargoState {
             // next bind press will toggle it visible.
             if let Some(cmd) = spawn.filter(|s| !s.trim().is_empty()) {
                 if let Err(e) = crate::utils::spawn_shell(cmd) {
-                    tracing::error!("toggle_named_scratchpad spawn '{cmd}': {e}");
+                    tracing::error!(cmd = %cmd, error = ?e, "toggle_named_scratchpad spawn failed");
                 }
             }
             return;
@@ -6044,7 +6053,7 @@ impl MargoState {
         let Some(idx) = target else {
             if let Some(cmd) = spawn.filter(|s| !s.trim().is_empty()) {
                 if let Err(e) = crate::utils::spawn_shell(cmd) {
-                    tracing::error!("summon spawn '{cmd}': {e}");
+                    tracing::error!(cmd = %cmd, error = ?e, "summon spawn failed");
                 }
             }
             return;
@@ -6737,7 +6746,11 @@ impl MargoState {
         if !self.monitors.is_empty() {
             self.arrange_monitor(target_mon);
         }
-        tracing::info!("new x11 toplevel: {} monitor={target_mon}", self.clients.last().map(|c| c.app_id.as_str()).unwrap_or(""));
+        tracing::info!(
+            app_id = %self.clients.last().map(|c| c.app_id.as_str()).unwrap_or(""),
+            monitor = target_mon,
+            "new x11 toplevel",
+        );
         // Refresh xdp-gnome's window picker — same path the
         // Wayland finalize_initial_map handler uses.
         self.emit_windows_changed();

@@ -7,6 +7,30 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Changed
+
+- **Cold-path structured-logging migration complete (roadmap
+  Q5).** Every `tracing::info!/warn!/error!/debug!` call in
+  `state.rs` (21 sites), `dispatch/mod.rs` (10 sites),
+  `scripting.rs` (12 sites), `plugin.rs` (3 sites) now uses
+  structured fields (`field = ?value, "msg"`) rather than
+  format-string interpolation. Net wins:
+  * `journalctl -u margo --output=json | jq` slices cleanly:
+    e.g. `... | jq 'select(.fields.error)'` for every error
+    record, or `select(.fields.cmd | test("nautilus"))` for
+    every spawn of a specific command.
+  * `FocusTarget::enter` / `FocusTarget::leave` demoted from
+    INFO to DEBUG. They fire on every sloppy-focus crossing
+    and every overview hover sweep — under normal use the
+    journal was 90 %+ enter/leave noise. The `target` field
+    keeps full pretty-debug detail for users who actively
+    want to trace focus routing.
+  * Hot-path callers (`backend/udev/{frame,hotplug}`,
+    `input_handler` keybind + gesture) were already on the
+    structured pattern from earlier sprints; this commit
+    closes the gap.
+  Phase 2 success criterion §15.8 ticked.
+
 ## [0.2.1] – 2026-05-11
 
 Rust 2024 edition migration + clippy zero-warnings sweep. No

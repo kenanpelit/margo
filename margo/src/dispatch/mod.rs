@@ -45,7 +45,7 @@ use tracing::debug;
 use crate::state::MargoState;
 
 pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
-    debug!("action: {action}");
+    debug!(action = %action, "dispatch");
     match action {
         "quit" => state.should_quit = true,
         "debug_dump" | "debug-dump" | "diagnose" => state.debug_dump(),
@@ -69,7 +69,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
             let path = match crate::session::session_path() {
                 Ok(p) => p,
                 Err(e) => {
-                    tracing::error!("session_save: resolve path: {e:?}");
+                    tracing::error!(error = ?e, "session_save: resolve path");
                     return;
                 }
             };
@@ -110,7 +110,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
             let path = match crate::session::session_path() {
                 Ok(p) => p,
                 Err(e) => {
-                    tracing::error!("session_load: resolve path: {e:?}");
+                    tracing::error!(error = ?e, "session_load: resolve path");
                     return;
                 }
             };
@@ -163,7 +163,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                     ]);
                 }
                 Err(e) => {
-                    tracing::warn!("theme: {e}");
+                    tracing::warn!(error = %e, "theme preset failed");
                     let _ = crate::utils::spawn([
                         "notify-send",
                         "-a",
@@ -234,7 +234,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                 }
             }
             Err(e) => {
-                tracing::error!("reload config: {e:?}");
+                tracing::error!(error = ?e, "reload config failed");
                 let _ = crate::utils::spawn([
                     "notify-send",
                     "-a",
@@ -253,7 +253,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
         "spawn" => {
             if let Some(cmd) = &arg.v {
                 if let Err(e) = crate::utils::spawn_shell(cmd) {
-                    tracing::error!("spawn '{cmd}': {e}");
+                    tracing::error!(cmd = %cmd, error = ?e, "spawn failed");
                 }
             }
         }
@@ -269,14 +269,14 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
             let g = if arg.i2 > 0 { arg.i2 as u32 } else { 100 };
             state.twilight.set_preview(k, g);
             state.force_tick_twilight();
-            tracing::info!("twilight preview: {k}K @ {g}%");
+            tracing::info!(temp_k = k, gamma_pct = g, "twilight preview");
         }
         "twilight_test" => {
             // arg.i = duration seconds (clamped 1–60 in the CLI)
             let dur_s = if arg.i > 0 { arg.i as u64 } else { 5 };
             state.twilight.start_test(dur_s.saturating_mul(1000));
             state.force_tick_twilight();
-            tracing::info!("twilight test: sweeping day→night over {dur_s}s");
+            tracing::info!(duration_s = dur_s, "twilight test: sweeping day→night");
         }
         "twilight_reset" => {
             state.twilight.reset();
@@ -319,7 +319,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                     if applied.is_some() {
                         state.twilight.reset();
                         state.force_tick_twilight();
-                        tracing::info!("twilight_set {field}={val}");
+                        tracing::info!(field = %field, value = %val, "twilight_set");
                     } else {
                         tracing::warn!(
                             "twilight_set: unknown field or bad value: {spec:?}"
@@ -359,12 +359,12 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                 _ => "screen",
             };
             if let Err(e) = crate::utils::spawn_shell(&format!("mscreenshot {}", mode)) {
-                tracing::error!("spawn mscreenshot: {e}");
+                tracing::error!(error = ?e, "spawn mscreenshot failed");
             }
         }
         "screenshot-window" | "screenshot_window" => {
             if let Err(e) = crate::utils::spawn_shell("mscreenshot window") {
-                tracing::error!("spawn mscreenshot: {e}");
+                tracing::error!(error = ?e, "spawn mscreenshot failed");
             }
         }
         "screenshot-region-ui" | "screenshot_region_ui" => {
@@ -386,12 +386,12 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
         "screenshot-region" | "screenshot_region" => {
             // `area` mode: region → save to disk only.
             if let Err(e) = crate::utils::spawn_shell("mscreenshot area") {
-                tracing::error!("spawn mscreenshot: {e}");
+                tracing::error!(error = ?e, "spawn mscreenshot failed");
             }
         }
         "screenshot-output" | "screenshot_output" => {
             if let Err(e) = crate::utils::spawn_shell("mscreenshot screen") {
-                tracing::error!("spawn mscreenshot: {e}");
+                tracing::error!(error = ?e, "spawn mscreenshot failed");
             }
         }
         "killclient" => state.kill_focused(),
@@ -493,7 +493,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
         "zoom" => state.zoom(),
         "setkeymode" => {
             if let Some(mode) = &arg.v {
-                debug!("key mode -> {mode}");
+                debug!(mode = %mode, "key mode change");
                 state.input_keyboard.mode = mode.clone();
             }
         }

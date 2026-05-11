@@ -551,7 +551,7 @@ matches mango-ext exactly:
 
 - [ ] Snapshot test count: **22 → 200+**
 - [ ] state.rs reduced from 6.1k LOC to **<3k** via further extraction (Q1)
-- [ ] Cold-path structured-logging migration complete (Q5)
+- [x] **Cold-path structured-logging migration complete (Q5)** — every `tracing::info!/warn!/error!/debug!` call in `state.rs`, `dispatch/mod.rs`, `scripting.rs`, `plugin.rs` now uses structured fields (`field = ?value, "msg"`) so `journalctl --output=json | jq` slices cleanly. `FocusTarget::enter/leave` also dropped from INFO to DEBUG so they stop flooding the journal under sloppy focus.
 - [ ] At least **2 community contributors** with merged PRs (currently 1)
 - [ ] Plugin marketplace open with ≥3 community plugins
 - [x] **MangoWM-style overview shipped** (`overview(m) { grid(m); }` — single dynamic Grid over all visible clients, alt+Tab MRU cycle with focuscolor border tracking, hot corner with safety guards, 4-finger touchpad trigger). Two preceding iterations were rejected after live testing: Phase 3 "Infinite Spatial Overview" (camera/pan/zoom) and the intermediate fixed 3×3 per-tag thumbnail grid both felt non-native compared to mango-ext's one-liner. Cycle order is now user-selectable (`overview_cycle_order = mru | tag | mixed`), the visual grid order matches the cycle order, alt+Tab supports modifier-release auto-commit (Win/GNOME muscle memory), cinematic dim + thicker focuscolor border on the selection emphasise the pick, and pointer hover no longer reshuffles the grid mid-hover.

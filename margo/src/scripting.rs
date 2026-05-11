@@ -136,7 +136,7 @@ fn build_engine() -> Engine {
 
     engine.register_fn("spawn", |cmd: &str| {
         if let Err(e) = crate::utils::spawn_shell(cmd) {
-            warn!("init.rhai spawn '{cmd}' failed: {e}");
+            warn!(cmd = %cmd, error = ?e, "init.rhai: spawn failed");
         }
     });
 
@@ -144,7 +144,7 @@ fn build_engine() -> Engine {
         if (1..=32).contains(&n) {
             1 << (n - 1)
         } else {
-            warn!("init.rhai: tag({n}) out of range [1, 32], returning 0");
+            warn!(n = n, "init.rhai: tag() out of range [1, 32], returning 0");
             0
         }
     });
@@ -355,13 +355,13 @@ pub fn init_user_scripting(state: &mut MargoState) {
     let Some(path) = init_script_path() else {
         return;
     };
-    info!("init.rhai: evaluating {}", path.display());
+    info!(path = %path.display(), "init.rhai: evaluating");
 
     let engine = build_engine();
     let ast = match engine.compile_file(path.clone()) {
         Ok(ast) => ast,
         Err(e) => {
-            error!("init.rhai: compile error in {} — {e}", path.display());
+            error!(path = %path.display(), error = ?e, "init.rhai: compile error");
             return;
         }
     };
@@ -454,7 +454,7 @@ pub fn init_plugins(state: &mut MargoState) {
     if plugins.is_empty() {
         return;
     }
-    info!("loading {} plugin(s)", plugins.len());
+    info!(count = plugins.len(), "loading plugins");
 
     // Stand up the engine if init.rhai didn't (no init.rhai on
     // disk — plugins-only setup). Mirrors the same fallback as
@@ -537,7 +537,7 @@ pub fn run_script_file(state: &mut MargoState, path: &std::path::Path) {
     let src = match std::fs::read_to_string(path) {
         Ok(s) => s,
         Err(e) => {
-            error!("mctl run: read {}: {e}", path.display());
+            error!(path = %path.display(), error = ?e, "mctl run: read failed");
             return;
         }
     };
@@ -550,7 +550,7 @@ pub fn run_script_file(state: &mut MargoState, path: &std::path::Path) {
         let ast = match engine.compile(&src) {
             Ok(a) => a,
             Err(e) => {
-                error!("mctl run: compile {}: {e}", path.display());
+                error!(path = %path.display(), error = ?e, "mctl run: compile failed");
                 return;
             }
         };
@@ -573,7 +573,7 @@ pub fn run_script_file(state: &mut MargoState, path: &std::path::Path) {
     let ast = match sc.engine.compile(&src) {
         Ok(a) => a,
         Err(e) => {
-            error!("mctl run: compile {}: {e}", path.display());
+            error!(path = %path.display(), error = ?e, "mctl run: compile failed");
             state.scripting = Some(sc);
             return;
         }
@@ -589,7 +589,7 @@ pub fn run_script_file(state: &mut MargoState, path: &std::path::Path) {
     if let Some(sc) = state.scripting.as_mut() {
         sc.ast = original_ast;
     }
-    info!("mctl run: ran {}", path.display());
+    info!(path = %path.display(), "mctl run: ran");
 }
 
 fn run_compiled(state: &mut MargoState) {
@@ -606,7 +606,7 @@ fn run_compiled(state: &mut MargoState) {
     let _guard = StateGuard;
     let mut scope = Scope::new();
     if let Err(e) = sc.engine.run_ast_with_scope(&mut scope, &sc.ast) {
-        error!("mctl run: runtime error: {e}");
+        error!(error = ?e, "mctl run: runtime error");
     }
     STATE_PTR.with(|s| s.set(std::ptr::null_mut()));
     state.scripting = Some(sc);
@@ -652,7 +652,7 @@ pub fn fire_output_change(state: &mut MargoState, output_name: &str) {
             let res: Result<Dynamic, Box<rhai::EvalAltResult>> =
                 h.call(&sc.engine, &sc.ast, (name.clone(),));
             if let Err(e) = res {
-                warn!("init.rhai on_output_change error: {e}");
+                warn!(error = ?e, "init.rhai: on_output_change handler error");
             }
         }
     }
@@ -693,7 +693,7 @@ pub fn fire_window_close(state: &mut MargoState, app_id: &str, title: &str) {
             let res: Result<Dynamic, Box<rhai::EvalAltResult>> =
                 h.call(&sc.engine, &sc.ast, (app_id.clone(), title.clone()));
             if let Err(e) = res {
-                warn!("init.rhai on_window_close error: {e}");
+                warn!(error = ?e, "init.rhai: on_window_close handler error");
             }
         }
     }
@@ -745,7 +745,7 @@ fn fire_hook(state: &mut MargoState, kind: HookKind) {
             let res: Result<Dynamic, Box<rhai::EvalAltResult>> =
                 h.call(&sc.engine, &sc.ast, ());
             if let Err(e) = res {
-                warn!("init.rhai hook error: {e}");
+                warn!(error = ?e, "init.rhai: hook error");
             }
         }
     }
