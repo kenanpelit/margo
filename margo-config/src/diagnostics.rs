@@ -141,7 +141,7 @@ impl ConfigDiagnostic {
         }
 
         if colored {
-            out.push_str(&format!("{dim}", dim = dim));
+            out.push_str(dim);
         }
 
         out

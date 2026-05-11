@@ -1939,6 +1939,26 @@ pub(super) fn build_render_elements_inner(
         }
     }
 
+    // Config-error overlay — niri-style red-bordered banner pinned
+    // to the top-right of every output while the deadline set by
+    // `MargoState::reload_config` is in the future. Sits below the
+    // cursor (which we pushed first → highest z-order) but above
+    // every window and layer surface that follow. Shown for ~10 s
+    // after a reload that the validator rejected; cleared by
+    // `tick_animations` once the deadline passes.
+    if let Some(until) = state.config_error_overlay_until {
+        if std::time::Instant::now() < until {
+            let origin = (output_geo.loc.x, output_geo.loc.y);
+            let size = (output_geo.size.w, output_geo.size.h);
+            for solid in state.config_error_overlay.render_elements(
+                origin,
+                size,
+                output_scale,
+            ) {
+                elements.push(MargoRenderElement::Solid(solid));
+            }
+        }
+    }
 
     push_layer_elements(
         renderer,

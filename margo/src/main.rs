@@ -904,6 +904,21 @@ fn main() -> Result<()> {
             border::refresh(state);
             state.request_repaint();
         }
+
+        // Config-error overlay timeout. The banner is armed by
+        // `MargoState::reload_config` with a 10 s deadline; once the
+        // deadline passes we clear it here and request one final
+        // repaint so the banner doesn't visually linger on a stale
+        // frame (the renderer would otherwise re-emit it on next
+        // damage even though the deadline is gone). Cheap check —
+        // a comparison per loop iteration when the overlay is active,
+        // nothing when it isn't.
+        if let Some(until) = state.config_error_overlay_until {
+            if std::time::Instant::now() >= until {
+                state.config_error_overlay_until = None;
+                state.request_repaint();
+            }
+        }
     })?;
 
     Ok(())

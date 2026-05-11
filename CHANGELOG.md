@@ -38,6 +38,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
     `last_reload_diagnostics` via state.json (Hyprland's
     `hyprctl configerrors` analogue). Empty when the last reload
     was clean.
+  * **On-screen banner overlay** — niri-style red-bordered dark
+    rectangle pinned to the top-right of every output for 10 s
+    after a rejected reload. Drawn through the existing
+    `SolidColorRenderElement` path (no new shader, no font
+    rasterizer), sits above windows + layer surfaces but below the
+    cursor. Lives in `render::config_error_overlay`. The banner is
+    a visual cue only; the actual error list comes from
+    `notify-send`, `mctl check-config`, and `mctl config-errors`.
+    `tick_animations`' event-loop sibling watches the deadline and
+    clears the overlay one repaint after it expires.
 
 ### Fixed
 

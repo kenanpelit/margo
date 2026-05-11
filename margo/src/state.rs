@@ -1591,10 +1591,16 @@ pub struct MargoState {
     /// doubles as "why did the last reload not apply?".
     pub last_reload_diagnostics: Vec<margo_config::diagnostics::ConfigDiagnostic>,
     /// `Instant` the config-error overlay first appeared on screen.
-    /// Cleared on a clean reload or after `CONFIG_ERROR_OVERLAY_MS`.
-    /// Drives the niri-style red-bordered banner the next phase
-    /// (`C2`) will render.
+    /// Cleared on a clean reload or after the banner's display
+    /// window expires (driven by `tick_animations`). Drives the
+    /// niri-style red-bordered banner pinned to the active output's
+    /// top-right corner.
     pub config_error_overlay_until: Option<std::time::Instant>,
+    /// Persistent SolidColorBuffers backing the config-error banner.
+    /// Kept on `MargoState` (rather than allocated per-frame) so the
+    /// buffers' Ids stay stable across frames and damage tracking
+    /// stays tight.
+    pub config_error_overlay: crate::render::config_error_overlay::ConfigErrorOverlay,
 
     /// Alt+Tab muscle-memory: when an `overview_focus_next/prev` keybind
     /// fires, the input handler snapshots which modifier(s) the user is
@@ -1815,6 +1821,8 @@ impl MargoState {
             overview_transition_animation_ms: None,
             last_reload_diagnostics: Vec::new(),
             config_error_overlay_until: None,
+            config_error_overlay:
+                crate::render::config_error_overlay::ConfigErrorOverlay::new(),
             overview_cycle_pending: false,
             overview_cycle_modifier_mask: margo_config::Modifiers::empty(),
             hot_corner_dwelling: None,
