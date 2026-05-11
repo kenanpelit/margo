@@ -116,9 +116,14 @@ pub enum Message {
     ResumeFromSleep,
     None,
     ToggleVisibility,
-    /// CompositorService announced a new wallpaper map. Diff against
-    /// `wallpaper_paths`, kick off loads for changed entries.
-    WallpaperRefresh(std::collections::HashMap<String, String>),
+    /// CompositorService announced a new wallpaper map. Carries
+    /// both the state.json-driven path map and the active tag id
+    /// per output, so the handler can resolve through the
+    /// precedence chain (shuffle → mshell.toml tags → state.json).
+    WallpaperRefresh {
+        wallpapers: std::collections::HashMap<String, String>,
+        active_tags: std::collections::HashMap<String, u32>,
+    },
     /// Async image-decode result. `output_name` → `path` → handle.
     WallpaperDecoded {
         output: String,
@@ -703,16 +708,22 @@ impl App {
                 _ => Task::none(),
             },
             Message::None => Task::none(),
-            Message::WallpaperRefresh(map) => {
+            Message::WallpaperRefresh { wallpapers, active_tags } => {
                 info!(
-                    "WallpaperRefresh: incoming map has {} outputs",
-                    map.len()
+                    "WallpaperRefresh: {} wallpapers, {} active tags",
+                    wallpapers.len(),
+                    active_tags.len()
                 );
-                // Diff against the last-seen paths; for each entry
-                // that actually changed, kick off an async decode.
-                // Empty path → drop the handle (renders fallback bg).
-                let map = self.maybe_apply_shuffle(map);
-                info!("WallpaperRefresh: after shuffle {} entries", map.len());
+                // Precedence chain:
+                //   1. shuffle.enabled → mshell-chosen pool picks
+                //   2. [wallpaper.tags] in mshell.toml → tag-based
+                //      override (mshell-owned config; the user no
+                //      longer needs `tagrule = id:N,wallpaper:…` in
+                //      margo config.conf)
+                //   3. state.json wallpapers map (backward-compat
+                //      with margo tagrule paths)
+                let map = self.resolve_wallpaper_map(wallpapers, &active_tags);
+                info!("WallpaperRefresh: resolved {} entries", map.len());
                 let mut tasks = vec![];
                 for (output, path) in map.iter() {
                     if self.wallpaper_paths.get(output) == Some(path) {
@@ -760,11 +771,15 @@ impl App {
                 Task::batch(tasks)
             }
             Message::WallpaperShuffleTick => {
-                // Force-reshuffle on the next refresh.
+                // Force-reshuffle on the next refresh. Re-uses the
+                // currently-tracked output names as the seed map;
+                // active_tags is empty because shuffle ignores it
+                // anyway (precedence chain step 1 wins).
                 self.shuffle_assignments.clear();
-                Task::done(Message::WallpaperRefresh(
-                    self.last_wallpaper_map(),
-                ))
+                Task::done(Message::WallpaperRefresh {
+                    wallpapers: self.last_wallpaper_map(),
+                    active_tags: HashMap::new(),
+                })
             }
             Message::WallpaperDecoded {
                 output,
@@ -969,6 +984,45 @@ impl App {
         }
     }
 
+    /// Decide the final per-output wallpaper path map by walking the
+    /// precedence chain: shuffle → mshell.toml `[wallpaper.tags]` →
+    /// state.json (backward compat).
+    fn resolve_wallpaper_map(
+        &mut self,
+        wallpapers: HashMap<String, String>,
+        active_tags: &HashMap<String, u32>,
+    ) -> HashMap<String, String> {
+        // 1. Shuffle bypasses everything.
+        if self.general_config.wallpaper.shuffle.enabled {
+            return self.maybe_apply_shuffle(wallpapers);
+        }
+
+        // 2. mshell.toml [wallpaper.tags] — if present, look up the
+        //    active tag per output. Each output sees the tag it's
+        //    currently displaying.
+        if !self.general_config.wallpaper.tags.is_empty() {
+            let tag_map = self.general_config.wallpaper.tags.clone();
+            let mut out = HashMap::with_capacity(wallpapers.len());
+            for (output, fallback_path) in wallpapers.into_iter() {
+                let resolved = active_tags
+                    .get(&output)
+                    .and_then(|tag_id| tag_map.get(&tag_id.to_string()))
+                    .map(|s| {
+                        // ~ expansion
+                        shellexpand::full(s)
+                            .map(|c| c.into_owned())
+                            .unwrap_or_else(|_| s.clone())
+                    })
+                    .unwrap_or(fallback_path);
+                out.insert(output, resolved);
+            }
+            return out;
+        }
+
+        // 3. state.json passthrough.
+        wallpapers
+    }
+
     /// If `[wallpaper.shuffle]` is enabled, override the incoming
     /// per-output path map with mshell-chosen picks. Otherwise pass
     /// the map through untouched.
@@ -1125,14 +1179,31 @@ impl App {
             // workspaces module already subscribes to the same
             // CompositorService; iced fans the broadcaster out to
             // each subscriber so this is cheap.
-            crate::services::compositor::CompositorService::subscribe().map(|event| match event {
-                crate::services::ServiceEvent::Init(svc) => {
-                    Message::WallpaperRefresh(svc.state.wallpapers.clone())
+            crate::services::compositor::CompositorService::subscribe().map(|event| {
+                use crate::services::compositor::CompositorEvent;
+                use crate::services::ServiceEvent;
+                match event {
+                    ServiceEvent::Init(svc) => Message::WallpaperRefresh {
+                        wallpapers: svc.state.wallpapers.clone(),
+                        active_tags: svc
+                            .state
+                            .monitors
+                            .iter()
+                            .map(|m| (m.name.clone(), m.active_workspace_id as u32))
+                            .collect(),
+                    },
+                    ServiceEvent::Update(CompositorEvent::StateChanged(state)) => {
+                        Message::WallpaperRefresh {
+                            wallpapers: state.wallpapers.clone(),
+                            active_tags: state
+                                .monitors
+                                .iter()
+                                .map(|m| (m.name.clone(), m.active_workspace_id as u32))
+                                .collect(),
+                        }
+                    }
+                    _ => Message::None,
                 }
-                crate::services::ServiceEvent::Update(
-                    crate::services::compositor::CompositorEvent::StateChanged(state),
-                ) => Message::WallpaperRefresh(state.wallpapers.clone()),
-                _ => Message::None,
             }),
             // Wallpaper shuffle timer — only emits when both
             // [wallpaper.shuffle].enabled and interval_secs > 0.

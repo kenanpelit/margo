@@ -95,9 +95,20 @@ pub struct WallpaperConfig {
     /// transparent). Hex string.
     pub fallback_color: String,
     /// Optional shuffle / rotate behaviour. When enabled, mshell
-    /// picks wallpapers from a directory and **bypasses** the path
-    /// margo writes to `state.json` (the tagrule-based wallpaper).
+    /// picks wallpapers from a directory and **bypasses** the
+    /// `tags` map below as well as margo's state.json paths.
     pub shuffle: WallpaperShuffleConfig,
+    /// Per-tag wallpaper assignments owned by mshell. Keyed by tag
+    /// id ("1".."9"), value is an image path with `~` expansion.
+    /// When this map is non-empty, mshell uses the active tag's
+    /// entry instead of whatever margo wrote to `state.json` —
+    /// `tagrule = id:N,wallpaper:…` lines in margo's config.conf
+    /// become unnecessary. Precedence:
+    ///
+    ///   1. `[wallpaper.shuffle].enabled` overrides everything.
+    ///   2. `[wallpaper.tags]` (this map) for the active tag.
+    ///   3. State.json's path (backward compat).
+    pub tags: HashMap<String, String>,
 }
 
 impl Default for WallpaperConfig {
@@ -107,6 +118,7 @@ impl Default for WallpaperConfig {
             fit: WallpaperFit::default(),
             fallback_color: "#1e1e2e".to_owned(),
             shuffle: WallpaperShuffleConfig::default(),
+            tags: HashMap::new(),
         }
     }
 }

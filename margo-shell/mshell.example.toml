@@ -42,10 +42,20 @@ enabled        = true       # false = mshell wallpaper çizmez (swaybg/swww kull
 fit            = "Cover"    # "Cover" / "Contain" / "Fill" / "None"
 fallback_color = "#1e1e2e"  # path boş/yok ise bu renk gösterilir
 
-# Shuffle / slideshow — açıkken margo'nun state.json'daki path'lerini
-# (tagrule = id:N,wallpaper:…) bypass eder; mshell `directory`'den
-# rastgele/sırayla seçer. Her output kendi seçimini alır
-# (per_output=true). `interval_secs > 0` ise periyodik rotate eder.
+# Per-tag wallpaper assignments — mshell-owned.
+# Active tag değiştiğinde mshell otomatik olarak ilgili path'i yükler.
+# Bu blok set'liyse margo'daki `tagrule = id:N,wallpaper:…` satırlarına
+# gerek kalmaz (precedence: shuffle > tags > state.json).
+[wallpaper.tags]
+# "1" = "~/Pictures/wallpapers/others/01.jpg"
+# "2" = "~/Pictures/wallpapers/others/02.jpg"
+# ...
+# "9" = "~/Pictures/wallpapers/others/09.jpg"
+
+# Shuffle / slideshow — açıkken tags ve state.json'ı bypass eder;
+# mshell `directory`'den rastgele/sırayla seçer. Her output kendi
+# seçimini alır (per_output=true). `interval_secs > 0` ise
+# periyodik rotate eder.
 [wallpaper.shuffle]
 enabled       = false                          # true = shuffle moduna geç
 directory     = "~/Pictures/wallpapers/others" # kaynak klasör (~ expand edilir)
