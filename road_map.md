@@ -386,7 +386,7 @@ factor. Five work streams below; §16 (do-over wishlist) feeds §15.1,
 
 | # | Item | Source | Cost |
 |---|---|---|---|
-| **Q1** | state.rs further split (current 6.1k → target sub-3k) | §16 + W4.2 follow-up | mid (~500 LOC churn) |
+| ~~**Q1**~~ | ~~state.rs further split (current 6.1k → target sub-3k)~~ — **done @ 2944** | §16 + W4.2 follow-up | ~~mid (~500 LOC churn)~~ — actually ~3.9k LOC moved into 11 siblings |
 | **Q2** | Animation tick unification (per-type → trait-object) | §16 do-over | mid (~300 LOC) |
 | **Q3** | Config sectioned access (`config.input.keyboard.repeat_rate`) | §16 do-over | high (parser + 100+ callsites) |
 | **Q4** | Render-element iterator: region clip + snapshot path | §16 partial | mid (~250 LOC) |
@@ -550,7 +550,7 @@ matches mango-ext exactly:
 ### 15.8 Phase 2 success criteria
 
 - [x] **Snapshot test count: 22 → 200+** — ✅ at **207** workspace-wide (margo: 193, margo-config: 14). The expansion landed across T9 (session round-trip, +9), T2 (animation curves, +9), T1 (window-rule matcher edge cases, +16), T8 (theme preset, +13), T6 (screenshot region geometry, +14), Q5 (no test delta — logging refactor).
-- [ ] state.rs reduced from 6.1k LOC to **<3k** via further extraction (Q1)
+- [x] **state.rs reduced from 6.1k LOC to <3k (Q1)** — ✅ at **2944** after eleven extractions into siblings under `state/`: `dispatch.rs` (1274, user actions), `scratchpad.rs` (496), `data.rs` (450, MargoClient/Monitor), `overview.rs` (445), `focus_target.rs` (295), `state_file.rs` (247), `animation_tick.rs` (245), `screencast.rs` (217), `twilight_methods.rs` (132), `theme.rs` (102), `debug_dump.rs` (78). Pure lift-and-shift — no signature churn at call sites.
 - [x] **Cold-path structured-logging migration complete (Q5)** — every `tracing::info!/warn!/error!/debug!` call in `state.rs`, `dispatch/mod.rs`, `scripting.rs`, `plugin.rs` now uses structured fields (`field = ?value, "msg"`) so `journalctl --output=json | jq` slices cleanly. `FocusTarget::enter/leave` also dropped from INFO to DEBUG so they stop flooding the journal under sloppy focus.
 - [ ] At least **2 community contributors** with merged PRs (currently 1)
 - [ ] Plugin marketplace open with ≥3 community plugins
