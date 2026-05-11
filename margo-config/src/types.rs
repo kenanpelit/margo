@@ -114,6 +114,25 @@ pub enum ShortcutsInhibit {
     DenyNew,
 }
 
+/// Order `alt+Tab` walks the overview thumbnails in.
+///
+/// * `Mru` — most-recently-used first, driven by `focus_history`.
+///   Matches i3/sway/Hypr/niri/GNOME muscle memory. Cycle order
+///   reflects how the user actually navigates between windows.
+/// * `Tag` — strict tag order (tag 1 → 9), then clients-vec order
+///   inside each tag. Spatial-memory mental model: tag 1 first
+///   always, tag 9 last always. Predictable across sessions.
+/// * `Mixed` — current tag's clients in MRU order first, then the
+///   remaining tags in strict tag order. The "MRU where it
+///   matters, tag elsewhere" hybrid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum OverviewCycleOrder {
+    #[default]
+    Mru,
+    Tag,
+    Mixed,
+}
+
 // ── Key identifier ───────────────────────────────────────────────────────────
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum KeyType {
@@ -560,6 +579,9 @@ pub struct Config {
     /// `[0.1, 1.0]`. The selected (focuscolor-bordered) thumbnail
     /// always renders at 1.0.
     pub overview_dim_alpha: f32,
+    /// Order in which `alt+Tab` walks overview thumbnails. See
+    /// [`OverviewCycleOrder`] for the three modes. Default `Mru`.
+    pub overview_cycle_order: OverviewCycleOrder,
 
     // hot corners — niri pattern. Each corner names a dispatch action
     // (or empty string = off). Pointer enters the corner pixel and
@@ -786,6 +808,7 @@ impl Default for Config {
             overview_transition_ms: 180,
             overview_selected_border_multiplier: 1.6,
             overview_dim_alpha: 0.6,
+            overview_cycle_order: OverviewCycleOrder::Mru,
             hot_corner_top_left: String::new(),
             hot_corner_top_right: String::new(),
             hot_corner_bottom_left: String::new(),

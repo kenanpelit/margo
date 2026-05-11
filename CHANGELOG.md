@@ -7,6 +7,26 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- **`overview_cycle_order` config — let the user pick the alt+Tab
+  walk order.** New three-valued config key on top of the existing
+  MRU-only behaviour, all wired through one match in
+  `overview_visible_clients`:
+  * `mru` (default, preserves 0.1.9 behaviour) — `focus_history`
+    first (most-recent first), then any remaining visible clients
+    in clients-vec order. The Win/GNOME/Hypr muscle memory.
+  * `tag` — strict tag-1-to-9 order, clients-vec inside each tag.
+    Spatial-memory model: tag 1's windows always come first.
+  * `mixed` — current tag's clients in MRU order, remaining tags
+    in strict tag order. The "MRU where you live, tag elsewhere"
+    hybrid.
+
+  Implementation reuses two helpers (`push_mru` with optional tag
+  filter, `push_tag_order` with optional skip mask) — adding any
+  future mode is now one `match` arm. Unknown / typo'd values fall
+  back to `mru` with a `tracing::warn!`.
+
 ## [0.1.9] – 2026-05-10
 
 Overview reborn. The whole release is one focused theme: nail the

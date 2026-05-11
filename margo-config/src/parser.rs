@@ -312,6 +312,19 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
             cfg.overview_selected_border_multiplier = parse_f32(val).clamp(1.0, 4.0)
         }
         "overview_dim_alpha" => cfg.overview_dim_alpha = parse_f32(val).clamp(0.1, 1.0),
+        "overview_cycle_order" => {
+            cfg.overview_cycle_order = match val.trim().to_ascii_lowercase().as_str() {
+                "mru" => crate::types::OverviewCycleOrder::Mru,
+                "tag" => crate::types::OverviewCycleOrder::Tag,
+                "mixed" => crate::types::OverviewCycleOrder::Mixed,
+                other => {
+                    tracing::warn!(
+                        "config: unknown overview_cycle_order={other:?}; keeping default (mru)"
+                    );
+                    crate::types::OverviewCycleOrder::Mru
+                }
+            }
+        }
         "hot_corner_top_left" => cfg.hot_corner_top_left = val.trim().to_string(),
         "hot_corner_top_right" => cfg.hot_corner_top_right = val.trim().to_string(),
         "hot_corner_bottom_left" => cfg.hot_corner_bottom_left = val.trim().to_string(),

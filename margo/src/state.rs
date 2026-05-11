@@ -3915,28 +3915,26 @@ impl MargoState {
         }
     }
 
-    /// All clients that are currently shown as overview thumbnails,
-    /// in monitor-then-client order — i.e. the same iteration order
-    /// `arrange_monitor` walks when assigning grid slots. This is the
-    /// canonical ring `overview_focus_next/prev` rotate through.
-    /// Returns indices into `self.clients`. Empty when overview is
-    /// closed or no monitor has any visible client.
+    /// All clients shown as overview thumbnails, in the order
+    /// `alt+Tab` should walk them. Driven by
+    /// `Config::overview_cycle_order`:
+    ///
+    /// * `Mru` — `focus_history` first (most-recent first), then
+    ///   any remaining visible clients in clients-vec order.
+    ///   Matches i3/sway/Hypr/niri/GNOME muscle memory.
+    /// * `Tag` — tag 1 → 9 in order, clients-vec order inside each
+    ///   tag. Spatial-memory: tag 1's windows always first, tag 9's
+    ///   always last, independent of focus history.
+    /// * `Mixed` — current tag's clients in MRU order, then the
+    ///   remaining tags in strict tag order. "MRU where you live,
+    ///   tag elsewhere."
     fn overview_visible_clients(&self) -> Vec<usize> {
+        use margo_config::OverviewCycleOrder;
         let mut out = Vec::new();
         for mon_idx in 0..self.monitors.len() {
             if !self.monitors[mon_idx].is_overview {
                 continue;
             }
-            // MRU first: walk `monitor.focus_history` (most-recent
-            // first, populated by `arrange_monitor`'s focus tracker)
-            // then append any remaining visible clients in clients-vec
-            // order. Result: alt+Tab steps through windows in the
-            // order the user last touched them, matching every other
-            // alt+Tab implementation in existence (i3, sway, Hypr,
-            // niri, GNOME). Without MRU we'd cycle in
-            // map-then-rearrange order, which feels random.
-            let mut seen: std::collections::HashSet<usize> =
-                std::collections::HashSet::new();
             let visible_here = |i: usize, c: &MargoClient| -> bool {
                 c.monitor == mon_idx
                     && !c.is_initial_map_pending
@@ -3945,17 +3943,70 @@ impl MargoState {
                     && !c.is_in_scratchpad
                     && i < self.clients.len()
             };
-            for &i in &self.monitors[mon_idx].focus_history {
-                if i >= self.clients.len() {
-                    continue;
+            let mut seen: std::collections::HashSet<usize> =
+                std::collections::HashSet::new();
+
+            let push_mru = |out: &mut Vec<usize>,
+                            seen: &mut std::collections::HashSet<usize>,
+                            tag_filter: u32| {
+                for &i in &self.monitors[mon_idx].focus_history {
+                    if i >= self.clients.len() {
+                        continue;
+                    }
+                    let c = &self.clients[i];
+                    if tag_filter != 0 && (c.tags & tag_filter) == 0 {
+                        continue;
+                    }
+                    if visible_here(i, c) && seen.insert(i) {
+                        out.push(i);
+                    }
                 }
-                if visible_here(i, &self.clients[i]) && seen.insert(i) {
-                    out.push(i);
+            };
+            let push_tag_order = |out: &mut Vec<usize>,
+                                  seen: &mut std::collections::HashSet<usize>,
+                                  skip_tags: u32| {
+                for tag_idx in 0..crate::layout::MAX_TAGS as u32 {
+                    let tag_bit = 1u32 << tag_idx;
+                    if (skip_tags & tag_bit) != 0 {
+                        continue;
+                    }
+                    for (i, c) in self.clients.iter().enumerate() {
+                        if (c.tags & tag_bit) == 0 {
+                            continue;
+                        }
+                        if visible_here(i, c) && seen.insert(i) {
+                            out.push(i);
+                        }
+                    }
                 }
-            }
-            for (i, c) in self.clients.iter().enumerate() {
-                if visible_here(i, c) && seen.insert(i) {
-                    out.push(i);
+            };
+
+            match self.config.overview_cycle_order {
+                OverviewCycleOrder::Mru => {
+                    push_mru(&mut out, &mut seen, 0);
+                    // Trailing tail: anything `focus_history` never
+                    // touched (newly-mapped, never-focused) goes at
+                    // the end in clients-vec order. Without this a
+                    // brand-new window would be unreachable via
+                    // alt+Tab until it gained focus once.
+                    for (i, c) in self.clients.iter().enumerate() {
+                        if visible_here(i, c) && seen.insert(i) {
+                            out.push(i);
+                        }
+                    }
+                }
+                OverviewCycleOrder::Tag => {
+                    push_tag_order(&mut out, &mut seen, 0);
+                }
+                OverviewCycleOrder::Mixed => {
+                    // Current tag(set) in MRU order: covers the
+                    // common case where the user is rapidly
+                    // alternating between two windows on the active
+                    // tag. Remaining tags fall back to strict tag
+                    // order for predictability.
+                    let cur_tagset = self.monitors[mon_idx].current_tagset();
+                    push_mru(&mut out, &mut seen, cur_tagset);
+                    push_tag_order(&mut out, &mut seen, cur_tagset);
                 }
             }
         }

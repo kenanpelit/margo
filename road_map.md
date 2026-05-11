@@ -503,14 +503,20 @@ matches mango-ext exactly:
 * **Triggers**: keybind / hot corner (1 × 1 px + dwell) / 4-finger
   touchpad swipe. All three route to the same `toggle_overview`
   handler.
-* **alt+Tab MRU cycle** — `overview_visible_clients` walks the
-  per-monitor `focus_history` first (most-recent first), then
-  appends remaining visible clients. Steps through windows in the
-  order the user last touched them, matching every other alt+Tab
-  in existence (i3, sway, Hypr, niri, GNOME). The cycle path
-  itself does NO arrange — only `is_overview_hovered` flips and
-  `border::refresh` runs, so the focuscolor border lights up the
-  new pick on the very next frame ("instant").
+* **alt+Tab cycle order — user-selectable**. `overview_cycle_order`
+  config key with three modes:
+  * `mru` (default) — `focus_history` first, then trailing tail
+    in clients-vec order. Matches i3/sway/Hypr/niri/GNOME muscle
+    memory; cycle reflects how the user actually navigates.
+  * `tag` — strict tag 1 → 9 order. Spatial-memory model where
+    tag 1's windows always come first, predictable across
+    sessions.
+  * `mixed` — current tag in MRU, remaining tags in strict order.
+    "MRU where you live, tag elsewhere."
+
+  Regardless of mode, the cycle path does NO arrange — only
+  `is_overview_hovered` flips and `border::refresh` runs, so the
+  focuscolor border lights up on the very next frame ("instant").
 * **Modifier-release auto-commit** — `overview_focus_next/prev`
   snapshots the modifier mask at trigger time; the next key
   release whose state no longer overlaps the snapshot
