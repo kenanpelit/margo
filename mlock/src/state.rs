@@ -19,6 +19,7 @@ use crate::seat::SeatState;
 use crate::surface::MlockSurface;
 
 pub struct MlockState {
+    #[allow(dead_code)]
     pub conn: Connection,
 
     // Required globals — all populated during the initial roundtrip.
@@ -203,6 +204,7 @@ impl MlockState {
         }
     }
 
+    #[allow(dead_code)]
     pub fn render_pending(&mut self, qh: &QueueHandle<MlockState>) -> Result<()> {
         let shm = self.shm.as_ref().context("shm missing")?;
         for surface in self.surfaces.iter_mut() {

@@ -3683,7 +3683,6 @@ dependencies = [
  "i18n-embed-fl",
  "iced_anim",
  "iced_layershell",
- "iced_runtime",
  "image",
  "inotify",
  "itertools 0.14.0",

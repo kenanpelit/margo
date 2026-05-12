@@ -13,9 +13,15 @@ use crate::seat::SeatState;
 use crate::state::MlockState;
 
 pub struct MlockSurface {
+    // idx / output / lock_surface aren't read after construction, but
+    // their `Drop` semantics matter: dropping the lock_surface tells
+    // the compositor we no longer cover that output. Keep them alive.
+    #[allow(dead_code)]
     pub idx: usize,
+    #[allow(dead_code)]
     pub output: wl_output::WlOutput,
     pub wl_surface: wl_surface::WlSurface,
+    #[allow(dead_code)]
     pub lock_surface: ext_session_lock_surface_v1::ExtSessionLockSurfaceV1,
     pub width: u32,
     pub height: u32,

@@ -16,7 +16,6 @@ mod components;
 mod config;
 mod i18n;
 mod ipc;
-mod lockscreen;
 mod matugen;
 mod modules;
 mod osd;
@@ -60,10 +59,6 @@ enum Command {
         /// `[wallpaper.tags]` entry for the focused tag is used.
         wallpaper: Option<PathBuf>,
     },
-    /// Lock the screen via a fullscreen wlr-layer-shell overlay
-    /// (Exclusive keyboard). Authenticates the current user against
-    /// PAM `login` service on Enter. Blocks until auth succeeds.
-    Lock,
 }
 
 fn get_log_spec(log_level: &str) -> LogSpecification {
@@ -118,10 +113,6 @@ fn main() -> iced::Result {
             std::process::exit(1);
         }
         std::process::exit(0);
-    }
-
-    if matches!(args.command, Some(Command::Lock)) {
-        return lockscreen::run();
     }
 
     debug!("args: {args:?}");
