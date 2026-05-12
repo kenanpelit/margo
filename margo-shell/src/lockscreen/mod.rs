@@ -455,9 +455,13 @@ fn build_backdrop() -> Option<image::Handle> {
 }
 
 fn active_wallpaper_path() -> Option<std::path::PathBuf> {
-    // Mirror matugen's lookup: state.json active output → tag mask →
-    // mshell.toml [wallpaper.tags] key. Kept as a separate helper
-    // because matugen's version returns Result + we just want Option.
+    // Resolution chain — cascades through every plausible source so
+    // the user gets a backdrop even when individual configs are off.
+    //   1. state.json's active output `wallpaper` field (margo tagrule)
+    //   2. mshell.toml `[wallpaper.tags]` keyed by active tag
+    //   3. mshell.toml `[wallpaper.shuffle].directory` — first image
+    //      in the directory (works even when shuffle.enabled = false)
+    //   4. give up → caller falls back to solid colour
     let runtime = std::env::var_os("XDG_RUNTIME_DIR")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| {
@@ -465,31 +469,72 @@ fn active_wallpaper_path() -> Option<std::path::PathBuf> {
             std::path::PathBuf::from(format!("/run/user/{uid}"))
         });
     let state_path = runtime.join("margo").join("state.json");
-    let raw = std::fs::read(&state_path).ok()?;
-    let state: serde_json::Value = serde_json::from_slice(&raw).ok()?;
-    let outputs = state.get("outputs")?.as_array()?;
-    let active = outputs
-        .iter()
-        .find(|o| o.get("active").and_then(|v| v.as_bool()).unwrap_or(false))?;
+    let raw = std::fs::read(&state_path).ok();
+    let state: Option<serde_json::Value> = raw.and_then(|b| serde_json::from_slice(&b).ok());
 
-    // Prefer state.json's own wallpaper (margo tagrule) if non-empty.
-    if let Some(p) = active
-        .get("wallpaper")
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
+    // Active tag mask comes from state.json; even if we can't find a
+    // wallpaper there, we use the mask to look up the [wallpaper.tags]
+    // entry below.
+    let mut active_mask: Option<u64> = None;
+    if let Some(state) = state.as_ref()
+        && let Some(outputs) = state.get("outputs").and_then(|v| v.as_array())
+        && let Some(active) = outputs
+            .iter()
+            .find(|o| o.get("active").and_then(|v| v.as_bool()).unwrap_or(false))
     {
-        return Some(expand_home(p));
+        if let Some(p) = active
+            .get("wallpaper")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+        {
+            return Some(expand_home(p));
+        }
+        active_mask = active.get("active_tag_mask").and_then(|v| v.as_u64());
     }
-
-    let mask = active.get("active_tag_mask")?.as_u64()?;
-    if mask == 0 {
-        return None;
-    }
-    let tag = (mask as u32).trailing_zeros() + 1;
 
     let (cfg, _) = crate::config::get_config(None).ok()?;
-    let raw = cfg.wallpaper.tags.get(&tag.to_string())?;
-    Some(expand_home(raw))
+
+    // [wallpaper.tags] lookup.
+    if let Some(mask) = active_mask
+        && mask != 0
+    {
+        let tag = (mask as u32).trailing_zeros() + 1;
+        if let Some(p) = cfg.wallpaper.tags.get(&tag.to_string()) {
+            return Some(expand_home(p));
+        }
+    }
+
+    // [wallpaper.shuffle].directory — pick the first image even if
+    // shuffle.enabled is false. The user typically has a wallpaper
+    // directory configured for shuffle; reusing it for the lock
+    // means a wallpaper appears with zero extra config.
+    let shuffle_dir = expand_home(&cfg.wallpaper.shuffle.directory);
+    if shuffle_dir.is_dir() {
+        let mut entries: Vec<_> = std::fs::read_dir(&shuffle_dir)
+            .ok()?
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| {
+                p.extension()
+                    .and_then(|s| s.to_str())
+                    .map(|s| {
+                        matches!(
+                            s.to_ascii_lowercase().as_str(),
+                            "jpg" | "jpeg" | "png" | "webp"
+                        )
+                    })
+                    .unwrap_or(false)
+            })
+            .collect();
+        if !entries.is_empty() {
+            // Stable choice: first alphabetically — gives a consistent
+            // lock backdrop regardless of mshell's runtime state.
+            entries.sort();
+            return Some(entries.into_iter().next().unwrap());
+        }
+    }
+
+    None
 }
 
 fn expand_home(p: &str) -> std::path::PathBuf {
