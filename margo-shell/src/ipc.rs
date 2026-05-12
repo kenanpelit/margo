@@ -77,6 +77,12 @@ pub enum IpcCommand {
     Updates,
     /// Open the Tempo (clock / weather) menu
     Tempo,
+    /// Open the UFW firewall menu
+    Ufw,
+    /// Open the Power (profile / battery / session) menu
+    Power,
+    /// Open the Podman containers menu
+    Podman,
 }
 
 impl IpcCommand {
@@ -100,7 +106,10 @@ impl IpcCommand {
             | IpcCommand::Settings
             | IpcCommand::Notifications
             | IpcCommand::Updates
-            | IpcCommand::Tempo => false,
+            | IpcCommand::Tempo
+            | IpcCommand::Ufw
+            | IpcCommand::Power
+            | IpcCommand::Podman => false,
         }
     }
 
@@ -116,6 +125,9 @@ impl IpcCommand {
             IpcCommand::Notifications => Some("notifications"),
             IpcCommand::Updates => Some("updates"),
             IpcCommand::Tempo => Some("tempo"),
+            IpcCommand::Ufw => Some("ufw"),
+            IpcCommand::Power => Some("power"),
+            IpcCommand::Podman => Some("podman"),
             _ => None,
         }
     }
@@ -145,6 +157,9 @@ impl fmt::Display for IpcCommand {
             IpcCommand::Notifications => "notifications",
             IpcCommand::Updates => "updates",
             IpcCommand::Tempo => "tempo",
+            IpcCommand::Ufw => "ufw",
+            IpcCommand::Power => "power",
+            IpcCommand::Podman => "podman",
         };
         write!(f, "{base}")?;
         if self.no_osd() {
@@ -182,6 +197,9 @@ impl FromStr for IpcCommand {
             "notifications" => Ok(IpcCommand::Notifications),
             "updates" => Ok(IpcCommand::Updates),
             "tempo" => Ok(IpcCommand::Tempo),
+            "ufw" => Ok(IpcCommand::Ufw),
+            "power" => Ok(IpcCommand::Power),
+            "podman" => Ok(IpcCommand::Podman),
             _ => Err(anyhow!("unknown IPC command: {s:?}")),
         }
     }

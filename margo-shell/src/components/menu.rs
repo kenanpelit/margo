@@ -20,6 +20,9 @@ pub enum MenuType {
     SystemInfo,
     NetworkSpeed,
     Dns,
+    Ufw,
+    Power,
+    Podman,
     Tempo,
 }
 

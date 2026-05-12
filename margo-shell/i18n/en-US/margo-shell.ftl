@@ -160,3 +160,48 @@ dns-mode-default = Default (ISP)
 dns-mode-unknown = Unknown
 dns-action-toggle = Toggle
 dns-action-repair = Repair
+
+## UFW firewall module
+ufw-heading = Firewall
+ufw-active = Firewall: Active
+ufw-inactive = Firewall: Inactive
+ufw-unavailable = UFW not installed
+ufw-status = Status
+ufw-incoming = Incoming
+ufw-outgoing = Outgoing
+ufw-routed = Routed
+ufw-logging = Logging
+ufw-rule-count = Rules
+ufw-rules-title = Recent rules
+ufw-action-toggle = Toggle
+ufw-action-enable = Enable
+ufw-action-disable = Disable
+ufw-action-reload = Reload
+
+## Power module
+power-heading = Power
+power-source = Source
+power-battery = Battery
+power-profile = Profile
+power-auto-lock = Auto-profile
+power-auto-lock-locked = Locked
+power-auto-lock-unlocked = Unlocked
+power-source-ac = AC
+power-source-battery = Battery
+power-source-unknown = Unknown
+power-profiles-title = Profile
+power-actions-title = Actions
+power-profile-power-saver = Power Saver
+power-profile-balanced = Balanced
+power-profile-performance = Performance
+power-action-cycle = Cycle
+power-action-lock-auto = Lock auto
+power-action-unlock = Unlock
+power-action-suspend = Suspend
+power-action-lock-screen = Lock screen
+
+## Podman module
+podman-heading = Podman
+podman-unavailable = podman not installed
+podman-empty = No containers
+podman-running = Running

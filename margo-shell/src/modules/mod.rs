@@ -14,10 +14,13 @@ pub mod keyboard_layout;
 pub mod media_player;
 pub mod network_speed;
 pub mod notifications;
+pub mod podman;
+pub mod power;
 pub mod privacy;
 pub mod settings;
 pub mod system_info;
 pub mod tempo;
+pub mod ufw;
 pub mod tray;
 pub mod updates;
 pub mod window_title;
@@ -209,6 +212,18 @@ impl App {
                 self.dns.view().map(Message::Dns),
                 Some(OnModulePress::ToggleMenu(MenuType::Dns)),
             )),
+            ModuleName::Ufw => Some((
+                self.ufw.view().map(Message::Ufw),
+                Some(OnModulePress::ToggleMenu(MenuType::Ufw)),
+            )),
+            ModuleName::Power => Some((
+                self.power.view().map(Message::Power),
+                Some(OnModulePress::ToggleMenu(MenuType::Power)),
+            )),
+            ModuleName::Podman => Some((
+                self.podman.view().map(Message::Podman),
+                Some(OnModulePress::ToggleMenu(MenuType::Podman)),
+            )),
             ModuleName::KeyboardLayout => self.keyboard_layout.view().map(|view| {
                 (
                     view.map(Message::KeyboardLayout),
@@ -277,6 +292,9 @@ impl App {
                 Some(self.network_speed.subscription().map(Message::NetworkSpeed))
             }
             ModuleName::Dns => Some(self.dns.subscription().map(Message::Dns)),
+            ModuleName::Ufw => Some(self.ufw.subscription().map(Message::Ufw)),
+            ModuleName::Power => Some(self.power.subscription().map(Message::Power)),
+            ModuleName::Podman => Some(self.podman.subscription().map(Message::Podman)),
             ModuleName::KeyboardLayout => Some(
                 self.keyboard_layout
                     .subscription()

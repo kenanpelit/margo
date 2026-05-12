@@ -13,6 +13,9 @@ use crate::{
         media_player::MediaPlayer,
         network_speed::NetworkSpeed,
         notifications::Notifications,
+        podman::Podman,
+        power::Power,
+        ufw::Ufw,
         privacy::Privacy,
         settings::{self, Settings, audio},
         system_info::SystemInfo,
@@ -66,6 +69,9 @@ pub struct App {
     pub system_info: SystemInfo,
     pub network_speed: NetworkSpeed,
     pub dns: Dns,
+    pub ufw: Ufw,
+    pub power: Power,
+    pub podman: Podman,
     pub keyboard_layout: KeyboardLayout,
     pub tray: TrayModule,
     pub tempo: Tempo,
@@ -112,6 +118,9 @@ pub enum Message {
     SystemInfo(modules::system_info::Message),
     NetworkSpeed(modules::network_speed::Message),
     Dns(modules::dns::Message),
+    Ufw(modules::ufw::Message),
+    Power(modules::power::Message),
+    Podman(modules::podman::Message),
     /// IPC tarafından tetiklenmiş menü açma — bar'ın ilk surface'inde
     /// sentetik bir ButtonUIRef ile ilgili MenuType'ı toggle eder.
     OpenIpcMenu(String),
@@ -272,6 +281,9 @@ impl App {
                     system_info: SystemInfo::new(config.system_info),
                     network_speed: NetworkSpeed::new(config.network_speed),
                     dns: Dns::new(config.dns),
+                    ufw: Ufw::new(config.ufw),
+                    power: Power::new(config.power),
+                    podman: Podman::new(config.podman),
                     keyboard_layout: KeyboardLayout::new(config.keyboard_layout),
                     tray: TrayModule::new(config.tray),
                     tempo: Tempo::new(config.tempo),
@@ -332,6 +344,9 @@ impl App {
         self.system_info = SystemInfo::new(config.system_info);
         self.network_speed = NetworkSpeed::new(config.network_speed);
         self.dns = Dns::new(config.dns);
+        self.ufw = Ufw::new(config.ufw);
+        self.power = Power::new(config.power);
+        self.podman = Podman::new(config.podman);
 
         let _ = self
             .keyboard_layout
@@ -448,7 +463,10 @@ impl App {
             | IpcCommand::Settings
             | IpcCommand::Notifications
             | IpcCommand::Updates
-            | IpcCommand::Tempo => None,
+            | IpcCommand::Tempo
+            | IpcCommand::Ufw
+            | IpcCommand::Power
+            | IpcCommand::Podman => None,
         }
     }
 
@@ -558,6 +576,9 @@ impl App {
                 Task::none()
             }
             Message::Dns(msg) => self.dns.update(msg).map(Message::Dns),
+            Message::Ufw(msg) => self.ufw.update(msg).map(Message::Ufw),
+            Message::Power(msg) => self.power.update(msg).map(Message::Power),
+            Message::Podman(msg) => self.podman.update(msg).map(Message::Podman),
             Message::OpenIpcMenu(name) => {
                 let menu_type = match name.as_str() {
                     "dns" => Some(MenuType::Dns),
@@ -568,6 +589,9 @@ impl App {
                     "notifications" => Some(MenuType::Notifications),
                     "updates" => Some(MenuType::Updates),
                     "tempo" => Some(MenuType::Tempo),
+                    "ufw" => Some(MenuType::Ufw),
+                    "power" => Some(MenuType::Power),
+                    "podman" => Some(MenuType::Podman),
                     _ => None,
                 };
                 if let Some(mt) = menu_type {
@@ -769,7 +793,10 @@ impl App {
                     | IpcCommand::Settings
                     | IpcCommand::Notifications
                     | IpcCommand::Updates
-                    | IpcCommand::Tempo => unreachable!(),
+                    | IpcCommand::Tempo
+                    | IpcCommand::Ufw
+                    | IpcCommand::Power
+                    | IpcCommand::Podman => unreachable!(),
                 };
                 if let settings::Action::Command(task) = action {
                     tasks.push(task.map(Message::Settings));
@@ -1016,6 +1043,21 @@ impl App {
                     MenuType::Dns => self.menu_wrapper(
                         id,
                         self.dns.menu_view().map(Message::Dns),
+                        ui_ref,
+                    ),
+                    MenuType::Ufw => self.menu_wrapper(
+                        id,
+                        self.ufw.menu_view().map(Message::Ufw),
+                        ui_ref,
+                    ),
+                    MenuType::Power => self.menu_wrapper(
+                        id,
+                        self.power.menu_view().map(Message::Power),
+                        ui_ref,
+                    ),
+                    MenuType::Podman => self.menu_wrapper(
+                        id,
+                        self.podman.menu_view().map(Message::Podman),
                         ui_ref,
                     ),
                     MenuType::Tempo => {

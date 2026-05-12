@@ -38,6 +38,9 @@ pub struct Config {
     pub system_info: SystemInfoModuleConfig,
     pub network_speed: NetworkSpeedModuleConfig,
     pub dns: DnsModuleConfig,
+    pub ufw: UfwModuleConfig,
+    pub power: PowerModuleConfig,
+    pub podman: PodmanModuleConfig,
     pub notifications: NotificationsModuleConfig,
     pub tray: TrayModuleConfig,
     pub tempo: TempoModuleConfig,
@@ -67,6 +70,9 @@ impl Default for Config {
             system_info: SystemInfoModuleConfig::default(),
             network_speed: NetworkSpeedModuleConfig::default(),
             dns: DnsModuleConfig::default(),
+            ufw: UfwModuleConfig::default(),
+            power: PowerModuleConfig::default(),
+            podman: PodmanModuleConfig::default(),
             notifications: NotificationsModuleConfig::default(),
             tray: TrayModuleConfig::default(),
             tempo: TempoModuleConfig::default(),
@@ -659,6 +665,54 @@ impl Default for DnsModuleConfig {
     }
 }
 
+// ─── UFW firewall module ─────────────────────────────────────────────────────
+
+#[derive(Deserialize, Clone, Debug)]
+#[serde(default)]
+pub struct UfwModuleConfig {
+    pub watchdog_secs: u64,
+    /// Salt-okunur durum sorguları başarısız olursa `sudo -n ufw status`
+    /// dene. Mutating aksiyonlar her zaman sudo/pkexec gerektirir.
+    pub allow_privileged_reads: bool,
+}
+
+impl Default for UfwModuleConfig {
+    fn default() -> Self {
+        Self {
+            watchdog_secs: 30,
+            allow_privileged_reads: true,
+        }
+    }
+}
+
+// ─── Power (laptop power profile / battery / session) ───────────────────────
+
+#[derive(Deserialize, Clone, Debug)]
+#[serde(default)]
+pub struct PowerModuleConfig {
+    pub watchdog_secs: u64,
+}
+
+impl Default for PowerModuleConfig {
+    fn default() -> Self {
+        Self { watchdog_secs: 15 }
+    }
+}
+
+// ─── Podman (container manager) ─────────────────────────────────────────────
+
+#[derive(Deserialize, Clone, Debug)]
+#[serde(default)]
+pub struct PodmanModuleConfig {
+    pub watchdog_secs: u64,
+}
+
+impl Default for PodmanModuleConfig {
+    fn default() -> Self {
+        Self { watchdog_secs: 60 }
+    }
+}
+
 #[derive(Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ToastPosition {
@@ -1183,6 +1237,9 @@ pub enum ModuleName {
     SystemInfo,
     NetworkSpeed,
     Dns,
+    Ufw,
+    Power,
+    Podman,
     KeyboardLayout,
     Tray,
     Tempo,
@@ -1215,6 +1272,9 @@ impl<'de> Deserialize<'de> for ModuleName {
                     "SystemInfo" => ModuleName::SystemInfo,
                     "NetworkSpeed" => ModuleName::NetworkSpeed,
                     "Dns" => ModuleName::Dns,
+                    "Ufw" => ModuleName::Ufw,
+                    "Power" => ModuleName::Power,
+                    "Podman" => ModuleName::Podman,
                     "KeyboardLayout" => ModuleName::KeyboardLayout,
                     "Tray" => ModuleName::Tray,
                     "Notifications" => ModuleName::Notifications,
