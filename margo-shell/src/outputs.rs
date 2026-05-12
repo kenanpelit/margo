@@ -470,9 +470,9 @@ impl Outputs {
             .filter(|om| om.id == id)
     }
 
-    /// True if any open menu is still inside its open-animation
-    /// window. Drives the 60 fps subscription in `App::subscription`
-    /// so the fade/slide gets per-frame redraws.
+    /// True if any open menu is still inside its open- or close-
+    /// animation window. Drives the 60 fps subscription in
+    /// `App::subscription` so fade/slide gets per-frame redraws.
     pub fn any_menu_animating(&self) -> bool {
         self.0.iter().any(|(_, shell_info, _)| {
             shell_info
@@ -480,6 +480,22 @@ impl Outputs {
                 .and_then(|si| si.menu.open.as_ref())
                 .is_some_and(|om| om.is_open_animating())
         })
+    }
+
+    /// Drop layer surfaces whose close animation has finished.
+    /// Called on every `Message::AnimationTick` so the destroy
+    /// happens within ~16 ms of `MENU_OPEN_ANIM_MS` elapsing.
+    pub fn finalize_completed_menu_closures<Message: 'static>(&mut self) -> Task<Message> {
+        let tasks: Vec<_> = self
+            .0
+            .iter_mut()
+            .filter_map(|(_, shell_info, _)| {
+                shell_info
+                    .as_mut()
+                    .map(|si| si.menu.finalize_close_if_done::<Message>())
+            })
+            .collect();
+        Task::batch(tasks)
     }
 
     fn find_by_surface_id_mut(

@@ -136,6 +136,11 @@ pub enum Message {
     CloseAllMenus,
     ResumeFromSleep,
     None,
+    /// Periodic 16 ms tick fired while any menu is animating. Drives
+    /// per-frame view rebuilds for the fade+slide animation and runs
+    /// `finalize_completed_menu_closures` so closed menus get their
+    /// `destroy_layer_surface` once their animation has run out.
+    MenuAnimationTick,
     ToggleVisibility,
     /// CompositorService announced a new wallpaper map. Carries
     /// both the state.json-driven path map and the active tag id
@@ -824,6 +829,7 @@ impl App {
                 _ => Task::none(),
             },
             Message::None => Task::none(),
+            Message::MenuAnimationTick => self.outputs.finalize_completed_menu_closures(),
             Message::WallpaperRefresh { wallpapers, active_tags, active_output } => {
                 // active_output her zaman güncellenir — IPC menü açılışları
                 // bunu kullanıyor (focused output'un bar'ında açar).
@@ -1264,7 +1270,8 @@ impl App {
             // returns false (which is fast — only the first ~180ms
             // after a menu pops open).
             if self.outputs.any_menu_animating() {
-                iced::time::every(std::time::Duration::from_millis(16)).map(|_| Message::None)
+                iced::time::every(std::time::Duration::from_millis(16))
+                    .map(|_| Message::MenuAnimationTick)
             } else {
                 Subscription::none()
             },

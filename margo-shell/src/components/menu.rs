@@ -42,9 +42,14 @@ pub struct OpenMenu {
     pub id: SurfaceId,
     pub menu_type: MenuType,
     pub button_ui_ref: ButtonUIRef,
-    /// Wall-clock instant of the `Menu::open` call. Used to drive
-    /// the open fade+slide animation in `App::menu_wrapper`.
+    /// Wall-clock instant of the `Menu::open` call. Drives the open
+    /// fade+slide animation in `App::menu_wrapper`.
     pub open_at: Instant,
+    /// `Some(t)` once `Menu::close` was requested; the layer surface
+    /// is kept alive for `MENU_OPEN_ANIM_MS` after `t` so the menu
+    /// can fade+slide back out before being destroyed. `None` means
+    /// the menu is open (or still opening) and not closing.
+    pub closing_at: Option<Instant>,
 }
 
 impl OpenMenu {
@@ -53,20 +58,47 @@ impl OpenMenu {
         (elapsed / MENU_OPEN_ANIM_MS as f32).clamp(0.0, 1.0)
     }
 
-    /// 0.0 right after open → 1.0 once the fade completes.
+    fn close_progress(&self) -> f32 {
+        match self.closing_at {
+            None => 0.0,
+            Some(t) => {
+                let elapsed = t.elapsed().as_millis() as f32;
+                (elapsed / MENU_OPEN_ANIM_MS as f32).clamp(0.0, 1.0)
+            }
+        }
+    }
+
+    /// 0 → 1 during the open fade. While closing, reverses to 0.
     pub fn opacity(&self) -> f32 {
-        ease_out_cubic(self.open_progress())
+        let open = ease_out_cubic(self.open_progress());
+        let close = ease_out_cubic(self.close_progress());
+        open * (1.0 - close)
     }
 
     /// Pixels the menu is offset from its resting position. Positive
-    /// = slide down from above (the caller flips the sign for a
-    /// bottom-anchored bar).
+    /// = slide away from the anchored edge (caller decides direction
+    /// based on bar position). The slide reverses on close.
     pub fn slide_y(&self) -> f32 {
+        // Same easing as opacity so the two stay phase-locked.
         MENU_SLIDE_PX * (1.0 - self.opacity())
     }
 
     pub fn is_open_animating(&self) -> bool {
-        self.open_progress() < 1.0
+        self.open_progress() < 1.0 || self.is_closing_animating()
+    }
+
+    pub fn is_closing(&self) -> bool {
+        self.closing_at.is_some()
+    }
+
+    fn is_closing_animating(&self) -> bool {
+        self.closing_at.is_some() && self.close_progress() < 1.0
+    }
+
+    /// True once the close animation has fully run out — the caller
+    /// should destroy the layer surface and drop this `OpenMenu`.
+    pub fn is_closing_complete(&self) -> bool {
+        self.closing_at.is_some() && self.close_progress() >= 1.0
     }
 }
 
@@ -116,12 +148,35 @@ impl Menu {
             menu_type,
             button_ui_ref,
             open_at: Instant::now(),
+            closing_at: None,
         });
         task
     }
 
+    /// Begin the close animation. The layer surface stays alive for
+    /// `MENU_OPEN_ANIM_MS` after this call so the menu can fade+slide
+    /// back out; the actual `destroy_layer_surface` happens later via
+    /// `finalize_close_if_done`. Idempotent — if already closing, the
+    /// `closing_at` timestamp is preserved.
     pub fn close<Message: 'static>(&mut self) -> Task<Message> {
-        if let Some(open) = self.open.take() {
+        if let Some(open) = self.open.as_mut()
+            && open.closing_at.is_none()
+        {
+            open.closing_at = Some(Instant::now());
+        }
+        Task::none()
+    }
+
+    /// Tick hook: drop the surface once its close animation has run
+    /// out. Returns the `destroy_layer_surface` task and clears the
+    /// `open` slot when triggered; otherwise `Task::none()`.
+    pub fn finalize_close_if_done<Message: 'static>(&mut self) -> Task<Message> {
+        if self
+            .open
+            .as_ref()
+            .is_some_and(|om| om.is_closing_complete())
+        {
+            let open = self.open.take().expect("checked above");
             destroy_layer_surface(open.id)
         } else {
             Task::none()
@@ -137,10 +192,18 @@ impl Menu {
     ) -> Task<Message> {
         match &mut self.open {
             None => self.open(menu_type, button_ui_ref, request_keyboard, output_id),
-            Some(open) if open.menu_type == menu_type => self.close(),
+            // Same menu, not already closing → close it.
+            Some(open) if open.menu_type == menu_type && open.closing_at.is_none() => {
+                self.close()
+            }
+            // Same menu re-clicked mid-close, or different menu swap:
+            // cancel any pending close and replay the open animation
+            // so the user sees a fresh fade-in.
             Some(open) => {
                 open.menu_type = menu_type;
                 open.button_ui_ref = button_ui_ref;
+                open.open_at = Instant::now();
+                open.closing_at = None;
                 Task::none()
             }
         }
