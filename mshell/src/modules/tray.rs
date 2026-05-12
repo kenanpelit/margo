@@ -29,6 +29,7 @@ pub enum Message {
     MenuSelected(String, i32),
     MenuToggled(String, i32),
     MenuOpened(String),
+    ToggleExpand,
 }
 
 pub enum Action {
@@ -39,11 +40,17 @@ pub enum Action {
     CloseTrayMenu(String),
 }
 
+/// Tray collapses to a chevron button once more than this many icons
+/// are visible — keeps the bar's right-cluster from sprawling when
+/// you have a dozen background apps registered.
+const TRAY_COLLAPSE_THRESHOLD: usize = 3;
+
 #[derive(Debug, Clone)]
 pub struct TrayModule {
     service: Option<TrayService>,
     submenus: Vec<i32>,
     blocklist: Vec<crate::config::RegexCfg>,
+    expanded: bool,
 }
 
 impl TrayModule {
@@ -52,6 +59,7 @@ impl TrayModule {
             service: None,
             submenus: Vec::new(),
             blocklist: config.blocklist.clone(),
+            expanded: false,
         }
     }
 
@@ -124,6 +132,10 @@ impl TrayModule {
                     self.submenus.clear();
                 }
 
+                Action::None
+            }
+            Message::ToggleExpand => {
+                self.expanded = !self.expanded;
                 Action::None
             }
         }
@@ -212,39 +224,74 @@ impl TrayModule {
         self.service
             .as_ref()
             .filter(|s| !s.data.is_empty())
-            .map(|service| {
-                Into::<Element<_>>::into(
-                    Row::with_children(
-                        service
-                            .data
-                            .iter()
-                            .filter(|item| !self.is_blocklisted(&item.name))
-                            .map(|item| {
-                                let button_style = button_style.clone();
-                                position_button(match &item.icon {
-                                    Some(TrayIcon::Image(handle)) => Into::<Element<_>>::into(
-                                        Image::new(handle.clone())
-                                            .height(Length::Fixed(font_size.md - 2.0)),
-                                    ),
-                                    Some(TrayIcon::Svg(handle)) => Into::<Element<_>>::into(
-                                        Svg::new(handle.clone())
-                                            .height(Length::Fixed(font_size.md + 2.))
-                                            .width(Length::Fixed(font_size.md + 2.))
-                                            .content_fit(iced::ContentFit::Cover),
-                                    ),
-                                    _ => icon(StaticIcon::Point).into(),
-                                })
-                                .on_press_with_position(move |button_ui_ref| {
-                                    Message::ToggleMenu(item.name.to_owned(), id, button_ui_ref)
-                                })
-                                .padding(space.xxs)
-                                .style(move |t, s| button_style(t, s))
-                                .into()
-                            })
-                            .collect::<Vec<_>>(),
-                    )
-                    .align_y(Alignment::Center),
-                )
+            .and_then(|service| {
+                let visible: Vec<&_> = service
+                    .data
+                    .iter()
+                    .filter(|item| !self.is_blocklisted(&item.name))
+                    .collect();
+                if visible.is_empty() {
+                    return None;
+                }
+
+                let overflow = visible.len() > TRAY_COLLAPSE_THRESHOLD;
+                // Reserve the last visible slot for the chevron when
+                // collapsed — show one less actual icon to compensate.
+                let take_n = if overflow && !self.expanded {
+                    TRAY_COLLAPSE_THRESHOLD.saturating_sub(1)
+                } else {
+                    visible.len()
+                };
+
+                let render_item = |item: &&_| -> Element<'a, Message> {
+                    let bs = button_style.clone();
+                    let item: &&crate::services::tray::StatusNotifierItem = item;
+                    let name = item.name.clone();
+                    position_button(match &item.icon {
+                        Some(TrayIcon::Image(handle)) => Into::<Element<_>>::into(
+                            Image::new(handle.clone())
+                                .height(Length::Fixed(font_size.md - 2.0)),
+                        ),
+                        Some(TrayIcon::Svg(handle)) => Into::<Element<_>>::into(
+                            Svg::new(handle.clone())
+                                .height(Length::Fixed(font_size.md + 2.))
+                                .width(Length::Fixed(font_size.md + 2.))
+                                .content_fit(iced::ContentFit::Cover),
+                        ),
+                        _ => icon(StaticIcon::Point).into(),
+                    })
+                    .on_press_with_position(move |button_ui_ref| {
+                        Message::ToggleMenu(name.to_owned(), id, button_ui_ref)
+                    })
+                    .padding(space.xxs)
+                    .style(move |t, s| bs(t, s))
+                    .into()
+                };
+
+                let mut children: Vec<Element<'a, Message>> = visible
+                    .iter()
+                    .take(take_n)
+                    .map(render_item)
+                    .collect();
+
+                if overflow {
+                    let chevron_icon = if self.expanded {
+                        StaticIcon::Close
+                    } else {
+                        StaticIcon::RightChevron
+                    };
+                    let bs = button_style.clone();
+                    let chevron: Element<'a, Message> = iced::widget::button(icon(chevron_icon))
+                        .padding(space.xxs)
+                        .style(move |t, s| bs(t, s))
+                        .on_press(Message::ToggleExpand)
+                        .into();
+                    children.push(chevron);
+                }
+
+                Some(Into::<Element<_>>::into(
+                    Row::with_children(children).align_y(Alignment::Center),
+                ))
             })
     }
 

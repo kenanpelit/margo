@@ -319,20 +319,23 @@ impl AudioSettings {
                 service.active_sink().map(|sink| {
                     let vol = service.sink_slider.value();
                     let norm = vol as f32 / Self::vol_max() as f32;
-                    (service, Self::speaker_icon(sink.is_mute, norm))
+                    (service, sink.is_mute, norm, Self::speaker_icon(sink.is_mute, norm))
                 })
             })
-            .map(|(service, icon_type)| {
+            .map(|(service, is_mute, vol_norm, icon_type)| {
                 let volume = service.sink_slider.value();
-                format_indicator(
+                let mut fi = format_indicator(
                     self.config.indicator_format,
                     icon_type,
                     Self::vol_text(volume).into(),
                     IndicatorState::Normal,
                 )
                 .on_right_press(Message::OpenMore)
-                .on_scroll(Self::on_scroll(volume, Message::SinkVolumeChanged))
-                .into()
+                .on_scroll(Self::on_scroll(volume, Message::SinkVolumeChanged));
+                if !is_mute {
+                    fi = fi.progress(vol_norm.clamp(0.0, 1.0));
+                }
+                fi.into()
             })
     }
 

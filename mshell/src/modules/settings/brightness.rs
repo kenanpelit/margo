@@ -132,6 +132,11 @@ impl BrightnessSettings {
     pub fn brightness_indicator<'a>(&'a self) -> Option<Element<'a, Message>> {
         self.service.as_ref().map(|service| {
             let scroll_handler = Self::on_scroll(service.current.value(), service.max);
+            let progress = if service.max > 0 {
+                service.current.value() as f32 / service.max as f32
+            } else {
+                0.0
+            };
 
             format_indicator(
                 self.config,
@@ -139,6 +144,7 @@ impl BrightnessSettings {
                 Self::percent_text(service).into(),
                 IndicatorState::Normal,
             )
+            .progress(progress)
             .on_scroll(scroll_handler)
             .into()
         })

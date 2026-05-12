@@ -78,7 +78,15 @@ impl BatteryData {
             BatteryData {
                 status: BatteryStatus::Discharging(_),
                 capacity,
-            } if *capacity < 20 => IndicatorState::Danger,
+            } => {
+                if *capacity < 15 {
+                    IndicatorState::Danger
+                } else if *capacity < 30 {
+                    IndicatorState::Warning
+                } else {
+                    IndicatorState::Normal
+                }
+            }
             _ => IndicatorState::Normal,
         }
     }
