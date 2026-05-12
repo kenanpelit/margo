@@ -112,6 +112,11 @@ pub enum Message {
     ToggleGroup(String),
     ExpireToast(u32),
     DismissToast(u32),
+    /// Dismiss every currently visible toast (mark as read) without
+    /// touching the persisted history. Wired from
+    /// `mshell msg notifications-read` so a keybind can silence a
+    /// sticky/critical toast that won't auto-expire.
+    DismissAllToasts,
     ToastResized(Size),
     /// D-Bus action invoke — `org.freedesktop.Notifications.ActionInvoked`
     /// sinyalini gönderir ve bildirimi kapatır.
@@ -433,6 +438,12 @@ impl Notifications {
                 let had_toasts = self.remove_toast(id);
                 let task = invoke_and_close_task(connection, id, action_key);
                 self.hide_toasts_if_empty_with_task(had_toasts, task)
+            }
+            Message::DismissAllToasts => {
+                // Wipe the on-screen toast list — history is untouched
+                // so the user can still review what they dismissed.
+                let had = self.clear_toasts();
+                self.hide_toasts_if_empty(had)
             }
             Message::ToastResized(size) => Action::UpdateToastInputRegion(size),
         }

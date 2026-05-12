@@ -73,9 +73,14 @@ pub enum IpcCommand {
     Settings,
     /// Open the Notifications history menu
     Notifications,
-    /// Dismiss all notifications without opening the menu (mark all
-    /// as read). Useful as a keybind to silently clear the queue.
+    /// Dismiss all notifications from history — empties the panel.
+    /// Useful when you want to reset state entirely.
     NotificationsClear,
+    /// Dismiss every visible toast (mark them as read) without
+    /// touching history. The history panel still shows the
+    /// dismissed notifications. Use this to silence a sticky toast
+    /// from the keyboard.
+    NotificationsRead,
     /// Open the Updates menu
     Updates,
     /// Open the Tempo (clock / weather) menu
@@ -109,6 +114,7 @@ impl IpcCommand {
             | IpcCommand::Settings
             | IpcCommand::Notifications
             | IpcCommand::NotificationsClear
+            | IpcCommand::NotificationsRead
             | IpcCommand::Updates
             | IpcCommand::Tempo
             | IpcCommand::Ufw
@@ -128,6 +134,7 @@ impl IpcCommand {
             IpcCommand::Settings => Some("settings"),
             IpcCommand::Notifications => Some("notifications"),
             IpcCommand::NotificationsClear => None, // not a menu — direct action
+            IpcCommand::NotificationsRead => None,  // not a menu — direct action
             IpcCommand::Updates => Some("updates"),
             IpcCommand::Tempo => Some("tempo"),
             IpcCommand::Ufw => Some("ufw"),
@@ -161,6 +168,7 @@ impl fmt::Display for IpcCommand {
             IpcCommand::Settings => "settings",
             IpcCommand::Notifications => "notifications",
             IpcCommand::NotificationsClear => "notifications-clear",
+            IpcCommand::NotificationsRead => "notifications-read",
             IpcCommand::Updates => "updates",
             IpcCommand::Tempo => "tempo",
             IpcCommand::Ufw => "ufw",
@@ -202,6 +210,7 @@ impl FromStr for IpcCommand {
             "settings" => Ok(IpcCommand::Settings),
             "notifications" => Ok(IpcCommand::Notifications),
             "notifications-clear" => Ok(IpcCommand::NotificationsClear),
+            "notifications-read" => Ok(IpcCommand::NotificationsRead),
             "updates" => Ok(IpcCommand::Updates),
             "tempo" => Ok(IpcCommand::Tempo),
             "ufw" => Ok(IpcCommand::Ufw),

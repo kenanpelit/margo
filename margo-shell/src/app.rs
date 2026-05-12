@@ -471,6 +471,7 @@ impl App {
             | IpcCommand::Settings
             | IpcCommand::Notifications
             | IpcCommand::NotificationsClear
+            | IpcCommand::NotificationsRead
             | IpcCommand::Updates
             | IpcCommand::Tempo
             | IpcCommand::Ufw
@@ -807,6 +808,7 @@ impl App {
                     | IpcCommand::Settings
                     | IpcCommand::Notifications
                     | IpcCommand::NotificationsClear
+            | IpcCommand::NotificationsRead
                     | IpcCommand::Updates
                     | IpcCommand::Tempo
                     | IpcCommand::Ufw
@@ -1355,9 +1357,12 @@ impl App {
             self.settings.subscription().map(Message::Settings),
             crate::ipc::subscription().map(|cmd| match cmd {
                 IpcCommand::ToggleVisibility => Message::ToggleVisibility,
-                // Direct action — bypass menu opening + OSD pipeline.
+                // Direct actions — bypass menu opening + OSD pipeline.
                 IpcCommand::NotificationsClear => Message::Notifications(
                     modules::notifications::Message::ClearNotifications,
+                ),
+                IpcCommand::NotificationsRead => Message::Notifications(
+                    modules::notifications::Message::DismissAllToasts,
                 ),
                 ref c if c.menu_name().is_some() => {
                     Message::OpenIpcMenu(c.menu_name().unwrap().to_string())
