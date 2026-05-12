@@ -145,10 +145,9 @@ fn focus_target_label(t: &FocusTarget) -> String {
 // the body in `state/animation_tick.rs` — touching state.rs no
 // longer recompiles the animation tick path, and vice-versa.
 
-#[allow(dead_code)]
-
 // ── Top-level compositor state ────────────────────────────────────────────────
 
+#[allow(dead_code)]
 pub type DmabufImportHook = Rc<RefCell<dyn FnMut(&Dmabuf) -> bool>>;
 
 

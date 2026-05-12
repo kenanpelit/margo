@@ -19,7 +19,6 @@ use crate::seat::SeatState;
 use crate::surface::MlockSurface;
 
 pub struct MlockState {
-    #[allow(dead_code)]
     pub conn: Connection,
     /// Decoded + blurred wallpaper for the active output. Loaded once
     /// at startup and shared across all per-output surfaces (cairo
@@ -119,25 +118,19 @@ impl MlockState {
             // with the specific global's numeric `name` to bind each
             // distinct output. (Documented in wayland-client globals.rs.)
             match g.interface.as_str() {
-                "wl_compositor" => {
-                    if self.compositor.is_none() {
-                        let v = g.version.min(6).max(4);
-                        self.compositor = Some(registry.bind(g.name, v, qh, ()));
-                    }
+                "wl_compositor" if self.compositor.is_none() => {
+                    let v = g.version.clamp(4, 6);
+                    self.compositor = Some(registry.bind(g.name, v, qh, ()));
                 }
-                "wl_shm" => {
-                    if self.shm.is_none() {
-                        self.shm = Some(registry.bind(g.name, 1, qh, ()));
-                    }
+                "wl_shm" if self.shm.is_none() => {
+                    self.shm = Some(registry.bind(g.name, 1, qh, ()));
                 }
-                "wl_seat" => {
-                    if self.seat.is_none() {
-                        let v = g.version.min(8).max(1);
-                        self.seat = Some(registry.bind(g.name, v, qh, ()));
-                    }
+                "wl_seat" if self.seat.is_none() => {
+                    let v = g.version.clamp(1, 8);
+                    self.seat = Some(registry.bind(g.name, v, qh, ()));
                 }
                 "wl_output" => {
-                    let v = g.version.min(4).max(1);
+                    let v = g.version.clamp(1, 4);
                     let output = registry.bind(g.name, v, qh, ());
                     info!(
                         idx = self.outputs.len(),
@@ -147,10 +140,8 @@ impl MlockState {
                     );
                     self.outputs.push(output);
                 }
-                "ext_session_lock_manager_v1" => {
-                    if self.session_lock_manager.is_none() {
-                        self.session_lock_manager = Some(registry.bind(g.name, 1, qh, ()));
-                    }
+                "ext_session_lock_manager_v1" if self.session_lock_manager.is_none() => {
+                    self.session_lock_manager = Some(registry.bind(g.name, 1, qh, ()));
                 }
                 _ => {}
             }
@@ -288,10 +279,10 @@ impl MlockState {
     /// down regardless).
     pub fn power_request(&mut self, action: crate::power::PowerAction) {
         let now = std::time::Instant::now();
-        let confirmed = match self.seat_state.power_confirm {
-            Some((pending, deadline)) if pending == action && deadline > now => true,
-            _ => false,
-        };
+        let confirmed = matches!(
+            self.seat_state.power_confirm,
+            Some((pending, deadline)) if pending == action && deadline > now
+        );
         if confirmed {
             info!(?action, "power action confirmed — executing");
             crate::power::execute(action);
