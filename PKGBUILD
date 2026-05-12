@@ -1,47 +1,50 @@
 # Maintainer: Kenan Pelit <kenanpelit@gmail.com>
+#
+# margo — a Rust + Smithay Wayland tiling compositor in the dwl/mango
+# tradition. Ships the compositor binary together with a small set of
+# first-party helpers (`mctl`, `mlock`, `mlayout`, `mscreenshot`,
+# `mvisual`) from a single Cargo workspace. Bar / notifications /
+# launcher / OSD / system tray are intentionally NOT in this package —
+# margo speaks `dwl-ipc-v2`, so any compatible external shell
+# (noctalia, waybar-dwl, fnott, …) plugs in.
+
 pkgname=margo-git
-pkgver=r1.0
+pkgver=r0.0
 pkgrel=1
-pkgdesc="A feature-rich Wayland compositor (Rust/Smithay rewrite of mango)"
+pkgdesc="Rust/Smithay Wayland tiling compositor (mango heritage) with first-party lock, IPC, monitor-profile and screenshot helpers"
 url="https://github.com/kenanpelit/margo"
 arch=("x86_64")
 license=("GPL-3.0-or-later")
 
-# Runtime libraries margo actually pulls in (verified via `ldd /usr/bin/margo`):
-#   libinput, libxkbcommon, wayland, mesa (libgbm/libEGL/libGLESv2),
-#   libseat, pixman, libdrm, systemd-libs (udev/sd-bus),
-#   libgudev, glib2, expat, ffi — plus pcre2 (regex crate's PCRE backend).
+# Runtime libraries the compositor + helpers link directly against,
+# verified with `ldd /usr/bin/margo /usr/bin/mlock` against a fresh
+# build. PCRE2 is pulled in by the `regex` crate's PCRE backend
+# (window-rule regex compilation).
 depends=(
   glibc
   gcc-libs
   libinput
   libxkbcommon
   wayland
-  mesa
-  seatd # provides libseat.so.1
+  mesa            # libgbm / libEGL / libGLESv2 for DRM/KMS render
+  seatd           # provides libseat.so.1
   pixman
   libdrm
-  systemd-libs # libudev, libsystemd
+  systemd-libs    # libudev, libsystemd (logind, sd-bus)
   libgudev
   glib2
   pcre2
-  xorg-xwayland
-  libnotify # notify-send for config-reload toasts
-  # Screenshot pipeline — `mscreenshot` (the helper script
-  # spawned by the screenshot dispatch actions) shells out to
-  # these. Required, not optional, because the in-compositor
-  # `screenshot-region-ui` flow now goes through the same
-  # external-tool chain.
+  pam             # `mlock` authenticates the session owner via libpam
+  cairo           # `mlock` software renderer (no GPU dependency)
+  pango           # `mlock` text shaping
+  dbus            # screencast portal D-Bus shims
+  libnotify       # `notify-send` from the config-reload toast path
+  # Screenshot pipeline — `mscreenshot` shells out to these. Required
+  # (not optional) because the in-compositor `screenshot-region-ui`
+  # dispatch routes through the same external-tool chain.
   grim
   slurp
   wl-clipboard
-  # mshell (margo-shell) runtime deps — audio/media/screencast
-  # panels link directly against these. The binary ships in this
-  # same package; missing daemons mean an empty panel, not a
-  # crash, but the .so dependencies are real link-time pulls.
-  libpulse
-  pipewire    # provides libpipewire + libspa
-  dbus
 )
 makedepends=(
   rust
@@ -52,33 +55,30 @@ makedepends=(
   wayland-protocols
 )
 optdepends=(
-  "xdg-desktop-portal-wlr: screencast / screenshot / file picker portals"
-  "xdg-desktop-portal-gnome: GTK file picker, color picker"
-  "qt5-wayland: Qt5 Wayland backend"
-  "qt6-wayland: Qt6 Wayland backend"
-  "polkit-gnome: GUI authentication agent"
-  "uwsm: systemd-driven session entry (graphical-session.target plumbing)"
-  "wf-recorder: screen recording over wlr-screencopy"
-  "sunsetr: blue-light filter via wlr-gamma-control"
-  "copyq: clipboard manager via wlr-data-control"
+  # Sessions & XDG plumbing
+  "uwsm: systemd-driven session entry (graphical-session.target)"
+  "xdg-desktop-portal-gnome: GTK file picker, color picker, screencast"
+  "xdg-desktop-portal-wlr: alternative wlroots-native portal stack"
+  "polkit-gnome: graphical authentication agent"
+  # Toolkit Wayland backends
+  "qt5-wayland: Qt5 native Wayland backend"
+  "qt6-wayland: Qt6 native Wayland backend"
+  # Capture & recording (beyond grim+slurp+wl-clipboard pulled above)
   "swappy: post-capture annotation editor for mscreenshot"
   "satty: alternative annotation editor for mscreenshot"
-  # mshell panels — runtime daemons + companion GUIs
-  "networkmanager: WiFi/VPN panel backend (nmcli, libnm)"
-  "iwd: alternative WiFi backend for mshell network panel"
-  "bluez: bluetooth panel backend"
-  "bluez-utils: bluetoothctl helper for the bluetooth panel"
-  "pipewire-pulse: PulseAudio shim — audio panel reads PA via this"
-  "wireplumber: PipeWire session/policy manager"
-  "pavucontrol: detailed audio mixer for the panel's More… button"
-  "nm-connection-editor: WiFi/VPN editor for the panel's More… button"
-  "blueman: bluetooth manager GUI for the panel's More… button"
-  "ttf-jetbrains-mono-nerd: default font referenced by mshell.toml"
-  "checkupdates: pacman update count for the updates module"
+  "wf-recorder: screen recording via wlr-screencopy"
+  # Clipboard & shells
+  "copyq: clipboard manager via wlr-data-control"
+  # External shells over dwl-ipc-v2 (bar / notifications / launcher /
+  # OSD / settings) — margo ships none of these; pick one.
+  "noctalia-shell-git: reference dwl-ipc-v2 shell (osc-shell IPC)"
+  "fnott: lightweight Wayland notification daemon"
 )
 provides=("margo=$pkgver" "wayland-compositor")
 conflicts=("margo")
-options=(!lto) # rust handles LTO via Cargo.toml; avoid double passes
+# Cargo profile already enables thin LTO; let makepkg's outer LTO pass
+# stay out of the way so we don't pay for it twice.
+options=(!lto)
 source=("git+${url}.git#branch=main")
 sha256sums=("SKIP")
 
@@ -91,97 +91,104 @@ pkgver() {
 
 prepare() {
   cd "$srcdir/margo"
-  # Pre-fetch all dependencies so build() can run with no network and
-  # fails fast if Cargo.lock has drifted.
+  # Pre-fetch all dependencies so build() can run offline and fails
+  # early if Cargo.lock has drifted from the workspace manifest.
   cargo fetch --locked --target "$CARCH-unknown-linux-gnu"
 }
 
 build() {
   cd "$srcdir/margo"
 
-  # Strip absolute build paths from the binary so the
-  # "Package contains reference to $srcdir" warning goes away. Standard
-  # Rust packaging trick: rewrite the build dir with a stable virtual one
-  # in the embedded debug strings.
   export RUSTUP_TOOLCHAIN=stable
   export CARGO_TARGET_DIR="$srcdir/target"
+
+  # `--remap-path-prefix` rewrites the build dir to `/build` in the
+  # embedded debug strings; otherwise pacman warns about a reference
+  # to `$srcdir` in the installed binary.
   RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$srcdir=/build" \
-    cargo build --frozen --release
+    cargo build --frozen --release --workspace
 }
 
 check() {
   cd "$srcdir/margo"
-  # Run unit tests on the parser / IPC crates (compositor itself needs a
-  # live Wayland session, skipped). Don't fail the build on missing
-  # tests — propagate any compile errors though.
+
+  # Only the library + CLI crates have unit tests we can run from a
+  # packager environment; the compositor itself wants a live Wayland
+  # session. Don't fail the package on test errors — they surface as
+  # warnings — but DO let compile errors propagate.
   cargo test --frozen --release \
     --package margo-config \
+    --package margo-layouts \
     --package mctl \
     --package mlayout ||
-    echo "warning: some tests skipped or failed; not blocking the build"
+    echo "::: margo: test suite reported failures (non-blocking)"
 }
 
 package() {
   cd "$srcdir/margo"
 
-  # Binaries
-  install -Dm755 "$CARGO_TARGET_DIR/release/margo" "$pkgdir/usr/bin/margo"
-  install -Dm755 "$CARGO_TARGET_DIR/release/mctl" "$pkgdir/usr/bin/mctl"
-  install -Dm755 "$CARGO_TARGET_DIR/release/mlayout" "$pkgdir/usr/bin/mlayout"
-  install -Dm755 "$CARGO_TARGET_DIR/release/mscreenshot" "$pkgdir/usr/bin/mscreenshot"
-  install -Dm755 "$CARGO_TARGET_DIR/release/mvisual" "$pkgdir/usr/bin/mvisual"
-  install -Dm755 "$CARGO_TARGET_DIR/release/mshell" "$pkgdir/usr/bin/mshell"
+  # ── Binaries ───────────────────────────────────────────────────────
+  local bin
+  for bin in margo mctl mlock mlayout mscreenshot mvisual; do
+    install -Dm755 "$CARGO_TARGET_DIR/release/$bin" "$pkgdir/usr/bin/$bin"
+  done
 
-  # Wayland session entry (display-manager picker)
+  # ── Wayland session entry ──────────────────────────────────────────
+  # Picked up by display managers (gdm, sddm, ly, greetd-tuigreet …)
+  # from the standard wayland-sessions location.
   install -Dm644 "margo.desktop" \
     "$pkgdir/usr/share/wayland-sessions/margo.desktop"
 
-  # Curated example config — read by `margo --print-config-example` (when
-  # implemented), or copy-pasted into ~/.config/margo/config.conf.
-  install -Dm644 "margo/src/config.example.conf" \
-    "$pkgdir/usr/share/doc/$pkgname/config.example.conf"
-
-  # mshell — example TOML config. Goes next to the compositor's
-  # config.conf at ~/.config/margo/mshell.toml (NOT a subdir);
-  # ship a starter here so `cp` is one command away.
-  if [[ -f "mshell/mshell.example.toml" ]]; then
-    install -Dm644 "mshell/mshell.example.toml" \
-      "$pkgdir/usr/share/doc/$pkgname/mshell.example.toml"
+  # ── Icon ───────────────────────────────────────────────────────────
+  # The compositor logo is published under `docs/assets/`. Surface it
+  # as a hicolor scalable app icon AND a /usr/share/pixmaps fallback
+  # so legacy DMs that don't consult the icon theme still find it.
+  if [[ -f "docs/assets/margo-icon.svg" ]]; then
+    install -Dm644 "docs/assets/margo-icon.svg" \
+      "$pkgdir/usr/share/icons/hicolor/scalable/apps/margo.svg"
+    install -Dm644 "docs/assets/margo-icon.svg" \
+      "$pkgdir/usr/share/pixmaps/margo.svg"
   fi
 
-  # mlayout: README + example layout files. Users copy these
-  # into ~/.config/margo/ as starting points for their own setups.
+  # ── Example configs / docs ─────────────────────────────────────────
+  # Ship the annotated compositor config + Rhai init template under
+  # /usr/share/doc/$pkgname so users can `cp` them into
+  # ~/.config/margo/ without poking around the source tree.
+  install -Dm644 "margo/src/config.example.conf" \
+    "$pkgdir/usr/share/doc/$pkgname/config.example.conf"
+  if [[ -f "contrib/scripts/init.example.rhai" ]]; then
+    install -Dm644 "contrib/scripts/init.example.rhai" \
+      "$pkgdir/usr/share/doc/$pkgname/init.example.rhai"
+  fi
+
+  # ── mlayout example profiles ───────────────────────────────────────
+  # `mlayout set <name>` looks up `~/.config/margo/layout_<name>.conf`;
+  # these are starter profiles the user can copy + tweak.
   if [[ -f "mlayout/README.md" ]]; then
     install -Dm644 "mlayout/README.md" \
       "$pkgdir/usr/share/doc/$pkgname/mlayout.md"
   fi
-  for f in mlayout/examples/layout_*.conf; do
-    if [[ -f "$f" ]]; then
-      install -Dm644 "$f" \
-        "$pkgdir/usr/share/doc/$pkgname/layouts/$(basename "$f")"
-    fi
+  local layout
+  for layout in mlayout/examples/layout_*.conf; do
+    [[ -f "$layout" ]] || continue
+    install -Dm644 "$layout" \
+      "$pkgdir/usr/share/doc/$pkgname/layouts/$(basename "$layout")"
   done
 
-  # XDG portal preferences for the margo session. xdg-desktop-portal
-  # reads this when XDG_CURRENT_DESKTOP includes "margo" — it MUST live
-  # at this canonical path; doc/ doesn't work.
+  # ── XDG desktop-portal preferences ────────────────────────────────
+  # xdg-desktop-portal reads `<desktop>-portals.conf` when
+  # XDG_CURRENT_DESKTOP matches the file's stem. Path is canonical —
+  # /usr/share/doc/ does NOT work as a fallback.
   if [[ -f "assets/margo-portals.conf" ]]; then
     install -Dm644 "assets/margo-portals.conf" \
       "$pkgdir/usr/share/xdg-desktop-portal/margo-portals.conf"
   fi
 
-  # Icon for the .desktop entry (display managers / app launchers
-  # resolve the Icon= line against /usr/share/pixmaps).
-  if [[ -f "assets/mango.png" ]]; then
-    install -Dm644 "assets/mango.png" \
-      "$pkgdir/usr/share/pixmaps/margo.png"
-  fi
-
-  # Shell completions for `mctl`. Hand-curated scripts under
-  # `contrib/completions/` extend the clap-derived subcommand layer
-  # with the dispatch action names from `mctl actions --names` plus
-  # layout-name + output-name completion. Standard system-wide paths
-  # so they auto-load without anything in user shell rc files.
+  # ── Shell completions for mctl ─────────────────────────────────────
+  # Hand-curated under contrib/completions/: extends the clap-derived
+  # subcommand layer with dispatch-action names (`mctl actions
+  # --names`), layout names, and output names. System paths so they
+  # auto-load without anything in user shell rc files.
   if [[ -f "contrib/completions/mctl.bash" ]]; then
     install -Dm644 "contrib/completions/mctl.bash" \
       "$pkgdir/usr/share/bash-completion/completions/mctl"
@@ -195,28 +202,34 @@ package() {
       "$pkgdir/usr/share/fish/vendor_completions.d/mctl.fish"
   fi
 
-  # Developer docs — handy for downstream packagers.
-  for doc in YOL_HARITASI.md CLAUDE.md README.md; do
-    if [[ -f "$doc" ]]; then
-      install -Dm644 "$doc" "$pkgdir/usr/share/doc/$pkgname/$doc"
-    fi
+  # ── Developer / packager documentation ─────────────────────────────
+  local doc
+  for doc in README.md CHANGELOG.md road_map.md CONTRIBUTING.md; do
+    [[ -f "$doc" ]] || continue
+    install -Dm644 "$doc" "$pkgdir/usr/share/doc/$pkgname/$doc"
   done
 
-  # Licenses — margo inherits portions of dwl/dwm/sway/tinywl/wlroots/
-  # mango (compositor) and the iced-bar pattern that margo-shell forks
-  # (shell). Ship every header so downstream attribution is preserved.
+  # ── Licenses ───────────────────────────────────────────────────────
+  # margo inherits portions of dwl, dwm, sway, tinywl, wlroots, and
+  # mango. Every upstream header is shipped so downstream attribution
+  # is preserved on every install.
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  local lic
   for lic in LICENSE.dwl LICENSE.dwm LICENSE.sway LICENSE.tinywl \
              LICENSE.wlroots LICENSE.mango; do
-    if [[ -f "$lic" ]]; then
-      install -Dm644 "$lic" "$pkgdir/usr/share/licenses/$pkgname/$lic"
-    fi
+    [[ -f "$lic" ]] || continue
+    install -Dm644 "$lic" "$pkgdir/usr/share/licenses/$pkgname/$lic"
   done
-  # margo-shell's upstream attribution lives in the crate dir.
-  if [[ -f "mshell/LICENSE.ashell" ]]; then
-    install -Dm644 "mshell/LICENSE.ashell" \
-      "$pkgdir/usr/share/licenses/$pkgname/LICENSE.ashell"
-  fi
 }
+
+# NOTE — manual one-time setup the package does NOT perform:
+#   • PAM service for mlock: create /etc/pam.d/mlock (e.g. one line
+#     `auth include system-auth`) so mlock can authenticate the
+#     session owner. Not shipped here to avoid clobbering a local
+#     stack; mlock --help prints the recipe.
+#   • External shell (bar / notifications / launcher / OSD): pick a
+#     dwl-ipc-v2 client (noctalia, waybar-dwl, fnott, …) and start it
+#     from your session — margo only speaks the protocol, it does not
+#     paint chrome itself.
 
 # vim:set sw=2 et:

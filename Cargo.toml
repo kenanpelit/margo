@@ -4,11 +4,9 @@ members = [
     "margo-config",
     "margo-layouts",
     "mctl",
-    "midle",
     "mlayout",
     "mlock",
     "mscreenshot",
-    "mshell",
     "mvisual",
 ]
 resolver = "2"

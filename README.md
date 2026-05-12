@@ -6,12 +6,12 @@
 </p>
 
 <p align="center">
-  <em>A Wayland tiling compositor and desktop suite — Rust + Smithay, tag-based, with first-party bar, lock, idle and IPC binaries.</em>
+  <em>A Wayland tiling compositor — Rust + Smithay, tag-based, with first-party lock screen, monitor profiles, screenshot helper and IPC.</em>
 </p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg" alt="License"></a>
-  <a href="Cargo.toml"><img src="https://img.shields.io/badge/version-0.4.0-success" alt="Version"></a>
+  <a href="Cargo.toml"><img src="https://img.shields.io/badge/version-0.4.3-success" alt="Version"></a>
   <a href="Cargo.toml"><img src="https://img.shields.io/badge/rust-1.85%2B-orange?logo=rust" alt="Rust"></a>
   <a href="https://github.com/Smithay/smithay"><img src="https://img.shields.io/badge/built%20on-Smithay-blueviolet" alt="Smithay"></a>
   <a href="https://kenanpelit.github.io/margo/"><img src="https://img.shields.io/badge/docs-online-blue" alt="Docs"></a>
@@ -19,20 +19,19 @@
 
 ---
 
-**margo** is a Wayland compositor in the dwl/mango tradition — a Rust + [Smithay] port of [mango] with tags instead of workspaces, a deep tiling layout catalogue, and a coherent set of companion binaries for everyday use: a bar (`mshell`), a lock screen (`mlock`), an idle manager (`midle`), and a control CLI (`mctl`). The whole stack ships from one workspace and one release.
+**margo** is a Wayland compositor in the dwl/mango tradition — a Rust + [Smithay] port of [mango] with tags instead of workspaces, a deep tiling layout catalogue, and a small set of companion binaries for everyday use: a control CLI (`mctl`), a screen locker (`mlock`), monitor profiles (`mlayout`), and a screenshot helper (`mscreenshot`). The whole stack ships from one workspace and one release. Bar / notifications / OSD / launcher / settings are delegated to an external shell (e.g. [noctalia]) over the `dwl-ipc-v2` protocol.
 
 [Smithay]: https://github.com/Smithay/smithay
 [mango]: https://github.com/mangowm/mango
+[noctalia]: https://github.com/noctalia-dev/noctalia-shell
 
 ## Binaries
 
 | Binary | Role |
 |---|---|
 | **`margo`** | Wayland compositor — DRM/KMS backend, tag workflow, layout engine |
-| **`mshell`** | Bar + notifications + OSD + settings panel + system tray (iced + layer-shell) |
 | **`mctl`** | Compositor IPC + control — `status / clients / outputs / dispatch / tags / layout / reload / theme / twilight / migrate / actions / check-config` |
 | **`mlock`** | Screen locker — `ext-session-lock-v1`, cairo + pango, PAM auth, wallpaper backdrop, avatar, F1/F2/F3 power keys |
-| **`midle`** | Idle manager — `ext-idle-notify-v1`, sequential timeouts, app/media/logind inhibitors, TOML config + Unix-socket CLI |
 | **`mlayout`** | Named monitor profiles — `mlayout suggest` writes presets for the detected setup, `mlayout set <name>` flips between them |
 | **`mscreenshot`** | Screen / region / window capture — wraps `grim` + `slurp` + `wl-copy` + optional editor (`swappy` / `satty`) |
 | **`mvisual`** | Visual debugger for the renderer |
@@ -50,21 +49,11 @@ Every directory in the workspace maps 1:1 to a binary it produces. Library-only 
 - **Embedded scripting.** Drop `~/.config/margo/init.rhai`; call any compositor action from a sandboxed Rhai interpreter, hook `on_focus_change` / `on_tag_switch` / `on_window_open`.
 - **Hot reload.** `mctl reload` (or `Super+Ctrl+R`) re-applies window rules, key binds, monitor topology, animation curves, gestures — no logout.
 - **DRM hotplug.** Dock / undock, plug a second monitor mid-session; outputs come and go cleanly.
-- **`dwl-ipc-v2` compatibility.** Drop-in for noctalia, waybar-dwl, fnott, and any other dwl/mango widget.
+- **`dwl-ipc-v2` compatibility.** Drop-in for [noctalia], waybar-dwl, fnott, and any other dwl/mango widget — that's how the bar / launcher / OSD / notifications surface on screen.
 
-## Shell highlights (`mshell`)
-
-- iced 0.13 + `iced_layershell` bar with multi-monitor surfaces, animated open/close (fade + slide), drop-shadowed menus, frosted sub-panels.
-- Modules: workspaces (with per-tag colors + window-count badges), window-title, system-info (CPU/RAM/Temp/Disk), network-speed (Download/Upload + LAN IP + VPN IP), DNS/VPN switcher, UFW, power profile, Podman, media-player (MPRIS), tray (StatusNotifierWatcher), notifications (toast + history grouped by date), updates, weather/clock (tempo), settings panel.
-- `mshell matugen [WALLPAPER]` — generates a Material You palette from the active wallpaper and live-applies it to margo via `mctl reload`; `[matugen].auto_on_wallpaper_change = true` re-runs on every wallpaper swap.
-- Notification IPC: `mshell msg notifications` (open history), `notifications-read` (silently dismiss toasts, keep history), `notifications-clear` (drop history).
-- Mako-style toast configuration: `toast_width`, `toast_radius`, `toast_opacity`, summary/body font sizes, per-app overrides, `on_notify_command` shell hook.
-- Localisation: English + Turkish Fluent catalogues; renderer log noise suppressed by default.
-
-## Lock + idle highlights
+## Lock highlights
 
 - **`mlock`** uses `ext-session-lock-v1`, so the compositor cooperates: locked sessions stay locked across mlock crashes, and only `margo`'s `force_unlock` keybind can break out. Renders a blurred wallpaper, large clock, time-of-day greeting, avatar (`~/.face` or AccountsService), frosted password card with shake-on-fail and an attempt counter. Authenticates the session owner via PAM. Battery indicator and `F1/F2/F3` power keys with a two-press confirmation banner.
-- **`midle`** speaks `ext-idle-notify-v1`. Each `[[step]]` in `~/.config/margo/midle.toml` runs a shell command (and a matching `resume_command` on activity) at its own threshold. Three built-in inhibitor sources stop the chain from firing: regex on `/proc/<pid>/cmdline`, PulseAudio/PipeWire `RUNNING` sink-inputs, and logind's `PrepareForSleep` signal (lets you `mlock` pre-suspend). Controlled at runtime via `midle info / pause [dur] / resume / toggle-inhibit / reload / stop` over a Unix socket.
 
 ## Install
 
@@ -75,20 +64,20 @@ git clone https://github.com/kenanpelit/margo_build ~/.kod/margo_build
 cd ~/.kod/margo_build && makepkg -si
 ```
 
-Installs all eight binaries, the Wayland session entry, example layouts and example configs. PAM service file for `mlock` lands in `/etc/pam.d/`. Runtime tools (`grim`, `slurp`, `wl-clipboard`, `pactl`) come in as dependencies; `swappy` / `satty` are optional screenshot editors picked up at runtime.
+Installs all six binaries, the Wayland session entry, example layouts and example configs. PAM service file for `mlock` lands in `/etc/pam.d/`. Runtime tools (`grim`, `slurp`, `wl-clipboard`) come in as dependencies; `swappy` / `satty` are optional screenshot editors picked up at runtime.
 
 ### From source
 
 ```bash
 git clone https://github.com/kenanpelit/margo
 cd margo && cargo build --release --workspace
-for bin in margo mshell mctl midle mlock mlayout mscreenshot mvisual; do
+for bin in margo mctl mlock mlayout mscreenshot mvisual; do
   sudo install -Dm755 target/release/$bin /usr/bin/$bin
 done
 sudo install -Dm644 margo.desktop /usr/share/wayland-sessions/margo.desktop
 ```
 
-System dependencies: `wayland`, `libinput`, `libxkbcommon`, `seatd`, `mesa`, `libdrm`, `pixman`, `pcre2`, `cairo`, `pango`, `pam`, `xorg-xwayland` (optional). Runtime: `grim`, `slurp`, `wl-clipboard` for screenshots; `wlr-randr` for live monitor re-layout; `pactl` for `midle`'s media inhibitor.
+System dependencies: `wayland`, `libinput`, `libxkbcommon`, `seatd`, `mesa`, `libdrm`, `pixman`, `pcre2`, `cairo`, `pango`, `pam`, `xorg-xwayland` (optional). Runtime: `grim`, `slurp`, `wl-clipboard` for screenshots; `wlr-randr` for live monitor re-layout.
 
 ### Nix flake
 
@@ -105,12 +94,10 @@ All user config lives in `~/.config/margo/`:
 ```
 ~/.config/margo/
 ├── config.conf      # margo — compositor
-├── mshell.toml      # mshell — bar / notifications / OSD
-├── midle.toml       # midle — idle manager
 └── layout_*.conf    # mlayout — monitor profiles
 ```
 
-A complete annotated `config.conf` ships at [`margo/src/config.example.conf`](margo/src/config.example.conf); `mshell.example.toml` exercises every module. Both are hot-reloadable — `mctl reload` (or `Super+Ctrl+R`) re-applies window rules, key binds, monitor topology, animation curves.
+A complete annotated `config.conf` ships at [`margo/src/config.example.conf`](margo/src/config.example.conf). Hot-reloadable — `mctl reload` (or `Super+Ctrl+R`) re-applies window rules, key binds, monitor topology, animation curves.
 
 ```ini
 # config.conf — small excerpt
@@ -159,14 +146,6 @@ mctl dispatch view 4                 # tag bitmask 4 = tag 3
 mctl twilight toggle                 # blue-light filter
 mctl reload
 
-# Theme from wallpaper
-mshell matugen                       # active output's wallpaper → Material You
-
-# Idle manager
-midle info                           # JSON snapshot
-midle pause 30m                      # suspend the timer
-midle toggle-inhibit                 # for status bars
-
 # Layout profiles
 mlayout suggest                      # propose & activate a preset
 mlayout set vertical-ext-top         # apply a saved profile
@@ -189,10 +168,10 @@ on_window_open(|| {
     }
 });
 
-// Notify the bar when entering tag 9
+// Bump tag 9 wallpaper via the external shell
 on_tag_switch(|| {
     if current_tag() == 9 {
-        spawn("pkill -SIGUSR1 waybar");
+        spawn("osc-shell ipc call wallpaper next");
     }
 });
 ```
@@ -207,11 +186,11 @@ Engine: [Rhai] (pure Rust, sandboxed by default). Reference: [`docs/scripting-de
 - [`CHANGELOG.md`](CHANGELOG.md) — release-by-release history (Keep-a-Changelog).
 - [`road_map.md`](road_map.md) — what's shipped, what's queued, design trade-offs.
 - [`docs/`](docs/) — design notes for in-flight features and the post-install validation checklist.
-- `mctl --help`, `mctl actions --verbose`, `mshell --help`, `midle --help`, `mlock --help`, `mlayout --help`, `mscreenshot --help` — generated from source, always current.
+- `mctl --help`, `mctl actions --verbose`, `mlock --help`, `mlayout --help`, `mscreenshot --help` — generated from source, always current.
 
 ## Acknowledgements
 
-Built on [Smithay]. Patterns and inventory borrowed from [niri](https://github.com/YaLTeR/niri) (focus oracle, hotplug, screencast portal, transactional resize), [mango](https://github.com/mangowm/mango) (feature inventory, IPC surface, default keybinds), [dwl](https://codeberg.org/dwl/dwl) (the original dwm-on-wlroots), [anvil](https://github.com/Smithay/smithay/tree/master/anvil) (Smithay's reference compositor), and [Hyprland](https://hypr.land) (color-management protocol shape). `mlock` follows the architecture of [nlock](https://github.com/OldUser101/nlock) and [waylock](https://codeberg.org/ifreund/waylock); `midle` follows [stasis](https://github.com/saltnpepper97/stasis); `mshell` originated as a fork of [ashell](https://github.com/MalpenZibo/ashell).
+Built on [Smithay]. Patterns and inventory borrowed from [niri](https://github.com/YaLTeR/niri) (focus oracle, hotplug, screencast portal, transactional resize), [mango](https://github.com/mangowm/mango) (feature inventory, IPC surface, default keybinds), [dwl](https://codeberg.org/dwl/dwl) (the original dwm-on-wlroots), [anvil](https://github.com/Smithay/smithay/tree/master/anvil) (Smithay's reference compositor), and [Hyprland](https://hypr.land) (color-management protocol shape). `mlock` follows the architecture of [nlock](https://github.com/OldUser101/nlock) and [waylock](https://codeberg.org/ifreund/waylock).
 
 Original portions of dwl, dwm, sway, tinywl, and wlroots are preserved under their respective licenses — see `LICENSE.*`.
 
@@ -221,5 +200,5 @@ GPL-3.0-or-later. See [`LICENSE`](LICENSE).
 
 <p align="center">
   <img src="docs/assets/margo-icon.svg" alt="margo" width="48"><br>
-  <sub>GPL-3.0-or-later · 0.4.0</sub>
+  <sub>GPL-3.0-or-later · 0.4.3</sub>
 </p>

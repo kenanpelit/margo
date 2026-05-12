@@ -1,15 +1,9 @@
 //! Resolve + decode + blur the user's wallpaper once at lock time,
 //! so render.rs can composite it under the lock UI on every output.
 //!
-//! Resolution chain (matches mshell's lockscreen + matugen logic):
-//!   1. `state.json` active output's `wallpaper` field (margo tagrule)
-//!   2. `mshell.toml` `[wallpaper.tags][active_tag]`
-//!   3. `mshell.toml` `[wallpaper.shuffle].directory` — first image
-//!      (alphabetical) so the lock has *some* backdrop even when
-//!      shuffle is disabled.
-//!
-//! On any failure returns `None`; render.rs falls back to a solid
-//! dark backdrop in that case.
+//! Source: `state.json` active output's `wallpaper` field (margo
+//! tagrule passes through). On any failure returns `None`; render.rs
+//! falls back to a solid dark backdrop in that case.
 
 use std::path::PathBuf;
 
@@ -81,53 +75,11 @@ fn resolve_path() -> Option<PathBuf> {
         .iter()
         .find(|o| o.get("active").and_then(|v| v.as_bool()).unwrap_or(false))?;
 
-    // 1) state.json wallpaper field — margo tagrule passes through.
-    if let Some(p) = active
+    let p = active
         .get("wallpaper")
         .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
-    {
-        return Some(expand_home(p));
-    }
-
-    // 2) mshell.toml [wallpaper.tags][active_tag]
-    let mask = active.get("active_tag_mask").and_then(|v| v.as_u64())?;
-    let mshell_cfg = read_mshell_toml().ok();
-
-    if mask != 0 {
-        let tag = (mask as u32).trailing_zeros() + 1;
-        if let Some(cfg) = mshell_cfg.as_ref()
-            && let Some(tags) = cfg.get("wallpaper").and_then(|w| w.get("tags"))
-            && let Some(p) = tags.get(&tag.to_string()).and_then(|v| v.as_str())
-        {
-            return Some(expand_home(p));
-        }
-    }
-
-    // 3) [wallpaper.shuffle].directory — first image even if shuffle is off.
-    if let Some(cfg) = mshell_cfg.as_ref()
-        && let Some(dir_s) = cfg
-            .get("wallpaper")
-            .and_then(|w| w.get("shuffle"))
-            .and_then(|s| s.get("directory"))
-            .and_then(|v| v.as_str())
-    {
-        let dir = expand_home(dir_s);
-        if dir.is_dir() {
-            let mut entries: Vec<_> = std::fs::read_dir(&dir)
-                .ok()?
-                .filter_map(|e| e.ok())
-                .map(|e| e.path())
-                .filter(is_image)
-                .collect();
-            if !entries.is_empty() {
-                entries.sort();
-                return Some(entries.into_iter().next().unwrap());
-            }
-        }
-    }
-
-    None
+        .filter(|s| !s.is_empty())?;
+    Some(expand_home(p))
 }
 
 fn read_state_json() -> Option<serde_json::Value> {
@@ -140,12 +92,6 @@ fn read_state_json() -> Option<serde_json::Value> {
     let path = runtime.join("margo").join("state.json");
     let raw = std::fs::read(&path).ok()?;
     serde_json::from_slice(&raw).ok()
-}
-
-fn read_mshell_toml() -> Result<toml::Value, anyhow::Error> {
-    let path = home_dir().join(".config").join("margo").join("mshell.toml");
-    let raw = std::fs::read_to_string(&path)?;
-    Ok(toml::from_str(&raw)?)
 }
 
 fn home_dir() -> PathBuf {
@@ -162,11 +108,4 @@ fn expand_home(p: &str) -> PathBuf {
     } else {
         PathBuf::from(p)
     }
-}
-
-fn is_image(p: &PathBuf) -> bool {
-    p.extension()
-        .and_then(|s| s.to_str())
-        .map(|s| matches!(s.to_ascii_lowercase().as_str(), "jpg" | "jpeg" | "png" | "webp"))
-        .unwrap_or(false)
 }

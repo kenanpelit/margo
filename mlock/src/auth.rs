@@ -1,4 +1,4 @@
-//! Minimal libpam FFI — same shape as mshell's lockscreen::pam.
+//! Minimal libpam FFI.
 //!
 //! Kept inline (rather than shared via a crate) because PAM bindings
 //! are tiny and the duplication is cheaper than spinning up a fourth
