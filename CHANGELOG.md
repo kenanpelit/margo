@@ -7,6 +7,102 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.4.1] – 2026-05-12
+
+### Highlights
+
+Polish + correctness pass over the 0.4.0 release. Two visible
+themes:
+
+* **mshell bar gets a noctalia-grade information density layer** —
+  active workspace accent stripes, audio/brightness progress fill
+  rails, battery threshold borders, tray collapse, tempo two-line
+  composite, notification dot indicator — without abandoning the
+  minimal/sakin character of the original design.
+* **midle becomes browser-aware** — D-Bus screensaver / session-manager /
+  portal Inhibit eavesdropping ported from stasis. Helium / Firefox /
+  Chrome no longer block idle just by being open; they only inhibit
+  while they're actually claiming the system's idle inhibitor (e.g.
+  playing a YouTube video).
+
+### Added
+
+- **mshell `restart` subcommand.** Scans `/proc` for sibling
+  `mshell` processes, SIGTERMs them, polls for exit with a 3s
+  graceful budget (SIGKILL fallback), gives the compositor 200ms
+  to tear down the bar's layer surfaces, then spawns a detached
+  fresh instance via `setsid()`. Replaces the
+  `pkill mshell && setsid -f mshell …` shell incantation.
+- **midle D-Bus inhibit monitor.** Eavesdrops the session bus for
+  `org.freedesktop.ScreenSaver`, `org.gnome.SessionManager` and
+  `org.freedesktop.portal.Inhibit` traffic, correlates method-call
+  serials with their cookie / handle returns per sender, and
+  drops sender rows on `NameOwnerChanged` disconnects.
+  `Settings::enable_dbus_inhibit` (default `true`) gates it.
+  `midle info` now reports an `inhibitors` breakdown
+  (`manual / app / media / dbus`) so "why isn't midle firing?"
+  becomes a one-liner instead of a log dive.
+- **Workspace pill polish.** Active workspace gets a 2.5px accent
+  bar across ~55% of the pill width (Stack overlay, no height
+  shift); inactive workspaces with open windows get a row of up to
+  4 small accent dots. Switch animation curve goes from symmetric
+  EASE to EASE_OUT.
+- **Status cluster density polish.** `format_indicator` wraps
+  Warning / Danger states in a 1px tinted border + 10% accent
+  background; `BatteryData::get_indicator_state` gains a Warning
+  threshold at <30% in addition to the existing <15% Danger.
+  `format_indicator.progress(0..=1)` stacks a 2px accent fill
+  along the bottom edge — audio (sink) and brightness now expose
+  their live level on the bar. Muted sink hides the bar.
+- **Tray chevron collapse.** Once more than 3 icons are registered,
+  the tray compacts to 2 icons + a chevron toggle; click to
+  expand. Keeps the right-cluster from sprawling.
+- **Module active-state indicator.** Every bar capsule now signals
+  "my menu is on screen" with a 2px accent stripe along its bottom
+  edge (~60% width, centred). Stack overlay so toggling never
+  changes bar height. `Outputs::open_menu_type_for_bar` resolves
+  the open menu once per render and threads it through to
+  `ModuleItem::is_active`.
+- **Tempo rich composite.** Opt-in `[tempo] secondary_format = "%a %d %b"`
+  renders a 2-line Column: primary clock in semibold at
+  `bar_font`, secondary string beneath at `font_size.xs` and 65%
+  foreground alpha. Tracks tz cycles and the live update tick
+  alongside the primary.
+- **Notification dot indicator.** When there are pending
+  notifications, the bell icon gets a 5px accent dot in its
+  top-right corner, hairlined with the bar background. Critical
+  urgency swaps the dot to the danger palette. Independent of the
+  existing count badge — heavy users can keep both.
+
+### Fixed
+
+- **ESC inside an open menu now closes it.** Previously menus
+  opened with `KeyboardInteractivity::OnDemand`, which margo doesn't
+  auto-focus — the keypress went to the background app instead.
+  Menus now open `Exclusive`; the compositor moves focus onto the
+  menu surface as soon as it appears, ESC reaches mshell's
+  `listen_with` Escape handler, and the menu closes.
+- **No more blank flash on menu open.** A new
+  `MENU_OPEN_PREROLL_MS = 30` constant backdates `open_at` so the
+  first paint lands at ~42% opacity (after ease-out-cubic) instead
+  of α=0; the animation finishes ~150ms later with no perceptual
+  flash. When `theme.animations_enabled = false`, `open_at` /
+  `closing_at` are backdated past the animation window so menus
+  render and tear down instantly.
+- **Updates module bar item sizing.** `view()` was missing
+  `.size(bar_font)` on both the StaticIcon and the count text, so
+  it rendered visibly bigger than every other capsule. Same fix
+  here: size to `theme.bar_font_size`, drop the pointless wrapping
+  container, tint the row with `palette.primary` when there are
+  pending updates.
+- **midle daemon no longer panics margo at startup.** The `tokio`
+  feature on midle's `zbus` dependency was getting unified across
+  the workspace, forcing margo's zbus (pulled via mctl) into a
+  tokio runtime that doesn't exist in the calloop loop. Dropped
+  to `default-features = false, features = ["async-io"]` — margo
+  stays on async-io, midle's own tokio runtime can still `.await`
+  zbus futures regardless of the reactor.
+
 ## [0.3.0] – 2026-05-11
 
 ### Highlights
