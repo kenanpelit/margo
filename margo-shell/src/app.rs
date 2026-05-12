@@ -462,13 +462,15 @@ impl App {
                 }
             }
             IpcCommand::ToggleVisibility => None,
-            // Menü açma komutları osd_info_for tarafından kullanılmıyor.
+            // Menü açma komutları + direkt aksiyon (NotificationsClear)
+            // osd_info_for tarafından kullanılmıyor.
             IpcCommand::Dns
             | IpcCommand::Network
             | IpcCommand::System
             | IpcCommand::Media
             | IpcCommand::Settings
             | IpcCommand::Notifications
+            | IpcCommand::NotificationsClear
             | IpcCommand::Updates
             | IpcCommand::Tempo
             | IpcCommand::Ufw
@@ -796,12 +798,15 @@ impl App {
                     IpcCommand::ToggleVisibility => unreachable!(),
                     // Menü açma komutları subscription mapping'inde
                     // OpenIpcMenu'ya yönlendirildiği için buraya hiç gelmez.
+                    // NotificationsClear de subscription'da Message::Notifications'a
+                    // direkt route ediliyor.
                     IpcCommand::Dns
                     | IpcCommand::Network
                     | IpcCommand::System
                     | IpcCommand::Media
                     | IpcCommand::Settings
                     | IpcCommand::Notifications
+                    | IpcCommand::NotificationsClear
                     | IpcCommand::Updates
                     | IpcCommand::Tempo
                     | IpcCommand::Ufw
@@ -1350,6 +1355,10 @@ impl App {
             self.settings.subscription().map(Message::Settings),
             crate::ipc::subscription().map(|cmd| match cmd {
                 IpcCommand::ToggleVisibility => Message::ToggleVisibility,
+                // Direct action — bypass menu opening + OSD pipeline.
+                IpcCommand::NotificationsClear => Message::Notifications(
+                    modules::notifications::Message::ClearNotifications,
+                ),
                 ref c if c.menu_name().is_some() => {
                     Message::OpenIpcMenu(c.menu_name().unwrap().to_string())
                 }

@@ -73,6 +73,9 @@ pub enum IpcCommand {
     Settings,
     /// Open the Notifications history menu
     Notifications,
+    /// Dismiss all notifications without opening the menu (mark all
+    /// as read). Useful as a keybind to silently clear the queue.
+    NotificationsClear,
     /// Open the Updates menu
     Updates,
     /// Open the Tempo (clock / weather) menu
@@ -105,6 +108,7 @@ impl IpcCommand {
             | IpcCommand::Media
             | IpcCommand::Settings
             | IpcCommand::Notifications
+            | IpcCommand::NotificationsClear
             | IpcCommand::Updates
             | IpcCommand::Tempo
             | IpcCommand::Ufw
@@ -123,6 +127,7 @@ impl IpcCommand {
             IpcCommand::Media => Some("media"),
             IpcCommand::Settings => Some("settings"),
             IpcCommand::Notifications => Some("notifications"),
+            IpcCommand::NotificationsClear => None, // not a menu — direct action
             IpcCommand::Updates => Some("updates"),
             IpcCommand::Tempo => Some("tempo"),
             IpcCommand::Ufw => Some("ufw"),
@@ -155,6 +160,7 @@ impl fmt::Display for IpcCommand {
             IpcCommand::Media => "media",
             IpcCommand::Settings => "settings",
             IpcCommand::Notifications => "notifications",
+            IpcCommand::NotificationsClear => "notifications-clear",
             IpcCommand::Updates => "updates",
             IpcCommand::Tempo => "tempo",
             IpcCommand::Ufw => "ufw",
@@ -195,6 +201,7 @@ impl FromStr for IpcCommand {
             "media" => Ok(IpcCommand::Media),
             "settings" => Ok(IpcCommand::Settings),
             "notifications" => Ok(IpcCommand::Notifications),
+            "notifications-clear" => Ok(IpcCommand::NotificationsClear),
             "updates" => Ok(IpcCommand::Updates),
             "tempo" => Ok(IpcCommand::Tempo),
             "ufw" => Ok(IpcCommand::Ufw),
