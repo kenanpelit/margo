@@ -33,7 +33,7 @@ use tracing::error;
 )]
 struct Args {
     /// Path to the config file. Defaults to
-    /// `$XDG_CONFIG_HOME/midle/config.toml` (or `~/.config/midle/...`).
+    /// `$XDG_CONFIG_HOME/margo/midle.toml` (or `~/.config/margo/midle.toml`).
     #[arg(short, long)]
     config: Option<PathBuf>,
 
