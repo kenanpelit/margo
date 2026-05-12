@@ -125,6 +125,10 @@ pub struct MshellTheme {
     pub bar_height: f64,
     /// Islands modunda her capsule'a ince outline çiz.
     pub show_outline: bool,
+    /// Bar üzerindeki tüm modüllerin metin boyutu — font birliği için.
+    /// Tek noktadan ayarlanır, her modülün view() fonksiyonu bunu kullanır.
+    /// Varsayılan `font_size.sm` (12).
+    pub bar_font_size: f32,
     // Read by animation call sites added in subsequent PRs.
     #[allow(dead_code)]
     pub animations_enabled: bool,
@@ -147,6 +151,7 @@ impl Default for MshellTheme {
             scale_factor: appearance.scale_factor,
             bar_height: appearance.bar_density.height(),
             show_outline: appearance.show_outline,
+            bar_font_size: FontSize::default().sm,
             animations_enabled: false,
             iced_theme: Theme::custom_with_fn(
                 "local".to_string(),
@@ -275,6 +280,7 @@ impl MshellTheme {
             scale_factor: appearance.scale_factor,
             bar_height: appearance.bar_density.height(),
             show_outline: appearance.show_outline,
+            bar_font_size: FontSize::default().sm,
             iced_theme: Theme::custom_with_fn(
                 "local".to_string(),
                 Palette {

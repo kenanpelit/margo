@@ -140,7 +140,8 @@ impl Ufw {
     pub fn view(&self) -> Element<'_, Message> {
         // Bar'da metin yok — sadece kale/kalkan ikonu, renkle durumu söyler:
         //   yeşil = active, kırmızı = inactive, sarı = ufw kurulu değil.
-        let cell = container(icon(StaticIcon::Lock));
+        let bar_font = use_theme(|t| t.bar_font_size);
+        let cell = container(icon(StaticIcon::Lock).size(bar_font));
         if !self.state.available {
             cell.style(|theme: &Theme| container::Style {
                 text_color: Some(theme.palette().warning),

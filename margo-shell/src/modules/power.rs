@@ -160,7 +160,7 @@ impl Power {
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        let space = use_theme(|t| t.space);
+        let (space, bar_font) = use_theme(|t| (t.space, t.bar_font_size));
         let label = if self.state.battery_available {
             match self.state.battery_percent {
                 Some(p) => format!("{p}%"),
@@ -175,7 +175,8 @@ impl Power {
         } else {
             Self::profile_icon(&self.state.profile)
         };
-        let body = container(row!(icon(ico), text(label)).spacing(space.xxs));
+        let body =
+            container(row!(icon(ico).size(bar_font), text(label).size(bar_font)).spacing(space.xxs));
         let percent = self.state.battery_percent.unwrap_or(100);
         if self.state.battery_available && percent <= 15 {
             body.style(|theme: &Theme| container::Style {

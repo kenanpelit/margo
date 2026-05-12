@@ -86,7 +86,7 @@ impl WindowTitle {
         use_theme(|theme| {
             container(
                 text(title)
-                    .size(theme.font_size.sm)
+                    .size(theme.bar_font_size)
                     .wrapping(text::Wrapping::None),
             )
             .clip(true)

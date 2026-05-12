@@ -436,7 +436,9 @@ impl Workspaces {
                                 // workspace branch (negative IDs) is
                                 // unreachable.
                                 let on_press = Message::ChangeWorkspace(w.id);
-                                let font_size = theme.font_size.xs;
+                                // Workspace etiketleri tüm bar widget'larıyla
+                                // aynı boyutta — font birliği için bar_font_size.
+                                let font_size = theme.bar_font_size;
                                 let height = theme.space.md;
 
                                 Some(match target_width {

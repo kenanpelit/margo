@@ -165,12 +165,12 @@ impl Tempo {
     }
 
     pub fn view(&'_ self) -> Element<'_, Message> {
-        let space = use_theme(|t| t.space);
+        let (space, bar_font) = use_theme(|t| (t.space, t.bar_font_size));
         let display_text = self.time_str(self.current_format(), self.current_timezone_index, None);
 
         Row::with_capacity(2)
             .push(self.weather_indicator())
-            .push(text(display_text))
+            .push(text(display_text).size(bar_font))
             .align_y(Vertical::Center)
             .spacing(space.sm)
             .into()

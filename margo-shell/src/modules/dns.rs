@@ -210,12 +210,12 @@ impl Dns {
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        let space = use_theme(|t| t.space);
+        let (space, bar_font) = use_theme(|t| (t.space, t.bar_font_size));
         let mode = self.current_mode();
         let body = container(
             row!(
-                icon(Self::mode_icon(mode)),
-                text(Self::mode_label(mode, &self.config.providers))
+                icon(Self::mode_icon(mode)).size(bar_font),
+                text(Self::mode_label(mode, &self.config.providers)).size(bar_font)
             )
             .spacing(space.xxs),
         );

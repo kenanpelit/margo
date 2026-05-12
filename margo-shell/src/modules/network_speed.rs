@@ -203,9 +203,13 @@ impl NetworkSpeed {
         unit: &str,
         threshold: Option<(u32, u32, u32)>,
     ) -> Element<'a, Message> {
-        let space = use_theme(|t| t.space);
+        let (space, bar_font) = use_theme(|t| (t.space, t.bar_font_size));
         let body = container(
-            row!(icon(ico), text(format!("{display}{unit}"))).spacing(space.xxs),
+            row!(
+                icon(ico).size(bar_font),
+                text(format!("{display}{unit}")).size(bar_font)
+            )
+            .spacing(space.xxs),
         );
         if let Some((value, warn, alert)) = threshold {
             body.style(move |theme: &Theme| container::Style {
@@ -230,7 +234,7 @@ impl NetworkSpeed {
         ip: Option<&str>,
         vpn: bool,
     ) -> Element<'a, Message> {
-        let space = use_theme(|t| t.space);
+        let (space, bar_font) = use_theme(|t| (t.space, t.bar_font_size));
         let text_value = ip.unwrap_or("—").to_string();
         let body = container(
             row!(
@@ -238,8 +242,9 @@ impl NetworkSpeed {
                     StaticIcon::Vpn
                 } else {
                     StaticIcon::IpAddress
-                }),
-                text(text_value)
+                })
+                .size(bar_font),
+                text(text_value).size(bar_font)
             )
             .spacing(space.xxs),
         );

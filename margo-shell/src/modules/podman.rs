@@ -127,7 +127,7 @@ impl Podman {
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        let space = use_theme(|t| t.space);
+        let (space, bar_font) = use_theme(|t| (t.space, t.bar_font_size));
         let running = self.state.running_count();
         let total = self.state.containers.len();
         let label = if !self.state.available {
@@ -136,7 +136,11 @@ impl Podman {
             format!("{running}/{total}")
         };
         let body = container(
-            row!(icon(StaticIcon::Drive), text(label)).spacing(space.xxs),
+            row!(
+                icon(StaticIcon::Drive).size(bar_font),
+                text(label).size(bar_font)
+            )
+            .spacing(space.xxs),
         );
         if running > 0 {
             body.style(|theme: &Theme| container::Style {

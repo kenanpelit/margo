@@ -248,14 +248,14 @@ impl SystemInfo {
         threshold: Option<(V, V, V)>,
         prefix: Option<String>,
     ) -> Element<'a, Message> {
-        let space = use_theme(|t| t.space);
+        let (space, bar_font) = use_theme(|t| (t.space, t.bar_font_size));
         let element = container(
             row!(
-                icon(info_icon),
+                icon(info_icon).size(bar_font),
                 if let Some(prefix) = prefix {
-                    text(format!("{prefix} {display}{unit}"))
+                    text(format!("{prefix} {display}{unit}")).size(bar_font)
                 } else {
-                    text(format!("{display}{unit}"))
+                    text(format!("{display}{unit}")).size(bar_font)
                 }
             )
             .spacing(space.xxs),
