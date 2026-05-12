@@ -20,6 +20,7 @@ mod matugen;
 mod modules;
 mod osd;
 mod outputs;
+mod restart;
 mod services;
 mod theme;
 mod utils;
@@ -59,6 +60,10 @@ enum Command {
         /// `[wallpaper.tags]` entry for the focused tag is used.
         wallpaper: Option<PathBuf>,
     },
+    /// Stop any running mshell instance and launch a fresh detached
+    /// one. Useful after rebuilding the binary or tweaking config
+    /// pieces that require a full restart (font / layer / surface).
+    Restart,
 }
 
 fn get_log_spec(log_level: &str) -> LogSpecification {
@@ -110,6 +115,14 @@ fn main() -> iced::Result {
     if let Some(Command::Matugen { wallpaper }) = args.command.as_ref() {
         if let Err(e) = matugen::run_cli(wallpaper.clone()) {
             eprintln!("mshell matugen: {e:#}");
+            std::process::exit(1);
+        }
+        std::process::exit(0);
+    }
+
+    if matches!(args.command, Some(Command::Restart)) {
+        if let Err(e) = restart::run() {
+            eprintln!("mshell restart: {e:#}");
             std::process::exit(1);
         }
         std::process::exit(0);
