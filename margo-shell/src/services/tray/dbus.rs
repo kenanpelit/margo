@@ -66,22 +66,50 @@ impl StatusNotifierWatcher {
                                 info!("Lost bus name: {NAME}");
                                 have_bus_name = false;
                             }
-                        } else if let BusName::Unique(name) = &args.name {
-                            let mut interface = internal_interface.get_mut().await;
-                            if let Some(idx) = interface
-                                .items
-                                .iter()
-                                .position(|(unique_name, _)| unique_name == name)
-                            {
-                                let emitter =
-                                    SignalEmitter::new(&internal_connection, OBJECT_PATH).unwrap();
-                                let service = interface.items.remove(idx).1;
-                                StatusNotifierWatcher::status_notifier_item_unregistered(
-                                    &emitter, &service,
-                                )
-                                .await
-                                .unwrap();
+                            continue;
+                        }
+
+                        match &args.name {
+                            // Unique name kayboldu → ona bağlı tray item'ı sil.
+                            BusName::Unique(name) if args.new_owner.is_none() => {
+                                let mut interface = internal_interface.get_mut().await;
+                                if let Some(idx) = interface
+                                    .items
+                                    .iter()
+                                    .position(|(unique_name, _)| unique_name == name)
+                                {
+                                    let emitter =
+                                        SignalEmitter::new(&internal_connection, OBJECT_PATH).unwrap();
+                                    let service = interface.items.remove(idx).1;
+                                    let _ = StatusNotifierWatcher::status_notifier_item_unregistered(
+                                        &emitter, &service,
+                                    )
+                                    .await;
+                                }
                             }
+                            // Well-known name belirdi (yeni tray uygulaması) → otomatik kayıt.
+                            // Telegram/AppIndicator gibi uygulamalar
+                            // `org.kde.StatusNotifierItem-{pid}-{id}` pattern'iyle
+                            // kayıt olur; mshell başladıktan sonra açılırlarsa
+                            // RegisterStatusNotifierItem'i çağırmazlar — bu yüzden
+                            // biz proaktif tarayıp ekliyoruz.
+                            BusName::WellKnown(name) if args.new_owner.is_some() => {
+                                let n = name.as_str();
+                                if n.contains("StatusNotifierItem") && n != NAME.as_str() {
+                                    let owner = args.new_owner.as_ref().unwrap().to_owned();
+                                    let mut iface = internal_interface.get_mut().await;
+                                    let emitter =
+                                        SignalEmitter::new(&internal_connection, OBJECT_PATH).unwrap();
+                                    iface
+                                        .register_status_notifier_item_manual(
+                                            "/StatusNotifierItem",
+                                            owner,
+                                            &emitter,
+                                        )
+                                        .await;
+                                }
+                            }
+                            _ => {}
                         }
                     }
                     _ = interval.tick() => {
@@ -93,9 +121,19 @@ impl StatusNotifierWatcher {
             }
         });
 
-        // Initial discovery
-        if let Err(e) = Self::discover_items(&connection, &interface).await {
-            info!("Failed initial tray item discovery: {e}");
+        // Initial discovery — birden fazla kez tekrarla. Mshell tam adresi
+        // alıp dispatchable hale gelmeden önce çağırılan
+        // `RegisterStatusNotifierItem` çağrıları kaybolabilir; bazı
+        // uygulamalar (Telegram, AppIndicator klientleri) watcher'ı
+        // gördükten 50-500 ms sonra register oluyor. Geç gelen
+        // kayıtları yakalamak için kademeli tarama.
+        for delay_ms in [0u64, 200, 700, 2000, 5000] {
+            if delay_ms > 0 {
+                tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+            }
+            if let Err(e) = Self::discover_items(&connection, &interface).await {
+                info!("Tray item discovery failed (delay {delay_ms}ms): {e}");
+            }
         }
 
         Ok(connection)

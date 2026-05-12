@@ -40,17 +40,18 @@ pub struct Space {
 }
 
 impl Default for Space {
-    // Noctalia spacing scale — daha kompakt, capsule-friendly. Önceki
-    // değerler (4/8/12/16/24/32/48) bar'ı çok geniş hissettiriyordu.
+    // Modüller arasında nefes alabilen ama bar'ı boğmayacak ölçek.
+    // Noctalia (1/2/4/6/9/13/18) çok sıkı geliyordu, eski iced default
+    // (4/8/12/16/24/32/48) ise çok gevşekti — bu ikisinin ortası.
     fn default() -> Self {
         Self {
-            xxs: 2.0,
-            xs: 4.0,
-            sm: 6.0,
-            md: 9.0,
-            lg: 13.0,
-            xl: 18.0,
-            xxl: 26.0,
+            xxs: 3.0,
+            xs: 6.0,
+            sm: 10.0,
+            md: 14.0,
+            lg: 20.0,
+            xl: 28.0,
+            xxl: 40.0,
         }
     }
 }
@@ -65,14 +66,15 @@ pub struct Radius {
 }
 
 impl Default for Radius {
-    // Noctalia radius ölçeği — daha az curvy. Önceki sm/md/lg/xl
-    // (4/8/16/32) Islands için fazla yuvarlaktı.
+    // Eski iced default'lar — Islands capsule'leri için daha yuvarlak
+    // his. lg=16 capsule kenarlarını noctalia'dan biraz daha yumuşak
+    // gösterir (kullanıcı tercihi).
     fn default() -> Self {
         Self {
             sm: 4.0,
             md: 8.0,
-            lg: 12.0,
-            xl: 20.0,
+            lg: 16.0,
+            xl: 32.0,
         }
     }
 }
@@ -90,17 +92,17 @@ pub struct FontSize {
 }
 
 impl Default for FontSize {
-    // Noctalia font ölçeği — daha sıkı bilgi yoğunluğu için. Bar metni
-    // 10-11px, başlıklar 16-18px. Eski 8/10/12/16/20/22/32 daha gevşekti.
+    // Eski iced ölçeği — bar metinleri yeterince büyük, başlıklar
+    // okunaklı. Noctalia 10/11/13 fazla küçük geliyordu.
     fn default() -> Self {
         Self {
-            xxs: 9.0,
+            xxs: 8.0,
             xs: 10.0,
-            sm: 11.0,
-            md: 13.0,
-            lg: 16.0,
-            xl: 18.0,
-            xxl: 24.0,
+            sm: 12.0,
+            md: 16.0,
+            lg: 20.0,
+            xl: 22.0,
+            xxl: 32.0,
         }
     }
 }
