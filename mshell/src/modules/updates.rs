@@ -7,7 +7,7 @@ use crate::{
     theme::use_theme,
 };
 use iced::{
-    Alignment, Element, Length, Padding, Subscription, SurfaceId, Task,
+    Alignment, Element, Length, Padding, Subscription, SurfaceId, Task, Theme,
     alignment::Horizontal,
     stream::channel,
     widget::{Column, column, container, row, scrollable, text},
@@ -163,20 +163,34 @@ impl Updates {
     }
 
     pub fn view(&'_ self) -> Element<'_, Message> {
-        let space = use_theme(|theme| theme.space);
-        let mut content = row!(container(icon(match self.state {
+        let (space, bar_font) = use_theme(|theme| (theme.space, theme.bar_font_size));
+        let has_updates = !self.updates.is_empty();
+
+        let glyph = icon(match self.state {
             State::Checking => StaticIcon::Refresh,
-            State::Ready if self.updates.is_empty() => StaticIcon::NoUpdatesAvailable,
+            State::Ready if !has_updates => StaticIcon::NoUpdatesAvailable,
             _ => StaticIcon::UpdatesAvailable,
-        })))
-        .align_y(Alignment::Center)
-        .spacing(space.xxs);
+        })
+        .size(bar_font);
 
-        if !self.updates.is_empty() {
-            content = content.push(text(self.updates.len()));
+        let count = has_updates
+            .then(|| text(self.updates.len().to_string()).size(bar_font));
+
+        let body = container(
+            row!(glyph, count)
+                .spacing(space.xxs)
+                .align_y(Alignment::Center),
+        );
+
+        if has_updates {
+            body.style(|theme: &Theme| container::Style {
+                text_color: Some(theme.palette().primary),
+                ..Default::default()
+            })
+            .into()
+        } else {
+            body.into()
         }
-
-        content.into()
     }
 
     pub fn menu_view<'a>(&'a self, id: SurfaceId) -> Element<'a, Message> {
