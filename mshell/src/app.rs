@@ -605,6 +605,30 @@ impl App {
                     _ => None,
                 };
                 if let Some(mt) = menu_type {
+                    // Globally-scoped toggle: if this menu type is
+                    // already open on *any* output, close every
+                    // matching instance and bail. Without this, a
+                    // second keypress whose `active_output` had
+                    // shifted between presses would route ToggleMenu
+                    // to the other monitor (opening a fresh copy
+                    // there) while the prior monitor's surface got
+                    // closed as a side-effect of `toggle_menu`'s
+                    // "close menus on other outputs" pass — visible
+                    // to the user as "the binding moved the menu
+                    // instead of closing it".
+                    let already_open = self.outputs.iter().any(|(_, si, _)| {
+                        si.as_ref()
+                            .and_then(|si| si.menu.open.as_ref())
+                            .is_some_and(|om| {
+                                om.menu_type == mt && om.closing_at.is_none()
+                            })
+                    });
+                    if already_open {
+                        return self.outputs.close_all_menu_if(
+                            mt,
+                            self.general_config.enable_esc_key,
+                        );
+                    }
                     // Aktif output'un bar surface'ini bul; bulunmazsa
                     // ilk surface'e düş (örn. mshell başlangıçta state
                     // henüz okunmamışsa).
