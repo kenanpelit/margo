@@ -28,6 +28,13 @@ pub struct SeatState {
     /// While `Some(deadline)`, the card is shaking. The renderer
     /// uses Instant::now() vs deadline to compute the offset.
     pub shake_until: Option<std::time::Instant>,
+    /// Pending power action waiting for a second F-key press to
+    /// confirm. Expires after 3 s; the renderer shows a red banner
+    /// while it's pending so the user knows what's about to happen.
+    pub power_confirm: Option<(crate::power::PowerAction, std::time::Instant)>,
+    /// Cached battery snapshot — refreshed once per `tick`. `None`
+    /// on desktops (no BATn directory).
+    pub battery: Option<crate::battery::BatteryInfo>,
 }
 
 impl SeatState {
@@ -42,6 +49,8 @@ impl SeatState {
             caps_lock: false,
             fail_count: 0,
             shake_until: None,
+            power_confirm: None,
+            battery: crate::battery::read(),
         }
     }
 
@@ -146,7 +155,7 @@ fn handle_keypress(state: &mut MlockState, key: u32, qh: &QueueHandle<MlockState
         (sym, text)
     };
 
-    // Special keys: Backspace, Enter, Escape, Ctrl+U.
+    // Special keys: Backspace, Enter, Escape, F1/F2/F3 power actions.
     match keysym {
         xkb::Keysym::BackSpace => {
             state.seat_state.password.pop();
@@ -162,7 +171,20 @@ fn handle_keypress(state: &mut MlockState, key: u32, qh: &QueueHandle<MlockState
         xkb::Keysym::Escape => {
             state.seat_state.password.clear();
             state.seat_state.fail_message = None;
+            state.seat_state.power_confirm = None;
             state.request_redraw_all();
+            return;
+        }
+        xkb::Keysym::F1 => {
+            state.power_request(crate::power::PowerAction::Shutdown);
+            return;
+        }
+        xkb::Keysym::F2 => {
+            state.power_request(crate::power::PowerAction::Reboot);
+            return;
+        }
+        xkb::Keysym::F3 => {
+            state.power_request(crate::power::PowerAction::Suspend);
             return;
         }
         _ => {}

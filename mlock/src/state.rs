@@ -245,9 +245,10 @@ impl MlockState {
         }
     }
 
-    /// Bump anything that's time-based (clock minute, fading shake)
-    /// and flag surfaces for redraw when the visible state changes.
-    /// Called from the main poll loop once per timer expiration.
+    /// Bump anything that's time-based (clock minute, fading shake,
+    /// battery refresh, power-confirm expiry) and flag surfaces for
+    /// redraw when the visible state changes. Called from the main
+    /// poll loop once per timer expiration.
     pub fn tick(&mut self) {
         use chrono::Timelike;
         let minute = chrono::Local::now().minute();
@@ -255,18 +256,51 @@ impl MlockState {
         if minute != self.last_minute {
             self.last_minute = minute;
             dirty = true;
+            // Refresh battery in lock-step with the minute — only
+            // need percent precision, not seconds.
+            let new_bat = crate::battery::read();
+            if format!("{:?}", new_bat) != format!("{:?}", self.seat_state.battery) {
+                self.seat_state.battery = new_bat;
+                dirty = true;
+            }
         }
         if self.seat_state.shake_until.is_some() {
-            // Shake forces 16 ms ticks; mark dirty until it elapses,
-            // then clear the deadline.
             if !self.seat_state.is_shaking() {
                 self.seat_state.shake_until = None;
             }
             dirty = true;
         }
+        // Power confirmation window — auto-cancel after 3 s.
+        if let Some((_, deadline)) = self.seat_state.power_confirm
+            && std::time::Instant::now() >= deadline
+        {
+            self.seat_state.power_confirm = None;
+            dirty = true;
+        }
         if dirty {
             self.request_redraw_all();
         }
+    }
+
+    /// First F-key press: arm a 3-second confirmation window.
+    /// Second matching F-key while armed: execute and exit lock loop
+    /// (suspend keeps us locked; shutdown/reboot tear the session
+    /// down regardless).
+    pub fn power_request(&mut self, action: crate::power::PowerAction) {
+        let now = std::time::Instant::now();
+        let confirmed = match self.seat_state.power_confirm {
+            Some((pending, deadline)) if pending == action && deadline > now => true,
+            _ => false,
+        };
+        if confirmed {
+            info!(?action, "power action confirmed — executing");
+            crate::power::execute(action);
+            self.seat_state.power_confirm = None;
+        } else {
+            self.seat_state.power_confirm =
+                Some((action, now + std::time::Duration::from_secs(3)));
+        }
+        self.request_redraw_all();
     }
 
     fn unlock(&mut self, _qh: &QueueHandle<MlockState>) {

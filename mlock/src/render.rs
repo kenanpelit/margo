@@ -233,7 +233,7 @@ pub fn draw_lock_frame(
         y += caps_chip_h;
     }
 
-    // 12. Status line.
+    // 12. Status line (fail / hint).
     y += GAP_CAPS_STATUS;
     let status_text = seat.fail_message.clone().unwrap_or_else(|| {
         if visible_dots > 0 {
@@ -242,18 +242,73 @@ pub fn draw_lock_frame(
             "🔒  Parolanızı yazın".to_string()
         }
     });
-    let layout = layout(&cr, &status_text, FONT_STATUS_PT, false);
-    let (sw, _) = layout.pixel_size();
+    let layout_status = layout(&cr, &status_text, FONT_STATUS_PT, false);
+    let (sw, sh) = layout_status.pixel_size();
     if seat.fail_message.is_some() {
         cr.set_source_rgb(FAIL.0, FAIL.1, FAIL.2);
     } else {
         cr.set_source_rgba(MUTED.0, MUTED.1, MUTED.2, 0.7);
     }
     cr.move_to(cx - sw as f64 / 2.0, y);
-    pangocairo::functions::show_layout(&cr, &layout);
+    pangocairo::functions::show_layout(&cr, &layout_status);
+    y += sh as f64 + 12.0;
+
+    // 13. Power-confirm banner OR F-key hint row.
+    if let Some((action, _)) = seat.power_confirm {
+        let msg = format!("F-tuşuna tekrar bas onayla: {}", action.label_tr());
+        let layout_confirm = layout(&cr, &msg, FONT_STATUS_PT, true);
+        let (cw, _) = layout_confirm.pixel_size();
+        cr.set_source_rgb(FAIL.0, FAIL.1, FAIL.2);
+        cr.move_to(cx - cw as f64 / 2.0, y);
+        pangocairo::functions::show_layout(&cr, &layout_confirm);
+    } else {
+        let hint = "F1 Kapat   ·   F2 Yeniden Başlat   ·   F3 Uyut";
+        let layout_hint = layout(&cr, hint, FONT_CAPS_PT, false);
+        let (hw, _) = layout_hint.pixel_size();
+        cr.set_source_rgba(MUTED.0, MUTED.1, MUTED.2, 0.55);
+        cr.move_to(cx - hw as f64 / 2.0, y);
+        pangocairo::functions::show_layout(&cr, &layout_hint);
+    }
+
+    // 14. Top-right battery indicator (laptops only).
+    if let Some(bat) = seat.battery {
+        draw_battery(&cr, width as f64 - 32.0, 28.0, bat);
+    }
 
     surface.flush();
     Ok(())
+}
+
+fn draw_battery(
+    cr: &cairo::Context,
+    right_x: f64,
+    top_y: f64,
+    bat: crate::battery::BatteryInfo,
+) {
+    let icon = if bat.charging {
+        "⚡"
+    } else if bat.percent <= 15 {
+        "🪫"
+    } else {
+        "🔋"
+    };
+    let text = format!("{icon} {}%", bat.percent);
+    let layout = pangocairo::functions::create_layout(cr);
+    let mut desc = pango::FontDescription::new();
+    desc.set_family(FONT_FAMILY);
+    desc.set_size(FONT_CAPS_PT * pango::SCALE);
+    desc.set_weight(pango::Weight::Medium);
+    layout.set_font_description(Some(&desc));
+    layout.set_text(&text);
+    let (w, _) = layout.pixel_size();
+    let color = if bat.percent <= 15 && !bat.charging {
+        FAIL
+    } else {
+        MUTED
+    };
+    cr.set_source_rgba(color.0, color.1, color.2, 0.92);
+    cr.move_to(right_x - w as f64, top_y);
+    pangocairo::functions::show_layout(cr, &layout);
 }
 
 fn layout(cr: &cairo::Context, text: &str, pt: i32, bold: bool) -> pango::Layout {

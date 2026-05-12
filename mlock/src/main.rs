@@ -25,6 +25,8 @@
 #![allow(clippy::too_many_arguments)]
 
 mod auth;
+mod battery;
+mod power;
 mod render;
 mod seat;
 mod state;
