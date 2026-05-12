@@ -63,10 +63,25 @@ fn get_log_spec(log_level: &str) -> LogSpecification {
     let spec_source = std::env::var("MSHELL_LOG")
         .unwrap_or_else(|_| log_level.to_string());
 
-    match LogSpecification::parse(&spec_source) {
+    // Drop chatty WARN/INFO lines from the wgpu/iced backend
+    // (Vulkan extension hints, GLES re-init, mesa quirks) — they're
+    // noise from the renderer, not actionable for the user.
+    // If the spec already names wgpu_*/naga/iced_*, honour it.
+    let needs_suppress = !spec_source
+        .split(',')
+        .any(|s| s.starts_with("wgpu") || s.starts_with("naga") || s.starts_with("iced"));
+    let spec_str = if needs_suppress {
+        format!(
+            "{spec_source},wgpu_hal=error,wgpu_core=error,naga=error,iced_wgpu=error"
+        )
+    } else {
+        spec_source
+    };
+
+    match LogSpecification::parse(&spec_str) {
         Ok(spec) => spec,
         Err(err) => {
-            warn!("Failed to parse log level {spec_source:?}: {err}, using default");
+            warn!("Failed to parse log level {spec_str:?}: {err}, using default");
             LogSpecification::default()
         }
     }
@@ -88,6 +103,10 @@ fn main() -> iced::Result {
     let logger = Logger::with(
         LogSpecBuilder::new()
             .default(log::LevelFilter::Info)
+            .module("wgpu_hal", log::LevelFilter::Error)
+            .module("wgpu_core", log::LevelFilter::Error)
+            .module("naga", log::LevelFilter::Error)
+            .module("iced_wgpu", log::LevelFilter::Error)
             .build(),
     )
     .log_to_file(FileSpec::default().directory("/tmp/mshell"))
