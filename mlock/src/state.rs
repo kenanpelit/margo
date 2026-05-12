@@ -5,7 +5,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use tracing::{debug, info, warn};
 use wayland_client::{
     Connection, Dispatch, QueueHandle, WEnum,
-    globals::{Global, GlobalList, GlobalListContents, registry_queue_init},
+    globals::{GlobalList, GlobalListContents, registry_queue_init},
     protocol::{
         wl_buffer, wl_callback, wl_compositor, wl_keyboard, wl_output, wl_registry, wl_seat,
         wl_shm, wl_shm_pool, wl_surface,
@@ -83,38 +83,52 @@ impl MlockState {
     }
 
     fn bind_globals(&mut self, globals: &GlobalList, qh: &QueueHandle<MlockState>) {
-        for global in globals.contents().clone_list() {
-            self.try_bind_global(globals, qh, &global);
-        }
-    }
-
-    fn try_bind_global(
-        &mut self,
-        globals: &GlobalList,
-        qh: &QueueHandle<MlockState>,
-        g: &Global,
-    ) {
-        match g.interface.as_str() {
-            "wl_compositor" => {
-                self.compositor = globals.bind(qh, 4..=6, ()).ok();
-            }
-            "wl_shm" => {
-                self.shm = globals.bind(qh, 1..=1, ()).ok();
-            }
-            "wl_seat" => {
-                self.seat = globals.bind(qh, 1..=8, ()).ok();
-            }
-            "wl_output" => {
-                if let Ok(output) = globals.bind(qh, 1..=4, ()) {
-                    debug!("output discovered: name={} v{}", g.name, g.version);
+        let registry = globals.registry();
+        for g in globals.contents().clone_list() {
+            // `globals.bind()` always picks the FIRST advertised global
+            // of a given interface — which is *wrong* for multi-instance
+            // globals like wl_output (each connected monitor advertises
+            // one). We have to call `registry.bind(name, …)` directly
+            // with the specific global's numeric `name` to bind each
+            // distinct output. (Documented in wayland-client globals.rs.)
+            match g.interface.as_str() {
+                "wl_compositor" => {
+                    if self.compositor.is_none() {
+                        let v = g.version.min(6).max(4);
+                        self.compositor = Some(registry.bind(g.name, v, qh, ()));
+                    }
+                }
+                "wl_shm" => {
+                    if self.shm.is_none() {
+                        self.shm = Some(registry.bind(g.name, 1, qh, ()));
+                    }
+                }
+                "wl_seat" => {
+                    if self.seat.is_none() {
+                        let v = g.version.min(8).max(1);
+                        self.seat = Some(registry.bind(g.name, v, qh, ()));
+                    }
+                }
+                "wl_output" => {
+                    let v = g.version.min(4).max(1);
+                    let output = registry.bind(g.name, v, qh, ());
+                    info!(
+                        idx = self.outputs.len(),
+                        global_name = g.name,
+                        version = v,
+                        "wl_output bound (per-instance)"
+                    );
                     self.outputs.push(output);
                 }
+                "ext_session_lock_manager_v1" => {
+                    if self.session_lock_manager.is_none() {
+                        self.session_lock_manager = Some(registry.bind(g.name, 1, qh, ()));
+                    }
+                }
+                _ => {}
             }
-            "ext_session_lock_manager_v1" => {
-                self.session_lock_manager = globals.bind(qh, 1..=1, ()).ok();
-            }
-            _ => {}
         }
+        debug!(outputs = self.outputs.len(), "globals bound");
     }
 
     pub fn assert_globals(&self) -> Result<()> {
@@ -153,9 +167,14 @@ impl MlockState {
         let lock = manager.lock(qh, ());
         self.session_lock = Some(lock.clone());
 
+        info!(
+            output_count = self.outputs.len(),
+            "creating per-output lock surfaces"
+        );
         for (idx, output) in self.outputs.iter().enumerate() {
             let wl_surface = compositor.create_surface(qh, ());
             let lock_surface = lock.get_lock_surface(&wl_surface, output, qh, idx);
+            info!(idx, "lock_surface created");
             self.surfaces.push(MlockSurface::new(
                 idx,
                 output.clone(),
@@ -407,8 +426,12 @@ impl Dispatch<ext_session_lock_surface_v1::ExtSessionLockSurfaceV1, usize> for M
             height,
         } = event
         {
-            debug!(idx, width, height, serial, "lock surface configure");
+            info!(idx, width, height, serial, "lock surface configure");
             lock_surface.ack_configure(serial);
+            if width == 0 || height == 0 {
+                warn!(idx, "configure with zero dimensions — skipping render");
+                return;
+            }
             if let Some(surface) = state.surfaces.get_mut(*idx) {
                 surface.configured = true;
                 surface.width = width;
@@ -416,17 +439,12 @@ impl Dispatch<ext_session_lock_surface_v1::ExtSessionLockSurfaceV1, usize> for M
                 surface.needs_redraw = true;
             }
             if let Some(shm) = state.shm.clone() {
-                // Render NOW so the surface has its first buffer
-                // attached before the next event loop pass.
                 let user = state.user.clone();
-                // Take seat_state out briefly to satisfy the borrow
-                // checker (state is borrowed mutably below). The
-                // seat is otherwise idle here.
-                if let Some(surface) = state.surfaces.get_mut(*idx)
-                    && let Err(e) =
-                        surface.render(&shm, qh, &state.seat_state, &user)
-                {
-                    warn!("initial render for output {idx} failed: {e}");
+                if let Some(surface) = state.surfaces.get_mut(*idx) {
+                    match surface.render(&shm, qh, &state.seat_state, &user) {
+                        Ok(()) => info!(idx, "initial render dispatched"),
+                        Err(e) => warn!(idx, "initial render failed: {e:#}"),
+                    }
                 }
             }
         }
