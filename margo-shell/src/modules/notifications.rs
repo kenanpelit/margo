@@ -1102,4 +1102,10 @@ impl Notifications {
     pub fn toast_width(&self) -> u32 {
         self.config.toast_width
     }
+
+    /// Toast surface'inin başlangıç yüksekliği — `toast_max_height`'ı
+    /// kullanır ki tek bir toast clip edilmeden tam görünür.
+    pub fn toast_initial_height(&self) -> u32 {
+        self.config.toast_max_height.max(120)
+    }
 }

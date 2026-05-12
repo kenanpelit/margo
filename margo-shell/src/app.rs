@@ -749,11 +749,13 @@ impl App {
                 modules::notifications::Action::Task(task) => task.map(Message::Notifications),
                 modules::notifications::Action::Show(task) => {
                     let position = self.notifications.toast_position();
-                    // Toast genişliği config'ten gelir (mako-tarzı toast_width).
                     let width = self.notifications.toast_width();
+                    // Initial surface yüksekliği config'in toast_max_height'i —
+                    // tek toast tam fit eder, sensor daha büyükse grow-only.
+                    let initial_h = self.notifications.toast_initial_height();
                     Task::batch(vec![
                         task.map(Message::Notifications),
-                        self.outputs.show_toast_layer(width, position),
+                        self.outputs.show_toast_layer(width, position, initial_h),
                     ])
                 }
                 modules::notifications::Action::Hide(task) => Task::batch(vec![

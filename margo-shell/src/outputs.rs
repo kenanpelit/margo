@@ -628,6 +628,7 @@ impl Outputs {
         &mut self,
         width: u32,
         position: config::ToastPosition,
+        initial_height: u32,
     ) -> Task<Message> {
         let mut tasks = vec![];
 
@@ -635,12 +636,7 @@ impl Outputs {
             if let Some(shell_info) = shell_info
                 && shell_info.toast_id.is_none()
             {
-                // Köşe anchor — sadece bir dikey + bir yatay kenara
-                // yapışsın. wlr-layer-shell spec: height = 0 yalnızca
-                // TOP+BOTTOM birlikte anchorlandığında geçerli; köşe
-                // anchor'da hem width hem height SET edilmek zorunda.
-                // Başlangıçta yeterli yükseklik veriyoruz, sensor toast
-                // içerik boyutunu ölçer ölçmez `set_size` ile küçültülür.
+                // Köşe anchor — bir dikey + bir yatay kenar.
                 let anchor = match position {
                     config::ToastPosition::TopLeft => Anchor::TOP | Anchor::LEFT,
                     config::ToastPosition::TopRight => Anchor::TOP | Anchor::RIGHT,
@@ -648,10 +644,12 @@ impl Outputs {
                     config::ToastPosition::BottomRight => Anchor::BOTTOM | Anchor::RIGHT,
                 };
 
-                // Köşe anchor'da hem width hem height zorunlu (wlr-spec).
-                // Geçici küçük yükseklik — ilk sensor frame'inde set_size
-                // ile content_h'ye büyütülür.
-                let initial_h = 80;
+                // wlr-layer-shell spec: height = 0 yalnızca TOP+BOTTOM
+                // birlikte anchorlandığında geçerli. Köşe anchor'da hem
+                // width hem height SET edilmek zorunda. Başlangıç değeri
+                // config'in toast_max_height'ı kadar (1 toast tam fit).
+                // Sensor daha fazla içerik raporlarsa grow-only resize.
+                let initial_h = initial_height.max(120);
                 let (toast_id, toast_task) = new_layer_surface(LayerShellSettings {
                     namespace: "mshell-toast-layer".to_string(),
                     size: Some((width, initial_h)),
