@@ -46,6 +46,9 @@ osd-idle-inhibitor-toggle =
 ## Settings — shared
 settings-scanning = Taranıyor...
 settings-more = Daha fazla
+settings-section-connectivity = Bağlantı
+settings-section-system = Sistem
+settings-section-custom = Özel
 
 ## Settings — network
 settings-network-wifi = Wi-Fi

@@ -46,6 +46,9 @@ osd-idle-inhibitor-toggle =
 ## Settings — shared
 settings-scanning = Scanning...
 settings-more = More
+settings-section-connectivity = Connectivity
+settings-section-system = System
+settings-section-custom = Custom
 
 ## Settings — network
 settings-network-wifi = Wi-Fi

@@ -696,11 +696,11 @@ impl Settings {
             let quick_settings: Element<'_, Message> = if self.section_headers {
                 let custom_font = self.custom_font;
                 let header_size = self.header_font_size;
-                let make_section = |label: &str, items: Vec<_>| -> Option<Element<'_, Message>> {
+                let make_section = |label: String, items: Vec<_>| -> Option<Element<'_, Message>> {
                     if items.is_empty() {
                         return None;
                     }
-                    let mut hdr = text(label.to_string()).size(header_size);
+                    let mut hdr = text(label).size(header_size);
                     if let Some(font) = custom_font {
                         hdr = hdr.font(font);
                     }
@@ -718,9 +718,9 @@ impl Settings {
                     )
                 };
                 let sections: Vec<Element<'_, Message>> = [
-                    make_section("Bağlantı", connectivity),
-                    make_section("Sistem", system),
-                    make_section("Özel", custom),
+                    make_section(t!("settings-section-connectivity"), connectivity),
+                    make_section(t!("settings-section-system"), system),
+                    make_section(t!("settings-section-custom"), custom),
                 ]
                 .into_iter()
                 .flatten()
