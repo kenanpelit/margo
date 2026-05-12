@@ -46,6 +46,21 @@ pub struct Settings {
     /// Per-step notification — if a step has `notify = true` it sends
     /// `notify-send -a midle <name>` before firing the command.
     pub notify_before_action: bool,
+    /// Regex list of process command-lines (`/proc/<pid>/cmdline`)
+    /// that, when matched by ANY running process, inhibit idle
+    /// firing. E.g. `["mpv", "vlc", r"firefox.*", r"steam_app_.*"]`.
+    pub inhibit_apps: Vec<String>,
+    /// How often to scan `/proc` for inhibit_apps matches.
+    #[serde(deserialize_with = "deserialize_duration", default = "default_scan")]
+    pub inhibit_scan_interval: Duration,
+    /// Watch PipeWire/PulseAudio sink inputs — when any stream is
+    /// RUNNING, inhibit idle.
+    pub monitor_media: bool,
+    /// Shell command run immediately when logind announces
+    /// `PrepareForSleep(true)` (system is about to suspend).
+    /// Common use: pre-emptively `mlock` so the screen is locked
+    /// before the lid falls / suspend happens.
+    pub prepare_sleep_command: Option<String>,
 }
 
 impl Default for Settings {
@@ -53,8 +68,16 @@ impl Default for Settings {
         Self {
             notify_on_unpause: false,
             notify_before_action: false,
+            inhibit_apps: Vec::new(),
+            inhibit_scan_interval: default_scan(),
+            monitor_media: false,
+            prepare_sleep_command: None,
         }
     }
+}
+
+fn default_scan() -> Duration {
+    Duration::from_secs(5)
 }
 
 #[derive(Debug, Clone, Deserialize)]

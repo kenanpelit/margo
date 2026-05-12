@@ -17,6 +17,11 @@ pub struct Manager {
     /// Manual toggle from the CLI / status bar — when true, all
     /// step firings are suppressed regardless of timeouts.
     pub inhibit: bool,
+    /// Name of an `inhibit_apps` regex currently matched by some
+    /// running process. `None` means no app inhibitor is active.
+    pub inhibit_app: Option<String>,
+    /// True while at least one audio sink-input is RUNNING.
+    pub inhibit_media: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -34,6 +39,8 @@ impl Manager {
             fired: vec![false; n],
             pause: PauseState::Running,
             inhibit: false,
+            inhibit_app: None,
+            inhibit_media: false,
         }
     }
 
@@ -43,7 +50,7 @@ impl Manager {
     }
 
     pub fn is_suppressed(&self) -> bool {
-        if self.inhibit {
+        if self.inhibit || self.inhibit_app.is_some() || self.inhibit_media {
             return true;
         }
         match self.pause {

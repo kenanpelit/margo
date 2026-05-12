@@ -33,3 +33,8 @@ tracing-subscriber = { workspace = true }
 wayland-client = { workspace = true }
 wayland-protocols = { version = "0.32", features = ["client", "staging"] }
 libc = "0.2"
+# Inhibitor sources.
+procfs = { version = "0.18", default-features = false }
+regex = "1"
+futures = { version = "0.3", default-features = false, features = ["std"] }
+zbus = { version = "5", features = ["tokio"], default-features = false }

@@ -22,6 +22,12 @@ use crate::state::{Manager, PauseState};
 pub enum WaylandEvent {
     StepIdled(usize),
     Active,
+    /// `inhibit_apps` regex matched a process (or stopped matching).
+    AppInhibit(Option<String>),
+    /// At least one audio stream is RUNNING (or all stopped).
+    MediaInhibit(bool),
+    /// Logind told us a suspend is starting / resuming.
+    PrepareForSleep(bool),
 }
 
 pub fn run(config_path: Option<PathBuf>) -> Result<()> {
@@ -34,8 +40,10 @@ pub fn run(config_path: Option<PathBuf>) -> Result<()> {
     let manager = Arc::new(Mutex::new(Manager::new(cfg.clone())));
 
     // Wayland thread — synchronous so the protocol calls stay
-    // simple. Events are forwarded to tokio via mpsc.
+    // simple. Events are forwarded to tokio via mpsc. The channel
+    // is shared with inhibitor tasks below.
     let (wl_tx, wl_rx) = mpsc::channel::<WaylandEvent>(64);
+    let wl_tx_async = wl_tx.clone();
     let timeouts: Vec<Duration> = cfg.steps.iter().map(|s| s.timeout).collect();
     let wayland_join = std::thread::Builder::new()
         .name("midle-wayland".to_string())
@@ -66,11 +74,49 @@ pub fn run(config_path: Option<PathBuf>) -> Result<()> {
                         match evt {
                             WaylandEvent::StepIdled(idx) => m.on_step_idled(idx),
                             WaylandEvent::Active => m.on_active(),
+                            WaylandEvent::AppInhibit(name) => {
+                                m.inhibit_app = name;
+                            }
+                            WaylandEvent::MediaInhibit(playing) => {
+                                m.inhibit_media = playing;
+                            }
+                            WaylandEvent::PrepareForSleep(true) => {
+                                // Pre-emptively treat as active wake-up
+                                // upon resume: reset fired bitmap.
+                                tracing::info!("prepare-for-sleep: pre-suspend");
+                            }
+                            WaylandEvent::PrepareForSleep(false) => {
+                                tracing::info!("resume from sleep — clearing fired steps");
+                                m.on_active();
+                            }
                         }
                     }
                     _ = stop_for_wl.notified() => break,
                 }
             }
+        });
+
+        // Inhibitor tasks — each one runs forever and pushes events
+        // through the same channel.
+        let inhibit_apps = cfg.settings.inhibit_apps.clone();
+        let scan_interval = cfg.settings.inhibit_scan_interval;
+        let monitor_media = cfg.settings.monitor_media;
+        let prepare_sleep = cfg.settings.prepare_sleep_command.clone();
+        let tx_app = wl_tx_async.clone();
+        let tx_media = wl_tx_async.clone();
+        let tx_sleep = wl_tx_async.clone();
+        let app_task = tokio::spawn(async move {
+            crate::inhibitors::app_scan_loop(inhibit_apps, scan_interval, tx_app).await;
+        });
+        let media_task = if monitor_media {
+            Some(tokio::spawn(async move {
+                crate::inhibitors::media_scan_loop(scan_interval, tx_media).await;
+            }))
+        } else {
+            None
+        };
+        let logind_task = tokio::spawn(async move {
+            crate::inhibitors::logind_loop(prepare_sleep, tx_sleep).await;
         });
 
         let manager_ipc = manager.clone();

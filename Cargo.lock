@@ -3772,7 +3772,10 @@ version = "0.3.1"
 dependencies = [
  "anyhow",
  "clap",
+ "futures",
  "libc",
+ "procfs",
+ "regex",
  "serde",
  "serde_json",
  "tokio",
@@ -3781,6 +3784,7 @@ dependencies = [
  "tracing-subscriber",
  "wayland-client",
  "wayland-protocols",
+ "zbus",
 ]
 
 [[package]]
@@ -4846,6 +4850,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8fd00f0bb2e90d81d1044c2b32617f68fcb9fa3bb7640c23e9c748e53fb30934"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "procfs"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "25485360a54d6861439d60facef26de713b1e126bf015ec8f98239467a2b82f7"
+dependencies = [
+ "bitflags 2.11.1",
+ "procfs-core",
+ "rustix 1.1.4",
+]
+
+[[package]]
+name = "procfs-core"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6401bf7b6af22f78b563665d15a22e9aef27775b79b149a66ca022468a4e405"
+dependencies = [
+ "bitflags 2.11.1",
+ "hex",
 ]
 
 [[package]]
@@ -6246,6 +6271,7 @@ dependencies = [
  "signal-hook-registry",
  "socket2",
  "tokio-macros",
+ "tracing",
  "windows-sys 0.61.2",
 ]
 
@@ -8020,6 +8046,7 @@ dependencies = [
  "rustix 1.1.4",
  "serde",
  "serde_repr",
+ "tokio",
  "tracing",
  "uds_windows",
  "uuid",
