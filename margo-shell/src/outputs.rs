@@ -669,24 +669,26 @@ impl Outputs {
         content_size: iced::Size,
         _position: config::ToastPosition,
     ) -> Task<Message> {
-        let content_w = content_size.width.ceil() as u32;
-        let content_h = content_size.height.ceil() as u32;
+        // Surface boyutu show_toast_layer'da set edilen sabit (300x600);
+        // burada SADECE input region güncellenir — toast içeriğinin gerçek
+        // boyutu kadar. Surface'i canlı set_size etmiyoruz: notifikasyon
+        // kaybolurken görsel "küçülme" animasyonu olmasın diye. Surface
+        // tamamen sabit, içerik top-aligned, son toast dismiss olunca
+        // hide_toast_layer çağrılıyor.
+        let content_w = content_size.width.ceil() as i32;
+        let content_h = content_size.height.ceil() as i32;
         let mut tasks = vec![];
         for (_, shell_info, _) in &self.0 {
             if let Some(shell_info) = shell_info
                 && let Some(toast_id) = shell_info.toast_id
             {
-                // Sensor toast içeriğinin gerçek boyutunu raporladı; surface'i
-                // o boyuta küçült (önceden 600px geçici yükseklik vardı).
-                // wlr-layer-shell köşe anchor'da set_size zorunlu.
-                tasks.push(set_size(toast_id, (content_w.max(1), content_h.max(1))));
                 tasks.push(set_input_region(
                     toast_id,
                     Some(vec![InputRegionRect {
                         x: 0,
                         y: 0,
-                        width: content_w as i32,
-                        height: content_h as i32,
+                        width: content_w,
+                        height: content_h,
                     }]),
                 ));
             }

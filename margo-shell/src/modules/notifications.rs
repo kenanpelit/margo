@@ -756,18 +756,26 @@ impl Notifications {
             }
         }
 
-        // Surface artık köşe anchor + wrap-content; v_align'a gerek yok.
-        // Sensor toast içeriğinin gerçek boyutunu raporlar → input region
-        // güncellenir + surface kompozisyonu yapar.
-        let _ = self.config.toast_position; // reserved for future tweaks
+        // Surface sabit 300x600 (show_toast_layer). İçerik top/bottom
+        // hizalı çizilir; surface canlı resize yok → toast dismiss
+        // olduğunda "küçülerek kaybolma" görsel artefakt'ı oluşmuyor.
+        let v_align = match self.config.toast_position {
+            ToastPosition::TopLeft | ToastPosition::TopRight => Alignment::Start,
+            ToastPosition::BottomLeft | ToastPosition::BottomRight => Alignment::End,
+        };
 
-        sensor(
+        let toast_content = sensor(
             container(toast_column)
                 .width(MenuSize::Medium)
                 .padding(space.sm),
         )
-        .on_resize(Message::ToastResized)
-        .into()
+        .on_resize(Message::ToastResized);
+
+        container(toast_content)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .align_y(v_align)
+            .into()
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
