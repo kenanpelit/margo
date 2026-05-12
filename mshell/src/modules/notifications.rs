@@ -532,39 +532,95 @@ impl Notifications {
                 border,
                 ..iced::widget::button::Style::default()
             };
+
+            // Toast cards float above the wallpaper — give them a
+            // depth-conveying drop shadow that lifts further on
+            // hover. In-history items (Standalone / Group*) stay
+            // flat because they sit inside an already-shadowed menu
+            // panel; doubling the shadow there muddies the look.
+            let is_toast = style == NotificationStyle::Toast;
+
             match status {
                 iced::widget::button::Status::Hovered => {
-                    if style == NotificationStyle::Toast {
-                        button_style.background = Some(
+                    button_style.background = Some(
+                        if is_toast {
                             iced_theme
                                 .extended_palette()
                                 .background
                                 .weak
                                 .color
                                 .scale_alpha(opacity)
-                                .into(),
-                        );
-                    } else {
-                        button_style.background = Some(
+                        } else {
                             iced_theme
                                 .extended_palette()
                                 .background
                                 .strong
                                 .color
                                 .scale_alpha(opacity)
-                                .into(),
-                        );
+                        }
+                        .into(),
+                    );
+                    if is_toast {
+                        button_style.shadow = iced::Shadow {
+                            color: iced::Color { r: 0., g: 0., b: 0., a: 0.42 },
+                            offset: iced::Vector::new(0.0, 6.0),
+                            blur_radius: 22.0,
+                        };
                     }
                 }
                 _ => {
-                    button_style.background = if style == NotificationStyle::Toast {
+                    button_style.background = if is_toast {
                         Some(iced_theme.palette().background.scale_alpha(opacity).into())
                     } else {
                         Some(iced_theme.extended_palette().background.weak.color.into())
+                    };
+                    if is_toast {
+                        button_style.shadow = iced::Shadow {
+                            color: iced::Color { r: 0., g: 0., b: 0., a: 0.32 },
+                            offset: iced::Vector::new(0.0, 4.0),
+                            blur_radius: 16.0,
+                        };
                     }
                 }
             }
             button_style
+        }
+    }
+
+    /// Action button (D-Bus actions). Accent-tinted secondary style
+    /// so the user notices it's tappable without it competing with
+    /// the notification's content.
+    fn action_button_style()
+    -> impl Fn(&Theme, iced::widget::button::Status) -> iced::widget::button::Style + use<> {
+        move |theme, status| {
+            let primary = theme.palette().primary;
+            let (bg, border_w, border_c) = match status {
+                iced::widget::button::Status::Hovered => (
+                    primary.scale_alpha(0.30),
+                    1.0,
+                    primary.scale_alpha(0.75),
+                ),
+                iced::widget::button::Status::Pressed => (
+                    primary.scale_alpha(0.45),
+                    1.0,
+                    primary,
+                ),
+                _ => (
+                    primary.scale_alpha(0.16),
+                    1.0,
+                    primary.scale_alpha(0.45),
+                ),
+            };
+            iced::widget::button::Style {
+                background: Some(bg.into()),
+                text_color: theme.palette().text,
+                border: Border {
+                    width: border_w,
+                    radius: 10.0.into(),
+                    color: border_c,
+                },
+                ..iced::widget::button::Style::default()
+            }
         }
     }
 
@@ -656,7 +712,8 @@ impl Notifications {
                 let label = chunk[1].clone();
                 row_widget = row_widget.push(
                     button(text(label).size(font_size.sm))
-                        .padding([space.xxs, space.sm])
+                        .padding([space.xs, space.md])
+                        .style(Self::action_button_style())
                         .on_press(Message::InvokeAction(notification_id, action_id)),
                 );
             }
