@@ -92,10 +92,23 @@ fn tray_icon_from_path(path: PathBuf) -> Option<TrayIcon> {
     }
 }
 
+/// Aktif icon theme adını çöz. Öncelik:
+///   1. `$XDG_ICON_THEME` env (kullanıcı oturumda elle export ettiyse —
+///      sistem bütünlüğü için doğru kaynak)
+///   2. linicon_theme (KDE globals / GSettings / gtk-3.0 / gtk-2.0 /
+///      theme.conf — distro varsayılanı)
+fn resolve_icon_theme() -> Option<String> {
+    std::env::var("XDG_ICON_THEME")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .or_else(get_icon_theme)
+}
+
 fn find_icon_path(icon_name: &str) -> Option<PathBuf> {
     let base_lookup = lookup(icon_name).with_cache();
 
-    match get_icon_theme() {
+    match resolve_icon_theme() {
         Some(theme) => base_lookup.with_theme(&theme).find().or_else(|| {
             let fallback_lookup = lookup(icon_name).with_cache();
             fallback_lookup.find()

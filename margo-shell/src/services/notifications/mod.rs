@@ -90,8 +90,14 @@ fn resolve_candidate(candidate: String) -> Option<PathBuf> {
 }
 
 fn freedesktop_lookup(name: &str) -> Option<PathBuf> {
+    // tray modülüyle aynı öncelik: $XDG_ICON_THEME → linicon → fallback.
+    let theme = std::env::var("XDG_ICON_THEME")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .or_else(linicon_theme::get_icon_theme);
     let base = freedesktop_icons::lookup(name).with_cache();
-    match linicon_theme::get_icon_theme() {
+    match theme {
         Some(theme) => base
             .with_theme(&theme)
             .find()
