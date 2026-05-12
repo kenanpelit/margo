@@ -153,8 +153,17 @@ impl Menu {
         request_keyboard: bool,
         output_id: Option<OutputId>,
     ) -> Task<Message> {
+        // `Exclusive` so the compositor moves keyboard focus onto
+        // the menu surface the moment it appears — without that
+        // promotion, margo (and most wlroots compositors) leaves
+        // focus on whichever app the user had before, and ESC just
+        // gets eaten by that background app instead of closing the
+        // menu. The exclusivity ends with `Menu::close` (which
+        // demotes back to `None`) and the surface destruction —
+        // background focus is restored automatically by the
+        // compositor's focus stack.
         let keyboard_interactivity = if request_keyboard {
-            KeyboardInteractivity::OnDemand
+            KeyboardInteractivity::Exclusive
         } else {
             KeyboardInteractivity::None
         };
