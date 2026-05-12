@@ -1,0 +1,31 @@
+[package]
+name = "mlock"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Screen locker for the margo Wayland compositor (ext-session-lock-v1)"
+
+[[bin]]
+name = "mlock"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+wayland-client = { workspace = true }
+wayland-protocols = { version = "0.32", features = ["client", "staging"] }
+xkbcommon = { workspace = true }
+libc = "0.2"
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+# Software rendering — cairo/pango. nlock proved this stack works well
+# under ext-session-lock; we adopt it instead of wiring iced for a
+# fundamentally different render path.
+cairo-rs = { version = "0.22", features = ["png"] }
+pango = "0.22"
+pangocairo = "0.22"
+# Used for sealing the password buffer so it never lingers in memory
+# after auth.
+zeroize = "1.8"

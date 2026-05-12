@@ -6,6 +6,7 @@ members = [
     "margo-layouts",
     "margo-shell",
     "mlayout",
+    "mlock",
     "mscreenshot",
     "mvisual",
 ]
