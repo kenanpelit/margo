@@ -3484,7 +3484,7 @@ dependencies = [
 
 [[package]]
 name = "margo"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "accesskit",
  "accesskit_unix",
@@ -3528,7 +3528,7 @@ dependencies = [
 
 [[package]]
 name = "margo-config"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "bitflags 2.11.1",
@@ -3541,7 +3541,7 @@ dependencies = [
 
 [[package]]
 name = "margo-ipc"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -3559,11 +3559,11 @@ dependencies = [
 
 [[package]]
 name = "margo-layouts"
-version = "0.3.0"
+version = "0.3.1"
 
 [[package]]
 name = "margo-shell"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "allsorts",
  "anyhow",
@@ -3689,7 +3689,7 @@ dependencies = [
 
 [[package]]
 name = "mlayout"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -3709,7 +3709,7 @@ dependencies = [
 
 [[package]]
 name = "mscreenshot"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -3726,7 +3726,7 @@ checksum = "13d2233c9842d08cfe13f9eac96e207ca6a2ea10b80259ebe8ad0268be27d2af"
 
 [[package]]
 name = "mvisual"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "gtk4",
  "margo-layouts",
