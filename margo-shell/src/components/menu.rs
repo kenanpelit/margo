@@ -5,9 +5,9 @@ use crate::theme::{backdrop_color, use_theme};
 use iced::alignment::Vertical;
 use iced::widget::container::Style;
 use iced::{
-    Anchor, Border, Element, KeyboardInteractivity, Layer, LayerShellSettings, Length, OutputId,
-    Padding, Pixels, SurfaceId, Task, Theme, destroy_layer_surface, new_layer_surface,
-    set_keyboard_interactivity, widget::container,
+    Anchor, Border, Color, Element, KeyboardInteractivity, Layer, LayerShellSettings, Length,
+    OutputId, Padding, Pixels, Shadow, SurfaceId, Task, Theme, Vector, destroy_layer_surface,
+    new_layer_surface, set_keyboard_interactivity, widget::container,
 };
 
 #[derive(Eq, PartialEq, Clone, Debug)]
@@ -199,6 +199,20 @@ impl App {
                             .scale_alpha(menu_opacity),
                         width: 1.,
                         radius: radius.lg.into(),
+                    },
+                    // Floating menu drop shadow — sits over the bar; the
+                    // y-offset follows the bar position so the shadow
+                    // always casts away from the anchored edge.
+                    shadow: Shadow {
+                        color: Color { r: 0., g: 0., b: 0., a: 0.45 },
+                        offset: Vector::new(
+                            0.,
+                            match bar_position {
+                                Position::Top => 8.,
+                                Position::Bottom => -8.,
+                            },
+                        ),
+                        blur_radius: 24.,
                     },
                     ..Default::default()
                 })
