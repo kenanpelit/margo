@@ -20,15 +20,19 @@
 //!     upload_alert_kbps   = 10000
 
 use crate::{
+    components::MenuSize,
+    components::divider,
     components::icons::{StaticIcon, icon},
     config::{NetworkSpeedIndicator, NetworkSpeedModuleConfig, NetworkSpeedUnit},
+    t,
     theme::use_theme,
 };
 use iced::{
-    Alignment, Element, Subscription, Theme,
+    Alignment, Element, Length, Subscription, Theme,
     time::every,
-    widget::{Row, container, row, text},
+    widget::{Column, Row, column, container, row, text},
 };
+use itertools::Itertools;
 use std::time::{Duration, Instant};
 use sysinfo::Networks;
 
@@ -170,6 +174,74 @@ impl NetworkSpeed {
             .align_y(Alignment::Center)
             .spacing(space.xxs)
             .into()
+    }
+
+    /// Açılır menü — bar göstergesinin tıklanmasıyla açılır.
+    /// Anlık indirme/yükleme + arayüz başına toplam (boot'tan bu yana).
+    pub fn menu_view(&'_ self) -> Element<'_, Message> {
+        let (font_size, space) = use_theme(|t| (t.font_size, t.space));
+
+        let row_element = |ico: StaticIcon, label: String, value: String| {
+            row!(
+                container(icon(ico).size(font_size.xl)).center_x(Length::Fixed(space.xl)),
+                text(label).width(Length::Fill),
+                text(value)
+            )
+            .align_y(Alignment::Center)
+            .spacing(space.xs)
+        };
+
+        let (dl_v, dl_u) = self.format(self.speeds.download_kbps);
+        let (ul_v, ul_u) = self.format(self.speeds.upload_kbps);
+
+        // Arayüz başına kümülatif (boot'tan beri) RX/TX — quick glance.
+        let iface_rows = self
+            .networks
+            .iter()
+            .filter(|(name, _)| {
+                name.starts_with("en")
+                    || name.starts_with("eth")
+                    || name.starts_with("wl")
+                    || name.starts_with("wlan")
+                    || name.starts_with("br")
+            })
+            .sorted_by_key(|(name, _)| (*name).clone())
+            .map(|(name, data)| {
+                let rx = data.total_received() / 1_048_576; // MiB
+                let tx = data.total_transmitted() / 1_048_576;
+                row_element(
+                    StaticIcon::IpAddress,
+                    name.clone(),
+                    format!("↓ {rx} MiB · ↑ {tx} MiB"),
+                )
+                .into()
+            })
+            .collect::<Vec<Element<_>>>();
+
+        container(
+            column!(
+                text(t!("network-speed-heading")).size(font_size.lg),
+                divider(),
+                Column::with_capacity(2 + iface_rows.len())
+                    .push(row_element(
+                        StaticIcon::DownloadSpeed,
+                        t!("system-info-download-speed"),
+                        format!("{dl_v} {dl_u}"),
+                    ))
+                    .push(row_element(
+                        StaticIcon::UploadSpeed,
+                        t!("system-info-upload-speed"),
+                        format!("{ul_v} {ul_u}"),
+                    ))
+                    .push(divider())
+                    .push(Column::with_children(iface_rows).spacing(space.xxs))
+                    .spacing(space.xxs)
+                    .padding([0.0, space.xs])
+            )
+            .spacing(space.xs),
+        )
+        .width(MenuSize::Medium)
+        .into()
     }
 
     pub fn subscription(&self) -> Subscription<Message> {

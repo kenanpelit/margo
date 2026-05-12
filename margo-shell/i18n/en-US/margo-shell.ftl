@@ -139,3 +139,6 @@ system-info-disk-usage = Disk Usage { $mount }
 system-info-ip-address = IP Address
 system-info-download-speed = Download Speed
 system-info-upload-speed = Upload Speed
+
+## Network speed module
+network-speed-heading = Network

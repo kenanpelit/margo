@@ -202,7 +202,7 @@ impl App {
             )),
             ModuleName::NetworkSpeed => Some((
                 self.network_speed.view().map(Message::NetworkSpeed),
-                None,
+                Some(OnModulePress::ToggleMenu(MenuType::NetworkSpeed)),
             )),
             ModuleName::KeyboardLayout => self.keyboard_layout.view().map(|view| {
                 (

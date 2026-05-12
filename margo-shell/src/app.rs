@@ -918,6 +918,11 @@ impl App {
                         self.system_info.menu_view().map(Message::SystemInfo),
                         ui_ref,
                     ),
+                    MenuType::NetworkSpeed => self.menu_wrapper(
+                        id,
+                        self.network_speed.menu_view().map(Message::NetworkSpeed),
+                        ui_ref,
+                    ),
                     MenuType::Tempo => {
                         self.menu_wrapper(id, self.tempo.menu_view().map(Message::Tempo), ui_ref)
                     }

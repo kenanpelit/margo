@@ -14,7 +14,7 @@ use iced::{
     widget::{Column, Row, column, container, row, text},
 };
 use itertools::Itertools;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use sysinfo::{Components, Disks, Networks, System};
 
 const MAX_IP_LEN: usize = 45;
@@ -46,9 +46,6 @@ impl std::fmt::Display for FixedIp {
 
 struct NetworkData {
     ip: FixedIp,
-    download_speed: u32,
-    upload_speed: u32,
-    last_check: Instant,
 }
 
 struct MemoryUsage {
@@ -84,7 +81,7 @@ fn get_system_info(
     system: &mut System,
     components: &mut Components,
     disks: &mut Disks,
-    (networks, last_check): (&mut Networks, Option<Instant>),
+    networks: &mut Networks,
     temperature_sensor: &str,
     sensor_index: Option<usize>,
     mounts: Option<&[String]>,
@@ -196,9 +193,8 @@ fn get_system_info(
         })
         .collect();
 
-    let elapsed = last_check.map(|v| v.elapsed().as_secs());
-
-    let network = networks
+    // Hız hesabı NetworkSpeed modülüne taşındı; burada sadece IP.
+    let first_ip = networks
         .iter()
         .filter(|(name, _)| {
             name.contains("en")
@@ -209,54 +205,26 @@ fn get_system_info(
         })
         .sorted_by_key(|(name, _)| {
             if name.contains("en") {
-                return 0;
+                0
+            } else if name.contains("eth") {
+                1
+            } else if name.contains("wl") {
+                2
+            } else if name.contains("wlan") {
+                3
+            } else if name.contains("br") {
+                4
+            } else {
+                99
             }
-
-            if name.contains("eth") {
-                return 1;
-            }
-
-            if name.contains("wl") {
-                return 2;
-            }
-
-            if name.contains("wlan") {
-                return 3;
-            }
-            if name.contains("br") {
-                return 4;
-            }
-
-            99
         })
-        .fold(
-            (None, 0, 0),
-            |(first_ip, total_received, total_transmitted), (_, data)| {
-                let ip = first_ip.or_else(|| {
-                    data.ip_networks()
-                        .iter()
-                        .sorted_by(|a, b| a.addr.cmp(&b.addr))
-                        .next()
-                        .map(|ip| ip.addr)
-                });
-
-                let received = data.received();
-                let transmitted = data.transmitted();
-
-                (
-                    first_ip.or(ip),
-                    total_received + received,
-                    total_transmitted + transmitted,
-                )
-            },
-        );
-
-    let network_speed = |value: u64| {
-        match elapsed {
-            None | Some(0) => 0, // avoid division by zero
-            Some(elapsed) => (value / 1000) as u32 / elapsed as u32,
-        }
-    };
+        .find_map(|(_, data)| {
+            data.ip_networks()
+                .iter()
+                .sorted_by(|a, b| a.addr.cmp(&b.addr))
+                .next()
+                .map(|ip| ip.addr)
+        });
 
     SystemInfoData {
         cpu_usage,
@@ -264,15 +232,8 @@ fn get_system_info(
         memory_swap_usage,
         temperature,
         disks,
-        network: network.0.and_then(|ip| {
-            let ip_str = ip.to_string();
-            FixedIp::from_str(&ip_str).map(|ip| NetworkData {
-                ip,
-                download_speed: network_speed(network.1),
-                upload_speed: network_speed(network.2),
-                last_check: Instant::now(),
-            })
-        }),
+        network: first_ip
+            .and_then(|ip| FixedIp::from_str(&ip.to_string()).map(|ip| NetworkData { ip })),
     }
 }
 
@@ -306,7 +267,7 @@ impl SystemInfo {
             &mut system,
             &mut components,
             &mut disks,
-            (&mut networks, None),
+            &mut networks,
             config.temperature.sensor.as_str(),
             cached_sensor_index,
             config.disk.mounts.as_deref(),
@@ -330,10 +291,7 @@ impl SystemInfo {
                     &mut self.system,
                     &mut self.components,
                     &mut self.disks,
-                    (
-                        &mut self.networks,
-                        self.data.network.as_ref().map(|n| n.last_check),
-                    ),
+                    &mut self.networks,
                     &self.config.temperature.sensor,
                     self.cached_sensor_index,
                     self.config.disk.mounts.as_deref(),
@@ -464,30 +422,14 @@ impl SystemInfo {
                         )
                         .spacing(space.xxs),
                     )
+                    // Network speed satırları artık ayrı NetworkSpeed
+                    // modülünün menüsünde; burada sadece IP gösteriliyor.
                     .push(self.data.network.as_ref().map(|network| {
                         Column::with_children(vec![
                             Self::info_element(
                                 StaticIcon::IpAddress,
                                 t!("system-info-ip-address"),
                                 network.ip.to_string(),
-                            ),
-                            Self::info_element(
-                                StaticIcon::DownloadSpeed,
-                                t!("system-info-download-speed"),
-                                if network.download_speed > 1000 {
-                                    format!("{} MB/s", network.download_speed / 1000)
-                                } else {
-                                    format!("{} KB/s", network.download_speed)
-                                },
-                            ),
-                            Self::info_element(
-                                StaticIcon::UploadSpeed,
-                                t!("system-info-upload-speed"),
-                                if network.upload_speed > 1000 {
-                                    format!("{} MB/s", network.upload_speed / 1000)
-                                } else {
-                                    format!("{} KB/s", network.upload_speed)
-                                },
                             ),
                         ])
                     }))
