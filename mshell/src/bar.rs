@@ -72,6 +72,18 @@ fn sep() -> Label {
 /// window so the caller (or future hot-reload code) can keep it
 /// alive.
 pub fn build(app: &gtk::Application, monitor: &gdk::Monitor) -> ApplicationWindow {
+    let geometry = monitor.geometry();
+    tracing::info!(
+        connector = monitor.connector().map(|s| s.to_string()).unwrap_or_default(),
+        scale = monitor.scale_factor(),
+        width = geometry.width(),
+        height = geometry.height(),
+        bar_target_width = geometry.width() - 8,
+        bar_target_height = BAR_HEIGHT,
+        bar_exclusive_zone = BAR_HEIGHT + 4,
+        "spawning bar on output"
+    );
+
     let window = ApplicationWindow::builder()
         .application(app)
         .name("bar")

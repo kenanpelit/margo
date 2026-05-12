@@ -41,16 +41,18 @@
 
 /* ─────────── Bar shell ─────────── */
 
-/* Bar height is pinned both in Rust (`set_exclusive_zone` +
- * `set_size_request` on the window AND the layout) and here in
- * CSS so children can't push it around on hover. min == max is
- * what kills the 3-4× growth bug on focus / popover open. */
+/* GTK4 CSS dialect doesn't support `max-height` / `max-width` —
+ * those properties are silently dropped (we caught it via the
+ * "Theme parser error: No property named max-height" line in
+ * `MSHELL_LOG=info mshell` stderr). The hover/focus clamp lives
+ * in Rust now (bar::clamp_height_recursively walks the widget
+ * tree and calls `set_size_request(-1, CHILD_HEIGHT)` on every
+ * descendant); CSS just paints the surface chrome. */
 #bar {
     background-color: rgba(40, 42, 54, 0.93);
     border-radius: 12px;
     color: #f8f8f2;
     min-height: 32px;
-    max-height: 32px;
     box-shadow: none;
     outline: none;
 }
@@ -61,13 +63,8 @@
 #bar-right {
     padding: 0 8px;
     min-height: 32px;
-    max-height: 32px;
 }
 
-/* The cap-from-the-top: every descendant gets a max-height of the
- * inner content slot (bar - 4 px borders). Anything that wants to
- * paint a focus ring or drop shadow simply can't push past this
- * limit. `:focus` / `:hover` / `:checked` all get the same cap. */
 #bar *,
 #bar *:hover,
 #bar *:focus,
@@ -76,36 +73,6 @@
 #bar *:checked {
     outline: none;
     box-shadow: none;
-    max-height: 28px;
-}
-
-/* GtkButton, GtkImage and GtkScale individually — these are the
- * three GTK4 widgets that most aggressively want to add internal
- * chrome. Force their content box to exactly fit our bar. */
-#bar button,
-#bar image,
-#bar scale {
-    min-height: 22px;
-    max-height: 24px;
-    padding: 0 4px;
-    margin: 0;
-}
-
-/* Popovers are floating windows that live outside the bar — they
- * are NOT clamped by the above rules (which would crush the
- * calendar / system / music popups). The selector below is the
- * escape hatch for them. */
-popover,
-popover *,
-popover *:hover,
-popover *:focus {
-    max-height: none;
-}
-
-#bar-left,
-#bar-center,
-#bar-right {
-    padding: 0;
 }
 
 /* ─────────── Module capsules (Noctalia showCapsule=true) ───
@@ -699,7 +666,6 @@ label {
 
 .notif-popup {
     min-width: 320px;
-    max-width: 360px;
 }
 
 .notif-heading {
