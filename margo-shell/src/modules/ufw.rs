@@ -138,36 +138,27 @@ impl Ufw {
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        let space = use_theme(|t| t.space);
-        let (label, body) = if !self.state.available {
-            (t!("ufw-unavailable"), Some(false))
+        // Bar'da metin yok — sadece kale/kalkan ikonu, renkle durumu söyler:
+        //   yeşil = active, kırmızı = inactive, sarı = ufw kurulu değil.
+        let cell = container(icon(StaticIcon::Lock));
+        if !self.state.available {
+            cell.style(|theme: &Theme| container::Style {
+                text_color: Some(theme.palette().warning),
+                ..Default::default()
+            })
+            .into()
         } else if self.is_active() {
-            (t!("ufw-active"), Some(true))
+            cell.style(|theme: &Theme| container::Style {
+                text_color: Some(theme.palette().success),
+                ..Default::default()
+            })
+            .into()
         } else {
-            (t!("ufw-inactive"), None)
-        };
-        let cell = container(
-            row!(icon(StaticIcon::Lock), text(label)).spacing(space.xxs),
-        );
-        match body {
-            Some(true) => cell
-                .style(|theme: &Theme| container::Style {
-                    text_color: Some(theme.palette().success),
-                    ..Default::default()
-                })
-                .into(),
-            Some(false) => cell
-                .style(|theme: &Theme| container::Style {
-                    text_color: Some(theme.palette().danger),
-                    ..Default::default()
-                })
-                .into(),
-            None => cell
-                .style(|theme: &Theme| container::Style {
-                    text_color: Some(theme.palette().warning),
-                    ..Default::default()
-                })
-                .into(),
+            cell.style(|theme: &Theme| container::Style {
+                text_color: Some(theme.palette().danger),
+                ..Default::default()
+            })
+            .into()
         }
     }
 
