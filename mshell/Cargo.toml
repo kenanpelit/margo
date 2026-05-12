@@ -1,123 +1,53 @@
 [package]
 name = "mshell"
-description = "Desktop shell (bar + notifications + OSD + settings) for the margo Wayland compositor"
 version.workspace = true
 edition.workspace = true
-rust-version.workspace = true
-license = "MIT"
+license.workspace = true
 repository.workspace = true
+rust-version.workspace = true
+description = "Bar shell for the margo Wayland compositor (GTK4 + gtk4-layer-shell)"
 
 [[bin]]
 name = "mshell"
 path = "src/main.rs"
 
+# --------------------------------------------------------------------
+# Stack: GTK4 + gtk4-layer-shell for the Wayland layer-surface bar.
+# Replaces the previous iced/wgpu implementation — the iced port off
+# ashell was hard to bend into a saimoom/eww-style design, GTK4 lets
+# us load the eww.scss as a real GtkCssProvider stylesheet and gives
+# native hover-reveal / circular-progress (via GtkDrawingArea).
+# --------------------------------------------------------------------
 [dependencies]
-iced = { package = "iced_layershell", git = "https://github.com/MalpenZibo/iced_layershell", tag = "v0.1.5", features = [
-  "tokio",
-  "advanced",
-  "wgpu",
-  "tiny-skia",
-  "image",
-  "svg",
-  "canvas",
-] }
-iced_anim = "0.3"
-chrono = { version = "0.4", default-features = false, features = [
-  "clock",
-  "serde",
-  "unstable-locales",
-] }
-serde = { version = "1.0", default-features = false, features = [] }
-sysinfo = { version = "0.37", features = ["linux-netdevs"] }
-# Note: when zbus had the `tokio` feature enabled it pulled in
-# rt-multi-thread / fs / process / time transitively. Now that we
-# dropped that (zbus runs on async-io to avoid panicking margo —
-# which also depends on zbus), list the features margo-shell
-# actually uses explicitly.
-tokio = { version = "1", default-features = false, features = [
-  "net",
-  "macros",
-  "fs",
-  "process",
-  "rt",
-  "rt-multi-thread",
-  "time",
-  "io-util",
-  "sync",
-] }
-# zbus reactor must stay on the default (async-io) backend — the
-# margo binary also depends on zbus and runs it from its calloop
-# loop without a tokio runtime. Cargo unifies features across the
-# workspace, so enabling `tokio` here would force margo to run zbus
-# under tokio and panic at startup with "there is no reactor running".
-# async-io spawns its own thread; margo-shell's tokio runtime treats
-# zbus futures as ordinary async work.
-zbus = { version = "5" }
-libpulse-binding = { version = "2.28", features = ["pa_v15"] }
-log = { version = "0.4", features = [] }
-flexi_logger = "0.31"
-pipewire = "0.9"
-rand = "0.8"
-# Wallpaper rendering pipeline — fully independent of iced/wgpu.
-# We spawn a dedicated thread that runs its own Wayland connection,
-# binds wlr-layer-shell directly, decodes images to ARGB8888 with
-# the `image` crate, and attaches buffers via `wl_shm`. iced's
-# Image widget repeatedly failed to upload pixels onto a
-# Background-layer surface even with eager `Handle::from_rgba`;
-# wpaperd and pandora both ship this same shm-direct pattern and
-# it has been the canonical Wayland wallpaper approach for years.
+gtk = { package = "gtk4", version = "0.9", features = ["v4_12"] }
+gtk4-layer-shell = "0.5"
+glib = "0.20"
+gio = "0.20"
+
+anyhow = { workspace = true }
+clap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = "0.8"
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+# `log` is bridged into `tracing` automatically when the subscriber
+# is up; the wallpaper renderer was written against `log::*` and we
+# pull it in unchanged.
+log = "0.4"
+libc = "0.2"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+
+# Wallpaper renderer — own Wayland client thread (no swww, no
+# external daemon). Binds wlr-layer-shell directly, decodes images
+# to ARGB8888 with `image`, attaches via `wl_shm`. The same pattern
+# wpaperd / pandora ship; canonical Wayland wallpaper approach.
 image = { version = "0.25", default-features = false, features = [
-  "jpeg", "png", "webp",
+  "jpeg",
+  "png",
+  "webp",
 ] }
 smithay-client-toolkit = { version = "0.19", default-features = false, features = [
   "calloop",
 ] }
-itertools = "0.14"
-unicode-segmentation = "1.13.2"
-hex_color = { version = "3", features = ["serde"] }
-anyhow = "1"
-udev = { version = "0.9", features = ["send", "sync"] }
-toml = "0.9"
-freedesktop-icons = "0.4"
-linicon-theme = "1.2.0"
-serde_json = "1"
-regex = "1.12.2"
-serde_with = { version = "3.12", default-features = false, features = [
-  "macros",
-] }
-tokio-stream = { version = "0.1", default-features = false, features = ["sync", "time"] }
-clap = { version = "4.5", default-features = false, features = [
-  "std",
-  "derive",
-] }
-shellexpand = { version = "3", features = ["path"] }
-inotify = { version = "0.11.1", default-features = false, features = [
-  "stream",
-] }
-pin-project-lite = "0.2.16"
-reqwest = { version = "0.13", default-features = false, features = [
-  "json",
-  "rustls",
-] }
-url = "2.5.7"
-signal-hook = "0.4.3"
-signal-hook-tokio = { version = "0.4", features = ["futures-v0_3"] }
-libc = "0.2.182"
-chrono-tz = "0.10.4"
 wayland-client = "0.31"
-wayland-protocols = { version = "0.32", features = ["client"] }
-wayland-protocols-wlr = { version = "0.3", features = ["client"] }
-i18n-embed = { version = "0.16", default-features = false, features = [
-  "fluent-system",
-  "rust-embed",
-] }
-i18n-embed-fl = "0.10"
-rust-embed = "8"
-unic-langid = "0.9"
-
-# mshell talks to the compositor over margo's IPC + state.json,
-# so we pull the IPC types straight from the sibling crate.
-mctl = { path = "../mctl" }
-
-[build-dependencies]
-allsorts = "0.16"

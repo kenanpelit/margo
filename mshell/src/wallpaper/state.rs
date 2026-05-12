@@ -40,8 +40,7 @@ use smithay_client_toolkit::{
     shm::{slot::SlotPool, Shm, ShmHandler},
 };
 
-use super::Command;
-use crate::config::WallpaperFit;
+use super::{Command, WallpaperFit};
 
 pub fn run(rx: mpsc::Receiver<Command>) -> Result<()> {
     let conn = Connection::connect_to_env().context("connect to Wayland")?;

@@ -23,6 +23,27 @@ use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
 
+/// How the renderer fits a wallpaper into the output. Matches the
+/// names of the iced port's old `[wallpaper] fit` config knob so
+/// strings parse 1:1 once mshell grows a config file again.
+/// `Contain` / `Fill` / `None` aren't wired into the current
+/// caller (Cover is always used) but they're kept here so a
+/// future config layer can flip them without an API change.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WallpaperFit {
+    /// Crop-fill: scale so the image covers the output; overhang
+    /// is trimmed off the edges.
+    Cover,
+    /// Letterbox: scale so the whole image fits; surplus space
+    /// painted with `fallback_color`.
+    Contain,
+    /// Stretch: ignore aspect ratio.
+    Fill,
+    /// Native pixel size, centred; pads with `fallback_color`.
+    None,
+}
+
 #[derive(Debug, Clone)]
 pub enum Command {
     /// Set / clear the wallpaper for a specific output.
@@ -33,7 +54,7 @@ pub enum Command {
     Set {
         output_name: String,
         path: Option<PathBuf>,
-        fit: crate::config::WallpaperFit,
+        fit: WallpaperFit,
         /// Solid RGB shown behind the image (visible with `Contain`/
         /// `None` letterboxing) or as the whole buffer when `path`
         /// is `None`.
@@ -78,7 +99,7 @@ impl WallpaperRenderer {
         &self,
         output_name: impl Into<String>,
         path: Option<PathBuf>,
-        fit: crate::config::WallpaperFit,
+        fit: WallpaperFit,
         fallback_color: [u8; 3],
     ) {
         let _ = self.tx.send(Command::Set {

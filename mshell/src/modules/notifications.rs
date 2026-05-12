@@ -1,1256 +1,139 @@
-use crate::{
-    components::icons::{StaticIcon, icon, icon_button},
-    components::{ButtonHierarchy, ButtonKind, ButtonSize, MenuSize},
-    config::{NotificationsModuleConfig, ToastPosition},
-    services::{
-        ReadOnlyService, ServiceEvent,
-        notifications::{
-            Notification, NotificationIcon, NotificationsService, Urgency,
-            dbus::{NotificationDaemon, NotificationEvent},
-        },
-    },
-    t,
-    theme::use_theme,
+//! Notifications bell + history popover.
+//!
+//! Stage-6 had a bare bell. This expands it to:
+//!   * a count badge (unread notifications) painted on the icon
+//!   * a click-popover that lists recent notifications
+//!
+//! The actual `org.freedesktop.Notifications` D-Bus server is
+//! still queued for Stage 9 — until then the history shows a
+//! placeholder "no notifications" line. Once the daemon lands, the
+//! same widget consumes it: the popover already knows how to
+//! render a list, the bell already knows how to display a count.
+
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use gtk::prelude::*;
+use gtk::{
+    Align, Box as GtkBox, GestureClick, Label, Orientation, Popover, PositionType,
 };
-use chrono::{DateTime, Local};
-use iced::{
-    Alignment, Background, Border, Color, Column, Element, Length, Padding, Row, Size,
-    Subscription, Task, Theme,
-    widget::{Space, Stack, button, column, container, image, row, scrollable, sensor, svg, text},
-};
-use itertools::Itertools;
-use log::{error, info};
-use std::{
-    collections::{HashSet, VecDeque},
-    time::Duration,
-};
-use zbus::Connection;
 
-fn notification_icon<'a, M: 'a>(
-    icon_kind: Option<&NotificationIcon>,
-    size: f32,
-) -> Element<'a, M> {
-    match icon_kind {
-        Some(NotificationIcon::Svg(handle)) => svg(handle.clone())
-            .width(Length::Fixed(size))
-            .height(Length::Fixed(size))
-            .into(),
-        Some(NotificationIcon::Image(handle)) => image(handle.clone())
-            .width(Length::Fixed(size))
-            .height(Length::Fixed(size))
-            .into(),
-        None => icon(StaticIcon::Bell).size(size).into(),
-    }
+const ICON_BELL: &str = "\u{f0f3}";
+
+/// Shared, in-memory notification history. Stage-6 has no live
+/// producer; Stage 9 will replace this with a D-Bus-fed channel.
+#[derive(Default, Clone)]
+struct Entry {
+    summary: String,
+    body: String,
 }
 
-fn invoke_and_close_task(
-    connection: Option<Connection>,
-    id: u32,
-    action_key: Option<String>,
-) -> Task<Message> {
-    Task::perform(
-        async move {
-            if let Some(connection) = connection {
-                if let Some(action_key) = action_key
-                    && let Err(e) =
-                        NotificationDaemon::invoke_action(&connection, id, action_key).await
-                {
-                    error!("Failed to invoke notification action for id {}: {}", id, e);
-                }
-                if let Err(e) = NotificationDaemon::close_notification_by_id(&connection, id).await
-                {
-                    error!("Failed to close notification id {}: {}", id, e);
-                }
-            }
-        },
-        |_| Message::NotificationClosed,
-    )
+pub fn build() -> GtkBox {
+    let row = GtkBox::builder()
+        .name("notifications")
+        .orientation(Orientation::Horizontal)
+        .spacing(0)
+        .build();
+    row.add_css_class("module");
+    row.add_css_class("notifications");
+
+    let icon = Label::builder().label(ICON_BELL).build();
+    icon.add_css_class("notif-icon");
+    row.append(&icon);
+
+    // Count badge — hidden until Stage 9 starts writing into the
+    // history. Kept here so the layout doesn't shift the moment
+    // the daemon lands.
+    let badge = Label::builder().label("").visible(false).build();
+    badge.add_css_class("notif-badge");
+    row.append(&badge);
+
+    let history: Rc<RefCell<Vec<Entry>>> = Rc::new(RefCell::new(Vec::new()));
+
+    let popover = build_popover(&history);
+    popover.set_parent(&row);
+
+    let click = GestureClick::builder().button(1).build();
+    let popover_for_click = popover.clone();
+    click.connect_pressed(move |_, _, _, _| popover_for_click.popup());
+    row.add_controller(click);
+
+    row
 }
 
-async fn close_notification_ids(connection: Option<Connection>, notification_ids: &[u32]) {
-    if let Some(connection) = connection {
-        for id in notification_ids {
-            if let Err(e) = NotificationDaemon::close_notification_by_id(&connection, *id).await {
-                error!("Failed to close notification id {}: {}", id, e);
-            }
-        }
-    }
+fn build_popover(history: &Rc<RefCell<Vec<Entry>>>) -> Popover {
+    let body = GtkBox::builder()
+        .orientation(Orientation::Vertical)
+        .spacing(6)
+        .build();
+    body.add_css_class("notif-popup");
+
+    let heading = Label::builder()
+        .label("Notifications")
+        .halign(Align::Start)
+        .build();
+    heading.add_css_class("notif-heading");
+    body.append(&heading);
+
+    let list = GtkBox::builder()
+        .name("notif-list")
+        .orientation(Orientation::Vertical)
+        .spacing(4)
+        .build();
+    body.append(&list);
+
+    refresh_list(&list, &history.borrow());
+
+    let popover = Popover::builder()
+        .child(&body)
+        .position(PositionType::Bottom)
+        .has_arrow(true)
+        .autohide(true)
+        .build();
+    popover.add_css_class("popover-notif");
+
+    let list_for_show = list.clone();
+    let history_for_show = history.clone();
+    popover.connect_show(move |_| {
+        refresh_list(&list_for_show, &history_for_show.borrow());
+    });
+
+    popover
 }
 
-fn close_notification_by_id_task(connection: Option<Connection>, id: u32) -> Task<Message> {
-    Task::perform(
-        async move {
-            if let Some(connection) = connection
-                && let Err(e) = NotificationDaemon::close_notification_by_id(&connection, id).await
-            {
-                error!("Failed to close notification id {}: {}", id, e);
-            }
-        },
-        |_| Message::NotificationClosed,
-    )
-}
-
-fn toast_timeout(required_timeout: i32, timeout_ms: u64) -> Option<Duration> {
-    match required_timeout {
-        -1 => Some(Duration::from_millis(timeout_ms)),
-        0 => None,
-        required if required > 0 => Some(Duration::from_millis(required as u64)),
-        _ => None,
+fn refresh_list(list: &GtkBox, history: &[Entry]) {
+    while let Some(child) = list.first_child() {
+        list.remove(&child);
     }
-}
 
-#[derive(Debug, Clone)]
-pub enum Message {
-    ConfigReloaded(NotificationsModuleConfig),
-    NotificationClicked(u32),
-    NotificationClosed,
-    CloseNotificationById(u32),
-    ClearNotifications,
-    NotificationsCleared,
-    ClearGroup(String),
-    GroupCleared(String, Vec<u32>),
-    Event(ServiceEvent<NotificationsService>),
-    ToggleGroup(String),
-    ExpireToast(u32),
-    DismissToast(u32),
-    /// Dismiss every currently visible toast (mark as read) without
-    /// touching the persisted history. Wired from
-    /// `mshell msg notifications-read` so a keybind can silence a
-    /// sticky/critical toast that won't auto-expire.
-    DismissAllToasts,
-    ToastResized(Size),
-    /// D-Bus action invoke — `org.freedesktop.Notifications.ActionInvoked`
-    /// sinyalini gönderir ve bildirimi kapatır.
-    InvokeAction(u32, String),
-}
+    if history.is_empty() {
+        let empty = Label::builder()
+            .label("No notifications")
+            .halign(Align::Center)
+            .build();
+        empty.add_css_class("notif-empty");
+        list.append(&empty);
+        return;
+    }
 
-#[derive(Debug, PartialEq)]
-pub enum NotificationStyle {
-    Toast,
-    Standalone,
-    GroupHeader,
-    GroupItem,
-    GroupLast,
-}
-
-pub enum Action {
-    None,
-    Task(Task<Message>),
-    /// Toast added — show layer + tahmini yükseklik (eager surface grow).
-    Show {
-        task: Task<Message>,
-        estimated_height: u32,
-    },
-    Hide(Task<Message>),
-    UpdateToastInputRegion(Size),
-}
-
-pub struct Notifications {
-    config: NotificationsModuleConfig,
-    connection: Option<Connection>,
-    notifications: VecDeque<Notification>,
-    expanded_groups: HashSet<String>,
-    blocklist: Vec<crate::config::RegexCfg>,
-    toasts: VecDeque<u32>,
-}
-
-impl Notifications {
-    pub fn new(config: NotificationsModuleConfig) -> Self {
-        let blocklist = config.blocklist.clone();
-        Self {
-            config,
-            connection: None,
-            notifications: VecDeque::new(),
-            expanded_groups: HashSet::new(),
-            blocklist,
-            toasts: VecDeque::new(),
+    for e in history.iter().take(20) {
+        let card = GtkBox::builder()
+            .orientation(Orientation::Vertical)
+            .spacing(2)
+            .build();
+        card.add_css_class("notif-card");
+        let summary = Label::builder().label(&e.summary).halign(Align::Start).build();
+        summary.add_css_class("notif-summary");
+        let body = Label::builder()
+            .label(&e.body)
+            .halign(Align::Start)
+            .wrap(true)
+            .build();
+        body.add_css_class("notif-body");
+        card.append(&summary);
+        if !e.body.is_empty() {
+            card.append(&body);
         }
-    }
-
-    fn is_blocklisted(&self, app_name: &str) -> bool {
-        self.blocklist
-            .iter()
-            .any(|pattern| pattern.is_match(app_name))
-    }
-
-    fn find_notification(&self, id: u32) -> Option<&Notification> {
-        self.notifications.iter().find(|n| n.id == id)
-    }
-
-    fn find_first_action_key(&self, id: u32) -> Option<String> {
-        self.find_notification(id)
-            .filter(|n| !n.actions.is_empty())
-            .and_then(|n| n.actions.first())
-            .cloned()
-    }
-
-    fn clear_toasts(&mut self) -> bool {
-        let had_toasts = !self.toasts.is_empty();
-        self.toasts.clear();
-        had_toasts
-    }
-
-    fn remove_toast(&mut self, id: u32) -> bool {
-        let had_toasts = !self.toasts.is_empty();
-        self.toasts.retain(|&toast_id| toast_id != id);
-        had_toasts
-    }
-
-    fn remove_toasts(&mut self, ids: &[u32]) -> bool {
-        let had_toasts = !self.toasts.is_empty();
-        let ids: HashSet<u32> = ids.iter().copied().collect();
-        self.toasts.retain(|toast_id| !ids.contains(toast_id));
-        had_toasts
-    }
-
-    fn notification_ids_for_app(&self, app_name: &str) -> Vec<u32> {
-        self.notifications
-            .iter()
-            .filter(|notification| notification.app_name == app_name)
-            .map(|notification| notification.id)
-            .collect()
-    }
-
-    fn hide_toasts_if_empty(&self, had_toasts: bool) -> Action {
-        if had_toasts && self.toasts.is_empty() {
-            Action::Hide(Task::none())
-        } else {
-            Action::None
-        }
-    }
-
-    fn hide_toasts_if_empty_with_task(&self, had_toasts: bool, task: Task<Message>) -> Action {
-        if had_toasts && self.toasts.is_empty() {
-            Action::Hide(task)
-        } else {
-            Action::Task(task)
-        }
-    }
-
-    fn toast_action_for_update_event(&mut self, update_event: &NotificationEvent) -> Action {
-        if !self.config.toast {
-            info!("toast suppressed: config.toast=false");
-            return Action::None;
-        }
-
-        match update_event {
-            NotificationEvent::Received(notification) => {
-                if self.config.toast_limit == 0 {
-                    info!("toast suppressed: toast_limit=0");
-                    self.toasts.clear();
-                    return Action::None;
-                }
-
-                while self.toasts.len() >= self.config.toast_limit {
-                    self.toasts.pop_front();
-                }
-                self.toasts.push_back(notification.id);
-                info!(
-                    "toast queued id={} (active={}/{} limit)",
-                    notification.id,
-                    self.toasts.len(),
-                    self.config.toast_limit
-                );
-
-                let notification_id = notification.id;
-                // Timeout precedence:
-                //   1. Per-app override (apps[app_name].timeout)
-                //   2. Per-urgency (critical_timeout / low_timeout)
-                //   3. notification.expire_timeout (D-Bus hint) veya toast_timeout
-                let app_timeout = self
-                    .config
-                    .apps
-                    .get(&notification.app_name)
-                    .and_then(|o| o.timeout);
-
-                let urgency_timeout = match notification.urgency {
-                    Urgency::Critical => self.config.critical_timeout,
-                    Urgency::Low => self.config.low_timeout,
-                    _ => None,
-                };
-
-                let effective_ms = app_timeout
-                    .or(urgency_timeout)
-                    .unwrap_or(self.config.toast_timeout);
-
-                // 0 = persistent (manual dismiss). Critical default: 0
-                // if not overridden (freedesktop spec).
-                let timeout = if effective_ms == 0
-                    || (notification.urgency == Urgency::Critical
-                        && self.config.critical_timeout.is_none()
-                        && app_timeout.is_none())
-                {
-                    None
-                } else {
-                    toast_timeout(notification.expire_timeout, effective_ms)
-                };
-
-                // on_notify_command — kullanıcı tanımlı shell komutu
-                // (örn. paplay ile ses). Engellemiyor; fire-and-forget.
-                if let Some(cmd) = &self.config.on_notify_command {
-                    let cmd = cmd.clone();
-                    tokio::spawn(async move {
-                        let _ = tokio::process::Command::new("sh")
-                            .args(["-c", &cmd])
-                            .stdout(std::process::Stdio::null())
-                            .stderr(std::process::Stdio::null())
-                            .status()
-                            .await;
-                    });
-                }
-
-                let timer_task = if let Some(timeout) = timeout {
-                    Task::perform(
-                        async move {
-                            tokio::time::sleep(timeout).await;
-                            notification_id
-                        },
-                        Message::ExpireToast,
-                    )
-                } else {
-                    Task::none()
-                };
-
-                // Toast count'a göre tahmini surface yüksekliği.
-                // Toast eklenmeden ÖNCE +1 sayarak hesaplıyoruz; surface
-                // sensor'u beklemeden compositor'a doğru boyutla
-                // ack_configure göndersin.
-                let est = self.estimated_toast_height(self.toasts.len() as u32 + 1);
-                Action::Show {
-                    task: timer_task,
-                    estimated_height: est,
-                }
-            }
-            NotificationEvent::Closed(id) => {
-                let id = *id;
-                let was_showing = self.remove_toast(id);
-                self.hide_toasts_if_empty(was_showing)
-            }
-        }
-    }
-
-    fn apply_update_event(&mut self, update_event: NotificationEvent) {
-        match update_event {
-            NotificationEvent::Received(notification) => {
-                self.notifications.push_front(*notification);
-            }
-            NotificationEvent::Closed(id) => {
-                if let Some(pos) = self.notifications.iter().position(|n| n.id == id) {
-                    self.notifications.remove(pos);
-                }
-            }
-        }
-    }
-
-    pub fn update(&mut self, message: Message) -> Action {
-        match message {
-            Message::ConfigReloaded(config) => {
-                let hide = !config.toast && self.config.toast && !self.toasts.is_empty();
-                self.blocklist = config.blocklist.clone();
-                self.config = config;
-                if hide {
-                    self.toasts.clear();
-                    Action::Hide(Task::none())
-                } else {
-                    Action::None
-                }
-            }
-            Message::Event(event) => match event {
-                ServiceEvent::Init(service) => {
-                    self.connection = Some(service.connection);
-                    Action::None
-                }
-                ServiceEvent::Update(update_event) => {
-                    if let NotificationEvent::Received(notification) = &update_event
-                        && self.is_blocklisted(&notification.app_name)
-                    {
-                        return Action::None;
-                    }
-
-                    let toast_action = self.toast_action_for_update_event(&update_event);
-                    self.apply_update_event(update_event);
-
-                    toast_action
-                }
-                ServiceEvent::Error(_) => Action::None,
-            },
-            Message::NotificationClicked(id) => {
-                let connection = self.connection.clone();
-                let action_key = self.find_first_action_key(id);
-                Action::Task(invoke_and_close_task(connection, id, action_key))
-            }
-            Message::InvokeAction(id, action_key) => {
-                let connection = self.connection.clone();
-                Action::Task(invoke_and_close_task(connection, id, Some(action_key)))
-            }
-            Message::NotificationClosed => Action::None,
-            Message::ClearNotifications => {
-                let connection = self.connection.clone();
-                let notification_ids: Vec<u32> = self.notifications.iter().map(|n| n.id).collect();
-
-                Action::Task(Task::perform(
-                    async move {
-                        close_notification_ids(connection, &notification_ids).await;
-                    },
-                    |_| Message::NotificationsCleared,
-                ))
-            }
-            Message::NotificationsCleared => {
-                let had_toasts = self.clear_toasts();
-                self.hide_toasts_if_empty(had_toasts)
-            }
-            Message::ClearGroup(app_name) => {
-                let connection = self.connection.clone();
-                let notification_ids = self.notification_ids_for_app(&app_name);
-
-                Action::Task(Task::perform(
-                    async move {
-                        close_notification_ids(connection, &notification_ids).await;
-                        (app_name, notification_ids)
-                    },
-                    |(app_name, ids)| Message::GroupCleared(app_name, ids),
-                ))
-            }
-            Message::GroupCleared(app_name, group_ids) => {
-                self.expanded_groups.remove(&app_name);
-                let had_toasts = self.remove_toasts(&group_ids);
-                self.hide_toasts_if_empty(had_toasts)
-            }
-            Message::ToggleGroup(app_name) => {
-                if !self.expanded_groups.remove(&app_name) {
-                    self.expanded_groups.insert(app_name);
-                }
-                Action::None
-            }
-            Message::ExpireToast(id) => {
-                let had_toasts = self.remove_toast(id);
-                self.hide_toasts_if_empty(had_toasts)
-            }
-            Message::CloseNotificationById(id) => {
-                let connection = self.connection.clone();
-                let had_toasts = self.remove_toast(id);
-
-                let task = close_notification_by_id_task(connection, id);
-                self.hide_toasts_if_empty_with_task(had_toasts, task)
-            }
-            Message::DismissToast(id) => {
-                let connection = self.connection.clone();
-                let action_key = self.find_first_action_key(id);
-                let had_toasts = self.remove_toast(id);
-                let task = invoke_and_close_task(connection, id, action_key);
-                self.hide_toasts_if_empty_with_task(had_toasts, task)
-            }
-            Message::DismissAllToasts => {
-                // Wipe the on-screen toast list — history is untouched
-                // so the user can still review what they dismissed.
-                let had = self.clear_toasts();
-                self.hide_toasts_if_empty(had)
-            }
-            Message::ToastResized(size) => Action::UpdateToastInputRegion(size),
-        }
-    }
-
-    fn format_timestamp(&self, timestamp: std::time::SystemTime) -> String {
-        let datetime: DateTime<Local> = timestamp.into();
-        datetime.format(&self.config.format).to_string()
-    }
-
-    fn notification_button_style(
-        style: NotificationStyle,
-        urgency: Urgency,
-    ) -> impl Fn(&Theme, iced::widget::button::Status) -> iced::widget::button::Style + use<> {
-        // History/group rendering için backward-compat sürüm. v2 daha
-        // detaylı config alır (toast geometry'sinde kullanılır).
-        let (radius, menu_opacity) = use_theme(|t| (t.radius, t.menu.opacity));
-        Self::notification_button_style_v2_inner(
-            style,
-            urgency,
-            radius.lg,
-            menu_opacity,
-            None,
-        )
-    }
-
-    /// Config-driven varyant — toast_radius/toast_opacity/per-app border
-    /// override desteği.
-    fn notification_button_style_v2(
-        style: NotificationStyle,
-        urgency: Urgency,
-        toast_radius: f32,
-        toast_opacity: f32,
-        app_border: Option<iced::Color>,
-    ) -> impl Fn(&Theme, iced::widget::button::Status) -> iced::widget::button::Style + use<> {
-        Self::notification_button_style_v2_inner(
-            style,
-            urgency,
-            toast_radius,
-            toast_opacity,
-            app_border,
-        )
-    }
-
-    fn notification_button_style_v2_inner(
-        style: NotificationStyle,
-        urgency: Urgency,
-        big_radius: f32,
-        opacity: f32,
-        app_border: Option<iced::Color>,
-    ) -> impl Fn(&Theme, iced::widget::button::Status) -> iced::widget::button::Style + use<> {
-        let small_radius = use_theme(|t| t.radius.sm);
-        move |iced_theme: &Theme, status| {
-            let mut border = match style {
-                NotificationStyle::Toast => Border::default()
-                    .width(1)
-                    .color(iced_theme.extended_palette().background.weakest.color)
-                    .rounded(big_radius),
-                NotificationStyle::Standalone => Border::default().rounded(big_radius),
-                NotificationStyle::GroupHeader => Border::default().rounded(iced::border::Radius {
-                    top_left: big_radius,
-                    top_right: big_radius,
-                    bottom_left: small_radius,
-                    bottom_right: small_radius,
-                }),
-                NotificationStyle::GroupItem => Border::default().rounded(small_radius),
-                NotificationStyle::GroupLast => Border::default().rounded(iced::border::Radius {
-                    top_left: 0.0,
-                    top_right: 0.0,
-                    bottom_left: big_radius,
-                    bottom_right: big_radius,
-                }),
-            };
-
-            // Per-app border > critical default border.
-            if let Some(c) = app_border {
-                border.width = 2.0;
-                border.color = c;
-            } else if urgency == Urgency::Critical {
-                border.width = 1.5;
-                border.color = iced_theme.palette().danger;
-            }
-
-            let mut button_style = iced::widget::button::Style {
-                text_color: iced_theme.palette().text,
-                border,
-                ..iced::widget::button::Style::default()
-            };
-
-            // Toast cards float above the wallpaper — give them a
-            // depth-conveying drop shadow that lifts further on
-            // hover. In-history items (Standalone / Group*) stay
-            // flat because they sit inside an already-shadowed menu
-            // panel; doubling the shadow there muddies the look.
-            let is_toast = style == NotificationStyle::Toast;
-
-            match status {
-                iced::widget::button::Status::Hovered => {
-                    button_style.background = Some(
-                        if is_toast {
-                            iced_theme
-                                .extended_palette()
-                                .background
-                                .weak
-                                .color
-                                .scale_alpha(opacity)
-                        } else {
-                            iced_theme
-                                .extended_palette()
-                                .background
-                                .strong
-                                .color
-                                .scale_alpha(opacity)
-                        }
-                        .into(),
-                    );
-                    if is_toast {
-                        button_style.shadow = iced::Shadow {
-                            color: iced::Color { r: 0., g: 0., b: 0., a: 0.42 },
-                            offset: iced::Vector::new(0.0, 6.0),
-                            blur_radius: 22.0,
-                        };
-                    }
-                }
-                _ => {
-                    button_style.background = if is_toast {
-                        Some(iced_theme.palette().background.scale_alpha(opacity).into())
-                    } else {
-                        Some(iced_theme.extended_palette().background.weak.color.into())
-                    };
-                    if is_toast {
-                        button_style.shadow = iced::Shadow {
-                            color: iced::Color { r: 0., g: 0., b: 0., a: 0.32 },
-                            offset: iced::Vector::new(0.0, 4.0),
-                            blur_radius: 16.0,
-                        };
-                    }
-                }
-            }
-            button_style
-        }
-    }
-
-    /// Action button (D-Bus actions). Accent-tinted secondary style
-    /// so the user notices it's tappable without it competing with
-    /// the notification's content.
-    fn action_button_style()
-    -> impl Fn(&Theme, iced::widget::button::Status) -> iced::widget::button::Style + use<> {
-        move |theme, status| {
-            let primary = theme.palette().primary;
-            let (bg, border_w, border_c) = match status {
-                iced::widget::button::Status::Hovered => (
-                    primary.scale_alpha(0.30),
-                    1.0,
-                    primary.scale_alpha(0.75),
-                ),
-                iced::widget::button::Status::Pressed => (
-                    primary.scale_alpha(0.45),
-                    1.0,
-                    primary,
-                ),
-                _ => (
-                    primary.scale_alpha(0.16),
-                    1.0,
-                    primary.scale_alpha(0.45),
-                ),
-            };
-            iced::widget::button::Style {
-                background: Some(bg.into()),
-                text_color: theme.palette().text,
-                border: Border {
-                    width: border_w,
-                    radius: 10.0.into(),
-                    color: border_c,
-                },
-                ..iced::widget::button::Style::default()
-            }
-        }
-    }
-
-    fn notification_card<'a>(
-        &'a self,
-        notification: &'a Notification,
-        on_press: Message,
-        toast: bool,
-    ) -> Element<'a, Message> {
-        let (space, font_size, radius) = use_theme(|t| (t.space, t.font_size, t.radius));
-        let timestamp_element = if self.config.show_timestamps {
-            Some(
-                container(text(self.format_timestamp(notification.timestamp)).size(font_size.xs))
-                    .padding([0., space.xxs]),
-            )
-        } else {
-            None
-        };
-
-        let body_element = if (!toast || self.config.show_bodies) && !notification.body.is_empty() {
-            Some(
-                text(&notification.body)
-                    .size(self.config.toast_body_font_size)
-                    .wrapping(text::Wrapping::WordOrGlyph),
-            )
-        } else {
-            None
-        };
-
-        let notification_id = notification.id;
-        let app_icon_button = notification_icon(
-            notification.icon.as_ref(),
-            self.config.toast_icon_size,
-        );
-
-        // Custom font family — config'de toast_font_name varsa onu
-        // uygula. Mako'nun `font = "Noto Sans Regular 14"` ailesine eşdeğer
-        // (boyut alanı ayrı: toast_summary_font_size + toast_body_font_size).
-        use iced::font::{Font, Weight};
-        let custom_font: Option<Font> = self
-            .config
-            .font_name
-            .as_deref()
-            .map(|name| Font::with_name(Box::leak(name.to_string().into_boxed_str())));
-
-        // Summary — özel font + opsiyonel bold weight.
-        let mut summary_text = text(&notification.summary)
-            .size(self.config.toast_summary_font_size)
-            .wrapping(text::Wrapping::WordOrGlyph);
-        let summary_font_base = custom_font.unwrap_or(Font::DEFAULT);
-        if self.config.summary_bold {
-            summary_text = summary_text.font(Font {
-                weight: Weight::Bold,
-                ..summary_font_base
-            });
-        } else if custom_font.is_some() {
-            summary_text = summary_text.font(summary_font_base);
-        }
-
-        // App name — accent_app_name true ise primary renkle vurgu.
-        let app_name_widget = {
-            let mut t = text(&notification.app_name)
-                .size(self.config.toast_body_font_size)
-                .wrapping(text::Wrapping::WordOrGlyph);
-            if let Some(f) = custom_font {
-                t = t.font(f);
-            }
-            if self.config.accent_app_name {
-                t = t.style(|theme: &Theme| iced::widget::text::Style {
-                    color: Some(theme.palette().primary),
-                });
-            }
-            t
-        };
-
-        // Action buttons — D-Bus actions varsa pair'leri al ve render et.
-        // freedesktop spec: actions = [id1, label1, id2, label2, ...]
-        let actions_row = if self.config.show_actions && notification.actions.len() >= 2 {
-            let mut row_widget = Row::new().spacing(space.xxs);
-            for chunk in notification.actions.chunks(2) {
-                if chunk.len() < 2 {
-                    continue;
-                }
-                let action_id = chunk[0].clone();
-                // Default action is just "click" — skip rendering as button.
-                if action_id == "default" {
-                    continue;
-                }
-                let label = chunk[1].clone();
-                row_widget = row_widget.push(
-                    button(text(label).size(font_size.sm))
-                        .padding([space.xs, space.md])
-                        .style(Self::action_button_style())
-                        .on_press(Message::InvokeAction(notification_id, action_id)),
-                );
-            }
-            Some(row_widget.padding(Padding::new(space.xs).top(0.)))
-        } else {
-            None
-        };
-
-        // Solda urgency bar (4px renkli).
-        let urgency = notification.urgency;
-        let urgency_low = self.parse_urgency_color(&self.config.urgency_colors.low);
-        let urgency_normal = self.parse_urgency_color(&self.config.urgency_colors.normal);
-        let urgency_critical = self.parse_urgency_color(&self.config.urgency_colors.critical);
-        let urgency_bar: Element<'a, Message> = if self.config.show_urgency_bar {
-            container(Space::new().height(Length::Fill).width(Length::Fixed(4.0)))
-                .height(Length::Fill)
-                .style(move |theme: &Theme| {
-                    let color = match urgency {
-                        Urgency::Low => urgency_low.unwrap_or_else(|| theme.palette().text),
-                        Urgency::Normal => {
-                            urgency_normal.unwrap_or_else(|| theme.palette().primary)
-                        }
-                        Urgency::Critical => {
-                            urgency_critical.unwrap_or_else(|| theme.palette().danger)
-                        }
-                    };
-                    container::Style {
-                        background: Some(color.into()),
-                        border: Border::default().rounded(iced::border::Radius {
-                            top_left: radius.sm,
-                            bottom_left: radius.sm,
-                            top_right: 0.0,
-                            bottom_right: 0.0,
-                        }),
-                        ..Default::default()
-                    }
-                })
-                .into()
-        } else {
-            Space::new().into()
-        };
-
-        let card_body = column!(
-            Row::new()
-                .push(
-                    Row::new()
-                        .push(app_icon_button)
-                        .push(column!(app_name_widget, timestamp_element))
-                        .width(Length::Fill)
-                        .spacing(space.xxs)
-                        .padding(space.xs)
-                        .align_y(Alignment::Center),
-                )
-                .push(
-                    icon_button(StaticIcon::Close)
-                        .kind(ButtonKind::Transparent)
-                        .hierarchy(ButtonHierarchy::Danger)
-                        .on_press(Message::CloseNotificationById(notification_id))
-                ),
-            column!(summary_text, body_element)
-                .spacing(space.xxs)
-                .padding(Padding::new(space.xs).top(0.)),
-            actions_row,
-        )
-        .spacing(space.xxs);
-
-        let card_with_bar: Element<'a, Message> = row!(urgency_bar, card_body)
-            .spacing(space.xxs)
-            .align_y(Alignment::Center)
-            .into();
-
-        let mut card = container(card_with_bar);
-        if toast {
-            card = card.max_height(self.config.toast_max_height);
-        }
-
-        // Per-app border override (mako-tarzı). HashMap lookup.
-        let app_border = self
-            .config
-            .apps
-            .get(&notification.app_name)
-            .and_then(|o| o.border_color.as_deref())
-            .and_then(|hex| hex_color::HexColor::parse(hex).ok())
-            .map(|c| iced::Color::from_rgba8(c.r, c.g, c.b, c.a as f32 / 255.0));
-
-        let toast_radius = self.config.toast_radius;
-        let toast_opacity = self.config.toast_opacity;
-        button(card)
-            .on_press(on_press)
-            .width(Length::Fill)
-            .padding(self.config.toast_padding as u16)
-            .style(Self::notification_button_style_v2(
-                if toast {
-                    NotificationStyle::Toast
-                } else {
-                    NotificationStyle::Standalone
-                },
-                notification.urgency,
-                toast_radius,
-                toast_opacity,
-                app_border,
-            ))
-            .into()
-    }
-
-    /// `#hex` formatındaki rengi `iced::Color`'a çevir.
-    fn parse_urgency_color(&self, hex: &Option<String>) -> Option<iced::Color> {
-        hex.as_deref().and_then(|s| {
-            hex_color::HexColor::parse(s).ok().map(|c| {
-                iced::Color::from_rgba8(c.r, c.g, c.b, c.a as f32 / 255.0)
-            })
-        })
-    }
-
-    fn group_item<'a>(
-        &'a self,
-        notification: &'a Notification,
-        is_last: bool,
-    ) -> Element<'a, Message> {
-        let (space, font_size) = use_theme(|t| (t.space, t.font_size));
-        button(
-            column!(
-                row!(
-                    text(&notification.summary)
-                        .wrapping(text::Wrapping::WordOrGlyph)
-                        .width(Length::Fill),
-                    text(self.format_timestamp(notification.timestamp)).size(font_size.sm)
-                ),
-                text(&notification.body).wrapping(text::Wrapping::WordOrGlyph)
-            )
-            .padding(space.xs)
-            .spacing(space.xs),
-        )
-        .style(Self::notification_button_style(
-            if is_last {
-                NotificationStyle::GroupLast
-            } else {
-                NotificationStyle::GroupItem
-            },
-            notification.urgency,
-        ))
-        .on_press(Message::NotificationClicked(notification.id))
-        .into()
-    }
-
-    pub fn view(&'_ self) -> Element<'_, Message> {
-        let (space, bar_font) = use_theme(|t| (t.space, t.bar_font_size));
-        let count = self.notifications.len();
-        let has_critical = self
-            .notifications
-            .iter()
-            .any(|n| n.urgency == Urgency::Critical);
-        let bell_icon = if count > 0 {
-            icon(StaticIcon::BellBadge).size(bar_font)
-        } else {
-            icon(StaticIcon::Bell).size(bar_font)
-        };
-
-        // Overlay a tiny accent dot in the bell's top-right corner
-        // whenever there are pending notifications. Gives a noctalia-
-        // style "fresh state" cue without needing the wider count
-        // badge to be enabled. Critical urgency swaps the dot to the
-        // danger palette for an at-a-glance warning.
-        let bell: Element<'_, Message> = if count > 0 {
-            let dot_color = if has_critical { Urgency::Critical } else { Urgency::Normal };
-            let dot = container(
-                Space::new()
-                    .width(Length::Fixed(5.0))
-                    .height(Length::Fixed(5.0)),
-            )
-            .style(move |theme: &Theme| {
-                let accent = match dot_color {
-                    Urgency::Critical => theme.palette().danger,
-                    _ => theme.palette().primary,
-                };
-                container::Style {
-                    background: Some(Background::Color(accent)),
-                    border: Border {
-                        radius: 3.0.into(),
-                        width: 1.0,
-                        color: Color {
-                            a: 0.85,
-                            ..theme.palette().background
-                        },
-                    },
-                    ..Default::default()
-                }
-            });
-            let dot_layer = container(dot)
-                .align_x(Alignment::End)
-                .align_y(Alignment::Start)
-                .width(Length::Fill)
-                .height(Length::Fill);
-            Stack::new().push(bell_icon).push(dot_layer).into()
-        } else {
-            bell_icon.into()
-        };
-
-        // Count badge (text). Independent of the dot overlay — both
-        // can be on (dot signals "new", number conveys "how many").
-        let badge_text = if self.config.show_count_badge && count > 0 {
-            Some(text(count.to_string()).size(bar_font))
-        } else {
-            None
-        };
-
-        let body = container(
-            row!(bell, badge_text)
-                .spacing(space.xxs)
-                .align_y(Alignment::Center),
-        );
-        if has_critical {
-            body.style(|theme: &Theme| container::Style {
-                text_color: Some(theme.palette().danger),
-                ..Default::default()
-            })
-            .into()
-        } else if count > 0 {
-            body.style(|theme: &Theme| container::Style {
-                text_color: Some(theme.palette().primary),
-                ..Default::default()
-            })
-            .into()
-        } else {
-            body.into()
-        }
-    }
-
-    pub fn menu_view<'a>(&'a self) -> Element<'a, Message> {
-        let (space, font_size) = use_theme(|t| (t.space, t.font_size));
-        let is_empty = self.notifications.is_empty();
-
-        let content = if is_empty {
-            container(text(t!("notifications-empty")).size(font_size.md))
-                .width(Length::Fill)
-                .center_x(Length::Fill)
-                .padding(space.xxl)
-                .into()
-        } else if self.config.group_by_date {
-            // Noctalia tarzı: Today / Yesterday / Older başlıklarıyla
-            // tarih-bazlı section'lar.
-            self.date_grouped_notifications()
-        } else if self.config.grouped {
-            self.grouped_notifications()
-        } else {
-            self.list_notifications()
-        };
-
-        column!(
-            Row::new()
-                .push(
-                    text(t!("notifications-heading"))
-                        .width(Length::Fill)
-                        .size(font_size.lg)
-                )
-                .push((!is_empty).then(|| {
-                    icon_button(StaticIcon::Delete).on_press(Message::ClearNotifications)
-                })),
-            container(scrollable(content).spacing(space.xs)).max_height(400.),
-        )
-        .width(MenuSize::Medium)
-        .spacing(space.sm)
-        .into()
-    }
-
-    pub fn toast_view<'a>(&'a self) -> Element<'a, Message> {
-        let space = use_theme(|t| t.space);
-        if self.toasts.is_empty() {
-            return Space::new().into();
-        }
-
-        let mut toast_column = column!().spacing(space.sm);
-
-        for &toast_id in &self.toasts {
-            if let Some(notification) = self.find_notification(toast_id) {
-                toast_column = toast_column.push(self.notification_card(
-                    notification,
-                    Message::DismissToast(notification.id),
-                    true,
-                ));
-            }
-        }
-
-        // Surface sabit 300x600 (show_toast_layer). İçerik top/bottom
-        // hizalı çizilir; surface canlı resize yok → toast dismiss
-        // olduğunda "küçülerek kaybolma" görsel artefakt'ı oluşmuyor.
-        let v_align = match self.config.toast_position {
-            ToastPosition::TopLeft | ToastPosition::TopRight => Alignment::Start,
-            ToastPosition::BottomLeft | ToastPosition::BottomRight => Alignment::End,
-        };
-
-        let toast_content = sensor(
-            container(toast_column)
-                .width(MenuSize::Medium)
-                .padding(space.sm),
-        )
-        .on_resize(Message::ToastResized);
-
-        container(toast_content)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .align_y(v_align)
-            .into()
-    }
-
-    pub fn subscription(&self) -> Subscription<Message> {
-        NotificationsService::subscribe().map(Message::Event)
-    }
-
-    fn grouped_notifications<'a>(&'a self) -> Element<'a, Message> {
-        let (space, font_size) = use_theme(|t| (t.space, t.font_size));
-        let mut content = column!()
-            .spacing(space.sm)
-            .padding(Padding::default().right(space.md).left(space.xs));
-
-        for (_app_name, group) in self
-            .notifications
-            .iter()
-            .sorted_by(|a, b| a.app_name.cmp(&b.app_name))
-            .chunk_by(|n| n.app_name.clone())
-            .into_iter()
-        {
-            let mut iter = group.peekable();
-            let first = match iter.next() {
-                Some(n) => n,
-                None => continue,
-            };
-
-            // Single notification in the group — use the normal card layout.
-            if iter.peek().is_none() {
-                content = content.push(self.notification_card(
-                    first,
-                    Message::NotificationClicked(first.id),
-                    false,
-                ));
-                continue;
-            }
-
-            // Multiple notifications — use the group layout.
-            let app_name = first.app_name.clone();
-            let is_expanded = self.expanded_groups.contains(&app_name);
-            let app_icon = notification_icon(first.icon.as_ref(), self.config.toast_icon_size);
-
-            let mut count = 1;
-            let mut has_critical = first.urgency == Urgency::Critical;
-            let mut group_notifications = vec![];
-
-            if is_expanded {
-                group_notifications.push(self.group_item(first, false));
-                while let Some(notification) = iter.next() {
-                    count += 1;
-                    has_critical = has_critical || notification.urgency == Urgency::Critical;
-                    let is_last = iter.peek().is_none();
-                    group_notifications.push(self.group_item(notification, is_last));
-                }
-            } else {
-                for notification in iter {
-                    count += 1;
-                    has_critical = has_critical || notification.urgency == Urgency::Critical;
-                }
-                group_notifications.push(self.group_item(first, true));
-            }
-
-            let clear_msg = Message::ClearGroup(app_name.clone());
-            let toggle_msg = Message::ToggleGroup(app_name.clone());
-
-            let header = row!(
-                app_icon,
-                text(app_name)
-                    .size(font_size.md)
-                    .wrapping(text::Wrapping::WordOrGlyph)
-                    .width(Length::Fill),
-                text(t!("notifications-group-count", count = count)),
-                icon_button(StaticIcon::Delete)
-                    .on_press(clear_msg)
-                    .size(ButtonSize::Large)
-                    .kind(ButtonKind::Transparent)
-                    .hierarchy(ButtonHierarchy::Danger)
-            )
-            .spacing(space.xs)
-            .align_y(Alignment::Center);
-
-            let item = Column::new()
-                .push(
-                    button(header)
-                        .style(Self::notification_button_style(
-                            NotificationStyle::GroupHeader,
-                            if has_critical {
-                                Urgency::Critical
-                            } else {
-                                Urgency::Normal
-                            },
-                        ))
-                        .on_press(toggle_msg),
-                )
-                .extend(group_notifications)
-                .spacing(space.xxs);
-
-            content = content.push(item);
-        }
-        content.into()
-    }
-
-    fn list_notifications<'a>(&'a self) -> Element<'a, Message> {
-        let space = use_theme(|t| t.space);
-        Column::with_children(
-            self.notifications
-                .iter()
-                .map(|notification| {
-                    self.notification_card(
-                        notification,
-                        Message::NotificationClicked(notification.id),
-                        false,
-                    )
-                })
-                .collect::<Vec<Element<'a, Message>>>(),
-        )
-        .padding(Padding::default().right(space.md).left(space.xs))
-        .spacing(space.sm)
-        .into()
-    }
-
-    /// Noctalia tarzı tarih-bazlı gruplama: Today / Yesterday / Older.
-    /// Aynı section'a düşen bildirimler kronolojik sırayla kart olarak
-    /// gösterilir. Section başlığı + kart sayısı.
-    fn date_grouped_notifications<'a>(&'a self) -> Element<'a, Message> {
-        let (space, font_size) = use_theme(|t| (t.space, t.font_size));
-
-        #[derive(Clone, Copy, PartialEq, Eq)]
-        enum Section {
-            Today,
-            Yesterday,
-            Older,
-        }
-
-        fn classify(ts: std::time::SystemTime) -> Section {
-            let now: DateTime<Local> = Local::now();
-            let when: DateTime<Local> = ts.into();
-            // Sadece takvim günü farkı.
-            let today = now.date_naive();
-            let day = when.date_naive();
-            let delta = today.signed_duration_since(day).num_days();
-            match delta {
-                0 => Section::Today,
-                1 => Section::Yesterday,
-                _ => Section::Older,
-            }
-        }
-
-        // Notifications zaten kronolojik (yeniden eskiye) saklanıyor.
-        let mut today_items: Vec<&Notification> = Vec::new();
-        let mut yesterday_items: Vec<&Notification> = Vec::new();
-        let mut older_items: Vec<&Notification> = Vec::new();
-        for n in &self.notifications {
-            match classify(n.timestamp) {
-                Section::Today => today_items.push(n),
-                Section::Yesterday => yesterday_items.push(n),
-                Section::Older => older_items.push(n),
-            }
-        }
-
-        // Closure + 'a lifetime karmaşık; sectionları inline çiziyoruz.
-        let mut col = Column::new().spacing(space.md);
-        let sections: [(&str, &[&Notification]); 3] = [
-            (
-                "notifications-section-today",
-                &today_items[..],
-            ),
-            (
-                "notifications-section-yesterday",
-                &yesterday_items[..],
-            ),
-            (
-                "notifications-section-older",
-                &older_items[..],
-            ),
-        ];
-        for (label_key, items) in sections {
-            if items.is_empty() {
-                continue;
-            }
-            let label_text = match label_key {
-                "notifications-section-today" => t!("notifications-section-today"),
-                "notifications-section-yesterday" => t!("notifications-section-yesterday"),
-                _ => t!("notifications-section-older"),
-            };
-            let header = container(
-                row!(
-                    text(label_text).size(font_size.sm).width(Length::Fill),
-                    text(format!("({})", items.len())).size(font_size.xs)
-                )
-                .spacing(space.xs)
-                .align_y(Alignment::Center),
-            )
-            .padding(Padding::default().left(space.xs).right(space.md));
-
-            let cards = Column::with_children(
-                items
-                    .iter()
-                    .map(|n| {
-                        self.notification_card(
-                            n,
-                            Message::NotificationClicked(n.id),
-                            false,
-                        )
-                    })
-                    .collect::<Vec<_>>(),
-            )
-            .spacing(space.sm);
-
-            col = col.push(
-                column!(header, cards)
-                    .spacing(space.xs)
-                    .padding(Padding::default().right(space.md).left(space.xs)),
-            );
-        }
-        col.into()
-    }
-
-    pub fn toast_position(&self) -> ToastPosition {
-        self.config.toast_position
-    }
-
-    pub fn toast_width(&self) -> u32 {
-        self.config.toast_width
-    }
-
-    /// `n` toast için tahmini surface yüksekliği. Eager set_size için
-    /// kullanılır (sensor'u beklemeden compositor'a doğru boyut verilir).
-    /// Formül: n * (max_height + spacing) + padding, ekran boyutuna kabaca
-    /// sığsın diye 1000px max'a klamplı.
-    pub fn estimated_toast_height(&self, n: u32) -> u32 {
-        let n = n.max(1);
-        let spacing = 12u32;
-        let padding = 32u32;
-        let est = n * self.config.toast_max_height + (n - 1) * spacing + padding;
-        est.clamp(120, 1000)
+        list.append(&card);
     }
 }

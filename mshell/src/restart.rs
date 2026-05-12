@@ -1,35 +1,29 @@
 //! `mshell restart` — graceful self-respawn.
 //!
-//! margo's autostart line is `exec-once = mshell`, so when the bar
-//! dies the compositor does not bring it back. This subcommand fills
-//! that gap: scans `/proc` for sibling `mshell` processes (excluding
-//! the one running this code), SIGTERMs them, waits up to ~3s for
-//! the surfaces to tear down, then spawns a fresh detached instance.
-//! A SIGKILL fallback keeps it bounded if a process refuses to exit.
+//! margo starts mshell via `exec-once`, so when the bar dies the
+//! compositor doesn't bring it back. This subcommand replaces the
+//! `pkill mshell && setsid -f mshell …` incantation: scan /proc for
+//! sibling mshell processes (excluding self), SIGTERM them, poll
+//! until they're gone with a 3 s budget, give the compositor 200 ms
+//! to tear down the bar's layer surfaces, then spawn a detached
+//! fresh instance via setsid().
 
 use anyhow::{Context, Result};
 use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-/// Settle time after the last sibling dies before we exec the
-/// replacement — gives the compositor a beat to drop the bar's
-/// layer surfaces so the new instance doesn't race over them.
 const SETTLE_AFTER_DEATH: Duration = Duration::from_millis(200);
-
-/// Upper bound for waiting on graceful SIGTERM shutdown before we
-/// escalate to SIGKILL. mshell's normal exit path is fast (< 500ms);
-/// 3s leaves plenty of headroom for slow shutdowns without making
-/// the user feel like the command hung.
 const GRACEFUL_KILL_TIMEOUT: Duration = Duration::from_secs(3);
 
 pub fn run() -> Result<()> {
     let siblings = find_sibling_mshell_pids();
     if !siblings.is_empty() {
-        eprintln!("mshell restart: stopping {} running instance(s)…", siblings.len());
+        eprintln!(
+            "mshell restart: stopping {} running instance(s)…",
+            siblings.len()
+        );
         for pid in &siblings {
-            // Best-effort SIGTERM; missing target (ESRCH) just means
-            // the process already exited between scan and signal.
             unsafe { libc::kill(*pid, libc::SIGTERM) };
         }
         wait_for_exit(&siblings);
@@ -41,10 +35,6 @@ pub fn run() -> Result<()> {
     cmd.stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
-    // Drop the controlling terminal and process group: the new
-    // mshell must survive even if the user's terminal closes right
-    // after invoking `mshell restart`. setsid() creates a fresh
-    // session with no controlling tty.
     unsafe {
         cmd.pre_exec(|| {
             if libc::setsid() < 0 {
@@ -58,9 +48,6 @@ pub fn run() -> Result<()> {
     Ok(())
 }
 
-/// Scan `/proc/<pid>/comm` for processes named exactly `mshell`,
-/// excluding the calling process. Linux truncates `comm` to 15
-/// bytes, so the literal `mshell` fits with room to spare.
 fn find_sibling_mshell_pids() -> Vec<i32> {
     let self_pid = std::process::id() as i32;
     let mut out = Vec::new();
@@ -84,9 +71,6 @@ fn find_sibling_mshell_pids() -> Vec<i32> {
     out
 }
 
-/// Poll the given pids with `kill(pid, 0)` (probes for liveness
-/// without actually signalling) until none remain or the deadline
-/// passes. Anything still alive at the deadline gets SIGKILLed.
 fn wait_for_exit(pids: &[i32]) {
     let deadline = Instant::now() + GRACEFUL_KILL_TIMEOUT;
     loop {
@@ -100,7 +84,7 @@ fn wait_for_exit(pids: &[i32]) {
         }
         if Instant::now() >= deadline {
             eprintln!(
-                "mshell restart: {} instance(s) did not exit in {}s, escalating to SIGKILL",
+                "mshell restart: {} instance(s) didn't exit in {}s, escalating to SIGKILL",
                 alive.len(),
                 GRACEFUL_KILL_TIMEOUT.as_secs()
             );

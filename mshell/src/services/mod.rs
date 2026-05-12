@@ -1,38 +1,23 @@
-use iced::{Subscription, Task};
+//! Stateless readers for kernel / filesystem-exposed system info.
+//! D-Bus-backed services (audio, brightness, network, notifications,
+//! tray, MPRIS, …) get their own submodules in later stages.
 
 pub mod audio;
+pub mod battery;
 pub mod bluetooth;
 pub mod brightness;
-pub mod compositor;
-pub mod idle_inhibitor;
-pub mod logind;
+pub mod cpu;
+pub mod cpu_temp;
+pub mod keymode;
+pub mod memory;
 pub mod mpris;
 pub mod network;
-pub mod notifications;
-pub mod privacy;
-mod throttle;
-pub mod tray;
-pub mod upower;
-
-#[allow(unused)]
-#[derive(Debug, Clone)]
-pub enum ServiceEvent<S: ReadOnlyService> {
-    Init(S),
-    Update(S::UpdateEvent),
-    Error(S::Error),
-}
-
-pub trait Service: ReadOnlyService {
-    type Command;
-
-    fn command(&mut self, command: Self::Command) -> Task<ServiceEvent<Self>>;
-}
-
-pub trait ReadOnlyService: Sized {
-    type UpdateEvent;
-    type Error: Clone;
-
-    fn update(&mut self, event: Self::UpdateEvent);
-
-    fn subscribe() -> Subscription<ServiceEvent<Self>>;
-}
+pub mod notes;
+pub mod podman;
+pub mod power_profile;
+pub mod public_ip;
+pub mod twilight;
+pub mod ufw;
+pub mod updates;
+pub mod wallpaper;
+pub mod weather;
