@@ -25,8 +25,8 @@ use crate::{
     theme::use_theme,
 };
 use iced::{
-    Element, Length, Subscription, SurfaceId, Task, Theme,
-    widget::{Column, Row, Space, container, row, space},
+    Element, Font, Length, Subscription, SurfaceId, Task, Theme,
+    widget::{Column, Row, Space, container, row, space, text},
 };
 
 pub(crate) mod audio;
@@ -49,6 +49,13 @@ pub struct Settings {
     indicators: Vec<SettingsIndicator>,
     custom_buttons: Vec<SettingsCustomButton>,
     custom_buttons_status: HashMap<String, Option<bool>>,
+    custom_font: Option<Font>,
+    section_headers: bool,
+    header_font_size: f32,
+}
+
+fn resolve_font(name: Option<&str>) -> Option<Font> {
+    name.map(|s| Font::with_name(Box::leak(s.to_string().into_boxed_str())))
 }
 
 #[derive(Debug, Clone)]
@@ -225,6 +232,9 @@ impl Settings {
             custom_buttons: config.custom_buttons,
             custom_buttons_status: HashMap::new(),
             network_dialog_show_password: false,
+            custom_font: resolve_font(config.font_name.as_deref()),
+            section_headers: config.section_headers,
+            header_font_size: config.header_font_size,
         }
     }
 
@@ -541,6 +551,9 @@ impl Settings {
                 }
                 self.indicators = config.indicators;
                 self.custom_buttons = config.custom_buttons;
+                self.custom_font = resolve_font(config.font_name.as_deref());
+                self.section_headers = config.section_headers;
+                self.header_font_size = config.header_font_size;
                 Action::None
             }
         }
@@ -596,54 +609,68 @@ impl Settings {
                         submenu.map(|e| e.map(Message::Network)),
                     )
                 });
-            let quick_settings = quick_settings_section(
-                vec![
-                    wifi_setting_button,
-                    self.bluetooth.quick_setting_button(id, self.sub_menu).map(
-                        |(button, submenu)| {
-                            (
-                                button.map(Message::Bluetooth),
-                                submenu.map(|e| e.map(Message::Bluetooth)),
-                            )
-                        },
-                    ),
-                    self.network
-                        .vpn_quick_setting_button(id, self.sub_menu)
-                        .map(|(button, submenu)| {
-                            (
-                                button.map(Message::Network),
-                                submenu.map(|e| e.map(Message::Network)),
-                            )
-                        }),
-                    self.network
-                        .airplane_mode_quick_setting_button()
-                        .map(|(button, _)| (button.map(Message::Network), None)),
-                    self.idle_inhibitor.as_ref().map(|idle_inhibitor| {
+
+            // Connectivity: WiFi, Bluetooth, VPN, Airplane.
+            let connectivity: Vec<_> = [
+                wifi_setting_button,
+                self.bluetooth.quick_setting_button(id, self.sub_menu).map(
+                    |(button, submenu)| {
                         (
-                            quick_setting_button(
-                                IdleInhibitorManager::idle_inhibitor_icon(
-                                    idle_inhibitor.is_inhibited(),
-                                ),
-                                t!("settings-idle-inhibitor"),
-                                None,
+                            button.map(Message::Bluetooth),
+                            submenu.map(|e| e.map(Message::Bluetooth)),
+                        )
+                    },
+                ),
+                self.network
+                    .vpn_quick_setting_button(id, self.sub_menu)
+                    .map(|(button, submenu)| {
+                        (
+                            button.map(Message::Network),
+                            submenu.map(|e| e.map(Message::Network)),
+                        )
+                    }),
+                self.network
+                    .airplane_mode_quick_setting_button()
+                    .map(|(button, _)| (button.map(Message::Network), None)),
+            ]
+            .into_iter()
+            .flatten()
+            .collect();
+
+            // System: IdleInhibitor + PowerProfile.
+            let system: Vec<_> = [
+                self.idle_inhibitor.as_ref().map(|idle_inhibitor| {
+                    (
+                        quick_setting_button(
+                            IdleInhibitorManager::idle_inhibitor_icon(
                                 idle_inhibitor.is_inhibited(),
-                                Message::ToggleInhibitIdle,
-                                None,
-                                None,
                             ),
+                            t!("settings-idle-inhibitor"),
                             None,
-                        )
-                    }),
-                    self.power.quick_setting_button().map(|(button, submenu)| {
-                        (
-                            button.map(Message::Power),
-                            submenu.map(|e| e.map(Message::Power)),
-                        )
-                    }),
-                ]
-                .into_iter()
-                .flatten()
-                .chain(self.custom_buttons.iter().map(|button| {
+                            idle_inhibitor.is_inhibited(),
+                            Message::ToggleInhibitIdle,
+                            None,
+                            None,
+                        ),
+                        None,
+                    )
+                }),
+                self.power.quick_setting_button().map(|(button, submenu)| {
+                    (
+                        button.map(Message::Power),
+                        submenu.map(|e| e.map(Message::Power)),
+                    )
+                }),
+            ]
+            .into_iter()
+            .flatten()
+            .collect();
+
+            // Custom: user-defined buttons.
+            let custom: Vec<_> = self
+                .custom_buttons
+                .iter()
+                .map(|button| {
                     let is_active = self
                         .custom_buttons_status
                         .get(&button.name)
@@ -661,9 +688,53 @@ impl Settings {
                         ),
                         None,
                     )
-                }))
-                .collect::<Vec<_>>(),
-            );
+                })
+                .collect();
+
+            // Compose: when section_headers is on, render 3 labelled sections
+            // separated by spacing; otherwise fall back to a single grid.
+            let quick_settings: Element<'_, Message> = if self.section_headers {
+                let custom_font = self.custom_font;
+                let header_size = self.header_font_size;
+                let make_section = |label: &str, items: Vec<_>| -> Option<Element<'_, Message>> {
+                    if items.is_empty() {
+                        return None;
+                    }
+                    let mut hdr = text(label.to_string()).size(header_size);
+                    if let Some(font) = custom_font {
+                        hdr = hdr.font(font);
+                    }
+                    let hdr_styled =
+                        container(hdr.style(|theme: &Theme| iced::widget::text::Style {
+                            color: Some(theme.extended_palette().background.weak.text),
+                        }))
+                        .padding(iced::Padding::ZERO.left(space.xs));
+                    Some(
+                        Column::with_capacity(2)
+                            .push(hdr_styled)
+                            .push(quick_settings_section(items))
+                            .spacing(space.xxs)
+                            .into(),
+                    )
+                };
+                let sections: Vec<Element<'_, Message>> = [
+                    make_section("Bağlantı", connectivity),
+                    make_section("Sistem", system),
+                    make_section("Özel", custom),
+                ]
+                .into_iter()
+                .flatten()
+                .collect();
+                Column::with_children(sections).spacing(space.sm).into()
+            } else {
+                quick_settings_section(
+                    connectivity
+                        .into_iter()
+                        .chain(system)
+                        .chain(custom)
+                        .collect(),
+                )
+            };
 
             let (top_sink_slider, bottom_sink_slider) = match position {
                 Position::Top => (sink_slider.map(|e| e.map(Message::Audio)), None),

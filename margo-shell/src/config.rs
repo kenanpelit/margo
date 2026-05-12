@@ -1040,6 +1040,24 @@ pub struct SettingsModuleConfig {
     pub indicators: Vec<SettingsIndicator>,
     #[serde(rename = "CustomButton")]
     pub custom_buttons: Vec<SettingsCustomButton>,
+    /// Menüdeki bölüm başlıkları + custom button isimleri için özel font ailesi.
+    /// `None` ⇒ varsayılan tema fontu.
+    #[serde(default)]
+    pub font_name: Option<String>,
+    /// "Bağlantı / Sistem / Özel" bölüm başlıklarını göster (default true).
+    #[serde(default = "default_settings_section_headers")]
+    pub section_headers: bool,
+    /// Bölüm başlığı font boyutu (default 11 — küçük, muted-style).
+    #[serde(default = "default_settings_header_font_size")]
+    pub header_font_size: f32,
+}
+
+fn default_settings_section_headers() -> bool {
+    true
+}
+
+fn default_settings_header_font_size() -> f32 {
+    11.0
 }
 
 impl Default for SettingsModuleConfig {
@@ -1080,6 +1098,9 @@ impl Default for SettingsModuleConfig {
                 SettingsIndicator::Brightness,
             ],
             custom_buttons: Default::default(),
+            font_name: None,
+            section_headers: default_settings_section_headers(),
+            header_font_size: default_settings_header_font_size(),
         }
     }
 }

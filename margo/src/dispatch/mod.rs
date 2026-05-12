@@ -283,6 +283,12 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
             state.force_tick_twilight();
             tracing::info!("twilight reset to schedule");
         }
+        "twilight_toggle" => {
+            state.config.twilight = !state.config.twilight;
+            state.twilight.reset();
+            state.force_tick_twilight();
+            tracing::info!(enabled = state.config.twilight, "twilight toggled");
+        }
         "twilight_set" => {
             // arg.v = "field=value" (e.g. "day_temp=5500"). Live
             // config tweak — survives until next reload, not

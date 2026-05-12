@@ -564,6 +564,10 @@ enum TwilightCmd {
     },
     /// Clear any preview / test override, resume the schedule.
     Reset,
+    /// Toggle the schedule on/off. Equivalent to
+    /// `mctl twilight set enabled=0` / `enabled=1` but stateful —
+    /// uses the current `state.config.twilight` flag.
+    Toggle,
 }
 
 // ── IPC state machine ─────────────────────────────────────────────────────────
@@ -1032,6 +1036,16 @@ fn main() -> Result<()> {
                 TwilightCmd::Reset => {
                     ipc_out.dispatch(
                         "twilight_reset".to_string(),
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                    );
+                }
+                TwilightCmd::Toggle => {
+                    ipc_out.dispatch(
+                        "twilight_toggle".to_string(),
                         String::new(),
                         String::new(),
                         String::new(),
