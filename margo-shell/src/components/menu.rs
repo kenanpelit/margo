@@ -83,16 +83,18 @@ impl OpenMenu {
         MENU_SLIDE_PX * (1.0 - self.opacity())
     }
 
+    /// True if the subscription/redraw loop should keep ticking
+    /// because either:
+    ///   • the open fade hasn't finished yet, or
+    ///   • a close was requested and the surface hasn't been
+    ///     destroyed yet (close_progress may already be ≥ 1.0 but
+    ///     `finalize_close_if_done` only runs on the next tick).
+    /// The latter case is critical — without it the subscription
+    /// would die at `close_progress == 1.0` and the destroy tick
+    /// would never fire, leaving the (transparent) menu surface
+    /// stuck on screen.
     pub fn is_open_animating(&self) -> bool {
-        self.open_progress() < 1.0 || self.is_closing_animating()
-    }
-
-    pub fn is_closing(&self) -> bool {
-        self.closing_at.is_some()
-    }
-
-    fn is_closing_animating(&self) -> bool {
-        self.closing_at.is_some() && self.close_progress() < 1.0
+        self.open_progress() < 1.0 || self.closing_at.is_some()
     }
 
     /// True once the close animation has fully run out — the caller
