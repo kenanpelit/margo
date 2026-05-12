@@ -32,7 +32,7 @@ use crate::{
 use iced::{
     Alignment, Element, Length, Subscription, Task, Theme,
     time::every,
-    widget::{Column, Row, button, column, container, row, text},
+    widget::{Column, Row, button, container, row, text},
 };
 use log::{debug, warn};
 use std::time::Duration;
@@ -98,10 +98,6 @@ impl Dns {
             is_changing: false,
             last_error: String::new(),
         }
-    }
-
-    pub fn config(&self) -> &DnsModuleConfig {
-        &self.config
     }
 
     /// Mevcut moda göre Bar göstergesinde ve menüde kullanılacak ikon.

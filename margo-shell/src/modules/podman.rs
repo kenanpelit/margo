@@ -20,7 +20,7 @@ use crate::{
 use iced::{
     Alignment, Element, Length, Subscription, Task, Theme,
     time::every,
-    widget::{Column, Row, button, container, row, text},
+    widget::{Column, container, row, text},
 };
 use log::warn;
 use std::time::Duration;

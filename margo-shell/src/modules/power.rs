@@ -67,7 +67,6 @@ pub enum PowerAction {
     ToggleLock,
     Lock,
     Suspend,
-    LockAndSuspend,
 }
 
 #[derive(Debug, Clone)]
@@ -455,11 +454,6 @@ async fn apply_action(action: PowerAction) -> Result<(), String> {
         }
         PowerAction::Lock => run_check("loginctl", &["lock-session"]).await,
         PowerAction::Suspend => run_check("systemctl", &["suspend"]).await,
-        PowerAction::LockAndSuspend => {
-            let _ = run_check("loginctl", &["lock-session"]).await;
-            tokio::time::sleep(Duration::from_millis(800)).await;
-            run_check("systemctl", &["suspend"]).await
-        }
     }
 }
 
