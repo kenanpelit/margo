@@ -1,19 +1,19 @@
-//! NetworkSpeed module — bar'da indirme/yükleme hızı göstergesi.
+//! NetworkSpeed module — bar'da indirme/yükleme hızı + IP + VPN durumu.
 //!
-//! `[system_info]` modülünden ayırdık; çünkü ağ tipik olarak çok daha
-//! kısa interval (her saniye) güncelleme isterken cpu/ram/temp için bu
-//! aşırıya kaçar. Ayrıca eşikler tamamen farklı bir birim alanda
-//! (KB/s vs %).
+//! `[system_info]` modülünden ayırdık; ağ tipik olarak daha kısa
+//! interval ister (1-2 sn) ve eşikleri farklı birim alanda (KB/s).
+//! VPN bağlıysa IP, VPN arayüzünden alınır; menüde VPN durumu ayrı
+//! satırda gösterilir.
 //!
 //! Kullanım (mshell.toml):
 //!
 //!     [modules]
-//!     right = [["Cpu", "Memory"], "NetworkSpeed", "Clock"]
+//!     right = [["NetworkSpeed", "SystemInfo"], "Clock"]
 //!
 //!     [network_speed]
-//!     indicators = ["Download", "Upload"]
+//!     indicators = ["IpAddress", "Download", "Upload"]
 //!     interval   = 2
-//!     unit       = "Auto"                 # "Auto" | "Kbps" | "Mbps"
+//!     unit       = "Auto"                # "Auto" | "Kbps" | "Mbps"
 //!     download_warn_kbps  = 5000
 //!     download_alert_kbps = 20000
 //!     upload_warn_kbps    = 2000
@@ -41,10 +41,37 @@ pub enum Message {
     Update,
 }
 
-struct Speeds {
-    /// KB/s
+/// VPN arayüz adlarını tanı. `wg0-mullvad`, `tun0`, `nordlynx`, `proton0`,
+/// `mullvad-*`, `tap0` gibi yaygın isimleri kapsar. Fiziksel arayüzleri
+/// (en/eth/wl/wlan/br) ELEM EZ — onlar başka filtrede.
+fn is_vpn_iface(name: &str) -> bool {
+    name.starts_with("wg")
+        || name.starts_with("tun")
+        || name.starts_with("tap")
+        || name.starts_with("nordlynx")
+        || name.starts_with("proton")
+        || name.starts_with("mullvad")
+        || name.starts_with("ipsec")
+}
+
+/// Fiziksel (Ethernet / Wi-Fi / bridge) arayüz mü?
+fn is_physical_iface(name: &str) -> bool {
+    name.starts_with("en")
+        || name.starts_with("eth")
+        || name.starts_with("wl")
+        || name.starts_with("wlan")
+        || name.starts_with("br")
+}
+
+struct Snapshot {
+    /// Aktif IP — VPN varsa VPN'in, yoksa fiziksel arayüzün.
+    ip: Option<String>,
+    /// VPN bağlıysa arayüz adı (`wg0-mullvad` vb.). None ise VPN yok.
+    vpn_iface: Option<String>,
+    /// KB/s — fiziksel + VPN trafiği (sysinfo aynı paketi iki kez sayar;
+    /// VPN aktifse VPN bayrağı altında zaten cleartext sayılır, bu yüzden
+    /// fiziksel kullanılır. VPN yoksa fiziksel zaten cleartext.)
     download_kbps: u32,
-    /// KB/s
     upload_kbps: u32,
     last_check: Instant,
 }
@@ -52,50 +79,107 @@ struct Speeds {
 pub struct NetworkSpeed {
     config: NetworkSpeedModuleConfig,
     networks: Networks,
-    speeds: Speeds,
+    snapshot: Snapshot,
 }
 
 impl NetworkSpeed {
     pub fn new(config: NetworkSpeedModuleConfig) -> Self {
         let mut networks = Networks::new_with_refreshed_list();
         networks.refresh(true);
-        Self {
+        let mut me = Self {
             config,
             networks,
-            speeds: Speeds {
+            snapshot: Snapshot {
+                ip: None,
+                vpn_iface: None,
                 download_kbps: 0,
                 upload_kbps: 0,
                 last_check: Instant::now(),
             },
+        };
+        // İlk tick'i hemen yakala; aksi takdirde menü açılışında "Yok"
+        // gözükür ve subscription'ın gelmesini bekleriz.
+        me.refresh();
+        me
+    }
+
+    fn refresh(&mut self) {
+        let elapsed_secs = self.snapshot.last_check.elapsed().as_secs().max(1);
+        self.networks.refresh(true);
+
+        // Fiziksel ↔ aktif VPN ayrımı.
+        let mut received_phys = 0u64;
+        let mut transmitted_phys = 0u64;
+        let mut vpn_iface: Option<String> = None;
+        let mut vpn_ip: Option<String> = None;
+        let mut phys_ip: Option<String> = None;
+
+        // İlk fiziksel IP'yi tutarlı sıralamayla seç: en* > eth* > wl* > br*
+        let phys_rank = |n: &str| -> u8 {
+            if n.starts_with("en") {
+                0
+            } else if n.starts_with("eth") {
+                1
+            } else if n.starts_with("wl") {
+                2
+            } else if n.starts_with("wlan") {
+                3
+            } else {
+                9
+            }
+        };
+
+        let mut phys_candidates: Vec<(u8, String, Option<String>, u64, u64)> = Vec::new();
+
+        for (name, data) in self.networks.iter() {
+            if is_vpn_iface(name) {
+                if vpn_iface.is_none() {
+                    vpn_iface = Some(name.clone());
+                    vpn_ip = data
+                        .ip_networks()
+                        .iter()
+                        .find(|n| n.addr.is_ipv4())
+                        .map(|n| n.addr.to_string());
+                }
+            } else if is_physical_iface(name) {
+                let ip = data
+                    .ip_networks()
+                    .iter()
+                    .find(|n| n.addr.is_ipv4())
+                    .map(|n| n.addr.to_string());
+                phys_candidates.push((
+                    phys_rank(name),
+                    name.clone(),
+                    ip,
+                    data.received(),
+                    data.transmitted(),
+                ));
+            }
         }
+
+        phys_candidates.sort_by_key(|c| c.0);
+        for (_, _, ip, rx, tx) in &phys_candidates {
+            if phys_ip.is_none() {
+                phys_ip = ip.clone();
+            }
+            received_phys += rx;
+            transmitted_phys += tx;
+        }
+
+        let to_kbps = |bytes: u64| (bytes / 1000 / elapsed_secs) as u32;
+        self.snapshot = Snapshot {
+            // VPN aktifse VPN IP'yi göster — kullanıcı çıkış noktasını
+            // bilmek istiyor; yoksa fiziksel.
+            ip: vpn_ip.clone().or(phys_ip),
+            vpn_iface,
+            download_kbps: to_kbps(received_phys),
+            upload_kbps: to_kbps(transmitted_phys),
+            last_check: Instant::now(),
+        };
     }
 
     pub fn update(&mut self, _msg: Message) {
-        let elapsed_secs = self.speeds.last_check.elapsed().as_secs().max(1);
-        self.networks.refresh(true);
-
-        let (received, transmitted) = self
-            .networks
-            .iter()
-            .filter(|(name, _)| {
-                // Yalnızca gerçek arayüzler — lo, docker, vboxnet, vs. eleniyor.
-                name.starts_with("en")
-                    || name.starts_with("eth")
-                    || name.starts_with("wl")
-                    || name.starts_with("wlan")
-                    || name.starts_with("br")
-            })
-            .fold((0u64, 0u64), |(r, t), (_, data)| {
-                (r + data.received(), t + data.transmitted())
-            });
-
-        // bytes → KB/s
-        let to_kbps = |bytes: u64| (bytes / 1000 / elapsed_secs) as u32;
-        self.speeds = Speeds {
-            download_kbps: to_kbps(received),
-            upload_kbps: to_kbps(transmitted),
-            last_check: Instant::now(),
-        };
+        self.refresh();
     }
 
     /// (display_value, unit_str)  — config.unit ve eşiklere göre formatla.
@@ -113,7 +197,7 @@ impl NetworkSpeed {
         }
     }
 
-    fn indicator<'a>(
+    fn speed_indicator<'a>(
         ico: StaticIcon,
         display: u32,
         unit: &str,
@@ -140,35 +224,69 @@ impl NetworkSpeed {
         }
     }
 
+    /// IP göstergesi — VPN bağlıysa shield ikonuyla ve success rengiyle
+    /// vurgulanır, değilse normal IP ikonu.
+    fn ip_indicator<'a>(
+        ip: Option<&str>,
+        vpn: bool,
+    ) -> Element<'a, Message> {
+        let space = use_theme(|t| t.space);
+        let text_value = ip.unwrap_or("—").to_string();
+        let body = container(
+            row!(
+                icon(if vpn {
+                    StaticIcon::Vpn
+                } else {
+                    StaticIcon::IpAddress
+                }),
+                text(text_value)
+            )
+            .spacing(space.xxs),
+        );
+        if vpn {
+            body.style(|theme: &Theme| container::Style {
+                text_color: Some(theme.palette().success),
+                ..Default::default()
+            })
+            .into()
+        } else {
+            body.into()
+        }
+    }
+
     pub fn view(&self) -> Element<'_, Message> {
         let space = use_theme(|t| t.space);
         let elements = self.config.indicators.iter().map(|i| match i {
             NetworkSpeedIndicator::Download => {
-                let (display, unit) = self.format(self.speeds.download_kbps);
-                Self::indicator(
+                let (display, unit) = self.format(self.snapshot.download_kbps);
+                Self::speed_indicator(
                     StaticIcon::DownloadSpeed,
                     display,
                     unit,
                     Some((
-                        self.speeds.download_kbps,
+                        self.snapshot.download_kbps,
                         self.config.download_warn_kbps,
                         self.config.download_alert_kbps,
                     )),
                 )
             }
             NetworkSpeedIndicator::Upload => {
-                let (display, unit) = self.format(self.speeds.upload_kbps);
-                Self::indicator(
+                let (display, unit) = self.format(self.snapshot.upload_kbps);
+                Self::speed_indicator(
                     StaticIcon::UploadSpeed,
                     display,
                     unit,
                     Some((
-                        self.speeds.upload_kbps,
+                        self.snapshot.upload_kbps,
                         self.config.upload_warn_kbps,
                         self.config.upload_alert_kbps,
                     )),
                 )
             }
+            NetworkSpeedIndicator::IpAddress => Self::ip_indicator(
+                self.snapshot.ip.as_deref(),
+                self.snapshot.vpn_iface.is_some(),
+            ),
         });
         Row::with_children(elements)
             .align_y(Alignment::Center)
@@ -176,8 +294,7 @@ impl NetworkSpeed {
             .into()
     }
 
-    /// Açılır menü — bar göstergesinin tıklanmasıyla açılır.
-    /// Anlık indirme/yükleme + arayüz başına toplam (boot'tan bu yana).
+    /// Açılır menü — VPN durumu, IP, anlık ↓/↑, arayüz listesi.
     pub fn menu_view(&'_ self) -> Element<'_, Message> {
         let (font_size, space) = use_theme(|t| (t.font_size, t.space));
 
@@ -191,27 +308,57 @@ impl NetworkSpeed {
             .spacing(space.xs)
         };
 
-        let (dl_v, dl_u) = self.format(self.speeds.download_kbps);
-        let (ul_v, ul_u) = self.format(self.speeds.upload_kbps);
+        let (dl_v, dl_u) = self.format(self.snapshot.download_kbps);
+        let (ul_v, ul_u) = self.format(self.snapshot.upload_kbps);
 
-        // Arayüz başına kümülatif (boot'tan beri) RX/TX — quick glance.
+        // VPN bloğu — bağlıysa shield ikonuyla arayüz adı; değilse "Yok".
+        let vpn_row = if let Some(iface) = &self.snapshot.vpn_iface {
+            row_element(
+                StaticIcon::Vpn,
+                t!("network-speed-vpn"),
+                iface.clone(),
+            )
+        } else {
+            row_element(
+                StaticIcon::IpAddress,
+                t!("network-speed-vpn"),
+                t!("network-speed-vpn-off"),
+            )
+        };
+
+        // IP satırı — VPN varsa VPN IP, yoksa fiziksel IP.
+        let ip_row = row_element(
+            StaticIcon::IpAddress,
+            t!("system-info-ip-address"),
+            self.snapshot.ip.clone().unwrap_or_else(|| "—".to_string()),
+        );
+
+        // Arayüz başına kümülatif RX/TX (boot'tan beri, MiB). VPN'i
+        // physical-only filtrenin DIŞINDA tutmadığımızdan ayrı listede
+        // göstermek için filtre düzeltilir.
         let iface_rows = self
             .networks
             .iter()
-            .filter(|(name, _)| {
-                name.starts_with("en")
-                    || name.starts_with("eth")
-                    || name.starts_with("wl")
-                    || name.starts_with("wlan")
-                    || name.starts_with("br")
+            .filter(|(name, _)| is_physical_iface(name) || is_vpn_iface(name))
+            .sorted_by_key(|(name, _)| {
+                // VPN'leri sonda topla → görsel hiyerarşi
+                if is_vpn_iface(name) {
+                    (1, (*name).clone())
+                } else {
+                    (0, (*name).clone())
+                }
             })
-            .sorted_by_key(|(name, _)| (*name).clone())
             .map(|(name, data)| {
-                let rx = data.total_received() / 1_048_576; // MiB
+                let rx = data.total_received() / 1_048_576;
                 let tx = data.total_transmitted() / 1_048_576;
+                let prefix = if is_vpn_iface(name) { "🔒 " } else { "" };
                 row_element(
-                    StaticIcon::IpAddress,
-                    name.clone(),
+                    if is_vpn_iface(name) {
+                        StaticIcon::Vpn
+                    } else {
+                        StaticIcon::IpAddress
+                    },
+                    format!("{prefix}{name}"),
                     format!("↓ {rx} MiB · ↑ {tx} MiB"),
                 )
                 .into()
@@ -222,7 +369,10 @@ impl NetworkSpeed {
             column!(
                 text(t!("network-speed-heading")).size(font_size.lg),
                 divider(),
-                Column::with_capacity(2 + iface_rows.len())
+                Column::with_capacity(4 + iface_rows.len())
+                    .push(vpn_row)
+                    .push(ip_row)
+                    .push(divider())
                     .push(row_element(
                         StaticIcon::DownloadSpeed,
                         t!("system-info-download-speed"),

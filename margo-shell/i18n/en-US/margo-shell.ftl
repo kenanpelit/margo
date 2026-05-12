@@ -142,3 +142,5 @@ system-info-upload-speed = Upload Speed
 
 ## Network speed module
 network-speed-heading = Network
+network-speed-vpn = VPN
+network-speed-vpn-off = Not connected

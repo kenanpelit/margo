@@ -15,38 +15,7 @@ use iced::{
 };
 use itertools::Itertools;
 use std::time::Duration;
-use sysinfo::{Components, Disks, Networks, System};
-
-const MAX_IP_LEN: usize = 45;
-
-#[derive(Clone, Copy)]
-struct FixedIp([u8; MAX_IP_LEN], usize);
-
-impl FixedIp {
-    fn from_str(s: &str) -> Option<Self> {
-        if s.len() < MAX_IP_LEN {
-            let mut arr = [0u8; MAX_IP_LEN];
-            arr[..s.len()].copy_from_slice(s.as_bytes());
-            Some(Self(arr, s.len()))
-        } else {
-            None
-        }
-    }
-}
-
-impl std::fmt::Display for FixedIp {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            std::str::from_utf8(&self.0[..self.1]).unwrap_or("")
-        )
-    }
-}
-
-struct NetworkData {
-    ip: FixedIp,
-}
+use sysinfo::{Components, Disks, System};
 
 struct MemoryUsage {
     percentage: u32,
@@ -73,15 +42,12 @@ struct SystemInfoData {
     memory_swap_usage: MemoryUsage,
     temperature: Temperature,
     disks: Vec<(String, DiskView)>,
-    network: Option<NetworkData>,
 }
 
-#[allow(clippy::too_many_arguments)]
 fn get_system_info(
     system: &mut System,
     components: &mut Components,
     disks: &mut Disks,
-    networks: &mut Networks,
     temperature_sensor: &str,
     sensor_index: Option<usize>,
     mounts: Option<&[String]>,
@@ -91,7 +57,6 @@ fn get_system_info(
 
     components.refresh(true);
     disks.refresh(true);
-    networks.refresh(true);
 
     let cpus = system.cpus();
     let avg_freq = cpus.iter().map(|cpu| cpu.frequency() as f32).sum::<f32>() / cpus.len() as f32;
@@ -193,47 +158,13 @@ fn get_system_info(
         })
         .collect();
 
-    // Hız hesabı NetworkSpeed modülüne taşındı; burada sadece IP.
-    let first_ip = networks
-        .iter()
-        .filter(|(name, _)| {
-            name.contains("en")
-                || name.contains("eth")
-                || name.contains("wl")
-                || name.contains("wlan")
-                || name.contains("br")
-        })
-        .sorted_by_key(|(name, _)| {
-            if name.contains("en") {
-                0
-            } else if name.contains("eth") {
-                1
-            } else if name.contains("wl") {
-                2
-            } else if name.contains("wlan") {
-                3
-            } else if name.contains("br") {
-                4
-            } else {
-                99
-            }
-        })
-        .find_map(|(_, data)| {
-            data.ip_networks()
-                .iter()
-                .sorted_by(|a, b| a.addr.cmp(&b.addr))
-                .next()
-                .map(|ip| ip.addr)
-        });
-
+    // Hız + IP NetworkSpeed modülüne taşındı.
     SystemInfoData {
         cpu_usage,
         memory_usage,
         memory_swap_usage,
         temperature,
         disks,
-        network: first_ip
-            .and_then(|ip| FixedIp::from_str(&ip.to_string()).map(|ip| NetworkData { ip })),
     }
 }
 
@@ -247,7 +178,6 @@ pub struct SystemInfo {
     system: System,
     components: Components,
     disks: Disks,
-    networks: Networks,
     data: SystemInfoData,
     cached_sensor_index: Option<usize>,
 }
@@ -257,7 +187,6 @@ impl SystemInfo {
         let mut system = System::new();
         let mut components = Components::new_with_refreshed_list();
         let mut disks = Disks::new_with_refreshed_list();
-        let mut networks = Networks::new_with_refreshed_list();
 
         let cached_sensor_index = components
             .iter()
@@ -267,7 +196,6 @@ impl SystemInfo {
             &mut system,
             &mut components,
             &mut disks,
-            &mut networks,
             config.temperature.sensor.as_str(),
             cached_sensor_index,
             config.disk.mounts.as_deref(),
@@ -279,7 +207,6 @@ impl SystemInfo {
             components,
             disks,
             data,
-            networks,
             cached_sensor_index,
         }
     }
@@ -291,7 +218,6 @@ impl SystemInfo {
                     &mut self.system,
                     &mut self.components,
                     &mut self.disks,
-                    &mut self.networks,
                     &self.config.temperature.sensor,
                     self.cached_sensor_index,
                     self.config.disk.mounts.as_deref(),
@@ -422,17 +348,8 @@ impl SystemInfo {
                         )
                         .spacing(space.xxs),
                     )
-                    // Network speed satırları artık ayrı NetworkSpeed
-                    // modülünün menüsünde; burada sadece IP gösteriliyor.
-                    .push(self.data.network.as_ref().map(|network| {
-                        Column::with_children(vec![
-                            Self::info_element(
-                                StaticIcon::IpAddress,
-                                t!("system-info-ip-address"),
-                                network.ip.to_string(),
-                            ),
-                        ])
-                    }))
+                    // Network detayları (IP + speed) artık NetworkSpeed
+                    // modülünün menüsünde.
                     .spacing(space.xxs)
                     .padding([0.0, space.xs])
             )
@@ -531,14 +448,6 @@ impl SystemInfo {
                     }
                 })
             }
-            SystemInfoIndicator::IpAddress => self.data.network.as_ref().map(|network| {
-                Self::indicator_info_element(
-                    StaticIcon::IpAddress,
-                    (network.ip.to_string(), ""),
-                    None::<(u32, u32, u32)>,
-                    None,
-                )
-            }),
         });
 
         Row::with_children(indicators)

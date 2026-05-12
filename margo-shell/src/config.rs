@@ -461,7 +461,6 @@ pub enum SystemInfoIndicator {
     Memory,
     MemorySwap,
     Temperature,
-    IpAddress,
     #[serde(untagged)]
     Disk(SystemInfoDiskIndicatorConfig),
 }
@@ -521,6 +520,7 @@ impl Default for SystemInfoModuleConfig {
 pub enum NetworkSpeedIndicator {
     Download,
     Upload,
+    IpAddress,
 }
 
 #[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
