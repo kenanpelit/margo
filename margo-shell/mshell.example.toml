@@ -148,9 +148,10 @@ mounts          = ["/", "/home"]             # opsiyonel disk listesi
 #  kısa interval ve KB/s-tabanlı eşikler)
 # ══════════════════════════════════════════════════════════════════════════
 [network_speed]
-# IpAddress: aktif IP'yi gösterir. VPN bağlıysa (wg*, tun*, mullvad*,
-# nordlynx, proton*) shield ikonu + success rengiyle vurgulanır.
-indicators = ["IpAddress", "Download", "Upload"]
+# Bar göstergeleri. IpAddress'i listeye eklersen IP bar'da da görünür
+# (VPN bağlıysa shield + success rengi). Varsayılan: yalnız ↓ / ↑;
+# LAN IP + VPN IP göstergeyle açılan menüde gözüküyor.
+indicators = ["Download", "Upload"]
 interval   = 2                               # saniye
 unit       = "Auto"                          # "Auto" | "Kbps" | "Mbps"
 download_warn_kbps  = 5000                   # 5 MB/s üstü → warn rengi

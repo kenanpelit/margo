@@ -64,13 +64,13 @@ fn is_physical_iface(name: &str) -> bool {
 }
 
 struct Snapshot {
-    /// Aktif IP — VPN varsa VPN'in, yoksa fiziksel arayüzün.
-    ip: Option<String>,
+    /// Fiziksel arayüzün (en/eth/wl…) IPv4'ü — "LAN IP".
+    lan_ip: Option<String>,
+    /// VPN tüneline atanan IPv4 — yalnızca VPN bağlıyken.
+    vpn_ip: Option<String>,
     /// VPN bağlıysa arayüz adı (`wg0-mullvad` vb.). None ise VPN yok.
     vpn_iface: Option<String>,
-    /// KB/s — fiziksel + VPN trafiği (sysinfo aynı paketi iki kez sayar;
-    /// VPN aktifse VPN bayrağı altında zaten cleartext sayılır, bu yüzden
-    /// fiziksel kullanılır. VPN yoksa fiziksel zaten cleartext.)
+    /// KB/s — fiziksel arayüz toplamı.
     download_kbps: u32,
     upload_kbps: u32,
     last_check: Instant,
@@ -90,7 +90,8 @@ impl NetworkSpeed {
             config,
             networks,
             snapshot: Snapshot {
-                ip: None,
+                lan_ip: None,
+                vpn_ip: None,
                 vpn_iface: None,
                 download_kbps: 0,
                 upload_kbps: 0,
@@ -168,9 +169,8 @@ impl NetworkSpeed {
 
         let to_kbps = |bytes: u64| (bytes / 1000 / elapsed_secs) as u32;
         self.snapshot = Snapshot {
-            // VPN aktifse VPN IP'yi göster — kullanıcı çıkış noktasını
-            // bilmek istiyor; yoksa fiziksel.
-            ip: vpn_ip.clone().or(phys_ip),
+            lan_ip: phys_ip,
+            vpn_ip,
             vpn_iface,
             download_kbps: to_kbps(received_phys),
             upload_kbps: to_kbps(transmitted_phys),
@@ -283,10 +283,17 @@ impl NetworkSpeed {
                     )),
                 )
             }
-            NetworkSpeedIndicator::IpAddress => Self::ip_indicator(
-                self.snapshot.ip.as_deref(),
-                self.snapshot.vpn_iface.is_some(),
-            ),
+            NetworkSpeedIndicator::IpAddress => {
+                // Bar'da IP isteyenler için: VPN aktifse VPN IP'si,
+                // yoksa LAN IP. Varsayılan config'de bu indicator yok —
+                // IP normalde menüde gösteriliyor.
+                let displayed = self
+                    .snapshot
+                    .vpn_ip
+                    .as_deref()
+                    .or(self.snapshot.lan_ip.as_deref());
+                Self::ip_indicator(displayed, self.snapshot.vpn_iface.is_some())
+            }
         });
         Row::with_children(elements)
             .align_y(Alignment::Center)
@@ -311,7 +318,7 @@ impl NetworkSpeed {
         let (dl_v, dl_u) = self.format(self.snapshot.download_kbps);
         let (ul_v, ul_u) = self.format(self.snapshot.upload_kbps);
 
-        // VPN bloğu — bağlıysa shield ikonuyla arayüz adı; değilse "Yok".
+        // VPN durumu satırı — bağlıysa Vpn ikonu + arayüz adı; değilse "Yok".
         let vpn_row = if let Some(iface) = &self.snapshot.vpn_iface {
             row_element(
                 StaticIcon::Vpn,
@@ -320,17 +327,30 @@ impl NetworkSpeed {
             )
         } else {
             row_element(
-                StaticIcon::IpAddress,
+                StaticIcon::Vpn,
                 t!("network-speed-vpn"),
                 t!("network-speed-vpn-off"),
             )
         };
 
-        // IP satırı — VPN varsa VPN IP, yoksa fiziksel IP.
-        let ip_row = row_element(
-            StaticIcon::IpAddress,
-            t!("system-info-ip-address"),
-            self.snapshot.ip.clone().unwrap_or_else(|| "—".to_string()),
+        // LAN IP — fiziksel arayüz IPv4'ü (her durumda göster).
+        let lan_ip_row = row_element(
+            StaticIcon::Ethernet,
+            t!("network-speed-lan-ip"),
+            self.snapshot
+                .lan_ip
+                .clone()
+                .unwrap_or_else(|| "—".to_string()),
+        );
+
+        // VPN IP — VPN bağlıyken IP, değilse tire.
+        let vpn_ip_row = row_element(
+            StaticIcon::Vpn,
+            t!("network-speed-vpn-ip"),
+            self.snapshot
+                .vpn_ip
+                .clone()
+                .unwrap_or_else(|| "—".to_string()),
         );
 
         // Arayüz başına kümülatif RX/TX (boot'tan beri, MiB). VPN'i
@@ -369,9 +389,10 @@ impl NetworkSpeed {
             column!(
                 text(t!("network-speed-heading")).size(font_size.lg),
                 divider(),
-                Column::with_capacity(4 + iface_rows.len())
+                Column::with_capacity(6 + iface_rows.len())
                     .push(vpn_row)
-                    .push(ip_row)
+                    .push(lan_ip_row)
+                    .push(vpn_ip_row)
                     .push(divider())
                     .push(row_element(
                         StaticIcon::DownloadSpeed,

@@ -144,3 +144,5 @@ system-info-upload-speed = Upload Speed
 network-speed-heading = Network
 network-speed-vpn = VPN
 network-speed-vpn-off = Not connected
+network-speed-lan-ip = LAN IP
+network-speed-vpn-ip = VPN IP
