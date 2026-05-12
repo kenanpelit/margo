@@ -14,8 +14,7 @@ pub mod pam;
 use chrono::Local;
 use iced::{
     Alignment, Anchor, Color, Element, Font, KeyboardInteractivity, Layer, LayerShellSettings,
-    Length, OutputEvent, OutputId, Subscription, SurfaceId, Task, Theme,
-    new_layer_surface,
+    Length, Subscription, SurfaceId, Task, Theme,
     widget::{Column, Space, container, image, stack, text, text_input},
 };
 use std::sync::Arc;
@@ -41,9 +40,6 @@ pub enum Message {
     Submit,
     AuthResult(bool),
     Tick,
-    /// Compositor announced an output came online. Allocate a new
-    /// lock surface anchored to it.
-    OutputAdded(OutputId),
 }
 
 pub struct LockState {
@@ -56,9 +52,11 @@ pub struct LockState {
     /// Blurred wallpaper as an iced image handle. `None` when no
     /// wallpaper path was resolved or the decode failed.
     backdrop: Option<image::Handle>,
-    /// Outputs that already have a surface — avoids creating
-    /// duplicates on redundant OutputAdded events.
-    locked_outputs: std::collections::HashSet<OutputId>,
+    /// `true` until we've sent the first focus task to the password
+    /// input. boot()'s task fires before the widget tree exists, so
+    /// we defer to the first Tick (when iced has rendered at least
+    /// once and the widget Id is known).
+    needs_focus: bool,
 }
 
 fn boot() -> (LockState, Task<Message>) {
@@ -72,15 +70,12 @@ fn boot() -> (LockState, Task<Message>) {
         fail_clear_at: None,
         now: Local::now(),
         backdrop,
-        locked_outputs: Default::default(),
+        needs_focus: true,
     };
-    // Focus the password input on startup so the user can type
-    // immediately — no click needed. iced_runtime::widget::focus
-    // returns a runtime Task which we wrap in the layershell Task.
-    let focus_task: Task<Message> = Task::Iced(iced_runtime::widget::operation::focus(
-        iced::widget::Id::new(PWD_ID),
-    ));
-    (state, focus_task)
+    // Don't focus from boot() — the widget tree isn't built yet,
+    // so the focus operation no-ops. The first Tick handler picks
+    // this up once iced has rendered at least one frame.
+    (state, Task::none())
 }
 
 fn update(state: &mut LockState, message: Message) -> Task<Message> {
@@ -131,27 +126,15 @@ fn update(state: &mut LockState, message: Message) -> Task<Message> {
                 state.fail_message = None;
                 state.fail_clear_at = None;
             }
-            Task::none()
-        }
-        Message::OutputAdded(id) => {
-            if !state.locked_outputs.insert(id) {
-                return Task::none();
+            if state.needs_focus {
+                state.needs_focus = false;
+                // First Tick — widget tree has been built at least once,
+                // so the focus operation can now find the password input.
+                return Task::Iced(iced_runtime::widget::operation::focus(
+                    iced::widget::Id::new(PWD_ID),
+                ));
             }
-            // Spawn an additional lock surface anchored to this
-            // output. boot() handles the *first* output via the
-            // initial settings; later outputs come through this
-            // path so multi-monitor coverage is dynamic.
-            let (_id, task) = new_layer_surface::<Message>(LayerShellSettings {
-                anchor: Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT,
-                layer: Layer::Overlay,
-                exclusive_zone: -1,
-                size: None,
-                keyboard_interactivity: KeyboardInteractivity::Exclusive,
-                namespace: "mshell-lockscreen".into(),
-                output: Some(id),
-                ..Default::default()
-            });
-            task
+            Task::none()
         }
     }
 }
@@ -346,14 +329,10 @@ fn center_no_backdrop(state: &LockState) -> Element<'_, Message> {
 }
 
 fn subscription(_state: &LockState) -> Subscription<Message> {
-    let tick = iced::time::every(Duration::from_millis(500)).map(|_| Message::Tick);
-    // Lock the wallpaper backdrop into multi-monitor mode: every
-    // compositor-announced output gets its own surface.
-    let outputs = iced::output_events().map(|evt| match evt {
-        OutputEvent::Added(info) => Message::OutputAdded(info.id),
-        _ => Message::Tick, // Removed events are harmless — surface is auto-destroyed.
-    });
-    Subscription::batch([tick, outputs])
+    // 50 ms tick — drives the first-frame focus retry plus the
+    // visible clock. Once focus settles the cost is negligible
+    // (single now() + no-op update).
+    iced::time::every(Duration::from_millis(50)).map(|_| Message::Tick)
 }
 
 fn theme(_state: &LockState) -> Theme {
