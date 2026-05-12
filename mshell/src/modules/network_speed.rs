@@ -29,7 +29,6 @@ use crate::{
 };
 use iced::{
     Alignment, Element, Font, Length, Subscription, Theme,
-    alignment::Horizontal,
     time::every,
     widget::{Column, Row, column, container, row, text},
 };
@@ -205,21 +204,19 @@ impl NetworkSpeed {
         threshold: Option<(u32, u32, u32)>,
     ) -> Element<'a, Message> {
         let (space, bar_font) = use_theme(|t| (t.space, t.bar_font_size));
-        // Fixed-width + monospace so a 7 KB/s → 999 KB/s digit jump
-        // doesn't grow/shrink the text widget and chain into the
-        // bar's animated_size. Width covers 8 chars ("9999KB/s",
-        // "9999MB/s"); align Left so short values stay glued to
-        // the icon and the slack pads on the right (reads as
-        // natural inter-indicator spacing).
-        let value_width = Length::Fixed(bar_font * 0.62 * 8.0 + 3.0);
+        // Monospace + Length::Shrink — text widget sticks to its
+        // own content (no trailing slack between this indicator and
+        // the next), and digit-advance is constant so swapping
+        // "23KB/s" ↔ "99KB/s" is the same pixel width. Cross-decade
+        // jumps (e.g. "999KB/s" → "1MB/s") do change the width by
+        // one glyph but `build_module_item` suppresses animated_size
+        // on NetworkSpeed so the reflow is instant.
         let body = container(
             row!(
                 icon(ico).size(bar_font),
                 text(format!("{display}{unit}"))
                     .size(bar_font)
                     .font(Font::MONOSPACE)
-                    .width(value_width)
-                    .align_x(Horizontal::Left)
             )
             .spacing(space.xxs),
         );

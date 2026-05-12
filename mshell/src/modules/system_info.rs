@@ -10,7 +10,6 @@ use crate::{
 };
 use iced::{
     Alignment, Element, Font, Length, Subscription, Theme,
-    alignment::Horizontal,
     time::every,
     widget::{Column, Row, column, container, row, text},
 };
@@ -248,16 +247,15 @@ impl SystemInfo {
         (display, unit): (impl std::fmt::Display + 'a, &str),
         threshold: Option<(V, V, V)>,
         prefix: Option<String>,
-        value_chars: f32,
     ) -> Element<'a, Message> {
         let (space, bar_font) = use_theme(|t| (t.space, t.bar_font_size));
-        // Fixed-width + monospace so digit-count churn (5% → 23% →
-        // 100%) doesn't grow/shrink the text widget and chain into
-        // the bar's animated_size. `value_chars` is the caller's
-        // worst-case character count *including* prefix, unit and
-        // any embedded spaces. Char width ≈ bar_font * 0.62 + 3px
-        // buffer to absorb glyph-anti-alias rounding.
-        let value_width = Length::Fixed(bar_font * 0.62 * value_chars + 3.0);
+        // Monospace font + Length::Shrink: text widget hugs its own
+        // content (no leading/trailing slack between icon and digits)
+        // and digit-advance is constant so a "5%" → "9%" swap is the
+        // same pixel width. Width still changes between "9%" and
+        // "100%" (one extra glyph), but `build_module_item` skips
+        // animated_size for this module so the reflow is instant
+        // rather than a 150 ms shake.
         let value_text = match &prefix {
             Some(p) => format!("{p} {display}{unit}"),
             None => format!("{display}{unit}"),
@@ -265,11 +263,7 @@ impl SystemInfo {
         let element = container(
             row!(
                 icon(info_icon).size(bar_font),
-                text(value_text)
-                    .size(bar_font)
-                    .font(Font::MONOSPACE)
-                    .width(value_width)
-                    .align_x(Horizontal::Left)
+                text(value_text).size(bar_font).font(Font::MONOSPACE)
             )
             .spacing(space.xxs),
         );
@@ -387,11 +381,6 @@ impl SystemInfo {
                     self.config.cpu.alert_threshold,
                 )),
                 None,
-                // Percentage: "100%" (4); Frequency: "9.99 GHz" (8)
-                match self.config.cpu.format {
-                    CpuFormat::Percentage => 4.0,
-                    CpuFormat::Frequency => 8.0,
-                },
             )),
 
             SystemInfoIndicator::Memory => Some(Self::indicator_info_element(
@@ -408,11 +397,6 @@ impl SystemInfo {
                     self.config.memory.alert_threshold,
                 )),
                 None,
-                // Percentage: "100%" (4); Fraction: "99.99/99.99 GiB" (15)
-                match self.config.memory.format {
-                    MemoryFormat::Percentage => 4.0,
-                    MemoryFormat::Fraction => 15.0,
-                },
             )),
 
             SystemInfoIndicator::MemorySwap => Some(Self::indicator_info_element(
@@ -431,16 +415,6 @@ impl SystemInfo {
                     self.config.memory.alert_threshold,
                 )),
                 Some(t!("system-info-swap-indicator-prefix")),
-                {
-                    // Prefix + space + percentage/fraction. Prefix string
-                    // is localised, so measure at runtime.
-                    let prefix_len = t!("system-info-swap-indicator-prefix").chars().count() as f32;
-                    let body_chars = match self.config.memory.format {
-                        MemoryFormat::Percentage => 4.0,
-                        MemoryFormat::Fraction => 15.0,
-                    };
-                    prefix_len + 1.0 + body_chars
-                },
             )),
 
             SystemInfoIndicator::Temperature => self.data.temperature.celsius.map(|cel| {
@@ -458,19 +432,11 @@ impl SystemInfo {
                         self.config.temperature.alert_threshold(),
                     )),
                     None,
-                    // "100°C" (5)
-                    5.0,
                 )
             }),
             SystemInfoIndicator::Disk(config) => {
                 self.data.disks.iter().find_map(|(disk_mount, disk)| {
                     if disk_mount == &config.path {
-                        let prefix_str = config.name.as_deref().unwrap_or(disk_mount).to_string();
-                        let prefix_len = prefix_str.chars().count() as f32;
-                        let body_chars = match self.config.disk.format {
-                            DiskFormat::Percentage => 4.0,
-                            DiskFormat::Fraction => 8.0,
-                        };
                         Some(Self::indicator_info_element(
                             StaticIcon::Drive,
                             match self.config.disk.format {
@@ -482,8 +448,7 @@ impl SystemInfo {
                                 self.config.disk.warn_threshold,
                                 self.config.disk.alert_threshold,
                             )),
-                            Some(prefix_str),
-                            prefix_len + 1.0 + body_chars,
+                            Some(config.name.as_deref().unwrap_or(disk_mount).to_string()),
                         ))
                     } else {
                         None

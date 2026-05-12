@@ -91,8 +91,20 @@ impl App {
         content: Element<'a, Message>,
         action: Option<OnModulePress>,
         current_menu: Option<&MenuType>,
+        module_name: Option<&ModuleName>,
     ) -> Element<'a, Message> {
-        let content = if use_theme(|t| t.animations_enabled) {
+        // High-churn numeric modules (CPU%, Memory%, Temp, network
+        // speed) refresh every few seconds and naturally change
+        // text width by one digit-advance. Wrapping them in
+        // `animated_size` would mean the bar tweens that width
+        // change over ~150 ms every tick — visible as a continuous
+        // shake. They render fast enough that an instant reflow is
+        // imperceptible.
+        let suppress_size_anim = matches!(
+            module_name,
+            Some(ModuleName::SystemInfo) | Some(ModuleName::NetworkSpeed)
+        );
+        let content = if use_theme(|t| t.animations_enabled) && !suppress_size_anim {
             animated_size(content).into()
         } else {
             content
@@ -150,7 +162,13 @@ impl App {
         current_menu: Option<&MenuType>,
     ) -> Option<Element<'a, Message>> {
         self.get_module_view(id, module_name).map(|(content, action)| {
-            module_group(self.build_module_item(id, content, action, current_menu))
+            module_group(self.build_module_item(
+                id,
+                content,
+                action,
+                current_menu,
+                Some(module_name),
+            ))
         })
     }
 
@@ -162,7 +180,10 @@ impl App {
     ) -> Option<Element<'a, Message>> {
         let modules: Vec<_> = group
             .iter()
-            .filter_map(|module| self.get_module_view(id, module))
+            .filter_map(|module| {
+                self.get_module_view(id, module)
+                    .map(|(c, a)| (module, c, a))
+            })
             .collect();
 
         if modules.is_empty() {
@@ -171,8 +192,14 @@ impl App {
             let items = Row::with_children(
                 modules
                     .into_iter()
-                    .map(|(content, action)| {
-                        self.build_module_item(id, content, action, current_menu)
+                    .map(|(module_name, content, action)| {
+                        self.build_module_item(
+                            id,
+                            content,
+                            action,
+                            current_menu,
+                            Some(module_name),
+                        )
                     })
                     .collect::<Vec<_>>(),
             );
