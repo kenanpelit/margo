@@ -2,7 +2,7 @@
 //!
 //! Layout (top → bottom, vertically centred):
 //!   • optional 96 px round avatar
-//!   • greeting line ("Günaydın, Kenan")
+//!   • greeting line ("Good morning, Kenan")
 //!   • large clock + date pair
 //!   • frosted card (with drop shadow + shake offset) containing
 //!     password dots / placeholder pill
@@ -237,9 +237,9 @@ pub fn draw_lock_frame(
     y += GAP_CAPS_STATUS;
     let status_text = seat.fail_message.clone().unwrap_or_else(|| {
         if visible_dots > 0 {
-            "Enter ile giriş".to_string()
+            "Press Enter to unlock".to_string()
         } else {
-            "🔒  Parolanızı yazın".to_string()
+            "🔒  Type your password".to_string()
         }
     });
     let layout_status = layout(&cr, &status_text, FONT_STATUS_PT, false);
@@ -255,14 +255,14 @@ pub fn draw_lock_frame(
 
     // 13. Power-confirm banner OR F-key hint row.
     if let Some((action, _)) = seat.power_confirm {
-        let msg = format!("F-tuşuna tekrar bas onayla: {}", action.label_tr());
+        let msg = format!("Press the F-key again to confirm: {}", action.label());
         let layout_confirm = layout(&cr, &msg, FONT_STATUS_PT, true);
         let (cw, _) = layout_confirm.pixel_size();
         cr.set_source_rgb(FAIL.0, FAIL.1, FAIL.2);
         cr.move_to(cx - cw as f64 / 2.0, y);
         pangocairo::functions::show_layout(&cr, &layout_confirm);
     } else {
-        let hint = "F1 Kapat   ·   F2 Yeniden Başlat   ·   F3 Uyut";
+        let hint = "F1 Shut down   ·   F2 Restart   ·   F3 Suspend";
         let layout_hint = layout(&cr, hint, FONT_CAPS_PT, false);
         let (hw, _) = layout_hint.pixel_size();
         cr.set_source_rgba(MUTED.0, MUTED.1, MUTED.2, 0.55);
@@ -328,10 +328,10 @@ fn layout(cr: &cairo::Context, text: &str, pt: i32, bold: bool) -> pango::Layout
 
 fn greeting_for(hour: u32) -> &'static str {
     match hour {
-        5..=11 => "Günaydın",
-        12..=16 => "İyi günler",
-        17..=20 => "İyi akşamlar",
-        _ => "İyi geceler",
+        5..=11 => "Good morning",
+        12..=16 => "Good afternoon",
+        17..=20 => "Good evening",
+        _ => "Good night",
     }
 }
 

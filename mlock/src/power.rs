@@ -14,11 +14,11 @@ pub enum PowerAction {
 }
 
 impl PowerAction {
-    pub fn label_tr(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
-            PowerAction::Shutdown => "Kapat",
-            PowerAction::Reboot => "Yeniden Başlat",
-            PowerAction::Suspend => "Uyut",
+            PowerAction::Shutdown => "Shut down",
+            PowerAction::Reboot => "Restart",
+            PowerAction::Suspend => "Suspend",
         }
     }
 

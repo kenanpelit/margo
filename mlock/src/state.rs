@@ -231,9 +231,9 @@ impl MlockState {
                 self.seat_state.fail_count = self.seat_state.fail_count.saturating_add(1);
                 self.seat_state.fail_message = Some(
                     if self.seat_state.fail_count > 1 {
-                        format!("Yanlış parola · {} deneme", self.seat_state.fail_count)
+                        format!("Wrong password · {} attempts", self.seat_state.fail_count)
                     } else {
-                        "Yanlış parola".to_string()
+                        "Wrong password".to_string()
                     },
                 );
                 // Trigger a ~400 ms shake animation.
