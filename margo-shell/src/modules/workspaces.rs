@@ -8,7 +8,7 @@ use crate::{
     theme::use_theme,
 };
 use iced::{
-    Element, Length, Subscription, SurfaceId, alignment,
+    Element, Font, Length, Subscription, SurfaceId, alignment,
     widget::{MouseArea, Row, button, container, text},
 };
 use iced_anim::{AnimationBuilder, transition::Easing};
@@ -436,17 +436,39 @@ impl Workspaces {
                                 // workspace branch (negative IDs) is
                                 // unreachable.
                                 let on_press = Message::ChangeWorkspace(w.id);
-                                // Workspace etiketleri tüm bar widget'larıyla
-                                // aynı boyutta — font birliği için bar_font_size.
-                                let font_size = theme.bar_font_size;
+                                // Font: özel font_name varsa onu kullan; yoksa
+                                // bar'ın global fontu (None = default).
+                                let custom_font: Option<Font> = self
+                                    .config
+                                    .font_name
+                                    .as_deref()
+                                    .map(|name| Font::with_name(Box::leak(name.to_string().into_boxed_str())));
+                                // Size override — yoksa bar_font_size (birlik).
+                                let font_size = self
+                                    .config
+                                    .font_size
+                                    .unwrap_or(theme.bar_font_size);
                                 let height = theme.space.md;
+                                // Pencere sayısı > 1 ise üst-simge ekle: 1²
+                                let display_name = if self.config.show_window_count
+                                    && w.windows > 1
+                                {
+                                    format!("{}{}", name, superscript_count(w.windows))
+                                } else {
+                                    name.clone()
+                                };
 
                                 Some(match target_width {
                                     Some(tw) if theme.animations_enabled => {
+                                        let display_name = display_name.clone();
                                         AnimationBuilder::new(tw, move |w| {
                                             use_theme(|theme| {
+                                                let mut t = text(display_name.clone()).size(font_size);
+                                                if let Some(f) = custom_font {
+                                                    t = t.font(f);
+                                                }
                                                 button(
-                                                    container(text(name.clone()).size(font_size))
+                                                    container(t)
                                                         .align_x(alignment::Horizontal::Center)
                                                         .align_y(alignment::Vertical::Center),
                                                 )
@@ -462,28 +484,40 @@ impl Workspaces {
                                         .animation(Easing::EASE.very_quick())
                                         .into()
                                     }
-                                    Some(tw) => button(
-                                        container(text(name).size(font_size))
-                                            .align_x(alignment::Horizontal::Center)
-                                            .align_y(alignment::Vertical::Center),
-                                    )
-                                    .style(theme.workspace_button_style(empty, color))
-                                    .padding(padding)
-                                    .on_press(on_press)
-                                    .width(Length::Fixed(tw))
-                                    .height(height)
-                                    .into(),
-                                    None => button(
-                                        container(text(name).size(font_size))
-                                            .align_x(alignment::Horizontal::Center)
-                                            .align_y(alignment::Vertical::Center),
-                                    )
-                                    .style(theme.workspace_button_style(empty, color))
-                                    .padding(padding)
-                                    .on_press(on_press)
-                                    .width(Length::Shrink)
-                                    .height(height)
-                                    .into(),
+                                    Some(tw) => {
+                                        let mut t = text(display_name.clone()).size(font_size);
+                                        if let Some(f) = custom_font {
+                                            t = t.font(f);
+                                        }
+                                        button(
+                                            container(t)
+                                                .align_x(alignment::Horizontal::Center)
+                                                .align_y(alignment::Vertical::Center),
+                                        )
+                                        .style(theme.workspace_button_style(empty, color))
+                                        .padding(padding)
+                                        .on_press(on_press)
+                                        .width(Length::Fixed(tw))
+                                        .height(height)
+                                        .into()
+                                    }
+                                    None => {
+                                        let mut t = text(display_name).size(font_size);
+                                        if let Some(f) = custom_font {
+                                            t = t.font(f);
+                                        }
+                                        button(
+                                            container(t)
+                                                .align_x(alignment::Horizontal::Center)
+                                                .align_y(alignment::Vertical::Center),
+                                        )
+                                        .style(theme.workspace_button_style(empty, color))
+                                        .padding(padding)
+                                        .on_press(on_press)
+                                        .width(Length::Shrink)
+                                        .height(height)
+                                        .into()
+                                    }
                                 })
                             }
                         } else {
@@ -546,4 +580,26 @@ impl Workspaces {
     pub fn subscription(&self) -> Subscription<Message> {
         CompositorService::subscribe().map(Message::ServiceEvent)
     }
+}
+
+/// `n` → küçük üst-simge basamaklar ("¹²³⁴⁵⁶⁷⁸⁹⁰"). Workspace
+/// etiketinde pencere sayısını badge'lemek için kullanılır:
+/// `1²` = tag 1'de 2 pencere var.
+fn superscript_count(n: u16) -> String {
+    n.to_string()
+        .chars()
+        .map(|c| match c {
+            '0' => '⁰',
+            '1' => '¹',
+            '2' => '²',
+            '3' => '³',
+            '4' => '⁴',
+            '5' => '⁵',
+            '6' => '⁶',
+            '7' => '⁷',
+            '8' => '⁸',
+            '9' => '⁹',
+            other => other,
+        })
+        .collect()
 }

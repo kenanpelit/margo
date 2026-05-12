@@ -256,6 +256,20 @@ pub struct WorkspacesModuleConfig {
     pub workspace_names: Vec<String>,
     pub enable_virtual_desktops: bool,
     pub invert_scroll_direction: Option<InvertScrollDirection>,
+    /// Workspace etiketleri için özel font ailesi. None ise bar'ın
+    /// global fontu kullanılır (Maple Mono NF vb.). Örnek: "JetBrains Mono".
+    #[serde(default)]
+    pub font_name: Option<String>,
+    /// Workspace etiketleri için font boyutu override. None ise
+    /// `bar_font_size` kullanılır (font birliği). Bu alanı set edersen
+    /// workspace numaraları daha büyük/küçük gözükür.
+    #[serde(default)]
+    pub font_size: Option<f32>,
+    /// Workspace'lerde 1'den fazla pencere varsa numaranın yanına
+    /// küçük üst-simge sayı (¹²³…⁹) yazar. Eski davranışı korumak için
+    /// varsayılan false.
+    #[serde(default)]
+    pub show_window_count: bool,
 }
 
 #[derive(Deserialize, Copy, Clone, Default, PartialEq, Eq, Debug)]
