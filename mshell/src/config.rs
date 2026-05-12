@@ -941,6 +941,12 @@ pub struct TrayModuleConfig {
 #[serde(default)]
 pub struct TempoModuleConfig {
     pub clock_format: String,
+    /// Optional smaller second line under the clock (e.g. the date).
+    /// When set, the primary clock renders bold and this string is
+    /// drawn beneath it in a muted micro size — the "rich" composite
+    /// look. Leave empty/None for the classic single-line bar item.
+    #[serde(default)]
+    pub secondary_format: Option<String>,
     #[serde(default)]
     pub formats: Vec<String>,
     #[serde(default)]
@@ -984,6 +990,7 @@ impl Default for TempoModuleConfig {
     fn default() -> Self {
         Self {
             clock_format: "%a %d %b %R".to_string(),
+            secondary_format: None,
             formats: vec![],
             timezones: vec![],
             weather_location: None,

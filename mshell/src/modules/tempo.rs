@@ -165,12 +165,44 @@ impl Tempo {
     }
 
     pub fn view(&'_ self) -> Element<'_, Message> {
-        let (space, bar_font) = use_theme(|t| (t.space, t.bar_font_size));
-        let display_text = self.time_str(self.current_format(), self.current_timezone_index, None);
+        let (space, bar_font, font_size) = use_theme(|t| (t.space, t.bar_font_size, t.font_size));
+        let primary_text =
+            self.time_str(self.current_format(), self.current_timezone_index, None);
+
+        let clock_widget: Element<'_, Message> = match self.config.secondary_format.as_deref() {
+            // Rich two-line composite: bold primary clock + muted
+            // micro secondary line (typically the date). The primary
+            // uses bar_font; secondary drops to font_size.xs and a
+            // mid-tone palette colour so it reads as supporting info.
+            Some(secondary_fmt) if !secondary_fmt.is_empty() => {
+                let secondary_text =
+                    self.time_str(secondary_fmt, self.current_timezone_index, None);
+                Column::with_capacity(2)
+                    .push(
+                        text(primary_text)
+                            .size(bar_font)
+                            .font(iced::Font {
+                                weight: iced::font::Weight::Semibold,
+                                ..iced::Font::DEFAULT
+                            }),
+                    )
+                    .push(
+                        text(secondary_text)
+                            .size(font_size.xs)
+                            .style(|theme: &Theme| iced::widget::text::Style {
+                                color: Some(theme.palette().text.scale_alpha(0.65)),
+                            }),
+                    )
+                    .spacing(0)
+                    .align_x(Horizontal::Center)
+                    .into()
+            }
+            _ => text(primary_text).size(bar_font).into(),
+        };
 
         Row::with_capacity(2)
             .push(self.weather_indicator())
-            .push(text(display_text).size(bar_font))
+            .push(clock_widget)
             .align_y(Vertical::Center)
             .spacing(space.sm)
             .into()
