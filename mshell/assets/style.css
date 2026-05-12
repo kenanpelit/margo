@@ -23,8 +23,11 @@
 
 * {
     all: unset;
-    font-family: "JetBrainsMono Nerd Font", "Symbols Nerd Font Mono",
-                 "DaddyTimeMono Nerd Font", monospace;
+    /* Default font from noctalia's `ui.fontDefault: "Maple Mono NF"`.
+     * Fallbacks land on the Nerd-Font families most likely to be on
+     * a margo box so glyph parity holds even without Maple. */
+    font-family: "Maple Mono NF", "JetBrainsMono Nerd Font",
+                 "Symbols Nerd Font Mono", monospace;
     font-size: 13px;
 }
 
@@ -111,10 +114,14 @@ popover *:focus {
  * indicators override the bg colour where needed (e.g. focused
  * workspace pill). */
 
+/* Noctalia `showCapsule: true / capsuleOpacity: 1`. Capsule is a
+ * subtle surface-variant pill — opacity 0.40 reads as "lit" against
+ * the bar's 0.93 surface rather than the bar's own background. */
 .module {
-    padding: 1px 8px;
+    padding: 2px 10px;
     border-radius: 10px;
-    background-color: rgba(68, 71, 90, 0.55);
+    background-color: rgba(68, 71, 90, 0.40);
+    margin: 0 1px;
 }
 
 button {

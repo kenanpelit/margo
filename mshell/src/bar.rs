@@ -58,7 +58,10 @@ fn clamp_height_recursively(w: &Widget) {
 }
 
 /// Vertical "|" separator label between module groups, ported from
-/// eww's `(sep)` widget.
+/// eww's `(sep)` widget. Kept available for callers that opt-in to
+/// the saimoom group dividers — the current noctalia layout puts
+/// modules straight next to each other, so it's currently unused.
+#[allow(dead_code)]
 fn sep() -> Label {
     let lbl = Label::new(Some("|"));
     lbl.add_css_class("module-sep");
@@ -136,60 +139,57 @@ fn build_layout() -> CenterBox {
         .orientation(Orientation::Horizontal)
         .build();
 
+    // ─────────── Layout: 1:1 noctalia settings.json mapping ───
+    // Order pulled straight from
+    // ~/.config/noctalia/settings.json:bar.widgets.{left,center,right}.
+
+    // LEFT — Workspace · keymode · notes · podman · twilight ·
+    //        media-mini · window-title (active window)
     let left = region("bar-left");
     left.append(&modules::workspaces::build());
     left.append(&modules::keymode::build().widget);
     left.append(&modules::notes::build().widget);
+    left.append(&modules::podman::build().widget);
+    if let Some(twilight) = modules::twilight::build() {
+        left.append(&twilight.widget);
+    }
+    left.append(&modules::media::build());
     left.append(&modules::window_title::build());
 
-    // Noctalia center order: weather · clock · notification history
-    // · media (media gets the centre slot here because the calendar
-    // popover already lives on the clock).
+    // CENTER — weather · clock · notification history
+    // (assistant-panel queued for a later commit)
     let center = region("bar-center");
     center.append(&modules::weather::build().widget);
-    center.append(&modules::media::build());
+    center.append(&modules::tempo::build());
+    center.append(&modules::notifications::build());
 
-    // saimoom's eww `bar_1` groups: brightness/volume/wifi |
-    // battery/memory | clock. The `(sep)` widget between groups is
-    // a literal `|` label tinted with the surface1 palette — we
-    // mirror that in the spacing.
-    // Right region: noctalia-style sequence —
-    //   updates · sysmon | podman ufw power twilight |
-    //   brightness volume mic network bluetooth | battery memory |
-    //   public-ip · clock tray notifications
+    // RIGHT — network · system-monitor · power · bluetooth · volume ·
+    //         mic · brightness · tray · ufw · public-ip · battery ·
+    //         memory · updates
     let right = region("bar-right");
-    right.append(&modules::updates::build().widget);
+    right.append(&modules::network::build());
     right.append(&modules::system_info::build());
-    right.append(&modules::podman::build().widget);
-    right.append(&modules::ufw::build().widget);
     if let Some(power) = modules::power::build() {
         right.append(&power.widget);
     }
-    if let Some(twilight) = modules::twilight::build() {
-        right.append(&twilight.widget);
-    }
-    right.append(&sep());
-    if let Some(brightness) = modules::brightness::build() {
-        right.append(&brightness.widget);
-    }
+    right.append(&modules::bluetooth::build().widget);
     if let Some(volume) = modules::volume::build() {
         right.append(&volume.widget);
     }
     if let Some(mic) = modules::microphone::build() {
         right.append(&mic.widget);
     }
-    right.append(&modules::network::build());
-    right.append(&modules::bluetooth::build().widget);
-    right.append(&sep());
+    if let Some(brightness) = modules::brightness::build() {
+        right.append(&brightness.widget);
+    }
+    right.append(&modules::tray::build());
+    right.append(&modules::ufw::build().widget);
+    right.append(&modules::public_ip::build().widget);
     if let Some(battery) = modules::battery::build() {
         right.append(&battery.widget);
     }
     right.append(&modules::memory::build().widget);
-    right.append(&modules::public_ip::build().widget);
-    right.append(&sep());
-    right.append(&modules::tempo::build());
-    right.append(&modules::tray::build());
-    right.append(&modules::notifications::build());
+    right.append(&modules::updates::build().widget);
 
     layout.set_start_widget(Some(&left));
     layout.set_center_widget(Some(&center));
