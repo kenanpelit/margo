@@ -678,29 +678,30 @@ impl Outputs {
         content_size: iced::Size,
         _position: config::ToastPosition,
     ) -> Task<Message> {
-        // Surface boyutu grow-only: yalnızca toast eklendiğinde büyür.
-        // Toast dismiss sırasında küçülmez — "küçülerek kayboluyor"
-        // artefakt'ı oluşmaz. Son toast yok olunca hide_toast_layer
-        // surface'i tamamen destroy eder ve toast_max_height sıfırlanır.
+        // Surface boyutu sensor'un raporladığı içerik boyutuna her
+        // değişimde uyarlanır. Sadece grow-only davranış 2. toast
+        // geldiğinde eski 320px surface içine clip'lenmesine yol
+        // açıyordu. Sürekli set_size + surface yeni boyutu açar.
+        // Toast sayısı azalırsa surface küçülür — bu doğal (kullanıcı
+        // fark etmez); önceki "küçülerek kaybolma" artefakt'ı SADECE
+        // son toast → 0 geçişinde olur, ki orada hide_toast_layer
+        // surface'i tamamen destroy eder.
         let content_w = content_size.width.ceil() as u32;
         let content_h = content_size.height.ceil() as u32;
+        if content_w == 0 || content_h == 0 {
+            // Sıfır boyut compositor'a invalid; sadece input region
+            // sıfırla (transparent click-through), surface bırak.
+            return Task::none();
+        }
         let mut tasks = vec![];
         for (_, shell_info, _) in &mut self.0 {
             if let Some(shell_info) = shell_info
                 && let Some(toast_id) = shell_info.toast_id
             {
-                // Grow-only: yeni yükseklik high-water mark'ı geçtiyse
-                // surface'i büyüt.
-                if content_h > shell_info.toast_max_height {
+                if content_h != shell_info.toast_max_height {
                     shell_info.toast_max_height = content_h;
-                    tasks.push(set_size(
-                        toast_id,
-                        (content_w.max(1), content_h.max(1)),
-                    ));
+                    tasks.push(set_size(toast_id, (content_w, content_h)));
                 }
-                // Input region her zaman gerçek içerik boyutuna küplenir;
-                // surface'in altında kalan transparent alana tıklamalar
-                // pencerelerine geçsin.
                 tasks.push(set_input_region(
                     toast_id,
                     Some(vec![InputRegionRect {
