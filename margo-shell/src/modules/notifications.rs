@@ -137,10 +137,6 @@ pub enum Action {
     },
     Hide(Task<Message>),
     UpdateToastInputRegion(Size),
-    /// Toast count grew (varolan surface'i eager büyütmek için).
-    ResizeToast {
-        height: u32,
-    },
 }
 
 pub struct Notifications {

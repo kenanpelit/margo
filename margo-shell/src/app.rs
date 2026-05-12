@@ -758,10 +758,6 @@ impl App {
                         self.outputs.resize_toast_layer(width, estimated_height),
                     ])
                 }
-                modules::notifications::Action::ResizeToast { height } => {
-                    let width = self.notifications.toast_width();
-                    self.outputs.resize_toast_layer(width, height)
-                }
                 modules::notifications::Action::Hide(task) => Task::batch(vec![
                     task.map(Message::Notifications),
                     self.outputs.hide_toast_layer(),
