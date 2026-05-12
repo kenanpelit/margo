@@ -110,8 +110,7 @@ tagrule = id:1, layout_name:scroller, monitor_name:DP-3
 tagrule = id:7, layout_name:scroller, monitor_name:eDP-1
 
 windowrule = tags:1, appid:^Kenp$
-windowrule = isfloating:1, width:640, height:260, \
-             title:^(Authentication Required|Unlock Keyring)$
+windowrule = isfloating:1, width:640, height:260, title:^(Authentication Required|Unlock Keyring)$
 
 animation_clock_move = spring
 animation_clock_tag  = bezier
