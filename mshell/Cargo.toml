@@ -1,5 +1,5 @@
 [package]
-name = "margo-shell"
+name = "mshell"
 description = "Desktop shell (bar + notifications + OSD + settings) for the margo Wayland compositor"
 version.workspace = true
 edition.workspace = true
@@ -115,9 +115,9 @@ i18n-embed-fl = "0.10"
 rust-embed = "8"
 unic-langid = "0.9"
 
-# margo-shell talks to the compositor over margo's IPC + state.json,
+# mshell talks to the compositor over margo's IPC + state.json,
 # so we pull the IPC types straight from the sibling crate.
-margo-ipc = { path = "../margo-ipc" }
+mctl = { path = "../mctl" }
 
 [build-dependencies]
 allsorts = "0.16"

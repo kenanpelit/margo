@@ -116,7 +116,7 @@ check() {
   # tests — propagate any compile errors though.
   cargo test --frozen --release \
     --package margo-config \
-    --package margo-ipc \
+    --package mctl \
     --package mlayout ||
     echo "warning: some tests skipped or failed; not blocking the build"
 }
@@ -144,8 +144,8 @@ package() {
   # mshell — example TOML config. Goes next to the compositor's
   # config.conf at ~/.config/margo/mshell.toml (NOT a subdir);
   # ship a starter here so `cp` is one command away.
-  if [[ -f "margo-shell/mshell.example.toml" ]]; then
-    install -Dm644 "margo-shell/mshell.example.toml" \
+  if [[ -f "mshell/mshell.example.toml" ]]; then
+    install -Dm644 "mshell/mshell.example.toml" \
       "$pkgdir/usr/share/doc/$pkgname/mshell.example.toml"
   fi
 
@@ -213,8 +213,8 @@ package() {
     fi
   done
   # margo-shell's upstream attribution lives in the crate dir.
-  if [[ -f "margo-shell/LICENSE.ashell" ]]; then
-    install -Dm644 "margo-shell/LICENSE.ashell" \
+  if [[ -f "mshell/LICENSE.ashell" ]]; then
+    install -Dm644 "mshell/LICENSE.ashell" \
       "$pkgdir/usr/share/licenses/$pkgname/LICENSE.ashell"
   fi
 }

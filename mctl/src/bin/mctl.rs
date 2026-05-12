@@ -12,8 +12,8 @@ use wayland_client::{
     Connection, Dispatch, EventQueue, QueueHandle,
 };
 
-use margo_ipc::actions::{ACTIONS, Group};
-use margo_ipc::protocols::dwl_ipc::{
+use mctl::actions::{ACTIONS, Group};
+use mctl::protocols::dwl_ipc::{
     zdwl_ipc_manager_v2::{self, ZdwlIpcManagerV2},
     zdwl_ipc_output_v2::{self, ZdwlIpcOutputV2},
 };
@@ -869,7 +869,7 @@ fn main() -> Result<()> {
         Command::Migrate { file, from, output } => {
             // W4.4 — pure-function translation, no compositor IPC
             // involved. We literally just read the source, run it
-            // through `margo_ipc::migrate`, write the result.
+            // through `mctl::migrate`, write the result.
             let contents = match std::fs::read_to_string(&file) {
                 Ok(s) => s,
                 Err(e) => {
@@ -879,8 +879,8 @@ fn main() -> Result<()> {
             };
             let format = match from
                 .as_deref()
-                .and_then(margo_ipc::migrate::SourceFormat::parse_name)
-                .or_else(|| margo_ipc::migrate::SourceFormat::detect(&file, &contents))
+                .and_then(mctl::migrate::SourceFormat::parse_name)
+                .or_else(|| mctl::migrate::SourceFormat::detect(&file, &contents))
             {
                 Some(f) => f,
                 None => {
@@ -892,7 +892,7 @@ fn main() -> Result<()> {
                     std::process::exit(2);
                 }
             };
-            let result = margo_ipc::migrate::migrate(format, &contents);
+            let result = mctl::migrate::migrate(format, &contents);
             // Warnings → stderr so the user sees them but stdout
             // is clean if they pipe directly into config.conf.
             for w in &result.warnings {
@@ -1154,7 +1154,7 @@ fn cmd_actions(verbose: bool, group_filter: Option<&str>, names_only: bool) -> R
         // Newline-separated dump of every accepted spelling
         // (canonical names + aliases). Drives shell-completion
         // generators (`compgen -W "$(mctl actions --names)"`).
-        for n in margo_ipc::actions::all_names() {
+        for n in mctl::actions::all_names() {
             writeln!(out, "{n}")?;
         }
         return Ok(());

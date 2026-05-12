@@ -10,12 +10,12 @@ use log::warn;
 use unic_langid::LanguageIdentifier;
 
 const CATALOGS: &[(&str, &str)] = &[
-    ("en-US", include_str!("../i18n/en-US/margo-shell.ftl")),
-    ("tr-TR", include_str!("../i18n/tr-TR/margo-shell.ftl")),
+    ("en-US", include_str!("../i18n/en-US/mshell.ftl")),
+    ("tr-TR", include_str!("../i18n/tr-TR/mshell.ftl")),
 ];
 
 const FALLBACK_LANG: &str = "en-US";
-const TRANSLATION_FILE: &str = "margo-shell.ftl";
+const TRANSLATION_FILE: &str = "mshell.ftl";
 
 const FALLBACK_CHRONO: Locale = Locale::en_GB;
 
@@ -53,7 +53,7 @@ impl Default for Localizer {
         // parse. `init_localizer` in `App::new` replaces it immediately with
         // the resolved value; this just keeps `t!()` callable before that
         // point and on any non-main thread that ever touches LOCALIZER.
-        let loader = FluentLanguageLoader::new("margo-shell", en_us_langid());
+        let loader = FluentLanguageLoader::new("mshell", en_us_langid());
         Self {
             chrono: FALLBACK_CHRONO,
             units: derive_units(FALLBACK_CHRONO),

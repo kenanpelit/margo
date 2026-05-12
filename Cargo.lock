@@ -3610,8 +3610,8 @@ dependencies = [
  "libc",
  "log",
  "margo-config",
- "margo-ipc",
  "margo-layouts",
+ "mctl",
  "nix 0.29.0",
  "pipewire",
  "regex",
@@ -3646,7 +3646,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "margo-ipc"
+name = "margo-layouts"
+version = "0.3.1"
+
+[[package]]
+name = "matchers"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d1525a2a28c7f4fa0fc98bb91ae755d1e2d1505079e05539e35bc876b5d65ae9"
+dependencies = [
+ "regex-automata",
+]
+
+[[package]]
+name = "mctl"
 version = "0.3.1"
 dependencies = [
  "anyhow",
@@ -3661,70 +3674,6 @@ dependencies = [
  "wayland-backend",
  "wayland-client",
  "wayland-scanner",
-]
-
-[[package]]
-name = "margo-layouts"
-version = "0.3.1"
-
-[[package]]
-name = "margo-shell"
-version = "0.3.1"
-dependencies = [
- "allsorts",
- "anyhow",
- "chrono",
- "chrono-tz",
- "clap",
- "flexi_logger",
- "freedesktop-icons",
- "hex_color",
- "i18n-embed",
- "i18n-embed-fl",
- "iced_anim",
- "iced_layershell",
- "image",
- "inotify",
- "itertools 0.14.0",
- "libc",
- "libpulse-binding",
- "linicon-theme",
- "log",
- "margo-ipc",
- "pin-project-lite",
- "pipewire",
- "rand 0.8.6",
- "regex",
- "reqwest",
- "rust-embed",
- "serde",
- "serde_json",
- "serde_with",
- "shellexpand",
- "signal-hook",
- "signal-hook-tokio",
- "smithay-client-toolkit 0.19.2",
- "sysinfo",
- "tokio",
- "tokio-stream",
- "toml 0.9.12+spec-1.1.0",
- "udev",
- "unic-langid",
- "unicode-segmentation",
- "url",
- "wayland-client",
- "wayland-protocols",
- "wayland-protocols-wlr",
- "zbus",
-]
-
-[[package]]
-name = "matchers"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d1525a2a28c7f4fa0fc98bb91ae755d1e2d1505079e05539e35bc876b5d65ae9"
-dependencies = [
- "regex-automata",
 ]
 
 [[package]]
@@ -3864,6 +3813,57 @@ dependencies = [
  "libc",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "mshell"
+version = "0.3.1"
+dependencies = [
+ "allsorts",
+ "anyhow",
+ "chrono",
+ "chrono-tz",
+ "clap",
+ "flexi_logger",
+ "freedesktop-icons",
+ "hex_color",
+ "i18n-embed",
+ "i18n-embed-fl",
+ "iced_anim",
+ "iced_layershell",
+ "image",
+ "inotify",
+ "itertools 0.14.0",
+ "libc",
+ "libpulse-binding",
+ "linicon-theme",
+ "log",
+ "mctl",
+ "pin-project-lite",
+ "pipewire",
+ "rand 0.8.6",
+ "regex",
+ "reqwest",
+ "rust-embed",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "shellexpand",
+ "signal-hook",
+ "signal-hook-tokio",
+ "smithay-client-toolkit 0.19.2",
+ "sysinfo",
+ "tokio",
+ "tokio-stream",
+ "toml 0.9.12+spec-1.1.0",
+ "udev",
+ "unic-langid",
+ "unicode-segmentation",
+ "url",
+ "wayland-client",
+ "wayland-protocols",
+ "wayland-protocols-wlr",
+ "zbus",
 ]
 
 [[package]]

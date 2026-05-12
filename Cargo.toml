@@ -2,13 +2,13 @@
 members = [
     "margo",
     "margo-config",
-    "margo-ipc",
     "margo-layouts",
-    "margo-shell",
+    "mctl",
     "midle",
     "mlayout",
     "mlock",
     "mscreenshot",
+    "mshell",
     "mvisual",
 ]
 resolver = "2"
