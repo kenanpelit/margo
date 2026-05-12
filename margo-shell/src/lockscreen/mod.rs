@@ -14,9 +14,11 @@ pub mod pam;
 use chrono::Local;
 use iced::{
     Alignment, Anchor, Color, Element, Font, KeyboardInteractivity, Layer, LayerShellSettings,
-    Length, Subscription, SurfaceId, Task, Theme,
+    Length, OutputEvent, OutputId, Subscription, SurfaceId, Task, Theme,
+    new_layer_surface,
     widget::{Column, Space, container, image, stack, text, text_input},
 };
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -40,6 +42,8 @@ pub enum Message {
     Submit,
     AuthResult(bool),
     Tick,
+    OutputAdded(OutputId),
+    OutputRemoved(OutputId),
 }
 
 pub struct LockState {
@@ -57,6 +61,12 @@ pub struct LockState {
     /// we defer to the first Tick (when iced has rendered at least
     /// once and the widget Id is known).
     needs_focus: bool,
+    /// Per-output real lock surfaces. The initial `SurfaceId::MAIN`
+    /// surface from `.layer_shell()` is invisible (1×1 Background
+    /// layer) — actual UI lives on these targeted surfaces, one per
+    /// `OutputEvent::Added`. This pattern mirrors what mshell's bar
+    /// uses to cover every monitor.
+    lock_surfaces: HashMap<OutputId, SurfaceId>,
 }
 
 fn boot() -> (LockState, Task<Message>) {
@@ -71,6 +81,7 @@ fn boot() -> (LockState, Task<Message>) {
         now: Local::now(),
         backdrop,
         needs_focus: true,
+        lock_surfaces: HashMap::new(),
     };
     // Don't focus from boot() — the widget tree isn't built yet,
     // so the focus operation no-ops. The first Tick handler picks
@@ -126,20 +137,59 @@ fn update(state: &mut LockState, message: Message) -> Task<Message> {
                 state.fail_message = None;
                 state.fail_clear_at = None;
             }
-            if state.needs_focus {
+            // Focus the password input once at least one real
+            // (per-output) lock surface has been registered AND the
+            // widget tree has been built once (we're past the first
+            // tick). boot()'s task and OutputAdded happen on the same
+            // event-loop turn as registration, before the widget tree
+            // is materialised — so we wait for the very next tick.
+            if state.needs_focus && !state.lock_surfaces.is_empty() {
                 state.needs_focus = false;
-                // First Tick — widget tree has been built at least once,
-                // so the focus operation can now find the password input.
                 return Task::Iced(iced_runtime::widget::operation::focus(
                     iced::widget::Id::new(PWD_ID),
                 ));
             }
             Task::none()
         }
+        Message::OutputAdded(output_id) => {
+            if state.lock_surfaces.contains_key(&output_id) {
+                return Task::none();
+            }
+            // Spawn a fresh Overlay surface anchored to this output.
+            // Each surface is keyboard-Exclusive — Wayland routes
+            // keystrokes to whichever has focus (mouse-over typically).
+            let (sid, task) = new_layer_surface::<Message>(LayerShellSettings {
+                anchor: Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT,
+                layer: Layer::Overlay,
+                exclusive_zone: -1,
+                size: None,
+                keyboard_interactivity: KeyboardInteractivity::Exclusive,
+                namespace: "mshell-lockscreen".into(),
+                output: Some(output_id),
+                ..Default::default()
+            });
+            state.lock_surfaces.insert(output_id, sid);
+            task
+        }
+        Message::OutputRemoved(output_id) => {
+            state.lock_surfaces.remove(&output_id);
+            // The layer surface is auto-destroyed by the compositor
+            // when its output disappears; no explicit destroy needed.
+            Task::none()
+        }
     }
 }
 
-fn view(state: &LockState, _id: SurfaceId) -> Element<'_, Message> {
+fn view(state: &LockState, id: SurfaceId) -> Element<'_, Message> {
+    // The .layer_shell() bootstrap surface (`SurfaceId::MAIN`) exists
+    // only because iced_layershell requires `initial_settings`. Real
+    // lock UI lives on the per-output surfaces created by
+    // `OutputAdded`. Anything we draw on MAIN would just be an
+    // invisible 1×1 anyway — return empty.
+    if id == SurfaceId::MAIN && !state.lock_surfaces.values().any(|&s| s == id) {
+        return Space::new().into();
+    }
+
     let clock_str = state.now.format("%H:%M").to_string();
     let date_str = state.now.format("%A, %-d %B %Y").to_string();
 
@@ -329,10 +379,20 @@ fn center_no_backdrop(state: &LockState) -> Element<'_, Message> {
 }
 
 fn subscription(_state: &LockState) -> Subscription<Message> {
-    // 50 ms tick — drives the first-frame focus retry plus the
-    // visible clock. Once focus settles the cost is negligible
-    // (single now() + no-op update).
-    iced::time::every(Duration::from_millis(50)).map(|_| Message::Tick)
+    // 50 ms tick — drives the first-frame focus retry + the visible
+    // clock. After focus settles it's cheap (single now() + no-op).
+    let tick = iced::time::every(Duration::from_millis(50)).map(|_| Message::Tick);
+
+    // Output events drive per-output lock surface creation. Initial
+    // dispatch fires Added for every already-present output at start,
+    // so all monitors get covered.
+    let outputs = iced::output_events().map(|evt| match evt {
+        OutputEvent::Added(info) => Message::OutputAdded(info.id),
+        OutputEvent::Removed(id) => Message::OutputRemoved(id),
+        _ => Message::Tick,
+    });
+
+    Subscription::batch([tick, outputs])
 }
 
 fn theme(_state: &LockState) -> Theme {
@@ -343,13 +403,19 @@ fn theme(_state: &LockState) -> Theme {
 /// or the user kills the process.
 pub fn run() -> iced::Result {
     iced::application(boot, update, view)
+        // Bootstrap surface — iced_layershell requires
+        // `initial_settings`, but the real lock surfaces live on the
+        // per-output `OutputAdded` path. Make MAIN as inert as
+        // possible: 1×1, no anchors, Background layer (below
+        // everything), no keyboard. View() returns Space::new() for
+        // this surface so nothing is drawn.
         .layer_shell(LayerShellSettings {
-            anchor: Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT,
-            layer: Layer::Overlay,
-            exclusive_zone: -1,
-            size: None,
-            keyboard_interactivity: KeyboardInteractivity::Exclusive,
-            namespace: "mshell-lockscreen".into(),
+            anchor: Anchor::default(),
+            layer: Layer::Background,
+            exclusive_zone: 0,
+            size: Some((1, 1)),
+            keyboard_interactivity: KeyboardInteractivity::None,
+            namespace: "mshell-lockscreen-anchor".into(),
             ..Default::default()
         })
         .subscription(subscription)
