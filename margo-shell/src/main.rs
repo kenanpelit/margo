@@ -16,6 +16,7 @@ mod components;
 mod config;
 mod i18n;
 mod ipc;
+mod matugen;
 mod modules;
 mod osd;
 mod outputs;
@@ -49,6 +50,14 @@ enum Command {
     Msg {
         #[command(subcommand)]
         command: ipc::IpcCommand,
+    },
+    /// Generate a Material You palette from the active output's
+    /// wallpaper (or an explicit path) and live-apply it via
+    /// `~/.config/margo/matugen/config.toml` + `mctl reload`.
+    Matugen {
+        /// Wallpaper image. If omitted, the active output's
+        /// `[wallpaper.tags]` entry for the focused tag is used.
+        wallpaper: Option<PathBuf>,
     },
 }
 
@@ -93,6 +102,14 @@ fn main() -> iced::Result {
     if let Some(Command::Msg { command }) = &args.command {
         if let Err(e) = ipc::run_client(command) {
             eprintln!("Error: {e:#}");
+            std::process::exit(1);
+        }
+        std::process::exit(0);
+    }
+
+    if let Some(Command::Matugen { wallpaper }) = args.command.as_ref() {
+        if let Err(e) = matugen::run_cli(wallpaper.clone()) {
+            eprintln!("mshell matugen: {e:#}");
             std::process::exit(1);
         }
         std::process::exit(0);
