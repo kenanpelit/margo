@@ -7,6 +7,32 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.4.3] – 2026-05-12
+
+### Fixed
+
+- **mshell bar no longer shakes on CPU / network refreshes.**
+  `system_info` (CPU%, Memory%, Temperature) and `network_speed`
+  (Download/Upload) refreshed every 1-3 seconds. Each refresh
+  changed the value's text-width by a digit-advance (5% → 23% →
+  100%) and the bar's `animated_size` wrapper was tweening that
+  width swing over 150 ms — visible as a 1-2 s shake burst every
+  time a background process spiked CPU. Fixed in three layers:
+  * `Font::MONOSPACE` on every numeric bar value — equal advance
+    per digit, so two-digit values are pixel-stable.
+  * `Length::Shrink` (text widget hugs its content) instead of
+    `Length::Fixed` — no leading/trailing slack between an
+    indicator and its neighbour. The earlier "fixed-width"
+    iteration over-padded short values ("9KB/s    62KB/s") so
+    the design read as broken on idle systems.
+  * `build_module_item` now skips the `animated_size` wrap for
+    SystemInfo and NetworkSpeed specifically. Cross-decade
+    width changes still happen ("9%" → "100%") but reflow is
+    instant rather than animated. Other modules (Workspaces tag
+    switch, Notifications badge churn) keep their animation.
+  Measured: 5× fewer state.json content-burst clusters during
+  passive idle, and zero perceptible bar shake.
+
 ## [0.4.2] – 2026-05-12
 
 ### Fixed
