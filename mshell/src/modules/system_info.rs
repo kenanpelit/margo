@@ -9,7 +9,8 @@ use crate::{
     utils,
 };
 use iced::{
-    Alignment, Element, Length, Subscription, Theme,
+    Alignment, Element, Font, Length, Subscription, Theme,
+    alignment::Horizontal,
     time::every,
     widget::{Column, Row, column, container, row, text},
 };
@@ -249,14 +250,26 @@ impl SystemInfo {
         prefix: Option<String>,
     ) -> Element<'a, Message> {
         let (space, bar_font) = use_theme(|t| (t.space, t.bar_font_size));
+        // Fixed-width + monospace so a 5% → 23% → 5% jitter doesn't
+        // expand/contract the text widget by a couple pixels every
+        // refresh (which then chains into the bar's `animated_size`
+        // and produces the 1-2s shake bursts users see on CPU spikes).
+        // 5 chars covers "100°C"/"100%"; with a prefix bump to 9
+        // ("swap 100%"). Char width = bar_font * 0.62 + tiny buffer.
+        let value_chars = if prefix.is_some() { 9.0 } else { 5.0 };
+        let value_width = Length::Fixed(bar_font * 0.62 * value_chars + 3.0);
+        let value_text = match &prefix {
+            Some(p) => format!("{p} {display}{unit}"),
+            None => format!("{display}{unit}"),
+        };
         let element = container(
             row!(
                 icon(info_icon).size(bar_font),
-                if let Some(prefix) = prefix {
-                    text(format!("{prefix} {display}{unit}")).size(bar_font)
-                } else {
-                    text(format!("{display}{unit}")).size(bar_font)
-                }
+                text(value_text)
+                    .size(bar_font)
+                    .font(Font::MONOSPACE)
+                    .width(value_width)
+                    .align_x(Horizontal::Right)
             )
             .spacing(space.xxs),
         );

@@ -28,7 +28,8 @@ use crate::{
     theme::use_theme,
 };
 use iced::{
-    Alignment, Element, Length, Subscription, Theme,
+    Alignment, Element, Font, Length, Subscription, Theme,
+    alignment::Horizontal,
     time::every,
     widget::{Column, Row, column, container, row, text},
 };
@@ -204,10 +205,19 @@ impl NetworkSpeed {
         threshold: Option<(u32, u32, u32)>,
     ) -> Element<'a, Message> {
         let (space, bar_font) = use_theme(|t| (t.space, t.bar_font_size));
+        // Fixed-width + monospace so a 1 KB/s → 999 KB/s digit jump
+        // doesn't grow/shrink the text widget by 4-8px and trigger
+        // the bar's animated_size jitter. Width covers 5 chars
+        // ("9999K", "12.3M") at the typical bar_font.
+        let value_width = Length::Fixed(bar_font * 0.62 * 5.0 + 3.0);
         let body = container(
             row!(
                 icon(ico).size(bar_font),
-                text(format!("{display}{unit}")).size(bar_font)
+                text(format!("{display}{unit}"))
+                    .size(bar_font)
+                    .font(Font::MONOSPACE)
+                    .width(value_width)
+                    .align_x(Horizontal::Right)
             )
             .spacing(space.xxs),
         );
