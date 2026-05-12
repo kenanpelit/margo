@@ -11,6 +11,7 @@ use iced::{Alignment, Element, Length, Subscription, SurfaceId, widget::Row};
 pub mod custom_module;
 pub mod keyboard_layout;
 pub mod media_player;
+pub mod network_speed;
 pub mod notifications;
 pub mod privacy;
 pub mod settings;
@@ -199,6 +200,10 @@ impl App {
                 self.system_info.view().map(Message::SystemInfo),
                 Some(OnModulePress::ToggleMenu(MenuType::SystemInfo)),
             )),
+            ModuleName::NetworkSpeed => Some((
+                self.network_speed.view().map(Message::NetworkSpeed),
+                None,
+            )),
             ModuleName::KeyboardLayout => self.keyboard_layout.view().map(|view| {
                 (
                     view.map(Message::KeyboardLayout),
@@ -262,6 +267,9 @@ impl App {
             }
             ModuleName::SystemInfo => {
                 Some(self.system_info.subscription().map(Message::SystemInfo))
+            }
+            ModuleName::NetworkSpeed => {
+                Some(self.network_speed.subscription().map(Message::NetworkSpeed))
             }
             ModuleName::KeyboardLayout => Some(
                 self.keyboard_layout

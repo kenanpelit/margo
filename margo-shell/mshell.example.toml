@@ -84,8 +84,8 @@ interval_secs = 0                              # 0 = sadece başlangıçta seç;
 left   = [["Workspaces"], "WindowTitle"]
 center = ["MediaPlayer", "Tempo"]
 right  = [
-  ["Custom:netspeed", "Custom:vpn"],
-  ["SystemInfo", "Settings"],
+  ["Custom:vpn"],
+  ["NetworkSpeed", "SystemInfo", "Settings"],
   "Tray",
   "Privacy",
   "Notifications",
@@ -111,15 +111,14 @@ mode                        = "Title"          # "Title" / "Class"
 truncate_title_after_length = 60
 
 # ══════════════════════════════════════════════════════════════════════════
-#  System info — CPU + RAM + Temp + IP + Download/Upload
+#  System info — CPU + RAM + Temp + IP (DownloadSpeed/UploadSpeed
+#  artık ayrı [network_speed] modülünde)
 # ══════════════════════════════════════════════════════════════════════════
 [system_info]
 indicators = [
   "Cpu",
   "Memory",
   "Temperature",
-  "DownloadSpeed",
-  "UploadSpeed",
 ]
 interval = 3
 
@@ -143,6 +142,19 @@ warn_threshold  = 80
 alert_threshold = 92
 format          = "Percentage"
 mounts          = ["/", "/home"]             # opsiyonel disk listesi
+
+# ══════════════════════════════════════════════════════════════════════════
+#  Network speed — bar'da indirme/yükleme hızı (system_info'dan ayrı,
+#  kısa interval ve KB/s-tabanlı eşikler)
+# ══════════════════════════════════════════════════════════════════════════
+[network_speed]
+indicators = ["Download", "Upload"]          # ["Download"] tek yön de OK
+interval   = 2                               # saniye
+unit       = "Auto"                          # "Auto" | "Kbps" | "Mbps"
+download_warn_kbps  = 5000                   # 5 MB/s üstü → warn rengi
+download_alert_kbps = 20000                  # 20 MB/s üstü → alert rengi
+upload_warn_kbps    = 2000
+upload_alert_kbps   = 10000
 
 # ══════════════════════════════════════════════════════════════════════════
 #  Tempo — saat + hava + zaman dilimi cycle

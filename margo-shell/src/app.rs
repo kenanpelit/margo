@@ -10,6 +10,7 @@ use crate::{
         custom_module::{self, Custom},
         keyboard_layout::KeyboardLayout,
         media_player::MediaPlayer,
+        network_speed::NetworkSpeed,
         notifications::Notifications,
         privacy::Privacy,
         settings::{self, Settings, audio},
@@ -62,6 +63,7 @@ pub struct App {
     pub workspaces: Workspaces,
     pub window_title: WindowTitle,
     pub system_info: SystemInfo,
+    pub network_speed: NetworkSpeed,
     pub keyboard_layout: KeyboardLayout,
     pub tray: TrayModule,
     pub tempo: Tempo,
@@ -102,6 +104,7 @@ pub enum Message {
     Workspaces(modules::workspaces::Message),
     WindowTitle(modules::window_title::Message),
     SystemInfo(modules::system_info::Message),
+    NetworkSpeed(modules::network_speed::Message),
     KeyboardLayout(modules::keyboard_layout::Message),
     Tray(modules::tray::Message),
     Tempo(modules::tempo::Message),
@@ -254,6 +257,7 @@ impl App {
                     workspaces: Workspaces::new(config.workspaces),
                     window_title: WindowTitle::new(config.window_title),
                     system_info: SystemInfo::new(config.system_info),
+                    network_speed: NetworkSpeed::new(config.network_speed),
                     keyboard_layout: KeyboardLayout::new(config.keyboard_layout),
                     tray: TrayModule::new(config.tray),
                     tempo: Tempo::new(config.tempo),
@@ -311,6 +315,7 @@ impl App {
             ));
 
         self.system_info = SystemInfo::new(config.system_info);
+        self.network_speed = NetworkSpeed::new(config.network_speed);
 
         let _ = self
             .keyboard_layout
@@ -521,6 +526,10 @@ impl App {
             Message::Workspaces(msg) => self.workspaces.update(msg).map(Message::Workspaces),
             Message::WindowTitle(msg) => {
                 self.window_title.update(msg);
+                Task::none()
+            }
+            Message::NetworkSpeed(msg) => {
+                self.network_speed.update(msg);
                 Task::none()
             }
             Message::SystemInfo(msg) => {

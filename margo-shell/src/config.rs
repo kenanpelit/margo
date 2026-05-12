@@ -36,6 +36,7 @@ pub struct Config {
     pub workspaces: WorkspacesModuleConfig,
     pub window_title: WindowTitleConfig,
     pub system_info: SystemInfoModuleConfig,
+    pub network_speed: NetworkSpeedModuleConfig,
     pub notifications: NotificationsModuleConfig,
     pub tray: TrayModuleConfig,
     pub tempo: TempoModuleConfig,
@@ -63,6 +64,7 @@ impl Default for Config {
             workspaces: WorkspacesModuleConfig::default(),
             window_title: WindowTitleConfig::default(),
             system_info: SystemInfoModuleConfig::default(),
+            network_speed: NetworkSpeedModuleConfig::default(),
             notifications: NotificationsModuleConfig::default(),
             tray: TrayModuleConfig::default(),
             tempo: TempoModuleConfig::default(),
@@ -202,6 +204,7 @@ impl Config {
             updates.validate();
         }
         self.system_info.validate();
+        self.network_speed.validate();
     }
 }
 
@@ -459,8 +462,6 @@ pub enum SystemInfoIndicator {
     MemorySwap,
     Temperature,
     IpAddress,
-    DownloadSpeed,
-    UploadSpeed,
     #[serde(untagged)]
     Disk(SystemInfoDiskIndicatorConfig),
 }
@@ -507,6 +508,71 @@ impl Default for SystemInfoModuleConfig {
             memory: SystemInfoMemory::default(),
             temperature: SystemInfoTemperature::default(),
             disk: SystemInfoDisk::default(),
+        }
+    }
+}
+
+// ─── NetworkSpeed module ─────────────────────────────────────────────────────
+// system_info'dan ayırılmış indirme/yükleme hızı modülü. Kendi
+// interval'ı, kendi eşikleri var. Aktif/Kapalı durumu modules.left/right
+// listesinde NetworkSpeed olarak kullanılarak belirlenir.
+
+#[derive(Deserialize, Clone, Debug, PartialEq, Eq)]
+pub enum NetworkSpeedIndicator {
+    Download,
+    Upload,
+}
+
+#[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum NetworkSpeedUnit {
+    /// Otomatik: <1000 KB/s → KB/s, ≥1000 → MB/s
+    #[default]
+    Auto,
+    Kbps,
+    Mbps,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+#[serde(default)]
+pub struct NetworkSpeedModuleConfig {
+    pub indicators: Vec<NetworkSpeedIndicator>,
+    #[serde(default = "NetworkSpeedModuleConfig::default_interval")]
+    pub interval: u64,
+    pub unit: NetworkSpeedUnit,
+    /// İndirme hızının KB/s cinsinden warn eşiği.
+    pub download_warn_kbps: u32,
+    /// İndirme hızının KB/s cinsinden alert eşiği.
+    pub download_alert_kbps: u32,
+    pub upload_warn_kbps: u32,
+    pub upload_alert_kbps: u32,
+}
+
+impl NetworkSpeedModuleConfig {
+    const fn default_interval() -> u64 {
+        2
+    }
+
+    fn validate(&mut self) {
+        if self.interval == 0 {
+            warn!("NetworkSpeedModuleConfig.interval is 0, setting to 1");
+            self.interval = 1;
+        }
+    }
+}
+
+impl Default for NetworkSpeedModuleConfig {
+    fn default() -> Self {
+        Self {
+            indicators: vec![
+                NetworkSpeedIndicator::Download,
+                NetworkSpeedIndicator::Upload,
+            ],
+            interval: Self::default_interval(),
+            unit: NetworkSpeedUnit::default(),
+            download_warn_kbps: 5_000,    // 5 MB/s
+            download_alert_kbps: 20_000,  // 20 MB/s
+            upload_warn_kbps: 2_000,      // 2 MB/s
+            upload_alert_kbps: 10_000,    // 10 MB/s
         }
     }
 }
@@ -1033,6 +1099,7 @@ pub enum ModuleName {
     Workspaces,
     WindowTitle,
     SystemInfo,
+    NetworkSpeed,
     KeyboardLayout,
     Tray,
     Tempo,
@@ -1063,6 +1130,7 @@ impl<'de> Deserialize<'de> for ModuleName {
                     "Workspaces" => ModuleName::Workspaces,
                     "WindowTitle" => ModuleName::WindowTitle,
                     "SystemInfo" => ModuleName::SystemInfo,
+                    "NetworkSpeed" => ModuleName::NetworkSpeed,
                     "KeyboardLayout" => ModuleName::KeyboardLayout,
                     "Tray" => ModuleName::Tray,
                     "Notifications" => ModuleName::Notifications,

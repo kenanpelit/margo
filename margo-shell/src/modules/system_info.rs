@@ -597,44 +597,6 @@ impl SystemInfo {
                     None,
                 )
             }),
-            SystemInfoIndicator::DownloadSpeed => self.data.network.as_ref().map(|network| {
-                Self::indicator_info_element(
-                    StaticIcon::DownloadSpeed,
-                    (
-                        if network.download_speed > 1000 {
-                            network.download_speed / 1000
-                        } else {
-                            network.download_speed
-                        },
-                        if network.download_speed > 1000 {
-                            "MB/s"
-                        } else {
-                            "KB/s"
-                        },
-                    ),
-                    None::<(u32, u32, u32)>,
-                    None,
-                )
-            }),
-            SystemInfoIndicator::UploadSpeed => self.data.network.as_ref().map(|network| {
-                Self::indicator_info_element(
-                    StaticIcon::UploadSpeed,
-                    (
-                        if network.upload_speed > 1000 {
-                            network.upload_speed / 1000
-                        } else {
-                            network.upload_speed
-                        },
-                        if network.upload_speed > 1000 {
-                            "MB/s"
-                        } else {
-                            "KB/s"
-                        },
-                    ),
-                    None::<(u32, u32, u32)>,
-                    None,
-                )
-            }),
         });
 
         Row::with_children(indicators)
