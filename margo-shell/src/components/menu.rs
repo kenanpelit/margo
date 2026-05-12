@@ -9,6 +9,17 @@ use iced::{
     OutputId, Padding, Pixels, Shadow, SurfaceId, Task, Theme, Vector, destroy_layer_surface,
     new_layer_surface, set_keyboard_interactivity, widget::container,
 };
+use std::time::Instant;
+
+/// Menu open-animation duration in milliseconds.
+pub const MENU_OPEN_ANIM_MS: u64 = 180;
+/// Pixel distance the menu slides during open animation.
+const MENU_SLIDE_PX: f32 = 12.0;
+
+fn ease_out_cubic(t: f32) -> f32 {
+    let t = t.clamp(0.0, 1.0);
+    1.0 - (1.0 - t).powi(3)
+}
 
 #[derive(Eq, PartialEq, Clone, Debug)]
 pub enum MenuType {
@@ -31,6 +42,32 @@ pub struct OpenMenu {
     pub id: SurfaceId,
     pub menu_type: MenuType,
     pub button_ui_ref: ButtonUIRef,
+    /// Wall-clock instant of the `Menu::open` call. Used to drive
+    /// the open fade+slide animation in `App::menu_wrapper`.
+    pub open_at: Instant,
+}
+
+impl OpenMenu {
+    fn open_progress(&self) -> f32 {
+        let elapsed = self.open_at.elapsed().as_millis() as f32;
+        (elapsed / MENU_OPEN_ANIM_MS as f32).clamp(0.0, 1.0)
+    }
+
+    /// 0.0 right after open → 1.0 once the fade completes.
+    pub fn opacity(&self) -> f32 {
+        ease_out_cubic(self.open_progress())
+    }
+
+    /// Pixels the menu is offset from its resting position. Positive
+    /// = slide down from above (the caller flips the sign for a
+    /// bottom-anchored bar).
+    pub fn slide_y(&self) -> f32 {
+        MENU_SLIDE_PX * (1.0 - self.opacity())
+    }
+
+    pub fn is_open_animating(&self) -> bool {
+        self.open_progress() < 1.0
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -78,6 +115,7 @@ impl Menu {
             id: menu_id,
             menu_type,
             button_ui_ref,
+            open_at: Instant::now(),
         });
         task
     }
@@ -165,6 +203,19 @@ impl From<MenuSize> for Pixels {
 }
 
 impl App {
+    /// Animation state for the open menu identified by `id`. Returns
+    /// `(opacity, slide_y_px)` — `slide_y_px` is the distance the
+    /// menu is offset from its resting position (positive = below
+    /// resting, so we *add* to top padding on a top-anchored bar
+    /// to slide the menu down into view).
+    fn menu_anim_state(&self, id: SurfaceId) -> (f32, f32) {
+        let opacity_slide = self
+            .outputs
+            .find_menu(id)
+            .map(|om| (om.opacity(), om.slide_y()));
+        opacity_slide.unwrap_or((1.0, 0.0))
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn menu_wrapper<'a>(
         &'a self,
@@ -184,19 +235,25 @@ impl App {
                 )
             });
 
+        let (anim_alpha, slide_y) = self.menu_anim_state(id);
+        let combined_alpha = menu_opacity * anim_alpha;
+        let backdrop_alpha = anim_alpha;
+
         components::MenuWrapper::new(
             button_ui_ref.position.x,
             container(content)
                 .padding(space.md)
                 .style(move |theme: &Theme| Style {
-                    background: Some(theme.palette().background.scale_alpha(menu_opacity).into()),
+                    background: Some(
+                        theme.palette().background.scale_alpha(combined_alpha).into(),
+                    ),
                     border: Border {
                         color: theme
                             .extended_palette()
                             .background
                             .weakest
                             .color
-                            .scale_alpha(menu_opacity),
+                            .scale_alpha(combined_alpha),
                         width: 1.,
                         radius: radius.lg.into(),
                     },
@@ -204,7 +261,12 @@ impl App {
                     // y-offset follows the bar position so the shadow
                     // always casts away from the anchored edge.
                     shadow: Shadow {
-                        color: Color { r: 0., g: 0., b: 0., a: 0.45 },
+                        color: Color {
+                            r: 0.,
+                            g: 0.,
+                            b: 0.,
+                            a: 0.45 * anim_alpha,
+                        },
                         offset: Vector::new(
                             0.,
                             match bar_position {
@@ -223,25 +285,27 @@ impl App {
             let v_padding = match bar_style {
                 AppearanceStyle::Solid | AppearanceStyle::Gradient => 2,
                 AppearanceStyle::Islands => 0,
-            };
+            } as f32;
 
+            // Slide-in: while opening, push the menu away from its
+            // anchor by `slide_y` px. Animation eases this back to 0.
             Padding::new(0.)
                 .top(if bar_position == Position::Top {
-                    v_padding
+                    v_padding + slide_y
                 } else {
-                    0
+                    0.0
                 })
                 .bottom(if bar_position == Position::Bottom {
-                    v_padding
+                    v_padding + slide_y
                 } else {
-                    0
+                    0.0
                 })
         })
         .align_y(match bar_position {
             Position::Top => Vertical::Top,
             Position::Bottom => Vertical::Bottom,
         })
-        .backdrop(backdrop_color(menu_backdrop))
+        .backdrop(backdrop_color(menu_backdrop).scale_alpha(backdrop_alpha))
         .on_click_outside(app::Message::CloseMenu(id))
         .into()
     }

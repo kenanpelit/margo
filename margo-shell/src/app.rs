@@ -1257,6 +1257,17 @@ impl App {
             } else {
                 Subscription::none()
             },
+            // Menu open animation tick — only active while a menu is
+            // inside its open-fade window. Drives the per-frame view
+            // rebuilds so opacity / slide_y interpolate smoothly. The
+            // subscription auto-dies once `any_menu_animating()`
+            // returns false (which is fast — only the first ~180ms
+            // after a menu pops open).
+            if self.outputs.any_menu_animating() {
+                iced::time::every(std::time::Duration::from_millis(16)).map(|_| Message::None)
+            } else {
+                Subscription::none()
+            },
             iced::output_events().map(Message::OutputEvent),
             listen_with(move |evt, _, _| match evt {
                 iced::event::Event::Keyboard(keyboard::Event::KeyPressed { key, .. }) => {

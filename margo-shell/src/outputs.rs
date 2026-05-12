@@ -460,6 +460,28 @@ impl Outputs {
         })
     }
 
+    /// Look up the `OpenMenu` whose surface id is `id`. Returns
+    /// `None` if `id` doesn't belong to any open menu (e.g. it's a
+    /// bar surface) or no menu is open on the matching output.
+    pub fn find_menu(&self, id: SurfaceId) -> Option<&crate::components::menu::OpenMenu> {
+        self.find_by_surface_id(id)
+            .and_then(|(_, si, _)| si.as_ref())
+            .and_then(|si| si.menu.open.as_ref())
+            .filter(|om| om.id == id)
+    }
+
+    /// True if any open menu is still inside its open-animation
+    /// window. Drives the 60 fps subscription in `App::subscription`
+    /// so the fade/slide gets per-frame redraws.
+    pub fn any_menu_animating(&self) -> bool {
+        self.0.iter().any(|(_, shell_info, _)| {
+            shell_info
+                .as_ref()
+                .and_then(|si| si.menu.open.as_ref())
+                .is_some_and(|om| om.is_open_animating())
+        })
+    }
+
     fn find_by_surface_id_mut(
         &mut self,
         id: SurfaceId,
