@@ -7,6 +7,47 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.4.4] – 2026-05-13
+
+### Removed
+
+- **`mshell` crate.** The iced-then-GTK4 bar / notifications / OSD /
+  settings / system-tray stack is gone. margo no longer paints any
+  shell chrome of its own; the bar, launcher, notification daemon,
+  OSD, and settings panels are delegated to any `dwl-ipc-v2` client
+  (noctalia, waybar-dwl, fnott, …). The compositor side of
+  `dwl-ipc-v2` is unchanged.
+- **`midle` crate.** Idle management moves out of the workspace.
+  Any `ext-idle-notify-v1` client (swayidle, hypridle, stasis, …)
+  works as a drop-in.
+- **Matugen integration.** `mshell matugen`, the
+  `~/.cache/margo/margo-colors.conf` `source =` hook, and the
+  associated PKGBUILD wiring are removed. The Catppuccin Mocha
+  default palette stands on its own; bring your own colour generator
+  if you want Material You.
+- **mlock `mshell.toml` wallpaper fallback.** Wallpaper resolution
+  inside `mlock` now reads exactly one source — `state.json`'s active
+  output `wallpaper` field — and falls through to the solid dark
+  backdrop on miss. `toml` is dropped from `mlock`'s `Cargo.toml`.
+
+### Changed
+
+- **README rewrite.** Intro, binary table, install paths, file-layout
+  block, `At a glance` recipe list, scripting example, and
+  acknowledgements are now consistent with the six-binary scope. The
+  `dwl-ipc-v2` bullet was promoted to call out external-shell
+  integration explicitly.
+- **PKGBUILD overhaul.** `depends=` lost the panel-only runtime
+  pulls (`libpulse`, `pipewire`) and gained the previously-implicit
+  `pam` / `cairo` / `pango` (mlock's actual link-time set).
+  `optdepends=` dropped eleven panel-only recommendations
+  (`networkmanager`, `iwd`, `bluez`, `bluez-utils`, `pipewire-pulse`,
+  `wireplumber`, `pavucontrol`, `nm-connection-editor`, `blueman`,
+  `ttf-jetbrains-mono-nerd`, `checkupdates`) and gained
+  `noctalia-shell-git` + `fnott` as the suggested external shells.
+  `package()` walks a six-binary install loop, ships a hicolor
+  scalable icon, and installs the Rhai init template.
+
 ## [0.4.3] – 2026-05-12
 
 ### Fixed
