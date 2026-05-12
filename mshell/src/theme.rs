@@ -774,12 +774,14 @@ impl MshellTheme {
         }
     }
 
-    /// Module button style: transparent base with hover highlight.
-    /// The Islands background is handled by `module_group`, not the button.
+    /// Module button style. Transparent base, accent-tinted hover,
+    /// brighter accent pressed — gives the bar a "live" feel without
+    /// the harsh swatches you get from naked primary backgrounds.
+    /// The Islands background is handled by `module_group`, not here.
     pub fn module_button_style(&self) -> impl Fn(&Theme, Status) -> button::Style + use<> {
         let radius_lg = self.radius.lg;
-        let opacity = self.opacity;
         move |theme, status| {
+            let primary = theme.palette().primary;
             let mut base = button::Style {
                 background: None,
                 border: Border {
@@ -791,20 +793,25 @@ impl MshellTheme {
                 ..button::Style::default()
             };
             match status {
-                Status::Active => base,
+                Status::Active | Status::Disabled => base,
                 Status::Hovered => {
-                    base.background = Some(
-                        theme
-                            .extended_palette()
-                            .background
-                            .weak
-                            .color
-                            .scale_alpha(opacity)
-                            .into(),
-                    );
+                    base.background = Some(primary.scale_alpha(0.14).into());
+                    base.border = Border {
+                        width: 1.0,
+                        radius: radius_lg.into(),
+                        color: primary.scale_alpha(0.45),
+                    };
                     base
                 }
-                _ => base,
+                Status::Pressed => {
+                    base.background = Some(primary.scale_alpha(0.28).into());
+                    base.border = Border {
+                        width: 1.0,
+                        radius: radius_lg.into(),
+                        color: primary.scale_alpha(0.65),
+                    };
+                    base
+                }
             }
         }
     }

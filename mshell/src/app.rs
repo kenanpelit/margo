@@ -31,8 +31,8 @@ use crate::{
 };
 use flexi_logger::LoggerHandle;
 use iced::{
-    Alignment, Color, Element, Gradient, Length, OutputEvent, Radians, Subscription, SurfaceId,
-    Task, Theme,
+    Alignment, Border, Color, Element, Gradient, Length, OutputEvent, Radians, Shadow, Subscription,
+    SurfaceId, Task, Theme, Vector,
     event::listen_with,
     gradient::Linear,
     keyboard, set_exclusive_zone,
@@ -1001,60 +1001,107 @@ impl App {
                     });
 
                 let menu_is_open = self.outputs.menu_is_open();
-                let status_bar = container(centerbox).style(move |t: &Theme| container::Style {
-                    background: match bar_style {
-                        AppearanceStyle::Gradient => Some({
-                            let start_color = t.palette().background.scale_alpha(opacity);
-
-                            let start_color = if menu_is_open {
-                                darken_color(start_color, menu.backdrop)
-                            } else {
-                                start_color
-                            };
-
-                            let end_color = if menu_is_open {
-                                backdrop_color(menu.backdrop)
-                            } else {
-                                Color::TRANSPARENT
-                            };
-
-                            Gradient::Linear(
-                                Linear::new(Radians(PI))
-                                    .add_stop(
-                                        0.0,
-                                        match bar_position {
-                                            Position::Top => start_color,
-                                            Position::Bottom => end_color,
-                                        },
-                                    )
-                                    .add_stop(
-                                        1.0,
-                                        match bar_position {
-                                            Position::Top => end_color,
-                                            Position::Bottom => start_color,
-                                        },
-                                    ),
-                            )
-                            .into()
-                        }),
-                        AppearanceStyle::Solid => Some({
-                            let bg = t.palette().background.scale_alpha(opacity);
-                            if menu_is_open {
-                                darken_color(bg, menu.backdrop)
-                            } else {
-                                bg
-                            }
-                            .into()
-                        }),
-                        AppearanceStyle::Islands => {
-                            if menu_is_open {
-                                Some(backdrop_color(menu.backdrop).into())
-                            } else {
-                                None
+                let status_bar = container(centerbox).style(move |t: &Theme| {
+                    // Solid mode gets a hairline edge on the side
+                    // closest to the desktop (bottom-of-top-bar /
+                    // top-of-bottom-bar) so the bar reads as a
+                    // surface and not a flat colour smear. Islands
+                    // already have per-capsule borders + shadows.
+                    let edge_color = t
+                        .extended_palette()
+                        .background
+                        .strong
+                        .color
+                        .scale_alpha(0.55);
+                    let edge_border = match bar_style {
+                        AppearanceStyle::Solid => Border {
+                            width: 0.0,
+                            radius: 0.0.into(),
+                            color: edge_color,
+                        },
+                        _ => Border::default(),
+                    };
+                    // Subtle drop shadow under solid/gradient bars —
+                    // gives depth against the wallpaper. Islands have
+                    // their own per-capsule shadow, no global one.
+                    let bar_shadow = match bar_style {
+                        AppearanceStyle::Solid | AppearanceStyle::Gradient
+                            if !menu_is_open =>
+                        {
+                            Shadow {
+                                color: Color { r: 0., g: 0., b: 0., a: 0.28 },
+                                offset: Vector::new(
+                                    0.0,
+                                    match bar_position {
+                                        Position::Top => 4.0,
+                                        Position::Bottom => -4.0,
+                                    },
+                                ),
+                                blur_radius: 12.0,
                             }
                         }
-                    },
-                    ..Default::default()
+                        _ => Shadow::default(),
+                    };
+
+                    container::Style {
+                        background: match bar_style {
+                            AppearanceStyle::Gradient => Some({
+                                let start_color =
+                                    t.palette().background.scale_alpha(opacity);
+
+                                let start_color = if menu_is_open {
+                                    darken_color(start_color, menu.backdrop)
+                                } else {
+                                    start_color
+                                };
+
+                                let end_color = if menu_is_open {
+                                    backdrop_color(menu.backdrop)
+                                } else {
+                                    Color::TRANSPARENT
+                                };
+
+                                Gradient::Linear(
+                                    Linear::new(Radians(PI))
+                                        .add_stop(
+                                            0.0,
+                                            match bar_position {
+                                                Position::Top => start_color,
+                                                Position::Bottom => end_color,
+                                            },
+                                        )
+                                        .add_stop(
+                                            1.0,
+                                            match bar_position {
+                                                Position::Top => end_color,
+                                                Position::Bottom => start_color,
+                                            },
+                                        ),
+                                )
+                                .into()
+                            }),
+                            AppearanceStyle::Solid => Some({
+                                let bg =
+                                    t.palette().background.scale_alpha(opacity);
+                                if menu_is_open {
+                                    darken_color(bg, menu.backdrop)
+                                } else {
+                                    bg
+                                }
+                                .into()
+                            }),
+                            AppearanceStyle::Islands => {
+                                if menu_is_open {
+                                    Some(backdrop_color(menu.backdrop).into())
+                                } else {
+                                    None
+                                }
+                            }
+                        },
+                        border: edge_border,
+                        shadow: bar_shadow,
+                        ..Default::default()
+                    }
                 });
 
                 if self.outputs.menu_is_open() {
