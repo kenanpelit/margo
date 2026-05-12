@@ -56,6 +56,8 @@ impl MlockSurface {
         qh: &QueueHandle<MlockState>,
         seat_state: &SeatState,
         user: &str,
+        wallpaper: Option<&image::RgbaImage>,
+        avatar: Option<&image::RgbaImage>,
     ) -> Result<()> {
         if self.width == 0 || self.height == 0 {
             return Ok(());
@@ -94,6 +96,8 @@ impl MlockSurface {
             stride,
             seat_state,
             user,
+            wallpaper,
+            avatar,
         )?;
 
         // Hand the buffer off to the compositor. wl_shm_pool needs an

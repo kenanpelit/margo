@@ -21,6 +21,17 @@ use crate::surface::MlockSurface;
 pub struct MlockState {
     #[allow(dead_code)]
     pub conn: Connection,
+    /// Decoded + blurred wallpaper for the active output. Loaded once
+    /// at startup and shared across all per-output surfaces (cairo
+    /// scales it to fit each one). `None` if no wallpaper is set or
+    /// the path didn't decode.
+    pub wallpaper: Option<image::RgbaImage>,
+    /// Pre-loaded user avatar (192×192 RGBA). `None` if neither
+    /// `~/.face` nor `AccountsService` provided one.
+    pub avatar: Option<image::RgbaImage>,
+    /// Minute-precision wall clock — bumped by `tick()` so we can
+    /// avoid full re-renders when nothing changed.
+    last_minute: u32,
 
     // Required globals — all populated during the initial roundtrip.
     pub compositor: Option<wl_compositor::WlCompositor>,
@@ -64,8 +75,24 @@ impl MlockState {
         let user = crate::auth::current_user()
             .unwrap_or_else(|| std::env::var("USER").unwrap_or_else(|_| "user".to_string()));
 
+        // Load + blur the wallpaper once. Cheap fail mode — `None`
+        // means render.rs draws the solid dark fallback instead.
+        let wallpaper = crate::wallpaper::load_blurred();
+        if wallpaper.is_some() {
+            info!("wallpaper backdrop loaded");
+        } else {
+            warn!("no wallpaper backdrop — using solid fallback");
+        }
+        let avatar = crate::wallpaper::load_avatar(&user);
+        if avatar.is_some() {
+            info!("avatar loaded (~/.face or AccountsService)");
+        }
+
         let mut state = Self {
             conn: conn.clone(),
+            wallpaper,
+            avatar,
+            last_minute: 0,
             compositor: None,
             shm: None,
             seat: None,
@@ -194,9 +221,6 @@ impl MlockState {
         let password = std::mem::take(&mut self.seat_state.password);
         self.seat_state.fail_message = None;
 
-        // PAM call is synchronous; runs on the main thread for now.
-        // The lock loop blocks during this (~50-300 ms typical) but
-        // since we're already blocked on keyboard input this is fine.
         match crate::auth::authenticate(&self.user, &password) {
             Ok(()) => {
                 info!("authentication succeeded");
@@ -204,9 +228,44 @@ impl MlockState {
             }
             Err(e) => {
                 warn!("authentication failed: {e}");
-                self.seat_state.fail_message = Some("Yanlış parola".to_string());
+                self.seat_state.fail_count = self.seat_state.fail_count.saturating_add(1);
+                self.seat_state.fail_message = Some(
+                    if self.seat_state.fail_count > 1 {
+                        format!("Yanlış parola · {} deneme", self.seat_state.fail_count)
+                    } else {
+                        "Yanlış parola".to_string()
+                    },
+                );
+                // Trigger a ~400 ms shake animation.
+                self.seat_state.shake_until = Some(
+                    std::time::Instant::now() + std::time::Duration::from_millis(400),
+                );
                 self.request_redraw_all();
             }
+        }
+    }
+
+    /// Bump anything that's time-based (clock minute, fading shake)
+    /// and flag surfaces for redraw when the visible state changes.
+    /// Called from the main poll loop once per timer expiration.
+    pub fn tick(&mut self) {
+        use chrono::Timelike;
+        let minute = chrono::Local::now().minute();
+        let mut dirty = false;
+        if minute != self.last_minute {
+            self.last_minute = minute;
+            dirty = true;
+        }
+        if self.seat_state.shake_until.is_some() {
+            // Shake forces 16 ms ticks; mark dirty until it elapses,
+            // then clear the deadline.
+            if !self.seat_state.is_shaking() {
+                self.seat_state.shake_until = None;
+            }
+            dirty = true;
+        }
+        if dirty {
+            self.request_redraw_all();
         }
     }
 
@@ -228,7 +287,14 @@ impl MlockState {
         let shm = self.shm.as_ref().context("shm missing")?;
         for surface in self.surfaces.iter_mut() {
             if surface.needs_redraw && surface.configured {
-                surface.render(shm, qh, &self.seat_state, &self.user)?;
+                surface.render(
+                    shm,
+                    qh,
+                    &self.seat_state,
+                    &self.user,
+                    self.wallpaper.as_ref(),
+                    self.avatar.as_ref(),
+                )?;
             }
         }
         Ok(())
@@ -440,8 +506,17 @@ impl Dispatch<ext_session_lock_surface_v1::ExtSessionLockSurfaceV1, usize> for M
             }
             if let Some(shm) = state.shm.clone() {
                 let user = state.user.clone();
+                let wallpaper = state.wallpaper.clone();
+                let avatar = state.avatar.clone();
                 if let Some(surface) = state.surfaces.get_mut(*idx) {
-                    match surface.render(&shm, qh, &state.seat_state, &user) {
+                    match surface.render(
+                        &shm,
+                        qh,
+                        &state.seat_state,
+                        &user,
+                        wallpaper.as_ref(),
+                        avatar.as_ref(),
+                    ) {
                         Ok(()) => info!(idx, "initial render dispatched"),
                         Err(e) => warn!(idx, "initial render failed: {e:#}"),
                     }

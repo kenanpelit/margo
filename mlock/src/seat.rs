@@ -19,6 +19,15 @@ pub struct SeatState {
     pub xkb_state: Option<xkb::State>,
     pub password: String,
     pub fail_message: Option<String>,
+    /// True when Caps Lock is engaged — shown in the UI so the user
+    /// notices before submitting a wrong password.
+    pub caps_lock: bool,
+    /// Number of failed auth attempts in this session. Visible to
+    /// the user as a deterrent + warning.
+    pub fail_count: u32,
+    /// While `Some(deadline)`, the card is shaking. The renderer
+    /// uses Instant::now() vs deadline to compute the offset.
+    pub shake_until: Option<std::time::Instant>,
 }
 
 impl SeatState {
@@ -30,6 +39,16 @@ impl SeatState {
             xkb_state: None,
             password: String::new(),
             fail_message: None,
+            caps_lock: false,
+            fail_count: 0,
+            shake_until: None,
+        }
+    }
+
+    pub fn is_shaking(&self) -> bool {
+        match self.shake_until {
+            Some(t) => std::time::Instant::now() < t,
+            None => false,
         }
     }
 }
@@ -78,6 +97,13 @@ pub fn handle_keyboard_event(
         } => {
             if let Some(xkb_state) = state.seat_state.xkb_state.as_mut() {
                 xkb_state.update_mask(mods_depressed, mods_latched, mods_locked, 0, 0, group);
+                // Re-read caps lock effective state.
+                let caps = xkb_state
+                    .mod_name_is_active(xkb::MOD_NAME_CAPS, xkb::STATE_MODS_EFFECTIVE);
+                if state.seat_state.caps_lock != caps {
+                    state.seat_state.caps_lock = caps;
+                    state.request_redraw_all();
+                }
             }
         }
         _ => {}

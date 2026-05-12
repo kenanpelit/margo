@@ -26,6 +26,11 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 cairo-rs = { version = "0.22", features = ["png"] }
 pango = "0.22"
 pangocairo = "0.22"
+# Wallpaper backdrop — same crate mshell uses, decode/blur happens
+# once at lock-time.
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+serde_json = "1"
+toml = "0.8"
 # Used for sealing the password buffer so it never lingers in memory
 # after auth.
 zeroize = "1.8"

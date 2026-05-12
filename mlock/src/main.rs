@@ -29,6 +29,7 @@ mod render;
 mod seat;
 mod state;
 mod surface;
+mod wallpaper;
 
 use anyhow::{Context, Result};
 use tracing::{error, info};
@@ -102,20 +103,43 @@ fn run() -> Result<()> {
         "lock surfaces created"
     );
 
-    // Main loop. Each iteration:
-    //   1. blocking_dispatch — wait for + consume one batch of events
-    //      (keystrokes, configure, buffer release, etc.). Handlers
-    //      flip `needs_redraw` on the affected surfaces.
-    //   2. render_pending — flush any surfaces whose state changed
-    //      since the last frame (typed character, fail message
-    //      cleared, etc.). Without this the lock UI is frozen on
-    //      the initial configure render.
+    // Main loop — poll(2)-based so we get periodic ticks even when
+    // no Wayland events arrive (live clock, shake animation, etc.).
+    //
+    // Per-iteration:
+    //   1. dispatch any events already in the queue
+    //   2. tick state (clock minute, shake decay) → flag dirty
+    //   3. render_pending if any surface is dirty
+    //   4. flush outgoing writes
+    //   5. poll(wayland_fd, timeout) — short during animations,
+    //      longer otherwise (cheaper on idle battery)
+    //   6. prepare_read + read events into the queue if fd was ready
+    use std::os::fd::AsRawFd;
     while !state.unlocked {
         event_queue
-            .blocking_dispatch(&mut state)
-            .context("event dispatch")?;
+            .dispatch_pending(&mut state)
+            .context("dispatch_pending")?;
+
+        state.tick();
+
         if let Err(e) = state.render_pending(&qh) {
             tracing::warn!("render_pending failed: {e:#}");
+        }
+
+        state.conn.flush().context("flush")?;
+
+        let timeout_ms: i32 = if state.seat_state.is_shaking() { 16 } else { 500 };
+        let fd = state.conn.backend().poll_fd().as_raw_fd();
+        let mut pfd = libc::pollfd {
+            fd,
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        let r = unsafe { libc::poll(&mut pfd, 1, timeout_ms) };
+        if r > 0 && pfd.revents & libc::POLLIN != 0
+            && let Some(guard) = event_queue.prepare_read()
+        {
+            let _ = guard.read();
         }
     }
 
