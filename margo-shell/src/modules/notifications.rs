@@ -130,9 +130,17 @@ pub enum NotificationStyle {
 pub enum Action {
     None,
     Task(Task<Message>),
-    Show(Task<Message>),
+    /// Toast added — show layer + tahmini yükseklik (eager surface grow).
+    Show {
+        task: Task<Message>,
+        estimated_height: u32,
+    },
     Hide(Task<Message>),
     UpdateToastInputRegion(Size),
+    /// Toast count grew (varolan surface'i eager büyütmek için).
+    ResizeToast {
+        height: u32,
+    },
 }
 
 pub struct Notifications {
@@ -301,7 +309,15 @@ impl Notifications {
                     Task::none()
                 };
 
-                Action::Show(timer_task)
+                // Toast count'a göre tahmini surface yüksekliği.
+                // Toast eklenmeden ÖNCE +1 sayarak hesaplıyoruz; surface
+                // sensor'u beklemeden compositor'a doğru boyutla
+                // ack_configure göndersin.
+                let est = self.estimated_toast_height(self.toasts.len() as u32 + 1);
+                Action::Show {
+                    task: timer_task,
+                    estimated_height: est,
+                }
             }
             NotificationEvent::Closed(id) => {
                 let id = *id;
@@ -1103,9 +1119,15 @@ impl Notifications {
         self.config.toast_width
     }
 
-    /// Toast surface'inin başlangıç yüksekliği — `toast_max_height`'ı
-    /// kullanır ki tek bir toast clip edilmeden tam görünür.
-    pub fn toast_initial_height(&self) -> u32 {
-        self.config.toast_max_height.max(120)
+    /// `n` toast için tahmini surface yüksekliği. Eager set_size için
+    /// kullanılır (sensor'u beklemeden compositor'a doğru boyut verilir).
+    /// Formül: n * (max_height + spacing) + padding, ekran boyutuna kabaca
+    /// sığsın diye 1000px max'a klamplı.
+    pub fn estimated_toast_height(&self, n: u32) -> u32 {
+        let n = n.max(1);
+        let spacing = 12u32;
+        let padding = 32u32;
+        let est = n * self.config.toast_max_height + (n - 1) * spacing + padding;
+        est.clamp(120, 1000)
     }
 }

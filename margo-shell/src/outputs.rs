@@ -678,30 +678,22 @@ impl Outputs {
         content_size: iced::Size,
         _position: config::ToastPosition,
     ) -> Task<Message> {
-        // Surface boyutu sensor'un raporladığı içerik boyutuna her
-        // değişimde uyarlanır. Sadece grow-only davranış 2. toast
-        // geldiğinde eski 320px surface içine clip'lenmesine yol
-        // açıyordu. Sürekli set_size + surface yeni boyutu açar.
-        // Toast sayısı azalırsa surface küçülür — bu doğal (kullanıcı
-        // fark etmez); önceki "küçülerek kaybolma" artefakt'ı SADECE
-        // son toast → 0 geçişinde olur, ki orada hide_toast_layer
-        // surface'i tamamen destroy eder.
+        // Yalnızca input region güncellenir — set_size yok.
+        // Surface boyutu resize_toast_layer ile (toast eklenince
+        // eager) ayarlanır; sensor sadece içerik boyutunu raporlar
+        // ki pointer eventleri toast kartına klipli kalsın, çevresi
+        // transparent click-through olsun. Dynamic shrink yok →
+        // dismiss sırasında "küçülerek kayboluyor" artefakt'ı yok.
         let content_w = content_size.width.ceil() as u32;
         let content_h = content_size.height.ceil() as u32;
         if content_w == 0 || content_h == 0 {
-            // Sıfır boyut compositor'a invalid; sadece input region
-            // sıfırla (transparent click-through), surface bırak.
             return Task::none();
         }
         let mut tasks = vec![];
-        for (_, shell_info, _) in &mut self.0 {
+        for (_, shell_info, _) in &self.0 {
             if let Some(shell_info) = shell_info
                 && let Some(toast_id) = shell_info.toast_id
             {
-                if content_h != shell_info.toast_max_height {
-                    shell_info.toast_max_height = content_h;
-                    tasks.push(set_size(toast_id, (content_w, content_h)));
-                }
                 tasks.push(set_input_region(
                     toast_id,
                     Some(vec![InputRegionRect {
@@ -711,6 +703,31 @@ impl Outputs {
                         height: content_h as i32,
                     }]),
                 ));
+            }
+        }
+        Task::batch(tasks)
+    }
+
+    /// Toast surface'inin yüksekliğini eager olarak ayarla. Çağırıcı
+    /// (notifications module) toast eklendiğinde yeni toast count'a
+    /// göre tahmini yüksekliği hesaplar ve buraya verir. Surface
+    /// compositor reconfigure'dan ÖNCE büyür → iced yeni içeriği
+    /// büyük surface'e render eder, clipping olmaz.
+    /// Grow-only: yeni `height` mevcut `toast_max_height`'tan büyükse
+    /// uygulanır (shrink yok → küçülme görsel artefakt'ı yok).
+    pub fn resize_toast_layer<Message: 'static>(
+        &mut self,
+        width: u32,
+        height: u32,
+    ) -> Task<Message> {
+        let mut tasks = vec![];
+        for (_, shell_info, _) in &mut self.0 {
+            if let Some(shell_info) = shell_info
+                && let Some(toast_id) = shell_info.toast_id
+                && height > shell_info.toast_max_height
+            {
+                shell_info.toast_max_height = height;
+                tasks.push(set_size(toast_id, (width, height)));
             }
         }
         Task::batch(tasks)

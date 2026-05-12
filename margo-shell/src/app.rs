@@ -747,16 +747,20 @@ impl App {
             Message::Notifications(message) => match self.notifications.update(message) {
                 modules::notifications::Action::None => Task::none(),
                 modules::notifications::Action::Task(task) => task.map(Message::Notifications),
-                modules::notifications::Action::Show(task) => {
+                modules::notifications::Action::Show { task, estimated_height } => {
                     let position = self.notifications.toast_position();
                     let width = self.notifications.toast_width();
-                    // Initial surface yüksekliği config'in toast_max_height'i —
-                    // tek toast tam fit eder, sensor daha büyükse grow-only.
-                    let initial_h = self.notifications.toast_initial_height();
                     Task::batch(vec![
                         task.map(Message::Notifications),
-                        self.outputs.show_toast_layer(width, position, initial_h),
+                        // show_toast_layer surface yoksa oluşturur (estimated_h ile).
+                        // resize_toast_layer surface zaten varsa grow-only büyütür.
+                        self.outputs.show_toast_layer(width, position, estimated_height),
+                        self.outputs.resize_toast_layer(width, estimated_height),
                     ])
+                }
+                modules::notifications::Action::ResizeToast { height } => {
+                    let width = self.notifications.toast_width();
+                    self.outputs.resize_toast_layer(width, height)
                 }
                 modules::notifications::Action::Hide(task) => Task::batch(vec![
                     task.map(Message::Notifications),
