@@ -3767,6 +3767,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "midle"
+version = "0.3.1"
+dependencies = [
+ "anyhow",
+ "clap",
+ "libc",
+ "serde",
+ "serde_json",
+ "tokio",
+ "toml 0.8.23",
+ "tracing",
+ "tracing-subscriber",
+ "wayland-client",
+ "wayland-protocols",
+]
+
+[[package]]
 name = "minimal-lexical"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

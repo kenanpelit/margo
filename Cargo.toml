@@ -5,6 +5,7 @@ members = [
     "margo-ipc",
     "margo-layouts",
     "margo-shell",
+    "midle",
     "mlayout",
     "mlock",
     "mscreenshot",
