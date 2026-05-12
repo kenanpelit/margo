@@ -9,12 +9,21 @@ use iced::{
     OutputId, Padding, Pixels, Shadow, SurfaceId, Task, Theme, Vector, destroy_layer_surface,
     new_layer_surface, set_keyboard_interactivity, widget::container,
 };
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 /// Menu open-animation duration in milliseconds.
 pub const MENU_OPEN_ANIM_MS: u64 = 180;
 /// Pixel distance the menu slides during open animation.
 const MENU_SLIDE_PX: f32 = 12.0;
+/// How far to backdate `open_at` so the very first frame isn't drawn
+/// at opacity = 0. iced's subscription-driven 60 fps tick takes one
+/// frame to arm, so naively starting at `Instant::now()` paints the
+/// menu surface at α=0 once before the tick begins moving — visible
+/// as a brief "blank flash" right before the fade. 30 ms of preroll
+/// puts the first render at ~42% opacity (after ease-out-cubic), the
+/// animation finishes ~150 ms later, and the perceptual flicker is
+/// gone.
+const MENU_OPEN_PREROLL_MS: u64 = 30;
 
 fn ease_out_cubic(t: f32) -> f32 {
     let t = t.clamp(0.0, 1.0);
@@ -50,6 +59,21 @@ pub struct OpenMenu {
     /// can fade+slide back out before being destroyed. `None` means
     /// the menu is open (or still opening) and not closing.
     pub closing_at: Option<Instant>,
+}
+
+/// Compute the timestamp to seed `open_at` with so the open animation
+/// is already a few frames in by the time the first paint hits the
+/// screen. When the user has disabled animations (`theme.animations_enabled`),
+/// shift the start back by the full animation length so `open_progress`
+/// is already saturated at 1.0 — i.e. the menu renders instantly.
+fn initial_open_at() -> Instant {
+    let now = Instant::now();
+    let preroll_ms = if use_theme(|t| t.animations_enabled) {
+        MENU_OPEN_PREROLL_MS
+    } else {
+        MENU_OPEN_ANIM_MS + 16
+    };
+    now.checked_sub(Duration::from_millis(preroll_ms)).unwrap_or(now)
 }
 
 impl OpenMenu {
@@ -149,7 +173,7 @@ impl Menu {
             id: menu_id,
             menu_type,
             button_ui_ref,
-            open_at: Instant::now(),
+            open_at: initial_open_at(),
             closing_at: None,
         });
         task
@@ -160,11 +184,31 @@ impl Menu {
     /// back out; the actual `destroy_layer_surface` happens later via
     /// `finalize_close_if_done`. Idempotent — if already closing, the
     /// `closing_at` timestamp is preserved.
+    ///
+    /// Keyboard focus is handed back **immediately**, before the
+    /// close animation runs — otherwise pressing ESC over a menu
+    /// would keep the user's typing trapped inside the dying menu
+    /// surface for the full 180ms fade, and `maybe_release_all_keyboards`
+    /// would skip the bar release because `menu_is_open()` still
+    /// reports true while closing. This is the fix for "ESC closes
+    /// the menu visually but the underlying window doesn't get
+    /// focus back."
     pub fn close<Message: 'static>(&mut self) -> Task<Message> {
         if let Some(open) = self.open.as_mut()
             && open.closing_at.is_none()
         {
-            open.closing_at = Some(Instant::now());
+            let now = Instant::now();
+            // When animations are disabled, backdate `closing_at` past
+            // the close animation window so `is_closing_complete` flips
+            // true on the very next tick and `finalize_close_if_done`
+            // destroys the surface immediately.
+            open.closing_at = Some(if use_theme(|t| t.animations_enabled) {
+                now
+            } else {
+                now.checked_sub(Duration::from_millis(MENU_OPEN_ANIM_MS + 16))
+                    .unwrap_or(now)
+            });
+            return set_keyboard_interactivity(open.id, KeyboardInteractivity::None);
         }
         Task::none()
     }
@@ -204,7 +248,7 @@ impl Menu {
             Some(open) => {
                 open.menu_type = menu_type;
                 open.button_ui_ref = button_ui_ref;
-                open.open_at = Instant::now();
+                open.open_at = initial_open_at();
                 open.closing_at = None;
                 Task::none()
             }

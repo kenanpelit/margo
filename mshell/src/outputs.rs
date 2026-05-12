@@ -582,13 +582,24 @@ impl Outputs {
         }
     }
 
-    /// Disable keyboard interactivity on all outputs if no menus remain open.
+    /// Disable keyboard interactivity on every bar surface if no
+    /// **fully-open** menu remains. A menu that's started closing
+    /// (animation playing out) still reports `is_open()`, but its
+    /// keyboard has already been released by `Menu::close`, and the
+    /// user clearly wants focus back — so don't keep the bar's
+    /// keyboard on just because a fading menu is still painting.
     fn maybe_release_all_keyboards<Message: 'static>(
         &self,
         task: Task<Message>,
         esc_button_enabled: bool,
     ) -> Task<Message> {
-        if esc_button_enabled && !self.menu_is_open() {
+        let any_fully_open = self.0.iter().any(|(_, shell_info, _)| {
+            shell_info
+                .as_ref()
+                .and_then(|si| si.menu.open.as_ref())
+                .is_some_and(|om| om.closing_at.is_none())
+        });
+        if esc_button_enabled && !any_fully_open {
             let keyboard_tasks = self
                 .0
                 .iter()
