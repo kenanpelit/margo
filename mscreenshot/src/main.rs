@@ -149,7 +149,7 @@ fn run() -> Result<()> {
         Cmd::Wc => (CaptureSource::Window, DeliveryMode::ClipOnly),
         Cmd::Wf => (CaptureSource::Window, DeliveryMode::SaveOnly),
         Cmd::Wi => (CaptureSource::Window, DeliveryMode::EditSave),
-        Cmd::Open | Cmd::Dir => unreachable!(),
+        Cmd::Open | Cmd::Dir => unreachable!("Open/Dir handled earlier and short-circuit before this match"),
     };
 
     require("grim")?;

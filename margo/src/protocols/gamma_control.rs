@@ -143,7 +143,7 @@ where
                     .failed();
             }
             zwlr_gamma_control_manager_v1::Request::Destroy => (),
-            _ => unreachable!(),
+            _ => unreachable!("zwlr_gamma_control_manager_v1 request not in protocol XML"),
         }
     }
 }
@@ -208,7 +208,7 @@ where
                 }
             }
             zwlr_gamma_control_v1::Request::Destroy => (),
-            _ => unreachable!(),
+            _ => unreachable!("zwlr_gamma_control_v1 request not in protocol XML"),
         }
     }
 

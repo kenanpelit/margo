@@ -11,4 +11,3 @@ serde.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 xkbcommon = { version = "0.8" }
-regex = "1"

@@ -561,7 +561,7 @@ fn arrange_dispatcher_matches_direct_call_all_layouts() {
             LayoutId::TgMix => tgmix(&ctx),
             LayoutId::Dwindle => dwindle(&ctx),
             LayoutId::Overview => monocle(&ctx),
-            LayoutId::Canvas => unreachable!(),
+            LayoutId::Canvas => unreachable!("Canvas is filtered out of the test loop earlier"),
         };
         assert_eq!(
             arrange(layout, &ctx),

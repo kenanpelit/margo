@@ -1001,7 +1001,7 @@ fn main() -> Result<()> {
             //   set     → slot 4 = "field=value"
             //   reset   → no args
             match action {
-                TwilightCmd::Status { .. } => unreachable!(),
+                TwilightCmd::Status { .. } => unreachable!("Status is handled before this match arm"),
                 TwilightCmd::Preview { kelvin, gamma } => {
                     ipc_out.dispatch(
                         "twilight_preview".to_string(),
@@ -1138,7 +1138,7 @@ fn main() -> Result<()> {
         | Command::Focused { .. } => {
             // Both branches return early at the top of `main`;
             // this arm only exists to keep the match exhaustive.
-            unreachable!();
+            unreachable!("Status/ConfigErrors/Clients/Outputs/Focused return early in main");
         }
     }
 
@@ -1795,13 +1795,13 @@ fn select_output(state: &IpcState, name: Option<&str>) -> Result<usize> {
             .position(|o| o.name == n)
             .ok_or_else(|| anyhow::anyhow!("output '{n}' not found")),
         None => {
-            // Prefer the active (focused) output
-            state
+            // Prefer the active (focused) output, fall back to index 0.
+            // The `.or(Some(0))` guarantees a `Some`, so this never errors.
+            Ok(state
                 .outputs
                 .iter()
                 .position(|o| o.active)
-                .or(Some(0))
-                .ok_or_else(|| unreachable!())
+                .unwrap_or(0))
         }
     }
 }

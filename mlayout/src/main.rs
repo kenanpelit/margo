@@ -263,7 +263,7 @@ fn run() -> Result<()> {
         Cmd::Preview { name } => cmd_preview(&config_dir, &layouts, name.as_deref()),
         Cmd::Pick { no_gui, no_reload } => cmd_pick(&config_dir, &layouts, no_gui, no_reload),
         // Already handled above.
-        Cmd::Init { .. } | Cmd::New { .. } | Cmd::Suggest { .. } => unreachable!(),
+        Cmd::Init { .. } | Cmd::New { .. } | Cmd::Suggest { .. } => unreachable!("Init/New/Suggest are short-circuited above before this match"),
     }
 }
 

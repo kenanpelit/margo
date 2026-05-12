@@ -280,7 +280,7 @@ where
                 )
             }
             zwlr_screencopy_manager_v1::Request::Destroy => return,
-            _ => unreachable!(),
+            _ => unreachable!("zwlr_screencopy_manager_v1 request not in protocol XML"),
         };
 
         let info = ScreencopyFrameInfo {
@@ -417,7 +417,7 @@ where
         let (buffer, with_damage) = match request {
             zwlr_screencopy_frame_v1::Request::Copy { buffer } => (buffer, false),
             zwlr_screencopy_frame_v1::Request::CopyWithDamage { buffer } => (buffer, true),
-            _ => unreachable!(),
+            _ => unreachable!("non-copy zwlr_screencopy_frame_v1 request reached copy_buffer"),
         };
 
         let size = info.buffer_size;
