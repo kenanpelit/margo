@@ -54,6 +54,7 @@ pub struct GeneralConfig {
     pub layer: config::Layer,
     enable_esc_key: bool,
     pub wallpaper: config::WallpaperConfig,
+    pub matugen: config::MatugenConfig,
 }
 
 pub struct App {
@@ -276,6 +277,7 @@ impl App {
                         layer: config.layer,
                         enable_esc_key: config.enable_esc_key,
                         wallpaper: config.wallpaper,
+                        matugen: config.matugen,
                     },
                     outputs,
                     custom,
@@ -322,6 +324,7 @@ impl App {
             wallpaper: config.wallpaper.clone(),
             layer: config.layer,
             enable_esc_key: config.enable_esc_key,
+            matugen: config.matugen.clone(),
         };
         let custom = config
             .custom_modules
@@ -855,6 +858,27 @@ impl App {
                 let fit = self.general_config.wallpaper.fit;
                 let fallback = parse_hex_rgb(&self.general_config.wallpaper.fallback_color)
                     .unwrap_or([0x1e, 0x1e, 0x2e]);
+
+                // Aktif output'un wallpaper'ı bu refresh'te değiştiyse
+                // ve [matugen].auto_on_wallpaper_change açıksa, palette
+                // üretimini arka planda tetikle. mshell binary'sini
+                // `matugen` subcommand'iyle spawn ediyoruz (in-process
+                // material-colors crate'ine geçtiğimizde Task::perform
+                // ile run_cli'yi spawn_blocking üzerinden çağıracağız).
+                let mut matugen_target: Option<String> = None;
+                let auto_apply = self
+                    .general_config
+                    .matugen
+                    .auto_on_wallpaper_change;
+                if auto_apply
+                    && let Some(active) = self.active_output.as_ref()
+                    && let Some(new_path) = map.get(active)
+                    && !new_path.is_empty()
+                    && self.wallpaper_last_path.get(active) != Some(new_path)
+                {
+                    matugen_target = Some(new_path.clone());
+                }
+
                 for (output, path) in map.iter() {
                     if self.wallpaper_last_path.get(output) == Some(path) {
                         continue;
@@ -873,7 +897,28 @@ impl App {
                 // (unplugged) so a re-add re-dispatches.
                 self.wallpaper_last_path
                     .retain(|k, _| map.contains_key(k));
-                Task::none()
+
+                if let Some(target) = matugen_target {
+                    info!("matugen auto-trigger: {target}");
+                    Task::perform(
+                        async move {
+                            tokio::task::spawn_blocking(move || {
+                                crate::matugen::run_cli(Some(std::path::PathBuf::from(target)))
+                            })
+                            .await
+                        },
+                        |res| {
+                            match res {
+                                Ok(Ok(())) => {}
+                                Ok(Err(e)) => log::warn!("matugen auto-apply failed: {e:#}"),
+                                Err(e) => log::warn!("matugen task panicked: {e}"),
+                            }
+                            Message::None
+                        },
+                    )
+                } else {
+                    Task::none()
+                }
             }
             Message::WallpaperShuffleTick => {
                 // Force-reshuffle on the next refresh.

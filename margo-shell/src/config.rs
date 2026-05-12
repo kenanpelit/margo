@@ -52,6 +52,7 @@ pub struct Config {
     pub enable_esc_key: bool,
     pub osd: OsdConfig,
     pub wallpaper: WallpaperConfig,
+    pub matugen: MatugenConfig,
 }
 
 impl Default for Config {
@@ -85,6 +86,26 @@ impl Default for Config {
             enable_esc_key: false,
             osd: OsdConfig::default(),
             wallpaper: WallpaperConfig::default(),
+            matugen: MatugenConfig::default(),
+        }
+    }
+}
+
+/// Matugen otomatik teması — `mshell matugen` subcommand'inin
+/// hangi olaylarda otomatik tetikleneceğini kontrol eder.
+#[derive(Deserialize, Clone, Debug)]
+#[serde(default)]
+pub struct MatugenConfig {
+    /// Aktif output'un wallpaper'ı değiştiğinde `mshell matugen`'i
+    /// background tokio task'ında otomatik çalıştır. `false` (default)
+    /// = sadece manuel tetikleme (super+ctrl+t veya `mshell matugen`).
+    pub auto_on_wallpaper_change: bool,
+}
+
+impl Default for MatugenConfig {
+    fn default() -> Self {
+        Self {
+            auto_on_wallpaper_change: false,
         }
     }
 }
