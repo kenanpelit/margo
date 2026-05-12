@@ -25,19 +25,20 @@ use std::{
 };
 use zbus::Connection;
 
-const ICON_SIZE: f32 = 36.0;
-
-fn notification_icon<'a, M: 'a>(icon_kind: Option<&NotificationIcon>) -> Element<'a, M> {
+fn notification_icon<'a, M: 'a>(
+    icon_kind: Option<&NotificationIcon>,
+    size: f32,
+) -> Element<'a, M> {
     match icon_kind {
         Some(NotificationIcon::Svg(handle)) => svg(handle.clone())
-            .width(Length::Fixed(ICON_SIZE))
-            .height(Length::Fixed(ICON_SIZE))
+            .width(Length::Fixed(size))
+            .height(Length::Fixed(size))
             .into(),
         Some(NotificationIcon::Image(handle)) => image(handle.clone())
-            .width(Length::Fixed(ICON_SIZE))
-            .height(Length::Fixed(ICON_SIZE))
+            .width(Length::Fixed(size))
+            .height(Length::Fixed(size))
             .into(),
-        None => icon(StaticIcon::Bell).size(ICON_SIZE).into(),
+        None => icon(StaticIcon::Bell).size(size).into(),
     }
 }
 
@@ -242,13 +243,51 @@ impl Notifications {
                 );
 
                 let notification_id = notification.id;
-                // Critical notifications are persistent per the freedesktop
-                // spec: they must be acknowledged by the user.
-                let timeout = if notification.urgency == Urgency::Critical {
+                // Timeout precedence:
+                //   1. Per-app override (apps[app_name].timeout)
+                //   2. Per-urgency (critical_timeout / low_timeout)
+                //   3. notification.expire_timeout (D-Bus hint) veya toast_timeout
+                let app_timeout = self
+                    .config
+                    .apps
+                    .get(&notification.app_name)
+                    .and_then(|o| o.timeout);
+
+                let urgency_timeout = match notification.urgency {
+                    Urgency::Critical => self.config.critical_timeout,
+                    Urgency::Low => self.config.low_timeout,
+                    _ => None,
+                };
+
+                let effective_ms = app_timeout
+                    .or(urgency_timeout)
+                    .unwrap_or(self.config.toast_timeout);
+
+                // 0 = persistent (manual dismiss). Critical default: 0
+                // if not overridden (freedesktop spec).
+                let timeout = if effective_ms == 0
+                    || (notification.urgency == Urgency::Critical
+                        && self.config.critical_timeout.is_none()
+                        && app_timeout.is_none())
+                {
                     None
                 } else {
-                    toast_timeout(notification.expire_timeout, self.config.toast_timeout)
+                    toast_timeout(notification.expire_timeout, effective_ms)
                 };
+
+                // on_notify_command — kullanıcı tanımlı shell komutu
+                // (örn. paplay ile ses). Engellemiyor; fire-and-forget.
+                if let Some(cmd) = &self.config.on_notify_command {
+                    let cmd = cmd.clone();
+                    tokio::spawn(async move {
+                        let _ = tokio::process::Command::new("sh")
+                            .args(["-c", &cmd])
+                            .stdout(std::process::Stdio::null())
+                            .stderr(std::process::Stdio::null())
+                            .status()
+                            .await;
+                    });
+                }
 
                 let timer_task = if let Some(timeout) = timeout {
                     Task::perform(
@@ -396,31 +435,72 @@ impl Notifications {
         style: NotificationStyle,
         urgency: Urgency,
     ) -> impl Fn(&Theme, iced::widget::button::Status) -> iced::widget::button::Style + use<> {
+        // History/group rendering için backward-compat sürüm. v2 daha
+        // detaylı config alır (toast geometry'sinde kullanılır).
         let (radius, menu_opacity) = use_theme(|t| (t.radius, t.menu.opacity));
+        Self::notification_button_style_v2_inner(
+            style,
+            urgency,
+            radius.lg,
+            menu_opacity,
+            None,
+        )
+    }
+
+    /// Config-driven varyant — toast_radius/toast_opacity/per-app border
+    /// override desteği.
+    fn notification_button_style_v2(
+        style: NotificationStyle,
+        urgency: Urgency,
+        toast_radius: f32,
+        toast_opacity: f32,
+        app_border: Option<iced::Color>,
+    ) -> impl Fn(&Theme, iced::widget::button::Status) -> iced::widget::button::Style + use<> {
+        Self::notification_button_style_v2_inner(
+            style,
+            urgency,
+            toast_radius,
+            toast_opacity,
+            app_border,
+        )
+    }
+
+    fn notification_button_style_v2_inner(
+        style: NotificationStyle,
+        urgency: Urgency,
+        big_radius: f32,
+        opacity: f32,
+        app_border: Option<iced::Color>,
+    ) -> impl Fn(&Theme, iced::widget::button::Status) -> iced::widget::button::Style + use<> {
+        let small_radius = use_theme(|t| t.radius.sm);
         move |iced_theme: &Theme, status| {
             let mut border = match style {
                 NotificationStyle::Toast => Border::default()
                     .width(1)
                     .color(iced_theme.extended_palette().background.weakest.color)
-                    .rounded(radius.lg),
-                NotificationStyle::Standalone => Border::default().rounded(radius.lg),
+                    .rounded(big_radius),
+                NotificationStyle::Standalone => Border::default().rounded(big_radius),
                 NotificationStyle::GroupHeader => Border::default().rounded(iced::border::Radius {
-                    top_left: radius.lg,
-                    top_right: radius.lg,
-                    bottom_left: radius.sm,
-                    bottom_right: radius.sm,
+                    top_left: big_radius,
+                    top_right: big_radius,
+                    bottom_left: small_radius,
+                    bottom_right: small_radius,
                 }),
-                NotificationStyle::GroupItem => Border::default().rounded(radius.sm),
+                NotificationStyle::GroupItem => Border::default().rounded(small_radius),
                 NotificationStyle::GroupLast => Border::default().rounded(iced::border::Radius {
                     top_left: 0.0,
                     top_right: 0.0,
-                    bottom_left: radius.lg,
-                    bottom_right: radius.lg,
+                    bottom_left: big_radius,
+                    bottom_right: big_radius,
                 }),
             };
 
-            if urgency == Urgency::Critical {
-                border.width = 1.0;
+            // Per-app border > critical default border.
+            if let Some(c) = app_border {
+                border.width = 2.0;
+                border.color = c;
+            } else if urgency == Urgency::Critical {
+                border.width = 1.5;
                 border.color = iced_theme.palette().danger;
             }
 
@@ -438,7 +518,7 @@ impl Notifications {
                                 .background
                                 .weak
                                 .color
-                                .scale_alpha(menu_opacity)
+                                .scale_alpha(opacity)
                                 .into(),
                         );
                     } else {
@@ -448,14 +528,14 @@ impl Notifications {
                                 .background
                                 .strong
                                 .color
-                                .scale_alpha(menu_opacity)
+                                .scale_alpha(opacity)
                                 .into(),
                         );
                     }
                 }
                 _ => {
                     button_style.background = if style == NotificationStyle::Toast {
-                        Some(iced_theme.palette().background.into())
+                        Some(iced_theme.palette().background.scale_alpha(opacity).into())
                     } else {
                         Some(iced_theme.extended_palette().background.weak.color.into())
                     }
@@ -484,7 +564,7 @@ impl Notifications {
         let body_element = if (!toast || self.config.show_bodies) && !notification.body.is_empty() {
             Some(
                 text(&notification.body)
-                    .size(font_size.sm)
+                    .size(self.config.toast_body_font_size)
                     .wrapping(text::Wrapping::WordOrGlyph),
             )
         } else {
@@ -492,10 +572,15 @@ impl Notifications {
         };
 
         let notification_id = notification.id;
-        let app_icon_button = notification_icon(notification.icon.as_ref());
+        let app_icon_button = notification_icon(
+            notification.icon.as_ref(),
+            self.config.toast_icon_size,
+        );
 
         // Summary — bold istenirse Font::DEFAULT'un weight'i Bold'a çekilir.
-        let mut summary_text = text(&notification.summary).wrapping(text::Wrapping::WordOrGlyph);
+        let mut summary_text = text(&notification.summary)
+            .size(self.config.toast_summary_font_size)
+            .wrapping(text::Wrapping::WordOrGlyph);
         if self.config.summary_bold {
             use iced::font::{Font, Weight};
             summary_text = summary_text.font(Font {
@@ -507,7 +592,7 @@ impl Notifications {
         // App name — accent_app_name true ise primary renkle vurgu.
         let app_name_widget = {
             let mut t = text(&notification.app_name)
-                .size(font_size.md)
+                .size(self.config.toast_body_font_size)
                 .wrapping(text::Wrapping::WordOrGlyph);
             if self.config.accent_app_name {
                 t = t.style(|theme: &Theme| iced::widget::text::Style {
@@ -610,17 +695,31 @@ impl Notifications {
             card = card.max_height(self.config.toast_max_height);
         }
 
+        // Per-app border override (mako-tarzı). HashMap lookup.
+        let app_border = self
+            .config
+            .apps
+            .get(&notification.app_name)
+            .and_then(|o| o.border_color.as_deref())
+            .and_then(|hex| hex_color::HexColor::parse(hex).ok())
+            .map(|c| iced::Color::from_rgba8(c.r, c.g, c.b, c.a as f32 / 255.0));
+
+        let toast_radius = self.config.toast_radius;
+        let toast_opacity = self.config.toast_opacity;
         button(card)
             .on_press(on_press)
             .width(Length::Fill)
-            .padding(space.xxs)
-            .style(Self::notification_button_style(
+            .padding(self.config.toast_padding as u16)
+            .style(Self::notification_button_style_v2(
                 if toast {
                     NotificationStyle::Toast
                 } else {
                     NotificationStyle::Standalone
                 },
                 notification.urgency,
+                toast_radius,
+                toast_opacity,
+                app_border,
             ))
             .into()
     }
@@ -818,7 +917,7 @@ impl Notifications {
             // Multiple notifications — use the group layout.
             let app_name = first.app_name.clone();
             let is_expanded = self.expanded_groups.contains(&app_name);
-            let app_icon = notification_icon(first.icon.as_ref());
+            let app_icon = notification_icon(first.icon.as_ref(), self.config.toast_icon_size);
 
             let mut count = 1;
             let mut has_critical = first.urgency == Urgency::Critical;
@@ -998,5 +1097,9 @@ impl Notifications {
 
     pub fn toast_position(&self) -> ToastPosition {
         self.config.toast_position
+    }
+
+    pub fn toast_width(&self) -> u32 {
+        self.config.toast_width
     }
 }

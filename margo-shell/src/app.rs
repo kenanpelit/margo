@@ -749,7 +749,8 @@ impl App {
                 modules::notifications::Action::Task(task) => task.map(Message::Notifications),
                 modules::notifications::Action::Show(task) => {
                     let position = self.notifications.toast_position();
-                    let width = crate::components::MenuSize::Medium.size() as u32;
+                    // Toast genişliği config'ten gelir (mako-tarzı toast_width).
+                    let width = self.notifications.toast_width();
                     Task::batch(vec![
                         task.map(Message::Notifications),
                         self.outputs.show_toast_layer(width, position),

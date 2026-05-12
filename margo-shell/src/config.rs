@@ -757,6 +757,45 @@ pub struct NotificationsModuleConfig {
     pub toast_limit: usize,
     pub toast_max_height: u32,
     pub blocklist: Vec<RegexCfg>,
+    // ─── Toast geometry (mako-tarzı tam ayar) ─────────────────────────
+    /// Toast kartı genişliği (piksel). 320–420 arası iyi denge.
+    #[serde(default = "default_toast_width")]
+    pub toast_width: u32,
+    /// Kart iç padding'i (piksel).
+    #[serde(default = "default_toast_padding")]
+    pub toast_padding: u16,
+    /// Kart köşe yuvarlama yarıçapı (piksel).
+    #[serde(default = "default_toast_radius")]
+    pub toast_radius: f32,
+    /// Uygulama / bildirim ikonu boyutu (piksel).
+    #[serde(default = "default_toast_icon_size")]
+    pub toast_icon_size: f32,
+    /// Summary (başlık) font boyutu.
+    #[serde(default = "default_toast_summary_font_size")]
+    pub toast_summary_font_size: f32,
+    /// Body (içerik) font boyutu.
+    #[serde(default = "default_toast_body_font_size")]
+    pub toast_body_font_size: f32,
+    /// Toast kartı opaklığı (0.0..=1.0). 0.92 mat-cam hissi verir.
+    #[serde(default = "default_toast_opacity")]
+    pub toast_opacity: f32,
+    // ─── Per-urgency timeout override ─────────────────────────────────
+    /// Critical bildirim timeout'u (ms). 0 = otomatik kaybolmaz.
+    /// None ise `toast_timeout` kullanılır.
+    #[serde(default)]
+    pub critical_timeout: Option<u64>,
+    /// Low urgency için timeout (ms). None ise `toast_timeout`.
+    #[serde(default)]
+    pub low_timeout: Option<u64>,
+    /// Yeni bildirim geldiğinde çalıştırılacak shell komutu.
+    /// Örn. "paplay ~/.sounds/message.oga" ya da
+    /// "sh -c 'mpv --no-terminal ~/sounds/bell.wav'".
+    #[serde(default)]
+    pub on_notify_command: Option<String>,
+    /// Per-app override'lar (mako'nun `[app-name=...]` blokları gibi).
+    /// Key = uygulama adı (D-Bus app_name eşleşmesi), value = override.
+    #[serde(default)]
+    pub apps: std::collections::HashMap<String, AppNotificationOverride>,
     // ─── Görsel iyileştirmeler ──────────────────────────────────────────
     /// Kartın sol kenarındaki 4px renkli urgency bar'ını çiz.
     /// Varsayılan false — yalnızca Critical zaten danger renkli border'a sahip.
@@ -793,8 +832,41 @@ pub struct NotificationUrgencyColors {
     pub critical: Option<String>,
 }
 
+/// Mako'nun `[app-name=Spotify]` bloğunun karşılığı. Bir uygulamaya
+/// özel görsel + zamanlama özelliklerini override eder.
+#[derive(Deserialize, Clone, Debug, Default)]
+#[serde(default)]
+pub struct AppNotificationOverride {
+    /// Bu uygulamanın bildirimleri için özel border rengi (hex).
+    pub border_color: Option<String>,
+    /// Bu uygulamanın timeout'u (ms). 0 = otomatik kaybolmaz.
+    pub timeout: Option<u64>,
+}
+
 fn default_true() -> bool {
     true
+}
+
+fn default_toast_width() -> u32 {
+    380
+}
+fn default_toast_padding() -> u16 {
+    16
+}
+fn default_toast_radius() -> f32 {
+    14.0
+}
+fn default_toast_icon_size() -> f32 {
+    48.0
+}
+fn default_toast_summary_font_size() -> f32 {
+    13.0
+}
+fn default_toast_body_font_size() -> f32 {
+    11.0
+}
+fn default_toast_opacity() -> f32 {
+    0.92
 }
 impl Default for NotificationsModuleConfig {
     fn default() -> Self {
@@ -816,6 +888,17 @@ impl Default for NotificationsModuleConfig {
             show_actions: true,
             urgency_colors: NotificationUrgencyColors::default(),
             group_by_date: true,
+            toast_width: default_toast_width(),
+            toast_padding: default_toast_padding(),
+            toast_radius: default_toast_radius(),
+            toast_icon_size: default_toast_icon_size(),
+            toast_summary_font_size: default_toast_summary_font_size(),
+            toast_body_font_size: default_toast_body_font_size(),
+            toast_opacity: default_toast_opacity(),
+            critical_timeout: None,
+            low_timeout: None,
+            on_notify_command: None,
+            apps: std::collections::HashMap::new(),
         }
     }
 }
