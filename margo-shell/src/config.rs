@@ -779,6 +779,12 @@ pub struct NotificationsModuleConfig {
     /// Toast kartı opaklığı (0.0..=1.0). 0.92 mat-cam hissi verir.
     #[serde(default = "default_toast_opacity")]
     pub toast_opacity: f32,
+    /// Toast metni için özel font ailesi. None ise bar'ın global fontu
+    /// (`[appearance].font_name`). Mako'nun `font = "Noto Sans Regular 14"`
+    /// satırının karşılığı (boyut alanı ayrı: toast_summary_font_size
+    /// + toast_body_font_size).
+    #[serde(default)]
+    pub font_name: Option<String>,
     // ─── Per-urgency timeout override ─────────────────────────────────
     /// Critical bildirim timeout'u (ms). 0 = otomatik kaybolmaz.
     /// None ise `toast_timeout` kullanılır.
@@ -895,6 +901,7 @@ impl Default for NotificationsModuleConfig {
             toast_summary_font_size: default_toast_summary_font_size(),
             toast_body_font_size: default_toast_body_font_size(),
             toast_opacity: default_toast_opacity(),
+            font_name: None,
             critical_timeout: None,
             low_timeout: None,
             on_notify_command: None,

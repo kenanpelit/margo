@@ -593,16 +593,28 @@ impl Notifications {
             self.config.toast_icon_size,
         );
 
-        // Summary — bold istenirse Font::DEFAULT'un weight'i Bold'a çekilir.
+        // Custom font family — config'de toast_font_name varsa onu
+        // uygula. Mako'nun `font = "Noto Sans Regular 14"` ailesine eşdeğer
+        // (boyut alanı ayrı: toast_summary_font_size + toast_body_font_size).
+        use iced::font::{Font, Weight};
+        let custom_font: Option<Font> = self
+            .config
+            .font_name
+            .as_deref()
+            .map(|name| Font::with_name(Box::leak(name.to_string().into_boxed_str())));
+
+        // Summary — özel font + opsiyonel bold weight.
         let mut summary_text = text(&notification.summary)
             .size(self.config.toast_summary_font_size)
             .wrapping(text::Wrapping::WordOrGlyph);
+        let summary_font_base = custom_font.unwrap_or(Font::DEFAULT);
         if self.config.summary_bold {
-            use iced::font::{Font, Weight};
             summary_text = summary_text.font(Font {
                 weight: Weight::Bold,
-                ..Font::DEFAULT
+                ..summary_font_base
             });
+        } else if custom_font.is_some() {
+            summary_text = summary_text.font(summary_font_base);
         }
 
         // App name — accent_app_name true ise primary renkle vurgu.
@@ -610,6 +622,9 @@ impl Notifications {
             let mut t = text(&notification.app_name)
                 .size(self.config.toast_body_font_size)
                 .wrapping(text::Wrapping::WordOrGlyph);
+            if let Some(f) = custom_font {
+                t = t.font(f);
+            }
             if self.config.accent_app_name {
                 t = t.style(|theme: &Theme| iced::widget::text::Style {
                     color: Some(theme.palette().primary),
