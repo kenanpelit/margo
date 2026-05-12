@@ -227,6 +227,12 @@ fn state_from_json(json: &Value) -> CompositorState {
         .cloned()
         .unwrap_or_default();
     let focused_idx = json.get("focused_idx").and_then(Value::as_i64);
+    // Margo state.json top-level `active_output`: focused output'un bare
+    // adı (örn. "DP-3"). Composite ad ("DP-3 Acme XYZ") gelmiyor.
+    let active_output_name = json
+        .get("active_output")
+        .and_then(Value::as_str)
+        .map(|s| s.to_string());
 
     let mut workspaces: Vec<CompositorWorkspace> = Vec::new();
     let mut monitors: Vec<CompositorMonitor> = Vec::new();
@@ -321,5 +327,6 @@ fn state_from_json(json: &Value) -> CompositorState {
         active_window,
         keyboard_layout: String::new(),
         wallpapers,
+        active_output: active_output_name,
     }
 }

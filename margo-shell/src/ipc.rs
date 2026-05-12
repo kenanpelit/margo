@@ -61,6 +61,22 @@ pub enum IpcCommand {
         #[arg(long)]
         no_osd: bool,
     },
+    /// Open the DNS / VPN switcher menu
+    Dns,
+    /// Open the Network speed / IP / VPN menu
+    Network,
+    /// Open the System info menu (CPU / RAM / Temp / Disk)
+    System,
+    /// Open the Media player menu
+    Media,
+    /// Open the Settings (quick toggles) menu
+    Settings,
+    /// Open the Notifications history menu
+    Notifications,
+    /// Open the Updates menu
+    Updates,
+    /// Open the Tempo (clock / weather) menu
+    Tempo,
 }
 
 impl IpcCommand {
@@ -77,6 +93,30 @@ impl IpcCommand {
             | IpcCommand::BrightnessDown { no_osd }
             | IpcCommand::ToggleAirplaneMode { no_osd }
             | IpcCommand::ToggleIdleInhibitor { no_osd } => *no_osd,
+            IpcCommand::Dns
+            | IpcCommand::Network
+            | IpcCommand::System
+            | IpcCommand::Media
+            | IpcCommand::Settings
+            | IpcCommand::Notifications
+            | IpcCommand::Updates
+            | IpcCommand::Tempo => false,
+        }
+    }
+
+    /// Bu komut bir modül menüsünü mü açıyor? (UI tarafından dispatch
+    /// `Message::OpenIpcMenu`'ya çevrilir.)
+    pub fn menu_name(&self) -> Option<&'static str> {
+        match self {
+            IpcCommand::Dns => Some("dns"),
+            IpcCommand::Network => Some("network"),
+            IpcCommand::System => Some("system"),
+            IpcCommand::Media => Some("media"),
+            IpcCommand::Settings => Some("settings"),
+            IpcCommand::Notifications => Some("notifications"),
+            IpcCommand::Updates => Some("updates"),
+            IpcCommand::Tempo => Some("tempo"),
+            _ => None,
         }
     }
 }
@@ -97,6 +137,14 @@ impl fmt::Display for IpcCommand {
             IpcCommand::BrightnessDown { .. } => "brightness-down",
             IpcCommand::ToggleAirplaneMode { .. } => "toggle-airplane-mode",
             IpcCommand::ToggleIdleInhibitor { .. } => "toggle-idle-inhibitor",
+            IpcCommand::Dns => "dns",
+            IpcCommand::Network => "network",
+            IpcCommand::System => "system",
+            IpcCommand::Media => "media",
+            IpcCommand::Settings => "settings",
+            IpcCommand::Notifications => "notifications",
+            IpcCommand::Updates => "updates",
+            IpcCommand::Tempo => "tempo",
         };
         write!(f, "{base}")?;
         if self.no_osd() {
@@ -126,6 +174,14 @@ impl FromStr for IpcCommand {
             "brightness-down" => Ok(IpcCommand::BrightnessDown { no_osd }),
             "toggle-airplane-mode" => Ok(IpcCommand::ToggleAirplaneMode { no_osd }),
             "toggle-idle-inhibitor" => Ok(IpcCommand::ToggleIdleInhibitor { no_osd }),
+            "dns" => Ok(IpcCommand::Dns),
+            "network" => Ok(IpcCommand::Network),
+            "system" => Ok(IpcCommand::System),
+            "media" => Ok(IpcCommand::Media),
+            "settings" => Ok(IpcCommand::Settings),
+            "notifications" => Ok(IpcCommand::Notifications),
+            "updates" => Ok(IpcCommand::Updates),
+            "tempo" => Ok(IpcCommand::Tempo),
             _ => Err(anyhow!("unknown IPC command: {s:?}")),
         }
     }

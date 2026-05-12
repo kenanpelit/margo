@@ -146,3 +146,17 @@ network-speed-vpn = VPN
 network-speed-vpn-off = Not connected
 network-speed-lan-ip = LAN IP
 network-speed-vpn-ip = VPN IP
+
+## DNS / VPN switcher module
+dns-heading = DNS / VPN
+dns-current-mode = Mode
+dns-active-dns = Active DNS
+dns-modes-title = Modes
+dns-providers-title = Providers
+dns-mode-mullvad = Mullvad
+dns-mode-blocky = Blocky
+dns-mode-mixed = Mullvad + Blocky
+dns-mode-default = Default (ISP)
+dns-mode-unknown = Unknown
+dns-action-toggle = Toggle
+dns-action-repair = Repair

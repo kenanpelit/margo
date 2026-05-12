@@ -9,6 +9,7 @@ use crate::{
         self,
         custom_module::{self, Custom},
         keyboard_layout::KeyboardLayout,
+        dns::Dns,
         media_player::MediaPlayer,
         network_speed::NetworkSpeed,
         notifications::Notifications,
@@ -64,6 +65,7 @@ pub struct App {
     pub window_title: WindowTitle,
     pub system_info: SystemInfo,
     pub network_speed: NetworkSpeed,
+    pub dns: Dns,
     pub keyboard_layout: KeyboardLayout,
     pub tray: TrayModule,
     pub tempo: Tempo,
@@ -73,6 +75,10 @@ pub struct App {
     pub notifications: Notifications,
     pub osd: Osd,
     pub visible: bool,
+    /// margo'nun aktif output'unun bare adı ("DP-3"). IPC-tetiklenmiş
+    /// menü açılışlarında doğru bar surface'i seçmek için tutulur;
+    /// `WallpaperRefresh` her geldiğinde güncellenir.
+    pub active_output: Option<String>,
     /// Dedicated wallpaper renderer thread (separate Wayland
     /// connection, direct wl_shm buffer attach). iced's Image
     /// widget on a Background-layer surface silently refused to
@@ -105,6 +111,10 @@ pub enum Message {
     WindowTitle(modules::window_title::Message),
     SystemInfo(modules::system_info::Message),
     NetworkSpeed(modules::network_speed::Message),
+    Dns(modules::dns::Message),
+    /// IPC tarafından tetiklenmiş menü açma — bar'ın ilk surface'inde
+    /// sentetik bir ButtonUIRef ile ilgili MenuType'ı toggle eder.
+    OpenIpcMenu(String),
     KeyboardLayout(modules::keyboard_layout::Message),
     Tray(modules::tray::Message),
     Tempo(modules::tempo::Message),
@@ -126,6 +136,9 @@ pub enum Message {
     WallpaperRefresh {
         wallpapers: std::collections::HashMap<String, String>,
         active_tags: std::collections::HashMap<String, u32>,
+        /// margo'nun aktif output'unun bare adı ("DP-3"). IPC-tetiklenmiş
+        /// menü açılışlarında doğru bar surface'i seçmek için saklanır.
+        active_output: Option<String>,
     },
     /// Async image-decode result. `output_name` → `path` → handle.
     /// Periodic shuffle rotate (cadence from
@@ -258,6 +271,7 @@ impl App {
                     window_title: WindowTitle::new(config.window_title),
                     system_info: SystemInfo::new(config.system_info),
                     network_speed: NetworkSpeed::new(config.network_speed),
+                    dns: Dns::new(config.dns),
                     keyboard_layout: KeyboardLayout::new(config.keyboard_layout),
                     tray: TrayModule::new(config.tray),
                     tempo: Tempo::new(config.tempo),
@@ -267,6 +281,7 @@ impl App {
                     media_player: MediaPlayer::new(config.media_player),
                     osd: Osd::new(config.osd),
                     visible: true,
+                    active_output: None,
                     wallpaper_renderer: crate::wallpaper::WallpaperRenderer::spawn(),
                     wallpaper_last_path: HashMap::new(),
                     shuffle_assignments: HashMap::new(),
@@ -316,6 +331,7 @@ impl App {
 
         self.system_info = SystemInfo::new(config.system_info);
         self.network_speed = NetworkSpeed::new(config.network_speed);
+        self.dns = Dns::new(config.dns);
 
         let _ = self
             .keyboard_layout
@@ -424,6 +440,15 @@ impl App {
                 }
             }
             IpcCommand::ToggleVisibility => None,
+            // Menü açma komutları osd_info_for tarafından kullanılmıyor.
+            IpcCommand::Dns
+            | IpcCommand::Network
+            | IpcCommand::System
+            | IpcCommand::Media
+            | IpcCommand::Settings
+            | IpcCommand::Notifications
+            | IpcCommand::Updates
+            | IpcCommand::Tempo => None,
         }
     }
 
@@ -530,6 +555,55 @@ impl App {
             }
             Message::NetworkSpeed(msg) => {
                 self.network_speed.update(msg);
+                Task::none()
+            }
+            Message::Dns(msg) => self.dns.update(msg).map(Message::Dns),
+            Message::OpenIpcMenu(name) => {
+                let menu_type = match name.as_str() {
+                    "dns" => Some(MenuType::Dns),
+                    "network" => Some(MenuType::NetworkSpeed),
+                    "system" => Some(MenuType::SystemInfo),
+                    "media" => Some(MenuType::MediaPlayer),
+                    "settings" => Some(MenuType::Settings),
+                    "notifications" => Some(MenuType::Notifications),
+                    "updates" => Some(MenuType::Updates),
+                    "tempo" => Some(MenuType::Tempo),
+                    _ => None,
+                };
+                if let Some(mt) = menu_type {
+                    // Aktif output'un bar surface'ini bul; bulunmazsa
+                    // ilk surface'e düş (örn. mshell başlangıçta state
+                    // henüz okunmamışsa).
+                    let active = self.active_output.as_deref();
+                    let entry = self
+                        .outputs
+                        .iter()
+                        .find_map(|(name, si, _)| {
+                            let si = si.as_ref()?;
+                            // outputs.rs'deki name çok-kelimeli olabilir
+                            // ("DP-3 Acme XYZ"); margo'nun active_output'u
+                            // ise bare ad. İlk kelimeyi karşılaştır.
+                            let bare = name.split_whitespace().next().unwrap_or(name);
+                            if active == Some(bare) {
+                                Some((si.id, si.output_logical_size))
+                            } else {
+                                None
+                            }
+                        })
+                        .or_else(|| {
+                            self.outputs.iter().find_map(|(_, si, _)| {
+                                si.as_ref().map(|s| (s.id, s.output_logical_size))
+                            })
+                        });
+                    if let Some((id, size)) = entry {
+                        let (w, h) = size.unwrap_or((1920, 1080));
+                        let ui_ref = ButtonUIRef {
+                            position: iced::Point::new(w as f32 / 2.0, 24.0),
+                            viewport: (w as f32, h as f32),
+                        };
+                        return Task::done(Message::ToggleMenu(mt, id, ui_ref));
+                    }
+                }
                 Task::none()
             }
             Message::SystemInfo(msg) => {
@@ -686,6 +760,16 @@ impl App {
                     IpcCommand::ToggleAirplaneMode { .. } => self.settings.toggle_airplane(),
                     IpcCommand::ToggleIdleInhibitor { .. } => self.settings.toggle_idle_inhibitor(),
                     IpcCommand::ToggleVisibility => unreachable!(),
+                    // Menü açma komutları subscription mapping'inde
+                    // OpenIpcMenu'ya yönlendirildiği için buraya hiç gelmez.
+                    IpcCommand::Dns
+                    | IpcCommand::Network
+                    | IpcCommand::System
+                    | IpcCommand::Media
+                    | IpcCommand::Settings
+                    | IpcCommand::Notifications
+                    | IpcCommand::Updates
+                    | IpcCommand::Tempo => unreachable!(),
                 };
                 if let settings::Action::Command(task) = action {
                     tasks.push(task.map(Message::Settings));
@@ -711,7 +795,12 @@ impl App {
                 _ => Task::none(),
             },
             Message::None => Task::none(),
-            Message::WallpaperRefresh { wallpapers, active_tags } => {
+            Message::WallpaperRefresh { wallpapers, active_tags, active_output } => {
+                // active_output her zaman güncellenir — IPC menü açılışları
+                // bunu kullanıyor (focused output'un bar'ında açar).
+                if self.active_output != active_output {
+                    self.active_output = active_output;
+                }
                 // [wallpaper].enabled = false → skip everything;
                 // user wants to run swaybg/swww or no wallpaper at
                 // all.
@@ -758,6 +847,7 @@ impl App {
                 Task::done(Message::WallpaperRefresh {
                     wallpapers: self.last_wallpaper_map(),
                     active_tags: HashMap::new(),
+                    active_output: self.active_output.clone(),
                 })
             }
             Message::ToggleVisibility => {
@@ -923,6 +1013,11 @@ impl App {
                         self.network_speed.menu_view().map(Message::NetworkSpeed),
                         ui_ref,
                     ),
+                    MenuType::Dns => self.menu_wrapper(
+                        id,
+                        self.dns.menu_view().map(Message::Dns),
+                        ui_ref,
+                    ),
                     MenuType::Tempo => {
                         self.menu_wrapper(id, self.tempo.menu_view().map(Message::Tempo), ui_ref)
                     }
@@ -1078,6 +1173,7 @@ impl App {
                             .iter()
                             .map(|m| (m.name.clone(), m.active_workspace_id as u32))
                             .collect(),
+                        active_output: svc.state.active_output.clone(),
                     },
                     ServiceEvent::Update(CompositorEvent::StateChanged(state)) => {
                         Message::WallpaperRefresh {
@@ -1087,6 +1183,7 @@ impl App {
                                 .iter()
                                 .map(|m| (m.name.clone(), m.active_workspace_id as u32))
                                 .collect(),
+                            active_output: state.active_output.clone(),
                         }
                     }
                     _ => Message::None,
@@ -1137,6 +1234,9 @@ impl App {
             self.settings.subscription().map(Message::Settings),
             crate::ipc::subscription().map(|cmd| match cmd {
                 IpcCommand::ToggleVisibility => Message::ToggleVisibility,
+                ref c if c.menu_name().is_some() => {
+                    Message::OpenIpcMenu(c.menu_name().unwrap().to_string())
+                }
                 other => Message::IpcOsdCommand(other),
             }),
         ])

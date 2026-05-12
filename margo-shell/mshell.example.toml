@@ -160,6 +160,23 @@ upload_warn_kbps    = 2000
 upload_alert_kbps   = 10000
 
 # ══════════════════════════════════════════════════════════════════════════
+#  DNS / VPN switcher — `ndns` plugin'inin tam Rust port'u
+#
+#  5 mod: Mullvad / Blocky / Default / Toggle / Repair
+#  5 preset: Google / Cloudflare / OpenDNS / AdGuard / Quad9
+#  Bağımlılıklar: osc-mullvad + mullvad CLI + nmcli + opsiyonel blocky.service.
+#  IPC: `mshell msg dns` ile menüyü aç.
+# ══════════════════════════════════════════════════════════════════════════
+[dns]
+osc_command   = "osc-mullvad"                # PATH'te bulunmuyorsa tam yol
+watchdog_secs = 30                           # state polling aralığı (saniye)
+# providers listesi boş bırakılırsa default 5 preset kullanılır.
+# [[dns.providers]]
+# id    = "nextdns"
+# label = "NextDNS"
+# ip    = "45.90.28.x 45.90.30.x"
+
+# ══════════════════════════════════════════════════════════════════════════
 #  Tempo — saat + hava + zaman dilimi cycle
 # ══════════════════════════════════════════════════════════════════════════
 [tempo]

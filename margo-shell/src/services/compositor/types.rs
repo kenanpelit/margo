@@ -49,6 +49,9 @@ pub struct CompositorState {
     /// configured wallpaper here; an empty string means
     /// "use session default" (no wallpaper). Output name → path.
     pub wallpapers: std::collections::HashMap<String, String>,
+    /// Aktif output'un kısa adı (`state.json`'un `active_output` alanı).
+    /// `None` ise hiçbir output aktif değil (ekran boş / kilitli vs.).
+    pub active_output: Option<String>,
 }
 
 #[derive(Debug, Clone)]

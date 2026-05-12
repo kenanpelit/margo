@@ -37,6 +37,7 @@ pub struct Config {
     pub window_title: WindowTitleConfig,
     pub system_info: SystemInfoModuleConfig,
     pub network_speed: NetworkSpeedModuleConfig,
+    pub dns: DnsModuleConfig,
     pub notifications: NotificationsModuleConfig,
     pub tray: TrayModuleConfig,
     pub tempo: TempoModuleConfig,
@@ -65,6 +66,7 @@ impl Default for Config {
             window_title: WindowTitleConfig::default(),
             system_info: SystemInfoModuleConfig::default(),
             network_speed: NetworkSpeedModuleConfig::default(),
+            dns: DnsModuleConfig::default(),
             notifications: NotificationsModuleConfig::default(),
             tray: TrayModuleConfig::default(),
             tempo: TempoModuleConfig::default(),
@@ -573,6 +575,86 @@ impl Default for NetworkSpeedModuleConfig {
             download_alert_kbps: 20_000,  // 20 MB/s
             upload_warn_kbps: 2_000,      // 2 MB/s
             upload_alert_kbps: 10_000,    // 10 MB/s
+        }
+    }
+}
+
+// ─── DNS / VPN module ────────────────────────────────────────────────────────
+// Mullvad + Blocky + nmcli DNS preset switcher. ndns noctalia plugin'inden
+// tam Rust port'u: state.sh + apply.sh script'leri tokio::process ile
+// inline çalıştırılıyor; harici dosya yok.
+
+#[derive(Deserialize, Clone, Debug)]
+#[serde(default)]
+pub struct DnsProviderEntry {
+    /// "google", "cloudflare" gibi tanımlayıcı (dahili karşılaştırma için).
+    pub id: String,
+    /// UI'da gösterilecek metin: "Google", "Cloudflare" vs.
+    pub label: String,
+    /// Boşlukla ayrılmış IPv4 listesi:  "8.8.8.8 8.8.4.4".
+    pub ip: String,
+}
+
+impl Default for DnsProviderEntry {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            label: String::new(),
+            ip: String::new(),
+        }
+    }
+}
+
+#[derive(Deserialize, Clone, Debug)]
+#[serde(default)]
+pub struct DnsModuleConfig {
+    /// `osc-mullvad` script'ine giden komut (binary adı veya tam yol).
+    pub osc_command: String,
+    /// State polling aralığı (saniye). Min 5.
+    pub watchdog_secs: u64,
+    /// DNS preset listesi. Boş bırakılırsa varsayılan 5 (Google, Cloudflare,
+    /// OpenDNS, AdGuard, Quad9) kullanılır.
+    pub providers: Vec<DnsProviderEntry>,
+}
+
+impl DnsModuleConfig {
+    fn default_providers() -> Vec<DnsProviderEntry> {
+        vec![
+            DnsProviderEntry {
+                id: "google".into(),
+                label: "Google".into(),
+                ip: "8.8.8.8 8.8.4.4".into(),
+            },
+            DnsProviderEntry {
+                id: "cloudflare".into(),
+                label: "Cloudflare".into(),
+                ip: "1.1.1.1 1.0.0.1".into(),
+            },
+            DnsProviderEntry {
+                id: "opendns".into(),
+                label: "OpenDNS".into(),
+                ip: "208.67.222.222 208.67.220.220".into(),
+            },
+            DnsProviderEntry {
+                id: "adguard".into(),
+                label: "AdGuard".into(),
+                ip: "94.140.14.14 94.140.15.15".into(),
+            },
+            DnsProviderEntry {
+                id: "quad9".into(),
+                label: "Quad9".into(),
+                ip: "9.9.9.9 149.112.112.112".into(),
+            },
+        ]
+    }
+}
+
+impl Default for DnsModuleConfig {
+    fn default() -> Self {
+        Self {
+            osc_command: "osc-mullvad".into(),
+            watchdog_secs: 30,
+            providers: Self::default_providers(),
         }
     }
 }
@@ -1100,6 +1182,7 @@ pub enum ModuleName {
     WindowTitle,
     SystemInfo,
     NetworkSpeed,
+    Dns,
     KeyboardLayout,
     Tray,
     Tempo,
@@ -1131,6 +1214,7 @@ impl<'de> Deserialize<'de> for ModuleName {
                     "WindowTitle" => ModuleName::WindowTitle,
                     "SystemInfo" => ModuleName::SystemInfo,
                     "NetworkSpeed" => ModuleName::NetworkSpeed,
+                    "Dns" => ModuleName::Dns,
                     "KeyboardLayout" => ModuleName::KeyboardLayout,
                     "Tray" => ModuleName::Tray,
                     "Notifications" => ModuleName::Notifications,

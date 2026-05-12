@@ -19,6 +19,7 @@ pub enum MenuType {
     MediaPlayer,
     SystemInfo,
     NetworkSpeed,
+    Dns,
     Tempo,
 }
 

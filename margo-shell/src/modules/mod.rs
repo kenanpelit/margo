@@ -9,6 +9,7 @@ use crate::{
 use iced::{Alignment, Element, Length, Subscription, SurfaceId, widget::Row};
 
 pub mod custom_module;
+pub mod dns;
 pub mod keyboard_layout;
 pub mod media_player;
 pub mod network_speed;
@@ -204,6 +205,10 @@ impl App {
                 self.network_speed.view().map(Message::NetworkSpeed),
                 Some(OnModulePress::ToggleMenu(MenuType::NetworkSpeed)),
             )),
+            ModuleName::Dns => Some((
+                self.dns.view().map(Message::Dns),
+                Some(OnModulePress::ToggleMenu(MenuType::Dns)),
+            )),
             ModuleName::KeyboardLayout => self.keyboard_layout.view().map(|view| {
                 (
                     view.map(Message::KeyboardLayout),
@@ -271,6 +276,7 @@ impl App {
             ModuleName::NetworkSpeed => {
                 Some(self.network_speed.subscription().map(Message::NetworkSpeed))
             }
+            ModuleName::Dns => Some(self.dns.subscription().map(Message::Dns)),
             ModuleName::KeyboardLayout => Some(
                 self.keyboard_layout
                     .subscription()
