@@ -470,6 +470,20 @@ impl Outputs {
             .filter(|om| om.id == id)
     }
 
+    /// `MenuType` currently open on the bar surface `bar_id`, skipping
+    /// menus that are mid-close. Used by `ModuleItem` to render the
+    /// "this module's menu is on screen" active-state indicator.
+    pub fn open_menu_type_for_bar(
+        &self,
+        bar_id: SurfaceId,
+    ) -> Option<crate::components::menu::MenuType> {
+        self.find_by_surface_id(bar_id)
+            .and_then(|(_, si, _)| si.as_ref())
+            .and_then(|si| si.menu.open.as_ref())
+            .filter(|om| om.closing_at.is_none())
+            .map(|om| om.menu_type.clone())
+    }
+
     /// True if any open menu is still inside its open- or close-
     /// animation window. Drives the 60 fps subscription in
     /// `App::subscription` so fade/slide gets per-frame redraws.

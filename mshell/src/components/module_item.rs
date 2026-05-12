@@ -1,5 +1,8 @@
 use crate::{components::position_button, theme::use_theme};
-use iced::{Alignment, Element, Length, widget::container};
+use iced::{
+    Alignment, Element, Length,
+    widget::{Space, Stack, container},
+};
 
 use super::ButtonUIRef;
 
@@ -14,6 +17,7 @@ pub struct ModuleItem<'a, Msg> {
     on_right_press: Option<Msg>,
     on_scroll_up: Option<Msg>,
     on_scroll_down: Option<Msg>,
+    is_active: bool,
 }
 
 pub fn module_item<'a, Msg: 'static + Clone>(content: Element<'a, Msg>) -> ModuleItem<'a, Msg> {
@@ -24,6 +28,7 @@ pub fn module_item<'a, Msg: 'static + Clone>(content: Element<'a, Msg>) -> Modul
         on_right_press: None,
         on_scroll_up: None,
         on_scroll_down: None,
+        is_active: false,
     }
 }
 
@@ -52,16 +57,30 @@ impl<'a, Msg: 'static + Clone> ModuleItem<'a, Msg> {
         self.on_scroll_down = Some(msg);
         self
     }
+
+    /// Mark this module as "active" — its menu (or owned overlay) is
+    /// currently on screen. Renders a 2px accent bar along the
+    /// capsule's bottom edge to signal the relationship.
+    pub fn is_active(mut self, value: bool) -> Self {
+        self.is_active = value;
+        self
+    }
 }
 
 impl<'a, Msg: 'static + Clone> From<ModuleItem<'a, Msg>> for Element<'a, Msg> {
     fn from(item: ModuleItem<'a, Msg>) -> Self {
-        let (space, module_button_style) =
-            use_theme(|theme| (theme.space, theme.module_button_style()));
+        let (space, module_button_style, active_indicator_style) = use_theme(|theme| {
+            (
+                theme.space,
+                theme.module_button_style(),
+                theme.module_active_indicator_style(),
+            )
+        });
 
+        let is_active = item.is_active;
         let has_action = item.on_press.is_some() || item.on_press_with_position.is_some();
 
-        if has_action {
+        let core: Element<'a, Msg> = if has_action {
             let mut button = position_button(
                 container(item.content)
                     .align_y(Alignment::Center)
@@ -96,6 +115,39 @@ impl<'a, Msg: 'static + Clone> From<ModuleItem<'a, Msg>> for Element<'a, Msg> {
                 .align_y(Alignment::Center)
                 .clip(true)
                 .into()
+        };
+
+        if is_active {
+            // Centered 60%-of-capsule indicator hugging the bottom
+            // edge. Implemented as a 3-cell Row (2/6/2 flex portions)
+            // so the accent stripe scales with capsule width without
+            // needing to know it explicitly. Stack overlay keeps bar
+            // height unchanged when this toggles on/off.
+            let stripe = container(
+                Space::new()
+                    .width(Length::Fill)
+                    .height(Length::Fixed(2.0)),
+            )
+            .style(active_indicator_style);
+
+            let stripe_row = iced::widget::Row::new()
+                .push(Space::new().width(Length::FillPortion(2)))
+                .push(
+                    container(stripe)
+                        .width(Length::FillPortion(6))
+                        .height(Length::Fixed(2.0)),
+                )
+                .push(Space::new().width(Length::FillPortion(2)))
+                .height(Length::Fixed(2.0));
+
+            let indicator_layer = container(stripe_row)
+                .align_y(Alignment::End)
+                .width(Length::Fill)
+                .height(Length::Fill);
+
+            Stack::new().push(core).push(indicator_layer).into()
+        } else {
+            core
         }
     }
 }

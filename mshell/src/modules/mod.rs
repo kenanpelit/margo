@@ -41,6 +41,7 @@ pub enum OnModulePress {
 impl App {
     pub fn modules_section<'a>(&'a self, id: SurfaceId) -> [Element<'a, Message>; 3] {
         let space = use_theme(|t| t.space);
+        let current_menu = self.outputs.open_menu_type_for_bar(id);
         [
             &self.general_config.modules.left,
             &self.general_config.modules.center,
@@ -55,8 +56,12 @@ impl App {
             for module_def in modules_def {
                 row = row.push(match module_def {
                     // life parsing of string to module
-                    ModuleDef::Single(module) => self.single_module_wrapper(id, module),
-                    ModuleDef::Group(group) => self.group_module_wrapper(id, group),
+                    ModuleDef::Single(module) => {
+                        self.single_module_wrapper(id, module, current_menu.as_ref())
+                    }
+                    ModuleDef::Group(group) => {
+                        self.group_module_wrapper(id, group, current_menu.as_ref())
+                    }
                 });
             }
 
@@ -85,6 +90,7 @@ impl App {
         id: SurfaceId,
         content: Element<'a, Message>,
         action: Option<OnModulePress>,
+        current_menu: Option<&MenuType>,
     ) -> Element<'a, Message> {
         let content = if use_theme(|t| t.animations_enabled) {
             animated_size(content).into()
@@ -94,11 +100,13 @@ impl App {
         match action {
             Some(action) => {
                 let mut item = module_item(content);
+                let mut active_for: Option<MenuType> = None;
                 match action {
                     OnModulePress::Action(msg) => {
                         item = item.on_press(*msg);
                     }
                     OnModulePress::ToggleMenu(menu_type) => {
+                        active_for = Some(menu_type.clone());
                         item = item.on_press_with_position(move |button_ui_ref| {
                             Message::ToggleMenu(menu_type.clone(), id, button_ui_ref)
                         });
@@ -109,6 +117,7 @@ impl App {
                         on_scroll_up,
                         on_scroll_down,
                     } => {
+                        active_for = Some(menu_type.clone());
                         item = item.on_press_with_position(move |button_ui_ref| {
                             Message::ToggleMenu(menu_type.clone(), id, button_ui_ref)
                         });
@@ -123,6 +132,11 @@ impl App {
                         }
                     }
                 }
+                if let (Some(my_type), Some(open_type)) = (active_for.as_ref(), current_menu)
+                    && my_type == open_type
+                {
+                    item = item.is_active(true);
+                }
                 item.into()
             }
             None => module_item(content).into(),
@@ -133,15 +147,18 @@ impl App {
         &'a self,
         id: SurfaceId,
         module_name: &'a ModuleName,
+        current_menu: Option<&MenuType>,
     ) -> Option<Element<'a, Message>> {
-        self.get_module_view(id, module_name)
-            .map(|(content, action)| module_group(self.build_module_item(id, content, action)))
+        self.get_module_view(id, module_name).map(|(content, action)| {
+            module_group(self.build_module_item(id, content, action, current_menu))
+        })
     }
 
     fn group_module_wrapper<'a>(
         &'a self,
         id: SurfaceId,
         group: &'a [ModuleName],
+        current_menu: Option<&MenuType>,
     ) -> Option<Element<'a, Message>> {
         let modules: Vec<_> = group
             .iter()
@@ -154,7 +171,9 @@ impl App {
             let items = Row::with_children(
                 modules
                     .into_iter()
-                    .map(|(content, action)| self.build_module_item(id, content, action))
+                    .map(|(content, action)| {
+                        self.build_module_item(id, content, action, current_menu)
+                    })
                     .collect::<Vec<_>>(),
             );
             Some(module_group(items.into()))

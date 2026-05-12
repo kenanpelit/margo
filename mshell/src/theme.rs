@@ -912,6 +912,25 @@ impl MshellTheme {
         }
     }
 
+    /// 2px accent strip painted along the bottom of any module
+    /// capsule whose menu is currently open. Sits in a Stack overlay
+    /// inside `ModuleItem`, mirroring the same "active state" idiom
+    /// used by workspace pills — so the whole bar reads consistently.
+    pub fn module_active_indicator_style(
+        &self,
+    ) -> impl Fn(&Theme) -> container::Style + use<> {
+        let radius = self.radius.sm;
+        move |theme: &Theme| container::Style {
+            background: Some(Background::Color(theme.palette().primary)),
+            border: Border {
+                radius: radius.into(),
+                width: 0.0,
+                color: Color::TRANSPARENT,
+            },
+            ..container::Style::default()
+        }
+    }
+
     /// Module button style. Transparent base, accent-tinted hover,
     /// brighter accent pressed — gives the bar a "live" feel without
     /// the harsh swatches you get from naked primary backgrounds.
