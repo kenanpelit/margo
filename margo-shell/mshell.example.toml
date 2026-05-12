@@ -110,6 +110,13 @@ invert_scroll_direction  = "Trackpad"          # "All" / "Mouse" / "Trackpad"
 # font_size        = 13
 # show_window_count = true
 
+# Tag başına renk override (basit hex syntax) — [appearance].workspace_colors'a alternatif.
+# Belirtilmeyen tag'ler appearance bloğundaki paleti kullanır.
+# [workspaces.colors]
+# "1" = "#cba6f7"
+# "2" = "#89b4fa"
+# "3" = "#94e2d5"
+
 # ══════════════════════════════════════════════════════════════════════════
 #  Window title
 # ══════════════════════════════════════════════════════════════════════════
@@ -227,6 +234,18 @@ toast_timeout    = 5000                      # ms
 toast_limit      = 4
 toast_max_height = 180
 blocklist        = []                        # regex pattern listesi (uygulama adına eşler)
+# Görsel iyileştirmeler — hepsi varsayılan true.
+show_urgency_bar  = true                     # solda 4px renkli urgency barı
+summary_bold      = true                     # başlık ağırlığı bold
+accent_app_name   = true                     # app adını primary accent rengiyle
+show_count_badge  = true                     # bar ikonu yanında bildirim sayısı
+show_actions      = true                     # bildirim action butonları
+
+# Urgency renk override (opsiyonel). Boş = theme palette text / primary / danger.
+# [notifications.urgency_colors]
+# low      = "#a6adc8"
+# normal   = "#cba6f7"
+# critical = "#f38ba8"
 
 # ══════════════════════════════════════════════════════════════════════════
 #  Settings paneli — power / battery / audio / network / bluetooth / brightness

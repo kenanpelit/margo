@@ -1,5 +1,5 @@
 use crate::{
-    config::{InvertScrollDirection, WorkspaceVisibilityMode, WorkspacesModuleConfig},
+    config::{AppearanceColor, InvertScrollDirection, WorkspaceVisibilityMode, WorkspacesModuleConfig},
     outputs::Outputs,
     services::{
         ReadOnlyService, Service, ServiceEvent,
@@ -401,8 +401,16 @@ impl Workspaces {
                                 w.monitor_id
                             };
 
+                            // [workspaces.colors] override > theme.workspace_colors
+                            let override_color = self
+                                .config
+                                .colors
+                                .get(&w.id.to_string())
+                                .and_then(|hex| parse_hex_color(hex));
                             let color = color_index.map(|i| {
-                                if w.id > 0 {
+                                if let Some(c) = override_color {
+                                    Some(c)
+                                } else if w.id > 0 {
                                     theme.workspace_colors.get(i as usize).copied()
                                 } else {
                                     theme
@@ -580,6 +588,14 @@ impl Workspaces {
     pub fn subscription(&self) -> Subscription<Message> {
         CompositorService::subscribe().map(Message::ServiceEvent)
     }
+}
+
+/// `[workspaces.colors]` blokundaki "#cba6f7" gibi hex string'i
+/// AppearanceColor::Simple'a çevir. Geçersizse None.
+fn parse_hex_color(hex: &str) -> Option<AppearanceColor> {
+    hex_color::HexColor::parse(hex)
+        .ok()
+        .map(AppearanceColor::Simple)
 }
 
 /// `n` → küçük üst-simge basamaklar ("¹²³⁴⁵⁶⁷⁸⁹⁰"). Workspace

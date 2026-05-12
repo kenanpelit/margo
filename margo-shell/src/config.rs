@@ -270,6 +270,13 @@ pub struct WorkspacesModuleConfig {
     /// varsayılan false.
     #[serde(default)]
     pub show_window_count: bool,
+    /// Per-tag renk override — `[appearance].workspace_colors`'tan daha
+    /// keşfedilebilir basit syntax. Key tag numarası ("1".."9"), value
+    /// hex renk ("#cba6f7"). Buradaki herhangi bir tag varsa
+    /// `[appearance].workspace_colors`'taki ilgili index override edilir;
+    /// boş bırakılırsa `appearance`'ınki kullanılır.
+    #[serde(default)]
+    pub colors: std::collections::HashMap<String, String>,
 }
 
 #[derive(Deserialize, Copy, Clone, Default, PartialEq, Eq, Debug)]
@@ -750,6 +757,38 @@ pub struct NotificationsModuleConfig {
     pub toast_limit: usize,
     pub toast_max_height: u32,
     pub blocklist: Vec<RegexCfg>,
+    // ─── Görsel iyileştirmeler ──────────────────────────────────────────
+    /// Kartın sol kenarındaki 4px renkli urgency bar'ını çiz.
+    #[serde(default = "default_true")]
+    pub show_urgency_bar: bool,
+    /// Summary (başlık) font ağırlığı bold olsun.
+    #[serde(default = "default_true")]
+    pub summary_bold: bool,
+    /// App name başlığı primary accent rengiyle göster.
+    #[serde(default = "default_true")]
+    pub accent_app_name: bool,
+    /// Bar ikonu yanında okunmamış bildirim sayı badge'i.
+    #[serde(default = "default_true")]
+    pub show_count_badge: bool,
+    /// Bildirim kartının altında D-Bus action butonlarını render et.
+    #[serde(default = "default_true")]
+    pub show_actions: bool,
+    /// Urgency'ye göre özel renkler. None ise theme palette
+    /// (text / warning / danger) kullanılır.
+    #[serde(default)]
+    pub urgency_colors: NotificationUrgencyColors,
+}
+
+#[derive(Deserialize, Clone, Debug, Default)]
+#[serde(default)]
+pub struct NotificationUrgencyColors {
+    pub low: Option<String>,
+    pub normal: Option<String>,
+    pub critical: Option<String>,
+}
+
+fn default_true() -> bool {
+    true
 }
 impl Default for NotificationsModuleConfig {
     fn default() -> Self {
@@ -764,6 +803,12 @@ impl Default for NotificationsModuleConfig {
             toast_limit: 5,
             toast_max_height: 150,
             blocklist: vec![],
+            show_urgency_bar: true,
+            summary_bold: true,
+            accent_app_name: true,
+            show_count_badge: true,
+            show_actions: true,
+            urgency_colors: NotificationUrgencyColors::default(),
         }
     }
 }

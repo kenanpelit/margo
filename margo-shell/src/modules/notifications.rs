@@ -112,6 +112,9 @@ pub enum Message {
     ExpireToast(u32),
     DismissToast(u32),
     ToastResized(Size),
+    /// D-Bus action invoke — `org.freedesktop.Notifications.ActionInvoked`
+    /// sinyalini gönderir ve bildirimi kapatır.
+    InvokeAction(u32, String),
 }
 
 #[derive(Debug, PartialEq)]
@@ -319,6 +322,10 @@ impl Notifications {
                 let action_key = self.find_first_action_key(id);
                 Action::Task(invoke_and_close_task(connection, id, action_key))
             }
+            Message::InvokeAction(id, action_key) => {
+                let connection = self.connection.clone();
+                Action::Task(invoke_and_close_task(connection, id, Some(action_key)))
+            }
             Message::NotificationClosed => Action::None,
             Message::ClearNotifications => {
                 let connection = self.connection.clone();
@@ -464,7 +471,7 @@ impl Notifications {
         on_press: Message,
         toast: bool,
     ) -> Element<'a, Message> {
-        let (space, font_size) = use_theme(|t| (t.space, t.font_size));
+        let (space, font_size, radius) = use_theme(|t| (t.space, t.font_size, t.radius));
         let timestamp_element = if self.config.show_timestamps {
             Some(
                 container(text(self.format_timestamp(notification.timestamp)).size(font_size.xs))
@@ -485,42 +492,120 @@ impl Notifications {
         };
 
         let notification_id = notification.id;
-
         let app_icon_button = notification_icon(notification.icon.as_ref());
 
-        let mut card = container(
-            column!(
-                Row::new()
-                    .push(
-                        Row::new()
-                            .push(app_icon_button)
-                            .push(column!(
-                                text(&notification.app_name)
-                                    .size(font_size.md)
-                                    .wrapping(text::Wrapping::WordOrGlyph),
-                                timestamp_element
-                            ))
-                            .width(Length::Fill)
-                            .spacing(space.xxs)
-                            .padding(space.xs)
-                            .align_y(Alignment::Center),
-                    )
-                    .push(
-                        icon_button(StaticIcon::Close)
-                            .kind(ButtonKind::Transparent)
-                            .hierarchy(ButtonHierarchy::Danger)
-                            .on_press(Message::CloseNotificationById(notification_id))
-                    ),
-                column!(
-                    text(&notification.summary).wrapping(text::Wrapping::WordOrGlyph),
-                    body_element,
-                )
-                .spacing(space.xxs)
-                .padding(Padding::new(space.xs).top(0.))
-            )
-            .spacing(space.xxs),
-        );
+        // Summary — bold istenirse Font::DEFAULT'un weight'i Bold'a çekilir.
+        let mut summary_text = text(&notification.summary).wrapping(text::Wrapping::WordOrGlyph);
+        if self.config.summary_bold {
+            use iced::font::{Font, Weight};
+            summary_text = summary_text.font(Font {
+                weight: Weight::Bold,
+                ..Font::DEFAULT
+            });
+        }
 
+        // App name — accent_app_name true ise primary renkle vurgu.
+        let app_name_widget = {
+            let mut t = text(&notification.app_name)
+                .size(font_size.md)
+                .wrapping(text::Wrapping::WordOrGlyph);
+            if self.config.accent_app_name {
+                t = t.style(|theme: &Theme| iced::widget::text::Style {
+                    color: Some(theme.palette().primary),
+                });
+            }
+            t
+        };
+
+        // Action buttons — D-Bus actions varsa pair'leri al ve render et.
+        // freedesktop spec: actions = [id1, label1, id2, label2, ...]
+        let actions_row = if self.config.show_actions && notification.actions.len() >= 2 {
+            let mut row_widget = Row::new().spacing(space.xxs);
+            for chunk in notification.actions.chunks(2) {
+                if chunk.len() < 2 {
+                    continue;
+                }
+                let action_id = chunk[0].clone();
+                // Default action is just "click" — skip rendering as button.
+                if action_id == "default" {
+                    continue;
+                }
+                let label = chunk[1].clone();
+                row_widget = row_widget.push(
+                    button(text(label).size(font_size.sm))
+                        .padding([space.xxs, space.sm])
+                        .on_press(Message::InvokeAction(notification_id, action_id)),
+                );
+            }
+            Some(row_widget.padding(Padding::new(space.xs).top(0.)))
+        } else {
+            None
+        };
+
+        // Solda urgency bar (4px renkli).
+        let urgency = notification.urgency;
+        let urgency_low = self.parse_urgency_color(&self.config.urgency_colors.low);
+        let urgency_normal = self.parse_urgency_color(&self.config.urgency_colors.normal);
+        let urgency_critical = self.parse_urgency_color(&self.config.urgency_colors.critical);
+        let urgency_bar: Element<'a, Message> = if self.config.show_urgency_bar {
+            container(Space::new().height(Length::Fill).width(Length::Fixed(4.0)))
+                .height(Length::Fill)
+                .style(move |theme: &Theme| {
+                    let color = match urgency {
+                        Urgency::Low => urgency_low.unwrap_or_else(|| theme.palette().text),
+                        Urgency::Normal => {
+                            urgency_normal.unwrap_or_else(|| theme.palette().primary)
+                        }
+                        Urgency::Critical => {
+                            urgency_critical.unwrap_or_else(|| theme.palette().danger)
+                        }
+                    };
+                    container::Style {
+                        background: Some(color.into()),
+                        border: Border::default().rounded(iced::border::Radius {
+                            top_left: radius.sm,
+                            bottom_left: radius.sm,
+                            top_right: 0.0,
+                            bottom_right: 0.0,
+                        }),
+                        ..Default::default()
+                    }
+                })
+                .into()
+        } else {
+            Space::new().into()
+        };
+
+        let card_body = column!(
+            Row::new()
+                .push(
+                    Row::new()
+                        .push(app_icon_button)
+                        .push(column!(app_name_widget, timestamp_element))
+                        .width(Length::Fill)
+                        .spacing(space.xxs)
+                        .padding(space.xs)
+                        .align_y(Alignment::Center),
+                )
+                .push(
+                    icon_button(StaticIcon::Close)
+                        .kind(ButtonKind::Transparent)
+                        .hierarchy(ButtonHierarchy::Danger)
+                        .on_press(Message::CloseNotificationById(notification_id))
+                ),
+            column!(summary_text, body_element)
+                .spacing(space.xxs)
+                .padding(Padding::new(space.xs).top(0.)),
+            actions_row,
+        )
+        .spacing(space.xxs);
+
+        let card_with_bar: Element<'a, Message> = row!(urgency_bar, card_body)
+            .spacing(space.xxs)
+            .align_y(Alignment::Center)
+            .into();
+
+        let mut card = container(card_with_bar);
         if toast {
             card = card.max_height(self.config.toast_max_height);
         }
@@ -538,6 +623,15 @@ impl Notifications {
                 notification.urgency,
             ))
             .into()
+    }
+
+    /// `#hex` formatındaki rengi `iced::Color`'a çevir.
+    fn parse_urgency_color(&self, hex: &Option<String>) -> Option<iced::Color> {
+        hex.as_deref().and_then(|s| {
+            hex_color::HexColor::parse(s).ok().map(|c| {
+                iced::Color::from_rgba8(c.r, c.g, c.b, c.a as f32 / 255.0)
+            })
+        })
     }
 
     fn group_item<'a>(
@@ -572,10 +666,42 @@ impl Notifications {
     }
 
     pub fn view(&'_ self) -> Element<'_, Message> {
-        if !self.notifications.is_empty() {
-            icon(StaticIcon::BellBadge).into()
+        let (space, bar_font) = use_theme(|t| (t.space, t.bar_font_size));
+        let count = self.notifications.len();
+        let has_critical = self
+            .notifications
+            .iter()
+            .any(|n| n.urgency == Urgency::Critical);
+        let bell = if count > 0 {
+            icon(StaticIcon::BellBadge).size(bar_font)
         } else {
-            icon(StaticIcon::Bell).into()
+            icon(StaticIcon::Bell).size(bar_font)
+        };
+        // Count badge — config.show_count_badge && count > 0 ise sayıyı yaz.
+        let badge_text = if self.config.show_count_badge && count > 0 {
+            Some(text(count.to_string()).size(bar_font))
+        } else {
+            None
+        };
+        let body = container(
+            row!(bell, badge_text)
+                .spacing(space.xxs)
+                .align_y(Alignment::Center),
+        );
+        if has_critical {
+            body.style(|theme: &Theme| container::Style {
+                text_color: Some(theme.palette().danger),
+                ..Default::default()
+            })
+            .into()
+        } else if count > 0 {
+            body.style(|theme: &Theme| container::Style {
+                text_color: Some(theme.palette().primary),
+                ..Default::default()
+            })
+            .into()
+        } else {
+            body.into()
         }
     }
 
