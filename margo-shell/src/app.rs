@@ -1,5 +1,4 @@
 use crate::{
-    HEIGHT,
     components::{ButtonUIRef, Centerbox, menu::MenuType},
     config::{self, AppearanceStyle, Config, Modules, Position},
     get_log_spec,
@@ -879,9 +878,10 @@ impl App {
             }
             Message::ToggleVisibility => {
                 self.visible = !self.visible;
-                let (bar_style, scale_factor) = use_theme(|t| (t.bar_style, t.scale_factor));
+                let (bar_style, scale_factor, bar_height) =
+                    use_theme(|t| (t.bar_style, t.scale_factor, t.bar_height));
                 let height = if self.visible {
-                    (crate::HEIGHT
+                    (bar_height
                         - match bar_style {
                             AppearanceStyle::Solid | AppearanceStyle::Gradient => 8.,
                             AppearanceStyle::Islands => 0.,
@@ -914,16 +914,24 @@ impl App {
 
                 let [left, center, right] = self.modules_section(id);
 
-                let (space, bar_style, bar_position, opacity, menu) =
-                    use_theme(|t| (t.space, t.bar_style, t.bar_position, t.opacity, t.menu));
+                let (space, bar_style, bar_position, opacity, menu, bar_height) = use_theme(|t| {
+                    (
+                        t.space,
+                        t.bar_style,
+                        t.bar_position,
+                        t.opacity,
+                        t.menu,
+                        t.bar_height,
+                    )
+                });
                 let centerbox = Centerbox::new([left, center, right])
                     .spacing(space.xxs)
                     .width(Length::Fill)
                     .align_items(Alignment::Center)
                     .height(if bar_style == AppearanceStyle::Islands {
-                        HEIGHT
+                        bar_height
                     } else {
-                        HEIGHT - space.xs as f64
+                        bar_height - space.xs as f64
                     } as f32)
                     .padding(if bar_style == AppearanceStyle::Islands {
                         [space.xxs, space.xxs]

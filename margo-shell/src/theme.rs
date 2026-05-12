@@ -40,15 +40,17 @@ pub struct Space {
 }
 
 impl Default for Space {
+    // Noctalia spacing scale — daha kompakt, capsule-friendly. Önceki
+    // değerler (4/8/12/16/24/32/48) bar'ı çok geniş hissettiriyordu.
     fn default() -> Self {
         Self {
-            xxs: 4.0,
-            xs: 8.0,
-            sm: 12.0,
-            md: 16.0,
-            lg: 24.0,
-            xl: 32.0,
-            xxl: 48.0,
+            xxs: 2.0,
+            xs: 4.0,
+            sm: 6.0,
+            md: 9.0,
+            lg: 13.0,
+            xl: 18.0,
+            xxl: 26.0,
         }
     }
 }
@@ -63,12 +65,14 @@ pub struct Radius {
 }
 
 impl Default for Radius {
+    // Noctalia radius ölçeği — daha az curvy. Önceki sm/md/lg/xl
+    // (4/8/16/32) Islands için fazla yuvarlaktı.
     fn default() -> Self {
         Self {
             sm: 4.0,
             md: 8.0,
-            lg: 16.0,
-            xl: 32.0,
+            lg: 12.0,
+            xl: 20.0,
         }
     }
 }
@@ -86,15 +90,17 @@ pub struct FontSize {
 }
 
 impl Default for FontSize {
+    // Noctalia font ölçeği — daha sıkı bilgi yoğunluğu için. Bar metni
+    // 10-11px, başlıklar 16-18px. Eski 8/10/12/16/20/22/32 daha gevşekti.
     fn default() -> Self {
         Self {
-            xxs: 8.0,
+            xxs: 9.0,
             xs: 10.0,
-            sm: 12.0,
-            md: 16.0,
-            lg: 20.0,
-            xl: 22.0,
-            xxl: 32.0,
+            sm: 11.0,
+            md: 13.0,
+            lg: 16.0,
+            xl: 18.0,
+            xxl: 24.0,
         }
     }
 }
@@ -112,6 +118,11 @@ pub struct MshellTheme {
     pub workspace_colors: Vec<AppearanceColor>,
     pub special_workspace_colors: Option<Vec<AppearanceColor>>,
     pub scale_factor: f64,
+    /// Bar yüksekliği (ham piksel; scale uygulamadan önce). Eski sabit
+    /// HEIGHT 34 yerine artık config'ten gelir.
+    pub bar_height: f64,
+    /// Islands modunda her capsule'a ince outline çiz.
+    pub show_outline: bool,
     // Read by animation call sites added in subsequent PRs.
     #[allow(dead_code)]
     pub animations_enabled: bool,
@@ -132,6 +143,8 @@ impl Default for MshellTheme {
             workspace_colors: appearance.workspace_colors.clone(),
             special_workspace_colors: appearance.special_workspace_colors.clone(),
             scale_factor: appearance.scale_factor,
+            bar_height: appearance.bar_density.height(),
+            show_outline: appearance.show_outline,
             animations_enabled: false,
             iced_theme: Theme::custom_with_fn(
                 "local".to_string(),
@@ -258,6 +271,8 @@ impl MshellTheme {
             workspace_colors: appearance.workspace_colors.clone(),
             special_workspace_colors: appearance.special_workspace_colors.clone(),
             scale_factor: appearance.scale_factor,
+            bar_height: appearance.bar_density.height(),
+            show_outline: appearance.show_outline,
             iced_theme: Theme::custom_with_fn(
                 "local".to_string(),
                 Palette {

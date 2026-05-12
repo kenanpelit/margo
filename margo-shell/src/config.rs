@@ -1124,6 +1124,14 @@ pub struct Appearance {
     pub style: AppearanceStyle,
     #[serde(deserialize_with = "opacity_deserializer")]
     pub opacity: f32,
+    /// Bar yüksekliği "density" — noctalia naming:
+    ///   Mini (23) / Compact (27) / Default (31) / Comfortable (37) /
+    ///   Spacious (47). 0/Default seçilirse legacy 34px kullanılır.
+    #[serde(default)]
+    pub bar_density: BarDensity,
+    /// Islands modunda her modül kapsülüne ince outline çiz.
+    #[serde(default)]
+    pub show_outline: bool,
     pub menu: MenuAppearance,
     pub background_color: BackgroundAppearanceColor,
     pub primary_color: AppearanceColor,
@@ -1133,6 +1141,30 @@ pub struct Appearance {
     pub text_color: AppearanceColor,
     pub workspace_colors: Vec<AppearanceColor>,
     pub special_workspace_colors: Option<Vec<AppearanceColor>>,
+}
+
+#[derive(Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum BarDensity {
+    Mini,
+    Compact,
+    #[default]
+    Default,
+    Comfortable,
+    Spacious,
+}
+
+impl BarDensity {
+    /// Bar yüksekliği piksel (yatay bar için). Noctalia tablosuyla
+    /// uyumlu, scale_factor uygulanmadan önceki ham değerler.
+    pub fn height(self) -> f64 {
+        match self {
+            BarDensity::Mini => 23.0,
+            BarDensity::Compact => 27.0,
+            BarDensity::Default => 31.0,
+            BarDensity::Comfortable => 37.0,
+            BarDensity::Spacious => 47.0,
+        }
+    }
 }
 
 static PRIMARY: HexColor = HexColor::rgb(122, 162, 247);
@@ -1188,6 +1220,8 @@ impl Default for Appearance {
             scale_factor: 1.0,
             style: AppearanceStyle::default(),
             opacity: default_opacity(),
+            bar_density: BarDensity::default(),
+            show_outline: false,
             menu: MenuAppearance::default(),
             background_color: BackgroundAppearanceColor::Complete {
                 base: HexColor::rgb(26, 27, 38),

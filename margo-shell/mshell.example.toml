@@ -351,10 +351,15 @@ done'"""
 #  Görünüm — Catppuccin Mocha (Islands style)
 # ══════════════════════════════════════════════════════════════════════════
 [appearance]
-style        = "Islands"                     # "Islands" / "Solid" / "Gradient"
-opacity      = 0.95
-font_name    = "JetBrainsMono Nerd Font"
-scale_factor = 1.0
+style         = "Islands"                    # "Islands" / "Solid" / "Gradient"
+opacity       = 0.95
+font_name     = "JetBrainsMono Nerd Font"
+scale_factor  = 1.0
+# Bar yüksekliği "density" — noctalia adlandırması:
+#   Mini=23 / Compact=27 / Default=31 / Comfortable=37 / Spacious=47 px
+bar_density   = "Default"
+# Islands modunda her modül kapsülüne ince primary outline (noctalia capsule görünümü)
+show_outline  = true
 
 # Menu — açılır panellerin görünümü
 [appearance.menu]

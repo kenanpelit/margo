@@ -28,7 +28,6 @@ const NERD_FONT: &[u8] = include_bytes!("../target/generated/SymbolsNerdFont-Reg
 const NERD_FONT_MONO: &[u8] =
     include_bytes!("../target/generated/SymbolsNerdFontMono-Regular-Subset.ttf");
 const CUSTOM_FONT: &[u8] = include_bytes!("../assets/MshellCustomIcon-Regular.otf");
-const HEIGHT: f64 = 34.;
 const TMP_FILE_SIZE: u64 = 10 * 1024 * 1024;
 
 #[derive(Parser, Debug)]

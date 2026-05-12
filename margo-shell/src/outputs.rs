@@ -6,10 +6,10 @@ use iced::{
 use log::debug;
 
 use crate::{
-    HEIGHT,
     components::ButtonUIRef,
     components::menu::{Menu, MenuType, OpenMenu},
     config::{self, AppearanceStyle, Position},
+    theme::use_theme,
 };
 
 #[derive(Debug, Clone)]
@@ -91,7 +91,8 @@ impl Outputs {
     }
 
     pub fn get_height(style: AppearanceStyle, scale_factor: f64) -> f64 {
-        (HEIGHT
+        let bar_height = use_theme(|t| t.bar_height);
+        (bar_height
             - match style {
                 AppearanceStyle::Solid | AppearanceStyle::Gradient => 8.,
                 AppearanceStyle::Islands => 0.,
