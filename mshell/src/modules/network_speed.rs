@@ -205,11 +205,13 @@ impl NetworkSpeed {
         threshold: Option<(u32, u32, u32)>,
     ) -> Element<'a, Message> {
         let (space, bar_font) = use_theme(|t| (t.space, t.bar_font_size));
-        // Fixed-width + monospace so a 1 KB/s → 999 KB/s digit jump
-        // doesn't grow/shrink the text widget by 4-8px and trigger
-        // the bar's animated_size jitter. Width covers 5 chars
-        // ("9999K", "12.3M") at the typical bar_font.
-        let value_width = Length::Fixed(bar_font * 0.62 * 5.0 + 3.0);
+        // Fixed-width + monospace so a 7 KB/s → 999 KB/s digit jump
+        // doesn't grow/shrink the text widget and chain into the
+        // bar's animated_size. Width covers 8 chars ("9999KB/s",
+        // "9999MB/s"); align Left so short values stay glued to
+        // the icon and the slack pads on the right (reads as
+        // natural inter-indicator spacing).
+        let value_width = Length::Fixed(bar_font * 0.62 * 8.0 + 3.0);
         let body = container(
             row!(
                 icon(ico).size(bar_font),
@@ -217,7 +219,7 @@ impl NetworkSpeed {
                     .size(bar_font)
                     .font(Font::MONOSPACE)
                     .width(value_width)
-                    .align_x(Horizontal::Right)
+                    .align_x(Horizontal::Left)
             )
             .spacing(space.xxs),
         );
