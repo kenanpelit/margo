@@ -60,7 +60,7 @@ impl<'a, Msg: 'static + Clone> SliderControl<'a, Msg> {
 
 impl<'a, Msg: 'static + Clone> From<SliderControl<'a, Msg>> for Element<'a, Msg> {
     fn from(ctrl: SliderControl<'a, Msg>) -> Self {
-        let space = use_theme(|theme| theme.space);
+        let (space, slider_style) = use_theme(|theme| (theme.space, theme.slider_style()));
 
         let icon_element: Element<'a, Msg> = if let Some(msg) = ctrl.on_icon_press {
             let btn = icon_button(ctrl.icon.clone()).on_press(msg);
@@ -80,7 +80,8 @@ impl<'a, Msg: 'static + Clone> From<SliderControl<'a, Msg>> for Element<'a, Msg>
         let slider_element = MouseArea::new(
             Element::<'a, remote_value::Message<u32>>::from(
                 slider(ctrl.range, ctrl.value, remote_value::Message::Request)
-                    .on_release(remote_value::Message::Timeout),
+                    .on_release(remote_value::Message::Timeout)
+                    .style(slider_style),
             )
             .map(ctrl.on_change),
         )

@@ -7,7 +7,7 @@ use crate::{
     },
 };
 use iced::{
-    Background, Border, Color, Theme,
+    Background, Border, Color, Shadow, Theme, Vector,
     theme::{Palette, palette},
     widget::{
         button::{self, Status},
@@ -602,44 +602,119 @@ impl MshellTheme {
         let radius_xl = self.radius.xl;
         let opacity = self.opacity;
         move |theme: &Theme, status: Status| {
-            let mut base = button::Style {
-                background: Some(
-                    if is_active {
-                        theme.palette().primary
-                    } else {
-                        theme.extended_palette().background.weak.color
-                    }
-                    .scale_alpha(opacity)
-                    .into(),
+            let primary = theme.palette().primary;
+            let weak_bg = theme.extended_palette().background.weak.color;
+            let strong_bg = theme.extended_palette().background.strong.color;
+            let peach = theme.extended_palette().primary.weak.color;
+            let on_primary = theme.extended_palette().primary.base.text;
+
+            // Per state: (background, border_width, border_color, text)
+            let (bg, border_w, border_c, text_c) = match (is_active, status) {
+                // Active toggle — accent fill + ring.
+                (true, Status::Hovered) => (
+                    peach.scale_alpha(opacity),
+                    1.5,
+                    primary.scale_alpha(0.85),
+                    on_primary,
                 ),
+                (true, Status::Pressed) => (
+                    primary.scale_alpha(0.95),
+                    2.0,
+                    primary,
+                    on_primary,
+                ),
+                (true, _) => (
+                    primary.scale_alpha(opacity),
+                    1.0,
+                    primary.scale_alpha(0.65),
+                    on_primary,
+                ),
+                // Inactive toggle — neutral with accent hover hint.
+                (false, Status::Hovered) => (
+                    strong_bg.scale_alpha(opacity),
+                    1.0,
+                    primary.scale_alpha(0.45),
+                    theme.palette().text,
+                ),
+                (false, Status::Pressed) => (
+                    primary.scale_alpha(0.22),
+                    1.0,
+                    primary.scale_alpha(0.6),
+                    theme.palette().text,
+                ),
+                (false, _) => (
+                    weak_bg.scale_alpha(opacity),
+                    0.0,
+                    Color::TRANSPARENT,
+                    theme.palette().text,
+                ),
+            };
+
+            button::Style {
+                background: Some(bg.into()),
                 border: Border {
-                    width: 0.0,
+                    width: border_w,
                     radius: radius_xl.into(),
-                    color: Color::TRANSPARENT,
+                    color: border_c,
                 },
-                text_color: if is_active {
-                    theme.extended_palette().primary.base.text
-                } else {
-                    theme.palette().text
+                text_color: text_c,
+                // Soft drop shadow — active buttons lift, inactive
+                // ones get a hairline shadow for separation.
+                shadow: Shadow {
+                    color: Color { r: 0., g: 0., b: 0., a: if is_active { 0.28 } else { 0.14 } },
+                    offset: Vector::new(0.0, if is_active { 3.0 } else { 1.5 }),
+                    blur_radius: if is_active { 10.0 } else { 4.0 },
                 },
                 ..button::Style::default()
+            }
+        }
+    }
+
+    /// Volume / brightness / source slider — thicker rail with an
+    /// accent fill on the value side, a 16 px round handle with a
+    /// white inner ring and drop shadow so it reads as a pickable
+    /// affordance against any wallpaper.
+    pub fn slider_style(
+        &self,
+    ) -> impl Fn(&Theme, iced::widget::slider::Status) -> iced::widget::slider::Style + use<> {
+        move |theme: &Theme, status: iced::widget::slider::Status| {
+            use iced::widget::slider::{Handle, HandleShape, Rail, Status as SS, Style};
+
+            let primary = theme.palette().primary;
+            let strong_bg = theme.extended_palette().background.strong.color;
+
+            let rail_width = 5.0;
+            let handle_radius = match status {
+                SS::Dragged => 9.5,
+                SS::Hovered => 8.5,
+                SS::Active => 7.5,
             };
-            match status {
-                Status::Active => base,
-                Status::Hovered => {
-                    let peach = theme.extended_palette().primary.weak.color;
-                    base.background = Some(
-                        if is_active {
-                            peach
-                        } else {
-                            theme.extended_palette().background.strong.color
-                        }
-                        .scale_alpha(opacity)
-                        .into(),
-                    );
-                    base
-                }
-                _ => base,
+            let handle_border_color = match status {
+                SS::Dragged => primary,
+                _ => theme.palette().background,
+            };
+
+            Style {
+                rail: Rail {
+                    backgrounds: (
+                        // Filled side (left of handle).
+                        primary.into(),
+                        // Empty side.
+                        strong_bg.into(),
+                    ),
+                    width: rail_width,
+                    border: Border {
+                        width: 0.0,
+                        radius: (rail_width / 2.0).into(),
+                        color: Color::TRANSPARENT,
+                    },
+                },
+                handle: Handle {
+                    shape: HandleShape::Circle { radius: handle_radius },
+                    background: primary.into(),
+                    border_width: 2.0,
+                    border_color: handle_border_color,
+                },
             }
         }
     }
