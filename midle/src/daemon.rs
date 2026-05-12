@@ -14,7 +14,7 @@ use tokio::net::UnixListener;
 use tokio::sync::{Mutex, mpsc};
 use tracing::{error, info, warn};
 
-use crate::config::{self, Config};
+use crate::config;
 use crate::ipc::{self, DaemonInfo, Request, Response, StepInfo};
 use crate::state::{Manager, PauseState};
 
@@ -105,17 +105,17 @@ pub fn run(config_path: Option<PathBuf>) -> Result<()> {
         let tx_app = wl_tx_async.clone();
         let tx_media = wl_tx_async.clone();
         let tx_sleep = wl_tx_async.clone();
-        let app_task = tokio::spawn(async move {
+        let inhibitor_app = tokio::spawn(async move {
             crate::inhibitors::app_scan_loop(inhibit_apps, scan_interval, tx_app).await;
         });
-        let media_task = if monitor_media {
+        let inhibitor_media = if monitor_media {
             Some(tokio::spawn(async move {
                 crate::inhibitors::media_scan_loop(scan_interval, tx_media).await;
             }))
         } else {
             None
         };
-        let logind_task = tokio::spawn(async move {
+        let inhibitor_logind = tokio::spawn(async move {
             crate::inhibitors::logind_loop(prepare_sleep, tx_sleep).await;
         });
 
@@ -156,11 +156,18 @@ pub fn run(config_path: Option<PathBuf>) -> Result<()> {
             }
         });
 
-        // Wait for stop signal.
+        // Wait for stop signal — then abort every background task
+        // so the runtime tears down cleanly instead of leaking
+        // background polling threads on shutdown.
         stop.notified().await;
         wl_task.abort();
         ipc_task.abort();
         sig_task.abort();
+        inhibitor_app.abort();
+        if let Some(t) = inhibitor_media {
+            t.abort();
+        }
+        inhibitor_logind.abort();
     });
 
     // Best-effort join — the Wayland thread loops on
