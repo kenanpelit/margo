@@ -7,6 +7,35 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.4.2] – 2026-05-12
+
+### Fixed
+
+- **Bar layout no longer shakes when an mshell menu opens.** Menus
+  now grab keyboard focus via `KeyboardInteractivity::Exclusive`
+  (see 0.4.1 ESC fix), which makes margo report the menu's layer
+  surface as focused — and the C client list only tracks toplevels,
+  so `CompositorState.active_window` collapsed to `None`.
+  `WindowTitle::recalculate_value` was overwriting its cached
+  string with that `None`, blanking the bar item, and the resulting
+  `Length::Shrink` content collapse rippled across every neighbour
+  capsule. `recalculate_value` now early-returns whenever
+  `active_window` is `None` or the title is empty, holding the
+  last-known toplevel title until a real toplevel regains focus.
+- **IPC menu bindings are globally-scoped toggles again.**
+  `mshell msg notifications` (and every other menu IPC: media,
+  settings, tempo, dns, ufw, power, podman, updates, system,
+  network) was routing every keypress through the currently active
+  output → `ToggleMenu` on that monitor's bar surface. With two
+  monitors, if `active_output` shifted between presses the handler
+  picked the *other* monitor as the target, opened a fresh menu
+  there, and `toggle_menu`'s "close menus on other outputs" pass
+  closed the prior surface as a side-effect — visible to the user
+  as "the binding moved the menu instead of closing it". The IPC
+  handler now scans every output for an already-open instance of
+  the requested type first; if any exist, it closes them all and
+  bails before reaching the open path.
+
 ## [0.4.1] – 2026-05-12
 
 ### Highlights
