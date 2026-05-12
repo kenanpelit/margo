@@ -213,7 +213,7 @@ fn view(state: &LockState, id: SurfaceId) -> Element<'_, Message> {
     )
     .center_x(Length::Fill);
 
-    let input = text_input("…", &state.password)
+    let input = text_input("", &state.password)
         .id(iced::widget::Id::new(PWD_ID))
         .on_input(Message::PasswordChanged)
         .on_submit(Message::Submit)
@@ -326,7 +326,7 @@ fn center_no_backdrop(state: &LockState) -> Element<'_, Message> {
     )
     .center_x(Length::Fill);
 
-    let input = text_input("…", &state.password)
+    let input = text_input("", &state.password)
         .id(iced::widget::Id::new(PWD_ID))
         .on_input(Message::PasswordChanged)
         .on_submit(Message::Submit)
