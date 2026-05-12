@@ -98,13 +98,16 @@ pub struct Step {
 }
 
 pub fn default_path() -> PathBuf {
+    // Margo ailesindeki tüm config'ler `~/.config/margo/` altında —
+    // margo'nun config.conf'u + mshell.toml'la birlikte midle.toml
+    // da burada yaşar. Ayrı `~/.config/midle/` dizini yok.
     if let Some(xdg) = std::env::var_os("XDG_CONFIG_HOME") {
-        return PathBuf::from(xdg).join("midle").join("config.toml");
+        return PathBuf::from(xdg).join("margo").join("midle.toml");
     }
     if let Some(home) = std::env::var_os("HOME") {
-        return PathBuf::from(home).join(".config").join("midle").join("config.toml");
+        return PathBuf::from(home).join(".config").join("margo").join("midle.toml");
     }
-    PathBuf::from("/etc/midle/config.toml")
+    PathBuf::from("/etc/midle/midle.toml")
 }
 
 pub fn load(path: Option<&Path>) -> Result<Config> {
