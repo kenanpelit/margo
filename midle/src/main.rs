@@ -17,6 +17,7 @@
 mod actions;
 mod config;
 mod daemon;
+mod dbus_inhibit;
 mod inhibitors;
 mod ipc;
 mod state;

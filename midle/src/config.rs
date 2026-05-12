@@ -56,6 +56,15 @@ pub struct Settings {
     /// Watch PipeWire/PulseAudio sink inputs — when any stream is
     /// RUNNING, inhibit idle.
     pub monitor_media: bool,
+    /// Eavesdrop the session bus for screensaver / sessionmanager /
+    /// portal Inhibit calls. Browsers (Firefox, Chromium, Helium…)
+    /// and media players (Spotify, mpv, totem…) call these while
+    /// they're actively playing video, so this is a much more
+    /// accurate signal than process-name matching: an open browser
+    /// with a paused tab releases its inhibitor; an active YouTube
+    /// session holds it. Default `true` — disable only if D-Bus
+    /// eavesdropping triggers your system's polkit policy.
+    pub enable_dbus_inhibit: bool,
     /// Shell command run immediately when logind announces
     /// `PrepareForSleep(true)` (system is about to suspend).
     /// Common use: pre-emptively `mlock` so the screen is locked
@@ -71,6 +80,7 @@ impl Default for Settings {
             inhibit_apps: Vec::new(),
             inhibit_scan_interval: default_scan(),
             monitor_media: false,
+            enable_dbus_inhibit: true,
             prepare_sleep_command: None,
         }
     }

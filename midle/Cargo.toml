@@ -37,10 +37,13 @@ libc = "0.2"
 procfs = { version = "0.18", default-features = false }
 regex = "1"
 futures = { version = "0.3", default-features = false, features = ["std"] }
-# zbus reactor MUST stay on the default async-io backend — the margo
-# compositor pulls in zbus via mctl and runs it from its calloop loop
-# WITHOUT a tokio runtime. Cargo unifies features across the workspace,
-# so enabling `tokio` here would force margo to panic at startup with
-# "there is no reactor running". async-io spawns its own thread; midle's
-# tokio runtime can `.await` zbus futures regardless of the reactor.
-zbus = { version = "5", default-features = false }
+# zbus reactor MUST stay on the async-io backend — the margo compositor
+# pulls in zbus via mctl and runs it from its calloop loop WITHOUT a
+# tokio runtime. Cargo unifies features across the workspace, so
+# enabling `tokio` here would force margo to panic at startup with
+# "there is no reactor running". async-io spawns its own thread;
+# midle's tokio runtime can `.await` zbus futures regardless of the
+# reactor. `default-features = false` alone strips the implicit
+# async-io feature too (zbus refuses to compile with neither), so it
+# must be re-enabled explicitly.
+zbus = { version = "5", default-features = false, features = ["async-io"] }

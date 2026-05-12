@@ -29,8 +29,21 @@ pub enum Response {
 pub struct DaemonInfo {
     pub running: bool,
     pub inhibit: bool,
+    /// Granular breakdown of *why* idle is currently suppressed.
+    /// Helpful when diagnosing "midle is not firing": shows which
+    /// inhibitor source — manual toggle, app scan match, audio
+    /// sink RUNNING, D-Bus inhibitor — is responsible.
+    pub inhibitors: InhibitorBreakdown,
     pub pause: String,
     pub steps: Vec<StepInfo>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct InhibitorBreakdown {
+    pub manual: bool,
+    pub app: Option<String>,
+    pub media: bool,
+    pub dbus: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

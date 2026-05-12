@@ -22,6 +22,10 @@ pub struct Manager {
     pub inhibit_app: Option<String>,
     /// True while at least one audio sink-input is RUNNING.
     pub inhibit_media: bool,
+    /// True while at least one D-Bus inhibitor (ScreenSaver /
+    /// SessionManager / portal) is currently held by any app on the
+    /// session bus.
+    pub inhibit_dbus: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -41,6 +45,7 @@ impl Manager {
             inhibit: false,
             inhibit_app: None,
             inhibit_media: false,
+            inhibit_dbus: false,
         }
     }
 
@@ -50,7 +55,11 @@ impl Manager {
     }
 
     pub fn is_suppressed(&self) -> bool {
-        if self.inhibit || self.inhibit_app.is_some() || self.inhibit_media {
+        if self.inhibit
+            || self.inhibit_app.is_some()
+            || self.inhibit_media
+            || self.inhibit_dbus
+        {
             return true;
         }
         match self.pause {

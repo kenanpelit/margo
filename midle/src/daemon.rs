@@ -15,7 +15,7 @@ use tokio::sync::{Mutex, mpsc};
 use tracing::{error, info, warn};
 
 use crate::config;
-use crate::ipc::{self, DaemonInfo, Request, Response, StepInfo};
+use crate::ipc::{self, DaemonInfo, InhibitorBreakdown, Request, Response, StepInfo};
 use crate::state::{Manager, PauseState};
 
 #[derive(Debug, Clone)]
@@ -26,6 +26,10 @@ pub enum WaylandEvent {
     AppInhibit(Option<String>),
     /// At least one audio stream is RUNNING (or all stopped).
     MediaInhibit(bool),
+    /// At least one D-Bus screensaver / sessionmanager / portal
+    /// inhibitor is currently held (true) or all have been released
+    /// (false). Edge-only events — the daemon doesn't need a count.
+    DbusInhibit(bool),
     /// Logind told us a suspend is starting / resuming.
     PrepareForSleep(bool),
 }
@@ -80,6 +84,9 @@ pub fn run(config_path: Option<PathBuf>) -> Result<()> {
                             WaylandEvent::MediaInhibit(playing) => {
                                 m.inhibit_media = playing;
                             }
+                            WaylandEvent::DbusInhibit(active) => {
+                                m.inhibit_dbus = active;
+                            }
                             WaylandEvent::PrepareForSleep(true) => {
                                 // Pre-emptively treat as active wake-up
                                 // upon resume: reset fired bitmap.
@@ -111,6 +118,15 @@ pub fn run(config_path: Option<PathBuf>) -> Result<()> {
         let inhibitor_media = if monitor_media {
             Some(tokio::spawn(async move {
                 crate::inhibitors::media_scan_loop(scan_interval, tx_media).await;
+            }))
+        } else {
+            None
+        };
+        let enable_dbus_inhibit = cfg.settings.enable_dbus_inhibit;
+        let tx_dbus = wl_tx_async.clone();
+        let inhibitor_dbus = if enable_dbus_inhibit {
+            Some(tokio::spawn(async move {
+                crate::dbus_inhibit::dbus_inhibit_loop(tx_dbus).await;
             }))
         } else {
             None
@@ -165,6 +181,9 @@ pub fn run(config_path: Option<PathBuf>) -> Result<()> {
         sig_task.abort();
         inhibitor_app.abort();
         if let Some(t) = inhibitor_media {
+            t.abort();
+        }
+        if let Some(t) = inhibitor_dbus {
             t.abort();
         }
         inhibitor_logind.abort();
@@ -277,6 +296,12 @@ fn snapshot(m: &Manager) -> DaemonInfo {
     DaemonInfo {
         running: !m.is_suppressed(),
         inhibit: m.inhibit,
+        inhibitors: InhibitorBreakdown {
+            manual: m.inhibit,
+            app: m.inhibit_app.clone(),
+            media: m.inhibit_media,
+            dbus: m.inhibit_dbus,
+        },
         pause,
         steps: m
             .cfg
