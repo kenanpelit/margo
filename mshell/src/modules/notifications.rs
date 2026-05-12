@@ -14,8 +14,9 @@ use crate::{
 };
 use chrono::{DateTime, Local};
 use iced::{
-    Alignment, Border, Column, Element, Length, Padding, Row, Size, Subscription, Task, Theme,
-    widget::{Space, button, column, container, image, row, scrollable, sensor, svg, text},
+    Alignment, Background, Border, Color, Column, Element, Length, Padding, Row, Size,
+    Subscription, Task, Theme,
+    widget::{Space, Stack, button, column, container, image, row, scrollable, sensor, svg, text},
 };
 use itertools::Itertools;
 use log::{error, info};
@@ -866,17 +867,60 @@ impl Notifications {
             .notifications
             .iter()
             .any(|n| n.urgency == Urgency::Critical);
-        let bell = if count > 0 {
+        let bell_icon = if count > 0 {
             icon(StaticIcon::BellBadge).size(bar_font)
         } else {
             icon(StaticIcon::Bell).size(bar_font)
         };
-        // Count badge — config.show_count_badge && count > 0 ise sayıyı yaz.
+
+        // Overlay a tiny accent dot in the bell's top-right corner
+        // whenever there are pending notifications. Gives a noctalia-
+        // style "fresh state" cue without needing the wider count
+        // badge to be enabled. Critical urgency swaps the dot to the
+        // danger palette for an at-a-glance warning.
+        let bell: Element<'_, Message> = if count > 0 {
+            let dot_color = if has_critical { Urgency::Critical } else { Urgency::Normal };
+            let dot = container(
+                Space::new()
+                    .width(Length::Fixed(5.0))
+                    .height(Length::Fixed(5.0)),
+            )
+            .style(move |theme: &Theme| {
+                let accent = match dot_color {
+                    Urgency::Critical => theme.palette().danger,
+                    _ => theme.palette().primary,
+                };
+                container::Style {
+                    background: Some(Background::Color(accent)),
+                    border: Border {
+                        radius: 3.0.into(),
+                        width: 1.0,
+                        color: Color {
+                            a: 0.85,
+                            ..theme.palette().background
+                        },
+                    },
+                    ..Default::default()
+                }
+            });
+            let dot_layer = container(dot)
+                .align_x(Alignment::End)
+                .align_y(Alignment::Start)
+                .width(Length::Fill)
+                .height(Length::Fill);
+            Stack::new().push(bell_icon).push(dot_layer).into()
+        } else {
+            bell_icon.into()
+        };
+
+        // Count badge (text). Independent of the dot overlay — both
+        // can be on (dot signals "new", number conveys "how many").
         let badge_text = if self.config.show_count_badge && count > 0 {
             Some(text(count.to_string()).size(bar_font))
         } else {
             None
         };
+
         let body = container(
             row!(bell, badge_text)
                 .spacing(space.xxs)
