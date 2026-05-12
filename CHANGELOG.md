@@ -7,6 +7,70 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.4.5] – 2026-05-13
+
+### Fixed
+
+- **Example `config.conf` now passes `mctl check-config` cleanly.**
+  The shipped reference produced 32 errors and 2 warnings against
+  the real parser. Three causes: line-continuation `\` is not
+  honoured (32 multi-line windowrule / layerrule entries collapsed
+  to single lines); `super+shift,h/l` was bound twice (the
+  `setmfact` pair moved to `super+alt,h/l`, hjkl muscle memory
+  preserved); `focuslast` action used in the example doesn't
+  exist in the dispatch table (orphan bind removed). The mirrored
+  README windowrule snippet lost its trailing `\` too. Result:
+  121 binds, 30 windowrules, 5 layerrules, 9 tagrules, ✓ no
+  problems.
+
+### Changed
+
+- **`exec-once` block modernised.** Bar / notifications / launcher
+  recommendations updated to reflect the external-shell-first
+  architecture: `qs -c noctalia-shell --no-duplicate` or `waybar`
+  side by side, with `fnott` / `mako` notification-daemon
+  alternatives broken out.
+- **`unreachable!()` panic messages.** Eight bare `unreachable!()`
+  sites across `protocols/screencopy.rs`, `protocols/gamma_control.rs`,
+  `mctl/bin/mctl.rs`, `mlayout/main.rs`, `mscreenshot/main.rs`, and
+  `layout/snapshot_tests.rs` now carry a one-line *why* string so
+  post-mortems read context instead of the generic
+  "entered unreachable code" line. The `ok_or_else(|| unreachable!())`
+  pattern in mctl's output-index resolver rewrote to plain
+  `unwrap_or(0)` — the original `.or(Some(0))` already guaranteed
+  `Some`.
+- **mlock `wl_globals` binding tightened.** `if self.X.is_none()`
+  guards inside `match g.interface.as_str()` collapsed into
+  match-arm guards, and three `min().max()` clamp chains rewritten
+  with `.clamp(lo, hi)`.
+
+### Removed
+
+- **Stale `#[allow(dead_code)]` attributes.**
+  * `margo/src/screencasting/pw_utils.rs` lost its crate-level
+    `#![allow(dead_code)]` — the niri-port scaffolding was fully
+    wired up over Phases C / D / F.
+  * `mlock/src/state.rs` field `conn`: the allow was a holdover;
+    `Connection` is read every iteration via `state.conn.flush()`
+    and `state.conn.backend().poll_fd()` in `main.rs`.
+  * `margo/src/state.rs`: orphaned attribute above
+    `DmabufImportHook` (blank line in between) moved onto the
+    type alias so `empty_line_after_outer_attribute` stops firing.
+- **Unused dependencies pruned.** Manual audit confirmed zero
+  source-level use sites:
+  * `margo`: `keyframe`, `nix`, `log` (the codebase standardised
+    on `tracing`).
+  * `margo-config`: `regex` (window-rule regexes are compiled in
+    the compositor crate, not the parser crate).
+
+  Cargo.lock dropped 32 lines of now-unreferenced transitive deps.
+
+### Quality
+
+- `cargo clippy --workspace --all-targets`: **0** warnings
+  (previously 9 — 8 in `mlock/src/state.rs`, 1 in `margo/src/state.rs`).
+- `cargo test --workspace`: 244 tests, 0 failures.
+
 ## [0.4.4] – 2026-05-13
 
 ### Removed
