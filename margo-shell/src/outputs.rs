@@ -628,9 +628,11 @@ impl Outputs {
                 && shell_info.toast_id.is_none()
             {
                 // Köşe anchor — sadece bir dikey + bir yatay kenara
-                // yapışsın. Compositor surface boyutunu içeriğe göre
-                // ayarlasın (height 0 → wrap-content). Önceden TOP+BOTTOM
-                // birlikte vardı → şerit tam yüksekliği kaplıyordu.
+                // yapışsın. wlr-layer-shell spec: height = 0 yalnızca
+                // TOP+BOTTOM birlikte anchorlandığında geçerli; köşe
+                // anchor'da hem width hem height SET edilmek zorunda.
+                // Başlangıçta yeterli yükseklik veriyoruz, sensor toast
+                // içerik boyutunu ölçer ölçmez `set_size` ile küçültülür.
                 let anchor = match position {
                     config::ToastPosition::TopLeft => Anchor::TOP | Anchor::LEFT,
                     config::ToastPosition::TopRight => Anchor::TOP | Anchor::RIGHT,
@@ -640,7 +642,9 @@ impl Outputs {
 
                 let (toast_id, toast_task) = new_layer_surface(LayerShellSettings {
                     namespace: "mshell-toast-layer".to_string(),
-                    size: Some((width, 0)),
+                    // Geçici makul yükseklik (toast_max_height * toast_limit
+                    // tahmini); update_toast_input_region anında küçültülür.
+                    size: Some((width, 600)),
                     layer: Layer::Overlay,
                     keyboard_interactivity: KeyboardInteractivity::None,
                     exclusive_zone: 0,
@@ -665,23 +669,24 @@ impl Outputs {
         content_size: iced::Size,
         _position: config::ToastPosition,
     ) -> Task<Message> {
-        // Köşe anchor'a geçtikten sonra surface boyutu = content boyutu.
-        // Input region (0, 0, w, h) — surface'in tamamı tıklanabilir,
-        // alt katmana zaten görünmüyor (surface zaten içerik kadar).
-        let content_w = content_size.width.ceil() as i32;
-        let content_h = content_size.height.ceil() as i32;
+        let content_w = content_size.width.ceil() as u32;
+        let content_h = content_size.height.ceil() as u32;
         let mut tasks = vec![];
         for (_, shell_info, _) in &self.0 {
             if let Some(shell_info) = shell_info
                 && let Some(toast_id) = shell_info.toast_id
             {
+                // Sensor toast içeriğinin gerçek boyutunu raporladı; surface'i
+                // o boyuta küçült (önceden 600px geçici yükseklik vardı).
+                // wlr-layer-shell köşe anchor'da set_size zorunlu.
+                tasks.push(set_size(toast_id, (content_w.max(1), content_h.max(1))));
                 tasks.push(set_input_region(
                     toast_id,
                     Some(vec![InputRegionRect {
                         x: 0,
                         y: 0,
-                        width: content_w,
-                        height: content_h,
+                        width: content_w as i32,
+                        height: content_h as i32,
                     }]),
                 ));
             }
