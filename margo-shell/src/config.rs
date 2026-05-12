@@ -759,7 +759,8 @@ pub struct NotificationsModuleConfig {
     pub blocklist: Vec<RegexCfg>,
     // ─── Görsel iyileştirmeler ──────────────────────────────────────────
     /// Kartın sol kenarındaki 4px renkli urgency bar'ını çiz.
-    #[serde(default = "default_true")]
+    /// Varsayılan false — yalnızca Critical zaten danger renkli border'a sahip.
+    #[serde(default)]
     pub show_urgency_bar: bool,
     /// Summary (başlık) font ağırlığı bold olsun.
     #[serde(default = "default_true")]
@@ -777,6 +778,11 @@ pub struct NotificationsModuleConfig {
     /// (text / warning / danger) kullanılır.
     #[serde(default)]
     pub urgency_colors: NotificationUrgencyColors,
+    /// History menüsünde "Today / Yesterday / Older" başlıklarıyla
+    /// gün-bazlı bölümleme yap. `grouped`'ı override eder (app-bazlı
+    /// gruplama yerine tarih-bazlı section'lar gözükür).
+    #[serde(default)]
+    pub group_by_date: bool,
 }
 
 #[derive(Deserialize, Clone, Debug, Default)]
@@ -803,12 +809,13 @@ impl Default for NotificationsModuleConfig {
             toast_limit: 5,
             toast_max_height: 150,
             blocklist: vec![],
-            show_urgency_bar: true,
+            show_urgency_bar: false,
             summary_bold: true,
             accent_app_name: true,
             show_count_badge: true,
             show_actions: true,
             urgency_colors: NotificationUrgencyColors::default(),
+            group_by_date: true,
         }
     }
 }

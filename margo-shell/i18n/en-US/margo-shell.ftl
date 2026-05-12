@@ -147,6 +147,11 @@ network-speed-vpn-off = Not connected
 network-speed-lan-ip = LAN IP
 network-speed-vpn-ip = VPN IP
 
+## Notification history sections
+notifications-section-today = Today
+notifications-section-yesterday = Yesterday
+notifications-section-older = Older
+
 ## DNS / VPN switcher module
 dns-heading = DNS / VPN
 dns-current-mode = Mode

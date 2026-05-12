@@ -715,6 +715,10 @@ impl Notifications {
                 .center_x(Length::Fill)
                 .padding(space.xxl)
                 .into()
+        } else if self.config.group_by_date {
+            // Noctalia tarzı: Today / Yesterday / Older başlıklarıyla
+            // tarih-bazlı section'lar.
+            self.date_grouped_notifications()
         } else if self.config.grouped {
             self.grouped_notifications()
         } else {
@@ -893,6 +897,103 @@ impl Notifications {
         .padding(Padding::default().right(space.md).left(space.xs))
         .spacing(space.sm)
         .into()
+    }
+
+    /// Noctalia tarzı tarih-bazlı gruplama: Today / Yesterday / Older.
+    /// Aynı section'a düşen bildirimler kronolojik sırayla kart olarak
+    /// gösterilir. Section başlığı + kart sayısı.
+    fn date_grouped_notifications<'a>(&'a self) -> Element<'a, Message> {
+        let (space, font_size) = use_theme(|t| (t.space, t.font_size));
+
+        #[derive(Clone, Copy, PartialEq, Eq)]
+        enum Section {
+            Today,
+            Yesterday,
+            Older,
+        }
+
+        fn classify(ts: std::time::SystemTime) -> Section {
+            let now: DateTime<Local> = Local::now();
+            let when: DateTime<Local> = ts.into();
+            // Sadece takvim günü farkı.
+            let today = now.date_naive();
+            let day = when.date_naive();
+            let delta = today.signed_duration_since(day).num_days();
+            match delta {
+                0 => Section::Today,
+                1 => Section::Yesterday,
+                _ => Section::Older,
+            }
+        }
+
+        // Notifications zaten kronolojik (yeniden eskiye) saklanıyor.
+        let mut today_items: Vec<&Notification> = Vec::new();
+        let mut yesterday_items: Vec<&Notification> = Vec::new();
+        let mut older_items: Vec<&Notification> = Vec::new();
+        for n in &self.notifications {
+            match classify(n.timestamp) {
+                Section::Today => today_items.push(n),
+                Section::Yesterday => yesterday_items.push(n),
+                Section::Older => older_items.push(n),
+            }
+        }
+
+        // Closure + 'a lifetime karmaşık; sectionları inline çiziyoruz.
+        let mut col = Column::new().spacing(space.md);
+        let sections: [(&str, &[&Notification]); 3] = [
+            (
+                "notifications-section-today",
+                &today_items[..],
+            ),
+            (
+                "notifications-section-yesterday",
+                &yesterday_items[..],
+            ),
+            (
+                "notifications-section-older",
+                &older_items[..],
+            ),
+        ];
+        for (label_key, items) in sections {
+            if items.is_empty() {
+                continue;
+            }
+            let label_text = match label_key {
+                "notifications-section-today" => t!("notifications-section-today"),
+                "notifications-section-yesterday" => t!("notifications-section-yesterday"),
+                _ => t!("notifications-section-older"),
+            };
+            let header = container(
+                row!(
+                    text(label_text).size(font_size.sm).width(Length::Fill),
+                    text(format!("({})", items.len())).size(font_size.xs)
+                )
+                .spacing(space.xs)
+                .align_y(Alignment::Center),
+            )
+            .padding(Padding::default().left(space.xs).right(space.md));
+
+            let cards = Column::with_children(
+                items
+                    .iter()
+                    .map(|n| {
+                        self.notification_card(
+                            n,
+                            Message::NotificationClicked(n.id),
+                            false,
+                        )
+                    })
+                    .collect::<Vec<_>>(),
+            )
+            .spacing(space.sm);
+
+            col = col.push(
+                column!(header, cards)
+                    .spacing(space.xs)
+                    .padding(Padding::default().right(space.md).left(space.xs)),
+            );
+        }
+        col.into()
     }
 
     pub fn toast_position(&self) -> ToastPosition {

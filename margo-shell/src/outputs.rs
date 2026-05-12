@@ -22,6 +22,11 @@ pub struct ShellInfo {
     pub scale_factor: f64,
     /// Optional layer surface used to render toast notifications.
     pub toast_id: Option<SurfaceId>,
+    /// Toast surface yüksekliği için high-water mark: surface yalnızca
+    /// içerik büyüdüğünde büyür, asla küçülmez (toast dismiss sırasında
+    /// "küçülerek kayboluyor" görsel artefakt'ını engeller). Surface
+    /// destroy edildiğinde sıfırlanır.
+    pub toast_max_height: u32,
     /// Optional layer surface used to render the OSD overlay.
     pub osd_id: Option<SurfaceId>,
     /// Logical width + height of this output. Used by toast
@@ -79,6 +84,7 @@ impl Outputs {
                 id: SurfaceId::MAIN,
                 menu: Menu::new(),
                 toast_id: None,
+                toast_max_height: 0,
                 osd_id: None,
                 position,
                 layer,
@@ -216,6 +222,7 @@ impl Outputs {
                     id,
                     menu: Menu::new(),
                     toast_id: None,
+                toast_max_height: 0,
                     osd_id: None,
                     position,
                     layer,
@@ -297,6 +304,7 @@ impl Outputs {
                             id,
                             menu: Menu::new(),
                             toast_id: None,
+                toast_max_height: 0,
                             osd_id: None,
                             position,
                             layer,
@@ -640,11 +648,13 @@ impl Outputs {
                     config::ToastPosition::BottomRight => Anchor::BOTTOM | Anchor::RIGHT,
                 };
 
+                // Köşe anchor'da hem width hem height zorunlu (wlr-spec).
+                // Geçici küçük yükseklik — ilk sensor frame'inde set_size
+                // ile content_h'ye büyütülür.
+                let initial_h = 80;
                 let (toast_id, toast_task) = new_layer_surface(LayerShellSettings {
                     namespace: "mshell-toast-layer".to_string(),
-                    // Geçici makul yükseklik (toast_max_height * toast_limit
-                    // tahmini); update_toast_input_region anında küçültülür.
-                    size: Some((width, 600)),
+                    size: Some((width, initial_h)),
                     layer: Layer::Overlay,
                     keyboard_interactivity: KeyboardInteractivity::None,
                     exclusive_zone: 0,
@@ -653,6 +663,7 @@ impl Outputs {
                 });
 
                 shell_info.toast_id = Some(toast_id);
+                shell_info.toast_max_height = initial_h;
                 tasks.push(toast_task);
                 // Start fully click-through until sensor reports content size.
                 tasks.push(set_input_region(toast_id, Some(vec![])));
@@ -665,30 +676,40 @@ impl Outputs {
     /// Update the input region of the toast surface(s) so only the rendered
     /// toast content accepts pointer input. Everything else is click-through.
     pub fn update_toast_input_region<Message: 'static>(
-        &self,
+        &mut self,
         content_size: iced::Size,
         _position: config::ToastPosition,
     ) -> Task<Message> {
-        // Surface boyutu show_toast_layer'da set edilen sabit (300x600);
-        // burada SADECE input region güncellenir — toast içeriğinin gerçek
-        // boyutu kadar. Surface'i canlı set_size etmiyoruz: notifikasyon
-        // kaybolurken görsel "küçülme" animasyonu olmasın diye. Surface
-        // tamamen sabit, içerik top-aligned, son toast dismiss olunca
-        // hide_toast_layer çağrılıyor.
-        let content_w = content_size.width.ceil() as i32;
-        let content_h = content_size.height.ceil() as i32;
+        // Surface boyutu grow-only: yalnızca toast eklendiğinde büyür.
+        // Toast dismiss sırasında küçülmez — "küçülerek kayboluyor"
+        // artefakt'ı oluşmaz. Son toast yok olunca hide_toast_layer
+        // surface'i tamamen destroy eder ve toast_max_height sıfırlanır.
+        let content_w = content_size.width.ceil() as u32;
+        let content_h = content_size.height.ceil() as u32;
         let mut tasks = vec![];
-        for (_, shell_info, _) in &self.0 {
+        for (_, shell_info, _) in &mut self.0 {
             if let Some(shell_info) = shell_info
                 && let Some(toast_id) = shell_info.toast_id
             {
+                // Grow-only: yeni yükseklik high-water mark'ı geçtiyse
+                // surface'i büyüt.
+                if content_h > shell_info.toast_max_height {
+                    shell_info.toast_max_height = content_h;
+                    tasks.push(set_size(
+                        toast_id,
+                        (content_w.max(1), content_h.max(1)),
+                    ));
+                }
+                // Input region her zaman gerçek içerik boyutuna küplenir;
+                // surface'in altında kalan transparent alana tıklamalar
+                // pencerelerine geçsin.
                 tasks.push(set_input_region(
                     toast_id,
                     Some(vec![InputRegionRect {
                         x: 0,
                         y: 0,
-                        width: content_w,
-                        height: content_h,
+                        width: content_w as i32,
+                        height: content_h as i32,
                     }]),
                 ));
             }
@@ -715,6 +736,7 @@ impl Outputs {
             if let Some(shell_info) = shell_info
                 && let Some(toast_id) = shell_info.toast_id.take()
             {
+                shell_info.toast_max_height = 0; // grow-only mark reset
                 tasks.push(destroy_layer_surface(toast_id));
             }
         }
