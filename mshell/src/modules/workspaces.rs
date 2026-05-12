@@ -5,11 +5,11 @@ use crate::{
         ReadOnlyService, Service, ServiceEvent,
         compositor::{CompositorCommand, CompositorService, CompositorState},
     },
-    theme::use_theme,
+    theme::{MshellTheme, use_theme},
 };
 use iced::{
     Element, Font, Length, Subscription, SurfaceId, alignment,
-    widget::{MouseArea, Row, button, container, text},
+    widget::{MouseArea, Row, Space, Stack, button, container, text},
 };
 use iced_anim::{AnimationBuilder, transition::Easing};
 use itertools::Itertools;
@@ -457,25 +457,22 @@ impl Workspaces {
                                     .font_size
                                     .unwrap_or(theme.bar_font_size);
                                 let height = theme.space.md;
-                                // Pencere sayısı > 1 ise üst-simge ekle: 1²
-                                let display_name = if self.config.show_window_count
-                                    && w.windows > 1
-                                {
-                                    format!("{}{}", name, superscript_count(w.windows))
-                                } else {
-                                    name.clone()
-                                };
+                                let display_name = name.clone();
+                                let displayed = w.displayed.clone();
+                                let w_windows = w.windows;
+                                let show_count = self.config.show_window_count;
 
                                 Some(match target_width {
                                     Some(tw) if theme.animations_enabled => {
                                         let display_name = display_name.clone();
-                                        AnimationBuilder::new(tw, move |w| {
+                                        let displayed = displayed.clone();
+                                        AnimationBuilder::new(tw, move |pw| {
                                             use_theme(|theme| {
                                                 let mut t = text(display_name.clone()).size(font_size);
                                                 if let Some(f) = custom_font {
                                                     t = t.font(f);
                                                 }
-                                                button(
+                                                let pill = button(
                                                     container(t)
                                                         .align_x(alignment::Horizontal::Center)
                                                         .align_y(alignment::Vertical::Center),
@@ -483,13 +480,22 @@ impl Workspaces {
                                                 .style(theme.workspace_button_style(empty, color))
                                                 .padding(padding)
                                                 .on_press(on_press.clone())
-                                                .width(Length::Fixed(w))
-                                                .height(height)
-                                                .into()
+                                                .width(Length::Fixed(pw))
+                                                .height(height);
+                                                build_pill_with_indicator(
+                                                    theme,
+                                                    pill.into(),
+                                                    &displayed,
+                                                    w_windows,
+                                                    show_count,
+                                                    color,
+                                                    pw,
+                                                    height,
+                                                )
                                             })
                                         })
                                         .animates_layout(true)
-                                        .animation(Easing::EASE.very_quick())
+                                        .animation(Easing::EASE_OUT.very_quick())
                                         .into()
                                     }
                                     Some(tw) => {
@@ -497,7 +503,7 @@ impl Workspaces {
                                         if let Some(f) = custom_font {
                                             t = t.font(f);
                                         }
-                                        button(
+                                        let pill = button(
                                             container(t)
                                                 .align_x(alignment::Horizontal::Center)
                                                 .align_y(alignment::Vertical::Center),
@@ -506,8 +512,17 @@ impl Workspaces {
                                         .padding(padding)
                                         .on_press(on_press)
                                         .width(Length::Fixed(tw))
-                                        .height(height)
-                                        .into()
+                                        .height(height);
+                                        build_pill_with_indicator(
+                                            theme,
+                                            pill.into(),
+                                            &displayed,
+                                            w_windows,
+                                            show_count,
+                                            color,
+                                            tw,
+                                            height,
+                                        )
                                     }
                                     None => {
                                         let mut t = text(display_name).size(font_size);
@@ -598,24 +613,56 @@ fn parse_hex_color(hex: &str) -> Option<AppearanceColor> {
         .map(AppearanceColor::Simple)
 }
 
-/// `n` → küçük üst-simge basamaklar ("¹²³⁴⁵⁶⁷⁸⁹⁰"). Workspace
-/// etiketinde pencere sayısını badge'lemek için kullanılır:
-/// `1²` = tag 1'de 2 pencere var.
-fn superscript_count(n: u16) -> String {
-    n.to_string()
-        .chars()
-        .map(|c| match c {
-            '0' => '⁰',
-            '1' => '¹',
-            '2' => '²',
-            '3' => '³',
-            '4' => '⁴',
-            '5' => '⁵',
-            '6' => '⁶',
-            '7' => '⁷',
-            '8' => '⁸',
-            '9' => '⁹',
-            other => other,
-        })
-        .collect()
+/// Wraps a workspace `pill` button in a Stack with a bottom-edge
+/// indicator. Active workspace gets a 2.5px accent bar (~55% of pill
+/// width); inactive workspaces with open windows get a row of small
+/// dots (max 4) signalling occupancy. Empty inactive tags get no
+/// indicator. The Stack overlay sits inside the pill's footprint so
+/// bar height stays unchanged.
+fn build_pill_with_indicator<'a>(
+    theme: &MshellTheme,
+    pill: Element<'a, Message>,
+    displayed: &Displayed,
+    windows: u16,
+    show_count: bool,
+    color: Option<Option<AppearanceColor>>,
+    pill_w: f32,
+    pill_h: f32,
+) -> Element<'a, Message> {
+    let indicator: Element<'a, Message> = match displayed {
+        Displayed::Active => {
+            let bar_w = (pill_w * 0.55).max(10.0);
+            container(
+                Space::new()
+                    .width(Length::Fixed(bar_w))
+                    .height(Length::Fixed(2.5)),
+            )
+            .style(theme.workspace_active_indicator_style(color))
+            .into()
+        }
+        _ if windows > 0 && show_count => {
+            let n = (windows as usize).min(4);
+            let dots: Vec<Element<'a, Message>> = (0..n)
+                .map(|_| {
+                    container(
+                        Space::new()
+                            .width(Length::Fixed(3.0))
+                            .height(Length::Fixed(3.0)),
+                    )
+                    .style(theme.workspace_window_dot_style(color))
+                    .into()
+                })
+                .collect();
+            Row::with_children(dots).spacing(2.0).into()
+        }
+        _ => Space::new().into(),
+    };
+
+    let indicator_layer = container(indicator)
+        .align_x(alignment::Horizontal::Center)
+        .align_y(alignment::Vertical::Bottom)
+        .width(Length::Fill)
+        .height(Length::Fixed(pill_h));
+
+    Stack::new().push(pill).push(indicator_layer).into()
 }

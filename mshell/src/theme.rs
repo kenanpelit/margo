@@ -11,6 +11,7 @@ use iced::{
     theme::{Palette, palette},
     widget::{
         button::{self, Status},
+        container,
         text_input::{self},
     },
 };
@@ -845,6 +846,68 @@ impl MshellTheme {
                     base.border.color = Color::TRANSPARENT;
                     base
                 }
+            }
+        }
+    }
+
+    /// Bottom accent strip for the currently active workspace pill.
+    /// 2.5px tall, sits over the pill's bottom edge inside a Stack —
+    /// gives a sharp "this one is selected" signal without bloating
+    /// the bar height. Color follows the pill's own accent (custom
+    /// `[workspaces.colors]` override → workspace_colors palette →
+    /// primary).
+    pub fn workspace_active_indicator_style(
+        &self,
+        colors: Option<Option<AppearanceColor>>,
+    ) -> impl Fn(&Theme) -> container::Style + use<> {
+        let radius = self.radius.sm;
+        move |theme: &Theme| {
+            let accent = colors.map_or_else(
+                || theme.palette().primary,
+                |c| {
+                    c.map_or_else(
+                        || theme.palette().primary,
+                        |c| c.get_base(),
+                    )
+                },
+            );
+            container::Style {
+                background: Some(Background::Color(accent)),
+                border: Border {
+                    radius: radius.into(),
+                    width: 0.0,
+                    color: Color::TRANSPARENT,
+                },
+                ..container::Style::default()
+            }
+        }
+    }
+
+    /// Small muted dot used to signal "this inactive workspace has
+    /// open windows." Same accent as the active indicator but at
+    /// 55% alpha so it never competes with the live workspace.
+    pub fn workspace_window_dot_style(
+        &self,
+        colors: Option<Option<AppearanceColor>>,
+    ) -> impl Fn(&Theme) -> container::Style + use<> {
+        move |theme: &Theme| {
+            let accent = colors.map_or_else(
+                || theme.palette().primary,
+                |c| {
+                    c.map_or_else(
+                        || theme.palette().primary,
+                        |c| c.get_base(),
+                    )
+                },
+            );
+            container::Style {
+                background: Some(Background::Color(accent.scale_alpha(0.55))),
+                border: Border {
+                    radius: 1.5.into(),
+                    width: 0.0,
+                    color: Color::TRANSPARENT,
+                },
+                ..container::Style::default()
             }
         }
     }
