@@ -627,16 +627,15 @@ impl Outputs {
             if let Some(shell_info) = shell_info
                 && shell_info.toast_id.is_none()
             {
-                // Anchor both vertical edges so height 0 → full output height.
+                // Köşe anchor — sadece bir dikey + bir yatay kenara
+                // yapışsın. Compositor surface boyutunu içeriğe göre
+                // ayarlasın (height 0 → wrap-content). Önceden TOP+BOTTOM
+                // birlikte vardı → şerit tam yüksekliği kaplıyordu.
                 let anchor = match position {
-                    config::ToastPosition::TopLeft => Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT,
-                    config::ToastPosition::TopRight => Anchor::TOP | Anchor::BOTTOM | Anchor::RIGHT,
-                    config::ToastPosition::BottomLeft => {
-                        Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT
-                    }
-                    config::ToastPosition::BottomRight => {
-                        Anchor::TOP | Anchor::BOTTOM | Anchor::RIGHT
-                    }
+                    config::ToastPosition::TopLeft => Anchor::TOP | Anchor::LEFT,
+                    config::ToastPosition::TopRight => Anchor::TOP | Anchor::RIGHT,
+                    config::ToastPosition::BottomLeft => Anchor::BOTTOM | Anchor::LEFT,
+                    config::ToastPosition::BottomRight => Anchor::BOTTOM | Anchor::RIGHT,
                 };
 
                 let (toast_id, toast_task) = new_layer_surface(LayerShellSettings {
@@ -664,8 +663,11 @@ impl Outputs {
     pub fn update_toast_input_region<Message: 'static>(
         &self,
         content_size: iced::Size,
-        position: config::ToastPosition,
+        _position: config::ToastPosition,
     ) -> Task<Message> {
+        // Köşe anchor'a geçtikten sonra surface boyutu = content boyutu.
+        // Input region (0, 0, w, h) — surface'in tamamı tıklanabilir,
+        // alt katmana zaten görünmüyor (surface zaten içerik kadar).
         let content_w = content_size.width.ceil() as i32;
         let content_h = content_size.height.ceil() as i32;
         let mut tasks = vec![];
@@ -673,19 +675,11 @@ impl Outputs {
             if let Some(shell_info) = shell_info
                 && let Some(toast_id) = shell_info.toast_id
             {
-                let y = match position {
-                    config::ToastPosition::TopLeft | config::ToastPosition::TopRight => 0,
-                    config::ToastPosition::BottomLeft | config::ToastPosition::BottomRight => {
-                        shell_info
-                            .output_logical_size
-                            .map_or(0, |(_, h)| (h as i32) - content_h)
-                    }
-                };
                 tasks.push(set_input_region(
                     toast_id,
                     Some(vec![InputRegionRect {
                         x: 0,
-                        y,
+                        y: 0,
                         width: content_w,
                         height: content_h,
                     }]),

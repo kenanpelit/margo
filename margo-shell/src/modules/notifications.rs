@@ -756,25 +756,18 @@ impl Notifications {
             }
         }
 
-        let v_align = match self.config.toast_position {
-            ToastPosition::TopLeft | ToastPosition::TopRight => Alignment::Start,
-            ToastPosition::BottomLeft | ToastPosition::BottomRight => Alignment::End,
-        };
+        // Surface artık köşe anchor + wrap-content; v_align'a gerek yok.
+        // Sensor toast içeriğinin gerçek boyutunu raporlar → input region
+        // güncellenir + surface kompozisyonu yapar.
+        let _ = self.config.toast_position; // reserved for future tweaks
 
-        // Sensor wraps the padded toast content to report its rendered size.
-        // The outer container fills the full-height surface and aligns vertically.
-        let toast_content = sensor(
+        sensor(
             container(toast_column)
                 .width(MenuSize::Medium)
                 .padding(space.sm),
         )
-        .on_resize(Message::ToastResized);
-
-        container(toast_content)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .align_y(v_align)
-            .into()
+        .on_resize(Message::ToastResized)
+        .into()
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
