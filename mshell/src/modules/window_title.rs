@@ -53,29 +53,47 @@ impl WindowTitle {
     }
 
     fn recalculate_value(&mut self) {
-        if let Some(service) = &self.service {
-            self.value = service.active_window.as_ref().map(|w| {
-                let raw_title: &str = match self.config.mode {
-                    WindowTitleMode::Title => &w.title,
-                    WindowTitleMode::Class => &w.class,
-                    // margo doesn't track the toplevel's first-commit
-                    // app_id/title separately from the current one;
-                    // fall back to the live value so the module still
-                    // renders something useful instead of going blank.
-                    WindowTitleMode::InitialTitle => &w.title,
-                    WindowTitleMode::InitialClass => &w.class,
-                };
+        let Some(service) = &self.service else {
+            return;
+        };
 
-                // Apply hard limit of 2048 characters to prevent Wayland E2BIG errors
-                let max_length = if self.config.truncate_title_after_length > 0 {
-                    std::cmp::min(self.config.truncate_title_after_length, 2048)
-                } else {
-                    2048
-                };
+        // Hold the last-known toplevel title when focus shifts to a
+        // non-toplevel surface (one of mshell's own menus opens with
+        // KeyboardInteractivity::Exclusive — margo then reports the
+        // layer surface as focused, the client list has no matching
+        // entry, and `active_window` collapses to `None`). Letting
+        // that propagate would blank the bar item and shift the
+        // whole bar layout every time a menu opens. Same logic for
+        // an `active_window` whose title is empty (e.g. a window
+        // that hasn't set xdg_toplevel.set_title yet) — keep the
+        // last value rather than churn.
+        let Some(w) = service.active_window.as_ref() else {
+            return;
+        };
 
-                truncate_text(raw_title, max_length)
-            });
+        let raw_title: &str = match self.config.mode {
+            WindowTitleMode::Title => &w.title,
+            WindowTitleMode::Class => &w.class,
+            // margo doesn't track the toplevel's first-commit
+            // app_id/title separately from the current one;
+            // fall back to the live value so the module still
+            // renders something useful instead of going blank.
+            WindowTitleMode::InitialTitle => &w.title,
+            WindowTitleMode::InitialClass => &w.class,
+        };
+
+        if raw_title.is_empty() {
+            return;
         }
+
+        // Apply hard limit of 2048 characters to prevent Wayland E2BIG errors
+        let max_length = if self.config.truncate_title_after_length > 0 {
+            std::cmp::min(self.config.truncate_title_after_length, 2048)
+        } else {
+            2048
+        };
+
+        self.value = Some(truncate_text(raw_title, max_length));
     }
 
     pub fn get_value(&self) -> Option<String> {
