@@ -422,6 +422,18 @@ pub struct MargoState {
     /// cursor path and the compositor draws using `cursor_manager`
     /// at its own size.
     pub cursor_shape_manager_state: smithay::wayland::cursor_shape::CursorShapeManagerState,
+    /// `wp_fractional_scale_v1` — clients ask for the preferred
+    /// fractional scale per surface, so toolkits (GTK4, Qt6) can
+    /// render at the output's actual fractional scale (1.25, 1.5,
+    /// …) instead of an integer fallback that gets scaled back up
+    /// by the compositor. Without this protocol, GTK4 layer-shell
+    /// surfaces (mshell-frame) commit at the wrong physical pixel
+    /// pitch and the bar pixel-grid drifts off the output grid —
+    /// which manifests as per-state-poll micro-flicker because every
+    /// fresh buffer's edges round differently. niri implements this
+    /// in `niri/src/niri.rs:2295` and `handlers/mod.rs:845`.
+    pub fractional_scale_manager_state:
+        smithay::wayland::fractional_scale::FractionalScaleManagerState,
 
     pub space: Space<Window>,
     pub popups: PopupManager,
@@ -650,6 +662,8 @@ impl MargoState {
         );
         let cursor_shape_manager_state =
             smithay::wayland::cursor_shape::CursorShapeManagerState::new::<Self>(&dh);
+        let fractional_scale_manager_state =
+            smithay::wayland::fractional_scale::FractionalScaleManagerState::new::<Self>(&dh);
         let layer_shell_state = WlrLayerShellState::new::<Self>(&dh);
         let session_lock_state = smithay::wayland::session_lock::SessionLockManagerState::new::<Self, _>(&dh, |_| true);
         let text_input_state = TextInputManagerState::new::<Self>(&dh);
@@ -802,6 +816,7 @@ impl MargoState {
             frame_callback_sequence: std::collections::HashMap::new(),
             estimated_vblank_timers: std::collections::HashMap::new(),
             cursor_shape_manager_state,
+            fractional_scale_manager_state,
             enable_gaps: config.enable_gaps,
             cursor_status: CursorImageStatus::default_named(),
             cursor_manager: CursorManager::new(),

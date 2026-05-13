@@ -103,6 +103,27 @@ impl CompositorHandler for MargoState {
     /// sample, no flicker.
     ///
     /// Mirrors `niri/src/handlers/compositor.rs::add_default_dmabuf_pre_commit_hook`.
+    /// When a subsurface is created, push the parent root's output
+    /// scale / transform to it immediately. GTK4 layer-shell creates
+    /// subsurfaces lazily as widgets render; without this hook the
+    /// subsurface never receives `wl_surface.preferred_buffer_scale`
+    /// or `wp_fractional_scale_v1.preferred_scale` until the next
+    /// output mode change, so it commits at the wrong physical
+    /// pixel pitch and the bar pixel grid drifts off the output
+    /// grid — visible as per-state-poll micro-flicker. Mirrors
+    /// `niri/src/handlers/compositor.rs:38-51`.
+    fn new_subsurface(&mut self, surface: &WlSurface, parent: &WlSurface) {
+        let mut root = parent.clone();
+        while let Some(p) = get_parent(&root) {
+            root = p;
+        }
+        if let Some(output) = self::output_for_root(self, &root) {
+            let scale = output.current_scale();
+            let transform = output.current_transform();
+            send_scale_transform(surface, scale, transform);
+        }
+    }
+
     fn new_surface(&mut self, surface: &WlSurface) {
         if !surface.is_alive() {
             return;
@@ -382,4 +403,66 @@ delegate_compositor!(MargoState);
 
 impl BufferHandler for MargoState {
     fn buffer_destroyed(&mut self, _buffer: &WlBuffer) {}
+}
+
+/// `wp_fractional_scale_v1` — empty handler is enough; the
+/// per-surface "preferred fractional scale" event is pushed by
+/// [`crate::state::handlers::compositor::send_scale_transform`]
+/// after we know which output the surface lives on. GTK4 4.20+
+/// requires this protocol to commit at the output's actual
+/// fractional scale; without it gtk4-layer-shell clients
+/// (mshell-frame) render at an integer fallback scale and the bar
+/// pixel-grid drifts off the output grid every state-poll cycle.
+/// niri wires this the same way (`niri/src/handlers/mod.rs:845`).
+impl smithay::wayland::fractional_scale::FractionalScaleHandler for MargoState {}
+smithay::delegate_fractional_scale!(MargoState);
+
+/// Push `wl_surface.preferred_buffer_scale` (integer) +
+/// `wp_fractional_scale_v1.preferred_scale` (fractional) events to
+/// a surface and all of its subsurfaces, matching the output the
+/// surface is currently mapped to. Call after a surface is mapped
+/// or whenever the output's scale changes. Mirrors niri's
+/// `send_scale_transform` (`niri/src/utils/mod.rs:258`).
+pub fn send_scale_transform(
+    surface: &WlSurface,
+    scale: smithay::output::Scale,
+    transform: smithay::utils::Transform,
+) {
+    use smithay::wayland::compositor::{send_surface_state, with_states};
+    use smithay::wayland::fractional_scale::with_fractional_scale;
+    with_states(surface, |data| {
+        send_surface_state(surface, data, scale.integer_scale(), transform);
+        with_fractional_scale(data, |fractional| {
+            fractional.set_preferred_scale(scale.fractional_scale());
+        });
+    });
+}
+
+/// Find the output that owns this root surface — walks the layer
+/// map of every output looking for a layer whose root surface
+/// matches, then falls back to `Space::outputs_for_element` for
+/// toplevels. Returns `None` for cursor / DnD icon / freshly-
+/// created surfaces that aren't yet mapped anywhere.
+pub fn output_for_root(state: &MargoState, root: &WlSurface) -> Option<smithay::output::Output> {
+    use smithay::desktop::{layer_map_for_output, WindowSurfaceType};
+    use smithay::wayland::seat::WaylandFocus;
+    for output in state.space.outputs() {
+        let map = layer_map_for_output(output);
+        if map
+            .layer_for_surface(root, WindowSurfaceType::TOPLEVEL)
+            .is_some()
+        {
+            return Some(output.clone());
+        }
+    }
+    for window in state.space.elements() {
+        if window.wl_surface().as_deref() == Some(root) {
+            return state
+                .space
+                .outputs_for_element(window)
+                .into_iter()
+                .next();
+        }
+    }
+    None
 }
