@@ -279,8 +279,11 @@ fn transform_matrix(transform: Transform) -> [f32; 9] {
     }
 }
 
-const FRAG_SRC: &str = r#"#version 100
-
+// NOTE: smithay's `compile_custom_pixel_shader` prepends its own
+// `#version` + GLES header. Adding our own here puts a second
+// `#version` on line 2 and the GLSL preprocessor rejects the whole
+// shader. See `shadow.rs` for the same lesson.
+const FRAG_SRC: &str = r#"
 //_DEFINES_
 
 #if defined(EXTERNAL)

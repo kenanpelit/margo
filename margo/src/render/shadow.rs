@@ -266,8 +266,16 @@ impl RenderElement<GlesRenderer> for ShadowRenderElement {
     }
 }
 
-const FRAG_SRC: &str = r#"#version 100
-
+// NOTE: do NOT prepend `#version 100` here. smithay's
+// `compile_custom_pixel_shader` injects its own `#version` + GLES
+// boilerplate header at compile time; adding our own pushes the
+// injected `#version` to line 2 and trips the GLSL "#version must
+// appear on the first line" preprocessor rule. The shader then
+// fails to compile EVERY render pass and the log fills with
+// `shadow shader compile failed: ShaderCompileError`. Mirroring
+// the `rounded_border.rs` pattern (no manual #version line) is
+// what makes it actually link.
+const FRAG_SRC: &str = r#"
 //_DEFINES_
 
 precision highp float;
