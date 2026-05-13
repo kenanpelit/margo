@@ -180,6 +180,17 @@ package() {
       "$pkgdir/usr/share/doc/$pkgname/layouts/$(basename "$layout")"
   done
 
+  # ── Default wallpaper (mlock fallback) ─────────────────────────────
+  # `mlock` resolves the lock-screen wallpaper from state.json first,
+  # then `~/.local/share/margo/wallpapers/default.jpg`, then this
+  # system-wide default. Ship a 4K JPG so a clean install never shows
+  # a flat dark lock backdrop. Users can override globally by dropping
+  # a file at the user path, or per-session via margo's tagrule.
+  if [[ -f "assets/wallpapers/default.jpg" ]]; then
+    install -Dm644 "assets/wallpapers/default.jpg" \
+      "$pkgdir/usr/share/margo/wallpapers/default.jpg"
+  fi
+
   # ── XDG desktop-portal preferences ────────────────────────────────
   # xdg-desktop-portal reads `<desktop>-portals.conf` when
   # XDG_CURRENT_DESKTOP matches the file's stem. Path is canonical —

@@ -1,14 +1,28 @@
 //! Resolve + decode + blur the user's wallpaper once at lock time,
 //! so render.rs can composite it under the lock UI on every output.
 //!
-//! Source: `state.json` active output's `wallpaper` field (margo
-//! tagrule passes through). On any failure returns `None`; render.rs
-//! falls back to a solid dark backdrop in that case.
+//! Resolution chain:
+//!   1. `state.json` active output's `wallpaper` field (margo tagrule
+//!      passes through; typically populated by the user's external
+//!      shell — noctalia, swww, swaybg, …).
+//!   2. `~/.local/share/margo/wallpapers/default.jpg`  — user override.
+//!   3. `/usr/share/margo/wallpapers/default.jpg`      — package default
+//!      (shipped by `margo-git`; reasonable 4K image so the lock screen
+//!      never falls back to a flat dark backdrop on a clean install).
+//!
+//! Returns `None` only when every candidate is missing or unreadable;
+//! render.rs paints a solid dark backdrop in that case.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const BLUR_SIGMA: f32 = 18.0;
 const RESIZE_LONG_EDGE: u32 = 1920;
+
+/// Built-in fallback paths, tried in order after `state.json`. User
+/// override comes first so a copy in `~/.local/share/margo/...` wins
+/// against the system-shipped image without touching the package.
+const FALLBACK_RELATIVE_USER: &str = ".local/share/margo/wallpapers/default.jpg";
+const FALLBACK_SYSTEM: &str = "/usr/share/margo/wallpapers/default.jpg";
 
 /// User avatar — looks at `~/.face` first (de-facto desktop standard),
 /// then AccountsService's icon. Returns a 192×192 RGBA buffer; the
@@ -68,6 +82,28 @@ pub fn load_blurred() -> Option<image::RgbaImage> {
 }
 
 fn resolve_path() -> Option<PathBuf> {
+    if let Some(p) = state_json_path() {
+        tracing::info!(path = %p.display(), "wallpaper: state.json");
+        return Some(p);
+    }
+
+    let user_fallback = home_dir().join(FALLBACK_RELATIVE_USER);
+    if exists_and_readable(&user_fallback) {
+        tracing::info!(path = %user_fallback.display(), "wallpaper: user fallback");
+        return Some(user_fallback);
+    }
+
+    let system_fallback = PathBuf::from(FALLBACK_SYSTEM);
+    if exists_and_readable(&system_fallback) {
+        tracing::info!(path = %system_fallback.display(), "wallpaper: system fallback");
+        return Some(system_fallback);
+    }
+
+    tracing::warn!("wallpaper: no source found, lock will use solid backdrop");
+    None
+}
+
+fn state_json_path() -> Option<PathBuf> {
     let runtime_state = read_state_json()?;
     let active = runtime_state
         .get("outputs")?
@@ -79,7 +115,12 @@ fn resolve_path() -> Option<PathBuf> {
         .get("wallpaper")
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())?;
-    Some(expand_home(p))
+    let expanded = expand_home(p);
+    exists_and_readable(&expanded).then_some(expanded)
+}
+
+fn exists_and_readable(p: &Path) -> bool {
+    std::fs::metadata(p).map(|m| m.is_file()).unwrap_or(false)
 }
 
 fn read_state_json() -> Option<serde_json::Value> {
