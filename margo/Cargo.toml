@@ -37,6 +37,14 @@ bytemuck = { version = "1", features = ["derive"] }
 libc = "0.2"
 xcursor.workspace = true
 regex = "1"
+# Wallpaper renderer — decode jpeg/png/webp into ARGB8888 for upload
+# into a Smithay MemoryRenderBuffer. Same set as mlock; shared crate
+# layer means decoder code lives in one place across the workspace.
+image = { version = "0.25", default-features = false, features = [
+  "jpeg",
+  "png",
+  "webp",
+] }
 # HDR Phase 4 — per-output ICC profile parsing + transform.
 # Always-on dep; the colord D-Bus client that reads the user's
 # per-output profile path lives behind the `dbus` feature, but

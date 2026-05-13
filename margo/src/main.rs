@@ -40,6 +40,7 @@ mod session;
 mod state;
 mod twilight;
 mod utils;
+mod wallpaper;
 
 // W1.6 — integration test fixture (calloop-driven Server +
 // wayland-client Client harness). Compiled only under #[cfg(test)]

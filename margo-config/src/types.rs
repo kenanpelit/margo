@@ -92,6 +92,24 @@ pub enum TagAnimDirection {
     Vertical,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum WallpaperFit {
+    /// Crop-fill: scale the image until the output is fully covered;
+    /// overhang outside the output rectangle is trimmed. Aspect ratio
+    /// preserved. Default — matches what every desktop user expects.
+    #[default]
+    Cover,
+    /// Letterbox: scale the image until it fits entirely inside the
+    /// output; remaining strips painted with `rootcolor`. Aspect ratio
+    /// preserved.
+    Contain,
+    /// Stretch: scale x and y independently to match the output
+    /// rectangle. Aspect ratio NOT preserved.
+    Fill,
+    /// Native size, centred; pads with `rootcolor`.
+    Center,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HotareaCorner {
     TopLeft,
@@ -716,6 +734,25 @@ pub struct Config {
     pub scratchpad_height_ratio: f32,
     pub single_scratchpad: bool,
 
+    /// Global wallpaper path (W6.1). Painted by margo's own renderer as
+    /// the bottom-most element behind every window and layer surface.
+    /// Resolution chain when this field is `None`:
+    ///
+    /// 1. `~/.local/share/margo/wallpapers/default.jpg` (user override)
+    /// 2. `/usr/share/margo/wallpapers/default.jpg`     (package default)
+    ///
+    /// External shells (noctalia / swww / swaybg) are still free to
+    /// paint on top via layer-shell — they win the z-fight either way
+    /// since layer surfaces draw above the background.
+    pub wallpaper: Option<String>,
+
+    /// How the wallpaper image is fit into the output rectangle. Only
+    /// `Cover` is wired through the renderer right now; the other
+    /// variants are parsed so a config that picks them doesn't fail
+    /// validation, and will engage once the renderer lands fit-mode
+    /// support.
+    pub wallpaper_fit: WallpaperFit,
+
     // colours
     pub rootcolor: Rgba,
     pub bordercolor: Rgba,
@@ -929,6 +966,9 @@ impl Default for Config {
             hot_corner_bottom_left: String::new(),
             hot_corner_bottom_right: String::new(),
             hot_corner_dwell_ms: 100,
+
+            wallpaper: None,
+            wallpaper_fit: WallpaperFit::default(),
 
             enable_gaps: true,
             smartgaps: false,

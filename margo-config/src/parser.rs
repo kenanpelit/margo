@@ -406,6 +406,27 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
         "scratchpad_height_ratio" => cfg.scratchpad_height_ratio = parse_f32(val),
         "single_scratchpad" => cfg.single_scratchpad = parse_bool(val),
 
+        // wallpaper
+        "wallpaper" => {
+            let trimmed = val.trim();
+            cfg.wallpaper = if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            };
+        }
+        "wallpaper_fit" => {
+            cfg.wallpaper_fit = match val.trim().to_ascii_lowercase().as_str() {
+                "cover" => crate::types::WallpaperFit::Cover,
+                "contain" => crate::types::WallpaperFit::Contain,
+                "fill" => crate::types::WallpaperFit::Fill,
+                "center" => crate::types::WallpaperFit::Center,
+                other => bail!(
+                    "wallpaper_fit must be one of cover|contain|fill|center, got `{other}`"
+                ),
+            };
+        }
+
         // colours
         "rootcolor" => cfg.rootcolor = parse_color(val)?,
         "bordercolor" => cfg.bordercolor = parse_color(val)?,
@@ -1383,6 +1404,8 @@ pub const OPTION_KEYS: &[&str] = &[
     "repeat_delay",
     "repeat_rate",
     "rootcolor",
+    "wallpaper",
+    "wallpaper_fit",
     "scratchpadcolor",
     "scratchpad_cross_monitor",
     "scratchpad_height_ratio",

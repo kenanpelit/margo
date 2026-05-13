@@ -270,6 +270,26 @@ fn render_output(
             elements = head;
         }
     }
+    // Wallpaper sits at the *bottom* of the z-order: pushed last so
+    // it's at the tail of the slice. smithay's `render_frame`
+    // iterates element[0] = topmost, so trailing entries are drawn
+    // first / occluded by everything above. Skip while session is
+    // locked — mlock paints its own backdrop over the entire output.
+    if !state.session_locked
+        && let Some(ref wp) = state.wallpaper
+        && let Some(output_geo) = state.space.output_geometry(&od.output)
+    {
+        let scale = od.output.current_scale().fractional_scale();
+        if let Some(wp_elem) = wp.render_element(
+            renderer,
+            output_geo.loc.to_f64(),
+            output_geo.size,
+            scale,
+        ) {
+            elements.push(MargoRenderElement::Cursor(wp_elem));
+        }
+    }
+
     serve_screencopies(renderer, od, state, &elements);
     let clear_color = if state.session_locked {
         [0.0, 0.0, 0.0, 1.0]

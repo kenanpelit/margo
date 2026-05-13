@@ -72,6 +72,13 @@ use mode::{apply_pending_mode_changes, select_drm_mode};
 render_elements! {
     pub MargoRenderElement<=GlesRenderer>;
     Space=SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>,
+    // Wallpaper elements ride this same variant — both Cursor and
+    // Wallpaper use `MemoryRenderBufferRenderElement<GlesRenderer>`,
+    // and `render_elements!` rejects two variants of the same
+    // underlying type (conflicting `From` impls). The wallpaper
+    // element is pushed to the *bottom* of the element vec by the
+    // render loop, so it z-orders behind windows / layers / shadows
+    // / cursor regardless of sharing the variant.
     Cursor=MemoryRenderBufferRenderElement<GlesRenderer>,
     WaylandSurface=WaylandSurfaceRenderElement<GlesRenderer>,
     Border=crate::render::rounded_border::RoundedBorderElement,

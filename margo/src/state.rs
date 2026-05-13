@@ -396,6 +396,11 @@ pub struct MargoState {
     pub enable_gaps: bool,
     pub cursor_status: CursorImageStatus,
     pub cursor_manager: CursorManager,
+    /// Compositor-painted wallpaper. `None` when no path resolves or
+    /// the decode failed at startup — frame loop falls through to the
+    /// solid `rootcolor` clear in that case. Re-decoded by
+    /// `reload_config` if the path changes.
+    pub wallpaper: Option<crate::wallpaper::WallpaperState>,
     pub xwm: Option<X11Wm>,
     pub xwayland_shell_state: XWaylandShellState,
     pub libinput: Option<smithay::reexports::input::Libinput>,
@@ -704,6 +709,7 @@ impl MargoState {
             enable_gaps: config.enable_gaps,
             cursor_status: CursorImageStatus::default_named(),
             cursor_manager: CursorManager::new(),
+            wallpaper: crate::wallpaper::WallpaperState::load(config.wallpaper.as_deref()),
             xwm: None,
             xwayland_shell_state,
             libinput: None,
