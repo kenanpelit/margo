@@ -30,6 +30,7 @@
 | Binary | Role |
 |---|---|
 | **`margo`** | Wayland compositor — DRM/KMS backend, tag workflow, layout engine |
+| **`start-margo`** | Watchdog supervisor — restart-on-crash with a rolling budget, sd_notify integration, signal forwarding, `PR_SET_PDEATHSIG` parent-child invariant |
 | **`mctl`** | Compositor IPC + control — `status / clients / outputs / dispatch / tags / layout / reload / theme / twilight / migrate / actions / check-config` |
 | **`mlock`** | Screen locker — `ext-session-lock-v1`, cairo + pango, PAM auth, wallpaper backdrop, avatar, F1/F2/F3 power keys |
 | **`mlayout`** | Named monitor profiles — `mlayout suggest` writes presets for the detected setup, `mlayout set <name>` flips between them |
@@ -51,6 +52,26 @@ Every directory in the workspace maps 1:1 to a binary it produces. Library-only 
 - **DRM hotplug.** Dock / undock, plug a second monitor mid-session; outputs come and go cleanly.
 - **`dwl-ipc-v2` compatibility.** Drop-in for [noctalia], waybar-dwl, fnott, and any other dwl/mango widget — that's how the bar / launcher / OSD / notifications surface on screen.
 
+## Supervisor (`start-margo`)
+
+A small Rust watchdog launcher. Start your session through it instead of calling `margo` directly:
+
+```bash
+# DM session line (e.g. /usr/share/wayland-sessions/margo.desktop)
+Exec=start-margo
+
+# Or under uwsm, replacing the compositor leaf:
+uwsm app -a start-margo -- start-margo
+```
+
+Three improvements over Hyprland's `start-hyprland`:
+
+1. **Crash budget.** `--max-restarts 3 --restart-window-secs 60` by default — after that many crashes in the window the supervisor exits non-zero, returning the user to the DM instead of pinning a CPU on a respawn loop with a broken config. `start-hyprland` will respawn indefinitely.
+2. **systemd `sd_notify`.** Emits `READY=1` after spawn and `STOPPING=1` on shutdown, so a `Type=notify` unit (uwsm's `wayland-wm@.service` template) sees the session as active without polling.
+3. **Signal forwarding preserves the signal.** SIGTERM / SIGINT / SIGHUP are forwarded as-is, so margo's own teardown (Wayland surface destruction, ext-session-lock cleanup, `session.json` snapshot) runs end-to-end. `start-hyprland` always sends SIGTERM regardless of what it received.
+
+Shared with `start-hyprland`: `PR_SET_PDEATHSIG(SIGKILL)` so a `kill -9 start-margo` cannot leave an orphaned compositor; `--path` for dev/staging margo builds; `--` to forward everything after it to margo.
+
 ## Lock highlights
 
 - **`mlock`** uses `ext-session-lock-v1`, so the compositor cooperates: locked sessions stay locked across mlock crashes, and only `margo`'s `force_unlock` keybind can break out. Renders a blurred wallpaper, large clock, time-of-day greeting, avatar (`~/.face` or AccountsService), frosted password card with shake-on-fail and an attempt counter. Authenticates the session owner via PAM. Battery indicator and `F1/F2/F3` power keys with a two-press confirmation banner.
@@ -64,14 +85,14 @@ git clone https://github.com/kenanpelit/margo_build ~/.kod/margo_build
 cd ~/.kod/margo_build && makepkg -si
 ```
 
-Installs all six binaries, the Wayland session entry, example layouts and example configs. PAM service file for `mlock` lands in `/etc/pam.d/`. Runtime tools (`grim`, `slurp`, `wl-clipboard`) come in as dependencies; `swappy` / `satty` are optional screenshot editors picked up at runtime.
+Installs all seven binaries, the Wayland session entry, example layouts and example configs. PAM service file for `mlock` lands in `/etc/pam.d/`. Runtime tools (`grim`, `slurp`, `wl-clipboard`) come in as dependencies; `swappy` / `satty` are optional screenshot editors picked up at runtime.
 
 ### From source
 
 ```bash
 git clone https://github.com/kenanpelit/margo
 cd margo && cargo build --release --workspace
-for bin in margo mctl mlock mlayout mscreenshot mvisual; do
+for bin in margo start-margo mctl mlock mlayout mscreenshot mvisual; do
   sudo install -Dm755 target/release/$bin /usr/bin/$bin
 done
 sudo install -Dm644 margo.desktop /usr/share/wayland-sessions/margo.desktop

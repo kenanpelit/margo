@@ -134,7 +134,7 @@ package() {
 
   # ── Binaries ───────────────────────────────────────────────────────
   local bin
-  for bin in margo mctl mlock mlayout mscreenshot mvisual; do
+  for bin in margo start-margo mctl mlock mlayout mscreenshot mvisual; do
     install -Dm755 "$CARGO_TARGET_DIR/release/$bin" "$pkgdir/usr/bin/$bin"
   done
 

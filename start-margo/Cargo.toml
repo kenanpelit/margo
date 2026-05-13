@@ -1,0 +1,19 @@
+[package]
+name = "start-margo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Watchdog / supervisor launcher for the margo Wayland compositor — restart-on-crash with a budget, systemd `sd_notify`, graceful signal forwarding"
+
+[[bin]]
+name = "start-margo"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+libc = "0.2"
