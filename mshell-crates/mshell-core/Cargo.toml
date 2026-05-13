@@ -1,0 +1,38 @@
+[package]
+name = "mshell-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "MShell core entry point."
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+any_spawner.workspace = true
+dirs.workspace = true
+gtk4-layer-shell.workspace = true
+mshell-cache.workspace = true
+mshell-common.workspace = true
+mshell-config.workspace = true
+mshell-frame.workspace = true
+mshell-idle.workspace = true
+mshell-lockscreen.workspace = true
+mshell-notification-popups.workspace = true
+mshell-osd.workspace = true
+mshell-polkit.workspace = true
+mshell-services.workspace = true
+mshell-session.workspace = true
+mshell-settings.workspace = true
+mshell-sounds.workspace = true
+mshell-style.workspace = true
+mshell-utils.workspace = true
+mshell-wallpaper.workspace = true
+reactive_graph.workspace = true
+relm4.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+wayle-audio.workspace = true
+wayle-brightness.workspace = true
+wayle-weather.workspace = true
+zbus.workspace = true

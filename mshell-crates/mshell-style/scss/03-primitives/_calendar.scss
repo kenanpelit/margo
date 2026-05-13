@@ -1,0 +1,29 @@
+calendar {
+  background-color: var(--surface);
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-widget);
+  padding: 10px;
+}
+
+calendar header {
+  background-color: var(--surface);
+  color: var(--on-surface);
+  padding: 5px;
+  border: none;
+}
+
+calendar button {
+  background-color: var(--surface);
+  color: var(--on-surface);
+}
+
+calendar grid label {
+  background-color: var(--surface);
+  color: var(--on-surface);
+}
+
+calendar grid label.today {
+  border-radius: var(--radius-widget);
+  background-color: var(--primary);
+  color: var(--on-primary);
+}

@@ -1,0 +1,43 @@
+[package]
+name = "mshell-frame"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "MShell frame."
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+cairo-rs.workspace = true
+futures.workspace = true
+gtk4-layer-shell.workspace = true
+notify-rust.workspace = true
+mshell-cache.workspace = true
+mshell-clipboard.workspace = true
+mshell-common.workspace = true
+mshell-config.workspace = true
+mshell-gamma.workspace = true
+mshell-idle.workspace = true
+mshell-matugen.workspace = true
+mshell-screenshot.workspace = true
+mshell-services.workspace = true
+mshell-session.workspace = true
+mshell-settings.workspace = true
+mshell-sounds.workspace = true
+mshell-utils.workspace = true
+reactive_graph.workspace = true
+reactive_stores.workspace = true
+relm4.workspace = true
+time.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+wayle-audio.workspace = true
+wayle-battery.workspace = true
+wayle-bluetooth.workspace = true
+wayle-hyprland.workspace = true
+wayle-media.workspace = true
+wayle-network.workspace = true
+wayle-notification.workspace = true
+wayle-power-profiles.workspace = true
+wayle-systray.workspace = true
+wayle-weather.workspace = true

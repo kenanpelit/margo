@@ -1,0 +1,20 @@
+[package]
+name = "mshellshare"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "MShell hyprland screensharing utility."
+repository.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "mshellshare"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+mshell-cli-style.workspace = true
+serde.workspace = true
+tokio.workspace = true
+zbus.workspace = true

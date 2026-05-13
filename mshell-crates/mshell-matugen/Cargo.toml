@@ -1,0 +1,17 @@
+[package]
+name = "mshell-matugen"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "MShell matugen."
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+gtk4.workspace = true
+mshell-config.workspace = true
+relm4.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true

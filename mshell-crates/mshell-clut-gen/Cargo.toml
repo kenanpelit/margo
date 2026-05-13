@@ -1,0 +1,15 @@
+[package]
+name = "mshell-clut-gen"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "MShell generates CLUTs for each static theme."
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+image.workspace = true
+lutgen.workspace = true
+mshell-config.workspace = true
+mshell-matugen.workspace = true
+tracing.workspace = true

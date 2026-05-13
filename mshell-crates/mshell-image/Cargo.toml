@@ -1,0 +1,16 @@
+[package]
+name = "mshell-image"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "MShell image manipulation."
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+relm4.workspace = true
+image.workspace = true
+lutgen.workspace = true
+mshell-config.workspace = true
+mshell-matugen.workspace = true
+tracing.workspace = true

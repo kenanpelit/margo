@@ -12,4 +12,4 @@ path = "src/main.rs"
 
 [dependencies]
 margo-layouts = { path = "../margo-layouts" }
-gtk4 = "0.9"
+gtk4 = { workspace = true }

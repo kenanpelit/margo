@@ -9,6 +9,37 @@ members = [
     "mscreenshot",
     "mvisual",
     "start-margo",
+    # Shell — port of OkShell. 3 binaries (mshell, mshellctl,
+    # mshellshare) + 26 helper crates under mshell-crates/.
+    "mshell",
+    "mshellctl",
+    "mshellshare",
+    "mshell-crates/mshell-auth",
+    "mshell-crates/mshell-cache",
+    "mshell-crates/mshell-clipboard",
+    "mshell-crates/mshell-cli-style",
+    "mshell-crates/mshell-clut-gen",
+    "mshell-crates/mshell-common",
+    "mshell-crates/mshell-config",
+    "mshell-crates/mshell-core",
+    "mshell-crates/mshell-frame",
+    "mshell-crates/mshell-gamma",
+    "mshell-crates/mshell-idle",
+    "mshell-crates/mshell-image",
+    "mshell-crates/mshell-lockscreen",
+    "mshell-crates/mshell-logging",
+    "mshell-crates/mshell-matugen",
+    "mshell-crates/mshell-notification-popups",
+    "mshell-crates/mshell-osd",
+    "mshell-crates/mshell-polkit",
+    "mshell-crates/mshell-screenshot",
+    "mshell-crates/mshell-services",
+    "mshell-crates/mshell-session",
+    "mshell-crates/mshell-settings",
+    "mshell-crates/mshell-sounds",
+    "mshell-crates/mshell-style",
+    "mshell-crates/mshell-utils",
+    "mshell-crates/mshell-wallpaper",
 ]
 resolver = "2"
 
@@ -20,6 +51,7 @@ repository = "https://github.com/kenanpelit/margo"
 rust-version = "1.85"
 
 [workspace.dependencies]
+# Core (shared by every crate)
 anyhow = "1.0"
 bitflags = "2.0"
 clap = { version = "4.0", features = ["derive"] }
@@ -28,13 +60,101 @@ serde_json = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror = "2.0"
+
+# Compositor + protocol stack (margo, mlock, …)
 calloop = { version = "0.14", features = ["executor", "futures-io", "signals"] }
 wayland-server = "0.31"
 wayland-client = "0.31"
 wayland-backend = "0.3"
 wayland-scanner = "0.31"
+wayland-protocols = { version = "0.32", features = ["staging", "client"] }
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
 xkbcommon = { version = "0.8", features = ["wayland"] }
 xcursor = "0.3"
+
+# mshell GUI stack (gtk4 + relm4 + layer-shell + session-lock)
+gtk4 = { version = "0.10", features = ["v4_20"] }
+gtk4-layer-shell = "0.7"
+gtk4-session-lock = { version = "0.3", features = ["v1_2"] }
+relm4 = "0.10"
+cairo-rs = "0.22"
+any_spawner = { version = "0.3", features = ["glib", "async-executor"] }
+reactive_graph = { version = "0.2", features = ["effects"] }
+reactive_stores = "0.4"
+
+# Image / theming
+image = { version = "0.25", features = ["png", "jpeg", "bmp"] }
+grass = "0.13"
+lutgen = { version = "0.14", default-features = false, features = ["rayon"] }
+rayon = "1"
+
+# Filesystem / config / IPC plumbing
+dirs = "6"
+figment = { version = "0.10", features = ["yaml"] }
+fontconfig = "0.10"
+futures = "0.3"
+libc = "0.2"
+memmap2 = "0.9"
+nix = { version = "0.31", features = ["signal", "user"] }
+notify = "9.0.0-rc.1"
+notify-rust = "4"
+pam = "0.8"
+regex = "1"
+rodio = { version = "0.22", default-features = false, features = ["vorbis", "playback"] }
+rustix = { version = "1", features = ["shm", "fs"] }
+schemars = "1"
+serde_yaml = "0.9"
+time = { version = "0.3", features = ["local-offset", "formatting"] }
+tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
+tokio-util = "0.7"
+tracing-appender = "0.2"
+zbus = "5"
+
+# Wayle service crates (audio / battery / bt / brightness / media /
+# network / sysinfo / systray / weather …). `wayle-hyprland` is
+# pinned here for the initial port; it will be replaced with an
+# in-tree margo client in Phase 2 of the mshell work.
+wayle-audio = "0.1"
+wayle-battery = "0.1"
+wayle-bluetooth = "0.1"
+wayle-brightness = "0.1"
+wayle-hyprland = "0.2"
+wayle-media = "0.1"
+wayle-network = "0.1"
+wayle-notification = "0.1"
+wayle-power-profiles = "0.1"
+wayle-sysinfo = "0.1"
+wayle-systray = { version = "0.1", features = ["adapter-gtk"] }
+wayle-weather = "0.1"
+
+# Internal mshell crates — paths relative to workspace root.
+mshell-auth = { path = "mshell-crates/mshell-auth" }
+mshell-cache = { path = "mshell-crates/mshell-cache" }
+mshell-cli-style = { path = "mshell-crates/mshell-cli-style" }
+mshell-clipboard = { path = "mshell-crates/mshell-clipboard" }
+mshell-clut-gen = { path = "mshell-crates/mshell-clut-gen" }
+mshell-common = { path = "mshell-crates/mshell-common" }
+mshell-config = { path = "mshell-crates/mshell-config" }
+mshell-core = { path = "mshell-crates/mshell-core" }
+mshell-frame = { path = "mshell-crates/mshell-frame" }
+mshell-gamma = { path = "mshell-crates/mshell-gamma" }
+mshell-idle = { path = "mshell-crates/mshell-idle" }
+mshell-image = { path = "mshell-crates/mshell-image" }
+mshell-lockscreen = { path = "mshell-crates/mshell-lockscreen" }
+mshell-logging = { path = "mshell-crates/mshell-logging" }
+mshell-matugen = { path = "mshell-crates/mshell-matugen" }
+mshell-notification-popups = { path = "mshell-crates/mshell-notification-popups" }
+mshell-osd = { path = "mshell-crates/mshell-osd" }
+mshell-polkit = { path = "mshell-crates/mshell-polkit" }
+mshell-screenshot = { path = "mshell-crates/mshell-screenshot" }
+mshell-services = { path = "mshell-crates/mshell-services" }
+mshell-session = { path = "mshell-crates/mshell-session" }
+mshell-settings = { path = "mshell-crates/mshell-settings" }
+mshell-sounds = { path = "mshell-crates/mshell-sounds" }
+mshell-style = { path = "mshell-crates/mshell-style" }
+mshell-utils = { path = "mshell-crates/mshell-utils" }
+mshell-wallpaper = { path = "mshell-crates/mshell-wallpaper" }
 
 [workspace.dependencies.smithay]
 git = "https://github.com/Smithay/smithay.git"

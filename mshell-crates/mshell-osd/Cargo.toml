@@ -1,0 +1,22 @@
+[package]
+name = "mshell-osd"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "MShell on screen displays"
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+gtk4.workspace = true
+gtk4-layer-shell.workspace = true
+mshell-common.workspace = true
+mshell-services.workspace = true
+mshell-sounds.workspace = true
+mshell-utils.workspace = true
+relm4.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+wayle-audio.workspace = true
+wayle-battery.workspace = true
+wayle-brightness.workspace = true

@@ -1,0 +1,18 @@
+[package]
+name = "mshell"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "MShell GUI desktop shell."
+repository.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "mshell"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+mshell-cli-style.workspace = true
+mshell-core.workspace = true
+mshell-logging.workspace = true

@@ -1,0 +1,19 @@
+:root {
+  --font-sm: 14px;
+  --font-md: 16px;
+  --font-lg: 18px;
+  --font-xl: 26px;
+  --font-xxl: 32px;
+  --font-xxxl: 48px;
+
+  //overridden by style manager
+  --font-family-primary: inherit;
+  //overridden by style manager
+  --font-family-secondary: inherit;
+  //overridden by style manager
+  --font-family-tertiary: inherit;
+}
+
+* {
+  font-family: var(--font-family-primary);
+}

@@ -1,0 +1,22 @@
+[package]
+name = "mshell-notification-popups"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "MShell notification popups"
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+gtk4.workspace = true
+gtk4-layer-shell.workspace = true
+mshell-cache.workspace = true
+mshell-common.workspace = true
+mshell-config.workspace = true
+mshell-services.workspace = true
+mshell-style.workspace = true
+mshell-utils.workspace = true
+reactive_graph.workspace = true
+relm4.workspace = true
+tracing.workspace = true
+wayle-notification.workspace = true

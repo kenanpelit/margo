@@ -1,0 +1,43 @@
+.wallpaper-thumbnail {
+    transition:
+        border 150ms ease,
+        transform 150ms ease;
+    margin: 4px;
+    border: 2px solid var(--outline);
+    border-radius: var(--radius-widget);
+
+    &:hover {
+        border: 2px solid var(--on-surface);
+        transform: scale(1.02);
+    }
+}
+
+.wallpaper-grid {
+    all: unset;
+    padding: 0 32px 0 32px;
+}
+
+.wallpaper-grid > child {
+    background: transparent;
+    box-shadow: none;
+    outline: none;
+}
+
+.wallpaper-grid > child:hover,
+.wallpaper-grid > child:selected,
+.wallpaper-grid > child:active,
+.wallpaper-grid > child:focus {
+    background: transparent;
+    box-shadow: none;
+    outline: none;
+}
+
+.wallpaper-empty-message {
+    padding: 0 20px 0 20px;
+}
+
+.wallpaper-shadow {
+    box-shadow:
+        inset 32px 0 16px -8px var(--surface),
+        inset -32px 0 16px -8px var(--surface);
+}

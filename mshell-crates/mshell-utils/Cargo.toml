@@ -1,0 +1,32 @@
+[package]
+name = "mshell-utils"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "MShell utils."
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+futures.workspace = true
+gtk4-layer-shell.workspace = true
+mshell-common.workspace = true
+mshell-config.workspace = true
+mshell-idle.workspace = true
+mshell-image.workspace = true
+mshell-services.workspace = true
+notify-rust.workspace = true
+regex.workspace = true
+relm4.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+wayle-audio.workspace = true
+wayle-bluetooth.workspace = true
+wayle-hyprland.workspace = true
+wayle-media.workspace = true
+wayle-network.workspace = true
+wayle-notification.workspace = true
+wayle-power-profiles.workspace = true
+wayle-weather.workspace = true

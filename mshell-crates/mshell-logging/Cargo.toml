@@ -1,0 +1,11 @@
+[package]
+name = "mshell-logging"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "MShell logging."
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+tracing-subscriber.workspace = true
