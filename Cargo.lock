@@ -3763,6 +3763,9 @@ version = "0.4.8"
 dependencies = [
  "anyhow",
  "futures",
+ "libc",
+ "serde",
+ "serde_json",
  "tokio",
  "tokio-stream",
  "tracing",

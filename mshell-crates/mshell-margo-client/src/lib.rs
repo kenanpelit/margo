@@ -35,6 +35,14 @@ use std::sync::{Arc, RwLock};
 use anyhow::Result;
 use futures::{Stream, StreamExt};
 
+mod state_json;
+mod sync;
+
+/// Re-export so callers that want to peek at the raw snapshot
+/// (debug tooling, integration tests) can do so without a
+/// second JSON round-trip.
+pub use state_json::{read as read_state_json, StateJson};
+
 // ── Reactive property ────────────────────────────────────────────────────────
 
 /// Reactive container — mirrors `wayle_core::Reactive<T>`.
@@ -381,40 +389,186 @@ pub struct HyprlandService {
 impl HyprlandService {
     /// Connect to the running margo compositor.
     ///
-    /// **Phase 2b stub**: returns a handle with empty reactive
-    /// properties. Bar widgets render their empty state — no
-    /// crash. Phase 2c wires this up against margo's `dwl-ipc-v2`
-    /// + `foreign-toplevel-list` + `state.json`.
+    /// Spawns a background tokio task that polls
+    /// `$XDG_RUNTIME_DIR/margo/state.json` every 250 ms, projects
+    /// the snapshot onto the service's reactive properties, and
+    /// notifies subscribers. The task holds only a `Weak` reference
+    /// to the service, so it exits cleanly when the last `Arc<Self>`
+    /// drops.
     pub async fn new() -> Result<Arc<Self>> {
-        tracing::info!("mshell-margo-client: stub service (phase 2b — no backend)");
-        Ok(Arc::new(Self {
+        let service = Arc::new(Self {
             workspaces: Reactive::new(Vec::new()),
             clients: Reactive::new(Vec::new()),
             monitors: Reactive::new(Vec::new()),
-        }))
+        });
+        // Run one synchronous read so widgets see populated state
+        // on the very first paint, not on the next poll tick.
+        if let Some(snapshot) = state_json::read() {
+            sync::apply_snapshot(&service, &snapshot);
+            tracing::info!(
+                outputs = snapshot.outputs.len(),
+                clients = snapshot.clients.len(),
+                "mshell-margo-client: initial state.json snapshot loaded"
+            );
+        } else {
+            tracing::warn!("mshell-margo-client: state.json not readable on startup; bar will fill on the first poll tick");
+        }
+        sync::spawn(&service);
+        Ok(service)
     }
 
+    /// Run a compositor command. The upstream API takes raw
+    /// Hyprland command strings; we translate the well-known
+    /// patterns to `mctl dispatch` invocations and log everything
+    /// else as a non-fatal warning.
+    ///
+    /// Currently handled patterns:
+    ///   * `"workspace N"`        → view tag N (1..=9)
+    ///   * `"workspace r-1/r+1"`  → tagtoleft / tagtoright
+    ///   * `"hl.dsp.focus({ workspace = \"r-1\" })"` (the form
+    ///                              mshell-utils emits)
+    ///   * Any string starting with `"dispatch "` is shipped to
+    ///     `mctl dispatch` verbatim.
     pub async fn dispatch(&self, cmd: &str) -> Result<()> {
-        tracing::debug!(cmd = %cmd, "mshell-margo-client: dispatch stub");
-        Ok(())
+        let trimmed = cmd.trim();
+        tracing::debug!(cmd = %trimmed, "mshell-margo-client: dispatch");
+
+        // Common upstream shapes → mctl translation.
+        let mctl_args: Option<Vec<String>> = if let Some(rest) = trimmed.strip_prefix("workspace ")
+        {
+            Some(translate_workspace(rest.trim()))
+        } else if trimmed.contains("hl.dsp.focus") && trimmed.contains("workspace") {
+            // Pattern: `hl.dsp.focus({ workspace = "r-1" })` or
+            // `… workspace = "5" …`. Extract the quoted token.
+            extract_quoted(trimmed).map(|t| translate_workspace(&t))
+        } else if let Some(rest) = trimmed.strip_prefix("dispatch ") {
+            Some(rest.split_whitespace().map(String::from).collect())
+        } else {
+            None
+        };
+
+        let Some(args) = mctl_args else {
+            tracing::warn!(cmd = %trimmed, "dispatch: unrecognised command, ignoring");
+            return Ok(());
+        };
+        if args.is_empty() {
+            return Ok(());
+        }
+
+        // Spawn `mctl dispatch …`. Non-blocking, error logged.
+        let mut command = tokio::process::Command::new("mctl");
+        command.arg("dispatch");
+        for a in &args {
+            command.arg(a);
+        }
+        match command.status().await {
+            Ok(status) if status.success() => Ok(()),
+            Ok(status) => {
+                tracing::warn!(?status, args = ?args, "mctl dispatch returned non-zero");
+                Ok(())
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, args = ?args, "mctl dispatch spawn failed");
+                Ok(())
+            }
+        }
     }
 
+    /// Run a query against the compositor. Used by the layout
+    /// indicator widget. Returns the currently-focused output's
+    /// layout name when the query mentions "layout"; otherwise an
+    /// empty string.
     pub async fn eval(&self, query: &str) -> Result<String> {
-        tracing::debug!(query = %query, "mshell-margo-client: eval stub");
+        tracing::debug!(query = %query, "mshell-margo-client: eval");
+        if query.contains("layout") {
+            if let Some(state) = state_json::read()
+                && let Some(out) = state.outputs.iter().find(|o| o.active)
+                && let Some(name) = state.layouts.get(out.layout_idx)
+            {
+                return Ok(name.clone());
+            }
+        }
         Ok(String::new())
     }
 
+    /// Snapshot the focused workspace. Reads state.json directly
+    /// so the answer always reflects the latest margo write, not
+    /// the most recent poll tick (which can lag by up to
+    /// `POLL_INTERVAL`).
     pub async fn active_workspace(&self) -> Option<Arc<Workspace>> {
-        None
+        let ws_id = {
+            let state = state_json::read()?;
+            let out = state.outputs.iter().find(|o| o.active)?;
+            state_json::lowest_tag(out.active_tag_mask) as i64
+        };
+        self.workspaces
+            .get()
+            .into_iter()
+            .find(|w| w.id.get() == ws_id)
     }
 
+    /// Snapshot the focused client.
     pub async fn active_window(&self) -> Option<Arc<Client>> {
-        None
+        let address = {
+            let state = state_json::read()?;
+            let c = state.clients.iter().find(|c| c.focused)?;
+            // Mirror sync::client_address — keep both formulas
+            // in lockstep (sync.rs comment marks the source-of-truth).
+            Address::new(format!(
+                "{:04x}{:08x}",
+                c.monitor_idx as u16, c.idx as u32
+            ))
+        };
+        self.clients
+            .get()
+            .into_iter()
+            .find(|c| c.address.get() == address)
     }
 
+    /// Event stream. Phase 2c first cut: empty stream. The poll
+    /// loop in [`sync`] already updates reactive properties, so
+    /// widgets that re-render via `Reactive::watch()` on each
+    /// property get live data; widgets that drive their main loop
+    /// on `service.events()` simply park forever (which is
+    /// correct — they'll re-render via the reactive watch path).
+    /// A diff-driven event synthesizer can land in Phase 2c.2 if
+    /// any widget actually needs event-shaped notifications.
     pub fn events(&self) -> Pin<Box<dyn Stream<Item = HyprlandEvent> + Send>> {
         Box::pin(futures::stream::empty())
     }
+}
+
+/// Translate the workspace argument from a Hyprland dispatch
+/// string (`"5"`, `"r-1"`, `"r+1"`) to a mctl dispatch action +
+/// args. Returns the args as a string vec so the caller can
+/// forward them to `mctl dispatch …`.
+fn translate_workspace(arg: &str) -> Vec<String> {
+    let arg = arg.trim();
+    if arg == "r-1" || arg == "e-1" {
+        vec!["viewtoleft".to_string()]
+    } else if arg == "r+1" || arg == "e+1" {
+        vec!["viewtoright".to_string()]
+    } else if let Ok(n) = arg.parse::<u32>() {
+        if (1..=9).contains(&n) {
+            // mctl dispatch view <bitmask>
+            let mask = 1u32 << (n - 1);
+            vec!["view".to_string(), mask.to_string()]
+        } else {
+            tracing::warn!(arg, "workspace number out of margo's 1..=9 range");
+            vec![]
+        }
+    } else {
+        tracing::warn!(arg, "workspace arg not recognised");
+        vec![]
+    }
+}
+
+/// Pull the first double-quoted token out of a string.
+fn extract_quoted(s: &str) -> Option<String> {
+    let start = s.find('"')? + 1;
+    let rest = &s[start..];
+    let end = rest.find('"')?;
+    Some(rest[..end].to_string())
 }
 
 /// Forward-looking alias. See [`MargoEvent`].
