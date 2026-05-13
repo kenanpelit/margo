@@ -29,7 +29,7 @@
 use futures::StreamExt;
 use mshell_margo_client::{Workspace, WorkspaceInfo};
 use mshell_utils::margo::is_an_active_workspace;
-use relm4::gtk::prelude::{BoxExt, ButtonExt, WidgetExt};
+use relm4::gtk::prelude::{ButtonExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::sync::Arc;
 use tracing::warn;
@@ -44,7 +44,6 @@ pub(crate) struct MargoTagModel {
 #[derive(Debug)]
 pub(crate) enum MargoTagInput {
     ActiveUpdate(Vec<WorkspaceInfo>),
-    WindowsChanged(u16),
     WorkspaceClicked,
 }
 
@@ -146,9 +145,6 @@ impl Component for MargoTagModel {
                 self.is_active = workspace_infos
                     .iter()
                     .any(|p| p.id == self.workspace.id.get());
-            }
-            MargoTagInput::WindowsChanged(count) => {
-                self.windows = count;
             }
             MargoTagInput::WorkspaceClicked => {
                 // mctl dispatch view <bitmask>. Tag id 1..=9 maps

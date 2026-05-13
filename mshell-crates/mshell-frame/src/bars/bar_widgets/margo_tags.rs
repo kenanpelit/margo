@@ -231,28 +231,29 @@ impl MargoTagsModel {
         });
     }
 
+    /// Linear 1..N pill row, no per-monitor dividers.
+    ///
+    /// margo tags are GLOBAL bit positions (1..=9), not per-monitor
+    /// like Hyprland workspaces. Same tag id can be active on
+    /// monitor A and occupied on monitor B at the same time — they
+    /// refer to the same logical bit. Splitting the row by "owner
+    /// monitor" the way `wayle-hyprland` does ends up putting tags
+    /// on either side of a divider purely based on which output
+    /// happens to hold them right now (e.g. `2 3 4 5 6 | 1 7 8 9`
+    /// when DP-3 was on tag 2 and eDP-1 was on tag 1, even though
+    /// the user thinks of them as a single linear row). The bar
+    /// should mirror the user's mental model: nine slots, fixed
+    /// position, state determined by the focused monitor.
+    ///
+    /// `MonitorId` import + the `WsRow::Divider` variant stay for
+    /// upstream-compat (the dynamic-box factory still understands
+    /// them); we just don't emit any divider rows here.
     fn workspaces_with_dividers(mut workspaces: Vec<Arc<Workspace>>) -> Vec<WsRow> {
-        // Sort by monitor then id
-        workspaces.sort_by_key(|w| (w.monitor.get(), w.id.get()));
-
-        let mut out = Vec::with_capacity(workspaces.len() + 4);
-        let mut last_monitor: Option<MonitorId> = None;
-
-        for workspace in workspaces {
-            // Hide special workspaces
-            if workspace.name.get().starts_with("special:") {
-                continue;
-            }
-            if let Some(monitor) = workspace.monitor_id.get() {
-                if last_monitor.is_some_and(|m| m != monitor) {
-                    out.push(WsRow::Divider(monitor));
-                }
-
-                out.push(WsRow::Workspace(workspace));
-                last_monitor = Some(monitor);
-            }
-        }
-
-        out
+        workspaces.sort_by_key(|w| w.id.get());
+        workspaces
+            .into_iter()
+            .filter(|w| !w.name.get().starts_with("special:"))
+            .map(WsRow::Workspace)
+            .collect()
     }
 }
