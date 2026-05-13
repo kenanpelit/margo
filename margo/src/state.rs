@@ -62,6 +62,7 @@ use smithay::{
         seat::WaylandFocus,
         selection::{
             data_device::{set_data_device_focus, DataDeviceState},
+            ext_data_control::DataControlState as ExtDataControlState,
             primary_selection::{set_primary_focus, PrimarySelectionState},
             wlr_data_control::DataControlState,
         },
@@ -150,6 +151,20 @@ fn focus_target_label(t: &FocusTarget) -> String {
 #[allow(dead_code)]
 pub type DmabufImportHook = Rc<RefCell<dyn FnMut(&Dmabuf) -> bool>>;
 
+/// Per-surface frame-callback throttling state, kept in the surface's
+/// `data_map`. Mirrors niri's `SurfaceFrameThrottlingState` exactly — the
+/// pair `(Output, sequence)` records when the surface last received a
+/// `wl_surface.frame` done. Combined with the per-output
+/// `frame_callback_sequence`, this enforces "at most one frame_done per
+/// surface per refresh cycle", which is what stops gtk4-layer-shell
+/// clients (mshell-frame, noctalia) from getting back-to-back callbacks
+/// during a single vblank and entering the busy-commit loop that
+/// previously made the bar flicker on margo while staying smooth on
+/// Hyprland and niri.
+#[derive(Default)]
+pub(crate) struct SurfaceFrameThrottlingState {
+    pub last_sent_at: std::cell::RefCell<Option<(Output, u32)>>,
+}
 
 pub struct MargoState {
     pub compositor_state: CompositorState,
@@ -176,6 +191,11 @@ pub struct MargoState {
     pub data_device_state: DataDeviceState,
     pub primary_selection_state: PrimarySelectionState,
     pub data_control_state: DataControlState,
+    /// `ext_data_control_v1` — standardized successor to
+    /// `wlr_data_control_v1`. mshell-clipboard / wl-clipboard 3.x
+    /// prefer this; without it the clipboard watcher dies at
+    /// startup with "Missing ext_data_control_manager_v1 or wl_seat".
+    pub ext_data_control_state: ExtDataControlState,
     pub session_lock_state: smithay::wayland::session_lock::SessionLockManagerState,
     /// `wp_text_input_v3` global. Qt clients (Quickshell/noctalia, KDE,
     /// QtWidgets apps) probe for this when a TextInput field becomes
@@ -339,6 +359,69 @@ pub struct MargoState {
     pub idle_inhibitors: std::collections::HashSet<
         smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     >,
+    /// Hash of the layout-affecting cached state per layer surface
+    /// (size, anchor, exclusive_zone, exclusive_edge, margin, layer,
+    /// keyboard_interactivity). Mirrors Hyprland's
+    /// `m_current.committed != 0` check in `CLayerSurface::onCommit`:
+    /// only re-`arrange()` + recompute work area + refresh keyboard
+    /// focus when the layer surface actually changed something
+    /// layout-affecting. A plain buffer commit (the 60-fps case
+    /// gtk4-layer-shell drives during Revealer animations) keeps the
+    /// same hash and short-circuits the entire arrange chain —
+    /// which is what was burning the CPU and causing the bar to
+    /// flicker. Entries are bounded by the number of mapped layer
+    /// surfaces (handful) and dropped in `layer_destroyed`; no
+    /// per-frame allocation.
+    pub layer_layout_hashes: std::collections::HashMap<
+        smithay::reexports::wayland_server::backend::ObjectId,
+        u64,
+    >,
+    /// Per-layer-surface hash of *just* `keyboard_interactivity`,
+    /// tracked separately from `layer_layout_hashes` so we can
+    /// independently dedup focus-refresh from arrange-refresh.
+    /// noctalia's launcher/settings panels flip
+    /// keyboard_interactivity between `Exclusive` and `None` on the
+    /// same surface and need focus recomputed when that happens;
+    /// mshell's bar never flips it during normal updates, so layered
+    /// content commits (clock tick, network speed, CPU stats) must
+    /// NOT pay the focus-refresh cost. Cleared in `layer_destroyed`.
+    pub layer_kb_interactivity_hashes: std::collections::HashMap<
+        smithay::reexports::wayland_server::backend::ObjectId,
+        u64,
+    >,
+    /// Per-output frame-callback sequence number. Bumped once per real
+    /// vblank (in `note_vblank`) and once per estimated vblank (when
+    /// the timer queued from the empty-render path fires). Surfaces
+    /// stamp their `SurfaceFrameThrottlingState.last_sent_at` with
+    /// this value; `send_frame_callbacks` then skips any surface
+    /// already stamped with the current sequence, mirroring niri's
+    /// sequence-based dedup. This is what prevents the GTK frame
+    /// clock on mshell-frame from getting two `frame_done` events
+    /// in the same refresh cycle (which is what caused the bar
+    /// flicker). Keyed by output name because `Output` is not `Hash`.
+    pub frame_callback_sequence: std::collections::HashMap<String, u32>,
+    /// One pending estimated-vblank Timer per output. Inserted from
+    /// the empty-render path (`render_frame` reports
+    /// `is_empty == true` so no DRM page-flip + no real VBlank event
+    /// is coming), and the timer's callback bumps
+    /// `frame_callback_sequence` + re-sends frame callbacks so
+    /// clients stay paced at the display's refresh rate even while
+    /// nothing is changing on screen. Removed when the timer fires
+    /// (it returns `TimeoutAction::Drop`) or when a real vblank
+    /// supersedes it. Keyed by output name to match
+    /// `frame_callback_sequence`.
+    pub estimated_vblank_timers: std::collections::HashMap<
+        String,
+        smithay::reexports::calloop::RegistrationToken,
+    >,
+    /// `wp_cursor_shape_v1` — clients (GTK/Qt/Chromium) request a
+    /// cursor by name instead of attaching their own surface. Without
+    /// this, GTK rolls its own cursor surface and the buffer scale
+    /// gets out of sync on layer-shell surfaces (mshell bar/menus),
+    /// producing an oversized cursor. With it, GTK takes the named-
+    /// cursor path and the compositor draws using `cursor_manager`
+    /// at its own size.
+    pub cursor_shape_manager_state: smithay::wayland::cursor_shape::CursorShapeManagerState,
 
     pub space: Space<Window>,
     pub popups: PopupManager,
@@ -560,6 +643,13 @@ impl MargoState {
         let primary_selection_state = PrimarySelectionState::new::<Self>(&dh);
         let data_control_state =
             DataControlState::new::<Self, _>(&dh, Some(&primary_selection_state), |_| true);
+        let ext_data_control_state = ExtDataControlState::new::<Self, _>(
+            &dh,
+            Some(&primary_selection_state),
+            |_| true,
+        );
+        let cursor_shape_manager_state =
+            smithay::wayland::cursor_shape::CursorShapeManagerState::new::<Self>(&dh);
         let layer_shell_state = WlrLayerShellState::new::<Self>(&dh);
         let session_lock_state = smithay::wayland::session_lock::SessionLockManagerState::new::<Self, _>(&dh, |_| true);
         let text_input_state = TextInputManagerState::new::<Self>(&dh);
@@ -653,6 +743,7 @@ impl MargoState {
             data_device_state,
             primary_selection_state,
             data_control_state,
+            ext_data_control_state,
             session_lock_state,
             text_input_state,
             input_method_state,
@@ -706,6 +797,11 @@ impl MargoState {
             idle_notifier_state,
             idle_inhibit_state,
             idle_inhibitors: std::collections::HashSet::new(),
+            layer_layout_hashes: std::collections::HashMap::new(),
+            layer_kb_interactivity_hashes: std::collections::HashMap::new(),
+            frame_callback_sequence: std::collections::HashMap::new(),
+            estimated_vblank_timers: std::collections::HashMap::new(),
+            cursor_shape_manager_state,
             enable_gaps: config.enable_gaps,
             cursor_status: CursorImageStatus::default_named(),
             cursor_manager: CursorManager::new(),
@@ -1157,10 +1253,34 @@ impl MargoState {
     }
 
     /// Called by the udev backend's `DrmEvent::VBlank` handler after
-    /// `frame_submitted`. If this was the last in-flight frame and the
-    /// scene is dirty, re-arm the redraw scheduler.
-    pub fn note_vblank(&mut self) {
+    /// `frame_submitted`. Decrements the in-flight counter and re-arms
+    /// the redraw scheduler if the scene is dirty. Frame callbacks
+    /// were already sent at `queue_frame` time (niri pattern), so
+    /// VBlank itself does NOT bump sequence — `send_frame_callbacks`
+    /// here is a safety-net call that dedups via the per-surface
+    /// `last_sent_at` and only does work for surfaces that somehow
+    /// missed the queue_frame round (rare: surfaces freshly attached
+    /// after the queue, completely occluded surfaces hitting the
+    /// 995 ms throttle, etc.). Also cancels any in-flight
+    /// estimated-vblank timer for the output since the real vblank
+    /// supersedes it.
+    pub fn note_vblank(&mut self, output: &Output) {
         self.pending_vblanks = self.pending_vblanks.saturating_sub(1);
+
+        let name = output.name();
+        // Pulling the entry from the map cancels the timer at the
+        // *logical* level — the timer source itself might still fire
+        // (calloop has no atomic cancel), but its callback will find
+        // the map empty and no-op. We intentionally do NOT call
+        // `loop_handle.remove(token)` here: that would race against
+        // the source's own `TimeoutAction::Drop` and produce the
+        // "Received an event for non-existent source" warning that
+        // was flooding the journal.
+        self.estimated_vblank_timers.remove(&name);
+
+        let now = self.clock.now();
+        self.send_frame_callbacks(output, now);
+
         if self.pending_vblanks == 0 && self.repaint_requested {
             if let Some(ping) = &self.repaint_ping {
                 ping.ping();
@@ -1291,12 +1411,30 @@ impl MargoState {
 
         if let Some(mon_idx) = self.monitors.iter().position(|m| m.output == *output) {
             let monitor_area = self.monitors[mon_idx].monitor_area;
-            self.monitors[mon_idx].work_area = crate::layout::Rect {
+            let new_work_area = crate::layout::Rect {
                 x: monitor_area.x + work_area.loc.x,
                 y: monitor_area.y + work_area.loc.y,
                 width: work_area.size.w,
                 height: work_area.size.h,
             };
+            // Compositor commit handler calls us on every layer
+            // surface commit. mshell-frame's GTK4 + gtk4-layer-shell
+            // pair commits a fresh buffer 60 times a second during
+            // every menu Revealer animation — without this guard
+            // each one re-tiles the monitor (`arrange_monitor`
+            // re-computes geometry for every visible client and
+            // can spawn move-animation snapshots, each a full-size
+            // GlesTexture). That's the asymmetry between mshell
+            // (heavy churn → bar flicker, GPU memory spikes) and
+            // noctalia / Qt (commits less aggressively, work_area
+            // change check skips this entirely). Skip when the
+            // geometry is identical; the layer-shell exclusive zone
+            // is the only thing that can actually move the work
+            // area, and mshell-frame doesn't claim one.
+            if self.monitors[mon_idx].work_area == new_work_area {
+                return;
+            }
+            self.monitors[mon_idx].work_area = new_work_area;
             self.arrange_monitor(mon_idx);
         }
     }
@@ -1508,8 +1646,14 @@ impl MargoState {
                 && !already_animating_to_target;
 
             // Diagnostic: every layout decision per visible client.
+            // Fires per-client on every tag switch / move / focus
+            // arrange — at INFO it floods the journal during normal
+            // use (~30-60 lines/sec) and shows up as input latency
+            // and journal contention. Trace level keeps it available
+            // for `RUST_LOG=margo=trace` debugging without polluting
+            // the steady-state log.
             let actual_geom = self.clients[client_idx].window.geometry().size;
-            tracing::info!(
+            tracing::trace!(
                 "arrange[{}]: client_idx={} old={}x{}+{}+{} slot={}x{}+{}+{} actual_buf={}x{} animate={} already_to_target={}",
                 self.clients[client_idx].app_id.as_str(),
                 client_idx,
@@ -1927,22 +2071,149 @@ impl MargoState {
     }
 
     pub fn post_repaint(&mut self, output: &Output, time: impl Into<std::time::Duration>) {
+        // Frame callbacks are now driven by `note_vblank`
+        // (real VBlank) and `on_estimated_vblank_timer` (empty render)
+        // — both bump the per-output frame_callback_sequence and call
+        // `send_frame_callbacks`. The post-render hook stays only to
+        // refresh the smithay desktop space + popup map.
+        let _ = time;
+        let _ = output;
+        self.space.refresh();
+        self.popups.cleanup();
+    }
+
+    /// Send `wl_surface.frame` done callbacks to every surface visible
+    /// on `output`, with niri-style sequence-based dedup: each surface
+    /// gets at most ONE callback per output refresh cycle, no matter
+    /// how many commits the client has fired since the last cycle.
+    /// This is what stops gtk4-layer-shell clients (mshell-frame,
+    /// noctalia) from getting back-to-back `frame_done` events and
+    /// entering a busy commit loop — the same loop that made
+    /// mshell-on-margo flicker while mshell-on-Hyprland and
+    /// mshell-on-niri are smooth.
+    pub fn send_frame_callbacks(&mut self, output: &Output, time: impl Into<std::time::Duration>) {
         let time = time.into();
-        let throttle = Some(std::time::Duration::from_secs(1));
+        // Current sequence for this output. Bumped by `note_vblank`
+        // and `on_estimated_vblank_timer`; surfaces stamped with this
+        // value already received a frame_done this cycle.
+        let sequence = *self
+            .frame_callback_sequence
+            .entry(output.name())
+            .or_insert(0);
+
+        // Backup throttle handed to smithay's send_frame. niri uses
+        // 995 ms — long enough that it never interferes with our
+        // per-cycle dedup. The real cadence comes from how often *we*
+        // call this function (once per real or estimated vblank).
+        let throttle = Some(std::time::Duration::from_millis(995));
+
+        // ONLY sequence-based dedup; we deliberately do NOT add
+        // niri's `surface_primary_scanout_output` filter here. Even
+        // though `update_primary_scanout_outputs` now runs in the
+        // udev render path, subsurfaces without per-frame buffers
+        // (gtk4-layer-shell widget containers, IME composition
+        // surfaces, etc.) end up with `primary_scanout = None`
+        // because smithay's `element_was_presented` reports false
+        // for any surface that produced no render element this
+        // frame. Applying the filter then silently drops frame_done
+        // callbacks for those surfaces, and the clients that own
+        // them (Helium toolbar surface, mshell GTK frame clock)
+        // enter a "frame_done never arrived → render harder"
+        // recovery loop that burns RAM and locks the system in
+        // ~10 s. Output-level filtering is still done upstream by
+        // `space.outputs_for_element` / `layer_map_for_output`
+        // iteration in the caller, so dropping the primary_scanout
+        // gate doesn't cause cross-output spam.
+        let should_send = |_surface: &WlSurface,
+                           states: &smithay::wayland::compositor::SurfaceData|
+         -> Option<Output> {
+            let frame_state = states
+                .data_map
+                .get_or_insert(SurfaceFrameThrottlingState::default);
+            let mut last_sent_at = frame_state.last_sent_at.borrow_mut();
+            if let Some((last_output, last_sequence)) = &*last_sent_at {
+                if last_output == output && *last_sequence == sequence {
+                    return None;
+                }
+            }
+            *last_sent_at = Some((output.clone(), sequence));
+            Some(output.clone())
+        };
 
         self.space.elements().for_each(|window| {
             if self.space.outputs_for_element(window).contains(output) {
-                window.send_frame(output, time, throttle, |_, _| Some(output.clone()));
+                window.send_frame(output, time, throttle, should_send);
             }
         });
 
         let map = layer_map_for_output(output);
         for layer in map.layers() {
-            layer.send_frame(output, time, throttle, |_, _| Some(output.clone()));
+            layer.send_frame(output, time, throttle, should_send);
+        }
+    }
+
+    /// Schedule an estimated-vblank Timer for `output`. Called from the
+    /// udev render path when `render_frame` reports `is_empty == true`
+    /// (no damage, no DRM page-flip, no real VBlank coming back). Without
+    /// this, gtk4-layer-shell clients would stall waiting for a
+    /// `wl_surface.frame` callback that the empty-render path swallowed.
+    ///
+    /// At most ONE timer in flight per output. If a timer is already
+    /// queued we return early — the existing timer will fire at the next
+    /// estimated vblank.
+    pub fn queue_estimated_vblank_timer(
+        &mut self,
+        output: &Output,
+        refresh_interval: std::time::Duration,
+    ) {
+        use smithay::reexports::calloop::{
+            timer::{TimeoutAction, Timer},
+            RegistrationToken,
+        };
+
+        let name = output.name();
+        if self.estimated_vblank_timers.contains_key(&name) {
+            return;
         }
 
-        self.space.refresh();
-        self.popups.cleanup();
+        let timer = Timer::from_duration(refresh_interval);
+        let cb_name = name.clone();
+        let cb_output = output.clone();
+        let token: Result<RegistrationToken, _> =
+            self.loop_handle.insert_source(timer, move |_, _, state| {
+                // Only do work if our entry is still here. If
+                // `note_vblank` (real VBlank) raced us and removed
+                // the entry first, our callback fires harmlessly —
+                // returning `Drop` is still correct because the
+                // source is one-shot.
+                if state.estimated_vblank_timers.remove(&cb_name).is_some() {
+                    state.on_estimated_vblank_timer(&cb_output);
+                }
+                TimeoutAction::Drop
+            });
+
+        match token {
+            Ok(t) => {
+                self.estimated_vblank_timers.insert(name, t);
+            }
+            Err(e) => {
+                tracing::warn!("queue_estimated_vblank_timer insert_source failed: {e}");
+            }
+        }
+    }
+
+    /// Fired by the estimated-vblank Timer. Bumps the per-output
+    /// frame_callback_sequence and re-sends frame callbacks so clients
+    /// stay paced at refresh rate even when the scene is idle.
+    pub fn on_estimated_vblank_timer(&mut self, output: &Output) {
+        let entry = self
+            .frame_callback_sequence
+            .entry(output.name())
+            .or_insert(0);
+        *entry = entry.wrapping_add(1);
+        let now = self.clock.now();
+        self.send_frame_callbacks(output, now);
+        self.display_handle.flush_clients().ok();
     }
 
     // ── Focus helpers ─────────────────────────────────────────────────────────
@@ -2765,6 +3036,12 @@ impl SeatHandler for MargoState {
     }
 }
 delegate_seat!(MargoState);
+
+// `wp_cursor_shape_v1`: clients send a shape name instead of their
+// own cursor surface; we draw via `cursor_manager` at our own size.
+// Required for GTK4 layer-shell surfaces to avoid oversized cursor.
+impl smithay::wayland::tablet_manager::TabletSeatHandler for MargoState {}
+smithay::delegate_cursor_shape!(MargoState);
 
 // ── Smithay delegate: Output ──────────────────────────────────────────────────
 

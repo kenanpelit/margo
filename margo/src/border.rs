@@ -173,7 +173,7 @@ pub fn refresh(state: &mut MargoState) {
                 || (actual.w != 0 && actual.w != c.geom.width)
                 || (actual.h != 0 && actual.h != c.geom.height)
             {
-                tracing::info!(
+                tracing::trace!(
                     "border[{}]: slot={}x{}+{}+{} geom_loc={}+{} geom_size={}x{} drawn={}x{} \
                      anim={} snap={} shrunk={}",
                     c.app_id.as_str(),

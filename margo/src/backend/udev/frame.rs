@@ -24,7 +24,7 @@ use smithay::{
     reexports::drm::control::crtc,
     wayland::seat::WaylandFocus,
 };
-use tracing::{error, info, warn};
+use tracing::{error, warn};
 
 use super::{
     build_cursor_elements_for_output, build_render_elements,
@@ -45,6 +45,101 @@ use crate::state::MargoState;
 /// the same id `WaylandSurfaceRenderElement` constructs at render
 /// time. Clients on a different monitor than `output` are left alone —
 /// their flag is updated when their own monitor renders.
+/// Mirror niri's `update_primary_scanout_output` — for every visible
+/// surface (windows, layer surfaces, popups), stamp its `data_map`
+/// with the output it was just presented on. `send_frame_callbacks`
+/// reads this stamp via `surface_primary_scanout_output` to decide
+/// where to send the `wl_surface.frame` done event AND to skip
+/// surfaces that didn't make it to the scanout. Without this update,
+/// smithay's `surface_primary_scanout_output` ALWAYS returns `None`,
+/// which is why margo had to bypass the primary-scanout filter
+/// entirely — a workaround that also blocked `wp_presentation_feedback`
+/// from going to clients, hurt damage tracking, and contributed to
+/// the bar flicker. niri does the same pass in `niri.rs` lines
+/// 4793-4922.
+pub(super) fn update_primary_scanout_outputs(
+    state: &mut MargoState,
+    output: &Output,
+    render_states: &smithay::backend::renderer::element::RenderElementStates,
+) {
+    use smithay::backend::renderer::element::default_primary_scanout_output_compare;
+    use smithay::desktop::utils::update_surface_primary_scanout_output;
+    use smithay::wayland::compositor::{with_surface_tree_downward, TraversalAction};
+
+    for window in state.space.elements() {
+        if !state.space.outputs_for_element(window).contains(output) {
+            continue;
+        }
+        window.with_surfaces(|surface, states| {
+            update_surface_primary_scanout_output(
+                surface,
+                output,
+                states,
+                None,
+                render_states,
+                default_primary_scanout_output_compare,
+            );
+        });
+    }
+
+    let map = smithay::desktop::layer_map_for_output(output);
+    for layer in map.layers() {
+        layer.with_surfaces(|surface, states| {
+            update_surface_primary_scanout_output(
+                surface,
+                output,
+                states,
+                None,
+                render_states,
+                // Layer surfaces are output-pinned; always pick this output.
+                |_, _, output, _| output,
+            );
+        });
+        // Popups attached to the layer surface (rare: tooltips, menus).
+        for (popup, _) in smithay::desktop::PopupManager::popups_for_surface(layer.wl_surface()) {
+            let s = popup.wl_surface();
+            with_surface_tree_downward(
+                s,
+                (),
+                |_, _, _| TraversalAction::DoChildren(()),
+                |surface, states, _| {
+                    update_surface_primary_scanout_output(
+                        surface,
+                        output,
+                        states,
+                        None,
+                        render_states,
+                        |_, _, output, _| output,
+                    );
+                },
+                |_, _, _| true,
+            );
+        }
+    }
+
+    // Lock surface, if any. Locked sessions have a dedicated lock
+    // surface per output that we want to stamp so its presentation
+    // feedback works correctly (mlock relies on this).
+    if let Some((_, lock_surface)) = state.lock_surfaces.iter().find(|(o, _)| o == output) {
+        with_surface_tree_downward(
+            lock_surface.wl_surface(),
+            (),
+            |_, _, _| TraversalAction::DoChildren(()),
+            |surface, states, _| {
+                update_surface_primary_scanout_output(
+                    surface,
+                    output,
+                    states,
+                    None,
+                    render_states,
+                    default_primary_scanout_output_compare,
+                );
+            },
+            |_, _, _| true,
+        );
+    }
+}
+
 pub(super) fn update_client_scanout_flags(
     state: &mut MargoState,
     output: &Output,
@@ -304,15 +399,47 @@ fn render_output(
             od.render_count += 1;
             if result.is_empty {
                 od.empty_count += 1;
-                if od.empty_count <= 5 || od.empty_count.is_multiple_of(120) {
-                    info!(
-                        output = %od.output.name(),
-                        reason = reason,
-                        renders = od.render_count,
-                        elements = elements.len(),
-                        "render empty",
-                    );
-                }
+                tracing::trace!(
+                    output = %od.output.name(),
+                    reason = reason,
+                    renders = od.render_count,
+                    empties = od.empty_count,
+                    elements = elements.len(),
+                    "render empty",
+                );
+                // No DRM page-flip = no real VBlank coming back. But
+                // mshell / any gtk4-layer-shell client still expects
+                // `wl_surface.frame` callbacks to fire so its frame
+                // clock can pace at refresh rate. Schedule an
+                // estimated-vblank Timer at the next refresh interval
+                // — when it fires, `on_estimated_vblank_timer` bumps
+                // the per-output `frame_callback_sequence` and runs
+                // `send_frame_callbacks`. This matches niri's
+                // `queue_estimated_vblank_timer` (tty.rs:2933) and is
+                // the piece margo was missing: without it,
+                // gtk4-layer-shell clients either stall waiting for a
+                // callback (visible as bar flicker on margo while
+                // Hyprland and niri stay smooth) or burn CPU if we
+                // send callbacks unthrottled on every empty render.
+                let refresh_interval = od
+                    .output
+                    .current_mode()
+                    .map(|m| {
+                        // `refresh` is millihertz — convert to per-frame
+                        // duration. Fall back to 60 Hz (16.67 ms) on the
+                        // pathological 0-refresh case some virtual
+                        // outputs report.
+                        if m.refresh > 0 {
+                            std::time::Duration::from_nanos(
+                                1_000_000_000_000u64 / m.refresh as u64,
+                            )
+                        } else {
+                            std::time::Duration::from_micros(16_667)
+                        }
+                    })
+                    .unwrap_or(std::time::Duration::from_micros(16_667));
+                state.queue_estimated_vblank_timer(&od.output, refresh_interval);
+                state.display_handle.flush_clients().ok();
                 return;
             }
 
@@ -320,19 +447,46 @@ fn render_output(
                 Ok(()) => {
                     od.queued_count += 1;
                     state.note_frame_queued();
-                    if od.queued_count <= 10 || od.queued_count.is_multiple_of(300) {
-                        info!(
-                            output = %od.output.name(),
-                            reason = reason,
-                            queued = od.queued_count,
-                            renders = od.render_count,
-                            elements = elements.len(),
-                            "queued frame",
-                        );
-                    }
+                    tracing::trace!(
+                        output = %od.output.name(),
+                        reason = reason,
+                        queued = od.queued_count,
+                        renders = od.render_count,
+                        elements = elements.len(),
+                        "queued frame",
+                    );
+                    // Update per-surface primary-scanout state BEFORE
+                    // building presentation feedback or sending frame
+                    // callbacks — both downstream paths read
+                    // `surface_primary_scanout_output` which returns
+                    // None until this update lands. Without this,
+                    // `wp_presentation_feedback` is silently dropped
+                    // and `send_frame_callbacks` can't filter occluded
+                    // surfaces.
+                    update_primary_scanout_outputs(state, &od.output, &result.states);
                     let feedback = build_presentation_feedback(&od.output, state, &result.states);
                     od.pending_presentation.push(feedback);
                     update_client_scanout_flags(state, &od.output, &result.states);
+                    // niri/Hyprland pattern: bump sequence + send frame
+                    // callbacks AT queue_frame Ok time, not at VBlank.
+                    // The queued buffers are now latched on the DRM
+                    // compositor; any new client commit will go into
+                    // the *next* frame, not this one — so clients can
+                    // safely receive `wl_surface.frame` done callbacks
+                    // and start preparing their next buffer. Sending
+                    // these at VBlank time (~16 ms later) is what was
+                    // causing mshell's GTK frame clock to lag a frame
+                    // and produce the bar flicker, because the frame
+                    // clock budget assumes done callbacks arrive
+                    // promptly after submission, not after display.
+                    // See `niri/src/backend/tty.rs` lines 1975-1979
+                    // and `Hyprland/src/render/Renderer.cpp` line 2149.
+                    let entry = state
+                        .frame_callback_sequence
+                        .entry(od.output.name())
+                        .or_insert(0);
+                    *entry = entry.wrapping_add(1);
+                    state.send_frame_callbacks(&od.output, state.clock.now());
                     state.post_repaint(&od.output, state.clock.now());
                     state.display_handle.flush_clients().ok();
                 }

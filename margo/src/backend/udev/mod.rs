@@ -494,7 +494,19 @@ pub fn run(
             let s = drm.cursor_size();
             if s.w == 0 || s.h == 0 { (64u32, 64u32).into() } else { s }
         };
-        let allocator = GbmAllocator::new(gbm.clone(), GbmBufferFlags::RENDERING);
+        // Both RENDERING and SCANOUT flags so the GBM buffer can be used
+        // as a direct scanout source for DRM page-flips without an
+        // intermediate copy. Missing SCANOUT (margo had only RENDERING
+        // for a long time) forces smithay's DrmCompositor to allocate a
+        // separate scanout buffer and blit on every page-flip — that
+        // extra blit races with the VBlank, which is what made
+        // gtk4-layer-shell clients (mshell, noctalia) visibly flicker
+        // while the same clients stayed smooth on Hyprland and niri.
+        // niri uses these exact flags in `backend/tty.rs:892`.
+        let allocator = GbmAllocator::new(
+            gbm.clone(),
+            GbmBufferFlags::RENDERING | GbmBufferFlags::SCANOUT,
+        );
         let exporter = GbmFramebufferExporter::new(gbm.clone(), primary_node.into());
         let compositor = match DrmCompositor::new(
             &output,
@@ -646,6 +658,7 @@ pub fn run(
                     // callbacks may end up taking their own borrows
                     // on backend_data via wayland-server dispatch.
                     let mut to_flush: Vec<(Output, smithay::desktop::utils::OutputPresentationFeedback, u64)> = Vec::new();
+                    let mut flipped_output: Option<Output> = None;
                     {
                         let mut bd = backend_data.borrow_mut();
                         if let Some(od) = bd.outputs.get_mut(&crtc) {
@@ -664,6 +677,7 @@ pub fn run(
                             for feedback in od.pending_presentation.drain(..) {
                                 to_flush.push((od.output.clone(), feedback, seq));
                             }
+                            flipped_output = Some(od.output.clone());
                         }
                     }
                     // Now that the page flip has actually landed,
@@ -682,9 +696,11 @@ pub fn run(
                     // Drop the in-flight count and, if the scene is still
                     // dirty (animation, deferred input, late commit), let
                     // the redraw scheduler ping itself for the next frame.
-                    // This is what gives us continuous animation playback
-                    // now that the global 16 ms timer is gone.
-                    state.note_vblank();
+                    // Also bumps the per-output frame_callback_sequence
+                    // + sends frame callbacks — see `state::note_vblank`.
+                    if let Some(out) = flipped_output {
+                        state.note_vblank(&out);
+                    }
                 }
                 DrmEvent::Error(e) => error!("DRM error: {:?}", e),
             }
@@ -2693,21 +2709,56 @@ fn push_layer_elements(
             _ => alpha,
         };
 
-        let rendered =
-            AsRenderElements::<GlesRenderer>::render_elements::<WaylandSurfaceRenderElement<
-                GlesRenderer,
-            >>(
-                *surface,
+        // Use `render_elements_from_surface_tree` directly with
+        // `Kind::ScanoutCandidate` so smithay's DrmCompositor is
+        // *allowed* to assign the layer to a DRM overlay plane —
+        // page-flips with overlay-plane assignments update atomically
+        // with the primary plane on VBlank, so the bar pixels can't
+        // tear or partially flip. Without `ScanoutCandidate` (which
+        // is what smithay's stock `LayerSurface::render_elements` /
+        // `AsRenderElements` impl produces) the bar always composites
+        // through GL into the primary swapchain — slower, and on
+        // Intel MTL we observed visible flicker when GTK4 commits a
+        // new revealer frame mid-render. niri uses the same
+        // ScanoutCandidate path in `niri/src/layer/mapped.rs:227`,
+        // which is the single biggest reason `mshell-on-niri` is
+        // smooth where `mshell-on-margo` flickers.
+        let scale = Scale::from(output_scale);
+        let location = geo.loc.to_physical_precise_round(scale);
+        let popup_iter = smithay::desktop::PopupManager::popups_for_surface(
+            surface.wl_surface(),
+        )
+        .flat_map(|(popup, popup_offset)| {
+            let offset = (popup_offset - popup.geometry().loc)
+                .to_f64()
+                .to_physical(scale)
+                .to_i32_round();
+            render_elements_from_surface_tree::<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>(
                 renderer,
-                geo.loc.to_physical_precise_round(output_scale),
-                Scale::from(output_scale),
+                popup.wl_surface(),
+                location + offset,
+                scale,
                 layer_alpha,
-            );
-        elements.extend(
-            rendered
-                .into_iter()
-                .map(|elem| MargoRenderElement::Space(SpaceRenderElements::Surface(elem))),
+                Kind::Unspecified,
+            )
+        });
+        for elem in popup_iter {
+            elements.push(MargoRenderElement::Space(SpaceRenderElements::Surface(elem)));
+        }
+        let surface_elems = render_elements_from_surface_tree::<
+            GlesRenderer,
+            WaylandSurfaceRenderElement<GlesRenderer>,
+        >(
+            renderer,
+            surface.wl_surface(),
+            location,
+            scale,
+            layer_alpha,
+            Kind::ScanoutCandidate,
         );
+        for elem in surface_elems {
+            elements.push(MargoRenderElement::Space(SpaceRenderElements::Surface(elem)));
+        }
     }
 }
 

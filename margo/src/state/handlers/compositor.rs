@@ -178,33 +178,111 @@ impl CompositorHandler for MargoState {
                         .unwrap_or(false)
                 });
 
-                {
-                    let mut map = layer_map_for_output(&output);
-                    map.arrange();
-                    if !initial_sent {
-                        if let Some(layer) =
-                            map.layer_for_surface(&root, WindowSurfaceType::TOPLEVEL)
-                        {
-                            tracing::debug!("sending initial configure for layer surface");
-                            layer.layer_surface().send_configure();
-                        }
+                // Hash check #1: full layout state (size, anchor,
+                // exclusive_zone, margin, layer). Drives arrange +
+                // work_area recompute.
+                //
+                // Hash check #2 (split out): keyboard_interactivity
+                // ONLY. Drives `refresh_keyboard_focus`. mshell's bar
+                // updates content (clock, network speed, CPU) several
+                // times per second; each content update can re-flow
+                // the gtk4-layer-shell surface and produce a new
+                // size/margin pair, which would tick the full hash
+                // and uselessly re-run focus refresh at 3 Hz under a
+                // bursty config. The 3 Hz focus churn is exactly
+                // what the journal showed (refresh_keyboard_focus
+                // ~330 ms apart) — niri's layer commit handler
+                // doesn't call focus refresh at all (see
+                // `niri/src/handlers/layer_shell.rs`), only
+                // arrange + output_resized; we go one step softer
+                // and refresh focus only on actual
+                // keyboard_interactivity changes (noctalia/rofi
+                // launcher flips `Exclusive <-> None`).
+                let (new_layout_hash, new_kb_hash) = {
+                    use std::collections::hash_map::DefaultHasher;
+                    use std::hash::{Hash, Hasher};
+                    let mut layout_hasher = DefaultHasher::new();
+                    let mut kb_hasher = DefaultHasher::new();
+                    let layer = {
+                        let map = layer_map_for_output(&output);
+                        map.layer_for_surface(&root, WindowSurfaceType::TOPLEVEL).cloned()
+                    };
+                    if let Some(layer) = layer {
+                        layer.layer_surface().with_cached_state(|cur| {
+                            (cur.size.w, cur.size.h).hash(&mut layout_hasher);
+                            format!("{:?}", cur.anchor).hash(&mut layout_hasher);
+                            format!("{:?}", cur.exclusive_zone).hash(&mut layout_hasher);
+                            format!("{:?}", cur.exclusive_edge).hash(&mut layout_hasher);
+                            (cur.margin.top, cur.margin.bottom, cur.margin.left, cur.margin.right)
+                                .hash(&mut layout_hasher);
+                            format!("{:?}", cur.layer).hash(&mut layout_hasher);
+                            format!("{:?}", cur.keyboard_interactivity).hash(&mut kb_hasher);
+                        });
                     }
+                    (layout_hasher.finish(), kb_hasher.finish())
+                };
+
+                // Combined hash kept in the same map slot so existing
+                // bookkeeping in `layer_destroyed` (a single `remove`
+                // call) stays correct.
+                let new_hash = new_layout_hash ^ new_kb_hash.rotate_left(1);
+                let key = root.id();
+                let prev_combined = self.layer_layout_hashes.get(&key).copied();
+                let layout_changed = prev_combined.map(|h| {
+                    // Lower 64 bits = layout hash; we packed layout ^ rotated kb.
+                    // Recover layout part by re-xoring rotated kb; if the
+                    // stored hash matches the new layout hash xor'd with
+                    // the *previously stored* kb hash, layout didn't change.
+                    // Simpler: just compare the new layout/kb pair against
+                    // a per-surface (layout, kb) tuple. Use parallel maps.
+                    h != new_hash
+                }).unwrap_or(true) || !initial_sent;
+                if layout_changed {
+                    self.layer_layout_hashes.insert(key.clone(), new_hash);
                 }
 
-                self.refresh_output_work_area(&output);
+                // Track keyboard_interactivity separately so we only
+                // trigger focus refresh when it actually flips.
+                let kb_changed = self
+                    .layer_kb_interactivity_hashes
+                    .get(&key)
+                    .copied()
+                    .map(|prev| prev != new_kb_hash)
+                    .unwrap_or(true);
+                if kb_changed {
+                    self.layer_kb_interactivity_hashes.insert(key.clone(), new_kb_hash);
+                }
 
-                // A layer commit can flip `keyboard_interactivity` —
-                // noctalia's bar / launcher / settings / control-center
-                // all live on a single per-screen MainScreen layer and
-                // mutate `WlrLayershell.keyboardFocus` between
-                // `Exclusive` and `None` instead of destroying the
-                // surface. Without recomputing focus here, closing one
-                // of those panels with Esc leaves keyboard focus
-                // pinned to the (still-alive) layer surface in `None`
-                // mode — keys go nowhere until the user nudges the
-                // mouse, which is exactly what made "rofi works but
-                // the noctalia launcher does not" reproducible.
-                self.refresh_keyboard_focus();
+                if layout_changed {
+                    {
+                        let mut map = layer_map_for_output(&output);
+                        map.arrange();
+                        if !initial_sent {
+                            if let Some(layer) =
+                                map.layer_for_surface(&root, WindowSurfaceType::TOPLEVEL)
+                            {
+                                tracing::debug!("sending initial configure for layer surface");
+                                layer.layer_surface().send_configure();
+                            }
+                        }
+                    }
+
+                    self.refresh_output_work_area(&output);
+                }
+
+                // Independent of arrange: only refresh keyboard focus
+                // when keyboard_interactivity flipped (Exclusive ↔
+                // None / OnDemand). noctalia's launcher/settings
+                // panels mutate this on the same surface instead of
+                // destroying it, and without the refresh keystrokes
+                // go nowhere; but mshell's bar never flips it during
+                // normal updates, so we shouldn't be ticking focus
+                // refresh on every content commit. First commit of a
+                // layer surface always trips `kb_changed` (no prev
+                // entry), so initial focus still resolves correctly.
+                if kb_changed {
+                    self.refresh_keyboard_focus();
+                }
             }
         }
         // Initial configure for xdg_popups. Toplevel and layer surfaces

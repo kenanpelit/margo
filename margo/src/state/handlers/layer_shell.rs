@@ -211,6 +211,14 @@ impl WlrLayerShellHandler for MargoState {
             map.arrange();
         }
 
+        // Drop the per-surface layout hash so a future re-mapped
+        // layer with the same id doesn't get short-circuited on its
+        // first commit. The HashMap is unbounded only in pathological
+        // create-without-destroy patterns; one entry per mapped
+        // layer in steady state.
+        self.layer_layout_hashes.remove(&wl_surf.id());
+        self.layer_kb_interactivity_hashes.remove(&wl_surf.id());
+
         self.refresh_output_work_area(&output);
 
         // Hand keyboard focus back to a real window when the layer that

@@ -307,6 +307,16 @@ pub fn run(
                     };
                     match backend.submit(damage.map(|d| d.as_slice())) {
                         Ok(()) => {
+                            // winit has no hardware vblank — treat the
+                            // post-submit moment as the cycle boundary.
+                            // Bump sequence + send frame callbacks here,
+                            // mirroring what `note_vblank` does on udev.
+                            let entry = state
+                                .frame_callback_sequence
+                                .entry(output.name())
+                                .or_insert(0);
+                            *entry = entry.wrapping_add(1);
+                            state.send_frame_callbacks(&output, state.clock.now());
                             state.post_repaint(&output, state.clock.now());
                             state.display_handle.flush_clients().ok();
                         }
