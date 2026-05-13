@@ -189,6 +189,17 @@ package() {
       "$pkgdir/usr/share/xdg-desktop-portal/margo-portals.conf"
   fi
 
+  # ── Session integration examples ───────────────────────────────────
+  # Wayland session entry, uwsm wrapper, plain launcher, and a systemd
+  # drop-in — shipped under /usr/share/doc as starters. The package does
+  # not place them into /usr/share/wayland-sessions or /usr/local/bin
+  # itself so that distro packagers can vendor their own integration
+  # without a file conflict.
+  if [[ -d "contrib/sessions" ]]; then
+    install -d "$pkgdir/usr/share/doc/$pkgname/sessions"
+    cp -a contrib/sessions/. "$pkgdir/usr/share/doc/$pkgname/sessions/"
+  fi
+
   # ── Shell completions for mctl ─────────────────────────────────────
   # Hand-curated under contrib/completions/: extends the clap-derived
   # subcommand layer with dispatch-action names (`mctl actions

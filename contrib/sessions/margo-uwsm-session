@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# margo-uwsm-session — UWSM wrapper for margo, called from a
+# display-manager .desktop entry.
+#
+# What this script does:
+#   1. Sets the standard XDG session env vars (DESKTOP, TYPE, …).
+#   2. Resolves the best compositor command in order of preference:
+#         margo-session  →  start-margo  →  margo
+#      (margo-session and start-margo absorb the config path
+#      themselves; bare margo gets `-c <config>` explicitly.)
+#   3. Hands control to `uwsm start` when uwsm is on PATH so the
+#      compositor runs inside a transient systemd scope that gets
+#      cleaned up at logout. Falls back to a plain exec otherwise.
+#
+# Distros that ship a richer integration (theme defaults, manager-env
+# scrubbing, helper sourcing) should layer their logic on top of this
+# template rather than editing it in place.
+set -euo pipefail
+
+# Standard XDG env for a margo session. `margo` extends DesktopNames
+# with `mango;wlroots;` for portal / Qt theme compatibility.
+export XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP:-margo:mango}"
+export XDG_SESSION_TYPE="${XDG_SESSION_TYPE:-wayland}"
+export XDG_SESSION_DESKTOP="${XDG_SESSION_DESKTOP:-margo}"
+
+# Compositor command resolution. Preference order:
+#   1) margo-session  — canonical wrapper, also pulls in start-margo.
+#   2) start-margo    — watchdog supervisor, direct call.
+#   3) margo          — bare compositor binary, last resort.
+session_cmd=""
+if command -v margo-session >/dev/null 2>&1; then
+  session_cmd="margo-session"
+elif command -v start-margo >/dev/null 2>&1; then
+  session_cmd="start-margo"
+elif command -v margo >/dev/null 2>&1; then
+  session_cmd="margo"
+fi
+
+if command -v uwsm >/dev/null 2>&1; then
+  case "${session_cmd}" in
+    margo-session|start-margo)
+      exec uwsm start -D margo:mango -e -- "${session_cmd}"
+      ;;
+    margo)
+      exec uwsm start -D margo:mango -e -- \
+        margo -c "${HOME}/.config/margo/config.conf"
+      ;;
+    *)
+      printf '[margo-uwsm-session] ERROR: no margo binary on PATH\n' >&2
+      exit 1
+      ;;
+  esac
+fi
+
+# uwsm unavailable — exec the resolved compositor command directly.
+case "${session_cmd}" in
+  margo-session|start-margo)
+    exec "${session_cmd}"
+    ;;
+  margo)
+    exec margo -c "${HOME}/.config/margo/config.conf"
+    ;;
+  *)
+    printf '[margo-uwsm-session] ERROR: no margo binary on PATH\n' >&2
+    exit 1
+    ;;
+esac

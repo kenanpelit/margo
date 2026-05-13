@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# margo-session — entrypoint for margo with the canonical config path.
+#
+# Prefers `start-margo` (the watchdog supervisor that ships in the same
+# package) when it is on PATH:
+#   * Rolling crash budget so a config tweak that crashes the compositor
+#     can't pin a CPU on a respawn loop.
+#   * sd_notify READY=1 / STOPPING=1 emission for systemd Type=notify
+#     units.
+#   * Original-signal forwarding (SIGTERM / SIGINT / SIGHUP) so margo's
+#     own graceful-teardown path runs end-to-end.
+#   * PR_SET_PDEATHSIG so a kill -9 on the supervisor can't leave an
+#     orphaned compositor.
+#
+# Falls back to bare margo when start-margo isn't installed.
+#
+# Drop this script at /usr/local/bin/margo-session and reference it
+# from a display-manager .desktop entry (or from a uwsm wrapper).
+set -euo pipefail
+
+config_file="${HOME}/.config/margo/config.conf"
+
+if command -v start-margo >/dev/null 2>&1; then
+  exec start-margo -- -c "${config_file}" "$@"
+fi
+
+exec margo -c "${config_file}" "$@"

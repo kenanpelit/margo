@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Margo (UWSM)
+Comment=Margo managed by Universal Wayland Session Manager
+Type=Application
+TryExec=margo
+DesktopNames=margo;mango;wlroots
+X-GDM-SessionType=wayland
+X-Session-Type=wayland
+Exec=/usr/local/bin/margo-uwsm-session
+Keywords=wayland;wm;tiling;margo;margowm;compositor;uwsm;

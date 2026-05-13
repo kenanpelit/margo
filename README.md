@@ -11,7 +11,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg" alt="License"></a>
-  <a href="Cargo.toml"><img src="https://img.shields.io/badge/version-0.4.5-success" alt="Version"></a>
+  <a href="Cargo.toml"><img src="https://img.shields.io/badge/version-0.4.6-success" alt="Version"></a>
   <a href="Cargo.toml"><img src="https://img.shields.io/badge/rust-1.85%2B-orange?logo=rust" alt="Rust"></a>
   <a href="https://github.com/Smithay/smithay"><img src="https://img.shields.io/badge/built%20on-Smithay-blueviolet" alt="Smithay"></a>
   <a href="https://kenanpelit.github.io/margo/"><img src="https://img.shields.io/badge/docs-online-blue" alt="Docs"></a>
@@ -71,6 +71,8 @@ Three improvements over Hyprland's `start-hyprland`:
 3. **Signal forwarding preserves the signal.** SIGTERM / SIGINT / SIGHUP are forwarded as-is, so margo's own teardown (Wayland surface destruction, ext-session-lock cleanup, `session.json` snapshot) runs end-to-end. `start-hyprland` always sends SIGTERM regardless of what it received.
 
 Shared with `start-hyprland`: `PR_SET_PDEATHSIG(SIGKILL)` so a `kill -9 start-margo` cannot leave an orphaned compositor; `--path` for dev/staging margo builds; `--` to forward everything after it to margo.
+
+Ready-to-copy session glue (a Wayland-session `.desktop`, a uwsm wrapper, the `margo-session` launcher, and a systemd drop-in) lives in [`contrib/sessions/`](contrib/sessions/) — see its README for the quick install.
 
 ## Lock highlights
 
@@ -220,5 +222,5 @@ GPL-3.0-or-later. See [`LICENSE`](LICENSE).
 
 <p align="center">
   <img src="docs/assets/margo-icon.svg" alt="margo" width="48"><br>
-  <sub>GPL-3.0-or-later · 0.4.5</sub>
+  <sub>GPL-3.0-or-later · 0.4.6</sub>
 </p>

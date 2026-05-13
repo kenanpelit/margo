@@ -7,6 +7,56 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.4.6] – 2026-05-13
+
+### Added
+
+- **`start-margo` watchdog supervisor.** New Rust binary in the
+  workspace — wraps margo with a rolling crash budget
+  (`--max-restarts 3 --restart-window-secs 60` by default), emits
+  `sd_notify` `READY=1` after spawn and `STOPPING=1` on graceful
+  shutdown, preserves the incoming signal when forwarding
+  SIGTERM / SIGINT / SIGHUP to the compositor, and sets
+  `PR_SET_PDEATHSIG(SIGKILL)` so a `kill -9 start-margo` can never
+  leave an orphaned margo. Single source file (`start-margo/src/main.rs`,
+  ~230 lines), depends only on `anyhow` / `clap` / `tracing` /
+  `tracing-subscriber` / `libc`. Three concrete improvements over
+  Hyprland's `start-hyprland`: crash budget (vs. unbounded respawn),
+  systemd-notify integration (vs. pipe-handshake), and original-signal
+  forwarding (vs. always SIGTERM).
+- **`contrib/sessions/` integration examples.** Ready-to-copy
+  Wayland-session glue:
+  * `margo-uwsm.desktop` — display-manager session entry.
+  * `margo-uwsm-session` — UWSM wrapper that resolves the best
+    compositor command (`margo-session` > `start-margo` > `margo`).
+  * `margo-session` — minimal launcher that prefers `start-margo`,
+    falls back to bare `margo`.
+  * `systemd/user/wayland-wm@margo-session.service.d/10-session-lifecycle.conf`
+    — drop-in that sets `MARGO_LOG`, fires the session target,
+    bumps Nice / CPUWeight.
+  See `contrib/sessions/README.md` for the install recipe and the
+  full session chain diagram.
+
+### Fixed
+
+- **PKGBUILD now keeps debug symbols.** `options=(!lto)` was missing
+  `!strip`, so makepkg's outer strip pass was wiping the symbol
+  table on every install — exactly the failure mode `CLAUDE.md`
+  warns against ("mesa abort inside the render path on overview
+  trigger" coredumps were resolving to `?? ??:0` for every margo
+  frame). `options=(!lto !strip)` now matches the `strip = "none"`
+  setting that's been in the Cargo release profile all along. The
+  next time margo trips an ABRT, `coredumpctl info` / `addr2line`
+  will name the exact Rust source line instead of a hex offset.
+
+### Changed
+
+- **README binary table + install loop.** `start-margo` is now in
+  the table (between `margo` and `mctl`), the source-install
+  one-liner installs seven binaries, and a new "Supervisor
+  (`start-margo`)" section + `contrib/sessions/` pointer explain
+  the recommended session topology.
+
 ## [0.4.5] – 2026-05-13
 
 ### Fixed
