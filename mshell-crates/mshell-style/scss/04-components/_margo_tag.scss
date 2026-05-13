@@ -1,0 +1,43 @@
+
+// MargoTag — bar widget styling for the per-tag pill button.
+// Three visual states layered on top of the standard `ok-button-*`
+// primitives so they pick up the active theme's accent / surface
+// colors automatically:
+//
+//   .margo-tag                — base. Centers the digit label, fixed
+//                               square footprint so the row looks
+//                               like a strip of identical pills
+//                               regardless of digit width.
+//   .margo-tag.tag-active     — focused workspace. Re-uses the
+//                               `ok-button-primary` accent.
+//   .margo-tag.tag-occupied   — has clients but isn't focused. A
+//                               subtle accent dot inset on the
+//                               bottom keeps the bar uncluttered.
+//   .margo-tag.tag-empty      — no clients, not focused. Plain
+//                               surface tone; the digit is rendered
+//                               but at reduced opacity so the
+//                               occupied / empty contrast is read
+//                               at a glance.
+.margo-tag {
+  min-width: 22px;
+  padding: 2px 8px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.margo-tag.tag-empty label {
+  opacity: 0.45;
+}
+
+.margo-tag.tag-occupied {
+  // Subtle accent strip along the bottom edge via `box-shadow` so
+  // we don't have to fight Sass's `@` keyword tokenisation to thread
+  // GTK4's `@theme_accent_bg_color` named color through Grass.
+  // `currentColor` picks up the label's foreground tone, so the
+  // indicator tracks dark/light theme switches for free.
+  box-shadow: inset 0 -2px 0 -1px currentColor;
+}
+
+.margo-tag.tag-active label {
+  font-weight: 700;
+}
