@@ -194,22 +194,39 @@ impl Component for AppLauncherModel {
             })
             .detach();
 
+        // Keyboard navigation. Beyond the obvious arrow keys we also
+        // accept the readline / emacs / IRC-client conventions the
+        // user expects from a launcher:
+        //
+        //   Down  →  Down | Tab           | Ctrl+N | Ctrl+J
+        //   Up    →  Up   | Shift+Tab     | Ctrl+P | Ctrl+K
+        //
+        // (`Shift+Tab` shows up as `ISO_Left_Tab` on most X11/Wayland
+        // stacks; we match both for safety. `Ctrl+J` / `Ctrl+K` are
+        // the vim-friendly aliases.) Escape still closes the menu.
         let key_controller = gtk::EventControllerKey::new();
         let sender_clone = sender.clone();
-        key_controller.connect_key_pressed(move |_, key, _, _| match key {
-            gdk::Key::Up => {
-                sender_clone.input(AppLauncherInput::UpPressed);
-                glib::Propagation::Stop
-            }
-            gdk::Key::Down => {
+        key_controller.connect_key_pressed(move |_, key, _, modifier| {
+            let ctrl = modifier.contains(gdk::ModifierType::CONTROL_MASK);
+            let shift = modifier.contains(gdk::ModifierType::SHIFT_MASK);
+            let is_down = matches!(key, gdk::Key::Down)
+                || (matches!(key, gdk::Key::Tab) && !shift)
+                || (ctrl && matches!(key, gdk::Key::n | gdk::Key::N | gdk::Key::j | gdk::Key::J));
+            let is_up = matches!(key, gdk::Key::Up | gdk::Key::ISO_Left_Tab)
+                || (matches!(key, gdk::Key::Tab) && shift)
+                || (ctrl && matches!(key, gdk::Key::p | gdk::Key::P | gdk::Key::k | gdk::Key::K));
+            if is_down {
                 sender_clone.input(AppLauncherInput::DownPressed);
                 glib::Propagation::Stop
-            }
-            gdk::Key::Escape => {
+            } else if is_up {
+                sender_clone.input(AppLauncherInput::UpPressed);
+                glib::Propagation::Stop
+            } else if matches!(key, gdk::Key::Escape) {
                 let _ = sender_clone.output(AppLauncherOutput::CloseMenu);
                 glib::Propagation::Stop
+            } else {
+                glib::Propagation::Proceed
             }
-            _ => glib::Propagation::Proceed,
         });
 
         let mut effect_scope = EffectScope::new();
