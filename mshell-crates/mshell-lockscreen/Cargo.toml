@@ -17,7 +17,9 @@ mshell-common.workspace = true
 mshell-config.workspace = true
 mshell-idle.workspace = true
 mshell-session.workspace = true
-pam.workspace = true
+# pam.workspace = true   # TODO(phase-2c): swap for margo-pam shared
+# crate (mlock's libpam FFI extracted) — pam 0.8 → pam-sys → bindgen
+# → libclang autoload trips on Arch.
 reactive_graph.workspace = true
 relm4.workspace = true
 time.workspace = true

@@ -7,7 +7,28 @@ use mshell_cache::wallpaper::{
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::schema::config::{ConfigStoreFields, GeneralStoreFields};
 use mshell_session::session_lock::session_lock;
-use pam::Client;
+// TODO(phase-2c): replace this stub with `margo-pam` — a shared
+// crate extracted from `mlock`'s own libpam FFI. The upstream
+// `pam` crate (0.8) pulls in `pam-sys 1.0.0-alpha5` which builds
+// through `bindgen → clang-sys`, and clang-sys's thread-local
+// libclang autoload trips on Arch even when libclang.so is on
+// LIBCLANG_PATH. Until then, password authentication inside
+// the mshell lock screen always returns failure — the user is
+// expected to lock via `mlock` (margo's primary lock binary)
+// instead of routing through this widget.
+struct Client;
+impl Client {
+    fn with_password(_service: &str) -> Result<Self, ()> {
+        Err(())
+    }
+    fn conversation_mut(&mut self) -> &mut Self {
+        self
+    }
+    fn set_credentials<U, P>(&mut self, _u: U, _p: P) {}
+    fn authenticate(&mut self) -> Result<(), ()> {
+        Err(())
+    }
+}
 use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk::gdk;
 use relm4::gtk::prelude::*;

@@ -1,0 +1,11 @@
+# Cargo workspace configuration.
+#
+# `LIBCLANG_PATH` is set so that `clang-sys` (transitively pulled by
+# `pam-sys → pam` from `mshell-lockscreen`) finds `libclang.so` on
+# distros that don't put it in a directory `clang-sys` autoscans. On
+# Arch the file lives at `/usr/lib/libclang.so` but the runtime
+# loader path inside `clang-sys`'s `Drop`-guarded thread-local
+# resolver is narrower; setting it explicitly here removes the
+# guesswork.
+[env]
+LIBCLANG_PATH = "/usr/lib"
