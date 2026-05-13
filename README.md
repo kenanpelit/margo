@@ -11,7 +11,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg" alt="License"></a>
-  <a href="Cargo.toml"><img src="https://img.shields.io/badge/version-0.4.7-success" alt="Version"></a>
+  <a href="Cargo.toml"><img src="https://img.shields.io/badge/version-0.4.8-success" alt="Version"></a>
   <a href="Cargo.toml"><img src="https://img.shields.io/badge/rust-1.85%2B-orange?logo=rust" alt="Rust"></a>
   <a href="https://github.com/Smithay/smithay"><img src="https://img.shields.io/badge/built%20on-Smithay-blueviolet" alt="Smithay"></a>
   <a href="https://kenanpelit.github.io/margo/"><img src="https://img.shields.io/badge/docs-online-blue" alt="Docs"></a>
@@ -222,5 +222,5 @@ GPL-3.0-or-later. See [`LICENSE`](LICENSE).
 
 <p align="center">
   <img src="docs/assets/margo-icon.svg" alt="margo" width="48"><br>
-  <sub>GPL-3.0-or-later · 0.4.7</sub>
+  <sub>GPL-3.0-or-later · 0.4.8</sub>
 </p>

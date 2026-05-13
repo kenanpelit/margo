@@ -7,6 +7,36 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.4.8] – 2026-05-13
+
+### Added
+
+- **Compositor-side wallpaper renderer.** margo now paints the
+  wallpaper itself, behind every window and layer surface, instead
+  of waiting for an external daemon (`swaybg` / `swww` / a noctalia
+  background widget) to cover the root color. New top-level config
+  fields:
+  * `wallpaper = PATH` — explicit image path. Resolution chain when
+    unset:
+    1. `~/.local/share/margo/wallpapers/default.jpg` (user override)
+    2. `/usr/share/margo/wallpapers/default.jpg`     (package default)
+  * `wallpaper_fit = cover|contain|fill|center` — only `cover`
+    is wired through the renderer right now; the other variants
+    parse cleanly so configs picking them don't fail validation.
+  Cover mode crops a centred sub-rectangle of the source whose
+  aspect ratio matches the output, then scales it to the output
+  rectangle (no letterboxing, no stretch). External shells can
+  still draw on top via layer-shell — layer surfaces sit above
+  the background, so a noctalia / swww overlay wins the z-fight
+  regardless.
+
+### Changed
+
+- **mlock + compositor share the same wallpaper resolution chain.**
+  Both now check the same three locations in the same order, so a
+  clean install never lands on flat dark for either the desktop or
+  the lock screen.
+
 ## [0.4.7] – 2026-05-13
 
 ### Added
