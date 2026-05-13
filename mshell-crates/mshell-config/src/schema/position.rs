@@ -2,6 +2,14 @@ use reactive_stores::{KeyMap, PatchField, Store, StorePath};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+/// Menu / popup anchor side. NOT bar-surface kind — this is which
+/// screen edge a menu slides in from. `BarType` (over in
+/// `mshell-frame/src/bars/bar.rs`) carries the bar-surface enum
+/// and there only `Top` / `Bottom` exist (left/right vertical
+/// bars were removed for the scroller-default layout). A menu
+/// CAN still anchor to `Left` or `Right` — that's about which
+/// edge of the screen it docks against, not which bar it lives
+/// in.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, JsonSchema)]
 pub enum Position {
     Left,

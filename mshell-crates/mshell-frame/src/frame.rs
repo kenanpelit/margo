@@ -27,12 +27,25 @@ const WALLPAPER_MENU: &str = "wallpaper";
 const SCREENSHARE_MENU: &str = "screenshare";
 
 pub struct Frame {
+    // Margo's mshell ships only horizontal bars — vertical Left /
+    // Right bar surfaces were removed because they conflict with
+    // the scroller-default column flow. The `left_menu_*` /
+    // `right_menu_*` fields below are unrelated: they control
+    // menus that anchor to the screen's left / right edges.
     top_bar: Controller<BarModel>,
     bottom_bar: Controller<BarModel>,
-    left_bar: Controller<BarModel>,
-    right_bar: Controller<BarModel>,
     left_menu_expansion_type: VerticalMenuExpansion,
     right_menu_expansion_type: VerticalMenuExpansion,
+    // `*_revealed` flags drive the GtkRevealer that owns the
+    // corresponding menu stack — NOT a bar surface. Naming is by
+    // anchor edge:
+    //   top_revealed / bottom_revealed              — center menus
+    //   left_revealed / right_revealed              — side menus
+    //   top_left_revealed / top_right_revealed
+    //   bottom_left_revealed / bottom_right_revealed — corner menus
+    // Vertical Left / Right BAR surfaces were removed; these
+    // flags refer to menus that anchor to those screen edges
+    // (e.g. the quick-settings menu slides in from the side).
     left_revealed: bool,
     right_revealed: bool,
     top_revealed: bool,
@@ -43,8 +56,6 @@ pub struct Frame {
     bottom_right_revealed: bool,
     top_spacer: Controller<FrameSpacerModel>,
     bottom_spacer: Controller<FrameSpacerModel>,
-    left_spacer: Controller<FrameSpacerModel>,
-    right_spacer: Controller<FrameSpacerModel>,
     clock_menu: Controller<MenuModel>,
     clipboard_menu: Controller<MenuModel>,
     quick_settings_menu: Controller<MenuModel>,
@@ -134,10 +145,12 @@ impl Component for Frame {
                         #[name = "left_bar_and_menu_container"]
                         BoxWithResize::new() -> BoxWithResize {
 
-                            #[name = "left_bar_container"]
-                            append = &BoxWithResize::new() -> BoxWithResize {
-                                append = &model.left_bar.widget().clone() {},
-                            },
+                            // NOTE: Vertical Left bar surface has been removed
+                            // (margo's scroller-default layout claims the
+                            // horizontal real estate). Menus that anchor to
+                            // the screen's left edge still live inside this
+                            // container — they slide in / out via the
+                            // `left_revealer` below.
 
                             #[name = "left_revealer_container"]
                             append = &BoxWithResize::new() -> BoxWithResize {
@@ -460,10 +473,10 @@ impl Component for Frame {
                                 },
                             },
 
-                            #[name = "right_bar_container"]
-                            append = &BoxWithResize::new() -> BoxWithResize {
-                                append = &model.right_bar.widget().clone() {},
-                            },
+                            // NOTE: Vertical Right bar surface has been
+                            // removed (see comment on left_bar_and_menu_container).
+                            // Menus that anchor to the right edge live above
+                            // in the `right_revealer`.
                         },
                     },
 
@@ -514,8 +527,6 @@ impl Component for Frame {
 
         let top_bar: Controller<BarModel> = Self::build_bar(&sender, BarType::Top);
         let bottom_bar: Controller<BarModel> = Self::build_bar(&sender, BarType::Bottom);
-        let left_bar: Controller<BarModel> = Self::build_bar(&sender, BarType::Left);
-        let right_bar: Controller<BarModel> = Self::build_bar(&sender, BarType::Right);
 
         let calendar_menu = Self::build_menu(&sender, MenuType::Clock);
         let clipboard_menu = Self::build_menu(&sender, MenuType::Clipboard);
@@ -598,25 +609,8 @@ impl Component for Frame {
                 monitor: monitor_clone,
             })
             .detach();
-        let monitor_clone = params.monitor.clone();
-        let left_spacer = FrameSpacerModel::builder()
-            .launch(FrameSpacerInit {
-                bar_type: BarType::Left,
-                monitor: monitor_clone,
-            })
-            .detach();
-        let monitor_clone = params.monitor.clone();
-        let right_spacer = FrameSpacerModel::builder()
-            .launch(FrameSpacerInit {
-                bar_type: BarType::Right,
-                monitor: monitor_clone,
-            })
-            .detach();
-
         let top_sender = top_spacer.sender().clone();
         let bottom_sender = bottom_spacer.sender().clone();
-        let left_sender = left_spacer.sender().clone();
-        let right_sender = right_spacer.sender().clone();
         effects.push(move |_| {
             let border_width = config_manager()
                 .config()
@@ -627,20 +621,16 @@ impl Component for Frame {
                 .get();
             top_sender.emit(FrameSpacerInput::BorderHeightUpdated(border_width));
             bottom_sender.emit(FrameSpacerInput::BorderHeightUpdated(border_width));
-            left_sender.emit(FrameSpacerInput::BorderWidthUpdated(border_width));
-            right_sender.emit(FrameSpacerInput::BorderWidthUpdated(border_width));
         });
 
         let model = Frame {
             top_bar,
             bottom_bar,
-            left_bar,
-            right_bar,
             left_menu_expansion_type,
             right_menu_expansion_type,
+            top_revealed: false,
             left_revealed: false,
             right_revealed: false,
-            top_revealed: false,
             top_left_revealed: false,
             top_right_revealed: false,
             bottom_revealed: false,
@@ -648,8 +638,6 @@ impl Component for Frame {
             bottom_right_revealed: false,
             top_spacer,
             bottom_spacer,
-            left_spacer,
-            right_spacer,
             clock_menu: calendar_menu,
             clipboard_menu,
             quick_settings_menu: main_menu,
@@ -740,8 +728,8 @@ impl Component for Frame {
                 self.toggle_menu(SCREENSHARE_MENU, widgets);
             }
             FrameInput::CloseMenus => {
-                self.right_revealed = false;
                 self.left_revealed = false;
+                self.right_revealed = false;
                 self.top_revealed = false;
                 self.top_left_revealed = false;
                 self.top_right_revealed = false;
@@ -795,11 +783,10 @@ impl Component for Frame {
             FrameInput::BarToggleBottom => {
                 self.bottom_bar.sender().emit(BarInput::ToggleRevealed);
             }
-            FrameInput::BarToggleLeft => {
-                self.left_bar.sender().emit(BarInput::ToggleRevealed);
-            }
-            FrameInput::BarToggleRight => {
-                self.right_bar.sender().emit(BarInput::ToggleRevealed);
+            FrameInput::BarToggleLeft | FrameInput::BarToggleRight => {
+                // Vertical Left / Right bars removed; treat the input
+                // as a no-op so existing mshellctl bindings don't error.
+                tracing::debug!("BarToggleLeft/Right ignored — vertical bars removed");
             }
             FrameInput::BarToggleAll(exclude_hidden_by_default) => {
                 if exclude_hidden_by_default {
@@ -821,29 +808,9 @@ impl Component for Frame {
                     {
                         self.bottom_bar.sender().emit(BarInput::ToggleRevealed);
                     }
-                    if config_manager()
-                        .config()
-                        .bars()
-                        .left_bar()
-                        .reveal_by_default()
-                        .get_untracked()
-                    {
-                        self.left_bar.sender().emit(BarInput::ToggleRevealed);
-                    }
-                    if config_manager()
-                        .config()
-                        .bars()
-                        .right_bar()
-                        .reveal_by_default()
-                        .get_untracked()
-                    {
-                        self.right_bar.sender().emit(BarInput::ToggleRevealed);
-                    }
                 } else {
                     self.top_bar.sender().emit(BarInput::ToggleRevealed);
                     self.bottom_bar.sender().emit(BarInput::ToggleRevealed);
-                    self.left_bar.sender().emit(BarInput::ToggleRevealed);
-                    self.right_bar.sender().emit(BarInput::ToggleRevealed);
                 }
             }
             FrameInput::BarRevealAll(exclude_hidden_by_default) => {
@@ -866,29 +833,9 @@ impl Component for Frame {
                     {
                         self.bottom_bar.sender().emit(BarInput::SetRevealed(true));
                     }
-                    if config_manager()
-                        .config()
-                        .bars()
-                        .left_bar()
-                        .reveal_by_default()
-                        .get_untracked()
-                    {
-                        self.left_bar.sender().emit(BarInput::SetRevealed(true));
-                    }
-                    if config_manager()
-                        .config()
-                        .bars()
-                        .right_bar()
-                        .reveal_by_default()
-                        .get_untracked()
-                    {
-                        self.right_bar.sender().emit(BarInput::SetRevealed(true));
-                    }
                 } else {
                     self.top_bar.sender().emit(BarInput::SetRevealed(true));
                     self.bottom_bar.sender().emit(BarInput::SetRevealed(true));
-                    self.left_bar.sender().emit(BarInput::SetRevealed(true));
-                    self.right_bar.sender().emit(BarInput::SetRevealed(true));
                 }
             }
             FrameInput::BarHideAll(exclude_hidden_by_default) => {
@@ -911,29 +858,9 @@ impl Component for Frame {
                     {
                         self.bottom_bar.sender().emit(BarInput::SetRevealed(false));
                     }
-                    if config_manager()
-                        .config()
-                        .bars()
-                        .left_bar()
-                        .reveal_by_default()
-                        .get_untracked()
-                    {
-                        self.left_bar.sender().emit(BarInput::SetRevealed(false));
-                    }
-                    if config_manager()
-                        .config()
-                        .bars()
-                        .right_bar()
-                        .reveal_by_default()
-                        .get_untracked()
-                    {
-                        self.right_bar.sender().emit(BarInput::SetRevealed(false));
-                    }
                 } else {
                     self.top_bar.sender().emit(BarInput::SetRevealed(false));
                     self.bottom_bar.sender().emit(BarInput::SetRevealed(false));
-                    self.left_bar.sender().emit(BarInput::SetRevealed(false));
-                    self.right_bar.sender().emit(BarInput::SetRevealed(false));
                 }
             }
         }
@@ -1143,14 +1070,13 @@ impl Frame {
                 None
             },
         );
-        let left_sender = self.left_spacer.sender().clone();
-        widgets
-            .left_bar_container
-            .connect_local("resized", false, move |values| {
-                let width = values[1].get::<i32>().expect("width i32");
-                let _ = left_sender.send(FrameSpacerInput::WidthUpdated(width));
-                None
-            });
+        // NOTE: Vertical Left / Right bars were removed; the
+        // `left_bar_container` / `right_bar_container` widgets they
+        // owned (with `left_spacer` / `right_spacer` listening for
+        // resize) are gone with them. Menus that anchor to the side
+        // edges still live inside `left_bar_and_menu_container` /
+        // `right_bar_and_menu_container`, but they have no spacer —
+        // their width is driven by the menu content directly.
 
         let frame_widget = widgets.frame_draw_widget.clone();
         widgets.right_bar_and_menu_container.connect_local(
@@ -1162,14 +1088,6 @@ impl Frame {
                 None
             },
         );
-        let right_sender = self.right_spacer.sender().clone();
-        widgets
-            .right_bar_container
-            .connect_local("resized", false, move |values| {
-                let width = values[1].get::<i32>().expect("width i32");
-                let _ = right_sender.send(FrameSpacerInput::WidthUpdated(width));
-                None
-            });
 
         let frame_widget = widgets.frame_draw_widget.clone();
         widgets.top_left_expander.connect_local(
@@ -1442,7 +1360,5 @@ impl Drop for Frame {
     fn drop(&mut self) {
         self.top_spacer.widget().destroy();
         self.bottom_spacer.widget().destroy();
-        self.left_spacer.widget().destroy();
-        self.right_spacer.widget().destroy();
     }
 }

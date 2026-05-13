@@ -88,23 +88,12 @@ impl Component for FrameSpacerModel {
                 root.set_anchor(Edge::Left, true);
                 root.set_anchor(Edge::Right, true);
             }
-            BarType::Left => {
-                root.set_anchor(Edge::Top, true);
-                root.set_anchor(Edge::Bottom, true);
-                root.set_anchor(Edge::Left, true);
-            }
-            BarType::Right => {
-                root.set_anchor(Edge::Top, true);
-                root.set_anchor(Edge::Bottom, true);
-                root.set_anchor(Edge::Right, true);
-            }
         }
 
         let orientation = match params.bar_type {
-            BarType::Top => Orientation::Horizontal,
-            BarType::Bottom => Orientation::Horizontal,
-            BarType::Left => Orientation::Vertical,
-            BarType::Right => Orientation::Vertical,
+            // Only horizontal bars exist (vertical Left / Right were
+            // removed).
+            BarType::Top | BarType::Bottom => Orientation::Horizontal,
         };
         let model = FrameSpacerModel {
             orientation,

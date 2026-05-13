@@ -161,13 +161,21 @@ impl Default for Matugen {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
 #[serde(default)]
+/// Margo's mshell ships only horizontal bars — vertical Left /
+/// Right bar surfaces were removed because they conflict with the
+/// scroller-default column flow. The default top-bar layout below
+/// is the OkShell upstream's default left-bar layout migrated onto
+/// a horizontal axis:
+///   * `top_widgets`    → `left_widgets`   (start cluster)
+///   * `center_widgets` → `center_widgets` (middle)
+///   * `bottom_widgets` → `right_widgets`  (end cluster)
+/// Bottom bar starts empty; users add their own widgets via the
+/// settings UI / YAML.
 pub struct Bars {
     pub frame: Frame,
     pub widgets: BarWidgets,
     pub top_bar: HorizontalBar,
     pub bottom_bar: HorizontalBar,
-    pub left_bar: VerticalBar,
-    pub right_bar: VerticalBar,
 }
 
 impl Default for Bars {
@@ -175,14 +183,12 @@ impl Default for Bars {
         Self {
             frame: Frame::default(),
             widgets: BarWidgets::default(),
-            top_bar: HorizontalBar::default(),
-            bottom_bar: HorizontalBar::default(),
-            left_bar: VerticalBar {
-                minimum_width: 0,
+            top_bar: HorizontalBar {
+                minimum_height: 0,
                 reveal_by_default: true,
-                top_widgets: vec![BarWidget::QuickSettings, BarWidget::HyprlandWorkspaces],
+                left_widgets: vec![BarWidget::QuickSettings, BarWidget::HyprlandWorkspaces],
                 center_widgets: vec![BarWidget::HyprlandDock],
-                bottom_widgets: vec![
+                right_widgets: vec![
                     BarWidget::RecordingIndicator,
                     BarWidget::Tray,
                     BarWidget::Screenshot,
@@ -197,7 +203,7 @@ impl Default for Bars {
                     BarWidget::Clock,
                 ],
             },
-            right_bar: VerticalBar::default(),
+            bottom_bar: HorizontalBar::default(),
         }
     }
 }
@@ -430,28 +436,15 @@ impl Default for HorizontalBar {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
-#[serde(default)]
-pub struct VerticalBar {
-    pub minimum_width: i32,
-    pub reveal_by_default: bool,
-    pub top_widgets: Vec<BarWidget>,
-    pub center_widgets: Vec<BarWidget>,
-    pub bottom_widgets: Vec<BarWidget>,
-}
-
-impl Default for VerticalBar {
-    fn default() -> Self {
-        Self {
-            minimum_width: 0,
-            reveal_by_default: true,
-            top_widgets: Vec::new(),
-            center_widgets: Vec::new(),
-            bottom_widgets: Vec::new(),
-        }
-    }
-}
-
+// NOTE: The upstream `VerticalBar` struct (used by `bars.left_bar`
+// / `bars.right_bar` in OkShell) has been removed alongside the
+// vertical bar surfaces themselves. Migration guidance for users
+// with an old YAML config: rename `left_bar:` → `top_bar:`, and
+// map the widget slots:
+//   top_widgets    → left_widgets
+//   center_widgets → center_widgets   (unchanged)
+//   bottom_widgets → right_widgets
+//
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, JsonSchema)]
 pub enum VerticalMenuExpansion {
     AlwaysExpanded,

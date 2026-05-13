@@ -36,7 +36,7 @@ use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::bar_widgets::BarWidget;
 use mshell_config::schema::config::{
-    BarsStoreFields, ConfigStoreFields, HorizontalBarStoreFields, VerticalBarStoreFields,
+    BarsStoreFields, ConfigStoreFields, HorizontalBarStoreFields,
 };
 use mshell_utils::clear_box::clear_box;
 use reactive_graph::traits::*;
@@ -47,12 +47,14 @@ use relm4::{
 use std::{fmt::Debug, time::Duration};
 use tokio::time::sleep;
 
+/// Bar surface kind. Margo's mshell paints only horizontal bars
+/// (Top / Bottom) — the vertical Left / Right variants upstream
+/// OkShell shipped have been removed because they conflict with
+/// scroller-default column flow.
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Clone, Copy)]
 pub(crate) enum BarType {
     Top,
     Bottom,
-    Left,
-    Right,
 }
 
 pub(crate) struct BarModel {
@@ -277,106 +279,6 @@ impl Component for BarModel {
                 effects.push(move |_| {
                     let config = config.clone();
                     let widgets = config.bars().bottom_bar().center_widgets().get();
-                    sender_clone.input(BarInput::SetCenteredWidgets(widgets));
-                });
-            }
-            BarType::Left => {
-                orientation = Orientation::Vertical;
-                v_expand = true;
-                h_expand = false;
-                css_class = "bar-left".to_string();
-                transition_type = gtk::RevealerTransitionType::SlideRight;
-                hover_strip_width = 1;
-                hover_strip_height = -1;
-                reveal_by_default = config_manager()
-                    .config()
-                    .bars()
-                    .left_bar()
-                    .reveal_by_default()
-                    .get_untracked();
-
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let min = config_manager()
-                        .config()
-                        .bars()
-                        .left_bar()
-                        .minimum_width()
-                        .get();
-                    sender_clone.input(BarInput::SetMinWidth(min));
-                });
-
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.bars().left_bar().top_widgets().get();
-                    sender_clone.input(BarInput::SetStartWidgets(widgets));
-                });
-
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.bars().left_bar().bottom_widgets().get();
-                    sender_clone.input(BarInput::SetEndWidgets(widgets));
-                });
-
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.bars().left_bar().center_widgets().get();
-                    sender_clone.input(BarInput::SetCenteredWidgets(widgets));
-                });
-            }
-            BarType::Right => {
-                orientation = Orientation::Vertical;
-                v_expand = true;
-                h_expand = false;
-                css_class = "bar-right".to_string();
-                transition_type = gtk::RevealerTransitionType::SlideLeft;
-                hover_strip_width = 1;
-                hover_strip_height = -1;
-                reveal_by_default = config_manager()
-                    .config()
-                    .bars()
-                    .right_bar()
-                    .reveal_by_default()
-                    .get_untracked();
-
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let min = config_manager()
-                        .config()
-                        .bars()
-                        .right_bar()
-                        .minimum_width()
-                        .get();
-                    sender_clone.input(BarInput::SetMinWidth(min));
-                });
-
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.bars().right_bar().top_widgets().get();
-                    sender_clone.input(BarInput::SetStartWidgets(widgets));
-                });
-
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.bars().right_bar().bottom_widgets().get();
-                    sender_clone.input(BarInput::SetEndWidgets(widgets));
-                });
-
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.bars().right_bar().center_widgets().get();
                     sender_clone.input(BarInput::SetCenteredWidgets(widgets));
                 });
             }

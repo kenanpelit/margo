@@ -7,7 +7,7 @@ use mshell_config::config_manager::config_manager;
 use mshell_config::schema::bar_widgets::BarWidget;
 use mshell_config::schema::config::{
     BarWidgetsStoreFields, BarsStoreFields, ConfigStoreFields, FrameStoreFields,
-    HorizontalBarStoreFields, QuickSettingsBarWidgetStoreFields, VerticalBarStoreFields,
+    HorizontalBarStoreFields, QuickSettingsBarWidgetStoreFields,
 };
 use mshell_config::schema::quick_settings_icon::QuickSettingsIcon;
 use reactive_graph::prelude::{Get, GetUntracked};
@@ -22,26 +22,20 @@ pub(crate) struct BarSettingsModel {
     chips: FactoryVecDeque<MonitorChipModel>,
     available_monitors: Vec<String>,
     selected_monitors: Vec<String>,
+    // Vertical Left / Right bar surfaces were removed; the
+    // corresponding `_controller` slots and `_min_width` /
+    // `_reveal_by_default` flags are gone with them. Only the
+    // horizontal Top / Bottom bars remain editable.
     top_bar_start_controller: Controller<WidgetSectionModel>,
     top_bar_center_controller: Controller<WidgetSectionModel>,
     top_bar_end_controller: Controller<WidgetSectionModel>,
-    left_bar_start_controller: Controller<WidgetSectionModel>,
-    left_bar_center_controller: Controller<WidgetSectionModel>,
-    left_bar_end_controller: Controller<WidgetSectionModel>,
-    right_bar_start_controller: Controller<WidgetSectionModel>,
-    right_bar_center_controller: Controller<WidgetSectionModel>,
-    right_bar_end_controller: Controller<WidgetSectionModel>,
     bottom_bar_start_controller: Controller<WidgetSectionModel>,
     bottom_bar_center_controller: Controller<WidgetSectionModel>,
     bottom_bar_end_controller: Controller<WidgetSectionModel>,
     top_min_height: i32,
     bottom_min_height: i32,
-    left_min_width: i32,
-    right_min_width: i32,
     top_reveal_by_default: bool,
     bottom_reveal_by_default: bool,
-    left_reveal_by_default: bool,
-    right_reveal_by_default: bool,
     quick_settings_icon: QuickSettingsIcon,
     _effects: EffectScope,
 }
@@ -60,20 +54,10 @@ pub(crate) enum BarSettingsInput {
     BottomStartChanged(Vec<BarWidget>),
     BottomCenterChanged(Vec<BarWidget>),
     BottomEndChanged(Vec<BarWidget>),
-    LeftStartChanged(Vec<BarWidget>),
-    LeftCenterChanged(Vec<BarWidget>),
-    LeftEndChanged(Vec<BarWidget>),
-    RightStartChanged(Vec<BarWidget>),
-    RightCenterChanged(Vec<BarWidget>),
-    RightEndChanged(Vec<BarWidget>),
     TopMinHeightChanged(i32),
     BottomMinHeightChanged(i32),
-    RightMinWidthChanged(i32),
-    LeftMinWidthChanged(i32),
     TopRevealByDefaultChanged(bool),
     BottomRevealByDefaultChanged(bool),
-    LeftRevealByDefaultChanged(bool),
-    RightRevealByDefaultChanged(bool),
     QuickSettingsIconChanged(QuickSettingsIcon),
 
     TopStartEffect(Vec<BarWidget>),
@@ -82,20 +66,10 @@ pub(crate) enum BarSettingsInput {
     BottomStartEffect(Vec<BarWidget>),
     BottomCenterEffect(Vec<BarWidget>),
     BottomEndEffect(Vec<BarWidget>),
-    LeftStartEffect(Vec<BarWidget>),
-    LeftCenterEffect(Vec<BarWidget>),
-    LeftEndEffect(Vec<BarWidget>),
-    RightStartEffect(Vec<BarWidget>),
-    RightCenterEffect(Vec<BarWidget>),
-    RightEndEffect(Vec<BarWidget>),
     TopMinHeightEffect(i32),
     BottomMinHeightEffect(i32),
-    RightMinWidthEffect(i32),
-    LeftMinWidthEffect(i32),
     TopRevealByDefaultEffect(bool),
     BottomRevealByDefaultEffect(bool),
-    LeftRevealByDefaultEffect(bool),
-    RightRevealByDefaultEffect(bool),
     QuickSettingsIconEffect(QuickSettingsIcon),
 }
 
@@ -286,150 +260,6 @@ impl Component for BarSettingsModel {
                 model.top_bar_start_controller.widget().clone() {},
                 model.top_bar_center_controller.widget().clone() {},
                 model.top_bar_end_controller.widget().clone() {},
-
-                gtk::Separator {},
-
-                gtk::Label {
-                    add_css_class: "label-large-bold",
-                    set_label: "Left Bar",
-                    set_halign: gtk::Align::Start,
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-
-                    gtk::Label {
-                        add_css_class: "label-small",
-                        set_halign: gtk::Align::Start,
-                        set_label: "Minimum Width",
-                        set_hexpand: true,
-                    },
-
-                    gtk::SpinButton {
-                        set_range: (0.0, 500.0),
-                        set_increments: (1.0, 10.0),
-                        #[watch]
-                        #[block_signal(left_min_handler)]
-                        set_value: model.left_min_width as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(BarSettingsInput::LeftMinWidthChanged(s.value() as i32));
-                        } @left_min_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Reveal by default",
-                            set_hexpand: true,
-                        },
-
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Whether to reveal the bar when first starting MShell.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
-
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(left_reveal_by_default_handler)]
-                        set_active: model.left_reveal_by_default,
-                        connect_state_set[sender] => move |_, enabled| {
-                            sender.input(BarSettingsInput::LeftRevealByDefaultChanged(enabled));
-                            glib::Propagation::Proceed
-                        } @left_reveal_by_default_handler,
-                    }
-                },
-
-                model.left_bar_start_controller.widget().clone() {},
-                model.left_bar_center_controller.widget().clone() {},
-                model.left_bar_end_controller.widget().clone() {},
-
-                gtk::Separator {},
-
-                gtk::Label {
-                    add_css_class: "label-large-bold",
-                    set_label: "Right Bar",
-                    set_halign: gtk::Align::Start,
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-
-                    gtk::Label {
-                        add_css_class: "label-small",
-                        set_halign: gtk::Align::Start,
-                        set_label: "Minimum Width",
-                        set_hexpand: true,
-                    },
-
-                    gtk::SpinButton {
-                        set_range: (0.0, 500.0),
-                        set_increments: (1.0, 10.0),
-                        #[watch]
-                        #[block_signal(right_min_handler)]
-                        set_value: model.right_min_width as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(BarSettingsInput::RightMinWidthChanged(s.value() as i32));
-                        } @right_min_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Reveal by default",
-                            set_hexpand: true,
-                        },
-
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Whether to reveal the bar when first starting MShell.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
-
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(right_reveal_by_default_handler)]
-                        set_active: model.right_reveal_by_default,
-                        connect_state_set[sender] => move |_, enabled| {
-                            sender.input(BarSettingsInput::RightRevealByDefaultChanged(enabled));
-                            glib::Propagation::Proceed
-                        } @right_reveal_by_default_handler,
-                    }
-                },
-
-                model.right_bar_start_controller.widget().clone() {},
-                model.right_bar_center_controller.widget().clone() {},
-                model.right_bar_end_controller.widget().clone() {},
 
                 gtk::Separator {},
 
@@ -674,75 +504,12 @@ impl Component for BarSettingsModel {
             sender_clone.input(BarSettingsInput::BottomEndEffect(value));
         });
 
-        let sender_clone = sender.clone();
-        effects.push(move |_| {
-            let config = config_manager().config();
-            let value = config.bars().left_bar().minimum_width().get();
-            sender_clone.input(BarSettingsInput::LeftMinWidthEffect(value));
-        });
-
-        let sender_clone = sender.clone();
-        effects.push(move |_| {
-            let config = config_manager().config();
-            let value = config.bars().left_bar().reveal_by_default().get();
-            sender_clone.input(BarSettingsInput::LeftRevealByDefaultEffect(value));
-        });
-
-        let sender_clone = sender.clone();
-        effects.push(move |_| {
-            let config = config_manager().config();
-            let value = config.bars().left_bar().top_widgets().get();
-            sender_clone.input(BarSettingsInput::LeftStartEffect(value));
-        });
-
-        let sender_clone = sender.clone();
-        effects.push(move |_| {
-            let config = config_manager().config();
-            let value = config.bars().left_bar().center_widgets().get();
-            sender_clone.input(BarSettingsInput::LeftCenterEffect(value));
-        });
-
-        let sender_clone = sender.clone();
-        effects.push(move |_| {
-            let config = config_manager().config();
-            let value = config.bars().left_bar().bottom_widgets().get();
-            sender_clone.input(BarSettingsInput::LeftEndEffect(value));
-        });
-
-        let sender_clone = sender.clone();
-        effects.push(move |_| {
-            let config = config_manager().config();
-            let value = config.bars().right_bar().minimum_width().get();
-            sender_clone.input(BarSettingsInput::RightMinWidthEffect(value));
-        });
-
-        let sender_clone = sender.clone();
-        effects.push(move |_| {
-            let config = config_manager().config();
-            let value = config.bars().right_bar().reveal_by_default().get();
-            sender_clone.input(BarSettingsInput::RightRevealByDefaultEffect(value));
-        });
-
-        let sender_clone = sender.clone();
-        effects.push(move |_| {
-            let config = config_manager().config();
-            let value = config.bars().right_bar().top_widgets().get();
-            sender_clone.input(BarSettingsInput::RightStartEffect(value));
-        });
-
-        let sender_clone = sender.clone();
-        effects.push(move |_| {
-            let config = config_manager().config();
-            let value = config.bars().right_bar().center_widgets().get();
-            sender_clone.input(BarSettingsInput::RightCenterEffect(value));
-        });
-
-        let sender_clone = sender.clone();
-        effects.push(move |_| {
-            let config = config_manager().config();
-            let value = config.bars().right_bar().bottom_widgets().get();
-            sender_clone.input(BarSettingsInput::RightEndEffect(value));
-        });
+        // NOTE: Vertical Left / Right bar surface effects are gone —
+        // the corresponding 10 effect blocks would have pushed
+        // `LeftMinWidthEffect` / `LeftRevealByDefaultEffect` /
+        // `LeftStartEffect` / `LeftCenterEffect` / `LeftEndEffect`
+        // (× 2 for Right). The settings UI no longer surfaces those
+        // panels.
 
         let sender_clone = sender.clone();
         effects.push(move |_| {
@@ -795,97 +562,7 @@ impl Component for BarSettingsModel {
                 WidgetSectionOutput::Changed(widgets) => BarSettingsInput::TopEndChanged(widgets),
             });
 
-        let left_bar_start_controller = WidgetSectionModel::builder()
-            .launch(WidgetSectionInit {
-                bar_section: BarSection::Start,
-                widgets: config_manager()
-                    .config()
-                    .bars()
-                    .left_bar()
-                    .top_widgets()
-                    .get_untracked(),
-            })
-            .forward(sender.input_sender(), |msg| match msg {
-                WidgetSectionOutput::Changed(widgets) => {
-                    BarSettingsInput::LeftStartChanged(widgets)
-                }
-            });
-
-        let left_bar_center_controller = WidgetSectionModel::builder()
-            .launch(WidgetSectionInit {
-                bar_section: BarSection::Center,
-                widgets: config_manager()
-                    .config()
-                    .bars()
-                    .left_bar()
-                    .center_widgets()
-                    .get_untracked(),
-            })
-            .forward(sender.input_sender(), |msg| match msg {
-                WidgetSectionOutput::Changed(widgets) => {
-                    BarSettingsInput::LeftCenterChanged(widgets)
-                }
-            });
-
-        let left_bar_end_controller = WidgetSectionModel::builder()
-            .launch(WidgetSectionInit {
-                bar_section: BarSection::End,
-                widgets: config_manager()
-                    .config()
-                    .bars()
-                    .left_bar()
-                    .bottom_widgets()
-                    .get_untracked(),
-            })
-            .forward(sender.input_sender(), |msg| match msg {
-                WidgetSectionOutput::Changed(widgets) => BarSettingsInput::LeftEndChanged(widgets),
-            });
-
-        let right_bar_start_controller = WidgetSectionModel::builder()
-            .launch(WidgetSectionInit {
-                bar_section: BarSection::Start,
-                widgets: config_manager()
-                    .config()
-                    .bars()
-                    .right_bar()
-                    .top_widgets()
-                    .get_untracked(),
-            })
-            .forward(sender.input_sender(), |msg| match msg {
-                WidgetSectionOutput::Changed(widgets) => {
-                    BarSettingsInput::RightStartChanged(widgets)
-                }
-            });
-
-        let right_bar_center_controller = WidgetSectionModel::builder()
-            .launch(WidgetSectionInit {
-                bar_section: BarSection::Center,
-                widgets: config_manager()
-                    .config()
-                    .bars()
-                    .right_bar()
-                    .center_widgets()
-                    .get_untracked(),
-            })
-            .forward(sender.input_sender(), |msg| match msg {
-                WidgetSectionOutput::Changed(widgets) => {
-                    BarSettingsInput::RightCenterChanged(widgets)
-                }
-            });
-
-        let right_bar_end_controller = WidgetSectionModel::builder()
-            .launch(WidgetSectionInit {
-                bar_section: BarSection::End,
-                widgets: config_manager()
-                    .config()
-                    .bars()
-                    .right_bar()
-                    .bottom_widgets()
-                    .get_untracked(),
-            })
-            .forward(sender.input_sender(), |msg| match msg {
-                WidgetSectionOutput::Changed(widgets) => BarSettingsInput::RightEndChanged(widgets),
-            });
+        // Vertical Left / Right bar widget-section controllers are gone.
 
         let bottom_bar_start_controller = WidgetSectionModel::builder()
             .launch(WidgetSectionInit {
@@ -943,12 +620,6 @@ impl Component for BarSettingsModel {
             top_bar_start_controller,
             top_bar_center_controller,
             top_bar_end_controller,
-            left_bar_start_controller,
-            left_bar_center_controller,
-            left_bar_end_controller,
-            right_bar_start_controller,
-            right_bar_center_controller,
-            right_bar_end_controller,
             bottom_bar_start_controller,
             bottom_bar_center_controller,
             bottom_bar_end_controller,
@@ -964,18 +635,6 @@ impl Component for BarSettingsModel {
                 .bottom_bar()
                 .minimum_height()
                 .get_untracked(),
-            left_min_width: config_manager()
-                .config()
-                .bars()
-                .left_bar()
-                .minimum_width()
-                .get_untracked(),
-            right_min_width: config_manager()
-                .config()
-                .bars()
-                .right_bar()
-                .minimum_width()
-                .get_untracked(),
             top_reveal_by_default: config_manager()
                 .config()
                 .bars()
@@ -986,18 +645,6 @@ impl Component for BarSettingsModel {
                 .config()
                 .bars()
                 .bottom_bar()
-                .reveal_by_default()
-                .get_untracked(),
-            left_reveal_by_default: config_manager()
-                .config()
-                .bars()
-                .left_bar()
-                .reveal_by_default()
-                .get_untracked(),
-            right_reveal_by_default: config_manager()
-                .config()
-                .bars()
-                .right_bar()
                 .reveal_by_default()
                 .get_untracked(),
             quick_settings_icon: config_manager()
@@ -1087,42 +734,6 @@ impl Component for BarSettingsModel {
                     config.bars.top_bar.right_widgets = widgets;
                 });
             }
-            BarSettingsInput::LeftStartChanged(widgets) => {
-                let config_manager = config_manager();
-                config_manager.update_config(|config| {
-                    config.bars.left_bar.top_widgets = widgets;
-                });
-            }
-            BarSettingsInput::LeftCenterChanged(widgets) => {
-                let config_manager = config_manager();
-                config_manager.update_config(|config| {
-                    config.bars.left_bar.center_widgets = widgets;
-                });
-            }
-            BarSettingsInput::LeftEndChanged(widgets) => {
-                let config_manager = config_manager();
-                config_manager.update_config(|config| {
-                    config.bars.left_bar.bottom_widgets = widgets;
-                });
-            }
-            BarSettingsInput::RightStartChanged(widgets) => {
-                let config_manager = config_manager();
-                config_manager.update_config(|config| {
-                    config.bars.right_bar.top_widgets = widgets;
-                });
-            }
-            BarSettingsInput::RightCenterChanged(widgets) => {
-                let config_manager = config_manager();
-                config_manager.update_config(|config| {
-                    config.bars.right_bar.center_widgets = widgets;
-                });
-            }
-            BarSettingsInput::RightEndChanged(widgets) => {
-                let config_manager = config_manager();
-                config_manager.update_config(|config| {
-                    config.bars.right_bar.bottom_widgets = widgets;
-                });
-            }
             BarSettingsInput::BottomStartChanged(widgets) => {
                 let config_manager = config_manager();
                 config_manager.update_config(|config| {
@@ -1155,20 +766,6 @@ impl Component for BarSettingsModel {
                     config.bars.bottom_bar.minimum_height = min;
                 });
             }
-            BarSettingsInput::LeftMinWidthChanged(min) => {
-                self.left_min_width = min;
-                let config_manager = config_manager();
-                config_manager.update_config(|config| {
-                    config.bars.left_bar.minimum_width = min;
-                });
-            }
-            BarSettingsInput::RightMinWidthChanged(min) => {
-                self.right_min_width = min;
-                let config_manager = config_manager();
-                config_manager.update_config(|config| {
-                    config.bars.right_bar.minimum_width = min;
-                });
-            }
             BarSettingsInput::TopRevealByDefaultChanged(reveal) => {
                 self.top_reveal_by_default = reveal;
                 config_manager().update_config(|config| {
@@ -1179,18 +776,6 @@ impl Component for BarSettingsModel {
                 self.bottom_reveal_by_default = reveal;
                 config_manager().update_config(|config| {
                     config.bars.bottom_bar.reveal_by_default = reveal;
-                });
-            }
-            BarSettingsInput::LeftRevealByDefaultChanged(reveal) => {
-                self.left_reveal_by_default = reveal;
-                config_manager().update_config(|config| {
-                    config.bars.left_bar.reveal_by_default = reveal;
-                });
-            }
-            BarSettingsInput::RightRevealByDefaultChanged(reveal) => {
-                self.right_reveal_by_default = reveal;
-                config_manager().update_config(|config| {
-                    config.bars.right_bar.reveal_by_default = reveal;
                 });
             }
             BarSettingsInput::QuickSettingsIconChanged(icon) => {
@@ -1223,53 +808,17 @@ impl Component for BarSettingsModel {
                 self.bottom_bar_end_controller
                     .emit(WidgetSectionInput::SetWidgetsEffect(widgets));
             }
-            BarSettingsInput::LeftStartEffect(widgets) => {
-                self.left_bar_start_controller
-                    .emit(WidgetSectionInput::SetWidgetsEffect(widgets));
-            }
-            BarSettingsInput::LeftCenterEffect(widgets) => {
-                self.left_bar_center_controller
-                    .emit(WidgetSectionInput::SetWidgetsEffect(widgets));
-            }
-            BarSettingsInput::LeftEndEffect(widgets) => {
-                self.left_bar_end_controller
-                    .emit(WidgetSectionInput::SetWidgetsEffect(widgets));
-            }
-            BarSettingsInput::RightStartEffect(widgets) => {
-                self.right_bar_start_controller
-                    .emit(WidgetSectionInput::SetWidgetsEffect(widgets));
-            }
-            BarSettingsInput::RightCenterEffect(widgets) => {
-                self.right_bar_center_controller
-                    .emit(WidgetSectionInput::SetWidgetsEffect(widgets));
-            }
-            BarSettingsInput::RightEndEffect(widgets) => {
-                self.right_bar_end_controller
-                    .emit(WidgetSectionInput::SetWidgetsEffect(widgets));
-            }
             BarSettingsInput::TopMinHeightEffect(height) => {
                 self.top_min_height = height;
             }
             BarSettingsInput::BottomMinHeightEffect(height) => {
                 self.bottom_min_height = height;
             }
-            BarSettingsInput::RightMinWidthEffect(width) => {
-                self.right_min_width = width;
-            }
-            BarSettingsInput::LeftMinWidthEffect(width) => {
-                self.left_min_width = width;
-            }
             BarSettingsInput::TopRevealByDefaultEffect(reveal) => {
                 self.top_reveal_by_default = reveal;
             }
             BarSettingsInput::BottomRevealByDefaultEffect(reveal) => {
                 self.bottom_reveal_by_default = reveal;
-            }
-            BarSettingsInput::LeftRevealByDefaultEffect(reveal) => {
-                self.left_reveal_by_default = reveal;
-            }
-            BarSettingsInput::RightRevealByDefaultEffect(reveal) => {
-                self.right_reveal_by_default = reveal;
             }
             BarSettingsInput::QuickSettingsIconEffect(icon) => {
                 self.quick_settings_icon = icon;

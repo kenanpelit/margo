@@ -105,32 +105,16 @@ impl Component for HyprlandDockItemModel {
                     set_hexpand: true,
                     set_vexpand: true,
                     set_halign: match model.bar_type {
-                        BarType::Top => {
-                            gtk::Align::Center
-                        }
-                        BarType::Bottom => {
-                            gtk::Align::Center
-                        }
-                        BarType::Left => {
-                            gtk::Align::Start
-                        }
-                        BarType::Right => {
-                            gtk::Align::End
-                        }
+                        // Only horizontal bars exist (Left / Right
+                        // vertical surfaces were removed). Both
+                        // surfaces use centred halign for dock dots.
+                        BarType::Top | BarType::Bottom => gtk::Align::Center,
                     },
                     set_valign: match model.bar_type {
-                        BarType::Top => {
-                            gtk::Align::Start
-                        }
-                        BarType::Bottom => {
-                            gtk::Align::End
-                        }
-                        BarType::Left => {
-                            gtk::Align::Center
-                        }
-                        BarType::Right => {
-                            gtk::Align::Center
-                        }
+                        // Top bar anchors dots to its bottom edge,
+                        // Bottom bar to its top edge.
+                        BarType::Top => gtk::Align::Start,
+                        BarType::Bottom => gtk::Align::End,
                     },
 
                     #[template]
