@@ -41,16 +41,21 @@ use smithay::{
     backend::renderer::utils::on_commit_buffer_handler,
     delegate_compositor,
     desktop::{layer_map_for_output, PopupKind, WindowSurface, WindowSurfaceType},
-    reexports::wayland_server::{
-        protocol::{wl_buffer::WlBuffer, wl_surface::WlSurface},
-        Client, Resource,
+    reexports::{
+        calloop::Interest,
+        wayland_server::{
+            protocol::{wl_buffer::WlBuffer, wl_surface::WlSurface},
+            Client, Resource,
+        },
     },
     wayland::{
         buffer::BufferHandler,
         compositor::{
-            get_parent, is_sync_subsurface, with_states, CompositorClientState, CompositorHandler,
-            CompositorState,
+            add_blocker, add_pre_commit_hook, get_parent, is_sync_subsurface, with_states,
+            BufferAssignment, CompositorClientState, CompositorHandler, CompositorState,
+            SurfaceAttributes,
         },
+        dmabuf::get_dmabuf,
         seat::WaylandFocus,
         shell::{
             wlr_layer::LayerSurfaceData,
@@ -75,6 +80,75 @@ impl CompositorHandler for MargoState {
         }
         panic!("client_compositor_state: unknown client data type")
     }
+
+    /// Install a default dmabuf pre-commit hook on every new surface.
+    ///
+    /// Without this, every commit whose pending buffer is a DMA-BUF
+    /// is applied IMMEDIATELY, even if the client hasn't yet finished
+    /// the GPU work that produced the buffer. The compositor then
+    /// samples the texture before its content fence has signalled,
+    /// reads half-rendered pixels, and shows them to the user — the
+    /// exact pattern that makes a gtk4-layer-shell bar
+    /// (mshell-frame) flicker on margo while staying smooth on
+    /// Hyprland and niri. Both of them install this hook.
+    ///
+    /// The hook produces a `dmabuf.generate_blocker(Interest::READ)`
+    /// blocker on every DMA-BUF commit and feeds it to smithay's
+    /// `add_blocker`, which delays the queued state until the
+    /// blocker reports `Released`. The blocker's calloop source
+    /// fires when the dmabuf's READ fence is signalled, at which
+    /// point we call `CompositorClientState::blocker_cleared` to
+    /// re-pump the surface's transaction queue. Net effect: commits
+    /// land in render order with GPU-ready buffers, no torn texture
+    /// sample, no flicker.
+    ///
+    /// Mirrors `niri/src/handlers/compositor.rs::add_default_dmabuf_pre_commit_hook`.
+    fn new_surface(&mut self, surface: &WlSurface) {
+        if !surface.is_alive() {
+            return;
+        }
+        let _hook = add_pre_commit_hook::<Self, _>(surface, |state, _dh, surface| {
+            let maybe_dmabuf = with_states(surface, |surface_data| {
+                surface_data
+                    .cached_state
+                    .get::<SurfaceAttributes>()
+                    .pending()
+                    .buffer
+                    .as_ref()
+                    .and_then(|assignment| match assignment {
+                        BufferAssignment::NewBuffer(buffer) => get_dmabuf(buffer).cloned().ok(),
+                        _ => None,
+                    })
+            });
+            if let Some(dmabuf) = maybe_dmabuf {
+                if let Ok((blocker, source)) = dmabuf.generate_blocker(Interest::READ) {
+                    if let Some(client) = surface.client() {
+                        let res = state.loop_handle.insert_source(source, move |_, _, state| {
+                            let dh = state.display_handle.clone();
+                            state
+                                .client_compositor_state(&client)
+                                .blocker_cleared(state, &dh);
+                            Ok(())
+                        });
+                        if res.is_ok() {
+                            add_blocker(surface, blocker);
+                            tracing::trace!("added default dmabuf blocker");
+                        }
+                    }
+                }
+            }
+        });
+        // HookId is intentionally dropped: the hook lives on the
+        // surface's private state and is cleaned up automatically
+        // when the surface is destroyed, so we don't need to track
+        // it for explicit removal. niri keeps a HashMap so it can
+        // swap the default hook for a fancier mapped-toplevel hook
+        // that also handles transactions; margo doesn't have
+        // transactions yet, so we just install one hook per surface
+        // and let surface destruction drop it.
+        let _ = _hook;
+    }
+
     fn commit(&mut self, surface: &WlSurface) {
         on_commit_buffer_handler::<Self>(surface);
         if !is_sync_subsurface(surface) {
