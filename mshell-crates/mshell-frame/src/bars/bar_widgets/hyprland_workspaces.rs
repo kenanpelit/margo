@@ -18,7 +18,7 @@ use relm4::{
     gtk::prelude::*,
 };
 use std::sync::Arc;
-use wayle_hyprland::{HyprlandEvent, MonitorId, Workspace, WorkspaceId};
+use mshell_margo_client::{HyprlandEvent, MonitorId, Workspace, WorkspaceId};
 
 #[derive(Clone, Debug)]
 pub enum WsRow {

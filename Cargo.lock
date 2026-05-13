@@ -3671,6 +3671,7 @@ dependencies = [
  "mshell-config",
  "mshell-gamma",
  "mshell-idle",
+ "mshell-margo-client",
  "mshell-matugen",
  "mshell-screenshot",
  "mshell-services",
@@ -3688,7 +3689,6 @@ dependencies = [
  "wayle-audio",
  "wayle-battery",
  "wayle-bluetooth",
- "wayle-hyprland",
  "wayle-media",
  "wayle-network",
  "wayle-notification",
@@ -3755,6 +3755,17 @@ name = "mshell-logging"
 version = "0.4.8"
 dependencies = [
  "tracing-subscriber",
+]
+
+[[package]]
+name = "mshell-margo-client"
+version = "0.4.8"
+dependencies = [
+ "anyhow",
+ "futures",
+ "tokio",
+ "tokio-stream",
+ "tracing",
 ]
 
 [[package]]
@@ -3830,6 +3841,7 @@ dependencies = [
  "gtk4-layer-shell",
  "image",
  "memmap2",
+ "mshell-margo-client",
  "mshell-services",
  "mshell-style",
  "nix 0.31.2",
@@ -3842,7 +3854,6 @@ dependencies = [
  "tracing",
  "wayland-client",
  "wayland-protocols-wlr",
- "wayle-hyprland",
 ]
 
 [[package]]
@@ -3850,13 +3861,13 @@ name = "mshell-services"
 version = "0.4.8"
 dependencies = [
  "anyhow",
+ "mshell-margo-client",
  "tokio",
  "tracing",
  "wayle-audio",
  "wayle-battery",
  "wayle-bluetooth",
  "wayle-brightness",
- "wayle-hyprland",
  "wayle-media",
  "wayle-network",
  "wayle-notification",
@@ -3936,6 +3947,7 @@ dependencies = [
  "mshell-config",
  "mshell-idle",
  "mshell-image",
+ "mshell-margo-client",
  "mshell-services",
  "notify-rust",
  "regex",
@@ -3945,7 +3957,6 @@ dependencies = [
  "tracing",
  "wayle-audio",
  "wayle-bluetooth",
- "wayle-hyprland",
  "wayle-media",
  "wayle-network",
  "wayle-notification",
@@ -7208,26 +7219,6 @@ dependencies = [
  "tokio-stream",
  "tracing",
  "zbus",
-]
-
-[[package]]
-name = "wayle-hyprland"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1aab13eb54ff8a5b22129b7b78206475141e586062ce9b4eb7e563991f0e350c"
-dependencies = [
- "async-trait",
- "derive_more",
- "futures",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tokio-stream",
- "tokio-util",
- "tracing",
- "wayle-core",
- "wayle-traits",
 ]
 
 [[package]]

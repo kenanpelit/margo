@@ -17,7 +17,7 @@ use relm4::gtk::prelude::{
 use relm4::gtk::{Orientation, gio};
 use relm4::{Component, ComponentParts, ComponentSender, Sender, WidgetTemplate, gtk};
 use tracing::error;
-use wayle_hyprland::{Address, Client};
+use mshell_margo_client::{Address, Client};
 
 const MAX_MENU_ITEM_LENGTH: usize = 25;
 

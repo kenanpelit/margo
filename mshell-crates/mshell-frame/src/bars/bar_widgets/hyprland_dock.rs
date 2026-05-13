@@ -25,7 +25,7 @@ use relm4::{
     gtk::prelude::*,
 };
 use std::sync::Arc;
-use wayle_hyprland::{Address, Client, HyprlandEvent};
+use mshell_margo_client::{Address, Client, HyprlandEvent};
 
 #[derive(Clone, Debug)]
 pub struct DockItem {

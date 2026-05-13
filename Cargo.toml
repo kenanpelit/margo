@@ -28,6 +28,7 @@ members = [
     "mshell-crates/mshell-image",
     "mshell-crates/mshell-lockscreen",
     "mshell-crates/mshell-logging",
+    "mshell-crates/mshell-margo-client",
     "mshell-crates/mshell-matugen",
     "mshell-crates/mshell-notification-popups",
     "mshell-crates/mshell-osd",
@@ -119,7 +120,12 @@ wayle-audio = "0.1"
 wayle-battery = "0.1"
 wayle-bluetooth = "0.1"
 wayle-brightness = "0.1"
-wayle-hyprland = "0.2"
+# wayle-hyprland was here for the Phase 1 import — replaced by the
+# in-tree `mshell-margo-client` crate that mirrors the same API
+# surface on top of margo's dwl-ipc-v2 / foreign-toplevel-list /
+# state.json. Leave commented out so the crate doesn't sneak back
+# in via a future copy-paste from upstream OkShell.
+# wayle-hyprland = "0.2"
 wayle-media = "0.1"
 wayle-network = "0.1"
 wayle-notification = "0.1"
@@ -143,6 +149,7 @@ mshell-idle = { path = "mshell-crates/mshell-idle" }
 mshell-image = { path = "mshell-crates/mshell-image" }
 mshell-lockscreen = { path = "mshell-crates/mshell-lockscreen" }
 mshell-logging = { path = "mshell-crates/mshell-logging" }
+mshell-margo-client = { path = "mshell-crates/mshell-margo-client" }
 mshell-matugen = { path = "mshell-crates/mshell-matugen" }
 mshell-notification-popups = { path = "mshell-crates/mshell-notification-popups" }
 mshell-osd = { path = "mshell-crates/mshell-osd" }

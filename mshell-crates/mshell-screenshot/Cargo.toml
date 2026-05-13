@@ -26,4 +26,4 @@ tracing.workspace = true
 tokio.workspace = true
 wayland-client.workspace = true
 wayland-protocols-wlr.workspace = true
-wayle-hyprland.workspace = true
+mshell-margo-client.workspace = true

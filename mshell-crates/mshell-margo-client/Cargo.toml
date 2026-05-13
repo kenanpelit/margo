@@ -1,0 +1,15 @@
+[package]
+name = "mshell-margo-client"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Margo compositor client for MShell — mirrors the wayle-hyprland API surface so OkShell-derived widgets stay verbatim."
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+futures.workspace = true
+tokio.workspace = true
+tokio-stream.workspace = true
+tracing.workspace = true

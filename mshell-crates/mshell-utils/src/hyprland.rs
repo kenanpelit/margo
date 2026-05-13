@@ -1,7 +1,7 @@
 use mshell_services::hyprland_service;
 use std::sync::Arc;
 use tracing::error;
-use wayle_hyprland::{Workspace, WorkspaceInfo};
+use mshell_margo_client::{Workspace, WorkspaceInfo};
 
 pub fn get_active_workspaces() -> Vec<WorkspaceInfo> {
     let hyprland = hyprland_service();

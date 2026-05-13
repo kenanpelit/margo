@@ -4,7 +4,7 @@ use relm4::gtk::prelude::{ButtonExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::sync::Arc;
 use tracing::error;
-use wayle_hyprland::{Workspace, WorkspaceInfo};
+use mshell_margo_client::{Workspace, WorkspaceInfo};
 
 #[derive(Debug, Clone)]
 pub(crate) struct HyprlandWorkspaceModel {
