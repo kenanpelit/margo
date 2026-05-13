@@ -172,6 +172,52 @@ impl CompositorHandler for MargoState {
 
     fn commit(&mut self, surface: &WlSurface) {
         on_commit_buffer_handler::<Self>(surface);
+
+        // Diagnostic: log every commit, classified by surface tree
+        // role. With this we can see WHO is committing at the
+        // millisecond level when the user reports the bar
+        // "flickers" — root layer surface? a subsurface of the
+        // bar? a popup? the cursor surface? — and how often.
+        // Suppressed for cursor/dnd-icon noise.
+        {
+            let mut root = surface.clone();
+            while let Some(p) = get_parent(&root) {
+                root = p;
+            }
+            let is_root = root == *surface;
+            let role = if let Some(output) = self.space.outputs().find(|o| {
+                let map = layer_map_for_output(o);
+                map.layer_for_surface(&root, WindowSurfaceType::TOPLEVEL).is_some()
+            }) {
+                let ns = {
+                    let map = layer_map_for_output(output);
+                    map.layer_for_surface(&root, WindowSurfaceType::TOPLEVEL)
+                        .map(|l| l.namespace().to_string())
+                        .unwrap_or_default()
+                };
+                Some(("layer", ns))
+            } else if self
+                .space
+                .elements()
+                .any(|w| w.wl_surface().as_deref() == Some(&root))
+            {
+                Some(("toplevel", String::new()))
+            } else {
+                None
+            };
+            if let Some((kind, ns)) = role {
+                if ns.starts_with("mshell") || kind == "toplevel" {
+                    tracing::info!(
+                        kind = %kind,
+                        ns = %ns,
+                        is_root = is_root,
+                        sub_id = %surface.id().protocol_id(),
+                        "SURFACE-COMMIT"
+                    );
+                }
+            }
+        }
+
         if !is_sync_subsurface(surface) {
             let mut root = surface.clone();
             while let Some(parent) = get_parent(&root) {
@@ -323,6 +369,48 @@ impl CompositorHandler for MargoState {
                 let new_hash = new_layout_hash ^ new_kb_hash.rotate_left(1);
                 let key = root.id();
                 let prev_combined = self.layer_layout_hashes.get(&key).copied();
+                // Diagnostic: log every commit on mshell-* layers
+                // with the cached state fields, so we can see what
+                // (if anything) is fluctuating per state-poll cycle.
+                // DEBUG level so it surfaces with the user's default
+                // `RUST_LOG=margo=debug`. We also dump the actual
+                // size / margin / anchor / exclusive_zone values
+                // (not just the hash) so a diff is readable at a
+                // glance.
+                let namespace = layer_map_for_output(&output)
+                    .layer_for_surface(&root, WindowSurfaceType::TOPLEVEL)
+                    .map(|l| l.namespace().to_string())
+                    .unwrap_or_default();
+                if namespace.starts_with("mshell") {
+                    let layer_opt = {
+                        let map = layer_map_for_output(&output);
+                        map.layer_for_surface(&root, WindowSurfaceType::TOPLEVEL).cloned()
+                    };
+                    if let Some(layer) = layer_opt {
+                        // Only log when something actually changes —
+                        // skip the noisy steady-state. `info!` level
+                        // so it lands with the user's default
+                        // `MARGO_LOG=info` filter without a re-export.
+                        let will_change =
+                            layout_changed_will_be(prev_combined, new_hash, initial_sent);
+                        if will_change {
+                            layer.layer_surface().with_cached_state(|cur| {
+                                tracing::info!(
+                                    ns = %namespace,
+                                    output = %output.name(),
+                                    size = ?(cur.size.w, cur.size.h),
+                                    anchor = ?cur.anchor,
+                                    exclusive = ?cur.exclusive_zone,
+                                    excl_edge = ?cur.exclusive_edge,
+                                    margin = ?(cur.margin.top, cur.margin.bottom,
+                                              cur.margin.left, cur.margin.right),
+                                    kbd = ?cur.keyboard_interactivity,
+                                    "LAYER-COMMIT-CHANGED"
+                                );
+                            });
+                        }
+                    }
+                }
                 let layout_changed = prev_combined.map(|h| {
                     // Lower 64 bits = layout hash; we packed layout ^ rotated kb.
                     // Recover layout part by re-xoring rotated kb; if the
@@ -436,6 +524,14 @@ pub fn send_scale_transform(
             fractional.set_preferred_scale(scale.fractional_scale());
         });
     });
+}
+
+/// Tiny helper to compute the layout-changed flag the same way
+/// the main commit handler does — used only by the diagnostic
+/// `debug!` log so the journal line shows whether arrange would
+/// have run for this commit.
+fn layout_changed_will_be(prev: Option<u64>, new_hash: u64, initial_sent: bool) -> bool {
+    prev.map(|h| h != new_hash).unwrap_or(true) || !initial_sent
 }
 
 /// Find the output that owns this root surface — walks the layer

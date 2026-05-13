@@ -484,26 +484,32 @@ fn render_output(
                     let feedback = build_presentation_feedback(&od.output, state, &result.states);
                     od.pending_presentation.push(feedback);
                     update_client_scanout_flags(state, &od.output, &result.states);
-                    // niri/Hyprland pattern: bump sequence + send frame
-                    // callbacks AT queue_frame Ok time, not at VBlank.
-                    // The queued buffers are now latched on the DRM
-                    // compositor; any new client commit will go into
-                    // the *next* frame, not this one — so clients can
-                    // safely receive `wl_surface.frame` done callbacks
-                    // and start preparing their next buffer. Sending
-                    // these at VBlank time (~16 ms later) is what was
-                    // causing mshell's GTK frame clock to lag a frame
-                    // and produce the bar flicker, because the frame
-                    // clock budget assumes done callbacks arrive
-                    // promptly after submission, not after display.
-                    // See `niri/src/backend/tty.rs` lines 1975-1979
-                    // and `Hyprland/src/render/Renderer.cpp` line 2149.
+                    // Bump sequence at queue_frame Ok per niri's
+                    // `tty.rs:1975-1979` comment ("buffers were
+                    // latched, new commits will wait for VBlank").
+                    // But do NOT send_frame_callbacks here yet:
+                    // sending them now lets the client commit its
+                    // next buffer BEFORE our VBlank lands, and on a
+                    // fast GPU (Intel Arc MTL) queue_frame Ok fires
+                    // well before VBlank — mshell ends up pacing at
+                    // 80-90 Hz against a 60 Hz monitor (verified in
+                    // the journal: 12-14 ms gaps between consecutive
+                    // mshell-frame commits = ~80 Hz). That over-
+                    // commit races the page-flip and the bar pixels
+                    // visibly judder. Defer the callbacks to
+                    // `note_vblank` so clients can only pace at the
+                    // actual refresh rate. mshell-on-niri stays
+                    // smooth because niri's redraw scheduling is
+                    // gated by `frame_clock.next_presentation_time()`
+                    // even after queue_frame Ok — margo doesn't have
+                    // a frame_clock yet, so we use the
+                    // simpler "callbacks at VBlank, not at submit"
+                    // gate instead.
                     let entry = state
                         .frame_callback_sequence
                         .entry(od.output.name())
                         .or_insert(0);
                     *entry = entry.wrapping_add(1);
-                    state.send_frame_callbacks(&od.output, state.clock.now());
                     state.post_repaint(&od.output, state.clock.now());
                     state.display_handle.flush_clients().ok();
                 }
