@@ -391,9 +391,26 @@ fn render_output(
     } else {
         [0.1, 0.1, 0.1, 1.0]
     };
+    // niri-style frame flags: primary + cursor plane scanout, but
+    // NO overlay plane. Overlay planes look like a free perf win on
+    // paper (an extra DRM plane to scan a layer-shell surface from
+    // directly) but they're a well-documented source of "weird flicker
+    // / performance issues on Intel hardware" — niri disables them
+    // by default for the same reason (see `niri/src/backend/tty.rs`
+    // lines 1898-1928 and the comment "Overlay planes are disabled
+    // by default as they cause weird performance issues on my
+    // system"). On Intel Arc MTL specifically, enabling overlay
+    // plane assignment for the gtk4-layer-shell bar is what tipped
+    // mshell from "mostly OK" into the visible per-keystroke
+    // flicker the user kept reporting. The bar still gets fast
+    // primary-plane direct scanout (because we tag it with
+    // `Kind::ScanoutCandidate` in `push_layer_elements`), just
+    // through the primary plane, not a flaky overlay plane.
+    let frame_flags =
+        FrameFlags::ALLOW_PRIMARY_PLANE_SCANOUT_ANY | FrameFlags::ALLOW_CURSOR_PLANE_SCANOUT;
     match od
         .compositor
-        .render_frame(renderer, &elements, clear_color, FrameFlags::DEFAULT)
+        .render_frame(renderer, &elements, clear_color, frame_flags)
     {
         Ok(result) => {
             od.render_count += 1;
