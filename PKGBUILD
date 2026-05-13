@@ -77,8 +77,13 @@ optdepends=(
 provides=("margo=$pkgver" "wayland-compositor")
 conflicts=("margo")
 # Cargo profile already enables thin LTO; let makepkg's outer LTO pass
-# stay out of the way so we don't pay for it twice.
-options=(!lto)
+# stay out of the way so we don't pay for it twice. `!strip` keeps the
+# binary's symbol table intact so `coredumpctl info` / `addr2line` can
+# resolve frames inside the compositor (mesa-side aborts on the render
+# path occasionally trip ABRT; without symbols the trace is useless).
+# The Cargo release profile already sets `strip = "none"`; this line
+# stops makepkg's outer strip pass from overriding it.
+options=(!lto !strip)
 source=("git+${url}.git#branch=main")
 sha256sums=("SKIP")
 
