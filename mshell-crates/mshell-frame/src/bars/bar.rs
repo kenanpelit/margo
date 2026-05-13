@@ -5,12 +5,12 @@ use crate::bars::bar_widgets::bluetooth::{BluetoothInit, BluetoothModel};
 use crate::bars::bar_widgets::clipboard::{ClipboardInit, ClipboardModel, ClipboardOutput};
 use crate::bars::bar_widgets::clock::{ClockInit, ClockModel, ClockOutput};
 use crate::bars::bar_widgets::hypr_picker::{HyprPickerInit, HyprPickerModel};
-use crate::bars::bar_widgets::hyprland_dock::{
-    HyprlandDockInit, HyprlandDockModel, HyprlandDockOutput,
+use crate::bars::bar_widgets::margo_dock::{
+    MargoDockInit, MargoDockModel, MargoDockOutput,
 };
-use crate::bars::bar_widgets::hyprland_layout::{HyprlandLayoutInit, HyprlandLayoutModel};
-use crate::bars::bar_widgets::hyprland_workspaces::{
-    HyprlandWorkspacesInit, HyprlandWorkspacesModel,
+use crate::bars::bar_widgets::margo_layout::{MargoLayoutInit, MargoLayoutModel};
+use crate::bars::bar_widgets::margo_tags::{
+    MargoTagsInit, MargoTagsModel,
 };
 use crate::bars::bar_widgets::lock::{LockInit, LockModel, LockOutput};
 use crate::bars::bar_widgets::logout::{LogoutInit, LogoutModel};
@@ -44,8 +44,7 @@ use relm4::{
     Component, ComponentParts, ComponentSender,
     gtk::{self, Orientation, prelude::*},
 };
-use std::{fmt::Debug, time::Duration};
-use tokio::time::sleep;
+use std::fmt::Debug;
 
 /// Bar surface kind. Margo's mshell paints only horizontal bars
 /// (Top / Bottom) — the vertical Left / Right variants upstream
@@ -65,6 +64,17 @@ pub(crate) struct BarModel {
     start_widgets: Vec<Box<dyn GenericWidgetController>>,
     center_widgets: Vec<Box<dyn GenericWidgetController>>,
     end_widgets: Vec<Box<dyn GenericWidgetController>>,
+    // Track the BarWidget kinds backing each container so we can skip
+    // the destructive clear+rebuild when the config layer fires a
+    // change notification with an identical widget list. Without this
+    // guard, reactive-store re-notifications (a single config save in
+    // any field reaches every effect bound to the root store) cause
+    // the bar to visibly disappear and re-appear as its children are
+    // torn down and rebuilt — the user sees this as 2-3 rapid flickers
+    // every time a menu opens.
+    start_widget_kinds: Vec<BarWidget>,
+    center_widget_kinds: Vec<BarWidget>,
+    end_widget_kinds: Vec<BarWidget>,
     min_height: i32,
     min_width: i32,
     css_class: String,
@@ -292,22 +302,20 @@ impl Component for BarModel {
             start_widgets: Vec::new(),
             center_widgets: Vec::new(),
             end_widgets: Vec::new(),
+            start_widget_kinds: Vec::new(),
+            center_widget_kinds: Vec::new(),
+            end_widget_kinds: Vec::new(),
             min_width: 0,
             min_height: 0,
             css_class,
-            revealed: false,
+            revealed: reveal_by_default,
             hovered: false,
             _effects: effects,
         };
 
         let widgets = view_output!();
 
-        if reveal_by_default {
-            tokio::spawn(async move {
-                sleep(Duration::from_secs(1)).await;
-                sender.input(BarInput::SetRevealed(true));
-            });
-        }
+        let _ = sender;
 
         ComponentParts { model, widgets }
     }
@@ -321,34 +329,46 @@ impl Component for BarModel {
     ) {
         match message {
             BarInput::SetStartWidgets(bar_widgets) => {
+                if self.start_widget_kinds == bar_widgets {
+                    return;
+                }
                 clear_box(&widgets.start_container);
                 self.start_widgets.clear();
-                for item in bar_widgets {
+                for item in &bar_widgets {
                     let controller =
-                        BarModel::build_widget(self.orientation, self.bar_type, &item, &sender);
+                        BarModel::build_widget(self.orientation, self.bar_type, item, &sender);
                     widgets.start_container.append(&controller.root_widget());
                     self.start_widgets.push(controller);
                 }
+                self.start_widget_kinds = bar_widgets;
             }
             BarInput::SetEndWidgets(bar_widgets) => {
+                if self.end_widget_kinds == bar_widgets {
+                    return;
+                }
                 clear_box(&widgets.end_container);
                 self.end_widgets.clear();
-                for item in bar_widgets {
+                for item in &bar_widgets {
                     let controller =
-                        BarModel::build_widget(self.orientation, self.bar_type, &item, &sender);
+                        BarModel::build_widget(self.orientation, self.bar_type, item, &sender);
                     widgets.end_container.append(&controller.root_widget());
                     self.end_widgets.push(controller);
                 }
+                self.end_widget_kinds = bar_widgets;
             }
             BarInput::SetCenteredWidgets(bar_widgets) => {
+                if self.center_widget_kinds == bar_widgets {
+                    return;
+                }
                 clear_box(&widgets.center_container);
                 self.center_widgets.clear();
-                for item in bar_widgets {
+                for item in &bar_widgets {
                     let controller =
-                        BarModel::build_widget(self.orientation, self.bar_type, &item, &sender);
+                        BarModel::build_widget(self.orientation, self.bar_type, item, &sender);
                     widgets.center_container.append(&controller.root_widget());
                     self.center_widgets.push(controller);
                 }
+                self.center_widget_kinds = bar_widgets;
             }
             BarInput::SetMinWidth(min) => {
                 self.min_width = min;
@@ -406,24 +426,24 @@ impl BarModel {
                         ClockOutput::Clicked => BarOutput::ClockClicked,
                     }),
             ),
-            BarWidget::HyprlandDock => Box::new(
-                HyprlandDockModel::builder()
-                    .launch(HyprlandDockInit {
+            BarWidget::MargoDock => Box::new(
+                MargoDockModel::builder()
+                    .launch(MargoDockInit {
                         orientation,
                         bar_type,
                     })
                     .forward(sender.output_sender(), |msg| match msg {
-                        HyprlandDockOutput::AppLauncherClicked => BarOutput::AppLauncherClicked,
+                        MargoDockOutput::AppLauncherClicked => BarOutput::AppLauncherClicked,
                     }),
             ),
-            BarWidget::HyprlandLayoutSwitcher => Box::new(
-                HyprlandLayoutModel::builder()
-                    .launch(HyprlandLayoutInit { orientation })
+            BarWidget::MargoLayoutSwitcher => Box::new(
+                MargoLayoutModel::builder()
+                    .launch(MargoLayoutInit { orientation })
                     .detach(),
             ),
-            BarWidget::HyprlandWorkspaces => Box::new(
-                HyprlandWorkspacesModel::builder()
-                    .launch(HyprlandWorkspacesInit { orientation })
+            BarWidget::MargoTags => Box::new(
+                MargoTagsModel::builder()
+                    .launch(MargoTagsInit { orientation })
                     .detach(),
             ),
             BarWidget::HyprPicker => Box::new(

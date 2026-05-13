@@ -811,6 +811,37 @@ mod imp {
         pub(super) style: RefCell<FrameStyle>,
         pub(super) resolved_style: RefCell<Option<FrameStyle>>,
         pub(super) css_hash: Cell<u64>,
+        /// Hash of the rectangles last submitted to
+        /// `surface.set_input_region`. We re-compute the region on every
+        /// snapshot (the cheap part), but the actual wayland call is
+        /// gated on the geometry changing — without this guard, every
+        /// animation frame submits an identical region and that triggers
+        /// spurious pointer leave / enter events, which makes the bar
+        /// visibly flicker as buttons drop and re-gain their hover state.
+        pub(super) last_region_hash: Cell<u64>,
+        /// Debounce timer for `update_input_region`. While a menu is
+        /// revealing or hiding, the revealer animates 60× per second and
+        /// would otherwise submit a brand-new `set_input_region` each
+        /// frame — that triggers a pointer leave/enter cycle each time
+        /// and makes the bar visibly flicker. We collect updates and
+        /// only push the latest region to wayland once the animation
+        /// settles (no further updates for ~120 ms). The compositor still
+        /// sees the final hole geometry before the user has a chance to
+        /// interact with the freshly-revealed menu, so click routing
+        /// stays correct.
+        pub(super) pending_region_timeout: RefCell<Option<glib::SourceId>>,
+        pub(super) pending_region_args: RefCell<Option<RegionArgs>>,
+    }
+
+    #[derive(Clone, Debug)]
+    pub(super) struct RegionArgs {
+        pub style: FrameStyle,
+        pub window_width: i32,
+        pub window_height: i32,
+        pub hole_x: f64,
+        pub hole_y: f64,
+        pub hole_width: f64,
+        pub hole_height: f64,
     }
 
     #[object_subclass]
@@ -923,15 +954,15 @@ mod imp {
                 }
             }
 
-            self.update_input_region(
-                &style,
-                total_width as i32,
-                total_height as i32,
+            self.schedule_input_region_update(RegionArgs {
+                style: style.clone(),
+                window_width: total_width as i32,
+                window_height: total_height as i32,
                 hole_x,
                 hole_y,
                 hole_width,
                 hole_height,
-            );
+            });
         }
     }
 
@@ -962,6 +993,38 @@ mod imp {
             *self.resolved_style.borrow_mut() = None;
         }
 
+        /// Coalesce repeated input-region updates during animations.
+        /// Stores the latest args and (re)arms a short debounce timer;
+        /// only the final args after the animation settles get pushed
+        /// to wayland.
+        fn schedule_input_region_update(&self, args: RegionArgs) {
+            *self.pending_region_args.borrow_mut() = Some(args);
+            if let Some(id) = self.pending_region_timeout.borrow_mut().take() {
+                id.remove();
+            }
+            let weak = self.obj().downgrade();
+            let id = glib::timeout_add_local_once(std::time::Duration::from_millis(120), move || {
+                let Some(widget) = weak.upgrade() else {
+                    return;
+                };
+                let imp = widget.imp();
+                imp.pending_region_timeout.replace(None);
+                let Some(args) = imp.pending_region_args.borrow_mut().take() else {
+                    return;
+                };
+                imp.update_input_region(
+                    &args.style,
+                    args.window_width,
+                    args.window_height,
+                    args.hole_x,
+                    args.hole_y,
+                    args.hole_width,
+                    args.hole_height,
+                );
+            });
+            self.pending_region_timeout.replace(Some(id));
+        }
+
         fn update_input_region(
             &self,
             style: &FrameStyle,
@@ -980,6 +1043,45 @@ mod imp {
             let Some(surface) = native.surface() else {
                 return;
             };
+
+            // Cheap dedup before doing any of the cairo region work:
+            // hash the inputs that determine the final region. If the
+            // result would be identical to the last call we made, skip
+            // it — wayland's set_input_region produces pointer-leave /
+            // -enter events even when the region is unchanged, and that
+            // shows up as bar flicker during menu reveal animations.
+            use std::collections::hash_map::DefaultHasher;
+            use std::hash::{Hash, Hasher};
+            let mut hasher = DefaultHasher::new();
+            window_width.hash(&mut hasher);
+            window_height.hash(&mut hasher);
+            (hole_x.to_bits()).hash(&mut hasher);
+            (hole_y.to_bits()).hash(&mut hasher);
+            (hole_width.to_bits()).hash(&mut hasher);
+            (hole_height.to_bits()).hash(&mut hasher);
+            (style.border_width.to_bits()).hash(&mut hasher);
+            (style.left_expander_width.to_bits()).hash(&mut hasher);
+            (style.right_expander_width.to_bits()).hash(&mut hasher);
+            (style.left_top_expander_height.to_bits()).hash(&mut hasher);
+            (style.left_bottom_expander_height.to_bits()).hash(&mut hasher);
+            (style.right_top_expander_height.to_bits()).hash(&mut hasher);
+            (style.right_bottom_expander_height.to_bits()).hash(&mut hasher);
+            for (w, h) in [
+                style.top_revealer_size,
+                style.bottom_revealer_size,
+                style.top_left_revealer_size,
+                style.top_right_revealer_size,
+                style.bottom_left_revealer_size,
+                style.bottom_right_revealer_size,
+            ] {
+                w.to_bits().hash(&mut hasher);
+                h.to_bits().hash(&mut hasher);
+            }
+            let hash = hasher.finish();
+            if hash == self.last_region_hash.get() {
+                return;
+            }
+            self.last_region_hash.set(hash);
 
             let hole_left = hole_x.floor().max(0.0) as i32;
             let hole_top = hole_y.floor().max(0.0) as i32;

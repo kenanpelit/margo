@@ -1364,6 +1364,7 @@ impl Component for ThemeSettingsModel {
                 });
             }
             ThemeSettingsInput::ThemeSelected(theme) => {
+                tracing::debug!(?theme, "theme_settings: ThemeSelected → update_config");
                 config_manager().update_config(|config| {
                     config.theme.theme = theme;
                 });

@@ -20,7 +20,7 @@ use std::time::Duration;
 
 use tokio::time::interval;
 
-use crate::state_json::{lowest_tag, monitor_id, read, RawClient, StateJson};
+use crate::state_json::{lowest_tag, monitor_id, read_raw, RawClient, StateJson};
 use crate::{
     Address, Client, ClientLocation, ClientSize, FullscreenMode, HyprlandService, Monitor,
     Reactive, Workspace, WorkspaceInfo,
@@ -30,16 +30,37 @@ const POLL_INTERVAL: Duration = Duration::from_millis(250);
 
 /// Spawn the background poll loop. The task holds only a `Weak`
 /// reference to the service so the service still drops cleanly.
+///
+/// We compare the raw `state.json` bytes against the last applied
+/// snapshot and skip the apply path entirely when they match.
+/// `apply()` rebuilds every `Workspace` / `Monitor` / `Client` `Arc`
+/// from scratch and calls `Reactive::set(new_vec)`; the `Reactive`
+/// notification fires on every `set` regardless of whether the
+/// underlying value changed (Vec<Arc<_>> equality is by pointer, so
+/// even an unchanged snapshot looks "new"). Without this short-
+/// circuit, the bar's downstream reactive subscribers (focused-tag
+/// pill, dock, layout) all repaint four times a second, and the
+/// repaint coalesces visibly with frequent state.json writes on the
+/// margo side (window title changes during typing, focus updates,
+/// dwl-ipc broadcasts) — the user sees the bar flickering on every
+/// keystroke in another window.
 pub(crate) fn spawn(service: &Arc<HyprlandService>) {
     let weak = Arc::downgrade(service);
     tokio::spawn(async move {
         let mut ticker = interval(POLL_INTERVAL);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut last_raw: Option<String> = None;
         loop {
             ticker.tick().await;
             let Some(service) = weak.upgrade() else { break };
-            if let Some(state) = read() {
+            let Some(raw) = read_raw() else { continue };
+            if last_raw.as_deref() == Some(&raw) {
+                continue;
+            }
+            let parsed: Option<StateJson> = serde_json::from_str(&raw).ok();
+            if let Some(state) = parsed {
                 apply(&service, &state);
+                last_raw = Some(raw);
             }
         }
     });

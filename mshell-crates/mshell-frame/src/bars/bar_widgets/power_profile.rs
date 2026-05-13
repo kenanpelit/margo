@@ -53,6 +53,10 @@ impl Component for PowerProfileModel {
 
         let widgets = view_output!();
 
+        widgets
+            .image
+            .set_icon_name(Some(get_active_power_profile_icon()));
+
         ComponentParts { model, widgets }
     }
 

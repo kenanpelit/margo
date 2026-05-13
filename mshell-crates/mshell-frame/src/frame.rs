@@ -64,6 +64,11 @@ pub struct Frame {
     app_launcher_menu: Controller<MenuModel>,
     wallpaper_menu: Controller<MenuModel>,
     screenshare_menu: Controller<MenuModel>,
+    /// Pending keyboard-mode switch held inside the 90 ms debounce
+    /// window. Replaced on every `sync_keyboard_mode` call; the
+    /// timer reads whatever value was last written.
+    pending_kbd_mode: std::rc::Rc<std::cell::RefCell<Option<gtk4_layer_shell::KeyboardMode>>>,
+    pending_kbd_mode_timeout: std::rc::Rc<std::cell::RefCell<Option<gtk::glib::SourceId>>>,
     _effects: EffectScope,
 }
 
@@ -517,7 +522,58 @@ impl Component for Frame {
         root.set_anchor(Edge::Left, true);
         root.set_anchor(Edge::Right, true);
         root.set_decorated(false);
+        // Start with `None` keyboard interactivity (we don't want to
+        // steal keys from the user's toplevels while no menu is open).
+        // Each `ToggleXxxMenu` / `CloseMenus` handler calls
+        // `sync_keyboard_mode(root)` to switch to `Exclusive` while
+        // any menu is revealed and back to `None` when they all
+        // close. `Exclusive` is required because margo's
+        // `compute_desired_focus` only honours layer-surfaces with
+        // exclusive interactivity — anything else gets focus stolen
+        // by the active toplevel and ESC never reaches us.
+        root.set_keyboard_mode(gtk4_layer_shell::KeyboardMode::None);
         root.set_visible(true);
+        root.set_cursor_from_name(Some("default"));
+
+        // ESC closes any open menu. Belt-and-suspenders setup:
+        //
+        // 1) `ShortcutController(scope=Global)` with a `KeyvalTrigger`
+        //    on Escape — this is the global-shortcut path that fires
+        //    as soon as the layer surface receives the keypress,
+        //    regardless of which child widget has internal focus.
+        //
+        // 2) An `EventControllerKey` in `Capture` phase as a fallback,
+        //    plus a debug log so we can see whether keys are reaching
+        //    the surface at all. (Layer-shell + OnDemand keyboard
+        //    interactivity sometimes never delivers keys until the
+        //    compositor decides to grant focus.)
+        let sender_esc = sender.clone();
+        let shortcut = gtk::Shortcut::builder()
+            .trigger(&gtk::KeyvalTrigger::new(gdk::Key::Escape, gdk::ModifierType::empty()))
+            .action(&gtk::CallbackAction::new(move |_, _| {
+                tracing::debug!("frame: ESC shortcut fired");
+                sender_esc.input(FrameInput::CloseMenus);
+                gtk::glib::Propagation::Stop
+            }))
+            .build();
+        let shortcut_ctrl = gtk::ShortcutController::new();
+        shortcut_ctrl.set_scope(gtk::ShortcutScope::Global);
+        shortcut_ctrl.add_shortcut(shortcut);
+        root.add_controller(shortcut_ctrl);
+
+        let key_ctrl = gtk::EventControllerKey::new();
+        key_ctrl.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let sender_esc2 = sender.clone();
+        key_ctrl.connect_key_pressed(move |_, keyval, _, _| {
+            tracing::debug!(?keyval, "frame: key_pressed");
+            if keyval == gdk::Key::Escape {
+                sender_esc2.input(FrameInput::CloseMenus);
+                gtk::glib::Propagation::Stop
+            } else {
+                gtk::glib::Propagation::Proceed
+            }
+        });
+        root.add_controller(key_ctrl);
 
         let base_config = config_manager().config();
         let untracked_config = base_config.clone().get_untracked();
@@ -646,6 +702,8 @@ impl Component for Frame {
             app_launcher_menu,
             wallpaper_menu,
             screenshare_menu,
+            pending_kbd_mode: std::rc::Rc::new(std::cell::RefCell::new(None)),
+            pending_kbd_mode_timeout: std::rc::Rc::new(std::cell::RefCell::new(None)),
             _effects: effects,
         };
 
@@ -661,7 +719,7 @@ impl Component for Frame {
         widgets: &mut Self::Widgets,
         message: Self::Input,
         sender: ComponentSender<Self>,
-        _root: &Self::Root,
+        root: &Self::Root,
     ) {
         match message {
             FrameInput::SetDrawFrame(draw_frame) => {
@@ -703,29 +761,37 @@ impl Component for Frame {
             }
             FrameInput::ToggleClockMenu => {
                 self.toggle_menu(CLOCK_MENU, widgets);
+                self.sync_keyboard_mode(root);
             }
             FrameInput::ToggleClipboardMenu => {
                 self.toggle_menu(CLIPBOARD_MENU, widgets);
+                self.sync_keyboard_mode(root);
             }
             FrameInput::ToggleQuickSettingsMenu => {
                 self.toggle_menu(QUICK_SETTINGS_MENU, widgets);
+                self.sync_keyboard_mode(root);
             }
             FrameInput::ToggleNotificationMenu => {
                 self.toggle_menu(NOTIFICATION_MENU, widgets);
+                self.sync_keyboard_mode(root);
             }
             FrameInput::ToggleScreenshotMenu => {
                 self.toggle_menu(SCREENSHOT_MENU, widgets);
+                self.sync_keyboard_mode(root);
             }
             FrameInput::ToggleAppLauncherMenu => {
                 self.toggle_menu(APP_LAUNCHER_MENU, widgets);
+                self.sync_keyboard_mode(root);
             }
             FrameInput::ToggleWallpaperMenu => {
                 self.toggle_menu(WALLPAPER_MENU, widgets);
+                self.sync_keyboard_mode(root);
             }
             FrameInput::ToggleScreenshareMenu(reply, payload) => {
                 self.screenshare_menu
                     .emit(ForwardHyprlandScreenshareReply(reply, payload));
                 self.toggle_menu(SCREENSHARE_MENU, widgets);
+                self.sync_keyboard_mode(root);
             }
             FrameInput::CloseMenus => {
                 self.left_revealed = false;
@@ -776,6 +842,8 @@ impl Component for Frame {
                     .sender()
                     .send(MenuInput::RevealChanged(false))
                     .unwrap_or_default();
+
+                self.sync_keyboard_mode(root);
             }
             FrameInput::BarToggleTop => {
                 self.top_bar.sender().emit(BarInput::ToggleRevealed);
@@ -869,6 +937,68 @@ impl Component for Frame {
 }
 
 impl Frame {
+    fn any_menu_revealed(&self) -> bool {
+        self.left_revealed
+            || self.right_revealed
+            || self.top_revealed
+            || self.top_left_revealed
+            || self.top_right_revealed
+            || self.bottom_revealed
+            || self.bottom_left_revealed
+            || self.bottom_right_revealed
+    }
+
+    /// Switch the frame's layer-shell keyboard interactivity to track
+    /// the current menu state. We need `Exclusive` while a menu is
+    /// open so the compositor actually delivers keys to mshell — with
+    /// margo's `compute_desired_focus`, anything weaker (OnDemand,
+    /// None) gets the focus stolen back by the active toplevel
+    /// window between the pointer click and the next refresh, and
+    /// the ESC shortcut on the frame never fires. When no menus are
+    /// open we go back to `None` so the user's toplevels keep the
+    /// keyboard.
+    ///
+    /// **Debounced.** Each call (re)arms a 90 ms glib timer; only the
+    /// last menu-state determines the applied mode. Without this,
+    /// rapid widget clicks (open → close → open …) submit a flurry
+    /// of `set_keyboard_interactivity` changes; each commit forces
+    /// margo to `arrange()` the layer map, ack a fresh configure,
+    /// recompute focus, and the bar visibly drops out for ~1 frame
+    /// every cycle — the user sees the bar entirely disappear when
+    /// clicking widgets in quick succession.
+    fn sync_keyboard_mode(&self, root: &<Self as Component>::Root) {
+        let desired = if self.any_menu_revealed() {
+            gtk4_layer_shell::KeyboardMode::Exclusive
+        } else {
+            gtk4_layer_shell::KeyboardMode::None
+        };
+
+        // Cancel any pending switch and replace it with the new one.
+        if let Some(id) = self.pending_kbd_mode_timeout.borrow_mut().take() {
+            id.remove();
+        }
+        *self.pending_kbd_mode.borrow_mut() = Some(desired);
+
+        let root_weak = root.downgrade();
+        let pending_mode = self.pending_kbd_mode.clone();
+        let pending_timeout = self.pending_kbd_mode_timeout.clone();
+        let id = gtk::glib::timeout_add_local_once(
+            std::time::Duration::from_millis(90),
+            move || {
+                *pending_timeout.borrow_mut() = None;
+                let Some(mode) = pending_mode.borrow_mut().take() else {
+                    return;
+                };
+                let Some(root) = root_weak.upgrade() else {
+                    return;
+                };
+                root.set_keyboard_mode(mode);
+                tracing::debug!(?mode, "frame: sync_keyboard_mode (applied)");
+            },
+        );
+        *self.pending_kbd_mode_timeout.borrow_mut() = Some(id);
+    }
+
     fn toggle_menu(&mut self, name: &str, widgets: &mut FrameWidgets) {
         let mut now_visible = true;
         let in_left = widgets.left_stack.child_by_name(name).is_some();

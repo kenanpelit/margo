@@ -1,4 +1,7 @@
-use crate::bar_settings::bar_widget_factory::{ActiveWidgetModel, ActiveWidgetOutput};
+use crate::bar_settings::bar_widget_factory::{
+    ActiveWidgetInit, ActiveWidgetModel, ActiveWidgetOutput, BarListLocation,
+};
+use mshell_config::config_manager::config_manager;
 use mshell_config::schema::bar_widgets::BarWidget;
 use relm4::factory::{DynamicIndex, FactoryVecDeque};
 use relm4::gtk::gio;
@@ -25,11 +28,17 @@ impl BarSection {
 #[derive(Debug)]
 pub struct WidgetSectionModel {
     section: BarSection,
+    location: BarListLocation,
     widgets: FactoryVecDeque<ActiveWidgetModel>,
 }
 
 #[derive(Debug)]
 pub enum WidgetSectionInput {
+    // These variants are kept so the existing `update_with_view`
+    // signature compiles; in practice the factory bypass writes the
+    // config directly and the parent re-syncs via the reactive
+    // SetWidgetsEffect path. SetWidgetsEffect IS used (driven from
+    // bar_settings.rs's reactive effects).
     AddWidget(BarWidget),
     RemoveWidget(DynamicIndex),
     MoveUp(DynamicIndex),
@@ -44,6 +53,7 @@ pub enum WidgetSectionOutput {
 
 pub struct WidgetSectionInit {
     pub bar_section: BarSection,
+    pub location: BarListLocation,
     pub widgets: Vec<BarWidget>,
 }
 
@@ -88,6 +98,7 @@ impl Component for WidgetSectionModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
+        let location = params.location;
         let mut widgets = FactoryVecDeque::builder()
             .launch(gtk::ListBox::default())
             .forward(sender.input_sender(), |output| match output {
@@ -97,11 +108,15 @@ impl Component for WidgetSectionModel {
             });
 
         params.widgets.iter().for_each(|widget| {
-            widgets.guard().push_back(widget.clone());
+            widgets.guard().push_back(ActiveWidgetInit {
+                widget: widget.clone(),
+                location,
+            });
         });
 
         let model = WidgetSectionModel {
             section: params.bar_section,
+            location,
             widgets,
         };
 
@@ -109,7 +124,7 @@ impl Component for WidgetSectionModel {
         let widgets_view = view_output!();
 
         // Build the add-widget menu
-        Self::build_add_menu(&widgets_view.add_widget_button, &sender);
+        Self::build_add_menu(&widgets_view.add_widget_button, location);
 
         ComponentParts {
             model,
@@ -125,35 +140,22 @@ impl Component for WidgetSectionModel {
         _root: &Self::Root,
     ) {
         match message {
-            WidgetSectionInput::AddWidget(widget) => {
-                self.widgets.guard().push_back(widget);
-                self.emit_changed(&sender);
-            }
-            WidgetSectionInput::RemoveWidget(index) => {
-                let idx = index.current_index();
-                self.widgets.guard().remove(idx);
-                self.emit_changed(&sender);
-            }
-            WidgetSectionInput::MoveUp(index) => {
-                let idx = index.current_index();
-                if idx > 0 {
-                    self.widgets.guard().move_to(idx, idx - 1);
-                    self.emit_changed(&sender);
-                }
-            }
-            WidgetSectionInput::MoveDown(index) => {
-                let idx = index.current_index();
-                let len = self.widgets.len();
-                if idx + 1 < len {
-                    self.widgets.guard().move_to(idx, idx + 1);
-                    self.emit_changed(&sender);
-                }
+            WidgetSectionInput::AddWidget(_)
+            | WidgetSectionInput::RemoveWidget(_)
+            | WidgetSectionInput::MoveUp(_)
+            | WidgetSectionInput::MoveDown(_) => {
+                // No-op: ActiveWidgetModel writes config directly and
+                // the SetWidgetsEffect path below replays the new
+                // list into the factory. These variants only exist so
+                // the relm4 macro keeps generating the input enum;
+                // they're never the authoritative path.
             }
             WidgetSectionInput::SetWidgetsEffect(new_widgets) => {
+                let location = self.location;
                 let mut guard = self.widgets.guard();
                 guard.clear();
                 for widget in new_widgets {
-                    guard.push_back(widget);
+                    guard.push_back(ActiveWidgetInit { widget, location });
                 }
             }
         }
@@ -163,12 +165,7 @@ impl Component for WidgetSectionModel {
 }
 
 impl WidgetSectionModel {
-    fn emit_changed(&self, sender: &ComponentSender<Self>) {
-        let widgets: Vec<BarWidget> = self.widgets.iter().map(|w| w.widget.clone()).collect();
-        let _ = sender.output(WidgetSectionOutput::Changed(widgets));
-    }
-
-    fn build_add_menu(button: &gtk::MenuButton, sender: &ComponentSender<Self>) {
+    fn build_add_menu(button: &gtk::MenuButton, location: BarListLocation) {
         let menu = gio::Menu::new();
         let action_group = gio::SimpleActionGroup::new();
 
@@ -176,9 +173,24 @@ impl WidgetSectionModel {
             let action_name = widget.action_name();
             let action = gio::SimpleAction::new(&action_name, None);
 
-            let sender = sender.input_sender().clone();
+            // Direct config write — bypass the parent message channel
+            // for the same reason as the factory children.
+            let widget_clone = widget.clone();
             action.connect_activate(move |_, _| {
-                sender.emit(WidgetSectionInput::AddWidget(widget.clone()));
+                let widget_clone = widget_clone.clone();
+                config_manager().update_config(move |config| {
+                    let list = match location {
+                        BarListLocation::TopStart => &mut config.bars.top_bar.left_widgets,
+                        BarListLocation::TopCenter => &mut config.bars.top_bar.center_widgets,
+                        BarListLocation::TopEnd => &mut config.bars.top_bar.right_widgets,
+                        BarListLocation::BottomStart => &mut config.bars.bottom_bar.left_widgets,
+                        BarListLocation::BottomCenter => {
+                            &mut config.bars.bottom_bar.center_widgets
+                        }
+                        BarListLocation::BottomEnd => &mut config.bars.bottom_bar.right_widgets,
+                    };
+                    list.push(widget_clone);
+                });
             });
 
             action_group.add_action(&action);

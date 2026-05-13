@@ -22,7 +22,7 @@ use mshell_margo_client::{Address, Client};
 const MAX_MENU_ITEM_LENGTH: usize = 25;
 
 #[derive(Debug, Clone)]
-pub(crate) struct HyprlandDockItemModel {
+pub(crate) struct MargoDockItemModel {
     pub(crate) class: String,
     app_info: Option<DesktopAppInfo>,
     pub(crate) client_count: i16,
@@ -35,7 +35,7 @@ pub(crate) struct HyprlandDockItemModel {
 }
 
 #[derive(Debug)]
-pub(crate) enum HyprlandDockItemInput {
+pub(crate) enum MargoDockItemInput {
     LeftClicked,
     RightClicked,
     ThemeChanged(String, Themes, bool, f64, f64, f64),
@@ -46,9 +46,9 @@ pub(crate) enum HyprlandDockItemInput {
 }
 
 #[derive(Debug)]
-pub(crate) enum HyprlandDockItemOutput {}
+pub(crate) enum MargoDockItemOutput {}
 
-pub(crate) struct HyprlandDockItemInit {
+pub(crate) struct MargoDockItemInit {
     pub(crate) class: String,
     pub(crate) client_count: i16,
     pub(crate) bar_type: BarType,
@@ -57,7 +57,7 @@ pub(crate) struct HyprlandDockItemInit {
 }
 
 #[derive(Debug)]
-pub(crate) enum HyprlandDockItemCommandOutput {}
+pub(crate) enum MargoDockItemCommandOutput {}
 
 #[relm4::widget_template(pub)]
 impl WidgetTemplate for IndicatorDot {
@@ -84,11 +84,11 @@ impl WidgetTemplate for IndicatorLine {
 }
 
 #[relm4::component(pub)]
-impl Component for HyprlandDockItemModel {
-    type CommandOutput = HyprlandDockItemCommandOutput;
-    type Input = HyprlandDockItemInput;
-    type Output = HyprlandDockItemOutput;
-    type Init = HyprlandDockItemInit;
+impl Component for MargoDockItemModel {
+    type CommandOutput = MargoDockItemCommandOutput;
+    type Input = MargoDockItemInput;
+    type Output = MargoDockItemOutput;
+    type Init = MargoDockItemInit;
 
     view! {
         #[root]
@@ -185,11 +185,11 @@ impl Component for HyprlandDockItemModel {
                     set_hexpand: false,
                     set_vexpand: false,
                     connect_clicked[sender] => move |_| {
-                        sender.input(HyprlandDockItemInput::LeftClicked);
+                        sender.input(MargoDockItemInput::LeftClicked);
                     },
                     add_controller = gtk::GestureClick::builder().button(3).build() {
                         connect_released[sender] => move |_, _, _, _| {
-                            sender.input(HyprlandDockItemInput::RightClicked);
+                            sender.input(MargoDockItemInput::RightClicked);
                         },
                     },
 
@@ -217,7 +217,7 @@ impl Component for HyprlandDockItemModel {
 
         let base_config = config_manager().config();
 
-        let model = HyprlandDockItemModel {
+        let model = MargoDockItemModel {
             class,
             app_info,
             client_count,
@@ -280,7 +280,7 @@ impl Component for HyprlandDockItemModel {
         _root: &Self::Root,
     ) {
         match message {
-            HyprlandDockItemInput::LeftClicked => {
+            MargoDockItemInput::LeftClicked => {
                 let hyprland = hyprland_service();
                 let clients = hyprland.clients.get();
                 let mut matching: Vec<_> = clients
@@ -350,7 +350,7 @@ impl Component for HyprlandDockItemModel {
                     }
                 });
             }
-            HyprlandDockItemInput::RightClicked => {
+            MargoDockItemInput::RightClicked => {
                 let hyprland = hyprland_service();
                 let clients = hyprland.clients.get();
                 let matching: Vec<_> = clients
@@ -439,7 +439,7 @@ impl Component for HyprlandDockItemModel {
 
                 self.popover = Some(popover);
             }
-            HyprlandDockItemInput::ThemeChanged(
+            MargoDockItemInput::ThemeChanged(
                 theme,
                 color_theme,
                 apply_theme,
@@ -460,18 +460,18 @@ impl Component for HyprlandDockItemModel {
                     contrast_strength,
                 );
             }
-            HyprlandDockItemInput::ClientCountChanged(count) => {
+            MargoDockItemInput::ClientCountChanged(count) => {
                 self.client_count = count;
             }
-            HyprlandDockItemInput::Selected(address) => {
+            MargoDockItemInput::Selected(address) => {
                 self.is_selected = true;
                 self.last_selected_address = Some(address);
             }
-            HyprlandDockItemInput::Unselected => {
+            MargoDockItemInput::Unselected => {
                 self.is_selected = false;
                 self.last_selected_address = None;
             }
-            HyprlandDockItemInput::PinnedChanged(pinned) => {
+            MargoDockItemInput::PinnedChanged(pinned) => {
                 self.pinned = pinned;
             }
         }
@@ -486,7 +486,7 @@ impl Component for HyprlandDockItemModel {
     }
 }
 
-impl HyprlandDockItemModel {
+impl MargoDockItemModel {
     fn check_selected(&self, sender: &ComponentSender<Self>) {
         let class = self.class.clone();
         let sender = sender.clone();
@@ -500,7 +500,7 @@ impl HyprlandDockItemModel {
                     .filter(|client| client.class.get() == class)
                     .any(|client| *client == active_client);
                 if is_selected {
-                    sender.input(HyprlandDockItemInput::Selected(active_client.address.get()));
+                    sender.input(MargoDockItemInput::Selected(active_client.address.get()));
                 }
             }
         });

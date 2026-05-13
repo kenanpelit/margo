@@ -8,36 +8,36 @@ use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use tracing::error;
 
 #[derive(Debug)]
-pub(crate) struct HyprlandLayoutModel {
+pub(crate) struct MargoLayoutModel {
     orientation: Orientation,
 }
 
 #[derive(Debug)]
-pub(crate) enum HyprlandLayoutInput {
+pub(crate) enum MargoLayoutInput {
     SetLayout(&'static str),
 }
 
 #[derive(Debug)]
-pub(crate) enum HyprlandLayoutOutput {}
+pub(crate) enum MargoLayoutOutput {}
 
-pub(crate) struct HyprlandLayoutInit {
+pub(crate) struct MargoLayoutInit {
     pub(crate) orientation: Orientation,
 }
 
 #[derive(Debug)]
-pub(crate) enum HyprlandLayoutCommandOutput {}
+pub(crate) enum MargoLayoutCommandOutput {}
 
 #[relm4::component(pub)]
-impl Component for HyprlandLayoutModel {
-    type CommandOutput = HyprlandLayoutCommandOutput;
-    type Input = HyprlandLayoutInput;
-    type Output = HyprlandLayoutOutput;
-    type Init = HyprlandLayoutInit;
+impl Component for MargoLayoutModel {
+    type CommandOutput = MargoLayoutCommandOutput;
+    type Input = MargoLayoutInput;
+    type Output = MargoLayoutOutput;
+    type Init = MargoLayoutInit;
 
     view! {
         #[root]
         gtk::Box {
-            add_css_class: "hyprland-layout-bar-widget",
+            add_css_class: "margo-layout-bar-widget",
             set_hexpand: model.orientation == Orientation::Vertical,
             set_vexpand: model.orientation == Orientation::Horizontal,
             set_halign: gtk::Align::Center,
@@ -59,7 +59,7 @@ impl Component for HyprlandLayoutModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let model = HyprlandLayoutModel {
+        let model = MargoLayoutModel {
             orientation: params.orientation,
         };
 
@@ -136,7 +136,7 @@ impl Component for HyprlandLayoutModel {
         _root: &Self::Root,
     ) {
         match message {
-            HyprlandLayoutInput::SetLayout(layout) => {
+            MargoLayoutInput::SetLayout(layout) => {
                 tokio::spawn(async move {
                     let hyprland = hyprland_service();
                     if let Some(active_workspace) = hyprland.active_workspace().await {
@@ -156,7 +156,7 @@ impl Component for HyprlandLayoutModel {
     }
 }
 
-impl HyprlandLayoutModel {
+impl MargoLayoutModel {
     fn add_layout(
         sender: &ComponentSender<Self>,
         menu: &gio::Menu,
@@ -168,7 +168,7 @@ impl HyprlandLayoutModel {
         let action = gio::SimpleAction::new(id, None);
         let sender_clone = sender.clone();
         action.connect_activate(move |_, _| {
-            let _ = sender_clone.input(HyprlandLayoutInput::SetLayout(id));
+            let _ = sender_clone.input(MargoLayoutInput::SetLayout(id));
         });
         action_group.add_action(&action);
 

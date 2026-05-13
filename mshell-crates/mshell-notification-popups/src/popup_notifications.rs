@@ -15,6 +15,7 @@ use relm4::gtk::prelude::{GtkWindowExt, OrientableExt, WidgetExt};
 use relm4::gtk::{RevealerTransitionType, gdk};
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 use std::sync::Arc;
+use tracing::debug;
 use wayle_notification::core::notification::Notification;
 
 pub struct PopupNotificationsModel {
@@ -81,7 +82,12 @@ impl Component for PopupNotificationsModel {
         root.set_namespace(Some("mshell-notifications"));
         root.set_layer(Layer::Overlay);
         root.set_exclusive_zone(0);
-        set_position(position, &root);
+        set_position(position.clone(), &root);
+
+        debug!(
+            position = ?position,
+            "popup_notifications: layer surface initialized"
+        );
 
         spawn_notification_popups_watcher(&sender, || {
             PopupNotificationsCommandOutput::NotificationsChanged
@@ -158,6 +164,10 @@ impl Component for PopupNotificationsModel {
         match message {
             PopupNotificationsCommandOutput::NotificationsChanged => {
                 let notifications = notification_service().popups.get();
+                debug!(
+                    count = notifications.len(),
+                    "popup_notifications: NotificationsChanged → SetItems"
+                );
                 self.dynamic_box_controller
                     .emit(DynamicBoxInput::SetItems(notifications));
             }

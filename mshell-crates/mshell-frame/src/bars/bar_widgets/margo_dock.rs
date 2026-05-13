@@ -2,9 +2,9 @@ use crate::bars::bar::BarType;
 use crate::bars::bar_widgets::app_launcher::{
     AppLauncherInit, AppLauncherModel, AppLauncherOutput,
 };
-use crate::bars::bar_widgets::hyprland_dock::HyprlandDockOutput::AppLauncherClicked;
-use crate::bars::bar_widgets::hyprland_dock_item::{
-    HyprlandDockItemInit, HyprlandDockItemInput, HyprlandDockItemModel,
+use crate::bars::bar_widgets::margo_dock::MargoDockOutput::AppLauncherClicked;
+use crate::bars::bar_widgets::margo_dock_item::{
+    MargoDockItemInit, MargoDockItemInput, MargoDockItemModel,
 };
 use futures::StreamExt;
 use mshell_cache::pinned_apps::{PinnedAppsStateStoreFields, pinned_apps_store};
@@ -34,7 +34,7 @@ pub struct DockItem {
     pinned: bool,
 }
 
-pub(crate) struct HyprlandDockModel {
+pub(crate) struct MargoDockModel {
     dynamic_box: Controller<DynamicBoxModel<DockItem, String>>,
     orientation: Orientation,
     app_launcher_controller: Controller<AppLauncherModel>,
@@ -43,33 +43,33 @@ pub(crate) struct HyprlandDockModel {
 }
 
 #[derive(Debug)]
-pub(crate) enum HyprlandDockInput {
+pub(crate) enum MargoDockInput {
     ThemeChanged,
     OnReordered(Vec<String>),
 }
 
 #[derive(Debug)]
-pub(crate) enum HyprlandDockOutput {
+pub(crate) enum MargoDockOutput {
     AppLauncherClicked,
 }
 
-pub(crate) struct HyprlandDockInit {
+pub(crate) struct MargoDockInit {
     pub(crate) orientation: Orientation,
     pub(crate) bar_type: BarType,
 }
 
 #[derive(Debug)]
-pub(crate) enum HyprlandDockCommandOutput {
+pub(crate) enum MargoDockCommandOutput {
     ClientsChanged(Vec<Arc<Client>>),
     ActiveWindowChanged(Address),
 }
 
 #[relm4::component(pub)]
-impl Component for HyprlandDockModel {
-    type CommandOutput = HyprlandDockCommandOutput;
-    type Input = HyprlandDockInput;
-    type Output = HyprlandDockOutput;
-    type Init = HyprlandDockInit;
+impl Component for MargoDockModel {
+    type CommandOutput = MargoDockCommandOutput;
+    type Input = MargoDockInput;
+    type Output = MargoDockOutput;
+    type Init = MargoDockInit;
 
     view! {
         #[root]
@@ -97,9 +97,9 @@ impl Component for HyprlandDockModel {
         let factory = DynamicBoxFactory::<DockItem, String> {
             id: Box::new(|item| item.class.clone()),
             create: Box::new(move |item| {
-                let controller: Controller<HyprlandDockItemModel> =
-                    HyprlandDockItemModel::builder()
-                        .launch(HyprlandDockItemInit {
+                let controller: Controller<MargoDockItemModel> =
+                    MargoDockItemModel::builder()
+                        .launch(MargoDockItemInit {
                             class: item.class.clone(),
                             client_count: item.client_count,
                             bar_type: params.bar_type,
@@ -130,7 +130,7 @@ impl Component for HyprlandDockModel {
                 allow_drag_and_drop: true,
             })
             .forward(sender.input_sender(), |msg| match msg {
-                DynamicBoxOutput::Reordered(keys) => HyprlandDockInput::OnReordered(keys),
+                DynamicBoxOutput::Reordered(keys) => MargoDockInput::OnReordered(keys),
             });
 
         let app_launcher_controller = AppLauncherModel::builder()
@@ -152,7 +152,7 @@ impl Component for HyprlandDockModel {
             let clients = hyprland.clients.get();
             let _ = sender_clone
                 .command_sender()
-                .send(HyprlandDockCommandOutput::ClientsChanged(clients));
+                .send(MargoDockCommandOutput::ClientsChanged(clients));
         });
 
         let sender_clone = sender.clone();
@@ -188,10 +188,10 @@ impl Component for HyprlandDockModel {
                 .icons()
                 .contrast_strength()
                 .get();
-            sender_clone.input(HyprlandDockInput::ThemeChanged);
+            sender_clone.input(MargoDockInput::ThemeChanged);
         });
 
-        let model = HyprlandDockModel {
+        let model = MargoDockModel {
             dynamic_box: dynamic,
             orientation: params.orientation,
             app_launcher_controller,
@@ -206,7 +206,7 @@ impl Component for HyprlandDockModel {
 
     fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
-            HyprlandDockInput::ThemeChanged => {
+            MargoDockInput::ThemeChanged => {
                 let theme = config_manager()
                     .config()
                     .theme()
@@ -246,13 +246,13 @@ impl Component for HyprlandDockModel {
                     if let Some(ctrl) = entry
                         .controller
                         .as_ref()
-                        .downcast_ref::<Controller<HyprlandDockItemModel>>()
+                        .downcast_ref::<Controller<MargoDockItemModel>>()
                     {
                         let sender = ctrl.sender().clone();
                         let theme = theme.clone();
                         let color_theme = color_theme;
 
-                        let _ = sender.send(HyprlandDockItemInput::ThemeChanged(
+                        let _ = sender.send(MargoDockItemInput::ThemeChanged(
                             theme,
                             color_theme,
                             apply_theme,
@@ -263,7 +263,7 @@ impl Component for HyprlandDockModel {
                     }
                 });
             }
-            HyprlandDockInput::OnReordered(classes_in_new_order) => {
+            MargoDockInput::OnReordered(classes_in_new_order) => {
                 self.ordered_keys = classes_in_new_order.clone();
 
                 let store = pinned_apps_store();
@@ -301,7 +301,7 @@ impl Component for HyprlandDockModel {
         _root: &Self::Root,
     ) {
         match message {
-            HyprlandDockCommandOutput::ClientsChanged(clients) => {
+            MargoDockCommandOutput::ClientsChanged(clients) => {
                 let pinned_apps = pinned_apps_store().read_untracked().apps.clone();
 
                 let mut sorted_clients = clients.to_vec();
@@ -377,32 +377,32 @@ impl Component for HyprlandDockModel {
                     if let Some(ctrl) = entry
                         .controller
                         .as_ref()
-                        .downcast_ref::<Controller<HyprlandDockItemModel>>()
+                        .downcast_ref::<Controller<MargoDockItemModel>>()
                     {
                         let model = ctrl.model();
                         let count = *counts.get(&model.class).unwrap_or(&0);
                         if model.client_count != count {
                             let _ = ctrl
                                 .sender()
-                                .send(HyprlandDockItemInput::ClientCountChanged(count));
+                                .send(MargoDockItemInput::ClientCountChanged(count));
                         }
                         let is_pinned = pinned_classes.contains(model.class.as_str());
                         if model.pinned != is_pinned {
                             let _ = ctrl
                                 .sender()
-                                .send(HyprlandDockItemInput::PinnedChanged(is_pinned));
+                                .send(MargoDockItemInput::PinnedChanged(is_pinned));
                         }
                     }
                 });
             }
-            HyprlandDockCommandOutput::ActiveWindowChanged(address) => {
+            MargoDockCommandOutput::ActiveWindowChanged(address) => {
                 let hyprland = hyprland_service();
                 let clients = hyprland.clients.get();
                 self.dynamic_box.model().for_each_entry(|_, entry| {
                     if let Some(ctrl) = entry
                         .controller
                         .as_ref()
-                        .downcast_ref::<Controller<HyprlandDockItemModel>>()
+                        .downcast_ref::<Controller<MargoDockItemModel>>()
                     {
                         let model = ctrl.model();
                         let is_selected = clients
@@ -412,9 +412,9 @@ impl Component for HyprlandDockModel {
                         if is_selected {
                             let _ = ctrl
                                 .sender()
-                                .send(HyprlandDockItemInput::Selected(address.clone()));
+                                .send(MargoDockItemInput::Selected(address.clone()));
                         } else {
-                            let _ = ctrl.sender().send(HyprlandDockItemInput::Unselected);
+                            let _ = ctrl.sender().send(MargoDockItemInput::Unselected);
                         }
                     }
                 });
@@ -423,13 +423,13 @@ impl Component for HyprlandDockModel {
     }
 }
 
-impl HyprlandDockModel {
+impl MargoDockModel {
     fn spawn_main_watcher(sender: &ComponentSender<Self>) {
         let hyprland = hyprland_service();
         let clients = hyprland.clients.clone();
 
         watch!(sender, [clients.watch()], |out| {
-            let _ = out.send(HyprlandDockCommandOutput::ClientsChanged(clients.get()));
+            let _ = out.send(MargoDockCommandOutput::ClientsChanged(clients.get()));
         })
     }
 
@@ -447,7 +447,7 @@ impl HyprlandDockModel {
                         event = events.next() => {
                             let Some(event) = event else { continue; };
                             if let HyprlandEvent::ActiveWindowV2 { address } = event {
-                                let _ = out.send(HyprlandDockCommandOutput::ActiveWindowChanged(address));
+                                let _ = out.send(MargoDockCommandOutput::ActiveWindowChanged(address));
                             }
                         }
                     }

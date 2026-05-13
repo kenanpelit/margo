@@ -521,6 +521,7 @@ impl Component for BarSettingsModel {
         let top_bar_start_controller = WidgetSectionModel::builder()
             .launch(WidgetSectionInit {
                 bar_section: BarSection::Start,
+                location: crate::bar_settings::bar_widget_factory::BarListLocation::TopStart,
                 widgets: config_manager()
                     .config()
                     .bars()
@@ -535,6 +536,7 @@ impl Component for BarSettingsModel {
         let top_bar_center_controller = WidgetSectionModel::builder()
             .launch(WidgetSectionInit {
                 bar_section: BarSection::Center,
+                location: crate::bar_settings::bar_widget_factory::BarListLocation::TopCenter,
                 widgets: config_manager()
                     .config()
                     .bars()
@@ -551,6 +553,7 @@ impl Component for BarSettingsModel {
         let top_bar_end_controller = WidgetSectionModel::builder()
             .launch(WidgetSectionInit {
                 bar_section: BarSection::End,
+                location: crate::bar_settings::bar_widget_factory::BarListLocation::TopEnd,
                 widgets: config_manager()
                     .config()
                     .bars()
@@ -567,6 +570,7 @@ impl Component for BarSettingsModel {
         let bottom_bar_start_controller = WidgetSectionModel::builder()
             .launch(WidgetSectionInit {
                 bar_section: BarSection::Start,
+                location: crate::bar_settings::bar_widget_factory::BarListLocation::BottomStart,
                 widgets: config_manager()
                     .config()
                     .bars()
@@ -583,6 +587,7 @@ impl Component for BarSettingsModel {
         let bottom_bar_center_controller = WidgetSectionModel::builder()
             .launch(WidgetSectionInit {
                 bar_section: BarSection::Center,
+                location: crate::bar_settings::bar_widget_factory::BarListLocation::BottomCenter,
                 widgets: config_manager()
                     .config()
                     .bars()
@@ -599,6 +604,7 @@ impl Component for BarSettingsModel {
         let bottom_bar_end_controller = WidgetSectionModel::builder()
             .launch(WidgetSectionInit {
                 bar_section: BarSection::End,
+                location: crate::bar_settings::bar_widget_factory::BarListLocation::BottomEnd,
                 widgets: config_manager()
                     .config()
                     .bars()

@@ -186,8 +186,8 @@ impl Default for Bars {
             top_bar: HorizontalBar {
                 minimum_height: 0,
                 reveal_by_default: true,
-                left_widgets: vec![BarWidget::QuickSettings, BarWidget::HyprlandWorkspaces],
-                center_widgets: vec![BarWidget::HyprlandDock],
+                left_widgets: vec![BarWidget::QuickSettings, BarWidget::MargoTags],
+                center_widgets: vec![BarWidget::MargoDock],
                 right_widgets: vec![
                     BarWidget::RecordingIndicator,
                     BarWidget::Tray,
@@ -255,7 +255,7 @@ impl Default for Menus {
     fn default() -> Self {
         Self {
             clock_menu: Menu {
-                position: Position::Left,
+                position: Position::Top,
                 widgets: vec![
                     MenuWidget::Calendar,
                     MenuWidget::Spacer(SpacerConfig { size: 20 }),
@@ -264,12 +264,12 @@ impl Default for Menus {
                 minimum_width: 410,
             },
             clipboard_menu: Menu {
-                position: Position::Left,
+                position: Position::TopRight,
                 widgets: vec![MenuWidget::Clipboard],
                 minimum_width: 410,
             },
             quick_settings_menu: Menu {
-                position: Position::Left,
+                position: Position::TopLeft,
                 widgets: vec![
                     MenuWidget::Clock,
                     MenuWidget::Network,
@@ -300,12 +300,12 @@ impl Default for Menus {
                 minimum_width: 410,
             },
             notification_menu: Menu {
-                position: Position::Left,
+                position: Position::TopRight,
                 widgets: vec![MenuWidget::Notifications],
                 minimum_width: 410,
             },
             screenshot_menu: Menu {
-                position: Position::Left,
+                position: Position::TopRight,
                 widgets: vec![
                     MenuWidget::Screenshots,
                     MenuWidget::Divider,
@@ -314,17 +314,17 @@ impl Default for Menus {
                 minimum_width: 410,
             },
             app_launcher_menu: Menu {
-                position: Position::Left,
+                position: Position::TopLeft,
                 widgets: vec![MenuWidget::AppLauncher],
                 minimum_width: 410,
             },
             wallpaper_menu: Menu {
-                position: Position::Bottom,
+                position: Position::Top,
                 widgets: vec![MenuWidget::ThemePicker, MenuWidget::Wallpaper],
                 minimum_width: 1200,
             },
             screenshare_menu: ScreenshareMenu {
-                position: Position::Left,
+                position: Position::TopRight,
             },
             left_menu_expansion_type: VerticalMenuExpansion::AlwaysExpanded,
             right_menu_expansion_type: VerticalMenuExpansion::AlwaysExpanded,

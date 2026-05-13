@@ -43,8 +43,16 @@ pub fn spawn_notifications_watcher<C>(
     let service = notification_service();
     let notifications = service.notifications.clone();
 
-    watch!(sender, [notifications.watch()], |out| {
-        let _ = out.send(map_notifications());
+    // Spawn on the wayle runtime (see `spawn_notification_popups_watcher`
+    // below for the rationale).
+    let cmd_sender = sender.command_sender().clone();
+    let map = std::sync::Arc::new(map_notifications);
+    mshell_services::tokio_rt_spawn(async move {
+        use ::futures::stream::StreamExt;
+        let mut stream = Box::pin(notifications.watch());
+        while stream.next().await.is_some() {
+            let _ = cmd_sender.send(map());
+        }
     });
 }
 
@@ -58,8 +66,27 @@ pub fn spawn_notification_popups_watcher<C>(
     let service = notification_service();
     let notifications = service.popups.clone();
 
-    watch!(sender, [notifications.watch()], |out| {
-        let _ = out.send(map_notifications());
+    // We can't use the project-wide `watch!` macro here. It routes the
+    // stream through `ComponentSender::command`, which spawns onto
+    // relm4's private multi-thread tokio runtime. The wayle
+    // `NotificationService` was initialized on `mshell_core::tokio_rt()`
+    // — a separate runtime — and its monitoring task lives there.
+    // Whatever the cause (waker handoff between runtimes, missed update
+    // before first subscription, or both), the relm4-side
+    // `WatchStream::poll_next` reliably yields the *initial* value at
+    // startup and then never wakes again for subsequent
+    // `popups.replace(...)` calls. Spawning the watcher onto the SAME
+    // runtime that wayle uses (`tokio_rt`) and forwarding into
+    // `sender.command_sender()` from there fixes the missed wakeups —
+    // mshell now sees every popup add/remove.
+    let cmd_sender = sender.command_sender().clone();
+    let map = std::sync::Arc::new(map_notifications);
+    mshell_services::tokio_rt_spawn(async move {
+        use ::futures::stream::StreamExt;
+        let mut stream = Box::pin(notifications.watch());
+        while stream.next().await.is_some() {
+            let _ = cmd_sender.send(map());
+        }
     });
 }
 

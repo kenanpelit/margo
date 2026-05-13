@@ -1,6 +1,28 @@
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
+use tokio::runtime::Runtime;
 use tracing::info;
+
+static TOKIO_RT: OnceLock<Runtime> = OnceLock::new();
+
+/// The same tokio runtime that `init_services` ran on. Watchers that
+/// observe `wayle_*::Property` channels must spawn on this runtime —
+/// wayle's monitoring tasks live here, and `tokio::sync::watch`
+/// wakeups don't propagate reliably across runtimes (we see only the
+/// initial value if we poll from relm4's private runtime; subsequent
+/// `replace`/`set` updates are missed).
+pub fn tokio_rt() -> &'static Runtime {
+    TOKIO_RT.get_or_init(|| Runtime::new().expect("tokio runtime"))
+}
+
+/// Convenience wrapper around `tokio_rt().spawn(...)`.
+pub fn tokio_rt_spawn<F>(future: F) -> tokio::task::JoinHandle<F::Output>
+where
+    F: std::future::Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    tokio_rt().spawn(future)
+}
 use wayle_audio::AudioService;
 use wayle_battery::BatteryService;
 use wayle_bluetooth::BluetoothService;

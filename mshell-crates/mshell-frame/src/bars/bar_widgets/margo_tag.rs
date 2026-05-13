@@ -7,25 +7,25 @@ use tracing::error;
 use mshell_margo_client::{Workspace, WorkspaceInfo};
 
 #[derive(Debug, Clone)]
-pub(crate) struct HyprlandWorkspaceModel {
+pub(crate) struct MargoTagModel {
     workspace: Arc<Workspace>,
     is_active: bool,
 }
 
 #[derive(Debug)]
-pub(crate) enum HyprlandWorkspaceInput {
+pub(crate) enum MargoTagInput {
     ActiveUpdate(Vec<WorkspaceInfo>),
     WorkspaceClicked,
 }
 
 #[derive(Debug)]
-pub(crate) enum HyprlandWorkspaceOutput {}
+pub(crate) enum MargoTagOutput {}
 
 #[relm4::component(pub)]
-impl Component for HyprlandWorkspaceModel {
+impl Component for MargoTagModel {
     type CommandOutput = ();
-    type Input = HyprlandWorkspaceInput;
-    type Output = HyprlandWorkspaceOutput;
+    type Input = MargoTagInput;
+    type Output = MargoTagOutput;
     type Init = Arc<Workspace>;
 
     view! {
@@ -39,7 +39,7 @@ impl Component for HyprlandWorkspaceModel {
                 set_hexpand: false,
                 set_vexpand: false,
                 connect_clicked[sender] => move |_| {
-                    sender.input(HyprlandWorkspaceInput::WorkspaceClicked);
+                    sender.input(MargoTagInput::WorkspaceClicked);
                 },
 
                 #[name="image"]
@@ -61,7 +61,7 @@ impl Component for HyprlandWorkspaceModel {
     ) -> ComponentParts<Self> {
         let is_active = is_an_active_workspace(&params);
 
-        let model = HyprlandWorkspaceModel {
+        let model = MargoTagModel {
             workspace: params,
             is_active,
         };
@@ -85,7 +85,7 @@ impl Component for HyprlandWorkspaceModel {
         _root: &Self::Root,
     ) {
         match message {
-            HyprlandWorkspaceInput::ActiveUpdate(workspace_infos) => {
+            MargoTagInput::ActiveUpdate(workspace_infos) => {
                 self.is_active = workspace_infos
                     .iter()
                     .find(|p| p.id == self.workspace.id.get())
@@ -98,7 +98,7 @@ impl Component for HyprlandWorkspaceModel {
                     widgets.image.set_icon_name(Some("workspace-symbolic"));
                 }
             }
-            HyprlandWorkspaceInput::WorkspaceClicked => {
+            MargoTagInput::WorkspaceClicked => {
                 let hyprland = hyprland_service();
                 let workspace_id = self.workspace.id.get();
                 tokio::spawn(async move {

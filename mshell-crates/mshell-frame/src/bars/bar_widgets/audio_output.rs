@@ -66,6 +66,12 @@ impl Component for AudioOutputModel {
 
         let widgets = view_output!();
 
+        if let Some(device) = audio_service().default_output.get() {
+            widgets
+                .image
+                .set_icon_name(Some(get_audio_out_icon(&device)));
+        }
+
         ComponentParts { model, widgets }
     }
 

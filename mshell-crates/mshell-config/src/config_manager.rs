@@ -122,8 +122,14 @@ impl ConfigManager {
             None => default_config_path(),
         };
 
+        tracing::debug!(
+            active = ?active.as_deref(),
+            path = %layer_path.display(),
+            "update_config: persisting layer"
+        );
+
         if let Err(e) = persist_config_layer(&updated, &layer_path) {
-            eprintln!("config: failed to persist update: {e}");
+            tracing::error!(error = %e, path = %layer_path.display(), "update_config: persist_config_layer failed");
             return;
         }
 

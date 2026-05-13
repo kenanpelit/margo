@@ -6,7 +6,7 @@ use mshell_config::schema::menu_widgets::{
 };
 use mshell_config::schema::position::Orientation;
 use relm4::factory::{DynamicIndex, FactoryComponent};
-use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, ListBoxRowExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentController, Controller, FactorySender, gtk};
 
 #[derive(Debug)]
@@ -116,12 +116,17 @@ impl FactoryComponent for MenuWidgetRowModel {
         &mut self,
         index: &DynamicIndex,
         root: Self::Root,
-        _returned_widget: &<Self::ParentWidget as relm4::factory::FactoryView>::ReturnedWidget,
+        returned_widget: &<Self::ParentWidget as relm4::factory::FactoryView>::ReturnedWidget,
         sender: FactorySender<Self>,
     ) -> Self::Widgets {
         let widgets = view_output!();
 
         self.build_config(&widgets.config_area, index, &sender);
+
+        returned_widget.set_activatable(false);
+        returned_widget.set_selectable(false);
+        returned_widget.set_focusable(false);
+        returned_widget.set_can_focus(false);
 
         widgets
     }

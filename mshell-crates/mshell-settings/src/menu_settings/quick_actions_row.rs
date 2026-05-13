@@ -1,6 +1,6 @@
 use mshell_config::schema::menu_widgets::QuickActionWidget;
 use relm4::factory::{DynamicIndex, FactoryComponent};
-use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, ListBoxRowExt, OrientableExt, WidgetExt};
 use relm4::{FactorySender, gtk};
 
 #[derive(Debug)]
@@ -65,5 +65,20 @@ impl FactoryComponent for QuickActionRowModel {
 
     fn init_model(action: Self::Init, _index: &DynamicIndex, _sender: FactorySender<Self>) -> Self {
         Self { action }
+    }
+
+    fn init_widgets(
+        &mut self,
+        index: &DynamicIndex,
+        root: Self::Root,
+        returned_widget: &gtk::ListBoxRow,
+        sender: FactorySender<Self>,
+    ) -> Self::Widgets {
+        let widgets = view_output!();
+        returned_widget.set_activatable(false);
+        returned_widget.set_selectable(false);
+        returned_widget.set_focusable(false);
+        returned_widget.set_can_focus(false);
+        widgets
     }
 }

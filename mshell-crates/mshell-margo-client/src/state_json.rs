@@ -88,15 +88,21 @@ pub fn state_json_path() -> std::path::PathBuf {
 /// Read and parse the current state.json. Returns `None` when the
 /// file is missing (margo not running) or the parse fails.
 pub fn read() -> Option<StateJson> {
-    let path = state_json_path();
-    let raw = std::fs::read_to_string(&path).ok()?;
+    let raw = read_raw()?;
     match serde_json::from_str::<StateJson>(&raw) {
         Ok(s) => Some(s),
         Err(e) => {
+            let path = state_json_path();
             tracing::warn!(path = %path.display(), error = %e, "state.json parse failed");
             None
         }
     }
+}
+
+/// Just the raw bytes — used by the poll loop to short-circuit when
+/// the file hasn't changed since the last apply.
+pub fn read_raw() -> Option<String> {
+    std::fs::read_to_string(state_json_path()).ok()
 }
 
 /// Margo encodes tag IDs as a bitmask — convert the lowest-set bit

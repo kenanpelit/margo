@@ -71,6 +71,8 @@ impl Component for NetworkModel {
 
         let widgets = view_output!();
 
+        set_network_icon(&widgets.image);
+
         ComponentParts { model, widgets }
     }
 

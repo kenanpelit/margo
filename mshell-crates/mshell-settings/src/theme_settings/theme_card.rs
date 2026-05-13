@@ -1,10 +1,11 @@
+use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, ThemeStoreFields};
 use mshell_config::schema::themes::Themes;
 use mshell_matugen::static_theme_mapping::static_theme;
-use reactive_graph::prelude::GetUntracked;
+use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk::gdk;
-use relm4::gtk::prelude::{BoxExt, DrawingAreaExtManual, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, DrawingAreaExtManual, GestureExt, OrientableExt, WidgetExt};
 use relm4::prelude::FactoryComponent;
 use relm4::{FactorySender, gtk};
 
@@ -13,6 +14,13 @@ pub(crate) struct ThemeCardModel {
     pub(crate) theme: Themes,
     pub(crate) is_selected: bool,
     pub(crate) colors: Option<[String; 7]>,
+    // Effect scope kept alive for the lifetime of this card so the
+    // `config.theme().theme()` watcher we install in `init_model`
+    // keeps firing — without holding the scope, the effect drops
+    // immediately and `is_selected` never refreshes when the active
+    // theme changes (which is the whole point of the check-icon
+    // indicator moving as the user clicks around).
+    _effects: EffectScope,
 }
 
 #[derive(Debug)]
@@ -113,8 +121,13 @@ impl FactoryComponent for ThemeCardModel {
                 },
             },
 
-            add_controller = gtk::GestureClick::builder().button(1).build() {
-                connect_released[sender] => move |_, _, _, _| {
+            add_controller = gtk::GestureClick::builder()
+                .button(1)
+                .propagation_phase(gtk::PropagationPhase::Capture)
+                .build() {
+                connect_released[sender] => move |gesture, _, _, _| {
+                    gesture.set_state(gtk::EventSequenceState::Claimed);
+                    tracing::debug!("theme_card: click released");
                     sender.input(ThemeCardInput::Clicked);
                 },
             },
@@ -124,14 +137,27 @@ impl FactoryComponent for ThemeCardModel {
     fn init_model(
         theme: Self::Init,
         _index: &relm4::prelude::DynamicIndex,
-        _sender: FactorySender<Self>,
+        sender: FactorySender<Self>,
     ) -> Self {
         let active_theme = config_manager().config().theme().theme().get_untracked();
         let colors = theme_swatch_colors(&theme);
+
+        // Each card subscribes directly to the active-theme field so
+        // the check-icon indicator on every card refreshes regardless
+        // of whether relm4's FactoryVecDeque-forward path is alive
+        // (see the comment in `update_with_view`).
+        let mut effects = EffectScope::new();
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let active = config_manager().config().theme().theme().get();
+            sender_clone.input(ThemeCardInput::SelectionChanged(active));
+        });
+
         Self {
             is_selected: theme == active_theme,
             theme,
             colors,
+            _effects: effects,
         }
     }
 
@@ -139,12 +165,16 @@ impl FactoryComponent for ThemeCardModel {
         &mut self,
         _index: &relm4::prelude::DynamicIndex,
         root: Self::Root,
-        _returned_widget: &gtk::FlowBoxChild,
+        returned_widget: &gtk::FlowBoxChild,
         sender: FactorySender<Self>,
     ) -> Self::Widgets {
         let widgets = view_output!();
 
         self.set_draw_funcs(&widgets);
+
+        returned_widget.set_focusable(false);
+        returned_widget.set_can_focus(false);
+        returned_widget.set_focus_on_click(false);
 
         widgets
     }
@@ -157,7 +187,23 @@ impl FactoryComponent for ThemeCardModel {
     ) {
         match message {
             ThemeCardInput::Clicked => {
-                sender.output(ThemeCardOutput::Selected(self.theme)).ok();
+                tracing::debug!(theme = ?self.theme, "theme_card: Clicked → update_config");
+                // We can't rely on relm4's `FactoryVecDeque::forward`
+                // path here — its forward task runs on relm4's
+                // single-worker private RUNTIME and (with the number
+                // of long-lived `watch!` / `sender.command` tasks the
+                // shell has already spawned on that same worker) the
+                // factory's output_receiver gets starved indefinitely.
+                // The click logs reach `Clicked`, but the parent's
+                // `update_with_view(ThemeSelected)` never fires.
+                // Bypass by writing the new theme directly into the
+                // config store; reactive Effects in StyleManager and
+                // sibling cards (see `SelectionChanged`) will catch up.
+                let theme = self.theme;
+                config_manager().update_config(move |config| {
+                    config.theme.theme = theme;
+                });
+                let _ = sender.output(ThemeCardOutput::Selected(self.theme));
             }
             ThemeCardInput::SelectionChanged(active_theme) => {
                 self.is_selected = self.theme == active_theme;

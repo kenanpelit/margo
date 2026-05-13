@@ -53,6 +53,8 @@ impl Component for BluetoothModel {
 
         let widgets = view_output!();
 
+        set_bluetooth_icon(&widgets.image);
+
         ComponentParts { model, widgets }
     }
 

@@ -56,6 +56,8 @@ impl Component for BatteryModel {
 
         let widgets = view_output!();
 
+        apply_battery_icon(&widgets);
+
         ComponentParts { model, widgets }
     }
 
@@ -68,27 +70,31 @@ impl Component for BatteryModel {
     ) {
         match message {
             BatteryCommandOutput::BatteryStateChanged => {
-                let battery = battery_service().device.clone();
-
-                let exists = battery.is_present.get();
-
-                widgets.root.set_visible(exists);
-
-                if !exists {
-                    return;
-                }
-
-                let percent = battery.percentage.get();
-                let state = battery.state.get();
-
-                if state == DeviceState::Charging || state == DeviceState::FullyCharged {
-                    widgets
-                        .image
-                        .set_icon_name(Some(get_charging_battery_icon(percent)));
-                } else {
-                    widgets.image.set_icon_name(Some(get_battery_icon(percent)));
-                }
+                apply_battery_icon(widgets);
             }
         }
+    }
+}
+
+fn apply_battery_icon(widgets: &BatteryModelWidgets) {
+    let battery = battery_service().device.clone();
+
+    let exists = battery.is_present.get();
+
+    widgets.root.set_visible(exists);
+
+    if !exists {
+        return;
+    }
+
+    let percent = battery.percentage.get();
+    let state = battery.state.get();
+
+    if state == DeviceState::Charging || state == DeviceState::FullyCharged {
+        widgets
+            .image
+            .set_icon_name(Some(get_charging_battery_icon(percent)));
+    } else {
+        widgets.image.set_icon_name(Some(get_battery_icon(percent)));
     }
 }

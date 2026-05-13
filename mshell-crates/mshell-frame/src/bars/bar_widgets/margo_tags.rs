@@ -1,5 +1,5 @@
-use crate::bars::bar_widgets::hyprland_workspace::{
-    HyprlandWorkspaceInput, HyprlandWorkspaceModel,
+use crate::bars::bar_widgets::margo_tag::{
+    MargoTagInput, MargoTagModel,
 };
 use futures::StreamExt;
 use mshell_common::dynamic_box::dynamic_box::{
@@ -32,33 +32,33 @@ pub enum WsRowKey {
     Workspace(WorkspaceId),
 }
 
-pub(crate) struct HyprlandWorkspacesModel {
+pub(crate) struct MargoTagsModel {
     dynamic_box: Controller<DynamicBoxModel<WsRow, WsRowKey>>,
     orientation: Orientation,
 }
 
 #[derive(Debug)]
-pub(crate) enum HyprlandWorkspacesInput {}
+pub(crate) enum MargoTagsInput {}
 
 #[derive(Debug)]
-pub(crate) enum HyprlandWorkspacesOutput {}
+pub(crate) enum MargoTagsOutput {}
 
-pub(crate) struct HyprlandWorkspacesInit {
+pub(crate) struct MargoTagsInit {
     pub(crate) orientation: Orientation,
 }
 
 #[derive(Debug)]
-pub(crate) enum HyprlandWorkspacesCommandOutput {
+pub(crate) enum MargoTagsCommandOutput {
     WorkspacesChanged,
     ActiveWorkspaceChanged,
 }
 
 #[relm4::component(pub)]
-impl Component for HyprlandWorkspacesModel {
-    type CommandOutput = HyprlandWorkspacesCommandOutput;
-    type Input = HyprlandWorkspacesInput;
-    type Output = HyprlandWorkspacesOutput;
-    type Init = HyprlandWorkspacesInit;
+impl Component for MargoTagsModel {
+    type CommandOutput = MargoTagsCommandOutput;
+    type Input = MargoTagsInput;
+    type Output = MargoTagsOutput;
+    type Init = MargoTagsInit;
 
     view! {
         #[root]
@@ -92,8 +92,8 @@ impl Component for HyprlandWorkspacesModel {
             }),
             create: Box::new(move |item| match item {
                 WsRow::Workspace(workspace) => {
-                    let controller: Controller<HyprlandWorkspaceModel> =
-                        HyprlandWorkspaceModel::builder()
+                    let controller: Controller<MargoTagModel> =
+                        MargoTagModel::builder()
                             .launch(workspace.clone())
                             .detach();
                     Box::new(controller) as Box<dyn GenericWidgetController>
@@ -126,7 +126,7 @@ impl Component for HyprlandWorkspacesModel {
             })
             .detach();
 
-        let model = HyprlandWorkspacesModel {
+        let model = MargoTagsModel {
             dynamic_box: dynamic,
             orientation: params.orientation,
         };
@@ -165,7 +165,7 @@ impl Component for HyprlandWorkspacesModel {
         _root: &Self::Root,
     ) {
         match message {
-            HyprlandWorkspacesCommandOutput::WorkspacesChanged => {
+            MargoTagsCommandOutput::WorkspacesChanged => {
                 let hyprland = hyprland_service();
                 let workspaces = hyprland.workspaces.get();
 
@@ -176,16 +176,16 @@ impl Component for HyprlandWorkspacesModel {
                     .send(DynamicBoxInput::SetItems(workspaces))
                     .unwrap();
             }
-            HyprlandWorkspacesCommandOutput::ActiveWorkspaceChanged => {
+            MargoTagsCommandOutput::ActiveWorkspaceChanged => {
                 let active_workspaces = get_active_workspaces();
 
                 self.dynamic_box.model().for_each_entry(|_, entry| {
                     if let Some(ctrl) = entry
                         .controller
                         .as_ref()
-                        .downcast_ref::<Controller<HyprlandWorkspaceModel>>()
+                        .downcast_ref::<Controller<MargoTagModel>>()
                     {
-                        let _ = ctrl.sender().send(HyprlandWorkspaceInput::ActiveUpdate(
+                        let _ = ctrl.sender().send(MargoTagInput::ActiveUpdate(
                             active_workspaces.clone(),
                         ));
                     }
@@ -195,7 +195,7 @@ impl Component for HyprlandWorkspacesModel {
     }
 }
 
-impl HyprlandWorkspacesModel {
+impl MargoTagsModel {
     fn spawn_main_watcher(sender: &ComponentSender<Self>) {
         sender.command(move |out, shutdown| {
             async move {
@@ -211,7 +211,7 @@ impl HyprlandWorkspacesModel {
                             let Some(event) = event else { continue; };
                             match event {
                                 HyprlandEvent::WorkspaceV2 { .. } => {
-                                    let _ = out.send(HyprlandWorkspacesCommandOutput::ActiveWorkspaceChanged);
+                                    let _ = out.send(MargoTagsCommandOutput::ActiveWorkspaceChanged);
                                 }
                                 HyprlandEvent::CreateWorkspaceV2 { .. }
                                 | HyprlandEvent::DestroyWorkspaceV2 { .. }
@@ -220,7 +220,7 @@ impl HyprlandWorkspacesModel {
                                 | HyprlandEvent::ActiveSpecialV2 { .. }
                                 | HyprlandEvent::MonitorAddedV2 { .. }
                                 | HyprlandEvent::MonitorRemovedV2 { .. } => {
-                                    let _ = out.send(HyprlandWorkspacesCommandOutput::WorkspacesChanged);
+                                    let _ = out.send(MargoTagsCommandOutput::WorkspacesChanged);
                                 }
                                 _ => {}
                             }
