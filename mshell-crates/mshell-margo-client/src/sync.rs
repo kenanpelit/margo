@@ -26,6 +26,16 @@ use crate::{
     Reactive, Workspace, WorkspaceInfo,
 };
 
+// Result of the 5 s isolation test: bumping the interval from
+// 250 ms to 5 s produced no visible difference in bar flicker, so
+// the sync poll loop is *not* the source. Restored to 250 ms (the
+// upstream wayle-hyprland cadence that mshell widgets expect for
+// tag-switch / focus animations to feel snappy). The actual
+// flicker source lives somewhere downstream of the per-widget
+// wayle-* service crates (`wayle-audio`, `wayle-network`,
+// `wayle-battery`, `wayle-systray`, `wayle-sysinfo`) or in the
+// mshell-frame full-screen layer-shell composition path — needs
+// `WAYLAND_DEBUG=client mshell` tracing to localise.
 const POLL_INTERVAL: Duration = Duration::from_millis(250);
 
 /// Spawn the background poll loop. The task holds only a `Weak`

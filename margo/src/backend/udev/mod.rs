@@ -346,31 +346,48 @@ pub fn run(
         }
     }
 
-    // ── 4b. linux-drm-syncobj-v1 (explicit sync) ────────────────────────────
+    // ── 4b. linux-drm-syncobj-v1 (explicit sync) — INTENTIONALLY NOT WIRED ──
     //
-    // Modern hardware-accelerated clients (Chromium 100+, Firefox with
-    // dmabuf textures, native Wayland games via DXVK / VKD3D-Proton)
-    // tile their frame pacing on a real GPU timeline rather than the
-    // implicit fence wait baked into the dmabuf protocol. Exposing this
-    // global is what lets them attach acquire / release fences to a
-    // surface commit and let smithay's compositor handle the GPU
-    // synchronisation for us. We gate on `supports_syncobj_eventfd` so
-    // older kernels (< 5.18) and devices without
-    // `DRM_CAP_SYNCOBJ_TIMELINE` don't see a global advertised at all
-    // — same contract niri / sway / mutter follow.
-    if smithay::wayland::drm_syncobj::supports_syncobj_eventfd(&drm_fd) {
-        let syncobj_state = smithay::wayland::drm_syncobj::DrmSyncobjState::new::<MargoState>(
-            &state.display_handle,
-            drm_fd.clone(),
-        );
-        state.drm_syncobj_state = Some(syncobj_state);
-        info!("linux-drm-syncobj-v1 enabled (explicit sync available to clients)");
-    } else {
-        info!(
-            "linux-drm-syncobj-v1 NOT advertised — kernel / driver lacks syncobj_eventfd; \
-             clients will fall back to implicit dmabuf sync"
-        );
-    }
+    // The previous version of this block advertised the
+    // `wp_linux_drm_syncobj_manager_v1` global "to follow the
+    // niri / sway / mutter contract." That comment was wrong — niri
+    // does NOT advertise this global at all (verified by
+    // `grep -rn syncobj` on the niri tree returning zero hits) and
+    // for good reason: smithay only ships the protocol handler, not
+    // the actual fence-signalling integration with the DRM
+    // compositor / GBM allocator. Advertising the global without the
+    // fence-signal half means clients (notably GTK4 4.20 with the
+    // GSK Vulkan renderer, which mshell-frame uses) attach
+    // `set_acquire_point` / `set_release_point` to every commit on
+    // the assumption that the compositor will signal those fences at
+    // present time — and when the compositor doesn't, Mesa Vulkan
+    // WSI starts discarding the `wl_buffer.release` events margo
+    // sends late, the swapchain pool drains, and the bar visibly
+    // flickers.
+    //
+    // The user's WAYLAND_DEBUG trace confirmed this: 93/93 of margo's
+    // `wl_buffer.release` events were marked `discarded` by the
+    // `mesa vk display queue` (the Mesa Vulkan WSI thread), and the
+    // 110 `wp_linux_drm_syncobj_surface_v1.set_release_point` calls
+    // mshell made were going to a sink that never signalled them.
+    // `GSK_RENDERER=gl` made the flicker disappear because the GTK
+    // GL renderer falls back to implicit-fence dmabuf (no syncobj
+    // dance at all). Dropping the global advertisement here forces
+    // the same fallback for Vulkan, which is the path
+    // niri / Hyprland have always used and which gives smooth
+    // mshell on every other compositor.
+    //
+    // When (if ever) smithay grows full fence-signal integration in
+    // its DrmCompositor + drm_syncobj_state pair, re-enable this
+    // block. For now: leave `state.drm_syncobj_state` as `None` so
+    // the dispatch refuses to bind and the global stays invisible.
+    let _ = &drm_fd;
+    info!(
+        "linux-drm-syncobj-v1 intentionally NOT advertised (niri-style) — \
+         clients (GTK4 Vulkan / Chromium / Firefox dmabuf) will use the \
+         implicit-fence dmabuf sync path, which is the only one smithay \
+         fence-signals correctly in this revision"
+    );
 
     // ── 5. Get renderer formats for DRM compositor ───────────────────────────
     let renderer_formats = renderer
