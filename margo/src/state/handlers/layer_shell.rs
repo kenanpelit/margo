@@ -53,6 +53,23 @@ impl WlrLayerShellHandler for MargoState {
             map.map_layer(&desktop_layer).unwrap();
             map.arrange();
         }
+        // Push `preferred_buffer_scale` + `wp_fractional_scale_v1`
+        // preferred-scale events to the new layer surface BEFORE the
+        // client commits its first buffer. GTK4 4.20+ reads these
+        // synchronously during initial roundtrip — without them it
+        // commits at integer scale=1 and the compositor has to
+        // rescale every frame, producing the per-state-poll bar
+        // flicker we've been chasing. niri sends these too (see
+        // `niri/src/handlers/layer_shell.rs` initial-configure
+        // branch). Subsurfaces created later get their own events
+        // via `CompositorHandler::new_subsurface`.
+        let scale = smithay_output.current_scale();
+        let transform = smithay_output.current_transform();
+        crate::state::handlers::compositor::send_scale_transform(
+            &wl_surface_clone,
+            scale,
+            transform,
+        );
         self.refresh_output_work_area(&smithay_output);
 
         // Resolve layer-rule overrides for this namespace. Rules are
