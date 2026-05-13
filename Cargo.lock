@@ -2051,7 +2051,7 @@ dependencies = [
 
 [[package]]
 name = "margo"
-version = "0.4.6"
+version = "0.4.7"
 dependencies = [
  "accesskit",
  "accesskit_unix",
@@ -2092,7 +2092,7 @@ dependencies = [
 
 [[package]]
 name = "margo-config"
-version = "0.4.6"
+version = "0.4.7"
 dependencies = [
  "anyhow",
  "bitflags 2.11.1",
@@ -2104,7 +2104,7 @@ dependencies = [
 
 [[package]]
 name = "margo-layouts"
-version = "0.4.6"
+version = "0.4.7"
 
 [[package]]
 name = "matchers"
@@ -2117,7 +2117,7 @@ dependencies = [
 
 [[package]]
 name = "mctl"
-version = "0.4.6"
+version = "0.4.7"
 dependencies = [
  "anyhow",
  "clap",
@@ -2175,7 +2175,7 @@ dependencies = [
 
 [[package]]
 name = "mlayout"
-version = "0.4.6"
+version = "0.4.7"
 dependencies = [
  "anyhow",
  "clap",
@@ -2185,7 +2185,7 @@ dependencies = [
 
 [[package]]
 name = "mlock"
-version = "0.4.6"
+version = "0.4.7"
 dependencies = [
  "anyhow",
  "cairo-rs 0.22.0",
@@ -2215,7 +2215,7 @@ dependencies = [
 
 [[package]]
 name = "mscreenshot"
-version = "0.4.6"
+version = "0.4.7"
 dependencies = [
  "anyhow",
  "clap",
@@ -2226,7 +2226,7 @@ dependencies = [
 
 [[package]]
 name = "mvisual"
-version = "0.4.6"
+version = "0.4.7"
 dependencies = [
  "gtk4",
  "margo-layouts",
@@ -3324,7 +3324,7 @@ dependencies = [
 
 [[package]]
 name = "start-margo"
-version = "0.4.6"
+version = "0.4.7"
 dependencies = [
  "anyhow",
  "clap",

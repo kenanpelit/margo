@@ -7,6 +7,30 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.4.7] – 2026-05-13
+
+### Added
+
+- **Default lock-screen wallpaper.** A 4K JPG ships at
+  `assets/wallpapers/default.jpg` and lands at
+  `/usr/share/margo/wallpapers/default.jpg` after install, so a fresh
+  margo session never falls through to a flat dark lock backdrop just
+  because the user's external shell hasn't populated `state.json` yet.
+
+### Changed
+
+- **`mlock` wallpaper resolution is now tiered.** Previous behaviour
+  was state.json or nothing; new chain:
+  1. `state.json` active output's `wallpaper` field (margo tagrule
+     passthrough — unchanged primary path).
+  2. `~/.local/share/margo/wallpapers/default.jpg` — user override.
+  3. `/usr/share/margo/wallpapers/default.jpg` — package default
+     (shipped by `margo-git`).
+  Every layer is `metadata().is_file()`-checked, so a stale path in
+  state.json no longer wins against a real fallback. The candidate
+  that lands is logged via `tracing::info!` so the source of the
+  current lock wallpaper is one log line away from diagnosis.
+
 ## [0.4.6] – 2026-05-13
 
 ### Added
