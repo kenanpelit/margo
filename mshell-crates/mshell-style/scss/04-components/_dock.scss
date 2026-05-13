@@ -1,16 +1,16 @@
 @use '../03-primitives/buttons';
 
-.hyprland-dock-bar-widget {
+.margo-dock-bar-widget {
   image {
     -gtk-icon-size: var(--icon-md);
   }
 }
 
-.hyprland-dock-item.dragging {
+.margo-dock-item.dragging {
   opacity: 0.4;
 }
 
-.hyprland-dock-item:drop(active) {
+.margo-dock-item:drop(active) {
   background: transparent;
   border: none;
   box-shadow: none;

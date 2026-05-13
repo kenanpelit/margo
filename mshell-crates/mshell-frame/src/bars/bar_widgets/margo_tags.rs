@@ -9,16 +9,16 @@ use mshell_common::dynamic_box::generic_widget_controller::{
     GenericWidgetController, GenericWidgetControllerExtSafe,
 };
 use mshell_common::dynamic_box::simple_widget_controller::SimpleWidgetController;
-use mshell_services::hyprland_service;
+use mshell_services::margo_service;
 use mshell_utils::hover_scroll::attach_hover_scroll;
-use mshell_utils::hyprland::{get_active_workspaces, go_down_workspace, go_up_workspace};
+use mshell_utils::margo::{get_active_workspaces, go_down_workspace, go_up_workspace};
 use relm4::gtk::{Orientation, RevealerTransitionType};
 use relm4::{
     Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk,
     gtk::prelude::*,
 };
 use std::sync::Arc;
-use mshell_margo_client::{HyprlandEvent, MonitorId, Workspace, WorkspaceId};
+use mshell_margo_client::{MargoEvent, MonitorId, Workspace, WorkspaceId};
 
 #[derive(Clone, Debug)]
 pub enum WsRow {
@@ -64,7 +64,7 @@ impl Component for MargoTagsModel {
         #[root]
         #[name = "workspace_box"]
         gtk::Box {
-            add_css_class: "hyprland-workspaces-bar-widget",
+            add_css_class: "margo-tags-bar-widget",
             set_hexpand: model.orientation == Orientation::Vertical,
             set_vexpand: model.orientation == Orientation::Horizontal,
             set_halign: gtk::Align::Center,
@@ -135,7 +135,7 @@ impl Component for MargoTagsModel {
 
         widgets.workspace_box.append(model.dynamic_box.widget());
 
-        let hyprland = hyprland_service();
+        let hyprland = margo_service();
         let workspaces = hyprland.workspaces.get();
 
         let workspaces = Self::workspaces_with_dividers(workspaces);
@@ -166,7 +166,7 @@ impl Component for MargoTagsModel {
     ) {
         match message {
             MargoTagsCommandOutput::WorkspacesChanged => {
-                let hyprland = hyprland_service();
+                let hyprland = margo_service();
                 let workspaces = hyprland.workspaces.get();
 
                 let workspaces = Self::workspaces_with_dividers(workspaces);
@@ -199,7 +199,7 @@ impl MargoTagsModel {
     fn spawn_main_watcher(sender: &ComponentSender<Self>) {
         sender.command(move |out, shutdown| {
             async move {
-                let hyprland = hyprland_service();
+                let hyprland = margo_service();
                 let mut events = hyprland.events();
                 let shutdown_fut = shutdown.wait();
                 tokio::pin!(shutdown_fut);
@@ -210,16 +210,16 @@ impl MargoTagsModel {
                         event = events.next() => {
                             let Some(event) = event else { continue; };
                             match event {
-                                HyprlandEvent::WorkspaceV2 { .. } => {
+                                MargoEvent::WorkspaceV2 { .. } => {
                                     let _ = out.send(MargoTagsCommandOutput::ActiveWorkspaceChanged);
                                 }
-                                HyprlandEvent::CreateWorkspaceV2 { .. }
-                                | HyprlandEvent::DestroyWorkspaceV2 { .. }
-                                | HyprlandEvent::MoveWorkspaceV2 { .. }
-                                | HyprlandEvent::RenameWorkspace { .. }
-                                | HyprlandEvent::ActiveSpecialV2 { .. }
-                                | HyprlandEvent::MonitorAddedV2 { .. }
-                                | HyprlandEvent::MonitorRemovedV2 { .. } => {
+                                MargoEvent::CreateWorkspaceV2 { .. }
+                                | MargoEvent::DestroyWorkspaceV2 { .. }
+                                | MargoEvent::MoveWorkspaceV2 { .. }
+                                | MargoEvent::RenameWorkspace { .. }
+                                | MargoEvent::ActiveSpecialV2 { .. }
+                                | MargoEvent::MonitorAddedV2 { .. }
+                                | MargoEvent::MonitorRemovedV2 { .. } => {
                                     let _ = out.send(MargoTagsCommandOutput::WorkspacesChanged);
                                 }
                                 _ => {}

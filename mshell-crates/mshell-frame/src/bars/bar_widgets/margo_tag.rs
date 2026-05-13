@@ -1,5 +1,5 @@
-use mshell_services::hyprland_service;
-use mshell_utils::hyprland::is_an_active_workspace;
+use mshell_services::margo_service;
+use mshell_utils::margo::is_an_active_workspace;
 use relm4::gtk::prelude::{ButtonExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::sync::Arc;
@@ -99,7 +99,7 @@ impl Component for MargoTagModel {
                 }
             }
             MargoTagInput::WorkspaceClicked => {
-                let hyprland = hyprland_service();
+                let hyprland = margo_service();
                 let workspace_id = self.workspace.id.get();
                 tokio::spawn(async move {
                     let command = format!("hl.dsp.focus({{ workspace = \"{}\" }})", workspace_id);

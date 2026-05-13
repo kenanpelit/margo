@@ -1,4 +1,4 @@
-use mshell_services::hyprland_service;
+use mshell_services::margo_service;
 use relm4::gtk::gio::prelude::ActionMapExt;
 use relm4::gtk::glib::clone::Downgrade;
 use relm4::gtk::glib::variant::ToVariant;
@@ -138,7 +138,7 @@ impl Component for MargoLayoutModel {
         match message {
             MargoLayoutInput::SetLayout(layout) => {
                 tokio::spawn(async move {
-                    let hyprland = hyprland_service();
+                    let hyprland = margo_service();
                     if let Some(active_workspace) = hyprland.active_workspace().await {
                         let workspace_id = active_workspace.id.get();
                         let command = format!(

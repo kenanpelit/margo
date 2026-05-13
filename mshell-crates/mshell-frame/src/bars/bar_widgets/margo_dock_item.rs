@@ -3,7 +3,7 @@ use mshell_cache::pinned_apps::{PinnedApp, pin_app, unpin_app};
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, IconsStoreFields, ThemeStoreFields};
 use mshell_config::schema::themes::Themes;
-use mshell_services::hyprland_service;
+use mshell_services::margo_service;
 use mshell_utils::app_icon::app_icon::set_icon;
 use mshell_utils::app_info::find_app_info;
 use mshell_utils::launch::launch_detached;
@@ -94,7 +94,7 @@ impl Component for MargoDockItemModel {
         #[root]
         #[name = "root"]
         gtk::Box {
-            add_css_class: "hyprland-dock-item",
+            add_css_class: "margo-dock-item",
 
             gtk::Overlay {
                 add_overlay = &gtk::Box {
@@ -281,7 +281,7 @@ impl Component for MargoDockItemModel {
     ) {
         match message {
             MargoDockItemInput::LeftClicked => {
-                let hyprland = hyprland_service();
+                let hyprland = margo_service();
                 let clients = hyprland.clients.get();
                 let mut matching: Vec<_> = clients
                     .iter()
@@ -351,7 +351,7 @@ impl Component for MargoDockItemModel {
                 });
             }
             MargoDockItemInput::RightClicked => {
-                let hyprland = hyprland_service();
+                let hyprland = margo_service();
                 let clients = hyprland.clients.get();
                 let matching: Vec<_> = clients
                     .iter()
@@ -491,7 +491,7 @@ impl MargoDockItemModel {
         let class = self.class.clone();
         let sender = sender.clone();
         tokio::spawn(async move {
-            let hyprland = hyprland_service();
+            let hyprland = margo_service();
             let active_client = hyprland.active_window().await;
             if let Some(active_client) = active_client {
                 let clients = hyprland.clients.get();
@@ -586,7 +586,7 @@ fn add_move_focused_client_to_menu(
     action_group: &gio::SimpleActionGroup,
     focused_client: &Client,
 ) {
-    let hyprland = hyprland_service();
+    let hyprland = margo_service();
 
     let workspaces = hyprland.workspaces.get();
     if workspaces.len() <= 1 {
@@ -649,7 +649,7 @@ fn add_close_focused_to_menu(
     action.connect_activate(move |_, _| {
         let address = focused_client_address.clone();
         tokio::spawn(async move {
-            let hyprland = hyprland_service();
+            let hyprland = margo_service();
             let command = format!("closewindow address:0x{}", address);
             if let Err(e) = hyprland.dispatch(&command).await {
                 error!(error = %e, "Failed to switch workspace");
@@ -664,7 +664,7 @@ fn add_quit_to_menu(menu: &gio::Menu, action_group: &gio::SimpleActionGroup, cla
     let action = gio::SimpleAction::new("quit", None);
     let class = class.to_string();
     action.connect_activate(move |_, _| {
-        let hyprland = hyprland_service();
+        let hyprland = margo_service();
         let clients = hyprland.clients.get();
         let matching: Vec<_> = clients
             .iter()
@@ -673,7 +673,7 @@ fn add_quit_to_menu(menu: &gio::Menu, action_group: &gio::SimpleActionGroup, cla
         for client in matching {
             let address = client.address.get().clone();
             tokio::spawn(async move {
-                let hyprland = hyprland_service();
+                let hyprland = margo_service();
                 if let Err(e) = hyprland
                     .dispatch(&format!("closewindow address:0x{}", address))
                     .await
@@ -692,7 +692,7 @@ fn add_window_details_to_menu(
     action_group: &gio::SimpleActionGroup,
     class: &str,
 ) {
-    let hyprland = hyprland_service();
+    let hyprland = margo_service();
     let clients = hyprland.clients.get();
     let matching: Vec<_> = clients
         .iter()
@@ -706,7 +706,7 @@ fn add_window_details_to_menu(
         action.connect_activate(move |_, _| {
             let address = address.clone();
             tokio::spawn(async move {
-                let hyprland = hyprland_service();
+                let hyprland = margo_service();
                 if let Err(e) = hyprland
                     .dispatch(&format!("focuswindow address:0x{}", address))
                     .await

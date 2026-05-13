@@ -17,7 +17,7 @@ use mshell_common::scoped_effects::EffectScope;
 use mshell_common::watch;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, IconsStoreFields, ThemeStoreFields};
-use mshell_services::hyprland_service;
+use mshell_services::margo_service;
 use reactive_graph::traits::*;
 use relm4::gtk::{Orientation, RevealerTransitionType};
 use relm4::{
@@ -25,7 +25,7 @@ use relm4::{
     gtk::prelude::*,
 };
 use std::sync::Arc;
-use mshell_margo_client::{Address, Client, HyprlandEvent};
+use mshell_margo_client::{Address, Client, MargoEvent};
 
 #[derive(Clone, Debug)]
 pub struct DockItem {
@@ -75,7 +75,7 @@ impl Component for MargoDockModel {
         #[root]
         #[name = "root"]
         gtk::Box {
-            add_css_class: "hyprland-dock-bar-widget",
+            add_css_class: "margo-dock-bar-widget",
             set_orientation: model.orientation,
             set_hexpand: model.orientation == Orientation::Vertical,
             set_vexpand: model.orientation == Orientation::Horizontal,
@@ -148,7 +148,7 @@ impl Component for MargoDockModel {
         effects.push(move |_| {
             let store = pinned_apps_store.clone();
             let _ = store.apps().get();
-            let hyprland = hyprland_service();
+            let hyprland = margo_service();
             let clients = hyprland.clients.get();
             let _ = sender_clone
                 .command_sender()
@@ -396,7 +396,7 @@ impl Component for MargoDockModel {
                 });
             }
             MargoDockCommandOutput::ActiveWindowChanged(address) => {
-                let hyprland = hyprland_service();
+                let hyprland = margo_service();
                 let clients = hyprland.clients.get();
                 self.dynamic_box.model().for_each_entry(|_, entry| {
                     if let Some(ctrl) = entry
@@ -425,7 +425,7 @@ impl Component for MargoDockModel {
 
 impl MargoDockModel {
     fn spawn_main_watcher(sender: &ComponentSender<Self>) {
-        let hyprland = hyprland_service();
+        let hyprland = margo_service();
         let clients = hyprland.clients.clone();
 
         watch!(sender, [clients.watch()], |out| {
@@ -436,7 +436,7 @@ impl MargoDockModel {
     fn spawn_active_window_watcher(sender: &ComponentSender<Self>) {
         sender.command(move |out, shutdown| {
             async move {
-                let hyprland = hyprland_service();
+                let hyprland = margo_service();
                 let mut events = hyprland.events();
                 let shutdown_fut = shutdown.wait();
                 tokio::pin!(shutdown_fut);
@@ -446,7 +446,7 @@ impl MargoDockModel {
                         () = &mut shutdown_fut => return,
                         event = events.next() => {
                             let Some(event) = event else { continue; };
-                            if let HyprlandEvent::ActiveWindowV2 { address } = event {
+                            if let MargoEvent::ActiveWindowV2 { address } = event {
                                 let _ = out.send(MargoDockCommandOutput::ActiveWindowChanged(address));
                             }
                         }

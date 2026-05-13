@@ -1,7 +1,7 @@
 //! Margo compositor client for MShell — replaces `wayle-hyprland`.
 //!
 //! The OkShell tree was written against `wayle-hyprland 0.2`, which
-//! exposes a reactive view of Hyprland's IPC: a [`HyprlandService`]
+//! exposes a reactive view of Hyprland's IPC: a [`MargoService`]
 //! handle with `workspaces` / `clients` / `monitors` properties
 //! (each a reactive container with `.get()` snapshot + `.watch()`
 //! stream), a `dispatch()` method that ships raw Hyprland command
@@ -11,13 +11,13 @@
 //! consume that surface.
 //!
 //! This crate mirrors the upstream API **field-for-field**, with the
-//! same type names (`HyprlandService`, `HyprlandEvent`, `Workspace`,
+//! same type names (`MargoService`, `MargoEvent`, `Workspace`,
 //! `WorkspaceInfo`, `WorkspaceId`, `Client`, `Address`, `MonitorId`)
 //! and the same field layout, so each widget compiles after a single
 //! `use wayle_hyprland::*` → `use mshell_margo_client::*` edit. The
 //! backend is intentionally stubbed in this Phase 2b commit:
 //!
-//!   * [`HyprlandService::new`] returns a service with empty
+//!   * [`MargoService::new`] returns a service with empty
 //!     reactive properties.
 //!   * `dispatch()` / `eval()` / `events()` are no-ops.
 //!   * Bar widgets render their empty state without crashing.
@@ -336,7 +336,7 @@ impl PartialEq for Client {
 /// (the `*V2` suffix is part of Hyprland's protocol versioning;
 /// kept as-is so existing widget `match` arms compile).
 #[derive(Debug, Clone)]
-pub enum HyprlandEvent {
+pub enum MargoEvent {
     // Workspace lifecycle / focus — all named-field struct variants
     // matching upstream wayle-hyprland 0.2 exactly.
     WorkspaceV2 { id: WorkspaceId, name: String },
@@ -370,23 +370,31 @@ pub enum HyprlandEvent {
     Other(String),
 }
 
-/// Forward-looking alias. Identical to [`HyprlandEvent`] for the
-/// duration of the upstream-shaped naming; new mshell code should
-/// prefer `MargoEvent` so a future rename is mechanical.
-pub type MargoEvent = HyprlandEvent;
-
 // ── Service ──────────────────────────────────────────────────────────────────
 
 /// The compositor handle the rest of mshell talks to. Created
-/// once at startup via [`HyprlandService::new`] and stashed in
+/// once at startup via [`MargoService::new`] and stashed in
 /// a `OnceLock` over in `mshell-services`.
-pub struct HyprlandService {
+pub struct MargoService {
     pub workspaces: Reactive<Vec<Arc<Workspace>>>,
     pub clients: Reactive<Vec<Arc<Client>>>,
     pub monitors: Reactive<Vec<Arc<Monitor>>>,
+    /// Diff-driven typed-event channel for the OkShell widget
+    /// pattern (`hyprland.events()` consumers). `sync::apply`
+    /// computes the diff between two state.json snapshots and
+    /// pushes synthetic Hyprland-shaped events here so the
+    /// margo_dock / margo_tags / margo_layout watchers light up
+    /// the same way they do on Hyprland (where wayle-hyprland
+    /// surfaces real IPC events). Without this channel the
+    /// widgets sit on `events.next().await` forever — the bar
+    /// renders empty on first paint and only "fills in" when
+    /// the user toggles another widget through Settings (which
+    /// indirectly forces a fresh subscription). 64-slot buffer
+    /// matches the upstream lossy semantics.
+    pub(crate) event_tx: tokio::sync::broadcast::Sender<MargoEvent>,
 }
 
-impl HyprlandService {
+impl MargoService {
     /// Connect to the running margo compositor.
     ///
     /// Spawns a background tokio task that polls
@@ -396,10 +404,12 @@ impl HyprlandService {
     /// to the service, so it exits cleanly when the last `Arc<Self>`
     /// drops.
     pub async fn new() -> Result<Arc<Self>> {
+        let (event_tx, _) = tokio::sync::broadcast::channel(64);
         let service = Arc::new(Self {
             workspaces: Reactive::new(Vec::new()),
             clients: Reactive::new(Vec::new()),
             monitors: Reactive::new(Vec::new()),
+            event_tx,
         });
         // Run one synchronous read so widgets see populated state
         // on the very first paint, not on the next poll tick.
@@ -525,16 +535,21 @@ impl HyprlandService {
             .find(|c| c.address.get() == address)
     }
 
-    /// Event stream. Phase 2c first cut: empty stream. The poll
-    /// loop in [`sync`] already updates reactive properties, so
-    /// widgets that re-render via `Reactive::watch()` on each
-    /// property get live data; widgets that drive their main loop
-    /// on `service.events()` simply park forever (which is
-    /// correct — they'll re-render via the reactive watch path).
-    /// A diff-driven event synthesizer can land in Phase 2c.2 if
-    /// any widget actually needs event-shaped notifications.
-    pub fn events(&self) -> Pin<Box<dyn Stream<Item = HyprlandEvent> + Send>> {
-        Box::pin(futures::stream::empty())
+    /// Event stream — subscribes to the diff-driven typed events
+    /// `sync::apply` emits whenever state.json change produces a
+    /// workspace add/remove/move, a client open/close/focus, or a
+    /// monitor hotplug. This is the channel OkShell-style widgets
+    /// (`spawn_main_watcher` → `let mut events = hyprland.events();`
+    /// → `match event { MargoEvent::WorkspaceV2 => … }`) expect.
+    /// Lossy: a slow consumer that misses 64+ events gets `Lagged`,
+    /// which we silently drop and resume from the next live event —
+    /// matches the upstream `wayle_hyprland::events` semantics.
+    pub fn events(&self) -> Pin<Box<dyn Stream<Item = MargoEvent> + Send>> {
+        let rx = self.event_tx.subscribe();
+        Box::pin(
+            tokio_stream::wrappers::BroadcastStream::new(rx)
+                .filter_map(|r| async move { r.ok() }),
+        )
     }
 }
 
@@ -571,5 +586,3 @@ fn extract_quoted(s: &str) -> Option<String> {
     Some(rest[..end].to_string())
 }
 
-/// Forward-looking alias. See [`MargoEvent`].
-pub type MargoService = HyprlandService;

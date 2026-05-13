@@ -1,6 +1,6 @@
 use crate::OutputInfo;
 use gtk4::prelude::{Cast, ListModelExt, MonitorExt};
-use mshell_services::hyprland_service;
+use mshell_services::margo_service;
 use relm4::gtk::gdk;
 use std::path::PathBuf;
 
@@ -54,7 +54,7 @@ pub(crate) fn default_recording_path() -> PathBuf {
 
 /// Query Hyprland for all connected outputs via hyprctl.
 pub fn query_outputs() -> crate::common::Result<Vec<OutputInfo>> {
-    let hyprland = hyprland_service();
+    let hyprland = margo_service();
     let monitors = hyprland.monitors.get();
 
     Ok(monitors

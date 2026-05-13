@@ -27,7 +27,7 @@ use wayle_audio::AudioService;
 use wayle_battery::BatteryService;
 use wayle_bluetooth::BluetoothService;
 use wayle_brightness::BrightnessService;
-use mshell_margo_client::HyprlandService;
+use mshell_margo_client::MargoService;
 use wayle_media::MediaService;
 use wayle_network::NetworkService;
 use wayle_notification::NotificationService;
@@ -70,7 +70,7 @@ pub async fn init_services(
         async { Ok::<_, anyhow::Error>(BatteryService::new().await?) },
         async { Ok::<_, anyhow::Error>(BluetoothService::new().await?) },
         async { Ok::<_, anyhow::Error>(BrightnessService::new().await?) },
-        async { Ok::<_, anyhow::Error>(HyprlandService::new().await?) },
+        async { Ok::<_, anyhow::Error>(MargoService::new().await?) },
         line_power_fut,
         async { Ok::<_, anyhow::Error>(MediaService::new().await?) },
         async { Ok::<_, anyhow::Error>(NetworkService::new().await?) },
@@ -89,7 +89,7 @@ pub async fn init_services(
     BATTERY_SERVICE.set(Arc::new(battery)).ok();
     BLUETOOTH_SERVICE.set(Arc::new(bluetooth)).ok();
     BRIGHTNESS_SERVICE.set(brightness).ok();
-    HYPRLAND_SERVICE.set(hyprland).ok();
+    MARGO_SERVICE.set(hyprland).ok();
     if let Some(line_power) = line_power {
         LINE_POWER_SERVICE.set(Some(Arc::new(line_power))).ok();
     } else {
@@ -164,12 +164,12 @@ pub fn brightness_service() -> Option<Arc<BrightnessService>> {
         .clone()
 }
 
-static HYPRLAND_SERVICE: OnceLock<Arc<HyprlandService>> = OnceLock::new();
+static MARGO_SERVICE: OnceLock<Arc<MargoService>> = OnceLock::new();
 
-pub fn hyprland_service() -> Arc<HyprlandService> {
-    HYPRLAND_SERVICE
+pub fn margo_service() -> Arc<MargoService> {
+    MARGO_SERVICE
         .get()
-        .expect("HyprlandService not initialized")
+        .expect("MargoService not initialized")
         .clone()
 }
 

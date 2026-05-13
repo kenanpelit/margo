@@ -64,8 +64,8 @@ where
     // Pre-populate hovered with the focused monitor so the initial draw
     // shows it unhighlighted. activated stays false until real mouse movement.
     let focused = {
-        use mshell_services::hyprland_service;
-        let hyprland = hyprland_service();
+        use mshell_services::margo_service;
+        let hyprland = margo_service();
         hyprland
             .monitors
             .get()

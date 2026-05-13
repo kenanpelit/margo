@@ -1,6 +1,6 @@
 use crate::relm_app::{Shell, ShellInput};
 use mshell_cache::wallpaper::set_wallpaper;
-use mshell_services::{audio_service, brightness_service, hyprland_service};
+use mshell_services::{audio_service, brightness_service, margo_service};
 use mshell_session::session_lock::session_lock;
 use mshell_settings::{close_settings, open_settings};
 use mshell_sounds::play_audio_volume_change;
@@ -24,7 +24,7 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
             match cmd {
                 IPCCommand::Quit => app_sender.emit(ShellInput::Quit),
                 IPCCommand::AppLauncher => {
-                    if let Some(active_workspace) = hyprland_service().active_workspace().await {
+                    if let Some(active_workspace) = margo_service().active_workspace().await {
                         app_sender.emit(ShellInput::ToggleAppLauncher(Some(
                             active_workspace.monitor.get(),
                         )));
@@ -33,7 +33,7 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                     }
                 }
                 IPCCommand::QuickSettings => {
-                    if let Some(active_workspace) = hyprland_service().active_workspace().await {
+                    if let Some(active_workspace) = margo_service().active_workspace().await {
                         app_sender.emit(ShellInput::ToggleQuickSettings(Some(
                             active_workspace.monitor.get(),
                         )));
@@ -42,7 +42,7 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                     }
                 }
                 IPCCommand::Clock => {
-                    if let Some(active_workspace) = hyprland_service().active_workspace().await {
+                    if let Some(active_workspace) = margo_service().active_workspace().await {
                         app_sender.emit(ShellInput::ToggleClockMenu(Some(
                             active_workspace.monitor.get(),
                         )));
@@ -51,7 +51,7 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                     }
                 }
                 IPCCommand::Clipboard => {
-                    if let Some(active_workspace) = hyprland_service().active_workspace().await {
+                    if let Some(active_workspace) = margo_service().active_workspace().await {
                         app_sender.emit(ShellInput::ToggleClipboard(Some(
                             active_workspace.monitor.get(),
                         )));
@@ -60,7 +60,7 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                     }
                 }
                 IPCCommand::Notifications => {
-                    if let Some(active_workspace) = hyprland_service().active_workspace().await {
+                    if let Some(active_workspace) = margo_service().active_workspace().await {
                         app_sender.emit(ShellInput::ToggleNotifications(Some(
                             active_workspace.monitor.get(),
                         )));
@@ -69,7 +69,7 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                     }
                 }
                 IPCCommand::Screenshot => {
-                    if let Some(active_workspace) = hyprland_service().active_workspace().await {
+                    if let Some(active_workspace) = margo_service().active_workspace().await {
                         app_sender.emit(ShellInput::ToggleScreenshotMenu(Some(
                             active_workspace.monitor.get(),
                         )));
@@ -78,7 +78,7 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                     }
                 }
                 IPCCommand::Wallpaper => {
-                    if let Some(active_workspace) = hyprland_service().active_workspace().await {
+                    if let Some(active_workspace) = margo_service().active_workspace().await {
                         app_sender.emit(ShellInput::ToggleWallpaperMenu(Some(
                             active_workspace.monitor.get(),
                         )));
@@ -149,7 +149,7 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                     let _ = reply.send(session_lock().is_locked());
                 }
                 IPCCommand::Screenshare(reply, payload) => {
-                    if let Some(active_workspace) = hyprland_service().active_workspace().await {
+                    if let Some(active_workspace) = margo_service().active_workspace().await {
                         app_sender.emit(ShellInput::ToggleScreenshareMenu(
                             Some(active_workspace.monitor.get()),
                             reply,
@@ -169,7 +169,7 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                     gtk::Window::set_interactive_debugging(true);
                 }
                 IPCCommand::BarToggleTop => {
-                    if let Some(active_workspace) = hyprland_service().active_workspace().await {
+                    if let Some(active_workspace) = margo_service().active_workspace().await {
                         app_sender.emit(ShellInput::BarToggleTop(Some(
                             active_workspace.monitor.get(),
                         )));
@@ -178,7 +178,7 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                     }
                 }
                 IPCCommand::BarToggleBottom => {
-                    if let Some(active_workspace) = hyprland_service().active_workspace().await {
+                    if let Some(active_workspace) = margo_service().active_workspace().await {
                         app_sender.emit(ShellInput::BarToggleBottom(Some(
                             active_workspace.monitor.get(),
                         )));
@@ -187,7 +187,7 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                     }
                 }
                 IPCCommand::BarToggleLeft => {
-                    if let Some(active_workspace) = hyprland_service().active_workspace().await {
+                    if let Some(active_workspace) = margo_service().active_workspace().await {
                         app_sender.emit(ShellInput::BarToggleLeft(Some(
                             active_workspace.monitor.get(),
                         )));
@@ -196,7 +196,7 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                     }
                 }
                 IPCCommand::BarToggleRight => {
-                    if let Some(active_workspace) = hyprland_service().active_workspace().await {
+                    if let Some(active_workspace) = margo_service().active_workspace().await {
                         app_sender.emit(ShellInput::BarToggleRight(Some(
                             active_workspace.monitor.get(),
                         )));
@@ -205,7 +205,7 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                     }
                 }
                 IPCCommand::BarToggleAll(exclude_hidden_by_default) => {
-                    if let Some(active_workspace) = hyprland_service().active_workspace().await {
+                    if let Some(active_workspace) = margo_service().active_workspace().await {
                         app_sender.emit(ShellInput::BarToggleAll(
                             Some(active_workspace.monitor.get()),
                             exclude_hidden_by_default,
@@ -215,7 +215,7 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                     }
                 }
                 IPCCommand::BarRevealAll(exclude_hidden_by_default) => {
-                    if let Some(active_workspace) = hyprland_service().active_workspace().await {
+                    if let Some(active_workspace) = margo_service().active_workspace().await {
                         app_sender.emit(ShellInput::BarRevealAll(
                             Some(active_workspace.monitor.get()),
                             exclude_hidden_by_default,
@@ -225,7 +225,7 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                     }
                 }
                 IPCCommand::BarHideAll(exclude_hidden_by_default) => {
-                    if let Some(active_workspace) = hyprland_service().active_workspace().await {
+                    if let Some(active_workspace) = margo_service().active_workspace().await {
                         app_sender.emit(ShellInput::BarHideAll(
                             Some(active_workspace.monitor.get()),
                             exclude_hidden_by_default,

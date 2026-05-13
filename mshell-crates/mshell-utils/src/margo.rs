@@ -1,10 +1,10 @@
-use mshell_services::hyprland_service;
+use mshell_services::margo_service;
 use std::sync::Arc;
 use tracing::error;
 use mshell_margo_client::{Workspace, WorkspaceInfo};
 
 pub fn get_active_workspaces() -> Vec<WorkspaceInfo> {
-    let hyprland = hyprland_service();
+    let hyprland = margo_service();
     let mut active_workspaces: Vec<WorkspaceInfo> = Vec::new();
     for monitor in hyprland.monitors.get() {
         active_workspaces.push(monitor.active_workspace.get());
@@ -20,7 +20,7 @@ pub fn is_an_active_workspace(workspace: &Arc<Workspace>) -> bool {
 }
 
 pub fn go_up_workspace() {
-    let hyprland = hyprland_service();
+    let hyprland = margo_service();
     tokio::spawn(async move {
         if let Err(e) = hyprland
             .dispatch("hl.dsp.focus({ workspace = \"r-1\" })")
@@ -32,7 +32,7 @@ pub fn go_up_workspace() {
 }
 
 pub fn go_down_workspace() {
-    let hyprland = hyprland_service();
+    let hyprland = margo_service();
     tokio::spawn(async move {
         if let Err(e) = hyprland
             .dispatch("hl.dsp.focus({ workspace = \"r+1\" })")

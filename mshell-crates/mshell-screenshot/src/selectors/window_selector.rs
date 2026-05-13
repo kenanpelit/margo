@@ -6,7 +6,7 @@ use crate::utils::find_gdk_monitor;
 use gtk4::prelude::*;
 use gtk4::{cairo, gdk, glib};
 use gtk4_layer_shell::LayerShell;
-use mshell_services::hyprland_service;
+use mshell_services::margo_service;
 
 #[derive(Debug, Clone)]
 struct WindowRect {
@@ -98,7 +98,7 @@ where
 
     // Pre-populate hovered with the focused window.
     let focused_address = {
-        let hyprland = hyprland_service();
+        let hyprland = margo_service();
         hyprland
             .clients
             .get()
@@ -131,7 +131,7 @@ where
 }
 
 fn build_window_rects() -> Vec<WindowRect> {
-    let hyprland = hyprland_service();
+    let hyprland = margo_service();
     let clients = hyprland.clients.get();
     let monitors = hyprland.monitors.get();
 

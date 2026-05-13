@@ -1,5 +1,5 @@
 //! Background poll loop that turns margo's `state.json` snapshot
-//! stream into reactive property updates on a [`HyprlandService`].
+//! stream into reactive property updates on a [`MargoService`].
 //!
 //! state.json is rewritten by margo on every meaningful change
 //! (focus / tag / arrange / hotplug / config reload), so polling
@@ -10,8 +10,8 @@
 //! to surface a focus change inside one animation frame.
 //!
 //! The loop runs forever; ownership cleanup happens when the
-//! `Arc<HyprlandService>` is dropped (the closure captures a
-//! `Weak<HyprlandService>` and exits as soon as the upgrade
+//! `Arc<MargoService>` is dropped (the closure captures a
+//! `Weak<MargoService>` and exits as soon as the upgrade
 //! fails).
 
 use std::collections::HashMap;
@@ -22,8 +22,8 @@ use tokio::time::interval;
 
 use crate::state_json::{lowest_tag, monitor_id, read_raw, RawClient, StateJson};
 use crate::{
-    Address, Client, ClientLocation, ClientSize, FullscreenMode, HyprlandService, Monitor,
-    Reactive, Workspace, WorkspaceInfo,
+    Address, Client, ClientLocation, ClientSize, FullscreenMode, MargoEvent,
+    MargoService, Monitor, Reactive, Workspace, WorkspaceInfo,
 };
 
 // Result of the 5 s isolation test: bumping the interval from
@@ -54,7 +54,7 @@ const POLL_INTERVAL: Duration = Duration::from_millis(250);
 /// margo side (window title changes during typing, focus updates,
 /// dwl-ipc broadcasts) — the user sees the bar flickering on every
 /// keystroke in another window.
-pub(crate) fn spawn(service: &Arc<HyprlandService>) {
+pub(crate) fn spawn(service: &Arc<MargoService>) {
     let weak = Arc::downgrade(service);
     tokio::spawn(async move {
         let mut ticker = interval(POLL_INTERVAL);
@@ -82,7 +82,7 @@ pub(crate) fn spawn(service: &Arc<HyprlandService>) {
 /// concerned (the underlying `Reactive::set` always broadcasts,
 /// but consumers all `.get()`-snapshot every render, so a duplicate
 /// notification is harmless).
-pub(crate) fn apply_snapshot(service: &HyprlandService, state: &StateJson) {
+pub(crate) fn apply_snapshot(service: &MargoService, state: &StateJson) {
     apply(service, state);
 }
 
@@ -112,7 +112,21 @@ pub(crate) fn apply_snapshot(service: &HyprlandService, state: &StateJson) {
 /// path faster than the monitor refresh rate. The user perceived
 /// this as the "every-keystroke" bar flicker that mshell on Hyprland
 /// (wayle-hyprland mutates Arcs in place) and on niri does not have.
-fn apply(service: &HyprlandService, state: &StateJson) {
+fn apply(service: &MargoService, state: &StateJson) {
+    // Track which entities were added / removed / focus-changed so we
+    // can emit synthetic typed events on `service.event_tx`. The
+    // OkShell widget watchers expect those events
+    // (`MargoEvent::WorkspaceV2`, `CreateWorkspaceV2`, `OpenWindow`,
+    // …) and would otherwise sit forever on `events.next().await`
+    // because the poll loop only pushes through `Reactive::set`.
+    let mut emitted: Vec<MargoEvent> = Vec::new();
+    let prev_focused_tag: Option<i64> = service
+        .monitors
+        .get()
+        .iter()
+        .find(|m| m.focused.get())
+        .map(|m| m.active_workspace.get().id);
+
     // ── Workspaces ───────────────────────────────────────────────────
     let current_ws = service.workspaces.get();
     let mut next_ws: Vec<Arc<Workspace>> = Vec::with_capacity(state.tag_count as usize);
@@ -206,6 +220,28 @@ fn apply(service: &HyprlandService, state: &StateJson) {
         workspace_by_id.insert(ws_id, Arc::clone(&ws));
         next_ws.push(ws);
     }
+    // Workspace lifecycle events (Create / Destroy) so widget watchers
+    // light up. Compare ID sets between prev/next; emit per added or
+    // removed tag. mshell config locks `tag_count = 9`, so in steady
+    // state these only fire on the very first apply (current_ws is
+    // empty → all 9 fire `CreateWorkspaceV2`).
+    {
+        use std::collections::BTreeSet;
+        let prev_ids: BTreeSet<i64> = current_ws.iter().map(|w| w.id.get()).collect();
+        let next_ids: BTreeSet<i64> = next_ws.iter().map(|w| w.id.get()).collect();
+        for id in next_ids.difference(&prev_ids) {
+            emitted.push(MargoEvent::CreateWorkspaceV2 {
+                id: *id,
+                name: id.to_string(),
+            });
+        }
+        for id in prev_ids.difference(&next_ids) {
+            emitted.push(MargoEvent::DestroyWorkspaceV2 {
+                id: *id,
+                name: id.to_string(),
+            });
+        }
+    }
     if vec_membership_differs(&current_ws, &next_ws) {
         service.workspaces.set(next_ws);
     }
@@ -284,8 +320,51 @@ fn apply(service: &HyprlandService, state: &StateJson) {
         };
         next_mons.push(mon);
     }
+    // Monitor hotplug events.
+    {
+        use std::collections::BTreeSet;
+        let prev_ids: BTreeSet<i64> = current_mons.iter().map(|m| m.id.get()).collect();
+        let next_ids: BTreeSet<i64> = next_mons.iter().map(|m| m.id.get()).collect();
+        for id in next_ids.difference(&prev_ids) {
+            let name = next_mons
+                .iter()
+                .find(|m| m.id.get() == *id)
+                .map(|m| m.name.get())
+                .unwrap_or_default();
+            emitted.push(MargoEvent::MonitorAddedV2 {
+                id: *id,
+                name: name.clone(),
+                description: name,
+            });
+        }
+        for id in prev_ids.difference(&next_ids) {
+            let name = current_mons
+                .iter()
+                .find(|m| m.id.get() == *id)
+                .map(|m| m.name.get())
+                .unwrap_or_default();
+            emitted.push(MargoEvent::MonitorRemovedV2 { id: *id, name });
+        }
+    }
     if vec_membership_differs(&current_mons, &next_mons) {
         service.monitors.set(next_mons);
+    }
+
+    // Active workspace change — emit `WorkspaceV2` so MargoTags
+    // ActiveWorkspaceChanged arm fires when the user tag-switches.
+    let new_focused_tag: Option<i64> = service
+        .monitors
+        .get()
+        .iter()
+        .find(|m| m.focused.get())
+        .map(|m| m.active_workspace.get().id);
+    if new_focused_tag != prev_focused_tag {
+        if let Some(id) = new_focused_tag {
+            emitted.push(MargoEvent::WorkspaceV2 {
+                id,
+                name: id.to_string(),
+            });
+        }
     }
 
     // ── Clients ──────────────────────────────────────────────────────
@@ -304,8 +383,63 @@ fn apply(service: &HyprlandService, state: &StateJson) {
         };
         next_clients.push(new_client);
     }
+    // Client lifecycle + active-window events. mshell-port's
+    // MargoDock watcher listens for `ActiveWindowV2`; the dock list
+    // itself reads via `clients.watch()` so we don't need per-client
+    // OpenWindow / CloseWindow events but emit them anyway for
+    // upstream-shape compatibility.
+    {
+        use std::collections::HashSet;
+        let prev_addrs: HashSet<Address> = current_clients
+            .iter()
+            .map(|c| c.address.get())
+            .collect();
+        let next_addrs: HashSet<Address> = next_clients
+            .iter()
+            .map(|c| c.address.get())
+            .collect();
+        for addr in next_addrs.difference(&prev_addrs) {
+            if let Some(c) = next_clients.iter().find(|cl| cl.address.get() == *addr) {
+                emitted.push(MargoEvent::OpenWindow {
+                    address: addr.clone(),
+                    workspace_name: c.workspace.get().name,
+                    class: c.class.get(),
+                    title: c.title.get(),
+                });
+            }
+        }
+        for addr in prev_addrs.difference(&next_addrs) {
+            emitted.push(MargoEvent::CloseWindow {
+                address: addr.clone(),
+            });
+        }
+    }
+    // Active window change.
+    let prev_focused: Option<Address> = current_clients
+        .iter()
+        .find(|c| c.focus_history_id.get() == 0)
+        .map(|c| c.address.get());
+    let new_focused: Option<Address> = next_clients
+        .iter()
+        .find(|c| c.focus_history_id.get() == 0)
+        .map(|c| c.address.get());
+    if prev_focused != new_focused {
+        if let Some(addr) = new_focused {
+            emitted.push(MargoEvent::ActiveWindowV2 { address: addr });
+        }
+    }
     if vec_membership_differs(&current_clients, &next_clients) {
         service.clients.set(next_clients);
+    }
+
+    // Broadcast all events at end (after all reactive sets, so
+    // subscribers that `.get()`-snapshot on receipt see the final
+    // state, not a half-applied one).
+    if !emitted.is_empty() {
+        let tx = &service.event_tx;
+        for event in emitted {
+            let _ = tx.send(event);
+        }
     }
 }
 
