@@ -31,6 +31,14 @@
   padding: 10px 4px;
   border-radius: var(--radius-widget);
 }
+
+// ── Power-control buttons (Cycle / Lock Auto / Idle) ─────
+// Plain surface buttons; `.selected` (from `ok-button-surface`)
+// carries the active-state tint for Lock Auto / Idle Toggle.
+.npower-control-button {
+  padding: 8px 4px;
+  border-radius: var(--radius-widget);
+}
 // Active button: tinted backdrop per profile. The `.selected`
 // class is always paired with one `.profile-*` class by
 // `sync_view`, so these compound selectors only ever match the
