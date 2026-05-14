@@ -20,6 +20,11 @@ enum ScrollState {
 
 pub(crate) struct MediaPlayerModel {
     pub player: Arc<Player>,
+    /// Keeps the player's metadata / position / state watchers
+    /// alive for the lifetime of the model — dropping a
+    /// `WatcherToken` cancels its watchers, so this MUST be a
+    /// field, not a local in `init`.
+    _watcher_token: WatcherToken,
     track_name: String,
     track_name_scroll_source: Option<glib::SourceId>,
     artist_name: String,
@@ -329,6 +334,7 @@ impl Component for MediaPlayerModel {
 
         let mut model = MediaPlayerModel {
             player: params.player,
+            _watcher_token: watcher_token,
             track_name: "".to_string(),
             track_name_scroll_source: None,
             artist_name: "".to_string(),

@@ -1,11 +1,31 @@
+//! Multi-player container for the media menu.
+//!
+//! Holds one `MediaPlayerModel` per MPRIS player in a `gtk::Stack`
+//! and shows the *display player* — the one actually playing
+//! (Spotify, mpd, a browser tab, …), falling back to wayle's
+//! `active_player`, then the first one. wayle only re-selects
+//! `active_player` on player add/remove, so every player's
+//! `playback_state` is watched here under a `WatcherToken` and
+//! the visible child is recomputed whenever playback moves.
+//!
+//! Players whose state is `Stopped` are treated as idle and
+//! excluded from the prev/next switcher + the default selection
+//! — that keeps a browser that merely *registered* an MPRIS
+//! interface (but isn't playing anything) out of the menu.
+
 use crate::menus::menu_widgets::media_player::media_player::{MediaPlayerInit, MediaPlayerModel};
+use mshell_common::{WatcherToken, watch_cancellable};
 use mshell_services::media_service;
 use mshell_utils::media::spawn_media_players_watcher;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
+use std::sync::Arc;
+use wayle_media::core::player::Player;
+use wayle_media::types::PlaybackState;
 
 pub(crate) struct MediaPlayersModel {
     player_controllers: Vec<Controller<MediaPlayerModel>>,
+    watcher_token: WatcherToken,
     active_player_name: String,
     previous_button_sensitive: bool,
     next_button_sensitive: bool,
@@ -28,6 +48,9 @@ pub(crate) struct MediaPlayersInit {}
 pub(crate) enum MediaPlayersCommandOutput {
     PlayersChanged,
     ActivePlayerChanged,
+    /// Some player's playback state changed — re-pick the
+    /// display player.
+    PlaybackChanged,
 }
 
 #[relm4::component(pub)]
@@ -116,13 +139,16 @@ impl Component for MediaPlayersModel {
 
         let players = media_service().player_list.get();
 
-        let model = MediaPlayersModel {
+        let mut model = MediaPlayersModel {
             player_controllers: Vec::new(),
+            watcher_token: WatcherToken::new(),
             active_player_name: "".to_string(),
             previous_button_sensitive: false,
             next_button_sensitive: false,
             players_visible: !players.is_empty(),
         };
+
+        subscribe_playback(&sender, &mut model.watcher_token);
 
         let widgets = view_output!();
 
@@ -139,13 +165,12 @@ impl Component for MediaPlayersModel {
         match message {
             MediaPlayersInput::PreviousClicked => {
                 let service = media_service();
-                let players = service.player_list.get();
-                let active = service.active_player.get();
-                if let Some(active) = active
-                    && let Some(idx) = players.iter().position(|p| p.id == active.id)
+                let visible = visible_players();
+                if let Some(current) = display_player()
+                    && let Some(idx) = visible.iter().position(|p| p.id == current.id)
                     && idx > 0
                 {
-                    let prev_id = players[idx - 1].id.clone();
+                    let prev_id = visible[idx - 1].id.clone();
                     tokio::spawn(async move {
                         let _ = service.set_active_player(Some(prev_id)).await;
                     });
@@ -153,39 +178,41 @@ impl Component for MediaPlayersModel {
             }
             MediaPlayersInput::NextClicked => {
                 let service = media_service();
-                let players = service.player_list.get();
-                let active = service.active_player.get();
-                if let Some(active) = active
-                    && let Some(idx) = players.iter().position(|p| p.id == active.id)
-                    && idx + 1 < players.len()
+                let visible = visible_players();
+                if let Some(current) = display_player()
+                    && let Some(idx) = visible.iter().position(|p| p.id == current.id)
+                    && idx + 1 < visible.len()
                 {
-                    let next_id = players[idx + 1].id.clone();
+                    let next_id = visible[idx + 1].id.clone();
                     tokio::spawn(async move {
                         let _ = service.set_active_player(Some(next_id)).await;
                     });
                 }
             }
             MediaPlayersInput::UpdateState => {
-                let service = media_service();
-                let players = service.player_list.get();
-                let active_player = service.active_player.get();
-                let active_id = active_player.as_ref().map(|p| &p.id);
+                let visible = visible_players();
+                self.players_visible = !visible.is_empty();
 
-                // Update button sensitivity
-                if let Some(active) = &active_player {
-                    self.active_player_name = active.identity.get();
-                    if let Some(idx) = players.iter().position(|p| p.id == active.id) {
+                let display = display_player();
+                if let Some(display) = &display {
+                    self.active_player_name = display.identity.get();
+                    if let Some(idx) = visible.iter().position(|p| p.id == display.id) {
                         self.previous_button_sensitive = idx > 0;
-                        self.next_button_sensitive = idx + 1 < players.len();
+                        self.next_button_sensitive = idx + 1 < visible.len();
+                    } else {
+                        self.previous_button_sensitive = false;
+                        self.next_button_sensitive = false;
                     }
                 } else {
+                    self.active_player_name.clear();
                     self.previous_button_sensitive = false;
                     self.next_button_sensitive = false;
                 }
 
-                // Reveal active player, hide others
+                // Reveal the display player, hide the rest.
+                let display_id = display.as_ref().map(|p| &p.id);
                 for controller in &self.player_controllers {
-                    if Some(&controller.model().player.id) == active_id {
+                    if Some(&controller.model().player.id) == display_id {
                         widgets
                             .player_container
                             .set_visible_child(controller.widget());
@@ -209,9 +236,11 @@ impl Component for MediaPlayersModel {
                 let service = media_service();
                 let players = service.player_list.get();
 
-                self.players_visible = !players.is_empty();
+                // Re-arm the per-player playback watchers for the
+                // new player set.
+                subscribe_playback(&sender, &mut self.watcher_token);
 
-                // Remove controllers for players no longer in the list
+                // Remove controllers for players no longer present.
                 self.player_controllers.retain(|controller| {
                     let still_exists = players.iter().any(|p| p.id == controller.model().player.id);
                     if !still_exists {
@@ -220,7 +249,7 @@ impl Component for MediaPlayersModel {
                     still_exists
                 });
 
-                // Add controllers for new players
+                // Add controllers for new players.
                 for player in &players {
                     let already_exists = self
                         .player_controllers
@@ -241,11 +270,59 @@ impl Component for MediaPlayersModel {
 
                 sender.input(MediaPlayersInput::UpdateState);
             }
-            MediaPlayersCommandOutput::ActivePlayerChanged => {
+            MediaPlayersCommandOutput::ActivePlayerChanged
+            | MediaPlayersCommandOutput::PlaybackChanged => {
                 sender.input(MediaPlayersInput::UpdateState);
             }
         }
 
         self.update_view(widgets, sender);
+    }
+}
+
+/// Players worth showing — anything not `Stopped`. A browser that
+/// merely registered an MPRIS interface without playing reports
+/// `Stopped`, so this drops it from the switcher.
+fn visible_players() -> Vec<Arc<Player>> {
+    media_service()
+        .player_list
+        .get()
+        .into_iter()
+        .filter(|p| p.playback_state.get() != PlaybackState::Stopped)
+        .collect()
+}
+
+/// The player to show by default: the first one actually playing,
+/// else wayle's `active_player` if it's still a visible player,
+/// else the first visible player.
+fn display_player() -> Option<Arc<Player>> {
+    let visible = visible_players();
+    visible
+        .iter()
+        .find(|p| p.playback_state.get() == PlaybackState::Playing)
+        .cloned()
+        .or_else(|| {
+            media_service()
+                .active_player
+                .get()
+                .filter(|ap| visible.iter().any(|p| p.id == ap.id))
+        })
+        .or_else(|| visible.first().cloned())
+}
+
+/// Watch every player's `playback_state` under a fresh
+/// `WatcherToken` so the display player is recomputed the instant
+/// playback starts/stops anywhere.
+fn subscribe_playback(
+    sender: &ComponentSender<MediaPlayersModel>,
+    watcher_token: &mut WatcherToken,
+) {
+    let token = watcher_token.reset();
+    for player in media_service().player_list.get() {
+        let playback_state = player.playback_state.clone();
+        let t = token.clone();
+        watch_cancellable!(sender, t, [playback_state.watch()], |out| {
+            let _ = out.send(MediaPlayersCommandOutput::PlaybackChanged);
+        });
     }
 }
