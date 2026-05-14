@@ -3,11 +3,17 @@
 //! leaving it empty falls back to the built-in default
 //! (`systemctl …` / the in-process session lock). Non-empty
 //! commands run via `sh -c`.
+//!
+//! The entries are seeded once at init and then own their state
+//! — they're deliberately not `#[watch]`-bound to the config
+//! store. A reactive `set_text` round-trip resets the cursor to
+//! position 0 on every keystroke, which makes typing read
+//! right-to-left; the entry is the sole editor here, so a
+//! one-shot seed is both correct and bug-free.
 
-use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, SessionStoreFields};
-use reactive_graph::prelude::{Get, GetUntracked};
+use reactive_graph::prelude::GetUntracked;
 use relm4::gtk::prelude::{BoxExt, EditableExt, EntryExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
@@ -18,7 +24,6 @@ pub(crate) struct SessionSettingsModel {
     suspend_command: String,
     reboot_command: String,
     shutdown_command: String,
-    _effects: EffectScope,
 }
 
 #[derive(Debug)]
@@ -28,12 +33,6 @@ pub(crate) enum SessionSettingsInput {
     SuspendChanged(String),
     RebootChanged(String),
     ShutdownChanged(String),
-
-    LockEffect(String),
-    LogoutEffect(String),
-    SuspendEffect(String),
-    RebootEffect(String),
-    ShutdownEffect(String),
 }
 
 #[derive(Debug)]
@@ -99,12 +98,10 @@ impl Component for SessionSettingsModel {
                         set_valign: gtk::Align::Center,
                         set_width_request: 240,
                         set_placeholder_text: Some("built-in"),
-                        #[watch]
-                        #[block_signal(lock_handler)]
                         set_text: &model.lock_command,
                         connect_changed[sender] => move |e| {
                             sender.input(SessionSettingsInput::LockChanged(e.text().to_string()));
-                        } @lock_handler,
+                        },
                     },
                 },
 
@@ -131,12 +128,10 @@ impl Component for SessionSettingsModel {
                         set_valign: gtk::Align::Center,
                         set_width_request: 240,
                         set_placeholder_text: Some("systemctl --user exit"),
-                        #[watch]
-                        #[block_signal(logout_handler)]
                         set_text: &model.logout_command,
                         connect_changed[sender] => move |e| {
                             sender.input(SessionSettingsInput::LogoutChanged(e.text().to_string()));
-                        } @logout_handler,
+                        },
                     },
                 },
 
@@ -163,12 +158,10 @@ impl Component for SessionSettingsModel {
                         set_valign: gtk::Align::Center,
                         set_width_request: 240,
                         set_placeholder_text: Some("systemctl suspend"),
-                        #[watch]
-                        #[block_signal(suspend_handler)]
                         set_text: &model.suspend_command,
                         connect_changed[sender] => move |e| {
                             sender.input(SessionSettingsInput::SuspendChanged(e.text().to_string()));
-                        } @suspend_handler,
+                        },
                     },
                 },
 
@@ -195,12 +188,10 @@ impl Component for SessionSettingsModel {
                         set_valign: gtk::Align::Center,
                         set_width_request: 240,
                         set_placeholder_text: Some("systemctl reboot"),
-                        #[watch]
-                        #[block_signal(reboot_handler)]
                         set_text: &model.reboot_command,
                         connect_changed[sender] => move |e| {
                             sender.input(SessionSettingsInput::RebootChanged(e.text().to_string()));
-                        } @reboot_handler,
+                        },
                     },
                 },
 
@@ -227,14 +218,12 @@ impl Component for SessionSettingsModel {
                         set_valign: gtk::Align::Center,
                         set_width_request: 240,
                         set_placeholder_text: Some("systemctl poweroff"),
-                        #[watch]
-                        #[block_signal(shutdown_handler)]
                         set_text: &model.shutdown_command,
                         connect_changed[sender] => move |e| {
                             sender.input(SessionSettingsInput::ShutdownChanged(
                                 e.text().to_string(),
                             ));
-                        } @shutdown_handler,
+                        },
                     },
                 },
             }
@@ -246,23 +235,6 @@ impl Component for SessionSettingsModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let mut effects = EffectScope::new();
-
-        macro_rules! push_effect {
-            ($field:ident, $variant:ident) => {{
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let value = config_manager().config().session().$field().get();
-                    sender_clone.input(SessionSettingsInput::$variant(value));
-                });
-            }};
-        }
-        push_effect!(lock_command, LockEffect);
-        push_effect!(logout_command, LogoutEffect);
-        push_effect!(suspend_command, SuspendEffect);
-        push_effect!(reboot_command, RebootEffect);
-        push_effect!(shutdown_command, ShutdownEffect);
-
         // The `SessionStoreFields` accessors consume `self`, so the
         // `config().session()` chain has to be re-walked per field.
         let model = SessionSettingsModel {
@@ -291,7 +263,6 @@ impl Component for SessionSettingsModel {
                 .session()
                 .shutdown_command()
                 .get_untracked(),
-            _effects: effects,
         };
 
         let widgets = view_output!();
@@ -299,11 +270,10 @@ impl Component for SessionSettingsModel {
         ComponentParts { model, widgets }
     }
 
-    fn update_with_view(
+    fn update(
         &mut self,
-        widgets: &mut Self::Widgets,
         message: Self::Input,
-        sender: ComponentSender<Self>,
+        _sender: ComponentSender<Self>,
         _root: &Self::Root,
     ) {
         match message {
@@ -322,14 +292,6 @@ impl Component for SessionSettingsModel {
             SessionSettingsInput::ShutdownChanged(v) => {
                 config_manager().update_config(|c| c.session.shutdown_command = v);
             }
-
-            SessionSettingsInput::LockEffect(v) => self.lock_command = v,
-            SessionSettingsInput::LogoutEffect(v) => self.logout_command = v,
-            SessionSettingsInput::SuspendEffect(v) => self.suspend_command = v,
-            SessionSettingsInput::RebootEffect(v) => self.reboot_command = v,
-            SessionSettingsInput::ShutdownEffect(v) => self.shutdown_command = v,
         }
-
-        self.update_view(widgets, sender);
     }
 }
