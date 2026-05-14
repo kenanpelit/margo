@@ -115,7 +115,11 @@ impl Component for Shell {
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let icon_theme = gtk::IconTheme::for_display(&gtk::gdk::Display::default().unwrap());
-        icon_theme.add_search_path(dirs::home_dir().unwrap().join(".config/mshell/icons"));
+        icon_theme.add_search_path(
+            dirs::home_dir()
+                .unwrap()
+                .join(".config/margo/mshell/icons"),
+        );
 
         root.init_layer_shell();
         root.set_layer(Layer::Background);

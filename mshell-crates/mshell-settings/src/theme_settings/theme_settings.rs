@@ -655,7 +655,7 @@ impl Component for ThemeSettingsModel {
                         gtk::Label {
                             add_css_class: "label-small",
                             set_halign: gtk::Align::Start,
-                            set_label: "Custom styles sheets go in ~/.config/mshell/styles/",
+                            set_label: "Custom styles sheets go in ~/.config/margo/mshell/styles/",
                             set_hexpand: true,
                             set_xalign: 0.0,
                             set_wrap: true,
@@ -1487,7 +1487,7 @@ impl Component for ThemeSettingsModel {
 fn available_shell_icon_themes() -> Vec<String> {
     let mut themes = std::collections::HashSet::new();
 
-    let search_paths = [dirs::home_dir().map(|h| h.join(".config/mshell/icons"))];
+    let search_paths = [dirs::home_dir().map(|h| h.join(".config/margo/mshell/icons"))];
 
     for path in search_paths.iter().flatten() {
         let Ok(entries) = std::fs::read_dir(path) else {

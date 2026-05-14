@@ -4,7 +4,7 @@ use std::path::PathBuf;
 pub(crate) fn styles_dir() -> PathBuf {
     home_dir()
         .expect("HOME not set")
-        .join(".config/mshell/styles")
+        .join(".config/margo/mshell/styles")
 }
 
 pub(crate) fn style_path(name: &str) -> PathBuf {

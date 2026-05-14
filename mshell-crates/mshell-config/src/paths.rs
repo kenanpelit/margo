@@ -5,7 +5,7 @@ pub(crate) const DEFAULT_PROFILE_NAME: &str = "default";
 
 pub(crate) fn default_config_path() -> PathBuf {
     home_dir().expect("HOME not set").join(format!(
-        ".config/mshell/profiles/{}.yaml",
+        ".config/margo/mshell/profiles/{}.yaml",
         DEFAULT_PROFILE_NAME
     ))
 }
@@ -13,7 +13,7 @@ pub(crate) fn default_config_path() -> PathBuf {
 pub(crate) fn profiles_dir() -> PathBuf {
     home_dir()
         .expect("HOME not set")
-        .join(".config/mshell/profiles")
+        .join(".config/margo/mshell/profiles")
 }
 
 pub(crate) fn active_profile_cache_path() -> PathBuf {
