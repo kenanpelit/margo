@@ -15,6 +15,7 @@ use mshell_lockscreen::lock_screen_manager::{LockScreenManagerInit, LockScreenMa
 use mshell_notification_popups::popup_notifications::{
     PopupNotificationsInit, PopupNotificationsModel,
 };
+use mshell_services::notification_service;
 use mshell_osd::brightness_osd::{BrightnessOsdInit, BrightnessOsdModel};
 use mshell_osd::sound_alerts::SoundAlertsModel;
 use mshell_osd::volume_osd::{VolumeOsdInit, VolumeOsdModel};
@@ -64,6 +65,8 @@ pub(crate) enum ShellInput {
     ToggleClipboard(Option<String>),
     ToggleClockMenu(Option<String>),
     ToggleNotifications(Option<String>),
+    NotificationsClearAll,
+    NotificationsReadPopups,
     ToggleScreenshotMenu(Option<String>),
     ToggleWallpaperMenu(Option<String>),
     CycleWallpaper(mshell_cache::wallpaper::CycleDirection),
@@ -295,6 +298,21 @@ impl Component for Shell {
             ShellInput::ToggleNotifications(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
                     frame.emit(FrameInput::ToggleNotificationMenu);
+                }
+            }
+            ShellInput::NotificationsClearAll => {
+                // Same effect as the menu's "Clear All" — drops the
+                // whole history (and with it any live popups).
+                tokio::spawn(async move {
+                    let _ = notification_service().dismiss_all().await;
+                });
+            }
+            ShellInput::NotificationsReadPopups => {
+                // Dismiss only the on-screen popups; they stay in the
+                // notification history.
+                let service = notification_service();
+                for popup in service.popups.get() {
+                    service.dismiss_popup(popup.id);
                 }
             }
             ShellInput::ToggleClipboard(monitor_name) => {

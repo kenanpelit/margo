@@ -2,6 +2,14 @@ use crate::bus::bus_command;
 use clap::Subcommand;
 
 #[derive(Subcommand, Debug)]
+pub enum NotificationAction {
+    /// Clear every notification — history and on-screen popups
+    Clears,
+    /// Dismiss the on-screen popups, keeping them in history
+    Read,
+}
+
+#[derive(Subcommand, Debug)]
 pub enum MenuCommands {
     /// Toggle the app launcher menu
     AppLauncher,
@@ -9,8 +17,11 @@ pub enum MenuCommands {
     Clipboard,
     /// Toggle the clock menu
     Clock,
-    /// Toggle the notifications menu
-    Notifications,
+    /// Toggle the notifications menu, or act on notifications
+    Notifications {
+        #[command(subcommand)]
+        action: Option<NotificationAction>,
+    },
     /// Toggle the quick settings menu
     QuickSettings,
     /// Toggle the screenshot menu
@@ -51,9 +62,17 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         MenuCommands::Clock => {
             bus_command("Clock").await?;
         }
-        MenuCommands::Notifications => {
-            bus_command("Notifications").await?;
-        }
+        MenuCommands::Notifications { action } => match action {
+            None => {
+                bus_command("Notifications").await?;
+            }
+            Some(NotificationAction::Clears) => {
+                bus_command("NotificationsClearAll").await?;
+            }
+            Some(NotificationAction::Read) => {
+                bus_command("NotificationsReadPopups").await?;
+            }
+        },
         MenuCommands::Screenshot => {
             bus_command("Screenshot").await?;
         }

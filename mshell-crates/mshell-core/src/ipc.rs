@@ -68,6 +68,12 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                         app_sender.emit(ShellInput::ToggleNotifications(None));
                     }
                 }
+                IPCCommand::NotificationsClearAll => {
+                    app_sender.emit(ShellInput::NotificationsClearAll);
+                }
+                IPCCommand::NotificationsReadPopups => {
+                    app_sender.emit(ShellInput::NotificationsReadPopups);
+                }
                 IPCCommand::Screenshot => {
                     if let Some(active_workspace) = margo_service().active_workspace().await {
                         app_sender.emit(ShellInput::ToggleScreenshotMenu(Some(
@@ -321,6 +327,8 @@ enum IPCCommand {
     Clock,
     Clipboard,
     Notifications,
+    NotificationsClearAll,
+    NotificationsReadPopups,
     Screenshot,
     Wallpaper,
     Nufw,
@@ -383,6 +391,12 @@ impl IPCService {
     }
     async fn notifications(&self) {
         let _ = self.tx.send(IPCCommand::Notifications);
+    }
+    async fn notifications_clear_all(&self) {
+        let _ = self.tx.send(IPCCommand::NotificationsClearAll);
+    }
+    async fn notifications_read_popups(&self) {
+        let _ = self.tx.send(IPCCommand::NotificationsReadPopups);
     }
     async fn screenshot(&self) {
         let _ = self.tx.send(IPCCommand::Screenshot);
