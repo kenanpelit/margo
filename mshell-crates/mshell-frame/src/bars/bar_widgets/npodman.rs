@@ -1,36 +1,27 @@
-//! Podman container bar widget — MVP port of the `npodman`
-//! noctalia plugin. Bar pill that summarises running containers
-//! + pods + images. The upstream Panel.qml has a full table UI
-//! with start/stop/delete actions — that's deferred to follow-up
-//! work; this widget is the always-visible indicator.
+//! Podman bar pill — port of the noctalia `npodman` plugin's
+//! bar half.
 //!
-//! Probe is `podman ps --all --format json` + `podman pod ps
-//! --format json` + `podman images --format json` every 60 s.
-//! `podman` JSON output is a stable contract (Podman 4+; we
-//! support both Podman 4 and Podman 5 shape — the fields we care
-//! about are the same in both). Tooling defaults to rootless
-//! podman on the current user; if you run rootful, run mshell as
-//! root or set `CONTAINER_CONNECTION` before launching.
-//!
-//! Click opens `podman ps` in the user's terminal. Same terminal-
-//! lookup chain as `nufw.rs` because the requirement is identical.
+//! Render-only widget. Polls `podman ps` / `podman pod ps` /
+//! `podman images` every 60 s and draws an icon + tooltip
+//! summary. Click emits `NpodmanOutput::Clicked`; frame toggles
+//! `MenuType::Npodman`. Menu lives in
+//! `menu_widgets/npodman/npodman_menu_widget.rs`.
 
 use relm4::gtk::prelude::{ButtonExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::time::Duration;
-use tracing::warn;
 
 const REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 const STARTUP_DELAY: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct PodmanSummary {
-    running_containers: usize,
-    total_containers: usize,
-    running_pods: usize,
-    total_pods: usize,
-    image_count: usize,
-    error: Option<String>,
+    pub(crate) running_containers: usize,
+    pub(crate) total_containers: usize,
+    pub(crate) running_pods: usize,
+    pub(crate) total_pods: usize,
+    pub(crate) image_count: usize,
+    pub(crate) error: Option<String>,
 }
 
 #[derive(Debug)]
@@ -44,7 +35,9 @@ pub(crate) enum NpodmanInput {
 }
 
 #[derive(Debug)]
-pub(crate) enum NpodmanOutput {}
+pub(crate) enum NpodmanOutput {
+    Clicked,
+}
 
 pub(crate) struct NpodmanInit {}
 
@@ -103,8 +96,8 @@ impl Component for NpodmanModel {
                         () = &mut shutdown_fut => break,
                         _ = tokio::time::sleep(delay) => {}
                     }
-                    let summary = fetch_podman_summary().await;
-                    let _ = out.send(NpodmanCommandOutput::Refreshed(summary));
+                    let s = fetch_podman_summary().await;
+                    let _ = out.send(NpodmanCommandOutput::Refreshed(s));
                 }
             }
         });
@@ -122,11 +115,13 @@ impl Component for NpodmanModel {
     fn update(
         &mut self,
         message: Self::Input,
-        _sender: ComponentSender<Self>,
+        sender: ComponentSender<Self>,
         _root: &Self::Root,
     ) {
         match message {
-            NpodmanInput::Clicked => spawn_terminal_ps(),
+            NpodmanInput::Clicked => {
+                let _ = sender.output(NpodmanOutput::Clicked);
+            }
         }
     }
 
@@ -149,12 +144,6 @@ impl Component for NpodmanModel {
 }
 
 fn apply_visual(image: &gtk::Image, root: &gtk::Box, s: &PodmanSummary) {
-    // `class-or-package-symbolic` is the 3D-cube glyph Adwaita
-    // ships for "package / module" — closer to the container
-    // mental model than `package-x-generic-symbolic`'s flat 2D
-    // box. Falls back to the flat box if the 3D one isn't in the
-    // active theme (Tela / Papirus ship both, Adwaita ships only
-    // the 3D one).
     let icon = if s.error.is_some() {
         "firewall-error-symbolic"
     } else {
@@ -183,45 +172,24 @@ fn apply_visual(image: &gtk::Image, root: &gtk::Box, s: &PodmanSummary) {
     };
     root.set_tooltip_text(Some(&tooltip));
 
-    if s.running_containers > 0 {
+    root.remove_css_class("active");
+    root.remove_css_class("error");
+    if s.error.is_some() {
+        root.add_css_class("error");
+    } else if s.running_containers > 0 {
         root.add_css_class("active");
-    } else {
-        root.remove_css_class("active");
     }
 }
 
-fn spawn_terminal_ps() {
-    tokio::spawn(async move {
-        for term in ["kitty", "alacritty", "foot", "wezterm", "xterm"] {
-            if let Ok(true) = which_async(term).await {
-                let _ = tokio::process::Command::new(term)
-                    .args(["-e", "sh", "-c", "podman ps --all; echo; echo Press any key…; read -n 1"])
-                    .status()
-                    .await;
-                return;
-            }
-        }
-        warn!("no terminal emulator found for npodman ps");
-    });
-}
-
-async fn which_async(bin: &str) -> std::io::Result<bool> {
-    let status = tokio::process::Command::new("which")
-        .arg(bin)
-        .status()
-        .await?;
-    Ok(status.success())
-}
-
-async fn fetch_podman_summary() -> PodmanSummary {
+/// Quick summary probe (for the bar pill only). Exposed
+/// pub(crate) so the menu widget can reuse the same probe path
+/// after each action.
+pub(crate) async fn fetch_podman_summary() -> PodmanSummary {
     let mut s = PodmanSummary::default();
 
     let containers = match run_capture("podman", &["ps", "--all", "--format", "json"]).await {
         Some(out) => out,
         None => {
-            // Most common: podman not installed, or rootless socket
-            // isn't running yet. Either way, surface the situation
-            // without crashing the bar.
             return PodmanSummary {
                 error: Some("podman not available".to_string()),
                 ..PodmanSummary::default()
@@ -243,18 +211,10 @@ async fn fetch_podman_summary() -> PodmanSummary {
         s.total_containers = arr.len();
         s.running_containers = arr
             .iter()
-            .filter(|c| {
-                // Podman 4 puts state under .State (string),
-                // Podman 5 sometimes lowercases. Match liberally.
-                c.get("State")
-                    .and_then(|v| v.as_str())
-                    .map(|st| st.eq_ignore_ascii_case("running"))
-                    .unwrap_or(false)
-            })
+            .filter(|c| is_running_state(c.get("State").and_then(|v| v.as_str()).unwrap_or("")))
             .count();
     }
 
-    // Pods + images probes — optional, don't error out if missing.
     if let Some(pods_raw) = run_capture("podman", &["pod", "ps", "--format", "json"]).await {
         if let Ok(pods) = serde_json::from_str::<serde_json::Value>(&pods_raw) {
             if let Some(arr) = pods.as_array() {
@@ -262,10 +222,7 @@ async fn fetch_podman_summary() -> PodmanSummary {
                 s.running_pods = arr
                     .iter()
                     .filter(|p| {
-                        p.get("Status")
-                            .and_then(|v| v.as_str())
-                            .map(|st| st.eq_ignore_ascii_case("running"))
-                            .unwrap_or(false)
+                        is_running_state(p.get("Status").and_then(|v| v.as_str()).unwrap_or(""))
                     })
                     .count();
             }
@@ -281,6 +238,10 @@ async fn fetch_podman_summary() -> PodmanSummary {
     }
 
     s
+}
+
+fn is_running_state(state: &str) -> bool {
+    state.eq_ignore_ascii_case("running")
 }
 
 async fn run_capture(cmd: &str, args: &[&str]) -> Option<String> {
