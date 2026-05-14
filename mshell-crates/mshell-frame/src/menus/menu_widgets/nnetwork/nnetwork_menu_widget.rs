@@ -9,7 +9,9 @@
 //!     signal-strength icon + SSID + lock glyph (if secured) +
 //!     Connect / Connected button.
 //!
-//! Actions are unprivileged `nmcli` invocations:
+//! Link / Wi-Fi state is read reactively from `network_service()`
+//! (NetworkManager over D-Bus) — no polling. Actions are still
+//! unprivileged `nmcli` invocations, but only on a user click:
 //!   * `nmcli radio wifi on/off`
 //!   * `nmcli device wifi rescan`
 //!   * `nmcli device wifi connect <ssid>` (NM prompts via its
@@ -17,21 +19,23 @@
 //!     we connect to already-known SSIDs; unknown-SSID password
 //!     entry is a follow-up).
 //!   * `nmcli connection down <name>` to disconnect.
+//! After an action the D-Bus watchers refresh the panel — no
+//! re-probe.
 
 use crate::bars::bar_widgets::nnetwork::{
-    LinkKind, NetworkState, WifiNetwork, probe_network_state, wifi_signal_icon,
+    LinkKind, NetworkState, WifiNetwork, read_network_state, wifi_signal_icon,
+};
+use mshell_common::WatcherToken;
+use mshell_utils::network::{
+    spawn_available_wifi_networks_watcher, spawn_network_watcher, spawn_wifi_watcher,
+    spawn_wired_watcher,
 };
 use relm4::gtk::glib;
 use relm4::gtk::prelude::{
     BoxExt, ButtonExt, ListBoxRowExt, ObjectExt, OrientableExt, WidgetExt,
 };
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
-use std::time::Duration;
 use tracing::warn;
-
-const REFRESH_INTERVAL: Duration = Duration::from_secs(15);
-const STARTUP_DELAY: Duration = Duration::from_millis(250);
-const POST_ACTION_DELAY: Duration = Duration::from_millis(800);
 
 pub(crate) struct NnetworkMenuWidgetModel {
     state: NetworkState,
@@ -42,6 +46,8 @@ pub(crate) struct NnetworkMenuWidgetModel {
     wifi_switch: gtk::Switch,
     wifi_switch_signal: glib::SignalHandlerId,
     network_list: gtk::ListBox,
+    wifi_watcher_token: WatcherToken,
+    wired_watcher_token: WatcherToken,
 }
 
 impl std::fmt::Debug for NnetworkMenuWidgetModel {
@@ -67,7 +73,12 @@ pub(crate) struct NnetworkMenuWidgetInit {}
 
 #[derive(Debug)]
 pub(crate) enum NnetworkMenuWidgetCommandOutput {
-    Refreshed(NetworkState),
+    /// Link / Wi-Fi / AP state changed (a D-Bus watcher fired).
+    NetworkChanged,
+    /// The Wi-Fi device was (un)plugged — re-arm its sub-watchers.
+    WifiChanged,
+    /// The wired device was (un)plugged — re-arm its sub-watcher.
+    WiredChanged,
 }
 
 #[relm4::component(pub(crate))]
@@ -193,27 +204,16 @@ impl Component for NnetworkMenuWidgetModel {
             glib::Propagation::Stop
         });
 
-        sender.command(|out, shutdown| {
-            async move {
-                let shutdown_fut = shutdown.wait();
-                tokio::pin!(shutdown_fut);
-                let mut first = true;
-                loop {
-                    let delay = if first { STARTUP_DELAY } else { REFRESH_INTERVAL };
-                    first = false;
-                    tokio::select! {
-                        () = &mut shutdown_fut => break,
-                        _ = tokio::time::sleep(delay) => {}
-                    }
-                    // Menu probe includes the wifi scan.
-                    let s = probe_network_state(true).await;
-                    let _ = out.send(NnetworkMenuWidgetCommandOutput::Refreshed(s));
-                }
-            }
-        });
+        // Reactive — NetworkManager over D-Bus, no polling.
+        spawn_network_watcher(
+            &sender,
+            || NnetworkMenuWidgetCommandOutput::NetworkChanged,
+            || NnetworkMenuWidgetCommandOutput::WifiChanged,
+            || NnetworkMenuWidgetCommandOutput::WiredChanged,
+        );
 
-        let model = NnetworkMenuWidgetModel {
-            state: NetworkState::default(),
+        let mut model = NnetworkMenuWidgetModel {
+            state: read_network_state(),
             hero_icon: hero_icon_widget.clone(),
             hero_title: hero_title_widget.clone(),
             hero_subtitle: hero_subtitle_widget.clone(),
@@ -221,7 +221,11 @@ impl Component for NnetworkMenuWidgetModel {
             wifi_switch: wifi_switch_widget.clone(),
             wifi_switch_signal,
             network_list: network_list_widget.clone(),
+            wifi_watcher_token: WatcherToken::new(),
+            wired_watcher_token: WatcherToken::new(),
         };
+        arm_wifi_watchers(&sender, &mut model.wifi_watcher_token);
+        arm_wired_watcher(&sender, &mut model.wired_watcher_token);
 
         let widgets = view_output!();
         sync_view(&model, &sender);
@@ -277,33 +281,61 @@ impl Component for NnetworkMenuWidgetModel {
         _root: &Self::Root,
     ) {
         match message {
-            NnetworkMenuWidgetCommandOutput::Refreshed(state) => {
-                if self.state != state {
-                    self.state = state;
-                    sync_view(self, &sender);
-                }
+            NnetworkMenuWidgetCommandOutput::NetworkChanged => {}
+            NnetworkMenuWidgetCommandOutput::WifiChanged => {
+                arm_wifi_watchers(&sender, &mut self.wifi_watcher_token);
             }
+            NnetworkMenuWidgetCommandOutput::WiredChanged => {
+                arm_wired_watcher(&sender, &mut self.wired_watcher_token);
+            }
+        }
+        let state = read_network_state();
+        if self.state != state {
+            self.state = state;
+            sync_view(self, &sender);
         }
     }
 }
 
-/// Run `nmcli <args…>`, wait, then re-probe so the panel mirrors
-/// the new state. nmcli connect can take a few seconds, hence
-/// the longer post-action delay.
-fn run_nmcli(args: Vec<String>, sender: ComponentSender<NnetworkMenuWidgetModel>) {
-    sender.command(move |out, _shutdown| async move {
-        let status = tokio::process::Command::new("nmcli")
+/// Arm (or re-arm) the Wi-Fi device sub-watchers — enabled /
+/// connectivity / ssid / strength plus the scanned-AP list.
+/// The top-level `spawn_network_watcher` only re-fires on
+/// hot-plug, so this picks up everything in between.
+fn arm_wifi_watchers(
+    sender: &ComponentSender<NnetworkMenuWidgetModel>,
+    token: &mut WatcherToken,
+) {
+    let t = token.reset();
+    spawn_wifi_watcher(sender, t.clone(), || {
+        NnetworkMenuWidgetCommandOutput::NetworkChanged
+    });
+    spawn_available_wifi_networks_watcher(sender, t, || {
+        NnetworkMenuWidgetCommandOutput::NetworkChanged
+    });
+}
+
+fn arm_wired_watcher(
+    sender: &ComponentSender<NnetworkMenuWidgetModel>,
+    token: &mut WatcherToken,
+) {
+    let t = token.reset();
+    spawn_wired_watcher(sender, t, || NnetworkMenuWidgetCommandOutput::NetworkChanged);
+}
+
+/// Run `nmcli <args…>` once, on a user action. The panel
+/// refresh comes from the D-Bus watchers picking up the
+/// NetworkManager state change — no re-probe here.
+fn run_nmcli(args: Vec<String>, _sender: ComponentSender<NnetworkMenuWidgetModel>) {
+    tokio::spawn(async move {
+        match tokio::process::Command::new("nmcli")
             .args(&args)
             .status()
-            .await;
-        match status {
+            .await
+        {
             Ok(s) if s.success() => {}
             Ok(s) => warn!(?s, ?args, "nmcli action returned non-zero"),
             Err(e) => warn!(error = %e, ?args, "nmcli spawn failed"),
         }
-        tokio::time::sleep(POST_ACTION_DELAY).await;
-        let s = probe_network_state(true).await;
-        let _ = out.send(NnetworkMenuWidgetCommandOutput::Refreshed(s));
     });
 }
 
@@ -319,11 +351,7 @@ fn sync_view(model: &NnetworkMenuWidgetModel, sender: &ComponentSender<NnetworkM
             } else {
                 s.active_name.clone()
             },
-            if s.ipv4.is_empty() {
-                format!("{}% signal", s.active_signal)
-            } else {
-                format!("{}  ·  {}% signal", s.ipv4, s.active_signal)
-            },
+            format!("{}% signal", s.active_signal),
         ),
         LinkKind::Wired => (
             "network-wired-symbolic",
@@ -332,11 +360,7 @@ fn sync_view(model: &NnetworkMenuWidgetModel, sender: &ComponentSender<NnetworkM
             } else {
                 s.active_name.clone()
             },
-            if s.ipv4.is_empty() {
-                "connected".to_string()
-            } else {
-                s.ipv4.clone()
-            },
+            "connected".to_string(),
         ),
         LinkKind::None => (
             if s.wifi_enabled {

@@ -20,23 +20,21 @@
 //!         shared `mshell_idle::IdleInhibitor` (same path the
 //!         quick-action coffee button uses).
 //!
-//! Profile switching shells out to `powerprofilesctl set <id>` —
-//! an unprivileged call against the per-session power-profiles-
-//! daemon, no pkexec needed. Each switch triggers an immediate
-//! re-probe so the highlight tracks reality.
+//! Profile switching goes through `PowerProfilesService::
+//! set_active_profile` (power-profiles-daemon over D-Bus); the
+//! `active_profile` watcher then fires `StateChanged` so the
+//! highlight tracks reality with no re-probe.
 
-use crate::bars::bar_widgets::npower::{PowerState, Profile, probe_power_state};
+use crate::bars::bar_widgets::npower::{PowerState, Profile, read_power_state};
 use mshell_idle::inhibitor::IdleInhibitor;
+use mshell_services::power_profile_service;
+use mshell_utils::battery::{spawn_battery_online_watcher, spawn_battery_watcher};
 use mshell_utils::idle::spawn_idle_inhibitor_watcher;
+use mshell_utils::power_profile::spawn_active_profile_watcher;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::path::PathBuf;
-use std::time::Duration;
 use tracing::warn;
-
-const REFRESH_INTERVAL: Duration = Duration::from_secs(8);
-const STARTUP_DELAY: Duration = Duration::from_millis(200);
-const POST_ACTION_DELAY: Duration = Duration::from_millis(400);
 
 pub(crate) struct NpowerMenuWidgetModel {
     state: PowerState,
@@ -85,8 +83,11 @@ pub(crate) struct NpowerMenuWidgetInit {}
 
 #[derive(Debug)]
 pub(crate) enum NpowerMenuWidgetCommandOutput {
-    /// Power state + `auto_locked` flag from the poll loop.
-    Refreshed(PowerState, bool),
+    /// Profile or battery state changed (a D-Bus watcher fired).
+    StateChanged,
+    /// The `ppd-auto-profile` lock-file state changed — re-read
+    /// after our own toggle (and once at startup).
+    AutoLockChanged(bool),
     /// The shared idle inhibitor flipped (watcher or our own
     /// toggle) — re-read `IdleInhibitor::global()`.
     IdleStateChanged,
@@ -218,24 +219,20 @@ impl Component for NpowerMenuWidgetModel {
         }
         controls_box.append(&idle_button);
 
-        // Power state + auto-lock poll loop.
-        sender.command(|out, shutdown| {
-            async move {
-                let shutdown_fut = shutdown.wait();
-                tokio::pin!(shutdown_fut);
-                let mut first = true;
-                loop {
-                    let delay = if first { STARTUP_DELAY } else { REFRESH_INTERVAL };
-                    first = false;
-                    tokio::select! {
-                        () = &mut shutdown_fut => break,
-                        _ = tokio::time::sleep(delay) => {}
-                    }
-                    let s = probe_power_state().await;
-                    let locked = probe_auto_locked().await;
-                    let _ = out.send(NpowerMenuWidgetCommandOutput::Refreshed(s, locked));
-                }
-            }
+        // Reactive — profile from power-profiles-daemon, battery
+        // from UPower, both over D-Bus. No polling.
+        spawn_active_profile_watcher(&sender, None, || {
+            NpowerMenuWidgetCommandOutput::StateChanged
+        });
+        spawn_battery_watcher(&sender, || NpowerMenuWidgetCommandOutput::StateChanged);
+        spawn_battery_online_watcher(&sender, || NpowerMenuWidgetCommandOutput::StateChanged);
+
+        // The `ppd-auto-profile` lock-file has no change signal;
+        // read it once at startup and again after our own toggle.
+        sender.command(|out, _shutdown| async move {
+            let _ = out.send(NpowerMenuWidgetCommandOutput::AutoLockChanged(
+                probe_auto_locked().await,
+            ));
         });
 
         // Idle inhibitor watcher — same shared global the
@@ -243,7 +240,7 @@ impl Component for NpowerMenuWidgetModel {
         spawn_idle_inhibitor_watcher(&sender, || NpowerMenuWidgetCommandOutput::IdleStateChanged);
 
         let model = NpowerMenuWidgetModel {
-            state: PowerState::default(),
+            state: read_power_state(),
             auto_locked: false,
             idle_inhibited: IdleInhibitor::global().get(),
             hero_icon: hero_icon_widget.clone(),
@@ -270,33 +267,24 @@ impl Component for NpowerMenuWidgetModel {
     ) {
         match message {
             NpowerMenuWidgetInput::SetProfile(profile) => {
-                let id = profile.ppd_id().to_string();
-                sender.command(move |out, _shutdown| async move {
-                    run_ppctl(&["set", &id]).await;
-                    tokio::time::sleep(POST_ACTION_DELAY).await;
-                    let s = probe_power_state().await;
-                    let locked = probe_auto_locked().await;
-                    let _ = out.send(NpowerMenuWidgetCommandOutput::Refreshed(s, locked));
+                // The `active_profile` watcher fires `StateChanged`
+                // once the daemon applies it — no re-probe here.
+                tokio::spawn(async move {
+                    set_profile(profile).await;
                 });
             }
             NpowerMenuWidgetInput::CycleProfile => {
-                let current = self.state.profile.unwrap_or(Profile::Unknown);
-                let next = cycle_next(current);
-                let id = next.ppd_id().to_string();
-                sender.command(move |out, _shutdown| async move {
-                    run_ppctl(&["set", &id]).await;
-                    tokio::time::sleep(POST_ACTION_DELAY).await;
-                    let s = probe_power_state().await;
-                    let locked = probe_auto_locked().await;
-                    let _ = out.send(NpowerMenuWidgetCommandOutput::Refreshed(s, locked));
+                let next = cycle_next(self.state.profile.unwrap_or(Profile::Unknown));
+                tokio::spawn(async move {
+                    set_profile(next).await;
                 });
             }
             NpowerMenuWidgetInput::ToggleAutoLock => {
                 sender.command(move |out, _shutdown| async move {
                     toggle_auto_lock().await;
-                    let s = probe_power_state().await;
-                    let locked = probe_auto_locked().await;
-                    let _ = out.send(NpowerMenuWidgetCommandOutput::Refreshed(s, locked));
+                    let _ = out.send(NpowerMenuWidgetCommandOutput::AutoLockChanged(
+                        probe_auto_locked().await,
+                    ));
                 });
             }
             NpowerMenuWidgetInput::ToggleIdleInhibit => {
@@ -317,9 +305,15 @@ impl Component for NpowerMenuWidgetModel {
         _root: &Self::Root,
     ) {
         match message {
-            NpowerMenuWidgetCommandOutput::Refreshed(state, auto_locked) => {
-                if self.state != state || self.auto_locked != auto_locked {
+            NpowerMenuWidgetCommandOutput::StateChanged => {
+                let state = read_power_state();
+                if self.state != state {
                     self.state = state;
+                    sync_view(self);
+                }
+            }
+            NpowerMenuWidgetCommandOutput::AutoLockChanged(auto_locked) => {
+                if self.auto_locked != auto_locked {
                     self.auto_locked = auto_locked;
                     sync_view(self);
                 }
@@ -555,14 +549,13 @@ async fn toggle_auto_lock() {
     }
 }
 
-async fn run_ppctl(args: &[&str]) {
-    match tokio::process::Command::new("powerprofilesctl")
-        .args(args)
-        .status()
+/// Apply a profile through power-profiles-daemon over D-Bus.
+async fn set_profile(profile: Profile) {
+    if let Err(e) = power_profile_service()
+        .power_profiles
+        .set_active_profile(profile.to_wayle())
         .await
     {
-        Ok(s) if s.success() => {}
-        Ok(s) => warn!(?s, ?args, "powerprofilesctl returned non-zero"),
-        Err(e) => warn!(error = %e, ?args, "powerprofilesctl spawn failed"),
+        warn!(error = %e, ?profile, "npower: set_active_profile failed");
     }
 }

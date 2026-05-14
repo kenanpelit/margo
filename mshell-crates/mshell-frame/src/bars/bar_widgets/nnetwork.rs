@@ -1,22 +1,28 @@
 //! Network Console bar pill — port of the noctalia `network`
 //! plugin's bar half.
 //!
-//! Render-only widget. Polls NetworkManager via `nmcli` every
-//! 10 s and draws a signal-strength icon + tooltip. Click emits
-//! `NnetworkOutput::Clicked`; frame toggles `MenuType::Nnetwork`.
-//! The Wi-Fi list + connect / disconnect / rescan / radio-toggle
-//! actions live in the menu widget.
+//! Render-only widget. Reactive: link state / Wi-Fi / scanned
+//! APs come from `network_service()` (NetworkManager over D-Bus)
+//! — no `nmcli` polling. Click emits `NnetworkOutput::Clicked`;
+//! frame toggles `MenuType::Nnetwork`. The Wi-Fi list + connect /
+//! disconnect / rescan / radio-toggle actions live in the menu
+//! widget.
 //!
-//! All probes are unprivileged `nmcli` reads — NetworkManager
-//! lets any session user query state + connect to a known SSID
-//! without root, so no pkexec here.
+//! Live throughput is the one thing NetworkManager doesn't give
+//! cheaply, so the `↓ … ↑ …` figure is still sampled from
+//! `/proc/net/dev` on a 1 s loop — a couple of file reads, no
+//! subprocess.
 
+use mshell_common::WatcherToken;
+use mshell_services::network_service;
+use mshell_utils::network::{spawn_network_watcher, spawn_wifi_watcher, spawn_wired_watcher};
 use relm4::gtk::prelude::{ButtonExt, GestureSingleExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::time::Duration;
+use wayle_network::types::connectivity::ConnectionType;
+use wayle_network::types::states::NetworkStatus;
+use wayle_network::core::access_point::SecurityType;
 
-const REFRESH_INTERVAL: Duration = Duration::from_secs(10);
-const STARTUP_DELAY: Duration = Duration::from_secs(1);
 /// Live throughput sampling cadence — 1 s gives a readable
 /// KB/s figure without the number jittering too fast to read.
 const SPEED_INTERVAL: Duration = Duration::from_secs(1);
@@ -38,7 +44,7 @@ pub(crate) struct SpeedSample {
     pub(crate) up_bps: u64,
 }
 
-/// One scanned Wi-Fi network row from `nmcli device wifi list`.
+/// One scanned Wi-Fi network row from the NetworkManager AP list.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct WifiNetwork {
     pub(crate) ssid: String,
@@ -59,23 +65,18 @@ pub(crate) enum LinkKind {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct NetworkState {
-    /// `nmcli` present + the daemon reachable.
+    /// A NetworkManager device (wifi or wired) is present.
     pub(crate) available: bool,
-    /// `nmcli radio wifi` → on/off.
+    /// Wi-Fi radio on/off.
     pub(crate) wifi_enabled: bool,
-    /// "full" / "limited" / "none" / "portal" / "unknown".
+    /// "full" / "limited" / "none" / "unknown".
     pub(crate) connectivity: String,
     /// Type of the active primary connection.
     pub(crate) active_kind: LinkKind,
-    /// Active connection name (SSID for wifi, profile name for
-    /// wired).
+    /// Active connection name (SSID for wifi, "Wired" for wired).
     pub(crate) active_name: String,
-    /// Active device interface (wlan0 / enp3s0 …).
-    pub(crate) active_device: String,
     /// Signal % of the active wifi link (0 when wired / down).
     pub(crate) active_signal: u8,
-    /// IPv4 address of the active device.
-    pub(crate) ipv4: String,
     /// Scanned networks (only meaningful when wifi_enabled).
     pub(crate) networks: Vec<WifiNetwork>,
     pub(crate) error: Option<String>,
@@ -89,9 +90,7 @@ impl Default for NetworkState {
             connectivity: "unknown".to_string(),
             active_kind: LinkKind::None,
             active_name: String::new(),
-            active_device: String::new(),
             active_signal: 0,
-            ipv4: String::new(),
             networks: Vec::new(),
             error: None,
         }
@@ -103,6 +102,8 @@ pub(crate) struct NnetworkModel {
     state: NetworkState,
     speed: SpeedSample,
     mode: DisplayMode,
+    wifi_watcher_token: WatcherToken,
+    wired_watcher_token: WatcherToken,
 }
 
 #[derive(Debug)]
@@ -122,7 +123,13 @@ pub(crate) struct NnetworkInit {}
 
 #[derive(Debug)]
 pub(crate) enum NnetworkCommandOutput {
-    Refreshed(NetworkState),
+    /// Link / Wi-Fi / AP state changed (a D-Bus watcher fired).
+    NetworkChanged,
+    /// The Wi-Fi device was (un)plugged — re-arm its sub-watcher.
+    WifiChanged,
+    /// The wired device was (un)plugged — re-arm its sub-watcher.
+    WiredChanged,
+    /// A `/proc/net/dev` throughput sample.
     SpeedSampled(SpeedSample),
 }
 
@@ -179,30 +186,18 @@ impl Component for NnetworkModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        // NetworkManager state poll (icon / tooltip).
-        sender.command(|out, shutdown| {
-            async move {
-                let shutdown_fut = shutdown.wait();
-                tokio::pin!(shutdown_fut);
-                let mut first = true;
-                loop {
-                    let delay = if first { STARTUP_DELAY } else { REFRESH_INTERVAL };
-                    first = false;
-                    tokio::select! {
-                        () = &mut shutdown_fut => break,
-                        _ = tokio::time::sleep(delay) => {}
-                    }
-                    // Bar poll skips the (slower) wifi scan; the
-                    // menu widget runs the full probe when open.
-                    let s = probe_network_state(false).await;
-                    let _ = out.send(NnetworkCommandOutput::Refreshed(s));
-                }
-            }
-        });
+        // Reactive link / Wi-Fi state — NetworkManager over D-Bus,
+        // no polling.
+        spawn_network_watcher(
+            &sender,
+            || NnetworkCommandOutput::NetworkChanged,
+            || NnetworkCommandOutput::WifiChanged,
+            || NnetworkCommandOutput::WiredChanged,
+        );
 
         // Live throughput poll — independent 1 s loop over
         // `/proc/net/dev`. Keeps a `prev` reading and emits the
-        // per-second delta.
+        // per-second delta. File reads only, no subprocess.
         sender.command(|out, shutdown| {
             async move {
                 let shutdown_fut = shutdown.wait();
@@ -233,11 +228,21 @@ impl Component for NnetworkModel {
         });
         root.add_controller(gesture);
 
-        let model = NnetworkModel {
-            state: NetworkState::default(),
+        let mut model = NnetworkModel {
+            state: read_network_state(),
             speed: SpeedSample::default(),
             mode: DisplayMode::Speed,
+            wifi_watcher_token: WatcherToken::new(),
+            wired_watcher_token: WatcherToken::new(),
         };
+        // Arm the per-device sub-watchers for whatever's already
+        // present (the top-level watcher only re-fires on
+        // hot-plug).
+        let wifi_token = model.wifi_watcher_token.reset();
+        spawn_wifi_watcher(&sender, wifi_token, || NnetworkCommandOutput::NetworkChanged);
+        let wired_token = model.wired_watcher_token.reset();
+        spawn_wired_watcher(&sender, wired_token, || NnetworkCommandOutput::NetworkChanged);
+
         let widgets = view_output!();
         apply_visual(
             &widgets.image,
@@ -273,12 +278,22 @@ impl Component for NnetworkModel {
         &mut self,
         widgets: &mut Self::Widgets,
         message: Self::CommandOutput,
-        _sender: ComponentSender<Self>,
+        sender: ComponentSender<Self>,
         root: &Self::Root,
     ) {
         match message {
-            NnetworkCommandOutput::Refreshed(state) => {
-                self.state = state;
+            NnetworkCommandOutput::NetworkChanged => {
+                self.state = read_network_state();
+            }
+            NnetworkCommandOutput::WifiChanged => {
+                let token = self.wifi_watcher_token.reset();
+                spawn_wifi_watcher(&sender, token, || NnetworkCommandOutput::NetworkChanged);
+                self.state = read_network_state();
+            }
+            NnetworkCommandOutput::WiredChanged => {
+                let token = self.wired_watcher_token.reset();
+                spawn_wired_watcher(&sender, token, || NnetworkCommandOutput::NetworkChanged);
+                self.state = read_network_state();
             }
             NnetworkCommandOutput::SpeedSampled(sample) => {
                 self.speed = sample;
@@ -368,6 +383,92 @@ pub(crate) fn wifi_signal_icon(signal: u8) -> &'static str {
     }
 }
 
+/// Snapshot the network state from the D-Bus-backed
+/// `network_service()`. Exposed `pub(crate)` so the menu widget
+/// reuses it.
+pub(crate) fn read_network_state() -> NetworkState {
+    let net = network_service();
+    let mut state = NetworkState::default();
+
+    let wifi = net.wifi.get();
+    let wired = net.wired.get();
+    state.available = wifi.is_some() || wired.is_some();
+
+    if let Some(w) = &wifi {
+        state.wifi_enabled = w.enabled.get();
+    }
+
+    let conn_str = |s: NetworkStatus| match s {
+        NetworkStatus::Connected => "full",
+        NetworkStatus::Connecting => "limited",
+        NetworkStatus::Disconnected => "none",
+    };
+
+    let wired_connected = wired
+        .as_ref()
+        .map(|w| w.connectivity.get() == NetworkStatus::Connected)
+        .unwrap_or(false);
+    let wifi_connected = wifi
+        .as_ref()
+        .map(|w| w.connectivity.get() == NetworkStatus::Connected)
+        .unwrap_or(false);
+
+    state.active_kind = match net.primary.get() {
+        ConnectionType::Wired => LinkKind::Wired,
+        ConnectionType::Wifi => LinkKind::Wifi,
+        _ => {
+            if wired_connected {
+                LinkKind::Wired
+            } else if wifi_connected {
+                LinkKind::Wifi
+            } else {
+                LinkKind::None
+            }
+        }
+    };
+
+    match state.active_kind {
+        LinkKind::Wifi => {
+            if let Some(w) = &wifi {
+                state.active_name = w.ssid.get().unwrap_or_default();
+                state.active_signal = w.strength.get().unwrap_or(0);
+                state.connectivity = conn_str(w.connectivity.get()).to_string();
+            }
+        }
+        LinkKind::Wired => {
+            state.active_name = "Wired".to_string();
+            if let Some(w) = &wired {
+                state.connectivity = conn_str(w.connectivity.get()).to_string();
+            }
+        }
+        LinkKind::None => {
+            state.connectivity = "none".to_string();
+        }
+    }
+
+    // Scanned APs — dedup by SSID, strongest first.
+    if let Some(w) = &wifi {
+        let current = w.ssid.get();
+        let mut seen: Vec<String> = Vec::new();
+        for ap in w.access_points.get() {
+            let ssid = ap.ssid.get().to_string_lossy();
+            if ssid.is_empty() || seen.contains(&ssid) {
+                continue;
+            }
+            seen.push(ssid.clone());
+            state.networks.push(WifiNetwork {
+                in_use: current.as_deref() == Some(ssid.as_str()),
+                ssid,
+                signal: ap.strength.get(),
+                secured: !matches!(ap.security.get(), SecurityType::None),
+            });
+        }
+        state.networks.sort_by(|a, b| b.signal.cmp(&a.signal));
+    }
+
+    state
+}
+
 fn apply_visual(
     image: &gtk::Image,
     speed_label: &gtk::Label,
@@ -429,7 +530,7 @@ fn apply_visual(
     let tooltip = if let Some(err) = &s.error {
         format!("Network: {err}")
     } else {
-        let mut lines = Vec::with_capacity(4);
+        let mut lines = Vec::with_capacity(3);
         match s.active_kind {
             LinkKind::Wifi => lines.push(format!(
                 "Wi-Fi: {} ({}%)",
@@ -454,9 +555,6 @@ fn apply_visual(
                 "Wi-Fi: off".to_string()
             }),
         }
-        if !s.ipv4.is_empty() {
-            lines.push(format!("IP: {}", s.ipv4));
-        }
         lines.push(format!("Connectivity: {}", s.connectivity));
         lines.join("\n")
     };
@@ -470,192 +568,9 @@ fn apply_visual(
     }
 }
 
-/// Aggregate `nmcli` probe. `with_scan` controls whether the
-/// (slower, ~1-2 s) Wi-Fi list scan runs — the bar poll skips
-/// it, the menu widget enables it. Exposed pub(crate) so the
-/// menu widget reuses the exact same parse path.
-pub(crate) async fn probe_network_state(with_scan: bool) -> NetworkState {
-    let mut state = NetworkState::default();
-
-    // nmcli availability + daemon reachable.
-    if run_capture("nmcli", &["-t", "-f", "RUNNING", "general"])
-        .await
-        .map(|o| o.trim() == "running")
-        .unwrap_or(false)
-    {
-        state.available = true;
-    } else {
-        state.error = Some("NetworkManager not available".to_string());
-        return state;
-    }
-
-    // Connectivity.
-    if let Some(out) = run_capture("nmcli", &["-t", "-f", "STATE,CONNECTIVITY", "general"]).await {
-        if let Some(line) = out.lines().next() {
-            let parts: Vec<&str> = line.split(':').collect();
-            if parts.len() > 1 {
-                state.connectivity = parts[1].to_lowercase();
-            }
-        }
-    }
-
-    // Radio state.
-    if let Some(out) = run_capture("nmcli", &["radio", "wifi"]).await {
-        state.wifi_enabled = out.trim().eq_ignore_ascii_case("enabled");
-    }
-
-    // Active device — pick the first wifi or ethernet device in
-    // `connected` / `connecting` state, preferring wifi.
-    if let Some(out) =
-        run_capture("nmcli", &["-t", "-f", "DEVICE,TYPE,STATE,CONNECTION", "device"]).await
-    {
-        let mut best: Option<(LinkKind, String, String)> = None;
-        for line in out.lines() {
-            let parts: Vec<&str> = line.split(':').collect();
-            if parts.len() < 4 {
-                continue;
-            }
-            let (device, kind_str, dev_state, conn) =
-                (parts[0], parts[1], parts[2], parts[3]);
-            if !(dev_state == "connected" || dev_state == "connecting") {
-                continue;
-            }
-            let kind = match kind_str {
-                "wifi" => LinkKind::Wifi,
-                "ethernet" => LinkKind::Wired,
-                _ => continue,
-            };
-            let prefer = match (&best, kind) {
-                (None, _) => true,
-                (Some((LinkKind::Wired, _, _)), LinkKind::Wifi) => true,
-                _ => false,
-            };
-            if prefer {
-                best = Some((kind, device.to_string(), conn.to_string()));
-            }
-        }
-        if let Some((kind, device, conn)) = best {
-            state.active_kind = kind;
-            state.active_device = device;
-            state.active_name = conn;
-        }
-    }
-
-    // IPv4 of the active device.
-    if !state.active_device.is_empty() {
-        if let Some(out) = run_capture(
-            "nmcli",
-            &["-g", "IP4.ADDRESS", "device", "show", &state.active_device],
-        )
-        .await
-        {
-            if let Some(addr) = out.lines().next() {
-                // nmcli prints `192.168.1.5/24` — strip the mask.
-                state.ipv4 = addr.split('/').next().unwrap_or("").trim().to_string();
-            }
-        }
-    }
-
-    // Wi-Fi scan list.
-    if state.wifi_enabled {
-        let rescan = if with_scan { "yes" } else { "no" };
-        if let Some(out) = run_capture(
-            "nmcli",
-            &[
-                "-t",
-                "-f",
-                "IN-USE,SIGNAL,SECURITY,SSID",
-                "device",
-                "wifi",
-                "list",
-                "--rescan",
-                rescan,
-            ],
-        )
-        .await
-        {
-            let mut seen: Vec<String> = Vec::new();
-            for line in out.lines() {
-                // nmcli -t escapes embedded ':' in fields with
-                // '\:'; split on unescaped ':' only.
-                let parts = split_nmcli_terse(line);
-                if parts.len() < 4 {
-                    continue;
-                }
-                let in_use = parts[0].trim() == "*";
-                let signal = parts[1].trim().parse::<u8>().unwrap_or(0);
-                let security = parts[2].trim();
-                let ssid = parts[3].trim().to_string();
-                if ssid.is_empty() || seen.contains(&ssid) {
-                    continue;
-                }
-                seen.push(ssid.clone());
-                state.networks.push(WifiNetwork {
-                    ssid,
-                    signal,
-                    secured: !security.is_empty() && security != "--",
-                    in_use,
-                });
-                if in_use {
-                    state.active_signal = signal;
-                }
-            }
-            // Strongest first.
-            state.networks.sort_by(|a, b| b.signal.cmp(&a.signal));
-        }
-    }
-
-    state
-}
-
-/// Split an `nmcli -t` line on unescaped `:` separators. nmcli
-/// escapes literal colons inside a field as `\:`; a naive
-/// `split(':')` would chop SSIDs / security strings that contain
-/// them.
-fn split_nmcli_terse(line: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut current = String::new();
-    let mut chars = line.chars().peekable();
-    while let Some(c) = chars.next() {
-        match c {
-            '\\' => {
-                if let Some(&next) = chars.peek() {
-                    current.push(next);
-                    chars.next();
-                }
-            }
-            ':' => {
-                out.push(std::mem::take(&mut current));
-            }
-            _ => current.push(c),
-        }
-    }
-    out.push(current);
-    out
-}
-
-async fn run_capture(cmd: &str, args: &[&str]) -> Option<String> {
-    let out = tokio::process::Command::new(cmd)
-        .args(args)
-        .output()
-        .await
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    Some(String::from_utf8_lossy(&out.stdout).into_owned())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn terse_split_handles_escaped_colons() {
-        // SSID "my:net" should survive as a single field.
-        let parts = split_nmcli_terse(r"*:72:WPA2:my\:net");
-        assert_eq!(parts, vec!["*", "72", "WPA2", "my:net"]);
-    }
 
     #[test]
     fn signal_icon_buckets() {

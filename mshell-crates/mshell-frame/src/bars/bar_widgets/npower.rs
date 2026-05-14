@@ -1,27 +1,27 @@
 //! Power profile bar pill — port of the noctalia `npower`
 //! plugin's bar half.
 //!
-//! Render-only widget. Polls `powerprofilesctl` + the battery
-//! sysfs nodes every 8 s and draws a profile icon + tooltip.
-//! Click emits `NpowerOutput::Clicked`; frame toggles
+//! Render-only widget. Reactive: the profile comes from
+//! `power_profile_service()` (power-profiles-daemon over D-Bus)
+//! and battery / power-source from `battery_service()` +
+//! `line_power_service()` (UPower over D-Bus) — no subprocess
+//! polling. Click emits `NpowerOutput::Clicked`; frame toggles
 //! `MenuType::Npower`.
 //!
-//! The system already ships a `PowerProfile` bar widget backed
-//! by `power-profiles-daemon` over D-Bus, but it's icon-only with
-//! no panel. This is the richer port: a profile switcher panel
-//! plus battery / power-source readout, with the bar pill
+//! The system already ships a plain `PowerProfile` bar widget
+//! backed by the same daemon, but it's icon-only with no panel.
+//! This is the richer port: a profile switcher panel plus
+//! battery / power-source readout, with the bar pill
 //! colour-coded — performance = red, balanced = neutral,
 //! power-saver = green.
 
+use mshell_services::{battery_service, line_power_service, power_profile_service};
+use mshell_utils::battery::{spawn_battery_online_watcher, spawn_battery_watcher};
+use mshell_utils::power_profile::spawn_active_profile_watcher;
 use relm4::gtk::prelude::{ButtonExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
-use std::time::Duration;
-
-// Short poll so the pill tracks profile switches (made from the
-// menu, `powerprofilesctl`, or anything else) without a visible
-// lag. The probe is cheap — one subprocess + a few sysfs reads.
-const REFRESH_INTERVAL: Duration = Duration::from_secs(2);
-const STARTUP_DELAY: Duration = Duration::from_millis(500);
+use wayle_battery::types::DeviceState;
+use wayle_power_profiles::types::profile::PowerProfile;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Profile {
@@ -32,22 +32,23 @@ pub(crate) enum Profile {
 }
 
 impl Profile {
-    pub(crate) fn from_ppd(s: &str) -> Self {
-        match s.trim() {
-            "power-saver" => Profile::PowerSaver,
-            "balanced" => Profile::Balanced,
-            "performance" => Profile::Performance,
-            _ => Profile::Unknown,
+    pub(crate) fn from_wayle(p: &PowerProfile) -> Self {
+        match p {
+            PowerProfile::PowerSaver => Profile::PowerSaver,
+            PowerProfile::Balanced => Profile::Balanced,
+            PowerProfile::Performance => Profile::Performance,
+            PowerProfile::Unknown => Profile::Unknown,
         }
     }
 
-    /// The `powerprofilesctl set <id>` argument.
-    pub(crate) fn ppd_id(self) -> &'static str {
+    /// The wayle `PowerProfile` this maps to — used to drive
+    /// `PowerProfilesService::set_active_profile`.
+    pub(crate) fn to_wayle(self) -> PowerProfile {
         match self {
-            Profile::PowerSaver => "power-saver",
-            Profile::Balanced => "balanced",
-            Profile::Performance => "performance",
-            Profile::Unknown => "balanced",
+            Profile::PowerSaver => PowerProfile::PowerSaver,
+            Profile::Balanced => PowerProfile::Balanced,
+            Profile::Performance => PowerProfile::Performance,
+            Profile::Unknown => PowerProfile::Balanced,
         }
     }
 
@@ -113,7 +114,8 @@ pub(crate) struct NpowerInit {}
 
 #[derive(Debug)]
 pub(crate) enum NpowerCommandOutput {
-    Refreshed(PowerState),
+    /// The profile or battery state changed (D-Bus watcher fired).
+    StateChanged,
 }
 
 #[relm4::component(pub)]
@@ -154,26 +156,15 @@ impl Component for NpowerModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        sender.command(|out, shutdown| {
-            async move {
-                let shutdown_fut = shutdown.wait();
-                tokio::pin!(shutdown_fut);
-                let mut first = true;
-                loop {
-                    let delay = if first { STARTUP_DELAY } else { REFRESH_INTERVAL };
-                    first = false;
-                    tokio::select! {
-                        () = &mut shutdown_fut => break,
-                        _ = tokio::time::sleep(delay) => {}
-                    }
-                    let s = probe_power_state().await;
-                    let _ = out.send(NpowerCommandOutput::Refreshed(s));
-                }
-            }
-        });
+        // Reactive — no polling. The profile comes from
+        // power-profiles-daemon and battery / line-power from
+        // UPower, all over D-Bus.
+        spawn_active_profile_watcher(&sender, None, || NpowerCommandOutput::StateChanged);
+        spawn_battery_watcher(&sender, || NpowerCommandOutput::StateChanged);
+        spawn_battery_online_watcher(&sender, || NpowerCommandOutput::StateChanged);
 
         let model = NpowerModel {
-            state: PowerState::default(),
+            state: read_power_state(),
         };
         let widgets = view_output!();
         apply_visual(&widgets.image, &root, &model.state);
@@ -201,7 +192,8 @@ impl Component for NpowerModel {
         root: &Self::Root,
     ) {
         match message {
-            NpowerCommandOutput::Refreshed(state) => {
+            NpowerCommandOutput::StateChanged => {
+                let state = read_power_state();
                 if self.state != state {
                     self.state = state;
                     apply_visual(&widgets.image, root, &self.state);
@@ -253,72 +245,48 @@ fn apply_visual(image: &gtk::Image, root: &gtk::Box, s: &PowerState) {
     root.add_css_class(profile.css_class());
 }
 
-/// Probe `powerprofilesctl get` + the battery sysfs nodes.
-/// Exposed pub(crate) so the menu widget reuses it after each
-/// profile switch.
-pub(crate) async fn probe_power_state() -> PowerState {
+/// Snapshot the power state from the D-Bus-backed services.
+/// Exposed `pub(crate)` so the menu widget reuses it.
+pub(crate) fn read_power_state() -> PowerState {
     let mut state = PowerState::default();
 
-    match run_capture("powerprofilesctl", &["get"]).await {
-        Some(out) => state.profile = Some(Profile::from_ppd(&out)),
-        None => {
-            // powerprofilesctl missing / daemon down. Battery
-            // readout still works from sysfs, so don't bail —
-            // just leave profile = None and note it.
-            state.error = Some("power-profiles-daemon not available".to_string());
+    let profile = power_profile_service()
+        .power_profiles
+        .active_profile
+        .get();
+    state.profile = Some(Profile::from_wayle(&profile));
+
+    let battery = battery_service().device.clone();
+    let dev_state = battery.state.get();
+    if battery.is_present.get() {
+        state.battery_available = true;
+        state.battery_percent =
+            Some(battery.percentage.get().round().clamp(0.0, 100.0) as u8);
+        state.battery_status = match dev_state {
+            DeviceState::Charging => "Charging",
+            DeviceState::Discharging => "Discharging",
+            DeviceState::FullyCharged => "Full",
+            DeviceState::Empty => "Empty",
+            DeviceState::PendingCharge => "Not charging",
+            DeviceState::PendingDischarge => "Not charging",
+            DeviceState::Unknown => "",
         }
+        .to_string();
     }
 
-    // Battery + power-source from /sys/class/power_supply.
-    if let Ok(mut entries) = tokio::fs::read_dir("/sys/class/power_supply").await {
-        while let Ok(Some(entry)) = entries.next_entry().await {
-            let base = entry.path();
-            let kind = tokio::fs::read_to_string(base.join("type"))
-                .await
-                .unwrap_or_default();
-            match kind.trim() {
-                "Mains" => {
-                    let online = tokio::fs::read_to_string(base.join("online"))
-                        .await
-                        .unwrap_or_default();
-                    if online.trim() == "1" {
-                        state.power_source = "ac".to_string();
-                    }
-                }
-                "Battery" => {
-                    state.battery_available = true;
-                    if let Ok(cap) = tokio::fs::read_to_string(base.join("capacity")).await {
-                        if let Ok(pct) = cap.trim().parse::<u8>() {
-                            state.battery_percent = Some(pct.min(100));
-                        }
-                    }
-                    if let Ok(st) = tokio::fs::read_to_string(base.join("status")).await {
-                        state.battery_status = st.trim().to_string();
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-    if state.power_source.is_empty() {
-        state.power_source = if state.battery_available {
-            "battery".to_string()
-        } else {
-            "unknown".to_string()
-        };
-    }
+    // The line-power adapter is the direct "plugged in" signal;
+    // fall back to the UPower device state when there's no
+    // line-power device.
+    let on_ac = line_power_service().map(|s| s.device.online.get()).unwrap_or(
+        dev_state == DeviceState::Charging || dev_state == DeviceState::FullyCharged,
+    );
+    state.power_source = if on_ac {
+        "ac".to_string()
+    } else if state.battery_available {
+        "battery".to_string()
+    } else {
+        "unknown".to_string()
+    };
 
     state
-}
-
-async fn run_capture(cmd: &str, args: &[&str]) -> Option<String> {
-    let out = tokio::process::Command::new(cmd)
-        .args(args)
-        .output()
-        .await
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    Some(String::from_utf8_lossy(&out.stdout).into_owned())
 }
