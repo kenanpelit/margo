@@ -410,13 +410,12 @@ impl Component for WallpaperMenuWidgetModel {
                         set_vexpand: false,
                         set_vscrollbar_policy: gtk::PolicyType::Never,
                         set_hscrollbar_policy: gtk::PolicyType::External,
-                        // The parent Box already fixes the height to
-                        // three rows; propagating the GridView's
-                        // natural height instead makes GTK realize
-                        // every item to measure it, which defeats the
-                        // factory's virtualization and binds the whole
-                        // wallpaper list at once.
-                        set_propagate_natural_height: false,
+                        // Needed for the scroller to take the grid's
+                        // three-row height — without it the window
+                        // collapses and no thumbnails are visible.
+                        // Memory is bounded by the decode pool, not
+                        // by starving the view of items.
+                        set_propagate_natural_height: true,
 
                         #[name = "grid_view"]
                         gtk::GridView {
