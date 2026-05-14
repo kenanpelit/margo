@@ -73,7 +73,7 @@ impl BarWidget {
             BarWidget::Nnotes => "Notes Hub",
             BarWidget::Notifications => "Notifications",
             BarWidget::Npodman => "Podman",
-            BarWidget::Npower => "Power Profile (npower)",
+            BarWidget::Npower => "Power Profile Menu",
             BarWidget::Nufw => "UFW Firewall",
             BarWidget::PowerProfile => "Power Profile",
             BarWidget::QuickSettings => "Quick Settings",

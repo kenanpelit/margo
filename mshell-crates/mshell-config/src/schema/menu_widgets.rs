@@ -69,7 +69,7 @@ impl MenuWidget {
             MenuWidget::Nnotes => "Notes Hub",
             MenuWidget::Notifications => "Notifications",
             MenuWidget::Npodman => "Podman",
-            MenuWidget::Npower => "Power Profile (npower)",
+            MenuWidget::Npower => "Power Profile Menu",
             MenuWidget::Nufw => "UFW Firewall",
             MenuWidget::PowerProfiles => "Power Profiles",
             MenuWidget::QuickActions(_) => "Quick Actions",
@@ -83,7 +83,14 @@ impl MenuWidget {
     }
 
     pub fn action_name(&self) -> String {
-        self.display_name().to_lowercase().replace(' ', "-")
+        // GAction names only accept `[A-Za-z0-9._-]`; map every
+        // other char (spaces, `/`, parens…) to `-` so detailed
+        // action strings like `menuwidget.<name>` stay parseable.
+        self.display_name()
+            .to_lowercase()
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+            .collect()
     }
 
     /// Returns all widget types with default configs
