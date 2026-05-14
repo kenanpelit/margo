@@ -37,11 +37,11 @@
 // current profile's button.
 .npower-profile-button.selected.profile-performance {
   background-color: var(--error);
-  color: var(--on-error-container);
+  color: var(--on-error);
 }
 .npower-profile-button.selected.profile-performance image,
 .npower-profile-button.selected.profile-performance label {
-  color: var(--on-error-container);
+  color: var(--on-error);
 }
 .npower-profile-button.selected.profile-balanced {
   background-color: var(--primary);

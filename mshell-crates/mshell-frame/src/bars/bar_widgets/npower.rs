@@ -17,8 +17,11 @@ use relm4::gtk::prelude::{ButtonExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::time::Duration;
 
-const REFRESH_INTERVAL: Duration = Duration::from_secs(8);
-const STARTUP_DELAY: Duration = Duration::from_secs(1);
+// Short poll so the pill tracks profile switches (made from the
+// menu, `powerprofilesctl`, or anything else) without a visible
+// lag. The probe is cheap — one subprocess + a few sysfs reads.
+const REFRESH_INTERVAL: Duration = Duration::from_secs(2);
+const STARTUP_DELAY: Duration = Duration::from_millis(500);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Profile {
