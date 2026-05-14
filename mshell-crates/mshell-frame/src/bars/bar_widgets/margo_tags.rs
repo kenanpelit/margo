@@ -8,7 +8,6 @@ use mshell_common::dynamic_box::dynamic_box::{
 use mshell_common::dynamic_box::generic_widget_controller::{
     GenericWidgetController, GenericWidgetControllerExtSafe,
 };
-use mshell_common::dynamic_box::simple_widget_controller::SimpleWidgetController;
 use mshell_services::margo_service;
 use mshell_utils::hover_scroll::attach_hover_scroll;
 use mshell_utils::margo::{get_active_workspaces, go_down_workspace, go_up_workspace};
@@ -19,17 +18,15 @@ use relm4::{
 };
 use std::sync::Arc;
 use std::time::Duration;
-use mshell_margo_client::{MargoEvent, MonitorId, Workspace, WorkspaceId};
+use mshell_margo_client::{MargoEvent, Workspace, WorkspaceId};
 
 #[derive(Clone, Debug)]
 pub enum WsRow {
-    Divider(MonitorId),
     Workspace(Arc<Workspace>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum WsRowKey {
-    Divider(MonitorId),
     Workspace(WorkspaceId),
 }
 
@@ -81,15 +78,8 @@ impl Component for MargoTagsModel {
         Self::spawn_main_watcher(&sender);
         Self::spawn_workspace_list_watcher(&sender);
 
-        let divider_orientation = if params.orientation == Orientation::Horizontal {
-            Orientation::Vertical
-        } else {
-            Orientation::Horizontal
-        };
-
         let factory = DynamicBoxFactory::<WsRow, WsRowKey> {
             id: Box::new(|item| match item {
-                WsRow::Divider(monitor_id) => WsRowKey::Divider(*monitor_id),
                 WsRow::Workspace(workspace) => WsRowKey::Workspace(workspace.id.get()),
             }),
             create: Box::new(move |item| match item {
@@ -99,11 +89,6 @@ impl Component for MargoTagsModel {
                             .launch(workspace.clone())
                             .detach();
                     Box::new(controller) as Box<dyn GenericWidgetController>
-                }
-                WsRow::Divider(_) => {
-                    let sep = gtk::Separator::new(divider_orientation);
-                    sep.add_css_class("workspace-divider");
-                    Box::new(SimpleWidgetController::new(sep.upcast()))
                 }
             }),
             update: None,
@@ -306,10 +291,6 @@ impl MargoTagsModel {
     /// the user thinks of them as a single linear row). The bar
     /// should mirror the user's mental model: nine slots, fixed
     /// position, state determined by the focused monitor.
-    ///
-    /// `MonitorId` import + the `WsRow::Divider` variant stay for
-    /// upstream-compat (the dynamic-box factory still understands
-    /// them); we just don't emit any divider rows here.
     fn workspaces_with_dividers(mut workspaces: Vec<Arc<Workspace>>) -> Vec<WsRow> {
         workspaces.sort_by_key(|w| w.id.get());
         workspaces

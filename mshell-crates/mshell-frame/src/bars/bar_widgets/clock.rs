@@ -106,6 +106,7 @@ impl SimpleComponent for ClockModel {
                 },
 
                 gtk::Label {
+                    add_css_class: "clock-bar-label",
                     #[watch]
                     set_label: model.time_label.as_str(),
                 }

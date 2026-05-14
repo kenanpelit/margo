@@ -54,7 +54,6 @@ impl std::fmt::Debug for NnetworkMenuWidgetModel {
 
 #[derive(Debug)]
 pub(crate) enum NnetworkMenuWidgetInput {
-    RefreshNow,
     SetWifiEnabled(bool),
     Rescan,
     Connect(String),
@@ -237,9 +236,6 @@ impl Component for NnetworkMenuWidgetModel {
         _root: &Self::Root,
     ) {
         match message {
-            NnetworkMenuWidgetInput::RefreshNow => {
-                run_probe(sender.clone());
-            }
             NnetworkMenuWidgetInput::SetWifiEnabled(on) => {
                 let arg = if on { "on" } else { "off" };
                 run_nmcli(vec!["radio".into(), "wifi".into(), arg.into()], sender.clone());
@@ -289,13 +285,6 @@ impl Component for NnetworkMenuWidgetModel {
             }
         }
     }
-}
-
-fn run_probe(sender: ComponentSender<NnetworkMenuWidgetModel>) {
-    sender.command(|out, _shutdown| async move {
-        let s = probe_network_state(true).await;
-        let _ = out.send(NnetworkMenuWidgetCommandOutput::Refreshed(s));
-    });
 }
 
 /// Run `nmcli <args…>`, wait, then re-probe so the panel mirrors

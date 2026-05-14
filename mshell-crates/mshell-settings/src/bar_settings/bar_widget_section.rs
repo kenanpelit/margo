@@ -1,9 +1,9 @@
 use crate::bar_settings::bar_widget_factory::{
-    ActiveWidgetInit, ActiveWidgetModel, ActiveWidgetOutput, BarListLocation,
+    ActiveWidgetInit, ActiveWidgetModel, BarListLocation,
 };
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::bar_widgets::BarWidget;
-use relm4::factory::{DynamicIndex, FactoryVecDeque};
+use relm4::factory::FactoryVecDeque;
 use relm4::gtk::gio;
 use relm4::gtk::prelude::{ActionMapExt, BoxExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -34,22 +34,15 @@ pub struct WidgetSectionModel {
 
 #[derive(Debug)]
 pub enum WidgetSectionInput {
-    // These variants are kept so the existing `update_with_view`
-    // signature compiles; in practice the factory bypass writes the
-    // config directly and the parent re-syncs via the reactive
-    // SetWidgetsEffect path. SetWidgetsEffect IS used (driven from
-    // bar_settings.rs's reactive effects).
-    AddWidget(BarWidget),
-    RemoveWidget(DynamicIndex),
-    MoveUp(DynamicIndex),
-    MoveDown(DynamicIndex),
+    /// Replay the section's widget list into the factory. Driven
+    /// from `bar_settings.rs`'s reactive effects — the add /
+    /// reorder / remove controls all write the config directly,
+    /// so this is the only message the section needs.
     SetWidgetsEffect(Vec<BarWidget>),
 }
 
 #[derive(Debug)]
-pub enum WidgetSectionOutput {
-    Changed(Vec<BarWidget>),
-}
+pub enum WidgetSectionOutput {}
 
 pub struct WidgetSectionInit {
     pub bar_section: BarSection,
@@ -96,16 +89,14 @@ impl Component for WidgetSectionModel {
     fn init(
         params: Self::Init,
         root: Self::Root,
-        sender: ComponentSender<Self>,
+        _sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let location = params.location;
+        // The factory children mutate the config directly, so their
+        // (empty) output is just detached.
         let mut widgets = FactoryVecDeque::builder()
             .launch(gtk::ListBox::default())
-            .forward(sender.input_sender(), |output| match output {
-                ActiveWidgetOutput::MoveUp(idx) => WidgetSectionInput::MoveUp(idx),
-                ActiveWidgetOutput::MoveDown(idx) => WidgetSectionInput::MoveDown(idx),
-                ActiveWidgetOutput::Remove(idx) => WidgetSectionInput::RemoveWidget(idx),
-            });
+            .detach();
 
         params.widgets.iter().for_each(|widget| {
             widgets.guard().push_back(ActiveWidgetInit {
@@ -140,16 +131,6 @@ impl Component for WidgetSectionModel {
         _root: &Self::Root,
     ) {
         match message {
-            WidgetSectionInput::AddWidget(_)
-            | WidgetSectionInput::RemoveWidget(_)
-            | WidgetSectionInput::MoveUp(_)
-            | WidgetSectionInput::MoveDown(_) => {
-                // No-op: ActiveWidgetModel writes config directly and
-                // the SetWidgetsEffect path below replays the new
-                // list into the factory. These variants only exist so
-                // the relm4 macro keeps generating the input enum;
-                // they're never the authoritative path.
-            }
             WidgetSectionInput::SetWidgetsEffect(new_widgets) => {
                 let location = self.location;
                 let mut guard = self.widgets.guard();

@@ -1,5 +1,5 @@
 use crate::bar_settings::bar_widget_section::{
-    BarSection, WidgetSectionInit, WidgetSectionInput, WidgetSectionModel, WidgetSectionOutput,
+    BarSection, WidgetSectionInit, WidgetSectionInput, WidgetSectionModel,
 };
 use crate::bar_settings::monitor_chip::{MonitorChipModel, MonitorChipOutput};
 use mshell_common::scoped_effects::EffectScope;
@@ -48,12 +48,6 @@ pub(crate) enum BarSettingsInput {
     RemoveMonitor(DynamicIndex),
     AvailableMonitorsChanged(Vec<String>),
     SelectedMonitorsChanged(Vec<String>),
-    TopStartChanged(Vec<BarWidget>),
-    TopCenterChanged(Vec<BarWidget>),
-    TopEndChanged(Vec<BarWidget>),
-    BottomStartChanged(Vec<BarWidget>),
-    BottomCenterChanged(Vec<BarWidget>),
-    BottomEndChanged(Vec<BarWidget>),
     TopMinHeightChanged(i32),
     BottomMinHeightChanged(i32),
     TopRevealByDefaultChanged(bool),
@@ -529,9 +523,7 @@ impl Component for BarSettingsModel {
                     .left_widgets()
                     .get_untracked(),
             })
-            .forward(sender.input_sender(), |msg| match msg {
-                WidgetSectionOutput::Changed(widgets) => BarSettingsInput::TopStartChanged(widgets),
-            });
+            .detach();
 
         let top_bar_center_controller = WidgetSectionModel::builder()
             .launch(WidgetSectionInit {
@@ -544,11 +536,7 @@ impl Component for BarSettingsModel {
                     .center_widgets()
                     .get_untracked(),
             })
-            .forward(sender.input_sender(), |msg| match msg {
-                WidgetSectionOutput::Changed(widgets) => {
-                    BarSettingsInput::TopCenterChanged(widgets)
-                }
-            });
+            .detach();
 
         let top_bar_end_controller = WidgetSectionModel::builder()
             .launch(WidgetSectionInit {
@@ -561,9 +549,7 @@ impl Component for BarSettingsModel {
                     .right_widgets()
                     .get_untracked(),
             })
-            .forward(sender.input_sender(), |msg| match msg {
-                WidgetSectionOutput::Changed(widgets) => BarSettingsInput::TopEndChanged(widgets),
-            });
+            .detach();
 
         // Vertical Left / Right bar widget-section controllers are gone.
 
@@ -578,11 +564,7 @@ impl Component for BarSettingsModel {
                     .left_widgets()
                     .get_untracked(),
             })
-            .forward(sender.input_sender(), |msg| match msg {
-                WidgetSectionOutput::Changed(widgets) => {
-                    BarSettingsInput::BottomStartChanged(widgets)
-                }
-            });
+            .detach();
 
         let bottom_bar_center_controller = WidgetSectionModel::builder()
             .launch(WidgetSectionInit {
@@ -595,11 +577,7 @@ impl Component for BarSettingsModel {
                     .center_widgets()
                     .get_untracked(),
             })
-            .forward(sender.input_sender(), |msg| match msg {
-                WidgetSectionOutput::Changed(widgets) => {
-                    BarSettingsInput::BottomCenterChanged(widgets)
-                }
-            });
+            .detach();
 
         let bottom_bar_end_controller = WidgetSectionModel::builder()
             .launch(WidgetSectionInit {
@@ -612,11 +590,7 @@ impl Component for BarSettingsModel {
                     .right_widgets()
                     .get_untracked(),
             })
-            .forward(sender.input_sender(), |msg| match msg {
-                WidgetSectionOutput::Changed(widgets) => {
-                    BarSettingsInput::BottomEndChanged(widgets)
-                }
-            });
+            .detach();
 
         let model = BarSettingsModel {
             enable_frame: false,
@@ -721,42 +695,6 @@ impl Component for BarSettingsModel {
                 }
                 drop(guard);
                 self.rebuild_menu(widgets, &sender);
-            }
-            BarSettingsInput::TopStartChanged(widgets) => {
-                let config_manager = config_manager();
-                config_manager.update_config(|config| {
-                    config.bars.top_bar.left_widgets = widgets;
-                });
-            }
-            BarSettingsInput::TopCenterChanged(widgets) => {
-                let config_manager = config_manager();
-                config_manager.update_config(|config| {
-                    config.bars.top_bar.center_widgets = widgets;
-                });
-            }
-            BarSettingsInput::TopEndChanged(widgets) => {
-                let config_manager = config_manager();
-                config_manager.update_config(|config| {
-                    config.bars.top_bar.right_widgets = widgets;
-                });
-            }
-            BarSettingsInput::BottomStartChanged(widgets) => {
-                let config_manager = config_manager();
-                config_manager.update_config(|config| {
-                    config.bars.bottom_bar.left_widgets = widgets;
-                });
-            }
-            BarSettingsInput::BottomCenterChanged(widgets) => {
-                let config_manager = config_manager();
-                config_manager.update_config(|config| {
-                    config.bars.bottom_bar.center_widgets = widgets;
-                });
-            }
-            BarSettingsInput::BottomEndChanged(widgets) => {
-                let config_manager = config_manager();
-                config_manager.update_config(|config| {
-                    config.bars.bottom_bar.right_widgets = widgets;
-                });
             }
             BarSettingsInput::TopMinHeightChanged(min) => {
                 self.top_min_height = min;

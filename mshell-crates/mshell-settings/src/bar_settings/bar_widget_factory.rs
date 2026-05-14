@@ -38,15 +38,11 @@ pub struct ActiveWidgetModel {
 #[derive(Debug)]
 pub enum ActiveWidgetInput {}
 
-// Kept for compatibility with the section; outputs are no longer the
-// authoritative path (config mutations happen in-place above) but
-// emitting still lets the parent log / react if it wants to.
+// The reorder / remove buttons mutate the config directly (see the
+// note on `BarListLocation`), so this component has no output —
+// the parent re-syncs through the reactive `SetWidgetsEffect` path.
 #[derive(Debug)]
-pub enum ActiveWidgetOutput {
-    MoveUp(DynamicIndex),
-    MoveDown(DynamicIndex),
-    Remove(DynamicIndex),
-}
+pub enum ActiveWidgetOutput {}
 
 #[relm4::factory(pub)]
 impl FactoryComponent for ActiveWidgetModel {
@@ -73,33 +69,30 @@ impl FactoryComponent for ActiveWidgetModel {
             gtk::Button {
                 add_css_class: "ok-button-surface",
                 set_icon_name: "menu-up-symbolic",
-                connect_clicked[sender, index, location = self.location] => move |_| {
+                connect_clicked[index, location = self.location] => move |_| {
                     let idx = index.current_index();
                     tracing::debug!(idx, ?location, "bar_widget_factory: MoveUp");
                     reorder(location, idx, -1);
-                    let _ = sender.output(ActiveWidgetOutput::MoveUp(index.clone()));
                 },
             },
 
             gtk::Button {
                 add_css_class: "ok-button-surface",
                 set_icon_name: "menu-down-symbolic",
-                connect_clicked[sender, index, location = self.location] => move |_| {
+                connect_clicked[index, location = self.location] => move |_| {
                     let idx = index.current_index();
                     tracing::debug!(idx, ?location, "bar_widget_factory: MoveDown");
                     reorder(location, idx, 1);
-                    let _ = sender.output(ActiveWidgetOutput::MoveDown(index.clone()));
                 },
             },
 
             gtk::Button {
                 add_css_class: "ok-button-surface",
                 set_icon_name: "close-symbolic",
-                connect_clicked[sender, index, location = self.location] => move |_| {
+                connect_clicked[index, location = self.location] => move |_| {
                     let idx = index.current_index();
                     tracing::debug!(idx, ?location, "bar_widget_factory: Remove");
                     remove_at(location, idx);
-                    let _ = sender.output(ActiveWidgetOutput::Remove(index.clone()));
                 },
             },
         }
@@ -121,7 +114,7 @@ impl FactoryComponent for ActiveWidgetModel {
         index: &DynamicIndex,
         root: Self::Root,
         returned_widget: &gtk::ListBoxRow,
-        sender: FactorySender<Self>,
+        _sender: FactorySender<Self>,
     ) -> Self::Widgets {
         let widgets = view_output!();
         returned_widget.set_activatable(false);

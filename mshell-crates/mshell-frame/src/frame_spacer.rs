@@ -8,17 +8,13 @@ use relm4::{Component, ComponentParts, ComponentSender, gtk};
 #[derive(Debug, Clone)]
 pub(crate) struct FrameSpacerModel {
     orientation: Orientation,
-    width: i32,
     height: i32,
-    border_width: i32,
     border_height: i32,
 }
 
 #[derive(Debug)]
 pub(crate) enum FrameSpacerInput {
-    WidthUpdated(i32),
     HeightUpdated(i32),
-    BorderWidthUpdated(i32),
     BorderHeightUpdated(i32),
 }
 
@@ -56,8 +52,6 @@ impl Component for FrameSpacerModel {
 
             #[name = "spacer"]
             gtk::Box {
-                #[watch]
-                set_width_request: model.width + model.border_width,
                 #[watch]
                 set_height_request: model.height + model.border_height,
             }
@@ -97,9 +91,7 @@ impl Component for FrameSpacerModel {
         };
         let model = FrameSpacerModel {
             orientation,
-            width: 0,
             height: 0,
-            border_width: 0,
             border_height: 0,
         };
 
@@ -116,13 +108,9 @@ impl Component for FrameSpacerModel {
         _root: &Self::Root,
     ) {
         match message {
-            FrameSpacerInput::WidthUpdated(val) => {
-                self.width = val;
-            }
             FrameSpacerInput::HeightUpdated(val) => {
                 self.height = val;
             }
-            FrameSpacerInput::BorderWidthUpdated(width) => self.border_width = width,
             FrameSpacerInput::BorderHeightUpdated(height) => {
                 self.border_height = height;
             }

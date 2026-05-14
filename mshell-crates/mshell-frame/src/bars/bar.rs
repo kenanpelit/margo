@@ -99,7 +99,6 @@ pub(crate) enum BarInput {
     SetStartWidgets(Vec<BarWidget>),
     SetEndWidgets(Vec<BarWidget>),
     SetCenteredWidgets(Vec<BarWidget>),
-    SetMinWidth(i32),
     SetMinHeight(i32),
     SetRevealed(bool),
     ToggleRevealed,
@@ -388,9 +387,6 @@ impl Component for BarModel {
                     self.center_widgets.push(controller);
                 }
                 self.center_widget_kinds = bar_widgets;
-            }
-            BarInput::SetMinWidth(min) => {
-                self.min_width = min;
             }
             BarInput::SetMinHeight(min) => {
                 self.min_height = min;

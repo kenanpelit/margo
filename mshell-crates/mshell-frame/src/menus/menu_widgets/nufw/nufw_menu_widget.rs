@@ -65,7 +65,6 @@ pub(crate) struct NufwMenuWidgetInit {}
 #[derive(Debug)]
 pub(crate) enum NufwMenuWidgetCommandOutput {
     Refreshed(UfwSummary),
-    KickRefresh,
 }
 
 #[relm4::component(pub(crate))]
@@ -332,9 +331,6 @@ impl Component for NufwMenuWidgetModel {
             NufwMenuWidgetCommandOutput::Refreshed(s) => {
                 self.summary = s;
                 sync_view(self, &sender);
-            }
-            NufwMenuWidgetCommandOutput::KickRefresh => {
-                sender.input(NufwMenuWidgetInput::RefreshNow);
             }
         }
     }
