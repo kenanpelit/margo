@@ -1,2 +1,2 @@
 pub(crate) mod bar;
-mod bar_widgets;
+pub(crate) mod bar_widgets;

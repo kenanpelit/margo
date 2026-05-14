@@ -20,7 +20,7 @@ use crate::bars::bar_widgets::nufw::{
 };
 use relm4::gtk::glib;
 use relm4::gtk::prelude::{
-    BoxExt, ButtonExt, ListBoxRowExt, ObjectExt, WidgetExt,
+    BoxExt, ButtonExt, ListBoxRowExt, ObjectExt, OrientableExt, WidgetExt,
 };
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::time::Duration;
