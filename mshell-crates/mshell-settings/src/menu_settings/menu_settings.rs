@@ -36,6 +36,9 @@ pub(crate) struct MenuSettingsModel {
     wallpaper_widget_list_controller: Controller<MenuWidgetListModel>,
     wallpaper_position: Position,
     wallpaper_min_width: i32,
+    nufw_widget_list_controller: Controller<MenuWidgetListModel>,
+    nufw_position: Position,
+    nufw_min_width: i32,
     screenshare_position: Position,
     left_menu_expansion_type: VerticalMenuExpansion,
     right_menu_expansion_type: VerticalMenuExpansion,
@@ -65,6 +68,9 @@ pub(crate) enum MenuSettingsInput {
     WallpaperWidgetListChanged(Vec<MenuWidget>),
     WallpaperPositionChanged(Position),
     WallpaperMinWidthChanged(i32),
+    NufwWidgetListChanged(Vec<MenuWidget>),
+    NufwPositionChanged(Position),
+    NufwMinWidthChanged(i32),
     ScreensharePositionChanged(Position),
     LeftMenuExpansionChanged(VerticalMenuExpansion),
     RightMenuExpansionChanged(VerticalMenuExpansion),
@@ -90,6 +96,9 @@ pub(crate) enum MenuSettingsInput {
     WallpaperWidgetListEffect(Vec<MenuWidget>),
     WallpaperPositionEffect(Position),
     WallpaperMinWidthEffect(i32),
+    NufwWidgetListEffect(Vec<MenuWidget>),
+    NufwPositionEffect(Position),
+    NufwMinWidthEffect(i32),
     ScreensharePositionEffect(Position),
     LeftMenuExpansionEffect(VerticalMenuExpansion),
     RightMenuExpansionEffect(VerticalMenuExpansion),
@@ -825,6 +834,93 @@ impl Component for MenuSettingsModel {
 
                 gtk::Label {
                     add_css_class: "label-large-bold",
+                    set_label: "UFW Firewall Menu",
+                    set_halign: gtk::Align::Start,
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Position",
+                            set_hexpand: true,
+                        },
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Where this menu should be positioned.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::DropDown {
+                        set_width_request: 150,
+                        set_valign: gtk::Align::Center,
+                        set_model: Some(&gtk::StringList::new(&Position::display_names())),
+                        #[watch]
+                        #[block_signal(nufw_pos_handler)]
+                        set_selected: model.nufw_position.to_index(),
+                        connect_selected_notify[sender] => move |dd| {
+                            sender.input(MenuSettingsInput::NufwPositionChanged(
+                                Position::from_index(dd.selected())
+                            ));
+                        } @nufw_pos_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 8,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Minimum Width",
+                            set_hexpand: true,
+                        },
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "The minimum width of the menu.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::SpinButton {
+                        set_range: (0.0, 10000.0),
+                        set_increments: (10.0, 50.0),
+                        #[watch]
+                        #[block_signal(nufw_min_width_handler)]
+                        set_value: model.nufw_min_width as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(MenuSettingsInput::NufwMinWidthChanged(s.value() as i32));
+                        } @nufw_min_width_handler,
+                    },
+                },
+
+                model.nufw_widget_list_controller.widget().clone() {},
+
+                gtk::Separator {},
+
+                gtk::Label {
+                    add_css_class: "label-large-bold",
                     set_label: "Screen Share Menu",
                     set_halign: gtk::Align::Start,
                 },
@@ -1043,6 +1139,27 @@ impl Component for MenuSettingsModel {
         let sender_clone = sender.clone();
         effects.push(move |_| {
             let config = config_manager().config();
+            let value = config.menus().nufw_menu().position().get();
+            sender_clone.input(MenuSettingsInput::NufwPositionEffect(value));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let config = config_manager().config();
+            let value = config.menus().nufw_menu().minimum_width().get();
+            sender_clone.input(MenuSettingsInput::NufwMinWidthEffect(value));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let config = config_manager().config();
+            let value = config.menus().nufw_menu().widgets().get();
+            sender_clone.input(MenuSettingsInput::NufwWidgetListEffect(value));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let config = config_manager().config();
             let value = config.menus().screenshare_menu().position().get();
             sender_clone.input(MenuSettingsInput::ScreensharePositionEffect(value));
         });
@@ -1159,6 +1276,22 @@ impl Component for MenuSettingsModel {
                 }
             });
 
+        let nufw_widget_list_controller = MenuWidgetListModel::builder()
+            .launch(MenuWidgetListInit {
+                widgets: config_manager()
+                    .config()
+                    .menus()
+                    .nufw_menu()
+                    .widgets()
+                    .get_untracked(),
+                draw_border: true,
+            })
+            .forward(sender.input_sender(), |msg| match msg {
+                MenuWidgetListOutput::Changed(widgets) => {
+                    MenuSettingsInput::NufwWidgetListChanged(widgets)
+                }
+            });
+
         let model = MenuSettingsModel {
             quick_settings_widget_list_controller,
             quick_settings_position: config_manager()
@@ -1251,6 +1384,19 @@ impl Component for MenuSettingsModel {
                 .wallpaper_menu()
                 .minimum_width()
                 .get_untracked(),
+            nufw_widget_list_controller,
+            nufw_position: config_manager()
+                .config()
+                .menus()
+                .nufw_menu()
+                .position()
+                .get_untracked(),
+            nufw_min_width: config_manager()
+                .config()
+                .menus()
+                .nufw_menu()
+                .minimum_width()
+                .get_untracked(),
             screenshare_position: config_manager()
                 .config()
                 .menus()
@@ -1334,6 +1480,24 @@ impl Component for MenuSettingsModel {
                 self.wallpaper_min_width = width;
                 config_manager().update_config(|config| {
                     config.menus.wallpaper_menu.minimum_width = width;
+                });
+            }
+            MenuSettingsInput::NufwWidgetListChanged(widgets) => {
+                let config_manager = config_manager();
+                config_manager.update_config(|config| {
+                    config.menus.nufw_menu.widgets = widgets;
+                });
+            }
+            MenuSettingsInput::NufwPositionChanged(position) => {
+                self.nufw_position = position.clone();
+                config_manager().update_config(|config| {
+                    config.menus.nufw_menu.position = position;
+                });
+            }
+            MenuSettingsInput::NufwMinWidthChanged(width) => {
+                self.nufw_min_width = width;
+                config_manager().update_config(|config| {
+                    config.menus.nufw_menu.minimum_width = width;
                 });
             }
             MenuSettingsInput::NotificationsWidgetListChanged(widgets) => {
@@ -1495,6 +1659,16 @@ impl Component for MenuSettingsModel {
             }
             MenuSettingsInput::WallpaperMinWidthEffect(width) => {
                 self.wallpaper_min_width = width;
+            }
+            MenuSettingsInput::NufwWidgetListEffect(widgets) => {
+                self.nufw_widget_list_controller
+                    .emit(MenuWidgetListInput::SetWidgetsEffect(widgets));
+            }
+            MenuSettingsInput::NufwPositionEffect(position) => {
+                self.nufw_position = position;
+            }
+            MenuSettingsInput::NufwMinWidthEffect(width) => {
+                self.nufw_min_width = width;
             }
             MenuSettingsInput::ScreensharePositionEffect(position) => {
                 self.screenshare_position = position;

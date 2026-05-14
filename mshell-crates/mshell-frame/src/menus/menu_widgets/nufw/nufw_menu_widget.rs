@@ -305,11 +305,16 @@ impl Component for NufwMenuWidgetModel {
                 spawn_pkexec(&["delete", &line], sender.clone());
             }
             NufwMenuWidgetInput::RefreshNow => {
-                sender.spawn_command(|out| {
-                    tokio::spawn(async move {
-                        let s = fetch_ufw_summary().await;
-                        let _ = out.send(NufwMenuWidgetCommandOutput::Refreshed(s));
-                    });
+                // sender.command(...) runs the future on relm4's
+                // async runtime (tokio-backed). The earlier
+                // spawn_command path put the closure on a plain
+                // background OS thread with no tokio runtime, so
+                // the nested tokio::spawn / sleep would silently
+                // never execute — that's why the Refresh button
+                // appeared dead.
+                sender.command(|out, _shutdown| async move {
+                    let s = fetch_ufw_summary().await;
+                    let _ = out.send(NufwMenuWidgetCommandOutput::Refreshed(s));
                 });
             }
         }
@@ -434,19 +439,19 @@ fn spawn_pkexec(args: &[&str], sender: ComponentSender<NufwMenuWidgetModel>) {
     let args: Vec<String> = std::iter::once("ufw".to_string())
         .chain(args.iter().map(|s| s.to_string()))
         .collect();
-    sender.spawn_command(move |out| {
-        tokio::spawn(async move {
-            let status = tokio::process::Command::new("pkexec")
-                .args(&args)
-                .status()
-                .await;
-            match status {
-                Ok(s) if s.success() => {}
-                Ok(s) => warn!(?s, ?args, "pkexec ufw returned non-zero"),
-                Err(e) => warn!(error = %e, ?args, "pkexec spawn failed"),
-            }
-            tokio::time::sleep(POST_ACTION_DELAY).await;
-            let _ = out.send(NufwMenuWidgetCommandOutput::KickRefresh);
-        });
+    // sender.command runs on relm4's tokio executor — both the
+    // pkexec await and the post-action sleep need that runtime.
+    sender.command(move |out, _shutdown| async move {
+        let status = tokio::process::Command::new("pkexec")
+            .args(&args)
+            .status()
+            .await;
+        match status {
+            Ok(s) if s.success() => {}
+            Ok(s) => warn!(?s, ?args, "pkexec ufw returned non-zero"),
+            Err(e) => warn!(error = %e, ?args, "pkexec spawn failed"),
+        }
+        tokio::time::sleep(POST_ACTION_DELAY).await;
+        let _ = out.send(NufwMenuWidgetCommandOutput::KickRefresh);
     });
 }

@@ -1,0 +1,59 @@
+// UFW Firewall menu widget — matches the design language of the
+// other layer-shell menus (clock, screenshot, quick-settings) by
+// reusing the same matugen tokens (`--surface-variant`, `--primary`,
+// `--on-surface`, `--outline`) and the standard radius / spacing
+// scales rather than rolling its own visual identity.
+
+.nufw-menu-widget {
+  padding: 0;
+}
+
+// ── Status badge in the header (active / inactive / unknown) ─
+.nufw-status-badge {
+  padding: 2px 10px;
+  border-radius: 9999px;
+  font-weight: 600;
+  font-size: 0.85em;
+  background-color: var(--surface-variant);
+  color: var(--on-surface-variant);
+}
+.nufw-status-badge.nufw-status-active {
+  background-color: var(--primary);
+  color: var(--on-primary);
+}
+.nufw-status-badge.nufw-status-inactive {
+  background-color: var(--error-container);
+  color: var(--on-error-container);
+}
+
+// ── Default-policy chips (Incoming / Outgoing / Routed) ──────
+// Three identical pill cards laid out in a homogeneous row. The
+// chip background follows the matugen surface variant so it
+// reads as "informational" rather than "interactive."
+.nufw-policy-chip {
+  padding: 8px 12px;
+  border-radius: var(--radius-widget);
+  background-color: var(--surface-variant);
+  border: 1px solid var(--outline);
+  min-width: 60px;
+}
+
+// ── Rule list ────────────────────────────────────────────────
+// ListBox of `(rule label, trash button)` pairs. Each row gets
+// a subtle outline + radius so the table reads as discrete
+// items, matching the visual rhythm of the clipboard list and
+// notification feed.
+.nufw-rule-list row {
+  padding: 6px 10px;
+  border-radius: var(--radius-widget);
+  margin-bottom: 4px;
+  background-color: var(--surface-variant);
+  border: 1px solid var(--outline);
+}
+.nufw-rule-list row:last-child {
+  margin-bottom: 0;
+}
+.nufw-rule-text {
+  font-family: monospace;
+  font-size: 0.9em;
+}
