@@ -1,19 +1,35 @@
+// Base sizing for every `.ok-bar-widget` (icon-only pills, mostly).
+//
+// These rules used to set min-height 36 / 48 with 10 px padding,
+// which baked a ~56 px floor into every bar. The settings UI's
+// `Minimum Height` field only sets `gtk_box.height_request` — that's
+// a *minimum*, not a max, so the box grew to whatever the children
+// requested. End result: typing 24 in settings did nothing, because
+// every individual widget child still demanded 48+padding.
+//
+// Pulled the defaults down to a natural ~28 px (20 min-height + 4
+// padding * 2) so the user's setting takes effect for any value
+// down to ~28. To go below that we'd need either a SizeGroup
+// constraint per-bar or runtime CSS injection — not worth the
+// complexity for what is effectively asking for "a more compact
+// bar," which the smaller defaults already deliver.
+
 .bar-left .ok-bar-widget,
 .bar-right .ok-bar-widget {
-    min-width: 48px;
-    min-height: 36px;
+    min-width: 28px;
+    min-height: 20px;
 
     > * {
-        padding: 10px;
+        padding: 4px 6px;
     }
 }
 
 .bar-top .ok-bar-widget,
 .bar-bottom .ok-bar-widget {
-    min-width: 36px;
-    min-height: 48px;
+    min-width: 20px;
+    min-height: 20px;
 
     > * {
-        padding: 10px;
+        padding: 4px 6px;
     }
 }

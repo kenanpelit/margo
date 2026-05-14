@@ -34,20 +34,19 @@
 
 .bar-top  .margo-tag.ok-bar-widget,
 .bar-bottom .margo-tag.ok-bar-widget {
-  min-width: 26px;
+  min-width: 22px;
 
   > * {
-    padding: 4px 6px;
+    padding: 2px 6px;
   }
 }
 
 .bar-left .margo-tag.ok-bar-widget,
 .bar-right .margo-tag.ok-bar-widget {
-  min-width: 36px;
-  min-height: 26px;
+  min-width: 22px;
 
   > * {
-    padding: 4px 6px;
+    padding: 2px 6px;
   }
 }
 
