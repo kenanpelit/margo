@@ -56,6 +56,7 @@ pub(crate) enum ShellInput {
     ToggleNotifications(Option<String>),
     ToggleScreenshotMenu(Option<String>),
     ToggleWallpaperMenu(Option<String>),
+    ToggleNufwMenu(Option<String>),
     CloseAllMenus,
     ToggleScreenshareMenu(Option<String>, tokio::sync::oneshot::Sender<String>, String),
     QueueFrameRedraw,
@@ -293,6 +294,11 @@ impl Component for Shell {
             ShellInput::ToggleWallpaperMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
                     frame.emit(FrameInput::ToggleWallpaperMenu);
+                }
+            }
+            ShellInput::ToggleNufwMenu(monitor_name) => {
+                if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
+                    frame.emit(FrameInput::ToggleNufwMenu);
                 }
             }
             ShellInput::CloseAllMenus => {

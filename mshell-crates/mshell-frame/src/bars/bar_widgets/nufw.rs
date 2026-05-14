@@ -169,7 +169,9 @@ fn apply_visual(image: &gtk::Image, root: &gtk::Box, s: &UfwSummary) {
     };
     image.set_icon_name(Some(icon));
 
-    let tooltip = if let Some(err) = &s.error {
+    let tooltip = if let Some(err) = &s.error
+        && s.status.is_none()
+    {
         format!("UFW: {err}")
     } else {
         let mut lines = vec![format!("UFW: {}", status_word(s.status))];
@@ -182,17 +184,28 @@ fn apply_visual(image: &gtk::Image, root: &gtk::Box, s: &UfwSummary) {
         if !s.routed.is_empty() {
             lines.push(format!("Routed: {}", s.routed));
         }
-        if matches!(s.status, Some(Status::Active)) {
+        if matches!(s.status, Some(Status::Active)) && !s.rules.is_empty() {
             lines.push(format!("Rules: {}", s.rules.len()));
+        }
+        if s.error.is_some() {
+            lines.push("(open menu to load rules)".to_string());
         }
         lines.join("\n")
     };
     root.set_tooltip_text(Some(&tooltip));
 
-    if matches!(s.status, Some(Status::Inactive)) {
-        root.add_css_class("inactive");
-    } else {
-        root.remove_css_class("inactive");
+    // Three-state class set on the bar pill so the SCSS in
+    // `_nufw.scss` (.nufw-bar-widget.active / .inactive / .unknown)
+    // can tint the icon green / red / amber. Mutual exclusion via
+    // remove_css_class before add ensures stale state from a
+    // previous refresh doesn't pile up.
+    root.remove_css_class("active");
+    root.remove_css_class("inactive");
+    root.remove_css_class("unknown");
+    match s.status {
+        Some(Status::Active) => root.add_css_class("active"),
+        Some(Status::Inactive) => root.add_css_class("inactive"),
+        _ => root.add_css_class("unknown"),
     }
 }
 
@@ -204,41 +217,113 @@ pub(crate) fn status_word(s: Option<Status>) -> &'static str {
     }
 }
 
-/// Run `ufw status verbose` and parse the result into a summary.
-/// Exposed (pub(crate)) so the menu widget can re-trigger fetches
-/// after an action without duplicating the parse path.
+/// Get the UFW state. `ufw` itself requires root to run (the
+/// binary just bails out with `You need to be root`), so the
+/// background poll cannot call it directly. Two fallbacks chained:
+///
+///   1. `systemctl is-active ufw.service` — no privilege needed
+///      and gives the active/inactive bit (the most important
+///      thing for the bar icon).
+///   2. `sudo -n ufw status verbose` — only succeeds if the user
+///      has a NOPASSWD entry for ufw in /etc/sudoers; gives the
+///      default policies + rule list when available.
+///   3. `pkexec ufw status verbose` — falls into the polkit
+///      graphical-agent path, which the menu's Refresh button
+///      uses explicitly (`fetch_ufw_summary_pkexec`). Auto-poll
+///      does NOT trigger this — we don't want a password prompt
+///      every 120 s.
+///
+/// `pub(crate)` so the menu widget can re-trigger fetches after
+/// an action without duplicating the parse path.
 pub(crate) async fn fetch_ufw_summary() -> UfwSummary {
-    let output = match tokio::process::Command::new("ufw")
-        .arg("status")
-        .arg("verbose")
-        .output()
-        .await
-    {
-        Ok(out) => out,
-        Err(e) => {
-            return UfwSummary {
-                error: Some(if e.kind() == std::io::ErrorKind::NotFound {
-                    "not installed".to_string()
-                } else {
-                    format!("spawn failed: {e}")
-                }),
-                ..UfwSummary::default()
-            };
-        }
-    };
-
-    if !output.status.success() {
+    // Detect-only first: a missing `ufw` binary surfaces as
+    // "not installed" rather than the more confusing root error.
+    if which("ufw").await.is_err() {
         return UfwSummary {
-            error: Some(format!(
-                "ufw exit {}: {}",
-                output.status,
-                String::from_utf8_lossy(&output.stderr).trim()
-            )),
+            error: Some("not installed".to_string()),
             ..UfwSummary::default()
         };
     }
 
-    parse_ufw_verbose(&String::from_utf8_lossy(&output.stdout))
+    // Try sudo -n (NOPASSWD). If it works, we get full info.
+    if let Some(out) = run_capture("sudo", &["-n", "ufw", "status", "verbose"]).await {
+        return parse_ufw_verbose(&out);
+    }
+
+    // Fall back to the status-only path so the icon at least
+    // reflects active/inactive.
+    let mut summary = UfwSummary::default();
+    if run_capture("systemctl", &["is-active", "--quiet", "ufw.service"])
+        .await
+        .is_some()
+    {
+        summary.status = Some(Status::Active);
+    } else {
+        // is-active returns non-zero for inactive — distinguish
+        // "service missing" from "active=false" by checking the
+        // unit file existence too.
+        if run_capture("systemctl", &["cat", "ufw.service"])
+            .await
+            .is_some()
+        {
+            summary.status = Some(Status::Inactive);
+        }
+    }
+    summary.error = Some("rule details need authentication".to_string());
+    summary
+}
+
+/// Privileged variant that asks polkit (graphical agent) for
+/// auth. Used by the menu's Refresh button and after every
+/// action so the user sees the full rule list once they've
+/// entered their password. Polkit caches the answer for ~5 min
+/// so subsequent calls within the menu session are silent.
+pub(crate) async fn fetch_ufw_summary_pkexec() -> UfwSummary {
+    if which("ufw").await.is_err() {
+        return UfwSummary {
+            error: Some("not installed".to_string()),
+            ..UfwSummary::default()
+        };
+    }
+    match tokio::process::Command::new("pkexec")
+        .args(["ufw", "status", "verbose"])
+        .output()
+        .await
+    {
+        Ok(out) if out.status.success() => parse_ufw_verbose(&String::from_utf8_lossy(&out.stdout)),
+        Ok(out) => UfwSummary {
+            error: Some(format!(
+                "pkexec ufw exit {}: {}",
+                out.status,
+                String::from_utf8_lossy(&out.stderr).trim()
+            )),
+            ..UfwSummary::default()
+        },
+        Err(e) => UfwSummary {
+            error: Some(format!("pkexec spawn: {e}")),
+            ..UfwSummary::default()
+        },
+    }
+}
+
+async fn which(bin: &str) -> std::io::Result<()> {
+    let status = tokio::process::Command::new("which")
+        .arg(bin)
+        .status()
+        .await?;
+    if status.success() { Ok(()) } else { Err(std::io::Error::new(std::io::ErrorKind::NotFound, bin.to_string())) }
+}
+
+async fn run_capture(cmd: &str, args: &[&str]) -> Option<String> {
+    let out = tokio::process::Command::new(cmd)
+        .args(args)
+        .output()
+        .await
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
 fn parse_ufw_verbose(stdout: &str) -> UfwSummary {

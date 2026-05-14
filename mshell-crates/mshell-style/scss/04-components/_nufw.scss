@@ -1,3 +1,20 @@
+// ── Bar pill icon tinting ────────────────────────────────────
+// Mirrors the bluetooth widget pattern: tint the icon based on
+// the three states surfaced by `apply_visual` on the bar widget
+// root. `unknown` is amber rather than red because the most
+// common reason for it is "rule details need authentication" —
+// not actually a problem state.
+
+.nufw-bar-widget.active image {
+  color: var(--primary);
+}
+.nufw-bar-widget.inactive image {
+  color: var(--error);
+}
+.nufw-bar-widget.unknown image {
+  color: var(--warning, var(--on-surface-variant));
+}
+
 // UFW Firewall menu widget — matches the design language of the
 // other layer-shell menus (clock, screenshot, quick-settings) by
 // reusing the same matugen tokens (`--surface-variant`, `--primary`,

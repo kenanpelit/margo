@@ -16,7 +16,7 @@
 //! password prompt. No terminal-wrap, no sudo, no askpass dance.
 
 use crate::bars::bar_widgets::nufw::{
-    Status, UfwSummary, fetch_ufw_summary, status_word,
+    Status, UfwSummary, fetch_ufw_summary, fetch_ufw_summary_pkexec, status_word,
 };
 use relm4::gtk::glib;
 use relm4::gtk::prelude::{
@@ -305,15 +305,16 @@ impl Component for NufwMenuWidgetModel {
                 spawn_pkexec(&["delete", &line], sender.clone());
             }
             NufwMenuWidgetInput::RefreshNow => {
-                // sender.command(...) runs the future on relm4's
-                // async runtime (tokio-backed). The earlier
-                // spawn_command path put the closure on a plain
-                // background OS thread with no tokio runtime, so
-                // the nested tokio::spawn / sleep would silently
-                // never execute — that's why the Refresh button
-                // appeared dead.
+                // Use the pkexec-privileged probe so the panel
+                // actually populates with rules + default policies.
+                // `ufw status` requires root; the unprivileged
+                // background poll can only get the active/inactive
+                // bit from `systemctl is-active ufw.service`.
+                // Polkit caches credentials for ~5 min, so after
+                // the first password prompt the menu refreshes
+                // silently within the session.
                 sender.command(|out, _shutdown| async move {
-                    let s = fetch_ufw_summary().await;
+                    let s = fetch_ufw_summary_pkexec().await;
                     let _ = out.send(NufwMenuWidgetCommandOutput::Refreshed(s));
                 });
             }
@@ -452,6 +453,9 @@ fn spawn_pkexec(args: &[&str], sender: ComponentSender<NufwMenuWidgetModel>) {
             Err(e) => warn!(error = %e, ?args, "pkexec spawn failed"),
         }
         tokio::time::sleep(POST_ACTION_DELAY).await;
-        let _ = out.send(NufwMenuWidgetCommandOutput::KickRefresh);
+        // Re-fetch via pkexec right away — credentials are still
+        // cached in polkit's window, so this won't re-prompt.
+        let s = fetch_ufw_summary_pkexec().await;
+        let _ = out.send(NufwMenuWidgetCommandOutput::Refreshed(s));
     });
 }

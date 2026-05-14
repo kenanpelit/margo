@@ -17,6 +17,8 @@ pub enum MenuCommands {
     Screenshot,
     /// Toggle the wallpaper menu
     Wallpaper,
+    /// Toggle the UFW firewall menu
+    Nufw,
     /// Close all open menus
     CloseAll,
 }
@@ -43,6 +45,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::Wallpaper => {
             bus_command("Wallpaper").await?;
+        }
+        MenuCommands::Nufw => {
+            bus_command("Nufw").await?;
         }
         MenuCommands::CloseAll => {
             bus_command("CloseAllMenus").await?;

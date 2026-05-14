@@ -86,6 +86,15 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                         app_sender.emit(ShellInput::ToggleWallpaperMenu(None));
                     }
                 }
+                IPCCommand::Nufw => {
+                    if let Some(active_workspace) = margo_service().active_workspace().await {
+                        app_sender.emit(ShellInput::ToggleNufwMenu(Some(
+                            active_workspace.monitor.get(),
+                        )));
+                    } else {
+                        app_sender.emit(ShellInput::ToggleNufwMenu(None));
+                    }
+                }
                 IPCCommand::CloseAllMenus => app_sender.emit(ShellInput::CloseAllMenus),
                 IPCCommand::VolumeUp => {
                     if let Some(output) = audio_service().default_output.get() {
@@ -248,6 +257,7 @@ enum IPCCommand {
     Notifications,
     Screenshot,
     Wallpaper,
+    Nufw,
     CloseAllMenus,
     VolumeUp,
     VolumeDown,
@@ -305,6 +315,9 @@ impl IPCService {
     }
     async fn wallpaper(&self) {
         let _ = self.tx.send(IPCCommand::Wallpaper);
+    }
+    async fn nufw(&self) {
+        let _ = self.tx.send(IPCCommand::Nufw);
     }
     async fn close_all_menus(&self) {
         let _ = self.tx.send(IPCCommand::CloseAllMenus);
