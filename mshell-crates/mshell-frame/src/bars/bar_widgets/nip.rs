@@ -206,10 +206,18 @@ impl Component for NipModel {
 }
 
 fn apply_visual(image: &gtk::Image, root: &gtk::Box, state: FetchState, info: Option<&IpInfo>) {
+    // Globe glyph for the success state — `network-wireless` (wifi
+    // signal) read wrong for a "public IP" widget that has nothing
+    // to do with the local radio. `globe-symbolic` ships in
+    // Adwaita / Papirus / Tela / most modern symbolic themes;
+    // `network-acquiring-symbolic` carries the standard refreshing
+    // / spinning visual that GNOME's own connection panel uses,
+    // which is more legible than the generic
+    // `content-loading-symbolic` hourglass at bar size.
     let icon = match state {
-        FetchState::Loading => "content-loading-symbolic",
-        FetchState::Ok => "network-wireless-symbolic",
-        FetchState::Err => "network-error-symbolic",
+        FetchState::Loading => "network-acquiring-symbolic",
+        FetchState::Ok => "globe-symbolic",
+        FetchState::Err => "network-no-route-symbolic",
     };
     image.set_icon_name(Some(icon));
 
