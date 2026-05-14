@@ -1,5 +1,6 @@
 use crate::bar_settings::bar_settings::{BarSettingsInit, BarSettingsModel};
 use crate::general_settings::{GeneralSettingsInit, GeneralSettingsModel};
+use crate::idle_settings::{IdleSettingsInit, IdleSettingsModel};
 use crate::menu_settings::menu_settings::{MenuSettingsInit, MenuSettingsModel};
 use crate::notification_settings::{NotificationSettingsInit, NotificationSettingsModel};
 use crate::theme_settings::theme_settings::{ThemeSettingsInit, ThemeSettingsModel};
@@ -14,6 +15,7 @@ pub(crate) struct SettingsWindowModel {
     bar_settings_controller: Controller<BarSettingsModel>,
     menu_settings_controller: Controller<MenuSettingsModel>,
     notification_settings_controller: Controller<NotificationSettingsModel>,
+    idle_settings_controller: Controller<IdleSettingsModel>,
 }
 
 #[derive(Debug)]
@@ -190,6 +192,26 @@ impl Component for SettingsWindowModel {
                             },
                         },
                     },
+
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("idle"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("coffee-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Idle",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
                 },
 
                 #[name = "stack"]
@@ -233,6 +255,10 @@ impl Component for SettingsWindowModel {
             .launch(NotificationSettingsInit {})
             .detach();
 
+        let idle_settings_controller = IdleSettingsModel::builder()
+            .launch(IdleSettingsInit {})
+            .detach();
+
         let model = SettingsWindowModel {
             general_settings_controller,
             wallpaper_settings_controller,
@@ -240,6 +266,7 @@ impl Component for SettingsWindowModel {
             bar_settings_controller,
             menu_settings_controller,
             notification_settings_controller,
+            idle_settings_controller,
         };
 
         let widgets = view_output!();
@@ -278,6 +305,12 @@ impl Component for SettingsWindowModel {
             model.notification_settings_controller.widget(),
             Some("notifications"),
             "Notifications",
+        );
+
+        widgets.stack.add_titled(
+            model.idle_settings_controller.widget(),
+            Some("idle"),
+            "Idle",
         );
 
         ComponentParts { model, widgets }

@@ -5,6 +5,7 @@ use std::cell::RefCell;
 
 mod bar_settings;
 mod general_settings;
+mod idle_settings;
 mod menu_settings;
 mod notification_settings;
 pub mod settings;

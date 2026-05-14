@@ -26,6 +26,38 @@ pub struct Config {
     pub notifications: Notifications,
     pub wallpaper: Wallpaper,
     pub tempo: Tempo,
+    pub idle: Idle,
+}
+
+/// Idle manager — staged actions as the session sits idle. Each
+/// stage has an enable flag and a timeout (minutes from the last
+/// input). Timeouts are independent, so they should be ordered
+/// dim < lock < suspend for the staging to read naturally.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[serde(default)]
+pub struct Idle {
+    /// Dim the screen (a translucent overlay) when idle.
+    pub dim_enabled: bool,
+    pub dim_timeout_minutes: u32,
+    /// Activate the lock screen when idle.
+    pub lock_enabled: bool,
+    pub lock_timeout_minutes: u32,
+    /// `systemctl suspend` when idle.
+    pub suspend_enabled: bool,
+    pub suspend_timeout_minutes: u32,
+}
+
+impl Default for Idle {
+    fn default() -> Self {
+        Self {
+            dim_enabled: true,
+            dim_timeout_minutes: 15,
+            lock_enabled: true,
+            lock_timeout_minutes: 20,
+            suspend_enabled: true,
+            suspend_timeout_minutes: 30,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]

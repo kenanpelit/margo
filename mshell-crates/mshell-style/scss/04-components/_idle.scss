@@ -1,0 +1,8 @@
+// Idle-dim overlay — a translucent scrim shown while the session
+// sits idle (the stage before lock / suspend). It's a layer-shell
+// window with no exclusive zone and no keyboard focus, so any
+// input still reaches the windows below and wakes the session,
+// which clears the overlay.
+.idle-dim-overlay {
+  background-color: rgba(0, 0, 0, 0.55);
+}

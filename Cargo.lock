@@ -3714,9 +3714,13 @@ dependencies = [
 name = "mshell-idle"
 version = "0.4.8"
 dependencies = [
+ "anyhow",
+ "libc",
  "tokio",
  "tokio-stream",
  "tracing",
+ "wayland-client",
+ "wayland-protocols",
  "zbus",
 ]
 

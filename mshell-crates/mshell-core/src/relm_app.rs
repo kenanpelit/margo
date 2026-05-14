@@ -1,12 +1,15 @@
 use crate::ipc::init_ipc_shell_service;
 use crate::monitors;
-use gtk4_layer_shell::{Layer, LayerShell};
+use gtk4_layer_shell::{Edge, Layer, LayerShell};
 use mshell_cache::wallpaper::{CycleDirection, cycle_wallpaper};
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
-    BarsStoreFields, ConfigStoreFields, FrameStoreFields, WallpaperRotationMode,
-    WallpaperStoreFields,
+    BarsStoreFields, ConfigStoreFields, FrameStoreFields, IdleStoreFields,
+    WallpaperRotationMode, WallpaperStoreFields,
 };
+use mshell_idle::idle_manager::{self, IdleConfig, IdleStage};
+use mshell_idle::inhibitor::IdleInhibitor;
+use mshell_session::session_lock::session_lock;
 use mshell_frame::frame::{Frame, FrameInit, FrameInput};
 use mshell_lockscreen::lock_screen_manager::{LockScreenManagerInit, LockScreenManagerModel};
 use mshell_notification_popups::popup_notifications::{
@@ -42,6 +45,9 @@ pub(crate) struct Shell {
     _sound_alerts: Controller<SoundAlertsModel>,
     _style_manager: Controller<StyleManagerModel>,
     monitor_filter: Vec<String>,
+    /// Keeps the idle-manager timeout channel alive for the
+    /// shell's lifetime.
+    _idle_config_tx: tokio::sync::watch::Sender<IdleConfig>,
 }
 
 pub(crate) struct ShellInit {}
@@ -151,6 +157,7 @@ impl Component for Shell {
 
         init_ipc_shell_service(&sender);
         spawn_wallpaper_rotation_timer();
+        let idle_config_tx = spawn_idle_manager();
 
         let model = Shell {
             window_groups,
@@ -159,6 +166,7 @@ impl Component for Shell {
             _sound_alerts: sound_alerts,
             _style_manager: style_manager,
             monitor_filter,
+            _idle_config_tx: idle_config_tx,
         };
 
         monitors::setup_monitor_watcher(&sender);
@@ -460,6 +468,130 @@ fn spawn_wallpaper_rotation_timer() {
         }
         relm4::gtk::glib::ControlFlow::Continue
     });
+}
+
+/// Read the idle-stage timeouts from config into an `IdleConfig`
+/// (a disabled stage maps to `None`).
+fn read_idle_config() -> IdleConfig {
+    let dim_minutes = config_manager()
+        .config()
+        .idle()
+        .dim_enabled()
+        .get()
+        .then(|| config_manager().config().idle().dim_timeout_minutes().get());
+    let lock_minutes = config_manager()
+        .config()
+        .idle()
+        .lock_enabled()
+        .get()
+        .then(|| config_manager().config().idle().lock_timeout_minutes().get());
+    let suspend_minutes = config_manager()
+        .config()
+        .idle()
+        .suspend_enabled()
+        .get()
+        .then(|| {
+            config_manager()
+                .config()
+                .idle()
+                .suspend_timeout_minutes()
+                .get()
+        });
+    IdleConfig {
+        dim_minutes,
+        lock_minutes,
+        suspend_minutes,
+    }
+}
+
+/// A full-screen, input-transparent translucent overlay shown
+/// while the session is idle-dimmed.
+fn build_idle_dim_overlay() -> gtk::Window {
+    let window = gtk::Window::new();
+    window.add_css_class("idle-dim-overlay");
+    window.set_decorated(false);
+    window.init_layer_shell();
+    window.set_layer(Layer::Overlay);
+    window.set_namespace(Some("mshell-idle-dim"));
+    // Visual only — no exclusive zone, no keyboard focus, so input
+    // still reaches the windows below and wakes the session.
+    window.set_exclusive_zone(-1);
+    for edge in [Edge::Top, Edge::Bottom, Edge::Left, Edge::Right] {
+        window.set_anchor(edge, true);
+    }
+    window.set_visible(false);
+    window
+}
+
+/// Start the idle manager: wire config → timeouts, and the idle
+/// stage → screen-dim overlay / lock / suspend. Returns the
+/// config sender, which the caller keeps alive.
+fn spawn_idle_manager() -> tokio::sync::watch::Sender<IdleConfig> {
+    let (config_tx, mut stage_rx) = match idle_manager::start(read_idle_config()) {
+        Ok(pair) => pair,
+        Err(e) => {
+            tracing::warn!("idle manager unavailable: {e:#}");
+            // Hand back a live-but-unused sender so the caller's
+            // struct field stays valid.
+            return tokio::sync::watch::channel(IdleConfig::default()).0;
+        }
+    };
+
+    // Push timeout changes from config into the manager.
+    let config_tx_effect = config_tx.clone();
+    Effect::new(move |_| {
+        let _ = config_tx_effect.send(read_idle_config());
+    });
+
+    // React to idle-stage changes on the GTK main loop.
+    let dim_overlay = build_idle_dim_overlay();
+    relm4::gtk::glib::spawn_future_local(async move {
+        let mut previous = IdleStage::Active;
+        while stage_rx.changed().await.is_ok() {
+            let stage = *stage_rx.borrow_and_update();
+            if stage == previous {
+                continue;
+            }
+            previous = stage;
+
+            // The manual idle inhibitor vetoes everything but the
+            // return-to-active (un-dim) transition.
+            let inhibited = IdleInhibitor::global().get();
+
+            match stage {
+                IdleStage::Active => {
+                    dim_overlay.set_visible(false);
+                }
+                IdleStage::Dim => {
+                    if !inhibited {
+                        dim_overlay.set_visible(true);
+                    }
+                }
+                IdleStage::Lock => {
+                    if !inhibited {
+                        dim_overlay.set_visible(true);
+                        if !session_lock().is_locked() {
+                            session_lock().lock();
+                        }
+                    }
+                }
+                IdleStage::Suspend => {
+                    if !inhibited {
+                        if !session_lock().is_locked() {
+                            session_lock().lock();
+                        }
+                        if let Err(e) =
+                            std::process::Command::new("systemctl").arg("suspend").spawn()
+                        {
+                            tracing::warn!("idle suspend failed: {e}");
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    config_tx
 }
 
 /// Get the frame for the monitor name.  If it doesn't exist, get the first frame available
