@@ -15,6 +15,7 @@ use crate::bars::bar_widgets::margo_tags::{
 use crate::bars::bar_widgets::lock::{LockInit, LockModel, LockOutput};
 use crate::bars::bar_widgets::logout::{LogoutInit, LogoutModel};
 use crate::bars::bar_widgets::network::{NetworkInit, NetworkModel};
+use crate::bars::bar_widgets::nip::{NipInit, NipModel};
 use crate::bars::bar_widgets::notifications::{
     NotificationsInit, NotificationsModel, NotificationsOutput,
 };
@@ -471,6 +472,7 @@ impl BarModel {
                     }),
             ),
             BarWidget::Network => Box::new(NetworkModel::builder().launch(NetworkInit {}).detach()),
+            BarWidget::Nip => Box::new(NipModel::builder().launch(NipInit {}).detach()),
             BarWidget::Notifications => Box::new(
                 NotificationsModel::builder()
                     .launch(NotificationsInit { orientation })

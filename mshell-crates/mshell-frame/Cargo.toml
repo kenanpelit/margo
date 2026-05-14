@@ -30,6 +30,7 @@ reactive_stores.workspace = true
 relm4.workspace = true
 time.workspace = true
 chrono.workspace = true
+serde_json.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 wayle-audio.workspace = true

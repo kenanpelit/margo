@@ -14,6 +14,7 @@ pub(crate) mod margo_tags;
 pub(crate) mod lock;
 pub(crate) mod logout;
 pub(crate) mod network;
+pub(crate) mod nip;
 pub(crate) mod notifications;
 pub(crate) mod power_profile;
 pub(crate) mod quick_settings;
