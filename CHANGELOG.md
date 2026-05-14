@@ -7,6 +7,29 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.5.0] – 2026-05-14
+
+### Fixed
+
+- **Menu content widgets recreated ~once per second.** The menu's
+  `SetWidget` handler tore down and rebuilt every menu's content
+  controllers unconditionally; the coarse config store re-notifies
+  every effect bound to it, so any unrelated config touch recreated
+  all the menus. The ndns / nufw / npodman menu widgets shell out
+  to `ufw` / `nmcli` / `podman` / `resolvectl` / `mullvad` on init,
+  so this meant a steady subprocess storm — their 30/60/120 s
+  refresh intervals never even applied because the widgets never
+  lived that long. The bar already guarded against this; the menu
+  now does too. Idle CPU ~25% → ~2%.
+- **Startup RSS spike into the gigabytes.** The wallpaper menu's
+  `GridView` factory spawned one bare OS thread per thumbnail
+  decode; a directory of a few hundred wallpapers, times one bar
+  per monitor, meant hundreds of threads each loading an image at
+  once (~557 threads / 2.2 GB RSS at peak, cgroup peak 6.6 GB).
+  Decodes now run through a fixed six-worker pool — extra binds
+  just queue. Startup peak drops to ~1.5 GB; the mshell process
+  settles at ~400 MB.
+
 ## [0.4.9] – 2026-05-14
 
 ### Added
