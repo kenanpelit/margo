@@ -1,3 +1,4 @@
+pub(crate) mod active_window;
 pub(crate) mod app_launcher;
 pub(crate) mod audio_input;
 pub(crate) mod audio_output;

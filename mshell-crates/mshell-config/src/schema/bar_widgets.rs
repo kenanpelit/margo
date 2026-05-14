@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, JsonSchema)]
 pub enum BarWidget {
+    ActiveWindow,
     AudioInput,
     AudioOutput,
     Battery,
@@ -55,6 +56,7 @@ impl PatchField for BarWidget {
 impl BarWidget {
     pub fn display_name(&self) -> &'static str {
         match self {
+            BarWidget::ActiveWindow => "Active Window",
             BarWidget::AudioInput => "Audio Input",
             BarWidget::AudioOutput => "Audio Output",
             BarWidget::Battery => "Battery",
@@ -95,6 +97,7 @@ impl BarWidget {
 
     pub fn all() -> &'static [BarWidget] {
         &[
+            BarWidget::ActiveWindow,
             BarWidget::AudioInput,
             BarWidget::AudioOutput,
             BarWidget::Battery,

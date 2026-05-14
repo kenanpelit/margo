@@ -24,6 +24,7 @@ use crate::bars::bar_widgets::npower::{NpowerInit, NpowerModel};
 use crate::bars::bar_widgets::media_player::{
     MediaPlayerInit, MediaPlayerModel, MediaPlayerOutput,
 };
+use crate::bars::bar_widgets::active_window::{ActiveWindowInit, ActiveWindowModel};
 use crate::bars::bar_widgets::nufw::{NufwInit, NufwModel};
 use crate::bars::bar_widgets::notifications::{
     NotificationsInit, NotificationsModel, NotificationsOutput,
@@ -424,6 +425,11 @@ impl BarModel {
             BarWidget::AudioOutput => Box::new(
                 AudioOutputModel::builder()
                     .launch(AudioOutputInit {})
+                    .detach(),
+            ),
+            BarWidget::ActiveWindow => Box::new(
+                ActiveWindowModel::builder()
+                    .launch(ActiveWindowInit {})
                     .detach(),
             ),
             BarWidget::Battery => Box::new(BatteryModel::builder().launch(BatteryInit {}).detach()),
