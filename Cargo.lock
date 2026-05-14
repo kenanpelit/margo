@@ -3670,7 +3670,6 @@ dependencies = [
  "mshell-clipboard",
  "mshell-common",
  "mshell-config",
- "mshell-gamma",
  "mshell-idle",
  "mshell-margo-client",
  "mshell-matugen",

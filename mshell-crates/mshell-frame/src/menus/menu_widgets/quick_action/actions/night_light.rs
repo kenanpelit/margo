@@ -1,9 +1,27 @@
-use mshell_gamma::{GammaState, gamma_service};
-use relm4::gtk::glib;
+//! Night-light quick-action button.
+//!
+//! Drives margo's built-in **twilight** blue-light filter via
+//! `mctl twilight` rather than running a second, independent gamma
+//! controller in the shell:
+//!   * click  → `mctl twilight toggle` (flips the schedule on/off)
+//!   * state  → `mctl twilight status --json`, polled every few
+//!     seconds plus an immediate re-probe after each toggle.
+//!
+//! margo owns the output gamma ramps itself (geo schedule, day /
+//! night phases, smooth transitions), so going through `mctl`
+//! keeps a single source of truth — no two writers fighting over
+//! `zwlr_gamma_control` the way the old `mshell-gamma` path did.
+
 use relm4::gtk::prelude::{ButtonExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use std::time::Duration;
+use tracing::warn;
 
-#[derive(Debug, Clone)]
+const POLL_INTERVAL: Duration = Duration::from_secs(5);
+const STARTUP_DELAY: Duration = Duration::from_millis(200);
+const POST_TOGGLE_DELAY: Duration = Duration::from_millis(150);
+
+#[derive(Debug)]
 pub(crate) struct NightLightModel {
     enabled: bool,
 }
@@ -11,7 +29,6 @@ pub(crate) struct NightLightModel {
 #[derive(Debug)]
 pub(crate) enum NightLightInput {
     Clicked,
-    GammaStateChanged(GammaState),
 }
 
 #[derive(Debug)]
@@ -20,7 +37,9 @@ pub(crate) enum NightLightOutput {}
 pub(crate) struct NightLightInit {}
 
 #[derive(Debug)]
-pub(crate) enum NightLightCommandOutput {}
+pub(crate) enum NightLightCommandOutput {
+    EnabledChanged(bool),
+}
 
 #[relm4::component(pub)]
 impl Component for NightLightModel {
@@ -63,44 +82,50 @@ impl Component for NightLightModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let state = gamma_service().state();
-
-        let sender_clone = sender.clone();
-        let mut rx = gamma_service().subscribe();
-        glib::spawn_future_local(async move {
-            while rx.changed().await.is_ok() {
-                let state = rx.borrow_and_update().clone();
-                sender_clone.input(NightLightInput::GammaStateChanged(state));
+        // Poll `mctl twilight status` so the button tracks the
+        // schedule (and any external `mctl twilight` calls), not
+        // just our own clicks.
+        sender.command(|out, shutdown| {
+            async move {
+                let shutdown_fut = shutdown.wait();
+                tokio::pin!(shutdown_fut);
+                let mut first = true;
+                loop {
+                    let delay = if first { STARTUP_DELAY } else { POLL_INTERVAL };
+                    first = false;
+                    tokio::select! {
+                        () = &mut shutdown_fut => break,
+                        _ = tokio::time::sleep(delay) => {}
+                    }
+                    if let Some(enabled) = probe_twilight_enabled().await {
+                        let _ = out.send(NightLightCommandOutput::EnabledChanged(enabled));
+                    }
+                }
             }
         });
 
-        let model = NightLightModel {
-            enabled: state.enabled,
-        };
-
+        let model = NightLightModel { enabled: false };
         let widgets = view_output!();
-
         ComponentParts { model, widgets }
     }
 
-    fn update_with_view(
+    fn update(
         &mut self,
-        widgets: &mut Self::Widgets,
         message: Self::Input,
         sender: ComponentSender<Self>,
         _root: &Self::Root,
     ) {
         match message {
             NightLightInput::Clicked => {
-                let gamma_service = gamma_service();
-                gamma_service.set_enabled(!self.enabled);
-            }
-            NightLightInput::GammaStateChanged(state) => {
-                self.enabled = state.enabled;
+                sender.command(|out, _shutdown| async move {
+                    run_twilight_toggle().await;
+                    tokio::time::sleep(POST_TOGGLE_DELAY).await;
+                    if let Some(enabled) = probe_twilight_enabled().await {
+                        let _ = out.send(NightLightCommandOutput::EnabledChanged(enabled));
+                    }
+                });
             }
         }
-
-        self.update_view(widgets, sender);
     }
 
     fn update_cmd(
@@ -109,6 +134,38 @@ impl Component for NightLightModel {
         _sender: ComponentSender<Self>,
         _root: &Self::Root,
     ) {
-        match message {}
+        match message {
+            NightLightCommandOutput::EnabledChanged(enabled) => {
+                self.enabled = enabled;
+            }
+        }
+    }
+}
+
+/// `mctl twilight status --json` → the `enabled` flag. `None` when
+/// `mctl` is missing, the compositor isn't reachable, or the JSON
+/// doesn't parse.
+async fn probe_twilight_enabled() -> Option<bool> {
+    let out = tokio::process::Command::new("mctl")
+        .args(["twilight", "status", "--json"])
+        .output()
+        .await
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
+    v.get("enabled")?.as_bool()
+}
+
+async fn run_twilight_toggle() {
+    match tokio::process::Command::new("mctl")
+        .args(["twilight", "toggle"])
+        .status()
+        .await
+    {
+        Ok(s) if s.success() => {}
+        Ok(s) => warn!(?s, "mctl twilight toggle returned non-zero"),
+        Err(e) => warn!(error = %e, "mctl twilight toggle spawn failed"),
     }
 }

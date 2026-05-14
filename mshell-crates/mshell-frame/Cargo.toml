@@ -16,7 +16,6 @@ mshell-cache.workspace = true
 mshell-clipboard.workspace = true
 mshell-common.workspace = true
 mshell-config.workspace = true
-mshell-gamma.workspace = true
 mshell-idle.workspace = true
 mshell-matugen.workspace = true
 mshell-screenshot.workspace = true
