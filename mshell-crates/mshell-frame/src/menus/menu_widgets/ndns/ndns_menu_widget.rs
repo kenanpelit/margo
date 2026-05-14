@@ -20,20 +20,20 @@
 //! Action handlers:
 //!   * `mullvad` — `mullvad connect / disconnect` (rootless per-
 //!     user daemon socket).
-//!   * `blocky` — `pkexec systemctl start / stop blocky.service`.
-//!   * `default` — `pkexec nmcli connection modify <primary>
-//!     ipv4.dns "" && ipv4.ignore-auto-dns no && up`, falling
-//!     back to `pkexec resolvectl revert <iface>` when nmcli
-//!     isn't on PATH.
-//!   * preset — `pkexec resolvectl dns <iface> <ips…>`, scoped
-//!     to the primary non-loopback / non-wireguard interface the
-//!     probe discovered.
+//!   * `blocky` — `systemctl start / stop blocky.service`.
+//!   * `default` — `nmcli connection modify <primary> ipv4.dns ""
+//!     && ipv4.ignore-auto-dns no && up`, falling back to
+//!     `resolvectl revert <iface>` when nmcli isn't on PATH.
+//!   * preset — `resolvectl dns <iface> <ips…>`, scoped to the
+//!     primary non-loopback / non-wireguard interface the probe
+//!     discovered.
 //!   * `toggle` — protected → off (default), idle → on (mullvad).
 //!
-//! All privileged paths use `sender.command` (relm4 tokio
-//! executor) — pkexec's graphical agent surfaces a password
-//! prompt, polkit caches the credential for ~5 min so the menu
-//! refreshes silently within the session.
+//! Privileged steps go through `run_privileged`, which prefers
+//! `sudo -n` when the user has passwordless sudo — silent, no GUI
+//! agent to lose keyboard focus to under the compositor (the same
+//! approach noctalia's `apply.sh` takes) — and only falls back to
+//! pkexec's graphical agent when `sudo -n` isn't available.
 
 use crate::bars::bar_widgets::ndns::{DnsState, Mode, probe_dns_state};
 use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
@@ -504,13 +504,13 @@ async fn action_mullvad(connect: bool) -> Result<(), String> {
 
 async fn action_blocky(want_active: bool) -> Result<(), String> {
     let subcmd = if want_active { "start" } else { "stop" };
-    pkexec(&["systemctl", subcmd, "blocky.service"]).await
+    run_privileged(&["systemctl", subcmd, "blocky.service"]).await
 }
 
 async fn action_default(primary_conn: Option<String>) -> Result<(), String> {
     if let Some(name) = primary_conn {
-        pkexec(&["nmcli", "connection", "modify", &name, "ipv4.dns", ""]).await?;
-        pkexec(&[
+        run_privileged(&["nmcli", "connection", "modify", &name, "ipv4.dns", ""]).await?;
+        run_privileged(&[
             "nmcli",
             "connection",
             "modify",
@@ -519,10 +519,10 @@ async fn action_default(primary_conn: Option<String>) -> Result<(), String> {
             "no",
         ])
         .await?;
-        let _ = pkexec(&["nmcli", "connection", "up", &name]).await;
+        let _ = run_privileged(&["nmcli", "connection", "up", &name]).await;
         Ok(())
     } else {
-        pkexec(&["resolvectl", "revert"]).await
+        run_privileged(&["resolvectl", "revert"]).await
     }
 }
 
@@ -533,7 +533,7 @@ async fn action_apply_preset(device: Option<String>, ips: &str) -> Result<(), St
         args.push(ip.to_string());
     }
     let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    pkexec(&refs).await
+    run_privileged(&refs).await
 }
 
 async fn action_toggle(state: DnsState) -> Result<(), String> {
@@ -550,14 +550,36 @@ async fn action_toggle(state: DnsState) -> Result<(), String> {
     }
 }
 
-async fn pkexec(args: &[&str]) -> Result<(), String> {
-    let s = tokio::process::Command::new("pkexec")
+/// Run a privileged command.
+///
+/// Probes `sudo -n true` first: if passwordless sudo is set up
+/// for the user, the command runs through `sudo -n` — silent, no
+/// graphical agent. Under a Wayland compositor pkexec's polkit
+/// prompt can come up without keyboard focus (you can't type the
+/// password into it), so `sudo -n` is strongly preferred and
+/// pkexec is only the fallback for users without NOPASSWD sudo.
+async fn run_privileged(args: &[&str]) -> Result<(), String> {
+    let have_sudo_n = tokio::process::Command::new("sudo")
+        .args(["-n", "true"])
+        .status()
+        .await
+        .map(|s| s.success())
+        .unwrap_or(false);
+
+    let (bin, prefix): (&str, &[&str]) = if have_sudo_n {
+        ("sudo", &["-n"])
+    } else {
+        ("pkexec", &[])
+    };
+
+    let s = tokio::process::Command::new(bin)
+        .args(prefix)
         .args(args)
         .status()
         .await
-        .map_err(|e| format!("pkexec spawn: {e}"))?;
+        .map_err(|e| format!("{bin} spawn: {e}"))?;
     if !s.success() {
-        return Err(format!("pkexec {} exit {s}", args.join(" ")));
+        return Err(format!("{bin} {} exit {s}", args.join(" ")));
     }
     Ok(())
 }
