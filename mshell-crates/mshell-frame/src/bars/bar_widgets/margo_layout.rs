@@ -9,10 +9,25 @@
 //! / tgmix / canvas / dwindle) — not the four-Hyprland-strings
 //! hard-coded list this widget shipped with previously.
 //!
-//! Clicking a menu item shells out to `mctl dispatch setlayout
-//! <index>` with the layout's index in `state.layouts`. That goes
-//! through the same dwl-ipc dispatch the rest of margo uses, so
-//! the layout change is durable + survives a margo reload.
+//! Clicking a menu item shells out to `mctl layout <index>`. The
+//! dedicated `mctl layout` subcommand is the well-tested path —
+//! `mctl dispatch setlayout <name>` exists too but requires the
+//! name in slot 4 (`mctl dispatch setlayout "" "" "" <name>`),
+//! which is fiddly enough that the previous version of this file
+//! got the wire format wrong and clicks silently no-op'd. The
+//! index API is order-coupled to the compositor's layout list but
+//! we read it from the same state.json so the mapping is stable.
+//!
+//! The currently-active layout (per the focused output's
+//! `layout_idx`) gets the `.selected` class so the matugen primary
+//! accent paints it green / blue / whatever the active scheme is.
+//! A 500 ms poll loop checks `read_state_json()` and emits
+//! `LayoutChanged` only when the focused output's layout actually
+//! moves — no event in `MargoEvent` fires for a layout-only switch
+//! (tag-switch fires `WorkspaceV2`, layout switch is silent on the
+//! event bus), so polling is the only path that catches all four
+//! triggers (mctl layout, dispatch setlayout, switch_layout, and
+//! direct keybind).
 
 use mshell_margo_client::read_state_json;
 use relm4::gtk::gio::prelude::ActionMapExt;
@@ -21,17 +36,35 @@ use relm4::gtk::glib::variant::ToVariant;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, PopoverExt, WidgetExt};
 use relm4::gtk::{Orientation, gio};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::time::Duration;
 use tracing::warn;
+
+/// Polling interval for active-layout detection. Matches the upper
+/// bound of `mshell_margo_client::sync::POLL_INTERVAL` (250 ms) so
+/// the highlight lags at most one tick behind the rest of the bar.
+const ACTIVE_POLL_INTERVAL: Duration = Duration::from_millis(500);
 
 #[derive(Debug)]
 pub(crate) struct MargoLayoutModel {
     orientation: Orientation,
+    /// Index → button mapping so `LayoutChanged` can flip the
+    /// `.selected` class without rebuilding the popover. Held in
+    /// `Rc<RefCell<…>>` because the periodic glib timeout also
+    /// needs to reach in.
+    buttons: Rc<RefCell<Vec<gtk::Button>>>,
+    _timeout: Option<gtk::glib::SourceId>,
 }
 
 #[derive(Debug)]
 pub(crate) enum MargoLayoutInput {
-    /// Switch to layout at this index in margo's `state.layouts`.
+    /// Switch to layout at this index. Index maps to the list in
+    /// `state.layouts` (and the wired-in fallback below).
     SetLayoutIndex(usize),
+    /// Re-evaluate which button should carry the `.selected` class.
+    /// Fired by the active-layout poll loop below.
+    LayoutChanged(Option<usize>),
 }
 
 #[derive(Debug)]
@@ -76,11 +109,8 @@ impl Component for MargoLayoutModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let model = MargoLayoutModel {
-            orientation: params.orientation,
-        };
-
-        let widgets = view_output!();
+        let buttons_cell: Rc<RefCell<Vec<gtk::Button>>> = Rc::new(RefCell::new(Vec::new()));
+        let active_cell: Rc<RefCell<Option<usize>>> = Rc::new(RefCell::new(None));
 
         // Populate the menu from the live margo state.json. Falls
         // back to the wired-in name list if state.json isn't
@@ -110,6 +140,47 @@ impl Component for MargoLayoutModel {
             popover.add_child(widget, custom_id);
         }
 
+        // Save the bare buttons so the LayoutChanged handler can
+        // flip CSS classes by index.
+        {
+            let mut sink = buttons_cell.borrow_mut();
+            sink.extend(buttons.iter().map(|(_, b)| b.clone()));
+        }
+
+        // Start the active-layout poller. glib's timeout_add_local
+        // runs on the GTK main loop so we can touch widgets from
+        // its closure directly (no Send/Sync gymnastics).
+        let sender_poll = sender.clone();
+        let active_cell_poll = active_cell.clone();
+        let timeout = gtk::glib::timeout_add_local(ACTIVE_POLL_INTERVAL, move || {
+            let next = current_active_layout_idx();
+            let mut last = active_cell_poll.borrow_mut();
+            if *last != next {
+                *last = next;
+                sender_poll.input(MargoLayoutInput::LayoutChanged(next));
+            }
+            gtk::glib::ControlFlow::Continue
+        });
+
+        // Fire the initial highlight synchronously so the popover
+        // never flashes a stale row before the first poll-tick.
+        let initial_active = current_active_layout_idx();
+        *active_cell.borrow_mut() = initial_active;
+        apply_active_class(&buttons_cell.borrow(), initial_active);
+
+        // active_cell stays alive via the timeout closure that
+        // captured a clone — once `timeout` is dropped in Drop, the
+        // closure releases its clone and the cell is freed.
+        let _ = active_cell;
+
+        let model = MargoLayoutModel {
+            orientation: params.orientation,
+            buttons: buttons_cell,
+            _timeout: Some(timeout),
+        };
+
+        let widgets = view_output!();
+
         widgets.menu_button.set_popover(Some(&popover));
         widgets
             .menu_button
@@ -128,42 +199,40 @@ impl Component for MargoLayoutModel {
         ComponentParts { model, widgets }
     }
 
-    fn update_with_view(
+    fn update(
         &mut self,
-        _widgets: &mut Self::Widgets,
         message: Self::Input,
         _sender: ComponentSender<Self>,
         _root: &Self::Root,
     ) {
         match message {
             MargoLayoutInput::SetLayoutIndex(idx) => {
-                // mctl dispatch setlayout <idx>. Margo reads
-                // `arg.i` (i32) from the first dispatch slot, so
-                // pass the index as the only argument. The previous
-                // version of this widget called
-                // `MargoService::eval("hl.workspace_rule(...)")`
-                // which is a hyprland string the margo client
-                // never grew an action for — that's the bug the
-                // user observed as "layout switcher does nothing."
+                // `mctl layout <idx>` is the dedicated subcommand —
+                // simpler than `mctl dispatch setlayout` which
+                // requires the layout NAME in slot 4 (positions 1-3
+                // empty) because margo reads `arg.v` from there. An
+                // earlier version of this widget passed the idx as
+                // slot 1 (arg.i), which `setlayout` ignores; that's
+                // why clicks silently no-op'd.
                 tokio::spawn(async move {
                     let mut command = tokio::process::Command::new("mctl");
-                    command
-                        .arg("dispatch")
-                        .arg("setlayout")
-                        .arg(idx.to_string());
+                    command.arg("layout").arg(idx.to_string());
                     match command.status().await {
                         Ok(status) if status.success() => {}
                         Ok(status) => warn!(
                             ?status,
-                            idx, "mctl dispatch setlayout returned non-zero"
+                            idx, "mctl layout returned non-zero"
                         ),
                         Err(e) => warn!(
                             error = %e,
                             idx,
-                            "mctl dispatch setlayout spawn failed"
+                            "mctl layout spawn failed"
                         ),
                     }
                 });
+            }
+            MargoLayoutInput::LayoutChanged(idx) => {
+                apply_active_class(&self.buttons.borrow(), idx);
             }
         }
     }
@@ -206,6 +275,31 @@ impl MargoLayoutModel {
             .build();
 
         (custom_id, button)
+    }
+}
+
+/// Read the focused output's `layout_idx` from state.json. Returns
+/// `None` when state.json is missing, no output is currently
+/// focused, or the index is past the layouts list (transient).
+fn current_active_layout_idx() -> Option<usize> {
+    let state = read_state_json()?;
+    let focused = state.outputs.iter().find(|o| o.active)?;
+    let idx = focused.layout_idx;
+    if idx < state.layouts.len() { Some(idx) } else { None }
+}
+
+/// Apply the `.selected` class to the button at `idx`, clear it
+/// on every other. The SCSS rule `.ok-button-surface.selected`
+/// (`03-primitives/_buttons.scss`) paints it `var(--primary)` /
+/// `var(--on-primary)`, so the popover row tracks the matugen
+/// scheme for free.
+fn apply_active_class(buttons: &[gtk::Button], active: Option<usize>) {
+    for (i, button) in buttons.iter().enumerate() {
+        if Some(i) == active {
+            button.add_css_class("selected");
+        } else {
+            button.remove_css_class("selected");
+        }
     }
 }
 
