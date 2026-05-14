@@ -1,83 +1,81 @@
-//! Public-IP bar widget — port of the `nip` noctalia plugin.
+//! Public-IP bar pill — port of the noctalia `nip` plugin's bar
+//! half.
 //!
-//! Periodically (default 300 s) fetches the host's public IP from
-//! ipinfo.io and exposes:
+//! Render-only widget. Polls ipinfo.io every 300 s, draws a globe
+//! icon + tooltip. Click emits `NipOutput::Clicked`; frame toggles
+//! the layer-shell `MenuType::Nip` (the detail panel lives in
+//! `menu_widgets/nip/nip_menu_widget.rs`).
 //!
-//!   * an icon — `network-symbolic` on success, `network-error-
-//!     symbolic` on failure, `content-loading-symbolic` while a
-//!     request is in flight
-//!   * a tooltip — current IP + city / region / country / org,
-//!     refreshed in lockstep with each successful fetch
-//!   * left-click — opens the ipinfo.io page for the IP in the
-//!     user's default browser via `xdg-open`. The noctalia plugin
-//!     shipped a richer side panel; that's deferred for now in
-//!     favour of the bar-pill MVP — the browser open keeps parity
-//!     for the "I want to see more" gesture without the GTK4
-//!     port of the QML panel.
-//!
-//! Network calls go out through `curl(1)` rather than reqwest:
-//!   * keeps the binary size down (no TLS stack pulled in)
-//!   * matches the upstream `nip/scripts/state.sh` semantics 1:1
-//!   * lets the user override timeouts / providers by editing
-//!     `~/.cachy/.../nip/*.sh` later if they want
-//!
-//! The fetch task is owned by the widget — when the widget is
-//! dropped the tokio task spawns die naturally (the JoinHandle is
-//! held in `_handle`).
+//! ipinfo.io's free tier returns a flat JSON — `ip`, `city`,
+//! `region`, `country`, `org`, `loc`, `timezone` — no auth needed
+//! up to ~1000 req/day, well under our 288/day cadence. Fetch goes
+//! through `curl(1)` so we don't pull a TLS stack into the binary.
 
 use relm4::gtk::prelude::{ButtonExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::time::Duration;
-use tracing::warn;
 
-/// 5-minute default refresh cadence matches the upstream nip
-/// plugin's `defaultSettings.refreshInterval` (300 s).
 const REFRESH_INTERVAL: Duration = Duration::from_secs(300);
-
-/// Initial fetch fires this fast on widget start so the bar isn't
-/// stuck at "Loading…" for 5 minutes after login.
 const STARTUP_DELAY: Duration = Duration::from_secs(2);
 
-#[derive(Debug)]
-pub(crate) struct NipModel {
-    state: FetchState,
-    info: Option<IpInfo>,
-}
-
-#[derive(Debug, Clone, Default)]
-pub(crate) struct IpInfo {
-    ip: String,
-    city: String,
-    region: String,
-    country: String,
-    org: String,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum FetchState {
+pub(crate) enum FetchState {
     Loading,
     Ok,
     Err,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct IpInfo {
+    pub(crate) ip: String,
+    pub(crate) city: String,
+    pub(crate) region: String,
+    pub(crate) country: String,
+    pub(crate) org: String,
+    /// "lat,lon" string from ipinfo's `loc` field.
+    pub(crate) loc: String,
+    pub(crate) timezone: String,
+}
+
+/// What the bar poll loop produces — used by both the bar pill
+/// and the menu widget (which runs its own poll).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct NipSnapshot {
+    pub(crate) state: FetchState,
+    pub(crate) info: Option<IpInfo>,
+    pub(crate) error: Option<String>,
+}
+
+impl Default for NipSnapshot {
+    fn default() -> Self {
+        Self {
+            state: FetchState::Loading,
+            info: None,
+            error: None,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct NipModel {
+    snapshot: NipSnapshot,
+}
+
 #[derive(Debug)]
 pub(crate) enum NipInput {
-    /// Left-click → open the ipinfo.io page for the current IP in
-    /// the system browser. No-op when state is Err and no info has
-    /// been fetched yet.
     Clicked,
 }
 
 #[derive(Debug)]
-pub(crate) enum NipOutput {}
+pub(crate) enum NipOutput {
+    Clicked,
+}
 
 pub(crate) struct NipInit {}
 
 #[derive(Debug)]
 pub(crate) enum NipCommandOutput {
-    Started,
-    Fetched(IpInfo),
-    Failed(String),
+    Refreshed(NipSnapshot),
 }
 
 #[relm4::component(pub)]
@@ -118,9 +116,6 @@ impl Component for NipModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        // Periodic fetch loop. `sender.command` ties the task's
-        // lifetime to the component, so the loop exits when the
-        // widget is unbuilt (config reload, bar reorder).
         sender.command(|out, shutdown| {
             async move {
                 let shutdown_fut = shutdown.wait();
@@ -133,50 +128,29 @@ impl Component for NipModel {
                         () = &mut shutdown_fut => break,
                         _ = tokio::time::sleep(delay) => {}
                     }
-                    let _ = out.send(NipCommandOutput::Started);
-                    match fetch_ipinfo().await {
-                        Ok(info) => {
-                            let _ = out.send(NipCommandOutput::Fetched(info));
-                        }
-                        Err(e) => {
-                            let _ = out.send(NipCommandOutput::Failed(e));
-                        }
-                    }
+                    let snap = fetch_snapshot().await;
+                    let _ = out.send(NipCommandOutput::Refreshed(snap));
                 }
             }
         });
 
         let model = NipModel {
-            state: FetchState::Loading,
-            info: None,
+            snapshot: NipSnapshot::default(),
         };
-
         let widgets = view_output!();
-
-        apply_visual(&widgets.image, &root, model.state, model.info.as_ref());
-
+        apply_visual(&widgets.image, &root, &model.snapshot);
         ComponentParts { model, widgets }
     }
 
     fn update(
         &mut self,
         message: Self::Input,
-        _sender: ComponentSender<Self>,
+        sender: ComponentSender<Self>,
         _root: &Self::Root,
     ) {
         match message {
             NipInput::Clicked => {
-                let url = match self.info.as_ref() {
-                    Some(info) if !info.ip.is_empty() => format!("https://ipinfo.io/{}", info.ip),
-                    _ => "https://ipinfo.io".to_string(),
-                };
-                tokio::spawn(async move {
-                    let mut cmd = tokio::process::Command::new("xdg-open");
-                    cmd.arg(&url);
-                    if let Err(e) = cmd.status().await {
-                        warn!(error = %e, url, "xdg-open spawn failed");
-                    }
-                });
+                let _ = sender.output(NipOutput::Clicked);
             }
         }
     }
@@ -189,39 +163,25 @@ impl Component for NipModel {
         root: &Self::Root,
     ) {
         match message {
-            NipCommandOutput::Started => {
-                self.state = FetchState::Loading;
-            }
-            NipCommandOutput::Fetched(info) => {
-                self.state = FetchState::Ok;
-                self.info = Some(info);
-            }
-            NipCommandOutput::Failed(msg) => {
-                warn!(error = msg, "nip: public-IP fetch failed");
-                self.state = FetchState::Err;
+            NipCommandOutput::Refreshed(snap) => {
+                if self.snapshot != snap {
+                    self.snapshot = snap;
+                    apply_visual(&widgets.image, root, &self.snapshot);
+                }
             }
         }
-        apply_visual(&widgets.image, root, self.state, self.info.as_ref());
     }
 }
 
-fn apply_visual(image: &gtk::Image, root: &gtk::Box, state: FetchState, info: Option<&IpInfo>) {
-    // Globe glyph for the success state — `network-wireless` (wifi
-    // signal) read wrong for a "public IP" widget that has nothing
-    // to do with the local radio. `globe-symbolic` ships in
-    // Adwaita / Papirus / Tela / most modern symbolic themes;
-    // `network-acquiring-symbolic` carries the standard refreshing
-    // / spinning visual that GNOME's own connection panel uses,
-    // which is more legible than the generic
-    // `content-loading-symbolic` hourglass at bar size.
-    let icon = match state {
+fn apply_visual(image: &gtk::Image, root: &gtk::Box, snap: &NipSnapshot) {
+    let icon = match snap.state {
         FetchState::Loading => "network-wired-acquiring-symbolic",
         FetchState::Ok => "globe-symbolic",
         FetchState::Err => "network-wired-disconnected-symbolic",
     };
     image.set_icon_name(Some(icon));
 
-    let tooltip = match (state, info) {
+    let tooltip = match (snap.state, &snap.info) {
         (FetchState::Loading, None) => "Fetching public IP…".to_string(),
         (FetchState::Loading, Some(i)) => format!("Refreshing… ({})", i.ip),
         (FetchState::Ok, Some(i)) => {
@@ -240,25 +200,36 @@ fn apply_visual(image: &gtk::Image, root: &gtk::Box, state: FetchState, info: Op
             parts.join("\n")
         }
         (FetchState::Ok, None) => "Public IP unavailable".to_string(),
-        (FetchState::Err, Some(i)) => format!("Refresh failed (last: {})", i.ip),
-        (FetchState::Err, None) => "Failed to fetch public IP".to_string(),
+        (FetchState::Err, _) => snap
+            .error
+            .clone()
+            .unwrap_or_else(|| "Failed to fetch public IP".to_string()),
     };
     root.set_tooltip_text(Some(&tooltip));
 
-    // .error class so a future SCSS hook can tint the icon red on
-    // sustained failure without us needing to change the widget
-    // root's primary class list (which the bar layout depends on).
-    if matches!(state, FetchState::Err) {
+    root.remove_css_class("error");
+    if matches!(snap.state, FetchState::Err) {
         root.add_css_class("error");
-    } else {
-        root.remove_css_class("error");
     }
 }
 
-/// Fire one ipinfo.io fetch through `curl`. ipinfo's free tier
-/// returns a flat JSON with `ip`, `city`, `region`, `country`,
-/// `org`; no auth required up to ~1000 requests per day, well under
-/// our once-every-5-minutes cadence (288 / day).
+/// One ipinfo.io fetch wrapped in a `NipSnapshot`. Exposed
+/// pub(crate) so the menu widget can re-run it on demand.
+pub(crate) async fn fetch_snapshot() -> NipSnapshot {
+    match fetch_ipinfo().await {
+        Ok(info) => NipSnapshot {
+            state: FetchState::Ok,
+            info: Some(info),
+            error: None,
+        },
+        Err(e) => NipSnapshot {
+            state: FetchState::Err,
+            info: None,
+            error: Some(e),
+        },
+    }
+}
+
 async fn fetch_ipinfo() -> Result<IpInfo, String> {
     let output = tokio::process::Command::new("curl")
         .args([
@@ -301,5 +272,7 @@ async fn fetch_ipinfo() -> Result<IpInfo, String> {
         region: s("region"),
         country: s("country"),
         org: s("org"),
+        loc: s("loc"),
+        timezone: s("timezone"),
     })
 }

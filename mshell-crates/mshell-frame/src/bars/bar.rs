@@ -113,6 +113,7 @@ pub(crate) enum BarOutput {
     NdnsClicked,
     NpodmanClicked,
     NnotesClicked,
+    NipClicked,
     CloseMenu,
 }
 
@@ -489,7 +490,15 @@ impl BarModel {
                         }
                     }),
             ),
-            BarWidget::Nip => Box::new(NipModel::builder().launch(NipInit {}).detach()),
+            BarWidget::Nip => Box::new(
+                NipModel::builder()
+                    .launch(NipInit {})
+                    .forward(sender.output_sender(), |msg| match msg {
+                        crate::bars::bar_widgets::nip::NipOutput::Clicked => {
+                            BarOutput::NipClicked
+                        }
+                    }),
+            ),
             BarWidget::Nnotes => Box::new(
                 NnotesModel::builder()
                     .launch(NnotesInit {})

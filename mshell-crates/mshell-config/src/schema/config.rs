@@ -288,6 +288,7 @@ pub struct Menus {
     pub ndns_menu: Menu,
     pub npodman_menu: Menu,
     pub nnotes_menu: Menu,
+    pub nip_menu: Menu,
     pub left_menu_expansion_type: VerticalMenuExpansion,
     pub right_menu_expansion_type: VerticalMenuExpansion,
 }
@@ -386,6 +387,11 @@ impl Default for Menus {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::Nnotes],
                 minimum_width: 480,
+            },
+            nip_menu: Menu {
+                position: Position::TopRight,
+                widgets: vec![MenuWidget::Nip],
+                minimum_width: 380,
             },
             left_menu_expansion_type: VerticalMenuExpansion::AlwaysExpanded,
             right_menu_expansion_type: VerticalMenuExpansion::AlwaysExpanded,
