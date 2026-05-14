@@ -103,7 +103,7 @@ impl Component for MediaPlayerModel {
                         set_halign: gtk::Align::Center,
                         set_valign: gtk::Align::Center,
                         set_ellipsize: pango::EllipsizeMode::End,
-                        set_max_width_chars: 38,
+                        set_max_width_chars: 40,
                     },
                 }
             }

@@ -78,7 +78,9 @@ impl Component for ActiveWindowModel {
                     set_halign: gtk::Align::Center,
                     set_valign: gtk::Align::Center,
                     set_ellipsize: pango::EllipsizeMode::End,
-                    set_max_width_chars: 44,
+                    // Half the media pill's cap (40) — a glanceable
+                    // hint, kept from competing with the media pill.
+                    set_max_width_chars: 20,
                 },
             }
         }
