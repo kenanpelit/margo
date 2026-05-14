@@ -8,6 +8,7 @@ pub(crate) mod clock;
 pub(crate) mod container;
 pub(crate) mod divider;
 pub(crate) mod media_player;
+pub(crate) mod ndns;
 pub(crate) mod network;
 pub(crate) mod notifications;
 pub(crate) mod nufw;

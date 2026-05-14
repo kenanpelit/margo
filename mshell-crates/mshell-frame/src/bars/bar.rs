@@ -109,6 +109,7 @@ pub(crate) enum BarOutput {
     AppLauncherClicked,
     WallpaperClicked,
     NufwClicked,
+    NdnsClicked,
     CloseMenu,
 }
 
@@ -476,7 +477,15 @@ impl BarModel {
                     }),
             ),
             BarWidget::Network => Box::new(NetworkModel::builder().launch(NetworkInit {}).detach()),
-            BarWidget::Ndns => Box::new(NdnsModel::builder().launch(NdnsInit {}).detach()),
+            BarWidget::Ndns => Box::new(
+                NdnsModel::builder()
+                    .launch(NdnsInit {})
+                    .forward(sender.output_sender(), |msg| match msg {
+                        crate::bars::bar_widgets::ndns::NdnsOutput::Clicked => {
+                            BarOutput::NdnsClicked
+                        }
+                    }),
+            ),
             BarWidget::Nip => Box::new(NipModel::builder().launch(NipInit {}).detach()),
             BarWidget::Npodman => Box::new(NpodmanModel::builder().launch(NpodmanInit {}).detach()),
             BarWidget::Nufw => Box::new(

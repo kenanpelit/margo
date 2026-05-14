@@ -19,6 +19,8 @@ pub enum MenuCommands {
     Wallpaper,
     /// Toggle the UFW firewall menu
     Nufw,
+    /// Toggle the DNS / VPN menu
+    Ndns,
     /// Close all open menus
     CloseAll,
 }
@@ -48,6 +50,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::Nufw => {
             bus_command("Nufw").await?;
+        }
+        MenuCommands::Ndns => {
+            bus_command("Ndns").await?;
         }
         MenuCommands::CloseAll => {
             bus_command("CloseAllMenus").await?;

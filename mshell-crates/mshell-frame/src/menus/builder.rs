@@ -21,6 +21,9 @@ use crate::menus::menu_widgets::divider::{DividerMenuWidgetInit, DividerMenuWidg
 use crate::menus::menu_widgets::media_player::media_players::{
     MediaPlayersInit, MediaPlayersModel,
 };
+use crate::menus::menu_widgets::ndns::ndns_menu_widget::{
+    NdnsMenuWidgetInit, NdnsMenuWidgetModel,
+};
 use crate::menus::menu_widgets::network::network_menu_widget::{
     NetworkMenuWidgetInit, NetworkMenuWidgetModel,
 };
@@ -100,6 +103,11 @@ pub fn build_widget(
         MenuWidget::MediaPlayer => Box::new(
             MediaPlayersModel::builder()
                 .launch(MediaPlayersInit {})
+                .detach(),
+        ),
+        MenuWidget::Ndns => Box::new(
+            NdnsMenuWidgetModel::builder()
+                .launch(NdnsMenuWidgetInit {})
                 .detach(),
         ),
         MenuWidget::Network => Box::new(
