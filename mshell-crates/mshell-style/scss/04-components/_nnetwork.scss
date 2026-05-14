@@ -27,6 +27,14 @@
   opacity: 0.7;
 }
 
+// MB/s+ throughput → matugen accent. Overrides the base
+// on-surface tone above (higher specificity via the extra
+// class) so the readout pops the moment traffic gets heavy.
+.nnetwork-bar-widget .nnetwork-speed-label.high-rate {
+  color: var(--primary);
+  font-weight: 600;
+}
+
 // ── Hero card ────────────────────────────────────────────
 .nnetwork-hero {
   padding: 10px 12px;

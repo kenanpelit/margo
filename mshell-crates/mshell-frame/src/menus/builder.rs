@@ -36,6 +36,9 @@ use crate::menus::menu_widgets::nnetwork::nnetwork_menu_widget::{
 use crate::menus::menu_widgets::nnotes::nnotes_menu_widget::{
     NnotesMenuWidgetInit, NnotesMenuWidgetModel,
 };
+use crate::menus::menu_widgets::npower::npower_menu_widget::{
+    NpowerMenuWidgetInit, NpowerMenuWidgetModel,
+};
 use crate::menus::menu_widgets::notifications::notifications::{
     NotificationsInit, NotificationsModel, NotificationsOutput,
 };
@@ -140,6 +143,11 @@ pub fn build_widget(
         MenuWidget::Nnotes => Box::new(
             NnotesMenuWidgetModel::builder()
                 .launch(NnotesMenuWidgetInit {})
+                .detach(),
+        ),
+        MenuWidget::Npower => Box::new(
+            NpowerMenuWidgetModel::builder()
+                .launch(NpowerMenuWidgetInit {})
                 .detach(),
         ),
         MenuWidget::Notifications => Box::new(

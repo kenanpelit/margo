@@ -20,6 +20,7 @@ use crate::bars::bar_widgets::nip::{NipInit, NipModel};
 use crate::bars::bar_widgets::nnetwork::{NnetworkInit, NnetworkModel};
 use crate::bars::bar_widgets::nnotes::{NnotesInit, NnotesModel};
 use crate::bars::bar_widgets::npodman::{NpodmanInit, NpodmanModel};
+use crate::bars::bar_widgets::npower::{NpowerInit, NpowerModel};
 use crate::bars::bar_widgets::nufw::{NufwInit, NufwModel};
 use crate::bars::bar_widgets::notifications::{
     NotificationsInit, NotificationsModel, NotificationsOutput,
@@ -116,6 +117,7 @@ pub(crate) enum BarOutput {
     NnotesClicked,
     NipClicked,
     NnetworkClicked,
+    NpowerClicked,
     CloseMenu,
 }
 
@@ -525,6 +527,15 @@ impl BarModel {
                     .forward(sender.output_sender(), |msg| match msg {
                         crate::bars::bar_widgets::npodman::NpodmanOutput::Clicked => {
                             BarOutput::NpodmanClicked
+                        }
+                    }),
+            ),
+            BarWidget::Npower => Box::new(
+                NpowerModel::builder()
+                    .launch(NpowerInit {})
+                    .forward(sender.output_sender(), |msg| match msg {
+                        crate::bars::bar_widgets::npower::NpowerOutput::Clicked => {
+                            BarOutput::NpowerClicked
                         }
                     }),
             ),

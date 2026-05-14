@@ -20,6 +20,7 @@ pub(crate) mod nnotes;
 pub(crate) mod nip;
 pub(crate) mod notifications;
 pub(crate) mod npodman;
+pub(crate) mod npower;
 pub(crate) mod nufw;
 pub(crate) mod power_profile;
 pub(crate) mod quick_settings;

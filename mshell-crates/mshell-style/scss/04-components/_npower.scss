@@ -1,0 +1,61 @@
+// Power profile menu widget + bar pill.
+//
+// Three colour states drive both the bar-pill icon tint and the
+// active-profile button highlight:
+//   performance → red    (var(--error))
+//   balanced    → neutral (default surface tones)
+//   power-saver → green  (a fixed leaf-green; matugen has no
+//                         "success" token, so a literal is used)
+
+.npower-menu-widget { padding: 0; }
+
+// ── Bar pill icon tint ───────────────────────────────────
+.npower-bar-widget.profile-performance image {
+  color: var(--error);
+}
+.npower-bar-widget.profile-saver image {
+  color: #8ec07c;
+}
+// balanced / unknown keep the default on-surface tone.
+
+// ── Hero card ────────────────────────────────────────────
+.npower-hero {
+  padding: 10px 12px;
+  border-radius: var(--radius-widget);
+  background-color: var(--surface-variant);
+  border: 1px solid var(--outline);
+}
+
+// ── Profile switcher buttons ─────────────────────────────
+.npower-profile-button {
+  padding: 10px 4px;
+  border-radius: var(--radius-widget);
+}
+// Active button: tinted backdrop per profile. The `.selected`
+// class is always paired with one `.profile-*` class by
+// `sync_view`, so these compound selectors only ever match the
+// current profile's button.
+.npower-profile-button.selected.profile-performance {
+  background-color: var(--error);
+  color: var(--on-error-container);
+}
+.npower-profile-button.selected.profile-performance image,
+.npower-profile-button.selected.profile-performance label {
+  color: var(--on-error-container);
+}
+.npower-profile-button.selected.profile-balanced {
+  background-color: var(--primary);
+  color: var(--on-primary);
+}
+.npower-profile-button.selected.profile-balanced image,
+.npower-profile-button.selected.profile-balanced label {
+  color: var(--on-primary);
+}
+.npower-profile-button.selected.profile-saver {
+  background-color: #8ec07c;
+  color: #1e2326;
+}
+.npower-profile-button.selected.profile-saver image,
+.npower-profile-button.selected.profile-saver label {
+  color: #1e2326;
+}

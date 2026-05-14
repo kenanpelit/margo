@@ -51,6 +51,7 @@ pub(crate) enum MenuType {
     Nnotes,
     Nip,
     Nnetwork,
+    Npower,
 }
 
 pub(crate) struct MenuModel {
@@ -340,6 +341,23 @@ impl Component for MenuModel {
                 effects.push(move |_| {
                     let config = config.clone();
                     let minimum_width = config.menus().nnetwork_menu().minimum_width().get();
+                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
+                });
+            }
+            MenuType::Npower => {
+                css_class = "npower-menu".to_string();
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let widgets = config.menus().npower_menu().widgets().get();
+                    sender_clone.input(MenuInput::SetWidget(widgets));
+                });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let minimum_width = config.menus().npower_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
                 });
             }

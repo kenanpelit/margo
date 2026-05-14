@@ -140,6 +140,15 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                         app_sender.emit(ShellInput::ToggleNnetworkMenu(None));
                     }
                 }
+                IPCCommand::Npower => {
+                    if let Some(active_workspace) = margo_service().active_workspace().await {
+                        app_sender.emit(ShellInput::ToggleNpowerMenu(Some(
+                            active_workspace.monitor.get(),
+                        )));
+                    } else {
+                        app_sender.emit(ShellInput::ToggleNpowerMenu(None));
+                    }
+                }
                 IPCCommand::CloseAllMenus => app_sender.emit(ShellInput::CloseAllMenus),
                 IPCCommand::VolumeUp => {
                     if let Some(output) = audio_service().default_output.get() {
@@ -308,6 +317,7 @@ enum IPCCommand {
     Nnotes,
     Nip,
     Nnetwork,
+    Npower,
     CloseAllMenus,
     VolumeUp,
     VolumeDown,
@@ -383,6 +393,9 @@ impl IPCService {
     }
     async fn nnetwork(&self) {
         let _ = self.tx.send(IPCCommand::Nnetwork);
+    }
+    async fn npower(&self) {
+        let _ = self.tx.send(IPCCommand::Npower);
     }
     async fn close_all_menus(&self) {
         let _ = self.tx.send(IPCCommand::CloseAllMenus);

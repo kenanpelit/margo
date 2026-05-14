@@ -393,13 +393,27 @@ fn apply_visual(
     };
     image.set_icon_name(Some(icon));
 
-    // `↓ … ↑ …` live throughput. Kept in the label even in Icon
-    // mode (hidden) so a mode-flip is instant, no stale frame.
+    // `↓ … ↑ …` live throughput. Each figure is right-padded to
+    // a fixed 5-char field (`{:>5}`) so the pill width stays
+    // rock-steady as the digits tick — only the numbers move,
+    // the widget never reflows the bar. Kept populated even in
+    // Icon mode (hidden) so a mode-flip is instant.
     speed_label.set_label(&format!(
-        "\u{2193}{} \u{2191}{}",
+        "\u{2193}{:>5} \u{2191}{:>5}",
         format_speed(speed.down_bps),
         format_speed(speed.up_bps)
     ));
+
+    // Tint the readout with the matugen accent once either
+    // direction crosses 1 MB/s — a quiet "this is real traffic
+    // now" signal without changing the layout. Sub-MB stays the
+    // plain on-surface tone via the base `.online` rule.
+    const ONE_MB: u64 = 1024 * 1024;
+    if speed.down_bps >= ONE_MB || speed.up_bps >= ONE_MB {
+        speed_label.add_css_class("high-rate");
+    } else {
+        speed_label.remove_css_class("high-rate");
+    }
 
     match mode {
         DisplayMode::Speed => {

@@ -29,6 +29,8 @@ pub enum MenuCommands {
     Nip,
     /// Toggle the Network Console menu
     Nnetwork,
+    /// Toggle the Power Profile (npower) menu
+    Npower,
     /// Close all open menus
     CloseAll,
 }
@@ -73,6 +75,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::Nnetwork => {
             bus_command("Nnetwork").await?;
+        }
+        MenuCommands::Npower => {
+            bus_command("Npower").await?;
         }
         MenuCommands::CloseAll => {
             bus_command("CloseAllMenus").await?;
