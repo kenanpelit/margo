@@ -11,12 +11,32 @@
 //! lets any session user query state + connect to a known SSID
 //! without root, so no pkexec here.
 
-use relm4::gtk::prelude::{ButtonExt, WidgetExt};
+use relm4::gtk::prelude::{ButtonExt, GestureSingleExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::time::Duration;
 
 const REFRESH_INTERVAL: Duration = Duration::from_secs(10);
 const STARTUP_DELAY: Duration = Duration::from_secs(1);
+/// Live throughput sampling cadence — 1 s gives a readable
+/// KB/s figure without the number jittering too fast to read.
+const SPEED_INTERVAL: Duration = Duration::from_secs(1);
+
+/// Bar-pill display mode. Right-click toggles between the two:
+///   * `Speed` — live `↓ … ↑ …` throughput text (the default).
+///   * `Icon`  — the signal-strength / link-state glyph.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DisplayMode {
+    Speed,
+    Icon,
+}
+
+/// One throughput sample — bytes/s down + up, computed from the
+/// delta between two `/proc/net/dev` reads.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct SpeedSample {
+    pub(crate) down_bps: u64,
+    pub(crate) up_bps: u64,
+}
 
 /// One scanned Wi-Fi network row from `nmcli device wifi list`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -81,11 +101,16 @@ impl Default for NetworkState {
 #[derive(Debug)]
 pub(crate) struct NnetworkModel {
     state: NetworkState,
+    speed: SpeedSample,
+    mode: DisplayMode,
 }
 
 #[derive(Debug)]
 pub(crate) enum NnetworkInput {
+    /// Left-click — open the menu.
     Clicked,
+    /// Right-click — flip between Speed / Icon display.
+    ToggleMode,
 }
 
 #[derive(Debug)]
@@ -98,6 +123,7 @@ pub(crate) struct NnetworkInit {}
 #[derive(Debug)]
 pub(crate) enum NnetworkCommandOutput {
     Refreshed(NetworkState),
+    SpeedSampled(SpeedSample),
 }
 
 #[relm4::component(pub)]
@@ -124,10 +150,25 @@ impl Component for NnetworkModel {
                     sender.input(NnetworkInput::Clicked);
                 },
 
-                #[name="image"]
-                gtk::Image {
+                // Speed text + signal icon share the same slot;
+                // `apply_visual` toggles `set_visible` so exactly
+                // one shows at a time.
+                gtk::Box {
                     set_halign: gtk::Align::Center,
                     set_valign: gtk::Align::Center,
+
+                    #[name="image"]
+                    gtk::Image {
+                        set_halign: gtk::Align::Center,
+                        set_valign: gtk::Align::Center,
+                    },
+
+                    #[name="speed_label"]
+                    gtk::Label {
+                        add_css_class: "nnetwork-speed-label",
+                        set_halign: gtk::Align::Center,
+                        set_valign: gtk::Align::Center,
+                    },
                 }
             }
         }
@@ -138,6 +179,7 @@ impl Component for NnetworkModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
+        // NetworkManager state poll (icon / tooltip).
         sender.command(|out, shutdown| {
             async move {
                 let shutdown_fut = shutdown.wait();
@@ -158,11 +200,53 @@ impl Component for NnetworkModel {
             }
         });
 
+        // Live throughput poll — independent 1 s loop over
+        // `/proc/net/dev`. Keeps a `prev` reading and emits the
+        // per-second delta.
+        sender.command(|out, shutdown| {
+            async move {
+                let shutdown_fut = shutdown.wait();
+                tokio::pin!(shutdown_fut);
+                let mut prev = read_net_totals().await;
+                loop {
+                    tokio::select! {
+                        () = &mut shutdown_fut => break,
+                        _ = tokio::time::sleep(SPEED_INTERVAL) => {}
+                    }
+                    let now = read_net_totals().await;
+                    let sample = SpeedSample {
+                        down_bps: now.0.saturating_sub(prev.0),
+                        up_bps: now.1.saturating_sub(prev.1),
+                    };
+                    prev = now;
+                    let _ = out.send(NnetworkCommandOutput::SpeedSampled(sample));
+                }
+            }
+        });
+
+        // Right-click → ToggleMode.
+        let gesture = gtk::GestureClick::new();
+        gesture.set_button(gtk::gdk::BUTTON_SECONDARY);
+        let toggle_sender = sender.clone();
+        gesture.connect_pressed(move |_, _, _, _| {
+            toggle_sender.input(NnetworkInput::ToggleMode);
+        });
+        root.add_controller(gesture);
+
         let model = NnetworkModel {
             state: NetworkState::default(),
+            speed: SpeedSample::default(),
+            mode: DisplayMode::Speed,
         };
         let widgets = view_output!();
-        apply_visual(&widgets.image, &root, &model.state);
+        apply_visual(
+            &widgets.image,
+            &widgets.speed_label,
+            &root,
+            &model.state,
+            model.speed,
+            model.mode,
+        );
         ComponentParts { model, widgets }
     }
 
@@ -176,6 +260,12 @@ impl Component for NnetworkModel {
             NnetworkInput::Clicked => {
                 let _ = sender.output(NnetworkOutput::Clicked);
             }
+            NnetworkInput::ToggleMode => {
+                self.mode = match self.mode {
+                    DisplayMode::Speed => DisplayMode::Icon,
+                    DisplayMode::Icon => DisplayMode::Speed,
+                };
+            }
         }
     }
 
@@ -188,12 +278,81 @@ impl Component for NnetworkModel {
     ) {
         match message {
             NnetworkCommandOutput::Refreshed(state) => {
-                if self.state != state {
-                    self.state = state;
-                    apply_visual(&widgets.image, root, &self.state);
-                }
+                self.state = state;
+            }
+            NnetworkCommandOutput::SpeedSampled(sample) => {
+                self.speed = sample;
             }
         }
+        apply_visual(
+            &widgets.image,
+            &widgets.speed_label,
+            root,
+            &self.state,
+            self.speed,
+            self.mode,
+        );
+    }
+}
+
+/// Read the cumulative rx / tx byte counters across all real
+/// network interfaces from `/proc/net/dev`. Skips `lo` and the
+/// usual virtual prefixes so VPN tunnels / bridges / docker
+/// veths don't double-count the physical link's traffic.
+async fn read_net_totals() -> (u64, u64) {
+    let raw = match tokio::fs::read_to_string("/proc/net/dev").await {
+        Ok(r) => r,
+        Err(_) => return (0, 0),
+    };
+    let mut rx_total: u64 = 0;
+    let mut tx_total: u64 = 0;
+    for line in raw.lines() {
+        let Some((iface, rest)) = line.split_once(':') else {
+            continue;
+        };
+        let iface = iface.trim();
+        if iface == "lo"
+            || iface.starts_with("veth")
+            || iface.starts_with("br-")
+            || iface.starts_with("docker")
+            || iface.starts_with("virbr")
+        {
+            continue;
+        }
+        let cols: Vec<&str> = rest.split_whitespace().collect();
+        // /proc/net/dev column layout: rx bytes is col 0, tx
+        // bytes is col 8 (after the 8 rx-side counters).
+        if cols.len() >= 9 {
+            rx_total += cols[0].parse::<u64>().unwrap_or(0);
+            tx_total += cols[8].parse::<u64>().unwrap_or(0);
+        }
+    }
+    (rx_total, tx_total)
+}
+
+/// Format a bytes/sec figure into a compact bar-friendly string:
+/// `0`, `512B`, `4.2K`, `1.5M`. Whole numbers below 10 of each
+/// unit get one decimal; above that they're rounded so the
+/// label width stays stable.
+fn format_speed(bps: u64) -> String {
+    const K: u64 = 1024;
+    const M: u64 = K * 1024;
+    if bps >= M {
+        let v = bps as f64 / M as f64;
+        if v < 10.0 {
+            format!("{v:.1}M")
+        } else {
+            format!("{:.0}M", v)
+        }
+    } else if bps >= K {
+        let v = bps as f64 / K as f64;
+        if v < 10.0 {
+            format!("{v:.1}K")
+        } else {
+            format!("{:.0}K", v)
+        }
+    } else {
+        format!("{bps}B")
     }
 }
 
@@ -209,7 +368,14 @@ pub(crate) fn wifi_signal_icon(signal: u8) -> &'static str {
     }
 }
 
-fn apply_visual(image: &gtk::Image, root: &gtk::Box, s: &NetworkState) {
+fn apply_visual(
+    image: &gtk::Image,
+    speed_label: &gtk::Label,
+    root: &gtk::Box,
+    s: &NetworkState,
+    speed: SpeedSample,
+    mode: DisplayMode,
+) {
     let icon = if !s.available {
         "network-wired-disconnected-symbolic"
     } else {
@@ -226,6 +392,25 @@ fn apply_visual(image: &gtk::Image, root: &gtk::Box, s: &NetworkState) {
         }
     };
     image.set_icon_name(Some(icon));
+
+    // `↓ … ↑ …` live throughput. Kept in the label even in Icon
+    // mode (hidden) so a mode-flip is instant, no stale frame.
+    speed_label.set_label(&format!(
+        "\u{2193}{} \u{2191}{}",
+        format_speed(speed.down_bps),
+        format_speed(speed.up_bps)
+    ));
+
+    match mode {
+        DisplayMode::Speed => {
+            speed_label.set_visible(true);
+            image.set_visible(false);
+        }
+        DisplayMode::Icon => {
+            speed_label.set_visible(false);
+            image.set_visible(true);
+        }
+    }
 
     let tooltip = if let Some(err) = &s.error {
         format!("Network: {err}")
