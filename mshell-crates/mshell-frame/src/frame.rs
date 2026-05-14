@@ -25,6 +25,7 @@ const SCREENSHOT_MENU: &str = "screenshot";
 const NOTIFICATION_MENU: &str = "notification";
 const WALLPAPER_MENU: &str = "wallpaper";
 const SCREENSHARE_MENU: &str = "screenshare";
+const NUFW_MENU: &str = "nufw";
 
 pub struct Frame {
     // Margo's mshell ships only horizontal bars — vertical Left /
@@ -64,6 +65,7 @@ pub struct Frame {
     app_launcher_menu: Controller<MenuModel>,
     wallpaper_menu: Controller<MenuModel>,
     screenshare_menu: Controller<MenuModel>,
+    nufw_menu: Controller<MenuModel>,
     /// Pending keyboard-mode switch held inside the 90 ms debounce
     /// window. Replaced on every `sync_keyboard_mode` call; the
     /// timer reads whatever value was last written.
@@ -87,6 +89,7 @@ pub enum FrameInput {
         Position,
         Position,
         Position,
+        Position,
     ),
     ToggleClockMenu,
     ToggleClipboardMenu,
@@ -95,6 +98,7 @@ pub enum FrameInput {
     ToggleScreenshotMenu,
     ToggleAppLauncherMenu,
     ToggleWallpaperMenu,
+    ToggleNufwMenu,
     CloseMenus,
     ToggleScreenshareMenu(tokio::sync::oneshot::Sender<String>, String),
     BarToggleTop,
@@ -592,6 +596,7 @@ impl Component for Frame {
         let app_launcher_menu = Self::build_menu(&sender, MenuType::AppLauncher);
         let wallpaper_menu = Self::build_menu(&sender, MenuType::Wallpaper);
         let screenshare_menu = Self::build_menu(&sender, MenuType::HyprlandScreenshare);
+        let nufw_menu = Self::build_menu(&sender, MenuType::Nufw);
 
         let mut effects = EffectScope::new();
 
@@ -639,6 +644,8 @@ impl Component for Frame {
             let wallpaper_menu_position = config.menus().wallpaper_menu().position().get();
             let config = menu_config.clone();
             let screenshare_menu_position = config.menus().screenshare_menu().position().get();
+            let config = menu_config.clone();
+            let nufw_menu_position = config.menus().nufw_menu().position().get();
             sender_clone.input(FrameInput::RepositionMenus(
                 clock_menu_position,
                 clipboard_menu_position,
@@ -648,6 +655,7 @@ impl Component for Frame {
                 app_launcher_menu_position,
                 wallpaper_menu_position,
                 screenshare_menu_position,
+                nufw_menu_position,
             ));
         });
 
@@ -702,6 +710,7 @@ impl Component for Frame {
             app_launcher_menu,
             wallpaper_menu,
             screenshare_menu,
+            nufw_menu,
             pending_kbd_mode: std::rc::Rc::new(std::cell::RefCell::new(None)),
             pending_kbd_mode_timeout: std::rc::Rc::new(std::cell::RefCell::new(None)),
             _effects: effects,
@@ -745,6 +754,7 @@ impl Component for Frame {
                 app_launcher_menu_position,
                 wallpaper_menu_position,
                 screenshare_menu_position,
+                nufw_menu_position,
             ) => {
                 sender.input(FrameInput::CloseMenus);
                 self.apply_left_and_right_side_children(
@@ -757,6 +767,7 @@ impl Component for Frame {
                     app_launcher_menu_position,
                     wallpaper_menu_position,
                     screenshare_menu_position,
+                    nufw_menu_position,
                 );
             }
             FrameInput::ToggleClockMenu => {
@@ -785,6 +796,10 @@ impl Component for Frame {
             }
             FrameInput::ToggleWallpaperMenu => {
                 self.toggle_menu(WALLPAPER_MENU, widgets);
+                self.sync_keyboard_mode(root);
+            }
+            FrameInput::ToggleNufwMenu => {
+                self.toggle_menu(NUFW_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
             FrameInput::ToggleScreenshareMenu(reply, payload) => {
@@ -1369,6 +1384,7 @@ impl Frame {
         app_launcher_menu_position: Position,
         wallpaper_menu_position: Position,
         screenshare_menu_position: Position,
+        nufw_menu_position: Position,
     ) {
         let clock_widget: Widget = self.clock_menu.widget().clone().upcast();
         let clipboard_widget: Widget = self.clipboard_menu.widget().clone().upcast();
@@ -1378,6 +1394,7 @@ impl Frame {
         let app_launcher_menu_widget: Widget = self.app_launcher_menu.widget().clone().upcast();
         let wallpaper_menu_widget: Widget = self.wallpaper_menu.widget().clone().upcast();
         let screenshare_menu_widget: Widget = self.screenshare_menu.widget().clone().upcast();
+        let nufw_menu_widget: Widget = self.nufw_menu.widget().clone().upcast();
 
         widgets.left_stack.remove_all();
         widgets.right_stack.remove_all();
@@ -1431,6 +1448,12 @@ impl Frame {
             SCREENSHARE_MENU,
             &screenshare_menu_position,
         );
+        Self::add_to_stack(
+            widgets,
+            &nufw_menu_widget,
+            NUFW_MENU,
+            &nufw_menu_position,
+        );
     }
 
     fn add_to_stack(widgets: &FrameWidgets, widget: &Widget, name: &str, position: &Position) {
@@ -1473,6 +1496,7 @@ impl Frame {
                 BarOutput::ScreenshotClicked => FrameInput::ToggleScreenshotMenu,
                 BarOutput::AppLauncherClicked => FrameInput::ToggleAppLauncherMenu,
                 BarOutput::WallpaperClicked => FrameInput::ToggleWallpaperMenu,
+                BarOutput::NufwClicked => FrameInput::ToggleNufwMenu,
                 BarOutput::CloseMenu => FrameInput::CloseMenus,
             })
     }

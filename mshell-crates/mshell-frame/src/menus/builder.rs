@@ -27,6 +27,9 @@ use crate::menus::menu_widgets::network::network_menu_widget::{
 use crate::menus::menu_widgets::notifications::notifications::{
     NotificationsInit, NotificationsModel, NotificationsOutput,
 };
+use crate::menus::menu_widgets::nufw::nufw_menu_widget::{
+    NufwMenuWidgetInit, NufwMenuWidgetModel,
+};
 use crate::menus::menu_widgets::power_profile::power_profile_menu_widget::{
     PowerProfileMenuWidgetInit, PowerProfileMenuWidgetModel,
 };
@@ -110,6 +113,11 @@ pub fn build_widget(
                 .forward(sender.output_sender(), |msg| match msg {
                     NotificationsOutput::CloseMenu => MenuOutput::CloseMenu,
                 }),
+        ),
+        MenuWidget::Nufw => Box::new(
+            NufwMenuWidgetModel::builder()
+                .launch(NufwMenuWidgetInit {})
+                .detach(),
         ),
         MenuWidget::PowerProfiles => Box::new(
             PowerProfileMenuWidgetModel::builder()

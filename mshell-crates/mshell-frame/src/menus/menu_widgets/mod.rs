@@ -10,6 +10,7 @@ pub(crate) mod divider;
 pub(crate) mod media_player;
 pub(crate) mod network;
 pub(crate) mod notifications;
+pub(crate) mod nufw;
 pub(crate) mod power_profile;
 pub(crate) mod quick_action;
 pub(crate) mod screen_record;

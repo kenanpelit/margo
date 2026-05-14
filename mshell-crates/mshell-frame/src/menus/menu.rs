@@ -45,6 +45,7 @@ pub(crate) enum MenuType {
     AppLauncher,
     Wallpaper,
     HyprlandScreenshare,
+    Nufw,
 }
 
 pub(crate) struct MenuModel {
@@ -234,6 +235,23 @@ impl Component for MenuModel {
             MenuType::HyprlandScreenshare => {
                 css_class = "hyprland-screenshare-menu".to_string();
                 sender.input(MenuInput::AddHyprlandScreenshareWidget);
+            }
+            MenuType::Nufw => {
+                css_class = "nufw-menu".to_string();
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let widgets = config.menus().nufw_menu().widgets().get();
+                    sender_clone.input(MenuInput::SetWidget(widgets));
+                });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let minimum_width = config.menus().nufw_menu().minimum_width().get();
+                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
+                });
             }
         }
 

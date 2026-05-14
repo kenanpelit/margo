@@ -284,6 +284,7 @@ pub struct Menus {
     pub app_launcher_menu: Menu,
     pub wallpaper_menu: Menu,
     pub screenshare_menu: ScreenshareMenu,
+    pub nufw_menu: Menu,
     pub left_menu_expansion_type: VerticalMenuExpansion,
     pub right_menu_expansion_type: VerticalMenuExpansion,
 }
@@ -362,6 +363,11 @@ impl Default for Menus {
             },
             screenshare_menu: ScreenshareMenu {
                 position: Position::TopRight,
+            },
+            nufw_menu: Menu {
+                position: Position::TopRight,
+                widgets: vec![MenuWidget::Nufw],
+                minimum_width: 410,
             },
             left_menu_expansion_type: VerticalMenuExpansion::AlwaysExpanded,
             right_menu_expansion_type: VerticalMenuExpansion::AlwaysExpanded,
