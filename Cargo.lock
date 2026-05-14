@@ -3684,6 +3684,7 @@ dependencies = [
  "reactive_graph",
  "reactive_stores",
  "relm4",
+ "serde_json",
  "time",
  "tokio",
  "tracing",
