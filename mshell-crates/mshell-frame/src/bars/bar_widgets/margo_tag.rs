@@ -196,15 +196,20 @@ pub(crate) enum MargoTagCommandOutput {
     WindowsChanged(u16),
 }
 
-/// Compose the CSS class list for the pill button in one place. Three
-/// `ok-button-*` primitives + a state-flavored `.tag-*` to give the
-/// SCSS in `04-components/_margo_tag.scss` a stable hook.
-fn tag_classes(is_active: bool, windows: u16) -> [&'static str; 3] {
+/// Compose the CSS class list for the pill button in one place.
+///
+/// Each slot in the returned array is **one** CSS class name. GTK4's
+/// `set_css_classes(&[&str])` adds each element as a distinct class,
+/// so a string like `"margo-tag tag-active"` (space-joined) ends up
+/// as a single token with a space in it — invalid as a selector match,
+/// silently makes the `_margo_tag.scss` rules a no-op. Hence the
+/// 4-slot array with `margo-tag` and `tag-*` as separate entries.
+fn tag_classes(is_active: bool, windows: u16) -> [&'static str; 4] {
     if is_active {
-        ["ok-button-primary", "ok-bar-widget", "margo-tag tag-active"]
+        ["ok-button-primary", "ok-bar-widget", "margo-tag", "tag-active"]
     } else if windows > 0 {
-        ["ok-button-surface", "ok-bar-widget", "margo-tag tag-occupied"]
+        ["ok-button-surface", "ok-bar-widget", "margo-tag", "tag-occupied"]
     } else {
-        ["ok-button-surface", "ok-bar-widget", "margo-tag tag-empty"]
+        ["ok-button-surface", "ok-bar-widget", "margo-tag", "tag-empty"]
     }
 }
