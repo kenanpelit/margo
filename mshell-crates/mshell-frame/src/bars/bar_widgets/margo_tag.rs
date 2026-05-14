@@ -29,7 +29,7 @@
 use futures::StreamExt;
 use mshell_margo_client::{Workspace, WorkspaceInfo};
 use mshell_utils::margo::is_an_active_workspace;
-use relm4::gtk::prelude::{ButtonExt, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::sync::Arc;
 use tracing::warn;
@@ -57,6 +57,12 @@ impl Component for MargoTagModel {
     type Output = MargoTagOutput;
     type Init = Arc<Workspace>;
 
+    // Stacked layout:
+    //   row 1: circle dot  (◉ active / ○ empty)
+    //   row 2: tag digit   (1..9)
+    // Occupied state (windows > 0 but not active) shows the
+    // empty-ring glyph with an underline applied by the SCSS in
+    // `_margo_tag.scss` via the `.tag-occupied` class.
     view! {
         #[root]
         gtk::Box {
@@ -73,12 +79,26 @@ impl Component for MargoTagModel {
                     sender.input(MargoTagInput::WorkspaceClicked);
                 },
 
-                #[name="label"]
-                gtk::Label {
-                    add_css_class: "margo-tag-label",
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 0,
                     set_halign: gtk::Align::Center,
                     set_valign: gtk::Align::Center,
-                    set_label: &model.workspace.id.get().to_string(),
+
+                    #[name="dot"]
+                    gtk::Label {
+                        add_css_class: "margo-tag-dot",
+                        set_halign: gtk::Align::Center,
+                        #[watch]
+                        set_label: tag_dot(model.is_active, model.windows),
+                    },
+
+                    #[name="label"]
+                    gtk::Label {
+                        add_css_class: "margo-tag-label",
+                        set_halign: gtk::Align::Center,
+                        set_label: &model.workspace.id.get().to_string(),
+                    },
                 },
             }
         }
@@ -220,4 +240,13 @@ fn tag_classes(is_active: bool, windows: u16) -> [&'static str; 4] {
     } else {
         ["ok-button-surface", "ok-bar-widget", "margo-tag", "tag-empty"]
     }
+}
+
+/// Glyph for the top row of the stacked pill. `◉` (filled
+/// bullet) reads as "you are here," `○` (empty ring) reads as
+/// "available." The occupied-but-not-focused state keeps the
+/// empty ring; the underline drawn by the SCSS `.tag-occupied`
+/// rule is what carries the "has windows" signal.
+fn tag_dot(is_active: bool, _windows: u16) -> &'static str {
+    if is_active { "◉" } else { "○" }
 }
