@@ -7,6 +7,73 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.4.9] – 2026-05-14
+
+### Added
+
+- **In-tree `mshell` desktop shell.** margo now ships its own
+  bar / shell / menu system (GTK4 + relm4 + gtk4-layer-shell),
+  built from the same Cargo workspace — three binaries
+  (`mshell`, `mshellctl`, `mshellshare`) plus helper crates
+  under `mshell-crates/`. Replaces the need for a separate
+  third-party panel.
+- **Margo-native widgets.** `MargoTags` (single-row capsule
+  workspace pills with occupancy dots), `MargoLayoutSwitcher`
+  (driven by `mctl layout`), media-player pill + rich menu
+  (cover art, seek, controls, follows the playing player),
+  battery pill (charge % + AC/battery state), and an
+  ActiveWindow pill showing the focused window title.
+- **Ported noctalia plugins** as first-class mshell modules,
+  each with a bar pill + layer-shell menu: `npower` (power
+  profiles + battery + Cycle / Lock Auto / Idle Toggle),
+  `nnetwork` (Network Console — Wi-Fi list / connect / rescan),
+  `ndns` (DNS mode switcher), `nufw` (firewall), `npodman`
+  (containers / images / pods), `nip` (public-IP panel),
+  `nnotes` (scratchpad / notes / todos).
+- **Wallpaper rotation** — change every N minutes, configurable
+  in Settings → Wallpaper, plus `mshellctl menu wallpaper
+  next/prev/random` to cycle from the CLI.
+- **Idle manager** — staged dim → lock → suspend on inactivity,
+  timeouts configurable in Settings (built on `ext-idle-notify-v1`).
+- Bundled the OkMaterial icon theme + new plugin glyphs so the
+  shell renders consistently without relying on the host icon
+  theme.
+
+### Changed
+
+- **`npower` and `nnetwork` are now reactive over D-Bus.** Both
+  widget pairs previously ran per-monitor poll loops that
+  shelled out to `powerprofilesctl` (a Python script) and
+  `nmcli` — a sustained ~25% idle CPU and a multi-GB RSS climb
+  on multi-monitor setups. They now read state from the wayle
+  services (`power_profile_service()`, `battery_service()`,
+  `network_service()`); idle CPU drops to ~2-3% with no
+  steady-state subprocess spawning.
+- The super+d night-light button drives `mctl twilight`
+  instead of `mshell-gamma`.
+- Bar layout: dropped the vertical Left / Right bar surfaces;
+  all widgets migrated to the Top bar. Clock font shrunk one
+  step to match the other pills.
+- **PKGBUILD** builds the compositor-side binaries and the
+  mshell trio in two separate `cargo` invocations — a single
+  `--workspace` build unified `zbus`'s `tokio` feature into the
+  compositor, which then panicked at startup.
+
+### Fixed
+
+- **margo bar flicker** — ported niri's render + frame-callback
+  pacing, paced `frame_done` to VBlank, dropped the
+  `wp_linux_drm_syncobj_v1` global, disabled DRM overlay-plane
+  scanout (Intel MTL quirk), and fixed margo-client `Arc`
+  identity churn.
+- **margo startup panic** — `zbus` was pulled in with its
+  `tokio` feature via workspace feature unification; the
+  compositor drives `zbus` over `async-io` and has no Tokio
+  runtime, so it panicked before the session came up.
+- Settings crash from unsanitised `GAction` names derived from
+  widget labels.
+- Cleared all mshell build warnings.
+
 ## [0.4.8] – 2026-05-13
 
 ### Added
