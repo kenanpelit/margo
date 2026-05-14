@@ -162,10 +162,16 @@ impl Component for NufwModel {
 }
 
 fn apply_visual(image: &gtk::Image, root: &gtk::Box, s: &UfwSummary) {
+    // Firewall-themed glyphs from Adwaita's `firewall-applet-*`
+    // family. They read as "firewall" at bar size where the
+    // generic `security-{high,low}` padlock icons look like
+    // password-fields. `shields_up` carries the explicit
+    // "actively protecting" visual that lines up with the
+    // user's mental model of UFW.
     let icon = match s.status {
-        Some(Status::Active) => "security-high-symbolic",
-        Some(Status::Inactive) => "security-low-symbolic",
-        _ => "dialog-warning-symbolic",
+        Some(Status::Active) => "firewall-applet-shields_up-symbolic",
+        Some(Status::Inactive) => "firewall-applet-symbolic",
+        _ => "firewall-applet-error-symbolic",
     };
     image.set_icon_name(Some(icon));
 

@@ -149,17 +149,16 @@ impl Component for NpodmanModel {
 }
 
 fn apply_visual(image: &gtk::Image, root: &gtk::Box, s: &PodmanSummary) {
-    // Stock GNOME / Adwaita doesn't ship a "container" symbolic
-    // glyph; `package-x-generic-symbolic` (the box icon) is the
-    // standard substitute used by Cockpit, k3sup, Lazydocker, etc.
-    // `dialog-warning-symbolic` for the error / not-installed
-    // state so the visual matches the other plugin widgets.
+    // `class-or-package-symbolic` is the 3D-cube glyph Adwaita
+    // ships for "package / module" — closer to the container
+    // mental model than `package-x-generic-symbolic`'s flat 2D
+    // box. Falls back to the flat box if the 3D one isn't in the
+    // active theme (Tela / Papirus ship both, Adwaita ships only
+    // the 3D one).
     let icon = if s.error.is_some() {
         "dialog-warning-symbolic"
-    } else if s.running_containers > 0 {
-        "package-x-generic-symbolic"
     } else {
-        "package-x-generic-symbolic"
+        "class-or-package-symbolic"
     };
     image.set_icon_name(Some(icon));
 

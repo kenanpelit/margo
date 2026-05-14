@@ -306,12 +306,20 @@ impl Component for NdnsModel {
 }
 
 fn apply_visual(image: &gtk::Image, root: &gtk::Box, s: &DnsState) {
+    // Use existing Adwaita symbolics only — `shield-safe-symbolic`
+    // (which an earlier version used) isn't shipped by Adwaita,
+    // Papirus, or Tela, so it rendered as the missing-icon
+    // placeholder. The VPN cloud (`network-vpn-symbolic`) is the
+    // clearest "I'm on a VPN" cue for both the pure-Mullvad and
+    // Mixed states; Blocky-only stays on the server-rack glyph;
+    // a custom DNS preset gets `globe-symbolic` so it's visually
+    // distinct from the DHCP path.
     let icon = match s.mode_id() {
-        Mode::Blocked => "security-low-symbolic",
-        Mode::Mixed => "shield-safe-symbolic",
-        Mode::Mullvad => "security-high-symbolic",
+        Mode::Blocked => "network-vpn-error-symbolic",
+        Mode::Mixed => "network-vpn-symbolic",
+        Mode::Mullvad => "network-vpn-symbolic",
         Mode::Blocky => "network-server-symbolic",
-        Mode::Custom => "network-wired-symbolic",
+        Mode::Custom => "globe-symbolic",
         Mode::Default => "network-wired-symbolic",
         Mode::Idle => "dialog-question-symbolic",
     };
