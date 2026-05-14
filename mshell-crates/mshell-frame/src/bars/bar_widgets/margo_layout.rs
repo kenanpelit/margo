@@ -168,6 +168,19 @@ impl Component for MargoLayoutModel {
         *active_cell.borrow_mut() = initial_active;
         apply_active_class(&buttons_cell.borrow(), initial_active);
 
+        // Refresh on every popover open. The 500 ms poll is enough
+        // to keep the (closed) menu's button class up-to-date for
+        // the next show, but if the user changes layout via
+        // keyboard binding and re-opens the menu within that
+        // window, the cached state would still match the previous
+        // layout. Hitting `current_active_layout_idx()` here
+        // guarantees the visible highlight is always fresh
+        // regardless of poll lag.
+        let buttons_for_show = buttons_cell.clone();
+        popover.connect_show(move |_| {
+            apply_active_class(&buttons_for_show.borrow(), current_active_layout_idx());
+        });
+
         // active_cell stays alive via the timeout closure that
         // captured a clone — once `timeout` is dropped in Drop, the
         // closure releases its clone and the cell is freed.
@@ -279,11 +292,23 @@ impl MargoLayoutModel {
 }
 
 /// Read the focused output's `layout_idx` from state.json. Returns
-/// `None` when state.json is missing, no output is currently
-/// focused, or the index is past the layouts list (transient).
+/// `None` when state.json is missing or the index is past the
+/// layouts list (transient during config reload).
+///
+/// Margo's `output.active` boolean is only true when the cursor
+/// happens to be sitting on that output AND keyboard focus is on
+/// a client there — in steady state (e.g. cursor on the bar) both
+/// outputs read `active=false`. So we use the top-level
+/// `state.active_output` string, which is the focused-monitor
+/// connector name and is always populated; the per-output
+/// `active` flag is the auxiliary "is this monitor the currently
+/// interacting one right now," which is a different question.
 fn current_active_layout_idx() -> Option<usize> {
     let state = read_state_json()?;
-    let focused = state.outputs.iter().find(|o| o.active)?;
+    let focused = state
+        .outputs
+        .iter()
+        .find(|o| o.name == state.active_output)?;
     let idx = focused.layout_idx;
     if idx < state.layouts.len() { Some(idx) } else { None }
 }
