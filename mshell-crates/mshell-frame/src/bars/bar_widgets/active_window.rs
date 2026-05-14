@@ -1,19 +1,19 @@
 //! Active-window bar pill.
 //!
-//! Render-only — shows the title of the currently focused client
-//! (the one margo reports with `focus_history_id == 0`) next to a
-//! window glyph, ellipsized so the pill keeps a sane width. The
-//! app class rides along in the tooltip.
+//! Render-only — shows the title of the globally focused window
+//! next to a window glyph, ellipsized so the pill keeps a sane
+//! width; the app class rides along in the tooltip.
 //!
-//! Focus changes arrive as `MargoEvent::ActiveWindowV2`; the
-//! focused client's *title* can also change without a focus
-//! change (typing in a browser, etc.), so the title/class
-//! reactives of the focused client are watched under a
-//! `WatcherToken` that's reset on every focus change.
+//! Focus is read from `margo_service().focused_client`, the
+//! authoritative focus signal (resolved from `state.json`'s
+//! `focused_idx`). The focused client's `title` / `class` can
+//! also change without a focus change — typing in a browser, a
+//! tab switch — so those reactives are watched under a
+//! `WatcherToken` that's reset whenever focus moves.
 
 use futures::StreamExt;
-use mshell_margo_client::{Client, MargoEvent};
 use mshell_common::{WatcherToken, watch_cancellable};
+use mshell_margo_client::Client;
 use mshell_services::margo_service;
 use relm4::gtk::pango;
 use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
@@ -60,7 +60,7 @@ impl Component for ActiveWindowModel {
 
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 4,
+                set_spacing: 5,
                 set_halign: gtk::Align::Center,
                 set_valign: gtk::Align::Center,
                 set_hexpand: true,
@@ -78,7 +78,7 @@ impl Component for ActiveWindowModel {
                     set_halign: gtk::Align::Center,
                     set_valign: gtk::Align::Center,
                     set_ellipsize: pango::EllipsizeMode::End,
-                    set_max_width_chars: 36,
+                    set_max_width_chars: 44,
                 },
             }
         }
@@ -89,32 +89,20 @@ impl Component for ActiveWindowModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        // Focus-change watcher: margo `ActiveWindowV2` events plus
-        // the `clients` membership reactive (a window closing can
-        // shift focus without an explicit event reaching us in
-        // time). An immediate `FocusChanged` primes the pill from
-        // the current `clients` snapshot.
+        // Watch the authoritative `focused_client` reactive. It's
+        // change-only (no replay), so subscribe *first* then prime
+        // from the current snapshot — whichever side a startup
+        // focus update lands on, the pill fills in.
         sender.command(|out, shutdown| {
             async move {
-                let svc = margo_service();
-                let mut events = svc.events();
-                let mut clients_stream = svc.clients.watch();
+                let mut stream = margo_service().focused_client.watch();
+                let _ = out.send(ActiveWindowCommandOutput::FocusChanged);
                 let shutdown_fut = shutdown.wait();
                 tokio::pin!(shutdown_fut);
-
-                let _ = out.send(ActiveWindowCommandOutput::FocusChanged);
-
                 loop {
                     tokio::select! {
                         () = &mut shutdown_fut => break,
-                        ev = events.next() => match ev {
-                            Some(MargoEvent::ActiveWindowV2 { .. }) => {
-                                let _ = out.send(ActiveWindowCommandOutput::FocusChanged);
-                            }
-                            Some(_) => {}
-                            None => break,
-                        },
-                        cl = clients_stream.next() => match cl {
+                        next = stream.next() => match next {
                             Some(_) => {
                                 let _ = out.send(ActiveWindowCommandOutput::FocusChanged);
                             }
@@ -161,19 +149,13 @@ impl Component for ActiveWindowModel {
     }
 }
 
-/// The focused client — margo keeps the focused window at
-/// `focus_history_id == 0`.
 fn focused_client() -> Option<Arc<Client>> {
-    margo_service()
-        .clients
-        .get()
-        .into_iter()
-        .find(|c| c.focus_history_id.get() == 0)
+    margo_service().focused_client.get()
 }
 
 /// Watch the focused client's `title` + `class` under a fresh
 /// `WatcherToken` so live title edits (typing, tab switches)
-/// refresh the pill without a focus event.
+/// refresh the pill without a focus change.
 fn subscribe_focused(
     sender: &ComponentSender<ActiveWindowModel>,
     watcher_token: &mut WatcherToken,

@@ -379,6 +379,12 @@ pub struct MargoService {
     pub workspaces: Reactive<Vec<Arc<Workspace>>>,
     pub clients: Reactive<Vec<Arc<Client>>>,
     pub monitors: Reactive<Vec<Arc<Monitor>>>,
+    /// The globally focused client, resolved from `state.json`'s
+    /// `focused_idx`. `None` when nothing is focused (empty
+    /// desktop). This is the authoritative focus signal — the
+    /// per-`Client` `focus_history_id` is per-monitor and matched
+    /// by app-id, so it can't identify the single focused window.
+    pub focused_client: Reactive<Option<Arc<Client>>>,
     /// Diff-driven typed-event channel for the OkShell widget
     /// pattern (`hyprland.events()` consumers). `sync::apply`
     /// computes the diff between two state.json snapshots and
@@ -409,6 +415,7 @@ impl MargoService {
             workspaces: Reactive::new(Vec::new()),
             clients: Reactive::new(Vec::new()),
             monitors: Reactive::new(Vec::new()),
+            focused_client: Reactive::new(None),
             event_tx,
         });
         // Run one synchronous read so widgets see populated state

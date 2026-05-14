@@ -428,6 +428,23 @@ fn apply(service: &MargoService, state: &StateJson) {
             emitted.push(MargoEvent::ActiveWindowV2 { address: addr });
         }
     }
+    // Globally focused client — `state.json`'s `focused_idx`
+    // indexes into `state.clients`, and `next_clients` is built in
+    // that same order, so `next_clients[focused_idx]` is the one
+    // focused window. Only re-publish when the focused *client*
+    // actually changes (same Arc is reused across title edits, so
+    // typing doesn't spuriously fire `focused_client`).
+    let focused_client = usize::try_from(state.focused_idx)
+        .ok()
+        .and_then(|idx| next_clients.get(idx).cloned());
+    let focused_changed = match (service.focused_client.get(), &focused_client) {
+        (Some(prev), Some(next)) => prev.address.get() != next.address.get(),
+        (None, None) => false,
+        _ => true,
+    };
+    if focused_changed {
+        service.focused_client.set(focused_client);
+    }
     if vec_membership_differs(&current_clients, &next_clients) {
         service.clients.set(next_clients);
     }
