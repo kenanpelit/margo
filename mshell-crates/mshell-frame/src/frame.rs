@@ -1299,6 +1299,13 @@ impl Frame {
                 name == SCREENSHARE_MENU && now_visible,
             ))
             .unwrap_or_default();
+
+        self.session_menu
+            .sender()
+            .send(MenuInput::RevealChanged(
+                name == SESSION_MENU && now_visible,
+            ))
+            .unwrap_or_default();
     }
 
     // Can't use sender for this.  Must queue redraw in the callback.  Otherwise, there is a slight
