@@ -30,6 +30,11 @@
   font-weight: 500;
 }
 
+.media-player-bar-cover {
+  border-radius: 4px;
+  background-color: var(--surface-variant);
+}
+
 // Paused → dim the whole pill so a glance tells playing from
 // paused without a separate state glyph.
 .media-player-bar-widget.paused {

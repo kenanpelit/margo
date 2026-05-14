@@ -4,19 +4,20 @@
 //! playing* — Spotify, mpd, browsers/YouTube, mpv, … — picked
 //! from the whole player list rather than just `active_player`
 //! (wayle only re-selects that on player add/remove, not when a
-//! player starts playing). The pill shows a per-player icon
-//! (so you can tell Spotify from a browser at a glance) plus the
-//! current track title, ellipsized so it stays a sane width.
+//! player starts playing).
+//!
+//! The pill leads with the album cover (resolved by wayle's art
+//! cache) and shows `track — artist`, ellipsized; idle collapses
+//! to a single media glyph.
 //!
 //! Interactions:
 //!   * left click  → toggle the layer-shell `MenuType::MediaPlayer`
 //!     panel (cover art / seek / controls).
 //!   * right click → play / pause the displayed player in place.
 //!
-//! Every player's `playback_state` + `title` is watched under a
-//! `WatcherToken` that's reset whenever the player list changes,
-//! so the pill follows playback across players without missing a
-//! beat.
+//! Every player's title / artist / cover / playback_state is
+//! watched under a `WatcherToken` reset whenever the player list
+//! changes, so the pill follows playback across players.
 
 use mshell_common::{WatcherToken, watch_cancellable};
 use mshell_services::media_service;
@@ -33,9 +34,8 @@ pub(crate) struct MediaPlayerModel {
     has_player: bool,
     playing: bool,
     title: String,
-    /// MPRIS `identity` of the displayed player — "Spotify",
-    /// "Helium", "mpv", … — shown so you can tell players apart.
-    identity: String,
+    artist: String,
+    cover_art: Option<String>,
 }
 
 #[derive(Debug)]
@@ -85,14 +85,16 @@ impl Component for MediaPlayerModel {
 
                 gtk::Box {
                     set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 4,
+                    set_spacing: 6,
                     set_halign: gtk::Align::Center,
                     set_valign: gtk::Align::Center,
 
-                    #[name = "icon"]
+                    #[name = "cover"]
                     gtk::Image {
+                        add_css_class: "media-player-bar-cover",
                         set_halign: gtk::Align::Center,
                         set_valign: gtk::Align::Center,
+                        set_pixel_size: 20,
                     },
 
                     #[name = "label"]
@@ -101,7 +103,7 @@ impl Component for MediaPlayerModel {
                         set_halign: gtk::Align::Center,
                         set_valign: gtk::Align::Center,
                         set_ellipsize: pango::EllipsizeMode::End,
-                        set_max_width_chars: 24,
+                        set_max_width_chars: 38,
                     },
                 }
             }
@@ -124,7 +126,8 @@ impl Component for MediaPlayerModel {
             has_player: false,
             playing: false,
             title: String::new(),
-            identity: String::new(),
+            artist: String::new(),
+            cover_art: None,
         };
 
         subscribe_players(&sender, &mut model.watcher_token);
@@ -199,9 +202,9 @@ fn display_player() -> Option<Arc<Player>> {
         .or_else(|| players.first().cloned())
 }
 
-/// Watch *every* player's title + playback state under a fresh
-/// `WatcherToken` — so the pill reacts the instant any player
-/// starts/stops, not just the one wayle considers "active".
+/// Watch *every* player's title / artist / cover / playback
+/// state under a fresh `WatcherToken` — so the pill reacts the
+/// instant any player starts, stops, or changes track.
 fn subscribe_players(
     sender: &ComponentSender<MediaPlayerModel>,
     watcher_token: &mut WatcherToken,
@@ -209,11 +212,23 @@ fn subscribe_players(
     let token = watcher_token.reset();
     for player in media_service().player_list.get() {
         let title = player.metadata.title.clone();
+        let artist = player.metadata.artist.clone();
+        let cover = player.metadata.cover_art.clone();
         let playback_state = player.playback_state.clone();
         let t = token.clone();
-        watch_cancellable!(sender, t, [title.watch(), playback_state.watch()], |out| {
-            let _ = out.send(MediaPlayerCommandOutput::TrackChanged);
-        });
+        watch_cancellable!(
+            sender,
+            t,
+            [
+                title.watch(),
+                artist.watch(),
+                cover.watch(),
+                playback_state.watch(),
+            ],
+            |out| {
+                let _ = out.send(MediaPlayerCommandOutput::TrackChanged);
+            }
+        );
     }
 }
 
@@ -224,43 +239,51 @@ fn read_display(model: &mut MediaPlayerModel) {
             model.has_player = true;
             model.playing = player.playback_state.get() == PlaybackState::Playing;
             model.title = player.metadata.title.get();
-            model.identity = player.identity.get();
+            model.artist = player.metadata.artist.get();
+            model.cover_art = player.metadata.cover_art.get();
         }
         None => {
             model.has_player = false;
             model.playing = false;
             model.title.clear();
-            model.identity.clear();
+            model.artist.clear();
+            model.cover_art = None;
         }
     }
 }
 
 fn apply_visual(widgets: &MediaPlayerModelWidgets, model: &MediaPlayerModel) {
     if !model.has_player {
-        widgets.icon.set_icon_name(Some("media-play-symbolic"));
+        widgets.cover.set_icon_name(Some("media-play-symbolic"));
         widgets.label.set_visible(false);
         widgets.root.remove_css_class("paused");
         widgets.root.set_tooltip_text(Some("No media playing"));
         return;
     }
 
-    // Icon = play/pause state. The pill is render-only (left
-    // click opens the panel, right click toggles), so the glyph
-    // is a state indicator, not a control.
-    widgets.icon.set_icon_name(Some(if model.playing {
-        "media-play-symbolic"
-    } else {
-        "media-pause-symbolic"
-    }));
+    // Album cover when the art cache resolved one, else a media
+    // glyph that doubles as the play/pause state.
+    match model.cover_art.as_deref() {
+        Some(path) if !path.trim().is_empty() => {
+            widgets.cover.set_from_file(Some(path));
+        }
+        _ => {
+            widgets.cover.set_icon_name(Some(if model.playing {
+                "media-play-symbolic"
+            } else {
+                "media-pause-symbolic"
+            }));
+        }
+    }
 
-    // Label leads with the player identity so Spotify / a browser
-    // / mpv are distinguishable at a glance, then the track.
-    let identity = model.identity.trim();
+    // `track — artist`, the song leading. Falls back gracefully
+    // when a field is missing.
     let title = model.title.trim();
-    let text = match (identity.is_empty(), title.is_empty()) {
-        (false, false) => format!("{identity} · {title}"),
-        (false, true) => identity.to_string(),
-        (true, false) => title.to_string(),
+    let artist = model.artist.trim();
+    let text = match (title.is_empty(), artist.is_empty()) {
+        (false, false) => format!("{title} — {artist}"),
+        (false, true) => title.to_string(),
+        (true, false) => artist.to_string(),
         (true, true) => "Media".to_string(),
     };
     widgets.label.set_label(&text);
