@@ -30,6 +30,7 @@ const NDNS_MENU: &str = "ndns";
 const NPODMAN_MENU: &str = "npodman";
 const NNOTES_MENU: &str = "nnotes";
 const NIP_MENU: &str = "nip";
+const NNETWORK_MENU: &str = "nnetwork";
 
 pub struct Frame {
     // Margo's mshell ships only horizontal bars — vertical Left /
@@ -74,6 +75,7 @@ pub struct Frame {
     npodman_menu: Controller<MenuModel>,
     nnotes_menu: Controller<MenuModel>,
     nip_menu: Controller<MenuModel>,
+    nnetwork_menu: Controller<MenuModel>,
     /// Pending keyboard-mode switch held inside the 90 ms debounce
     /// window. Replaced on every `sync_keyboard_mode` call; the
     /// timer reads whatever value was last written.
@@ -102,6 +104,7 @@ pub enum FrameInput {
         Position,
         Position,
         Position,
+        Position,
     ),
     ToggleClockMenu,
     ToggleClipboardMenu,
@@ -115,6 +118,7 @@ pub enum FrameInput {
     ToggleNpodmanMenu,
     ToggleNnotesMenu,
     ToggleNipMenu,
+    ToggleNnetworkMenu,
     CloseMenus,
     ToggleScreenshareMenu(tokio::sync::oneshot::Sender<String>, String),
     BarToggleTop,
@@ -617,6 +621,7 @@ impl Component for Frame {
         let npodman_menu = Self::build_menu(&sender, MenuType::Npodman);
         let nnotes_menu = Self::build_menu(&sender, MenuType::Nnotes);
         let nip_menu = Self::build_menu(&sender, MenuType::Nip);
+        let nnetwork_menu = Self::build_menu(&sender, MenuType::Nnetwork);
 
         let mut effects = EffectScope::new();
 
@@ -674,6 +679,8 @@ impl Component for Frame {
             let nnotes_menu_position = config.menus().nnotes_menu().position().get();
             let config = menu_config.clone();
             let nip_menu_position = config.menus().nip_menu().position().get();
+            let config = menu_config.clone();
+            let nnetwork_menu_position = config.menus().nnetwork_menu().position().get();
             sender_clone.input(FrameInput::RepositionMenus(
                 clock_menu_position,
                 clipboard_menu_position,
@@ -688,6 +695,7 @@ impl Component for Frame {
                 npodman_menu_position,
                 nnotes_menu_position,
                 nip_menu_position,
+                nnetwork_menu_position,
             ));
         });
 
@@ -747,6 +755,7 @@ impl Component for Frame {
             npodman_menu,
             nnotes_menu,
             nip_menu,
+            nnetwork_menu,
             pending_kbd_mode: std::rc::Rc::new(std::cell::RefCell::new(None)),
             pending_kbd_mode_timeout: std::rc::Rc::new(std::cell::RefCell::new(None)),
             _effects: effects,
@@ -795,6 +804,7 @@ impl Component for Frame {
                 npodman_menu_position,
                 nnotes_menu_position,
                 nip_menu_position,
+                nnetwork_menu_position,
             ) => {
                 sender.input(FrameInput::CloseMenus);
                 self.apply_left_and_right_side_children(
@@ -812,6 +822,7 @@ impl Component for Frame {
                     npodman_menu_position,
                     nnotes_menu_position,
                     nip_menu_position,
+                    nnetwork_menu_position,
                 );
             }
             FrameInput::ToggleClockMenu => {
@@ -860,6 +871,10 @@ impl Component for Frame {
             }
             FrameInput::ToggleNipMenu => {
                 self.toggle_menu(NIP_MENU, widgets);
+                self.sync_keyboard_mode(root);
+            }
+            FrameInput::ToggleNnetworkMenu => {
+                self.toggle_menu(NNETWORK_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
             FrameInput::ToggleScreenshareMenu(reply, payload) => {
@@ -1449,6 +1464,7 @@ impl Frame {
         npodman_menu_position: Position,
         nnotes_menu_position: Position,
         nip_menu_position: Position,
+        nnetwork_menu_position: Position,
     ) {
         let clock_widget: Widget = self.clock_menu.widget().clone().upcast();
         let clipboard_widget: Widget = self.clipboard_menu.widget().clone().upcast();
@@ -1463,6 +1479,7 @@ impl Frame {
         let npodman_menu_widget: Widget = self.npodman_menu.widget().clone().upcast();
         let nnotes_menu_widget: Widget = self.nnotes_menu.widget().clone().upcast();
         let nip_menu_widget: Widget = self.nip_menu.widget().clone().upcast();
+        let nnetwork_menu_widget: Widget = self.nnetwork_menu.widget().clone().upcast();
 
         widgets.left_stack.remove_all();
         widgets.right_stack.remove_all();
@@ -1541,6 +1558,12 @@ impl Frame {
             &nnotes_menu_position,
         );
         Self::add_to_stack(widgets, &nip_menu_widget, NIP_MENU, &nip_menu_position);
+        Self::add_to_stack(
+            widgets,
+            &nnetwork_menu_widget,
+            NNETWORK_MENU,
+            &nnetwork_menu_position,
+        );
     }
 
     fn add_to_stack(widgets: &FrameWidgets, widget: &Widget, name: &str, position: &Position) {
@@ -1588,6 +1611,7 @@ impl Frame {
                 BarOutput::NpodmanClicked => FrameInput::ToggleNpodmanMenu,
                 BarOutput::NnotesClicked => FrameInput::ToggleNnotesMenu,
                 BarOutput::NipClicked => FrameInput::ToggleNipMenu,
+                BarOutput::NnetworkClicked => FrameInput::ToggleNnetworkMenu,
                 BarOutput::CloseMenu => FrameInput::CloseMenus,
             })
     }

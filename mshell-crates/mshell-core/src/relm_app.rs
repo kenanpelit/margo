@@ -61,6 +61,7 @@ pub(crate) enum ShellInput {
     ToggleNpodmanMenu(Option<String>),
     ToggleNnotesMenu(Option<String>),
     ToggleNipMenu(Option<String>),
+    ToggleNnetworkMenu(Option<String>),
     CloseAllMenus,
     ToggleScreenshareMenu(Option<String>, tokio::sync::oneshot::Sender<String>, String),
     QueueFrameRedraw,
@@ -323,6 +324,11 @@ impl Component for Shell {
             ShellInput::ToggleNipMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
                     frame.emit(FrameInput::ToggleNipMenu);
+                }
+            }
+            ShellInput::ToggleNnetworkMenu(monitor_name) => {
+                if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
+                    frame.emit(FrameInput::ToggleNnetworkMenu);
                 }
             }
             ShellInput::CloseAllMenus => {

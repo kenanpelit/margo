@@ -17,6 +17,7 @@ use crate::bars::bar_widgets::logout::{LogoutInit, LogoutModel};
 use crate::bars::bar_widgets::network::{NetworkInit, NetworkModel};
 use crate::bars::bar_widgets::ndns::{NdnsInit, NdnsModel};
 use crate::bars::bar_widgets::nip::{NipInit, NipModel};
+use crate::bars::bar_widgets::nnetwork::{NnetworkInit, NnetworkModel};
 use crate::bars::bar_widgets::nnotes::{NnotesInit, NnotesModel};
 use crate::bars::bar_widgets::npodman::{NpodmanInit, NpodmanModel};
 use crate::bars::bar_widgets::nufw::{NufwInit, NufwModel};
@@ -114,6 +115,7 @@ pub(crate) enum BarOutput {
     NpodmanClicked,
     NnotesClicked,
     NipClicked,
+    NnetworkClicked,
     CloseMenu,
 }
 
@@ -496,6 +498,15 @@ impl BarModel {
                     .forward(sender.output_sender(), |msg| match msg {
                         crate::bars::bar_widgets::nip::NipOutput::Clicked => {
                             BarOutput::NipClicked
+                        }
+                    }),
+            ),
+            BarWidget::Nnetwork => Box::new(
+                NnetworkModel::builder()
+                    .launch(NnetworkInit {})
+                    .forward(sender.output_sender(), |msg| match msg {
+                        crate::bars::bar_widgets::nnetwork::NnetworkOutput::Clicked => {
+                            BarOutput::NnetworkClicked
                         }
                     }),
             ),

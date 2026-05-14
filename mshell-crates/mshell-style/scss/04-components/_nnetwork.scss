@@ -1,0 +1,60 @@
+// Network Console menu widget — wifi list + controls.
+
+.nnetwork-menu-widget { padding: 0; }
+
+// ── Bar pill ──────────────────────────────────────────────
+.nnetwork-bar-widget.online image {
+  color: var(--primary);
+}
+.nnetwork-bar-widget.offline image {
+  color: var(--on-surface-variant);
+}
+
+// ── Hero card ────────────────────────────────────────────
+.nnetwork-hero {
+  padding: 10px 12px;
+  border-radius: var(--radius-widget);
+  background-color: var(--surface-variant);
+  border: 1px solid var(--outline);
+}
+
+// ── Connectivity badge ───────────────────────────────────
+.nnetwork-badge {
+  padding: 2px 10px;
+  border-radius: 9999px;
+  font-weight: 600;
+  font-size: 0.85em;
+  background-color: var(--surface-variant);
+  color: var(--on-surface-variant);
+}
+.nnetwork-badge.nnetwork-badge-online {
+  background-color: var(--primary);
+  color: var(--on-primary);
+}
+.nnetwork-badge.nnetwork-badge-limited {
+  background-color: var(--primary-container);
+  color: var(--on-primary-container);
+}
+.nnetwork-badge.nnetwork-badge-offline {
+  background-color: var(--error-container);
+  color: var(--on-error-container);
+}
+.nnetwork-badge.nnetwork-badge-unknown {
+  opacity: 0.7;
+}
+
+// ── Network list rows ────────────────────────────────────
+.nnetwork-list row {
+  padding: 0;
+  border-radius: var(--radius-widget);
+  margin-bottom: 4px;
+  background-color: var(--surface-variant);
+  border: 1px solid var(--outline);
+}
+.nnetwork-list row:last-child {
+  margin-bottom: 0;
+}
+.nnetwork-lock {
+  -gtk-icon-size: 14px;
+  opacity: 0.7;
+}
