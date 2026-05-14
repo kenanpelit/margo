@@ -1,0 +1,9 @@
+// Battery bar pill — the charge-% label sits next to the
+// symbolic icon, so it's sized down to the icon's optical weight
+// (tabular figures so the pill width doesn't jitter as the
+// percentage ticks) and vertically centred against it.
+.battery-bar-label {
+  font-size: 0.82em;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
