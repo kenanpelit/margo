@@ -27,6 +27,9 @@ use crate::menus::menu_widgets::ndns::ndns_menu_widget::{
 use crate::menus::menu_widgets::network::network_menu_widget::{
     NetworkMenuWidgetInit, NetworkMenuWidgetModel,
 };
+use crate::menus::menu_widgets::nnotes::nnotes_menu_widget::{
+    NnotesMenuWidgetInit, NnotesMenuWidgetModel,
+};
 use crate::menus::menu_widgets::notifications::notifications::{
     NotificationsInit, NotificationsModel, NotificationsOutput,
 };
@@ -116,6 +119,11 @@ pub fn build_widget(
         MenuWidget::Network => Box::new(
             NetworkMenuWidgetModel::builder()
                 .launch(NetworkMenuWidgetInit {})
+                .detach(),
+        ),
+        MenuWidget::Nnotes => Box::new(
+            NnotesMenuWidgetModel::builder()
+                .launch(NnotesMenuWidgetInit {})
                 .detach(),
         ),
         MenuWidget::Notifications => Box::new(

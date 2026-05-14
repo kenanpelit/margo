@@ -48,6 +48,7 @@ pub(crate) enum MenuType {
     Nufw,
     Ndns,
     Npodman,
+    Nnotes,
 }
 
 pub(crate) struct MenuModel {
@@ -286,6 +287,23 @@ impl Component for MenuModel {
                 effects.push(move |_| {
                     let config = config.clone();
                     let minimum_width = config.menus().npodman_menu().minimum_width().get();
+                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
+                });
+            }
+            MenuType::Nnotes => {
+                css_class = "nnotes-menu".to_string();
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let widgets = config.menus().nnotes_menu().widgets().get();
+                    sender_clone.input(MenuInput::SetWidget(widgets));
+                });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let minimum_width = config.menus().nnotes_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
                 });
             }

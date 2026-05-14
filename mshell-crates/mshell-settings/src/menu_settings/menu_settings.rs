@@ -45,6 +45,9 @@ pub(crate) struct MenuSettingsModel {
     npodman_widget_list_controller: Controller<MenuWidgetListModel>,
     npodman_position: Position,
     npodman_min_width: i32,
+    nnotes_widget_list_controller: Controller<MenuWidgetListModel>,
+    nnotes_position: Position,
+    nnotes_min_width: i32,
     screenshare_position: Position,
     left_menu_expansion_type: VerticalMenuExpansion,
     right_menu_expansion_type: VerticalMenuExpansion,
@@ -83,6 +86,9 @@ pub(crate) enum MenuSettingsInput {
     NpodmanWidgetListChanged(Vec<MenuWidget>),
     NpodmanPositionChanged(Position),
     NpodmanMinWidthChanged(i32),
+    NnotesWidgetListChanged(Vec<MenuWidget>),
+    NnotesPositionChanged(Position),
+    NnotesMinWidthChanged(i32),
     ScreensharePositionChanged(Position),
     LeftMenuExpansionChanged(VerticalMenuExpansion),
     RightMenuExpansionChanged(VerticalMenuExpansion),
@@ -117,6 +123,9 @@ pub(crate) enum MenuSettingsInput {
     NpodmanWidgetListEffect(Vec<MenuWidget>),
     NpodmanPositionEffect(Position),
     NpodmanMinWidthEffect(i32),
+    NnotesWidgetListEffect(Vec<MenuWidget>),
+    NnotesPositionEffect(Position),
+    NnotesMinWidthEffect(i32),
     ScreensharePositionEffect(Position),
     LeftMenuExpansionEffect(VerticalMenuExpansion),
     RightMenuExpansionEffect(VerticalMenuExpansion),
@@ -1105,6 +1114,89 @@ impl Component for MenuSettingsModel {
 
                 gtk::Label {
                     add_css_class: "label-large-bold",
+                    set_label: "Notes Hub Menu",
+                    set_halign: gtk::Align::Start,
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Position",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Where this menu should be positioned.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::DropDown {
+                        set_width_request: 150,
+                        set_valign: gtk::Align::Center,
+                        set_model: Some(&gtk::StringList::new(&Position::display_names())),
+                        #[watch]
+                        #[block_signal(nnotes_pos_handler)]
+                        set_selected: model.nnotes_position.to_index(),
+                        connect_selected_notify[sender] => move |dd| {
+                            sender.input(MenuSettingsInput::NnotesPositionChanged(
+                                Position::from_index(dd.selected())
+                            ));
+                        } @nnotes_pos_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 8,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Minimum Width",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "The minimum width of the menu.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::SpinButton {
+                        set_range: (0.0, 10000.0),
+                        set_increments: (10.0, 50.0),
+                        #[watch]
+                        #[block_signal(nnotes_min_width_handler)]
+                        set_value: model.nnotes_min_width as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(MenuSettingsInput::NnotesMinWidthChanged(s.value() as i32));
+                        } @nnotes_min_width_handler,
+                    },
+                },
+
+                model.nnotes_widget_list_controller.widget().clone() {},
+
+                gtk::Separator {},
+
+                gtk::Label {
+                    add_css_class: "label-large-bold",
                     set_label: "Screen Share Menu",
                     set_halign: gtk::Align::Start,
                 },
@@ -1382,6 +1474,25 @@ impl Component for MenuSettingsModel {
         let sender_clone = sender.clone();
         effects.push(move |_| {
             let config = config_manager().config();
+            let value = config.menus().nnotes_menu().position().get();
+            sender_clone.input(MenuSettingsInput::NnotesPositionEffect(value));
+        });
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let config = config_manager().config();
+            let value = config.menus().nnotes_menu().minimum_width().get();
+            sender_clone.input(MenuSettingsInput::NnotesMinWidthEffect(value));
+        });
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let config = config_manager().config();
+            let value = config.menus().nnotes_menu().widgets().get();
+            sender_clone.input(MenuSettingsInput::NnotesWidgetListEffect(value));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let config = config_manager().config();
             let value = config.menus().screenshare_menu().position().get();
             sender_clone.input(MenuSettingsInput::ScreensharePositionEffect(value));
         });
@@ -1546,6 +1657,22 @@ impl Component for MenuSettingsModel {
                 }
             });
 
+        let nnotes_widget_list_controller = MenuWidgetListModel::builder()
+            .launch(MenuWidgetListInit {
+                widgets: config_manager()
+                    .config()
+                    .menus()
+                    .nnotes_menu()
+                    .widgets()
+                    .get_untracked(),
+                draw_border: true,
+            })
+            .forward(sender.input_sender(), |msg| match msg {
+                MenuWidgetListOutput::Changed(widgets) => {
+                    MenuSettingsInput::NnotesWidgetListChanged(widgets)
+                }
+            });
+
         let model = MenuSettingsModel {
             quick_settings_widget_list_controller,
             quick_settings_position: config_manager()
@@ -1675,6 +1802,19 @@ impl Component for MenuSettingsModel {
                 .config()
                 .menus()
                 .npodman_menu()
+                .minimum_width()
+                .get_untracked(),
+            nnotes_widget_list_controller,
+            nnotes_position: config_manager()
+                .config()
+                .menus()
+                .nnotes_menu()
+                .position()
+                .get_untracked(),
+            nnotes_min_width: config_manager()
+                .config()
+                .menus()
+                .nnotes_menu()
                 .minimum_width()
                 .get_untracked(),
             screenshare_position: config_manager()
@@ -1812,6 +1952,23 @@ impl Component for MenuSettingsModel {
                 self.npodman_min_width = width;
                 config_manager().update_config(|config| {
                     config.menus.npodman_menu.minimum_width = width;
+                });
+            }
+            MenuSettingsInput::NnotesWidgetListChanged(widgets) => {
+                config_manager().update_config(|config| {
+                    config.menus.nnotes_menu.widgets = widgets;
+                });
+            }
+            MenuSettingsInput::NnotesPositionChanged(position) => {
+                self.nnotes_position = position.clone();
+                config_manager().update_config(|config| {
+                    config.menus.nnotes_menu.position = position;
+                });
+            }
+            MenuSettingsInput::NnotesMinWidthChanged(width) => {
+                self.nnotes_min_width = width;
+                config_manager().update_config(|config| {
+                    config.menus.nnotes_menu.minimum_width = width;
                 });
             }
             MenuSettingsInput::NotificationsWidgetListChanged(widgets) => {
@@ -2003,6 +2160,16 @@ impl Component for MenuSettingsModel {
             }
             MenuSettingsInput::NpodmanMinWidthEffect(width) => {
                 self.npodman_min_width = width;
+            }
+            MenuSettingsInput::NnotesWidgetListEffect(widgets) => {
+                self.nnotes_widget_list_controller
+                    .emit(MenuWidgetListInput::SetWidgetsEffect(widgets));
+            }
+            MenuSettingsInput::NnotesPositionEffect(position) => {
+                self.nnotes_position = position;
+            }
+            MenuSettingsInput::NnotesMinWidthEffect(width) => {
+                self.nnotes_min_width = width;
             }
             MenuSettingsInput::ScreensharePositionEffect(position) => {
                 self.screenshare_position = position;

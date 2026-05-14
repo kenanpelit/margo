@@ -10,6 +10,7 @@ pub(crate) mod divider;
 pub(crate) mod media_player;
 pub(crate) mod ndns;
 pub(crate) mod network;
+pub(crate) mod nnotes;
 pub(crate) mod notifications;
 pub(crate) mod npodman;
 pub(crate) mod nufw;

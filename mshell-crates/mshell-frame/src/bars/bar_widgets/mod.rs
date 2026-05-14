@@ -15,6 +15,7 @@ pub(crate) mod lock;
 pub(crate) mod logout;
 pub(crate) mod ndns;
 pub(crate) mod network;
+pub(crate) mod nnotes;
 pub(crate) mod nip;
 pub(crate) mod notifications;
 pub(crate) mod npodman;

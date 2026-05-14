@@ -1,0 +1,68 @@
+// Notes Hub menu widget — scratchpad / notes / todos tabs.
+
+.nnotes-menu-widget { padding: 0; }
+
+// ── Bar pill ──────────────────────────────────────────────
+.nnotes-bar-widget.has-pending image {
+  color: var(--primary);
+}
+
+// ── Header counters ──────────────────────────────────────
+.nnotes-counter {
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 0.8em;
+  font-weight: 600;
+  background-color: var(--surface-variant);
+  color: var(--on-surface-variant);
+}
+
+// ── Scratchpad TextView ──────────────────────────────────
+.nnotes-scratchpad {
+  border-radius: var(--radius-widget);
+  background-color: var(--surface-variant);
+  border: 1px solid var(--outline);
+}
+.nnotes-scratchpad text {
+  background-color: transparent;
+}
+
+// ── + Add buttons / entries ──────────────────────────────
+.nnotes-add {
+  padding: 4px 8px;
+  border-radius: var(--radius-widget);
+}
+
+// ── List rows + cards ───────────────────────────────────
+.nnotes-list row {
+  padding: 0;
+  border-radius: var(--radius-widget);
+  margin-bottom: 4px;
+  background-color: transparent;
+}
+.nnotes-card {
+  padding: 6px 8px;
+  border-radius: var(--radius-widget);
+  background-color: var(--surface-variant);
+  border: 1px solid var(--outline);
+}
+.nnotes-card-title {
+  font-weight: 600;
+}
+.nnotes-card-body {
+  border-radius: var(--radius-widget);
+  background-color: transparent;
+}
+.nnotes-card-body text {
+  background-color: transparent;
+}
+
+// ── Todo rows ────────────────────────────────────────────
+.nnotes-todo-entry {
+  background-color: transparent;
+  border: none;
+}
+.nnotes-todo-entry.completed {
+  opacity: 0.55;
+  text-decoration: line-through;
+}

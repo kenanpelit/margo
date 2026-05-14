@@ -23,6 +23,8 @@ pub enum MenuCommands {
     Ndns,
     /// Toggle the Podman menu
     Npodman,
+    /// Toggle the Notes Hub menu
+    Nnotes,
     /// Close all open menus
     CloseAll,
 }
@@ -58,6 +60,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::Npodman => {
             bus_command("Npodman").await?;
+        }
+        MenuCommands::Nnotes => {
+            bus_command("Nnotes").await?;
         }
         MenuCommands::CloseAll => {
             bus_command("CloseAllMenus").await?;
