@@ -18,8 +18,38 @@ use relm4::gtk::{gdk, gdk_pixbuf, gio, glib};
 use relm4::{Component, ComponentParts, ComponentSender, RelmWidgetExt, gtk};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock, mpsc};
 use tracing::info;
+
+/// Bounded worker pool for wallpaper thumbnail decodes.
+///
+/// The `GridView` factory's `connect_bind` can fire for the whole
+/// model at once — on first show, or whenever GTK realizes every
+/// item to measure it — so a directory with a few hundred
+/// wallpapers, times one bar per monitor, would otherwise spawn
+/// hundreds of OS threads each loading an image, spiking RSS into
+/// the gigabytes before they drain. Routing every decode through a
+/// fixed handful of workers caps that: extra binds just queue.
+fn decode_pool() -> &'static mpsc::Sender<Box<dyn FnOnce() + Send>> {
+    static POOL: OnceLock<mpsc::Sender<Box<dyn FnOnce() + Send>>> = OnceLock::new();
+    POOL.get_or_init(|| {
+        let (tx, rx) = mpsc::channel::<Box<dyn FnOnce() + Send>>();
+        let rx = Arc::new(Mutex::new(rx));
+        for _ in 0..6 {
+            let rx = rx.clone();
+            std::thread::spawn(move || {
+                loop {
+                    let job = rx.lock().unwrap().recv();
+                    match job {
+                        Ok(job) => job(),
+                        Err(_) => break,
+                    }
+                }
+            });
+        }
+        tx
+    })
+}
 
 fn is_image_file(path: &std::path::Path) -> bool {
     path.extension()
@@ -380,7 +410,13 @@ impl Component for WallpaperMenuWidgetModel {
                         set_vexpand: false,
                         set_vscrollbar_policy: gtk::PolicyType::Never,
                         set_hscrollbar_policy: gtk::PolicyType::External,
-                        set_propagate_natural_height: true,
+                        // The parent Box already fixes the height to
+                        // three rows; propagating the GridView's
+                        // natural height instead makes GTK realize
+                        // every item to measure it, which defeats the
+                        // factory's virtualization and binds the whole
+                        // wallpaper list at once.
+                        set_propagate_natural_height: false,
 
                         #[name = "grid_view"]
                         gtk::GridView {
@@ -454,15 +490,17 @@ impl Component for WallpaperMenuWidgetModel {
                 }
             }
 
-            // Spawn thumbnail decode on a background thread.
+            // Decode the thumbnail on the bounded worker pool —
+            // never a thread per item (see `decode_pool`).
             let (tx, rx) =
                 std::sync::mpsc::channel::<(String, Option<(glib::Bytes, i32, i32, i32, bool)>)>();
 
-            std::thread::spawn(move || {
+            let thumbnail_height = params.thumbnail_height;
+            let _ = decode_pool().send(Box::new(move || {
                 let result = gdk_pixbuf::Pixbuf::from_file_at_scale(
                     &path_str,
                     -1,
-                    params.thumbnail_height,
+                    thumbnail_height,
                     true,
                 )
                 .ok()
@@ -475,7 +513,7 @@ impl Component for WallpaperMenuWidgetModel {
                     (bytes, width, height, rowstride, has_alpha)
                 });
                 let _ = tx.send((path_str, result));
-            });
+            }));
 
             // Poll the channel from the main loop
             let cache_insert = cache.clone();
