@@ -57,6 +57,15 @@ pub(crate) enum MenuType {
 
 pub(crate) struct MenuModel {
     widget_controllers: Vec<Box<dyn GenericWidgetController>>,
+    // The `MenuWidget` kinds backing `widget_controllers`, so
+    // `SetWidget` can skip the destructive clear+rebuild when the
+    // config layer re-notifies with an identical list. The config
+    // store is coarse — a write to any field reaches every effect
+    // bound to it — so without this guard every unrelated config
+    // touch tears down and recreates each menu's content widgets,
+    // which silently re-runs their probe loops (ndns / nufw /
+    // npodman shell out on init). Mirrors the bar's guard.
+    widget_kinds: Vec<MenuWidget>,
     minimum_width: i32,
     css_class: String,
     _effects: EffectScope,
@@ -383,6 +392,7 @@ impl Component for MenuModel {
 
         let model = MenuModel {
             widget_controllers: Vec::new(),
+            widget_kinds: Vec::new(),
             minimum_width: 410,
             css_class,
             _effects: effects,
@@ -475,12 +485,19 @@ impl Component for MenuModel {
                 }
             }
             MenuInput::SetWidget(menu_widgets) => {
-                clear_box(&widgets.widget_container);
-                self.widget_controllers.clear();
-                for item in menu_widgets {
-                    let controller = build_widget(&item, gtk::Orientation::Vertical, &sender);
-                    widgets.widget_container.append(&controller.root_widget());
-                    self.widget_controllers.push(controller);
+                // Skip the destructive clear+rebuild when the config
+                // layer re-notifies with an identical widget list —
+                // see the `widget_kinds` field comment.
+                if self.widget_kinds != menu_widgets {
+                    clear_box(&widgets.widget_container);
+                    self.widget_controllers.clear();
+                    for item in &menu_widgets {
+                        let controller =
+                            build_widget(item, gtk::Orientation::Vertical, &sender);
+                        widgets.widget_container.append(&controller.root_widget());
+                        self.widget_controllers.push(controller);
+                    }
+                    self.widget_kinds = menu_widgets;
                 }
             }
             MenuInput::SetMinimumWidth(width) => {
