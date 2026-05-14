@@ -133,9 +133,15 @@ impl Component for MargoTagModel {
         ComponentParts { model, widgets }
     }
 
-    fn update_with_view(
+    // `update` (NOT `update_with_view`): the framework auto-calls
+    // `update_view(widgets, sender)` after this returns, which is what
+    // re-evaluates the `#[watch] set_css_classes:` expression in the
+    // view! macro. If we override `update_with_view` we lose that
+    // auto-call — which is why an earlier version of this file left
+    // the active pill stuck on the initially-focused tag forever:
+    // model state changed, but the GTK button's class list didn't.
+    fn update(
         &mut self,
-        _widgets: &mut Self::Widgets,
         message: Self::Input,
         _sender: ComponentSender<Self>,
         _root: &Self::Root,
@@ -176,9 +182,11 @@ impl Component for MargoTagModel {
         }
     }
 
-    fn update_cmd_with_view(
+    // Same reason as `update`: keep the auto-`update_view` call so
+    // the occupied dot tracks window-count changes without us having
+    // to invoke set_css_classes manually here.
+    fn update_cmd(
         &mut self,
-        _widgets: &mut Self::Widgets,
         message: Self::CommandOutput,
         _sender: ComponentSender<Self>,
         _root: &Self::Root,

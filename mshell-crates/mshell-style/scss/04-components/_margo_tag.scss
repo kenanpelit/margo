@@ -1,5 +1,6 @@
 
 // MargoTag — bar widget styling for the per-tag pill button.
+//
 // Three visual states layered on top of the standard `ok-button-*`
 // primitives so they pick up the active theme's accent / surface
 // colors automatically:
@@ -8,8 +9,15 @@
 //                               square footprint so the row looks
 //                               like a strip of identical pills
 //                               regardless of digit width.
-//   .margo-tag.tag-active     — focused workspace. Re-uses the
-//                               `ok-button-primary` accent.
+//   .margo-tag.tag-active     — focused workspace. Uses the
+//                               `--primary` matugen token directly
+//                               instead of the `ok-button-primary`
+//                               primitive: the primitive carries
+//                               extra surface tinting that washed
+//                               out the accent on dark themes; the
+//                               raw token gives the bar a more
+//                               saturated "this is where you are"
+//                               read.
 //   .margo-tag.tag-occupied   — has clients but isn't focused. A
 //                               subtle accent dot inset on the
 //                               bottom keeps the bar uncluttered.
@@ -18,9 +26,32 @@
 //                               but at reduced opacity so the
 //                               occupied / empty contrast is read
 //                               at a glance.
+//
+// `.bar-* .ok-bar-widget` enforces a 36px / 48px min-width to keep
+// the row of buttons readable, but for numeric tag pills that ends
+// up wider than the digit needs. Pull the floor down here so 9
+// pills fit comfortably and you can still tell which one is focused.
+
+.bar-top  .margo-tag.ok-bar-widget,
+.bar-bottom .margo-tag.ok-bar-widget {
+  min-width: 26px;
+
+  > * {
+    padding: 4px 6px;
+  }
+}
+
+.bar-left .margo-tag.ok-bar-widget,
+.bar-right .margo-tag.ok-bar-widget {
+  min-width: 36px;
+  min-height: 26px;
+
+  > * {
+    padding: 4px 6px;
+  }
+}
+
 .margo-tag {
-  min-width: 22px;
-  padding: 2px 8px;
   font-variant-numeric: tabular-nums;
   font-weight: 500;
 }
@@ -38,6 +69,15 @@
   box-shadow: inset 0 -2px 0 -1px currentColor;
 }
 
+.margo-tag.tag-active {
+  // Override the `ok-button-primary` primitive's defaults with the
+  // raw matugen token so the focused pill picks up the active
+  // colour scheme on theme switch without an mshell restart.
+  background-color: var(--primary);
+  color: var(--on-primary);
+}
+
 .margo-tag.tag-active label {
+  color: var(--on-primary);
   font-weight: 700;
 }

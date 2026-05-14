@@ -178,15 +178,15 @@ impl SimpleComponent for ClockModel {
 
         let widgets = view_output!();
 
-        // GestureClick with n_press detection drives the double-click
-        // cycling. We don't use `connect_clicked` for this because the
-        // button's clicked-signal fires on every press (n=1 and n=2),
-        // so the existing Clicked output would also fire each time
-        // the user double-clicks — that's fine (calendar opens, then
-        // closes from the second click), but for the cycle path we
-        // want only n_press == 2 to bump.
+        // Double-RIGHT-click cycles the format. Right-click was the
+        // explicit choice (avoids conflicting with the calendar
+        // popover that left-click opens, and matches Hyprpanel /
+        // waybar muscle memory). A GestureClick on the SECONDARY
+        // button is independent of the gtk::Button's own clicked
+        // signal — left-click still flows through `connect_clicked`
+        // → `ClockOutput::Clicked` untouched.
         let gesture = gtk::GestureClick::new();
-        gesture.set_button(gtk::gdk::BUTTON_PRIMARY);
+        gesture.set_button(gtk::gdk::BUTTON_SECONDARY);
         let sender_dbl = sender.clone();
         gesture.connect_pressed(move |_, n_press, _, _| {
             if n_press >= 2 {

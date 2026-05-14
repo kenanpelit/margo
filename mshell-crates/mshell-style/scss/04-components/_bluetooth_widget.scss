@@ -1,0 +1,15 @@
+
+// Bluetooth bar indicator — connected accent.
+//
+// `bluetooth.rs::refresh` adds `.connected` to the widget root when
+// the adapter is on AND at least one device's `connected` Property
+// is true. Tint the icon with the matugen `--primary` so an active
+// headset / mouse / keyboard reads as "live" from across the bar
+// without enlarging the widget or stacking another badge.
+//
+// Disconnected / disabled states fall through to the default
+// `.ok-button-surface` styling — no extra rules needed.
+
+.bluetooth-bar-widget.connected image {
+  color: var(--primary);
+}
