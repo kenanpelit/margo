@@ -1,0 +1,20 @@
+
+// Audio output / input bar widget — muted state styling.
+//
+// The base widget renders an icon via gtk::Image; `apply_device_state`
+// in audio_output.rs / audio_input.rs flips a `.muted` class on the
+// box root when PulseAudio reports the device as muted (or when
+// every channel is at 0.0, which counts as soft-mute on some bluez
+// stacks). This file just tints the icon when that flag is on so the
+// user can tell at a glance from across the room.
+//
+// `var(--error)` is the design-token from `01-tokens/_colors.scss`
+// (#E67E80), reused for every other "destructive / failure" hook in
+// the stylesheet (lock screen wrong-password, screen-recording REC
+// dot, error badges). Sticking to the token keeps mute and warning
+// states visually coherent across the bar.
+
+.audio-output-bar-widget.muted image,
+.audio-input-bar-widget.muted image {
+  color: var(--error);
+}

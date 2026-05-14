@@ -25,6 +25,7 @@ pub struct Config {
     pub menus: Menus,
     pub notifications: Notifications,
     pub wallpaper: Wallpaper,
+    pub tempo: Tempo,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
@@ -44,6 +45,42 @@ impl Default for General {
                 lon: OrdF64(0.0),
             },
             temperature_unit: TemperatureUnitConfig::Metric,
+        }
+    }
+}
+
+/// Clock-bar-widget formatting.
+///
+/// `clock_format` is the *initial* strftime-style string shown after
+/// mshell start (chrono-format syntax: `%H:%M`, `%a %d %b %H:%M`, …).
+/// `formats` is the rotating list a double-click cycles through —
+/// each click bumps the index, wrap-arounds at the end. Cycling
+/// state lives in-memory only, so on the next restart the widget
+/// shows whatever `clock_format` says again. Leaving `formats` empty
+/// disables the cycle (the widget shows `clock_format` always).
+///
+/// Kept in a dedicated `[tempo]` section so future clock-related
+/// knobs (chime sounds, alt timezones, calendar popover toggles)
+/// have a stable home; the existing `general.clock_format_24_h` flag
+/// is left untouched for back-compat — it still picks 12 / 24 h when
+/// `clock_format` is empty.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[serde(default)]
+pub struct Tempo {
+    pub clock_format: String,
+    pub formats: Vec<String>,
+}
+
+impl Default for Tempo {
+    fn default() -> Self {
+        Self {
+            clock_format: "%a %d %b %H:%M".to_string(),
+            formats: vec![
+                "%H:%M".to_string(),
+                "%H:%M:%S".to_string(),
+                "%a %d %b %H:%M".to_string(),
+                "%d.%m.%Y %H:%M".to_string(),
+            ],
         }
     }
 }

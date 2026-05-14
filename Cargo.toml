@@ -106,6 +106,7 @@ rustix = { version = "1", features = ["shm", "fs"] }
 schemars = "1"
 serde_yaml = "0.9"
 time = { version = "0.3", features = ["local-offset", "formatting"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1"
 tokio-util = "0.7"

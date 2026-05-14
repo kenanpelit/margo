@@ -1,5 +1,6 @@
 use relm4::gtk::{self, gdk, glib, prelude::*};
 
+#[derive(Debug)]
 pub struct HoverScrollHandle {
     _motion: gtk::EventControllerMotion,
     _scroll: gtk::EventControllerScroll,

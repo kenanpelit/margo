@@ -3663,6 +3663,7 @@ name = "mshell-frame"
 version = "0.4.8"
 dependencies = [
  "cairo-rs 0.22.0",
+ "chrono",
  "futures",
  "gtk4-layer-shell",
  "mshell-cache",
