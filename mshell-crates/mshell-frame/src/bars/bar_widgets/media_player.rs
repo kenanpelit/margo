@@ -1,25 +1,31 @@
 //! Media-player bar pill.
 //!
-//! Render-only mirror of the active MPRIS player (Spotify, mpd,
-//! browsers/YouTube, …): a play/pause glyph plus the current
-//! track title, ellipsized so the pill stays a sane width. When
-//! nothing is playing it collapses to a single music-note icon.
-//! Click emits `Clicked`; the frame toggles the layer-shell
-//! `MenuType::MediaPlayer`, whose panel (the rich
-//! cover-art / seek / controls surface) lives in
-//! `menu_widgets/media_player/`.
+//! Render-only mirror of whichever MPRIS player is *currently
+//! playing* — Spotify, mpd, browsers/YouTube, mpv, … — picked
+//! from the whole player list rather than just `active_player`
+//! (wayle only re-selects that on player add/remove, not when a
+//! player starts playing). The pill shows a per-player icon
+//! (so you can tell Spotify from a browser at a glance) plus the
+//! current track title, ellipsized so it stays a sane width.
 //!
-//! The active player can change at runtime, so a `WatcherToken`
-//! is reset on every `ActivePlayerChanged` — that cancels the
-//! previous player's metadata/state watchers before subscribing
-//! to the new one's.
+//! Interactions:
+//!   * left click  → toggle the layer-shell `MenuType::MediaPlayer`
+//!     panel (cover art / seek / controls).
+//!   * right click → play / pause the displayed player in place.
+//!
+//! Every player's `playback_state` + `title` is watched under a
+//! `WatcherToken` that's reset whenever the player list changes,
+//! so the pill follows playback across players without missing a
+//! beat.
 
 use mshell_common::{WatcherToken, watch_cancellable};
 use mshell_services::media_service;
 use mshell_utils::media::spawn_media_players_watcher;
 use relm4::gtk::pango;
-use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, GestureSingleExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use std::sync::Arc;
+use wayle_media::core::player::Player;
 use wayle_media::types::PlaybackState;
 
 pub(crate) struct MediaPlayerModel {
@@ -27,11 +33,15 @@ pub(crate) struct MediaPlayerModel {
     has_player: bool,
     playing: bool,
     title: String,
+    /// MPRIS `identity` of the displayed player — "Spotify",
+    /// "Helium", "mpv", … — shown so you can tell players apart.
+    identity: String,
 }
 
 #[derive(Debug)]
 pub(crate) enum MediaPlayerInput {
     Clicked,
+    PlayPauseClicked,
 }
 
 #[derive(Debug)]
@@ -44,8 +54,8 @@ pub(crate) struct MediaPlayerInit {}
 #[derive(Debug)]
 pub(crate) enum MediaPlayerCommandOutput {
     /// Player list / active player changed — re-subscribe.
-    ActivePlayerChanged,
-    /// The active player's metadata or playback state changed.
+    PlayersChanged,
+    /// Some player's metadata or playback state changed.
     TrackChanged,
 }
 
@@ -105,8 +115,8 @@ impl Component for MediaPlayerModel {
     ) -> ComponentParts<Self> {
         spawn_media_players_watcher(
             &sender,
-            || MediaPlayerCommandOutput::ActivePlayerChanged,
-            || MediaPlayerCommandOutput::ActivePlayerChanged,
+            || MediaPlayerCommandOutput::PlayersChanged,
+            || MediaPlayerCommandOutput::PlayersChanged,
         );
 
         let mut model = MediaPlayerModel {
@@ -114,12 +124,23 @@ impl Component for MediaPlayerModel {
             has_player: false,
             playing: false,
             title: String::new(),
+            identity: String::new(),
         };
 
-        subscribe_active_player(&sender, &mut model.watcher_token);
+        subscribe_players(&sender, &mut model.watcher_token);
 
         let widgets = view_output!();
-        read_active(&mut model);
+
+        // Right click → play/pause the displayed player in place.
+        let gesture = gtk::GestureClick::new();
+        gesture.set_button(gtk::gdk::BUTTON_SECONDARY);
+        let toggle_sender = sender.clone();
+        gesture.connect_pressed(move |_, _, _, _| {
+            toggle_sender.input(MediaPlayerInput::PlayPauseClicked);
+        });
+        widgets.root.add_controller(gesture);
+
+        read_display(&mut model);
         apply_visual(&widgets, &model);
 
         ComponentParts { model, widgets }
@@ -135,6 +156,13 @@ impl Component for MediaPlayerModel {
             MediaPlayerInput::Clicked => {
                 let _ = sender.output(MediaPlayerOutput::Clicked);
             }
+            MediaPlayerInput::PlayPauseClicked => {
+                if let Some(player) = display_player() {
+                    tokio::spawn(async move {
+                        let _ = player.play_pause().await;
+                    });
+                }
+            }
         }
     }
 
@@ -146,82 +174,108 @@ impl Component for MediaPlayerModel {
         _root: &Self::Root,
     ) {
         match message {
-            MediaPlayerCommandOutput::ActivePlayerChanged => {
-                subscribe_active_player(&sender, &mut self.watcher_token);
-                read_active(self);
+            MediaPlayerCommandOutput::PlayersChanged => {
+                subscribe_players(&sender, &mut self.watcher_token);
+                read_display(self);
             }
             MediaPlayerCommandOutput::TrackChanged => {
-                read_active(self);
+                read_display(self);
             }
         }
         apply_visual(widgets, self);
     }
 }
 
-/// Re-subscribe the title / playback-state watchers to whichever
-/// player is *currently* active: resets `watcher_token` (cancels
-/// the previous player's watchers), then — if there is an active
-/// player — wires its title + playback-state streams under the
-/// fresh token.
-fn subscribe_active_player(
+/// The player to mirror: the first one actually *playing*, else
+/// wayle's `active_player`, else the first in the list.
+fn display_player() -> Option<Arc<Player>> {
+    let svc = media_service();
+    let players = svc.player_list.get();
+    players
+        .iter()
+        .find(|p| p.playback_state.get() == PlaybackState::Playing)
+        .cloned()
+        .or_else(|| svc.active_player.get())
+        .or_else(|| players.first().cloned())
+}
+
+/// Watch *every* player's title + playback state under a fresh
+/// `WatcherToken` — so the pill reacts the instant any player
+/// starts/stops, not just the one wayle considers "active".
+fn subscribe_players(
     sender: &ComponentSender<MediaPlayerModel>,
     watcher_token: &mut WatcherToken,
 ) {
     let token = watcher_token.reset();
-    let Some(player) = media_service().active_player.get() else {
-        return;
-    };
-    let title = player.metadata.title.clone();
-    let playback_state = player.playback_state.clone();
-    watch_cancellable!(
-        sender,
-        token,
-        [title.watch(), playback_state.watch()],
-        |out| {
+    for player in media_service().player_list.get() {
+        let title = player.metadata.title.clone();
+        let playback_state = player.playback_state.clone();
+        let t = token.clone();
+        watch_cancellable!(sender, t, [title.watch(), playback_state.watch()], |out| {
             let _ = out.send(MediaPlayerCommandOutput::TrackChanged);
-        }
-    );
+        });
+    }
 }
 
-/// Refresh the model from the active player's current state.
-fn read_active(model: &mut MediaPlayerModel) {
-    match media_service().active_player.get() {
+/// Refresh the model from whichever player is currently displayed.
+fn read_display(model: &mut MediaPlayerModel) {
+    match display_player() {
         Some(player) => {
             model.has_player = true;
             model.playing = player.playback_state.get() == PlaybackState::Playing;
             model.title = player.metadata.title.get();
+            model.identity = player.identity.get();
         }
         None => {
             model.has_player = false;
             model.playing = false;
             model.title.clear();
+            model.identity.clear();
         }
     }
 }
 
 fn apply_visual(widgets: &MediaPlayerModelWidgets, model: &MediaPlayerModel) {
     if !model.has_player {
-        // Idle: a single music-note glyph, no label.
-        widgets.icon.set_icon_name(Some("audio-x-generic-symbolic"));
+        widgets.icon.set_icon_name(Some("media-play-symbolic"));
         widgets.label.set_visible(false);
+        widgets.root.remove_css_class("paused");
         widgets.root.set_tooltip_text(Some("No media playing"));
         return;
     }
 
-    // State indicator (the pill is render-only — click opens the
-    // panel — so the glyph reflects state, it isn't a control).
+    // Icon = play/pause state. The pill is render-only (left
+    // click opens the panel, right click toggles), so the glyph
+    // is a state indicator, not a control.
     widgets.icon.set_icon_name(Some(if model.playing {
         "media-play-symbolic"
     } else {
         "media-pause-symbolic"
     }));
 
-    let title = if model.title.trim().is_empty() {
-        "Unknown track"
-    } else {
-        model.title.trim()
+    // Label leads with the player identity so Spotify / a browser
+    // / mpv are distinguishable at a glance, then the track.
+    let identity = model.identity.trim();
+    let title = model.title.trim();
+    let text = match (identity.is_empty(), title.is_empty()) {
+        (false, false) => format!("{identity} · {title}"),
+        (false, true) => identity.to_string(),
+        (true, false) => title.to_string(),
+        (true, true) => "Media".to_string(),
     };
-    widgets.label.set_label(title);
+    widgets.label.set_label(&text);
     widgets.label.set_visible(true);
-    widgets.root.set_tooltip_text(Some(title));
+
+    // Paused → dim the pill (CSS handles the actual opacity).
+    if model.playing {
+        widgets.root.remove_css_class("paused");
+    } else {
+        widgets.root.add_css_class("paused");
+    }
+
+    widgets.root.set_tooltip_text(Some(&format!(
+        "{}  ·  {}",
+        if model.playing { "Playing" } else { "Paused" },
+        text
+    )));
 }

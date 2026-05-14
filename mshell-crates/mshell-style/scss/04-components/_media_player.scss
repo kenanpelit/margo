@@ -29,3 +29,9 @@
   font-size: 0.82em;
   font-weight: 500;
 }
+
+// Paused → dim the whole pill so a glance tells playing from
+// paused without a separate state glyph.
+.media-player-bar-widget.paused {
+  opacity: 0.55;
+}
