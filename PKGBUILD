@@ -1,58 +1,83 @@
 # Maintainer: Kenan Pelit <kenanpelit@gmail.com>
 #
 # margo — a Rust + Smithay Wayland tiling compositor in the dwl/mango
-# tradition. Ships the compositor binary together with a small set of
-# first-party helpers (`mctl`, `mlock`, `mlayout`, `mscreenshot`,
-# `mvisual`) from a single Cargo workspace. Bar / notifications /
-# launcher / OSD / system tray are intentionally NOT in this package —
-# margo speaks `dwl-ipc-v2`, so any compatible external shell
-# (noctalia, waybar-dwl, fnott, …) plugs in.
+# tradition. Ships:
+#   * compositor binary `margo` + the `start-margo` launcher
+#   * first-party helpers: `mctl` (dwl-ipc-v2 client), `mlock` (PAM
+#     lockscreen), `mlayout` (per-tag layout profile manager),
+#     `mscreenshot` (grim/slurp pipeline), `mvisual` (output
+#     monitor-profile manager)
+#   * `mshell` first-party desktop shell (GTK4 + relm4 + layer-shell)
+#     and its `mshellctl` / `mshellshare` IPC siblings
+#
+# mshell speaks `dwl-ipc-v2` against `margo`. The bundle replaces
+# the previous "compositor-only" `margo-git` so a single
+# `pacman -S margo-git` gives the full first-party desktop. Users
+# who prefer a different bar (noctalia, waybar-dwl, fnott, …) can
+# simply not run `mshell`; the helper binaries are still useful.
 
 pkgname=margo-git
 pkgver=r0.0
 pkgrel=1
-pkgdesc="Rust/Smithay Wayland tiling compositor (mango heritage) with first-party lock, IPC, monitor-profile and screenshot helpers"
+pkgdesc="Rust/Smithay Wayland tiling compositor + first-party mshell desktop (mango heritage)"
 url="https://github.com/kenanpelit/margo"
 arch=("x86_64")
 license=("GPL-3.0-or-later")
 
-# Runtime libraries the compositor + helpers link directly against,
-# verified with `ldd /usr/bin/margo /usr/bin/mlock` against a fresh
-# build. PCRE2 is pulled in by the `regex` crate's PCRE backend
-# (window-rule regex compilation).
+# Runtime libraries — split into compositor-side and mshell-side so
+# trimming this list back to a shell-less build later is mechanical.
+# Verified with `ldd /usr/bin/margo /usr/bin/mlock /usr/bin/mshell
+# /usr/bin/mshellctl` against a fresh release build.
 depends=(
+  # ── Compositor + helpers ────────────────────────────────────────
   glibc
   gcc-libs
   libinput
   libxkbcommon
   wayland
-  mesa            # libgbm / libEGL / libGLESv2 for DRM/KMS render
-  seatd           # provides libseat.so.1
+  mesa            # libgbm / libEGL / libGLESv2 for DRM/KMS
+  seatd           # libseat.so.1
   pixman
   libdrm
-  systemd-libs    # libudev, libsystemd (logind, sd-bus)
+  systemd-libs    # libudev, libsystemd, sd-bus
   libgudev
   glib2
-  pcre2
-  pam             # `mlock` authenticates the session owner via libpam
-  cairo           # `mlock` software renderer (no GPU dependency)
-  pango           # `mlock` text shaping
-  dbus            # screencast portal D-Bus shims
+  pcre2           # `regex` crate's PCRE backend → window-rule regexes
+  pam             # `mlock` authenticates the session owner
+  cairo           # `mlock` software renderer
+  pango           # `mlock` + mshell text shaping
+  dbus            # screencast / portal D-Bus shims
   libnotify       # `notify-send` from the config-reload toast path
-  # Screenshot pipeline — `mscreenshot` shells out to these. Required
-  # (not optional) because the in-compositor `screenshot-region-ui`
-  # dispatch routes through the same external-tool chain.
-  grim
+  grim            # `mscreenshot` capture pipeline
   slurp
   wl-clipboard
+  # ── mshell (gtk4 + relm4) ───────────────────────────────────────
+  gtk4
+  gtk4-layer-shell
+  gdk-pixbuf2
+  graphene
+  fontconfig
+  freetype2
+  # GStreamer playback — media widget (album art, sound previews)
+  gstreamer
+  gst-plugins-base
+  gst-plugins-base-libs
+  gst-plugins-good
+  # Audio output paths — rodio backend + wayle-audio
+  alsa-lib
+  libpulse
+  pipewire
 )
 makedepends=(
   rust
   cargo
-  clang
+  clang           # bindgen for some C-FFI crates (lutgen, pam)
   pkg-config
   git
   wayland-protocols
+  # Headers needed at build time even though the linked libs come
+  # from the runtime `depends` set above.
+  gtk4-layer-shell
 )
 optdepends=(
   # Sessions & XDG plumbing
@@ -60,29 +85,51 @@ optdepends=(
   "xdg-desktop-portal-gnome: GTK file picker, color picker, screencast"
   "xdg-desktop-portal-wlr: alternative wlroots-native portal stack"
   "polkit-gnome: graphical authentication agent"
-  # Toolkit Wayland backends
+  # Toolkit Wayland backends (for non-GTK apps under margo)
   "qt5-wayland: Qt5 native Wayland backend"
   "qt6-wayland: Qt6 native Wayland backend"
-  # Capture & recording (beyond grim+slurp+wl-clipboard pulled above)
+  # Capture & recording (beyond grim+slurp+wl-clipboard above)
   "swappy: post-capture annotation editor for mscreenshot"
   "satty: alternative annotation editor for mscreenshot"
   "wf-recorder: screen recording via wlr-screencopy"
-  # Clipboard & shells
+  # Clipboard managers — mshell clipboard widget + mshellshare paste
   "copyq: clipboard manager via wlr-data-control"
-  # External shells over dwl-ipc-v2 (bar / notifications / launcher /
-  # OSD / settings) — margo ships none of these; pick one.
-  "noctalia-shell-git: reference dwl-ipc-v2 shell (osc-shell IPC)"
-  "fnott: lightweight Wayland notification daemon"
+  "wl-clip-persist: keep clipboard alive after the producer exits"
+  # mshell plugin widgets (nip / ndns / nufw / npodman). Each
+  # degrades gracefully when its tool is missing; the deps live
+  # here so an `optdepends` install pulls a complete experience.
+  "networkmanager: NetworkManager backend for mshell network + ndns"
+  "bluez: Bluez backend for mshell bluetooth widget"
+  "upower: UPower backend for mshell battery widget"
+  "power-profiles-daemon: power profile switching for mshell"
+  "brightnessctl: brightness fallback when DDC/CI is unavailable"
+  "iwd: alternative wireless backend for the network widget"
+  "ufw: needed by the mshell nufw firewall widget"
+  "podman: needed by the mshell npodman widget"
+  "mullvad-vpn: needed by the mshell ndns VPN-switcher widget"
+  "blocky: local DNS resolver controlled by the ndns widget"
+  "curl: used by the nip public-IP widget (already pulled by base)"
 )
-provides=("margo=$pkgver" "wayland-compositor")
-conflicts=("margo")
-# Cargo profile already enables thin LTO; let makepkg's outer LTO pass
-# stay out of the way so we don't pay for it twice. `!strip` keeps the
-# binary's symbol table intact so `coredumpctl info` / `addr2line` can
-# resolve frames inside the compositor (mesa-side aborts on the render
-# path occasionally trip ABRT; without symbols the trace is useless).
-# The Cargo release profile already sets `strip = "none"`; this line
-# stops makepkg's outer strip pass from overriding it.
+# `provides` exposes the legacy compositor- and mshell-only package
+# names that older AUR helpers may pin. `conflicts` makes the
+# previous "shell-bundled" variants installable as drop-in
+# replacements.
+provides=(
+  "margo=$pkgver"
+  "wayland-compositor"
+  "mshell=$pkgver"
+  "margo-mshell-git=$pkgver"
+)
+conflicts=(
+  "margo"
+  "margo-mshell-git"
+  "mshell"
+)
+# Cargo profile already enables thin LTO; the outer makepkg LTO
+# pass would just spend time twice. `!strip` preserves the symbol
+# tables so `coredumpctl info` / `addr2line` can resolve mesa-side
+# render aborts. The Cargo release profile sets `strip = "none"`;
+# this line keeps makepkg's outer strip from overriding it.
 options=(!lto !strip)
 source=("git+${url}.git#branch=main")
 sha256sums=("SKIP")
@@ -96,8 +143,9 @@ pkgver() {
 
 prepare() {
   cd "$srcdir/margo"
-  # Pre-fetch all dependencies so build() can run offline and fails
-  # early if Cargo.lock has drifted from the workspace manifest.
+  # Pre-fetch all dependencies so build() can run offline and
+  # fails early if Cargo.lock has drifted from the workspace
+  # manifest.
   cargo fetch --locked --target "$CARCH-unknown-linux-gnu"
 }
 
@@ -107,9 +155,9 @@ build() {
   export RUSTUP_TOOLCHAIN=stable
   export CARGO_TARGET_DIR="$srcdir/target"
 
-  # `--remap-path-prefix` rewrites the build dir to `/build` in the
-  # embedded debug strings; otherwise pacman warns about a reference
-  # to `$srcdir` in the installed binary.
+  # `--remap-path-prefix` rewrites the build dir to `/build` in
+  # the embedded debug strings; otherwise pacman warns about a
+  # reference to `$srcdir` in the installed binary.
   RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$srcdir=/build" \
     cargo build --frozen --release --workspace
 }
@@ -117,10 +165,10 @@ build() {
 check() {
   cd "$srcdir/margo"
 
-  # Only the library + CLI crates have unit tests we can run from a
-  # packager environment; the compositor itself wants a live Wayland
-  # session. Don't fail the package on test errors — they surface as
-  # warnings — but DO let compile errors propagate.
+  # Only the library + CLI crates have unit tests we can run from
+  # a packager environment; the compositor + mshell want a live
+  # Wayland session. Test failures are non-blocking — surface
+  # them as warnings but let pacman still ship the build.
   cargo test --frozen --release \
     --package margo-config \
     --package margo-layouts \
@@ -132,22 +180,28 @@ check() {
 package() {
   cd "$srcdir/margo"
 
-  # ── Binaries ───────────────────────────────────────────────────────
+  # ── Binaries ─────────────────────────────────────────────────────
+  # Compositor + helpers + mshell trio, all from the same Cargo
+  # workspace `--workspace --release` invocation above. The bin
+  # list is the full set of `[[bin]]` targets in the workspace as
+  # of the dev/mshell-port → main merge; keep in sync with
+  # `cargo metadata --format-version 1 | jq '.packages[].targets[]
+  # | select(.kind[0]=="bin") | .name'`.
   local bin
-  for bin in margo start-margo mctl mlock mlayout mscreenshot mvisual; do
+  for bin in \
+      margo start-margo \
+      mctl mlock mlayout mscreenshot mvisual \
+      mshell mshellctl mshellshare; do
     install -Dm755 "$CARGO_TARGET_DIR/release/$bin" "$pkgdir/usr/bin/$bin"
   done
 
-  # ── Wayland session entry ──────────────────────────────────────────
-  # Picked up by display managers (gdm, sddm, ly, greetd-tuigreet …)
-  # from the standard wayland-sessions location.
+  # ── Wayland session entry ──────────────────────────────────────
+  # Display managers (gdm, sddm, ly, greetd-tuigreet) pick this
+  # up from the canonical wayland-sessions location.
   install -Dm644 "margo.desktop" \
     "$pkgdir/usr/share/wayland-sessions/margo.desktop"
 
-  # ── Icon ───────────────────────────────────────────────────────────
-  # The compositor logo is published under `docs/assets/`. Surface it
-  # as a hicolor scalable app icon AND a /usr/share/pixmaps fallback
-  # so legacy DMs that don't consult the icon theme still find it.
+  # ── Icon ───────────────────────────────────────────────────────
   if [[ -f "docs/assets/margo-icon.svg" ]]; then
     install -Dm644 "docs/assets/margo-icon.svg" \
       "$pkgdir/usr/share/icons/hicolor/scalable/apps/margo.svg"
@@ -155,10 +209,7 @@ package() {
       "$pkgdir/usr/share/pixmaps/margo.svg"
   fi
 
-  # ── Example configs / docs ─────────────────────────────────────────
-  # Ship the annotated compositor config + Rhai init template under
-  # /usr/share/doc/$pkgname so users can `cp` them into
-  # ~/.config/margo/ without poking around the source tree.
+  # ── Example compositor configs / docs ──────────────────────────
   install -Dm644 "margo/src/config.example.conf" \
     "$pkgdir/usr/share/doc/$pkgname/config.example.conf"
   if [[ -f "contrib/scripts/init.example.rhai" ]]; then
@@ -166,9 +217,9 @@ package() {
       "$pkgdir/usr/share/doc/$pkgname/init.example.rhai"
   fi
 
-  # ── mlayout example profiles ───────────────────────────────────────
-  # `mlayout set <name>` looks up `~/.config/margo/layout_<name>.conf`;
-  # these are starter profiles the user can copy + tweak.
+  # ── mlayout example profiles ───────────────────────────────────
+  # `mlayout set <name>` resolves `~/.config/margo/layout_<name>
+  # .conf` — these are starter profiles users can copy + tweak.
   if [[ -f "mlayout/README.md" ]]; then
     install -Dm644 "mlayout/README.md" \
       "$pkgdir/usr/share/doc/$pkgname/mlayout.md"
@@ -180,42 +231,39 @@ package() {
       "$pkgdir/usr/share/doc/$pkgname/layouts/$(basename "$layout")"
   done
 
-  # ── Default wallpaper (mlock fallback) ─────────────────────────────
-  # `mlock` resolves the lock-screen wallpaper from state.json first,
-  # then `~/.local/share/margo/wallpapers/default.jpg`, then this
-  # system-wide default. Ship a 4K JPG so a clean install never shows
-  # a flat dark lock backdrop. Users can override globally by dropping
-  # a file at the user path, or per-session via margo's tagrule.
+  # ── Default wallpaper (mlock fallback) ─────────────────────────
+  # `mlock` resolves the lock-screen wallpaper from state.json
+  # first, then `~/.local/share/margo/wallpapers/default.jpg`,
+  # then this system-wide default.
   if [[ -f "assets/wallpapers/default.jpg" ]]; then
     install -Dm644 "assets/wallpapers/default.jpg" \
       "$pkgdir/usr/share/margo/wallpapers/default.jpg"
   fi
 
-  # ── XDG desktop-portal preferences ────────────────────────────────
+  # ── XDG desktop-portal preferences ─────────────────────────────
   # xdg-desktop-portal reads `<desktop>-portals.conf` when
-  # XDG_CURRENT_DESKTOP matches the file's stem. Path is canonical —
-  # /usr/share/doc/ does NOT work as a fallback.
+  # XDG_CURRENT_DESKTOP matches the file's stem. Path is
+  # canonical — /usr/share/doc/ does NOT work as a fallback.
   if [[ -f "assets/margo-portals.conf" ]]; then
     install -Dm644 "assets/margo-portals.conf" \
       "$pkgdir/usr/share/xdg-desktop-portal/margo-portals.conf"
   fi
 
-  # ── Session integration examples ───────────────────────────────────
-  # Wayland session entry, uwsm wrapper, plain launcher, and a systemd
-  # drop-in — shipped under /usr/share/doc as starters. The package does
-  # not place them into /usr/share/wayland-sessions or /usr/local/bin
-  # itself so that distro packagers can vendor their own integration
-  # without a file conflict.
+  # ── Session integration examples ───────────────────────────────
+  # Wayland session entry, uwsm wrapper, plain launcher, and a
+  # systemd drop-in. Shipped under /usr/share/doc as starters —
+  # the package does not place them into /usr/share/wayland-
+  # sessions or /usr/local/bin itself so distro packagers can
+  # vendor their own integration without a file conflict.
   if [[ -d "contrib/sessions" ]]; then
     install -d "$pkgdir/usr/share/doc/$pkgname/sessions"
     cp -a contrib/sessions/. "$pkgdir/usr/share/doc/$pkgname/sessions/"
   fi
 
-  # ── Shell completions for mctl ─────────────────────────────────────
-  # Hand-curated under contrib/completions/: extends the clap-derived
-  # subcommand layer with dispatch-action names (`mctl actions
-  # --names`), layout names, and output names. System paths so they
-  # auto-load without anything in user shell rc files.
+  # ── mctl shell completions ─────────────────────────────────────
+  # Hand-curated under contrib/completions/: extends the clap-
+  # derived subcommand layer with dispatch-action names (`mctl
+  # actions --names`), layout names, and output names.
   if [[ -f "contrib/completions/mctl.bash" ]]; then
     install -Dm644 "contrib/completions/mctl.bash" \
       "$pkgdir/usr/share/bash-completion/completions/mctl"
@@ -229,21 +277,93 @@ package() {
       "$pkgdir/usr/share/fish/vendor_completions.d/mctl.fish"
   fi
 
-  # ── Developer / packager documentation ─────────────────────────────
+  # ── mshell sound assets ────────────────────────────────────────
+  # OGG samples used by mshell-osd / mshell-services for volume /
+  # battery / power / camera / timer notification cues. Resolved
+  # at runtime from /usr/share/mshell/sounds/.
+  local sound_src="mshell-crates/mshell-sounds/assets"
+  if [[ -d "$sound_src" ]]; then
+    install -d "$pkgdir/usr/share/mshell/sounds"
+    local snd
+    for snd in "$sound_src"/*.ogg; do
+      [[ -f "$snd" ]] || continue
+      install -Dm644 "$snd" \
+        "$pkgdir/usr/share/mshell/sounds/$(basename "$snd")"
+    done
+  fi
+
+  # ── mshell SCSS theme bundle ───────────────────────────────────
+  # Ship the SCSS sources so the user can fork them under
+  # ~/.config/mshell/styles/ — mshell-style picks up overrides at
+  # startup. The compiled CSS is baked into the binary via
+  # `include_str!`, so this is for customisation, not load-bearing.
+  if [[ -d "mshell-crates/mshell-style/scss" ]]; then
+    install -d "$pkgdir/usr/share/mshell/scss"
+    cp -a mshell-crates/mshell-style/scss/. \
+      "$pkgdir/usr/share/mshell/scss/"
+  fi
+
+  # ── Default mshell profile config ──────────────────────────────
+  # Annotated example users can copy into
+  # `~/.config/mshell/profiles/default.yaml`. mshell falls back to
+  # compiled-in defaults when no profile is found; this is starter
+  # material, not load-bearing.
+  local mshell_profile_example=""
+  for candidate in \
+      "mshell-crates/mshell-config/profiles/default.yaml" \
+      "mshell/profiles/default.yaml" \
+      "contrib/mshell/profiles/default.yaml"; do
+    if [[ -f "$candidate" ]]; then
+      mshell_profile_example="$candidate"
+      break
+    fi
+  done
+  if [[ -n "$mshell_profile_example" ]]; then
+    install -Dm644 "$mshell_profile_example" \
+      "$pkgdir/usr/share/doc/$pkgname/mshell/profile.example.yaml"
+  fi
+
+  # ── mshell desktop entry ───────────────────────────────────────
+  # Meant to be started by uwsm / margo from the session target.
+  # Shipped under /usr/share/doc/ so distro packagers / users can
+  # choose to wire autostart vs leave it to margo. NOT installed
+  # under /etc/xdg/autostart by default.
+  for entry in \
+      "mshell/contrib/mshell.desktop" \
+      "contrib/mshell/mshell.desktop" \
+      "mshell-crates/mshell-session/assets/mshell.desktop"; do
+    if [[ -f "$entry" ]]; then
+      install -Dm644 "$entry" \
+        "$pkgdir/usr/share/doc/$pkgname/mshell/mshell.desktop"
+      break
+    fi
+  done
+
+  # ── Developer / packager documentation ─────────────────────────
   local doc
   for doc in README.md CHANGELOG.md road_map.md CONTRIBUTING.md; do
     [[ -f "$doc" ]] || continue
     install -Dm644 "$doc" "$pkgdir/usr/share/doc/$pkgname/$doc"
   done
 
-  # ── Licenses ───────────────────────────────────────────────────────
-  # margo inherits portions of dwl, dwm, sway, tinywl, wlroots, and
-  # mango. Every upstream header is shipped so downstream attribution
-  # is preserved on every install.
+  # mshell-specific docs — surface them under the main package doc
+  # tree so `pacman -Qpl` shows them.
+  for mshell_doc in \
+      "mshell/README.md" \
+      "mshell-crates/mshell-core/README.md"; do
+    [[ -f "$mshell_doc" ]] || continue
+    install -Dm644 "$mshell_doc" \
+      "$pkgdir/usr/share/doc/$pkgname/mshell/$(basename "$mshell_doc")"
+  done
+
+  # ── Licenses ───────────────────────────────────────────────────
+  # margo inherits portions of dwl, dwm, sway, tinywl, wlroots,
+  # mango, and OkShell. Every upstream header is shipped so
+  # downstream attribution is preserved on every install.
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   local lic
   for lic in LICENSE.dwl LICENSE.dwm LICENSE.sway LICENSE.tinywl \
-             LICENSE.wlroots LICENSE.mango; do
+             LICENSE.wlroots LICENSE.mango LICENSE.OkShell; do
     [[ -f "$lic" ]] || continue
     install -Dm644 "$lic" "$pkgdir/usr/share/licenses/$pkgname/$lic"
   done
@@ -253,10 +373,13 @@ package() {
 #   • PAM service for mlock: create /etc/pam.d/mlock (e.g. one line
 #     `auth include system-auth`) so mlock can authenticate the
 #     session owner. Not shipped here to avoid clobbering a local
-#     stack; mlock --help prints the recipe.
-#   • External shell (bar / notifications / launcher / OSD): pick a
-#     dwl-ipc-v2 client (noctalia, waybar-dwl, fnott, …) and start it
-#     from your session — margo only speaks the protocol, it does not
-#     paint chrome itself.
+#     PAM stack; `mlock --help` prints the recipe.
+#   • mshell first-launch: copy
+#     /usr/share/doc/margo-git/mshell/profile.example.yaml to
+#     ~/.config/mshell/profiles/default.yaml and edit the
+#     weather_location_query / icon theme / clock format fields.
+#   • Autostart: either let margo's `exec_once` in config.conf
+#     spawn `mshell` for you, or symlink the example desktop file
+#     into ~/.config/autostart/.
 
 # vim:set sw=2 et:
