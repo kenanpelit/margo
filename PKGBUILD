@@ -158,8 +158,25 @@ build() {
   # `--remap-path-prefix` rewrites the build dir to `/build` in
   # the embedded debug strings; otherwise pacman warns about a
   # reference to `$srcdir` in the installed binary.
-  RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$srcdir=/build" \
-    cargo build --frozen --release --workspace
+  export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$srcdir=/build"
+
+  # Two invocations on purpose — do NOT collapse back to a single
+  # `--workspace` build. The mshell trio pulls the `wayle-*` crates,
+  # which enable `zbus`'s `tokio` feature. With a `--workspace`
+  # build, Cargo feature unification turns `zbus/tokio` on for the
+  # one shared `zbus` artifact, and the compositor links that same
+  # build. margo drives zbus over `async-io` and never enters a
+  # Tokio runtime, so zbus's tokio executor panics at startup
+  # ("there is no reactor running") and the session dies. Building
+  # the compositor-side bins in their own invocation keeps the
+  # `wayle-*` → `zbus/tokio` subtree out of margo's feature
+  # resolution.
+  cargo build --frozen --release \
+    -p margo -p start-margo \
+    -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual
+
+  cargo build --frozen --release \
+    -p mshell -p mshellctl -p mshellshare
 }
 
 check() {
