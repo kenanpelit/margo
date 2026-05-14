@@ -21,6 +21,8 @@ pub enum MenuCommands {
     Nufw,
     /// Toggle the DNS / VPN menu
     Ndns,
+    /// Toggle the Podman menu
+    Npodman,
     /// Close all open menus
     CloseAll,
 }
@@ -53,6 +55,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::Ndns => {
             bus_command("Ndns").await?;
+        }
+        MenuCommands::Npodman => {
+            bus_command("Npodman").await?;
         }
         MenuCommands::CloseAll => {
             bus_command("CloseAllMenus").await?;

@@ -11,6 +11,7 @@ pub(crate) mod media_player;
 pub(crate) mod ndns;
 pub(crate) mod network;
 pub(crate) mod notifications;
+pub(crate) mod npodman;
 pub(crate) mod nufw;
 pub(crate) mod power_profile;
 pub(crate) mod quick_action;

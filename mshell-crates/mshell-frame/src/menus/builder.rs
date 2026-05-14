@@ -30,6 +30,9 @@ use crate::menus::menu_widgets::network::network_menu_widget::{
 use crate::menus::menu_widgets::notifications::notifications::{
     NotificationsInit, NotificationsModel, NotificationsOutput,
 };
+use crate::menus::menu_widgets::npodman::npodman_menu_widget::{
+    NpodmanMenuWidgetInit, NpodmanMenuWidgetModel,
+};
 use crate::menus::menu_widgets::nufw::nufw_menu_widget::{
     NufwMenuWidgetInit, NufwMenuWidgetModel,
 };
@@ -121,6 +124,11 @@ pub fn build_widget(
                 .forward(sender.output_sender(), |msg| match msg {
                     NotificationsOutput::CloseMenu => MenuOutput::CloseMenu,
                 }),
+        ),
+        MenuWidget::Npodman => Box::new(
+            NpodmanMenuWidgetModel::builder()
+                .launch(NpodmanMenuWidgetInit {})
+                .detach(),
         ),
         MenuWidget::Nufw => Box::new(
             NufwMenuWidgetModel::builder()

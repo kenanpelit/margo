@@ -27,6 +27,7 @@ const WALLPAPER_MENU: &str = "wallpaper";
 const SCREENSHARE_MENU: &str = "screenshare";
 const NUFW_MENU: &str = "nufw";
 const NDNS_MENU: &str = "ndns";
+const NPODMAN_MENU: &str = "npodman";
 
 pub struct Frame {
     // Margo's mshell ships only horizontal bars — vertical Left /
@@ -68,6 +69,7 @@ pub struct Frame {
     screenshare_menu: Controller<MenuModel>,
     nufw_menu: Controller<MenuModel>,
     ndns_menu: Controller<MenuModel>,
+    npodman_menu: Controller<MenuModel>,
     /// Pending keyboard-mode switch held inside the 90 ms debounce
     /// window. Replaced on every `sync_keyboard_mode` call; the
     /// timer reads whatever value was last written.
@@ -93,6 +95,7 @@ pub enum FrameInput {
         Position,
         Position,
         Position,
+        Position,
     ),
     ToggleClockMenu,
     ToggleClipboardMenu,
@@ -103,6 +106,7 @@ pub enum FrameInput {
     ToggleWallpaperMenu,
     ToggleNufwMenu,
     ToggleNdnsMenu,
+    ToggleNpodmanMenu,
     CloseMenus,
     ToggleScreenshareMenu(tokio::sync::oneshot::Sender<String>, String),
     BarToggleTop,
@@ -602,6 +606,7 @@ impl Component for Frame {
         let screenshare_menu = Self::build_menu(&sender, MenuType::HyprlandScreenshare);
         let nufw_menu = Self::build_menu(&sender, MenuType::Nufw);
         let ndns_menu = Self::build_menu(&sender, MenuType::Ndns);
+        let npodman_menu = Self::build_menu(&sender, MenuType::Npodman);
 
         let mut effects = EffectScope::new();
 
@@ -653,6 +658,8 @@ impl Component for Frame {
             let nufw_menu_position = config.menus().nufw_menu().position().get();
             let config = menu_config.clone();
             let ndns_menu_position = config.menus().ndns_menu().position().get();
+            let config = menu_config.clone();
+            let npodman_menu_position = config.menus().npodman_menu().position().get();
             sender_clone.input(FrameInput::RepositionMenus(
                 clock_menu_position,
                 clipboard_menu_position,
@@ -664,6 +671,7 @@ impl Component for Frame {
                 screenshare_menu_position,
                 nufw_menu_position,
                 ndns_menu_position,
+                npodman_menu_position,
             ));
         });
 
@@ -720,6 +728,7 @@ impl Component for Frame {
             screenshare_menu,
             nufw_menu,
             ndns_menu,
+            npodman_menu,
             pending_kbd_mode: std::rc::Rc::new(std::cell::RefCell::new(None)),
             pending_kbd_mode_timeout: std::rc::Rc::new(std::cell::RefCell::new(None)),
             _effects: effects,
@@ -765,6 +774,7 @@ impl Component for Frame {
                 screenshare_menu_position,
                 nufw_menu_position,
                 ndns_menu_position,
+                npodman_menu_position,
             ) => {
                 sender.input(FrameInput::CloseMenus);
                 self.apply_left_and_right_side_children(
@@ -779,6 +789,7 @@ impl Component for Frame {
                     screenshare_menu_position,
                     nufw_menu_position,
                     ndns_menu_position,
+                    npodman_menu_position,
                 );
             }
             FrameInput::ToggleClockMenu => {
@@ -815,6 +826,10 @@ impl Component for Frame {
             }
             FrameInput::ToggleNdnsMenu => {
                 self.toggle_menu(NDNS_MENU, widgets);
+                self.sync_keyboard_mode(root);
+            }
+            FrameInput::ToggleNpodmanMenu => {
+                self.toggle_menu(NPODMAN_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
             FrameInput::ToggleScreenshareMenu(reply, payload) => {
@@ -1401,6 +1416,7 @@ impl Frame {
         screenshare_menu_position: Position,
         nufw_menu_position: Position,
         ndns_menu_position: Position,
+        npodman_menu_position: Position,
     ) {
         let clock_widget: Widget = self.clock_menu.widget().clone().upcast();
         let clipboard_widget: Widget = self.clipboard_menu.widget().clone().upcast();
@@ -1412,6 +1428,7 @@ impl Frame {
         let screenshare_menu_widget: Widget = self.screenshare_menu.widget().clone().upcast();
         let nufw_menu_widget: Widget = self.nufw_menu.widget().clone().upcast();
         let ndns_menu_widget: Widget = self.ndns_menu.widget().clone().upcast();
+        let npodman_menu_widget: Widget = self.npodman_menu.widget().clone().upcast();
 
         widgets.left_stack.remove_all();
         widgets.right_stack.remove_all();
@@ -1477,6 +1494,12 @@ impl Frame {
             NDNS_MENU,
             &ndns_menu_position,
         );
+        Self::add_to_stack(
+            widgets,
+            &npodman_menu_widget,
+            NPODMAN_MENU,
+            &npodman_menu_position,
+        );
     }
 
     fn add_to_stack(widgets: &FrameWidgets, widget: &Widget, name: &str, position: &Position) {
@@ -1521,6 +1544,7 @@ impl Frame {
                 BarOutput::WallpaperClicked => FrameInput::ToggleWallpaperMenu,
                 BarOutput::NufwClicked => FrameInput::ToggleNufwMenu,
                 BarOutput::NdnsClicked => FrameInput::ToggleNdnsMenu,
+                BarOutput::NpodmanClicked => FrameInput::ToggleNpodmanMenu,
                 BarOutput::CloseMenu => FrameInput::CloseMenus,
             })
     }

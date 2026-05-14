@@ -104,6 +104,15 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                         app_sender.emit(ShellInput::ToggleNdnsMenu(None));
                     }
                 }
+                IPCCommand::Npodman => {
+                    if let Some(active_workspace) = margo_service().active_workspace().await {
+                        app_sender.emit(ShellInput::ToggleNpodmanMenu(Some(
+                            active_workspace.monitor.get(),
+                        )));
+                    } else {
+                        app_sender.emit(ShellInput::ToggleNpodmanMenu(None));
+                    }
+                }
                 IPCCommand::CloseAllMenus => app_sender.emit(ShellInput::CloseAllMenus),
                 IPCCommand::VolumeUp => {
                     if let Some(output) = audio_service().default_output.get() {
@@ -268,6 +277,7 @@ enum IPCCommand {
     Wallpaper,
     Nufw,
     Ndns,
+    Npodman,
     CloseAllMenus,
     VolumeUp,
     VolumeDown,
@@ -331,6 +341,9 @@ impl IPCService {
     }
     async fn ndns(&self) {
         let _ = self.tx.send(IPCCommand::Ndns);
+    }
+    async fn npodman(&self) {
+        let _ = self.tx.send(IPCCommand::Npodman);
     }
     async fn close_all_menus(&self) {
         let _ = self.tx.send(IPCCommand::CloseAllMenus);

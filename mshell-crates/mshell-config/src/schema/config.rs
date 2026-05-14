@@ -286,6 +286,7 @@ pub struct Menus {
     pub screenshare_menu: ScreenshareMenu,
     pub nufw_menu: Menu,
     pub ndns_menu: Menu,
+    pub npodman_menu: Menu,
     pub left_menu_expansion_type: VerticalMenuExpansion,
     pub right_menu_expansion_type: VerticalMenuExpansion,
 }
@@ -374,6 +375,11 @@ impl Default for Menus {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::Ndns],
                 minimum_width: 420,
+            },
+            npodman_menu: Menu {
+                position: Position::TopRight,
+                widgets: vec![MenuWidget::Npodman],
+                minimum_width: 540,
             },
             left_menu_expansion_type: VerticalMenuExpansion::AlwaysExpanded,
             right_menu_expansion_type: VerticalMenuExpansion::AlwaysExpanded,
