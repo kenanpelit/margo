@@ -1,19 +1,23 @@
 //! Per-tag pill button for the bar's MargoTags row.
 //!
-//! Each pill is a `gtk::Button` rendering the tag's 1-indexed
-//! number ("1".."9") and switching CSS classes to convey the three
-//! tag states the user asked for:
+//! Each pill is a `gtk::Button` rendering an occupancy dot + the
+//! tag's 1-indexed number ("1".."9"). State is conveyed on two
+//! **orthogonal** CSS axes, one class each — so they compose
+//! cleanly instead of fighting for the same visual language:
 //!
-//!   * **active**   — this tag is the focused workspace on its
-//!                    owner monitor. Styled with the accent
-//!                    `ok-button-primary` + `.tag-active`.
-//!   * **occupied** — there's at least one (non-minimised) client
-//!                    on the tag, but it isn't focused. Styled
-//!                    with `ok-button-surface` + `.tag-occupied`
-//!                    (a small accent dot under the digit).
-//!   * **empty**    — no clients, not focused. Styled with
-//!                    `ok-button-surface` + `.tag-empty` (digit
-//!                    rendered at reduced opacity).
+//!   * `.tag-active`      — this tag is the focused workspace on
+//!                          its owner monitor. Drawn as a filled
+//!                          accent capsule (you are here).
+//!   * `.tag-has-windows` — there's at least one client on the
+//!                          tag. Lights up the occupancy dot
+//!                          (has content). Independent of focus,
+//!                          so an active tag with windows shows
+//!                          both the capsule and the dot.
+//!
+//! A tag with neither class is empty + unfocused: dim digit, no
+//! dot. The dot always occupies layout space (the SCSS toggles
+//! opacity, not visibility) so every pill keeps a constant width
+//! and the row reads as a stable grid.
 //!
 //! Window-count and active-state are both reactive: per-tag
 //! `workspace.windows.watch()` + `workspace.monitor_id.watch()`
@@ -57,12 +61,11 @@ impl Component for MargoTagModel {
     type Output = MargoTagOutput;
     type Init = Arc<Workspace>;
 
-    // Stacked layout:
-    //   row 1: circle dot  (◉ active / ○ empty)
-    //   row 2: tag digit   (1..9)
-    // Occupied state (windows > 0 but not active) shows the
-    // empty-ring glyph with an underline applied by the SCSS in
-    // `_margo_tag.scss` via the `.tag-occupied` class.
+    // Single-row pill: occupancy dot + tag digit, side by side.
+    // All visual state lives in `_margo_tag.scss`, keyed off the
+    // `.tag-active` / `.tag-has-windows` classes computed by
+    // `tag_classes`. The dot label is a static glyph — the SCSS
+    // fades it in/out, so nothing here needs to react to it.
     view! {
         #[root]
         gtk::Box {
@@ -80,23 +83,18 @@ impl Component for MargoTagModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Vertical,
+                    set_orientation: gtk::Orientation::Horizontal,
                     set_spacing: 0,
                     set_halign: gtk::Align::Center,
                     set_valign: gtk::Align::Center,
 
-                    #[name="dot"]
                     gtk::Label {
                         add_css_class: "margo-tag-dot",
-                        set_halign: gtk::Align::Center,
-                        #[watch]
-                        set_label: tag_dot(model.is_active, model.windows),
+                        set_label: "\u{25cf}",
                     },
 
-                    #[name="label"]
                     gtk::Label {
                         add_css_class: "margo-tag-label",
-                        set_halign: gtk::Align::Center,
                         set_label: &model.workspace.id.get().to_string(),
                     },
                 },
@@ -224,29 +222,22 @@ pub(crate) enum MargoTagCommandOutput {
     WindowsChanged(u16),
 }
 
-/// Compose the CSS class list for the pill button in one place.
+/// Compose the CSS class list for the pill button.
 ///
-/// Each slot in the returned array is **one** CSS class name. GTK4's
-/// `set_css_classes(&[&str])` adds each element as a distinct class,
-/// so a string like `"margo-tag tag-active"` (space-joined) ends up
-/// as a single token with a space in it — invalid as a selector match,
-/// silently makes the `_margo_tag.scss` rules a no-op. Hence the
-/// 4-slot array with `margo-tag` and `tag-*` as separate entries.
-fn tag_classes(is_active: bool, windows: u16) -> [&'static str; 4] {
+/// Two orthogonal axes, one class each: `.tag-active` for the
+/// focused workspace, `.tag-has-windows` for occupancy. They
+/// compose freely — `_margo_tag.scss` owns the look. `margo-tag`
+/// is always present as the base. Each `Vec` slot is **one**
+/// class name: GTK4's `set_css_classes(&[&str])` adds each entry
+/// verbatim, so a space-joined `"margo-tag tag-active"` would
+/// become a single bogus token and silently match nothing.
+fn tag_classes(is_active: bool, windows: u16) -> Vec<&'static str> {
+    let mut classes = vec!["margo-tag"];
     if is_active {
-        ["ok-button-primary", "ok-bar-widget", "margo-tag", "tag-active"]
-    } else if windows > 0 {
-        ["ok-button-surface", "ok-bar-widget", "margo-tag", "tag-occupied"]
-    } else {
-        ["ok-button-surface", "ok-bar-widget", "margo-tag", "tag-empty"]
+        classes.push("tag-active");
     }
-}
-
-/// Glyph for the top row of the stacked pill. `◉` (filled
-/// bullet) reads as "you are here," `○` (empty ring) reads as
-/// "available." The occupied-but-not-focused state keeps the
-/// empty ring; the underline drawn by the SCSS `.tag-occupied`
-/// rule is what carries the "has windows" signal.
-fn tag_dot(is_active: bool, _windows: u16) -> &'static str {
-    if is_active { "◉" } else { "○" }
+    if windows > 0 {
+        classes.push("tag-has-windows");
+    }
+    classes
 }

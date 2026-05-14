@@ -18,6 +18,7 @@ use relm4::{
     gtk::prelude::*,
 };
 use std::sync::Arc;
+use std::time::Duration;
 use mshell_margo_client::{MargoEvent, MonitorId, Workspace, WorkspaceId};
 
 #[derive(Clone, Debug)]
@@ -78,6 +79,7 @@ impl Component for MargoTagsModel {
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         Self::spawn_main_watcher(&sender);
+        Self::spawn_workspace_list_watcher(&sender);
 
         let divider_orientation = if params.orientation == Orientation::Horizontal {
             Orientation::Vertical
@@ -119,7 +121,16 @@ impl Component for MargoTagsModel {
                 orientation: params.orientation,
                 spacing: 0,
                 transition_type,
-                transition_duration_ms: 200,
+                // Instant reveal (no enter animation). A non-zero
+                // duration makes the DynamicBox reveal each pill via
+                // a GtkRevealer transition, and a transition started
+                // before its child has been styled + measured (which
+                // is exactly the case on the bar's first paint)
+                // animates open to a 0-size child — the tag row then
+                // stays collapsed until some later re-render. margo's
+                // tag set is fixed at 9, so there's no meaningful
+                // enter/exit animation to lose here anyway.
+                transition_duration_ms: 0,
                 reverse: false,
                 retain_entries: false,
                 allow_drag_and_drop: false,
@@ -223,6 +234,57 @@ impl MargoTagsModel {
                                     let _ = out.send(MargoTagsCommandOutput::WorkspacesChanged);
                                 }
                                 _ => {}
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    /// Keep the pill row in sync with `margo_service().workspaces`.
+    ///
+    /// `init` snapshots `workspaces.get()` once, but the margo-
+    /// client's initial `state.json` read can lose a race with the
+    /// `OnceLock` publish + this component's construction, so that
+    /// snapshot is often empty. And `Reactive` only *broadcasts* on
+    /// a genuine membership change — a steady-state startup (the
+    /// tag set never actually changes) never fires one — so just
+    /// subscribing to `watch()` isn't enough either: the row would
+    /// sit empty until the user happened to add/remove a workspace.
+    ///
+    /// So: a bounded cold-start poll catches the population the
+    /// moment it lands (or immediately, if `init` already won the
+    /// race), and the `watch()` loop then handles every later
+    /// membership change. A duplicate `WorkspacesChanged` between
+    /// the two is harmless — the handler just re-snapshots.
+    fn spawn_workspace_list_watcher(sender: &ComponentSender<Self>) {
+        sender.command(move |out, shutdown| {
+            async move {
+                // Subscribe first so nothing after this point is missed.
+                let mut stream = margo_service().workspaces.watch();
+
+                // Cold-start catch-up — up to ~5 s of 100 ms polls.
+                for _ in 0..50 {
+                    if !margo_service().workspaces.get().is_empty() {
+                        let _ = out.send(MargoTagsCommandOutput::WorkspacesChanged);
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+
+                // Steady state — repaint on every later membership change.
+                let shutdown_fut = shutdown.wait();
+                tokio::pin!(shutdown_fut);
+                loop {
+                    tokio::select! {
+                        () = &mut shutdown_fut => return,
+                        next = stream.next() => {
+                            match next {
+                                Some(_) => {
+                                    let _ = out.send(MargoTagsCommandOutput::WorkspacesChanged);
+                                }
+                                None => return,
                             }
                         }
                     }

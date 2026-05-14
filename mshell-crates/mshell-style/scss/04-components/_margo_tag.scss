@@ -1,84 +1,96 @@
-// MargoTag — stacked pill: dot glyph on top, digit underneath.
+// MargoTag — one pill per tag in the bar's workspace row.
 //
-//   ◉  ○  ○  ○  ○  ○  ○  ○  ○
-//   1  2  3  4  5  6  7  8  9
+// Two orthogonal visual axes, one CSS class each:
+//   .tag-active       → filled accent capsule  (you are here)
+//   .tag-has-windows  → the occupancy dot lights up (has content)
+// They compose: an active tag with windows shows both.
 //
-// Three states:
-//   .tag-active     focused workspace on the focused monitor.
-//                   Dot = `◉` (filled), digit bold, primary
-//                   background.
-//   .tag-occupied   has windows but not focused. Dot = `○`
-//                   (empty ring), digit normal, plus an
-//                   underline strip drawn from the SCSS via
-//                   `box-shadow` so the user can tell at a
-//                   glance which tags have content waiting.
-//   .tag-empty      no windows, not focused. Dot = `○`, digit
-//                   rendered at reduced opacity.
+//   inactive empty     3       dim digit, dot hidden
+//   inactive occupied  ●3      full digit + accent dot
+//   active   empty     [ 4 ]   accent capsule
+//   active   occupied  [ ●4 ]  accent capsule + dot
 //
-// The `.ok-bar-widget` floor still applies from the surrounding
-// SCSS, but we tighten it here so a row of 9 stacked pills fits
-// comfortably without making the bar absurdly wide.
+// The dot always occupies layout space (opacity, not visibility)
+// so every pill keeps a constant width and the row reads as a
+// stable grid — no reflow when windows open or focus moves.
+// State changes cross-fade (160 ms) so focus switches feel like
+// a native compositor component, not a repaint.
 
-.bar-top   .margo-tag.ok-bar-widget,
-.bar-bottom .margo-tag.ok-bar-widget {
-  min-width: 28px;
-  min-height: 38px;
-
-  > * {
-    padding: 1px 4px;
-  }
-}
-
-.bar-left  .margo-tag.ok-bar-widget,
-.bar-right .margo-tag.ok-bar-widget {
-  min-width: 38px;
-  min-height: 28px;
-
-  > * {
-    padding: 1px 4px;
-  }
-}
-
+// `min-width` / `min-height` live on the *base* `.margo-tag`
+// rule, NOT a `.bar-top .margo-tag` descendant selector: relm4
+// builds the pill in `view_output!()` *before* it's parented
+// under the bar, so a descendant selector wouldn't match yet and
+// `all: unset` would leave the button at a 0×0 request — the
+// enclosing GtkRevealer then animates open to nothing and the
+// tag never appears until some later re-render. A single-class
+// rule always matches, so the pill has a real size from frame 1.
 .margo-tag {
-  font-variant-numeric: tabular-nums;
+  all: unset;
+  min-width: 22px;
+  min-height: 24px;
+  border-radius: var(--radius-widget);
+  margin: 0 1px;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease;
+
+  > * {
+    padding: 2px 7px;
+  }
 }
 
+// Vertical bars want a wider, shorter pill.
+.bar-left  .margo-tag,
+.bar-right .margo-tag {
+  min-width: 30px;
+  min-height: 22px;
+}
+
+// ── Inner glyphs ────────────────────────────────────────────
 .margo-tag-dot {
-  font-size: 0.95em;
-  margin-bottom: -2px;
-  line-height: 1;
+  font-size: 0.5em;
+  margin-right: 3px;
+  color: var(--primary);
+  opacity: 0;                 // hidden until .tag-has-windows
+  transition: opacity 160ms ease, color 160ms ease;
 }
-
 .margo-tag-label {
-  font-size: 0.75em;
+  font-size: 0.8em;
   font-weight: 500;
-  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface);
+  opacity: 0.4;               // dim until occupied or active
+  transition: opacity 160ms ease, color 160ms ease;
 }
 
-// ── Empty: faded digit, hollow ring ─────────────────────────
-.margo-tag.tag-empty .margo-tag-dot,
-.margo-tag.tag-empty .margo-tag-label {
-  opacity: 0.45;
+// ── has-windows: occupancy dot + full-strength digit ────────
+.margo-tag.tag-has-windows .margo-tag-dot {
+  opacity: 1;
+}
+.margo-tag.tag-has-windows .margo-tag-label {
+  opacity: 0.9;
 }
 
-// ── Occupied: full opacity ring + underline ─────────────────
-// The `box-shadow` line at the bottom is the "has-content"
-// indicator — visually parallel to the bar pill's accent strip
-// but inset so it doesn't fight with `--outline` on the
-// surrounding row.
-.margo-tag.tag-occupied {
-  box-shadow: inset 0 -2px 0 -1px currentColor;
+// ── hover (non-active): faint wash ──────────────────────────
+.margo-tag:hover {
+  background-color: unquote("color-mix(in srgb, var(--on-surface) 10%, transparent)");
 }
 
-// ── Active: primary accent backdrop + bold digit ────────────
+// ── active: filled accent capsule ───────────────────────────
 .margo-tag.tag-active {
   background-color: var(--primary);
-  color: var(--on-primary);
 }
-.margo-tag.tag-active .margo-tag-dot,
-.margo-tag.tag-active .margo-tag-label {
-  color: var(--on-primary);
+.margo-tag.tag-active:hover {
+  background-color: unquote("color-mix(in srgb, var(--on-primary) 8%, var(--primary))");
 }
 .margo-tag.tag-active .margo-tag-label {
+  color: var(--on-primary);
   font-weight: 700;
+  opacity: 1;
+}
+// Dot inside the capsule: on-primary tint. Opacity is still
+// driven by `.tag-has-windows` above, so an active-but-empty tag
+// keeps the dot hidden.
+.margo-tag.tag-active .margo-tag-dot {
+  color: var(--on-primary);
 }
