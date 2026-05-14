@@ -4,3 +4,4 @@ pub mod brightness;
 pub mod lock;
 pub mod menu;
 pub mod settings;
+pub mod wallpaper;

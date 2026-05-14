@@ -1,8 +1,12 @@
 use crate::ipc::init_ipc_shell_service;
 use crate::monitors;
 use gtk4_layer_shell::{Layer, LayerShell};
+use mshell_cache::wallpaper::{CycleDirection, cycle_wallpaper};
 use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{BarsStoreFields, ConfigStoreFields, FrameStoreFields};
+use mshell_config::schema::config::{
+    BarsStoreFields, ConfigStoreFields, FrameStoreFields, WallpaperRotationMode,
+    WallpaperStoreFields,
+};
 use mshell_frame::frame::{Frame, FrameInit, FrameInput};
 use mshell_lockscreen::lock_screen_manager::{LockScreenManagerInit, LockScreenManagerModel};
 use mshell_notification_popups::popup_notifications::{
@@ -56,6 +60,7 @@ pub(crate) enum ShellInput {
     ToggleNotifications(Option<String>),
     ToggleScreenshotMenu(Option<String>),
     ToggleWallpaperMenu(Option<String>),
+    CycleWallpaper(mshell_cache::wallpaper::CycleDirection),
     ToggleNufwMenu(Option<String>),
     ToggleNdnsMenu(Option<String>),
     ToggleNpodmanMenu(Option<String>),
@@ -145,6 +150,7 @@ impl Component for Shell {
             .get_untracked();
 
         init_ipc_shell_service(&sender);
+        spawn_wallpaper_rotation_timer();
 
         let model = Shell {
             window_groups,
@@ -303,6 +309,11 @@ impl Component for Shell {
                     frame.emit(FrameInput::ToggleWallpaperMenu);
                 }
             }
+            ShellInput::CycleWallpaper(direction) => {
+                // Runs on the relm4 main thread — `set_wallpaper`
+                // (called by `cycle_wallpaper`) kicks glib work.
+                mshell_cache::wallpaper::cycle_wallpaper(direction);
+            }
             ShellInput::ToggleNufwMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
                     frame.emit(FrameInput::ToggleNufwMenu);
@@ -399,6 +410,56 @@ impl Component for Shell {
             }
         }
     }
+}
+
+/// Drive the automatic wallpaper rotation.
+///
+/// Runs on the GTK main loop (not a tokio task) so config reads
+/// and `cycle_wallpaper` — which kicks glib work — happen on the
+/// right thread. Wakes every 30 s and rotates once the configured
+/// interval has elapsed; while rotation is disabled it keeps the
+/// elapsed clock fresh so re-enabling doesn't fire immediately.
+fn spawn_wallpaper_rotation_timer() {
+    use std::cell::Cell;
+    use std::rc::Rc;
+    use std::time::{Duration, Instant};
+
+    let last_rotation = Rc::new(Cell::new(Instant::now()));
+    relm4::gtk::glib::timeout_add_seconds_local(30, move || {
+        // The Store subfield accessors consume `self`, so re-walk
+        // the config chain for each read.
+        let enabled = config_manager()
+            .config()
+            .wallpaper()
+            .rotation_enabled()
+            .get_untracked();
+        if enabled {
+            let interval_min = config_manager()
+                .config()
+                .wallpaper()
+                .rotation_interval_minutes()
+                .get_untracked()
+                .max(1);
+            let due = last_rotation.get().elapsed()
+                >= Duration::from_secs(u64::from(interval_min) * 60);
+            if due {
+                let direction = match config_manager()
+                    .config()
+                    .wallpaper()
+                    .rotation_mode()
+                    .get_untracked()
+                {
+                    WallpaperRotationMode::Random => CycleDirection::Random,
+                    WallpaperRotationMode::Sequential => CycleDirection::Next,
+                };
+                cycle_wallpaper(direction);
+                last_rotation.set(Instant::now());
+            }
+        } else {
+            last_rotation.set(Instant::now());
+        }
+        relm4::gtk::glib::ControlFlow::Continue
+    });
 }
 
 /// Get the frame for the monitor name.  If it doesn't exist, get the first frame available

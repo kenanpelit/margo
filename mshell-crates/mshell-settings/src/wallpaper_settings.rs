@@ -1,6 +1,8 @@
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{ConfigStoreFields, WallpaperStoreFields};
+use mshell_config::schema::config::{
+    ConfigStoreFields, WallpaperRotationMode, WallpaperStoreFields,
+};
 use mshell_config::schema::content_fit::ContentFit;
 use mshell_config::schema::wallpaper::ThemeFilterStrength;
 use reactive_graph::prelude::{Get, GetUntracked};
@@ -14,6 +16,9 @@ pub(crate) struct WallpaperSettingsModel {
     content_fit: ContentFit,
     apply_theme_filter: bool,
     filter_strength: f64,
+    rotation_enabled: bool,
+    rotation_interval_minutes: u32,
+    rotation_mode: WallpaperRotationMode,
     _effects: EffectScope,
 }
 
@@ -23,11 +28,17 @@ pub(crate) enum WallpaperSettingsInput {
     ContentFitChanged(ContentFit),
     ThemeFilterChanged(bool),
     FilterStrengthChanged(f64),
+    RotationEnabledChanged(bool),
+    RotationIntervalChanged(u32),
+    RotationModeChanged(WallpaperRotationMode),
 
     WallpaperDirectoryEffect(String),
     ContentFitEffect(ContentFit),
     ThemeFilterEffect(bool),
     FilterStrengthEffect(f64),
+    RotationEnabledEffect(bool),
+    RotationIntervalEffect(u32),
+    RotationModeEffect(WallpaperRotationMode),
 }
 
 #[derive(Debug)]
@@ -209,6 +220,130 @@ impl Component for WallpaperSettingsModel {
                         } @filter_strength_handler,
                     },
                 },
+
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Wallpaper Rotation",
+                    set_halign: gtk::Align::Start,
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Auto-rotate",
+                            set_hexpand: true,
+                        },
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Automatically change the wallpaper on a timer.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        #[block_signal(rotation_enabled_handler)]
+                        set_active: model.rotation_enabled,
+                        connect_state_set[sender] => move |_, enabled| {
+                            sender.input(WallpaperSettingsInput::RotationEnabledChanged(enabled));
+                            glib::Propagation::Proceed
+                        } @rotation_enabled_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Interval (minutes)",
+                            set_hexpand: true,
+                        },
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "How long to wait between automatic wallpaper changes.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::SpinButton {
+                        set_valign: gtk::Align::Center,
+                        set_range: (1.0, 1440.0),
+                        set_increments: (1.0, 5.0),
+                        set_digits: 0,
+                        #[watch]
+                        #[block_signal(rotation_interval_handler)]
+                        set_value: model.rotation_interval_minutes as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(WallpaperSettingsInput::RotationIntervalChanged(
+                                s.value() as u32,
+                            ));
+                        } @rotation_interval_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Order",
+                            set_hexpand: true,
+                        },
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Walk the directory in order, or pick a random wallpaper each time.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::DropDown {
+                        set_width_request: 150,
+                        set_valign: gtk::Align::Center,
+                        set_model: Some(&gtk::StringList::new(&WallpaperRotationMode::display_names())),
+                        #[watch]
+                        #[block_signal(rotation_mode_handler)]
+                        set_selected: model.rotation_mode.to_index(),
+                        connect_selected_notify[sender] => move |dd| {
+                            sender.input(WallpaperSettingsInput::RotationModeChanged(
+                                WallpaperRotationMode::from_index(dd.selected())
+                            ));
+                        } @rotation_mode_handler,
+                    },
+                },
             }
         }
     }
@@ -254,6 +389,36 @@ impl Component for WallpaperSettingsModel {
             sender_clone.input(WallpaperSettingsInput::FilterStrengthEffect(value.get()));
         });
 
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let value = config_manager()
+                .config()
+                .wallpaper()
+                .rotation_enabled()
+                .get();
+            sender_clone.input(WallpaperSettingsInput::RotationEnabledEffect(value));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let value = config_manager()
+                .config()
+                .wallpaper()
+                .rotation_interval_minutes()
+                .get();
+            sender_clone.input(WallpaperSettingsInput::RotationIntervalEffect(value));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let value = config_manager()
+                .config()
+                .wallpaper()
+                .rotation_mode()
+                .get();
+            sender_clone.input(WallpaperSettingsInput::RotationModeEffect(value));
+        });
+
         let model = WallpaperSettingsModel {
             wallpaper_directory: "".to_string(),
             content_fit: config_manager()
@@ -272,6 +437,21 @@ impl Component for WallpaperSettingsModel {
                 .theme_filter_strength()
                 .get_untracked()
                 .get(),
+            rotation_enabled: config_manager()
+                .config()
+                .wallpaper()
+                .rotation_enabled()
+                .get_untracked(),
+            rotation_interval_minutes: config_manager()
+                .config()
+                .wallpaper()
+                .rotation_interval_minutes()
+                .get_untracked(),
+            rotation_mode: config_manager()
+                .config()
+                .wallpaper()
+                .rotation_mode()
+                .get_untracked(),
             _effects: effects,
         };
 
@@ -318,6 +498,21 @@ impl Component for WallpaperSettingsModel {
                 .update_config(|config| {
                     config.wallpaper.theme_filter_strength = ThemeFilterStrength::new(strength)
                 }),
+            WallpaperSettingsInput::RotationEnabledChanged(enabled) => {
+                config_manager().update_config(|config| {
+                    config.wallpaper.rotation_enabled = enabled;
+                });
+            }
+            WallpaperSettingsInput::RotationIntervalChanged(minutes) => {
+                config_manager().update_config(|config| {
+                    config.wallpaper.rotation_interval_minutes = minutes;
+                });
+            }
+            WallpaperSettingsInput::RotationModeChanged(mode) => {
+                config_manager().update_config(|config| {
+                    config.wallpaper.rotation_mode = mode;
+                });
+            }
 
             WallpaperSettingsInput::WallpaperDirectoryEffect(path) => {
                 self.wallpaper_directory = path;
@@ -330,6 +525,15 @@ impl Component for WallpaperSettingsModel {
             }
             WallpaperSettingsInput::FilterStrengthEffect(filter) => {
                 self.filter_strength = filter;
+            }
+            WallpaperSettingsInput::RotationEnabledEffect(enabled) => {
+                self.rotation_enabled = enabled;
+            }
+            WallpaperSettingsInput::RotationIntervalEffect(minutes) => {
+                self.rotation_interval_minutes = minutes;
+            }
+            WallpaperSettingsInput::RotationModeEffect(mode) => {
+                self.rotation_mode = mode;
             }
         }
 

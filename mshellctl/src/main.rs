@@ -26,6 +26,9 @@ async fn main() -> anyhow::Result<()> {
         Commands::Settings { command } => {
             mshellctl::subcommands::settings::execute(command).await?
         }
+        Commands::Wallpaper { command } => {
+            mshellctl::subcommands::wallpaper::execute(command).await?
+        }
     };
 
     Ok(())

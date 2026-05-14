@@ -431,6 +431,59 @@ impl Default for Notifications {
     }
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, Store, JsonSchema,
+)]
+pub enum WallpaperRotationMode {
+    /// Walk the directory listing in order.
+    #[default]
+    Sequential,
+    /// Pick a random wallpaper each time.
+    Random,
+}
+
+impl reactive_stores::PatchField for WallpaperRotationMode {
+    fn patch_field(
+        &mut self,
+        new: Self,
+        path: &reactive_stores::StorePath,
+        notify: &mut dyn FnMut(&reactive_stores::StorePath),
+        _keys: Option<&reactive_stores::KeyMap>,
+    ) {
+        if *self != new {
+            *self = new;
+            notify(path);
+        }
+    }
+}
+
+impl WallpaperRotationMode {
+    pub fn to_index(&self) -> u32 {
+        match self {
+            WallpaperRotationMode::Sequential => 0,
+            WallpaperRotationMode::Random => 1,
+        }
+    }
+
+    pub fn from_index(idx: u32) -> Self {
+        match idx {
+            1 => WallpaperRotationMode::Random,
+            _ => WallpaperRotationMode::Sequential,
+        }
+    }
+
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            WallpaperRotationMode::Sequential => "Sequential",
+            WallpaperRotationMode::Random => "Random",
+        }
+    }
+
+    pub fn display_names() -> Vec<&'static str> {
+        vec!["Sequential", "Random"]
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
 #[serde(default)]
 pub struct Wallpaper {
@@ -438,6 +491,12 @@ pub struct Wallpaper {
     pub content_fit: ContentFit,
     pub apply_theme_filter: bool,
     pub theme_filter_strength: ThemeFilterStrength,
+    /// Auto-rotate the wallpaper on a timer.
+    pub rotation_enabled: bool,
+    /// Minutes between automatic rotations.
+    pub rotation_interval_minutes: u32,
+    /// Sequential vs random rotation order.
+    pub rotation_mode: WallpaperRotationMode,
 }
 
 impl Default for Wallpaper {
@@ -447,6 +506,9 @@ impl Default for Wallpaper {
             content_fit: ContentFit::Cover,
             apply_theme_filter: false,
             theme_filter_strength: ThemeFilterStrength::new(1.0),
+            rotation_enabled: false,
+            rotation_interval_minutes: 5,
+            rotation_mode: WallpaperRotationMode::Sequential,
         }
     }
 }

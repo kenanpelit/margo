@@ -29,6 +29,14 @@ fn display_cache_path() -> PathBuf {
     cache_dir().join("wallpaper.raw")
 }
 
+/// Records the *original* path of the current wallpaper (the file
+/// in the user's wallpaper dir), so cycling can find its position
+/// in the directory listing — `source_path()` is only a cache
+/// copy and loses the original location.
+fn current_path_file() -> PathBuf {
+    cache_dir().join("wallpaper_path")
+}
+
 // ── In-memory wallpaper buffer ───────────────────────────────────────────────
 
 /// Shared RGBA image data ready for direct use with MemoryTexture.
@@ -126,7 +134,107 @@ pub fn set_wallpaper(path: &Path) {
         return;
     }
 
+    // Remember the original location so next/prev rotation knows
+    // where we are in the directory.
+    if let Some(p) = path.to_str() {
+        let _ = fs::write(current_path_file(), p);
+    }
+
     refilter();
+}
+
+// ── Rotation / cycling ───────────────────────────────────────────────────────
+
+/// Which way to step through the wallpaper directory.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CycleDirection {
+    Next,
+    Previous,
+    Random,
+}
+
+const WALLPAPER_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp", "bmp", "gif"];
+
+/// The original path of the wallpaper currently set, if recorded.
+pub fn current_wallpaper_path() -> Option<PathBuf> {
+    let raw = fs::read_to_string(current_path_file()).ok()?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(PathBuf::from(trimmed))
+    }
+}
+
+/// Every image file in the configured `wallpaper_dir`, sorted by
+/// filename for a stable next/prev order.
+pub fn list_wallpapers() -> Vec<PathBuf> {
+    let dir = config_manager()
+        .config()
+        .wallpaper()
+        .wallpaper_dir()
+        .get_untracked();
+    if dir.is_empty() {
+        return Vec::new();
+    }
+    let mut entries: Vec<PathBuf> = match fs::read_dir(&dir) {
+        Ok(rd) => rd
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| {
+                p.extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| WALLPAPER_EXTENSIONS.contains(&e.to_lowercase().as_str()))
+                    .unwrap_or(false)
+            })
+            .collect(),
+        Err(e) => {
+            eprintln!("wallpaper: cannot read dir {dir}: {e}");
+            Vec::new()
+        }
+    };
+    entries.sort();
+    entries
+}
+
+/// Step the wallpaper in the given direction within `wallpaper_dir`
+/// and apply it. No-op when the directory has no images.
+pub fn cycle_wallpaper(direction: CycleDirection) {
+    let list = list_wallpapers();
+    if list.is_empty() {
+        return;
+    }
+    let len = list.len();
+
+    // Where are we now? Default to the first image when the
+    // current wallpaper isn't (or is no longer) in the directory.
+    let current_idx = current_wallpaper_path()
+        .and_then(|cur| list.iter().position(|p| *p == cur))
+        .unwrap_or(0);
+
+    let target_idx = match direction {
+        CycleDirection::Next => (current_idx + 1) % len,
+        CycleDirection::Previous => (current_idx + len - 1) % len,
+        CycleDirection::Random => {
+            if len == 1 {
+                0
+            } else {
+                // Cheap, dependency-free PRNG seeded off the clock —
+                // wallpaper choice doesn't need crypto randomness.
+                let nanos = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.subsec_nanos() as usize)
+                    .unwrap_or(0);
+                let mut idx = nanos % len;
+                if idx == current_idx {
+                    idx = (idx + 1) % len;
+                }
+                idx
+            }
+        }
+    };
+
+    set_wallpaper(&list[target_idx]);
 }
 
 /// Clear the wallpaper entirely.

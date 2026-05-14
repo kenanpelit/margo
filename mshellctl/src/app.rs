@@ -7,6 +7,7 @@ use crate::subcommands::brightness::BrightnessCommands;
 use crate::subcommands::lock::LockCommands;
 use crate::subcommands::menu::MenuCommands;
 use crate::subcommands::settings::SettingsCommands;
+use crate::subcommands::wallpaper::WallpaperCommands;
 use mshell_cli_style;
 
 #[derive(Parser, Debug)]
@@ -57,5 +58,10 @@ pub enum Commands {
     Settings {
         #[command(subcommand)]
         command: SettingsCommands,
+    },
+    /// Commands for cycling the wallpaper
+    Wallpaper {
+        #[command(subcommand)]
+        command: WallpaperCommands,
     },
 }

@@ -86,6 +86,9 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                         app_sender.emit(ShellInput::ToggleWallpaperMenu(None));
                     }
                 }
+                IPCCommand::WallpaperCycle(direction) => {
+                    app_sender.emit(ShellInput::CycleWallpaper(direction));
+                }
                 IPCCommand::Nufw => {
                     if let Some(active_workspace) = margo_service().active_workspace().await {
                         app_sender.emit(ShellInput::ToggleNufwMenu(Some(
@@ -335,6 +338,7 @@ enum IPCCommand {
     BrightnessUp,
     BrightnessDown,
     SetWallpaper(PathBuf),
+    WallpaperCycle(mshell_cache::wallpaper::CycleDirection),
     Lock,
     CheckLock(tokio::sync::oneshot::Sender<bool>),
     Screenshare(tokio::sync::oneshot::Sender<String>, String),
@@ -430,6 +434,17 @@ impl IPCService {
     }
     async fn set_wallpaper(&self, path: &str) {
         let _ = self.tx.send(IPCCommand::SetWallpaper(PathBuf::from(path)));
+    }
+    /// Step the wallpaper: `direction` is `next`, `previous` /
+    /// `prev`, or `random`.
+    async fn wallpaper_cycle(&self, direction: &str) {
+        use mshell_cache::wallpaper::CycleDirection;
+        let dir = match direction.to_ascii_lowercase().as_str() {
+            "previous" | "prev" => CycleDirection::Previous,
+            "random" => CycleDirection::Random,
+            _ => CycleDirection::Next,
+        };
+        let _ = self.tx.send(IPCCommand::WallpaperCycle(dir));
     }
     async fn lock(&self) {
         let _ = self.tx.send(IPCCommand::Lock);
