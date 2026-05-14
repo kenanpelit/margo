@@ -3,6 +3,7 @@ use crate::general_settings::{GeneralSettingsInit, GeneralSettingsModel};
 use crate::idle_settings::{IdleSettingsInit, IdleSettingsModel};
 use crate::menu_settings::menu_settings::{MenuSettingsInit, MenuSettingsModel};
 use crate::notification_settings::{NotificationSettingsInit, NotificationSettingsModel};
+use crate::session_settings::{SessionSettingsInit, SessionSettingsModel};
 use crate::theme_settings::theme_settings::{ThemeSettingsInit, ThemeSettingsModel};
 use crate::wallpaper_settings::{WallpaperSettingsInit, WallpaperSettingsModel};
 use relm4::gtk::prelude::{BoxExt, GtkWindowExt, OrientableExt, ToggleButtonExt, WidgetExt};
@@ -16,6 +17,7 @@ pub(crate) struct SettingsWindowModel {
     menu_settings_controller: Controller<MenuSettingsModel>,
     notification_settings_controller: Controller<NotificationSettingsModel>,
     idle_settings_controller: Controller<IdleSettingsModel>,
+    session_settings_controller: Controller<SessionSettingsModel>,
 }
 
 #[derive(Debug)]
@@ -212,6 +214,26 @@ impl Component for SettingsWindowModel {
                             },
                         },
                     },
+
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("session"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("system-shutdown-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Session",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
                 },
 
                 #[name = "stack"]
@@ -259,6 +281,10 @@ impl Component for SettingsWindowModel {
             .launch(IdleSettingsInit {})
             .detach();
 
+        let session_settings_controller = SessionSettingsModel::builder()
+            .launch(SessionSettingsInit {})
+            .detach();
+
         let model = SettingsWindowModel {
             general_settings_controller,
             wallpaper_settings_controller,
@@ -267,6 +293,7 @@ impl Component for SettingsWindowModel {
             menu_settings_controller,
             notification_settings_controller,
             idle_settings_controller,
+            session_settings_controller,
         };
 
         let widgets = view_output!();
@@ -311,6 +338,12 @@ impl Component for SettingsWindowModel {
             model.idle_settings_controller.widget(),
             Some("idle"),
             "Idle",
+        );
+
+        widgets.stack.add_titled(
+            model.session_settings_controller.widget(),
+            Some("session"),
+            "Session",
         );
 
         ComponentParts { model, widgets }

@@ -10,6 +10,20 @@ pub enum NotificationAction {
 }
 
 #[derive(Subcommand, Debug)]
+pub enum SessionAction {
+    /// Lock the session
+    Lock,
+    /// Log out of the session
+    Logout,
+    /// Suspend the system
+    Suspend,
+    /// Reboot the system
+    Reboot,
+    /// Power off the system
+    Shutdown,
+}
+
+#[derive(Subcommand, Debug)]
 pub enum MenuCommands {
     /// Toggle the app launcher menu
     AppLauncher,
@@ -44,6 +58,11 @@ pub enum MenuCommands {
     Npower,
     /// Toggle the Media Player menu
     MediaPlayer,
+    /// Toggle the session / power menu, or run a session action
+    Session {
+        #[command(subcommand)]
+        action: Option<SessionAction>,
+    },
     /// Close all open menus
     CloseAll,
 }
@@ -103,6 +122,26 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         MenuCommands::MediaPlayer => {
             bus_command("MediaPlayer").await?;
         }
+        MenuCommands::Session { action } => match action {
+            None => {
+                bus_command("Session").await?;
+            }
+            Some(SessionAction::Lock) => {
+                bus_command("SessionLock").await?;
+            }
+            Some(SessionAction::Logout) => {
+                bus_command("SessionLogout").await?;
+            }
+            Some(SessionAction::Suspend) => {
+                bus_command("SessionSuspend").await?;
+            }
+            Some(SessionAction::Reboot) => {
+                bus_command("SessionReboot").await?;
+            }
+            Some(SessionAction::Shutdown) => {
+                bus_command("SessionShutdown").await?;
+            }
+        },
         MenuCommands::CloseAll => {
             bus_command("CloseAllMenus").await?;
         }

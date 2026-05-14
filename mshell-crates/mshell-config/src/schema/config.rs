@@ -27,6 +27,7 @@ pub struct Config {
     pub wallpaper: Wallpaper,
     pub tempo: Tempo,
     pub idle: Idle,
+    pub session: Session,
 }
 
 /// Idle manager — staged actions as the session sits idle. Each
@@ -56,6 +57,33 @@ impl Default for Idle {
             lock_timeout_minutes: 20,
             suspend_enabled: true,
             suspend_timeout_minutes: 30,
+        }
+    }
+}
+
+/// Session actions (the power menu). Each field is the command
+/// run for that action; an empty string falls back to the
+/// built-in default (`systemctl …` / the in-process lock). Set
+/// e.g. `reboot_command = "osc-safe-reboot"` to route the button
+/// through your own script. Non-empty commands run via `sh -c`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[serde(default)]
+pub struct Session {
+    pub lock_command: String,
+    pub logout_command: String,
+    pub suspend_command: String,
+    pub reboot_command: String,
+    pub shutdown_command: String,
+}
+
+impl Default for Session {
+    fn default() -> Self {
+        Self {
+            lock_command: String::new(),
+            logout_command: String::new(),
+            suspend_command: String::new(),
+            reboot_command: String::new(),
+            shutdown_command: String::new(),
         }
     }
 }
@@ -324,6 +352,7 @@ pub struct Menus {
     pub nnetwork_menu: Menu,
     pub npower_menu: Menu,
     pub media_player_menu: Menu,
+    pub session_menu: Menu,
     pub left_menu_expansion_type: VerticalMenuExpansion,
     pub right_menu_expansion_type: VerticalMenuExpansion,
 }
@@ -442,6 +471,11 @@ impl Default for Menus {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::MediaPlayer],
                 minimum_width: 380,
+            },
+            session_menu: Menu {
+                position: Position::Top,
+                widgets: vec![MenuWidget::Session],
+                minimum_width: 420,
             },
             left_menu_expansion_type: VerticalMenuExpansion::AlwaysExpanded,
             right_menu_expansion_type: VerticalMenuExpansion::AlwaysExpanded,

@@ -19,6 +19,7 @@ pub mod notifications;
 pub mod power_profile;
 pub mod reboot;
 pub mod scroll_extensions;
+pub mod session;
 pub mod shutdown;
 pub mod strings;
 pub mod weather;

@@ -3,6 +3,7 @@ use mshell_cache::wallpaper::set_wallpaper;
 use mshell_services::{audio_service, brightness_service, margo_service};
 use mshell_session::session_lock::session_lock;
 use mshell_settings::{close_settings, open_settings};
+use mshell_utils::session::SessionAction;
 use mshell_sounds::play_audio_volume_change;
 use relm4::gtk::glib;
 use relm4::{ComponentSender, gtk};
@@ -167,6 +168,18 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                         app_sender.emit(ShellInput::ToggleMediaPlayerMenu(None));
                     }
                 }
+                IPCCommand::Session => {
+                    if let Some(active_workspace) = margo_service().active_workspace().await {
+                        app_sender.emit(ShellInput::ToggleSessionMenu(Some(
+                            active_workspace.monitor.get(),
+                        )));
+                    } else {
+                        app_sender.emit(ShellInput::ToggleSessionMenu(None));
+                    }
+                }
+                IPCCommand::SessionAction(action) => {
+                    app_sender.emit(ShellInput::RunSessionAction(action));
+                }
                 IPCCommand::CloseAllMenus => app_sender.emit(ShellInput::CloseAllMenus),
                 IPCCommand::VolumeUp => {
                     if let Some(output) = audio_service().default_output.get() {
@@ -329,6 +342,8 @@ enum IPCCommand {
     Notifications,
     NotificationsClearAll,
     NotificationsReadPopups,
+    Session,
+    SessionAction(SessionAction),
     Screenshot,
     Wallpaper,
     Nufw,
@@ -427,6 +442,24 @@ impl IPCService {
     }
     async fn media_player(&self) {
         let _ = self.tx.send(IPCCommand::MediaPlayer);
+    }
+    async fn session(&self) {
+        let _ = self.tx.send(IPCCommand::Session);
+    }
+    async fn session_lock(&self) {
+        let _ = self.tx.send(IPCCommand::SessionAction(SessionAction::Lock));
+    }
+    async fn session_logout(&self) {
+        let _ = self.tx.send(IPCCommand::SessionAction(SessionAction::Logout));
+    }
+    async fn session_suspend(&self) {
+        let _ = self.tx.send(IPCCommand::SessionAction(SessionAction::Suspend));
+    }
+    async fn session_reboot(&self) {
+        let _ = self.tx.send(IPCCommand::SessionAction(SessionAction::Reboot));
+    }
+    async fn session_shutdown(&self) {
+        let _ = self.tx.send(IPCCommand::SessionAction(SessionAction::Shutdown));
     }
     async fn close_all_menus(&self) {
         let _ = self.tx.send(IPCCommand::CloseAllMenus);

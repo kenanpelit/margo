@@ -60,6 +60,9 @@ use crate::menus::menu_widgets::screen_record::screen_record_menu_widget::{
 use crate::menus::menu_widgets::screenshot::screenshot_menu_widget::{
     ScreenshotMenuWidgetInit, ScreenshotMenuWidgetModel, ScreenshotMenuWidgetOutput,
 };
+use crate::menus::menu_widgets::session::session_menu_widget::{
+    SessionMenuWidgetInit, SessionMenuWidgetModel, SessionMenuWidgetOutput,
+};
 use crate::menus::menu_widgets::spacer::{SpacerInit, SpacerModel};
 use crate::menus::menu_widgets::theme_picker::theme_picker_menu_widget::{
     ThemePickerMenuWidgetInit, ThemePickerMenuWidgetModel,
@@ -155,6 +158,13 @@ pub fn build_widget(
                 .launch(NotificationsInit {})
                 .forward(sender.output_sender(), |msg| match msg {
                     NotificationsOutput::CloseMenu => MenuOutput::CloseMenu,
+                }),
+        ),
+        MenuWidget::Session => Box::new(
+            SessionMenuWidgetModel::builder()
+                .launch(SessionMenuWidgetInit {})
+                .forward(sender.output_sender(), |msg| match msg {
+                    SessionMenuWidgetOutput::CloseMenu => MenuOutput::CloseMenu,
                 }),
         ),
         MenuWidget::Npodman => Box::new(

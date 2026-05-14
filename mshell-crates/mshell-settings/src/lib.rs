@@ -8,6 +8,7 @@ mod general_settings;
 mod idle_settings;
 mod menu_settings;
 mod notification_settings;
+mod session_settings;
 pub mod settings;
 mod theme_settings;
 mod wallpaper_settings;

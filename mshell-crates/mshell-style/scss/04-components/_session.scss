@@ -1,0 +1,19 @@
+// Session menu widget — the power menu (Lock / Logout / Suspend
+// / Reboot / Shutdown). Reboot and Shutdown carry a warning tint
+// so the destructive actions read at a glance.
+
+.session-menu-widget { padding: 0; }
+
+.session-button {
+  padding: 10px 4px;
+  border-radius: var(--radius-widget);
+}
+
+// Destructive actions — tint the icon so they stand apart from
+// the benign Lock / Logout / Suspend tiles.
+.session-button.session-reboot image {
+  color: #d79921;
+}
+.session-button.session-shutdown image {
+  color: var(--error);
+}

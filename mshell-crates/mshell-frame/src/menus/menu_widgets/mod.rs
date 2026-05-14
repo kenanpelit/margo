@@ -22,6 +22,7 @@ pub(crate) mod quick_action;
 pub(crate) mod screen_record;
 pub(crate) mod screenshare;
 pub(crate) mod screenshot;
+pub(crate) mod session;
 pub(crate) mod spacer;
 pub(crate) mod theme_picker;
 pub(crate) mod wallpaper;

@@ -33,6 +33,7 @@ const NIP_MENU: &str = "nip";
 const NNETWORK_MENU: &str = "nnetwork";
 const NPOWER_MENU: &str = "npower";
 const MEDIA_PLAYER_MENU: &str = "media_player";
+const SESSION_MENU: &str = "session";
 
 pub struct Frame {
     // Margo's mshell ships only horizontal bars — vertical Left /
@@ -80,6 +81,7 @@ pub struct Frame {
     nnetwork_menu: Controller<MenuModel>,
     npower_menu: Controller<MenuModel>,
     media_player_menu: Controller<MenuModel>,
+    session_menu: Controller<MenuModel>,
     /// Pending keyboard-mode switch held inside the 90 ms debounce
     /// window. Replaced on every `sync_keyboard_mode` call; the
     /// timer reads whatever value was last written.
@@ -95,6 +97,7 @@ pub enum FrameInput {
     SetLeftMenuExpansionType(VerticalMenuExpansion),
     SetRightMenuExpansionType(VerticalMenuExpansion),
     RepositionMenus(
+        Position,
         Position,
         Position,
         Position,
@@ -127,6 +130,7 @@ pub enum FrameInput {
     ToggleNnetworkMenu,
     ToggleNpowerMenu,
     ToggleMediaPlayerMenu,
+    ToggleSessionMenu,
     CloseMenus,
     ToggleScreenshareMenu(tokio::sync::oneshot::Sender<String>, String),
     BarToggleTop,
@@ -632,6 +636,7 @@ impl Component for Frame {
         let nnetwork_menu = Self::build_menu(&sender, MenuType::Nnetwork);
         let npower_menu = Self::build_menu(&sender, MenuType::Npower);
         let media_player_menu = Self::build_menu(&sender, MenuType::MediaPlayer);
+        let session_menu = Self::build_menu(&sender, MenuType::Session);
 
         let mut effects = EffectScope::new();
 
@@ -696,6 +701,8 @@ impl Component for Frame {
             let config = menu_config.clone();
             let media_player_menu_position =
                 config.menus().media_player_menu().position().get();
+            let config = menu_config.clone();
+            let session_menu_position = config.menus().session_menu().position().get();
             sender_clone.input(FrameInput::RepositionMenus(
                 clock_menu_position,
                 clipboard_menu_position,
@@ -713,6 +720,7 @@ impl Component for Frame {
                 nnetwork_menu_position,
                 npower_menu_position,
                 media_player_menu_position,
+                session_menu_position,
             ));
         });
 
@@ -775,6 +783,7 @@ impl Component for Frame {
             nnetwork_menu,
             npower_menu,
             media_player_menu,
+            session_menu,
             pending_kbd_mode: std::rc::Rc::new(std::cell::RefCell::new(None)),
             pending_kbd_mode_timeout: std::rc::Rc::new(std::cell::RefCell::new(None)),
             _effects: effects,
@@ -826,6 +835,7 @@ impl Component for Frame {
                 nnetwork_menu_position,
                 npower_menu_position,
                 media_player_menu_position,
+                session_menu_position,
             ) => {
                 sender.input(FrameInput::CloseMenus);
                 self.apply_left_and_right_side_children(
@@ -846,6 +856,7 @@ impl Component for Frame {
                     nnetwork_menu_position,
                     npower_menu_position,
                     media_player_menu_position,
+                    session_menu_position,
                 );
             }
             FrameInput::ToggleClockMenu => {
@@ -906,6 +917,10 @@ impl Component for Frame {
             }
             FrameInput::ToggleMediaPlayerMenu => {
                 self.toggle_menu(MEDIA_PLAYER_MENU, widgets);
+                self.sync_keyboard_mode(root);
+            }
+            FrameInput::ToggleSessionMenu => {
+                self.toggle_menu(SESSION_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
             FrameInput::ToggleScreenshareMenu(reply, payload) => {
@@ -1498,6 +1513,7 @@ impl Frame {
         nnetwork_menu_position: Position,
         npower_menu_position: Position,
         media_player_menu_position: Position,
+        session_menu_position: Position,
     ) {
         let clock_widget: Widget = self.clock_menu.widget().clone().upcast();
         let clipboard_widget: Widget = self.clipboard_menu.widget().clone().upcast();
@@ -1516,6 +1532,7 @@ impl Frame {
         let npower_menu_widget: Widget = self.npower_menu.widget().clone().upcast();
         let media_player_menu_widget: Widget =
             self.media_player_menu.widget().clone().upcast();
+        let session_menu_widget: Widget = self.session_menu.widget().clone().upcast();
 
         widgets.left_stack.remove_all();
         widgets.right_stack.remove_all();
@@ -1611,6 +1628,12 @@ impl Frame {
             &media_player_menu_widget,
             MEDIA_PLAYER_MENU,
             &media_player_menu_position,
+        );
+        Self::add_to_stack(
+            widgets,
+            &session_menu_widget,
+            SESSION_MENU,
+            &session_menu_position,
         );
     }
 

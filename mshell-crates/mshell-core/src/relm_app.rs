@@ -78,6 +78,8 @@ pub(crate) enum ShellInput {
     ToggleNnetworkMenu(Option<String>),
     ToggleNpowerMenu(Option<String>),
     ToggleMediaPlayerMenu(Option<String>),
+    ToggleSessionMenu(Option<String>),
+    RunSessionAction(mshell_utils::session::SessionAction),
     CloseAllMenus,
     ToggleScreenshareMenu(Option<String>, tokio::sync::oneshot::Sender<String>, String),
     QueueFrameRedraw,
@@ -379,6 +381,14 @@ impl Component for Shell {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
                     frame.emit(FrameInput::ToggleMediaPlayerMenu);
                 }
+            }
+            ShellInput::ToggleSessionMenu(monitor_name) => {
+                if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
+                    frame.emit(FrameInput::ToggleSessionMenu);
+                }
+            }
+            ShellInput::RunSessionAction(action) => {
+                mshell_utils::session::run_session_action(action);
             }
             ShellInput::CloseAllMenus => {
                 self.window_groups.iter().for_each(|(_, wg)| {
