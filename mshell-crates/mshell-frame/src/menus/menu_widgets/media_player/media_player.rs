@@ -82,39 +82,59 @@ impl Component for MediaPlayerModel {
             set_orientation: gtk::Orientation::Vertical,
             set_hexpand: true,
 
-            #[name = "track_scroll_window"]
-            gtk::ScrolledWindow {
-                set_policy: (gtk::PolicyType::External, gtk::PolicyType::Never),
-                set_overflow: gtk::Overflow::Hidden,
+            // ── Hero: album cover + track / artist ──────────────
+            gtk::Box {
+                add_css_class: "media-player-hero",
+                set_orientation: gtk::Orientation::Horizontal,
                 set_hexpand: true,
 
-                #[name = "track"]
-                gtk::Label {
-                    add_css_class: "label-small-bold-variant",
-                    #[watch]
-                    set_label: model.track_name.as_str(),
-                    set_xalign: 0.5,
-                    set_wrap: false,
-                    set_max_width_chars: -1,
-                    set_ellipsize: pango::EllipsizeMode::None,
+                #[name = "cover"]
+                gtk::Image {
+                    add_css_class: "media-player-cover",
+                    set_pixel_size: 72,
+                    set_valign: gtk::Align::Center,
                 },
-            },
 
-            #[name = "artist_scroll_window"]
-            gtk::ScrolledWindow {
-                set_policy: (gtk::PolicyType::External, gtk::PolicyType::Never),
-                set_overflow: gtk::Overflow::Hidden,
-                set_hexpand: true,
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_hexpand: true,
+                    set_valign: gtk::Align::Center,
 
-                #[name = "artist"]
-                gtk::Label {
-                    add_css_class: "label-small-bold",
-                    #[watch]
-                    set_label: model.artist_name.as_str(),
-                    set_xalign: 0.5,
-                    set_wrap: false,
-                    set_max_width_chars: -1,
-                    set_ellipsize: pango::EllipsizeMode::None,
+                    #[name = "track_scroll_window"]
+                    gtk::ScrolledWindow {
+                        set_policy: (gtk::PolicyType::External, gtk::PolicyType::Never),
+                        set_overflow: gtk::Overflow::Hidden,
+                        set_hexpand: true,
+
+                        #[name = "track"]
+                        gtk::Label {
+                            add_css_class: "label-small-bold-variant",
+                            #[watch]
+                            set_label: model.track_name.as_str(),
+                            set_xalign: 0.5,
+                            set_wrap: false,
+                            set_max_width_chars: -1,
+                            set_ellipsize: pango::EllipsizeMode::None,
+                        },
+                    },
+
+                    #[name = "artist_scroll_window"]
+                    gtk::ScrolledWindow {
+                        set_policy: (gtk::PolicyType::External, gtk::PolicyType::Never),
+                        set_overflow: gtk::Overflow::Hidden,
+                        set_hexpand: true,
+
+                        #[name = "artist"]
+                        gtk::Label {
+                            add_css_class: "label-small-bold",
+                            #[watch]
+                            set_label: model.artist_name.as_str(),
+                            set_xalign: 0.5,
+                            set_wrap: false,
+                            set_max_width_chars: -1,
+                            set_ellipsize: pango::EllipsizeMode::None,
+                        },
+                    },
                 },
             },
 
@@ -331,6 +351,8 @@ impl Component for MediaPlayerModel {
 
         let widgets = view_output!();
 
+        apply_cover(&widgets.cover, &model.player);
+
         model.track_name_scroll_source = Some(start_scroll(&widgets.track_scroll_window));
         model.artist_name_scroll_source = Some(start_scroll(&widgets.artist_scroll_window));
 
@@ -459,6 +481,8 @@ impl Component for MediaPlayerModel {
                     self.artist_name = artist;
                     widgets.artist_scroll_window.hadjustment().set_value(0.0);
                 }
+
+                apply_cover(&widgets.cover, &self.player);
             }
             MediaPlayerCommandOutput::LoopModeChanged => {
                 self.loop_mode = self.player.loop_mode.get();
@@ -581,6 +605,21 @@ fn start_scroll(scrolled_window: &gtk::ScrolledWindow) -> glib::SourceId {
         }
         glib::ControlFlow::Continue
     })
+}
+
+/// Paint the album cover from `TrackMetadata::cover_art` — a
+/// local path resolved by wayle-media's art cache (downloaded for
+/// remote http(s) covers, used directly for `file://` art). When
+/// there's no cover, fall back to a generic audio glyph.
+fn apply_cover(image: &gtk::Image, player: &Player) {
+    match player.metadata.cover_art.get() {
+        Some(path) if !path.trim().is_empty() => {
+            image.set_from_file(Some(&path));
+        }
+        _ => {
+            image.set_icon_name(Some("audio-x-generic-symbolic"));
+        }
+    }
 }
 
 fn format_duration(d: Duration) -> String {

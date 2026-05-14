@@ -31,6 +31,8 @@ pub enum MenuCommands {
     Nnetwork,
     /// Toggle the Power Profile (npower) menu
     Npower,
+    /// Toggle the Media Player menu
+    MediaPlayer,
     /// Close all open menus
     CloseAll,
 }
@@ -78,6 +80,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::Npower => {
             bus_command("Npower").await?;
+        }
+        MenuCommands::MediaPlayer => {
+            bus_command("MediaPlayer").await?;
         }
         MenuCommands::CloseAll => {
             bus_command("CloseAllMenus").await?;

@@ -1,5 +1,31 @@
+// Media player — the rich menu surface plus its bar pill.
+//
+// The same `MediaPlayerModel` widget renders inside the
+// quick-settings panel and in the dedicated bar menu; the bar
+// pill (`media-player-bar-widget`) is a separate render-only
+// mirror of the active MPRIS player.
+
 .media-player-menu-widget {
   border: solid var(--border-width) var(--outline);
   border-radius: var(--radius-widget);
   padding: 8px;
+}
+
+// ── Hero row: album cover + track / artist ──────────────────
+.media-player-hero {
+  margin-bottom: 6px;
+}
+
+.media-player-cover {
+  border-radius: var(--radius-widget);
+  margin-right: 10px;
+  background-color: var(--surface-variant);
+  min-width: 72px;
+  min-height: 72px;
+}
+
+// ── Bar pill ────────────────────────────────────────────────
+.media-player-bar-label {
+  font-size: 0.82em;
+  font-weight: 500;
 }

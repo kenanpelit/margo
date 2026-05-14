@@ -72,7 +72,15 @@ pub async fn init_services(
         async { Ok::<_, anyhow::Error>(BrightnessService::new().await?) },
         async { Ok::<_, anyhow::Error>(MargoService::new().await?) },
         line_power_fut,
-        async { Ok::<_, anyhow::Error>(MediaService::new().await?) },
+        async {
+            // `with_art_cache()` resolves MPRIS `mpris:artUrl`s (incl.
+            // remote http(s) covers from Spotify / browsers) to local
+            // files on `TrackMetadata::cover_art`, which the media
+            // widgets render as album art.
+            Ok::<_, anyhow::Error>(
+                MediaService::builder().with_art_cache().build().await?,
+            )
+        },
         async { Ok::<_, anyhow::Error>(NetworkService::new().await?) },
         async { Ok::<_, anyhow::Error>(NotificationService::new().await?) },
         async { Ok::<_, anyhow::Error>(PowerProfilesService::new().await?) },

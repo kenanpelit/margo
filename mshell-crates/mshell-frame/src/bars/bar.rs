@@ -21,6 +21,9 @@ use crate::bars::bar_widgets::nnetwork::{NnetworkInit, NnetworkModel};
 use crate::bars::bar_widgets::nnotes::{NnotesInit, NnotesModel};
 use crate::bars::bar_widgets::npodman::{NpodmanInit, NpodmanModel};
 use crate::bars::bar_widgets::npower::{NpowerInit, NpowerModel};
+use crate::bars::bar_widgets::media_player::{
+    MediaPlayerInit, MediaPlayerModel, MediaPlayerOutput,
+};
 use crate::bars::bar_widgets::nufw::{NufwInit, NufwModel};
 use crate::bars::bar_widgets::notifications::{
     NotificationsInit, NotificationsModel, NotificationsOutput,
@@ -118,6 +121,7 @@ pub(crate) enum BarOutput {
     NipClicked,
     NnetworkClicked,
     NpowerClicked,
+    MediaPlayerClicked,
     CloseMenu,
 }
 
@@ -537,6 +541,13 @@ impl BarModel {
                         crate::bars::bar_widgets::npower::NpowerOutput::Clicked => {
                             BarOutput::NpowerClicked
                         }
+                    }),
+            ),
+            BarWidget::MediaPlayer => Box::new(
+                MediaPlayerModel::builder()
+                    .launch(MediaPlayerInit {})
+                    .forward(sender.output_sender(), |msg| match msg {
+                        MediaPlayerOutput::Clicked => BarOutput::MediaPlayerClicked,
                     }),
             ),
             BarWidget::Nufw => Box::new(

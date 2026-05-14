@@ -13,6 +13,7 @@ pub(crate) mod margo_tag;
 pub(crate) mod margo_tags;
 pub(crate) mod lock;
 pub(crate) mod logout;
+pub(crate) mod media_player;
 pub(crate) mod ndns;
 pub(crate) mod network;
 pub(crate) mod nnetwork;
