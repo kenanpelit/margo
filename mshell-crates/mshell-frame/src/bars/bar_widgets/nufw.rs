@@ -169,9 +169,9 @@ fn apply_visual(image: &gtk::Image, root: &gtk::Box, s: &UfwSummary) {
     // "actively protecting" visual that lines up with the
     // user's mental model of UFW.
     let icon = match s.status {
-        Some(Status::Active) => "firewall-applet-shields_up-symbolic",
-        Some(Status::Inactive) => "firewall-applet-symbolic",
-        _ => "firewall-applet-error-symbolic",
+        Some(Status::Active) => "shield-check-symbolic",
+        Some(Status::Inactive) => "firewall-symbolic",
+        _ => "firewall-error-symbolic",
     };
     image.set_icon_name(Some(icon));
 

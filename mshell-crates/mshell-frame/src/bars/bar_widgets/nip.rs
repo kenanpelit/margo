@@ -215,9 +215,9 @@ fn apply_visual(image: &gtk::Image, root: &gtk::Box, state: FetchState, info: Op
     // which is more legible than the generic
     // `content-loading-symbolic` hourglass at bar size.
     let icon = match state {
-        FetchState::Loading => "network-acquiring-symbolic",
+        FetchState::Loading => "network-wired-acquiring-symbolic",
         FetchState::Ok => "globe-symbolic",
-        FetchState::Err => "network-no-route-symbolic",
+        FetchState::Err => "network-wired-disconnected-symbolic",
     };
     image.set_icon_name(Some(icon));
 

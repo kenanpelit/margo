@@ -209,6 +209,22 @@ package() {
       "$pkgdir/usr/share/pixmaps/margo.svg"
   fi
 
+  # ── OkMaterial icon theme bundle ───────────────────────────────
+  # mshell's default `theme.icons.shell_icon_theme = "OkMaterial"`
+  # used to come from the now-defunct `okshell` package. We
+  # vendor a fork of the same icon set under `assets/icons/
+  # OkMaterial/` (forked from the OkShell repo, MIT-licensed) and
+  # ship it here so a clean install has the glyphs the bar widgets
+  # reference — firewall, vpn, shield-check, globe, package,
+  # server — none of which exist in Adwaita / kora / Papirus by
+  # default. The 150 base icons are joined by the plugin-specific
+  # glyphs added for the nip / nufw / ndns / npodman work.
+  if [[ -d "assets/icons/OkMaterial" ]]; then
+    install -d "$pkgdir/usr/share/icons/OkMaterial"
+    cp -a assets/icons/OkMaterial/. \
+      "$pkgdir/usr/share/icons/OkMaterial/"
+  fi
+
   # ── Example compositor configs / docs ──────────────────────────
   install -Dm644 "margo/src/config.example.conf" \
     "$pkgdir/usr/share/doc/$pkgname/config.example.conf"

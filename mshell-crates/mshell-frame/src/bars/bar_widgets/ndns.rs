@@ -315,13 +315,13 @@ fn apply_visual(image: &gtk::Image, root: &gtk::Box, s: &DnsState) {
     // a custom DNS preset gets `globe-symbolic` so it's visually
     // distinct from the DHCP path.
     let icon = match s.mode_id() {
-        Mode::Blocked => "network-vpn-error-symbolic",
-        Mode::Mixed => "network-vpn-symbolic",
-        Mode::Mullvad => "network-vpn-symbolic",
-        Mode::Blocky => "network-server-symbolic",
+        Mode::Blocked => "firewall-error-symbolic",
+        Mode::Mixed => "shield-check-symbolic",
+        Mode::Mullvad => "vpn-symbolic",
+        Mode::Blocky => "server-symbolic",
         Mode::Custom => "globe-symbolic",
         Mode::Default => "network-wired-symbolic",
-        Mode::Idle => "dialog-question-symbolic",
+        Mode::Idle => "globe-symbolic",
     };
     image.set_icon_name(Some(icon));
 

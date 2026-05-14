@@ -156,9 +156,9 @@ fn apply_visual(image: &gtk::Image, root: &gtk::Box, s: &PodmanSummary) {
     // active theme (Tela / Papirus ship both, Adwaita ships only
     // the 3D one).
     let icon = if s.error.is_some() {
-        "dialog-warning-symbolic"
+        "firewall-error-symbolic"
     } else {
-        "class-or-package-symbolic"
+        "package-symbolic"
     };
     image.set_icon_name(Some(icon));
 
