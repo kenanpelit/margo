@@ -1,12 +1,75 @@
-.clock-menu-widget-day-label {
-  margin-left: 12px;
-}
-
 // Bar clock — uses the shared `--font-bar` token so all status
 // pills (battery / media / active window / clock / nnetwork)
 // stay in step.
 .clock-bar-label {
   font-size: var(--font-bar);
+}
+
+// ── Quick-settings clock hero ───────────────────────────────────
+//
+// Mirrors `.calendar-hero` (primary-bg rounded rectangle) but
+// keeps time as the headline since quick-settings is action-
+// oriented. Used by `menu_widgets/clock.rs` at the top of the
+// quick-settings menu.
+.qs-clock-hero {
+  background-color: var(--primary);
+  color: var(--on-primary);
+  border-radius: var(--radius-widget);
+  padding: 14px 18px;
+  margin: 4px 0;
+}
+
+.qs-clock-hero-time {
+  font-size: 42px;
+  font-weight: 700;
+  color: var(--on-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.qs-clock-hero-weekday {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--on-primary);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.qs-clock-hero-date {
+  font-size: 12px;
+  color: var(--on-primary);
+  opacity: 0.75;
+  margin-top: 2px;
+}
+
+// ── Quick-settings card stack ───────────────────────────────────
+//
+// All non-hero menu widgets inside the quick-settings panel get
+// the surface-variant card treatment, mirroring the standalone
+// clock menu's layered look (hero card + grid card + weather
+// card). The hero clock keeps its primary tint above; everything
+// below reads as a surface-variant card so the panel feels like a
+// stack of focused tiles rather than a flat list.
+.quick-settings-menu {
+  .network-menu-widget,
+  .audio-out-menu-widget,
+  .audio-in-menu-widget,
+  .power-profiles-menu-widget,
+  .media-player-menu-widget,
+  .quick-actions-menu-widget {
+    background-color: var(--surface-variant);
+    color: var(--on-surface-variant);
+    border-radius: var(--radius-widget);
+    padding: 12px 14px;
+    margin: 4px 0;
+  }
+
+  // Spacers / dividers are layout helpers — no card chrome.
+  .spacer-menu-widget,
+  .divider-menu-widget {
+    background-color: transparent;
+    padding: 0;
+    margin: 0;
+  }
 }
 
 // ── Clock menu calendar — noctalia-style two-card stack ──────
