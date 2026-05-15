@@ -53,6 +53,16 @@ impl MargoState {
     /// for that duration.
     pub fn tick_twilight(&mut self) -> std::time::Duration {
         let cfg = &self.config;
+        // Schedule mode loads sunsetr-compatible presets from
+        // `cfg.twilight_schedule_dir` (defaults to
+        // `~/.config/sunsetr`). Anything else gets an empty
+        // table — the tick branches on `Mode::Schedule` so a
+        // populated table only matters there.
+        let presets = if matches!(cfg.twilight_mode, margo_config::TwilightMode::Schedule) {
+            crate::twilight::preset::ScheduleData::load(&cfg.twilight_schedule_dir)
+        } else {
+            crate::twilight::preset::ScheduleData::default()
+        };
         let inputs = crate::twilight::TickInputs {
             enabled: cfg.twilight,
             schedule: crate::twilight::schedule_from_config(cfg),
@@ -60,6 +70,7 @@ impl MargoState {
             is_static: matches!(cfg.twilight_mode, margo_config::TwilightMode::Static),
             idle_interval_s: cfg.twilight_update_interval,
             now: std::time::SystemTime::now(),
+            presets,
         };
         let out = self.twilight.tick(inputs);
 

@@ -142,12 +142,20 @@ pub enum ShortcutsInhibit {
 /// * `Static` — a single fixed temperature and gamma 24/7. Reads
 ///   `twilight_static_temp` / `twilight_static_gamma` and ignores
 ///   the schedule.
+/// * `Schedule` — multi-step time-of-day preset schedule.
+///   Reads a directory of presets (each pinning a `static_temp` +
+///   `static_gamma`) and a `schedule.conf` mapping `HH:MM` to
+///   preset names. Interpolates in mired space between consecutive
+///   presets. Compatible with sunsetr's preset layout, so the same
+///   files can drive either tool. Path knob:
+///   `twilight_schedule_dir`, default `~/.config/sunsetr`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum TwilightMode {
     #[default]
     Geo,
     Manual,
     Static,
+    Schedule,
 }
 
 /// Order `alt+Tab` walks the overview thumbnails in.
@@ -701,6 +709,13 @@ pub struct Config {
     pub twilight_static_temp: u32,
     /// Static-mode gamma percentage.
     pub twilight_static_gamma: u32,
+    /// Schedule-mode directory. Holds `presets/<name>/sunsetr.toml`
+    /// (each pinning `static_temp` + `static_gamma`) and a
+    /// `schedule.conf` with `HH:MM PRESET_NAME` lines. Default
+    /// points at sunsetr's config dir so existing sunsetr presets
+    /// flow into twilight unchanged. Tilde expansion handled at
+    /// load time. Empty = use the default.
+    pub twilight_schedule_dir: String,
 
     // hot corners — niri pattern. Each corner names a dispatch action
     // (or empty string = off). Pointer enters the corner pixel and
@@ -961,6 +976,7 @@ impl Default for Config {
             twilight_sunset_sec: 0,
             twilight_static_temp: 4000,
             twilight_static_gamma: 95,
+            twilight_schedule_dir: String::new(),
             hot_corner_top_left: String::new(),
             hot_corner_top_right: String::new(),
             hot_corner_bottom_left: String::new(),

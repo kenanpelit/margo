@@ -222,6 +222,7 @@ impl MargoState {
                     margo_config::TwilightMode::Geo => "geo",
                     margo_config::TwilightMode::Manual => "manual",
                     margo_config::TwilightMode::Static => "static",
+                    margo_config::TwilightMode::Schedule => "schedule",
                 },
                 "current_temp_k": self.twilight.last_target.map(|t| t.temp_k),
                 "current_gamma_pct": self.twilight.last_target.map(|t| t.gamma_pct),

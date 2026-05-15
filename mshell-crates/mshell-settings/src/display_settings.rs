@@ -52,6 +52,11 @@ pub(crate) enum ModeKey {
     Geo,
     Manual,
     Static,
+    /// Multi-step preset schedule. Reads sunsetr-format
+    /// presets + schedule.conf from `twilight_schedule_dir`
+    /// (default `~/.config/sunsetr`) and interpolates between
+    /// consecutive entries through the day.
+    Schedule,
 }
 
 impl ModeKey {
@@ -60,6 +65,7 @@ impl ModeKey {
             ModeKey::Geo => "Geo (sun position)",
             ModeKey::Manual => "Manual (clock times)",
             ModeKey::Static => "Static (one fixed sample)",
+            ModeKey::Schedule => "Schedule (sunsetr presets)",
         }
     }
     fn key(self) -> &'static str {
@@ -67,15 +73,17 @@ impl ModeKey {
             ModeKey::Geo => "geo",
             ModeKey::Manual => "manual",
             ModeKey::Static => "static",
+            ModeKey::Schedule => "schedule",
         }
     }
-    fn all() -> [Self; 3] {
-        [Self::Geo, Self::Manual, Self::Static]
+    fn all() -> [Self; 4] {
+        [Self::Geo, Self::Manual, Self::Static, Self::Schedule]
     }
     fn from_index(i: u32) -> Self {
         match i {
             1 => Self::Manual,
             2 => Self::Static,
+            3 => Self::Schedule,
             _ => Self::Geo,
         }
     }
@@ -84,6 +92,7 @@ impl ModeKey {
             ModeKey::Geo => 0,
             ModeKey::Manual => 1,
             ModeKey::Static => 2,
+            ModeKey::Schedule => 3,
         }
     }
 }
@@ -957,6 +966,7 @@ fn load_current_config() -> TwilightSnapshot {
                 TwilightMode::Geo => ModeKey::Geo,
                 TwilightMode::Manual => ModeKey::Manual,
                 TwilightMode::Static => ModeKey::Static,
+                TwilightMode::Schedule => ModeKey::Schedule,
             },
             day_temp: cfg.twilight_day_temp,
             night_temp: cfg.twilight_night_temp,

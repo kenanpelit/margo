@@ -333,6 +333,7 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
                 "geo" => crate::types::TwilightMode::Geo,
                 "manual" => crate::types::TwilightMode::Manual,
                 "static" => crate::types::TwilightMode::Static,
+                "schedule" => crate::types::TwilightMode::Schedule,
                 other => {
                     tracing::warn!(
                         "config: unknown twilight_mode={other:?}; keeping default (geo)"
@@ -361,6 +362,7 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
         "twilight_static_gamma" => {
             cfg.twilight_static_gamma = parse_u32(val).clamp(10, 200)
         }
+        "twilight_schedule_dir" => cfg.twilight_schedule_dir = val.trim().to_string(),
         "hot_corner_top_left" => cfg.hot_corner_top_left = val.trim().to_string(),
         "hot_corner_top_right" => cfg.hot_corner_top_right = val.trim().to_string(),
         "hot_corner_bottom_left" => cfg.hot_corner_bottom_left = val.trim().to_string(),
@@ -1456,6 +1458,7 @@ pub const OPTION_KEYS: &[&str] = &[
     "twilight_mode",
     "twilight_night_gamma",
     "twilight_night_temp",
+    "twilight_schedule_dir",
     "twilight_static_gamma",
     "twilight_static_temp",
     "twilight_sunrise",

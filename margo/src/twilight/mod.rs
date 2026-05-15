@@ -23,11 +23,13 @@
 
 pub mod gamma_lut;
 pub mod interpolation;
+pub mod preset;
 pub mod schedule;
 
 use std::time::{Duration, Instant, SystemTime};
 
 use interpolation::{Settings, Target};
+pub use preset::ScheduleData;
 use schedule::{Mode, Phase, Schedule};
 
 /// What's driving the current sample. `Scheduled` is the steady-
@@ -75,7 +77,7 @@ impl Default for TwilightState {
 /// function pure-ish — the caller assembles this from
 /// `Config` + `SystemTime::now()` and we don't reach back into
 /// either.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct TickInputs {
     pub enabled: bool,
     pub schedule: Schedule,
@@ -83,6 +85,11 @@ pub struct TickInputs {
     pub is_static: bool,
     pub idle_interval_s: u32,
     pub now: SystemTime,
+    /// Loaded preset table for `Mode::Schedule`. Empty when the
+    /// user isn't on schedule mode (or the schedule directory is
+    /// unreadable). When set, schedule mode samples from this
+    /// table and bypasses the day/night phase model entirely.
+    pub presets: ScheduleData,
 }
 
 /// What the tick produced. The caller (compositor event loop) uses
@@ -159,7 +166,29 @@ impl TwilightState {
             }
         }
 
-        // 2. Steady-state: resolve phase, sample, decide tick.
+        // 2. Steady-state. Schedule mode samples directly from
+        //    the preset table; everything else flows through the
+        //    phase model (day / night / transitions).
+        if matches!(inputs.schedule.mode, Mode::Schedule) {
+            let now_sec = schedule::local_seconds_of_day(inputs.now);
+            if let Some((temp_k, gamma_pct)) = inputs.presets.sample(now_sec) {
+                let target = Target { temp_k, gamma_pct };
+                self.last_target = Some(target);
+                self.last_phase = None;
+                return TickOutput {
+                    target: Some(target),
+                    phase: None,
+                    // Schedule transitions are smooth — sample
+                    // every 5 s so the colour walks through
+                    // visibly without spamming gamma writes.
+                    next_tick_ms: 5_000,
+                };
+            }
+            // No presets loaded — fall through to the phase
+            // model so the user still gets *something* (day
+            // temps) instead of a neutral screen.
+        }
+
         let phase = inputs.schedule.current(inputs.now);
         let target = interpolation::sample(phase, &inputs.settings, inputs.is_static);
         let next_tick_ms = interpolation::next_tick_ms(phase, inputs.idle_interval_s);
@@ -208,6 +237,7 @@ pub fn schedule_from_config(cfg: &margo_config::Config) -> Schedule {
         margo_config::TwilightMode::Geo => Mode::Geo,
         margo_config::TwilightMode::Manual => Mode::Manual,
         margo_config::TwilightMode::Static => Mode::Static,
+        margo_config::TwilightMode::Schedule => Mode::Schedule,
     };
     Schedule {
         mode,
@@ -261,6 +291,7 @@ mod tests {
             is_static: false,
             idle_interval_s: 60,
             now: SystemTime::UNIX_EPOCH,
+            presets: ScheduleData::default(),
         }
     }
 
@@ -278,7 +309,7 @@ mod tests {
         s.set_preview(2500, 80);
 
         let inputs = baseline_inputs();
-        let out = s.tick(inputs);
+        let out = s.tick(inputs.clone());
         let t = out.target.unwrap();
         assert_eq!(t.temp_k, 2500);
         assert_eq!(t.gamma_pct, 80);
@@ -303,7 +334,7 @@ mod tests {
 
         // Immediately after start: should produce a transitional
         // sample (not exactly day, not exactly night).
-        let out = s.tick(inputs);
+        let out = s.tick(inputs.clone());
         let temp = out.target.unwrap().temp_k;
         assert!(
             (3300..=6500).contains(&temp),

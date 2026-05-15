@@ -29,6 +29,7 @@ pub enum Mode {
     Geo,
     Manual,
     Static,
+    Schedule,
 }
 
 /// What part of the cycle the user is currently in. The
@@ -79,7 +80,13 @@ impl Schedule {
     /// day/night temps).
     pub fn current(&self, now: SystemTime) -> Phase {
         match self.mode {
-            Mode::Static => Phase::Day,
+            // Schedule mode bypasses the day/night phase model
+            // entirely — the tick branches on `is_schedule` and
+            // samples the preset table directly. We still need to
+            // return *something* here so the type-checks pass;
+            // `Phase::Day` is a safe sentinel because the
+            // interpolator never reads it in schedule mode.
+            Mode::Static | Mode::Schedule => Phase::Day,
             Mode::Manual => self.manual_phase(now),
             Mode::Geo => self.geo_phase(now),
         }
@@ -154,7 +161,7 @@ impl Schedule {
 /// (whatever `localtime_r` would return). We dodge `chrono` /
 /// `time` by reading `/etc/localtime` indirectly via libc, which
 /// is the same path glibc takes anyway.
-fn local_seconds_of_day(now: SystemTime) -> u32 {
+pub fn local_seconds_of_day(now: SystemTime) -> u32 {
     let unix = now
         .duration_since(SystemTime::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
