@@ -476,12 +476,22 @@ impl Component for SettingsWindowModel {
             btn
         };
 
-        // Layout — the cross-cutting menu_settings page.
-        let layout_btn = make_sub_btn("Layout", "view-grid-symbolic", "layout", None);
+        // Menus — the cross-cutting menu_settings page (per-menu
+        // position + minimum width + the widget list inside each
+        // menu). Pinned at the top of the Widgets sub-sidebar
+        // because it's the "configure everything at once" view
+        // that ties the per-widget pages together. Used to be
+        // labelled "Layout" but that collided with Display →
+        // Layout (the mlayout monitor panel) — both shared the
+        // same label + icon and there was no way to tell which
+        // one you were clicking. "Menus" is the original name
+        // (this page used to be the top-level `Menus` sidebar
+        // entry before the Bar+Widgets reorg).
+        let layout_btn = make_sub_btn("Menus", "view-list-symbolic", "menus", None);
         widgets_sub_sidebar_box.append(&layout_btn);
         widgets_sub_stack.add_named(
             model.menu_settings_controller.widget(),
-            Some("layout"),
+            Some("menus"),
         );
 
         // Per-entry sub-sidebar rows. Layout is pinned at the
