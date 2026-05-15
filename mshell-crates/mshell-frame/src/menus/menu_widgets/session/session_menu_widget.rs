@@ -15,7 +15,7 @@
 
 use gtk4_layer_shell::{KeyboardMode, LayerShell};
 use mshell_utils::session::{SessionAction, run_session_action};
-use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, EventControllerExt, OrientableExt, WidgetExt};
 use relm4::gtk::{gdk, glib};
 use relm4::{Component, ComponentParts, ComponentSender, RelmWidgetExt, gtk};
 use std::time::Duration;
@@ -174,6 +174,18 @@ impl Component for SessionMenuWidgetModel {
 
         let sc = gtk::ShortcutController::new();
         sc.set_scope(gtk::ShortcutScope::Local);
+        // Capture phase, not Bubble. Tab is GTK4's built-in focus-
+        // chain navigation key — buttons consume it in their
+        // default handler to jump focus to the next focusable
+        // sibling. ShortcutControllers default to Bubble phase,
+        // which means our binding runs *after* the button's
+        // default handler and the event is already eaten.
+        // Capture phase fires the controller before any widget
+        // gets a turn, so Tab / Shift+Tab / Ctrl+N / Ctrl+P /
+        // Ctrl+J / Ctrl+K all reach us. Number keys 1–5 were
+        // already working because buttons don't have a default
+        // handler for those.
+        sc.set_propagation_phase(gtk::PropagationPhase::Capture);
 
         // 1–5 (and keypad) — arm the matching action.
         for (i, (a, b)) in [

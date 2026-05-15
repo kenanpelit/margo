@@ -129,7 +129,7 @@ impl Component for SettingsWindowModel {
                         gtk::Box {
                             set_orientation: gtk::Orientation::Horizontal,
                             set_spacing: 12,
-                            gtk::Image { set_icon_name: Some("preferences-desktop-font-symbolic") },
+                            gtk::Image { set_icon_name: Some("xsi-font-symbolic") },
                             gtk::Label {
                                 add_css_class: "label-medium",
                                 set_label: "Fonts",
