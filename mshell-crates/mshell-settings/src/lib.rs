@@ -20,6 +20,7 @@ mod display_settings;
 mod fonts_settings;
 mod general_settings;
 mod idle_settings;
+mod layout_settings;
 mod menu_settings;
 mod notification_settings;
 mod session_settings;

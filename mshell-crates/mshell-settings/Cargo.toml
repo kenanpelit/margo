@@ -17,5 +17,6 @@ mshell-matugen.workspace = true
 mshell-style.workspace = true
 reactive_graph.workspace = true
 relm4.workspace = true
+serde_json.workspace = true
 tokio = { workspace = true }
 tracing.workspace = true

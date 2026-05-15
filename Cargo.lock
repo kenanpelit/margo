@@ -3917,6 +3917,7 @@ dependencies = [
  "mshell-style",
  "reactive_graph",
  "relm4",
+ "serde_json",
  "tokio",
  "tracing",
 ]

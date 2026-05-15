@@ -81,3 +81,23 @@
     padding: 20px;
     background-color: var(--surface);
 }
+
+// ── Display → Layout panel ─────────────────────────────────────
+//
+// One row per `mlayout` entry. The active layout gets a primary-
+// tinted background so the user can spot it without reading.
+.layout-list {
+    padding: 4px 0;
+}
+
+.layout-row {
+    padding: 10px 12px;
+    border-radius: var(--radius-widget);
+    background-color: var(--surface-variant);
+    color: var(--on-surface-variant);
+}
+
+.layout-row-active {
+    background-color: var(--primary-container);
+    color: var(--on-primary-container);
+}

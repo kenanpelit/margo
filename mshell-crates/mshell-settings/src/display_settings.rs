@@ -16,12 +16,13 @@
 //! so a freshly-opened settings window always reflects what's on
 //! disk, including hand-edits the user made outside this UI.
 
+use crate::layout_settings::{LayoutSettingsInit, LayoutSettingsModel};
 use margo_config::TwilightMode;
 use relm4::gtk::glib;
 use relm4::gtk::prelude::{
     BoxExt, ButtonExt, EditableExt, EntryExt, OrientableExt, ToggleButtonExt, WidgetExt,
 };
-use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 use std::path::PathBuf;
 use std::time::Duration;
 use tracing::warn;
@@ -110,7 +111,6 @@ pub(crate) struct ScheduleRow {
     pub gamma_pct: u32,
 }
 
-#[derive(Debug)]
 pub(crate) struct DisplaySettingsModel {
     state: TwilightSnapshot,
     mode_model: gtk::StringList,
@@ -124,6 +124,9 @@ pub(crate) struct DisplaySettingsModel {
     /// Where margo reads the schedule from. Surfaced in the UI
     /// so the user knows which files to edit.
     schedule_dir_display: String,
+    /// Layout sub-page — owns its own state. Kept on the parent
+    /// model so the controller isn't dropped after `init` returns.
+    layout_controller: Controller<LayoutSettingsModel>,
 }
 
 #[derive(Debug)]
@@ -212,6 +215,26 @@ impl Component for DisplaySettingsModel {
                         gtk::Label {
                             add_css_class: "label-medium",
                             set_label: "Twilight",
+                            set_halign: gtk::Align::Start,
+                            set_hexpand: true,
+                        },
+                    },
+                },
+
+                gtk::ToggleButton {
+                    add_css_class: "sidebar-button",
+                    set_group: Some(&twilight_btn),
+                    connect_toggled[sub_stack] => move |b| {
+                        if b.is_active() { sub_stack.set_visible_child_name("layout"); }
+                    },
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Image { set_icon_name: Some("video-display-symbolic") },
+                        gtk::Label {
+                            add_css_class: "label-medium",
+                            set_label: "Layout",
                             set_halign: gtk::Align::Start,
                             set_hexpand: true,
                         },
@@ -852,6 +875,8 @@ impl Component for DisplaySettingsModel {
                 },
                     }, // inner gtk::Box (page contents)
                 }, // ScrolledWindow named "twilight"
+
+                add_named[Some("layout")] = model.layout_controller.widget(),
             }, // sub_stack
         }
     }
@@ -876,12 +901,17 @@ impl Component for DisplaySettingsModel {
         let schedule_rows = load_schedule_rows(&schedule_dir);
         let schedule_dir_display = schedule_dir.display().to_string();
 
+        let layout_controller = LayoutSettingsModel::builder()
+            .launch(LayoutSettingsInit {})
+            .detach();
+
         let model = DisplaySettingsModel {
             state,
             mode_model,
             reload_debounce: None,
             schedule_rows,
             schedule_dir_display,
+            layout_controller,
         };
 
         let widgets = view_output!();
