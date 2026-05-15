@@ -6,6 +6,11 @@ use crate::bars::bar_widgets::clipboard::{ClipboardInit, ClipboardModel, Clipboa
 use crate::bars::bar_widgets::clock::{ClockInit, ClockModel, ClockOutput};
 use crate::bars::bar_widgets::dark_mode::{DarkModeInit, DarkModeModel};
 use crate::bars::bar_widgets::keep_awake::{KeepAwakeInit, KeepAwakeModel};
+use crate::bars::bar_widgets::lock_keys::{LockKeysInit, LockKeysModel};
+use crate::bars::bar_widgets::sysstat::{
+    CpuMonitorInit, CpuMonitorModel, RamMonitorInit, RamMonitorModel, TempMonitorInit,
+    TempMonitorModel,
+};
 use crate::bars::bar_widgets::hypr_picker::{HyprPickerInit, HyprPickerModel};
 use crate::bars::bar_widgets::margo_dock::{
     MargoDockInit, MargoDockModel, MargoDockOutput,
@@ -456,6 +461,26 @@ impl BarModel {
             BarWidget::KeepAwake => Box::new(
                 KeepAwakeModel::builder()
                     .launch(KeepAwakeInit { orientation })
+                    .detach(),
+            ),
+            BarWidget::LockKeys => Box::new(
+                LockKeysModel::builder()
+                    .launch(LockKeysInit { orientation })
+                    .detach(),
+            ),
+            BarWidget::CpuMonitor => Box::new(
+                CpuMonitorModel::builder()
+                    .launch(CpuMonitorInit { orientation })
+                    .detach(),
+            ),
+            BarWidget::CpuTemp => Box::new(
+                TempMonitorModel::builder()
+                    .launch(TempMonitorInit { orientation })
+                    .detach(),
+            ),
+            BarWidget::RamMonitor => Box::new(
+                RamMonitorModel::builder()
+                    .launch(RamMonitorInit { orientation })
                     .detach(),
             ),
             BarWidget::MargoDock => Box::new(

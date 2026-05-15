@@ -9,6 +9,8 @@ pub(crate) mod clock;
 pub(crate) mod dark_mode;
 pub(crate) mod hypr_picker;
 pub(crate) mod keep_awake;
+pub(crate) mod lock_keys;
+pub(crate) mod sysstat;
 pub(crate) mod margo_dock;
 pub(crate) mod margo_dock_item;
 pub(crate) mod margo_layout;
