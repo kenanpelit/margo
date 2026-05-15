@@ -647,19 +647,16 @@ impl Component for Frame {
 
         // Settings doesn't go through `build_menu` because its
         // content isn't a list of `MenuWidget`s — it's a custom
-        // sidebar + stack laid out by `SettingsWindowModel`. Build
-        // it directly and register a toggle backend so the
-        // quick-action button and the `settings open` IPC route
-        // their open() calls back through us.
+        // sidebar + stack laid out by `SettingsWindowModel`.
+        // Build one controller per Frame; the shell-level
+        // dispatcher registers the toggle backend that resolves
+        // active monitor and emits `ToggleSettingsMenu` to the
+        // right Frame.
         let settings_menu = mshell_settings::SettingsWindowModel::builder()
-            .launch(mshell_settings::SettingsWindowInit {})
+            .launch(mshell_settings::SettingsWindowInit {
+                monitor: Some(params.monitor.clone()),
+            })
             .detach();
-        {
-            let sender_clone = sender.input_sender().clone();
-            mshell_settings::set_toggle_backend(move || {
-                let _ = sender_clone.send(FrameInput::ToggleSettingsMenu);
-            });
-        }
 
         let mut effects = EffectScope::new();
 

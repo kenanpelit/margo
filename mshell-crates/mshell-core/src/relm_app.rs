@@ -9,6 +9,7 @@ use mshell_config::schema::config::{
 };
 use mshell_idle::idle_manager::{self, IdleConfig, IdleStage};
 use mshell_idle::inhibitor::IdleInhibitor;
+use mshell_services::margo_service;
 use mshell_session::session_lock::session_lock;
 use mshell_frame::frame::{Frame, FrameInit, FrameInput};
 use mshell_lockscreen::lock_screen_manager::{LockScreenManagerInit, LockScreenManagerModel};
@@ -79,6 +80,7 @@ pub(crate) enum ShellInput {
     ToggleNpowerMenu(Option<String>),
     ToggleMediaPlayerMenu(Option<String>),
     ToggleSessionMenu(Option<String>),
+    ToggleSettingsMenu(Option<String>),
     RunSessionAction(mshell_utils::session::SessionAction),
     CloseAllMenus,
     ToggleScreenshareMenu(Option<String>, tokio::sync::oneshot::Sender<String>, String),
@@ -167,6 +169,39 @@ impl Component for Shell {
         init_ipc_shell_service(&sender);
         spawn_wallpaper_rotation_timer();
         let idle_config_tx = spawn_idle_manager();
+
+        // Wire mshell-settings' `open_settings()` so it routes
+        // through the shell-level dispatcher instead of pinning
+        // to whichever Frame won the `OnceLock` race at boot.
+        // Settings used to always open on the first monitor
+        // (eDP-1) on multi-output setups because every Frame
+        // would call `set_toggle_backend`, but `OnceLock` keeps
+        // only the first registration.
+        //
+        // Threading: ShellInput contains `Monitor` (a gtk-rs
+        // raw-ptr wrapper) so its Sender is `!Send`. The
+        // `set_toggle_backend` closure must be `Send + Sync`
+        // though, since the caller (gtk click handler) can be on
+        // any glib context. We use a unit-typed tokio channel as
+        // a thread-safe bridge: the closure fires a `()` ping,
+        // and a glib-main-thread task drains the pings, queries
+        // active monitor via `margo_service`, and emits
+        // `ShellInput::ToggleSettingsMenu(Some(monitor))` to the
+        // shell.
+        let (toggle_tx, mut toggle_rx) = tokio::sync::mpsc::unbounded_channel::<()>();
+        mshell_settings::set_toggle_backend(move || {
+            let _ = toggle_tx.send(());
+        });
+        let toggle_app_sender = sender.input_sender().clone();
+        relm4::gtk::glib::spawn_future_local(async move {
+            while toggle_rx.recv().await.is_some() {
+                let monitor = margo_service()
+                    .active_workspace()
+                    .await
+                    .map(|w| w.monitor.get());
+                toggle_app_sender.emit(ShellInput::ToggleSettingsMenu(monitor));
+            }
+        });
 
         let model = Shell {
             window_groups,
@@ -389,6 +424,11 @@ impl Component for Shell {
             ShellInput::ToggleSessionMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
                     frame.emit(FrameInput::ToggleSessionMenu);
+                }
+            }
+            ShellInput::ToggleSettingsMenu(monitor_name) => {
+                if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
+                    frame.emit(FrameInput::ToggleSettingsMenu);
                 }
             }
             ShellInput::RunSessionAction(action) => {

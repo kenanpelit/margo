@@ -8,7 +8,7 @@ use crate::notification_settings::{NotificationSettingsInit, NotificationSetting
 use crate::session_settings::{SessionSettingsInit, SessionSettingsModel};
 use crate::theme_settings::theme_settings::{ThemeSettingsInit, ThemeSettingsModel};
 use crate::wallpaper_settings::{WallpaperSettingsInit, WallpaperSettingsModel};
-use relm4::gtk::prelude::{BoxExt, OrientableExt, ToggleButtonExt, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, MonitorExt, OrientableExt, ToggleButtonExt, WidgetExt};
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 
 pub struct SettingsWindowModel {
@@ -22,6 +22,13 @@ pub struct SettingsWindowModel {
     notification_settings_controller: Controller<NotificationSettingsModel>,
     idle_settings_controller: Controller<IdleSettingsModel>,
     session_settings_controller: Controller<SessionSettingsModel>,
+    /// Panel width — computed from the monitor's geometry in
+    /// `init`. 4:3 aspect with height set to `monitor_h * 3 / 4`
+    /// so the panel covers most of the screen vertically without
+    /// overflowing. Falls back to 780 if no monitor is available.
+    panel_width: i32,
+    /// Panel height — `monitor_h * 3 / 4` if monitor known, else 600.
+    panel_height: i32,
 }
 
 #[derive(Debug)]
@@ -30,7 +37,13 @@ pub enum SettingsWindowInput {}
 #[derive(Debug)]
 pub enum SettingsWindowOutput {}
 
-pub struct SettingsWindowInit {}
+pub struct SettingsWindowInit {
+    /// Monitor whose geometry drives the panel's sizing. The
+    /// frame is per-monitor, so passing the monitor at build
+    /// time lets the panel scale per-display (a 4K screen gets
+    /// a bigger panel than a 1080p one).
+    pub monitor: Option<relm4::gtk::gdk::Monitor>,
+}
 
 #[derive(Debug)]
 pub enum SettingsWindowCommandOutput {}
@@ -52,8 +65,8 @@ impl Component for SettingsWindowModel {
         gtk::Box {
             add_css_class: "settings-panel",
             set_orientation: gtk::Orientation::Horizontal,
-            set_width_request: 780,
-            set_height_request: 600,
+            set_width_request: model.panel_width,
+            set_height_request: model.panel_height,
 
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
@@ -297,10 +310,27 @@ impl Component for SettingsWindowModel {
     }
 
     fn init(
-        _params: Self::Init,
+        params: Self::Init,
         root: Self::Root,
         _sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
+        // Scale the panel to the host monitor so a 4K screen
+        // gets a bigger panel than a 1080p one. Height covers
+        // 3/4 of the screen (gives breathing room above + below
+        // the menu); width keeps a 4:3 aspect against that
+        // height so the sidebar + content read comfortably.
+        // Clamp to a sane floor in case the monitor query
+        // returns something degenerate (headless / virtual).
+        let (panel_width, panel_height) = match params.monitor.as_ref() {
+            Some(monitor) => {
+                let geom = monitor.geometry();
+                let scaled_h = (geom.height() * 3 / 4).max(600);
+                let scaled_w = (scaled_h * 4 / 3).max(780);
+                (scaled_w, scaled_h)
+            }
+            None => (780, 600),
+        };
+
         let general_settings_controller = GeneralSettingsModel::builder()
             .launch(GeneralSettingsInit {})
             .detach();
@@ -352,6 +382,8 @@ impl Component for SettingsWindowModel {
             notification_settings_controller,
             idle_settings_controller,
             session_settings_controller,
+            panel_width,
+            panel_height,
         };
 
         let widgets = view_output!();
