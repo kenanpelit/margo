@@ -14,10 +14,14 @@
 // Tabular numerals keep the width from jittering as the digits
 // change once a second; the slightly-smaller monospace font
 // fits two figures into a bar-pill footprint.
+// Speed readout is intentionally a touch smaller than the
+// shared --font-bar size — figures like "12.3 MB/s" are wide and
+// the monospace face needs the extra breathing room to not push
+// the rest of the bar around as throughput ticks.
 .nnetwork-speed-label {
   font-family: monospace;
   font-variant-numeric: tabular-nums;
-  font-size: 0.78em;
+  font-size: calc(var(--font-bar) * 0.9);
 }
 .nnetwork-bar-widget.online .nnetwork-speed-label {
   color: var(--on-surface);

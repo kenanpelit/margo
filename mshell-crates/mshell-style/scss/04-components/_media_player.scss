@@ -26,7 +26,7 @@
 
 // ── Bar pill ────────────────────────────────────────────────
 .media-player-bar-label {
-  font-size: 0.82em;
+  font-size: var(--font-bar);
   font-weight: 500;
 }
 

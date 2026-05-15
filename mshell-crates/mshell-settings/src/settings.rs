@@ -1,4 +1,6 @@
 use crate::bar_settings::bar_settings::{BarSettingsInit, BarSettingsModel};
+use crate::display_settings::{DisplaySettingsInit, DisplaySettingsModel};
+use crate::fonts_settings::{FontsSettingsInit, FontsSettingsModel};
 use crate::general_settings::{GeneralSettingsInit, GeneralSettingsModel};
 use crate::idle_settings::{IdleSettingsInit, IdleSettingsModel};
 use crate::menu_settings::menu_settings::{MenuSettingsInit, MenuSettingsModel};
@@ -13,6 +15,8 @@ pub(crate) struct SettingsWindowModel {
     general_settings_controller: Controller<GeneralSettingsModel>,
     wallpaper_settings_controller: Controller<WallpaperSettingsModel>,
     theme_settings_controller: Controller<ThemeSettingsModel>,
+    fonts_settings_controller: Controller<FontsSettingsModel>,
+    display_settings_controller: Controller<DisplaySettingsModel>,
     bar_settings_controller: Controller<BarSettingsModel>,
     menu_settings_controller: Controller<MenuSettingsModel>,
     notification_settings_controller: Controller<NotificationSettingsModel>,
@@ -119,6 +123,26 @@ impl Component for SettingsWindowModel {
                         add_css_class: "sidebar-button",
                         set_group: Some(&general_btn),
                         connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("fonts"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("font-x-generic-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Fonts",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
                             if b.is_active() { stack.set_visible_child_name("wallpaper"); }
                         },
 
@@ -129,6 +153,26 @@ impl Component for SettingsWindowModel {
                             gtk::Label {
                                 add_css_class: "label-medium",
                                 set_label: "Wallpaper",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("display"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("display-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Display",
                                 set_halign: gtk::Align::Start,
                                 set_hexpand: true,
                             },
@@ -265,6 +309,14 @@ impl Component for SettingsWindowModel {
             .launch(ThemeSettingsInit {})
             .detach();
 
+        let fonts_settings_controller = FontsSettingsModel::builder()
+            .launch(FontsSettingsInit {})
+            .detach();
+
+        let display_settings_controller = DisplaySettingsModel::builder()
+            .launch(DisplaySettingsInit {})
+            .detach();
+
         let bar_settings_controller = BarSettingsModel::builder()
             .launch(BarSettingsInit {})
             .detach();
@@ -289,6 +341,8 @@ impl Component for SettingsWindowModel {
             general_settings_controller,
             wallpaper_settings_controller,
             theme_settings_controller,
+            fonts_settings_controller,
+            display_settings_controller,
             bar_settings_controller,
             menu_settings_controller,
             notification_settings_controller,
@@ -313,9 +367,21 @@ impl Component for SettingsWindowModel {
         );
 
         widgets.stack.add_titled(
+            model.fonts_settings_controller.widget(),
+            Some("fonts"),
+            "Fonts",
+        );
+
+        widgets.stack.add_titled(
             model.wallpaper_settings_controller.widget(),
             Some("wallpaper"),
             "Wallpaper",
+        );
+
+        widgets.stack.add_titled(
+            model.display_settings_controller.widget(),
+            Some("display"),
+            "Display",
         );
 
         widgets

@@ -4,6 +4,8 @@ use relm4::{Component, ComponentController};
 use std::cell::RefCell;
 
 mod bar_settings;
+mod display_settings;
+mod fonts_settings;
 mod general_settings;
 mod idle_settings;
 mod menu_settings;

@@ -275,12 +275,27 @@ pub(super) fn render_all_outputs(
     state: &mut MargoState,
     reason: &'static str,
 ) {
-    // Apply any gamma ramp updates queued by wlr_gamma_control clients.
+    // Apply any gamma ramp updates queued by wlr_gamma_control
+    // clients (and the built-in twilight scheduler). Multi-GPU
+    // care: this function runs once per `BackendData` (= once per
+    // DRM device), and `state.pending_gamma` is shared across all
+    // devices. Draining unconditionally would consume entries
+    // destined for the *next* device's render pass and silently
+    // drop them — so we only consume entries whose output we can
+    // see in this device's `outputs` map, and re-park the rest
+    // for the next `render_all_outputs` call.
     if !state.pending_gamma.is_empty() {
         let pending = std::mem::take(&mut state.pending_gamma);
+        let mut deferred: Vec<(smithay::output::Output, Option<Vec<u16>>)> = Vec::new();
         for (output, ramp) in pending {
             let target = outputs.values_mut().find(|od| od.output == output);
-            let Some(od) = target else { continue };
+            let Some(od) = target else {
+                // This output lives on another device — keep it
+                // queued so the next render_all_outputs call sees
+                // it.
+                deferred.push((output, ramp));
+                continue;
+            };
             let Some(g) = od.gamma.as_mut() else {
                 tracing::debug!("gamma: skip {} (no GAMMA_LUT)", od.output.name());
                 continue;
@@ -297,6 +312,13 @@ pub(super) fn render_all_outputs(
                     "gamma set failed"
                 ),
             }
+        }
+        if !deferred.is_empty() {
+            state.pending_gamma = deferred;
+            // Kick another repaint so the deferred device picks
+            // up its ramps on the next frame instead of sitting
+            // idle until something else schedules it.
+            state.request_repaint();
         }
     }
 

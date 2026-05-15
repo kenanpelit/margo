@@ -2,8 +2,9 @@
   margin-left: 12px;
 }
 
-// Bar clock — sized to match the other status pills (battery /
-// media / active window) instead of the default body size.
+// Bar clock — uses the shared `--font-bar` token so all status
+// pills (battery / media / active window / clock / nnetwork)
+// stay in step.
 .clock-bar-label {
-  font-size: 0.82em;
+  font-size: var(--font-bar);
 }

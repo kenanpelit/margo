@@ -3910,12 +3910,14 @@ version = "0.6.0"
 dependencies = [
  "dirs",
  "fontconfig",
+ "margo-config",
  "mshell-common",
  "mshell-config",
  "mshell-matugen",
  "mshell-style",
  "reactive_graph",
  "relm4",
+ "tokio",
  "tracing",
 ]
 

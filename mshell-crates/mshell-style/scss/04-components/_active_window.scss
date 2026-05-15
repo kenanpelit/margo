@@ -2,6 +2,6 @@
 // to a window glyph, so the label is sized down to the icon's
 // optical weight (same treatment as the battery / media pills).
 .active-window-bar-label {
-  font-size: 0.82em;
+  font-size: var(--font-bar);
   font-weight: 500;
 }
