@@ -98,6 +98,18 @@ impl ModeKey {
     }
 }
 
+/// One row in the loaded preset schedule. Mirrors margo's own
+/// `ScheduledPreset` shape — copied here instead of imported so
+/// mshell-settings doesn't need to depend on the `margo` binary
+/// crate.
+#[derive(Debug, Clone)]
+pub(crate) struct ScheduleRow {
+    pub time_hhmm: String,
+    pub preset_name: String,
+    pub temp_k: u32,
+    pub gamma_pct: u32,
+}
+
 #[derive(Debug)]
 pub(crate) struct DisplaySettingsModel {
     state: TwilightSnapshot,
@@ -105,6 +117,13 @@ pub(crate) struct DisplaySettingsModel {
     /// Debounce handle for the `mctl reload` poke. A burst of
     /// slider drags should land one reload, not 30.
     reload_debounce: Option<glib::JoinHandle<()>>,
+    /// Loaded preset schedule (`~/.config/margo/twilight/`).
+    /// Sorted by time. Empty when the directory doesn't exist
+    /// yet (margo seeds it on first switch to Schedule mode).
+    schedule_rows: Vec<ScheduleRow>,
+    /// Where margo reads the schedule from. Surfaced in the UI
+    /// so the user knows which files to edit.
+    schedule_dir_display: String,
 }
 
 #[derive(Debug)]
@@ -764,6 +783,48 @@ impl Component for DisplaySettingsModel {
 
                 gtk::Separator {},
 
+                // ── Schedule mode preset list ──────────────────────
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Schedule presets",
+                    set_halign: gtk::Align::Start,
+                },
+
+                gtk::Label {
+                    add_css_class: "label-small",
+                    #[watch]
+                    set_label: &format!(
+                        "Active when Mode = Schedule. Margo interpolates between consecutive presets in mired space as the day progresses. Files live in {} — edit by hand and `mctl reload` to take effect.",
+                        model.schedule_dir_display
+                    ),
+                    set_halign: gtk::Align::Start,
+                    set_xalign: 0.0,
+                    set_wrap: true,
+                    set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                },
+
+                gtk::Label {
+                    add_css_class: "label-small",
+                    #[watch]
+                    set_visible: model.schedule_rows.is_empty(),
+                    set_label: "No presets loaded yet. Switch Mode to Schedule and reload — Margo seeds the directory with a six-preset starter set on first run.",
+                    set_halign: gtk::Align::Start,
+                    set_xalign: 0.0,
+                    set_wrap: true,
+                    set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                },
+
+                #[name = "schedule_grid"]
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    add_css_class: "twilight-schedule-list",
+                    set_spacing: 4,
+                    #[watch]
+                    set_visible: !model.schedule_rows.is_empty(),
+                },
+
+                gtk::Separator {},
+
                 // ── Live preview controls ──────────────────────────
                 gtk::Label {
                     add_css_class: "label-large-bold",
@@ -806,13 +867,51 @@ impl Component for DisplaySettingsModel {
             ModeKey::all().iter().map(|m| m.label()).collect();
         let mode_model = gtk::StringList::new(&mode_label_refs);
 
+        // Twilight schedule + presets from disk. Read-only here
+        // — margo owns the on-disk format; the user edits the
+        // files and `mctl reload` to pick up changes. Empty
+        // vector and a hint string when the directory hasn't
+        // been seeded yet (i.e. user hasn't run Schedule mode).
+        let schedule_dir = twilight_schedule_dir();
+        let schedule_rows = load_schedule_rows(&schedule_dir);
+        let schedule_dir_display = schedule_dir.display().to_string();
+
         let model = DisplaySettingsModel {
             state,
             mode_model,
             reload_debounce: None,
+            schedule_rows,
+            schedule_dir_display,
         };
 
         let widgets = view_output!();
+
+        // Populate the schedule list once at init. Re-runs aren't
+        // wired yet — user clicks "Sweep day → night" and
+        // reopens Settings to see new state. Future: refresh on
+        // reload.
+        for row in &model.schedule_rows {
+            let row_box = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+            row_box.add_css_class("twilight-schedule-row");
+            let time = gtk::Label::new(Some(&row.time_hhmm));
+            time.add_css_class("label-medium-bold");
+            time.set_width_chars(6);
+            time.set_xalign(0.0);
+            row_box.append(&time);
+            let name = gtk::Label::new(Some(&row.preset_name));
+            name.add_css_class("label-medium");
+            name.set_hexpand(true);
+            name.set_xalign(0.0);
+            row_box.append(&name);
+            let temp = gtk::Label::new(Some(&format!("{} K", row.temp_k)));
+            temp.add_css_class("label-small");
+            row_box.append(&temp);
+            let gamma = gtk::Label::new(Some(&format!("{}%", row.gamma_pct)));
+            gamma.add_css_class("label-small");
+            row_box.append(&gamma);
+            widgets.schedule_grid.append(&row_box);
+        }
+
         ComponentParts { model, widgets }
     }
 
@@ -1112,4 +1211,92 @@ fn spawn_mctl(args: &[&str]) {
             Err(e) => warn!(error = %e, args = ?owned, "mctl spawn failed"),
         }
     });
+}
+
+// ── Schedule-mode preset loader ─────────────────────────────────
+//
+// Mirrors margo's own `twilight::preset::ScheduleData::load`. We
+// reimplement instead of importing because `margo` is a binary
+// crate, not a library. The format is small and stable —
+// `schedule.conf` is line-by-line `HH:MM PRESET_NAME`, presets
+// are `presets/<name>.toml` with `static_temp` + `static_gamma`.
+
+fn twilight_schedule_dir() -> PathBuf {
+    // Mirrors margo's default. Empty `twilight_schedule_dir` =
+    // `$XDG_CONFIG_HOME/margo/twilight` (or `~/.config/margo/
+    // twilight`).
+    let raw = match margo_config::parse_config(None) {
+        Ok(cfg) => cfg.twilight_schedule_dir,
+        Err(_) => String::new(),
+    };
+    if !raw.trim().is_empty() {
+        if let Some(stripped) = raw.strip_prefix("~/")
+            && let Some(home) = dirs::home_dir()
+        {
+            return home.join(stripped);
+        }
+        return PathBuf::from(raw);
+    }
+    if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
+        return PathBuf::from(xdg).join("margo").join("twilight");
+    }
+    if let Some(home) = dirs::home_dir() {
+        return home.join(".config").join("margo").join("twilight");
+    }
+    PathBuf::from(".config/margo/twilight")
+}
+
+fn load_schedule_rows(dir: &std::path::Path) -> Vec<ScheduleRow> {
+    let schedule = match std::fs::read_to_string(dir.join("schedule.conf")) {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+    let presets_dir = dir.join("presets");
+    let mut rows: Vec<ScheduleRow> = Vec::new();
+    for line in schedule.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let mut parts = trimmed.split_whitespace();
+        let Some(time_str) = parts.next() else { continue };
+        let Some(name) = parts.next() else { continue };
+        if parse_hhmm(time_str).is_none() {
+            continue;
+        }
+        let p = presets_dir.join(format!("{name}.toml"));
+        if let Some((temp_k, gamma_pct)) = load_preset_file(&p) {
+            rows.push(ScheduleRow {
+                time_hhmm: time_str.to_string(),
+                preset_name: name.to_string(),
+                temp_k,
+                gamma_pct,
+            });
+        }
+    }
+    rows.sort_by(|a, b| a.time_hhmm.cmp(&b.time_hhmm));
+    rows
+}
+
+fn load_preset_file(path: &std::path::Path) -> Option<(u32, u32)> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let mut temp_k: Option<u32> = None;
+    let mut gamma_pct: Option<u32> = None;
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') || line.starts_with('[') {
+            continue;
+        }
+        let Some((k, v)) = line.split_once('=') else {
+            continue;
+        };
+        let key = k.trim();
+        let val = v.trim().trim_matches('"');
+        match key {
+            "static_temp" => temp_k = val.parse().ok().map(|n: u32| n.clamp(1000, 25000)),
+            "static_gamma" => gamma_pct = val.parse().ok().map(|n: u32| n.clamp(10, 200)),
+            _ => {}
+        }
+    }
+    Some((temp_k?, gamma_pct?))
 }

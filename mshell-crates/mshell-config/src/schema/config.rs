@@ -98,10 +98,21 @@ pub struct General {
     /// Layer-shell windows masked at each corner so the
     /// underlying compositor's rectangular monitor edges read
     /// as soft corners. Click-through; no input region.
+    ///
+    /// **Off by default** — the frame's own `border-radius`
+    /// (CSS variable, 24 px default) already rounds the bar's
+    /// outer corners, so for most setups the extra overlay
+    /// duplicates the curve at a different radius and produces
+    /// a visible step where the two arcs meet. Turn this on
+    /// (and set `screen_corner_radius` to match your frame
+    /// border-radius, 24 px by default) only when your
+    /// compositor doesn't already paint rounded corners.
     pub show_screen_corners: bool,
     /// Corner radius in pixels for the screen-corners overlay.
-    /// Ignored when `show_screen_corners = false`. 12 is a
-    /// noctalia-style default.
+    /// Ignored when `show_screen_corners = false`. To avoid a
+    /// visible step against the bar's own rounded corner, set
+    /// this equal to the frame's `border-radius` (CSS variable
+    /// `--frame-border-radius`, default `24`).
     pub screen_corner_radius: u32,
 }
 
@@ -114,8 +125,8 @@ impl Default for General {
                 lon: OrdF64(0.0),
             },
             temperature_unit: TemperatureUnitConfig::Metric,
-            show_screen_corners: true,
-            screen_corner_radius: 12,
+            show_screen_corners: false,
+            screen_corner_radius: 24,
         }
     }
 }

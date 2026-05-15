@@ -355,7 +355,7 @@ impl Component for GeneralSettingsModel {
                         gtk::Label {
                             add_css_class: "label-small",
                             set_halign: gtk::Align::Start,
-                            set_label: "Mask each monitor's four corners so the screen reads as having rounded edges. Click-through; doesn't intercept input.",
+                            set_label: "Mask each monitor's four corners so the screen reads as having rounded edges. Click-through. Off by default — the bar already paints its own rounded corners at the CSS frame-border-radius (24 px). Enable only when you also want the area *outside* the bar curved (e.g. bezel-less monitor), and set the radius below to match the frame border-radius so the two arcs line up.",
                             set_hexpand: true,
                             set_xalign: 0.0,
                             set_wrap: true,
@@ -390,7 +390,7 @@ impl Component for GeneralSettingsModel {
                         gtk::Label {
                             add_css_class: "label-small",
                             set_halign: gtk::Align::Start,
-                            set_label: "How wide a quarter-circle each corner mask carves out. 12 is a noctalia-style default. Change takes effect on the next mshell relaunch or `mctl reload`.",
+                            set_label: "How wide a quarter-circle each corner mask carves out. Should match your frame border-radius (24 px default) so the bar's curve and the screen mask's curve line up — otherwise the two arcs meet at a visible step. Takes effect on the next `mctl reload` or monitor hotplug.",
                             set_hexpand: true,
                             set_xalign: 0.0,
                             set_wrap: true,
