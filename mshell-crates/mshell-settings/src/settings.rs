@@ -42,14 +42,20 @@ impl Component for SettingsWindowModel {
     type Output = SettingsWindowOutput;
     type Init = SettingsWindowInit;
 
+    // Compact popup style — undecorated, fixed-size, and styled
+    // via `.settings-window-popup` so it reads as a sub-surface
+    // panel rather than a full window. The full menu-stack embed
+    // (parity with noctalia's `SettingsPanel`) is a deferred
+    // refactor — see road_map_mshell.md §S1.
     view! {
         #[root]
         gtk::Window {
             add_css_class: "settings-window",
-            set_decorated: true,
-            set_resizable: true,
+            add_css_class: "settings-window-popup",
+            set_decorated: false,
+            set_resizable: false,
             set_visible: true,
-            set_default_size: (800, 700),
+            set_default_size: (780, 600),
 
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
@@ -57,7 +63,7 @@ impl Component for SettingsWindowModel {
                 gtk::Box {
                     add_css_class: "settings-sidebar",
                     set_orientation: gtk::Orientation::Vertical,
-                    set_width_request: 180,
+                    set_width_request: 170,
                     set_spacing: 4,
                     set_hexpand: false,
 

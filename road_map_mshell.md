@@ -48,7 +48,7 @@ it), inside the same layer-shell window every other menu lives in. mshell
 today launches Settings as a `gtk::Window` — a decorated toplevel that the
 compositor treats as a normal app. The owner wants the embedded form.
 
-**S1 — Embed Settings in the frame menu stack.**
+**S1 — Embed Settings in the frame menu stack.** _(dedicated session)_
 
 Convert `mshell-settings::open_settings` from a `gtk::Window` constructor
 into a relm4 component reusing the frame's menu surface (same path as
@@ -56,6 +56,15 @@ into a relm4 component reusing the frame's menu surface (same path as
 follows `ESC` + click-outside like the rest. Result: settings opens in
 under 50 ms with no compositor round-trip for a new toplevel, and feels
 consistent with the rest of the shell.
+
+**Status (2026-05-15):** ⚠️ Partial. Cosmetic step shipped — the window
+is now `decorated(false) + resizable(false) + 780×600 fixed` so it reads
+as a compact popup. The full menu-stack embed touches 5–6 files in
+`frame.rs` (struct field, FrameInput variant, view! macro stack page,
+toggle handler, reposition arg, position config schema) plus the
+`open_settings` thread-local → `set_toggle_backend` bridge in
+`mshell-settings/lib.rs`. Pause-and-resume mid-turn risks a half-broken
+settings flow; book a focused single-task session.
 
 Also fold in a **compact layout pass** while we're rewriting it:
 - Two-column for boolean rows + slider rows where space allows
