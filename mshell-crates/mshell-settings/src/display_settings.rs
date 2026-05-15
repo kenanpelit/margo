@@ -19,7 +19,7 @@
 use margo_config::TwilightMode;
 use relm4::gtk::glib;
 use relm4::gtk::prelude::{
-    BoxExt, ButtonExt, EditableExt, EntryExt, OrientableExt, WidgetExt,
+    BoxExt, ButtonExt, EditableExt, EntryExt, OrientableExt, ToggleButtonExt, WidgetExt,
 };
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::path::PathBuf;
@@ -138,29 +138,87 @@ impl Component for DisplaySettingsModel {
     type Init = DisplaySettingsInit;
 
     view! {
+        // Display is split into sub-sections via an inner sidebar
+        // on the left + a Stack on the right. Twilight is the only
+        // sub-section today; future Display features (output scale,
+        // colour calibration, …) can land as new toggle buttons +
+        // stack pages without touching the outer settings layout.
         #[root]
-        gtk::ScrolledWindow {
-            set_vscrollbar_policy: gtk::PolicyType::Automatic,
-            set_hscrollbar_policy: gtk::PolicyType::Never,
-            set_propagate_natural_height: false,
-            set_propagate_natural_width: false,
+        gtk::Box {
+            set_orientation: gtk::Orientation::Horizontal,
             set_hexpand: true,
             set_vexpand: true,
 
             gtk::Box {
-                add_css_class: "settings-page",
+                add_css_class: "settings-subsidebar",
                 set_orientation: gtk::Orientation::Vertical,
-                set_hexpand: true,
-                set_spacing: 16,
+                set_width_request: 140,
+                set_spacing: 4,
+                set_hexpand: false,
 
                 gtk::Label {
-                    add_css_class: "label-small",
-                    set_label: "Blue-light filter (twilight) — bakes its colour-temperature schedule into margo's gamma pipeline, so a single tweak here covers every output. Changes write back to ~/.config/margo/config.conf and ping mctl reload.",
+                    add_css_class: "label-medium-bold",
+                    set_margin_start: 8,
+                    set_margin_top: 12,
+                    set_margin_bottom: 6,
+                    set_margin_end: 8,
+                    set_label: "Display",
                     set_halign: gtk::Align::Start,
-                    set_xalign: 0.0,
-                    set_wrap: true,
-                    set_natural_wrap_mode: gtk::NaturalWrapMode::None,
                 },
+
+                gtk::Separator {},
+
+                #[name = "twilight_btn"]
+                gtk::ToggleButton {
+                    add_css_class: "sidebar-button",
+                    set_active: true,
+                    connect_toggled[sub_stack] => move |b| {
+                        if b.is_active() { sub_stack.set_visible_child_name("twilight"); }
+                    },
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 12,
+                        gtk::Image { set_icon_name: Some("nightlight-symbolic") },
+                        gtk::Label {
+                            add_css_class: "label-medium",
+                            set_label: "Twilight",
+                            set_halign: gtk::Align::Start,
+                            set_hexpand: true,
+                        },
+                    },
+                },
+            },
+
+            #[name = "sub_stack"]
+            gtk::Stack {
+                set_transition_type: gtk::StackTransitionType::Crossfade,
+                set_transition_duration: 50,
+                set_hexpand: true,
+                set_vexpand: true,
+
+                add_named[Some("twilight")] = &gtk::ScrolledWindow {
+                    set_vscrollbar_policy: gtk::PolicyType::Automatic,
+                    set_hscrollbar_policy: gtk::PolicyType::Never,
+                    set_propagate_natural_height: false,
+                    set_propagate_natural_width: false,
+                    set_hexpand: true,
+                    set_vexpand: true,
+
+                    gtk::Box {
+                        add_css_class: "settings-page",
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        set_spacing: 16,
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_label: "Blue-light filter — bakes its colour-temperature schedule into margo's gamma pipeline, so a single tweak here covers every output. Changes write back to ~/.config/margo/config.conf and ping mctl reload.",
+                            set_halign: gtk::Align::Start,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
 
                 // ── Master switch + mode ───────────────────────────
                 gtk::Label {
@@ -721,7 +779,9 @@ impl Component for DisplaySettingsModel {
                         },
                     },
                 },
-            }
+                    }, // inner gtk::Box (page contents)
+                }, // ScrolledWindow named "twilight"
+            }, // sub_stack
         }
     }
 

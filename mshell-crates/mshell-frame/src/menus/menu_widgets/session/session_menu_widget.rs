@@ -15,13 +15,24 @@
 
 use gtk4_layer_shell::{KeyboardMode, LayerShell};
 use mshell_utils::session::{SessionAction, run_session_action};
-use relm4::gtk::prelude::{BoxExt, ButtonExt, EventControllerExt, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
 use relm4::gtk::{gdk, glib};
 use relm4::{Component, ComponentParts, ComponentSender, RelmWidgetExt, gtk};
 use std::time::Duration;
 
 /// Seconds an armed action counts down before it fires.
 const COUNTDOWN_SECS: u8 = 3;
+
+/// What a key-shortcut should do. Kept as a plain `Copy` enum so a
+/// single closure factory can emit any of them without owning the
+/// component sender per binding.
+#[derive(Debug, Clone, Copy)]
+enum ShortcutAction {
+    Arm(SessionAction),
+    FocusNext,
+    FocusPrev,
+    Cancel,
+}
 
 pub(crate) struct SessionMenuWidgetModel {
     /// The five action buttons, in display order — kept so the
@@ -119,58 +130,117 @@ impl Component for SessionMenuWidgetModel {
         // All keyboard handling lives here — number keys arm the
         // countdown, Tab / Ctrl+N walk focus, Escape cancels.
         //
-        // **Capture phase, not Bubble.** All five buttons are
-        // `focusable(true)`, so GTK4's default Tab handler walks
-        // focus between them and *consumes* the event before it
-        // bubbles up. With Bubble we'd never see Tab / Shift+Tab —
-        // only the number keys (which buttons don't intercept)
-        // would work, which is exactly the symptom we were chasing.
-        // Capture sees every keypress before any widget's default
-        // handler gets a turn.
-        let key_controller = gtk::EventControllerKey::new();
-        key_controller.set_propagation_phase(gtk::PropagationPhase::Capture);
-        let sender_clone = sender.clone();
-        key_controller.connect_key_pressed(move |_, key, _, modifier| {
-            let ctrl = modifier.contains(gdk::ModifierType::CONTROL_MASK);
-            let shift = modifier.contains(gdk::ModifierType::SHIFT_MASK);
-
-            // 1–5 arm the matching action.
-            let number = match key {
-                gdk::Key::_1 | gdk::Key::KP_1 => Some(0),
-                gdk::Key::_2 | gdk::Key::KP_2 => Some(1),
-                gdk::Key::_3 | gdk::Key::KP_3 => Some(2),
-                gdk::Key::_4 | gdk::Key::KP_4 => Some(3),
-                gdk::Key::_5 | gdk::Key::KP_5 => Some(4),
-                _ => None,
+        // **Why a `ShortcutController` (not `EventControllerKey`).**
+        // Two earlier attempts to wire keys via `EventControllerKey`
+        // failed:
+        //
+        //   * default `Bubble` phase: every button is
+        //     `focusable(true)`, so GTK4's built-in Tab handler
+        //     moved focus and *consumed* the event before it
+        //     could bubble up to our controller.
+        //   * `Capture` phase: didn't fire reliably either —
+        //     focus path / mapping timing seemed to leave the
+        //     controller dormant on a freshly-revealed menu.
+        //
+        // `ShortcutController` (the same path the frame uses for
+        // its ESC handler) sidesteps both issues: each shortcut is
+        // a `KeyvalTrigger` matched against the keymap before any
+        // widget gets a turn at the event. As long as the layer
+        // surface holds keyboard focus, the binding fires.
+        let make_shortcut =
+            |key: gdk::Key, mods: gdk::ModifierType, msg: ShortcutAction| {
+                let s = sender.clone();
+                gtk::Shortcut::builder()
+                    .trigger(&gtk::KeyvalTrigger::new(key, mods))
+                    .action(&gtk::CallbackAction::new(move |_, _| {
+                        match msg {
+                            ShortcutAction::Arm(action) => {
+                                s.input(SessionMenuWidgetInput::Arm(action));
+                            }
+                            ShortcutAction::FocusNext => {
+                                s.input(SessionMenuWidgetInput::FocusNext);
+                            }
+                            ShortcutAction::FocusPrev => {
+                                s.input(SessionMenuWidgetInput::FocusPrev);
+                            }
+                            ShortcutAction::Cancel => {
+                                s.input(SessionMenuWidgetInput::Cancel);
+                            }
+                        }
+                        glib::Propagation::Stop
+                    }))
+                    .build()
             };
-            if let Some(idx) = number {
-                if let Some(action) = SessionAction::ALL.get(idx) {
-                    sender_clone.input(SessionMenuWidgetInput::Arm(*action));
-                }
-                return glib::Propagation::Stop;
-            }
 
-            if matches!(key, gdk::Key::Escape) {
-                sender_clone.input(SessionMenuWidgetInput::Cancel);
-                return glib::Propagation::Proceed;
-            }
+        let sc = gtk::ShortcutController::new();
+        sc.set_scope(gtk::ShortcutScope::Local);
 
-            let is_next = (matches!(key, gdk::Key::Tab) && !shift)
-                || (ctrl && matches!(key, gdk::Key::n | gdk::Key::N | gdk::Key::j | gdk::Key::J));
-            let is_prev = matches!(key, gdk::Key::ISO_Left_Tab)
-                || (matches!(key, gdk::Key::Tab) && shift)
-                || (ctrl && matches!(key, gdk::Key::p | gdk::Key::P | gdk::Key::k | gdk::Key::K));
-            if is_next {
-                sender_clone.input(SessionMenuWidgetInput::FocusNext);
-                glib::Propagation::Stop
-            } else if is_prev {
-                sender_clone.input(SessionMenuWidgetInput::FocusPrev);
-                glib::Propagation::Stop
-            } else {
-                glib::Propagation::Proceed
-            }
-        });
-        root.add_controller(key_controller);
+        // 1–5 (and keypad) — arm the matching action.
+        for (i, (a, b)) in [
+            (gdk::Key::_1, gdk::Key::KP_1),
+            (gdk::Key::_2, gdk::Key::KP_2),
+            (gdk::Key::_3, gdk::Key::KP_3),
+            (gdk::Key::_4, gdk::Key::KP_4),
+            (gdk::Key::_5, gdk::Key::KP_5),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let Some(action) = SessionAction::ALL.get(i) else { continue };
+            sc.add_shortcut(make_shortcut(
+                a,
+                gdk::ModifierType::empty(),
+                ShortcutAction::Arm(*action),
+            ));
+            sc.add_shortcut(make_shortcut(
+                b,
+                gdk::ModifierType::empty(),
+                ShortcutAction::Arm(*action),
+            ));
+        }
+
+        // Focus walk forward — Tab, Ctrl+N, Ctrl+J.
+        sc.add_shortcut(make_shortcut(
+            gdk::Key::Tab,
+            gdk::ModifierType::empty(),
+            ShortcutAction::FocusNext,
+        ));
+        for key in [gdk::Key::n, gdk::Key::j] {
+            sc.add_shortcut(make_shortcut(
+                key,
+                gdk::ModifierType::CONTROL_MASK,
+                ShortcutAction::FocusNext,
+            ));
+        }
+
+        // Focus walk back — Shift+Tab (ISO_Left_Tab), Ctrl+P, Ctrl+K.
+        sc.add_shortcut(make_shortcut(
+            gdk::Key::ISO_Left_Tab,
+            gdk::ModifierType::SHIFT_MASK,
+            ShortcutAction::FocusPrev,
+        ));
+        sc.add_shortcut(make_shortcut(
+            gdk::Key::Tab,
+            gdk::ModifierType::SHIFT_MASK,
+            ShortcutAction::FocusPrev,
+        ));
+        for key in [gdk::Key::p, gdk::Key::k] {
+            sc.add_shortcut(make_shortcut(
+                key,
+                gdk::ModifierType::CONTROL_MASK,
+                ShortcutAction::FocusPrev,
+            ));
+        }
+
+        // Esc — cancel any running countdown (frame still closes
+        // the menu via its own global ESC shortcut).
+        sc.add_shortcut(make_shortcut(
+            gdk::Key::Escape,
+            gdk::ModifierType::empty(),
+            ShortcutAction::Cancel,
+        ));
+
+        root.add_controller(sc);
 
         let model = SessionMenuWidgetModel {
             buttons,

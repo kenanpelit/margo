@@ -37,8 +37,26 @@ pub(crate) struct BarSettingsModel {
     top_reveal_by_default: bool,
     bottom_reveal_by_default: bool,
     quick_settings_icon: QuickSettingsIcon,
+    /// Debounce handles for the two `min_height` spin buttons.
+    ///
+    /// Each click of the SpinButton's up / down arrow fires
+    /// `value_changed`, and `update_config` writes to disk +
+    /// triggers a `notify` reload + re-runs every effect bound to
+    /// the bars store. Dragging through ten values in a second
+    /// turned that into a write storm that occasionally took
+    /// mshell down — the bar tree was being rebuilt while still
+    /// inside an earlier rebuild. We coalesce here: stage the
+    /// value into model state for immediate UI feedback, but only
+    /// persist (and re-apply) once the value has settled for
+    /// `MIN_HEIGHT_DEBOUNCE_MS`.
+    top_min_height_debounce: Option<glib::JoinHandle<()>>,
+    bottom_min_height_debounce: Option<glib::JoinHandle<()>>,
     _effects: EffectScope,
 }
+
+/// How long the spin button has to stay still before we commit
+/// the value through `update_config`.
+const MIN_HEIGHT_DEBOUNCE_MS: u64 = 350;
 
 #[derive(Debug)]
 pub(crate) enum BarSettingsInput {
@@ -50,6 +68,12 @@ pub(crate) enum BarSettingsInput {
     SelectedMonitorsChanged(Vec<String>),
     TopMinHeightChanged(i32),
     BottomMinHeightChanged(i32),
+    /// Debounced commit — actually persist the staged
+    /// `top_min_height` to config.
+    CommitTopMinHeight,
+    /// Debounced commit — actually persist the staged
+    /// `bottom_min_height` to config.
+    CommitBottomMinHeight,
     TopRevealByDefaultChanged(bool),
     BottomRevealByDefaultChanged(bool),
     QuickSettingsIconChanged(QuickSettingsIcon),
@@ -634,6 +658,8 @@ impl Component for BarSettingsModel {
                 .quick_settings()
                 .icon()
                 .get_untracked(),
+            top_min_height_debounce: None,
+            bottom_min_height_debounce: None,
             _effects: effects,
         };
 
@@ -697,16 +723,50 @@ impl Component for BarSettingsModel {
                 self.rebuild_menu(widgets, &sender);
             }
             BarSettingsInput::TopMinHeightChanged(min) => {
+                // Stage the value immediately so the UI reflects the
+                // current spin-button position, but defer persisting
+                // it until the user stops scrubbing. See
+                // `MIN_HEIGHT_DEBOUNCE_MS` for the rationale.
                 self.top_min_height = min;
-                let config_manager = config_manager();
-                config_manager.update_config(|config| {
-                    config.bars.top_bar.minimum_height = min;
-                });
+                if let Some(h) = self.top_min_height_debounce.take() {
+                    h.abort();
+                }
+                let sender_clone = sender.clone();
+                self.top_min_height_debounce =
+                    Some(glib::spawn_future_local(async move {
+                        glib::timeout_future(std::time::Duration::from_millis(
+                            MIN_HEIGHT_DEBOUNCE_MS,
+                        ))
+                        .await;
+                        sender_clone.input(BarSettingsInput::CommitTopMinHeight);
+                    }));
             }
             BarSettingsInput::BottomMinHeightChanged(min) => {
                 self.bottom_min_height = min;
-                let config_manager = config_manager();
-                config_manager.update_config(|config| {
+                if let Some(h) = self.bottom_min_height_debounce.take() {
+                    h.abort();
+                }
+                let sender_clone = sender.clone();
+                self.bottom_min_height_debounce =
+                    Some(glib::spawn_future_local(async move {
+                        glib::timeout_future(std::time::Duration::from_millis(
+                            MIN_HEIGHT_DEBOUNCE_MS,
+                        ))
+                        .await;
+                        sender_clone.input(BarSettingsInput::CommitBottomMinHeight);
+                    }));
+            }
+            BarSettingsInput::CommitTopMinHeight => {
+                self.top_min_height_debounce = None;
+                let min = self.top_min_height;
+                config_manager().update_config(|config| {
+                    config.bars.top_bar.minimum_height = min;
+                });
+            }
+            BarSettingsInput::CommitBottomMinHeight => {
+                self.bottom_min_height_debounce = None;
+                let min = self.bottom_min_height;
+                config_manager().update_config(|config| {
                     config.bars.bottom_bar.minimum_height = min;
                 });
             }
