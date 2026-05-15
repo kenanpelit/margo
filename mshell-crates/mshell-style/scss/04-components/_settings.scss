@@ -31,6 +31,37 @@
     }
 }
 
+// ── Add-widget popover ───────────────────────────────────────────
+//
+// Drops out of `MenuButton::set_popover`. The old `gio::Menu`
+// rendering didn't scroll, so a long widget catalogue overflowed
+// the panel and lower items were unreachable. Now a popover with a
+// height-capped ScrolledWindow holds one button per widget.
+.settings-bar-widget-add-popover {
+    > contents {
+        padding: 4px;
+    }
+}
+
+.settings-bar-widget-add-list {
+    min-width: 200px;
+}
+
+.settings-bar-widget-add-item {
+    padding: 6px 10px;
+    border-radius: var(--radius-widget);
+    // Match the popover-menu look: left-aligned label, no frame,
+    // hover-accent on the surface-container colour so the active
+    // row reads like a menu hover.
+    label {
+        font-size: var(--font-medium);
+    }
+
+    &:hover {
+        background-color: var(--surface-container-high);
+    }
+}
+
 .settings-menu-widget-section {
     padding: 20px;
     border-radius: var(--radius-widget);

@@ -4,8 +4,7 @@ use crate::bar_settings::bar_widget_factory::{
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::bar_widgets::BarWidget;
 use relm4::factory::FactoryVecDeque;
-use relm4::gtk::gio;
-use relm4::gtk::prelude::{ActionMapExt, BoxExt, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, PopoverExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -146,18 +145,41 @@ impl Component for WidgetSectionModel {
 }
 
 impl WidgetSectionModel {
+    /// Build the "Add widget" popover.
+    ///
+    /// We used to feed a `gio::Menu` to `MenuButton::set_menu_model`
+    /// but GTK's native menu rendering doesn't scroll — with the
+    /// catalogue now > 35 entries, the menu ran off the bottom of
+    /// the panel and lower items were unreachable. A hand-rolled
+    /// `gtk::Popover` with a height-capped `ScrolledWindow` inside
+    /// gives us both the lookup-style UX and a scrollbar when
+    /// needed.
     fn build_add_menu(button: &gtk::MenuButton, location: BarListLocation) {
-        let menu = gio::Menu::new();
-        let action_group = gio::SimpleActionGroup::new();
+        let popover = gtk::Popover::new();
+        popover.add_css_class("settings-bar-widget-add-popover");
+
+        let scrolled = gtk::ScrolledWindow::new();
+        scrolled.set_vscrollbar_policy(gtk::PolicyType::Automatic);
+        scrolled.set_hscrollbar_policy(gtk::PolicyType::Never);
+        // 360 px keeps roughly 10 entries visible at once on the
+        // panel's default font scale — past that we scroll. The
+        // popover sizes to content if the list is shorter.
+        scrolled.set_max_content_height(360);
+        scrolled.set_propagate_natural_height(true);
+        scrolled.set_propagate_natural_width(true);
+
+        let list = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        list.add_css_class("settings-bar-widget-add-list");
 
         for widget in BarWidget::all() {
-            let action_name = widget.action_name();
-            let action = gio::SimpleAction::new(&action_name, None);
+            let btn = gtk::Button::with_label(widget.display_name());
+            btn.set_css_classes(&["settings-bar-widget-add-item"]);
+            btn.set_halign(gtk::Align::Fill);
+            btn.set_has_frame(false);
 
-            // Direct config write — bypass the parent message channel
-            // for the same reason as the factory children.
             let widget_clone = widget.clone();
-            action.connect_activate(move |_, _| {
+            let popover_clone = popover.clone();
+            btn.connect_clicked(move |_| {
                 let widget_clone = widget_clone.clone();
                 config_manager().update_config(move |config| {
                     let list = match location {
@@ -172,16 +194,14 @@ impl WidgetSectionModel {
                     };
                     list.push(widget_clone);
                 });
+                popover_clone.popdown();
             });
 
-            action_group.add_action(&action);
-            menu.append(
-                Some(widget.display_name()),
-                Some(&format!("widget.{action_name}")),
-            );
+            list.append(&btn);
         }
 
-        button.insert_action_group("widget", Some(&action_group));
-        button.set_menu_model(Some(&menu));
+        scrolled.set_child(Some(&list));
+        popover.set_child(Some(&scrolled));
+        button.set_popover(Some(&popover));
     }
 }
