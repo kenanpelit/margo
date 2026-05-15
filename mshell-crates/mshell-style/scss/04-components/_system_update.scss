@@ -1,0 +1,19 @@
+// System-update bar pill — package-count label next to a
+// symbolic icon. Sized like the battery pill so the row reads
+// uniformly.
+.system-update-bar-label {
+  font-size: var(--font-bar);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+// Accent the pill when there are pending updates so the user
+// notices without having to read the count. Error state uses
+// the urgent-red tone the bar's other warning pills share.
+.system-update-bar-widget.has-updates {
+  color: var(--primary);
+}
+
+.system-update-bar-widget.error {
+  color: var(--error);
+}

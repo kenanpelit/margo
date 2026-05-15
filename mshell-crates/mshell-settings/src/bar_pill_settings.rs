@@ -36,6 +36,7 @@ pub(crate) enum BarPillKind {
     Reboot,
     RecordingIndicator,
     Shutdown,
+    SystemUpdate,
     Tray,
     VpnIndicator,
 }
@@ -61,6 +62,7 @@ impl BarPillKind {
             Self::Reboot => "Reboot",
             Self::RecordingIndicator => "Recording Indicator",
             Self::Shutdown => "Shutdown",
+            Self::SystemUpdate => "System Updates",
             Self::Tray => "System Tray",
             Self::VpnIndicator => "VPN Indicator",
         }
@@ -121,6 +123,9 @@ impl BarPillKind {
             }
             Self::VpnIndicator => {
                 "Visual cue when a VPN tunnel is up (NetworkManager / wg-quick / openvpn)."
+            }
+            Self::SystemUpdate => {
+                "Pending OS update count (pacman / yay / paru / dnf / apt). Polls every 30 min; auto-hides when zero updates are available. Click opens a terminal running the upgrade command. AUR helpers are preferred when present so a single click covers repo + AUR."
             }
         }
     }

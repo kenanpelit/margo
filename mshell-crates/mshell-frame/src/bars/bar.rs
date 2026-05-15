@@ -47,6 +47,7 @@ use crate::bars::bar_widgets::recording_indicator::{
 use crate::bars::bar_widgets::screenshot::{ScreenshotInit, ScreenshotModel, ScreenshotOutput};
 use crate::bars::bar_widgets::shutdown::{ShutdownInit, ShutdownModel};
 use crate::bars::bar_widgets::system_tray::{SystemTrayInit, SystemTrayModel};
+use crate::bars::bar_widgets::system_update::{SystemUpdateInit, SystemUpdateModel};
 use crate::bars::bar_widgets::vpn_indicator::{VpnIndicatorInit, VpnIndicatorModel};
 use crate::bars::bar_widgets::wallpaper::{WallpaperInit, WallpaperModel, WallpaperOutput};
 use mshell_common::dynamic_box::generic_widget_controller::GenericWidgetController;
@@ -635,6 +636,11 @@ impl BarModel {
             BarWidget::Tray => Box::new(
                 SystemTrayModel::builder()
                     .launch(SystemTrayInit { orientation })
+                    .detach(),
+            ),
+            BarWidget::SystemUpdate => Box::new(
+                SystemUpdateModel::builder()
+                    .launch(SystemUpdateInit { orientation })
                     .detach(),
             ),
             BarWidget::VpnIndicator => Box::new(

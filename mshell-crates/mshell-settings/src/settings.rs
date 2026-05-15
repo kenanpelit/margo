@@ -484,102 +484,136 @@ impl Component for SettingsWindowModel {
             Some("layout"),
         );
 
-        // Per-menu pages (alphabetical). Each uses the generic
-        // `WidgetMenuSettings` component parameterised by
-        // `MenuKind`.
-        let menu_pages = [
-            (MenuKind::AppLauncher, "app_launcher", "App Launcher", "view-grid-symbolic"),
-            (MenuKind::Clipboard, "clipboard", "Clipboard", "edit-paste-symbolic"),
-            (MenuKind::Clock, "clock", "Clock", "alarm-symbolic"),
-            (MenuKind::Ndns, "ndns", "DNS / VPN", "network-vpn-symbolic"),
-            (MenuKind::MediaPlayer, "media_player", "Media Player", "media-playback-start-symbolic"),
-            (MenuKind::Nnetwork, "nnetwork", "Network Console", "network-workgroup-symbolic"),
-            (MenuKind::Nip, "nip", "Public IP", "network-wired-symbolic"),
-            (MenuKind::Nnotes, "nnotes", "Notes Hub", "notes-symbolic"),
-            (MenuKind::Npodman, "npodman", "Podman", "package-symbolic"),
-            (MenuKind::Npower, "npower", "Power Profile", "power-profile-balanced-symbolic"),
-            (MenuKind::QuickSettings, "quick_settings", "Quick Settings", "settings-symbolic"),
-            (MenuKind::Screenshot, "screenshot", "Screenshot", "camera-photo-symbolic"),
-            (MenuKind::Nufw, "nufw", "UFW Firewall", "firewall-symbolic"),
-        ];
+        // Per-entry sub-sidebar rows. Layout is pinned at the
+        // top (it's the catalogue page that ties everything
+        // together); everything else is sorted alphabetically by
+        // the visible label so widget pages, bar-pill info pages
+        // and the rich Notifications / Session pages interleave
+        // into one easy-to-scan list.
+        enum WidgetEntry {
+            Menu {
+                kind: MenuKind,
+                stack_name: &'static str,
+                label: &'static str,
+                icon: &'static str,
+            },
+            Pill {
+                kind: BarPillKind,
+                stack_name: &'static str,
+                label: &'static str,
+                icon: &'static str,
+            },
+            Notifications,
+            Session,
+        }
 
-        // Controllers must outlive the function — store them on
-        // a Vec stashed in the model so they aren't dropped when
-        // the closure returns.
+        impl WidgetEntry {
+            fn label(&self) -> &'static str {
+                match self {
+                    Self::Menu { label, .. } | Self::Pill { label, .. } => label,
+                    Self::Notifications => "Notifications",
+                    Self::Session => "Session",
+                }
+            }
+        }
+
+        let mut entries: Vec<WidgetEntry> = vec![
+            // Menu surfaces (own their own widget_menu_settings page).
+            WidgetEntry::Menu { kind: MenuKind::AppLauncher, stack_name: "app_launcher", label: "App Launcher", icon: "view-grid-symbolic" },
+            WidgetEntry::Menu { kind: MenuKind::Clipboard, stack_name: "clipboard", label: "Clipboard", icon: "edit-paste-symbolic" },
+            WidgetEntry::Menu { kind: MenuKind::Clock, stack_name: "clock", label: "Clock", icon: "alarm-symbolic" },
+            WidgetEntry::Menu { kind: MenuKind::Ndns, stack_name: "ndns", label: "DNS / VPN", icon: "network-vpn-symbolic" },
+            WidgetEntry::Menu { kind: MenuKind::MediaPlayer, stack_name: "media_player", label: "Media Player", icon: "media-playback-start-symbolic" },
+            WidgetEntry::Menu { kind: MenuKind::Nnetwork, stack_name: "nnetwork", label: "Network Console", icon: "network-workgroup-symbolic" },
+            WidgetEntry::Menu { kind: MenuKind::Nnotes, stack_name: "nnotes", label: "Notes Hub", icon: "notes-symbolic" },
+            WidgetEntry::Menu { kind: MenuKind::Npodman, stack_name: "npodman", label: "Podman", icon: "package-symbolic" },
+            WidgetEntry::Menu { kind: MenuKind::Npower, stack_name: "npower", label: "Power Profile Menu", icon: "power-profile-balanced-symbolic" },
+            WidgetEntry::Menu { kind: MenuKind::Nip, stack_name: "nip", label: "Public IP", icon: "network-wired-symbolic" },
+            WidgetEntry::Menu { kind: MenuKind::QuickSettings, stack_name: "quick_settings", label: "Quick Settings", icon: "settings-symbolic" },
+            WidgetEntry::Menu { kind: MenuKind::Screenshot, stack_name: "screenshot", label: "Screenshot", icon: "camera-photo-symbolic" },
+            WidgetEntry::Menu { kind: MenuKind::Nufw, stack_name: "nufw", label: "UFW Firewall", icon: "firewall-symbolic" },
+            // Bar-only pills (no menu surface — just info pages).
+            WidgetEntry::Pill { kind: BarPillKind::ActiveWindow, stack_name: "pill_active_window", label: "Active Window", icon: "window-symbolic" },
+            WidgetEntry::Pill { kind: BarPillKind::AudioInput, stack_name: "pill_audio_input", label: "Audio Input", icon: "microphone-sensitivity-medium-symbolic" },
+            WidgetEntry::Pill { kind: BarPillKind::AudioOutput, stack_name: "pill_audio_output", label: "Audio Output", icon: "audio-volume-medium-symbolic" },
+            WidgetEntry::Pill { kind: BarPillKind::Battery, stack_name: "pill_battery", label: "Battery", icon: "battery-good-symbolic" },
+            WidgetEntry::Pill { kind: BarPillKind::Bluetooth, stack_name: "pill_bluetooth", label: "Bluetooth", icon: "bluetooth-active-symbolic" },
+            WidgetEntry::Pill { kind: BarPillKind::DarkMode, stack_name: "pill_dark_mode", label: "Dark Mode Toggle", icon: "weather-clear-night-symbolic" },
+            WidgetEntry::Pill { kind: BarPillKind::HyprPicker, stack_name: "pill_hypr_picker", label: "HyprPicker", icon: "color-select-symbolic" },
+            WidgetEntry::Pill { kind: BarPillKind::KeepAwake, stack_name: "pill_keep_awake", label: "Keep Awake", icon: "eye-symbolic" },
+            WidgetEntry::Pill { kind: BarPillKind::Lock, stack_name: "pill_lock", label: "Lock", icon: "system-lock-screen-symbolic" },
+            WidgetEntry::Pill { kind: BarPillKind::Logout, stack_name: "pill_logout", label: "Logout", icon: "system-log-out-symbolic" },
+            WidgetEntry::Pill { kind: BarPillKind::MargoDock, stack_name: "pill_margo_dock", label: "Margo Dock", icon: "view-grid-symbolic" },
+            WidgetEntry::Pill { kind: BarPillKind::MargoLayoutSwitcher, stack_name: "pill_margo_layout", label: "Margo Layout Switcher", icon: "layout-symbolic" },
+            WidgetEntry::Pill { kind: BarPillKind::MargoTags, stack_name: "pill_margo_tags", label: "Margo Tags", icon: "square-symbolic" },
+            WidgetEntry::Pill { kind: BarPillKind::Network, stack_name: "pill_network", label: "Network", icon: "network-wired-symbolic" },
+            WidgetEntry::Pill { kind: BarPillKind::PowerProfile, stack_name: "pill_power_profile", label: "Power Profile", icon: "power-profile-balanced-symbolic" },
+            WidgetEntry::Pill { kind: BarPillKind::Reboot, stack_name: "pill_reboot", label: "Reboot", icon: "system-reboot-symbolic" },
+            WidgetEntry::Pill { kind: BarPillKind::RecordingIndicator, stack_name: "pill_recording", label: "Recording Indicator", icon: "media-record-symbolic" },
+            WidgetEntry::Pill { kind: BarPillKind::Shutdown, stack_name: "pill_shutdown", label: "Shutdown", icon: "system-shutdown-symbolic" },
+            WidgetEntry::Pill { kind: BarPillKind::Tray, stack_name: "pill_tray", label: "System Tray", icon: "view-list-symbolic" },
+            WidgetEntry::Pill { kind: BarPillKind::SystemUpdate, stack_name: "pill_system_update", label: "System Updates", icon: "software-update-available-symbolic" },
+            WidgetEntry::Pill { kind: BarPillKind::VpnIndicator, stack_name: "pill_vpn", label: "VPN Indicator", icon: "network-vpn-symbolic" },
+            // Rich pages with their own controllers.
+            WidgetEntry::Notifications,
+            WidgetEntry::Session,
+        ];
+        entries.sort_by_key(|e| e.label().to_ascii_lowercase());
+
+        // Controllers must outlive `init()` — store them in Vecs
+        // and `Box::leak` at the end. The notification and session
+        // controllers already live on the model.
         let mut menu_controllers: Vec<relm4::Controller<WidgetMenuSettingsModel>> = Vec::new();
-        for (kind, stack_name, label, icon) in menu_pages {
-            let btn = make_sub_btn(label, icon, stack_name, Some(&layout_btn));
-            widgets_sub_sidebar_box.append(&btn);
-            let ctrl = WidgetMenuSettingsModel::builder()
-                .launch(WidgetMenuSettingsInit { kind })
-                .detach();
-            widgets_sub_stack.add_named(ctrl.widget(), Some(stack_name));
-            menu_controllers.push(ctrl);
-        }
-
-        // Bar-only pills (no menu surface). Each gets an info
-        // page surfacing the widget's purpose + pointing at the
-        // Bar widget-list editor for placement. Future per-pill
-        // knobs land here without a new file.
-        let bar_pill_pages = [
-            (BarPillKind::ActiveWindow, "pill_active_window", "Active Window", "window-symbolic"),
-            (BarPillKind::AudioInput, "pill_audio_input", "Audio Input", "microphone-sensitivity-medium-symbolic"),
-            (BarPillKind::AudioOutput, "pill_audio_output", "Audio Output", "audio-volume-medium-symbolic"),
-            (BarPillKind::Battery, "pill_battery", "Battery", "battery-good-symbolic"),
-            (BarPillKind::Bluetooth, "pill_bluetooth", "Bluetooth", "bluetooth-active-symbolic"),
-            (BarPillKind::DarkMode, "pill_dark_mode", "Dark Mode Toggle", "weather-clear-night-symbolic"),
-            (BarPillKind::HyprPicker, "pill_hypr_picker", "HyprPicker", "color-select-symbolic"),
-            (BarPillKind::KeepAwake, "pill_keep_awake", "Keep Awake", "eye-symbolic"),
-            (BarPillKind::Lock, "pill_lock", "Lock", "system-lock-screen-symbolic"),
-            (BarPillKind::Logout, "pill_logout", "Logout", "system-log-out-symbolic"),
-            (BarPillKind::MargoDock, "pill_margo_dock", "Margo Dock", "view-grid-symbolic"),
-            (BarPillKind::MargoLayoutSwitcher, "pill_margo_layout", "Margo Layout Switcher", "layout-symbolic"),
-            (BarPillKind::MargoTags, "pill_margo_tags", "Margo Tags", "square-symbolic"),
-            (BarPillKind::Network, "pill_network", "Network", "network-wired-symbolic"),
-            (BarPillKind::PowerProfile, "pill_power_profile", "Power Profile", "power-profile-balanced-symbolic"),
-            (BarPillKind::Reboot, "pill_reboot", "Reboot", "system-reboot-symbolic"),
-            (BarPillKind::RecordingIndicator, "pill_recording", "Recording Indicator", "media-record-symbolic"),
-            (BarPillKind::Shutdown, "pill_shutdown", "Shutdown", "system-shutdown-symbolic"),
-            (BarPillKind::Tray, "pill_tray", "System Tray", "view-list-symbolic"),
-            (BarPillKind::VpnIndicator, "pill_vpn", "VPN Indicator", "network-vpn-symbolic"),
-        ];
-
         let mut bar_pill_controllers: Vec<relm4::Controller<BarPillSettingsModel>> = Vec::new();
-        for (kind, stack_name, label, icon) in bar_pill_pages {
-            let btn = make_sub_btn(label, icon, stack_name, Some(&layout_btn));
-            widgets_sub_sidebar_box.append(&btn);
-            let ctrl = BarPillSettingsModel::builder()
-                .launch(BarPillSettingsInit { kind })
-                .detach();
-            widgets_sub_stack.add_named(ctrl.widget(), Some(stack_name));
-            bar_pill_controllers.push(ctrl);
+
+        for entry in entries {
+            match entry {
+                WidgetEntry::Menu { kind, stack_name, label, icon } => {
+                    let btn = make_sub_btn(label, icon, stack_name, Some(&layout_btn));
+                    widgets_sub_sidebar_box.append(&btn);
+                    let ctrl = WidgetMenuSettingsModel::builder()
+                        .launch(WidgetMenuSettingsInit { kind })
+                        .detach();
+                    widgets_sub_stack.add_named(ctrl.widget(), Some(stack_name));
+                    menu_controllers.push(ctrl);
+                }
+                WidgetEntry::Pill { kind, stack_name, label, icon } => {
+                    let btn = make_sub_btn(label, icon, stack_name, Some(&layout_btn));
+                    widgets_sub_sidebar_box.append(&btn);
+                    let ctrl = BarPillSettingsModel::builder()
+                        .launch(BarPillSettingsInit { kind })
+                        .detach();
+                    widgets_sub_stack.add_named(ctrl.widget(), Some(stack_name));
+                    bar_pill_controllers.push(ctrl);
+                }
+                WidgetEntry::Notifications => {
+                    let btn = make_sub_btn(
+                        "Notifications",
+                        "notification-symbolic",
+                        "notifications",
+                        Some(&layout_btn),
+                    );
+                    widgets_sub_sidebar_box.append(&btn);
+                    widgets_sub_stack.add_named(
+                        model.notification_settings_controller.widget(),
+                        Some("notifications"),
+                    );
+                }
+                WidgetEntry::Session => {
+                    let btn = make_sub_btn(
+                        "Session",
+                        "system-shutdown-symbolic",
+                        "session",
+                        Some(&layout_btn),
+                    );
+                    widgets_sub_sidebar_box.append(&btn);
+                    widgets_sub_stack.add_named(
+                        model.session_settings_controller.widget(),
+                        Some("session"),
+                    );
+                }
+            }
         }
-
-        // Notifications + Session keep their existing rich pages;
-        // we just move them into the Widgets sub-stack.
-        let notifications_btn = make_sub_btn(
-            "Notifications",
-            "notification-symbolic",
-            "notifications",
-            Some(&layout_btn),
-        );
-        widgets_sub_sidebar_box.append(&notifications_btn);
-        widgets_sub_stack.add_named(
-            model.notification_settings_controller.widget(),
-            Some("notifications"),
-        );
-
-        let session_btn = make_sub_btn(
-            "Session",
-            "system-shutdown-symbolic",
-            "session",
-            Some(&layout_btn),
-        );
-        widgets_sub_sidebar_box.append(&session_btn);
-        widgets_sub_stack.add_named(
-            model.session_settings_controller.widget(),
-            Some("session"),
-        );
 
         widgets_page.append(&widgets_sub_sidebar);
         widgets_page.append(&widgets_sub_stack);

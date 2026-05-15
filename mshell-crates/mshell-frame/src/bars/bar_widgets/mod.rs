@@ -36,5 +36,6 @@ pub(crate) mod screenshot;
 pub(crate) mod shutdown;
 pub(crate) mod system_tray;
 pub(crate) mod system_tray_item;
+pub(crate) mod system_update;
 pub(crate) mod vpn_indicator;
 pub(crate) mod wallpaper;

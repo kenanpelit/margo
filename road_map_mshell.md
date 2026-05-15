@@ -107,6 +107,7 @@ items. Captured here so the audit is honest.
 | **X5** | **Bar min-height crash fix** — `update_config` was firing on every SpinButton arrow click, triggering a write storm that took mshell down. 350 ms debounce. | (mshell-settings) |
 | **X6** | **Session menu keyboard nav** — Tab / Shift+Tab / Ctrl+N / Ctrl+P / Ctrl+J / Ctrl+K walk focus between the five power-menu buttons. Took four attempts (Bubble → Capture phase → ShortcutController → Capture ShortcutController) — `road_map.md` §B9 closed. | `c86828b` |
 | **X7** | **mshell-settings reorganisation** — Bar moved back to top-level; Notifications and Session moved into Widgets; sub-sidebar now has 36 entries (Layout + 13 menu pages + 20 bar-pill pages + Notifications + Session). | `ac3a71f`, `bc43d23` |
+| **X8** | **mlayout symlink-follow fix** — `gather_layouts` used `entry.file_type().is_file()` which returns `false` for symlinks. Users who keep their margo configs in a dotfiles repo and symlink them in had `mlayout list` return "no layouts" even though the file existed. Now `metadata()` traverses the link. | (mlayout) |
 
 ## TIER B — meaningful, mid-to-large effort
 
@@ -115,9 +116,9 @@ Each item below is a single-session goal. Don't batch.
 | # | Item | Source | Notes |
 |---|---|---|---|
 | **B4** | **Overview dashboard** — super-key full-screen overview with cards (clock / weather / media / calendar / system / user) | Dank `DankDash/Overview` | New `overview_menu_widget`. Re-uses existing components. Bound to Super or a margo dispatch action |
-| **B6** | **System update indicator** | Dank `SystemUpdateService` | Pacman / dnf / apt count polled every 30 min. Bar pill shows count, click → terminal helper (configurable) |
+| ~~**B6**~~ | ~~**System update indicator**~~ | Dank `SystemUpdateService` | **SHIPPED.** `system_update` bar pill polls every 30 min. Backend auto-detects yay / paru / pikaur (preferred — covers AUR) → pacman+checkupdates → dnf → apt. Auto-hides when zero updates available. Click spawns terminal (kitty → alacritty → foot → wezterm → konsole → gnome-terminal → xterm) running the matching upgrade command |
 | **B9** | **Window-rule editor in Settings** — GUI builder over margo's `windowrule` config, lives under a new Widgets sub-page or Bar→Window-rules tab | Dank `WindowRuleModal` | List existing rules + add/edit form (regex / class / title / actions). Writes through to `config.conf` via the same in-place line-edit pipeline already used for twilight |
-| **B10** | **Output management** — display arrangement panel: position, resolution, scale, rotation under Display → Layout | `mlayout` (in-tree) | Wire the existing `mlayout` CLI as the Settings backend. `mlayout list / preview / set / new / next / prev / pick` are already implemented; the missing pieces are (a) seed-on-first-run so a virgin install actually has layout files (today `mlayout list` returns "no layouts" until the user runs `mlayout init` by hand), and (b) a GUI panel under Display → Layout that drives those commands. Big UX win — multi-monitor users get a graphical arrangement editor without any new compositor protocol work |
+| ~~**B10**~~ | ~~**Output management** — display arrangement panel: position, resolution, scale, rotation under Display → Layout~~ | `mlayout` (in-tree) | **SHIPPED.** New `LayoutSettingsModel` in mshell-settings drives `mlayout list --json` / `set` / `init` / `suggest` / `new` as Settings backend. Lives under Display → Layout sub-sidebar alongside Twilight. Also fixed an `mlayout` parser bug that skipped symlinked layout files (see X8). Outstanding nice-to-haves: a visual preview rectangle per row (today we show "label (WxH) · …"); per-output scale / rotation knobs as a Capture form (today only slug name is editable, geometry is read from `wlr-randr`) |
 
 _B3 (process list) · B5 (audio visualizer) · B7 (hooks) moved to Tier D — see below._
 
@@ -187,17 +188,11 @@ deferred to Tier D — pull them back up when there's interest.
 
 **Active queue:**
 
-1. **A5 — Calendar grid in the clock menu.** Daily-visible
-   upgrade; the existing clock-menu body is sparse and a real
-   month grid is what users expect when they click a clock.
-2. **B10 — Output management under Display → Layout.** The
-   `mlayout` CLI already implements list / preview / set / new
-   / next / prev / pick; this work is wiring it to a Settings
-   panel + seeding the layout dir on first run. Settings →
-   Display is built for it (sub-sidebar already in place).
-3. **B6 — System update indicator pill.** Polled count of
-   pending updates (pacman / dnf / apt). Tiny widget, daily
-   utility.
+1. ~~**A5 — Calendar grid in the clock menu.**~~ **SHIPPED.**
+2. ~~**B10 — Output management under Display → Layout.**~~
+   **SHIPPED.** `LayoutSettingsModel` drives `mlayout` as a Settings
+   backend; lives under Display → Layout sub-sidebar.
+3. ~~**B6 — System update indicator pill.**~~ **SHIPPED.**
 4. **B4 — Overview dashboard.** Super-key full-screen card
    view (clock / weather / media / calendar / system / user).
    Look-and-feel piece; lands after B6.
