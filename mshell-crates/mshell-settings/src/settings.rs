@@ -8,10 +8,10 @@ use crate::notification_settings::{NotificationSettingsInit, NotificationSetting
 use crate::session_settings::{SessionSettingsInit, SessionSettingsModel};
 use crate::theme_settings::theme_settings::{ThemeSettingsInit, ThemeSettingsModel};
 use crate::wallpaper_settings::{WallpaperSettingsInit, WallpaperSettingsModel};
-use relm4::gtk::prelude::{BoxExt, GtkWindowExt, OrientableExt, ToggleButtonExt, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, OrientableExt, ToggleButtonExt, WidgetExt};
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 
-pub(crate) struct SettingsWindowModel {
+pub struct SettingsWindowModel {
     general_settings_controller: Controller<GeneralSettingsModel>,
     wallpaper_settings_controller: Controller<WallpaperSettingsModel>,
     theme_settings_controller: Controller<ThemeSettingsModel>,
@@ -25,15 +25,15 @@ pub(crate) struct SettingsWindowModel {
 }
 
 #[derive(Debug)]
-pub(crate) enum SettingsWindowInput {}
+pub enum SettingsWindowInput {}
 
 #[derive(Debug)]
-pub(crate) enum SettingsWindowOutput {}
+pub enum SettingsWindowOutput {}
 
-pub(crate) struct SettingsWindowInit {}
+pub struct SettingsWindowInit {}
 
 #[derive(Debug)]
-pub(crate) enum SettingsWindowCommandOutput {}
+pub enum SettingsWindowCommandOutput {}
 
 #[relm4::component(pub)]
 impl Component for SettingsWindowModel {
@@ -42,20 +42,18 @@ impl Component for SettingsWindowModel {
     type Output = SettingsWindowOutput;
     type Init = SettingsWindowInit;
 
-    // Compact popup style — undecorated, fixed-size, and styled
-    // via `.settings-window-popup` so it reads as a sub-surface
-    // panel rather than a full window. The full menu-stack embed
-    // (parity with noctalia's `SettingsPanel`) is a deferred
-    // refactor — see road_map_mshell.md §S1.
+    // Embedded menu surface — the frame mounts this widget into
+    // its menu stack alongside `wallpaper_menu`, `notifications`,
+    // etc. No `gtk::Window` because that would create a separate
+    // toplevel; the panel lives inside the same layer-shell
+    // surface that hosts the rest of the shell's UI.
     view! {
         #[root]
-        gtk::Window {
-            add_css_class: "settings-window",
-            add_css_class: "settings-window-popup",
-            set_decorated: false,
-            set_resizable: false,
-            set_visible: true,
-            set_default_size: (780, 600),
+        gtk::Box {
+            add_css_class: "settings-panel",
+            set_orientation: gtk::Orientation::Horizontal,
+            set_width_request: 780,
+            set_height_request: 600,
 
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,

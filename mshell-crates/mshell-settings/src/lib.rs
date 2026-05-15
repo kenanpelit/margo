@@ -1,7 +1,18 @@
-use crate::settings::{SettingsWindowInit, SettingsWindowModel};
-use relm4::gtk::prelude::{GtkWindowExt, WidgetExt};
-use relm4::{Component, ComponentController};
-use std::cell::RefCell;
+//! Settings panel — pluggable into the frame's menu stack.
+//!
+//! Settings used to launch as its own `gtk::Window` toplevel.
+//! That made the panel feel like a different app from the rest
+//! of the shell, took longer to open (the compositor had to
+//! allocate a new surface + ack a configure), and made the
+//! decoration / titlebar fight the rest of the layer-shell UI.
+//!
+//! Now it lives in the frame's menu stack like every other menu
+//! surface. The frame registers itself as the toggle backend via
+//! [`set_toggle_backend`]; quick-action buttons and the
+//! `mshellctl settings open` IPC call route through that backend
+//! to flip the menu's reveal state.
+
+use std::sync::OnceLock;
 
 mod bar_settings;
 mod display_settings;
@@ -15,40 +26,44 @@ pub mod settings;
 mod theme_settings;
 mod wallpaper_settings;
 
-thread_local! {
-    static SETTINGS_ROOT: RefCell<Option<relm4::Controller<SettingsWindowModel>>> = const { RefCell::new(None) };
+pub use settings::{
+    SettingsWindowCommandOutput, SettingsWindowInit, SettingsWindowInput, SettingsWindowModel,
+    SettingsWindowOutput,
+};
+
+/// Toggle backend: a thunk the frame registers so external
+/// callers (quick-action button, IPC) can flip the settings
+/// menu's reveal state without owning a `Sender<FrameInput>`
+/// directly.
+type ToggleBackend = Box<dyn Fn() + Send + Sync + 'static>;
+static TOGGLE_BACKEND: OnceLock<ToggleBackend> = OnceLock::new();
+
+/// Register the toggle backend. Called once by the frame at
+/// startup. Idempotent: a second call is silently ignored.
+pub fn set_toggle_backend<F>(f: F)
+where
+    F: Fn() + Send + Sync + 'static,
+{
+    let _ = TOGGLE_BACKEND.set(Box::new(f));
 }
 
+/// External-facing toggle. Called by the quick-action button and
+/// by the IPC layer. Routes to the frame's `ToggleSettingsMenu`
+/// if a backend is registered; otherwise logs a warning and
+/// does nothing (the shell hasn't finished constructing the
+/// frame yet, which would only happen if a hot path opened
+/// settings before the layer surface was up).
 pub fn open_settings() {
-    let already_open =
-        SETTINGS_ROOT.with(|w| w.borrow().as_ref().is_some_and(|c| c.widget().is_visible()));
-
-    if already_open {
-        SETTINGS_ROOT.with(|w| {
-            if let Some(c) = w.borrow().as_ref() {
-                c.widget().present();
-            }
-        });
-        return;
+    if let Some(toggle) = TOGGLE_BACKEND.get() {
+        toggle();
+    } else {
+        tracing::warn!("settings: toggle backend not registered yet");
     }
-
-    let controller = SettingsWindowModel::builder()
-        .launch(SettingsWindowInit {})
-        .detach();
-
-    SETTINGS_ROOT.with(|w| {
-        *w.borrow_mut() = Some(controller);
-    });
 }
 
+/// Backwards-compatibility shim for the old "close" IPC. Since
+/// the panel is a menu now, "close" is just another toggle —
+/// the frame's `toggle_menu` flips visible menus off.
 pub fn close_settings() {
-    SETTINGS_ROOT.with(|w| {
-        if let Some(c) = w.borrow().as_ref() {
-            c.widget().close();
-        }
-    });
-    // Drop the controller outside the borrow to avoid the double-borrow panic
-    SETTINGS_ROOT.with(|w| {
-        *w.borrow_mut() = None;
-    });
+    open_settings();
 }

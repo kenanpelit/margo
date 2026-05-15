@@ -353,6 +353,9 @@ pub struct Menus {
     pub npower_menu: Menu,
     pub media_player_menu: Menu,
     pub session_menu: Menu,
+    /// Settings panel — embeds in the frame's menu stack instead
+    /// of launching a separate `gtk::Window` toplevel.
+    pub settings_menu: Menu,
     pub left_menu_expansion_type: VerticalMenuExpansion,
     pub right_menu_expansion_type: VerticalMenuExpansion,
 }
@@ -476,6 +479,16 @@ impl Default for Menus {
                 position: Position::Top,
                 widgets: vec![MenuWidget::Session],
                 minimum_width: 420,
+            },
+            settings_menu: Menu {
+                // Settings is a wide / tall panel. Top anchor with
+                // a generous width — same family as the wallpaper
+                // and notifications menus. `widgets` is empty
+                // because the settings panel renders itself; the
+                // generic MenuWidget pipeline isn't used.
+                position: Position::Top,
+                widgets: vec![],
+                minimum_width: 780,
             },
             left_menu_expansion_type: VerticalMenuExpansion::AlwaysExpanded,
             right_menu_expansion_type: VerticalMenuExpansion::AlwaysExpanded,
