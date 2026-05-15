@@ -94,6 +94,15 @@ pub struct General {
     pub clock_format_24_h: bool,
     pub weather_location_query: LocationQueryConfig,
     pub temperature_unit: TemperatureUnitConfig,
+    /// Draw rounded screen corners as a per-monitor overlay.
+    /// Layer-shell windows masked at each corner so the
+    /// underlying compositor's rectangular monitor edges read
+    /// as soft corners. Click-through; no input region.
+    pub show_screen_corners: bool,
+    /// Corner radius in pixels for the screen-corners overlay.
+    /// Ignored when `show_screen_corners = false`. 12 is a
+    /// noctalia-style default.
+    pub screen_corner_radius: u32,
 }
 
 impl Default for General {
@@ -105,6 +114,8 @@ impl Default for General {
                 lon: OrdF64(0.0),
             },
             temperature_unit: TemperatureUnitConfig::Metric,
+            show_screen_corners: true,
+            screen_corner_radius: 12,
         }
     }
 }

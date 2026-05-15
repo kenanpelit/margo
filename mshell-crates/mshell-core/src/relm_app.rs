@@ -4,7 +4,7 @@ use gtk4_layer_shell::{Edge, Layer, LayerShell};
 use mshell_cache::wallpaper::{CycleDirection, cycle_wallpaper};
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
-    BarsStoreFields, ConfigStoreFields, FrameStoreFields, IdleStoreFields,
+    BarsStoreFields, ConfigStoreFields, FrameStoreFields, GeneralStoreFields, IdleStoreFields,
     WallpaperRotationMode, WallpaperStoreFields,
 };
 use mshell_idle::idle_manager::{self, IdleConfig, IdleStage};
@@ -38,6 +38,11 @@ pub(crate) struct WindowGroup {
     pub _popup_notifications: Option<Controller<PopupNotificationsModel>>,
     pub _volume_osd: Option<Controller<VolumeOsdModel>>,
     pub _brightness_osd: Option<Controller<BrightnessOsdModel>>,
+    /// Per-monitor corner-overlay windows (`Vec` of four). Held
+    /// for lifetime: dropping the `WindowGroup` closes them on
+    /// monitor hot-unplug. Empty when `general.show_screen_corners`
+    /// is off.
+    pub _screen_corners: Vec<gtk::Window>,
 }
 
 pub(crate) struct Shell {
@@ -293,6 +298,27 @@ impl Component for Shell {
                         .detach(),
                 );
 
+                // Rounded screen corners — one tiny overlay per
+                // corner. Reads config once at monitor-add time;
+                // live toggling needs a reload (or a future
+                // reactive effect plumbing). Empty `Vec` when
+                // the user has turned the corners off.
+                let show_corners = config_manager()
+                    .config()
+                    .general()
+                    .show_screen_corners()
+                    .get_untracked();
+                let corner_radius = config_manager()
+                    .config()
+                    .general()
+                    .screen_corner_radius()
+                    .get_untracked();
+                let screen_corners = if show_corners {
+                    mshell_frame::screen_corners::spawn(&monitor, corner_radius)
+                } else {
+                    Vec::new()
+                };
+
                 let window_group = WindowGroup {
                     monitor: monitor.clone(),
                     frame,
@@ -300,6 +326,7 @@ impl Component for Shell {
                     _popup_notifications: popup_notifications,
                     _volume_osd: volume_osd,
                     _brightness_osd: brightness_osd,
+                    _screen_corners: screen_corners,
                 };
 
                 self.window_groups.insert(name, window_group);
