@@ -33,6 +33,7 @@ use smithay::{
         session_lock::LockSurface,
         shell::wlr_layer::LayerSurface as WlrLayerSurface,
     },
+    xwayland::X11Surface,
 };
 
 use super::MargoState;
@@ -84,6 +85,22 @@ impl FocusTarget {
             Self::Popup(s) => Some(s),
         }
     }
+
+    /// X11-backed toplevels need their `KeyboardTarget` forwarded to the
+    /// `X11Surface` itself (not just its wl_surface), because smithay's
+    /// `KeyboardTarget for X11Surface` is what calls `XSetInputFocus` /
+    /// sends `WM_TAKE_FOCUS`. Without that, X11 clients (e.g. vncviewer
+    /// under XWayland) never see keyboard input even though pointer
+    /// events arrive via the Wayland-side surface.
+    pub(crate) fn inner_x11_surface(&self) -> Option<&X11Surface> {
+        match self {
+            Self::Window(w) => match w.underlying_surface() {
+                WindowSurface::X11(s) => Some(s),
+                WindowSurface::Wayland(_) => None,
+            },
+            _ => None,
+        }
+    }
 }
 
 // `PopupManager::grab_popup` requires the seat's `KeyboardFocus` to
@@ -133,14 +150,19 @@ impl KeyboardTarget<MargoState> for FocusTarget {
         // `journalctl --output=json | jq` slice cleanly when the
         // user actually wants to debug focus routing.
         tracing::debug!(target = ?self, "FocusTarget::enter");
-        if let Some(s) = self.inner_wl_surface() {
+        if let Some(x11) = self.inner_x11_surface() {
+            tracing::debug!("FocusTarget::enter forwarding to X11Surface");
+            KeyboardTarget::enter(x11, seat, data, keys, serial);
+        } else if let Some(s) = self.inner_wl_surface() {
             tracing::debug!("FocusTarget::enter forwarding to WlSurface");
             KeyboardTarget::enter(s, seat, data, keys, serial);
         }
     }
     fn leave(&self, seat: &Seat<MargoState>, data: &mut MargoState, serial: Serial) {
         tracing::debug!(target = ?self, "FocusTarget::leave");
-        if let Some(s) = self.inner_wl_surface() {
+        if let Some(x11) = self.inner_x11_surface() {
+            KeyboardTarget::leave(x11, seat, data, serial);
+        } else if let Some(s) = self.inner_wl_surface() {
             KeyboardTarget::leave(s, seat, data, serial);
         }
     }
@@ -153,7 +175,9 @@ impl KeyboardTarget<MargoState> for FocusTarget {
         serial: Serial,
         time: u32,
     ) {
-        if let Some(s) = self.inner_wl_surface() {
+        if let Some(x11) = self.inner_x11_surface() {
+            KeyboardTarget::key(x11, seat, data, key, state, serial, time);
+        } else if let Some(s) = self.inner_wl_surface() {
             KeyboardTarget::key(s, seat, data, key, state, serial, time);
         }
     }
@@ -164,7 +188,9 @@ impl KeyboardTarget<MargoState> for FocusTarget {
         modifiers: ModifiersState,
         serial: Serial,
     ) {
-        if let Some(s) = self.inner_wl_surface() {
+        if let Some(x11) = self.inner_x11_surface() {
+            KeyboardTarget::modifiers(x11, seat, data, modifiers, serial);
+        } else if let Some(s) = self.inner_wl_surface() {
             KeyboardTarget::modifiers(s, seat, data, modifiers, serial);
         }
     }
