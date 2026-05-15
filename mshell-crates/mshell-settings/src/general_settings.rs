@@ -24,6 +24,8 @@ pub(crate) struct GeneralSettingsModel {
     city_dialog: Option<Controller<TextEntryDialogModel>>,
     weather_unit_types: gtk::StringList,
     active_weather_unit_type: TemperatureUnitConfig,
+    show_screen_corners: bool,
+    screen_corner_radius: i32,
     _effects: EffectScope,
 }
 
@@ -46,6 +48,10 @@ pub(crate) enum GeneralSettingsInput {
     CityChosen(String, String),
     WeatherUnitTypeSelected(TemperatureUnitConfig),
     WeatherUnitTypeEffect(TemperatureUnitConfig),
+    ShowScreenCornersToggled(bool),
+    ShowScreenCornersEffect(bool),
+    ScreenCornerRadiusChanged(i32),
+    ScreenCornerRadiusEffect(i32),
 }
 
 #[derive(Debug)]
@@ -332,6 +338,79 @@ impl Component for GeneralSettingsModel {
                         } @unit_handler,
                     },
                 },
+
+                // ── Screen corners ─────────────────────────────
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Rounded screen corners",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Mask each monitor's four corners so the screen reads as having rounded edges. Click-through; doesn't intercept input.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        #[block_signal(screen_corners_handler)]
+                        set_active: model.show_screen_corners,
+                        connect_state_set[sender] => move |_, v| {
+                            sender.input(GeneralSettingsInput::ShowScreenCornersToggled(v));
+                            glib::Propagation::Proceed
+                        } @screen_corners_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Corner radius (px)",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "How wide a quarter-circle each corner mask carves out. 12 is a noctalia-style default. Change takes effect on the next mshell relaunch or `mctl reload`.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::SpinButton {
+                        set_valign: gtk::Align::Center,
+                        set_range: (0.0, 64.0),
+                        set_increments: (1.0, 4.0),
+                        set_digits: 0,
+                        #[watch]
+                        #[block_signal(corner_radius_handler)]
+                        set_value: model.screen_corner_radius as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(GeneralSettingsInput::ScreenCornerRadiusChanged(s.value() as i32));
+                        } @corner_radius_handler,
+                    },
+                },
             }
         }
     }
@@ -378,6 +457,26 @@ impl Component for GeneralSettingsModel {
             sender_clone.input(GeneralSettingsInput::WeatherUnitTypeEffect(value));
         });
 
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let v = config_manager()
+                .config()
+                .general()
+                .show_screen_corners()
+                .get();
+            sender_clone.input(GeneralSettingsInput::ShowScreenCornersEffect(v));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let v = config_manager()
+                .config()
+                .general()
+                .screen_corner_radius()
+                .get();
+            sender_clone.input(GeneralSettingsInput::ScreenCornerRadiusEffect(v as i32));
+        });
+
         let location_query_types = gtk::StringList::new(
             &LocationQueryType::all()
                 .iter()
@@ -414,6 +513,16 @@ impl Component for GeneralSettingsModel {
                 .general()
                 .temperature_unit()
                 .get_untracked(),
+            show_screen_corners: config_manager()
+                .config()
+                .general()
+                .show_screen_corners()
+                .get_untracked(),
+            screen_corner_radius: config_manager()
+                .config()
+                .general()
+                .screen_corner_radius()
+                .get_untracked() as i32,
             _effects: effects,
         };
 
@@ -595,6 +704,23 @@ impl Component for GeneralSettingsModel {
             }
             GeneralSettingsInput::WeatherUnitTypeEffect(unit) => {
                 self.active_weather_unit_type = unit;
+            }
+            GeneralSettingsInput::ShowScreenCornersToggled(v) => {
+                config_manager().update_config(|c| {
+                    c.general.show_screen_corners = v;
+                });
+            }
+            GeneralSettingsInput::ShowScreenCornersEffect(v) => {
+                self.show_screen_corners = v;
+            }
+            GeneralSettingsInput::ScreenCornerRadiusChanged(r) => {
+                let clamped = r.clamp(0, 64) as u32;
+                config_manager().update_config(|c| {
+                    c.general.screen_corner_radius = clamped;
+                });
+            }
+            GeneralSettingsInput::ScreenCornerRadiusEffect(r) => {
+                self.screen_corner_radius = r;
             }
         }
 
