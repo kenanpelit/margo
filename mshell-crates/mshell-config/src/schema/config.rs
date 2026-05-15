@@ -331,12 +331,14 @@ impl Default for Bars {
 #[serde(default)]
 pub struct BarWidgets {
     pub quick_settings: QuickSettingsBarWidget,
+    pub system_update: SystemUpdateBarWidget,
 }
 
 impl Default for BarWidgets {
     fn default() -> Self {
         Self {
             quick_settings: QuickSettingsBarWidget::default(),
+            system_update: SystemUpdateBarWidget::default(),
         }
     }
 }
@@ -351,6 +353,23 @@ impl Default for QuickSettingsBarWidget {
     fn default() -> Self {
         Self {
             icon: QuickSettingsIcon::Arch,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[serde(default)]
+pub struct SystemUpdateBarWidget {
+    /// How often to re-check pending updates, in minutes. Default
+    /// 180 (= 3 h). The pill also supports right-click → immediate
+    /// manual refresh for when this cadence is too lazy.
+    pub check_interval_minutes: u32,
+}
+
+impl Default for SystemUpdateBarWidget {
+    fn default() -> Self {
+        Self {
+            check_interval_minutes: 180,
         }
     }
 }
