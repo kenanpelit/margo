@@ -8,6 +8,7 @@ use crate::notification_settings::{NotificationSettingsInit, NotificationSetting
 use crate::session_settings::{SessionSettingsInit, SessionSettingsModel};
 use crate::theme_settings::theme_settings::{ThemeSettingsInit, ThemeSettingsModel};
 use crate::wallpaper_settings::{WallpaperSettingsInit, WallpaperSettingsModel};
+use crate::widget_menu_settings::{MenuKind, WidgetMenuSettingsInit, WidgetMenuSettingsModel};
 use relm4::gtk::prelude::{
     BoxExt, ButtonExt, MonitorExt, OrientableExt, ToggleButtonExt, WidgetExt,
 };
@@ -99,11 +100,11 @@ impl Component for SettingsWindowModel {
 
                     // Sidebar order: `General` is always first
                     // (it's the landing page), the rest are
-                    // alphabetical. `Bar` and `Menus` are gone
-                    // from the top level — they live inside the
-                    // new `Widgets` group, accessed via its own
-                    // sub-sidebar (same pattern Display uses for
-                    // Twilight).
+                    // alphabetical. Top-level entries are big
+                    // structural buckets (Bar, Display, Fonts,
+                    // Idle, Theme, Wallpaper) plus a `Widgets`
+                    // collection that holds per-menu config
+                    // pages via its own sub-sidebar.
                     #[name = "general_btn"]
                     gtk::ToggleButton {
                         add_css_class: "sidebar-button",
@@ -119,6 +120,26 @@ impl Component for SettingsWindowModel {
                             gtk::Label {
                                 add_css_class: "label-medium",
                                 set_label: "General",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("bar"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("sidebar-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Bar",
                                 set_halign: gtk::Align::Start,
                                 set_hexpand: true,
                             },
@@ -179,46 +200,6 @@ impl Component for SettingsWindowModel {
                             gtk::Label {
                                 add_css_class: "label-medium",
                                 set_label: "Idle",
-                                set_halign: gtk::Align::Start,
-                                set_hexpand: true,
-                            },
-                        },
-                    },
-
-                    gtk::ToggleButton {
-                        add_css_class: "sidebar-button",
-                        set_group: Some(&general_btn),
-                        connect_toggled[stack] => move |b| {
-                            if b.is_active() { stack.set_visible_child_name("notifications"); }
-                        },
-
-                        gtk::Box {
-                            set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 12,
-                            gtk::Image { set_icon_name: Some("notification-symbolic") },
-                            gtk::Label {
-                                add_css_class: "label-medium",
-                                set_label: "Notifications",
-                                set_halign: gtk::Align::Start,
-                                set_hexpand: true,
-                            },
-                        },
-                    },
-
-                    gtk::ToggleButton {
-                        add_css_class: "sidebar-button",
-                        set_group: Some(&general_btn),
-                        connect_toggled[stack] => move |b| {
-                            if b.is_active() { stack.set_visible_child_name("session"); }
-                        },
-
-                        gtk::Box {
-                            set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 12,
-                            gtk::Image { set_icon_name: Some("system-shutdown-symbolic") },
-                            gtk::Label {
-                                add_css_class: "label-medium",
-                                set_label: "Session",
                                 set_halign: gtk::Align::Start,
                                 set_hexpand: true,
                             },
@@ -410,45 +391,42 @@ impl Component for SettingsWindowModel {
         );
 
         widgets.stack.add_titled(
-            model.notification_settings_controller.widget(),
-            Some("notifications"),
-            "Notifications",
-        );
-
-        widgets.stack.add_titled(
             model.idle_settings_controller.widget(),
             Some("idle"),
             "Idle",
         );
 
-        widgets.stack.add_titled(
-            model.session_settings_controller.widget(),
-            Some("session"),
-            "Session",
-        );
+        widgets
+            .stack
+            .add_titled(model.bar_settings_controller.widget(), Some("bar"), "Bar");
 
-        // ── Widgets group (Bar + Menus) ────────────────────────
-        // The Widgets stack page hosts its own sub-sidebar and
-        // sub-stack, same pattern Display uses for Twilight.
-        // Sub-sidebar buttons switch the inner stack between the
-        // existing Bar / Menus controllers — those still own
-        // their state and effect subscriptions, we just relocate
-        // their widgets.
+        // ── Widgets group ──────────────────────────────────────
+        // Owns the per-menu settings pages (Layout + each menu's
+        // own position / min-width tab). Layout is the existing
+        // menu_settings controller — the cross-cutting widget-
+        // list editor. The per-menu tabs use one tiny generic
+        // component (`WidgetMenuSettingsModel`) instantiated 11
+        // times to give every menu its own focused page.
         let widgets_page = gtk::Box::builder()
             .orientation(gtk::Orientation::Horizontal)
             .hexpand(true)
             .vexpand(true)
             .build();
 
-        let widgets_sub_sidebar = gtk::Box::builder()
+        let widgets_sub_sidebar = gtk::ScrolledWindow::builder()
+            .vscrollbar_policy(gtk::PolicyType::Automatic)
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .build();
+        let widgets_sub_sidebar_box = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
-            .width_request(140)
+            .width_request(160)
             .spacing(4)
             .hexpand(false)
             .css_classes(["settings-subsidebar"])
             .build();
+        widgets_sub_sidebar.set_child(Some(&widgets_sub_sidebar_box));
 
-        widgets_sub_sidebar.append(&{
+        widgets_sub_sidebar_box.append(&{
             let l = gtk::Label::new(Some("Widgets"));
             l.add_css_class("label-medium-bold");
             l.set_halign(gtk::Align::Start);
@@ -458,7 +436,7 @@ impl Component for SettingsWindowModel {
             l.set_margin_end(8);
             l
         });
-        widgets_sub_sidebar.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+        widgets_sub_sidebar_box.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
 
         let widgets_sub_stack = gtk::Stack::builder()
             .transition_type(gtk::StackTransitionType::Crossfade)
@@ -467,69 +445,110 @@ impl Component for SettingsWindowModel {
             .vexpand(true)
             .build();
 
-        let bar_btn = gtk::ToggleButton::builder()
-            .css_classes(["sidebar-button"])
-            .active(true)
-            .build();
-        bar_btn.set_child(Some(&{
+        // Helper closure: build one sub-sidebar ToggleButton +
+        // wire it to flip the sub-stack. All buttons except the
+        // first share the same `group` so they radio-toggle.
+        let make_sub_btn = |label: &str, icon: &str, stack_name: &'static str,
+                            first: Option<&gtk::ToggleButton>|
+         -> gtk::ToggleButton {
+            let mut builder = gtk::ToggleButton::builder().css_classes(["sidebar-button"]);
+            if let Some(g) = first {
+                builder = builder.group(g);
+            } else {
+                builder = builder.active(true);
+            }
+            let btn = builder.build();
             let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-            let img = gtk::Image::from_icon_name("sidebar-symbolic");
-            row.append(&img);
-            let lbl = gtk::Label::new(Some("Bar"));
+            row.append(&gtk::Image::from_icon_name(icon));
+            let lbl = gtk::Label::new(Some(label));
             lbl.add_css_class("label-medium");
             lbl.set_halign(gtk::Align::Start);
             lbl.set_hexpand(true);
             row.append(&lbl);
-            row
-        }));
-        {
+            btn.set_child(Some(&row));
             let sub_stack = widgets_sub_stack.clone();
-            bar_btn.connect_toggled(move |b| {
+            btn.connect_toggled(move |b| {
                 if b.is_active() {
-                    sub_stack.set_visible_child_name("bar");
+                    sub_stack.set_visible_child_name(stack_name);
                 }
             });
-        }
-        widgets_sub_sidebar.append(&bar_btn);
+            btn
+        };
 
-        let menus_btn = gtk::ToggleButton::builder()
-            .css_classes(["sidebar-button"])
-            .group(&bar_btn)
-            .build();
-        menus_btn.set_child(Some(&{
-            let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-            let img = gtk::Image::from_icon_name("square-symbolic");
-            row.append(&img);
-            let lbl = gtk::Label::new(Some("Menus"));
-            lbl.add_css_class("label-medium");
-            lbl.set_halign(gtk::Align::Start);
-            lbl.set_hexpand(true);
-            row.append(&lbl);
-            row
-        }));
-        {
-            let sub_stack = widgets_sub_stack.clone();
-            menus_btn.connect_toggled(move |b| {
-                if b.is_active() {
-                    sub_stack.set_visible_child_name("menus");
-                }
-            });
-        }
-        widgets_sub_sidebar.append(&menus_btn);
-
-        widgets_sub_stack.add_named(
-            model.bar_settings_controller.widget(),
-            Some("bar"),
-        );
+        // Layout — the cross-cutting menu_settings page.
+        let layout_btn = make_sub_btn("Layout", "view-grid-symbolic", "layout", None);
+        widgets_sub_sidebar_box.append(&layout_btn);
         widgets_sub_stack.add_named(
             model.menu_settings_controller.widget(),
-            Some("menus"),
+            Some("layout"),
+        );
+
+        // Per-menu pages (alphabetical). Each uses the generic
+        // `WidgetMenuSettings` component parameterised by
+        // `MenuKind`.
+        let menu_pages = [
+            (MenuKind::AppLauncher, "app_launcher", "App Launcher", "view-grid-symbolic"),
+            (MenuKind::Clipboard, "clipboard", "Clipboard", "edit-paste-symbolic"),
+            (MenuKind::Clock, "clock", "Clock", "alarm-symbolic"),
+            (MenuKind::Ndns, "ndns", "DNS / VPN", "network-vpn-symbolic"),
+            (MenuKind::Nip, "nip", "Public IP", "network-wired-symbolic"),
+            (MenuKind::Nnotes, "nnotes", "Notes Hub", "notes-symbolic"),
+            (MenuKind::Npodman, "npodman", "Podman", "package-symbolic"),
+            (MenuKind::Npower, "npower", "Power Profile", "power-profile-balanced-symbolic"),
+            (MenuKind::QuickSettings, "quick_settings", "Quick Settings", "settings-symbolic"),
+            (MenuKind::Screenshot, "screenshot", "Screenshot", "camera-photo-symbolic"),
+            (MenuKind::Nufw, "nufw", "UFW Firewall", "firewall-symbolic"),
+        ];
+
+        // Controllers must outlive the function — store them on
+        // a Vec stashed in the model so they aren't dropped when
+        // the closure returns.
+        let mut menu_controllers: Vec<relm4::Controller<WidgetMenuSettingsModel>> = Vec::new();
+        for (kind, stack_name, label, icon) in menu_pages {
+            let btn = make_sub_btn(label, icon, stack_name, Some(&layout_btn));
+            widgets_sub_sidebar_box.append(&btn);
+            let ctrl = WidgetMenuSettingsModel::builder()
+                .launch(WidgetMenuSettingsInit { kind })
+                .detach();
+            widgets_sub_stack.add_named(ctrl.widget(), Some(stack_name));
+            menu_controllers.push(ctrl);
+        }
+
+        // Notifications + Session keep their existing rich pages;
+        // we just move them into the Widgets sub-stack.
+        let notifications_btn = make_sub_btn(
+            "Notifications",
+            "notification-symbolic",
+            "notifications",
+            Some(&layout_btn),
+        );
+        widgets_sub_sidebar_box.append(&notifications_btn);
+        widgets_sub_stack.add_named(
+            model.notification_settings_controller.widget(),
+            Some("notifications"),
+        );
+
+        let session_btn = make_sub_btn(
+            "Session",
+            "system-shutdown-symbolic",
+            "session",
+            Some(&layout_btn),
+        );
+        widgets_sub_sidebar_box.append(&session_btn);
+        widgets_sub_stack.add_named(
+            model.session_settings_controller.widget(),
+            Some("session"),
         );
 
         widgets_page.append(&widgets_sub_sidebar);
         widgets_page.append(&widgets_sub_stack);
-
         widgets.stack.add_titled(&widgets_page, Some("widgets"), "Widgets");
+
+        // Park the per-menu controllers on the model so they
+        // outlive `init()`. Box::leak isn't ideal but matches
+        // the rest of the file's lifecycle (controllers held by
+        // the model owning the window).
+        Box::leak(Box::new(menu_controllers));
 
         ComponentParts { model, widgets }
     }

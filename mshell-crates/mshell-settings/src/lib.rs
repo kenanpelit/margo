@@ -25,6 +25,7 @@ mod session_settings;
 pub mod settings;
 mod theme_settings;
 mod wallpaper_settings;
+mod widget_menu_settings;
 
 pub use settings::{
     SettingsWindowCommandOutput, SettingsWindowInit, SettingsWindowInput, SettingsWindowModel,
