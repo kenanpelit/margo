@@ -56,8 +56,14 @@ use mshell_config::schema::themes::Themes;
 pub fn static_theme(theme: &Themes, mshell: Option<MShell>) -> Option<MatugenTheme> {
     let mshell = mshell.unwrap_or_default();
     match theme {
-        Themes::Default | Themes::Wallpaper => None,
-        Themes::Margo => Some(margo(mshell)),
+        // `Default` is the alias for the project's brand theme —
+        // selecting it from the picker should land on the Margo
+        // look, not on whatever ad-hoc fallback the matugen
+        // pipeline produces when given nothing. `Wallpaper`
+        // stays `None` because it *is* the dynamic-from-wallpaper
+        // mode.
+        Themes::Default | Themes::Margo => Some(margo(mshell)),
+        Themes::Wallpaper => None,
         Themes::Bauhaus => Some(bauhaus(mshell)),
         Themes::BlackTurq => Some(black_turq(mshell)),
         Themes::BloodRust => Some(blood_rust(mshell)),

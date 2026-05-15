@@ -1,18 +1,29 @@
 use crate::json_struct::{Base16, Colors, MatugenTheme, MShell, Palettes, color};
 
-/// Margo — the default theme.
+/// Margo — the project's default colour scheme.
 ///
-/// Built on Dracula's surface / accent palette (the warm-purple
-/// look the project's been running) but with the foreground
-/// pulled from kitty's active Catppuccin Mocha — `#CDD6F4` — so
-/// bar labels, menu text, and SVG icon tint match the user's
-/// terminal exactly. Background stays Dracula `#282A36`; only
-/// the on-surface / on-background / base05-07 / inverse-surface
-/// slots move to the Mocha foreground.
+/// Warm-purple dark palette with a foreground tuned to match the
+/// terminal foreground bar labels, menu text, and SVG icons read
+/// against. The semantic slots (background, surface, surface
+/// variants, primary / secondary / tertiary accents, error)
+/// follow the project's house style.
+///
+/// Slot summary:
+///
+/// | Slot                | Hex      |
+/// |---------------------|----------|
+/// | background, surface | `#282A36` |
+/// | surface variant     | `#44475A` |
+/// | outline / muted     | `#6272A4` |
+/// | foreground (text)   | `#CDD6F4` |
+/// | primary             | `#BD93F9` |
+/// | secondary           | `#FF79C6` |
+/// | tertiary            | `#8BE9FD` |
+/// | error               | `#FF5555` |
 pub fn margo(mshell: MShell) -> MatugenTheme {
-    // Foreground (text + icon) pulled from the live kitty theme:
-    //   ~/.cachy/modules/kitty/dotfiles/kitty/themes/Catppuccin-Mocha.conf
-    // Background + accents stay Dracula.
+    // Foreground (text + icon). Shared across all on-surface /
+    // on-background / inverse-surface / base05-07 slots so a
+    // single tweak rolls through every text-bearing widget.
     const FG: &str = "#CDD6F4";
 
     MatugenTheme {

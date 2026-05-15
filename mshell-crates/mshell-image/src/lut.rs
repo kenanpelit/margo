@@ -38,6 +38,7 @@ const CLUT_INKY_PINKY: &[u8] = include_bytes!("../cluts/inky_pinky.bin");
 const CLUT_KANAGAWA_DRAGON: &[u8] = include_bytes!("../cluts/kanagawa_dragon.bin");
 const CLUT_KANAGAWA_LOTUS: &[u8] = include_bytes!("../cluts/kanagawa_lotus.bin");
 const CLUT_KANAGAWA_WAVE: &[u8] = include_bytes!("../cluts/kanagawa_wave.bin");
+const CLUT_MARGO: &[u8] = include_bytes!("../cluts/margo.bin");
 const CLUT_MIASMA: &[u8] = include_bytes!("../cluts/miasma.bin");
 const CLUT_MONOKAI_CLASSIC: &[u8] = include_bytes!("../cluts/monokai_classic.bin");
 const CLUT_NORD_DARK: &[u8] = include_bytes!("../cluts/nord_dark.bin");
@@ -65,7 +66,11 @@ const CLUT_VARDA: &[u8] = include_bytes!("../cluts/varda.bin");
 /// Returns `None` for `Default` and `Wallpaper` (dynamic themes).
 pub fn embedded_clut(theme: &Themes) -> Option<&'static [u8]> {
     match theme {
-        Themes::Default | Themes::Wallpaper => None,
+        // `Default` is the alias for Margo, the project's brand
+        // theme. `Wallpaper` stays `None` — it's the dynamic
+        // mode that grades from the live wallpaper instead.
+        Themes::Default | Themes::Margo => Some(CLUT_MARGO),
+        Themes::Wallpaper => None,
         Themes::Bauhaus => Some(CLUT_BAUHAUS),
         Themes::BlackTurq => Some(CLUT_BLACK_TURQ),
         Themes::BloodRust => Some(CLUT_BLOOD_RUST),
@@ -95,10 +100,6 @@ pub fn embedded_clut(theme: &Themes) -> Option<&'static [u8]> {
         Themes::KanagawaDragon => Some(CLUT_KANAGAWA_DRAGON),
         Themes::KanagawaLotus => Some(CLUT_KANAGAWA_LOTUS),
         Themes::KanagawaWave => Some(CLUT_KANAGAWA_WAVE),
-        // Margo reuses Dracula's image-grading CLUT: same surface
-        // palette, only the foreground text colour differs, and
-        // CLUTs grade pixel colours, not text.
-        Themes::Margo => Some(CLUT_DRACULA),
         Themes::Miasma => Some(CLUT_MIASMA),
         Themes::MonokaiClassic => Some(CLUT_MONOKAI_CLASSIC),
         Themes::NordDark => Some(CLUT_NORD_DARK),
