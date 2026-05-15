@@ -28,7 +28,6 @@ pub(crate) struct LockKeysModel {
 #[derive(Debug)]
 pub(crate) enum LockKeysInput {
     Poll,
-    State(bool, bool, bool),
 }
 
 #[derive(Debug)]
@@ -144,11 +143,6 @@ impl Component for LockKeysModel {
                     self.num = n;
                     self.scroll = s;
                 }
-            }
-            LockKeysInput::State(c, n, s) => {
-                self.caps = c;
-                self.num = n;
-                self.scroll = s;
             }
         }
     }
