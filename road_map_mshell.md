@@ -114,18 +114,13 @@ Each item below is a single-session goal. Don't batch.
 
 | # | Item | Source | Notes |
 |---|---|---|---|
-| **B1** | **Desktop widgets** — clock / media / system stat / audio visualizer / weather as draggable overlays on the wallpaper layer | Noctalia `DesktopWidgets/`, Dank `DesktopWidgetLayer` | New `mshell-desktop` crate. Layer-shell anchored to `Background`. Drag-drop via gtk-layer-shell input region. Config persists positions per-output |
-| **B2** | **Notepad module** — quick note pad in a menu surface, tabs, persisted to `~/.local/share/mshell/notepad/` | Dank `Notepad` | `gtk::TextView` + sqlite via `rusqlite`. ~300 LOC |
 | **B3** | **Process list modal** — task manager: process / disks / performance views | Dank `ProcessList`, `dgop` | Bind Ctrl+Shift+Esc. Uses `procfs` crate. Tree view + sort by CPU/RAM. ~600 LOC |
 | **B4** | **Overview dashboard** — super-key full-screen overview with cards (clock / weather / media / calendar / system / user) | Dank `DankDash/Overview` | New `overview_menu_widget`. Re-uses existing components. Bound to Super or a margo dispatch action |
 | **B5** | **Audio visualizer / spectrum bar** | Noctalia `AudioVisualizer` + `SpectrumService` | PipeWire FFT in a dedicated thread → 8/16/32 band ChannelReceiver → `gtk::DrawingArea`. Optional bar pill + desktop widget version |
 | **B6** | **System update indicator** | Dank `SystemUpdateService` | Pacman / dnf / apt count polled every 30 min. Bar pill shows count, click → terminal helper (configurable) |
 | **B7** | **Hooks system** — run user scripts on shell events | Noctalia `HooksService` | `~/.config/mshell/hooks/{on_dark_mode,on_wallpaper_change,on_lock,on_unlock,on_perf_mode,on_colors_generated}.sh`. Fire async via `spawn`. ~100 LOC |
-| **B8** | **Wallpaper search (Wallhaven)** | Noctalia | Add a "Search wallpapers" button to wallpaper menu; query Wallhaven API, preview grid, click-download. ~250 LOC |
-| **B9** | **Window-rule editor (visual)** — GUI builder over margo's `windowrule` config | Dank `WindowRuleModal` | List existing rules + add/edit form (regex / class / title / actions). Writes through to `config.conf` similar to the twilight write-back already shipped |
-| **B10** | **Output management** — display arrangement panel: position, resolution, scale, rotation | Dank `DisplayConfig`, `WlrOutputService` | `wlr-output-management-unstable-v1` consumer. Lives under Display sub-sidebar (already structured for it) |
-| **B11** | **Plugin system** — Lua / Rhai-loaded plugins that can ship bar widgets, menu providers, launcher entries | Noctalia plugins, Dank `PluginService` | Major architectural piece. Define plugin manifest format + safe API surface. Mirror margo's `plugins/<name>/` pattern. Defer until B1-B10 land |
-| **B12** | **App-theme generator** — push matugen output to GTK 3 / GTK 4 / Qt 5 / Qt 6 / kitty / alacritty / wezterm / vscode | Noctalia `AppThemeService` | mshell-matugen exists but only writes SCSS. Add per-target templates in `~/.config/mshell/templates/` |
+| **B9** | **Window-rule editor in Settings** — GUI builder over margo's `windowrule` config, lives under a new Widgets sub-page or Bar→Window-rules tab | Dank `WindowRuleModal` | List existing rules + add/edit form (regex / class / title / actions). Writes through to `config.conf` via the same in-place line-edit pipeline already used for twilight |
+| **B10** | **Output management** — display arrangement panel: position, resolution, scale, rotation under Display → Layout | `mlayout` (in-tree) | Wire the existing `mlayout` CLI as the Settings backend. `mlayout list / preview / set / new / next / prev / pick` are already implemented; the missing pieces are (a) seed-on-first-run so a virgin install actually has layout files (today `mlayout list` returns "no layouts" until the user runs `mlayout init` by hand), and (b) a GUI panel under Display → Layout that drives those commands. Big UX win — multi-monitor users get a graphical arrangement editor without any new compositor protocol work |
 
 ---
 
@@ -148,6 +143,24 @@ Track these but don't prioritise.
 
 ---
 
+## TIER D — back-burner
+
+Worth doing eventually, but de-prioritised explicitly by the owner.
+Owner notes recorded inline so the rationale doesn't get lost.
+
+| # | Item | Owner note |
+|---|---|---|
+| **D1** | **Desktop widgets** — clock / media / system stat / visualizer / weather as draggable overlays on the wallpaper layer | Not used much — defer until the bar+menu surface is fully built out |
+| **D2** | **Wallpaper search (Wallhaven)** — search + download from inside the wallpaper menu | Defer — current rotation + manual-pick flow covers the daily case |
+| **D3** | **Plugin system** — Lua / Rhai-loaded plugins for bar widgets, menu providers, launcher entries | Save for after the in-tree feature set settles — no point freezing a plugin API while we're still adding bar pills weekly |
+| **D4** | **App-theme generator** — push matugen output to GTK / Qt / kitty / alacritty / wezterm / vscode | Defer — kitty already follows the shell scheme via include; the rest is nice-to-have |
+
+## Dropped
+
+- ~~**Notepad module**~~ — owner decision: not needed.
+
+---
+
 ## Where mshell is ahead — preserve these
 
 | Area | mshell | Noctalia | Dank |
@@ -164,13 +177,24 @@ Track these but don't prioritise.
 
 ## Recommended sequencing
 
-1. **S1 — embed Settings panel** _(top priority, owner-flagged)_
-2. **Tier A as one batch** — finish all 10 in a single sprint
-3. **B3 (process list) + B4 (overview dashboard)** — biggest UX wins after Tier A
-4. **B1 (desktop widgets) + B7 (hooks)** — extensibility runway
-5. **B10 (output management)** — needed before B1 multi-monitor settles
-6. **B11 (plugin system)** — only after B1–B10
-7. Tier C as one-off interest hits
+S1 + A6 + A7 already landed. From here:
+
+1. **Tier A remaining (8 items)** — A3 (lock keys) · A10 (OSD
+   coverage) · A4 (keyboard layout) · A2 (sysstat pills) ·
+   A5 (calendar grid) · A9 (screen corners) · A1 (privacy
+   indicator) · A8 (setup wizard). The first four are low-cost
+   batchable; A5/A9 are mid; A1/A8 are bigger.
+2. **B10 — Output management under Display → Layout.** Big UX
+   win, backend is already there (`mlayout` CLI). Highest leverage
+   per LOC.
+3. **B6 (system update indicator) + B9 (window-rule editor in
+   Settings)** — visible day-one helpers.
+4. **B3 (process list) + B4 (overview dashboard) + B7 (hooks)** —
+   the larger features.
+5. **B5 (audio visualizer)** — eye-candy, after the functional
+   slate is done.
+6. **Tier C** as one-off interest hits.
+7. **Tier D** — back-burner; revisit only after Tier B clears.
 
 ---
 
