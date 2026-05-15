@@ -1,6 +1,6 @@
 # Margo Road Map
 
-> **Last updated:** 2026-05-10 — Phase 1 closed at **v0.1.6**; Phase 2 (Quality & growth) opens.
+> **Last updated:** 2026-05-15 — Phase 1 closed at **v0.1.6**; Phase 2 (Quality & growth) opens; Wayland protocol parity audit (§15.10) added.
 > **Branch:** `main` (single-branch — Rust port complete; the C tree remains as legacy reference under `src/`)
 > **Status:** Daily-driver Wayland compositor at niri-class feature parity. Phase 1 (catch-and-surpass-niri sweep) closed; Phase 2 (quality, polish, growth) open.
 
@@ -25,6 +25,7 @@ This document is the **source of truth** for what's shipped, what's queued, and 
 | Catch-and-surpass-niri sweep (W1–W4) | snapshot tests, clippy gate, CONTRIBUTING, screenshot region UI, EGL graceful fallback, AccessKit, xwayland-satellite, cargo features, tracy, HDR Phase 3 metadata, mctl run, plugin packaging, dwl-ipc state extension, layout-cycle notify, per-tag wallpaper, mctl migrate, mvisual design tool, HDR Phase 4 ICC LUT, **udev backend split** | ✅ 19/22 (5 deferred / upstream-blocked) |
 | **Phase 1 (catch-and-surpass)** — closed at v0.1.6 | full ledger in §14 | ✅ |
 | **Phase 2 (quality & growth)** — open | 5 streams: code quality, tests, bugs, features, external triggers (§15) | 🔵 active |
+| Wayland protocol parity (P1–P17) | 11 baseline gaps vs niri+Hyprland (Tier 1+2), 6 Hyprland-only fast-adopters (Tier 3) — full audit in §15.10 | 🔵 queued |
 
 ---
 
@@ -575,6 +576,77 @@ caught on review:
 - **Custom Wayland protocol extensions** beyond dwl-ipc-v2's existing
   scope. Niri tried this; the wire-compat ecosystem (noctalia /
   waybar-dwl) is more valuable than wire innovation.
+
+### 15.10 Wayland protocol parity — niri / Hyprland gap
+
+Cross-checked margo's smithay `delegate_*!` macros + hand-rolled
+globals against niri's `delegate_*!` set and Hyprland's
+`src/protocols/` directory on 2026-05-15. The table below lists
+protocols **both** niri and Hyprland advertise that margo currently
+does **not** — i.e. de facto baseline expectations for a daily-driver
+Wayland compositor in 2026 — plus a tail of Hyprland-only
+fast-adopters worth tracking. Adopting upstream standardized
+protocols is explicitly **not** in conflict with §15.9 (which forbids
+margo *inventing* new wire protocols, not consuming standardized ones).
+
+#### Tier 1 — daily-driver impact (high value, low/medium cost)
+
+| # | Protocol | What it enables | smithay support | Cost |
+|---|---|---|---|---|
+| **P1** | `zwp_keyboard_shortcuts_inhibit_manager_v1` | VNC / RDP / VirtualBox-style clients can grab all host shortcuts (Super, Ctrl+Alt) so the keys reach the guest. **Direct follow-up to the v0.5.0 XWayland keyboard fix** — the X11Surface dispatch is now correct, but Super / Ctrl+Alt still get intercepted by margo before vncviewer sees them. | `delegate_keyboard_shortcuts_inhibit!` ready | low (~1 file) |
+| **P2** | `zwlr_foreign_toplevel_manager_v1` (wlr, **write-side**) | Bar / dock click-to-activate, close, minimize on toplevels. mshell's active-window pill is read-only today because margo only exposes `ext-foreign-toplevel-list-v1` (list-only). Adding write-side unlocks taskbar UX. | smithay impl present (`wlr_foreign_toplevel_management`) | low–mid |
+| **P3** | `zwp_pointer_gestures_v1` | Touchpad pinch / swipe gestures forwarded to clients (Firefox pinch-zoom, GNOME apps, Inkscape). | `delegate_pointer_gestures!` ready | low |
+| **P4** | `xdg_foreign_v2` | Cross-process surface embedding — Firefox / Chromium Picture-in-Picture, xdg-desktop-portal screencast window targeting. | `delegate_xdg_foreign!` ready | low |
+| **P5** | `ext_workspace_v1` | Modern standardized workspace protocol (margo currently exposes workspaces only via dwl-ipc-v2). Required for shells that don't speak dwl-ipc (sfwbar, ironbar, etc.) to show workspace state. | `delegate_ext_workspace!` ready | mid (semantics map: tags ↔ workspaces) |
+
+#### Tier 2 — niche but common (medium value)
+
+| # | Protocol | What it enables | smithay support | Cost |
+|---|---|---|---|---|
+| **P6** | `zwp_tablet_manager_v2` | Wacom / Huion drawing tablets — pen pressure, tilt, eraser, buttons. Without this, tablets fall back to mouse-emulation only. | `delegate_tablet_manager!` ready | mid |
+| **P7** | `zwlr_virtual_pointer_manager_v1` | Companion to v0.4.8's `zwp_virtual_keyboard_v1` — remote-desktop / accessibility / `wtype --click` style pointer injection. | `delegate_virtual_pointer!` ready | low |
+| **P8** | `wp_security_context_v1` | Flatpak / sandboxed app identification — lets the compositor and trusted clients distinguish sandboxed from native processes. | `delegate_security_context!` ready | low |
+| **P9** | `wp_single_pixel_buffer_v1` | Solid-color buffer optimization — modern apps (GTK4, kwin clients) skip a real buffer alloc for opaque-fill regions. | `delegate_single_pixel_buffer!` ready | trivial |
+| **P10** | `org_kde_kwin_server_decoration` | Legacy KDE SSD/CSD negotiation — some older Qt5 / KDE apps still expect it (xdg-decoration covers most modern apps). | `delegate_kde_decoration!` ready | trivial |
+| **P11** | `wp_drm_lease_device_v1` | DRM leasing — VR headsets (Valve Index, Vive), exclusive-output gaming displays bypass the compositor. | `delegate_drm_lease!` ready | mid (backend-coupled) |
+
+#### Tier 3 — Hyprland-only fast-adopters (track, not blocker)
+
+These are in Hyprland but not yet in niri's `delegate_*!` set. Adopt
+opportunistically — none gates daily-driver use, but each closes a
+specific gap.
+
+| # | Protocol | What it enables | smithay support |
+|---|---|---|---|
+| **P12** | `zwlr_output_power_management_v1` | Wayland-side DPMS — `wlopm` and shells (mshell) can blank outputs without going through libdrm directly. | smithay impl present |
+| **P13** | `wp_tearing_control_v1` | Variable-refresh / immediate-page-flip mode for games. | smithay impl present |
+| **P14** | `wp_content_type_v1` | Apps signal "this is video / this is game" — compositor can disable presentation-time hints, enable tearing, etc. | smithay impl present |
+| **P15** | `wp_fifo_v1` + `wp_commit_timing_v1` | Newer presentation-pacing protocols replacing some `wp_presentation` use-cases. | smithay impl present |
+| **P16** | `wp_alpha_modifier_v1` | Per-surface alpha hint (faded / dimmed surfaces without compositor effects guesswork). | smithay impl present |
+| **P17** | `xdg_dialog_v1` | Modal-dialog hint — compositor can place / decorate dialogs differently from regular toplevels. | smithay impl present |
+
+#### Where margo is already **ahead** of niri (no work needed — listed for context)
+
+- `wp_color_management_v1` — margo Phase 1 shipped; niri none.
+- `ext_image_capture_source_v1` family (`image_copy_capture`,
+  `output_capture_source`, `toplevel_capture_source`) — margo full set;
+  niri screencopy-only.
+- `linux_drm_syncobj_v1` (explicit sync) — margo ships, niri none.
+- `xwayland_shell_v1` (HiDPI XWayland scaling) — margo ships, niri
+  reaches it via a different mechanism.
+
+#### Recommended sequencing
+
+1. **P1 (shortcuts-inhibit)** — single-session fix, completes the
+   VNC-under-margo story opened by v0.5.0's XWayland keyboard fix.
+2. **P2 (foreign-toplevel-management write-side)** — unlocks mshell
+   active-window pill click-to-activate (currently visual-only).
+3. **P3 + P4 + P9** — small parallel batch (gestures + xdg-foreign +
+   single-pixel-buffer); each is trivial and they ship together.
+4. **P5 (ext-workspace)** — orthogonal effort; semantics design pass
+   for tag↔workspace mapping; do once the Tier-1 small wins land.
+5. **Tier 2 / Tier 3** — opportunistic, triggered by specific user
+   request (e.g. tablet, VR headset, gaming) rather than blanket sweep.
 
 ---
 
