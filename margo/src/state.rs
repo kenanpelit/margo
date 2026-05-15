@@ -361,6 +361,37 @@ pub struct MargoState {
     /// home; smithay drives the global from there.
     pub virtual_keyboard_manager_state:
         smithay::wayland::virtual_keyboard::VirtualKeyboardManagerState,
+    /// `zwp_keyboard_shortcuts_inhibit_manager_v1`: lets a client
+    /// (vncviewer, RDP, VirtualBox, browser remote-desktop apps)
+    /// request that margo stop matching its own keybindings while the
+    /// client's surface has keyboard focus. The protocol state owns
+    /// the global; the live inhibitors are tracked separately so the
+    /// input filter can do an O(1) lookup by focused wl_surface.
+    pub keyboard_shortcuts_inhibit_state:
+        smithay::wayland::keyboard_shortcuts_inhibit::KeyboardShortcutsInhibitState,
+    /// `zwp_pointer_gestures_v1`: forwards touchpad pinch / swipe /
+    /// hold gestures to clients (Firefox pinch-zoom, GNOME apps,
+    /// Inkscape). Smithay drives the global from `SeatHandler`; state
+    /// is held only so the delegate macro has a home.
+    pub pointer_gestures_state: smithay::wayland::pointer_gestures::PointerGesturesState,
+    /// `wp_single_pixel_buffer_v1`: lets clients allocate solid-color
+    /// buffers without a real shm/dmabuf allocation. Pure smithay
+    /// state — no handler trait, no policy.
+    pub single_pixel_buffer_state:
+        smithay::wayland::single_pixel_buffer::SinglePixelBufferState,
+    /// `xdg_foreign_v2`: cross-process surface embedding — Firefox /
+    /// Chromium Picture-in-Picture, xdg-desktop-portal screencast
+    /// window targeting. A client exports a surface, sends the handle
+    /// to another client, which imports it as a parent.
+    pub xdg_foreign_state: smithay::wayland::xdg_foreign::XdgForeignState,
+    /// Currently-active inhibitors, keyed by their target wl_surface.
+    /// `input_handler.rs` checks the focused surface against this map
+    /// every key press; a hit short-circuits margo's keybinding match
+    /// and forwards the key straight to the client.
+    pub keyboard_shortcuts_inhibiting_surfaces: std::collections::HashMap<
+        smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+        smithay::wayland::keyboard_shortcuts_inhibit::KeyboardShortcutsInhibitor,
+    >,
     /// Surfaces that have an active idle-inhibit object. We feed
     /// `!is_empty()` to the notifier whenever this set changes.
     pub idle_inhibitors: std::collections::HashSet<
@@ -726,6 +757,24 @@ impl MargoState {
                 &dh,
                 |_client| true,
             );
+        // `zwp_keyboard_shortcuts_inhibit_v1` — required by vncviewer,
+        // RDP clients, VirtualBox, and any app that needs the host
+        // compositor to stop intercepting its own keybindings (Super,
+        // Alt+Tab, …) while the client surface has focus.
+        let keyboard_shortcuts_inhibit_state =
+            smithay::wayland::keyboard_shortcuts_inhibit::KeyboardShortcutsInhibitState::new::<
+                Self,
+            >(&dh);
+        // `zwp_pointer_gestures_v1` — touchpad gestures (pinch /
+        // swipe / hold) forwarded to focused client.
+        let pointer_gestures_state =
+            smithay::wayland::pointer_gestures::PointerGesturesState::new::<Self>(&dh);
+        // `wp_single_pixel_buffer_v1` — solid-color buffer fast-path.
+        let single_pixel_buffer_state =
+            smithay::wayland::single_pixel_buffer::SinglePixelBufferState::new::<Self>(&dh);
+        // `xdg_foreign_v2` — cross-process surface embedding.
+        let xdg_foreign_state =
+            smithay::wayland::xdg_foreign::XdgForeignState::new::<Self>(&dh);
         let space = Space::default();
         let popups = PopupManager::default();
         let animation_curves = AnimationCurves::bake(&config);
@@ -827,6 +876,11 @@ impl MargoState {
             idle_notifier_state,
             idle_inhibit_state,
             virtual_keyboard_manager_state,
+            keyboard_shortcuts_inhibit_state,
+            keyboard_shortcuts_inhibiting_surfaces: std::collections::HashMap::new(),
+            pointer_gestures_state,
+            single_pixel_buffer_state,
+            xdg_foreign_state,
             idle_inhibitors: std::collections::HashSet::new(),
             layer_layout_hashes: std::collections::HashMap::new(),
             layer_kb_interactivity_hashes: std::collections::HashMap::new(),

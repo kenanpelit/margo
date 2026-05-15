@@ -483,6 +483,30 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                     return FilterResult::Forward;
                 }
 
+                // `zwp_keyboard_shortcuts_inhibit_v1`: if the focused
+                // surface has an active inhibitor, the client (VNC /
+                // RDP / VirtualBox / browser remote-desktop) wants
+                // every key — including margo's own Super / Alt+Tab —
+                // forwarded straight to it. Skip the keybinding match
+                // entirely so the keys reach the guest. Session-lock
+                // path above already returned, so this only fires in
+                // the normal unlocked state.
+                let inhibited = state
+                    .seat
+                    .get_keyboard()
+                    .and_then(|kb| kb.current_focus())
+                    .and_then(|f| f.wl_surface().map(|cow| cow.into_owned()))
+                    .and_then(|surface| {
+                        state
+                            .keyboard_shortcuts_inhibiting_surfaces
+                            .get(&surface)
+                            .map(|i| i.is_active())
+                    })
+                    .unwrap_or(false);
+                if inhibited {
+                    return FilterResult::Forward;
+                }
+
                 // Check for compositor keybindings when key is pressed
                 if key_state == KeyState::Pressed {
                     let keysym = handle.modified_sym();
