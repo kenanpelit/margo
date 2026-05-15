@@ -635,6 +635,21 @@ specific gap.
 - `xwayland_shell_v1` (HiDPI XWayland scaling) — margo ships, niri
   reaches it via a different mechanism.
 
+#### Bonus shipped — smithay-native extras not on the Tier list
+
+While walking the smithay module list during the §15.10 sweep, five
+additional protocols turned up that are smithay-native (delegate
+macro + small handler) and useful enough to land alongside the Tier
+work:
+
+| Protocol | Why it matters |
+|---|---|
+| `zwp_xwayland_keyboard_grab_v1` | X11-side keyboard grab — complement to P1 for XWayland clients (same VNC / VM / remote-desktop story). |
+| `xdg_toplevel_icon_v1` | Apps ship their own icon inline. mshell taskbar / active-window pill can consume this once a UI consumer is wired up. |
+| `xdg_system_bell_v1` | Clients ring the system bell. Currently logged only; future routing to a sound daemon / mshell notification toast. |
+| `wp_pointer_warp_v1` | Programmatic cursor warp requests. Default no-op (opt-in policy). |
+| `xdg_toplevel_tag_v1` | Semantic tags + descriptions on toplevels. Default no-op; could feed window-rule matching. |
+
 #### Recommended sequencing
 
 1. **P1 (shortcuts-inhibit)** — single-session fix, completes the

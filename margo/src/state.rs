@@ -415,6 +415,32 @@ pub struct MargoState {
     /// `xdg_wm_dialog_v1`: modal-dialog hint — compositor can place
     /// / decorate dialogs differently from regular toplevels.
     pub xdg_dialog_state: smithay::wayland::shell::xdg::dialog::XdgDialogState,
+    /// `zwp_xwayland_keyboard_grab_v1`: lets XWayland clients ask
+    /// the compositor to install an exclusive keyboard grab on
+    /// their behalf. Companion to the v0.5.0 X11 focus fix and the
+    /// new `zwp_keyboard_shortcuts_inhibit_v1` global — same VNC /
+    /// VM / remote-desktop story, X11-side mechanism.
+    pub xwayland_keyboard_grab_state:
+        smithay::wayland::xwayland_keyboard_grab::XWaylandKeyboardGrabState,
+    /// `xdg_toplevel_icon_v1`: toplevels can ship their own icon
+    /// inline (PNG / SVG buffer) instead of the bar inferring it
+    /// from the desktop file. mshell's active-window pill can
+    /// surface this once a UI consumer is wired up.
+    pub xdg_toplevel_icon_state:
+        smithay::wayland::xdg_toplevel_icon::XdgToplevelIconManager,
+    /// `xdg_system_bell_v1`: clients ring the system bell. We just
+    /// advertise the global for now and log; routing to a sound
+    /// daemon / mshell notification is a future enhancement.
+    pub xdg_system_bell_state: smithay::wayland::xdg_system_bell::XdgSystemBellState,
+    /// `wp_pointer_warp_v1`: clients can ask the compositor to
+    /// move the cursor to a surface-local position. Default no-op
+    /// — programmatic cursor movement is opt-in policy.
+    pub pointer_warp_state: smithay::wayland::pointer_warp::PointerWarpManager,
+    /// `xdg_toplevel_tag_v1`: clients attach semantic tags +
+    /// description strings to toplevels. Default no-op; could feed
+    /// into window-rule matching later.
+    pub xdg_toplevel_tag_state:
+        smithay::wayland::xdg_toplevel_tag::XdgToplevelTagManager,
     /// Currently-active inhibitors, keyed by their target wl_surface.
     /// `input_handler.rs` checks the focused surface against this map
     /// every key press; a hit short-circuits margo's keybinding match
@@ -839,6 +865,21 @@ impl MargoState {
         // `xdg_wm_dialog_v1` — modal-dialog hint.
         let xdg_dialog_state =
             smithay::wayland::shell::xdg::dialog::XdgDialogState::new::<Self>(&dh);
+        // `zwp_xwayland_keyboard_grab_v1` — XWayland-side keyboard grab.
+        let xwayland_keyboard_grab_state =
+            smithay::wayland::xwayland_keyboard_grab::XWaylandKeyboardGrabState::new::<Self>(&dh);
+        // `xdg_toplevel_icon_v1` — inline app icons on toplevels.
+        let xdg_toplevel_icon_state =
+            smithay::wayland::xdg_toplevel_icon::XdgToplevelIconManager::new::<Self>(&dh);
+        // `xdg_system_bell_v1` — system bell.
+        let xdg_system_bell_state =
+            smithay::wayland::xdg_system_bell::XdgSystemBellState::new::<Self>(&dh);
+        // `wp_pointer_warp_v1` — programmatic pointer position requests.
+        let pointer_warp_state =
+            smithay::wayland::pointer_warp::PointerWarpManager::new::<Self>(&dh);
+        // `xdg_toplevel_tag_v1` — semantic toplevel tags.
+        let xdg_toplevel_tag_state =
+            smithay::wayland::xdg_toplevel_tag::XdgToplevelTagManager::new::<Self>(&dh);
         let space = Space::default();
         let popups = PopupManager::default();
         let animation_curves = AnimationCurves::bake(&config);
@@ -953,6 +994,11 @@ impl MargoState {
             commit_timing_manager_state,
             alpha_modifier_state,
             xdg_dialog_state,
+            xwayland_keyboard_grab_state,
+            xdg_toplevel_icon_state,
+            xdg_system_bell_state,
+            pointer_warp_state,
+            xdg_toplevel_tag_state,
             idle_inhibitors: std::collections::HashSet::new(),
             layer_layout_hashes: std::collections::HashMap::new(),
             layer_kb_interactivity_hashes: std::collections::HashMap::new(),
