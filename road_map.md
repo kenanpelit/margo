@@ -436,6 +436,7 @@ has noted but not yet filed.
 | **B6** | `on_output_change` Rhai hook missing | low | §7 worth-revisiting |
 | **B7** | Touchscreen gesture: hardware verification needed | high | currently blind-developed |
 | **B8** | dwl-ipc dispatch arg-slot mapping is undocumented + footgunny | mid | three CLI bugs landed before fix; document or refactor |
+| **B9** | mshell session menu: Tab / Shift+Tab / Ctrl+N / Ctrl+P / Ctrl+J / Ctrl+K still don't walk focus between the five buttons | mid | **Open.** Super+Delete opens the session menu; number keys 1–5 arm actions correctly (proof the keyboard path reaches the widget), but the focus-walk shortcuts never fire. Four attempts — `EventControllerKey` default Bubble, `EventControllerKey` Capture, `ShortcutController` Local-Bubble, `ShortcutController` Local-Capture — all shipped clean compiles but none delivered keys in practice. Numbers reach us via the same controller; only the Tab + Ctrl+letter cluster drops. Next time: dig with GTK_DEBUG=keybindings or strace the actual key events to see who's consuming Tab before our handler. Likely culprits: (a) GTK4's stock focus-chain handler runs at a level our controller can't preempt; (b) `ShortcutScope::Global` vs `Local` matters more than the phase setting; (c) ESC works because frame's controller is on the toplevel — maybe ours needs to be too. See commits `e5f430a` / `d622608` / `ec78d1e` / `c86828b`. |
 
 ### 15.4 New features
 
