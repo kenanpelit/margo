@@ -384,6 +384,37 @@ pub struct MargoState {
     /// window targeting. A client exports a surface, sends the handle
     /// to another client, which imports it as a parent.
     pub xdg_foreign_state: smithay::wayland::xdg_foreign::XdgForeignState,
+    /// `zwp_tablet_manager_v2`: Wacom / Huion drawing tablets — pen
+    /// pressure, tilt, eraser, buttons. Without this, tablets fall
+    /// back to mouse-emulation only.
+    pub tablet_manager_state: smithay::wayland::tablet_manager::TabletManagerState,
+    /// `wp_security_context_v1`: lets Flatpak / sandboxed clients
+    /// connect through a separate socket the sandbox engine
+    /// pre-allocates. The handler inserts the listener source into
+    /// margo's calloop so sandboxed apps can talk to the compositor.
+    pub security_context_state: smithay::wayland::security_context::SecurityContextState,
+    /// `org_kde_kwin_server_decoration`: legacy KDE decoration
+    /// protocol — some older Qt5 / KDE apps still expect it.
+    /// xdg-decoration covers most modern apps.
+    pub kde_decoration_state: smithay::wayland::shell::kde::decoration::KdeDecorationState,
+    /// `wp_content_type_v1`: clients tag their surfaces as video /
+    /// game / photo so the compositor can adjust scheduling
+    /// (disable presentation-time hints for games, allow tearing,
+    /// etc.).
+    pub content_type_state: smithay::wayland::content_type::ContentTypeState,
+    /// `wp_fifo_v1`: newer presentation-pacing protocol — clients
+    /// can request FIFO commit ordering.
+    pub fifo_manager_state: smithay::wayland::fifo::FifoManagerState,
+    /// `wp_commit_timing_v1`: companion to fifo — explicit
+    /// commit-time targets per surface.
+    pub commit_timing_manager_state:
+        smithay::wayland::commit_timing::CommitTimingManagerState,
+    /// `wp_alpha_modifier_v1`: per-surface alpha hint so apps can
+    /// fade themselves without going through compositor effects.
+    pub alpha_modifier_state: smithay::wayland::alpha_modifier::AlphaModifierState,
+    /// `xdg_wm_dialog_v1`: modal-dialog hint — compositor can place
+    /// / decorate dialogs differently from regular toplevels.
+    pub xdg_dialog_state: smithay::wayland::shell::xdg::dialog::XdgDialogState,
     /// Currently-active inhibitors, keyed by their target wl_surface.
     /// `input_handler.rs` checks the focused surface against this map
     /// every key press; a hit short-circuits margo's keybinding match
@@ -775,6 +806,39 @@ impl MargoState {
         // `xdg_foreign_v2` — cross-process surface embedding.
         let xdg_foreign_state =
             smithay::wayland::xdg_foreign::XdgForeignState::new::<Self>(&dh);
+        // `zwp_tablet_manager_v2` — pen tablets.
+        let tablet_manager_state =
+            smithay::wayland::tablet_manager::TabletManagerState::new::<Self>(&dh);
+        // `wp_security_context_v1` — sandboxed-client socket
+        // pre-allocation. Filter accepts every client; the protocol's
+        // listener-fd mechanism is itself the access boundary.
+        let security_context_state =
+            smithay::wayland::security_context::SecurityContextState::new::<Self, _>(
+                &dh,
+                |_client| true,
+            );
+        // `org_kde_kwin_server_decoration` — legacy KDE deco.
+        // Default to server-side decoration since margo's existing
+        // xdg-decoration policy is SSD-first.
+        let kde_decoration_state =
+            smithay::wayland::shell::kde::decoration::KdeDecorationState::new::<Self>(
+                &dh,
+                smithay::reexports::wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration_manager::Mode::Server,
+            );
+        // `wp_content_type_v1` — surface content-type hints.
+        let content_type_state =
+            smithay::wayland::content_type::ContentTypeState::new::<Self>(&dh);
+        // `wp_fifo_v1` + `wp_commit_timing_v1` — newer presentation
+        // pacing protocols.
+        let fifo_manager_state = smithay::wayland::fifo::FifoManagerState::new::<Self>(&dh);
+        let commit_timing_manager_state =
+            smithay::wayland::commit_timing::CommitTimingManagerState::new::<Self>(&dh);
+        // `wp_alpha_modifier_v1` — per-surface alpha hint.
+        let alpha_modifier_state =
+            smithay::wayland::alpha_modifier::AlphaModifierState::new::<Self>(&dh);
+        // `xdg_wm_dialog_v1` — modal-dialog hint.
+        let xdg_dialog_state =
+            smithay::wayland::shell::xdg::dialog::XdgDialogState::new::<Self>(&dh);
         let space = Space::default();
         let popups = PopupManager::default();
         let animation_curves = AnimationCurves::bake(&config);
@@ -881,6 +945,14 @@ impl MargoState {
             pointer_gestures_state,
             single_pixel_buffer_state,
             xdg_foreign_state,
+            tablet_manager_state,
+            security_context_state,
+            kde_decoration_state,
+            content_type_state,
+            fifo_manager_state,
+            commit_timing_manager_state,
+            alpha_modifier_state,
+            xdg_dialog_state,
             idle_inhibitors: std::collections::HashSet::new(),
             layer_layout_hashes: std::collections::HashMap::new(),
             layer_kb_interactivity_hashes: std::collections::HashMap::new(),
@@ -3127,7 +3199,7 @@ smithay::delegate_virtual_keyboard_manager!(MargoState);
 // `wp_cursor_shape_v1`: clients send a shape name instead of their
 // own cursor surface; we draw via `cursor_manager` at our own size.
 // Required for GTK4 layer-shell surfaces to avoid oversized cursor.
-impl smithay::wayland::tablet_manager::TabletSeatHandler for MargoState {}
+// (TabletSeatHandler lives in state/handlers/tablet_manager.rs.)
 smithay::delegate_cursor_shape!(MargoState);
 
 // ── Smithay delegate: Output ──────────────────────────────────────────────────

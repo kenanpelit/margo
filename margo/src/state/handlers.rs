@@ -12,24 +12,31 @@
 //! since child modules can see the parent's private items. The
 //! `delegate_*!` macros stay co-located with their impls.
 
+mod alpha_modifier;
 mod color_management;
 mod compositor;
+mod content_type;
 mod dmabuf;
+mod fifo;
 mod gamma_control;
 mod idle;
 mod image_copy_capture;
 mod input_method;
+mod kde_decoration;
 mod keyboard_shortcuts_inhibit;
 mod layer_shell;
 mod output_management;
 mod pointer_constraints;
 mod pointer_gestures;
 mod screencopy;
+mod security_context;
 mod selection;
 mod session_lock;
 mod single_pixel_buffer;
+mod tablet_manager;
 mod x11;
 mod xdg_activation;
 mod xdg_decoration;
+mod xdg_dialog;
 mod xdg_foreign;
 mod xdg_shell;
