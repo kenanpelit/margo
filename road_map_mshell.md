@@ -48,30 +48,24 @@ it), inside the same layer-shell window every other menu lives in. mshell
 today launches Settings as a `gtk::Window` — a decorated toplevel that the
 compositor treats as a normal app. The owner wants the embedded form.
 
-**S1 — Embed Settings in the frame menu stack.** _(dedicated session)_
+**S1 — Embed Settings in the frame menu stack.** ✅ **Shipped.**
 
-Convert `mshell-settings::open_settings` from a `gtk::Window` constructor
-into a relm4 component reusing the frame's menu surface (same path as
-`notifications_menu_widget`, `wallpaper_menu_widget`, etc.). Dismissal
-follows `ESC` + click-outside like the rest. Result: settings opens in
-under 50 ms with no compositor round-trip for a new toplevel, and feels
-consistent with the rest of the shell.
+Settings now mounts into the frame's layer-shell menu stack alongside
+wallpaper / notifications / app-launcher. The old `gtk::Window`
+toplevel is gone. Active-monitor routing through the IPC layer
+(`ShellInput::ToggleSettingsMenu(Option<String>)`) sends the toggle
+to the right Frame; panel size scales to the monitor's geometry
+(`height = monitor_h * 3/4`, 4:3 aspect). Sidebar fully reorganised:
 
-**Status (2026-05-15):** ⚠️ Partial. Cosmetic step shipped — the window
-is now `decorated(false) + resizable(false) + 780×600 fixed` so it reads
-as a compact popup. The full menu-stack embed touches 5–6 files in
-`frame.rs` (struct field, FrameInput variant, view! macro stack page,
-toggle handler, reposition arg, position config schema) plus the
-`open_settings` thread-local → `set_toggle_backend` bridge in
-`mshell-settings/lib.rs`. Pause-and-resume mid-turn risks a half-broken
-settings flow; book a focused single-task session.
+- Top-level (alphabetical after General): Bar, Display, Fonts, Idle,
+  Theme, Wallpaper, Widgets.
+- Widgets sub-sidebar (36 entries): Layout · 13 menu pages · 20
+  bar-pill pages · Notifications · Session.
+- Display has its own sub-sidebar with Twilight.
 
-Also fold in a **compact layout pass** while we're rewriting it:
-- Two-column for boolean rows + slider rows where space allows
-- Tighter section spacing
-- Inline help text shrunk + de-bolded
-- Sub-sidebar pattern (already in Display) extended to Bar (Top/Bottom/
-  Frame) and Menus (per-menu config)
+Reference commits: `05fee31` (initial embed), `7882044` (monitor
+routing + sizing), `05f89e6` (Widgets group), `ac3a71f` (Bar
+top-level, Widgets restructure), `bc43d23` (fill all pills + menus).
 
 ---
 
@@ -86,8 +80,8 @@ Target: ship the whole tier as one batch.
 | **A3** | **Lock-key indicator** — Caps / Num / Scroll lock status pill | Noctalia `LockKeys` | low | Read xkb state from Wayland virtual-keyboard or input-method. ~50 LOC |
 | **A4** | **Keyboard layout pill + cycle** — current layout label, click cycles | Noctalia `KeyboardLayout`, Dank `KeyboardLayoutName` | low | mctl-side IPC for `setxkblayout`; or `dwl-ipc` keyboard-layout message. Pill ~80 LOC. Also tie into OSD on switch |
 | **A5** | **Calendar grid in clock menu** — month view with day cells, today highlighted, prev/next month nav | Dank `CalendarService` + overview card | mid | Replace the current clock menu's simple body. Pure Rust date math via `chrono`. UI ~200 LOC. Future: event-source plugins |
-| **A6** | **Dark-mode toggle pill** — flips `matugen.mode` light↔dark | Noctalia `DarkMode` | low | One-button widget that calls `config_manager().update_config`. ~40 LOC |
-| **A7** | **KeepAwake (idle inhibit) pill** — bar toggle for idle-inhibit | Noctalia `KeepAwake`, Dank `IdleInhibitor` | low | `mshell-idle` already owns the inhibitor cookie; expose toggle via IPC. Pill ~50 LOC |
+| **A6** ✅ | **Dark-mode toggle pill** — flips `matugen.mode` light↔dark | Noctalia `DarkMode` | low | **Shipped** `2e9a33b`. Reactive — picks up external config writes too. |
+| **A7** ✅ | **KeepAwake (idle inhibit) pill** — bar toggle for idle-inhibit | Noctalia `KeepAwake`, Dank `IdleInhibitor` | low | **Shipped** `2e9a33b`. Subscribed to `IdleInhibitor::global().watch()` so `mctl idle inhibit` toggles update the pill. |
 | **A8** | **Setup wizard** — first-launch onboarding modal | Noctalia `SetupWizard` | mid | Wallpaper pick, font choice, locale, lat/lng (for twilight), accent color preview. Triggered when `~/.config/margo/mshell/.welcomed` is absent. ~400 LOC across one new menu widget |
 | **A9** | **Screen-corners overlay** — rounded display corners drawn by mshell | Noctalia `ScreenCorners` | low | Layer-shell anchored Cairo draw, per-output. Config knob for radius. ~120 LOC |
 | **A10** | **OSD coverage for brightness / keyboard layout / network state** — currently OSD only fires for volume | Noctalia OSD pattern | low | Wire existing `mshell-osd` to brightness change events, keyboard-layout-switch, wifi connect/disconnect. ~80 LOC per source |
@@ -98,6 +92,21 @@ mshell-services / mshell-frame.
 **Tier A done = mshell at feature parity with noctalia's status cluster.**
 
 ---
+
+## Bonus shipped (not originally on the roadmap)
+
+Work that came up between sessions and shipped alongside the roadmap
+items. Captured here so the audit is honest.
+
+| # | Item | Commits |
+|---|---|---|
+| **X1** | **Twilight: built-in preset-schedule mode** — `TwilightMode::Schedule` reads `~/.config/margo/twilight/{schedule.conf,presets/*.toml}`, interpolates between consecutive presets in mired space. Bootstrap seeds 6 starter presets on first run. Settings UI mode dropdown gains a "Schedule" entry. | `29303df`, `2a2ccce`, `324ba32` |
+| **X2** | **Twilight: multi-GPU gamma routing fix** — `pending_gamma` was drained unconditionally on every `BackendData` render, so the second GPU silently lost its ramps. Filter the drain by this device's outputs and re-park the rest. | (margo-side) |
+| **X3** | **Margo theme + default** — new "Margo" colour scheme (Dracula-style surface + kitty Catppuccin Mocha foreground `#CDD6F4`). Owns its own CLUT (`cluts/margo.bin`). `Themes::Default` now aliases to Margo so a fresh install lands on the brand look. | `798083b`, `f4698c0` |
+| **X4** | **Bar font scale** — `--font-bar: 1em` token, pill labels go from ~11 px to ~13 px to match noctalia. | `8a2233a` (and earlier) |
+| **X5** | **Bar min-height crash fix** — `update_config` was firing on every SpinButton arrow click, triggering a write storm that took mshell down. 350 ms debounce. | (mshell-settings) |
+| **X6** | **Session menu keyboard nav** — Tab / Shift+Tab / Ctrl+N / Ctrl+P / Ctrl+J / Ctrl+K walk focus between the five power-menu buttons. Took four attempts (Bubble → Capture phase → ShortcutController → Capture ShortcutController) — `road_map.md` §B9 closed. | `c86828b` |
+| **X7** | **mshell-settings reorganisation** — Bar moved back to top-level; Notifications and Session moved into Widgets; sub-sidebar now has 36 entries (Layout + 13 menu pages + 20 bar-pill pages + Notifications + Session). | `ac3a71f`, `bc43d23` |
 
 ## TIER B — meaningful, mid-to-large effort
 
