@@ -114,13 +114,12 @@ Each item below is a single-session goal. Don't batch.
 
 | # | Item | Source | Notes |
 |---|---|---|---|
-| **B3** | **Process list modal** — task manager: process / disks / performance views | Dank `ProcessList`, `dgop` | Bind Ctrl+Shift+Esc. Uses `procfs` crate. Tree view + sort by CPU/RAM. ~600 LOC |
 | **B4** | **Overview dashboard** — super-key full-screen overview with cards (clock / weather / media / calendar / system / user) | Dank `DankDash/Overview` | New `overview_menu_widget`. Re-uses existing components. Bound to Super or a margo dispatch action |
-| **B5** | **Audio visualizer / spectrum bar** | Noctalia `AudioVisualizer` + `SpectrumService` | PipeWire FFT in a dedicated thread → 8/16/32 band ChannelReceiver → `gtk::DrawingArea`. Optional bar pill + desktop widget version |
 | **B6** | **System update indicator** | Dank `SystemUpdateService` | Pacman / dnf / apt count polled every 30 min. Bar pill shows count, click → terminal helper (configurable) |
-| **B7** | **Hooks system** — run user scripts on shell events | Noctalia `HooksService` | `~/.config/mshell/hooks/{on_dark_mode,on_wallpaper_change,on_lock,on_unlock,on_perf_mode,on_colors_generated}.sh`. Fire async via `spawn`. ~100 LOC |
 | **B9** | **Window-rule editor in Settings** — GUI builder over margo's `windowrule` config, lives under a new Widgets sub-page or Bar→Window-rules tab | Dank `WindowRuleModal` | List existing rules + add/edit form (regex / class / title / actions). Writes through to `config.conf` via the same in-place line-edit pipeline already used for twilight |
 | **B10** | **Output management** — display arrangement panel: position, resolution, scale, rotation under Display → Layout | `mlayout` (in-tree) | Wire the existing `mlayout` CLI as the Settings backend. `mlayout list / preview / set / new / next / prev / pick` are already implemented; the missing pieces are (a) seed-on-first-run so a virgin install actually has layout files (today `mlayout list` returns "no layouts" until the user runs `mlayout init` by hand), and (b) a GUI panel under Display → Layout that drives those commands. Big UX win — multi-monitor users get a graphical arrangement editor without any new compositor protocol work |
+
+_B3 (process list) · B5 (audio visualizer) · B7 (hooks) moved to Tier D — see below._
 
 ---
 
@@ -154,6 +153,12 @@ Owner notes recorded inline so the rationale doesn't get lost.
 | **D2** | **Wallpaper search (Wallhaven)** — search + download from inside the wallpaper menu | Defer — current rotation + manual-pick flow covers the daily case |
 | **D3** | **Plugin system** — Lua / Rhai-loaded plugins for bar widgets, menu providers, launcher entries | Save for after the in-tree feature set settles — no point freezing a plugin API while we're still adding bar pills weekly |
 | **D4** | **App-theme generator** — push matugen output to GTK / Qt / kitty / alacritty / wezterm / vscode | Defer — kitty already follows the shell scheme via include; the rest is nice-to-have |
+| **D5** | **A1 — Privacy indicator (cam/mic/screencast)** | Bigger lift (PipeWire node inspection). Pull forward when a real-world need shows up |
+| **D6** | **A4 — Keyboard layout pill + cycle** | Blocked by margo-side: runtime xkb_layout switching doesn't exist yet (only startup config). Pair with a dedicated margo session |
+| **D7** | **A8 — Setup wizard (first-launch onboarding)** | Multi-step modal — sizeable. The shell is already usable without one; revisit when there's an onboarding pain point |
+| **D8** | **B3 — Process list modal (Ctrl+Shift+Esc task manager)** | Big widget — defer until system-monitoring needs surface |
+| **D9** | **B5 — Audio visualizer / spectrum bar** | Eye-candy; ships after the functional slate clears |
+| **D10** | **B7 — Hooks system** (`~/.config/mshell/hooks/on_*.sh`) | Small but pure extensibility — defer until users start asking for it |
 
 ## Dropped
 
@@ -177,24 +182,36 @@ Owner notes recorded inline so the rationale doesn't get lost.
 
 ## Recommended sequencing
 
-S1 + A6 + A7 already landed. From here:
+Owner-curated short list. Items not on it are explicitly
+deferred to Tier D — pull them back up when there's interest.
 
-1. **Tier A remaining (8 items)** — A3 (lock keys) · A10 (OSD
-   coverage) · A4 (keyboard layout) · A2 (sysstat pills) ·
-   A5 (calendar grid) · A9 (screen corners) · A1 (privacy
-   indicator) · A8 (setup wizard). The first four are low-cost
-   batchable; A5/A9 are mid; A1/A8 are bigger.
-2. **B10 — Output management under Display → Layout.** Big UX
-   win, backend is already there (`mlayout` CLI). Highest leverage
-   per LOC.
-3. **B6 (system update indicator) + B9 (window-rule editor in
-   Settings)** — visible day-one helpers.
-4. **B3 (process list) + B4 (overview dashboard) + B7 (hooks)** —
-   the larger features.
-5. **B5 (audio visualizer)** — eye-candy, after the functional
-   slate is done.
-6. **Tier C** as one-off interest hits.
-7. **Tier D** — back-burner; revisit only after Tier B clears.
+**Active queue:**
+
+1. **A5 — Calendar grid in the clock menu.** Daily-visible
+   upgrade; the existing clock-menu body is sparse and a real
+   month grid is what users expect when they click a clock.
+2. **B10 — Output management under Display → Layout.** The
+   `mlayout` CLI already implements list / preview / set / new
+   / next / prev / pick; this work is wiring it to a Settings
+   panel + seeding the layout dir on first run. Settings →
+   Display is built for it (sub-sidebar already in place).
+3. **B6 — System update indicator pill.** Polled count of
+   pending updates (pacman / dnf / apt). Tiny widget, daily
+   utility.
+4. **B4 — Overview dashboard.** Super-key full-screen card
+   view (clock / weather / media / calendar / system / user).
+   Look-and-feel piece; lands after B6.
+5. **B9 — Window-rule editor in Settings.** GUI rule builder
+   over margo's `windowrule` config; writes through the same
+   in-place config pipeline twilight already uses.
+
+**Deferred to Tier D** (owner: "do them eventually, not now"):
+A1 (privacy indicator) · A4 (keyboard layout) · A8 (setup
+wizard) · B3 (process list modal) · B5 (audio visualizer) ·
+B7 (hooks system). Plus the original D1–D4.
+
+**Tier C** stays where it is — niche, pick up if a use case
+surfaces.
 
 ---
 
