@@ -121,15 +121,20 @@ pub fn gather_layouts(dir: &Path) -> Result<Vec<Layout>> {
     let mut layouts = Vec::new();
     for entry in entries {
         let entry = entry?;
-        if !entry.file_type()?.is_file() {
-            continue;
-        }
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
         if !name_str.starts_with("layout_") || !name_str.ends_with(".conf") {
             continue;
         }
         let path = entry.path();
+        // Follow symlinks: users often keep their margo configs in a
+        // dotfiles repo and symlink them under `~/.config/margo/`.
+        // `entry.file_type()` reports the link itself, not its
+        // target — `metadata()` traverses the link.
+        match std::fs::metadata(&path) {
+            Ok(md) if md.is_file() => {}
+            _ => continue,
+        }
         let layout = parse_file(&path)
             .with_context(|| format!("parse layout file: {}", path.display()))?;
         layouts.push(layout);
