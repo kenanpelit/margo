@@ -354,6 +354,13 @@ pub struct MargoState {
     /// presentation tools) can request "don't go idle while my surface
     /// is on screen". The notifier is paused while the set is non-empty.
     pub idle_inhibit_state: smithay::wayland::idle_inhibit::IdleInhibitManagerState,
+    /// `zwp_virtual_keyboard_v1`: lets unprivileged clients (wayvnc
+    /// for VNC sessions, `wtype` / `ydotool` for synthetic input,
+    /// IMEs) inject key events into the focused surface. The state
+    /// is stored only so `delegate_virtual_keyboard_manager!` has a
+    /// home; smithay drives the global from there.
+    pub virtual_keyboard_manager_state:
+        smithay::wayland::virtual_keyboard::VirtualKeyboardManagerState,
     /// Surfaces that have an active idle-inhibit object. We feed
     /// `!is_empty()` to the notifier whenever this set changes.
     pub idle_inhibitors: std::collections::HashSet<
@@ -710,6 +717,15 @@ impl MargoState {
             smithay::wayland::idle_notify::IdleNotifierState::<Self>::new(&dh, loop_handle.clone());
         let idle_inhibit_state =
             smithay::wayland::idle_inhibit::IdleInhibitManagerState::new::<Self>(&dh);
+        // `zwp_virtual_keyboard_v1` — required by wayvnc to inject
+        // keystrokes from VNC clients, and used by `wtype` /
+        // `ydotool` for synthetic input. Open to all clients; the
+        // wayland socket is already per-user.
+        let virtual_keyboard_manager_state =
+            smithay::wayland::virtual_keyboard::VirtualKeyboardManagerState::new::<Self, _>(
+                &dh,
+                |_client| true,
+            );
         let space = Space::default();
         let popups = PopupManager::default();
         let animation_curves = AnimationCurves::bake(&config);
@@ -810,6 +826,7 @@ impl MargoState {
             session_locked: false,
             idle_notifier_state,
             idle_inhibit_state,
+            virtual_keyboard_manager_state,
             idle_inhibitors: std::collections::HashSet::new(),
             layer_layout_hashes: std::collections::HashMap::new(),
             layer_kb_interactivity_hashes: std::collections::HashMap::new(),
@@ -3051,6 +3068,7 @@ impl SeatHandler for MargoState {
     }
 }
 delegate_seat!(MargoState);
+smithay::delegate_virtual_keyboard_manager!(MargoState);
 
 // `wp_cursor_shape_v1`: clients send a shape name instead of their
 // own cursor surface; we draw via `cursor_manager` at our own size.
