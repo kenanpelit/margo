@@ -28,6 +28,7 @@ use crate::static_themes::inky_pinky::inky_pinky;
 use crate::static_themes::kanagawa_dragon::kanagawa_dragon;
 use crate::static_themes::kanagawa_lotus::kanagawa_lotus;
 use crate::static_themes::kanagawa_wave::kanagawa_wave;
+use crate::static_themes::margo::margo;
 use crate::static_themes::miasma::miasma;
 use crate::static_themes::monokai_classic::monokai_classic;
 use crate::static_themes::nord_dark::nord_dark;
@@ -56,6 +57,7 @@ pub fn static_theme(theme: &Themes, mshell: Option<MShell>) -> Option<MatugenThe
     let mshell = mshell.unwrap_or_default();
     match theme {
         Themes::Default | Themes::Wallpaper => None,
+        Themes::Margo => Some(margo(mshell)),
         Themes::Bauhaus => Some(bauhaus(mshell)),
         Themes::BlackTurq => Some(black_turq(mshell)),
         Themes::BloodRust => Some(blood_rust(mshell)),

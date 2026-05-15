@@ -159,7 +159,7 @@ impl Default for Theme {
     fn default() -> Self {
         Self {
             icons: Icons::default(),
-            theme: Themes::Default,
+            theme: Themes::Margo,
             matugen: Matugen::default(),
             css_file: String::new(),
             attributes: ThemeAttributes::default(),

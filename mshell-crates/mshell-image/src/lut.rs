@@ -95,6 +95,10 @@ pub fn embedded_clut(theme: &Themes) -> Option<&'static [u8]> {
         Themes::KanagawaDragon => Some(CLUT_KANAGAWA_DRAGON),
         Themes::KanagawaLotus => Some(CLUT_KANAGAWA_LOTUS),
         Themes::KanagawaWave => Some(CLUT_KANAGAWA_WAVE),
+        // Margo reuses Dracula's image-grading CLUT: same surface
+        // palette, only the foreground text colour differs, and
+        // CLUTs grade pixel colours, not text.
+        Themes::Margo => Some(CLUT_DRACULA),
         Themes::Miasma => Some(CLUT_MIASMA),
         Themes::MonokaiClassic => Some(CLUT_MONOKAI_CLASSIC),
         Themes::NordDark => Some(CLUT_NORD_DARK),

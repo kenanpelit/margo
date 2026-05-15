@@ -27,6 +27,7 @@ pub mod inky_pinky;
 pub mod kanagawa_dragon;
 pub mod kanagawa_lotus;
 pub mod kanagawa_wave;
+pub mod margo;
 pub mod miasma;
 pub mod monokai_classic;
 pub mod nord_dark;
