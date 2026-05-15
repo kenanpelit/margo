@@ -7,6 +7,110 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.6.0] – 2026-05-15
+
+### Added
+
+- **Wayland protocol surface — 16 new globals advertised in one sweep.**
+  Cross-checked margo's smithay `delegate_*!` macros + hand-rolled
+  globals against niri and Hyprland on 2026-05-15. Margo's surface
+  grew from ~38 to ~54 advertised globals, passing niri (~41) and
+  pursuing Hyprland (~62) on standard protocols. Three protocols
+  (`zwp_xwayland_keyboard_grab_v1`, `xdg_toplevel_icon_v1`,
+  `xdg_toplevel_tag_v1`) are advertised by margo alone among the
+  three. Full side-by-side audit lives in
+  `docs/protocol-comparison.md`; work plan in `road_map.md` §15.10.
+  Shipped in commits `dc44818` + `74a0edb` + `c146aac`:
+  - `zwp_keyboard_shortcuts_inhibit_v1` — VNC / RDP / VM clients can
+    grab host shortcuts. `input_handler.rs` short-circuits the
+    keybinding match when the focused surface has an active
+    inhibitor; auto-activate policy matches niri.
+  - `zwp_pointer_gestures_v1` — touchpad pinch / swipe / hold
+    forwarded to clients (Firefox pinch-zoom, GNOME, Inkscape).
+  - `xdg_foreign_v2` — cross-process surface embedding for Firefox /
+    Chromium Picture-in-Picture and xdg-desktop-portal screencast.
+  - `wp_single_pixel_buffer_v1` — solid-color buffer fast-path.
+  - `zwp_tablet_manager_v2` — Wacom / Huion drawing tablets. Folds
+    the orphan `TabletSeatHandler` impl that was sitting unwired
+    in state.rs into a proper handler module.
+  - `wp_security_context_v1` — Flatpak / sandboxed clients. Handler
+    inserts the listener source into margo's calloop; restricted-
+    client enforcement is a follow-up.
+  - `org_kde_kwin_server_decoration` — legacy KDE deco for older
+    Qt5 / KDE apps. Default mode Server (matches SSD-first policy).
+  - `wp_content_type_v1` — game / video / photo surface hints.
+  - `wp_fifo_v1` + `wp_commit_timing_v1` — newer presentation
+    pacing protocols.
+  - `wp_alpha_modifier_v1` — per-surface alpha hint.
+  - `xdg_wm_dialog_v1` — modal-dialog hint.
+  - `zwp_xwayland_keyboard_grab_v1` — XWayland-side keyboard grab.
+    Direct complement to `keyboard_shortcuts_inhibit_v1` — same
+    VNC / VM story via the X11 mechanism. Handler maps the
+    XWayland-managed wl_surface to its `MargoClient.window` so the
+    grab attaches to the correct toplevel `FocusTarget`.
+  - `xdg_toplevel_icon_v1` — toplevels ship inline PNG / SVG icons;
+    smithay caches them on the surface as `ToplevelIconCachedState`.
+    mshell taskbar / active-window pill consumer is the natural
+    next step.
+  - `xdg_system_bell_v1` — logged-only for now; routing to a sound
+    daemon / notification toast is a future enhancement.
+  - `wp_pointer_warp_v1` — programmatic cursor warp; default no-op
+    (opt-in policy).
+  - `xdg_toplevel_tag_v1` — semantic tags + description strings;
+    default no-op, could feed window-rule matching down the road.
+- **mshell session power menu** — Lock / Logout / Suspend / Reboot /
+  Shutdown with 1-5 number-key actions, 3-second countdown
+  confirmation, configurable command overrides per-action via
+  `[session]` config, Settings UI entry, `super+delete` keybind,
+  and `mshellctl menu session [action]` IPC. Tab / Ctrl+N
+  navigation works (focus delivered through a 160 ms post-reveal
+  glib timeout to clear smithay's `sync_keyboard_mode` debounce).
+- **`mshellctl menu notifications {clears,read}`** — `clears` is
+  destructive (history wipe); `read` marks currently-visible
+  popups as read without dismissing history.
+- **`zwp_virtual_keyboard_v1`** — wayvnc / wtype / ydotool / IMEs
+  can inject synthetic key events into the focused surface.
+  Opens the protocol to all clients (the wayland socket is already
+  per-user).
+
+### Fixed
+
+- **XWayland keyboard input not delivered to X11 clients** — the
+  `KeyboardTarget for FocusTarget` impl forwarded only via
+  `inner_wl_surface()`, which returns `None` for X11-backed
+  windows. As a result, smithay's `KeyboardTarget for X11Surface`
+  (the path that calls `XSetInputFocus` + sends `WM_TAKE_FOCUS`)
+  never ran when an X11 window had keyboard focus. Pointer events
+  arrived through the Wayland-pointer-surface path, so touchpad
+  worked but keys never reached the X11 client. Now
+  `FocusTarget::Window` variants with an X11 underlying surface
+  forward keyboard events to the `X11Surface` directly. Fixes
+  vncviewer / xfreerdp / X11 apps under margo not receiving
+  keyboard input while niri / Hyprland worked.
+- **mshell config directory rationalized.** Moved from
+  `~/.config/mshell/` to `~/.config/margo/mshell/` so all margo-
+  related config lives under one tree. Affects `profiles/`,
+  `styles/`, and `icons/` lookup paths.
+- **Session menu keyboard nav was unreachable.** The session menu's
+  EventControllerKey was wired but the focus path was broken —
+  `RevealChanged` was not forwarded into the session widget, and
+  the bar's hardcoded broadcast list omitted it. Both fixed, plus
+  a 160 ms post-reveal `glib::timeout_add_local_once` so
+  `first.grab_focus()` lands after smithay's layer-shell focus
+  debounce.
+- **Settings → Session entries typed right-to-left.** The
+  `gtk::Entry` widgets had `#[watch] set_text` bindings that
+  fed back into themselves on every keystroke, resetting the
+  cursor to position 0. Entries now seed text once at init and
+  write via `connect_changed` only — no reactive read-back loop.
+
+### Changed
+
+- **`KeyboardTarget for FocusTarget` dispatches X11 vs Wayland**
+  through a new `inner_x11_surface()` accessor. Wayland-native
+  variants (Window/Wayland, LayerSurface, SessionLock, Popup)
+  keep the existing `WlSurface` forwarding.
+
 ## [0.5.0] – 2026-05-14
 
 ### Fixed
