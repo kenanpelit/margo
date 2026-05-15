@@ -9,7 +9,8 @@ use crate::menus::menu_widgets::bluetooth::bluetooth_revealed_content::{
 };
 use mshell_services::bluetooth_service;
 use mshell_utils::bluetooth::{
-    set_bluetooth_icon, set_bluetooth_label, spawn_bluetooth_enabled_watcher,
+    set_bluetooth_icon, set_bluetooth_label, spawn_bluetooth_devices_watcher,
+    spawn_bluetooth_enabled_watcher,
 };
 use relm4::gtk::prelude::WidgetExt;
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
@@ -59,6 +60,12 @@ impl Component for BluetoothMenuWidgetModel {
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         spawn_bluetooth_enabled_watcher(&sender, || {
+            BluetoothMenuWidgetCommandOutput::BluetoothStateChanged
+        });
+        // Also refresh on devices-list changes so pairing /
+        // unpairing repaints the row label (the label now shows
+        // the connected device's name instead of just "Bluetooth").
+        spawn_bluetooth_devices_watcher(&sender, || {
             BluetoothMenuWidgetCommandOutput::BluetoothStateChanged
         });
 

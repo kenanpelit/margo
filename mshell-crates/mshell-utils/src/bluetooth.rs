@@ -27,10 +27,29 @@ pub fn set_bluetooth_label(label: &gtk::Label) {
 
     if !available {
         label.set_label("Bluetooth Hardware Missing");
-    } else if enabled {
-        label.set_label("Bluetooth");
-    } else {
+        return;
+    }
+    if !enabled {
         label.set_label("Bluetooth Disabled");
+        return;
+    }
+
+    // Enabled — surface what's connected so the user can see at a
+    // glance whether the row needs attention. "Bluetooth" alone
+    // tells you the radio is on but says nothing about whether
+    // anything is paired and live.
+    let connected: Vec<String> = bluetooth
+        .devices
+        .get()
+        .iter()
+        .filter(|d| d.connected.get())
+        .map(|d| d.alias.get().to_string())
+        .collect();
+
+    match connected.len() {
+        0 => label.set_label("Bluetooth — no devices"),
+        1 => label.set_label(&connected[0]),
+        n => label.set_label(&format!("{} ({} connected)", connected[0], n)),
     }
 }
 
