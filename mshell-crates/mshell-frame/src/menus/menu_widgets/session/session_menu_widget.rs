@@ -13,10 +13,11 @@
 //!   * `Space` / `Enter` activates the focused button at once
 //!     (no countdown — a deliberate click is taken at its word).
 
+use gtk4_layer_shell::{KeyboardMode, LayerShell};
 use mshell_utils::session::{SessionAction, run_session_action};
 use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
 use relm4::gtk::{gdk, glib};
-use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use relm4::{Component, ComponentParts, ComponentSender, RelmWidgetExt, gtk};
 use std::time::Duration;
 
 /// Seconds an armed action counts down before it fires.
@@ -176,7 +177,7 @@ impl Component for SessionMenuWidgetModel {
         &mut self,
         message: Self::Input,
         sender: ComponentSender<Self>,
-        _root: &Self::Root,
+        root: &Self::Root,
     ) {
         match message {
             SessionMenuWidgetInput::Activate(action) => {
@@ -237,6 +238,17 @@ impl Component for SessionMenuWidgetModel {
                     self.pending = None;
                     self.focused = 0;
                     self.refresh_status();
+                    // Mirror app_launcher: flip the host layer-shell
+                    // surface to Exclusive keyboard mode so Tab /
+                    // Ctrl+N / Ctrl+P actually reach the GTK
+                    // EventControllerKey we wired up. Without this
+                    // the layer surface stays on KeyboardMode::None
+                    // (the default for menu surfaces) and only the
+                    // menu's number-key arming works because that
+                    // path travels via a different route.
+                    if let Some(window) = root.toplevel_window() {
+                        window.set_keyboard_mode(KeyboardMode::Exclusive);
+                    }
                     if let Some(first) = self.buttons.first().cloned() {
                         // The layer-shell surface only takes keyboard
                         // focus after `sync_keyboard_mode`'s ~90 ms
@@ -252,6 +264,10 @@ impl Component for SessionMenuWidgetModel {
                     self.generation += 1;
                     self.pending = None;
                     self.refresh_status();
+                    // Release the exclusive grab when the menu hides.
+                    if let Some(window) = root.toplevel_window() {
+                        window.set_keyboard_mode(KeyboardMode::None);
+                    }
                 }
             }
         }
