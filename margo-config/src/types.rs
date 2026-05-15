@@ -146,9 +146,9 @@ pub enum ShortcutsInhibit {
 ///   Reads a directory of presets (each pinning a `static_temp` +
 ///   `static_gamma`) and a `schedule.conf` mapping `HH:MM` to
 ///   preset names. Interpolates in mired space between consecutive
-///   presets. Compatible with sunsetr's preset layout, so the same
-///   files can drive either tool. Path knob:
-///   `twilight_schedule_dir`, default `~/.config/sunsetr`.
+///   presets. Path knob: `twilight_schedule_dir`, default
+///   `~/.config/margo/twilight`. First-run seeds a starter set
+///   of six presets the user can edit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum TwilightMode {
     #[default]
@@ -709,12 +709,13 @@ pub struct Config {
     pub twilight_static_temp: u32,
     /// Static-mode gamma percentage.
     pub twilight_static_gamma: u32,
-    /// Schedule-mode directory. Holds `presets/<name>/sunsetr.toml`
+    /// Schedule-mode directory. Holds `presets/<name>.toml`
     /// (each pinning `static_temp` + `static_gamma`) and a
     /// `schedule.conf` with `HH:MM PRESET_NAME` lines. Default
-    /// points at sunsetr's config dir so existing sunsetr presets
-    /// flow into twilight unchanged. Tilde expansion handled at
-    /// load time. Empty = use the default.
+    /// is `~/.config/margo/twilight`. The first time the
+    /// directory is touched, margo seeds it with a six-preset
+    /// starter schedule the user can edit. Tilde expansion is
+    /// handled at load time. Empty string = use the default.
     pub twilight_schedule_dir: String,
 
     // hot corners — niri pattern. Each corner names a dispatch action

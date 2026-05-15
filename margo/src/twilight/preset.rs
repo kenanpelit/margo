@@ -1,18 +1,31 @@
-//! Sunsetr-compatible preset + schedule loader.
+//! Twilight preset + schedule loader.
 //!
-//! Sunsetr's preset model:
-//!   * `~/.config/sunsetr/presets/<name>/sunsetr.toml` — each
-//!     preset pins `static_temp` (Kelvin) and `static_gamma`
-//!     (percent). Anything else in the TOML is ignored (we only
-//!     care about the colour-temp targets).
-//!   * `~/.config/sunsetr/schedule.conf` — line-based,
-//!     `HH:MM PRESET_NAME` per line. Sunsetr drives this with
-//!     systemd timers; we instead read it directly and
-//!     interpolate.
+//! Layout (margo-owned, independent of sunsetr / redshift /
+//! gammastep / any external tool):
+//!
+//!   ~/.config/margo/twilight/
+//!     schedule.conf          HH:MM PRESET_NAME, one per line
+//!     presets/
+//!       <name>.toml          flat file with `static_temp` +
+//!                            `static_gamma`
+//!
+//! `static_temp` is Kelvin (1000–25000), `static_gamma` is a
+//! brightness percentage (10–200). The file format intentionally
+//! shares the same key names that several other Wayland gamma
+//! tools use so values can be hand-copied across without
+//! translation — but the *location* is ours.
+//!
+//! Bootstrap: if the configured directory doesn't exist, the
+//! first `load()` writes a default `schedule.conf` and a handful
+//! of preset files so the user has something to start from. The
+//! seed is sized for a typical mid-latitude day with warm
+//! evenings; the user edits to taste from there.
 //!
 //! Loading is best-effort: missing files / unparseable lines log
-//! a warning and produce an empty schedule. The caller falls back
-//! to neutral gamma when the schedule is empty.
+//! a warning and produce an empty schedule. The tick code falls
+//! back to the phase model (day/night settings) when the
+//! schedule is empty, so a misconfigured schedule never leaves
+//! the screen black.
 
 use std::path::{Path, PathBuf};
 
@@ -36,13 +49,20 @@ pub struct ScheduleData {
 
 impl ScheduleData {
     /// Load presets + schedule from `dir`. `dir` is expected to
-    /// hold `schedule.conf` and a `presets/` subdirectory.
+    /// hold `schedule.conf` and a `presets/` subdirectory with
+    /// flat `<name>.toml` files.
     ///
-    /// Empty `dir` ⇒ default sunsetr location
-    /// (`$XDG_CONFIG_HOME/sunsetr` or `~/.config/sunsetr`). Tilde
-    /// is expanded.
+    /// Empty `dir` ⇒ default margo location
+    /// (`$XDG_CONFIG_HOME/margo/twilight` or
+    /// `~/.config/margo/twilight`). Tilde is expanded.
+    ///
+    /// If the directory doesn't exist yet, a default schedule +
+    /// six preset files are seeded so the user has a starting
+    /// point. The seed only runs once; the user owns the files
+    /// from then on (including the right to delete them).
     pub fn load(dir: &str) -> Self {
         let root = resolve_dir(dir);
+        bootstrap_if_missing(&root);
         let schedule_path = root.join("schedule.conf");
         let presets_dir = root.join("presets");
 
@@ -76,7 +96,7 @@ impl ScheduleData {
                 continue;
             };
 
-            let preset_path = presets_dir.join(name).join("sunsetr.toml");
+            let preset_path = presets_dir.join(format!("{name}.toml"));
             match load_preset_file(&preset_path) {
                 Some((temp_k, gamma_pct)) => entries.push(ScheduledPreset {
                     time_sec,
@@ -173,14 +193,91 @@ fn resolve_dir(dir: &str) -> PathBuf {
     raw
 }
 
+/// Default schedule the bootstrap seeds on first run. Six
+/// presets sized for a typical mid-latitude day: cool bright
+/// noon, warm gentle evening, deep-warm overnight. The user
+/// edits them to taste from there.
+const DEFAULT_PRESETS: &[(&str, u32, u32)] = &[
+    ("deep-night", 2200, 88),
+    ("morning", 5500, 100),
+    ("late-morning", 6000, 100),
+    ("afternoon", 5500, 100),
+    ("sunset", 3500, 95),
+    ("evening", 2800, 90),
+];
+const DEFAULT_SCHEDULE: &str = "\
+# margo twilight schedule
+# Format: HH:MM PRESET_NAME (one per line, # for comments)
+# Presets live in ./presets/<name>.toml
+00:00 deep-night
+07:30 morning
+10:30 late-morning
+16:30 afternoon
+19:00 sunset
+22:30 evening
+";
+
+/// Seed the directory with a default schedule + presets if it
+/// doesn't already exist. Best-effort: any I/O error logs a
+/// warning and bails — the rest of `load()` then sees an empty
+/// schedule and the tick falls back to the phase model.
+fn bootstrap_if_missing(root: &Path) {
+    if root.exists() {
+        return;
+    }
+    let presets_dir = root.join("presets");
+    if let Err(e) = std::fs::create_dir_all(&presets_dir) {
+        tracing::warn!(
+            path = %presets_dir.display(),
+            error = %e,
+            "twilight: bootstrap failed to create presets dir"
+        );
+        return;
+    }
+    let schedule_path = root.join("schedule.conf");
+    if let Err(e) = std::fs::write(&schedule_path, DEFAULT_SCHEDULE) {
+        tracing::warn!(
+            path = %schedule_path.display(),
+            error = %e,
+            "twilight: bootstrap failed to write schedule.conf"
+        );
+        return;
+    }
+    for &(name, temp, gamma) in DEFAULT_PRESETS {
+        let body = format!(
+            "# margo twilight preset\n\
+             # static_temp: Kelvin (1000–25000)\n\
+             # static_gamma: brightness % (10–200)\n\
+             static_temp = {temp}\n\
+             static_gamma = {gamma}\n"
+        );
+        let p = presets_dir.join(format!("{name}.toml"));
+        if let Err(e) = std::fs::write(&p, body) {
+            tracing::warn!(
+                path = %p.display(),
+                error = %e,
+                "twilight: bootstrap failed to write preset"
+            );
+        }
+    }
+    tracing::info!(
+        path = %root.display(),
+        "twilight: seeded default schedule + {} presets",
+        DEFAULT_PRESETS.len()
+    );
+}
+
 fn default_dir() -> PathBuf {
     if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
-        return PathBuf::from(xdg).join("sunsetr");
+        return PathBuf::from(xdg).join("margo").join("twilight");
     }
     if let Ok(home) = std::env::var("HOME") {
-        return PathBuf::from(home).join(".config").join("sunsetr");
+        return PathBuf::from(home)
+            .join(".config")
+            .join("margo")
+            .join("twilight");
     }
-    PathBuf::from(".config/sunsetr")
+    PathBuf::from(".config/margo/twilight")
 }
 
 fn expand_tilde(s: &str) -> PathBuf {

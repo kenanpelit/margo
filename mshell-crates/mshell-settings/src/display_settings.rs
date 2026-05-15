@@ -52,10 +52,11 @@ pub(crate) enum ModeKey {
     Geo,
     Manual,
     Static,
-    /// Multi-step preset schedule. Reads sunsetr-format
-    /// presets + schedule.conf from `twilight_schedule_dir`
-    /// (default `~/.config/sunsetr`) and interpolates between
-    /// consecutive entries through the day.
+    /// Multi-step preset schedule. Reads presets +
+    /// schedule.conf from `twilight_schedule_dir` (default
+    /// `~/.config/margo/twilight`) and interpolates between
+    /// consecutive entries through the day. Margo seeds the
+    /// directory with six starter presets on first run.
     Schedule,
 }
 
@@ -65,7 +66,7 @@ impl ModeKey {
             ModeKey::Geo => "Geo (sun position)",
             ModeKey::Manual => "Manual (clock times)",
             ModeKey::Static => "Static (one fixed sample)",
-            ModeKey::Schedule => "Schedule (sunsetr presets)",
+            ModeKey::Schedule => "Schedule (time-of-day presets)",
         }
     }
     fn key(self) -> &'static str {

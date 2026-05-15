@@ -89,6 +89,8 @@ pub struct TickInputs {
     /// user isn't on schedule mode (or the schedule directory is
     /// unreadable). When set, schedule mode samples from this
     /// table and bypasses the day/night phase model entirely.
+    /// Source: `~/.config/margo/twilight/` by default;
+    /// overridable via `twilight_schedule_dir`.
     pub presets: ScheduleData,
 }
 
