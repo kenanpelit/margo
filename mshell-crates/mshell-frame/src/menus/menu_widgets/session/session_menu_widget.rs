@@ -15,7 +15,7 @@
 
 use gtk4_layer_shell::{KeyboardMode, LayerShell};
 use mshell_utils::session::{SessionAction, run_session_action};
-use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, EventControllerExt, OrientableExt, WidgetExt};
 use relm4::gtk::{gdk, glib};
 use relm4::{Component, ComponentParts, ComponentSender, RelmWidgetExt, gtk};
 use std::time::Duration;
@@ -118,7 +118,17 @@ impl Component for SessionMenuWidgetModel {
 
         // All keyboard handling lives here — number keys arm the
         // countdown, Tab / Ctrl+N walk focus, Escape cancels.
+        //
+        // **Capture phase, not Bubble.** All five buttons are
+        // `focusable(true)`, so GTK4's default Tab handler walks
+        // focus between them and *consumes* the event before it
+        // bubbles up. With Bubble we'd never see Tab / Shift+Tab —
+        // only the number keys (which buttons don't intercept)
+        // would work, which is exactly the symptom we were chasing.
+        // Capture sees every keypress before any widget's default
+        // handler gets a turn.
         let key_controller = gtk::EventControllerKey::new();
+        key_controller.set_propagation_phase(gtk::PropagationPhase::Capture);
         let sender_clone = sender.clone();
         key_controller.connect_key_pressed(move |_, key, _, modifier| {
             let ctrl = modifier.contains(gdk::ModifierType::CONTROL_MASK);
