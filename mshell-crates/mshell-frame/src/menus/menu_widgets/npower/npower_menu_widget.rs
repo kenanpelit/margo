@@ -446,7 +446,7 @@ fn sync_view(model: &NpowerMenuWidgetModel) {
     }
 }
 
-/// Pick a battery glyph from the OkMaterial `battery-level-*`
+/// Pick a battery glyph from the MargoMaterial `battery-level-*`
 /// set — 0/10/20…100, with the `-charging` variant when the
 /// status says so.
 fn battery_icon(pct: u8, status: &str) -> &'static str {
@@ -465,7 +465,7 @@ fn battery_icon(pct: u8, status: &str) -> &'static str {
         85..=94 => 90,
         _ => 100,
     };
-    // OkMaterial ships `battery-level-{N}[-charging]-symbolic`.
+    // MargoMaterial ships `battery-level-{N}[-charging]-symbolic`.
     match (bucket, charging) {
         (0, false) => "battery-level-0-symbolic",
         (0, true) => "battery-level-0-charging-symbolic",

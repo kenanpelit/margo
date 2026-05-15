@@ -203,8 +203,8 @@ pub struct Icons {
 impl Default for Icons {
     fn default() -> Self {
         Self {
-            shell_icon_theme: "OkMaterial".to_string(),
-            app_icon_theme: "OkMaterial".to_string(),
+            shell_icon_theme: "MargoMaterial".to_string(),
+            app_icon_theme: "MargoMaterial".to_string(),
             apply_theme_filter: false,
             filter_strength: ThemeFilterStrength::new(1.0),
             monochrome_strength: ThemeFilterStrength::new(0.0),

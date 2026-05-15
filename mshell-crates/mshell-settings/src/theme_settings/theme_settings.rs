@@ -1281,7 +1281,7 @@ fn available_shell_icon_themes() -> Vec<String> {
         }
     }
 
-    themes.insert("OkMaterial".to_string());
+    themes.insert("MargoMaterial".to_string());
     themes.insert("OkPhosphor".to_string());
 
     let mut themes: Vec<_> = themes.into_iter().collect();
@@ -1313,7 +1313,7 @@ fn available_app_icon_themes() -> Vec<String> {
     }
 
     themes.remove("OkPhosphor");
-    themes.remove("OkMaterial");
+    themes.remove("MargoMaterial");
 
     let mut themes: Vec<_> = themes.into_iter().collect();
     themes.sort();

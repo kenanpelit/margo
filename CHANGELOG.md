@@ -162,9 +162,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   next/prev/random` to cycle from the CLI.
 - **Idle manager** — staged dim → lock → suspend on inactivity,
   timeouts configurable in Settings (built on `ext-idle-notify-v1`).
-- Bundled the OkMaterial icon theme + new plugin glyphs so the
-  shell renders consistently without relying on the host icon
-  theme.
+- Bundled the MargoMaterial icon theme (margo-branded fork of
+  OkMaterial) + new plugin glyphs so the shell renders
+  consistently without relying on the host icon theme.
 
 ### Changed
 

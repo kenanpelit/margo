@@ -372,7 +372,7 @@ fn format_speed(bps: u64) -> String {
 }
 
 /// Map a signal % to one of the 5 `network-wireless-signal-*`
-/// glyphs that ship in the bundled OkMaterial set.
+/// glyphs that ship in the bundled MargoMaterial set.
 pub(crate) fn wifi_signal_icon(signal: u8) -> &'static str {
     match signal {
         0 => "network-wireless-signal-none-symbolic",
