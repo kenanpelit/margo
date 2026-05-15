@@ -8,6 +8,7 @@ use crate::notification_settings::{NotificationSettingsInit, NotificationSetting
 use crate::session_settings::{SessionSettingsInit, SessionSettingsModel};
 use crate::theme_settings::theme_settings::{ThemeSettingsInit, ThemeSettingsModel};
 use crate::wallpaper_settings::{WallpaperSettingsInit, WallpaperSettingsModel};
+use crate::bar_pill_settings::{BarPillKind, BarPillSettingsInit, BarPillSettingsModel};
 use crate::widget_menu_settings::{MenuKind, WidgetMenuSettingsInit, WidgetMenuSettingsModel};
 use relm4::gtk::prelude::{
     BoxExt, ButtonExt, MonitorExt, OrientableExt, ToggleButtonExt, WidgetExt,
@@ -491,6 +492,8 @@ impl Component for SettingsWindowModel {
             (MenuKind::Clipboard, "clipboard", "Clipboard", "edit-paste-symbolic"),
             (MenuKind::Clock, "clock", "Clock", "alarm-symbolic"),
             (MenuKind::Ndns, "ndns", "DNS / VPN", "network-vpn-symbolic"),
+            (MenuKind::MediaPlayer, "media_player", "Media Player", "media-playback-start-symbolic"),
+            (MenuKind::Nnetwork, "nnetwork", "Network Console", "network-workgroup-symbolic"),
             (MenuKind::Nip, "nip", "Public IP", "network-wired-symbolic"),
             (MenuKind::Nnotes, "nnotes", "Notes Hub", "notes-symbolic"),
             (MenuKind::Npodman, "npodman", "Podman", "package-symbolic"),
@@ -512,6 +515,44 @@ impl Component for SettingsWindowModel {
                 .detach();
             widgets_sub_stack.add_named(ctrl.widget(), Some(stack_name));
             menu_controllers.push(ctrl);
+        }
+
+        // Bar-only pills (no menu surface). Each gets an info
+        // page surfacing the widget's purpose + pointing at the
+        // Bar widget-list editor for placement. Future per-pill
+        // knobs land here without a new file.
+        let bar_pill_pages = [
+            (BarPillKind::ActiveWindow, "pill_active_window", "Active Window", "window-symbolic"),
+            (BarPillKind::AudioInput, "pill_audio_input", "Audio Input", "microphone-sensitivity-medium-symbolic"),
+            (BarPillKind::AudioOutput, "pill_audio_output", "Audio Output", "audio-volume-medium-symbolic"),
+            (BarPillKind::Battery, "pill_battery", "Battery", "battery-good-symbolic"),
+            (BarPillKind::Bluetooth, "pill_bluetooth", "Bluetooth", "bluetooth-active-symbolic"),
+            (BarPillKind::DarkMode, "pill_dark_mode", "Dark Mode Toggle", "weather-clear-night-symbolic"),
+            (BarPillKind::HyprPicker, "pill_hypr_picker", "HyprPicker", "color-select-symbolic"),
+            (BarPillKind::KeepAwake, "pill_keep_awake", "Keep Awake", "eye-symbolic"),
+            (BarPillKind::Lock, "pill_lock", "Lock", "system-lock-screen-symbolic"),
+            (BarPillKind::Logout, "pill_logout", "Logout", "system-log-out-symbolic"),
+            (BarPillKind::MargoDock, "pill_margo_dock", "Margo Dock", "view-grid-symbolic"),
+            (BarPillKind::MargoLayoutSwitcher, "pill_margo_layout", "Margo Layout Switcher", "layout-symbolic"),
+            (BarPillKind::MargoTags, "pill_margo_tags", "Margo Tags", "square-symbolic"),
+            (BarPillKind::Network, "pill_network", "Network", "network-wired-symbolic"),
+            (BarPillKind::PowerProfile, "pill_power_profile", "Power Profile", "power-profile-balanced-symbolic"),
+            (BarPillKind::Reboot, "pill_reboot", "Reboot", "system-reboot-symbolic"),
+            (BarPillKind::RecordingIndicator, "pill_recording", "Recording Indicator", "media-record-symbolic"),
+            (BarPillKind::Shutdown, "pill_shutdown", "Shutdown", "system-shutdown-symbolic"),
+            (BarPillKind::Tray, "pill_tray", "System Tray", "view-list-symbolic"),
+            (BarPillKind::VpnIndicator, "pill_vpn", "VPN Indicator", "network-vpn-symbolic"),
+        ];
+
+        let mut bar_pill_controllers: Vec<relm4::Controller<BarPillSettingsModel>> = Vec::new();
+        for (kind, stack_name, label, icon) in bar_pill_pages {
+            let btn = make_sub_btn(label, icon, stack_name, Some(&layout_btn));
+            widgets_sub_sidebar_box.append(&btn);
+            let ctrl = BarPillSettingsModel::builder()
+                .launch(BarPillSettingsInit { kind })
+                .detach();
+            widgets_sub_stack.add_named(ctrl.widget(), Some(stack_name));
+            bar_pill_controllers.push(ctrl);
         }
 
         // Notifications + Session keep their existing rich pages;
@@ -544,11 +585,12 @@ impl Component for SettingsWindowModel {
         widgets_page.append(&widgets_sub_stack);
         widgets.stack.add_titled(&widgets_page, Some("widgets"), "Widgets");
 
-        // Park the per-menu controllers on the model so they
-        // outlive `init()`. Box::leak isn't ideal but matches
-        // the rest of the file's lifecycle (controllers held by
-        // the model owning the window).
+        // Park the per-menu + per-bar-pill controllers on the
+        // model so they outlive `init()`. Box::leak isn't ideal
+        // but matches the rest of the file's lifecycle
+        // (controllers held by the model owning the window).
         Box::leak(Box::new(menu_controllers));
+        Box::leak(Box::new(bar_pill_controllers));
 
         ComponentParts { model, widgets }
     }

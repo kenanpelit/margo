@@ -14,6 +14,7 @@
 
 use std::sync::OnceLock;
 
+mod bar_pill_settings;
 mod bar_settings;
 mod display_settings;
 mod fonts_settings;
