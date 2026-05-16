@@ -136,6 +136,18 @@ const ENTRIES: &[Entry] = &[
         icon: "network-server-symbolic",
     },
     Entry {
+        prefix: "tag [N]",
+        example: "tag 3",
+        description: "Switch the focused output to tag N (1-9)",
+        icon: "view-grid-symbolic",
+    },
+    Entry {
+        prefix: "win [query]",
+        example: "win firefox",
+        description: "Open-window switcher (alt-tab style)",
+        icon: "window-symbolic",
+    },
+    Entry {
         prefix: "player",
         example: "player",
         description: "MPRIS players — play / pause / next",

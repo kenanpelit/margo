@@ -20,6 +20,7 @@ use crate::menus::menu_widgets::app_launcher::clipboard_provider::ClipboardProvi
 use crate::menus::menu_widgets::app_launcher::launcher_row::{
     LauncherRowInit, LauncherRowInput, LauncherRowModel, LauncherRowOutput,
 };
+use crate::menus::menu_widgets::app_launcher::tags_provider::TagsProvider;
 use crate::menus::menu_widgets::app_launcher::windows_provider::WindowsProvider;
 use gtk4_layer_shell::{KeyboardMode, LayerShell};
 use mshell_common::dynamic_box::dynamic_box::{
@@ -230,6 +231,7 @@ impl Component for AppLauncherModel {
 
         runtime.register(Box::new(AppsProviderHandle(apps_provider.clone())));
         runtime.register(Box::new(WindowsProvider::new()));
+        runtime.register(Box::new(TagsProvider::new()));
         runtime.register(Box::new(CalculatorProvider::new()));
         runtime.register(Box::new(SessionProvider::new()));
         runtime.register(Box::new(MctlProvider::new()));

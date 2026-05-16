@@ -150,15 +150,50 @@ impl Provider for WindowsProvider {
         "Windows"
     }
 
+    fn handles_command(&self, query: &str) -> bool {
+        // Explicit `win` / `windows` prefix as an alternative to
+        // the empty-browse + fuzzy access path. Useful when the
+        // user wants the alt-tab style switcher without
+        // scrolling past calculator / mctl / settings rows.
+        let q = query.trim_start();
+        q == "win" || q.starts_with("win ") || q == "windows" || q.starts_with("windows ")
+    }
+
+    fn commands(&self) -> Vec<LauncherItem> {
+        vec![LauncherItem {
+            id: "windows:palette".into(),
+            name: "win".into(),
+            description: "List open windows (alt-tab style)".into(),
+            icon: "window-symbolic".into(),
+            icon_is_path: false,
+            score: 0.0,
+            provider_name: "Windows".into(),
+            usage_key: None,
+            on_activate: Rc::new(|| {}),
+        }]
+    }
+
     fn search(&self, query: &str) -> Vec<LauncherItem> {
         let entries = self.snapshot();
         let trimmed = query.trim();
+
+        // Strip the optional `win` / `windows` prefix so the
+        // command-mode path treats `win firefox` and bare
+        // `firefox` identically — the prefix is a discoverability
+        // hint, not a different query language.
+        let filter = if let Some(rest) = trimmed.strip_prefix("windows") {
+            rest.trim()
+        } else if let Some(rest) = trimmed.strip_prefix("win") {
+            rest.trim()
+        } else {
+            trimmed
+        };
 
         // Empty-query browse: surface every open window in
         // state.json order so users can use the launcher as an
         // alt-tab replacement (open launcher → see windows →
         // pick).
-        if trimmed.is_empty() {
+        if filter.is_empty() {
             return entries
                 .iter()
                 .map(|e| self.make_item(e, 0.0))
@@ -166,7 +201,7 @@ impl Provider for WindowsProvider {
         }
 
         let mut matcher = self.matcher.borrow_mut();
-        let pattern = Pattern::parse(trimmed, CaseMatching::Ignore, Normalization::Smart);
+        let pattern = Pattern::parse(filter, CaseMatching::Ignore, Normalization::Smart);
 
         entries
             .iter()
