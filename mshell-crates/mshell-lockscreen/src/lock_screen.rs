@@ -6,29 +6,8 @@ use mshell_cache::wallpaper::{
 };
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::schema::config::{ConfigStoreFields, GeneralStoreFields};
+use mshell_auth::pam;
 use mshell_session::session_lock::session_lock;
-// TODO(phase-2c): replace this stub with `margo-pam` — a shared
-// crate extracted from `mlock`'s own libpam FFI. The upstream
-// `pam` crate (0.8) pulls in `pam-sys 1.0.0-alpha5` which builds
-// through `bindgen → clang-sys`, and clang-sys's thread-local
-// libclang autoload trips on Arch even when libclang.so is on
-// LIBCLANG_PATH. Until then, password authentication inside
-// the mshell lock screen always returns failure — the user is
-// expected to lock via `mlock` (margo's primary lock binary)
-// instead of routing through this widget.
-struct Client;
-impl Client {
-    fn with_password(_service: &str) -> Result<Self, ()> {
-        Err(())
-    }
-    fn conversation_mut(&mut self) -> &mut Self {
-        self
-    }
-    fn set_credentials<U, P>(&mut self, _u: U, _p: P) {}
-    fn authenticate(&mut self) -> Result<(), ()> {
-        Err(())
-    }
-}
 use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk::gdk;
 use relm4::gtk::prelude::*;
@@ -396,17 +375,18 @@ impl Component for LockScreenModel {
                 let username = current_username();
                 let sender = sender.clone();
 
+                // `pam::authenticate` blocks on libpam — run it
+                // on a blocking thread so the GTK main loop
+                // stays responsive (otherwise the "Checking…"
+                // spinner would never paint).
                 tokio::task::spawn_blocking(move || {
-                    let success = (|| {
-                        let mut client = Client::with_password("system-login").ok()?;
-                        client
-                            .conversation_mut()
-                            .set_credentials(username, password);
-                        client.authenticate().ok()
-                    })();
-                    if success.is_some() {
+                    let result = pam::authenticate(&username, &password);
+                    if result.is_ok() {
                         sender.input(LockScreenInput::PasswordSuccess);
                     } else {
+                        if let Err(err) = result {
+                            tracing::warn!(?err, "PAM authenticate failed");
+                        }
                         sender.input(LockScreenInput::PasswordFailed);
                     }
                 });
