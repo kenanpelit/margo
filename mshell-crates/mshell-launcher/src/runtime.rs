@@ -113,9 +113,17 @@ impl LauncherRuntime {
         // entries. Without this every non-`>` prefix would fall
         // through to regular search and the provider whose
         // `handles_search = false` would never be queried.
+        //
+        // Command-mode results still go through the same
+        // frecency-boost + sort pipeline as regular search so
+        // most-used scripts/symbols/emojis/audio-devices float
+        // to the top of their prefix's list. The provider's own
+        // base score is preserved; usage_boost is purely
+        // additive.
         for p in &self.providers {
             if p.handles_command(trimmed) {
-                return p.search(trimmed);
+                let results = p.search(trimmed);
+                return self.apply_frecency_and_sort(results);
             }
         }
 
@@ -127,28 +135,32 @@ impl LauncherRuntime {
         // was strictly alphabetical, which made the frecency
         // store look broken even though it was tracking
         // correctly).
-        let mut results: Vec<LauncherItem> = self
+        let results: Vec<LauncherItem> = self
             .providers
             .iter()
             .filter(|p| p.handles_search())
             .flat_map(|p| p.search(query))
             .collect();
+        self.apply_frecency_and_sort(results)
+    }
 
+    /// Shared scoring pipeline: add `usage_boost(count)` to every
+    /// item that carries a `usage_key`, then stable-sort
+    /// descending by score. Stable so items at the same score
+    /// (e.g. never-used scripts, all at base) keep the original
+    /// alphabetical order their provider produced.
+    fn apply_frecency_and_sort(&self, mut results: Vec<LauncherItem>) -> Vec<LauncherItem> {
         for item in &mut results {
             if let Some(key) = &item.usage_key {
                 let count = self.frecency.count(key);
                 item.score += usage_boost(count);
             }
         }
-        // Stable sort: items with the same score (e.g. all
-        // never-used apps in browse mode) preserve the original
-        // alphabetical order each provider already produced.
         results.sort_by(|a, b| {
             b.score
                 .partial_cmp(&a.score)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
-
         results
     }
 }
