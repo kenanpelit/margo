@@ -512,6 +512,46 @@ who migrate to margo will miss it.
 mango-margo migration story makes it the top friction point.
 Until then this lives here so we don't re-discover the scope cold.
 
+### 15.4.2 Twilight schedule preset GUI editor (deferred)
+
+The twilight Schedule-mode presets are TOML files under
+`~/.config/margo/twilight/` (`schedule.conf` + `presets/*.toml`).
+Three editing paths now exist:
+
+| Path | Where | Status |
+|---|---|---|
+| Hand-edit + `mctl reload` | `$EDITOR` | ✅ always worked |
+| `mctl twilight preset list / set / remove / schedule` | CLI, scriptable | ✅ shipped |
+| Settings → Display → Twilight → "Open presets folder" button | xdg-open shortcut | ✅ shipped |
+| **In-Settings preset editor** with sliders + add/remove + schedule time picker | mshell GTK4 UI | 🟡 deferred |
+
+**What the GUI editor would add.**
+
+- Read-write list of presets with inline temp (1000–25000 K) +
+  gamma (10–200 %) sliders per row, live preview button that fires
+  `mctl twilight preview <K> <%>` while focused.
+- Schedule grid: time picker (`GtkSpinButton` for HH:MM) bound to
+  a dropdown of preset names, add / remove row buttons.
+- Diff-on-save so a slider drag debounces just like the existing
+  twilight knobs do (`DEBOUNCE_MS`).
+- Write paths reuse the same TOML/schedule.conf format the
+  compositor and `mctl twilight preset` already speak, so the
+  three editing paths stay byte-compatible.
+
+**Scope estimate (~400–500 LOC, mshell only):**
+
+| Piece | Where | LOC |
+|---|---|---|
+| `PresetEditorComponent` (relm4 factory pattern, per-row sliders) | new `mshell-crates/mshell-settings/src/twilight_preset_editor.rs` | ~250 |
+| Schedule grid + time picker + preset dropdown | same module | ~120 |
+| Wire into existing `display_settings.rs` Twilight page | `display_settings.rs` | ~30 |
+| CSS rules for compact slider/spinner rows | `mshell-style` | ~30 |
+| File write helpers (probably lift from `mctl twilight preset`) | shared helper crate, or duplicate | ~50 |
+
+**Trigger.** Painful enough to hand-tune sliders that the user
+asks for a UI; or first-launch wizard (#106) lands and wants to
+let new users build a schedule visually.
+
 ### 15.5 Awaiting external trigger
 
 All margo-internal long-tail items shipped in Phase 1. What's still
