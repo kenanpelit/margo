@@ -150,6 +150,42 @@ impl Component for MargoTagsModel {
             }
         });
 
+        // Belt-and-suspenders cold-start refresh on the main
+        // (gtk) thread. The relm4 command-based watcher in
+        // `spawn_workspace_list_watcher` SHOULD catch the
+        // empty→9 transition, but in practice the user keeps
+        // seeing an empty pill row at session start until the
+        // first window opens. Possible causes: the command
+        // future doesn't get scheduled before init returns,
+        // the `out.send` channel is dropped, or `workspaces.set()`
+        // fires in a window where neither the immediate emit nor
+        // the steady-state stream subscriber catches it. Any of
+        // those would leave the dynamic_box with the empty
+        // SetItems called above and no further notifications.
+        //
+        // This timer is the brute-force fallback: every 500 ms
+        // for the first 30 s of the widget's life, snapshot
+        // workspaces and re-issue SetItems. The DynamicBox
+        // reconciler is idempotent — feeding the same 9 items
+        // repeatedly is a no-op after the initial pill creation.
+        // Stops after 30 s (membership never changes thereafter;
+        // future updates ride the spawn_main_watcher event path).
+        {
+            let dyn_sender = model.dynamic_box.sender().clone();
+            let mut ticks_remaining: u32 = 60; // 60 * 500 ms = 30 s
+            gtk::glib::timeout_add_local(std::time::Duration::from_millis(500), move || {
+                ticks_remaining = ticks_remaining.saturating_sub(1);
+                let ws = margo_service().workspaces.get();
+                let rows = Self::workspaces_with_dividers(ws);
+                let _ = dyn_sender.send(DynamicBoxInput::SetItems(rows));
+                if ticks_remaining == 0 {
+                    gtk::glib::ControlFlow::Break
+                } else {
+                    gtk::glib::ControlFlow::Continue
+                }
+            });
+        }
+
         ComponentParts { model, widgets }
     }
 
