@@ -512,16 +512,47 @@ impl MargoService {
     /// so the answer always reflects the latest margo write, not
     /// the most recent poll tick (which can lag by up to
     /// `POLL_INTERVAL`).
+    ///
+    /// Resolves the active monitor via [`active_monitor_name`]
+    /// (which prefers the focused client's monitor over the
+    /// top-level `active_output` field) and then looks up the
+    /// workspace whose `active_tag_mask` is currently set on that
+    /// output.
     pub async fn active_workspace(&self) -> Option<Arc<Workspace>> {
+        let name = self.active_monitor_name().await?;
         let ws_id = {
             let state = state_json::read()?;
-            let out = state.outputs.iter().find(|o| o.active)?;
+            let out = state.outputs.iter().find(|o| o.name == name)?;
             state_json::lowest_tag(out.active_tag_mask) as i64
         };
         self.workspaces
             .get()
             .into_iter()
-            .find(|w| w.id.get() == ws_id)
+            .find(|w| w.id.get() == ws_id && w.monitor.get() == name)
+    }
+
+    /// Best-guess "where is the user looking right now" monitor
+    /// connector name. Used by the IPC layer to decide which
+    /// per-monitor Frame should host a newly-toggled menu.
+    ///
+    /// Resolution order:
+    ///   1. The **focused client**'s monitor — strongest signal
+    ///      for "where the user is interacting"; updates the
+    ///      instant the user clicks / alt-tabs anywhere on a real
+    ///      window. Bypasses the `active_output` lag we've seen
+    ///      right after reboot, where margo's top-level field can
+    ///      stay pinned to whichever output enumerated first
+    ///      (typically `eDP-1`) until the first manual interaction
+    ///      explicitly switches it.
+    ///   2. `state.active_output` — margo's own active-output
+    ///      notion, used when no client is focused (empty
+    ///      desktop) or state.json hasn't propagated yet.
+    pub async fn active_monitor_name(&self) -> Option<String> {
+        let state = state_json::read()?;
+        if let Some(c) = state.clients.iter().find(|c| c.focused) {
+            return Some(c.monitor.clone());
+        }
+        Some(state.active_output)
     }
 
     /// Snapshot the focused client.

@@ -21,53 +21,38 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
 
     let app_sender = sender.input_sender().clone();
     glib::spawn_future_local(async move {
+        // Resolve the active monitor name via the focused-client-
+        // first heuristic in `MargoService::active_monitor_name`.
+        // We used to chain through `active_workspace().monitor` —
+        // that path bounces through the workspaces cache and
+        // can return None right after reboot before sync has
+        // populated, sending menus to whichever Frame iterated
+        // first (effectively eDP-1). `active_monitor_name`
+        // reads state.json directly + prefers the focused
+        // client's monitor over the top-level `active_output`
+        // field, which closes the boot-time window where margo's
+        // `active_output` stays pinned to the first-enumerated
+        // output until the user manually switches.
+        async fn active_monitor() -> Option<String> {
+            margo_service().active_monitor_name().await
+        }
         while let Some(cmd) = shell_rx.recv().await {
             match cmd {
                 IPCCommand::Quit => app_sender.emit(ShellInput::Quit),
                 IPCCommand::AppLauncher => {
-                    if let Some(active_workspace) = margo_service().active_workspace().await {
-                        app_sender.emit(ShellInput::ToggleAppLauncher(Some(
-                            active_workspace.monitor.get(),
-                        )));
-                    } else {
-                        app_sender.emit(ShellInput::ToggleAppLauncher(None));
-                    }
+                    app_sender.emit(ShellInput::ToggleAppLauncher(active_monitor().await));
                 }
                 IPCCommand::QuickSettings => {
-                    if let Some(active_workspace) = margo_service().active_workspace().await {
-                        app_sender.emit(ShellInput::ToggleQuickSettings(Some(
-                            active_workspace.monitor.get(),
-                        )));
-                    } else {
-                        app_sender.emit(ShellInput::ToggleQuickSettings(None));
-                    }
+                    app_sender.emit(ShellInput::ToggleQuickSettings(active_monitor().await));
                 }
                 IPCCommand::Clock => {
-                    if let Some(active_workspace) = margo_service().active_workspace().await {
-                        app_sender.emit(ShellInput::ToggleClockMenu(Some(
-                            active_workspace.monitor.get(),
-                        )));
-                    } else {
-                        app_sender.emit(ShellInput::ToggleClockMenu(None));
-                    }
+                    app_sender.emit(ShellInput::ToggleClockMenu(active_monitor().await));
                 }
                 IPCCommand::Clipboard => {
-                    if let Some(active_workspace) = margo_service().active_workspace().await {
-                        app_sender.emit(ShellInput::ToggleClipboard(Some(
-                            active_workspace.monitor.get(),
-                        )));
-                    } else {
-                        app_sender.emit(ShellInput::ToggleClipboard(None));
-                    }
+                    app_sender.emit(ShellInput::ToggleClipboard(active_monitor().await));
                 }
                 IPCCommand::Notifications => {
-                    if let Some(active_workspace) = margo_service().active_workspace().await {
-                        app_sender.emit(ShellInput::ToggleNotifications(Some(
-                            active_workspace.monitor.get(),
-                        )));
-                    } else {
-                        app_sender.emit(ShellInput::ToggleNotifications(None));
-                    }
+                    app_sender.emit(ShellInput::ToggleNotifications(active_monitor().await));
                 }
                 IPCCommand::NotificationsClearAll => {
                     app_sender.emit(ShellInput::NotificationsClearAll);
@@ -76,115 +61,43 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                     app_sender.emit(ShellInput::NotificationsReadPopups);
                 }
                 IPCCommand::Screenshot => {
-                    if let Some(active_workspace) = margo_service().active_workspace().await {
-                        app_sender.emit(ShellInput::ToggleScreenshotMenu(Some(
-                            active_workspace.monitor.get(),
-                        )));
-                    } else {
-                        app_sender.emit(ShellInput::ToggleScreenshotMenu(None));
-                    }
+                    app_sender.emit(ShellInput::ToggleScreenshotMenu(active_monitor().await));
                 }
                 IPCCommand::Wallpaper => {
-                    if let Some(active_workspace) = margo_service().active_workspace().await {
-                        app_sender.emit(ShellInput::ToggleWallpaperMenu(Some(
-                            active_workspace.monitor.get(),
-                        )));
-                    } else {
-                        app_sender.emit(ShellInput::ToggleWallpaperMenu(None));
-                    }
+                    app_sender.emit(ShellInput::ToggleWallpaperMenu(active_monitor().await));
                 }
                 IPCCommand::WallpaperCycle(direction) => {
                     app_sender.emit(ShellInput::CycleWallpaper(direction));
                 }
                 IPCCommand::Nufw => {
-                    if let Some(active_workspace) = margo_service().active_workspace().await {
-                        app_sender.emit(ShellInput::ToggleNufwMenu(Some(
-                            active_workspace.monitor.get(),
-                        )));
-                    } else {
-                        app_sender.emit(ShellInput::ToggleNufwMenu(None));
-                    }
+                    app_sender.emit(ShellInput::ToggleNufwMenu(active_monitor().await));
                 }
                 IPCCommand::Ndns => {
-                    if let Some(active_workspace) = margo_service().active_workspace().await {
-                        app_sender.emit(ShellInput::ToggleNdnsMenu(Some(
-                            active_workspace.monitor.get(),
-                        )));
-                    } else {
-                        app_sender.emit(ShellInput::ToggleNdnsMenu(None));
-                    }
+                    app_sender.emit(ShellInput::ToggleNdnsMenu(active_monitor().await));
                 }
                 IPCCommand::Npodman => {
-                    if let Some(active_workspace) = margo_service().active_workspace().await {
-                        app_sender.emit(ShellInput::ToggleNpodmanMenu(Some(
-                            active_workspace.monitor.get(),
-                        )));
-                    } else {
-                        app_sender.emit(ShellInput::ToggleNpodmanMenu(None));
-                    }
+                    app_sender.emit(ShellInput::ToggleNpodmanMenu(active_monitor().await));
                 }
                 IPCCommand::Nnotes => {
-                    if let Some(active_workspace) = margo_service().active_workspace().await {
-                        app_sender.emit(ShellInput::ToggleNnotesMenu(Some(
-                            active_workspace.monitor.get(),
-                        )));
-                    } else {
-                        app_sender.emit(ShellInput::ToggleNnotesMenu(None));
-                    }
+                    app_sender.emit(ShellInput::ToggleNnotesMenu(active_monitor().await));
                 }
                 IPCCommand::Nip => {
-                    if let Some(active_workspace) = margo_service().active_workspace().await {
-                        app_sender.emit(ShellInput::ToggleNipMenu(Some(
-                            active_workspace.monitor.get(),
-                        )));
-                    } else {
-                        app_sender.emit(ShellInput::ToggleNipMenu(None));
-                    }
+                    app_sender.emit(ShellInput::ToggleNipMenu(active_monitor().await));
                 }
                 IPCCommand::Nnetwork => {
-                    if let Some(active_workspace) = margo_service().active_workspace().await {
-                        app_sender.emit(ShellInput::ToggleNnetworkMenu(Some(
-                            active_workspace.monitor.get(),
-                        )));
-                    } else {
-                        app_sender.emit(ShellInput::ToggleNnetworkMenu(None));
-                    }
+                    app_sender.emit(ShellInput::ToggleNnetworkMenu(active_monitor().await));
                 }
                 IPCCommand::Npower => {
-                    if let Some(active_workspace) = margo_service().active_workspace().await {
-                        app_sender.emit(ShellInput::ToggleNpowerMenu(Some(
-                            active_workspace.monitor.get(),
-                        )));
-                    } else {
-                        app_sender.emit(ShellInput::ToggleNpowerMenu(None));
-                    }
+                    app_sender.emit(ShellInput::ToggleNpowerMenu(active_monitor().await));
                 }
                 IPCCommand::MediaPlayer => {
-                    if let Some(active_workspace) = margo_service().active_workspace().await {
-                        app_sender.emit(ShellInput::ToggleMediaPlayerMenu(Some(
-                            active_workspace.monitor.get(),
-                        )));
-                    } else {
-                        app_sender.emit(ShellInput::ToggleMediaPlayerMenu(None));
-                    }
+                    app_sender.emit(ShellInput::ToggleMediaPlayerMenu(active_monitor().await));
                 }
                 IPCCommand::Session => {
-                    if let Some(active_workspace) = margo_service().active_workspace().await {
-                        app_sender.emit(ShellInput::ToggleSessionMenu(Some(
-                            active_workspace.monitor.get(),
-                        )));
-                    } else {
-                        app_sender.emit(ShellInput::ToggleSessionMenu(None));
-                    }
+                    app_sender.emit(ShellInput::ToggleSessionMenu(active_monitor().await));
                 }
                 IPCCommand::Dashboard => {
-                    if let Some(active_workspace) = margo_service().active_workspace().await {
-                        app_sender.emit(ShellInput::ToggleDashboardMenu(Some(
-                            active_workspace.monitor.get(),
-                        )));
-                    } else {
-                        app_sender.emit(ShellInput::ToggleDashboardMenu(None));
-                    }
+                    app_sender.emit(ShellInput::ToggleDashboardMenu(active_monitor().await));
                 }
                 IPCCommand::SessionAction(action) => {
                     app_sender.emit(ShellInput::RunSessionAction(action));
@@ -252,15 +165,11 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                     let _ = reply.send(session_lock().is_locked());
                 }
                 IPCCommand::Screenshare(reply, payload) => {
-                    if let Some(active_workspace) = margo_service().active_workspace().await {
-                        app_sender.emit(ShellInput::ToggleScreenshareMenu(
-                            Some(active_workspace.monitor.get()),
-                            reply,
-                            payload,
-                        ));
-                    } else {
-                        app_sender.emit(ShellInput::ToggleScreenshareMenu(None, reply, payload));
-                    }
+                    app_sender.emit(ShellInput::ToggleScreenshareMenu(
+                        active_monitor().await,
+                        reply,
+                        payload,
+                    ));
                 }
                 IPCCommand::OpenSettings => {
                     open_settings();
@@ -272,70 +181,34 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                     gtk::Window::set_interactive_debugging(true);
                 }
                 IPCCommand::BarToggleTop => {
-                    if let Some(active_workspace) = margo_service().active_workspace().await {
-                        app_sender.emit(ShellInput::BarToggleTop(Some(
-                            active_workspace.monitor.get(),
-                        )));
-                    } else {
-                        app_sender.emit(ShellInput::BarToggleTop(None));
-                    }
+                    app_sender.emit(ShellInput::BarToggleTop(active_monitor().await));
                 }
                 IPCCommand::BarToggleBottom => {
-                    if let Some(active_workspace) = margo_service().active_workspace().await {
-                        app_sender.emit(ShellInput::BarToggleBottom(Some(
-                            active_workspace.monitor.get(),
-                        )));
-                    } else {
-                        app_sender.emit(ShellInput::BarToggleBottom(None));
-                    }
+                    app_sender.emit(ShellInput::BarToggleBottom(active_monitor().await));
                 }
                 IPCCommand::BarToggleLeft => {
-                    if let Some(active_workspace) = margo_service().active_workspace().await {
-                        app_sender.emit(ShellInput::BarToggleLeft(Some(
-                            active_workspace.monitor.get(),
-                        )));
-                    } else {
-                        app_sender.emit(ShellInput::BarToggleLeft(None));
-                    }
+                    app_sender.emit(ShellInput::BarToggleLeft(active_monitor().await));
                 }
                 IPCCommand::BarToggleRight => {
-                    if let Some(active_workspace) = margo_service().active_workspace().await {
-                        app_sender.emit(ShellInput::BarToggleRight(Some(
-                            active_workspace.monitor.get(),
-                        )));
-                    } else {
-                        app_sender.emit(ShellInput::BarToggleRight(None));
-                    }
+                    app_sender.emit(ShellInput::BarToggleRight(active_monitor().await));
                 }
                 IPCCommand::BarToggleAll(exclude_hidden_by_default) => {
-                    if let Some(active_workspace) = margo_service().active_workspace().await {
-                        app_sender.emit(ShellInput::BarToggleAll(
-                            Some(active_workspace.monitor.get()),
-                            exclude_hidden_by_default,
-                        ));
-                    } else {
-                        app_sender.emit(ShellInput::BarToggleAll(None, exclude_hidden_by_default));
-                    }
+                    app_sender.emit(ShellInput::BarToggleAll(
+                        active_monitor().await,
+                        exclude_hidden_by_default,
+                    ));
                 }
                 IPCCommand::BarRevealAll(exclude_hidden_by_default) => {
-                    if let Some(active_workspace) = margo_service().active_workspace().await {
-                        app_sender.emit(ShellInput::BarRevealAll(
-                            Some(active_workspace.monitor.get()),
-                            exclude_hidden_by_default,
-                        ));
-                    } else {
-                        app_sender.emit(ShellInput::BarRevealAll(None, exclude_hidden_by_default));
-                    }
+                    app_sender.emit(ShellInput::BarRevealAll(
+                        active_monitor().await,
+                        exclude_hidden_by_default,
+                    ));
                 }
                 IPCCommand::BarHideAll(exclude_hidden_by_default) => {
-                    if let Some(active_workspace) = margo_service().active_workspace().await {
-                        app_sender.emit(ShellInput::BarHideAll(
-                            Some(active_workspace.monitor.get()),
-                            exclude_hidden_by_default,
-                        ));
-                    } else {
-                        app_sender.emit(ShellInput::BarHideAll(None, exclude_hidden_by_default));
-                    }
+                    app_sender.emit(ShellInput::BarHideAll(
+                        active_monitor().await,
+                        exclude_hidden_by_default,
+                    ));
                 }
             }
         }
