@@ -473,7 +473,15 @@ fn run_action(action: String, state: DnsState, sender: ComponentSender<NdnsMenuW
             _ if action.starts_with("provider:") => {
                 let preset_id = &action["provider:".len()..];
                 if let Some((_, _, ips, _)) = PRESETS.iter().find(|p| p.0 == preset_id) {
-                    action_apply_preset(state.primary_device.clone(), ips).await
+                    // Pass the NM connection NAME (not the device
+                    // interface name) — preset apply goes through
+                    // `nmcli con mod ipv4.dns` against the active
+                    // connection, matching noctalia's apply.sh.
+                    // The previous resolvectl-based path silently
+                    // succeeded but the override is per-link and
+                    // ephemeral; NM clobbered it on the next link
+                    // refresh, so user-visible nothing changed.
+                    action_apply_preset(state.primary_conn.clone(), ips).await
                 } else {
                     Err(format!("unknown preset: {preset_id}"))
                 }
@@ -526,14 +534,38 @@ async fn action_default(primary_conn: Option<String>) -> Result<(), String> {
     }
 }
 
-async fn action_apply_preset(device: Option<String>, ips: &str) -> Result<(), String> {
-    let iface = device.ok_or_else(|| "no primary network device".to_string())?;
-    let mut args: Vec<String> = vec!["resolvectl".to_string(), "dns".to_string(), iface];
-    for ip in ips.split_whitespace() {
-        args.push(ip.to_string());
-    }
-    let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    run_privileged(&refs).await
+async fn action_apply_preset(conn: Option<String>, ips: &str) -> Result<(), String> {
+    // Port of noctalia-nplugins/ndns/scripts/apply.sh `set_dns`:
+    //
+    //   nmcli con mod "$con" ipv4.dns "$dns" ipv4.ignore-auto-dns yes
+    //   nmcli con up  "$con"
+    //
+    // `nmcli con mod` only edits the saved profile — the override
+    // doesn't take effect until `nmcli con up` re-applies it.
+    // Skipping the `up` step was the bug behind "Apply doesn't do
+    // anything" — the saved DNS would update but the active
+    // resolver still pointed at whatever the previous activation
+    // had pushed (typically DHCP-supplied DNS or a previous
+    // override).
+    //
+    // We also pass `ipv4.ignore-auto-dns yes` so DHCP-supplied DNS
+    // servers don't clobber the explicit list on the next renew.
+    let name = conn.ok_or_else(|| "no primary NetworkManager connection".to_string())?;
+    // Space-separated IP list per nmcli: "8.8.8.8 8.8.4.4"
+    let dns_value = ips.split_whitespace().collect::<Vec<_>>().join(" ");
+    run_privileged(&[
+        "nmcli",
+        "con",
+        "mod",
+        &name,
+        "ipv4.dns",
+        &dns_value,
+        "ipv4.ignore-auto-dns",
+        "yes",
+    ])
+    .await?;
+    // Re-activate so the new DNS takes effect immediately.
+    run_privileged(&["nmcli", "con", "up", &name]).await
 }
 
 async fn action_toggle(state: DnsState) -> Result<(), String> {
