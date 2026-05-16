@@ -268,19 +268,44 @@ impl Component for DisplaySettingsModel {
                         set_hexpand: true,
                         set_spacing: 16,
 
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_label: "Blue-light filter — bakes its colour-temperature schedule into margo's gamma pipeline, so a single tweak here covers every output. Changes write back to ~/.config/margo/config.conf and ping mctl reload.",
+                        // Apple-style hero header: large symbolic icon, page
+                        // title, one-line description. Anchors the page so
+                        // the user always knows which area they landed in
+                        // after a sidebar click. Replaces the old
+                        // "first-line label-small description" pattern.
+                        gtk::Box {
+                            add_css_class: "settings-hero",
+                            set_orientation: gtk::Orientation::Horizontal,
                             set_halign: gtk::Align::Start,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            set_spacing: 16,
+                            gtk::Image {
+                                add_css_class: "settings-hero-icon",
+                                set_icon_name: Some("weather-clear-night-symbolic"),
+                                set_valign: gtk::Align::Center,
+                            },
+                            gtk::Box {
+                                set_orientation: gtk::Orientation::Vertical,
+                                set_valign: gtk::Align::Center,
+                                gtk::Label {
+                                    add_css_class: "settings-hero-title",
+                                    set_label: "Twilight",
+                                    set_halign: gtk::Align::Start,
+                                },
+                                gtk::Label {
+                                    add_css_class: "settings-hero-subtitle",
+                                    set_label: "Blue-light filter — bakes its colour-temperature schedule into margo's gamma pipeline. Writes back to ~/.config/margo/config.conf + pings mctl reload.",
+                                    set_halign: gtk::Align::Start,
+                                    set_xalign: 0.0,
+                                    set_wrap: true,
+                                    set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                                },
+                            },
                         },
 
                 // ── Master switch + mode ───────────────────────────
                 gtk::Label {
                     add_css_class: "label-large-bold",
-                    set_label: "Twilight",
+                    set_label: "General",
                     set_halign: gtk::Align::Start,
                 },
 

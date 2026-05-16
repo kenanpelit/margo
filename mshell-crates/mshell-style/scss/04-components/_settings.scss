@@ -109,8 +109,172 @@
 }
 
 .settings-page {
-    padding: 20px;
+    padding: 24px 32px 32px 32px;
     background-color: var(--surface);
+}
+
+// ── Apple-style hero header ────────────────────────────────────
+//
+// Top-of-page banner: large symbolic icon on the left, page title
+// (20-22 px bold) above a one-line description (13 px, dim). Used
+// once per page, right above the first section caption. Keeps the
+// page rooted visually so the user always knows which area they
+// landed in after a sidebar click.
+.settings-hero {
+    margin-bottom: 24px;
+    padding: 4px 0;
+
+    .settings-hero-icon {
+        -gtk-icon-size: 36px;
+        color: var(--primary);
+        margin-right: 16px;
+        opacity: 0.95;
+    }
+
+    .settings-hero-title {
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--on-surface);
+        margin-bottom: 2px;
+    }
+
+    .settings-hero-subtitle {
+        font-size: 12.5px;
+        font-weight: 400;
+        color: var(--on-surface-variant);
+        opacity: 0.85;
+    }
+}
+
+// ── Section caption (small uppercase header above a card) ──────
+//
+// Apple's pattern: a single small-caps line just above each
+// boxed-list, like "GENERAL" or "TEMPERATURES". Cheaper than a
+// full heading and reads as a category divider without visual
+// weight. ~11 px, dim, letter-spaced.
+.settings-section-caption {
+    margin: 18px 12px 6px 12px;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--on-surface-variant);
+    opacity: 0.7;
+}
+
+// ── Boxed list (rounded surface holding action rows) ───────────
+//
+// One card per logical group. Slightly elevated background so the
+// card reads as distinct from the page surface; rounded corners,
+// internal padding zero (the rows handle their own padding so
+// dividers can run edge-to-edge).
+.boxed-list {
+    background-color: var(--surface-container);
+    border-radius: 14px;
+    padding: 0;
+    overflow: hidden;
+
+    // First/last row corner clipping happens via overflow:hidden
+    // above; row hover backgrounds therefore round naturally.
+    > .action-row + .action-row {
+        border-top: 1px solid var(--outline);
+    }
+}
+
+// ── Action row (one setting in a boxed-list) ───────────────────
+//
+// Apple-style: padded row with a left label (and optional dim
+// subtitle below it) and a right-aligned control (slider /
+// switch / dropdown / value text). Subtitle is optional — bare
+// rows just have a label.
+.action-row {
+    padding: 12px 16px;
+    min-height: 44px;
+
+    &:hover {
+        background-color: var(--surface-container-high);
+    }
+
+    .action-row-title {
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--on-surface);
+    }
+
+    .action-row-subtitle {
+        font-size: 12px;
+        font-weight: 400;
+        color: var(--on-surface-variant);
+        opacity: 0.75;
+        margin-top: 2px;
+    }
+
+    // Right-aligned value text (e.g. "3000K", "97 %") that's
+    // not a control — just the current value of an adjacent slider.
+    .action-row-value {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--on-surface-variant);
+        font-variant-numeric: tabular-nums;
+    }
+}
+
+// ── Apple-style cascade for legacy label classes ────────────────
+//
+// Settings pages were built before the Apple-style direction; they
+// use `label-large-bold` / `label-medium-bold` / `label-small` to
+// render section headers + row titles + dim subtitles. Rather than
+// rename every label across the 14 settings files, we re-style
+// these classes *only when scoped inside .settings-page* so the
+// same classes used by menu widgets, polkit prompts, weather, etc.
+// keep their original look. The result: a consistent Apple-style
+// typography across every settings page without touching the
+// per-page view! macros.
+.settings-page {
+    // Section header — was a large bold label; now reads as a
+    // small-caps category cap above the following control group.
+    .label-large-bold {
+        font-size: 10.5px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--on-surface-variant);
+        opacity: 0.7;
+        margin: 24px 0 6px 0;
+
+        // First header on the page doesn't need the big top margin
+        // (the hero already provides breathing room).
+        &:first-child {
+            margin-top: 0;
+        }
+    }
+
+    // Row title — was a medium bold label; now the primary text
+    // of an Apple action row (slightly bigger than 12 px, weight 500).
+    .label-medium-bold {
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--on-surface);
+    }
+
+    // Subtitle / description — was a small label; now dim and a
+    // touch lighter to read as supporting copy below row titles.
+    .label-small {
+        font-size: 12.5px;
+        font-weight: 400;
+        color: var(--on-surface-variant);
+        opacity: 0.78;
+    }
+
+    // The separators between sections were the only thing visually
+    // anchoring sections. With the new typography they're noise —
+    // hide them so the section caption + spacing carries the rhythm.
+    > separator,
+    > * > separator {
+        opacity: 0;
+        min-height: 0;
+        margin: 0;
+    }
 }
 
 // ── Display → Layout panel ─────────────────────────────────────

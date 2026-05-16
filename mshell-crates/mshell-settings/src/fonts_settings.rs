@@ -68,6 +68,34 @@ impl Component for FontsSettingsModel {
                 set_hexpand: true,
                 set_spacing: 16,
 
+                gtk::Box {
+                    add_css_class: "settings-hero",
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_halign: gtk::Align::Start,
+                    set_spacing: 16,
+                    gtk::Image {
+                        add_css_class: "settings-hero-icon",
+                        set_icon_name: Some("font-x-generic-symbolic"),
+                        set_valign: gtk::Align::Center,
+                    },
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_valign: gtk::Align::Center,
+                        gtk::Label {
+                            add_css_class: "settings-hero-title",
+                            set_label: "Fonts",
+                            set_halign: gtk::Align::Start,
+                        },
+                        gtk::Label {
+                            add_css_class: "settings-hero-subtitle",
+                            set_label: "Default fonts matugen feeds to every label across the shell. Primary covers body text; secondary / tertiary surface in opt-in components.",
+                            set_halign: gtk::Align::Start,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                        },
+                    },
+                },
+
                 gtk::Label {
                     add_css_class: "label-small",
                     set_label: "Choose the typefaces matugen feeds to every label across the shell. The three slots are independent — primary covers body text, secondary / tertiary are advisory and surface in components that opt in.",

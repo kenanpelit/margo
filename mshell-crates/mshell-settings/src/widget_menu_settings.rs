@@ -218,6 +218,34 @@ impl Component for WidgetMenuSettingsModel {
                 set_hexpand: true,
                 set_spacing: 16,
 
+                gtk::Box {
+                    add_css_class: "settings-hero",
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_halign: gtk::Align::Start,
+                    set_spacing: 16,
+                    gtk::Image {
+                        add_css_class: "settings-hero-icon",
+                        set_icon_name: Some("view-list-symbolic"),
+                        set_valign: gtk::Align::Center,
+                    },
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_valign: gtk::Align::Center,
+                        gtk::Label {
+                            add_css_class: "settings-hero-title",
+                            set_label: "Menu widget",
+                            set_halign: gtk::Align::Start,
+                        },
+                        gtk::Label {
+                            add_css_class: "settings-hero-subtitle",
+                            set_label: "Per-menu widget configuration — which sub-widgets show up inside a given menu and in what order.",
+                            set_halign: gtk::Align::Start,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                        },
+                    },
+                },
+
                 gtk::Label {
                     add_css_class: "label-large-bold",
                     #[watch]

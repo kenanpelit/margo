@@ -191,6 +191,34 @@ impl Component for BarPillSettingsModel {
                 set_hexpand: true,
                 set_spacing: 16,
 
+                gtk::Box {
+                    add_css_class: "settings-hero",
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_halign: gtk::Align::Start,
+                    set_spacing: 16,
+                    gtk::Image {
+                        add_css_class: "settings-hero-icon",
+                        set_icon_name: Some("utilities-tweak-symbolic"),
+                        set_valign: gtk::Align::Center,
+                    },
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_valign: gtk::Align::Center,
+                        gtk::Label {
+                            add_css_class: "settings-hero-title",
+                            set_label: "Bar pill",
+                            set_halign: gtk::Align::Start,
+                        },
+                        gtk::Label {
+                            add_css_class: "settings-hero-subtitle",
+                            set_label: "Per-pill cadence, position, visibility, and per-pill overrides.",
+                            set_halign: gtk::Align::Start,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                        },
+                    },
+                },
+
                 gtk::Label {
                     add_css_class: "label-large-bold",
                     #[watch]
