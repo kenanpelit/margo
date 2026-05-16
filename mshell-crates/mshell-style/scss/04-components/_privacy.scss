@@ -1,0 +1,21 @@
+// Privacy indicator pill — only renders when at least one of
+// the watched sensors (mic / camera) is in use, so the active
+// state is the only one we visually style. The accent color
+// reuses the error token so it reads as "pay attention" without
+// inventing a new palette slot.
+.privacy-bar-widget {
+  // Both child icons sit next to each other when both sensors
+  // are active. 4 px spacing matches the bar pill rhythm.
+  > box {
+    padding: 0 4px;
+  }
+
+  &.active {
+    color: var(--error);
+  }
+
+  .privacy-mic,
+  .privacy-camera {
+    color: var(--error);
+  }
+}

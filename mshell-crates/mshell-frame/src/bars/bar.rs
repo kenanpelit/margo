@@ -37,6 +37,7 @@ use crate::bars::bar_widgets::notifications::{
     NotificationsInit, NotificationsModel, NotificationsOutput,
 };
 use crate::bars::bar_widgets::power_profile::{PowerProfileInit, PowerProfileModel};
+use crate::bars::bar_widgets::privacy::{PrivacyInit, PrivacyModel};
 use crate::bars::bar_widgets::quick_settings::{
     QuickSettingOutput, QuickSettingsInit, QuickSettingsModel,
 };
@@ -609,6 +610,11 @@ impl BarModel {
             BarWidget::PowerProfile => Box::new(
                 PowerProfileModel::builder()
                     .launch(PowerProfileInit {})
+                    .detach(),
+            ),
+            BarWidget::Privacy => Box::new(
+                PrivacyModel::builder()
+                    .launch(PrivacyInit { orientation })
                     .detach(),
             ),
             BarWidget::Reboot => Box::new(

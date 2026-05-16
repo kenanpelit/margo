@@ -558,6 +558,7 @@ impl Component for SettingsWindowModel {
             WidgetEntry::Pill { kind: BarPillKind::MargoTags, stack_name: "pill_margo_tags", label: "Margo Tags", icon: "square-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::Network, stack_name: "pill_network", label: "Network", icon: "network-wired-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::PowerProfile, stack_name: "pill_power_profile", label: "Power Profile", icon: "power-profile-balanced-symbolic" },
+            WidgetEntry::Pill { kind: BarPillKind::Privacy, stack_name: "pill_privacy", label: "Privacy", icon: "microphone-sensitivity-high-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::Reboot, stack_name: "pill_reboot", label: "Reboot", icon: "system-reboot-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::RecordingIndicator, stack_name: "pill_recording", label: "Recording Indicator", icon: "media-record-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::Shutdown, stack_name: "pill_shutdown", label: "Shutdown", icon: "system-shutdown-symbolic" },

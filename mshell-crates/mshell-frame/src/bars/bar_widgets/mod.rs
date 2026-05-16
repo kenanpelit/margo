@@ -29,6 +29,7 @@ pub(crate) mod npodman;
 pub(crate) mod npower;
 pub(crate) mod nufw;
 pub(crate) mod power_profile;
+pub(crate) mod privacy;
 pub(crate) mod quick_settings;
 pub(crate) mod reboot;
 pub(crate) mod recording_indicator;
