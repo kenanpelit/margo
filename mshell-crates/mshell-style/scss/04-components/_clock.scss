@@ -41,7 +41,7 @@
   margin-top: 2px;
 }
 
-// ── Quick-settings card stack ───────────────────────────────────
+// ── Quick-settings / dashboard card stack ──────────────────────
 //
 // All non-hero menu widgets inside the quick-settings panel get
 // the surface-variant card treatment, mirroring the standalone
@@ -49,18 +49,33 @@
 // card). The hero clock keeps its primary tint above; everything
 // below reads as a surface-variant card so the panel feels like a
 // stack of focused tiles rather than a flat list.
+//
+// `.dashboard-menu` reuses the same rules (the Dashboard menu
+// shares the `.quick-settings-menu` class on the root) so the
+// 2-col body's nested widgets get card chrome automatically.
 .quick-settings-menu {
   .network-menu-widget,
   .audio-out-menu-widget,
   .audio-in-menu-widget,
   .power-profiles-menu-widget,
   .media-player-menu-widget,
-  .quick-actions-menu-widget {
+  .quick-actions-menu-widget,
+  .calendar-menu-widget,
+  .weather-menu-widget {
     background-color: var(--surface-variant);
     color: var(--on-surface-variant);
     border-radius: var(--radius-widget);
     padding: 12px 14px;
     margin: 4px 0;
+  }
+
+  // Container widgets — used by the dashboard for the 2-col body
+  // — never get card chrome; they're layout-only wrappers and
+  // their children already paint the cards.
+  .container-menu-widget {
+    background-color: transparent;
+    padding: 0;
+    margin: 0;
   }
 
   // Spacers / dividers are layout helpers — no card chrome.
@@ -69,6 +84,28 @@
     background-color: transparent;
     padding: 0;
     margin: 0;
+  }
+}
+
+// Dashboard-specific tweaks — applied on top of the
+// `.quick-settings-menu` shared rules above.
+.dashboard-menu {
+  // The 2-col body's columns should hug their content's top
+  // edge rather than spreading vertically — keeps cards
+  // compact even when the other column is taller.
+  .container-menu-widget {
+    align-items: flex-start;
+  }
+
+  // The footer Power row (QuickActions) sits flush below the
+  // body — give it a touch more breathing room and a subtle
+  // top border so it reads as a separate band.
+  > box > .quick-actions-menu-widget:last-child {
+    border-top: 1px solid var(--outline-variant);
+    margin-top: 8px;
+    padding-top: 12px;
+    border-radius: 0;
+    background-color: transparent;
   }
 }
 

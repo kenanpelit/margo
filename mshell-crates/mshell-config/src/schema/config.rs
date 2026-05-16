@@ -2,9 +2,9 @@ use crate::schema::bar_widgets::BarWidget;
 use crate::schema::content_fit::ContentFit;
 use crate::schema::location_query::{LocationQueryConfig, OrdF64};
 use crate::schema::menu_widgets::{
-    MenuWidget, QuickActionWidget, QuickActionsConfig, SpacerConfig,
+    ContainerConfig, MenuWidget, QuickActionWidget, QuickActionsConfig, SpacerConfig,
 };
-use crate::schema::position::{NotificationPosition, Position};
+use crate::schema::position::{NotificationPosition, Orientation, Position};
 use crate::schema::quick_settings_icon::QuickSettingsIcon;
 use crate::schema::temperature::TemperatureUnitConfig;
 use crate::schema::themes::{
@@ -538,48 +538,84 @@ impl Default for Menus {
                 minimum_width: 780,
             },
             dashboard_menu: Menu {
-                // Top anchor with a wider min-width than the
-                // single-purpose menus — dashboard hosts the full
-                // QS stack + calendar + weather and benefits from
-                // some breathing room.
+                // GNOME-style compound dashboard:
+                //
+                //   ┌── Hero (Clock widget — big time + date) ──┐
+                //   ├── 2-col row ─────────────────────────────┤
+                //   │ ┌─ LEFT ─────┐  ┌─ RIGHT ──────────────┐ │
+                //   │ │ Calendar   │  │ Network              │ │
+                //   │ │ Weather    │  │ Bluetooth            │ │
+                //   │ │ MediaPlayer│  │ AudioOutput          │ │
+                //   │ │            │  │ AudioInput           │ │
+                //   │ │            │  │ PowerProfiles        │ │
+                //   │ │            │  │ QuickActions (toggle)│ │
+                //   │ └────────────┘  └──────────────────────┘ │
+                //   └── Footer (QuickActions: power row) ──────┘
+                //
+                // The 2-col row is a horizontal Container holding
+                // two vertical Containers. Each Container's
+                // children render exactly like they do in the
+                // standalone quick-settings menu — same widget
+                // controllers, same card styling. The hero +
+                // footer rows are still ordinary stacked widgets
+                // inside the menu's main vertical box.
                 position: Position::Top,
                 widgets: vec![
-                    // Hero band (compact clock — same hero card
-                    // the QS panel uses).
+                    // ── Hero band ──
                     MenuWidget::Clock,
-                    MenuWidget::Spacer(SpacerConfig { size: 8 }),
-                    // Date + weather row.
-                    MenuWidget::Calendar,
-                    MenuWidget::Weather,
-                    MenuWidget::Spacer(SpacerConfig { size: 12 }),
-                    // Connectivity / audio / power / media.
-                    MenuWidget::Network,
-                    MenuWidget::Bluetooth,
-                    MenuWidget::AudioOutput,
-                    MenuWidget::AudioInput,
-                    MenuWidget::PowerProfiles,
-                    MenuWidget::MediaPlayer,
-                    MenuWidget::Spacer(SpacerConfig { size: 12 }),
-                    // Quick-action toggle rows.
-                    MenuWidget::QuickActions(QuickActionsConfig {
+                    MenuWidget::Spacer(SpacerConfig { size: 10 }),
+                    // ── 2-col body ──
+                    MenuWidget::Container(ContainerConfig {
                         widgets: vec![
-                            QuickActionWidget::AirplaneMode,
-                            QuickActionWidget::Nightlight,
-                            QuickActionWidget::HyprPicker,
-                            QuickActionWidget::Settings,
+                            // Left column
+                            MenuWidget::Container(ContainerConfig {
+                                widgets: vec![
+                                    MenuWidget::Calendar,
+                                    MenuWidget::Weather,
+                                    MenuWidget::MediaPlayer,
+                                ],
+                                spacing: 10,
+                                orientation: Orientation::Vertical,
+                                minimum_width: 320,
+                            }),
+                            // Right column
+                            MenuWidget::Container(ContainerConfig {
+                                widgets: vec![
+                                    MenuWidget::Network,
+                                    MenuWidget::Bluetooth,
+                                    MenuWidget::AudioOutput,
+                                    MenuWidget::AudioInput,
+                                    MenuWidget::PowerProfiles,
+                                    MenuWidget::QuickActions(QuickActionsConfig {
+                                        widgets: vec![
+                                            QuickActionWidget::AirplaneMode,
+                                            QuickActionWidget::Nightlight,
+                                            QuickActionWidget::HyprPicker,
+                                            QuickActionWidget::Settings,
+                                        ],
+                                    }),
+                                ],
+                                spacing: 8,
+                                orientation: Orientation::Vertical,
+                                minimum_width: 360,
+                            }),
                         ],
+                        spacing: 12,
+                        orientation: Orientation::Horizontal,
+                        minimum_width: 0,
                     }),
-                    MenuWidget::Spacer(SpacerConfig { size: 8 }),
+                    MenuWidget::Spacer(SpacerConfig { size: 10 }),
+                    // ── Power footer ──
                     MenuWidget::QuickActions(QuickActionsConfig {
                         widgets: vec![
-                            QuickActionWidget::Logout,
                             QuickActionWidget::Lock,
+                            QuickActionWidget::Logout,
                             QuickActionWidget::Reboot,
                             QuickActionWidget::Shutdown,
                         ],
                     }),
                 ],
-                minimum_width: 460,
+                minimum_width: 760,
             },
             left_menu_expansion_type: VerticalMenuExpansion::AlwaysExpanded,
             right_menu_expansion_type: VerticalMenuExpansion::AlwaysExpanded,
