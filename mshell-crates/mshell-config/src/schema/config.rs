@@ -252,12 +252,18 @@ pub struct Font {
     pub tertiary: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Store, Patch, JsonSchema)]
 #[serde(default)]
 pub struct Sizing {
     pub radius_widget: i32,
     pub radius_window: i32,
     pub border_width: i32,
+    /// Multiplier applied to every font-size inside the Settings
+    /// panel. `1.0` keeps the +1pt-bumped defaults; bigger values
+    /// scale further (useful on hi-DPI displays where 15-16 px
+    /// reads small), smaller values shrink. Range is enforced
+    /// loosely — values outside `0.5..=2.0` will warp the layout.
+    pub settings_font_scale: f64,
 }
 
 impl Default for Sizing {
@@ -266,9 +272,16 @@ impl Default for Sizing {
             radius_widget: 8,
             radius_window: 8,
             border_width: 2,
+            settings_font_scale: 1.0,
         }
     }
 }
+
+// Manually implemented because the `f64` field rules out a
+// derived `Eq` (NaN ≠ NaN). PartialEq still works for the
+// reactive store's change detection — float comparison is exact
+// here because slider widgets snap to user-typed values.
+impl Eq for Sizing {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
 #[serde(default)]

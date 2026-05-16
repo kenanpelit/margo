@@ -93,15 +93,22 @@ where
 
 /// External-facing section navigator. Activates the matching
 /// sidebar button and ensures Settings is visible. Used by the
-/// launcher's Settings provider via the `mshellctl settings open
-/// --section <id>` IPC chain.
+/// launcher's Settings provider via the per-frame routing chain.
+///
+/// We deliberately do NOT also call [`open_settings`] here —
+/// `SECTION_BACKEND` ends up at `FrameInput::OpenSettingsAtSection`
+/// which already ensures the panel is visible before forwarding
+/// the section. Calling `open_settings` too would push a second
+/// toggle message onto the queue, processed after the section
+/// open, which would flip the freshly-opened panel back off.
 pub fn open_settings_at_section(section: &str) {
     if let Some(backend) = SECTION_BACKEND.get() {
         backend(section);
     } else {
+        // No backend registered yet (frame still booting) —
+        // fall back to a plain toggle so the user at least sees
+        // Settings open, even without the right section.
         tracing::warn!(section, "settings: section backend not registered yet");
+        open_settings();
     }
-    // Always toggle the panel visible — the backend only switches
-    // the inner stack, it doesn't open the menu.
-    open_settings();
 }

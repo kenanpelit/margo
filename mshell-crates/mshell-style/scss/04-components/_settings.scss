@@ -112,7 +112,7 @@
         }
 
         label {
-            font-size: 14px;
+            font-size: calc(15px * var(--font-scale-settings, 1.0));
             font-weight: 500;
         }
 
@@ -138,7 +138,7 @@
     // children (label, image labels, hero subtitle, etc.). Per-class
     // overrides below still win where we set explicit sizes (hero
     // title 23px, section caption 11.5px, etc.).
-    font-size: 14.5px;
+    font-size: calc(15.5px * var(--font-scale-settings, 1.0));
 }
 
 // ── Apple-style hero header ────────────────────────────────────
@@ -160,14 +160,14 @@
     }
 
     .settings-hero-title {
-        font-size: 24px;
+        font-size: calc(25.5px * var(--font-scale-settings, 1.0));
         font-weight: 700;
         color: var(--on-surface);
         margin-bottom: 2px;
     }
 
     .settings-hero-subtitle {
-        font-size: 14.5px;
+        font-size: calc(15.5px * var(--font-scale-settings, 1.0));
         font-weight: 400;
         color: var(--on-surface-variant);
         opacity: 0.85;
@@ -182,7 +182,7 @@
 // weight. ~11 px, dim, letter-spaced.
 .settings-section-caption {
     margin: 18px 12px 6px 12px;
-    font-size: 12.5px;
+    font-size: calc(13.5px * var(--font-scale-settings, 1.0));
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -224,13 +224,13 @@
     }
 
     .action-row-title {
-        font-size: 16px;
+        font-size: calc(17px * var(--font-scale-settings, 1.0));
         font-weight: 500;
         color: var(--on-surface);
     }
 
     .action-row-subtitle {
-        font-size: 14px;
+        font-size: calc(15px * var(--font-scale-settings, 1.0));
         font-weight: 400;
         color: var(--on-surface-variant);
         opacity: 0.75;
@@ -240,7 +240,7 @@
     // Right-aligned value text (e.g. "3000K", "97 %") that's
     // not a control — just the current value of an adjacent slider.
     .action-row-value {
-        font-size: 15px;
+        font-size: calc(16px * var(--font-scale-settings, 1.0));
         font-weight: 500;
         color: var(--on-surface-variant);
         font-variant-numeric: tabular-nums;
@@ -262,7 +262,7 @@
     // Section header — was a large bold label; now reads as a
     // small-caps category cap above the following control group.
     .label-large-bold {
-        font-size: 12.5px;
+        font-size: calc(13.5px * var(--font-scale-settings, 1.0));
         font-weight: 600;
         letter-spacing: 0.06em;
         text-transform: uppercase;
@@ -280,7 +280,7 @@
     // Row title — was a medium bold label; now the primary text
     // of an Apple action row (slightly bigger than 12 px, weight 500).
     .label-medium-bold {
-        font-size: 16px;
+        font-size: calc(17px * var(--font-scale-settings, 1.0));
         font-weight: 500;
         color: var(--on-surface);
     }
@@ -288,7 +288,7 @@
     // Subtitle / description — was a small label; now dim and a
     // touch lighter to read as supporting copy below row titles.
     .label-small {
-        font-size: 14.5px;
+        font-size: calc(15.5px * var(--font-scale-settings, 1.0));
         font-weight: 400;
         color: var(--on-surface-variant);
         opacity: 0.78;

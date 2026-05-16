@@ -3,7 +3,10 @@ use mshell_common::text_entry_dialog::{
     TextEntryDialogInit, TextEntryDialogModel, TextEntryDialogOutput,
 };
 use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{ConfigStoreFields, GeneralStoreFields};
+use mshell_config::schema::config::{
+    ConfigStoreFields, GeneralStoreFields, SizingStoreFields, ThemeAttributesStoreFields,
+    ThemeStoreFields,
+};
 use mshell_config::schema::location_query::{LocationQueryConfig, LocationQueryType, OrdF64};
 use mshell_config::schema::temperature::TemperatureUnitConfig;
 use reactive_graph::prelude::{Get, GetUntracked};
@@ -27,6 +30,12 @@ pub(crate) struct GeneralSettingsModel {
     show_screen_corners: bool,
     screen_corner_radius: i32,
     network_osd_enabled: bool,
+    /// Settings-panel font-size multiplier. Persisted to
+    /// `theme.attributes.sizing.settings_font_scale`. Drives the
+    /// `--font-scale-settings` CSS variable that every `.settings-*`
+    /// `font-size` declaration in `_settings.scss` multiplies
+    /// against.
+    settings_font_scale: f64,
     _effects: EffectScope,
 }
 
@@ -55,6 +64,8 @@ pub(crate) enum GeneralSettingsInput {
     ScreenCornerRadiusEffect(i32),
     NetworkOsdEnabledToggled(bool),
     NetworkOsdEnabledEffect(bool),
+    SettingsFontScaleChanged(f64),
+    SettingsFontScaleEffect(f64),
 }
 
 #[derive(Debug)]
@@ -443,6 +454,44 @@ impl Component for GeneralSettingsModel {
                     },
                 },
 
+                // ── Settings font scale ────────────────────────
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Settings font scale",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Multiplier applied to every font-size inside the Settings panel. 1.0 keeps the +1pt-bumped defaults (~15.5 px); set 1.1 for ~17 px on hi-DPI displays, 0.9 to shrink for tight screens. Persists to `theme.attributes.sizing.settings_font_scale`.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::SpinButton {
+                        set_valign: gtk::Align::Center,
+                        set_range: (0.5, 2.0),
+                        set_increments: (0.05, 0.1),
+                        set_digits: 2,
+                        #[watch]
+                        #[block_signal(settings_font_scale_handler)]
+                        set_value: model.settings_font_scale,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(GeneralSettingsInput::SettingsFontScaleChanged(s.value()));
+                        } @settings_font_scale_handler,
+                    },
+                },
+
                 // ── Network OSD ────────────────────────────────
                 gtk::Box {
                     set_orientation: gtk::Orientation::Horizontal,
@@ -554,6 +603,18 @@ impl Component for GeneralSettingsModel {
             sender_clone.input(GeneralSettingsInput::NetworkOsdEnabledEffect(v));
         });
 
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let v = config_manager()
+                .config()
+                .theme()
+                .attributes()
+                .sizing()
+                .settings_font_scale()
+                .get();
+            sender_clone.input(GeneralSettingsInput::SettingsFontScaleEffect(v));
+        });
+
         let location_query_types = gtk::StringList::new(
             &LocationQueryType::all()
                 .iter()
@@ -604,6 +665,13 @@ impl Component for GeneralSettingsModel {
                 .config()
                 .general()
                 .network_osd_enabled()
+                .get_untracked(),
+            settings_font_scale: config_manager()
+                .config()
+                .theme()
+                .attributes()
+                .sizing()
+                .settings_font_scale()
                 .get_untracked(),
             _effects: effects,
         };
@@ -811,6 +879,19 @@ impl Component for GeneralSettingsModel {
             }
             GeneralSettingsInput::NetworkOsdEnabledEffect(v) => {
                 self.network_osd_enabled = v;
+            }
+            GeneralSettingsInput::SettingsFontScaleChanged(v) => {
+                // Snap to the SpinButton's 2-digit display so the
+                // reactive effect doesn't fire a fresh write on
+                // every fractional tick from the GTK control.
+                let snapped = (v * 100.0).round() / 100.0;
+                let clamped = snapped.clamp(0.5, 2.0);
+                config_manager().update_config(|c| {
+                    c.theme.attributes.sizing.settings_font_scale = clamped;
+                });
+            }
+            GeneralSettingsInput::SettingsFontScaleEffect(v) => {
+                self.settings_font_scale = v;
             }
         }
 

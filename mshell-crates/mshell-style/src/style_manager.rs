@@ -227,6 +227,7 @@ impl Component for StyleManagerModel {
                         --radius-widget: {}px;
                         --radius-window: {}px;
                         --border-width: {}px;
+                        --font-scale-settings: {};
                     }}"#,
                     if attributes.font.primary.is_empty() {
                         "inherit"
@@ -247,6 +248,12 @@ impl Component for StyleManagerModel {
                     attributes.sizing.radius_widget,
                     attributes.sizing.radius_window,
                     attributes.sizing.border_width,
+                    // Clamp to a sane range so a stray config
+                    // edit can't shrink the panel to 0 or blow
+                    // it past the screen. CSS unitless number,
+                    // multiplied against px values in
+                    // _settings.scss.
+                    attributes.sizing.settings_font_scale.clamp(0.5, 2.0),
                 ));
 
                 sender.input(ReloadTheme(
