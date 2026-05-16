@@ -3620,6 +3620,8 @@ dependencies = [
  "schemars",
  "serde",
  "serde_yaml",
+ "tempfile",
+ "tokio",
  "tracing",
  "wayle-weather",
 ]
