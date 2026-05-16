@@ -10,6 +10,7 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 dirs.workspace = true
+emojis = "0.7"
 evalexpr = "12"
 notify-rust.workspace = true
 nucleo-matcher = "0.3"

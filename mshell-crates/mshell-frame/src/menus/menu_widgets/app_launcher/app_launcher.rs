@@ -32,8 +32,9 @@ use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, IconsStoreFields, ThemeStoreFields};
 use mshell_launcher::providers::{
-    CalculatorProvider, CommandProvider, MctlProvider, ScriptsProvider, SessionProvider,
-    SettingsProvider,
+    ArchLinuxPkgsProvider, BluetoothProvider, CalculatorProvider, CommandProvider, EmojiProvider,
+    MctlProvider, PlayerctlProvider, ProviderListProvider, ScriptsProvider, SessionProvider,
+    SettingsProvider, SymbolsProvider, WebsearchProvider, WireplumberProvider,
 };
 use mshell_launcher::{FrecencyStore, LauncherItem, LauncherRuntime};
 use reactive_graph::traits::*;
@@ -205,6 +206,20 @@ impl Component for AppLauncherModel {
         // browse target), Windows second (alt-tab replacement
         // for `Open Apps Switcher` muscle memory), then the
         // typed-only providers in roughly "expected frequency".
+        // ProviderListProvider needs a callback that rewrites
+        // the launcher's search entry — registers BEFORE Apps so
+        // its `;` palette intercepts before the apps fuzzy
+        // matcher gets a chance.
+        let sender_for_search = sender.clone();
+        let provider_list_provider = ProviderListProvider::new(Rc::new(move |text: &str| {
+            // Channel-back to the widget so it can call
+            // `search_entry.set_text(...)` from the GTK main
+            // thread.
+            let _ = sender_for_search.input_sender().send(
+                AppLauncherInput::FilterChanged(text.to_string()),
+            );
+        }));
+
         runtime.register(Box::new(AppsProviderHandle(apps_provider.clone())));
         runtime.register(Box::new(WindowsProvider::new()));
         runtime.register(Box::new(CalculatorProvider::new()));
@@ -213,6 +228,14 @@ impl Component for AppLauncherModel {
         runtime.register(Box::new(settings_provider));
         runtime.register(Box::new(ClipboardProvider::new()));
         runtime.register(Box::new(ScriptsProvider::new()));
+        runtime.register(Box::new(SymbolsProvider::new()));
+        runtime.register(Box::new(EmojiProvider::new()));
+        runtime.register(Box::new(WebsearchProvider::new()));
+        runtime.register(Box::new(provider_list_provider));
+        runtime.register(Box::new(PlayerctlProvider::new()));
+        runtime.register(Box::new(ArchLinuxPkgsProvider::new()));
+        runtime.register(Box::new(WireplumberProvider::new()));
+        runtime.register(Box::new(BluetoothProvider::new()));
         runtime.register(Box::new(CommandProvider::new()));
 
         // Sender clone for the dynamic-box factory's per-row
