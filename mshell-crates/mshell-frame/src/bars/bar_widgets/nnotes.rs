@@ -85,13 +85,13 @@ pub(crate) async fn save_notes(state: &NotesState) -> Result<(), String> {
             .map_err(|e| format!("create dir {}: {e}", parent.display()))?;
     }
     let raw = serde_json::to_string_pretty(state).map_err(|e| format!("serialize: {e}"))?;
-    let tmp = path.with_extension("json.tmp");
-    tokio::fs::write(&tmp, raw)
+    // Symlink-preserving atomic write — same reasoning as
+    // `mshell-config::atomic_write`. If the user manages their
+    // notes JSON via a dotfile manager (symlinked into ~/.config),
+    // the link survives.
+    mshell_config::atomic_write::atomic_write_async(&path, raw.into_bytes())
         .await
-        .map_err(|e| format!("write tmp: {e}"))?;
-    tokio::fs::rename(&tmp, &path)
-        .await
-        .map_err(|e| format!("rename: {e}"))?;
+        .map_err(|e| format!("atomic write {}: {e}", path.display()))?;
     Ok(())
 }
 

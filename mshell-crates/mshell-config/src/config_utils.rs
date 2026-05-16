@@ -139,11 +139,13 @@ pub(crate) fn persist_config_layer<T: Serialize>(
 
     let yaml = serde_yaml::to_string(value)?;
 
-    // Atomic write: write to a sibling temp file, then rename over the target.
-    // This prevents the file watcher from seeing a half-written file.
-    let tmp = path.with_extension("tmp");
-    fs::write(&tmp, &yaml)?;
-    fs::rename(&tmp, path)?;
+    // Atomic write via the symlink-preserving helper so dcli /
+    // stow / chezmoi users keep their `~/.config/margo/mshell/
+    // profiles/default.yaml -> ~/.cachy/modules/.../default.yaml`
+    // links intact. The plain `write(tmp) + rename(tmp, path)`
+    // pattern clobbered the symlink with a regular file every
+    // time Settings was saved.
+    crate::atomic_write::atomic_write(path, yaml.as_bytes())?;
 
     Ok(())
 }

@@ -1250,10 +1250,14 @@ fn write_config_field(key: &str, value: &str) -> std::io::Result<()> {
         out.push('\n');
     }
 
-    let tmp = path.with_extension("conf.mshell-tmp");
-    std::fs::write(&tmp, out)?;
-    std::fs::rename(&tmp, &path)?;
-    Ok(())
+    // Symlink-preserving write — many dotfile managers (dcli /
+    // stow / chezmoi) park the real file under their tracked tree
+    // and symlink `~/.config/margo/config.conf` at it. The naive
+    // `write(tmp) + rename(tmp, path)` replaces the symlink with
+    // the regular tmp file and breaks the dotfile link. The
+    // helper resolves the symlink first and renames against the
+    // *target*; the symlink survives.
+    mshell_config::atomic_write::atomic_write(&path, out.as_bytes())
 }
 
 /// Does this line, ignoring leading whitespace and an optional

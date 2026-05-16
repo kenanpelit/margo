@@ -16,5 +16,9 @@ reactive_stores.workspace = true
 schemars.workspace = true
 serde.workspace = true
 serde_yaml.workspace = true
+tokio.workspace = true
 tracing.workspace = true
 wayle-weather.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
