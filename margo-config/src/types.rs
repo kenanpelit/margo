@@ -647,6 +647,14 @@ pub struct Config {
     pub snap_distance: i32,
     pub enable_floating_snap: bool,
     pub drag_tile_to_tile: bool,
+    /// While the user is dragging a tile (with `drag_tile_to_tile`
+    /// enabled), shrink the window to a small 300×300 thumbnail
+    /// centred on the cursor for the duration of the drag. The
+    /// pre-drag floating geometry is restored on release. Helps
+    /// the user see where they're dropping when the source
+    /// window is large. Backport of mango 0.13's
+    /// `drag_tile_small`.
+    pub drag_tile_small: bool,
     pub swipe_min_threshold: u32,
     pub focused_opacity: f32,
     pub unfocused_opacity: f32,
@@ -976,6 +984,7 @@ impl Default for Config {
             snap_distance: 30,
             enable_floating_snap: false,
             drag_tile_to_tile: false,
+            drag_tile_small: true,
             swipe_min_threshold: 1,
             focused_opacity: 1.0,
             unfocused_opacity: 1.0,
