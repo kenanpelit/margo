@@ -57,9 +57,16 @@ pub struct SessionAction {
 }
 
 impl SessionAction {
-    /// Sensible defaults for the eight actions noctalia/DMS ship.
-    /// The UI replaces these with the user's config values where
-    /// they exist.
+    /// Sensible defaults for the eight actions.
+    ///
+    /// Lock / Logout / Suspend / Reboot / Shutdown route through
+    /// `mshellctl menu session <action>` so they honour the
+    /// user's `[session]` config overrides AND fall back to
+    /// mshell's in-process lock (margo doesn't ship with logind
+    /// session locking enabled, so a bare `loginctl lock-session`
+    /// silently no-ops). The two "extra" reboot variants and
+    /// hibernate aren't covered by `mshellctl menu session` yet,
+    /// so they stay on direct `systemctl` calls.
     pub fn defaults() -> Vec<SessionAction> {
         use SessionActionId::*;
         vec![
@@ -68,14 +75,14 @@ impl SessionAction {
                 label: "Lock".into(),
                 icon: "system-lock-screen-symbolic".into(),
                 keywords: vec!["lock".into(), "screen".into(), "secure".into()],
-                command: vec!["loginctl".into(), "lock-session".into()],
+                command: vec!["mshellctl".into(), "menu".into(), "session".into(), "lock".into()],
             },
             Self {
                 id: Suspend,
                 label: "Suspend".into(),
                 icon: "system-suspend-symbolic".into(),
                 keywords: vec!["suspend".into(), "sleep".into(), "standby".into()],
-                command: vec!["systemctl".into(), "suspend".into()],
+                command: vec!["mshellctl".into(), "menu".into(), "session".into(), "suspend".into()],
             },
             Self {
                 id: Hibernate,
@@ -89,7 +96,7 @@ impl SessionAction {
                 label: "Reboot".into(),
                 icon: "system-reboot-symbolic".into(),
                 keywords: vec!["reboot".into(), "restart".into(), "reload".into()],
-                command: vec!["systemctl".into(), "reboot".into()],
+                command: vec!["mshellctl".into(), "menu".into(), "session".into(), "reboot".into()],
             },
             Self {
                 id: RebootToUefi,
@@ -125,7 +132,7 @@ impl SessionAction {
                     "sign".into(),
                     "exit".into(),
                 ],
-                command: vec!["loginctl".into(), "terminate-session".into(), "self".into()],
+                command: vec!["mshellctl".into(), "menu".into(), "session".into(), "logout".into()],
             },
             Self {
                 id: Shutdown,
@@ -137,7 +144,7 @@ impl SessionAction {
                     "off".into(),
                     "poweroff".into(),
                 ],
-                command: vec!["systemctl".into(), "poweroff".into()],
+                command: vec!["mshellctl".into(), "menu".into(), "session".into(), "shutdown".into()],
             },
         ]
     }

@@ -75,12 +75,25 @@ fn is_connected(mac: &str) -> bool {
 }
 
 fn snapshot() -> Vec<Device> {
-    let out = match Command::new("bluetoothctl")
-        .args(["paired-devices"])
+    // bluez 5.65+ removed the standalone `paired-devices`
+    // subcommand in favour of `devices <filter>`. We try the
+    // new form first and fall back to the old one for older
+    // installs. Output format is identical: `Device <MAC> <name>`
+    // one per line, so the parser handles both transparently.
+    let out = Command::new("bluetoothctl")
+        .args(["devices", "Paired"])
         .output()
-    {
-        Ok(o) if o.status.success() => o,
-        _ => return Vec::new(),
+        .ok()
+        .filter(|o| o.status.success())
+        .or_else(|| {
+            Command::new("bluetoothctl")
+                .args(["paired-devices"])
+                .output()
+                .ok()
+                .filter(|o| o.status.success())
+        });
+    let Some(out) = out else {
+        return Vec::new();
     };
     parse_paired(&String::from_utf8_lossy(&out.stdout))
         .into_iter()
