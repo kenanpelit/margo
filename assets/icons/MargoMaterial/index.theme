@@ -1,6 +1,6 @@
 [Icon Theme]
 Name=MargoMaterial
-Inherits=hicolor
+Inherits=Adwaita,hicolor
 Directories=symbolic
 
 [symbolic]

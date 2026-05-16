@@ -198,7 +198,11 @@ impl Component for BarPillSettingsModel {
                     set_spacing: 16,
                     gtk::Image {
                         add_css_class: "settings-hero-icon",
-                        set_icon_name: Some("utilities-tweak-symbolic"),
+                        // `utilities-tweak-symbolic` doesn't ship in
+                        // MargoMaterial OR Adwaita. `view-grid-symbolic`
+                        // is in both — and conceptually fits a "per-pill
+                        // grid of cadence / position / visibility" page.
+                        set_icon_name: Some("view-grid-symbolic"),
                         set_valign: gtk::Align::Center,
                     },
                     gtk::Box {

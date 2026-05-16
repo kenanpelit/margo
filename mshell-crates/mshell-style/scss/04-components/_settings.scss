@@ -79,9 +79,9 @@
     }
 }
 
-.settings-sidebar {
+.settings-sidebar,
+.settings-subsidebar {
     background-color: var(--surface);
-    border-right: solid var(--border-width) var(--outline);
     padding: 10px;
 
     .sidebar-button {
@@ -91,6 +91,24 @@
         &:checked {
             @include buttons.button-base("--primary", "--on-primary");
             @include buttons.state-layers("--primary", "--on-primary");
+
+            // Inner `.label-medium` / `.label-medium-bold` hardcode
+            // `color: var(--on-surface)` (see 03-primitives/_labels.scss).
+            // Without this override the active sidebar button keeps its
+            // text on-surface (white in dark mode), which against the
+            // primary-tinted background reads as low-contrast — the user
+            // reports the active item looks like "white on white". Force
+            // the contrasting `--on-primary` for every label / image
+            // nested under a checked sidebar button, regardless of which
+            // `label-*` class was used.
+            label,
+            label.label-medium,
+            label.label-medium-bold,
+            label.label-medium-primary,
+            label.label-medium-variant,
+            image {
+                color: var(--on-primary);
+            }
         }
 
         label {
@@ -102,6 +120,10 @@
             -gtk-icon-size: 16px;
         }
     }
+}
+
+.settings-sidebar {
+    border-right: solid var(--border-width) var(--outline);
 }
 
 .settings-stack {
