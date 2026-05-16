@@ -473,14 +473,44 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
         "disable_while_typing" => cfg.disable_while_typing = parse_bool(val),
         "left_handed" => cfg.left_handed = parse_bool(val),
         "middle_button_emulation" => cfg.middle_button_emulation = parse_bool(val),
+        // Legacy unified `accel_profile`: backport from mango 0.13
+        // splits this into `mouse_accel_profile` + `trackpad_accel_profile`.
+        // We accept the old name and write to BOTH new fields so
+        // existing configs see no behaviour change. If the user
+        // also sets a more specific key below, it wins (handled
+        // by the parser visiting later keys after the legacy one).
         "accel_profile" => {
-            cfg.accel_profile = match parse_u32(val) {
+            let profile = match parse_u32(val) {
+                0 => AccelProfile::None,
+                1 => AccelProfile::Flat,
+                _ => AccelProfile::Adaptive,
+            };
+            cfg.mouse_accel_profile = profile;
+            cfg.trackpad_accel_profile = profile;
+        }
+        "accel_speed" => {
+            let speed = parse_f64(val);
+            cfg.mouse_accel_speed = speed;
+            cfg.trackpad_accel_speed = speed;
+        }
+        // New 0.13-style explicit keys.
+        "mouse_accel_profile" => {
+            cfg.mouse_accel_profile = match parse_u32(val) {
                 0 => AccelProfile::None,
                 1 => AccelProfile::Flat,
                 _ => AccelProfile::Adaptive,
             }
         }
-        "accel_speed" => cfg.accel_speed = parse_f64(val),
+        "mouse_accel_speed" => cfg.mouse_accel_speed = parse_f64(val),
+        "trackpad_accel_profile" => {
+            cfg.trackpad_accel_profile = match parse_u32(val) {
+                0 => AccelProfile::None,
+                1 => AccelProfile::Flat,
+                _ => AccelProfile::Adaptive,
+            }
+        }
+        "trackpad_accel_speed" => cfg.trackpad_accel_speed = parse_f64(val),
+        "trackpad_scroll_factor" => cfg.trackpad_scroll_factor = parse_f64(val),
         "scroll_method" => {
             cfg.scroll_method = match parse_u32(val) {
                 0 => ScrollMethod::NoScroll,
@@ -738,8 +768,26 @@ fn parse_windowrule(cfg: &mut Config, val: &str) -> Result<()> {
             "monitor" => rule.monitor = Some(v),
             "offsetx" | "offset_x" => rule.offset_x = parse_i32_s(&v),
             "offsety" | "offset_y" => rule.offset_y = parse_i32_s(&v),
-            "width" => rule.width = parse_i32_s(&v),
-            "height" => rule.height = parse_i32_s(&v),
+            // Window-rule width/height accept either an absolute
+            // pixel value (`width:600`) or a monitor-relative
+            // fraction (`width:50%`). The fraction form sets
+            // `width_fraction`; the absolute form sets `width`.
+            // Consumers prefer the fraction when both are set —
+            // mirrors mango 0.13's flexible-window-rules behaviour.
+            "width" => {
+                if let Some(frac) = parse_percent_fraction(&v) {
+                    rule.width_fraction = Some(frac);
+                } else {
+                    rule.width = parse_i32_s(&v);
+                }
+            }
+            "height" => {
+                if let Some(frac) = parse_percent_fraction(&v) {
+                    rule.height_fraction = Some(frac);
+                } else {
+                    rule.height = parse_i32_s(&v);
+                }
+            }
             "isfloating" | "floating" | "is_floating" => {
                 rule.is_floating = Some(parse_bool_s(&v))
             }
@@ -1234,6 +1282,20 @@ fn parse_u32_s(s: &str) -> u32 {
     parse_u32(s)
 }
 
+/// Detect a window-rule percent suffix (`50%`, ` 50 % `, `0.5%`)
+/// and return the numeric value as a 0..=1 fraction. Returns
+/// `None` for any input lacking a trailing `%` so callers can
+/// fall back to absolute pixel parsing.
+///
+/// Values are clamped to `[0.0, 1.0]` — a typo like `200%` is
+/// pinned to full size rather than overflowing the monitor.
+fn parse_percent_fraction(s: &str) -> Option<f32> {
+    let trimmed = s.trim();
+    let stripped = trimmed.strip_suffix('%')?;
+    let n: f32 = stripped.trim().parse().ok()?;
+    Some((n / 100.0).clamp(0.0, 1.0))
+}
+
 /// Parse `HH:MM` or `HH:MM:SS` into seconds-since-midnight. Returns
 /// 0 on malformed input — caller treats 0 as "unset" so a typo
 /// silently falls back to the default schedule mode.
@@ -1284,6 +1346,11 @@ fn parse_hms_to_seconds(s: &str) -> u32 {
 pub const OPTION_KEYS: &[&str] = &[
     "accel_profile",
     "accel_speed",
+    "mouse_accel_profile",
+    "mouse_accel_speed",
+    "trackpad_accel_profile",
+    "trackpad_accel_speed",
+    "trackpad_scroll_factor",
     "allow_lock_transparent",
     "allow_shortcuts_inhibit",
     "allow_tearing",

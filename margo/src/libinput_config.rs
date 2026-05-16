@@ -32,7 +32,16 @@ pub fn apply_to_device(device: &mut Device, config: &Config) {
     }
 
     if is_pointer && device.config_accel_is_available() {
-        if let Some(profile) = map_accel_profile(config.accel_profile) {
+        // Mango 0.13 split: pick `trackpad_accel_*` for touchpads,
+        // `mouse_accel_*` for external mice. Legacy `accel_*` keys
+        // populated both fields with the same value at parse time
+        // so old configs still get the same behaviour.
+        let (cfg_profile, cfg_speed) = if is_touchpad {
+            (config.trackpad_accel_profile, config.trackpad_accel_speed)
+        } else {
+            (config.mouse_accel_profile, config.mouse_accel_speed)
+        };
+        if let Some(profile) = map_accel_profile(cfg_profile) {
             if device.config_accel_profiles().contains(&profile) {
                 log_config_result(
                     &name,
@@ -47,7 +56,7 @@ pub fn apply_to_device(device: &mut Device, config: &Config) {
             &name,
             &sysname,
             "accel_speed",
-            device.config_accel_set_speed(config.accel_speed.clamp(-1.0, 1.0)),
+            device.config_accel_set_speed(cfg_speed.clamp(-1.0, 1.0)),
         );
     }
 
@@ -147,10 +156,15 @@ pub fn apply_to_device(device: &mut Device, config: &Config) {
         );
     }
 
+    let logged_accel_speed = if is_touchpad {
+        config.trackpad_accel_speed
+    } else {
+        config.mouse_accel_speed
+    };
     debug!(
         device = %name,
         sysname = %sysname,
-        accel_speed = config.accel_speed,
+        accel_speed = logged_accel_speed,
         is_touchpad,
         "applied libinput config"
     );

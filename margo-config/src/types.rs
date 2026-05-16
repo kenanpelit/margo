@@ -377,6 +377,15 @@ pub struct WindowRule {
     pub offset_y: i32,
     pub width: i32,
     pub height: i32,
+    /// Fractional width as 0..=1 of the monitor's usable width.
+    /// Set by `windowrule = width:50%,...` (parser strips the
+    /// trailing `%`). When `Some`, overrides `width` at apply
+    /// time — the consumer multiplies by the target monitor's
+    /// width. Backport of mango 0.13's "flexible window rules".
+    pub width_fraction: Option<f32>,
+    /// Fractional height as 0..=1 of the monitor's usable height.
+    /// Mirror of `width_fraction`.
+    pub height_fraction: Option<f32>,
     pub no_focus: Option<bool>,
     pub no_fade_in: Option<bool>,
     pub no_fade_out: Option<bool>,
@@ -808,14 +817,34 @@ pub struct Config {
     pub disable_while_typing: bool,
     pub left_handed: bool,
     pub middle_button_emulation: bool,
-    pub accel_profile: AccelProfile,
-    pub accel_speed: f64,
+    /// Mouse (external pointer) acceleration profile. Renamed from
+    /// the legacy unified `accel_profile`; the old key still parses
+    /// and feeds this field for backward compat. See `parser.rs`.
+    pub mouse_accel_profile: AccelProfile,
+    /// Mouse acceleration speed, -1.0 .. 1.0. Renamed from
+    /// `accel_speed`; legacy key still works.
+    pub mouse_accel_speed: f64,
+    /// Trackpad (touchpad) acceleration profile. New in 0.13 —
+    /// margo defaults this to the same value as
+    /// `mouse_accel_profile` so behaviour is unchanged when only
+    /// the legacy `accel_profile` is set.
+    pub trackpad_accel_profile: AccelProfile,
+    /// Trackpad acceleration speed, -1.0 .. 1.0. Same fallback
+    /// rule as `trackpad_accel_profile`.
+    pub trackpad_accel_speed: f64,
     pub scroll_method: ScrollMethod,
     pub scroll_button: u32,
     pub click_method: ClickMethod,
     pub send_events_mode: u32,
     pub button_map: u32,
+    /// Mouse-wheel scroll factor. The legacy `axis_scroll_factor`
+    /// key sets this AND `trackpad_scroll_factor` (since older
+    /// configs didn't distinguish).
     pub axis_scroll_factor: f64,
+    /// Trackpad scroll factor. New in 0.13 — defaults to whatever
+    /// `axis_scroll_factor` was, so existing configs see no
+    /// regression.
+    pub trackpad_scroll_factor: f64,
     pub axis_bind_apply_timeout: u32,
     pub tablet_map_to_mon: Option<String>,
 
@@ -1042,14 +1071,17 @@ impl Default for Config {
             disable_while_typing: true,
             left_handed: false,
             middle_button_emulation: false,
-            accel_profile: AccelProfile::Adaptive,
-            accel_speed: 0.0,
+            mouse_accel_profile: AccelProfile::Adaptive,
+            mouse_accel_speed: 0.0,
+            trackpad_accel_profile: AccelProfile::Adaptive,
+            trackpad_accel_speed: 0.0,
             scroll_method: ScrollMethod::TwoFinger,
             scroll_button: 274,
             click_method: ClickMethod::ButtonAreas,
             send_events_mode: 0,
             button_map: 0,
             axis_scroll_factor: 1.0,
+            trackpad_scroll_factor: 1.0,
             axis_bind_apply_timeout: 100,
             tablet_map_to_mon: None,
 
