@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <!-- Big centre pane flanked by two thin stack columns. Mirrors
+       `center_tile`: master in the middle, stacks on both sides. -->
+  <rect x="2"  y="5" width="4"  height="14" fill="currentColor"/>
+  <rect x="8"  y="5" width="8"  height="14" fill="currentColor"/>
+  <rect x="18" y="5" width="4"  height="14" fill="currentColor"/>
+</svg>

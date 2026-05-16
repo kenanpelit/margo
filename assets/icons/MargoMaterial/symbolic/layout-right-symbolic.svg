@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <!-- Mirror of layout-tile: stack column on the left, master
+       on the right. Margo's `right_tile`. -->
+  <rect x="2"  y="5"  width="7" height="6" fill="currentColor"/>
+  <rect x="2"  y="13" width="7" height="6" fill="currentColor"/>
+  <rect x="11" y="5"  width="11" height="14" fill="currentColor"/>
+</svg>

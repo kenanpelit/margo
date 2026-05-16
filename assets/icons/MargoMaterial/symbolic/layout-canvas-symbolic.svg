@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <!-- Canvas layout: a large free-form area with a centred
+       crosshair-style mark indicating pan / zoom origin. Reads
+       as "infinite canvas" — the spatial-overview layout. -->
+  <path fill="currentColor" d="M 2 5 V 19 H 22 V 5 H 2 z M 4 7 H 20 V 17 H 4 V 7 z"/>
+  <rect x="11" y="9"  width="2" height="6" fill="currentColor"/>
+  <rect x="9"  y="11" width="6" height="2" fill="currentColor"/>
+</svg>

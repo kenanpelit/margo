@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <!-- tgmix — tile-grid hybrid. Big master left, three smaller
+       stacked panes on the right of varying heights to read as
+       a mixed / asymmetric layout. -->
+  <rect x="2"  y="5"  width="10" height="14" fill="currentColor"/>
+  <rect x="14" y="5"  width="8"  height="4"  fill="currentColor"/>
+  <rect x="14" y="11" width="8"  height="3"  fill="currentColor"/>
+  <rect x="14" y="16" width="8"  height="3"  fill="currentColor"/>
+</svg>

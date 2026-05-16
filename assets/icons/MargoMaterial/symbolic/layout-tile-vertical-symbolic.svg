@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <!-- Vertical tile: master on top spanning full width, two
+       stack windows below as a horizontal row. -->
+  <rect x="2" y="5"  width="20" height="7" fill="currentColor"/>
+  <rect x="2" y="14" width="9"  height="5" fill="currentColor"/>
+  <rect x="13" y="14" width="9"  height="5" fill="currentColor"/>
+</svg>

@@ -30,7 +30,6 @@ use std::time::Duration;
 const ACTIVE_POLL_INTERVAL: Duration = Duration::from_millis(500);
 
 pub(crate) struct MargoLayoutModel {
-    orientation: Orientation,
     /// Last-seen active layout index. Used by the poll tick to
     /// skip GTK calls when nothing actually changed.
     last_active: Rc<RefCell<Option<usize>>>,
@@ -57,6 +56,10 @@ pub(crate) enum MargoLayoutOutput {
 }
 
 pub(crate) struct MargoLayoutInit {
+    /// Kept on the init for bar-side API parity (every bar widget
+    /// receives the bar's orientation). The pill itself is a
+    /// single icon button so orientation doesn't affect layout
+    /// here.
     pub(crate) orientation: Orientation,
 }
 
@@ -116,8 +119,10 @@ impl Component for MargoLayoutModel {
             glib::ControlFlow::Continue
         });
 
+        // `params.orientation` is part of the bar-widget init
+        // ABI but isn't used here — the pill is a single icon.
+        let _ = params.orientation;
         let model = MargoLayoutModel {
-            orientation: params.orientation,
             last_active: last_active_cell,
             _timeout: Some(timeout),
         };

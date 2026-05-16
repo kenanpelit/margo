@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <!-- 2×2 grid of equal cells. Visually reads as the four-up
+       arrangement margo's `grid` layout produces. -->
+  <rect x="2" y="5"  width="9" height="6" fill="currentColor"/>
+  <rect x="13" y="5"  width="9" height="6" fill="currentColor"/>
+  <rect x="2" y="13" width="9" height="6" fill="currentColor"/>
+  <rect x="13" y="13" width="9" height="6" fill="currentColor"/>
+</svg>

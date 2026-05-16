@@ -76,12 +76,30 @@ impl DnsState {
         }
     }
 
+    /// True when every IP in `preset_ips` is present in
+    /// `display_dns`. Subset-match (not strict equality) because
+    /// auxiliary resolvers can be auto-prepended without
+    /// invalidating which *preset* the user actively chose:
+    ///
+    ///   * Mullvad's tunnel resolver `10.64.0.1` is added by the
+    ///     VPN client to the head of the global list whenever VPN
+    ///     is up. With strict equality the active preset (Google /
+    ///     Quad9 / etc.) reads as inactive because the resolver
+    ///     row no longer matches exactly.
+    ///   * systemd-resolved's per-link DNS can interleave a
+    ///     fallback line that doesn't belong to any preset.
+    ///
+    /// Subset semantics: preset is "active" when every one of its
+    /// nameservers is currently resolving. The caller still gets
+    /// at most one preset marked Active because the preset IP
+    /// lists are mutually disjoint (Google's 8.8.8.8 vs Quad9's
+    /// 9.9.9.9 etc.) — a subset hit on one preset can't also hit
+    /// another.
     pub(crate) fn matches_preset(&self, preset_ips: &str) -> bool {
-        let mut current: Vec<&str> = self.display_dns.split_whitespace().collect();
-        let mut want: Vec<&str> = preset_ips.split_whitespace().collect();
-        current.sort();
-        want.sort();
-        !current.is_empty() && current == want
+        let current: std::collections::HashSet<&str> =
+            self.display_dns.split_whitespace().collect();
+        let want: Vec<&str> = preset_ips.split_whitespace().collect();
+        !want.is_empty() && want.iter().all(|ip| current.contains(ip))
     }
 }
 
@@ -420,5 +438,29 @@ mod tests {
         };
         assert!(s.matches_preset("8.8.8.8 8.8.4.4"));
         assert!(!s.matches_preset("1.1.1.1"));
+    }
+
+    /// Mullvad-on case: VPN client prepends `10.64.0.1` to the
+    /// global resolver list. Google is still the user's chosen
+    /// preset — strict equality used to mark it inactive, which
+    /// is the bug the user reported as "Apply doesn't highlight."
+    #[test]
+    fn matches_preset_subset_under_vpn() {
+        let s = DnsState {
+            display_dns: "10.64.0.1 8.8.8.8 8.8.4.4".to_string(),
+            ..DnsState::default()
+        };
+        assert!(s.matches_preset("8.8.8.8 8.8.4.4"));
+        assert!(s.matches_preset("10.64.0.1")); // single-IP preset hypothetical
+        assert!(!s.matches_preset("9.9.9.9 149.112.112.112"));
+    }
+
+    #[test]
+    fn matches_preset_empty_preset_never_matches() {
+        let s = DnsState {
+            display_dns: "8.8.8.8".to_string(),
+            ..DnsState::default()
+        };
+        assert!(!s.matches_preset(""));
     }
 }
