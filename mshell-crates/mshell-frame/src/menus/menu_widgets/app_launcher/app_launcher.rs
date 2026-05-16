@@ -496,19 +496,24 @@ impl AppLauncherModel {
             self.runtime.borrow_mut().record_usage(key);
         }
         (item.on_activate)();
-        // Always close the launcher after activation — Phase 1
-        // providers (Apps, Calc, Session, Settings, Command) all
-        // want the panel to dismiss on selection. Idempotent: a
-        // provider that already triggered close via its own
-        // callback gets a no-op second close.
-        let _ = self.close_sender.borrow().as_ref().map(|s| s());
-        // Most providers' on_activate close the launcher; the
-        // Settings/Calculator/Apps providers do this via the
-        // close callback we passed in. Bare CommandProvider does
-        // not, so we proactively close here too.
-        // (Double-closing is a no-op.)
-        // Caller handles output through the apps provider's
-        // close callback; nothing more to do.
+        // Most activations want the launcher dismissed after
+        // they run — Apps, Calc, Cmd, Session, Mctl, Scripts,
+        // Windows, Clipboard all expect the panel to go away.
+        //
+        // Settings is the exception: its on_activate kicks off a
+        // tokio-bridge chain that ends with `toggle_menu(SETTINGS_MENU)`
+        // making Settings the visible stack child (auto-hiding
+        // the launcher via stack-swap). If we also fired
+        // `CloseMenus` here the two messages would race in the
+        // tokio scheduler — sometimes the close-all arrives
+        // *after* the settings-open and slams Settings back off
+        // half a frame after it appears. Skipping the post-close
+        // for `settings:*` items lets the section-nav chain own
+        // the visibility transition unambiguously.
+        let auto_close = !id.starts_with("settings:");
+        if auto_close {
+            let _ = self.close_sender.borrow().as_ref().map(|s| s());
+        }
     }
 
     fn ensure_selected_visible(&self, scrolled_window: &ScrolledWindow) {
