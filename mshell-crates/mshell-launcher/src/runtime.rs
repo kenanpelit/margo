@@ -92,8 +92,9 @@ impl LauncherRuntime {
     pub fn query(&self, query: &str) -> Vec<LauncherItem> {
         let trimmed = query.trim_start();
 
-        // Command palette: bare ">" — list every command across
-        // every provider in registration order.
+        // Bare ">" → command palette. Every provider's commands()
+        // collected so the user can discover all prefixes at
+        // once (`;` does the richer cheatsheet version of this).
         if trimmed == ">" {
             return self
                 .providers
@@ -102,16 +103,20 @@ impl LauncherRuntime {
                 .collect();
         }
 
-        // Command mode: ">cmd ..." — find the first provider that
-        // claims it and let it own the results. No scoring on top.
-        if trimmed.starts_with('>') {
-            for p in &self.providers {
-                if p.handles_command(trimmed) {
-                    return p.search(trimmed);
-                }
+        // Command mode: any provider that claims `handles_command`
+        // for this query gets to own the results exclusively
+        // (skipping regular-search providers). This lets
+        // dedicated prefixes — `>cmd`, `>clip`, `.arrow`,
+        // `:smile`, `;`, `audio`, `bt`, `player`, `p firefox` …
+        // — intercept before the apps fuzzy matcher tries to
+        // match the prefix character against random desktop
+        // entries. Without this every non-`>` prefix would fall
+        // through to regular search and the provider whose
+        // `handles_search = false` would never be queried.
+        for p in &self.providers {
+            if p.handles_command(trimmed) {
+                return p.search(trimmed);
             }
-            // No provider claimed the prefix — fall through to
-            // regular search so the user at least sees something.
         }
 
         // Regular search OR empty-query browse. Collect from
