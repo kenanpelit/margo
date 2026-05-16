@@ -75,6 +75,7 @@ impl Component for SettingsWindowModel {
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
 
+                #[name = "sidebar_box"]
                 gtk::Box {
                     add_css_class: "settings-sidebar",
                     set_orientation: gtk::Orientation::Vertical,
@@ -378,6 +379,83 @@ impl Component for SettingsWindowModel {
         };
 
         let widgets = view_output!();
+
+        // Keyboard navigation on the sidebar — Tab + Up/Down walk
+        // through the ToggleButton children, activating each
+        // selection along the way so the right-side page updates.
+        // GTK4's default focus chain on a Box-of-Buttons should
+        // already make Tab work, but layer-shell + Exclusive
+        // keyboard-mode swallows the first Tab and the radio
+        // group's focus-on-click behaviour can land focus on the
+        // page content first instead of the sidebar. This
+        // controller is the belt-and-suspenders backup.
+        {
+            use gtk::gdk;
+            use gtk::glib;
+            use gtk::prelude::*;
+
+            let sidebar_weak = widgets.sidebar_box.downgrade();
+            let key_controller = gtk::EventControllerKey::new();
+            key_controller.set_propagation_phase(gtk::PropagationPhase::Capture);
+            key_controller.connect_key_pressed(move |_, keyval, _, modifiers| {
+                let Some(sidebar) = sidebar_weak.upgrade() else {
+                    return glib::Propagation::Proceed;
+                };
+                let shift = modifiers.contains(gdk::ModifierType::SHIFT_MASK);
+                let dir = match keyval {
+                    gdk::Key::Down | gdk::Key::Tab if !shift => 1i32,
+                    gdk::Key::Up => -1i32,
+                    gdk::Key::ISO_Left_Tab => -1i32,
+                    _ => return glib::Propagation::Proceed,
+                };
+
+                // Collect the focusable ToggleButton children of the
+                // sidebar Box, find which one currently has focus
+                // (or is active), and grab focus on the neighbour.
+                let mut buttons: Vec<gtk::ToggleButton> = Vec::new();
+                let mut child = sidebar.first_child();
+                while let Some(c) = child {
+                    if let Ok(btn) = c.clone().downcast::<gtk::ToggleButton>() {
+                        if btn.has_css_class("sidebar-button") {
+                            buttons.push(btn);
+                        }
+                    }
+                    child = c.next_sibling();
+                }
+                if buttons.is_empty() {
+                    return glib::Propagation::Proceed;
+                }
+                let current = buttons
+                    .iter()
+                    .position(|b| b.has_focus() || b.is_active())
+                    .unwrap_or(0);
+                let next = ((current as i32 + dir).rem_euclid(buttons.len() as i32)) as usize;
+                let target = &buttons[next];
+                target.grab_focus();
+                target.set_active(true);
+                glib::Propagation::Stop
+            });
+            widgets.sidebar_box.add_controller(key_controller);
+            // Land focus on the first sidebar button shortly after
+            // the panel becomes mappable — gives Tab a starting
+            // point inside the sidebar instead of bouncing through
+            // page content first.
+            let sidebar_weak2 = widgets.sidebar_box.downgrade();
+            glib::idle_add_local_once(move || {
+                if let Some(sidebar) = sidebar_weak2.upgrade() {
+                    let mut child = sidebar.first_child();
+                    while let Some(c) = child {
+                        if let Ok(btn) = c.clone().downcast::<gtk::ToggleButton>() {
+                            if btn.has_css_class("sidebar-button") {
+                                btn.grab_focus();
+                                break;
+                            }
+                        }
+                        child = c.next_sibling();
+                    }
+                }
+            });
+        }
 
         // widgets.sidebar.set_stack(&widgets.stack);
 
