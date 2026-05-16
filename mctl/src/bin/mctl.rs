@@ -556,11 +556,32 @@ enum TwilightCmd {
     },
     /// Live-tweak one config field. Persists until reload — the
     /// on-disk config isn't touched.
+    #[command(
+        long_about = "Live-tweak one twilight config field. The change \
+                      persists until the next `mctl reload` — the on-disk \
+                      config file is NOT modified.\n\
+                      \n\
+                      SUPPORTED FIELDS:\n  \
+                        day_temp=<1000–25000>      Daytime colour temperature (K)\n  \
+                        night_temp=<1000–25000>    Night colour temperature (K)\n  \
+                        day_gamma=<10–200>         Daytime brightness (%)\n  \
+                        night_gamma=<10–200>       Night brightness (%)\n  \
+                        transition_s=<30–7200>     Day↔night fade duration (s)\n  \
+                        enabled=<0|1>              Master on/off (alias: `twilight`)\n  \
+                        mode=<geo|manual|static|schedule>  Source of truth for temp/gamma\n\
+                      \n\
+                      EXAMPLES:\n  \
+                        mctl twilight set mode=schedule       # switch to preset schedule\n  \
+                        mctl twilight set night_temp=2200     # warmer nights\n  \
+                        mctl twilight set enabled=0           # disable until reload"
+    )]
     Set {
         /// `field=value`. Supported fields: `day_temp`,
         /// `night_temp`, `day_gamma`, `night_gamma`, `transition_s`,
-        /// `enabled` (alias `twilight`, 0/1).
-        spec: String,
+        /// `enabled` (alias `twilight`, 0/1), `mode`
+        /// (geo|manual|static|schedule). Run `mctl twilight set --help`
+        /// for full details + examples.
+        spec: Option<String>,
     },
     /// Clear any preview / test override, resume the schedule.
     Reset,
@@ -568,6 +589,66 @@ enum TwilightCmd {
     /// `mctl twilight set enabled=0` / `enabled=1` but stateful —
     /// uses the current `state.config.twilight` flag.
     Toggle,
+    /// Manage Schedule-mode presets (the TOML files under
+    /// `~/.config/margo/twilight/presets/`) and the schedule
+    /// table that maps `HH:MM` to preset names. Writes the
+    /// on-disk files directly, then asks the compositor to
+    /// reload so the change is live.
+    Preset {
+        #[command(subcommand)]
+        action: TwilightPresetCmd,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum TwilightPresetCmd {
+    /// List all preset files plus the current time → preset schedule.
+    List,
+    /// Print one preset's Kelvin temperature and gamma percent.
+    Show {
+        /// Preset name (no `.toml`).
+        name: String,
+    },
+    /// Create or update a preset file. Existing files are rewritten.
+    Set {
+        /// Preset name (no `.toml`). Used as the filename.
+        name: String,
+        /// Colour temperature in Kelvin (1000–25000).
+        temp: u32,
+        /// Brightness percent (10–200). Defaults to 100.
+        #[arg(default_value_t = 100)]
+        gamma: u32,
+    },
+    /// Delete a preset file. Also strips any `schedule.conf` line
+    /// that referenced it so the schedule never points at a
+    /// missing preset.
+    Remove {
+        /// Preset name to delete.
+        name: String,
+    },
+    /// Edit the `HH:MM → preset` schedule.
+    Schedule {
+        #[command(subcommand)]
+        action: TwilightScheduleCmd,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum TwilightScheduleCmd {
+    /// Add or update a schedule line.
+    Set {
+        /// Time of day in `HH:MM` (24-hour).
+        time: String,
+        /// Preset name to apply at that time. The preset file
+        /// must already exist — run `mctl twilight preset set`
+        /// first if you're creating a brand-new entry.
+        name: String,
+    },
+    /// Remove the schedule line at a given `HH:MM`.
+    Remove {
+        /// Time of day in `HH:MM` (24-hour) to remove.
+        time: String,
+    },
 }
 
 // ── IPC state machine ─────────────────────────────────────────────────────────
@@ -760,6 +841,11 @@ fn main() -> Result<()> {
             action: TwilightCmd::Status { json },
         } => {
             return cmd_twilight_status(*json);
+        }
+        Command::Twilight {
+            action: TwilightCmd::Preset { action },
+        } => {
+            return cmd_twilight_preset(action);
         }
         _ => {}
     }
@@ -1002,6 +1088,7 @@ fn main() -> Result<()> {
             //   reset   → no args
             match action {
                 TwilightCmd::Status { .. } => unreachable!("Status is handled before this match arm"),
+                TwilightCmd::Preset { .. } => unreachable!("Preset is handled before this match arm"),
                 TwilightCmd::Preview { kelvin, gamma } => {
                     ipc_out.dispatch(
                         "twilight_preview".to_string(),
@@ -1024,6 +1111,24 @@ fn main() -> Result<()> {
                     );
                 }
                 TwilightCmd::Set { spec } => {
+                    let Some(spec) = spec else {
+                        eprintln!(
+                            "error: `mctl twilight set` needs a `field=value` argument\n\
+                             \n\
+                             SUPPORTED FIELDS:\n  \
+                               day_temp=<1000-25000>      Daytime colour temperature (K)\n  \
+                               night_temp=<1000-25000>    Night colour temperature (K)\n  \
+                               day_gamma=<10-200>         Daytime brightness (%)\n  \
+                               night_gamma=<10-200>       Night brightness (%)\n  \
+                               transition_s=<30-7200>     Day-night fade duration (s)\n  \
+                               enabled=<0|1>              Master on/off (alias: twilight)\n  \
+                               mode=<geo|manual|static|schedule>\n\
+                             \n\
+                             EXAMPLE: mctl twilight set mode=schedule\n\
+                             See `mctl twilight set --help` for full details."
+                        );
+                        std::process::exit(2);
+                    };
                     ipc_out.dispatch(
                         "twilight_set".to_string(),
                         String::new(),
@@ -1523,6 +1628,447 @@ fn cmd_twilight_status(as_json: bool) -> Result<()> {
     println!("  {dim}day{r}     = {day_k}K @ {day_g}%");
     println!("  {dim}night{r}   = {nig_k}K @ {nig_g}%");
     Ok(())
+}
+
+// ── twilight preset management ────────────────────────────────────────────────
+//
+// The on-disk layout (`margo/src/twilight/preset.rs`) is:
+//   <dir>/
+//     schedule.conf          # `HH:MM <preset-name>` lines, # for comments
+//     presets/<name>.toml    # `static_temp = K`, `static_gamma = %`
+//
+// All preset subcommands work on these files directly — no IPC dance
+// for reads, just a best-effort `reload_config` dispatch at the end of
+// writes so the compositor picks up the change without `mctl reload`.
+
+fn twilight_dir() -> std::path::PathBuf {
+    // Match the compositor's `default_dir()` from
+    // `margo/src/twilight/preset.rs`. If the user has overridden
+    // `twilight_schedule_dir` in their config, state.json doesn't
+    // currently expose it — they'll need `mctl reload` after manual
+    // edits in that custom location (uncommon enough to defer).
+    if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
+        return std::path::PathBuf::from(xdg).join("margo").join("twilight");
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        return std::path::PathBuf::from(home)
+            .join(".config")
+            .join("margo")
+            .join("twilight");
+    }
+    std::path::PathBuf::from(".config/margo/twilight")
+}
+
+fn cmd_twilight_preset(action: &TwilightPresetCmd) -> Result<()> {
+    let dir = twilight_dir();
+    match action {
+        TwilightPresetCmd::List => cmd_twilight_preset_list(&dir),
+        TwilightPresetCmd::Show { name } => cmd_twilight_preset_show(&dir, name),
+        TwilightPresetCmd::Set { name, temp, gamma } => {
+            cmd_twilight_preset_set(&dir, name, *temp, *gamma)
+        }
+        TwilightPresetCmd::Remove { name } => cmd_twilight_preset_remove(&dir, name),
+        TwilightPresetCmd::Schedule { action } => match action {
+            TwilightScheduleCmd::Set { time, name } => {
+                cmd_twilight_schedule_set(&dir, time, name)
+            }
+            TwilightScheduleCmd::Remove { time } => {
+                cmd_twilight_schedule_remove(&dir, time)
+            }
+        },
+    }
+}
+
+fn cmd_twilight_preset_list(dir: &std::path::Path) -> Result<()> {
+    let presets_dir = dir.join("presets");
+    let schedule_path = dir.join("schedule.conf");
+    let colored = std::io::IsTerminal::is_terminal(&std::io::stdout());
+    let (b, dim, r) = if colored {
+        ("\x1b[1m", "\x1b[2m", "\x1b[0m")
+    } else {
+        ("", "", "")
+    };
+
+    println!("{b}presets{r} ({dim}{}{r})", presets_dir.display());
+    let mut names: Vec<(String, Option<(u32, u32)>)> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&presets_dir) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.extension().and_then(|s| s.to_str()) != Some("toml") {
+                continue;
+            }
+            let name = p.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
+            let parsed = read_preset_file(&p);
+            names.push((name, parsed));
+        }
+    }
+    names.sort_by(|a, b| a.0.cmp(&b.0));
+    if names.is_empty() {
+        println!("  {dim}(none — run `mctl twilight preset set <name> <K>` to create one){r}");
+    } else {
+        for (name, parsed) in &names {
+            match parsed {
+                Some((k, g)) => println!("  {b}{name:<16}{r}  {k}K @ {g}%"),
+                None => println!("  {b}{name:<16}{r}  {dim}(unreadable){r}"),
+            }
+        }
+    }
+
+    println!();
+    println!("{b}schedule{r} ({dim}{}{r})", schedule_path.display());
+    match std::fs::read_to_string(&schedule_path) {
+        Ok(text) => {
+            let mut lines: Vec<(String, String)> = Vec::new();
+            for line in text.lines() {
+                let trimmed = line.trim();
+                if trimmed.is_empty() || trimmed.starts_with('#') {
+                    continue;
+                }
+                let mut parts = trimmed.split_whitespace();
+                let Some(time) = parts.next() else { continue };
+                let Some(name) = parts.next() else { continue };
+                lines.push((time.to_string(), name.to_string()));
+            }
+            if lines.is_empty() {
+                println!("  {dim}(empty){r}");
+            } else {
+                for (time, name) in &lines {
+                    println!("  {b}{time}{r}  {name}");
+                }
+            }
+        }
+        Err(_) => {
+            println!("  {dim}(no schedule.conf){r}");
+        }
+    }
+    Ok(())
+}
+
+fn cmd_twilight_preset_show(dir: &std::path::Path, name: &str) -> Result<()> {
+    let path = dir.join("presets").join(format!("{name}.toml"));
+    if !path.exists() {
+        anyhow::bail!("preset {name:?} not found at {}", path.display());
+    }
+    let (temp, gamma) = read_preset_file(&path)
+        .ok_or_else(|| anyhow::anyhow!("preset {name:?} unparseable at {}", path.display()))?;
+    println!("{name}: {temp}K @ {gamma}%");
+    println!("  path = {}", path.display());
+    Ok(())
+}
+
+fn cmd_twilight_preset_set(
+    dir: &std::path::Path,
+    name: &str,
+    temp: u32,
+    gamma: u32,
+) -> Result<()> {
+    validate_preset_name(name)?;
+    if !(1000..=25000).contains(&temp) {
+        anyhow::bail!("temp must be 1000–25000, got {temp}");
+    }
+    if !(10..=200).contains(&gamma) {
+        anyhow::bail!("gamma must be 10–200, got {gamma}");
+    }
+    let presets_dir = dir.join("presets");
+    std::fs::create_dir_all(&presets_dir)
+        .map_err(|e| anyhow::anyhow!("cannot create {}: {e}", presets_dir.display()))?;
+    let path = presets_dir.join(format!("{name}.toml"));
+    let body = format!(
+        "# margo twilight preset\n\
+         # static_temp: Kelvin (1000–25000)\n\
+         # static_gamma: brightness % (10–200)\n\
+         static_temp = {temp}\n\
+         static_gamma = {gamma}\n"
+    );
+    std::fs::write(&path, body)
+        .map_err(|e| anyhow::anyhow!("cannot write {}: {e}", path.display()))?;
+    println!("wrote {} ({temp}K @ {gamma}%)", path.display());
+    request_reload();
+    Ok(())
+}
+
+fn cmd_twilight_preset_remove(dir: &std::path::Path, name: &str) -> Result<()> {
+    validate_preset_name(name)?;
+    let path = dir.join("presets").join(format!("{name}.toml"));
+    if !path.exists() {
+        anyhow::bail!("preset {name:?} not found at {}", path.display());
+    }
+    std::fs::remove_file(&path)
+        .map_err(|e| anyhow::anyhow!("cannot delete {}: {e}", path.display()))?;
+    println!("removed {}", path.display());
+
+    // Strip any schedule lines that referenced this preset so the
+    // schedule never points at a missing file (the compositor would
+    // skip them with a warn, but a clean schedule file is friendlier).
+    let schedule_path = dir.join("schedule.conf");
+    if let Ok(text) = std::fs::read_to_string(&schedule_path) {
+        let mut kept: Vec<String> = Vec::new();
+        let mut dropped = 0;
+        for line in text.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                kept.push(line.to_string());
+                continue;
+            }
+            let mut parts = trimmed.split_whitespace();
+            let _time = parts.next();
+            let ref_name = parts.next().unwrap_or("");
+            if ref_name == name {
+                dropped += 1;
+            } else {
+                kept.push(line.to_string());
+            }
+        }
+        if dropped > 0 {
+            let mut out = kept.join("\n");
+            if !out.ends_with('\n') {
+                out.push('\n');
+            }
+            std::fs::write(&schedule_path, out).map_err(|e| {
+                anyhow::anyhow!("cannot rewrite {}: {e}", schedule_path.display())
+            })?;
+            println!("removed {dropped} schedule line(s) referencing {name:?}");
+        }
+    }
+    request_reload();
+    Ok(())
+}
+
+fn cmd_twilight_schedule_set(
+    dir: &std::path::Path,
+    time: &str,
+    name: &str,
+) -> Result<()> {
+    let normalized = normalize_hhmm(time)?;
+    validate_preset_name(name)?;
+    // Guard against pointing the schedule at a preset that doesn't
+    // exist yet — the compositor would just warn-and-skip but it's
+    // a friendlier error if mctl catches it.
+    let preset_path = dir.join("presets").join(format!("{name}.toml"));
+    if !preset_path.exists() {
+        anyhow::bail!(
+            "preset {name:?} not found at {}\n\
+             create it first: mctl twilight preset set {name} <K>",
+            preset_path.display()
+        );
+    }
+    let schedule_path = dir.join("schedule.conf");
+    std::fs::create_dir_all(dir)
+        .map_err(|e| anyhow::anyhow!("cannot create {}: {e}", dir.display()))?;
+    let existing = std::fs::read_to_string(&schedule_path).unwrap_or_default();
+    let mut kept: Vec<String> = Vec::new();
+    let mut replaced = false;
+    for line in existing.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            kept.push(line.to_string());
+            continue;
+        }
+        let mut parts = trimmed.split_whitespace();
+        let Some(t) = parts.next() else {
+            kept.push(line.to_string());
+            continue;
+        };
+        if normalize_hhmm(t).ok().as_deref() == Some(&normalized) {
+            kept.push(format!("{normalized} {name}"));
+            replaced = true;
+        } else {
+            kept.push(line.to_string());
+        }
+    }
+    if !replaced {
+        kept.push(format!("{normalized} {name}"));
+    }
+    let mut out = kept.join("\n");
+    if !out.ends_with('\n') {
+        out.push('\n');
+    }
+    std::fs::write(&schedule_path, out)
+        .map_err(|e| anyhow::anyhow!("cannot write {}: {e}", schedule_path.display()))?;
+    if replaced {
+        println!("updated {normalized} → {name}");
+    } else {
+        println!("added {normalized} → {name}");
+    }
+    request_reload();
+    Ok(())
+}
+
+fn cmd_twilight_schedule_remove(dir: &std::path::Path, time: &str) -> Result<()> {
+    let normalized = normalize_hhmm(time)?;
+    let schedule_path = dir.join("schedule.conf");
+    let existing = std::fs::read_to_string(&schedule_path)
+        .map_err(|e| anyhow::anyhow!("cannot read {}: {e}", schedule_path.display()))?;
+    let mut kept: Vec<String> = Vec::new();
+    let mut dropped = false;
+    for line in existing.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            kept.push(line.to_string());
+            continue;
+        }
+        let mut parts = trimmed.split_whitespace();
+        let Some(t) = parts.next() else {
+            kept.push(line.to_string());
+            continue;
+        };
+        if normalize_hhmm(t).ok().as_deref() == Some(&normalized) {
+            dropped = true;
+        } else {
+            kept.push(line.to_string());
+        }
+    }
+    if !dropped {
+        anyhow::bail!("no schedule line found for {normalized}");
+    }
+    let mut out = kept.join("\n");
+    if !out.ends_with('\n') {
+        out.push('\n');
+    }
+    std::fs::write(&schedule_path, out)
+        .map_err(|e| anyhow::anyhow!("cannot rewrite {}: {e}", schedule_path.display()))?;
+    println!("removed schedule line at {normalized}");
+    request_reload();
+    Ok(())
+}
+
+fn read_preset_file(path: &std::path::Path) -> Option<(u32, u32)> {
+    // Mirror the compositor-side parser in
+    // `margo/src/twilight/preset.rs::load_preset_file` so the two
+    // stay in sync — same two keys, same clamps.
+    let text = std::fs::read_to_string(path).ok()?;
+    let mut temp_k: Option<u32> = None;
+    let mut gamma_pct: Option<u32> = None;
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') || line.starts_with('[') {
+            continue;
+        }
+        let Some((k, v)) = line.split_once('=') else {
+            continue;
+        };
+        let key = k.trim();
+        let val = v.trim().trim_matches('"');
+        match key {
+            "static_temp" => {
+                if let Ok(n) = val.parse::<u32>() {
+                    temp_k = Some(n.clamp(1000, 25000));
+                }
+            }
+            "static_gamma" => {
+                if let Ok(n) = val.parse::<u32>() {
+                    gamma_pct = Some(n.clamp(10, 200));
+                }
+            }
+            _ => {}
+        }
+    }
+    Some((temp_k?, gamma_pct?))
+}
+
+fn validate_preset_name(name: &str) -> Result<()> {
+    if name.is_empty() {
+        anyhow::bail!("preset name cannot be empty");
+    }
+    if name.contains('/') || name.contains('\\') || name.starts_with('.') {
+        anyhow::bail!(
+            "preset name {name:?} is invalid — no slashes, no leading dot"
+        );
+    }
+    Ok(())
+}
+
+fn normalize_hhmm(s: &str) -> Result<String> {
+    let (h, m) = s
+        .split_once(':')
+        .ok_or_else(|| anyhow::anyhow!("time must be HH:MM, got {s:?}"))?;
+    let h: u32 = h
+        .trim()
+        .parse()
+        .map_err(|_| anyhow::anyhow!("bad hour in {s:?}"))?;
+    let m: u32 = m
+        .trim()
+        .parse()
+        .map_err(|_| anyhow::anyhow!("bad minute in {s:?}"))?;
+    if h >= 24 || m >= 60 {
+        anyhow::bail!("HH must be 0–23 and MM 0–59, got {s:?}");
+    }
+    Ok(format!("{h:02}:{m:02}"))
+}
+
+/// Best-effort `reload_config` dispatch so a preset edit takes
+/// effect without the user having to run `mctl reload`. Failures
+/// are silent (compositor not running, no Wayland socket, etc.) —
+/// the file write already succeeded, and `mctl reload` later will
+/// finish the job.
+fn request_reload() {
+    // Best-effort fire-and-forget: any failure path (no compositor,
+    // no socket, no manager global) just returns silently. The
+    // file write already happened; `mctl reload` later closes the
+    // loop if the compositor wasn't up yet.
+    let Ok(conn) = Connection::connect_to_env() else {
+        return;
+    };
+    let Ok((globals, mut eq)): std::result::Result<(_, EventQueue<IpcState>), _> =
+        registry_queue_init(&conn)
+    else {
+        return;
+    };
+    let qh = eq.handle();
+    let mut state = IpcState::default();
+
+    let (mgr_opt, output_opt) = globals.contents().with_list(|list| {
+        let mut mgr = None;
+        let mut output = None;
+        for global in list {
+            match global.interface.as_str() {
+                "zdwl_ipc_manager_v2" => {
+                    let m: ZdwlIpcManagerV2 = globals.registry().bind(
+                        global.name,
+                        global.version.min(2),
+                        &qh,
+                        (),
+                    );
+                    mgr = Some(m);
+                }
+                "wl_output" if output.is_none() => {
+                    // The `Dispatch<WlOutput, u32>` impl for IpcState
+                    // expects the global's `name` as user data.
+                    let o: wl_output::WlOutput = globals.registry().bind(
+                        global.name,
+                        global.version.min(4),
+                        &qh,
+                        global.name,
+                    );
+                    output = Some(o);
+                }
+                _ => {}
+            }
+        }
+        (mgr, output)
+    });
+
+    let (Some(mgr), Some(output)) = (mgr_opt, output_opt) else {
+        return;
+    };
+    state.manager = Some(mgr.clone());
+
+    if eq.roundtrip(&mut state).is_err() {
+        return;
+    }
+
+    // `reload_config` is a compositor-wide dispatch; the output
+    // index passed here is just bookkeeping for the Dispatch impl.
+    let ipc_out = mgr.get_output(&output, &qh, 0usize);
+    ipc_out.dispatch(
+        "reload_config".to_string(),
+        String::new(),
+        String::new(),
+        String::new(),
+        String::new(),
+        String::new(),
+    );
+    let _ = eq.roundtrip(&mut state);
 }
 
 fn cmd_config_errors() -> Result<()> {

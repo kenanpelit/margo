@@ -320,6 +320,34 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                         "transition_s" => val.parse::<u32>().ok().map(|v| {
                             state.config.twilight_transition_s = v.clamp(30, 7200)
                         }),
+                        "mode" => {
+                            // Accept the same lowercase tokens as the
+                            // on-disk `twilight_mode` config key so the
+                            // CLI / GUI stay symmetrical with the file.
+                            match val.to_ascii_lowercase().as_str() {
+                                "geo" => {
+                                    state.config.twilight_mode =
+                                        margo_config::TwilightMode::Geo;
+                                    Some(())
+                                }
+                                "manual" => {
+                                    state.config.twilight_mode =
+                                        margo_config::TwilightMode::Manual;
+                                    Some(())
+                                }
+                                "static" => {
+                                    state.config.twilight_mode =
+                                        margo_config::TwilightMode::Static;
+                                    Some(())
+                                }
+                                "schedule" => {
+                                    state.config.twilight_mode =
+                                        margo_config::TwilightMode::Schedule;
+                                    Some(())
+                                }
+                                _ => None,
+                            }
+                        }
                         _ => None,
                     };
                     if applied.is_some() {
