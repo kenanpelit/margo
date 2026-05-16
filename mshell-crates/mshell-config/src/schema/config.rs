@@ -114,6 +114,17 @@ pub struct General {
     /// this equal to the frame's `border-radius` (CSS variable
     /// `--frame-border-radius`, default `24`).
     pub screen_corner_radius: u32,
+    /// Show a brief OSD when the network state changes —
+    /// "Connected: <SSID>", "Disconnected", "Ethernet connected"
+    /// etc. Fires only on transitions (no popup if the state
+    /// hasn't changed since the last tick), so a flaky link
+    /// won't spam the screen.
+    ///
+    /// **Off by default** because NetworkManager often surfaces
+    /// the same information via desktop notifications; users on
+    /// systems without NM (or who'd rather see the popup) can
+    /// turn this on in Settings → General.
+    pub network_osd_enabled: bool,
 }
 
 impl Default for General {
@@ -127,6 +138,7 @@ impl Default for General {
             temperature_unit: TemperatureUnitConfig::Metric,
             show_screen_corners: false,
             screen_corner_radius: 24,
+            network_osd_enabled: false,
         }
     }
 }

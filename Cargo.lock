@@ -3812,18 +3812,22 @@ dependencies = [
 name = "mshell-osd"
 version = "0.6.0"
 dependencies = [
+ "futures",
  "gtk4",
  "gtk4-layer-shell",
  "mshell-common",
+ "mshell-config",
  "mshell-services",
  "mshell-sounds",
  "mshell-utils",
+ "reactive_graph",
  "relm4",
  "tokio",
  "tracing",
  "wayle-audio",
  "wayle-battery",
  "wayle-brightness",
+ "wayle-network",
 ]
 
 [[package]]

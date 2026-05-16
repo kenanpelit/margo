@@ -18,6 +18,7 @@ use mshell_notification_popups::popup_notifications::{
 };
 use mshell_services::notification_service;
 use mshell_osd::brightness_osd::{BrightnessOsdInit, BrightnessOsdModel};
+use mshell_osd::network_osd::{NetworkOsdInit, NetworkOsdModel};
 use mshell_osd::sound_alerts::SoundAlertsModel;
 use mshell_osd::volume_osd::{VolumeOsdInit, VolumeOsdModel};
 use mshell_polkit::PolkitPromptModel;
@@ -38,6 +39,11 @@ pub(crate) struct WindowGroup {
     pub _popup_notifications: Option<Controller<PopupNotificationsModel>>,
     pub _volume_osd: Option<Controller<VolumeOsdModel>>,
     pub _brightness_osd: Option<Controller<BrightnessOsdModel>>,
+    /// Network-state OSD — flashes on connect / disconnect.
+    /// Gated by `general.network_osd_enabled`; the controller
+    /// itself stays mounted in either case (cheap, idle) and
+    /// just doesn't paint when the flag is off.
+    pub _network_osd: Option<Controller<NetworkOsdModel>>,
     /// Per-monitor corner-overlay windows (`Vec` of four). Held
     /// for lifetime: dropping the `WindowGroup` closes them on
     /// monitor hot-unplug. Empty when `general.show_screen_corners`
@@ -299,6 +305,14 @@ impl Component for Shell {
                         .detach(),
                 );
 
+                let network_osd = Some(
+                    NetworkOsdModel::builder()
+                        .launch(NetworkOsdInit {
+                            monitor: monitor.clone(),
+                        })
+                        .detach(),
+                );
+
                 // Rounded screen corners — one tiny overlay per
                 // corner. Reads config once at monitor-add time;
                 // live toggling needs a reload (or a future
@@ -327,6 +341,7 @@ impl Component for Shell {
                     _popup_notifications: popup_notifications,
                     _volume_osd: volume_osd,
                     _brightness_osd: brightness_osd,
+                    _network_osd: network_osd,
                     _screen_corners: screen_corners,
                 };
 

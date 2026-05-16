@@ -26,6 +26,7 @@ pub(crate) struct GeneralSettingsModel {
     active_weather_unit_type: TemperatureUnitConfig,
     show_screen_corners: bool,
     screen_corner_radius: i32,
+    network_osd_enabled: bool,
     _effects: EffectScope,
 }
 
@@ -52,6 +53,8 @@ pub(crate) enum GeneralSettingsInput {
     ShowScreenCornersEffect(bool),
     ScreenCornerRadiusChanged(i32),
     ScreenCornerRadiusEffect(i32),
+    NetworkOsdEnabledToggled(bool),
+    NetworkOsdEnabledEffect(bool),
 }
 
 #[derive(Debug)]
@@ -411,6 +414,42 @@ impl Component for GeneralSettingsModel {
                         } @corner_radius_handler,
                     },
                 },
+
+                // ── Network OSD ────────────────────────────────
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Network change OSD",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Flash a 2-second popup at the bottom of the screen whenever the primary connection changes — \"Connected: <SSID>\", \"Ethernet connected\", \"Disconnected\". Fires only on transitions. Off by default because NetworkManager often shows the same information as a desktop notification — turn this on if you don't have NM notifications, or just prefer the in-shell OSD.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        #[block_signal(network_osd_handler)]
+                        set_active: model.network_osd_enabled,
+                        connect_state_set[sender] => move |_, v| {
+                            sender.input(GeneralSettingsInput::NetworkOsdEnabledToggled(v));
+                            glib::Propagation::Proceed
+                        } @network_osd_handler,
+                    },
+                },
             }
         }
     }
@@ -477,6 +516,16 @@ impl Component for GeneralSettingsModel {
             sender_clone.input(GeneralSettingsInput::ScreenCornerRadiusEffect(v as i32));
         });
 
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let v = config_manager()
+                .config()
+                .general()
+                .network_osd_enabled()
+                .get();
+            sender_clone.input(GeneralSettingsInput::NetworkOsdEnabledEffect(v));
+        });
+
         let location_query_types = gtk::StringList::new(
             &LocationQueryType::all()
                 .iter()
@@ -523,6 +572,11 @@ impl Component for GeneralSettingsModel {
                 .general()
                 .screen_corner_radius()
                 .get_untracked() as i32,
+            network_osd_enabled: config_manager()
+                .config()
+                .general()
+                .network_osd_enabled()
+                .get_untracked(),
             _effects: effects,
         };
 
@@ -721,6 +775,14 @@ impl Component for GeneralSettingsModel {
             }
             GeneralSettingsInput::ScreenCornerRadiusEffect(r) => {
                 self.screen_corner_radius = r;
+            }
+            GeneralSettingsInput::NetworkOsdEnabledToggled(v) => {
+                config_manager().update_config(|c| {
+                    c.general.network_osd_enabled = v;
+                });
+            }
+            GeneralSettingsInput::NetworkOsdEnabledEffect(v) => {
+                self.network_osd_enabled = v;
             }
         }
 
