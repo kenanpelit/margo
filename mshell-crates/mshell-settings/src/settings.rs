@@ -211,6 +211,26 @@ impl Component for SettingsWindowModel {
                         add_css_class: "sidebar-button",
                         set_group: Some(&general_btn),
                         connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("menus"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("view-list-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Menus",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
                             if b.is_active() { stack.set_visible_child_name("theme"); }
                         },
 
@@ -401,6 +421,16 @@ impl Component for SettingsWindowModel {
             .stack
             .add_titled(model.bar_settings_controller.widget(), Some("bar"), "Bar");
 
+        // `Menus` (the cross-cutting menu_settings page) used to
+        // live inside the Widgets sub-sidebar. It's now its own
+        // top-level entry so users can jump straight to it from
+        // the main sidebar.
+        widgets.stack.add_titled(
+            model.menu_settings_controller.widget(),
+            Some("menus"),
+            "Menus",
+        );
+
         // ── Widgets group ──────────────────────────────────────
         // Owns the per-menu settings pages (Layout + each menu's
         // own position / min-width tab). Layout is the existing
@@ -476,27 +506,18 @@ impl Component for SettingsWindowModel {
             btn
         };
 
-        // Menus — the cross-cutting menu_settings page (per-menu
-        // position + minimum width + the widget list inside each
-        // menu). Pinned at the top of the Widgets sub-sidebar
-        // because it's the "configure everything at once" view
-        // that ties the per-widget pages together. Used to be
-        // labelled "Layout" but that collided with Display →
-        // Layout (the mlayout monitor panel) — both shared the
-        // same label + icon and there was no way to tell which
-        // one you were clicking. "Menus" is the original name
-        // (this page used to be the top-level `Menus` sidebar
-        // entry before the Bar+Widgets reorg).
-        let layout_btn = make_sub_btn("Menus", "view-list-symbolic", "menus", None);
-        widgets_sub_sidebar_box.append(&layout_btn);
-        widgets_sub_stack.add_named(
-            model.menu_settings_controller.widget(),
-            Some("menus"),
-        );
+        // Menus used to live as the pinned-top entry of the
+        // Widgets sub-sidebar but is now its own top-level entry
+        // (added above via `add_titled(menu_settings_controller,
+        // "menus", "Menus")`). The Widgets group is therefore
+        // purely the per-pill + per-menu + Notifications +
+        // Session catalogue. The group's anchor toggle is tracked
+        // dynamically — the first sub-button we create becomes
+        // the radio-group anchor for the rest. Used to be
+        // `layout_btn` (the Menus button) carrying that role.
+        let mut group_anchor: Option<gtk::ToggleButton> = None;
 
-        // Per-entry sub-sidebar rows. Layout is pinned at the
-        // top (it's the catalogue page that ties everything
-        // together); everything else is sorted alphabetically by
+        // Per-entry sub-sidebar rows, sorted alphabetically by
         // the visible label so widget pages, bar-pill info pages
         // and the rich Notifications / Session pages interleave
         // into one easy-to-scan list.
@@ -580,7 +601,10 @@ impl Component for SettingsWindowModel {
         for entry in entries {
             match entry {
                 WidgetEntry::Menu { kind, stack_name, label, icon } => {
-                    let btn = make_sub_btn(label, icon, stack_name, Some(&layout_btn));
+                    let btn = make_sub_btn(label, icon, stack_name, group_anchor.as_ref());
+                    if group_anchor.is_none() {
+                        group_anchor = Some(btn.clone());
+                    }
                     widgets_sub_sidebar_box.append(&btn);
                     let ctrl = WidgetMenuSettingsModel::builder()
                         .launch(WidgetMenuSettingsInit { kind })
@@ -589,7 +613,10 @@ impl Component for SettingsWindowModel {
                     menu_controllers.push(ctrl);
                 }
                 WidgetEntry::Pill { kind, stack_name, label, icon } => {
-                    let btn = make_sub_btn(label, icon, stack_name, Some(&layout_btn));
+                    let btn = make_sub_btn(label, icon, stack_name, group_anchor.as_ref());
+                    if group_anchor.is_none() {
+                        group_anchor = Some(btn.clone());
+                    }
                     widgets_sub_sidebar_box.append(&btn);
                     let ctrl = BarPillSettingsModel::builder()
                         .launch(BarPillSettingsInit { kind })
@@ -602,8 +629,11 @@ impl Component for SettingsWindowModel {
                         "Notifications",
                         "notification-symbolic",
                         "notifications",
-                        Some(&layout_btn),
+                        group_anchor.as_ref(),
                     );
+                    if group_anchor.is_none() {
+                        group_anchor = Some(btn.clone());
+                    }
                     widgets_sub_sidebar_box.append(&btn);
                     widgets_sub_stack.add_named(
                         model.notification_settings_controller.widget(),
@@ -615,8 +645,11 @@ impl Component for SettingsWindowModel {
                         "Session",
                         "system-shutdown-symbolic",
                         "session",
-                        Some(&layout_btn),
+                        group_anchor.as_ref(),
                     );
+                    if group_anchor.is_none() {
+                        group_anchor = Some(btn.clone());
+                    }
                     widgets_sub_sidebar_box.append(&btn);
                     widgets_sub_stack.add_named(
                         model.session_settings_controller.widget(),
