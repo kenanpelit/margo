@@ -82,7 +82,7 @@ impl Component for NetworkOsdModel {
             set_decorated: false,
             set_visible: false,
             set_default_height: 1,
-            set_margin_bottom: 200,
+            set_margin_bottom: 48,
 
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
