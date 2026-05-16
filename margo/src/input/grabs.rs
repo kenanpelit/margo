@@ -39,6 +39,19 @@ pub struct MoveSurfaceGrab {
     pub start_data: GrabStartData<MargoState>,
     pub window: Window,
     pub initial_loc: Point<i32, Logical>,
+    /// `true` when the dragged client was tiled at grab start.
+    /// Drives mango 0.13's drag-tile-to-tile flow: on release we
+    /// look for another tile under the cursor and swap positions
+    /// instead of leaving the window floating in mid-air.
+    /// `false` for CSD `xdg_toplevel.move` requests — those keep
+    /// the legacy behaviour (the client becomes floating wherever
+    /// the user drops it).
+    pub was_tiled: bool,
+    /// Pre-grab floating geometry. Restored on release when no
+    /// valid drop target was found, so the user can undo a drag
+    /// by dropping over empty space / the same tile. Only
+    /// consulted when `was_tiled` is `true`.
+    pub original_float_geom: crate::layout::Rect,
 }
 
 impl PointerGrab<MargoState> for MoveSurfaceGrab {
@@ -62,8 +75,23 @@ impl PointerGrab<MargoState> for MoveSurfaceGrab {
             .position(|c| c.window == self.window)
         {
             data.clients[idx].is_floating = true;
-            data.clients[idx].float_geom.x = new_loc.x;
-            data.clients[idx].float_geom.y = new_loc.y;
+            // Drag-tile-small visual: when the user is dragging a
+            // window that was tiled at grab start AND the config
+            // flag is on, shrink the floating geometry to a 300×300
+            // thumbnail centred on the cursor so the tiles
+            // underneath stay visible. Otherwise fall through to
+            // the normal "follow cursor" placement.
+            if self.was_tiled && data.config.drag_tile_small {
+                let cx = event.location.x.round() as i32;
+                let cy = event.location.y.round() as i32;
+                data.clients[idx].float_geom.x = cx - 150;
+                data.clients[idx].float_geom.y = cy - 150;
+                data.clients[idx].float_geom.width = 300;
+                data.clients[idx].float_geom.height = 300;
+            } else {
+                data.clients[idx].float_geom.x = new_loc.x;
+                data.clients[idx].float_geom.y = new_loc.y;
+            }
         }
 
         let mon = data.focused_monitor();
@@ -90,6 +118,14 @@ impl PointerGrab<MargoState> for MoveSurfaceGrab {
     ) {
         handle.button(data, event);
         if handle.current_pressed().is_empty() {
+            // Drag-tile-to-tile end of grab. Only kicks in when
+            // the grabbed window was tiled at start AND the
+            // config flag is on; CSD `xdg_toplevel.move` requests
+            // are unaffected because their grab is built with
+            // `was_tiled: false` over in xdg_shell.rs.
+            if self.was_tiled && data.config.drag_tile_to_tile {
+                resolve_drag_tile_drop(data, &self.window, self.original_float_geom);
+            }
             handle.unset_grab(self, data, event.serial, event.time, true);
         }
     }
@@ -377,4 +413,54 @@ impl PointerGrab<MargoState> for ResizeSurfaceGrab {
     }
 
     fn unset(&mut self, _data: &mut MargoState) {}
+}
+
+// ── drag_tile_to_tile drop resolver ──────────────────────────────────────────
+
+/// Called from `MoveSurfaceGrab::button` when the left button is
+/// released. If the cursor is over another tiled client on the
+/// same monitor/tagset, swap the two tiles (mango's
+/// drag_tile_to_tile). Otherwise just restore the dragged
+/// window's pre-grab floating geometry so the drag_tile_small
+/// thumbnail doesn't linger as a 300×300 floater.
+fn resolve_drag_tile_drop(
+    data: &mut MargoState,
+    dragged: &Window,
+    original_float_geom: crate::layout::Rect,
+) {
+    let Some(src) = data
+        .clients
+        .iter()
+        .position(|c| &c.window == dragged)
+    else {
+        return;
+    };
+
+    // Always restore the pre-grab float_geom so the next time the
+    // user un-tiles this window it falls back to its real size,
+    // not the 300×300 thumbnail.
+    data.clients[src].float_geom = original_float_geom;
+    data.clients[src].is_floating = false;
+
+    let cursor = smithay::utils::Point::<f64, smithay::utils::Logical>::from((
+        data.input_pointer.x,
+        data.input_pointer.y,
+    ));
+
+    if let Some((target_window, _)) = data.space.element_under(cursor) {
+        if let Some(dst) = data
+            .clients
+            .iter()
+            .position(|c| c.window == *target_window)
+        {
+            if dst != src && !data.clients[dst].is_floating {
+                data.clients.swap(src, dst);
+            }
+        }
+    }
+
+    let mon = data.focused_monitor();
+    if mon < data.monitors.len() {
+        data.arrange_monitor(mon);
+    }
 }

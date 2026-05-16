@@ -1327,6 +1327,11 @@ impl MargoState {
             self.clients[idx].geom.x,
             self.clients[idx].geom.y,
         ));
+        // Remember the pre-grab tiled state so the grab's drop
+        // handler can decide between "swap with target tile" and
+        // "restore to original float geometry".
+        let was_tiled = !self.clients[idx].is_floating;
+        let original_float_geom = self.clients[idx].float_geom;
         let Some(pointer) = self.seat.get_pointer() else { return };
         // Use the most recent serial we've seen — we're driving the grab
         // ourselves from a synthesized command, so just take the next one.
@@ -1343,6 +1348,8 @@ impl MargoState {
             start_data,
             window,
             initial_loc,
+            was_tiled,
+            original_float_geom,
         };
         pointer.set_grab(self, grab, serial, smithay::input::pointer::Focus::Clear);
     }
