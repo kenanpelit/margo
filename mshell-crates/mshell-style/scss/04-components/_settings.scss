@@ -133,6 +133,12 @@
 .settings-page {
     padding: 24px 32px 32px 32px;
     background-color: var(--surface);
+    // Bump baseline typography +1 pt across every label inside
+    // a settings page so readers don't squint. Inherited by all
+    // children (label, image labels, hero subtitle, etc.). Per-class
+    // overrides below still win where we set explicit sizes (hero
+    // title 23px, section caption 11.5px, etc.).
+    font-size: 13.5px;
 }
 
 // ── Apple-style hero header ────────────────────────────────────
@@ -147,21 +153,21 @@
     padding: 4px 0;
 
     .settings-hero-icon {
-        -gtk-icon-size: 36px;
+        -gtk-icon-size: 38px;
         color: var(--primary);
         margin-right: 16px;
         opacity: 0.95;
     }
 
     .settings-hero-title {
-        font-size: 22px;
+        font-size: 23px;
         font-weight: 700;
         color: var(--on-surface);
         margin-bottom: 2px;
     }
 
     .settings-hero-subtitle {
-        font-size: 12.5px;
+        font-size: 13.5px;
         font-weight: 400;
         color: var(--on-surface-variant);
         opacity: 0.85;
@@ -176,7 +182,7 @@
 // weight. ~11 px, dim, letter-spaced.
 .settings-section-caption {
     margin: 18px 12px 6px 12px;
-    font-size: 10.5px;
+    font-size: 11.5px;
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -218,13 +224,13 @@
     }
 
     .action-row-title {
-        font-size: 14px;
+        font-size: 15px;
         font-weight: 500;
         color: var(--on-surface);
     }
 
     .action-row-subtitle {
-        font-size: 12px;
+        font-size: 13px;
         font-weight: 400;
         color: var(--on-surface-variant);
         opacity: 0.75;
@@ -234,7 +240,7 @@
     // Right-aligned value text (e.g. "3000K", "97 %") that's
     // not a control — just the current value of an adjacent slider.
     .action-row-value {
-        font-size: 13px;
+        font-size: 14px;
         font-weight: 500;
         color: var(--on-surface-variant);
         font-variant-numeric: tabular-nums;
@@ -256,7 +262,7 @@
     // Section header — was a large bold label; now reads as a
     // small-caps category cap above the following control group.
     .label-large-bold {
-        font-size: 10.5px;
+        font-size: 11.5px;
         font-weight: 600;
         letter-spacing: 0.06em;
         text-transform: uppercase;
@@ -274,7 +280,7 @@
     // Row title — was a medium bold label; now the primary text
     // of an Apple action row (slightly bigger than 12 px, weight 500).
     .label-medium-bold {
-        font-size: 14px;
+        font-size: 15px;
         font-weight: 500;
         color: var(--on-surface);
     }
@@ -282,7 +288,7 @@
     // Subtitle / description — was a small label; now dim and a
     // touch lighter to read as supporting copy below row titles.
     .label-small {
-        font-size: 12.5px;
+        font-size: 13.5px;
         font-weight: 400;
         color: var(--on-surface-variant);
         opacity: 0.78;

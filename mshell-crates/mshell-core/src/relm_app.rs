@@ -207,10 +207,16 @@ impl Component for Shell {
         let toggle_app_sender = sender.input_sender().clone();
         relm4::gtk::glib::spawn_future_local(async move {
             while toggle_rx.recv().await.is_some() {
-                let monitor = margo_service()
-                    .active_workspace()
-                    .await
-                    .map(|w| w.monitor.get());
+                // Use `active_monitor_name()` (focused-client first,
+                // state.active_output fallback) — same path the rest
+                // of the IPC arms switched to in 60078ec. The old
+                // `active_workspace().monitor` returns None until the
+                // workspaces cache populates after boot, which sent
+                // Settings to whichever Frame iterated first
+                // (typically eDP-1). The focused-client signal is
+                // live the moment a window has focus, so this
+                // resolves immediately even on a fresh session.
+                let monitor = margo_service().active_monitor_name().await;
                 toggle_app_sender.emit(ShellInput::ToggleSettingsMenu(monitor));
             }
         });
