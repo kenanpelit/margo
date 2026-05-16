@@ -7,6 +7,154 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.6.1] – 2026-05-16
+
+### Added
+
+- **mshell bar pills — A1, A2, A3, A6, A7, A9 + B6 shipped.**
+  - **A1 Privacy** — mic + camera in-use indicator with PipeWire
+    backend; pill lights up while any app holds the device.
+  - **A2 SysStat** — CPU / RAM / Temp / GPU pills with configurable
+    poll cadence; matches the bar pill density.
+  - **A3 LockKeys** — Caps / Num / Scroll lock state via libinput;
+    discrete on/off rendering, no flicker.
+  - **A6 DarkMode** — light/dark toggle pill that flips the GTK
+    color-scheme preference + persists across sessions.
+  - **A7 KeepAwake** — idle-inhibit toggle pill backed by
+    `ext_idle_notify_v1`; the bar shows a coffee glyph while
+    active.
+  - **A9 Screen Corners** — per-monitor rounded overlay, off by
+    default, exposed in Settings → General. Matches GNOME / macOS
+    rounded display edges.
+  - **B6 System Update** — package-manager update count badge with
+    right-click refresh, configurable polling cadence, fixes a
+    pre-shipped exit-1 false-error.
+- **mshell A5 Calendar** — noctalia-style calendar grid inside the
+  clock menu, locale-aware day-of-week header, week numbers.
+- **mshell Dashboard menu** — clock + weather + quick-settings
+  composed into a single panel (hero + 2-col grid + power
+  footer); replaces the old triple-menu pattern.
+- **mshell quick-settings** — card stack matching the clock-menu
+  visual language; rows surface real per-toggle state at-a-glance
+  instead of opaque labels.
+- **mshell S1 — Settings embedded in frame menu stack.** Settings
+  no longer pops a separate window; lives in the same panel as
+  other menus, sharing the frame's animation pipeline.
+- **mshell-osd — network change OSD + Settings toggle**, lowered
+  to a noctalia-style 320 px wide pill.
+- **mshell Settings — alphabetic sidebar + Widgets group.** Sub-
+  sidebar surfaces every pill + menu individually; Bar moves to
+  top level; Display gains a Layout sub-page that drives mlayout;
+  Fonts gets its own entry.
+- **Twilight Schedule mode** — multi-step time-of-day preset
+  schedule with sunsetr-compatible TOML preset files under
+  `~/.config/margo/twilight/`. Reads `schedule.conf` (HH:MM →
+  preset name) and interpolates in mired space between
+  consecutive presets. First-run seeds a starter set of six
+  presets the user can edit.
+- **`mctl twilight preset`** subcommand family — `list`, `show`,
+  `set <name> <K> [%]`, `remove`, `schedule set <HH:MM> <name>`,
+  `schedule remove <HH:MM>`. Writes the TOML / schedule.conf
+  files directly, then best-effort dispatches `reload_config` so
+  the change is live immediately.
+- **`mctl twilight set mode=geo|manual|static|schedule`** — the
+  `mode` field is now live-tweakable from the CLI (previously
+  only the six numeric fields).
+- **mshell Settings → Twilight — Open presets folder** button
+  (xdg-open shortcut into `~/.config/margo/twilight/`), plus
+  stronger hint text pointing at the new `mctl twilight preset`
+  family.
+- **mscreenshot — three new options:**
+  - `--delay N` / `-d N` global flag: pop a notification, wait N
+    seconds, then capture. Catches menus / tooltips that close
+    when focus moves to a selector.
+  - `--output NAME` / `-o NAME` global flag: pin screen-capture
+    modes (`screen` / `sc` / `sf` / `si` / `sec`) to a specific
+    output regardless of focus.
+  - Notification action buttons after save (Open / Show in
+    folder / Delete) — spawns a detached `mscreenshot
+    notify-handle` helper that drives `notify-send --wait
+    --action`, executes the click via `xdg-open` or
+    `fs::remove_file`. Main process exits immediately.
+- **mango 0.13+ backports — three runtime feature ports:**
+  - Split mouse / trackpad acceleration (`mouse_accel_profile`,
+    `mouse_accel_speed`, `trackpad_accel_profile`,
+    `trackpad_accel_speed`, `trackpad_scroll_factor`). Legacy
+    `accel_*` keys populate both fields so old configs keep
+    working.
+  - `width:50%` / `height:50%` fraction syntax in windowrules,
+    capped at 100 %. Prefers the fraction when both absolute and
+    fraction are set.
+  - `drag_tile_to_tile` + `drag_tile_small` runtime — dragging a
+    tiled window with the flag on shrinks it to a 300×300
+    thumbnail centred on the cursor; releasing over another
+    tiled client swaps the two via `data.clients.swap`. Restores
+    pre-grab float_geom on release so the thumbnail never
+    lingers.
+- **MargoMaterial icon theme** — renamed from OkMaterial, +17 new
+  glyphs covering the new pill set.
+
+### Fixed
+
+- **`isfloating:1` rule with no size hint → invisible 0×0 window.**
+  `apply_window_rules` only synthesised `float_geom` when the
+  rule carried a width/height/offset hint, so `isfloating:1` on
+  its own flagged the client floating but left `float_geom` at
+  (0,0,0,0). Arrange's `if float_geom.width > 0` then skipped
+  the apply and the toplevel got configured at 0×0 — listed in
+  `mctl clients`, rendered in overview, but invisible on the
+  output. Post-loop fallback now synthesises a default geometry
+  (60 % of work_area centred) when `is_floating` ended true and
+  `float_geom` is still empty.
+- **windowrule typo class — silent drops.** `monitor_name:` (the
+  tagrule key) on a windowrule now aliases to `rule.monitor`;
+  `is_overlay` and `overlay` now alias to `isoverlay`. Both used
+  to parse but be silently ignored, leading to "the rule
+  doesn't work" reports for typos that look like docs spellings.
+- **mshell menus opened on the wrong monitor** after first
+  reboot. Frame routing now reads the focused-client's monitor
+  instead of `active_output`, which stayed pinned to the
+  pre-restart selection.
+- **mshell dashboard duplicate hero** — the panel rendered two
+  clocks at the top after the hero + grid restructure; cleaned.
+- **mshell-settings — `Add widget` menu didn't scroll** for users
+  with > ~12 widgets; wrapped in a `ScrolledWindow`.
+- **mshell-settings — `Widgets → Layout` renamed to `Widgets →
+  Menus`** for accuracy.
+- **mshell-settings — sidebar icons** for Fonts and Display were
+  missing or swapped after the alphabetic restructure.
+- **mshell — bar minimum_height crash + debounce spin.** A spin
+  button driving live re-layout could push the bar's minimum
+  below the actual content and crash gtk's measure pass.
+- **mshell — screen corners default off** (the previous default
+  enabled them globally, surprising users) + Twilight schedule
+  panel becomes visible when Mode = Schedule.
+- **mlayout — follow symlinks in gather_layouts** so users who
+  symlink their layouts directory get listed correctly.
+- **mshell session menu Tab / Shift+Tab / Ctrl+N / Ctrl+P / Ctrl+J
+  / Ctrl+K** focus-walk attempts shipped (four iterations:
+  `EventControllerKey` default + Capture phase,
+  `ShortcutController` Local-Bubble + Local-Capture). Number
+  keys 1–5 work; Tab + Ctrl-letter cluster still doesn't. See
+  road_map B9 for the open follow-up.
+- **PKGBUILD — also remaps C build-script paths** to silence the
+  `$srcdir` debug-info warning.
+
+### Changed
+
+- **mshell-matugen owns its own CLUT** — Margo's theme is
+  independent of Dracula references; previous wrapper around
+  matugen-pure for the Margo palette is now a first-class palette
+  inside mshell.
+- **Twilight owns `~/.config/margo/twilight/`** instead of
+  sharing sunsetr's directory. Migration is automatic — the
+  first run of Schedule mode bootstraps the new directory.
+- **mshell-settings restructure** — Bar moves to top level;
+  Widgets becomes a group containing per-pill + per-menu pages;
+  sidebar is alphabetised.
+- **Bar font scaled to noctalia size** (~13.3 px) for visual
+  parity with the noctalia reference.
+
 ## [0.6.0] – 2026-05-15
 
 ### Added
