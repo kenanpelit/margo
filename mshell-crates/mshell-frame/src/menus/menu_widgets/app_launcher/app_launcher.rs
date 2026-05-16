@@ -85,6 +85,14 @@ pub(crate) enum AppLauncherInput {
     /// User pressed Enter on a specific row (via mouse click or
     /// Tab+Enter on the focused row). Carries the row id.
     ActivateRow(String),
+    /// Programmatic search-text swap — used by the
+    /// `ProviderListProvider` cheatsheet to drop the chosen
+    /// prefix's example query into the search entry so the user
+    /// can refine + Enter from there. Distinguished from
+    /// `FilterChanged` because we *also* need to update the
+    /// `gtk::Entry`'s visible text, not just the internal
+    /// filter state.
+    SetSearchText(String),
     ShowHiddenAppsChanged,
     ThemeChanged,
 }
@@ -207,17 +215,17 @@ impl Component for AppLauncherModel {
         // for `Open Apps Switcher` muscle memory), then the
         // typed-only providers in roughly "expected frequency".
         // ProviderListProvider needs a callback that rewrites
-        // the launcher's search entry — registers BEFORE Apps so
-        // its `;` palette intercepts before the apps fuzzy
-        // matcher gets a chance.
+        // the launcher's search entry. Sending `SetSearchText`
+        // (not `FilterChanged`) ensures the visible GtkEntry
+        // text updates too — otherwise the user clicks a `;`
+        // cheatsheet row, the filter changes internally, but
+        // the entry still displays `;` and they can't tell
+        // anything happened.
         let sender_for_search = sender.clone();
         let provider_list_provider = ProviderListProvider::new(Rc::new(move |text: &str| {
-            // Channel-back to the widget so it can call
-            // `search_entry.set_text(...)` from the GTK main
-            // thread.
-            let _ = sender_for_search.input_sender().send(
-                AppLauncherInput::FilterChanged(text.to_string()),
-            );
+            let _ = sender_for_search
+                .input_sender()
+                .send(AppLauncherInput::SetSearchText(text.to_string()));
         }));
 
         runtime.register(Box::new(AppsProviderHandle(apps_provider.clone())));
@@ -409,6 +417,16 @@ impl Component for AppLauncherModel {
             AppLauncherInput::ActivateRow(id) => {
                 tracing::info!(target: "mshell::launcher", "ActivateRow input id={id}");
                 self.activate_id(&id);
+            }
+            AppLauncherInput::SetSearchText(text) => {
+                // Setting the GtkEntry's text triggers its own
+                // `connect_changed` → FilterChanged path so we
+                // don't need to recompute here. Move the caret
+                // to the end + refocus so the user can keep
+                // typing without an extra click.
+                widgets.search_entry.set_text(&text);
+                widgets.search_entry.set_position(-1);
+                widgets.search_entry.grab_focus();
             }
             AppLauncherInput::ShowHiddenAppsChanged => {
                 let new_state = !self.apps_provider.show_hidden();
