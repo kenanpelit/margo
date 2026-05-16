@@ -84,7 +84,7 @@ Target: ship the whole tier as one batch.
 | **A7** ✅ | **KeepAwake (idle inhibit) pill** — bar toggle for idle-inhibit | Noctalia `KeepAwake`, Dank `IdleInhibitor` | low | **Shipped** `2e9a33b`. Subscribed to `IdleInhibitor::global().watch()` so `mctl idle inhibit` toggles update the pill. |
 | **A8** | **Setup wizard** — first-launch onboarding modal | Noctalia `SetupWizard` | mid | Wallpaper pick, font choice, locale, lat/lng (for twilight), accent color preview. Triggered when `~/.config/margo/mshell/.welcomed` is absent. ~400 LOC across one new menu widget |
 | **A9** | **Screen-corners overlay** — rounded display corners drawn by mshell | Noctalia `ScreenCorners` | low | Layer-shell anchored Cairo draw, per-output. Config knob for radius. ~120 LOC |
-| **A10** | **OSD coverage for brightness / keyboard layout / network state** — currently OSD only fires for volume | Noctalia OSD pattern | low | Wire existing `mshell-osd` to brightness change events, keyboard-layout-switch, wifi connect/disconnect. ~80 LOC per source |
+| ~~**A10**~~ | ~~**OSD coverage for brightness / keyboard layout / network state**~~ | Noctalia OSD pattern | low | **Mostly already shipped.** Volume + brightness OSDs live in `mshell-osd/{volume_osd,brightness_osd}.rs` and fire on the relevant hardware-key events. Keyboard-layout-switch OSD is blocked on A4 (which is itself deferred to Tier D); a wifi-connect/disconnect popup is niche enough to leave out unless someone asks. Removed from the active queue |
 
 **Cumulative cost estimate:** 7–10 days of focused work, ~1500 LOC across
 mshell-services / mshell-frame.
