@@ -159,6 +159,15 @@ build() {
   # the embedded debug strings; otherwise pacman warns about a
   # reference to `$srcdir` in the installed binary.
   export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$srcdir=/build"
+  # `--remap-path-prefix` only touches rustc — build scripts that
+  # spawn the C compiler via `cc-rs` (e.g. `libspa-sys`, which
+  # generates `static_fns.c` for PipeWire bindings) bake their
+  # OUT_DIR's absolute path into the resulting object's debug
+  # info via gcc/clang's own path encoding. Mirror the remap on
+  # the C side with `-ffile-prefix-map` so makepkg's "reference
+  # to $srcdir" check stays clean.
+  export CFLAGS="${CFLAGS:-} -ffile-prefix-map=$srcdir=/build"
+  export CXXFLAGS="${CXXFLAGS:-} -ffile-prefix-map=$srcdir=/build"
 
   # Two invocations on purpose — do NOT collapse back to a single
   # `--workspace` build. The mshell trio pulls the `wayle-*` crates,
