@@ -476,7 +476,24 @@ impl Component for Shell {
                 }
             }
             ShellInput::ToggleSettingsMenu(monitor_name) => {
-                if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
+                // Settings is a single-monitor panel — if a previous
+                // session left it open on another frame, close that
+                // copy first so we don't end up with two parallel
+                // Settings windows the user can't tell apart.
+                // Without this, switching monitors and reopening
+                // Settings opens a fresh copy on the focused monitor
+                // while the old copy lingers on whichever monitor
+                // the user was on last.
+                let target = resolve_frame(&self.window_groups, &monitor_name);
+                let target_ptr = target.map(|f| f as *const _);
+                for group in self.window_groups.values() {
+                    if let Some(frame) = group.frame.as_ref() {
+                        if Some(frame as *const _) != target_ptr {
+                            frame.emit(FrameInput::CloseSettingsMenu);
+                        }
+                    }
+                }
+                if let Some(frame) = target {
                     frame.emit(FrameInput::ToggleSettingsMenu);
                 }
             }

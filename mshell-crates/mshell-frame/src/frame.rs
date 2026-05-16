@@ -126,6 +126,12 @@ pub enum FrameInput {
     ToggleMediaPlayerMenu,
     ToggleSessionMenu,
     ToggleSettingsMenu,
+    /// Force-close Settings on this frame if it's currently open.
+    /// Used by the Shell-level Settings router to keep Settings
+    /// single-monitor: when a fresh toggle picks frame A, frame B's
+    /// open Settings is closed out from under it so the panel
+    /// doesn't linger on a monitor the user is no longer viewing.
+    CloseSettingsMenu,
     ToggleDashboardMenu,
     CloseMenus,
     ToggleScreenshareMenu(tokio::sync::oneshot::Sender<String>, String),
@@ -949,6 +955,15 @@ impl Component for Frame {
                 self.toggle_menu(SETTINGS_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
+            FrameInput::CloseSettingsMenu => {
+                // Idempotent close: no-op if Settings isn't currently
+                // visible on this frame, otherwise tear it down. Used
+                // by the Shell router to prevent multi-monitor ghosts.
+                if self.is_menu_visible_now(SETTINGS_MENU, widgets) {
+                    self.toggle_menu(SETTINGS_MENU, widgets);
+                    self.sync_keyboard_mode(root);
+                }
+            }
             FrameInput::ToggleDashboardMenu => {
                 self.toggle_menu(DASHBOARD_MENU, widgets);
                 self.sync_keyboard_mode(root);
@@ -1163,6 +1178,27 @@ impl Frame {
             },
         );
         *self.pending_kbd_mode_timeout.borrow_mut() = Some(id);
+    }
+
+    /// True if a menu by `name` is the visible child of any stack
+    /// AND that stack is currently revealed on this frame. Used by
+    /// the idempotent `Close*Menu` paths to skip the toggle when
+    /// the menu isn't actually showing here.
+    fn is_menu_visible_now(&self, name: &str, widgets: &FrameWidgets) -> bool {
+        let stacks = [
+            (&widgets.left_stack, self.left_revealed),
+            (&widgets.right_stack, self.right_revealed),
+            (&widgets.top_stack, self.top_revealed),
+            (&widgets.top_left_stack, self.top_left_revealed),
+            (&widgets.top_right_stack, self.top_right_revealed),
+            (&widgets.bottom_stack, self.bottom_revealed),
+            (&widgets.bottom_left_stack, self.bottom_left_revealed),
+            (&widgets.bottom_right_stack, self.bottom_right_revealed),
+        ];
+        stacks.iter().any(|(stack, revealed)| {
+            *revealed
+                && stack.visible_child_name().map(|n| n.to_string()) == Some(name.to_string())
+        })
     }
 
     fn toggle_menu(&mut self, name: &str, widgets: &mut FrameWidgets) {
