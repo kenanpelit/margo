@@ -249,13 +249,41 @@ impl MargoTagsModel {
                 // Subscribe first so nothing after this point is missed.
                 let mut stream = margo_service().workspaces.watch();
 
-                // Cold-start catch-up — up to ~5 s of 100 ms polls.
-                for _ in 0..50 {
+                // Force one render straight away. `workspaces.set()`
+                // may have fired before we subscribed (race between
+                // `MargoService::new()`'s synchronous initial
+                // apply_snapshot and this watcher being spawned by
+                // init). Without this kick the widget can sit
+                // empty until the next genuine membership change —
+                // which on margo never comes, because `tag_count`
+                // is fixed at 9 so workspaces.set() only ever
+                // fires once per session.
+                let _ = out.send(MargoTagsCommandOutput::WorkspacesChanged);
+
+                // Cold-start catch-up — 30 seconds at 250 ms ticks.
+                // Used to be 5 s @ 100 ms; turns out at session
+                // start the user can pop the bar before margo has
+                // written its first state.json (slow DRM probe,
+                // wallpaper init, etc.) — once it lands and sync
+                // populates `workspaces`, we want to render
+                // immediately. Fire on EVERY non-empty observation,
+                // not just the first: the handler is idempotent
+                // and a duplicate SetItems is cheaper than a
+                // missed render. The poll exits as soon as the
+                // workspaces vec stays non-empty for two
+                // consecutive ticks (steady state).
+                let mut consecutive_non_empty = 0u32;
+                for _ in 0..120 {
                     if !margo_service().workspaces.get().is_empty() {
                         let _ = out.send(MargoTagsCommandOutput::WorkspacesChanged);
-                        break;
+                        consecutive_non_empty += 1;
+                        if consecutive_non_empty >= 2 {
+                            break;
+                        }
+                    } else {
+                        consecutive_non_empty = 0;
                     }
-                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    tokio::time::sleep(Duration::from_millis(250)).await;
                 }
 
                 // Steady state — repaint on every later membership change.

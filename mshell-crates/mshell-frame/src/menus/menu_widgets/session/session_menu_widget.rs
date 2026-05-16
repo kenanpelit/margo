@@ -29,8 +29,6 @@ const COUNTDOWN_SECS: u8 = 3;
 #[derive(Debug, Clone, Copy)]
 enum ShortcutAction {
     Arm(SessionAction),
-    FocusNext,
-    FocusPrev,
     Cancel,
 }
 
@@ -157,12 +155,6 @@ impl Component for SessionMenuWidgetModel {
                             ShortcutAction::Arm(action) => {
                                 s.input(SessionMenuWidgetInput::Arm(action));
                             }
-                            ShortcutAction::FocusNext => {
-                                s.input(SessionMenuWidgetInput::FocusNext);
-                            }
-                            ShortcutAction::FocusPrev => {
-                                s.input(SessionMenuWidgetInput::FocusPrev);
-                            }
                             ShortcutAction::Cancel => {
                                 s.input(SessionMenuWidgetInput::Cancel);
                             }
@@ -211,39 +203,6 @@ impl Component for SessionMenuWidgetModel {
             ));
         }
 
-        // Focus walk forward — Tab, Ctrl+N, Ctrl+J.
-        sc.add_shortcut(make_shortcut(
-            gdk::Key::Tab,
-            gdk::ModifierType::empty(),
-            ShortcutAction::FocusNext,
-        ));
-        for key in [gdk::Key::n, gdk::Key::j] {
-            sc.add_shortcut(make_shortcut(
-                key,
-                gdk::ModifierType::CONTROL_MASK,
-                ShortcutAction::FocusNext,
-            ));
-        }
-
-        // Focus walk back — Shift+Tab (ISO_Left_Tab), Ctrl+P, Ctrl+K.
-        sc.add_shortcut(make_shortcut(
-            gdk::Key::ISO_Left_Tab,
-            gdk::ModifierType::SHIFT_MASK,
-            ShortcutAction::FocusPrev,
-        ));
-        sc.add_shortcut(make_shortcut(
-            gdk::Key::Tab,
-            gdk::ModifierType::SHIFT_MASK,
-            ShortcutAction::FocusPrev,
-        ));
-        for key in [gdk::Key::p, gdk::Key::k] {
-            sc.add_shortcut(make_shortcut(
-                key,
-                gdk::ModifierType::CONTROL_MASK,
-                ShortcutAction::FocusPrev,
-            ));
-        }
-
         // Esc — cancel any running countdown (frame still closes
         // the menu via its own global ESC shortcut).
         sc.add_shortcut(make_shortcut(
@@ -253,6 +212,43 @@ impl Component for SessionMenuWidgetModel {
         ));
 
         root.add_controller(sc);
+
+        // Focus-walk keys (Tab / Shift+Tab / Left / Right / Ctrl+N /
+        // Ctrl+P / Ctrl+J / Ctrl+K) ship via a separate
+        // `EventControllerKey` attached to `button_row`. Previous
+        // attempts to bind these through ShortcutController kept
+        // losing to GTK4's built-in focus-chain Tab handler even at
+        // Capture phase — the same pattern that made the Settings
+        // sidebar Tab work uses a key-event controller scoped to
+        // the container holding the focusable children, and that
+        // worked. Number keys + Escape stay on the ShortcutController
+        // above because they don't collide with any default handler.
+        {
+            let sender_walk = sender.clone();
+            let key_controller = gtk::EventControllerKey::new();
+            key_controller.set_propagation_phase(gtk::PropagationPhase::Capture);
+            key_controller.connect_key_pressed(move |_, keyval, _, modifiers| {
+                let shift = modifiers.contains(gdk::ModifierType::SHIFT_MASK);
+                let ctrl = modifiers.contains(gdk::ModifierType::CONTROL_MASK);
+                let dir = match keyval {
+                    gdk::Key::Tab if !shift && !ctrl => 1i32,
+                    gdk::Key::Right | gdk::Key::Down if !ctrl => 1i32,
+                    gdk::Key::n | gdk::Key::j if ctrl => 1i32,
+                    gdk::Key::ISO_Left_Tab => -1i32,
+                    gdk::Key::Tab if shift => -1i32,
+                    gdk::Key::Left | gdk::Key::Up if !ctrl => -1i32,
+                    gdk::Key::p | gdk::Key::k if ctrl => -1i32,
+                    _ => return glib::Propagation::Proceed,
+                };
+                sender_walk.input(if dir > 0 {
+                    SessionMenuWidgetInput::FocusNext
+                } else {
+                    SessionMenuWidgetInput::FocusPrev
+                });
+                glib::Propagation::Stop
+            });
+            button_row.add_controller(key_controller);
+        }
 
         let model = SessionMenuWidgetModel {
             buttons,

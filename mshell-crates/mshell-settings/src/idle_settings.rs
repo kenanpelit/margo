@@ -72,7 +72,11 @@ impl Component for IdleSettingsModel {
                     set_spacing: 16,
                     gtk::Image {
                         add_css_class: "settings-hero-icon",
-                        set_icon_name: Some("system-suspend-symbolic"),
+                        // `system-suspend-symbolic` doesn't ship in
+                        // MargoMaterial OR Adwaita. `coffee-symbolic`
+                        // is in MargoMaterial and matches the sidebar
+                        // entry's icon — consistent left/right framing.
+                        set_icon_name: Some("coffee-symbolic"),
                         set_valign: gtk::Align::Center,
                     },
                     gtk::Box {
