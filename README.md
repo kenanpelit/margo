@@ -31,9 +31,9 @@
 |---|---|
 | **`margo`** | Wayland compositor — DRM/KMS backend, tag workflow, layout engine |
 | **`start-margo`** | Watchdog supervisor — restart-on-crash with a rolling budget, sd_notify integration, signal forwarding, `PR_SET_PDEATHSIG` parent-child invariant |
-| **`mctl`** | Compositor IPC + control — `status / clients / outputs / dispatch / tags / layout / reload / theme / twilight / migrate / actions / check-config` |
+| **`mctl`** | Compositor IPC + control — `status / clients / outputs / focused / dispatch / tags / layout / reload / theme / twilight {status,preview,test,set,reset,toggle,preset} / migrate / actions / check-config / config-errors / rules` |
 | **`mshell`** | First-party desktop shell — GTK4 + relm4 + gtk4-layer-shell, bar with configurable pill set, dashboard / clock / quick-settings / notifications menus, OSD, in-app Settings UI |
-| **`mshellctl`** | Shell IPC — `menu show / hide`, `wallpaper next/prev/random`, settings reload |
+| **`mshellctl`** | Shell IPC — `menu / bar / audio / brightness / lock / settings / wallpaper / set-wallpaper / inspect / quit` (open/close menus, cycle wallpapers, toggle audio mute, drive the settings window, GTK inspector) |
 | **`mlock`** | Screen locker — `ext-session-lock-v1`, cairo + pango, PAM auth, wallpaper backdrop, avatar, F1/F2/F3 power keys |
 | **`mlayout`** | Named monitor profiles — `mlayout suggest` writes presets for the detected setup, `mlayout set <name>` flips between them |
 | **`mscreenshot`** | Screen / region / window capture — wraps `grim` + `slurp` + `wl-copy` + optional editor (`swappy` / `satty`); `--delay N` countdown, `--output NAME` monitor pin, notification action buttons |
