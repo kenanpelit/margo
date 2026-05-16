@@ -215,14 +215,19 @@ impl Component for SessionMenuWidgetModel {
 
         // Focus-walk keys (Tab / Shift+Tab / Left / Right / Ctrl+N /
         // Ctrl+P / Ctrl+J / Ctrl+K) ship via a separate
-        // `EventControllerKey` attached to `button_row`. Previous
-        // attempts to bind these through ShortcutController kept
-        // losing to GTK4's built-in focus-chain Tab handler even at
-        // Capture phase — the same pattern that made the Settings
-        // sidebar Tab work uses a key-event controller scoped to
-        // the container holding the focusable children, and that
-        // worked. Number keys + Escape stay on the ShortcutController
-        // above because they don't collide with any default handler.
+        // `EventControllerKey` attached to the **root** widget at
+        // Capture phase. First attempt put this on `button_row`
+        // which mirrored the Settings sidebar fix exactly, but in
+        // a layer-shell menu surface the events never reached the
+        // controller — either because focus was parked on a child
+        // of `root` outside `button_row`, or because the
+        // ShortcutController on root (also Capture phase) drained
+        // the event first. Attaching the key controller to root
+        // means *any* focused descendant routes Tab through us,
+        // and we install it AFTER the ShortcutController so the
+        // GTK delivery order respects insertion order at the same
+        // phase. Number keys + Escape stay on the ShortcutController
+        // above because they have no conflicting default handler.
         {
             let sender_walk = sender.clone();
             let key_controller = gtk::EventControllerKey::new();
@@ -247,7 +252,7 @@ impl Component for SessionMenuWidgetModel {
                 });
                 glib::Propagation::Stop
             });
-            button_row.add_controller(key_controller);
+            root.add_controller(key_controller);
         }
 
         let model = SessionMenuWidgetModel {
