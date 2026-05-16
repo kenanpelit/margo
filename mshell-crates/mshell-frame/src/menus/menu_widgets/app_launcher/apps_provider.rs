@@ -47,11 +47,6 @@ pub struct AppsProvider {
     /// Reused across queries — nucleo amortises its internal
     /// buffers across calls.
     matcher: RefCell<Matcher>,
-    /// Set by the caller after dispatching launch — used so the
-    /// runtime's `on_activate` closure can also tell the widget to
-    /// close the launcher panel. Wrapped in `Rc<RefCell>` so the
-    /// closure can borrow it without owning the sender.
-    on_activated: Rc<RefCell<Option<Rc<dyn Fn(&str) + 'static>>>>,
 }
 
 impl AppsProvider {
@@ -60,16 +55,7 @@ impl AppsProvider {
             entries: RefCell::new(Vec::new()),
             show_hidden: Arc::new(AtomicBool::new(false)),
             matcher: RefCell::new(Matcher::new(Config::DEFAULT)),
-            on_activated: Rc::new(RefCell::new(None)),
         }
-    }
-
-    /// Register a callback the provider invokes after a launch so
-    /// the widget can close the launcher menu. The callback runs
-    /// on the UI thread (the launcher is single-threaded) and
-    /// receives the activated app's stable id.
-    pub fn set_on_activated(&self, cb: Rc<dyn Fn(&str) + 'static>) {
-        *self.on_activated.borrow_mut() = Some(cb);
     }
 
     /// Toggle whether hidden entries appear in results.
@@ -114,9 +100,6 @@ impl AppsProvider {
 
     fn make_item(&self, entry: &AppEntry, score: f64) -> LauncherItem {
         let app_clone = entry.info.clone();
-        let id = entry.id.clone();
-        let on_activated = self.on_activated.clone();
-        let cb_id = id.clone();
         LauncherItem {
             id: format!("apps:{}", entry.id),
             name: entry.info.name().to_string(),
@@ -135,12 +118,12 @@ impl AppsProvider {
             score,
             provider_name: "Apps".into(),
             usage_key: Some(format!("apps:{}", entry.id)),
-            on_activate: Rc::new(move || {
-                launch_detached(&app_clone);
-                if let Some(cb) = on_activated.borrow().as_ref() {
-                    cb(&cb_id);
-                }
-            }),
+            // Just launch — closing the launcher is handled
+            // centrally in `app_launcher.rs::activate_id` after
+            // the closure returns, so every provider gets the
+            // same dismiss-on-activate behaviour without each
+            // one having to wire its own close callback.
+            on_activate: Rc::new(move || launch_detached(&app_clone)),
         }
     }
 }
