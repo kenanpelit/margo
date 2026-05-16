@@ -338,14 +338,39 @@ pub(crate) async fn probe_dns_state() -> DnsState {
     }
 
     if let Some(resolvectl) = run_capture("resolvectl", &["dns"]).await {
-        let global = resolvectl
-            .lines()
-            .filter_map(|l| l.trim().strip_prefix("Global:"))
-            .map(|s| s.trim())
-            .collect::<Vec<_>>()
-            .join(" ");
-        if !global.is_empty() {
-            state.display_dns = global;
+        // `resolvectl dns` output looks like:
+        //
+        //   Global: 10.64.0.1
+        //   Link 2 (wlan0): 9.9.9.9 149.112.112.112
+        //   Link 5 (wg0-mullvad):
+        //
+        // Previous parser only kept the `Global:` line, which
+        // under Mullvad VPN held just the tunnel resolver
+        // `10.64.0.1`. The user's actually-chosen preset (Quad9
+        // / Google / etc.) lives on the per-link line, so the
+        // `matches_preset` subset check missed it and the
+        // Active highlight never lit up. Now we accumulate IPs
+        // from Global: AND every `Link N (iface):` line so the
+        // full effective resolver list ends up in `display_dns`.
+        let mut all_ips: Vec<&str> = Vec::new();
+        for line in resolvectl.lines() {
+            let trimmed = line.trim();
+            let tail = if let Some(t) = trimmed.strip_prefix("Global:") {
+                t
+            } else if trimmed.starts_with("Link ") {
+                // Skip past the `Link N (iface):` prefix.
+                trimmed.split_once(':').map(|(_, rest)| rest).unwrap_or("")
+            } else {
+                continue;
+            };
+            for tok in tail.split_whitespace() {
+                if looks_like_ipv4(tok) {
+                    all_ips.push(tok);
+                }
+            }
+        }
+        if !all_ips.is_empty() {
+            state.display_dns = all_ips.join(" ");
         }
     }
 
