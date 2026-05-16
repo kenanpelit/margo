@@ -34,7 +34,7 @@ use mshell_config::schema::config::{ConfigStoreFields, IconsStoreFields, ThemeSt
 use mshell_launcher::providers::{
     ArchLinuxPkgsProvider, BluetoothProvider, CalculatorProvider, CommandProvider, EmojiProvider,
     MctlProvider, PlayerctlProvider, ProviderListProvider, ScriptsProvider, SessionProvider,
-    SettingsProvider, SymbolsProvider, WebsearchProvider, WireplumberProvider,
+    SettingsProvider, SshProvider, SymbolsProvider, WebsearchProvider, WireplumberProvider,
 };
 use mshell_launcher::{FrecencyStore, LauncherItem, LauncherRuntime};
 use reactive_graph::traits::*;
@@ -244,6 +244,7 @@ impl Component for AppLauncherModel {
         runtime.register(Box::new(ArchLinuxPkgsProvider::new()));
         runtime.register(Box::new(WireplumberProvider::new()));
         runtime.register(Box::new(BluetoothProvider::new()));
+        runtime.register(Box::new(SshProvider::new()));
         runtime.register(Box::new(CommandProvider::new()));
 
         // Sender clone for the dynamic-box factory's per-row

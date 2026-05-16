@@ -130,6 +130,12 @@ const ENTRIES: &[Entry] = &[
         icon: "bluetooth-symbolic",
     },
     Entry {
+        prefix: "ssh <host>",
+        example: "ssh vhay",
+        description: "Open a terminal SSH connection to an assh.yml host",
+        icon: "network-server-symbolic",
+    },
+    Entry {
         prefix: "player",
         example: "player",
         description: "MPRIS players — play / pause / next",

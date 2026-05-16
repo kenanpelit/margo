@@ -3557,6 +3557,7 @@ name = "mshell-auth"
 version = "0.6.1"
 dependencies = [
  "futures",
+ "libc",
  "tokio",
  "tracing",
  "zbus",
@@ -3768,6 +3769,7 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
+ "serde_yaml",
  "tracing",
 ]
 
