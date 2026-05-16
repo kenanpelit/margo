@@ -3006,7 +3006,13 @@ impl MargoState {
             if let Some(value) = rule.block_out_from_screencast {
                 client.block_out_from_screencast = value;
             }
-            if rule.width > 0 || rule.height > 0 || rule.offset_x != 0 || rule.offset_y != 0 {
+            if rule.width > 0
+                || rule.height > 0
+                || rule.width_fraction.is_some()
+                || rule.height_fraction.is_some()
+                || rule.offset_x != 0
+                || rule.offset_y != 0
+            {
                 client.is_floating = true;
                 client.float_geom = Self::rule_float_geometry_for(monitors, client.monitor, rule);
             }
@@ -3070,12 +3076,20 @@ impl MargoState {
             .get(mon_idx)
             .map(|mon| mon.work_area)
             .unwrap_or_else(|| Rect::new(0, 0, 1280, 720));
-        let width = if rule.width > 0 {
+        // Monitor-fraction (`width:50%`) wins over absolute pixels
+        // when both are set on the same rule — mango 0.13's
+        // flexible-window-rules. Falls back to the legacy 60 %
+        // default when neither key is present.
+        let width = if let Some(frac) = rule.width_fraction {
+            ((area.width as f32) * frac).round() as i32
+        } else if rule.width > 0 {
             rule.width.min(area.width)
         } else {
             (area.width as f32 * 0.6) as i32
         };
-        let height = if rule.height > 0 {
+        let height = if let Some(frac) = rule.height_fraction {
+            ((area.height as f32) * frac).round() as i32
+        } else if rule.height > 0 {
             rule.height.min(area.height)
         } else {
             (area.height as f32 * 0.6) as i32
