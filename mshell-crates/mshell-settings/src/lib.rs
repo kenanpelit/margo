@@ -70,3 +70,37 @@ pub fn open_settings() {
 pub fn close_settings() {
     open_settings();
 }
+
+/// Section-navigation backend: a thunk the frame registers so
+/// external callers can jump to a specific Settings sidebar
+/// section without owning a `Sender<SettingsWindowInput>`. The
+/// backend's argument is the stack-child name
+/// (`general`/`bar`/`display`/`fonts`/`idle`/`menus`/`theme`/
+/// `wallpaper`/`widgets`) — anything else is silently ignored
+/// inside the settings widget.
+type SectionBackend = Box<dyn Fn(&str) + Send + Sync + 'static>;
+static SECTION_BACKEND: OnceLock<SectionBackend> = OnceLock::new();
+
+/// Register the section-navigation backend. Called once by the
+/// frame at startup. Idempotent.
+pub fn set_section_backend<F>(f: F)
+where
+    F: Fn(&str) + Send + Sync + 'static,
+{
+    let _ = SECTION_BACKEND.set(Box::new(f));
+}
+
+/// External-facing section navigator. Activates the matching
+/// sidebar button and ensures Settings is visible. Used by the
+/// launcher's Settings provider via the `mshellctl settings open
+/// --section <id>` IPC chain.
+pub fn open_settings_at_section(section: &str) {
+    if let Some(backend) = SECTION_BACKEND.get() {
+        backend(section);
+    } else {
+        tracing::warn!(section, "settings: section backend not registered yet");
+    }
+    // Always toggle the panel visible — the backend only switches
+    // the inner stack, it doesn't open the menu.
+    open_settings();
+}

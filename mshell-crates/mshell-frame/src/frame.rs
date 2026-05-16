@@ -128,6 +128,11 @@ pub enum FrameInput {
     ToggleMediaPlayerMenu,
     ToggleSessionMenu,
     ToggleSettingsMenu,
+    /// Open Settings and jump to a specific sidebar section.
+    /// Used by the launcher's Settings provider via the shell
+    /// router. If Settings is already visible, just switches the
+    /// section.
+    OpenSettingsAtSection(String),
     /// Force-close Settings on this frame if it's currently open.
     /// Used by the Shell-level Settings router to keep Settings
     /// single-monitor: when a fresh toggle picks frame A, frame B's
@@ -961,6 +966,20 @@ impl Component for Frame {
             FrameInput::ToggleSettingsMenu => {
                 self.toggle_menu(SETTINGS_MENU, widgets);
                 self.sync_keyboard_mode(root);
+            }
+            FrameInput::OpenSettingsAtSection(section) => {
+                // Ensure Settings is visible — toggle if currently
+                // hidden. Skip the toggle when already visible so
+                // re-issuing the same section nav doesn't close
+                // the panel.
+                if !self.is_menu_visible_now(SETTINGS_MENU, widgets) {
+                    self.toggle_menu(SETTINGS_MENU, widgets);
+                    self.sync_keyboard_mode(root);
+                }
+                let _ = self
+                    .settings_menu
+                    .sender()
+                    .send(mshell_settings::SettingsWindowInput::ActivateSection(section));
             }
             FrameInput::CloseSettingsMenu => {
                 // Idempotent close: no-op if Settings isn't currently

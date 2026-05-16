@@ -25,6 +25,7 @@ members = [
     "mshell-crates/mshell-frame",
     "mshell-crates/mshell-gamma",
     "mshell-crates/mshell-idle",
+    "mshell-crates/mshell-launcher",
     "mshell-crates/mshell-image",
     "mshell-crates/mshell-lockscreen",
     "mshell-crates/mshell-logging",
@@ -147,6 +148,7 @@ mshell-core = { path = "mshell-crates/mshell-core" }
 mshell-frame = { path = "mshell-crates/mshell-frame" }
 mshell-gamma = { path = "mshell-crates/mshell-gamma" }
 mshell-idle = { path = "mshell-crates/mshell-idle" }
+mshell-launcher = { path = "mshell-crates/mshell-launcher" }
 mshell-image = { path = "mshell-crates/mshell-image" }
 mshell-lockscreen = { path = "mshell-crates/mshell-lockscreen" }
 mshell-logging = { path = "mshell-crates/mshell-logging" }

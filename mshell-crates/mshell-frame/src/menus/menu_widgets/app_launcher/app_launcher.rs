@@ -1,10 +1,27 @@
-use crate::menus::menu_widgets::app_launcher::app_launcher_item::{
-    AppLauncherItemInit, AppLauncherItemInput, AppLauncherItemModel, AppLauncherItemOutput,
+//! Unified app launcher menu — search entry + result list backed
+//! by a [`LauncherRuntime`].
+//!
+//! Replaces the legacy app-only widget: every result row (apps,
+//! calculator, session actions, settings shortcuts, `>cmd`) flows
+//! through the same provider trait + scoring + frecency pipeline.
+//! The widget itself only owns UI state (filter string, selection
+//! index) and delegates everything else to the runtime.
+//!
+//! ## Keyboard model
+//!
+//! Same as the old widget — readline / vim / emacs conventions:
+//! `Down|Tab|Ctrl+N|Ctrl+J` → next, `Up|Shift+Tab|Ctrl+P|Ctrl+K` →
+//! previous, `Enter` → activate, `Escape` → close. The search
+//! entry receives focus on every open so users can start typing
+//! immediately.
+
+use crate::menus::menu_widgets::app_launcher::apps_provider::AppsProvider;
+use crate::menus::menu_widgets::app_launcher::clipboard_provider::ClipboardProvider;
+use crate::menus::menu_widgets::app_launcher::launcher_row::{
+    LauncherRowInit, LauncherRowInput, LauncherRowModel, LauncherRowOutput,
 };
+use crate::menus::menu_widgets::app_launcher::windows_provider::WindowsProvider;
 use gtk4_layer_shell::{KeyboardMode, LayerShell};
-use mshell_cache::hidden_apps::{
-    HiddenAppsStateStoreFields, hidden_apps_store, hide_app, is_hidden, unhide_app,
-};
 use mshell_common::dynamic_box::dynamic_box::{
     DynamicBoxFactory, DynamicBoxInit, DynamicBoxInput, DynamicBoxModel,
 };
@@ -14,45 +31,58 @@ use mshell_common::dynamic_box::generic_widget_controller::{
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, IconsStoreFields, ThemeStoreFields};
-use mshell_utils::launch::launch_detached;
+use mshell_launcher::providers::{
+    CalculatorProvider, CommandProvider, MctlProvider, SessionProvider, SettingsProvider,
+};
+use mshell_launcher::{FrecencyStore, LauncherItem, LauncherRuntime};
 use reactive_graph::traits::*;
-use relm4::gtk::gio::DesktopAppInfo;
 use relm4::gtk::glib;
 use relm4::gtk::prelude::*;
 use relm4::gtk::{RevealerTransitionType, ScrolledWindow, gdk, gio};
 use relm4::{
     Component, ComponentController, ComponentParts, ComponentSender, Controller, RelmWidgetExt, gtk,
 };
-use tracing::info;
-
-struct AppItem {
-    app_info: DesktopAppInfo,
-    hidden: bool,
-}
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub(crate) struct AppLauncherModel {
-    dynamic_box: Controller<DynamicBoxModel<AppItem, String>>,
+    dynamic_box: Controller<DynamicBoxModel<LauncherItem, String>>,
+    /// Runtime owns the providers + frecency. Wrapped in
+    /// `RefCell<Rc<>>` because the Apps provider needs to be
+    /// mutated (toggle show_hidden) from within the widget's
+    /// update path while the runtime simultaneously borrows
+    /// providers immutably during `query()`. Two-borrow split via
+    /// `Rc<AppsProvider>` on the side.
+    runtime: RefCell<LauncherRuntime>,
+    /// Shared handle to the Apps provider so we can toggle the
+    /// `show_hidden` flag without going through the runtime
+    /// (which only exposes immutable provider access).
+    apps_provider: Rc<AppsProvider>,
+    /// Closes the launcher menu. Set in init; called after every
+    /// item activation. RefCell<Option<...>> so the closure can
+    /// be stamped post-construction without an extra cell on the
+    /// model type.
+    close_sender: RefCell<Option<Box<dyn Fn() + 'static>>>,
     filter: String,
-    apps: Vec<DesktopAppInfo>,
-    filtered_list: Vec<DesktopAppInfo>,
-    selected_app: Option<DesktopAppInfo>,
-    show_hidden_apps: bool,
+    results: Vec<LauncherItem>,
+    /// Stable id of the currently-selected row. We store the id
+    /// rather than an index so reordering between keystrokes
+    /// doesn't strand the highlight on a different row.
+    selected_id: Option<String>,
     is_revealed: bool,
     _effects: EffectScope,
 }
 
 #[derive(Debug)]
 pub(crate) enum AppLauncherInput {
-    UpdateAppsList,
     FilterChanged(String),
     Activate,
     ParentRevealChanged(bool),
     DownPressed,
     UpPressed,
-    HiddenAppsChanged,
-    HideApp(String),
-    UnhideApp(String),
-    CloseMenu,
+    /// User pressed Enter on a specific row (via mouse click or
+    /// Tab+Enter on the focused row). Carries the row id.
+    ActivateRow(String),
     ShowHiddenAppsChanged,
     ThemeChanged,
 }
@@ -93,7 +123,7 @@ impl Component for AppLauncherModel {
                 #[name = "search_entry"]
                 gtk::Entry {
                     add_css_class: "ok-entry",
-                    set_placeholder_text: Some("Search"),
+                    set_placeholder_text: Some("Search apps, calc, > commands…"),
                     set_hexpand: true,
                     connect_changed[sender] => move |entry| {
                         sender.input(AppLauncherInput::FilterChanged(entry.text().to_string()));
@@ -111,14 +141,14 @@ impl Component for AppLauncherModel {
                         sender.input(AppLauncherInput::ShowHiddenAppsChanged);
                     },
 
-                    #[name="image"]
+                    #[name = "image"]
                     gtk::Image {
                         set_hexpand: true,
                         set_vexpand: true,
                         set_halign: gtk::Align::Center,
                         set_valign: gtk::Align::Center,
                         #[watch]
-                        set_icon_name: if model.show_hidden_apps {
+                        set_icon_name: if model.apps_provider.show_hidden() {
                             Some("eye-symbolic")
                         } else {
                             Some("eye-off-symbolic")
@@ -143,45 +173,70 @@ impl Component for AppLauncherModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let sender_clone = sender.clone();
-        let monitor = gio::AppInfoMonitor::get();
-        monitor.connect_changed(move |_| {
-            sender_clone.input(AppLauncherInput::UpdateAppsList);
-        });
+        // Build provider stack. Order matters for command-mode
+        // dispatch — first matching wins — and for the empty-query
+        // browse list (concatenated in registration order).
+        let apps_provider = Rc::new(AppsProvider::new());
 
-        sender.input(AppLauncherInput::UpdateAppsList);
-        sender.input(AppLauncherInput::FilterChanged("".to_string()));
+        // Apps provider: launch happens in the activate closure;
+        // closing the launcher is handled centrally in
+        // `activate_id` so we don't wire a per-launch callback.
 
-        let sender_clone = sender.clone();
-        let factory = DynamicBoxFactory::<AppItem, String> {
-            id: Box::new(|item| {
-                item.app_info
-                    .id()
-                    .map(|s| s.to_string())
-                    .or_else(|| {
-                        item.app_info
-                            .filename()
-                            .map(|p| p.to_string_lossy().into_owned())
-                    })
-                    .unwrap_or_else(|| item.app_info.name().to_string())
-            }),
+        // Settings provider: route through the in-process
+        // section-backend bridge so the panel opens AND the
+        // sidebar jumps to the selected section. The chain is
+        // `open_settings_at_section` (mshell-settings static) →
+        // registered closure in mshell-core/relm_app.rs →
+        // tokio mpsc → ShellInput::OpenSettingsAtSection →
+        // FrameInput::OpenSettingsAtSection →
+        // SettingsWindowInput::ActivateSection. We avoid going
+        // through `mshellctl` here so the launcher doesn't
+        // depend on a CLI being on $PATH for what's really an
+        // in-process navigation.
+        let settings_provider = SettingsProvider::new(Rc::new(move |section_id| {
+            mshell_settings::open_settings_at_section(section_id);
+        }));
+
+        let mut runtime = LauncherRuntime::new(FrecencyStore::load());
+        // Order matters for empty-query browse — first-registered
+        // providers' results show first when the user opens the
+        // launcher without typing. Apps go first (the most common
+        // browse target), Windows second (alt-tab replacement
+        // for `Open Apps Switcher` muscle memory), then the
+        // typed-only providers in roughly "expected frequency".
+        runtime.register(Box::new(AppsProviderHandle(apps_provider.clone())));
+        runtime.register(Box::new(WindowsProvider::new()));
+        runtime.register(Box::new(CalculatorProvider::new()));
+        runtime.register(Box::new(SessionProvider::new()));
+        runtime.register(Box::new(MctlProvider::new()));
+        runtime.register(Box::new(settings_provider));
+        runtime.register(Box::new(ClipboardProvider::new()));
+        runtime.register(Box::new(CommandProvider::new()));
+
+        // Sender clone for the dynamic-box factory's per-row
+        // controller wiring — we need to keep the original sender
+        // for the rest of init.
+        let sender_for_rows = sender.clone();
+        let factory = DynamicBoxFactory::<LauncherItem, String> {
+            id: Box::new(|item| item.id.clone()),
             create: Box::new(move |item| {
-                let controller: Controller<AppLauncherItemModel> = AppLauncherItemModel::builder()
-                    .launch(AppLauncherItemInit {
-                        app_info: item.app_info.clone(),
-                        hidden: item.hidden,
+                // Pass the whole LauncherItem by value into the
+                // row component. Item itself isn't cloneable
+                // (Rc<dyn Fn()> is, but the runtime moved the
+                // owned value to us already) so we move it.
+                let controller: Controller<LauncherRowModel> = LauncherRowModel::builder()
+                    .launch(LauncherRowInit {
+                        item: clone_launcher_item(item),
                     })
-                    .forward(sender_clone.input_sender(), move |msg| match msg {
-                        AppLauncherItemOutput::CloseMenu => AppLauncherInput::CloseMenu,
-                        AppLauncherItemOutput::Hide(id) => AppLauncherInput::HideApp(id),
-                        AppLauncherItemOutput::Unhide(id) => AppLauncherInput::UnhideApp(id),
+                    .forward(sender_for_rows.input_sender(), |out| match out {
+                        LauncherRowOutput::Activated(id) => AppLauncherInput::ActivateRow(id),
                     });
                 Box::new(controller) as Box<dyn GenericWidgetController>
             }),
             update: None,
         };
 
-        let dynamic: Controller<DynamicBoxModel<AppItem, String>> = DynamicBoxModel::builder()
+        let dynamic: Controller<DynamicBoxModel<LauncherItem, String>> = DynamicBoxModel::builder()
             .launch(DynamicBoxInit {
                 factory,
                 orientation: gtk::Orientation::Vertical,
@@ -194,16 +249,8 @@ impl Component for AppLauncherModel {
             })
             .detach();
 
-        // Keyboard navigation. Beyond the obvious arrow keys we also
-        // accept the readline / emacs / IRC-client conventions the
-        // user expects from a launcher:
-        //
-        //   Down  →  Down | Tab           | Ctrl+N | Ctrl+J
-        //   Up    →  Up   | Shift+Tab     | Ctrl+P | Ctrl+K
-        //
-        // (`Shift+Tab` shows up as `ISO_Left_Tab` on most X11/Wayland
-        // stacks; we match both for safety. `Ctrl+J` / `Ctrl+K` are
-        // the vim-friendly aliases.) Escape still closes the menu.
+        // Keyboard navigation. See module-level docs for the full
+        // list of accepted bindings.
         let key_controller = gtk::EventControllerKey::new();
         let sender_clone = sender.clone();
         key_controller.connect_key_pressed(move |_, key, _, modifier| {
@@ -231,13 +278,8 @@ impl Component for AppLauncherModel {
 
         let mut effect_scope = EffectScope::new();
 
-        let sender_clone = sender.clone();
-        effect_scope.push(move |_| {
-            let store = hidden_apps_store();
-            let _ = store.apps().get();
-            sender_clone.input(AppLauncherInput::HiddenAppsChanged);
-        });
-
+        // Re-render results when the icon theme changes — apps
+        // need their matugen-filtered icons re-applied.
         let sender_clone = sender.clone();
         effect_scope.push(move |_| {
             let _ = config_manager()
@@ -274,21 +316,45 @@ impl Component for AppLauncherModel {
             sender_clone.input(AppLauncherInput::ThemeChanged);
         });
 
+        // Refresh apps when desktop entries change (install /
+        // uninstall while the launcher is open).
+        let sender_clone = sender.clone();
+        let monitor = gio::AppInfoMonitor::get();
+        monitor.connect_changed(move |_| {
+            sender_clone.input(AppLauncherInput::FilterChanged(String::new()));
+        });
+
+        // Initial population — runtime.on_opened triggers Apps
+        // provider refresh, FilterChanged populates the list.
+        runtime.on_opened();
+
+        // Close-sender wired after construction so activate_id
+        // can fire a CloseMenu output without going through the
+        // input loop (which would race the row-controller
+        // teardown).
+        let close_sender_cell: RefCell<Option<Box<dyn Fn() + 'static>>> = RefCell::new(None);
+        let sender_for_close = sender.clone();
+        *close_sender_cell.borrow_mut() = Some(Box::new(move || {
+            let _ = sender_for_close.output(AppLauncherOutput::CloseMenu);
+        }));
+
         let model = AppLauncherModel {
             dynamic_box: dynamic,
-            filter: "".to_string(),
-            apps: Vec::new(),
-            filtered_list: Vec::new(),
-            selected_app: None,
-            show_hidden_apps: false,
+            runtime: RefCell::new(runtime),
+            apps_provider,
+            close_sender: close_sender_cell,
+            filter: String::new(),
+            results: Vec::new(),
+            selected_id: None,
             is_revealed: false,
             _effects: effect_scope,
         };
 
         let widgets = view_output!();
-
         widgets.apps_box.append(model.dynamic_box.widget());
         widgets.root.add_controller(key_controller);
+
+        sender.input(AppLauncherInput::FilterChanged(String::new()));
 
         ComponentParts { model, widgets }
     }
@@ -301,216 +367,67 @@ impl Component for AppLauncherModel {
         _root: &Self::Root,
     ) {
         match message {
-            AppLauncherInput::UpdateAppsList => {
-                let mut apps: Vec<DesktopAppInfo> = gio::AppInfo::all()
-                    .into_iter()
-                    .filter_map(|info| info.downcast::<DesktopAppInfo>().ok())
-                    .filter(|info| !info.is_hidden() && !info.is_nodisplay())
-                    .collect();
-
-                apps.sort_by_key(|info| info.display_name().to_lowercase());
-
-                self.apps = apps;
-            }
             AppLauncherInput::FilterChanged(filter) => {
                 self.filter = filter;
-                let filter = self.filter.to_lowercase();
-                let apps = self.apps.clone();
-                let show_hidden = self.show_hidden_apps;
-
-                self.filtered_list = apps
-                    .into_iter()
-                    .filter(|info| {
-                        let id = info.id().map(|s| s.to_string()).unwrap_or_default();
-                        let is_hidden = is_hidden(&id);
-                        if is_hidden && !show_hidden {
-                            return false;
-                        }
-                        filter.is_empty()
-                            || info.display_name().to_lowercase().contains(&filter)
-                            || info.name().to_lowercase().contains(&filter)
-                    })
-                    .collect();
-
-                let app_items: Vec<AppItem> = self
-                    .filtered_list
-                    .iter()
-                    .map(|info| {
-                        let id = info.id().map(|s| s.to_string()).unwrap_or_default();
-                        AppItem {
-                            app_info: info.clone(),
-                            hidden: is_hidden(&id),
-                        }
-                    })
-                    .collect();
-
-                if !self.filtered_list.is_empty() {
-                    self.selected_app = self.filtered_list.first().cloned();
-                }
-
-                self.dynamic_box
-                    .sender()
-                    .send(DynamicBoxInput::SetItems(app_items))
-                    .unwrap();
-                self.update_selected();
+                self.recompute_results();
+                self.push_results_to_dynamic_box();
+                self.broadcast_selection();
             }
             AppLauncherInput::Activate => {
-                if let Some(selected_app) = &self.selected_app {
-                    launch_detached(selected_app);
+                // Enter on the search entry — activate whatever
+                // row is currently selected.
+                tracing::info!(target: "mshell::launcher", "Activate input, selected_id={:?}", self.selected_id);
+                if let Some(id) = &self.selected_id.clone() {
+                    self.activate_id(id);
                 }
-                let _ = sender.output(AppLauncherOutput::CloseMenu);
+            }
+            AppLauncherInput::ActivateRow(id) => {
+                tracing::info!(target: "mshell::launcher", "ActivateRow input id={id}");
+                self.activate_id(&id);
+            }
+            AppLauncherInput::ShowHiddenAppsChanged => {
+                let new_state = !self.apps_provider.show_hidden();
+                self.apps_provider.set_show_hidden(new_state);
+                self.recompute_results();
+                self.push_results_to_dynamic_box();
+                self.broadcast_selection();
             }
             AppLauncherInput::ParentRevealChanged(revealed) => {
-                // If state is changing from hidden to revealed
                 if revealed && !self.is_revealed {
                     if let Some(window) = widgets.apps_box.toplevel_window() {
                         window.set_keyboard_mode(KeyboardMode::Exclusive);
                     }
-                    sender.input(AppLauncherInput::UpdateAppsList);
-                    self.filter = "".to_string();
-                    sender.input(AppLauncherInput::FilterChanged("".to_string()));
+                    self.runtime.borrow_mut().on_opened();
+                    self.filter.clear();
                     widgets.search_entry.set_text("");
                     widgets.search_entry.grab_focus();
-                // if state is change from revealed to hidden
-                } else if !revealed
-                    && self.is_revealed
-                    && let Some(window) = widgets.apps_box.toplevel_window()
-                {
-                    window.set_keyboard_mode(KeyboardMode::None);
+                    self.recompute_results();
+                    self.push_results_to_dynamic_box();
+                    self.broadcast_selection();
+                } else if !revealed && self.is_revealed {
+                    if let Some(window) = widgets.apps_box.toplevel_window() {
+                        window.set_keyboard_mode(KeyboardMode::None);
+                    }
+                    self.runtime.borrow_mut().on_closed();
+                    self.runtime.borrow_mut().flush();
                 }
                 self.is_revealed = revealed;
             }
             AppLauncherInput::DownPressed => {
-                if self.filtered_list.is_empty() {
-                    return;
-                }
-                let current_id = self.selected_app.as_ref().and_then(|s| s.id());
-                let current_pos = self.filtered_list.iter().position(|a| a.id() == current_id);
-                if let Some(pos) = current_pos {
-                    if pos + 1 < self.filtered_list.len() {
-                        self.selected_app = self.filtered_list[pos + 1].clone().into();
-                    } else {
-                        return;
-                    }
-                } else {
-                    return;
-                }
-
-                self.update_selected();
+                self.move_selection(1);
+                self.broadcast_selection();
                 self.ensure_selected_visible(&widgets.scrolled_window);
             }
             AppLauncherInput::UpPressed => {
-                if self.filtered_list.is_empty() {
-                    return;
-                }
-                let current_id = self.selected_app.as_ref().and_then(|s| s.id());
-                let current_pos = self.filtered_list.iter().position(|a| a.id() == current_id);
-                if let Some(pos) = current_pos {
-                    if pos > 0 {
-                        self.selected_app = self.filtered_list[pos - 1].clone().into();
-                    } else {
-                        return;
-                    }
-                } else {
-                    return;
-                }
-
-                self.update_selected();
+                self.move_selection(-1);
+                self.broadcast_selection();
                 self.ensure_selected_visible(&widgets.scrolled_window);
             }
-            AppLauncherInput::HiddenAppsChanged => {
-                self.dynamic_box.model().for_each_entry(|_, entry| {
-                    if let Some(ctrl) = entry
-                        .controller
-                        .as_ref()
-                        .downcast_ref::<Controller<AppLauncherItemModel>>()
-                    {
-                        let id = ctrl
-                            .model()
-                            .app_info
-                            .id()
-                            .map(|s| s.to_string())
-                            .unwrap_or_default();
-                        let is_hidden = is_hidden(&id);
-                        if ctrl.model().hidden != is_hidden {
-                            info!("hidden changed");
-                            let _ = ctrl
-                                .sender()
-                                .send(AppLauncherItemInput::HiddenChanged(is_hidden));
-                        }
-                    }
-                });
-                sender.input(AppLauncherInput::FilterChanged(self.filter.clone()));
-            }
-            AppLauncherInput::HideApp(id) => {
-                hide_app(id);
-            }
-            AppLauncherInput::UnhideApp(id) => {
-                unhide_app(id);
-            }
-            AppLauncherInput::CloseMenu => {
-                let _ = sender.output(AppLauncherOutput::CloseMenu);
-            }
-            AppLauncherInput::ShowHiddenAppsChanged => {
-                self.show_hidden_apps = !self.show_hidden_apps;
-                sender.input(AppLauncherInput::FilterChanged(self.filter.clone()));
-            }
             AppLauncherInput::ThemeChanged => {
-                let theme = config_manager()
-                    .config()
-                    .theme()
-                    .icons()
-                    .app_icon_theme()
-                    .get_untracked();
-                let apply_theme = config_manager()
-                    .config()
-                    .theme()
-                    .icons()
-                    .apply_theme_filter()
-                    .get_untracked();
-                let color_theme = config_manager().config().theme().theme().get_untracked();
-                let filter_strength = config_manager()
-                    .config()
-                    .theme()
-                    .icons()
-                    .filter_strength()
-                    .get_untracked()
-                    .get();
-                let monochrome_strength = config_manager()
-                    .config()
-                    .theme()
-                    .icons()
-                    .monochrome_strength()
-                    .get_untracked()
-                    .get();
-                let contrast_strength = config_manager()
-                    .config()
-                    .theme()
-                    .icons()
-                    .contrast_strength()
-                    .get_untracked()
-                    .get();
-
-                self.dynamic_box.model().for_each_entry(|_, entry| {
-                    if let Some(ctrl) = entry
-                        .controller
-                        .as_ref()
-                        .downcast_ref::<Controller<AppLauncherItemModel>>()
-                    {
-                        let sender = ctrl.sender().clone();
-                        let theme = theme.clone();
-                        let color_theme = color_theme;
-
-                        let _ = sender.send(AppLauncherItemInput::ThemeChanged(
-                            theme,
-                            color_theme,
-                            apply_theme,
-                            filter_strength,
-                            monochrome_strength,
-                            contrast_strength,
-                        ));
-                    }
-                });
+                // Force a full re-render so app icons pick up the
+                // new matugen filter values.
+                self.push_results_to_dynamic_box();
+                self.broadcast_selection();
             }
         }
 
@@ -519,32 +436,87 @@ impl Component for AppLauncherModel {
 }
 
 impl AppLauncherModel {
-    fn update_selected(&self) {
-        let selected_id = self.selected_app.as_ref().and_then(|s| s.id());
+    fn recompute_results(&mut self) {
+        self.results = self.runtime.borrow().query(&self.filter);
+        // Keep selection on the first row by default. The runtime
+        // already sorts so [0] is the best match.
+        self.selected_id = self.results.first().map(|i| i.id.clone());
+    }
+
+    fn push_results_to_dynamic_box(&self) {
+        // Materialise items by cloning each one (Rc<dyn Fn> is
+        // cheap to clone); the dynamic box keeps controllers
+        // keyed by id and replaces a row's controller only when
+        // its key changes — so re-sending the same items just
+        // re-runs the factory once per visible row.
+        let cloned: Vec<LauncherItem> = self.results.iter().map(clone_launcher_item).collect();
+        let _ = self
+            .dynamic_box
+            .sender()
+            .send(DynamicBoxInput::SetItems(cloned));
+    }
+
+    fn broadcast_selection(&self) {
+        let selected = self.selected_id.clone().unwrap_or_default();
         self.dynamic_box.model().for_each_entry(|_, entry| {
             if let Some(ctrl) = entry
                 .controller
                 .as_ref()
-                .downcast_ref::<Controller<AppLauncherItemModel>>()
+                .downcast_ref::<Controller<LauncherRowModel>>()
             {
-                ctrl.sender()
-                    .emit(AppLauncherItemInput::NewSelectedId(selected_id.clone()));
+                let _ = ctrl
+                    .sender()
+                    .send(LauncherRowInput::SelectionChanged(selected.clone()));
             }
-        })
+        });
+    }
+
+    fn move_selection(&mut self, delta: isize) {
+        if self.results.is_empty() {
+            self.selected_id = None;
+            return;
+        }
+        let current = self
+            .selected_id
+            .as_ref()
+            .and_then(|id| self.results.iter().position(|i| &i.id == id))
+            .unwrap_or(0);
+        let target = (current as isize + delta).clamp(0, self.results.len() as isize - 1) as usize;
+        self.selected_id = Some(self.results[target].id.clone());
+    }
+
+    fn activate_id(&mut self, id: &str) {
+        let Some(item) = self.results.iter().find(|i| i.id == id) else {
+            tracing::warn!(target: "mshell::launcher", "activate_id: no item with id={id} in {} results", self.results.len());
+            return;
+        };
+        if let Some(key) = &item.usage_key {
+            self.runtime.borrow_mut().record_usage(key);
+        }
+        (item.on_activate)();
+        // Always close the launcher after activation — Phase 1
+        // providers (Apps, Calc, Session, Settings, Command) all
+        // want the panel to dismiss on selection. Idempotent: a
+        // provider that already triggered close via its own
+        // callback gets a no-op second close.
+        let _ = self.close_sender.borrow().as_ref().map(|s| s());
+        // Most providers' on_activate close the launcher; the
+        // Settings/Calculator/Apps providers do this via the
+        // close callback we passed in. Bare CommandProvider does
+        // not, so we proactively close here too.
+        // (Double-closing is a no-op.)
+        // Caller handles output through the apps provider's
+        // close callback; nothing more to do.
     }
 
     fn ensure_selected_visible(&self, scrolled_window: &ScrolledWindow) {
         let vadj = scrolled_window.vadjustment();
-        let selected_key = self
-            .selected_app
-            .as_ref()
-            .and_then(|s| s.id())
-            .map(|s| s.to_string());
-
+        let Some(selected_key) = self.selected_id.clone() else {
+            return;
+        };
         let container = self.dynamic_box.widget().clone().upcast::<gtk::Widget>();
-
         for key in self.dynamic_box.model().order.iter() {
-            if Some(key) != selected_key.as_ref() {
+            if key != &selected_key {
                 continue;
             }
             if let Some(entry) = self.dynamic_box.model().entries.get(key) {
@@ -558,7 +530,6 @@ impl AppLauncherModel {
                 let height = bounds.height() as f64;
                 let view_start = vadj.value();
                 let view_end = view_start + vadj.page_size();
-
                 if y < view_start {
                     vadj.set_value(y);
                 } else if y + height > view_end {
@@ -567,5 +538,64 @@ impl AppLauncherModel {
                 return;
             }
         }
+    }
+}
+
+/// `LauncherItem` is intentionally not `Clone` (the runtime hands
+/// ownership to the UI in one go) but the UI does need to clone
+/// items: once for the dynamic box, once for the runtime's
+/// internal sort buffer. This helper centralises the field-wise
+/// copy so future fields don't get forgotten.
+fn clone_launcher_item(src: &LauncherItem) -> LauncherItem {
+    LauncherItem {
+        id: src.id.clone(),
+        name: src.name.clone(),
+        description: src.description.clone(),
+        icon: src.icon.clone(),
+        icon_is_path: src.icon_is_path,
+        score: src.score,
+        provider_name: src.provider_name.clone(),
+        usage_key: src.usage_key.clone(),
+        on_activate: src.on_activate.clone(),
+    }
+}
+
+/// Helper a future PR will call from notify-style providers; for
+/// now lives next to the widget so we don't have to grow the
+/// launcher crate with notify-rust dep before there's a real
+/// caller.
+#[allow(dead_code)]
+fn _placeholder_notify_helper() {}
+
+/// Thin newtype wrapper that lets us hand a shared `Rc<AppsProvider>`
+/// to the runtime (which wants `Box<dyn Provider>`) while keeping
+/// our own clone for `show_hidden` toggling.
+struct AppsProviderHandle(Rc<AppsProvider>);
+
+impl mshell_launcher::Provider for AppsProviderHandle {
+    fn name(&self) -> &str {
+        self.0.name()
+    }
+
+    fn handles_search(&self) -> bool {
+        self.0.handles_search()
+    }
+
+    fn handles_command(&self, q: &str) -> bool {
+        self.0.handles_command(q)
+    }
+
+    fn commands(&self) -> Vec<LauncherItem> {
+        self.0.commands()
+    }
+
+    fn search(&self, q: &str) -> Vec<LauncherItem> {
+        self.0.search(q)
+    }
+
+    fn on_opened(&mut self) {
+        // AppsProvider uses interior mutability (RefCell) so we
+        // can call its mutable-looking ops through &self.
+        self.0.refresh();
     }
 }

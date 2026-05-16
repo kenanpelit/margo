@@ -92,6 +92,12 @@ pub(crate) enum ShellInput {
     ToggleMediaPlayerMenu(Option<String>),
     ToggleSessionMenu(Option<String>),
     ToggleSettingsMenu(Option<String>),
+    /// Jump to a specific Settings sidebar section. Routes
+    /// through the per-frame settings widget after ensuring it's
+    /// visible — same monitor-resolution dance as
+    /// `ToggleSettingsMenu`. Emitted by the launcher's Settings
+    /// provider through the `SECTION_BACKEND` bridge.
+    OpenSettingsAtSection(Option<String>, String),
     ToggleDashboardMenu(Option<String>),
     RunSessionAction(mshell_utils::session::SessionAction),
     CloseAllMenus,
@@ -204,6 +210,25 @@ impl Component for Shell {
         mshell_settings::set_toggle_backend(move || {
             let _ = toggle_tx.send(());
         });
+
+        // Section-navigation bridge — mirrors the toggle bridge
+        // above. Launcher → `mshell_settings::open_settings_at_section`
+        // → registered closure → channel → main-loop task →
+        // ShellInput::OpenSettingsAtSection(monitor, section).
+        let (section_tx, mut section_rx) =
+            tokio::sync::mpsc::unbounded_channel::<String>();
+        mshell_settings::set_section_backend(move |section: &str| {
+            let _ = section_tx.send(section.to_string());
+        });
+        let section_app_sender = sender.input_sender().clone();
+        relm4::gtk::glib::spawn_future_local(async move {
+            while let Some(section) = section_rx.recv().await {
+                let monitor = margo_service().active_monitor_name().await;
+                section_app_sender
+                    .emit(ShellInput::OpenSettingsAtSection(monitor, section));
+            }
+        });
+
         let toggle_app_sender = sender.input_sender().clone();
         relm4::gtk::glib::spawn_future_local(async move {
             while toggle_rx.recv().await.is_some() {
@@ -495,6 +520,23 @@ impl Component for Shell {
                 }
                 if let Some(frame) = target {
                     frame.emit(FrameInput::ToggleSettingsMenu);
+                }
+            }
+            ShellInput::OpenSettingsAtSection(monitor_name, section) => {
+                // Same monitor-routing as ToggleSettingsMenu —
+                // close any non-target instances first so the
+                // panel is unambiguously on the focused monitor.
+                let target = resolve_frame(&self.window_groups, &monitor_name);
+                let target_ptr = target.map(|f| f as *const _);
+                for group in self.window_groups.values() {
+                    if let Some(frame) = group.frame.as_ref() {
+                        if Some(frame as *const _) != target_ptr {
+                            frame.emit(FrameInput::CloseSettingsMenu);
+                        }
+                    }
+                }
+                if let Some(frame) = target {
+                    frame.emit(FrameInput::OpenSettingsAtSection(section));
                 }
             }
             ShellInput::ToggleDashboardMenu(monitor_name) => {

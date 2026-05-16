@@ -36,7 +36,18 @@ pub struct SettingsWindowModel {
 }
 
 #[derive(Debug)]
-pub enum SettingsWindowInput {}
+pub enum SettingsWindowInput {
+    /// Switch the sidebar (and the page stack via the radio
+    /// group's `toggled` cascade) to the given section name —
+    /// matches the stack-child names baked into the view!
+    /// macro: `general` / `bar` / `display` / `fonts` / `idle`
+    /// / `menus` / `theme` / `wallpaper` / `widgets`.
+    ///
+    /// Unknown names are silently ignored. Wired by the launcher
+    /// (via `mshell_settings::open_settings_at_section`) and the
+    /// future `mshellctl settings open --section` IPC.
+    ActivateSection(String),
+}
 
 #[derive(Debug)]
 pub enum SettingsWindowOutput {}
@@ -128,6 +139,7 @@ impl Component for SettingsWindowModel {
                         },
                     },
 
+                    #[name = "bar_btn"]
                     gtk::ToggleButton {
                         add_css_class: "sidebar-button",
                         set_group: Some(&general_btn),
@@ -148,6 +160,7 @@ impl Component for SettingsWindowModel {
                         },
                     },
 
+                    #[name = "display_btn"]
                     gtk::ToggleButton {
                         add_css_class: "sidebar-button",
                         set_group: Some(&general_btn),
@@ -168,6 +181,7 @@ impl Component for SettingsWindowModel {
                         },
                     },
 
+                    #[name = "fonts_btn"]
                     gtk::ToggleButton {
                         add_css_class: "sidebar-button",
                         set_group: Some(&general_btn),
@@ -188,6 +202,7 @@ impl Component for SettingsWindowModel {
                         },
                     },
 
+                    #[name = "idle_btn"]
                     gtk::ToggleButton {
                         add_css_class: "sidebar-button",
                         set_group: Some(&general_btn),
@@ -208,6 +223,7 @@ impl Component for SettingsWindowModel {
                         },
                     },
 
+                    #[name = "menus_btn"]
                     gtk::ToggleButton {
                         add_css_class: "sidebar-button",
                         set_group: Some(&general_btn),
@@ -228,6 +244,7 @@ impl Component for SettingsWindowModel {
                         },
                     },
 
+                    #[name = "theme_btn"]
                     gtk::ToggleButton {
                         add_css_class: "sidebar-button",
                         set_group: Some(&general_btn),
@@ -248,6 +265,7 @@ impl Component for SettingsWindowModel {
                         },
                     },
 
+                    #[name = "wallpaper_btn"]
                     gtk::ToggleButton {
                         add_css_class: "sidebar-button",
                         set_group: Some(&general_btn),
@@ -268,6 +286,7 @@ impl Component for SettingsWindowModel {
                         },
                     },
 
+                    #[name = "widgets_btn"]
                     gtk::ToggleButton {
                         add_css_class: "sidebar-button",
                         set_group: Some(&general_btn),
@@ -749,5 +768,44 @@ impl Component for SettingsWindowModel {
         Box::leak(Box::new(bar_pill_controllers));
 
         ComponentParts { model, widgets }
+    }
+
+    fn update_with_view(
+        &mut self,
+        widgets: &mut Self::Widgets,
+        message: Self::Input,
+        sender: ComponentSender<Self>,
+        _root: &Self::Root,
+    ) {
+        use relm4::gtk::prelude::ToggleButtonExt;
+        match message {
+            SettingsWindowInput::ActivateSection(name) => {
+                // Activating a sidebar button fires its
+                // `connect_toggled` handler which in turn updates
+                // the stack — radio-group cascade does the rest
+                // (every other sidebar button auto-deactivates).
+                // Unknown section names fall through to a no-op
+                // so a stale request can't panic the UI.
+                let button: Option<&relm4::gtk::ToggleButton> = match name.as_str() {
+                    "general" => Some(&widgets.general_btn),
+                    "bar" => Some(&widgets.bar_btn),
+                    "display" => Some(&widgets.display_btn),
+                    "fonts" => Some(&widgets.fonts_btn),
+                    "idle" => Some(&widgets.idle_btn),
+                    "menus" => Some(&widgets.menus_btn),
+                    "theme" => Some(&widgets.theme_btn),
+                    "wallpaper" => Some(&widgets.wallpaper_btn),
+                    "widgets" => Some(&widgets.widgets_btn),
+                    _ => {
+                        tracing::warn!(section = %name, "settings: unknown section name");
+                        None
+                    }
+                };
+                if let Some(btn) = button {
+                    btn.set_active(true);
+                }
+            }
+        }
+        self.update_view(widgets, sender);
     }
 }
