@@ -10,6 +10,12 @@ pub enum MenuWidget {
     AudioOutput,
     Bluetooth,
     Calendar,
+    /// Month grid only — the same `gtk::Calendar` half of the
+    /// `Calendar` widget without the primary-tinted hero band on
+    /// top. Used by the dashboard menu where the hero role is
+    /// already filled by the `Clock` widget; pairing the full
+    /// `Calendar` here would show two clocks.
+    CalendarGrid,
     Clipboard,
     Clock,
     Container(ContainerConfig),
@@ -58,6 +64,7 @@ impl MenuWidget {
             MenuWidget::AudioOutput => "Audio Output",
             MenuWidget::Bluetooth => "Bluetooth",
             MenuWidget::Calendar => "Calendar",
+            MenuWidget::CalendarGrid => "Calendar Grid",
             MenuWidget::Clipboard => "Clipboard",
             MenuWidget::Clock => "Clock",
             MenuWidget::Container(_) => "Container",
@@ -103,6 +110,7 @@ impl MenuWidget {
             MenuWidget::AudioOutput,
             MenuWidget::Bluetooth,
             MenuWidget::Calendar,
+            MenuWidget::CalendarGrid,
             MenuWidget::Clipboard,
             MenuWidget::Clock,
             MenuWidget::Container(ContainerConfig::default()),

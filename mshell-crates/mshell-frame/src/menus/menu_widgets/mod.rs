@@ -3,6 +3,7 @@ pub(crate) mod audio_in;
 pub(crate) mod audio_out;
 pub(crate) mod bluetooth;
 pub(crate) mod calendar;
+pub(crate) mod calendar_grid;
 pub(crate) mod clipboard;
 pub(crate) mod clock;
 pub(crate) mod container;

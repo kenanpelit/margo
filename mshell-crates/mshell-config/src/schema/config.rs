@@ -567,10 +567,16 @@ impl Default for Menus {
                     // ── 2-col body ──
                     MenuWidget::Container(ContainerConfig {
                         widgets: vec![
-                            // Left column
+                            // Left column — uses CalendarGrid (no
+                            // hero band) since the dashboard's
+                            // top Clock widget already fills the
+                            // "big time + date" role. Pairing
+                            // Calendar (which has its own primary-
+                            // tinted hero) here would render two
+                            // overlapping time displays.
                             MenuWidget::Container(ContainerConfig {
                                 widgets: vec![
-                                    MenuWidget::Calendar,
+                                    MenuWidget::CalendarGrid,
                                     MenuWidget::Weather,
                                     MenuWidget::MediaPlayer,
                                 ],

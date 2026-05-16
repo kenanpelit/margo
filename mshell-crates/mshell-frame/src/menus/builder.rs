@@ -12,6 +12,7 @@ use crate::menus::menu_widgets::bluetooth::bluetooth_menu_widget::{
     BluetoothMenuWidgetInit, BluetoothMenuWidgetModel,
 };
 use crate::menus::menu_widgets::calendar::{CalendarInit, CalendarModel};
+use crate::menus::menu_widgets::calendar_grid::{CalendarGridInit, CalendarGridModel};
 use crate::menus::menu_widgets::clipboard::clipboard::{
     ClipboardInit, ClipboardModel, ClipboardOutput,
 };
@@ -104,6 +105,11 @@ pub fn build_widget(
                 .detach(),
         ),
         MenuWidget::Calendar => Box::new(CalendarModel::builder().launch(CalendarInit {}).detach()),
+        MenuWidget::CalendarGrid => Box::new(
+            CalendarGridModel::builder()
+                .launch(CalendarGridInit {})
+                .detach(),
+        ),
         MenuWidget::Clipboard => {
             Box::new(ClipboardModel::builder().launch(ClipboardInit {}).forward(
                 sender.output_sender(),
