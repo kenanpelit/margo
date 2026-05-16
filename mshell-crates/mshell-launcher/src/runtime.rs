@@ -114,8 +114,14 @@ impl LauncherRuntime {
             // regular search so the user at least sees something.
         }
 
-        // Regular search. Collect from every searching provider,
-        // apply usage boost, sort by descending score.
+        // Regular search OR empty-query browse. Collect from
+        // every searching provider, apply frecency boost, sort
+        // descending by score. Browse mode applies the boost too
+        // so the user's most-used apps surface at the top when
+        // the launcher opens with no query (previously the list
+        // was strictly alphabetical, which made the frecency
+        // store look broken even though it was tracking
+        // correctly).
         let mut results: Vec<LauncherItem> = self
             .providers
             .iter()
@@ -123,19 +129,20 @@ impl LauncherRuntime {
             .flat_map(|p| p.search(query))
             .collect();
 
-        if !query.is_empty() {
-            for item in &mut results {
-                if let Some(key) = &item.usage_key {
-                    let count = self.frecency.count(key);
-                    item.score += usage_boost(count);
-                }
+        for item in &mut results {
+            if let Some(key) = &item.usage_key {
+                let count = self.frecency.count(key);
+                item.score += usage_boost(count);
             }
-            results.sort_by(|a, b| {
-                b.score
-                    .partial_cmp(&a.score)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            });
         }
+        // Stable sort: items with the same score (e.g. all
+        // never-used apps in browse mode) preserve the original
+        // alphabetical order each provider already produced.
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         results
     }

@@ -112,6 +112,24 @@ fn default_path() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("/tmp/margo_launcher_usage.json"))
 }
 
+/// Public accessor for the conventional frecency-store path —
+/// used by the Settings UI to show the path and offer a "Clear"
+/// button. Same logic as the in-process loader.
+pub fn store_path() -> PathBuf {
+    default_path()
+}
+
+/// Remove the on-disk frecency file. Used by the Settings
+/// "Clear cache" button. Best-effort: missing file is treated as
+/// already-clear and returns `Ok(())`.
+pub fn clear_disk() -> std::io::Result<()> {
+    match std::fs::remove_file(default_path()) {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(err),
+    }
+}
+
 /// Write `bytes` to `path` via a tmp-file + rename so a crash mid-
 /// write never leaves a half-baked JSON file that fails to parse on
 /// the next launch.

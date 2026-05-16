@@ -32,7 +32,8 @@ use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, IconsStoreFields, ThemeStoreFields};
 use mshell_launcher::providers::{
-    CalculatorProvider, CommandProvider, MctlProvider, SessionProvider, SettingsProvider,
+    CalculatorProvider, CommandProvider, MctlProvider, ScriptsProvider, SessionProvider,
+    SettingsProvider,
 };
 use mshell_launcher::{FrecencyStore, LauncherItem, LauncherRuntime};
 use reactive_graph::traits::*;
@@ -211,6 +212,7 @@ impl Component for AppLauncherModel {
         runtime.register(Box::new(MctlProvider::new()));
         runtime.register(Box::new(settings_provider));
         runtime.register(Box::new(ClipboardProvider::new()));
+        runtime.register(Box::new(ScriptsProvider::new()));
         runtime.register(Box::new(CommandProvider::new()));
 
         // Sender clone for the dynamic-box factory's per-row

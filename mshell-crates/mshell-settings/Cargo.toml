@@ -11,8 +11,10 @@ license.workspace = true
 dirs.workspace = true
 fontconfig.workspace = true
 margo-config = { path = "../../margo-config" }
+mshell-clipboard.workspace = true
 mshell-common.workspace = true
 mshell-config.workspace = true
+mshell-launcher.workspace = true
 mshell-matugen.workspace = true
 mshell-style.workspace = true
 reactive_graph.workspace = true

@@ -116,6 +116,22 @@ fn default_path() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("/tmp/margo_launcher_command_history.json"))
 }
 
+/// Public accessor for the conventional history file path —
+/// used by the Settings UI.
+pub fn store_path() -> PathBuf {
+    default_path()
+}
+
+/// Remove the on-disk command history. Best-effort: missing file
+/// returns `Ok(())`.
+pub fn clear_disk() -> std::io::Result<()> {
+    match std::fs::remove_file(default_path()) {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(err),
+    }
+}
+
 fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let tmp = path.with_extension("json.tmp");
     std::fs::write(&tmp, bytes)?;

@@ -3,6 +3,7 @@ use crate::display_settings::{DisplaySettingsInit, DisplaySettingsModel};
 use crate::fonts_settings::{FontsSettingsInit, FontsSettingsModel};
 use crate::general_settings::{GeneralSettingsInit, GeneralSettingsModel};
 use crate::idle_settings::{IdleSettingsInit, IdleSettingsModel};
+use crate::launcher_settings::{LauncherSettingsInit, LauncherSettingsModel};
 use crate::menu_settings::menu_settings::{MenuSettingsInit, MenuSettingsModel};
 use crate::notification_settings::{NotificationSettingsInit, NotificationSettingsModel};
 use crate::session_settings::{SessionSettingsInit, SessionSettingsModel};
@@ -25,6 +26,7 @@ pub struct SettingsWindowModel {
     menu_settings_controller: Controller<MenuSettingsModel>,
     notification_settings_controller: Controller<NotificationSettingsModel>,
     idle_settings_controller: Controller<IdleSettingsModel>,
+    launcher_settings_controller: Controller<LauncherSettingsModel>,
     session_settings_controller: Controller<SessionSettingsModel>,
     /// Panel width — computed from the monitor's geometry in
     /// `init`. 4:3 aspect with height set to `monitor_h * 3 / 4`
@@ -223,6 +225,27 @@ impl Component for SettingsWindowModel {
                         },
                     },
 
+                    #[name = "launcher_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("launcher"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("system-search-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Launcher",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
                     #[name = "menus_btn"]
                     gtk::ToggleButton {
                         add_css_class: "sidebar-button",
@@ -378,6 +401,10 @@ impl Component for SettingsWindowModel {
             .launch(IdleSettingsInit {})
             .detach();
 
+        let launcher_settings_controller = LauncherSettingsModel::builder()
+            .launch(LauncherSettingsInit {})
+            .detach();
+
         let session_settings_controller = SessionSettingsModel::builder()
             .launch(SessionSettingsInit {})
             .detach();
@@ -392,6 +419,7 @@ impl Component for SettingsWindowModel {
             menu_settings_controller,
             notification_settings_controller,
             idle_settings_controller,
+            launcher_settings_controller,
             session_settings_controller,
             panel_width,
             panel_height,
@@ -512,6 +540,12 @@ impl Component for SettingsWindowModel {
             model.idle_settings_controller.widget(),
             Some("idle"),
             "Idle",
+        );
+
+        widgets.stack.add_titled(
+            model.launcher_settings_controller.widget(),
+            Some("launcher"),
+            "Launcher",
         );
 
         widgets
@@ -792,6 +826,7 @@ impl Component for SettingsWindowModel {
                     "display" => Some(&widgets.display_btn),
                     "fonts" => Some(&widgets.fonts_btn),
                     "idle" => Some(&widgets.idle_btn),
+                    "launcher" => Some(&widgets.launcher_btn),
                     "menus" => Some(&widgets.menus_btn),
                     "theme" => Some(&widgets.theme_btn),
                     "wallpaper" => Some(&widgets.wallpaper_btn),

@@ -7,11 +7,13 @@
 pub mod calculator;
 pub mod command;
 pub mod mctl;
+pub mod scripts;
 pub mod session;
 pub mod settings;
 
 pub use calculator::CalculatorProvider;
 pub use command::CommandProvider;
 pub use mctl::MctlProvider;
+pub use scripts::ScriptsProvider;
 pub use session::{SessionAction, SessionActionId, SessionProvider};
 pub use settings::{SettingsProvider, SettingsSection};
