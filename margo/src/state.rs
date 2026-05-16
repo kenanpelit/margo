@@ -3024,6 +3024,23 @@ impl MargoState {
                 client.float_geom = Self::rule_float_geometry_for(monitors, client.monitor, rule);
             }
         }
+        // Fallback: if a rule flagged `isfloating:1` but didn't
+        // give any size / offset hint, `client.float_geom` stays
+        // at the (0,0,0,0) default. The arrange path then sees
+        // `float_geom.width == 0` and *skips* applying it, leaving
+        // the toplevel sized to 0×0 → invisible. Synthesize a
+        // sensible default geometry from the empty rule so the
+        // window gets the same 60 %-of-work-area treatment as a
+        // size-bearing rule. Same code path, just sourced from
+        // the empty rule's defaults (offsets = 0, no fractions).
+        if client.is_floating && client.float_geom.width == 0 {
+            let empty_rule = margo_config::WindowRule::default();
+            client.float_geom = Self::rule_float_geometry_for(
+                monitors,
+                client.monitor,
+                &empty_rule,
+            );
+        }
         // After all matched rules are applied, clamp the floating geometry
         // to any size constraints picked up.
         clamp_size(
