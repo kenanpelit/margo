@@ -35,7 +35,7 @@ use std::sync::{Arc, RwLock};
 use anyhow::Result;
 use futures::{Stream, StreamExt};
 
-mod state_json;
+pub mod state_json;
 mod sync;
 
 /// Re-export so callers that want to peek at the raw snapshot

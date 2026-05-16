@@ -150,34 +150,53 @@ impl Component for MargoTagsModel {
             }
         });
 
-        // Belt-and-suspenders cold-start refresh on the main
-        // (gtk) thread. The relm4 command-based watcher in
-        // `spawn_workspace_list_watcher` SHOULD catch the
-        // empty→9 transition, but in practice the user keeps
-        // seeing an empty pill row at session start until the
-        // first window opens. Possible causes: the command
-        // future doesn't get scheduled before init returns,
-        // the `out.send` channel is dropped, or `workspaces.set()`
-        // fires in a window where neither the immediate emit nor
-        // the steady-state stream subscriber catches it. Any of
-        // those would leave the dynamic_box with the empty
-        // SetItems called above and no further notifications.
+        // Cold-start fallback: synthesize 9 placeholder Workspace
+        // Arcs from state.json directly and feed them to the
+        // DynamicBox. The relm4 command-based watcher,
+        // brute-force `workspaces.get()` poll, and `workspaces.watch()`
+        // stream all *should* populate the row eventually — but in
+        // practice the user kept seeing an empty pill row at
+        // session start until the first window opened (test.png).
+        // Several earlier attempts (7277a95, 142317e, 3df970e)
+        // targeted the same code path and didn't fix it.
         //
-        // This timer is the brute-force fallback: every 500 ms
-        // for the first 30 s of the widget's life, snapshot
-        // workspaces and re-issue SetItems. The DynamicBox
-        // reconciler is idempotent — feeding the same 9 items
-        // repeatedly is a no-op after the initial pill creation.
-        // Stops after 30 s (membership never changes thereafter;
-        // future updates ride the spawn_main_watcher event path).
+        // This bypass reads state.json synchronously, builds 9
+        // bare Workspace Arcs (id 1..=tag_count, owner from the
+        // output that currently views or occupies that bit), and
+        // sends them straight to the dynamic_box. After the
+        // dynamic_box has these pills, the regular
+        // `WorkspacesChanged` / `ActiveWorkspaceChanged` events
+        // continue to drive updates — the reconciler is keyed by
+        // workspace id so subsequent SetItems with the real
+        // mshell-margo-client Arcs replaces our placeholders by
+        // id-match without flicker.
+        let bootstrap_rows = Self::bootstrap_rows_from_state_json();
+        if !bootstrap_rows.is_empty() {
+            let _ = model
+                .dynamic_box
+                .sender()
+                .send(DynamicBoxInput::SetItems(bootstrap_rows));
+        }
+
+        // Brute-force timer kept as belt-and-suspenders: every
+        // 500 ms for the first 30 s, re-feed whichever set is
+        // larger (real margo-client workspaces vs. bootstrap
+        // synthesis). Once margo-client populates, this becomes a
+        // no-op (DynamicBox dedup by key).
         {
             let dyn_sender = model.dynamic_box.sender().clone();
-            let mut ticks_remaining: u32 = 60; // 60 * 500 ms = 30 s
+            let mut ticks_remaining: u32 = 60;
             gtk::glib::timeout_add_local(std::time::Duration::from_millis(500), move || {
                 ticks_remaining = ticks_remaining.saturating_sub(1);
-                let ws = margo_service().workspaces.get();
-                let rows = Self::workspaces_with_dividers(ws);
-                let _ = dyn_sender.send(DynamicBoxInput::SetItems(rows));
+                let real = margo_service().workspaces.get();
+                let rows = if !real.is_empty() {
+                    Self::workspaces_with_dividers(real)
+                } else {
+                    Self::bootstrap_rows_from_state_json()
+                };
+                if !rows.is_empty() {
+                    let _ = dyn_sender.send(DynamicBoxInput::SetItems(rows));
+                }
                 if ticks_remaining == 0 {
                     gtk::glib::ControlFlow::Break
                 } else {
@@ -340,6 +359,65 @@ impl MargoTagsModel {
                 }
             }
         });
+    }
+
+    /// Build placeholder `Arc<Workspace>` rows directly from a
+    /// fresh state.json read, bypassing the mshell-margo-client
+    /// reactive cache. Used as a cold-start fallback when the
+    /// service-side `workspaces` cache hasn't populated yet —
+    /// without this, the pill row stays empty at session start
+    /// until something kicks the service sync into firing
+    /// `workspaces.set()`, which in practice doesn't happen
+    /// until the first window opens (the workspace LIST never
+    /// changes — margo's `tag_count` is fixed at 9 — so the
+    /// reactive notification system only ever broadcasts once
+    /// per session, and timing makes the widget miss it).
+    ///
+    /// Returns an empty Vec if state.json is unreadable. The
+    /// per-tag Reactive fields are set from the state.json
+    /// snapshot (windows count, owner monitor, fullscreen flag).
+    /// Updates after this point come through the regular
+    /// service watchers — the DynamicBox reconciler keys on
+    /// workspace id, so replacing the placeholder Arc with the
+    /// real service Arc is seamless.
+    fn bootstrap_rows_from_state_json() -> Vec<WsRow> {
+        use mshell_margo_client::Reactive;
+        let Some(state) = mshell_margo_client::state_json::read() else {
+            return Vec::new();
+        };
+        let mut rows: Vec<WsRow> = Vec::with_capacity(state.tag_count as usize);
+        for tag in 1..=state.tag_count {
+            let bit = 1u32 << (tag - 1);
+            let owner = state
+                .outputs
+                .iter()
+                .find(|o| (o.active_tag_mask | o.occupied_tag_mask) & bit != 0)
+                .map(|o| o.name.clone())
+                .unwrap_or_else(|| state.active_output.clone());
+            let windows = state
+                .clients
+                .iter()
+                .filter(|c| c.tags & bit != 0 && !c.minimized)
+                .count()
+                .min(u16::MAX as usize) as u16;
+            let fullscreen = state
+                .clients
+                .iter()
+                .any(|c| c.tags & bit != 0 && c.fullscreen);
+            rows.push(WsRow::Workspace(Arc::new(Workspace {
+                id: Reactive::new(tag as WorkspaceId),
+                name: Reactive::new(tag.to_string()),
+                monitor: Reactive::new(owner),
+                monitor_id: Reactive::new(None),
+                windows: Reactive::new(windows),
+                fullscreen: Reactive::new(fullscreen),
+                last_window: Reactive::new(None),
+                last_window_title: Reactive::new(String::new()),
+                persistent: Reactive::new(false),
+                tiled_layout: Reactive::new(String::new()),
+            })));
+        }
+        rows
     }
 
     /// Linear 1..N pill row, no per-monitor dividers.
