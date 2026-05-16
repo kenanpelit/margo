@@ -19,6 +19,9 @@ use crate::menus::menu_widgets::clipboard::clipboard::{
 use crate::menus::menu_widgets::clock::{ClockInit, ClockModel};
 use crate::menus::menu_widgets::container::{ContainerInit, ContainerModel};
 use crate::menus::menu_widgets::divider::{DividerMenuWidgetInit, DividerMenuWidgetModel};
+use crate::menus::menu_widgets::margo_layout::margo_layout_menu_widget::{
+    MargoLayoutMenuWidgetInit, MargoLayoutMenuWidgetModel, MargoLayoutMenuWidgetOutput,
+};
 use crate::menus::menu_widgets::media_player::media_players::{
     MediaPlayersInit, MediaPlayersModel,
 };
@@ -123,6 +126,13 @@ pub fn build_widget(
             DividerMenuWidgetModel::builder()
                 .launch(DividerMenuWidgetInit { orientation })
                 .detach(),
+        ),
+        MenuWidget::MargoLayout => Box::new(
+            MargoLayoutMenuWidgetModel::builder()
+                .launch(MargoLayoutMenuWidgetInit {})
+                .forward(sender.output_sender(), |msg| match msg {
+                    MargoLayoutMenuWidgetOutput::CloseMenu => MenuOutput::CloseMenu,
+                }),
         ),
         MenuWidget::MediaPlayer => Box::new(
             MediaPlayersModel::builder()

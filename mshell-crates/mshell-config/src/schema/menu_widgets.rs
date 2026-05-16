@@ -20,6 +20,13 @@ pub enum MenuWidget {
     Clock,
     Container(ContainerConfig),
     Divider,
+    /// Margo layout switcher — a vertical list of the 14 layouts
+    /// the compositor knows about (tile / scroller / grid /
+    /// monocle / deck / dwindle / etc.) with the currently-active
+    /// row highlighted. Lives in the LayoutMenu surface so it
+    /// opens contiguous with the bar instead of as a separate
+    /// xdg_popup window.
+    MargoLayout,
     MediaPlayer,
     Ndns,
     Network,
@@ -69,6 +76,7 @@ impl MenuWidget {
             MenuWidget::Clock => "Clock",
             MenuWidget::Container(_) => "Container",
             MenuWidget::Divider => "Divider",
+            MenuWidget::MargoLayout => "Margo Layout",
             MenuWidget::MediaPlayer => "Media Player",
             MenuWidget::Ndns => "DNS / VPN",
             MenuWidget::Network => "Network",
@@ -115,6 +123,7 @@ impl MenuWidget {
             MenuWidget::Clock,
             MenuWidget::Container(ContainerConfig::default()),
             MenuWidget::Divider,
+            MenuWidget::MargoLayout,
             MenuWidget::MediaPlayer,
             MenuWidget::Ndns,
             MenuWidget::Network,

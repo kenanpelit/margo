@@ -15,7 +15,7 @@ use crate::bars::bar_widgets::hypr_picker::{HyprPickerInit, HyprPickerModel};
 use crate::bars::bar_widgets::margo_dock::{
     MargoDockInit, MargoDockModel, MargoDockOutput,
 };
-use crate::bars::bar_widgets::margo_layout::{MargoLayoutInit, MargoLayoutModel};
+use crate::bars::bar_widgets::margo_layout::{MargoLayoutInit, MargoLayoutModel, MargoLayoutOutput};
 use crate::bars::bar_widgets::margo_tags::{
     MargoTagsInit, MargoTagsModel,
 };
@@ -131,6 +131,10 @@ pub(crate) enum BarOutput {
     NnetworkClicked,
     NpowerClicked,
     MediaPlayerClicked,
+    /// Margo layout switcher bar pill clicked. Frame catches and
+    /// toggles the in-stack MargoLayout menu (replaces the
+    /// legacy in-popover layout chooser).
+    MargoLayoutClicked,
     CloseMenu,
 }
 
@@ -498,7 +502,9 @@ impl BarModel {
             BarWidget::MargoLayoutSwitcher => Box::new(
                 MargoLayoutModel::builder()
                     .launch(MargoLayoutInit { orientation })
-                    .detach(),
+                    .forward(sender.output_sender(), |msg| match msg {
+                        MargoLayoutOutput::Clicked => BarOutput::MargoLayoutClicked,
+                    }),
             ),
             BarWidget::MargoTags => Box::new(
                 MargoTagsModel::builder()

@@ -415,6 +415,11 @@ pub struct Menus {
     /// `quick_settings_menu` rather than replacing them so users
     /// who prefer the focused single-purpose menus keep them.
     pub dashboard_menu: Menu,
+    /// Margo layout switcher — replaces the legacy bar-popover
+    /// variant. Anchored to whichever side the user pins it to;
+    /// content is a single `MargoLayout` widget rendering a
+    /// vertical list of compositor layouts.
+    pub margo_layout_menu: Menu,
     pub left_menu_expansion_type: VerticalMenuExpansion,
     pub right_menu_expansion_type: VerticalMenuExpansion,
 }
@@ -634,6 +639,18 @@ impl Default for Menus {
                     }),
                 ],
                 minimum_width: 760,
+            },
+            margo_layout_menu: Menu {
+                // Replaces the legacy `gtk::PopoverMenu` that
+                // opened as a separate `xdg_popup` window. Lives
+                // in the frame's menu stack now so it slides out
+                // contiguous with the bar like every other menu.
+                // The single `MargoLayout` widget renders the
+                // full list of compositor layouts with the
+                // currently-active row highlighted.
+                position: Position::Top,
+                widgets: vec![MenuWidget::MargoLayout],
+                minimum_width: 280,
             },
             left_menu_expansion_type: VerticalMenuExpansion::AlwaysExpanded,
             right_menu_expansion_type: VerticalMenuExpansion::AlwaysExpanded,

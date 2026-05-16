@@ -36,6 +36,7 @@ const MEDIA_PLAYER_MENU: &str = "media_player";
 const SESSION_MENU: &str = "session";
 const SETTINGS_MENU: &str = "settings";
 const DASHBOARD_MENU: &str = "dashboard";
+const MARGO_LAYOUT_MENU: &str = "margo_layout";
 
 pub struct Frame {
     // Margo's mshell ships only horizontal bars — vertical Left /
@@ -89,6 +90,7 @@ pub struct Frame {
     /// stack rather than the generic menu-widget pipeline.
     settings_menu: Controller<mshell_settings::SettingsWindowModel>,
     dashboard_menu: Controller<MenuModel>,
+    margo_layout_menu: Controller<MenuModel>,
     /// Pending keyboard-mode switch held inside the 90 ms debounce
     /// window. Replaced on every `sync_keyboard_mode` call; the
     /// timer reads whatever value was last written.
@@ -133,6 +135,9 @@ pub enum FrameInput {
     /// doesn't linger on a monitor the user is no longer viewing.
     CloseSettingsMenu,
     ToggleDashboardMenu,
+    /// Open / close the Margo layout switcher menu (in-frame
+    /// replacement for the legacy bar popover).
+    ToggleMargoLayoutMenu,
     CloseMenus,
     ToggleScreenshareMenu(tokio::sync::oneshot::Sender<String>, String),
     BarToggleTop,
@@ -640,6 +645,7 @@ impl Component for Frame {
         let media_player_menu = Self::build_menu(&sender, MenuType::MediaPlayer);
         let session_menu = Self::build_menu(&sender, MenuType::Session);
         let dashboard_menu = Self::build_menu(&sender, MenuType::Dashboard);
+        let margo_layout_menu = Self::build_menu(&sender, MenuType::MargoLayout);
 
         // Settings doesn't go through `build_menu` because its
         // content isn't a list of `MenuWidget`s — it's a custom
@@ -808,6 +814,7 @@ impl Component for Frame {
             session_menu,
             settings_menu,
             dashboard_menu,
+            margo_layout_menu,
             pending_kbd_mode: std::rc::Rc::new(std::cell::RefCell::new(None)),
             pending_kbd_mode_timeout: std::rc::Rc::new(std::cell::RefCell::new(None)),
             _effects: effects,
@@ -966,6 +973,10 @@ impl Component for Frame {
             }
             FrameInput::ToggleDashboardMenu => {
                 self.toggle_menu(DASHBOARD_MENU, widgets);
+                self.sync_keyboard_mode(root);
+            }
+            FrameInput::ToggleMargoLayoutMenu => {
+                self.toggle_menu(MARGO_LAYOUT_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
             FrameInput::ToggleScreenshareMenu(reply, payload) => {
@@ -1724,6 +1735,23 @@ impl Frame {
             DASHBOARD_MENU,
             &dashboard_menu_position,
         );
+        // Margo Layout menu uses the same Top anchor as Clock /
+        // Dashboard since its content (a vertical layout list) is
+        // most natural under the bar. Bar pill output cascades
+        // through `BarOutput::MargoLayoutClicked` to
+        // `FrameInput::ToggleMargoLayoutMenu` which calls
+        // `toggle_menu(MARGO_LAYOUT_MENU, …)` against the same
+        // stack. Position is hardcoded `Top` for the MVP — a
+        // follow-up can wire it through `RepositionMenus` once
+        // the Settings UI exposes the per-menu position knob.
+        let margo_layout_menu_widget: Widget =
+            self.margo_layout_menu.widget().clone().upcast();
+        Self::add_to_stack(
+            widgets,
+            &margo_layout_menu_widget,
+            MARGO_LAYOUT_MENU,
+            &Position::Top,
+        );
     }
 
     fn add_to_stack(widgets: &FrameWidgets, widget: &Widget, name: &str, position: &Position) {
@@ -1774,6 +1802,7 @@ impl Frame {
                 BarOutput::NnetworkClicked => FrameInput::ToggleNnetworkMenu,
                 BarOutput::NpowerClicked => FrameInput::ToggleNpowerMenu,
                 BarOutput::MediaPlayerClicked => FrameInput::ToggleMediaPlayerMenu,
+                BarOutput::MargoLayoutClicked => FrameInput::ToggleMargoLayoutMenu,
                 BarOutput::CloseMenu => FrameInput::CloseMenus,
             })
     }

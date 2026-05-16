@@ -63,6 +63,11 @@ pub(crate) enum MenuType {
     /// `QuickSettings`; users wire a keybind / bar pill if they
     /// prefer the combined view.
     Dashboard,
+    /// Margo layout switcher. Replaces the legacy in-bar
+    /// `gtk::PopoverMenu` (xdg_popup, detached window feel)
+    /// with a regular menu surface that slides out from the
+    /// bar like every other menu.
+    MargoLayout,
 }
 
 pub(crate) struct MenuModel {
@@ -432,6 +437,23 @@ impl Component for MenuModel {
                 effects.push(move |_| {
                     let config = config.clone();
                     let minimum_width = config.menus().dashboard_menu().minimum_width().get();
+                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
+                });
+            }
+            MenuType::MargoLayout => {
+                css_class = "margo-layout-menu".to_string();
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let widgets = config.menus().margo_layout_menu().widgets().get();
+                    sender_clone.input(MenuInput::SetWidget(widgets));
+                });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let minimum_width = config.menus().margo_layout_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
                 });
             }
