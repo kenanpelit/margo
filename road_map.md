@@ -453,6 +453,65 @@ has noted but not yet filed.
 | **F9** | Per-output XDG config splitting (different keybinds per ext display) | power user | mid |
 | **F10** | `mctl actions` filter by group/tag | tooling | low |
 
+### 15.4.1 Mango 0.13+ tile-edge drag-resize port (deferred)
+
+The mango 0.13 line ships an upstream feature where the user grabs
+the **border between two tiled windows** with the mouse and drags
+to redistribute height/width across master and stack columns —
+mango calls this `resize_tile_master_horizontal` /
+`resize_tile_master_vertical` / `resize_tile_scroller` (`arrange.h`
+lines 113–747). Commit `7cd04e4` on top of that adds the
+"keep group sum = 1 by scaling siblings" smoothing pass so the
+drag feels continuous instead of step-y.
+
+**Status in margo Rust.** The `Client::master_inner_per` and
+`Client::stack_inner_per` fields exist in `state/data.rs:166-167`
+but are **dead** — never read or written by any layout algorithm
+or grab. `ResizeSurfaceGrab` only manipulates `float_geom` and
+promotes the window to floating. Backporting the smoothing
+commit alone is meaningless (G119 in the mango-backport list was
+shipped, H120 was deleted as a no-op for this reason).
+
+**Why deferred, not skipped.** The feature is genuinely useful
+for users who run tile + stack layouts and want per-row height
+control without dropping to keyboard step. niri / sway intentionally
+don't ship it, so absence is not a parity gap — but mango users
+who migrate to margo will miss it.
+
+**Scope when picked up (~900 LOC across 5+ files):**
+
+| Piece | Where | LOC |
+|---|---|---|
+| `resize_tile_master_horizontal` port | new `input/grabs_tile.rs` | ~250 |
+| `resize_tile_master_vertical` port | same | ~200 |
+| `resize_tile_scroller` port | same | ~180 |
+| `save_old_size_per` / `restore_size_per` / `set_size_per` | client snapshot helpers | ~80 |
+| Layout engine: `tile` / `right_tile` / `center_tile` / `dwindle` / `scroller` consume per-window `master_inner_per` / `stack_inner_per` / `master_mfact_per` arrays | `margo-layouts/src/algorithms.rs` | ~150 |
+| `Client` struct: `drag_begin_geom`, `cursor_in_upper_half`, `cursor_in_left_half`, `old_*_per` snapshot fields | `state/data.rs` | ~15 |
+| `start_interactive_resize`: tile-edge vs window-content hit-test | `state.rs` | ~40 |
+| Snapshot test fixtures updated for new layout context fields | `layout/snapshot_tests.rs` | ? |
+
+**Suggested PR sequencing (3 PRs):**
+
+1. **Layout engine first.** Extend `ArrangeCtx` with per-window
+   `master_inner_per` / `stack_inner_per` slices; update the 5
+   affected layout algorithms to honour them (equal-division
+   when slice is all-zero so existing behaviour is preserved);
+   update snapshot tests.
+2. **Snapshot/restore helpers + grab type.** Port `save_old_size_per`,
+   `restore_size_per`, `set_size_per`. Add `ResizeTileGrab` as a
+   separate `PointerGrab` impl (don't conflate with the floating
+   `ResizeSurfaceGrab` — different state machine).
+3. **Smoothing + scroller variant.** Land the `keep sum = 1` scale
+   pass from mango `7cd04e4`. Add `resize_tile_scroller` for the
+   scroller layout. Wire up the cursor-edge hit-test so
+   `start_interactive_resize` dispatches to `ResizeTileGrab` when
+   the grab starts on a tile border.
+
+**Trigger to pick this up.** A user actually requests it, or the
+mango-margo migration story makes it the top friction point.
+Until then this lives here so we don't re-discover the scope cold.
+
 ### 15.5 Awaiting external trigger
 
 All margo-internal long-tail items shipped in Phase 1. What's still
