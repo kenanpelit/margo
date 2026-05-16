@@ -766,7 +766,13 @@ fn parse_windowrule(cfg: &mut Config, val: &str) -> Result<()> {
                 rule.block_out_from_screencast = Some(parse_bool_s(&v))
             }
             "tags" => rule.tags = 1 << (v.parse::<u32>().unwrap_or(1).saturating_sub(1)),
-            "monitor" => rule.monitor = Some(v),
+            // `monitor:eDP-1` (windowrule context) pins a window to the
+            // named output. `monitor_name` is the tagrule key spelling
+            // for the same concept — accept it as an alias here so a
+            // user writing `monitor_name:eDP-1` on a windowrule (likely
+            // from misreading the docs that mix the two contexts) gets
+            // the expected behaviour instead of silent drop.
+            "monitor" | "monitor_name" => rule.monitor = Some(v),
             "offsetx" | "offset_x" => rule.offset_x = parse_i32_s(&v),
             "offsety" | "offset_y" => rule.offset_y = parse_i32_s(&v),
             // Window-rule width/height accept either an absolute
@@ -816,7 +822,11 @@ fn parse_windowrule(cfg: &mut Config, val: &str) -> Result<()> {
             "isnamedscratchpad" => rule.is_named_scratchpad = Some(parse_bool_s(&v)),
             "isunglobal" => rule.is_unglobal = Some(parse_bool_s(&v)),
             "isglobal" => rule.is_global = Some(parse_bool_s(&v)),
-            "isoverlay" => rule.is_overlay = Some(parse_bool_s(&v)),
+            // Accept the same three spellings as `isfloating` so
+            // user typos don't silently drop on the floor.
+            "isoverlay" | "is_overlay" | "overlay" => {
+                rule.is_overlay = Some(parse_bool_s(&v))
+            }
             "allow_shortcuts_inhibit" => rule.allow_shortcuts_inhibit = Some(parse_bool_s(&v)),
             "ignore_maximize" => rule.ignore_maximize = Some(parse_bool_s(&v)),
             "ignore_minimize" => rule.ignore_minimize = Some(parse_bool_s(&v)),

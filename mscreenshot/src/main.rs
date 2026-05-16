@@ -57,6 +57,19 @@ use clap::{Parser, Subcommand};
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
+    /// Wait N seconds before capturing. Useful for catching menus,
+    /// tooltips, or any pop-up that closes when focus moves to a
+    /// selector. Shows a single notification announcing the delay
+    /// so the user knows what's happening.
+    #[arg(long, short = 'd', global = true)]
+    delay: Option<u32>,
+    /// Override capture output for `screen`/`sc`/`sf`/`si`/`sec`.
+    /// Default behaviour reads the focused output from `mctl status`.
+    /// Useful for multi-monitor users who want a specific monitor
+    /// captured regardless of focus. Has no effect on region or
+    /// window modes.
+    #[arg(long, short = 'o', global = true)]
+    output: Option<String>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -96,6 +109,20 @@ enum Cmd {
     Open,
     /// Open the screenshot save directory via xdg-open.
     Dir,
+    /// Internal: spawned as a detached helper after a save to
+    /// drive a `notify-send --wait --action ...` and execute the
+    /// user's button click (Open / Folder / Delete). Not for
+    /// direct invocation.
+    #[command(hide = true)]
+    NotifyHandle {
+        /// Notification title to display.
+        title: String,
+        /// Notification body to display.
+        body: String,
+        /// Path of the saved screenshot — passed to xdg-open
+        /// on "Open" and rm on "Delete".
+        path: String,
+    },
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -128,9 +155,12 @@ fn main() {
 fn run() -> Result<()> {
     let cli = Cli::parse();
 
-    match cli.cmd {
+    match &cli.cmd {
         Cmd::Open => return open_latest(),
         Cmd::Dir => return open_save_dir(),
+        Cmd::NotifyHandle { title, body, path } => {
+            return run_notify_handle(title, body, path);
+        }
         _ => {}
     }
 
@@ -149,7 +179,9 @@ fn run() -> Result<()> {
         Cmd::Wc => (CaptureSource::Window, DeliveryMode::ClipOnly),
         Cmd::Wf => (CaptureSource::Window, DeliveryMode::SaveOnly),
         Cmd::Wi => (CaptureSource::Window, DeliveryMode::EditSave),
-        Cmd::Open | Cmd::Dir => unreachable!("Open/Dir handled earlier and short-circuit before this match"),
+        Cmd::Open | Cmd::Dir | Cmd::NotifyHandle { .. } => {
+            unreachable!("Open/Dir/NotifyHandle handled earlier and short-circuit before this match")
+        }
     };
 
     require("grim")?;
@@ -176,9 +208,24 @@ fn run() -> Result<()> {
         CaptureSource::Window => "Window screenshot",
     };
 
+    // `--delay N` countdown: pop one notification announcing the
+    // delay (so the user knows the capture isn't frozen), sleep,
+    // then proceed. We don't tick down per-second — that floods
+    // the notification stack and is louder than useful.
+    if let Some(seconds) = cli.delay
+        && seconds > 0
+    {
+        notify(
+            "Screenshot",
+            &format!("Capturing in {seconds}s — set up the menu / tooltip now"),
+        );
+        std::thread::sleep(std::time::Duration::from_secs(seconds as u64));
+    }
+
     // Step 1: capture into a temp file.
     let temp = make_temp_png()?;
-    capture(source, &temp).with_context(|| format!("capture ({:?})", source))?;
+    capture(source, &temp, cli.output.as_deref())
+        .with_context(|| format!("capture ({:?})", source))?;
 
     // Step 2: deliver per mode.
     match mode {
@@ -216,10 +263,10 @@ fn run() -> Result<()> {
 
 // ── Capture step ────────────────────────────────────────────
 
-fn capture(source: CaptureSource, dest: &Path) -> Result<()> {
+fn capture(source: CaptureSource, dest: &Path, output_override: Option<&str>) -> Result<()> {
     match source {
         CaptureSource::Region => capture_region(dest),
-        CaptureSource::Screen => capture_screen(dest),
+        CaptureSource::Screen => capture_screen(dest, output_override),
         CaptureSource::Window => capture_window(dest),
     }
 }
@@ -263,8 +310,13 @@ fn capture_region(dest: &Path) -> Result<()> {
     Ok(())
 }
 
-fn capture_screen(dest: &Path) -> Result<()> {
-    let output_name = focused_output_name().ok();
+fn capture_screen(dest: &Path, output_override: Option<&str>) -> Result<()> {
+    // Explicit `--output NAME` wins. Fall back to focused output
+    // when the user didn't override.
+    let output_name = match output_override {
+        Some(name) if !name.is_empty() => Some(name.to_string()),
+        _ => focused_output_name().ok(),
+    };
     let mut cmd = Command::new("grim");
     if let Some(name) = output_name.filter(|n| !n.is_empty() && n != "null") {
         cmd.args(["-o", &name]);
@@ -612,17 +664,97 @@ fn file_basename(p: &Path) -> String {
 // ── Notifications ───────────────────────────────────────────
 
 fn notify_save(label: &str, path: &Path) {
-    notify(
+    spawn_notify_action(
         "Screenshot",
         &format!("{label} saved\n{}", file_basename(path)),
+        path,
     );
 }
 
 fn notify_save_clip(label: &str, path: &Path) {
-    notify(
+    spawn_notify_action(
         "Screenshot",
         &format!("{label} saved + copied\n{}", file_basename(path)),
+        path,
     );
+}
+
+/// Spawn `mscreenshot notify-handle` as a detached background
+/// process. The helper drives `notify-send --wait --action ...`
+/// which blocks until the notification times out or the user
+/// clicks Open / Folder / Delete — keeping that wait off the
+/// main process so the screenshot dispatch returns immediately.
+fn spawn_notify_action(title: &str, body: &str, path: &Path) {
+    // current_exe() resolves to /usr/bin/mscreenshot in installed
+    // form. Falls back to the bare name (PATH lookup) if unavailable
+    // — that path is unusual but cheap to handle.
+    let exe = std::env::current_exe()
+        .unwrap_or_else(|_| std::path::PathBuf::from("mscreenshot"));
+    let _ = Command::new(&exe)
+        .args([
+            "notify-handle",
+            title,
+            body,
+            &path.display().to_string(),
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn();
+}
+
+/// Internal: drive a notify-send with three action buttons and
+/// execute whichever the user clicked. Blocks until notify-send
+/// returns (timeout or click).
+fn run_notify_handle(title: &str, body: &str, path: &str) -> Result<()> {
+    // `notify-send --wait` blocks until the notification is
+    // dismissed (timeout) or an action is clicked. The action
+    // ID is printed to stdout if clicked, nothing if timed out.
+    let output = Command::new("notify-send")
+        .args(["-a", "mscreenshot"])
+        .args(["-i", "image-x-generic"])
+        .args(["-u", "normal"])
+        .args(["-t", "8000"])
+        .args(["--wait"])
+        .args(["-A", "open=Open"])
+        .args(["-A", "folder=Show in folder"])
+        .args(["-A", "delete=Delete"])
+        .arg(title)
+        .arg(body)
+        .output()
+        .context("spawn notify-send")?;
+    let chosen = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if chosen.is_empty() {
+        return Ok(()); // timed out, no action
+    }
+    let p = std::path::Path::new(path);
+    match chosen.as_str() {
+        "open" => {
+            let _ = Command::new("xdg-open").arg(p).spawn();
+        }
+        "folder" => {
+            if let Some(parent) = p.parent() {
+                let _ = Command::new("xdg-open").arg(parent).spawn();
+            }
+        }
+        "delete" => {
+            if let Err(e) = std::fs::remove_file(p) {
+                // Notify the user that the delete failed — silent
+                // failure here would be confusing ("I clicked Delete
+                // but the file's still there").
+                notify_with_urgency(
+                    "Screenshot delete failed",
+                    &format!("{}: {e}", file_basename(p)),
+                    "critical",
+                    "dialog-error",
+                );
+            } else {
+                notify("Screenshot deleted", &file_basename(p));
+            }
+        }
+        _ => {} // unknown action token, ignore
+    }
+    Ok(())
 }
 
 fn notify_clip(label: &str) {
