@@ -35,6 +35,7 @@ const NPOWER_MENU: &str = "npower";
 const MEDIA_PLAYER_MENU: &str = "media_player";
 const SESSION_MENU: &str = "session";
 const SETTINGS_MENU: &str = "settings";
+const DASHBOARD_MENU: &str = "dashboard";
 
 pub struct Frame {
     // Margo's mshell ships only horizontal bars — vertical Left /
@@ -87,6 +88,7 @@ pub struct Frame {
     /// `MenuModel`) because its content is a custom sidebar +
     /// stack rather than the generic menu-widget pipeline.
     settings_menu: Controller<mshell_settings::SettingsWindowModel>,
+    dashboard_menu: Controller<MenuModel>,
     /// Pending keyboard-mode switch held inside the 90 ms debounce
     /// window. Replaced on every `sync_keyboard_mode` call; the
     /// timer reads whatever value was last written.
@@ -102,23 +104,9 @@ pub enum FrameInput {
     SetLeftMenuExpansionType(VerticalMenuExpansion),
     SetRightMenuExpansionType(VerticalMenuExpansion),
     RepositionMenus(
-        Position,
-        Position,
-        Position,
-        Position,
-        Position,
-        Position,
-        Position,
-        Position,
-        Position,
-        Position,
-        Position,
-        Position,
-        Position,
-        Position,
-        Position,
-        Position,
-        Position,
+        Position, Position, Position, Position, Position, Position, Position, Position, Position,
+        Position, Position, Position, Position, Position, Position, Position, Position, Position,
+        // dashboard_menu_position
         Position,
     ),
     ToggleClockMenu,
@@ -138,6 +126,7 @@ pub enum FrameInput {
     ToggleMediaPlayerMenu,
     ToggleSessionMenu,
     ToggleSettingsMenu,
+    ToggleDashboardMenu,
     CloseMenus,
     ToggleScreenshareMenu(tokio::sync::oneshot::Sender<String>, String),
     BarToggleTop,
@@ -644,6 +633,7 @@ impl Component for Frame {
         let npower_menu = Self::build_menu(&sender, MenuType::Npower);
         let media_player_menu = Self::build_menu(&sender, MenuType::MediaPlayer);
         let session_menu = Self::build_menu(&sender, MenuType::Session);
+        let dashboard_menu = Self::build_menu(&sender, MenuType::Dashboard);
 
         // Settings doesn't go through `build_menu` because its
         // content isn't a list of `MenuWidget`s — it's a custom
@@ -725,6 +715,8 @@ impl Component for Frame {
             let session_menu_position = config.menus().session_menu().position().get();
             let config = menu_config.clone();
             let settings_menu_position = config.menus().settings_menu().position().get();
+            let config = menu_config.clone();
+            let dashboard_menu_position = config.menus().dashboard_menu().position().get();
             sender_clone.input(FrameInput::RepositionMenus(
                 clock_menu_position,
                 clipboard_menu_position,
@@ -744,6 +736,7 @@ impl Component for Frame {
                 media_player_menu_position,
                 session_menu_position,
                 settings_menu_position,
+                dashboard_menu_position,
             ));
         });
 
@@ -808,6 +801,7 @@ impl Component for Frame {
             media_player_menu,
             session_menu,
             settings_menu,
+            dashboard_menu,
             pending_kbd_mode: std::rc::Rc::new(std::cell::RefCell::new(None)),
             pending_kbd_mode_timeout: std::rc::Rc::new(std::cell::RefCell::new(None)),
             _effects: effects,
@@ -861,6 +855,7 @@ impl Component for Frame {
                 media_player_menu_position,
                 session_menu_position,
                 settings_menu_position,
+                dashboard_menu_position,
             ) => {
                 sender.input(FrameInput::CloseMenus);
                 self.apply_left_and_right_side_children(
@@ -883,6 +878,7 @@ impl Component for Frame {
                     media_player_menu_position,
                     session_menu_position,
                     settings_menu_position,
+                    dashboard_menu_position,
                 );
             }
             FrameInput::ToggleClockMenu => {
@@ -951,6 +947,10 @@ impl Component for Frame {
             }
             FrameInput::ToggleSettingsMenu => {
                 self.toggle_menu(SETTINGS_MENU, widgets);
+                self.sync_keyboard_mode(root);
+            }
+            FrameInput::ToggleDashboardMenu => {
+                self.toggle_menu(DASHBOARD_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
             FrameInput::ToggleScreenshareMenu(reply, payload) => {
@@ -1552,6 +1552,7 @@ impl Frame {
         media_player_menu_position: Position,
         session_menu_position: Position,
         settings_menu_position: Position,
+        dashboard_menu_position: Position,
     ) {
         let clock_widget: Widget = self.clock_menu.widget().clone().upcast();
         let clipboard_widget: Widget = self.clipboard_menu.widget().clone().upcast();
@@ -1572,6 +1573,7 @@ impl Frame {
             self.media_player_menu.widget().clone().upcast();
         let session_menu_widget: Widget = self.session_menu.widget().clone().upcast();
         let settings_menu_widget: Widget = self.settings_menu.widget().clone().upcast();
+        let dashboard_menu_widget: Widget = self.dashboard_menu.widget().clone().upcast();
 
         widgets.left_stack.remove_all();
         widgets.right_stack.remove_all();
@@ -1679,6 +1681,12 @@ impl Frame {
             &settings_menu_widget,
             SETTINGS_MENU,
             &settings_menu_position,
+        );
+        Self::add_to_stack(
+            widgets,
+            &dashboard_menu_widget,
+            DASHBOARD_MENU,
+            &dashboard_menu_position,
         );
     }
 

@@ -57,6 +57,12 @@ pub(crate) enum MenuType {
     Npower,
     MediaPlayer,
     Session,
+    /// Combined clock + quick-settings dashboard. Renders the
+    /// hero clock card on top, then calendar + weather + the
+    /// full QS stack underneath. Coexists with `Clock` and
+    /// `QuickSettings`; users wire a keybind / bar pill if they
+    /// prefer the combined view.
+    Dashboard,
 }
 
 pub(crate) struct MenuModel {
@@ -406,6 +412,26 @@ impl Component for MenuModel {
                 effects.push(move |_| {
                     let config = config.clone();
                     let minimum_width = config.menus().session_menu().minimum_width().get();
+                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
+                });
+            }
+            MenuType::Dashboard => {
+                // Same card-stack CSS as quick-settings — dashboard
+                // reuses the .quick-settings-menu class so all the
+                // surface-variant card + hero clock rules apply.
+                css_class = "quick-settings-menu dashboard-menu".to_string();
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let widgets = config.menus().dashboard_menu().widgets().get();
+                    sender_clone.input(MenuInput::SetWidget(widgets));
+                });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let minimum_width = config.menus().dashboard_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
                 });
             }

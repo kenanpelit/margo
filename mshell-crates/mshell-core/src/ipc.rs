@@ -177,6 +177,15 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                         app_sender.emit(ShellInput::ToggleSessionMenu(None));
                     }
                 }
+                IPCCommand::Dashboard => {
+                    if let Some(active_workspace) = margo_service().active_workspace().await {
+                        app_sender.emit(ShellInput::ToggleDashboardMenu(Some(
+                            active_workspace.monitor.get(),
+                        )));
+                    } else {
+                        app_sender.emit(ShellInput::ToggleDashboardMenu(None));
+                    }
+                }
                 IPCCommand::SessionAction(action) => {
                     app_sender.emit(ShellInput::RunSessionAction(action));
                 }
@@ -354,6 +363,7 @@ enum IPCCommand {
     Nnetwork,
     Npower,
     MediaPlayer,
+    Dashboard,
     CloseAllMenus,
     VolumeUp,
     VolumeDown,
@@ -445,6 +455,9 @@ impl IPCService {
     }
     async fn session(&self) {
         let _ = self.tx.send(IPCCommand::Session);
+    }
+    async fn dashboard(&self) {
+        let _ = self.tx.send(IPCCommand::Dashboard);
     }
     async fn session_lock(&self) {
         let _ = self.tx.send(IPCCommand::SessionAction(SessionAction::Lock));

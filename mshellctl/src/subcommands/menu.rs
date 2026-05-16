@@ -63,6 +63,9 @@ pub enum MenuCommands {
         #[command(subcommand)]
         action: Option<SessionAction>,
     },
+    /// Toggle the combined dashboard menu (clock + weather +
+    /// quick settings, all in one panel)
+    Dashboard,
     /// Close all open menus
     CloseAll,
 }
@@ -142,6 +145,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
                 bus_command("SessionShutdown").await?;
             }
         },
+        MenuCommands::Dashboard => {
+            bus_command("Dashboard").await?;
+        }
         MenuCommands::CloseAll => {
             bus_command("CloseAllMenus").await?;
         }

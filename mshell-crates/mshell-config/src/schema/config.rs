@@ -397,6 +397,12 @@ pub struct Menus {
     /// Settings panel — embeds in the frame's menu stack instead
     /// of launching a separate `gtk::Window` toplevel.
     pub settings_menu: Menu,
+    /// Combined dashboard — hero (clock + weather) on top, then
+    /// calendar + the full quick-settings stack underneath. Sits
+    /// alongside the existing `clock_menu` and
+    /// `quick_settings_menu` rather than replacing them so users
+    /// who prefer the focused single-purpose menus keep them.
+    pub dashboard_menu: Menu,
     pub left_menu_expansion_type: VerticalMenuExpansion,
     pub right_menu_expansion_type: VerticalMenuExpansion,
 }
@@ -530,6 +536,50 @@ impl Default for Menus {
                 position: Position::Top,
                 widgets: vec![],
                 minimum_width: 780,
+            },
+            dashboard_menu: Menu {
+                // Top anchor with a wider min-width than the
+                // single-purpose menus — dashboard hosts the full
+                // QS stack + calendar + weather and benefits from
+                // some breathing room.
+                position: Position::Top,
+                widgets: vec![
+                    // Hero band (compact clock — same hero card
+                    // the QS panel uses).
+                    MenuWidget::Clock,
+                    MenuWidget::Spacer(SpacerConfig { size: 8 }),
+                    // Date + weather row.
+                    MenuWidget::Calendar,
+                    MenuWidget::Weather,
+                    MenuWidget::Spacer(SpacerConfig { size: 12 }),
+                    // Connectivity / audio / power / media.
+                    MenuWidget::Network,
+                    MenuWidget::Bluetooth,
+                    MenuWidget::AudioOutput,
+                    MenuWidget::AudioInput,
+                    MenuWidget::PowerProfiles,
+                    MenuWidget::MediaPlayer,
+                    MenuWidget::Spacer(SpacerConfig { size: 12 }),
+                    // Quick-action toggle rows.
+                    MenuWidget::QuickActions(QuickActionsConfig {
+                        widgets: vec![
+                            QuickActionWidget::AirplaneMode,
+                            QuickActionWidget::Nightlight,
+                            QuickActionWidget::HyprPicker,
+                            QuickActionWidget::Settings,
+                        ],
+                    }),
+                    MenuWidget::Spacer(SpacerConfig { size: 8 }),
+                    MenuWidget::QuickActions(QuickActionsConfig {
+                        widgets: vec![
+                            QuickActionWidget::Logout,
+                            QuickActionWidget::Lock,
+                            QuickActionWidget::Reboot,
+                            QuickActionWidget::Shutdown,
+                        ],
+                    }),
+                ],
+                minimum_width: 460,
             },
             left_menu_expansion_type: VerticalMenuExpansion::AlwaysExpanded,
             right_menu_expansion_type: VerticalMenuExpansion::AlwaysExpanded,
