@@ -152,6 +152,11 @@ pub(crate) enum DisplaySettingsInput {
     PreviewSweep,
     /// Clear any preview/test override and resume the schedule.
     ResetOverride,
+    /// Open the twilight preset directory in the user's file manager
+    /// (xdg-open). Shortcut for hand-editing `schedule.conf` and the
+    /// `presets/*.toml` files; `mctl twilight preset` is the
+    /// scriptable equivalent.
+    OpenPresetsFolder,
 }
 
 #[derive(Debug)]
@@ -817,7 +822,7 @@ impl Component for DisplaySettingsModel {
                     add_css_class: "label-small",
                     #[watch]
                     set_label: &format!(
-                        "Active when Mode = Schedule. Margo interpolates between consecutive presets in mired space as the day progresses. Files live in {} — edit by hand and `mctl reload` to take effect.",
+                        "Active when Mode = Schedule. Margo interpolates between consecutive presets in mired space as the day progresses. Files live in {}. Edit by hand + `mctl reload`, or use `mctl twilight preset list / set / schedule` for scripted changes.",
                         model.schedule_dir_display
                     ),
                     set_halign: gtk::Align::Start,
@@ -830,7 +835,7 @@ impl Component for DisplaySettingsModel {
                     add_css_class: "label-small",
                     #[watch]
                     set_visible: model.schedule_rows.is_empty(),
-                    set_label: "No presets loaded yet. Switch Mode to Schedule and reload — Margo seeds the directory with a six-preset starter set on first run.",
+                    set_label: "No presets loaded yet. Switch Mode (above) to Schedule — Margo seeds the directory with a six-preset starter set on first run. Equivalent CLI: `mctl twilight set mode=schedule`.",
                     set_halign: gtk::Align::Start,
                     set_xalign: 0.0,
                     set_wrap: true,
@@ -870,6 +875,12 @@ impl Component for DisplaySettingsModel {
                         set_label: "Reset override",
                         connect_clicked[sender] => move |_| {
                             sender.input(DisplaySettingsInput::ResetOverride);
+                        },
+                    },
+                    gtk::Button {
+                        set_label: "Open presets folder",
+                        connect_clicked[sender] => move |_| {
+                            sender.input(DisplaySettingsInput::OpenPresetsFolder);
                         },
                     },
                 },
@@ -1064,6 +1075,32 @@ impl Component for DisplaySettingsModel {
             }
             DisplaySettingsInput::ResetOverride => {
                 spawn_mctl(&["twilight", "reset"]);
+                return;
+            }
+            DisplaySettingsInput::OpenPresetsFolder => {
+                let dir = twilight_schedule_dir();
+                // xdg-open against a non-existent dir errors, but if
+                // the user hasn't switched to Schedule yet the seed
+                // hasn't run — create it so the file manager has
+                // somewhere to land instead of failing.
+                if !dir.exists() {
+                    if let Err(e) = std::fs::create_dir_all(dir.join("presets")) {
+                        warn!(path = %dir.display(), error = %e, "twilight: cannot create preset dir");
+                        return;
+                    }
+                }
+                let dir_str = dir.display().to_string();
+                relm4::spawn(async move {
+                    match tokio::process::Command::new("xdg-open")
+                        .arg(&dir_str)
+                        .status()
+                        .await
+                    {
+                        Ok(s) if s.success() => {}
+                        Ok(s) => warn!(?s, dir = %dir_str, "xdg-open returned non-zero"),
+                        Err(e) => warn!(error = %e, dir = %dir_str, "xdg-open spawn failed"),
+                    }
+                });
                 return;
             }
         }
