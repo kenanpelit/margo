@@ -119,8 +119,23 @@ impl Component for MenuModel {
             set_vscrollbar_policy: gtk::PolicyType::Automatic,
             set_hscrollbar_policy: gtk::PolicyType::Never,
             set_propagate_natural_height: true,
+            // Pin the viewport to exactly `minimum_width` on both
+            // axes (min_content_width = max_content_width = w).
+            // `set_width_request` alone is just a floor; the
+            // ScrolledWindow would still grow if any nested
+            // widget reported a larger natural width (the launcher
+            // result list does — long row names + the binds-strip
+            // footer push the natural well past 720). Clamping the
+            // *content area* with min == max gives GTK a hard
+            // outer dimension regardless of what the child wants,
+            // and makes the Settings → Menus minimum-width spinner
+            // actually shrink the panel.
             #[watch]
             set_width_request: model.minimum_width,
+            #[watch]
+            set_min_content_width: model.minimum_width,
+            #[watch]
+            set_max_content_width: model.minimum_width,
             set_propagate_natural_width: false,
 
             #[name = "widget_container"]
