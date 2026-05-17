@@ -31,11 +31,13 @@ pub(crate) enum MenuKind {
     Nip,
     Nnetwork,
     Nnotes,
+    Notifications,
     Npodman,
     Npower,
     QuickSettings,
     Screenshot,
     Nufw,
+    Wallpaper,
 }
 
 impl MenuKind {
@@ -50,12 +52,38 @@ impl MenuKind {
             Self::Nip => "Public IP",
             Self::Nnetwork => "Network Console",
             Self::Nnotes => "Notes Hub",
+            Self::Notifications => "Notifications",
             Self::Npodman => "Podman",
             Self::Npower => "Power Profile",
             Self::QuickSettings => "Quick Settings",
             Self::Screenshot => "Screenshot",
             Self::Nufw => "UFW Firewall",
+            Self::Wallpaper => "Wallpaper",
         }
+    }
+
+    /// All known menu kinds, in the order they should appear in
+    /// the cross-cutting Menus settings page. Kept stable so the
+    /// scroll position survives a config reload.
+    pub(crate) fn all() -> &'static [MenuKind] {
+        &[
+            MenuKind::QuickSettings,
+            MenuKind::Clock,
+            MenuKind::Dashboard,
+            MenuKind::Clipboard,
+            MenuKind::Screenshot,
+            MenuKind::Notifications,
+            MenuKind::AppLauncher,
+            MenuKind::Wallpaper,
+            MenuKind::MediaPlayer,
+            MenuKind::Npower,
+            MenuKind::Nufw,
+            MenuKind::Ndns,
+            MenuKind::Npodman,
+            MenuKind::Nnotes,
+            MenuKind::Nip,
+            MenuKind::Nnetwork,
+        ]
     }
 
     /// Snapshot the menu's current position. `_untracked` so the
@@ -73,7 +101,9 @@ impl MenuKind {
             Self::Nip => m.nip_menu().position().get_untracked(),
             Self::Nnetwork => m.nnetwork_menu().position().get_untracked(),
             Self::Nnotes => m.nnotes_menu().position().get_untracked(),
+            Self::Notifications => m.notification_menu().position().get_untracked(),
             Self::Npodman => m.npodman_menu().position().get_untracked(),
+            Self::Wallpaper => m.wallpaper_menu().position().get_untracked(),
             Self::Npower => m.npower_menu().position().get_untracked(),
             Self::QuickSettings => m.quick_settings_menu().position().get_untracked(),
             Self::Screenshot => m.screenshot_menu().position().get_untracked(),
@@ -93,7 +123,9 @@ impl MenuKind {
             Self::Nip => m.nip_menu().minimum_width().get_untracked(),
             Self::Nnetwork => m.nnetwork_menu().minimum_width().get_untracked(),
             Self::Nnotes => m.nnotes_menu().minimum_width().get_untracked(),
+            Self::Notifications => m.notification_menu().minimum_width().get_untracked(),
             Self::Npodman => m.npodman_menu().minimum_width().get_untracked(),
+            Self::Wallpaper => m.wallpaper_menu().minimum_width().get_untracked(),
             Self::Npower => m.npower_menu().minimum_width().get_untracked(),
             Self::QuickSettings => m.quick_settings_menu().minimum_width().get_untracked(),
             Self::Screenshot => m.screenshot_menu().minimum_width().get_untracked(),
@@ -113,7 +145,9 @@ impl MenuKind {
             Self::Nip => m.nip_menu().position().get(),
             Self::Nnetwork => m.nnetwork_menu().position().get(),
             Self::Nnotes => m.nnotes_menu().position().get(),
+            Self::Notifications => m.notification_menu().position().get(),
             Self::Npodman => m.npodman_menu().position().get(),
+            Self::Wallpaper => m.wallpaper_menu().position().get(),
             Self::Npower => m.npower_menu().position().get(),
             Self::QuickSettings => m.quick_settings_menu().position().get(),
             Self::Screenshot => m.screenshot_menu().position().get(),
@@ -133,7 +167,9 @@ impl MenuKind {
             Self::Nip => m.nip_menu().minimum_width().get(),
             Self::Nnetwork => m.nnetwork_menu().minimum_width().get(),
             Self::Nnotes => m.nnotes_menu().minimum_width().get(),
+            Self::Notifications => m.notification_menu().minimum_width().get(),
             Self::Npodman => m.npodman_menu().minimum_width().get(),
+            Self::Wallpaper => m.wallpaper_menu().minimum_width().get(),
             Self::Npower => m.npower_menu().minimum_width().get(),
             Self::QuickSettings => m.quick_settings_menu().minimum_width().get(),
             Self::Screenshot => m.screenshot_menu().minimum_width().get(),
@@ -152,7 +188,9 @@ impl MenuKind {
             Self::Nip => c.menus.nip_menu.position = p,
             Self::Nnetwork => c.menus.nnetwork_menu.position = p,
             Self::Nnotes => c.menus.nnotes_menu.position = p,
+            Self::Notifications => c.menus.notification_menu.position = p,
             Self::Npodman => c.menus.npodman_menu.position = p,
+            Self::Wallpaper => c.menus.wallpaper_menu.position = p,
             Self::Npower => c.menus.npower_menu.position = p,
             Self::QuickSettings => c.menus.quick_settings_menu.position = p,
             Self::Screenshot => c.menus.screenshot_menu.position = p,
@@ -171,7 +209,9 @@ impl MenuKind {
             Self::Nip => c.menus.nip_menu.minimum_width = w,
             Self::Nnetwork => c.menus.nnetwork_menu.minimum_width = w,
             Self::Nnotes => c.menus.nnotes_menu.minimum_width = w,
+            Self::Notifications => c.menus.notification_menu.minimum_width = w,
             Self::Npodman => c.menus.npodman_menu.minimum_width = w,
+            Self::Wallpaper => c.menus.wallpaper_menu.minimum_width = w,
             Self::Npower => c.menus.npower_menu.minimum_width = w,
             Self::QuickSettings => c.menus.quick_settings_menu.minimum_width = w,
             Self::Screenshot => c.menus.screenshot_menu.minimum_width = w,
@@ -191,7 +231,9 @@ impl MenuKind {
             Self::Nip => m.nip_menu().maximum_height().get_untracked(),
             Self::Nnetwork => m.nnetwork_menu().maximum_height().get_untracked(),
             Self::Nnotes => m.nnotes_menu().maximum_height().get_untracked(),
+            Self::Notifications => m.notification_menu().maximum_height().get_untracked(),
             Self::Npodman => m.npodman_menu().maximum_height().get_untracked(),
+            Self::Wallpaper => m.wallpaper_menu().maximum_height().get_untracked(),
             Self::Npower => m.npower_menu().maximum_height().get_untracked(),
             Self::QuickSettings => m.quick_settings_menu().maximum_height().get_untracked(),
             Self::Screenshot => m.screenshot_menu().maximum_height().get_untracked(),
@@ -211,7 +253,9 @@ impl MenuKind {
             Self::Nip => m.nip_menu().maximum_height().get(),
             Self::Nnetwork => m.nnetwork_menu().maximum_height().get(),
             Self::Nnotes => m.nnotes_menu().maximum_height().get(),
+            Self::Notifications => m.notification_menu().maximum_height().get(),
             Self::Npodman => m.npodman_menu().maximum_height().get(),
+            Self::Wallpaper => m.wallpaper_menu().maximum_height().get(),
             Self::Npower => m.npower_menu().maximum_height().get(),
             Self::QuickSettings => m.quick_settings_menu().maximum_height().get(),
             Self::Screenshot => m.screenshot_menu().maximum_height().get(),
@@ -230,15 +274,93 @@ impl MenuKind {
             Self::Nip => c.menus.nip_menu.maximum_height = h,
             Self::Nnetwork => c.menus.nnetwork_menu.maximum_height = h,
             Self::Nnotes => c.menus.nnotes_menu.maximum_height = h,
+            Self::Notifications => c.menus.notification_menu.maximum_height = h,
             Self::Npodman => c.menus.npodman_menu.maximum_height = h,
+            Self::Wallpaper => c.menus.wallpaper_menu.maximum_height = h,
             Self::Npower => c.menus.npower_menu.maximum_height = h,
             Self::QuickSettings => c.menus.quick_settings_menu.maximum_height = h,
             Self::Screenshot => c.menus.screenshot_menu.maximum_height = h,
             Self::Nufw => c.menus.nufw_menu.maximum_height = h,
         });
     }
+
+    /// Snapshot the menu's current widget list. Used to seed the
+    /// `MenuWidgetListModel` factory at panel-creation time.
+    pub(crate) fn read_widgets(self) -> Vec<mshell_config::schema::menu_widgets::MenuWidget> {
+        let m = config_manager().config().menus();
+        match self {
+            Self::AppLauncher => m.app_launcher_menu().widgets().get_untracked(),
+            Self::Clipboard => m.clipboard_menu().widgets().get_untracked(),
+            Self::Clock => m.clock_menu().widgets().get_untracked(),
+            Self::Dashboard => m.dashboard_menu().widgets().get_untracked(),
+            Self::MediaPlayer => m.media_player_menu().widgets().get_untracked(),
+            Self::Ndns => m.ndns_menu().widgets().get_untracked(),
+            Self::Nip => m.nip_menu().widgets().get_untracked(),
+            Self::Nnetwork => m.nnetwork_menu().widgets().get_untracked(),
+            Self::Nnotes => m.nnotes_menu().widgets().get_untracked(),
+            Self::Notifications => m.notification_menu().widgets().get_untracked(),
+            Self::Npodman => m.npodman_menu().widgets().get_untracked(),
+            Self::Wallpaper => m.wallpaper_menu().widgets().get_untracked(),
+            Self::Npower => m.npower_menu().widgets().get_untracked(),
+            Self::QuickSettings => m.quick_settings_menu().widgets().get_untracked(),
+            Self::Screenshot => m.screenshot_menu().widgets().get_untracked(),
+            Self::Nufw => m.nufw_menu().widgets().get_untracked(),
+        }
+    }
+
+    /// Tracked read — subscribes the calling effect to widget-list
+    /// changes so an external `mshellctl config reload` repaints
+    /// the panel without a UI restart.
+    pub(crate) fn tracked_widgets(self) -> Vec<mshell_config::schema::menu_widgets::MenuWidget> {
+        let m = config_manager().config().menus();
+        match self {
+            Self::AppLauncher => m.app_launcher_menu().widgets().get(),
+            Self::Clipboard => m.clipboard_menu().widgets().get(),
+            Self::Clock => m.clock_menu().widgets().get(),
+            Self::Dashboard => m.dashboard_menu().widgets().get(),
+            Self::MediaPlayer => m.media_player_menu().widgets().get(),
+            Self::Ndns => m.ndns_menu().widgets().get(),
+            Self::Nip => m.nip_menu().widgets().get(),
+            Self::Nnetwork => m.nnetwork_menu().widgets().get(),
+            Self::Nnotes => m.nnotes_menu().widgets().get(),
+            Self::Notifications => m.notification_menu().widgets().get(),
+            Self::Npodman => m.npodman_menu().widgets().get(),
+            Self::Wallpaper => m.wallpaper_menu().widgets().get(),
+            Self::Npower => m.npower_menu().widgets().get(),
+            Self::QuickSettings => m.quick_settings_menu().widgets().get(),
+            Self::Screenshot => m.screenshot_menu().widgets().get(),
+            Self::Nufw => m.nufw_menu().widgets().get(),
+        }
+    }
+
+    /// Persist a new widget list to disk. Called from the panel
+    /// when the in-UI reorder/add/remove fires.
+    pub(crate) fn write_widgets(
+        self,
+        widgets: Vec<mshell_config::schema::menu_widgets::MenuWidget>,
+    ) {
+        config_manager().update_config(|c| match self {
+            Self::AppLauncher => c.menus.app_launcher_menu.widgets = widgets,
+            Self::Clipboard => c.menus.clipboard_menu.widgets = widgets,
+            Self::Clock => c.menus.clock_menu.widgets = widgets,
+            Self::Dashboard => c.menus.dashboard_menu.widgets = widgets,
+            Self::MediaPlayer => c.menus.media_player_menu.widgets = widgets,
+            Self::Ndns => c.menus.ndns_menu.widgets = widgets,
+            Self::Nip => c.menus.nip_menu.widgets = widgets,
+            Self::Nnetwork => c.menus.nnetwork_menu.widgets = widgets,
+            Self::Nnotes => c.menus.nnotes_menu.widgets = widgets,
+            Self::Notifications => c.menus.notification_menu.widgets = widgets,
+            Self::Npodman => c.menus.npodman_menu.widgets = widgets,
+            Self::Wallpaper => c.menus.wallpaper_menu.widgets = widgets,
+            Self::Npower => c.menus.npower_menu.widgets = widgets,
+            Self::QuickSettings => c.menus.quick_settings_menu.widgets = widgets,
+            Self::Screenshot => c.menus.screenshot_menu.widgets = widgets,
+            Self::Nufw => c.menus.nufw_menu.widgets = widgets,
+        });
+    }
 }
 
+#[derive(Debug)]
 pub(crate) struct WidgetMenuSettingsModel {
     kind: MenuKind,
     position: Position,
