@@ -75,6 +75,10 @@ pub(crate) struct MenuSettingsModel {
     media_player_position: Position,
     media_player_min_width: i32,
     media_player_max_height: i32,
+    dashboard_widget_list_controller: Controller<MenuWidgetListModel>,
+    dashboard_position: Position,
+    dashboard_min_width: i32,
+    dashboard_max_height: i32,
     screenshare_position: Position,
     left_menu_expansion_type: VerticalMenuExpansion,
     right_menu_expansion_type: VerticalMenuExpansion,
@@ -143,6 +147,10 @@ pub(crate) enum MenuSettingsInput {
     MediaPlayerPositionChanged(Position),
     MediaPlayerMinWidthChanged(i32),
     MediaPlayerMaxHeightChanged(i32),
+    DashboardWidgetListChanged(Vec<MenuWidget>),
+    DashboardPositionChanged(Position),
+    DashboardMinWidthChanged(i32),
+    DashboardMaxHeightChanged(i32),
     ScreensharePositionChanged(Position),
     LeftMenuExpansionChanged(VerticalMenuExpansion),
     RightMenuExpansionChanged(VerticalMenuExpansion),
@@ -207,6 +215,10 @@ pub(crate) enum MenuSettingsInput {
     MediaPlayerPositionEffect(Position),
     MediaPlayerMinWidthEffect(i32),
     MediaPlayerMaxHeightEffect(i32),
+    DashboardWidgetListEffect(Vec<MenuWidget>),
+    DashboardPositionEffect(Position),
+    DashboardMinWidthEffect(i32),
+    DashboardMaxHeightEffect(i32),
     ScreensharePositionEffect(Position),
     LeftMenuExpansionEffect(VerticalMenuExpansion),
     RightMenuExpansionEffect(VerticalMenuExpansion),
@@ -2193,6 +2205,126 @@ impl Component for MenuSettingsModel {
 
                 gtk::Label {
                     add_css_class: "label-large-bold",
+                    set_label: "Dashboard Menu",
+                    set_halign: gtk::Align::Start,
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Position",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Where this menu should be positioned.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::DropDown {
+                        set_width_request: 150,
+                        set_valign: gtk::Align::Center,
+                        set_model: Some(&gtk::StringList::new(&Position::display_names())),
+                        #[watch]
+                        #[block_signal(dashboard_pos_handler)]
+                        set_selected: model.dashboard_position.to_index(),
+                        connect_selected_notify[sender] => move |dd| {
+                            sender.input(MenuSettingsInput::DashboardPositionChanged(
+                                Position::from_index(dd.selected())
+                            ));
+                        } @dashboard_pos_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 8,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Minimum Width",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "The minimum width of the menu.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::SpinButton {
+                        set_range: (0.0, 10000.0),
+                        set_increments: (10.0, 50.0),
+                        #[watch]
+                        #[block_signal(dashboard_min_width_handler)]
+                        set_value: model.dashboard_min_width as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(MenuSettingsInput::DashboardMinWidthChanged(s.value() as i32));
+                        } @dashboard_min_width_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Maximum Height",
+                            set_hexpand: true,
+                        },
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Viewport cap in pixels. The menu scrolls vertically past this. 0 = no cap.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::SpinButton {
+                        set_range: (0.0, 10000.0),
+                        set_increments: (10.0, 50.0),
+                        #[watch]
+                        #[block_signal(dashboard_max_height_handler)]
+                        set_value: model.dashboard_max_height as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(MenuSettingsInput::DashboardMaxHeightChanged(s.value() as i32));
+                        } @dashboard_max_height_handler,
+                    },
+                },
+
+                model.dashboard_widget_list_controller.widget().clone() {},
+
+                gtk::Separator {},
+
+                gtk::Label {
+                    add_css_class: "label-large-bold",
                     set_label: "Screen Share Menu",
                     set_halign: gtk::Align::Start,
                 },
@@ -2670,6 +2802,31 @@ impl Component for MenuSettingsModel {
         let sender_clone = sender.clone();
         effects.push(move |_| {
             let config = config_manager().config();
+            let value = config.menus().dashboard_menu().position().get();
+            sender_clone.input(MenuSettingsInput::DashboardPositionEffect(value));
+        });
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let config = config_manager().config();
+            let value = config.menus().dashboard_menu().minimum_width().get();
+            sender_clone.input(MenuSettingsInput::DashboardMinWidthEffect(value));
+        });
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let config = config_manager().config();
+            let value = config.menus().dashboard_menu().maximum_height().get();
+            sender_clone.input(MenuSettingsInput::DashboardMaxHeightEffect(value));
+        });
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let config = config_manager().config();
+            let value = config.menus().dashboard_menu().widgets().get();
+            sender_clone.input(MenuSettingsInput::DashboardWidgetListEffect(value));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let config = config_manager().config();
             let value = config.menus().screenshare_menu().position().get();
             sender_clone.input(MenuSettingsInput::ScreensharePositionEffect(value));
         });
@@ -2911,6 +3068,22 @@ impl Component for MenuSettingsModel {
             .forward(sender.input_sender(), |msg| match msg {
                 MenuWidgetListOutput::Changed(widgets) => {
                     MenuSettingsInput::MediaPlayerWidgetListChanged(widgets)
+                }
+            });
+
+        let dashboard_widget_list_controller = MenuWidgetListModel::builder()
+            .launch(MenuWidgetListInit {
+                widgets: config_manager()
+                    .config()
+                    .menus()
+                    .dashboard_menu()
+                    .widgets()
+                    .get_untracked(),
+                draw_border: true,
+            })
+            .forward(sender.input_sender(), |msg| match msg {
+                MenuWidgetListOutput::Changed(widgets) => {
+                    MenuSettingsInput::DashboardWidgetListChanged(widgets)
                 }
             });
 
@@ -3200,6 +3373,25 @@ impl Component for MenuSettingsModel {
                 .media_player_menu()
                 .maximum_height()
                 .get_untracked(),
+            dashboard_widget_list_controller,
+            dashboard_position: config_manager()
+                .config()
+                .menus()
+                .dashboard_menu()
+                .position()
+                .get_untracked(),
+            dashboard_min_width: config_manager()
+                .config()
+                .menus()
+                .dashboard_menu()
+                .minimum_width()
+                .get_untracked(),
+            dashboard_max_height: config_manager()
+                .config()
+                .menus()
+                .dashboard_menu()
+                .maximum_height()
+                .get_untracked(),
             screenshare_position: config_manager()
                 .config()
                 .menus()
@@ -3486,6 +3678,29 @@ impl Component for MenuSettingsModel {
                 self.media_player_max_height = height;
                 config_manager().update_config(|config| {
                     config.menus.media_player_menu.maximum_height = height;
+                });
+            }
+            MenuSettingsInput::DashboardWidgetListChanged(widgets) => {
+                config_manager().update_config(|config| {
+                    config.menus.dashboard_menu.widgets = widgets;
+                });
+            }
+            MenuSettingsInput::DashboardPositionChanged(position) => {
+                self.dashboard_position = position.clone();
+                config_manager().update_config(|config| {
+                    config.menus.dashboard_menu.position = position;
+                });
+            }
+            MenuSettingsInput::DashboardMinWidthChanged(width) => {
+                self.dashboard_min_width = width;
+                config_manager().update_config(|config| {
+                    config.menus.dashboard_menu.minimum_width = width;
+                });
+            }
+            MenuSettingsInput::DashboardMaxHeightChanged(height) => {
+                self.dashboard_max_height = height;
+                config_manager().update_config(|config| {
+                    config.menus.dashboard_menu.maximum_height = height;
                 });
             }
             MenuSettingsInput::NotificationsWidgetListChanged(widgets) => {
@@ -3796,6 +4011,19 @@ impl Component for MenuSettingsModel {
             }
             MenuSettingsInput::MediaPlayerMaxHeightEffect(height) => {
                 self.media_player_max_height = height;
+            }
+            MenuSettingsInput::DashboardWidgetListEffect(widgets) => {
+                self.dashboard_widget_list_controller
+                    .emit(MenuWidgetListInput::SetWidgetsEffect(widgets));
+            }
+            MenuSettingsInput::DashboardPositionEffect(position) => {
+                self.dashboard_position = position;
+            }
+            MenuSettingsInput::DashboardMinWidthEffect(width) => {
+                self.dashboard_min_width = width;
+            }
+            MenuSettingsInput::DashboardMaxHeightEffect(height) => {
+                self.dashboard_max_height = height;
             }
             MenuSettingsInput::ScreensharePositionEffect(position) => {
                 self.screenshare_position = position;
