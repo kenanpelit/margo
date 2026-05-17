@@ -66,11 +66,13 @@ impl CaptureBackend {
             return Err(ScreenshotError::CaptureFailed("no outputs found".into()));
         }
 
-        // Determine bounding box across all outputs.
-        let min_x = outputs.iter().map(|o| o.x).min().unwrap();
-        let min_y = outputs.iter().map(|o| o.y).min().unwrap();
-        let max_x = outputs.iter().map(|o| o.x + o.width).max().unwrap();
-        let max_y = outputs.iter().map(|o| o.y + o.height).max().unwrap();
+        // Determine bounding box across all outputs. The non-
+        // empty check above guarantees `Iterator::min/max`
+        // returns `Some` — `expect` documents that invariant.
+        let min_x = outputs.iter().map(|o| o.x).min().expect("outputs non-empty");
+        let min_y = outputs.iter().map(|o| o.y).min().expect("outputs non-empty");
+        let max_x = outputs.iter().map(|o| o.x + o.width).max().expect("outputs non-empty");
+        let max_y = outputs.iter().map(|o| o.y + o.height).max().expect("outputs non-empty");
         let total_w = (max_x - min_x) as u32;
         let total_h = (max_y - min_y) as u32;
 

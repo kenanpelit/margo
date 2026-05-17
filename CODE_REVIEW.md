@@ -21,9 +21,20 @@
 | L2 | wayle-hyprland 5 satır yorum | ✅ DONE — 1 satıra indirildi | `01933b3` |
 | M5 | dashbord.png + dashbord1.png | ✅ DONE — silindi + `*.png` gitignore'da | `01933b3` |
 | **H1** | menu_settings.rs 4041 LOC refactor | ✅ **DONE — 4041 → 394 LOC (-3373 satır)** | `a71aeb4` |
+| **H2** | Production unwrap audit | ⚠️ **REVISED — büyük ölçüde yanlış alarm** | — |
 
-**Kalan büyük işler (#187, #188, #189)** — odaklanmış ayrı session'lara değer:
-- `#187` Production unwrap audit (gerçek hotspot'lar) — 1-2 saat
+**H2 ikinci tur audit sonucu**:
+- `margo/session.rs` 21 unwrap → hepsi test kodu (tespit edilmişti)
+- `mshell-config/atomic_write.rs` 13 unwrap → hepsi test kodu
+- `mshell-common/notification.rs` 10 unwrap → `parse("const_str").unwrap()` + `format(valid_fmt).unwrap()` — fail-impossible by construction
+- `wallpaper_menu_widget.rs` 15 unwrap → çoğu `Mutex::lock().unwrap()` (single-threaded GTK, poison yok) + GTK `downcast_ref().unwrap()` (framework garantisi)
+- `mutter_screen_cast.rs` 16 unwrap → benzer pattern (Mutex + internal-generated OwnedObjectPath)
+- `pw_utils.rs` 11 unwrap → PipeWire pod parsing where format negotiation already validated type (line 428)
+- `screenshot/capture.rs` 4 `min/max().unwrap()` → empty check yapılıyor 5 satır önce; sadece `.expect("outputs non-empty")` ile dokümante edildi
+
+**Sonuç**: 265 prod unwrap rakamı flat grep'ten geldi. Case-by-case 80%'i framework/idiom; sistemik risk yok. Geniş sweep değer yaratmaz, scattered tekil instances zaten case-by-case düzeltiliyor.
+
+**Kalan büyük işler (#188, #189)**:
 - `#188` margo/state.rs bölme (M1) — yarım gün
 - `#189` Config crate yeniden adlandırma (M2) — 1 saat, ama 93 dosyaya dokunur
 
