@@ -269,7 +269,7 @@ impl Component for AppLauncherModel {
             gtk::Box {
                 add_css_class: "app-launcher-category-strip",
                 set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 6,
+                set_spacing: 3,
                 set_margin_bottom: 8,
                 set_halign: gtk::Align::Start,
                 set_hexpand: true,
@@ -309,7 +309,7 @@ impl Component for AppLauncherModel {
             gtk::Box {
                 add_css_class: "app-launcher-binds-strip",
                 set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 6,
+                set_spacing: 3,
                 set_margin_top: 10,
                 set_halign: gtk::Align::Start,
                 set_hexpand: true,

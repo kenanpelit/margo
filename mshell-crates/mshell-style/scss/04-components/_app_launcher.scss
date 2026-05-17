@@ -275,7 +275,12 @@
 .app-launcher-bind-chip {
   background-color: var(--surface-container);
   border-radius: 999px;
-  padding: 1px 4px 1px 1px;
+  // Tight padding so nine chips fit on one line at the user's
+  // narrowest launcher widths. Pre-fix value (1px 4px 1px 1px)
+  // contributed ~36 px of horizontal slack across all chips,
+  // which combined with the strip's spacing kept the launcher
+  // panel's measured minimum stuck around ~720 px.
+  padding: 1px 2px 1px 1px;
   // Keep chip vertical centre aligned with sibling chips even
   // when the key glyph and label have different baselines.
   min-height: 0;
@@ -287,7 +292,10 @@
   background-color: var(--surface-container-high);
   color: var(--on-surface);
   border-radius: 6px;
-  padding: 1px 6px;
+  // Same tightening pass as `.app-launcher-bind-chip` above —
+  // -4 px per chip, ×9 chips = ~36 px reclaimed off the strip's
+  // minimum so the Settings minimum_width can shrink the panel.
+  padding: 1px 4px;
   font-family: monospace;
   font-size: 0.72em;
   font-weight: 700;
@@ -300,7 +308,11 @@
   color: var(--on-surface-variant);
   opacity: 0.85;
   font-size: 0.78em;
-  padding-right: 8px;
+  // Halved (8 → 4) to recover ~36 px across the nine chips; chip
+  // strip's measured minimum used to floor the launcher panel
+  // around ~720 px and the four extra pixels per chip were a
+  // meaningful chunk of that slack.
+  padding-right: 4px;
   letter-spacing: 0.01em;
 }
 
