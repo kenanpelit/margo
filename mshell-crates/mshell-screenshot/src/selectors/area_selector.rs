@@ -35,6 +35,18 @@ struct SharedState {
     /// dragging windows around mid-selection, and the visible set
     /// rarely changes inside a single selector lifetime anyway.
     window_rects: Vec<WindowRect>,
+    /// Preview-state selection: set when the drag finishes with a
+    /// valid (size > 5) rect. Drives the sticky highlight that
+    /// lets the user nudge with arrows or commit with Enter
+    /// instead of being forced to release-commit on the spot.
+    /// `(output_name, x, y, width, height)` — coordinates are
+    /// output-local for the named output.
+    selection: RefCell<Option<(String, f64, f64, f64, f64)>>,
+    /// Output-name → (width, height) snapshot taken at startup,
+    /// used by the arrow-nudge handler to clamp the preview-state
+    /// rect to the owning output's bounds (so the user can't
+    /// slide the selection past the screen edge).
+    output_dims: std::collections::HashMap<String, (f64, f64)>,
 }
 
 impl SharedState {
@@ -68,12 +80,19 @@ where
         return;
     }
 
+    let output_dims: std::collections::HashMap<String, (f64, f64)> = outputs
+        .iter()
+        .map(|o| (o.name.clone(), (o.width as f64, o.height as f64)))
+        .collect();
+
     let state = Rc::new(SharedState {
         drag_start: Cell::new(None),
         drag_current: Cell::new(None),
         on_done: RefCell::new(Some(Box::new(on_done))),
         windows: RefCell::new(Vec::new()),
         window_rects: build_window_rects(),
+        selection: RefCell::new(None),
+        output_dims,
     });
 
     let gdk_display = gdk::Display::default().expect("no display");
@@ -126,9 +145,10 @@ fn create_overlay_window(
 
     let state_draw = Rc::clone(state);
     let da_for_draw = drawing_area.clone();
+    let output_for_draw = output.name.clone();
     drawing_area.set_draw_func(move |_area, cr, width, height| {
         let color = da_for_draw.color();
-        draw_overlay(cr, width, height, &state_draw, &color);
+        draw_overlay(cr, width, height, &state_draw, &color, &output_for_draw);
     });
 
     // ── Drag gesture ──
@@ -138,6 +158,9 @@ fn create_overlay_window(
     drag.connect_drag_begin(move |_, x, y| {
         state_begin.drag_start.set(Some((x, y)));
         state_begin.drag_current.set(Some((x, y)));
+        // A fresh drag wipes the preview-state selection — the
+        // user is starting over.
+        *state_begin.selection.borrow_mut() = None;
         // Redraw all windows so the non-active ones stay dark.
         for w in state_begin.windows.borrow().iter() {
             if let Some(child) = w.child() {
@@ -195,14 +218,27 @@ fn create_overlay_window(
                         .unwrap_or((rx, ry, rw, rh))
                 };
 
-                let region = RegionSelection {
-                    output: output_name.clone(),
-                    x: final_x as i32,
-                    y: final_y as i32,
-                    width: final_w as i32,
-                    height: final_h as i32,
-                };
-                state_end.fire(Ok(region));
+                // Stash the selection into preview state instead
+                // of firing the callback immediately. The user can
+                // now nudge it with arrows or commit it with Enter
+                // — see the keyboard handler below. Drag itself
+                // collapses (drag_start/current cleared) so a
+                // fresh drag starts a brand new rect rather than
+                // extending the preview.
+                state_end.drag_start.set(None);
+                state_end.drag_current.set(None);
+                *state_end.selection.borrow_mut() = Some((
+                    output_name.clone(),
+                    final_x,
+                    final_y,
+                    final_w,
+                    final_h,
+                ));
+                for w in state_end.windows.borrow().iter() {
+                    if let Some(child) = w.child() {
+                        child.queue_draw();
+                    }
+                }
             } else {
                 // Too small — reset and let them try again.
                 state_end.drag_start.set(None);
@@ -213,15 +249,67 @@ fn create_overlay_window(
 
     drawing_area.add_controller(drag);
 
-    // ── Keyboard: Escape to cancel ──
+    // ── Keyboard handlers ──
+    //   • Escape         → cancel (always).
+    //   • Enter / KP_Enter → commit the preview-state selection
+    //     (the one drag_end stashed) and close the overlays.
+    //   • Arrow keys     → nudge the preview-state selection by
+    //     1 px (Shift+arrow = 10 px). The selection rect itself
+    //     moves; size stays constant. Allocated area is clamped
+    //     to the owning output's bounds so the user can't slide
+    //     it past the screen edge.
     let key_ctrl = gtk4::EventControllerKey::new();
     let state_key = Rc::clone(state);
-    key_ctrl.connect_key_pressed(move |_, keyval, _, _| {
-        if keyval == gdk::Key::Escape && !state_key.is_done() {
-            state_key.fire(Err(ScreenshotError::Cancelled));
-            glib::Propagation::Stop
-        } else {
-            glib::Propagation::Proceed
+    key_ctrl.connect_key_pressed(move |_, keyval, _, modifier| {
+        if state_key.is_done() {
+            return glib::Propagation::Proceed;
+        }
+        match keyval {
+            gdk::Key::Escape => {
+                state_key.fire(Err(ScreenshotError::Cancelled));
+                glib::Propagation::Stop
+            }
+            gdk::Key::Return | gdk::Key::KP_Enter => {
+                let region = state_key
+                    .selection
+                    .borrow()
+                    .as_ref()
+                    .map(|(o, x, y, w, h)| RegionSelection {
+                        output: o.clone(),
+                        x: *x as i32,
+                        y: *y as i32,
+                        width: *w as i32,
+                        height: *h as i32,
+                    });
+                if let Some(region) = region {
+                    state_key.fire(Ok(region));
+                    glib::Propagation::Stop
+                } else {
+                    glib::Propagation::Proceed
+                }
+            }
+            gdk::Key::Up | gdk::Key::Down | gdk::Key::Left | gdk::Key::Right => {
+                let step =
+                    if modifier.contains(gdk::ModifierType::SHIFT_MASK) { 10.0 } else { 1.0 };
+                let (dx, dy) = match keyval {
+                    gdk::Key::Up => (0.0, -step),
+                    gdk::Key::Down => (0.0, step),
+                    gdk::Key::Left => (-step, 0.0),
+                    gdk::Key::Right => (step, 0.0),
+                    _ => unreachable!(),
+                };
+                if nudge_selection(&state_key, dx, dy) {
+                    for w in state_key.windows.borrow().iter() {
+                        if let Some(child) = w.child() {
+                            child.queue_draw();
+                        }
+                    }
+                    glib::Propagation::Stop
+                } else {
+                    glib::Propagation::Proceed
+                }
+            }
+            _ => glib::Propagation::Proceed,
         }
     });
     window.add_controller(key_ctrl);
@@ -244,13 +332,14 @@ fn draw_overlay(
     height: i32,
     state: &SharedState,
     outline: &gdk::RGBA,
+    this_output: &str,
 ) {
     // Dark overlay.
     cr.set_source_rgba(0.0, 0.0, 0.0, 0.45);
     cr.rectangle(0.0, 0.0, width as f64, height as f64);
     cr.fill().ok();
 
-    if let Some((sx, sy, sw, sh)) = compute_rect(state) {
+    if let Some((sx, sy, sw, sh)) = current_rect_for(state, this_output) {
         // Cut out the selected area.
         cr.set_operator(cairo::Operator::Clear);
         cr.rectangle(sx, sy, sw, sh);
@@ -329,6 +418,31 @@ fn gcd(mut a: u32, mut b: u32) -> u32 {
     a.max(1)
 }
 
+/// Nudge the preview-state selection by `(dx, dy)` pixels and
+/// clamp the result to the owning output's bounds. Returns true
+/// when the selection moved (so the caller knows to queue a
+/// redraw); false when there's no selection yet or the rect was
+/// already pinned against the requested edge.
+fn nudge_selection(state: &SharedState, dx: f64, dy: f64) -> bool {
+    let mut sel = state.selection.borrow_mut();
+    let Some((out, x, y, w, h)) = sel.as_mut().map(|s| (s.0.clone(), &mut s.1, &mut s.2, &mut s.3, &mut s.4)) else {
+        return false;
+    };
+    let (max_w, max_h) = state
+        .output_dims
+        .get(&out)
+        .copied()
+        .unwrap_or((f64::INFINITY, f64::INFINITY));
+    let new_x = (*x + dx).clamp(0.0, (max_w - *w).max(0.0));
+    let new_y = (*y + dy).clamp(0.0, (max_h - *h).max(0.0));
+    if (new_x - *x).abs() < f64::EPSILON && (new_y - *y).abs() < f64::EPSILON {
+        return false;
+    }
+    *x = new_x;
+    *y = new_y;
+    true
+}
+
 /// Replace a sloppy drag rect with a window's exact bbox when
 /// every drag edge lands within `SNAP_THRESHOLD_PX` of that
 /// window's edge on the same output. Returns the snapped
@@ -371,8 +485,22 @@ fn snap_to_window(
     best.map(|(w, _)| (w.x, w.y, w.width, w.height))
 }
 
-/// Compute the current rectangle from an in-progress drag.
-fn compute_rect(state: &SharedState) -> Option<(f64, f64, f64, f64)> {
+/// Resolve which rectangle a given output's overlay should draw.
+/// Preview-state selection wins when it's set for THIS output —
+/// that's the post-drag-end rect the user is nudging with arrow
+/// keys. Otherwise fall back to the in-progress drag rect (which
+/// is global state; on a multi-output drag every overlay sees
+/// it, but renders it at the output-local coords that match the
+/// drag origin). Returns `None` for outputs that aren't the
+/// selection owner and have no active drag — those overlays
+/// stay pure dark masks.
+fn current_rect_for(state: &SharedState, this_output: &str) -> Option<(f64, f64, f64, f64)> {
+    if let Some((owner, sx, sy, sw, sh)) = state.selection.borrow().as_ref() {
+        if owner == this_output {
+            return Some((*sx, *sy, *sw, *sh));
+        }
+        return None;
+    }
     let (sx, sy) = state.drag_start.get()?;
     let (cx, cy) = state.drag_current.get()?;
     let x = sx.min(cx);
