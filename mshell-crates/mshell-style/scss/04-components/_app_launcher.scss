@@ -184,13 +184,13 @@
 .app-launcher-item {
   background-color: transparent;
   border-radius: var(--radius-widget);
-  // Tightened vertical padding (was 8px, then 4px) — the
-  // original value read as a blank line above + below each row
+  // Tightened vertical padding (was 8px → 4px → 2px → 1px).
+  // Original value read as a blank line above + below each row
   // (every app filled four "lines" of the panel: blank / name /
-  // description / blank). 2px collapses the perceived gap as
-  // far as it can go without the hover/selected background
-  // visually touching the next row's text.
-  padding: 2px 12px;
+  // description / blank). 1px keeps the rows visually distinct
+  // via the 1px outer margin below while collapsing the gap to
+  // the minimum the panel can show.
+  padding: 1px 12px;
   margin: 1px 0;
   transition: background-color 120ms ease-in-out, color 120ms ease-in-out;
 
