@@ -448,11 +448,13 @@ impl Default for Menus {
                     MenuWidget::Weather,
                 ],
                 minimum_width: 410,
+                maximum_height: 0,
             },
             clipboard_menu: Menu {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::Clipboard],
                 minimum_width: 410,
+                maximum_height: 0,
             },
             quick_settings_menu: Menu {
                 position: Position::TopLeft,
@@ -484,11 +486,13 @@ impl Default for Menus {
                     }),
                 ],
                 minimum_width: 410,
+                maximum_height: 0,
             },
             notification_menu: Menu {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::Notifications],
                 minimum_width: 410,
+                maximum_height: 0,
             },
             screenshot_menu: Menu {
                 position: Position::TopRight,
@@ -498,16 +502,19 @@ impl Default for Menus {
                     MenuWidget::ScreenRecording,
                 ],
                 minimum_width: 410,
+                maximum_height: 0,
             },
             app_launcher_menu: Menu {
                 position: Position::TopLeft,
                 widgets: vec![MenuWidget::AppLauncher],
                 minimum_width: 410,
+                maximum_height: 0,
             },
             wallpaper_menu: Menu {
                 position: Position::Top,
                 widgets: vec![MenuWidget::ThemePicker, MenuWidget::Wallpaper],
                 minimum_width: 1200,
+                maximum_height: 0,
             },
             screenshare_menu: ScreenshareMenu {
                 position: Position::TopRight,
@@ -516,46 +523,55 @@ impl Default for Menus {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::Nufw],
                 minimum_width: 410,
+                maximum_height: 0,
             },
             ndns_menu: Menu {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::Ndns],
                 minimum_width: 420,
+                maximum_height: 0,
             },
             npodman_menu: Menu {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::Npodman],
                 minimum_width: 540,
+                maximum_height: 0,
             },
             nnotes_menu: Menu {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::Nnotes],
                 minimum_width: 480,
+                maximum_height: 0,
             },
             nip_menu: Menu {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::Nip],
                 minimum_width: 380,
+                maximum_height: 0,
             },
             nnetwork_menu: Menu {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::Nnetwork],
                 minimum_width: 460,
+                maximum_height: 0,
             },
             npower_menu: Menu {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::Npower],
                 minimum_width: 360,
+                maximum_height: 0,
             },
             media_player_menu: Menu {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::MediaPlayer],
                 minimum_width: 380,
+                maximum_height: 0,
             },
             session_menu: Menu {
                 position: Position::Top,
                 widgets: vec![MenuWidget::Session],
                 minimum_width: 420,
+                maximum_height: 0,
             },
             settings_menu: Menu {
                 // Settings is a wide / tall panel. Top anchor with
@@ -566,6 +582,7 @@ impl Default for Menus {
                 position: Position::Top,
                 widgets: vec![],
                 minimum_width: 780,
+                maximum_height: 0,
             },
             dashboard_menu: Menu {
                 // GNOME-style compound dashboard:
@@ -652,6 +669,7 @@ impl Default for Menus {
                     }),
                 ],
                 minimum_width: 760,
+                maximum_height: 0,
             },
             margo_layout_menu: Menu {
                 // Replaces the legacy `gtk::PopoverMenu` that
@@ -664,6 +682,7 @@ impl Default for Menus {
                 position: Position::Top,
                 widgets: vec![MenuWidget::MargoLayout],
                 minimum_width: 280,
+                maximum_height: 0,
             },
             left_menu_expansion_type: VerticalMenuExpansion::AlwaysExpanded,
             right_menu_expansion_type: VerticalMenuExpansion::AlwaysExpanded,
@@ -789,6 +808,14 @@ pub struct Menu {
     pub position: Position,
     pub widgets: Vec<MenuWidget>,
     pub minimum_width: i32,
+    /// Maximum content height in pixels. 0 = no cap (legacy
+    /// "grow to fit children" behaviour). When > 0, the menu's
+    /// outer ScrolledWindow caps the visible height at this value
+    /// and the inner content scrolls vertically — useful for
+    /// menus with long, scrollable result lists (app launcher,
+    /// clipboard history…) so the panel doesn't grow taller than
+    /// the user's monitor.
+    pub maximum_height: i32,
 }
 
 impl Default for Menu {
@@ -797,6 +824,7 @@ impl Default for Menu {
             position: Position::Left,
             widgets: Vec::new(),
             minimum_width: 410,
+            maximum_height: 0,
         }
     }
 }

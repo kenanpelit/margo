@@ -170,12 +170,70 @@ impl MenuKind {
             Self::Nufw => c.menus.nufw_menu.minimum_width = w,
         });
     }
+
+    fn read_max_height(self) -> i32 {
+        let m = config_manager().config().menus();
+        match self {
+            Self::AppLauncher => m.app_launcher_menu().maximum_height().get_untracked(),
+            Self::Clipboard => m.clipboard_menu().maximum_height().get_untracked(),
+            Self::Clock => m.clock_menu().maximum_height().get_untracked(),
+            Self::MediaPlayer => m.media_player_menu().maximum_height().get_untracked(),
+            Self::Ndns => m.ndns_menu().maximum_height().get_untracked(),
+            Self::Nip => m.nip_menu().maximum_height().get_untracked(),
+            Self::Nnetwork => m.nnetwork_menu().maximum_height().get_untracked(),
+            Self::Nnotes => m.nnotes_menu().maximum_height().get_untracked(),
+            Self::Npodman => m.npodman_menu().maximum_height().get_untracked(),
+            Self::Npower => m.npower_menu().maximum_height().get_untracked(),
+            Self::QuickSettings => m.quick_settings_menu().maximum_height().get_untracked(),
+            Self::Screenshot => m.screenshot_menu().maximum_height().get_untracked(),
+            Self::Nufw => m.nufw_menu().maximum_height().get_untracked(),
+        }
+    }
+
+    fn tracked_max_height(self) -> i32 {
+        let m = config_manager().config().menus();
+        match self {
+            Self::AppLauncher => m.app_launcher_menu().maximum_height().get(),
+            Self::Clipboard => m.clipboard_menu().maximum_height().get(),
+            Self::Clock => m.clock_menu().maximum_height().get(),
+            Self::MediaPlayer => m.media_player_menu().maximum_height().get(),
+            Self::Ndns => m.ndns_menu().maximum_height().get(),
+            Self::Nip => m.nip_menu().maximum_height().get(),
+            Self::Nnetwork => m.nnetwork_menu().maximum_height().get(),
+            Self::Nnotes => m.nnotes_menu().maximum_height().get(),
+            Self::Npodman => m.npodman_menu().maximum_height().get(),
+            Self::Npower => m.npower_menu().maximum_height().get(),
+            Self::QuickSettings => m.quick_settings_menu().maximum_height().get(),
+            Self::Screenshot => m.screenshot_menu().maximum_height().get(),
+            Self::Nufw => m.nufw_menu().maximum_height().get(),
+        }
+    }
+
+    fn write_max_height(self, h: i32) {
+        config_manager().update_config(|c| match self {
+            Self::AppLauncher => c.menus.app_launcher_menu.maximum_height = h,
+            Self::Clipboard => c.menus.clipboard_menu.maximum_height = h,
+            Self::Clock => c.menus.clock_menu.maximum_height = h,
+            Self::MediaPlayer => c.menus.media_player_menu.maximum_height = h,
+            Self::Ndns => c.menus.ndns_menu.maximum_height = h,
+            Self::Nip => c.menus.nip_menu.maximum_height = h,
+            Self::Nnetwork => c.menus.nnetwork_menu.maximum_height = h,
+            Self::Nnotes => c.menus.nnotes_menu.maximum_height = h,
+            Self::Npodman => c.menus.npodman_menu.maximum_height = h,
+            Self::Npower => c.menus.npower_menu.maximum_height = h,
+            Self::QuickSettings => c.menus.quick_settings_menu.maximum_height = h,
+            Self::Screenshot => c.menus.screenshot_menu.maximum_height = h,
+            Self::Nufw => c.menus.nufw_menu.maximum_height = h,
+        });
+    }
 }
 
 pub(crate) struct WidgetMenuSettingsModel {
     kind: MenuKind,
     position: Position,
     minimum_width: i32,
+    /// Maximum visible content height in pixels. 0 = no cap.
+    maximum_height: i32,
     position_model: gtk::StringList,
     _effects: EffectScope,
 }
@@ -184,8 +242,10 @@ pub(crate) struct WidgetMenuSettingsModel {
 pub(crate) enum WidgetMenuSettingsInput {
     PositionPicked(u32),
     MinWidthChanged(i32),
+    MaxHeightChanged(i32),
     PositionEffect(Position),
     MinWidthEffect(i32),
+    MaxHeightEffect(i32),
 }
 
 #[derive(Debug)]
@@ -334,6 +394,44 @@ impl Component for WidgetMenuSettingsModel {
                         } @min_width_handler,
                     },
                 },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Maximum Height",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Viewport cap in pixels. The menu scrolls vertically past this height. Set to 0 to disable the cap and let the menu grow to fit its contents.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::SpinButton {
+                        set_valign: gtk::Align::Center,
+                        // 0 = uncapped; otherwise reasonable monitor-sized range.
+                        set_range: (0.0, 2000.0),
+                        set_increments: (10.0, 50.0),
+                        set_digits: 0,
+                        #[watch]
+                        #[block_signal(max_height_handler)]
+                        set_value: model.maximum_height as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(WidgetMenuSettingsInput::MaxHeightChanged(s.value() as i32));
+                        } @max_height_handler,
+                    },
+                },
             }
         }
     }
@@ -360,11 +458,17 @@ impl Component for WidgetMenuSettingsModel {
             let w = kind.tracked_min_width();
             sender_clone.input(WidgetMenuSettingsInput::MinWidthEffect(w));
         });
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let h = kind.tracked_max_height();
+            sender_clone.input(WidgetMenuSettingsInput::MaxHeightEffect(h));
+        });
 
         let model = WidgetMenuSettingsModel {
             kind,
             position: kind.read_position(),
             minimum_width: kind.read_min_width(),
+            maximum_height: kind.read_max_height(),
             position_model,
             _effects: effects,
         };
@@ -394,8 +498,15 @@ impl Component for WidgetMenuSettingsModel {
                     self.kind.write_min_width(w);
                 }
             }
+            WidgetMenuSettingsInput::MaxHeightChanged(h) => {
+                if self.maximum_height != h {
+                    self.maximum_height = h;
+                    self.kind.write_max_height(h);
+                }
+            }
             WidgetMenuSettingsInput::PositionEffect(p) => self.position = p,
             WidgetMenuSettingsInput::MinWidthEffect(w) => self.minimum_width = w,
+            WidgetMenuSettingsInput::MaxHeightEffect(h) => self.maximum_height = h,
         }
     }
 }

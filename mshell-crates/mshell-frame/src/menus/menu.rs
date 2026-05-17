@@ -82,6 +82,13 @@ pub(crate) struct MenuModel {
     // npodman shell out on init). Mirrors the bar's guard.
     widget_kinds: Vec<MenuWidget>,
     minimum_width: i32,
+    /// Maximum visible content height in pixels. 0 = no cap
+    /// (legacy "grow to fit children" behaviour). When > 0, the
+    /// outer ScrolledWindow caps the viewport at this value and
+    /// the inner content scrolls vertically. Maps onto GTK's
+    /// `set_max_content_height` — works as advertised here
+    /// because `vscrollbar_policy` is Automatic.
+    maximum_height: i32,
     css_class: String,
     _effects: EffectScope,
 }
@@ -91,6 +98,7 @@ pub(crate) enum MenuInput {
     RevealChanged(bool),
     SetWidget(Vec<MenuWidget>),
     SetMinimumWidth(i32),
+    SetMaximumHeight(i32),
     AddHyprlandScreenshareWidget,
     ForwardHyprlandScreenshareReply(tokio::sync::oneshot::Sender<String>, String),
 }
@@ -137,6 +145,21 @@ impl Component for MenuModel {
             #[watch]
             set_max_content_width: model.minimum_width,
             set_propagate_natural_width: false,
+            // Vertical height cap. 0 (config default) maps to -1
+            // ("no cap"), so legacy menus keep their grow-to-fit
+            // behaviour unchanged. When the user sets a positive
+            // value, GTK clamps the viewport at that height and
+            // the inner content scrolls — unlike the horizontal
+            // axis, this one actually works because
+            // `vscrollbar_policy` is Automatic (GTK's
+            // `min/max_content_*` are no-ops only with the Never
+            // policy, see gtkscrolledwindow.c:1896).
+            #[watch]
+            set_max_content_height: if model.maximum_height > 0 {
+                model.maximum_height
+            } else {
+                -1
+            },
 
             #[name = "widget_container"]
             gtk::Box {
@@ -175,6 +198,13 @@ impl Component for MenuModel {
                     let minimum_width = config.menus().clock_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
                 });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let maximum_height = config.menus().clock_menu().maximum_height().get();
+                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
+                });
             }
             MenuType::Clipboard => {
                 css_class = "clipboard-menu".to_string();
@@ -191,6 +221,13 @@ impl Component for MenuModel {
                     let config = config.clone();
                     let minimum_width = config.menus().clipboard_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
+                });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let maximum_height = config.menus().clipboard_menu().maximum_height().get();
+                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
                 });
             }
             MenuType::QuickSettings => {
@@ -209,6 +246,13 @@ impl Component for MenuModel {
                     let minimum_width = config.menus().quick_settings_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
                 });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let maximum_height = config.menus().quick_settings_menu().maximum_height().get();
+                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
+                });
             }
             MenuType::Notifications => {
                 css_class = "notifications-menu".to_string();
@@ -225,6 +269,13 @@ impl Component for MenuModel {
                     let config = config.clone();
                     let minimum_width = config.menus().notification_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
+                });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let maximum_height = config.menus().notification_menu().maximum_height().get();
+                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
                 });
             }
             MenuType::Screenshot => {
@@ -243,6 +294,13 @@ impl Component for MenuModel {
                     let minimum_width = config.menus().screenshot_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
                 });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let maximum_height = config.menus().screenshot_menu().maximum_height().get();
+                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
+                });
             }
             MenuType::AppLauncher => {
                 css_class = "app-launcher-menu".to_string();
@@ -260,6 +318,13 @@ impl Component for MenuModel {
                     let minimum_width = config.menus().app_launcher_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
                 });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let maximum_height = config.menus().app_launcher_menu().maximum_height().get();
+                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
+                });
             }
             MenuType::Wallpaper => {
                 css_class = "wallpaper-menu".to_string();
@@ -276,6 +341,13 @@ impl Component for MenuModel {
                     let config = config.clone();
                     let minimum_width = config.menus().wallpaper_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
+                });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let maximum_height = config.menus().wallpaper_menu().maximum_height().get();
+                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
                 });
             }
             MenuType::HyprlandScreenshare => {
@@ -298,6 +370,13 @@ impl Component for MenuModel {
                     let minimum_width = config.menus().nufw_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
                 });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let maximum_height = config.menus().nufw_menu().maximum_height().get();
+                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
+                });
             }
             MenuType::Ndns => {
                 css_class = "ndns-menu".to_string();
@@ -314,6 +393,13 @@ impl Component for MenuModel {
                     let config = config.clone();
                     let minimum_width = config.menus().ndns_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
+                });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let maximum_height = config.menus().ndns_menu().maximum_height().get();
+                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
                 });
             }
             MenuType::Npodman => {
@@ -332,6 +418,13 @@ impl Component for MenuModel {
                     let minimum_width = config.menus().npodman_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
                 });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let maximum_height = config.menus().npodman_menu().maximum_height().get();
+                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
+                });
             }
             MenuType::Nnotes => {
                 css_class = "nnotes-menu".to_string();
@@ -348,6 +441,13 @@ impl Component for MenuModel {
                     let config = config.clone();
                     let minimum_width = config.menus().nnotes_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
+                });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let maximum_height = config.menus().nnotes_menu().maximum_height().get();
+                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
                 });
             }
             MenuType::Nip => {
@@ -366,6 +466,13 @@ impl Component for MenuModel {
                     let minimum_width = config.menus().nip_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
                 });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let maximum_height = config.menus().nip_menu().maximum_height().get();
+                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
+                });
             }
             MenuType::Nnetwork => {
                 css_class = "nnetwork-menu".to_string();
@@ -382,6 +489,13 @@ impl Component for MenuModel {
                     let config = config.clone();
                     let minimum_width = config.menus().nnetwork_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
+                });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let maximum_height = config.menus().nnetwork_menu().maximum_height().get();
+                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
                 });
             }
             MenuType::Npower => {
@@ -400,6 +514,13 @@ impl Component for MenuModel {
                     let minimum_width = config.menus().npower_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
                 });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let maximum_height = config.menus().npower_menu().maximum_height().get();
+                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
+                });
             }
             MenuType::MediaPlayer => {
                 css_class = "media-player-menu".to_string();
@@ -417,6 +538,13 @@ impl Component for MenuModel {
                     let minimum_width = config.menus().media_player_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
                 });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let maximum_height = config.menus().media_player_menu().maximum_height().get();
+                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
+                });
             }
             MenuType::Session => {
                 css_class = "session-menu".to_string();
@@ -433,6 +561,13 @@ impl Component for MenuModel {
                     let config = config.clone();
                     let minimum_width = config.menus().session_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
+                });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let maximum_height = config.menus().session_menu().maximum_height().get();
+                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
                 });
             }
             MenuType::Dashboard => {
@@ -454,6 +589,13 @@ impl Component for MenuModel {
                     let minimum_width = config.menus().dashboard_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
                 });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let maximum_height = config.menus().dashboard_menu().maximum_height().get();
+                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
+                });
             }
             MenuType::MargoLayout => {
                 css_class = "margo-layout-menu".to_string();
@@ -471,6 +613,13 @@ impl Component for MenuModel {
                     let minimum_width = config.menus().margo_layout_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
                 });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let maximum_height = config.menus().margo_layout_menu().maximum_height().get();
+                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
+                });
             }
         }
 
@@ -478,6 +627,7 @@ impl Component for MenuModel {
             widget_controllers: Vec::new(),
             widget_kinds: Vec::new(),
             minimum_width: 410,
+            maximum_height: 0,
             css_class,
             _effects: effects,
         };
@@ -594,6 +744,9 @@ impl Component for MenuModel {
             }
             MenuInput::SetMinimumWidth(width) => {
                 self.minimum_width = width;
+            }
+            MenuInput::SetMaximumHeight(height) => {
+                self.maximum_height = height;
             }
             MenuInput::AddHyprlandScreenshareWidget => {
                 let controller = Box::new(
