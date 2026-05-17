@@ -272,18 +272,28 @@ fn capture(source: CaptureSource, dest: &Path, output_override: Option<&str>) ->
 }
 
 fn capture_region(dest: &Path) -> Result<()> {
-    // W2.1 in-compositor selector: when margo's render-side
-    // selector confirms a rect, it spawns mscreenshot with
-    // `MARGO_REGION_GEOM="X,Y WxH"` set. We honour that, skipping
-    // the slurp invocation entirely — saves the second-window
-    // focus-fight + IPC round-trip that prompted the W2.1 work in
-    // the first place. Empty / unset env falls through to the
-    // legacy slurp-spawning path so users without margo's
-    // selector (and other compositors that just call mscreenshot)
-    // keep working.
+    // Region geometry source preference, in order:
+    //
+    //   1. `MARGO_REGION_GEOM` env (W2.1 path). The in-compositor
+    //      selector still uses this when it spawns mscreenshot
+    //      directly post-commit, so it stays the fast path.
+    //   2. `mshellctl screenshot select-region` IPC bridge. Reaches
+    //      into the running mshell process and reuses the rich
+    //      in-shell area selector (preview state, snap-to-window,
+    //      aspect chip, Ctrl+S / Ctrl+E shortcuts) instead of
+    //      slurp's bare overlay. Only attempted when mshellctl is
+    //      on PATH AND mshell is actually running — the call
+    //      blocks until the user commits or cancels. Cancel comes
+    //      back as an empty stdout, indistinguishable from the
+    //      slurp cancel convention.
+    //   3. `slurp` fallback. For compositors without mshell or
+    //      when mshellctl isn't installed; preserves the original
+    //      mscreenshot behaviour from before the bridge landed.
     let geom_owned = std::env::var("MARGO_REGION_GEOM").unwrap_or_default();
     let geom = if !geom_owned.trim().is_empty() {
         geom_owned.trim().to_string()
+    } else if let Some(g) = try_mshell_select_region() {
+        g
     } else {
         let g = run_capture_stdout(
             "slurp",
@@ -308,6 +318,29 @@ fn capture_region(dest: &Path) -> Result<()> {
         bail!("grim exited {status} for region capture");
     }
     Ok(())
+}
+
+/// Try `mshellctl screenshot select-region`. Returns `Some(geom)`
+/// when the bridge call succeeded and returned a geometry (which
+/// may be an empty string — the user-cancel signal), `None` when
+/// mshellctl isn't on PATH or the call itself failed. The caller
+/// treats `None` as "fall through to slurp"; an empty-string
+/// `Some("")` is treated as a real cancel (the user did launch
+/// the selector and dismissed it).
+fn try_mshell_select_region() -> Option<String> {
+    if !which("mshellctl") {
+        return None;
+    }
+    let out = Command::new("mshellctl")
+        .args(["screenshot", "select-region"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        // mshell probably isn't running — let slurp take over.
+        return None;
+    }
+    let geom = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    Some(geom)
 }
 
 fn capture_screen(dest: &Path, output_override: Option<&str>) -> Result<()> {

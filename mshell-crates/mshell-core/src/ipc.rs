@@ -171,6 +171,31 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                         payload,
                     ));
                 }
+                IPCCommand::SelectRegion(reply) => {
+                    // Bridge for mscreenshot CLI: open the in-shell
+                    // area selector and reply with "X,Y WxH" (slurp
+                    // format) when the user commits, empty string
+                    // on cancel. Runs entirely on the GTK main loop
+                    // because select_region builds layer-shell
+                    // overlays — but the wait isn't blocking,
+                    // select_screen's callback fires from the next
+                    // event-loop tick after the user commits, and
+                    // the reply channel delivers it back to the
+                    // mshellctl client.
+                    mshell_screenshot::select_screen(
+                        mshell_screenshot::ScreenSelectAreaRequest::SelectRegion,
+                        move |result| {
+                            let geom = match result {
+                                Ok(mshell_screenshot::ScreenSelection::Region(region)) => format!(
+                                    "{},{} {}x{}",
+                                    region.x, region.y, region.width, region.height
+                                ),
+                                _ => String::new(),
+                            };
+                            let _ = reply.send(geom);
+                        },
+                    );
+                }
                 IPCCommand::OpenSettings => {
                     open_settings();
                 }
@@ -248,6 +273,12 @@ enum IPCCommand {
     Lock,
     CheckLock(tokio::sync::oneshot::Sender<bool>),
     Screenshare(tokio::sync::oneshot::Sender<String>, String),
+    /// mscreenshot CLI bridge — opens the area selector and replies
+    /// with "X,Y WxH" (slurp format) when the user commits, or an
+    /// empty string when they cancel. Lets `mscreenshot area` use
+    /// the rich in-shell selector (preview state, snap, aspect
+    /// info) instead of the bare slurp overlay when mshell is up.
+    SelectRegion(tokio::sync::oneshot::Sender<String>),
     OpenSettings,
     CloseSettings,
     Inspect,
@@ -393,6 +424,16 @@ impl IPCService {
             .tx
             .send(IPCCommand::Screenshare(tx, payload.to_string()));
         rx.await.unwrap_or(String::new())
+    }
+    /// Open the in-shell area selector and block until the user
+    /// commits a rect (or cancels). Returns the geometry in slurp
+    /// format `"X,Y WxH"` on commit, empty string on cancel. Used
+    /// by `mscreenshot` CLI's region capture path so the rich
+    /// in-shell selector replaces `slurp` when mshell is running.
+    async fn select_region(&self) -> String {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let _ = self.tx.send(IPCCommand::SelectRegion(tx));
+        rx.await.unwrap_or_default()
     }
     async fn open_settings(&self) {
         let _ = self.tx.send(IPCCommand::OpenSettings);

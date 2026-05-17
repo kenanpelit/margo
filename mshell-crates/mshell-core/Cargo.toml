@@ -21,6 +21,7 @@ mshell-lockscreen.workspace = true
 mshell-notification-popups.workspace = true
 mshell-osd.workspace = true
 mshell-polkit.workspace = true
+mshell-screenshot.workspace = true
 mshell-services.workspace = true
 mshell-session.workspace = true
 mshell-settings.workspace = true

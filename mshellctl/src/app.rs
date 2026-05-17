@@ -6,6 +6,7 @@ use crate::subcommands::bar::BarCommands;
 use crate::subcommands::brightness::BrightnessCommands;
 use crate::subcommands::lock::LockCommands;
 use crate::subcommands::menu::MenuCommands;
+use crate::subcommands::screenshot::ScreenshotCommands;
 use crate::subcommands::settings::SettingsCommands;
 use crate::subcommands::wallpaper::WallpaperCommands;
 use mshell_cli_style;
@@ -63,5 +64,13 @@ pub enum Commands {
     Wallpaper {
         #[command(subcommand)]
         command: WallpaperCommands,
+    },
+    /// Bridge commands for the mscreenshot CLI — currently the
+    /// `select-region` helper that lets external tools reuse the
+    /// in-shell area selector (preview state, snap-to-window,
+    /// aspect info) instead of spawning `slurp`.
+    Screenshot {
+        #[command(subcommand)]
+        command: ScreenshotCommands,
     },
 }
