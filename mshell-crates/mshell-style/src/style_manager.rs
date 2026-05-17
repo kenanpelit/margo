@@ -17,7 +17,56 @@ use reactive_graph::effect::Effect;
 use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk::{CssProvider, STYLE_PROVIDER_PRIORITY_USER, gdk};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
-use tracing::error;
+use std::path::PathBuf;
+use tracing::{error, warn};
+
+/// Path to the cached matugen CSS — written on every successful
+/// matugen run, loaded synchronously at startup to eliminate the
+/// "compiled-in baseline → matugen completes ~300ms later" flash.
+///
+/// Lives in `$XDG_CACHE_HOME/mshell/last_theme.css` (falling back
+/// to `~/.cache/mshell/last_theme.css` when XDG_CACHE_HOME is
+/// unset). The file is overwritten atomically (write to .tmp, then
+/// rename) so a half-written cache can never load.
+fn cached_theme_path() -> PathBuf {
+    let base = std::env::var_os("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))
+        .unwrap_or_else(|| PathBuf::from("/tmp"));
+    base.join("mshell").join("last_theme.css")
+}
+
+/// Synchronously read the last successful matugen CSS, if any. Used
+/// at startup to paint the bar in the correct palette from the very
+/// first frame — the async matugen run that follows produces the
+/// same result on the steady-state path (wallpaper / theme didn't
+/// change) and the CssProvider reload is a no-op visually.
+fn read_cached_theme() -> Option<String> {
+    let path = cached_theme_path();
+    std::fs::read_to_string(&path).ok()
+}
+
+/// Atomically overwrite the cache with the latest matugen CSS.
+/// Best-effort: a failed write just means the next startup pays
+/// the matugen flash one more time; the user-facing CSS is
+/// independent of this.
+fn write_cached_theme(css: &str) {
+    let path = cached_theme_path();
+    if let Some(parent) = path.parent()
+        && let Err(err) = std::fs::create_dir_all(parent)
+    {
+        warn!(path = %parent.display(), error = %err, "cached theme: mkdir failed");
+        return;
+    }
+    let tmp = path.with_extension("css.tmp");
+    if let Err(err) = std::fs::write(&tmp, css) {
+        warn!(path = %tmp.display(), error = %err, "cached theme: tmp write failed");
+        return;
+    }
+    if let Err(err) = std::fs::rename(&tmp, &path) {
+        warn!(from = %tmp.display(), to = %path.display(), error = %err, "cached theme: rename failed");
+    }
+}
 
 pub struct StyleManagerModel {
     user_css_provider: CssProvider,
@@ -90,6 +139,20 @@ impl Component for StyleManagerModel {
         );
 
         base_css_provider.load_from_string(compiled_css());
+
+        // Synchronously load the cached matugen CSS — if a previous
+        // session wrote one. This eliminates the ~300 ms "compiled
+        // baseline → matugen completes" flash on every login after
+        // the first: the cached output produces the same palette as
+        // the about-to-run async matugen pass (wallpaper / theme
+        // didn't change), so when MatugenComplete fires later the
+        // CssProvider reload is visually a no-op. First-ever login
+        // pays the flash once because the cache file doesn't exist
+        // yet — covered by the margo-aligned compile-time baseline
+        // in `_colors.scss` so even that flash is barely visible.
+        if let Some(cached) = read_cached_theme() {
+            theme_css_provider.load_from_string(&cached);
+        }
 
         style_manager().watch_style();
 
@@ -210,6 +273,11 @@ impl Component for StyleManagerModel {
             MatugenComplete(result) => match result {
                 Ok(css) => {
                     self.theme_css_provider.load_from_string(&css);
+                    // Persist for next session's synchronous load —
+                    // see read_cached_theme in init(). Best-effort:
+                    // failures are logged at warn but don't affect
+                    // the current session.
+                    write_cached_theme(&css);
 
                     let _ = sender.output(QueueFrameRedraw);
                 }

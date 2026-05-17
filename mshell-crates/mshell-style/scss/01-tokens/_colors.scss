@@ -1,35 +1,47 @@
+// Compile-time baseline = the **Margo** static theme palette
+// (matches mshell-matugen/src/static_themes/margo.rs slot-for-slot).
+// This is what paints on the very first frame, before style_manager
+// finishes its async matugen run and overrides the :root variables.
+//
+// Keeping the baseline aligned with margo's brand theme means the
+// first-paint flash users see at first login is the same palette
+// as the steady-state theme — the most common case ("user kept
+// the default theme") becomes invisible. Once the matugen output
+// is cached to ~/.cache/mshell/last_theme.css and synchronously
+// loaded on subsequent startups, even custom themes paint correctly
+// from the first frame.
 :root {
-  --surface: #1E2326;
-  --on-surface: #D3C6AA;
-  --surface-variant: #2E383C;
-  --on-surface-variant: #9DA9A0;
-  --surface-container-highest: #414B50;
-  --surface-container-high: #374145;
-  --surface-container: #2E383C;
-  --surface-container-low: #272E33;
-  --surface-container-lowest: #1E2326;
-  --inverse-surface: #D3C6AA;
-  --inverse-on-surface: #1E2326;
-  --surface-tint: #7FBBB3;
-  --surface-tint-color: #7FBBB3;
-  --primary: #A7C080;
-  --on-primary: #1E2326;
-  --primary-container: #3C4841;
-  --on-primary-container: #A7C080;
-  --secondary: #7FBBB3;
-  --on-secondary: #1E2326;
-  --secondary-container: #384B55;
-  --on-secondary-container: #7FBBB3;
-  --tertiary: #83C092;
-  --on-tertiary: #1E2326;
-  --tertiary-container: #3C4841;
-  --on-tertiary-container: #83C092;
-  --error: #E67E80;
-  --on-error: #1E2326;
-  --error-container: #493B40;
-  --on-error-container: #E67E80;
-  --outline: #7A8478;
-  --outline-variant: #374145;
+  --surface: #282A36;
+  --on-surface: #CDD6F4;
+  --surface-variant: #44475A;
+  --on-surface-variant: #CDD6F4;
+  --surface-container-highest: #6272A4;
+  --surface-container-high: #44475A;
+  --surface-container: #44475A;
+  --surface-container-low: #282A36;
+  --surface-container-lowest: #282A36;
+  --inverse-surface: #CDD6F4;
+  --inverse-on-surface: #282A36;
+  --surface-tint: #BD93F9;
+  --surface-tint-color: #BD93F9;
+  --primary: #BD93F9;
+  --on-primary: #282A36;
+  --primary-container: #44475A;
+  --on-primary-container: #BD93F9;
+  --secondary: #FF79C6;
+  --on-secondary: #282A36;
+  --secondary-container: #44475A;
+  --on-secondary-container: #FF79C6;
+  --tertiary: #8BE9FD;
+  --on-tertiary: #282A36;
+  --tertiary-container: #44475A;
+  --on-tertiary-container: #8BE9FD;
+  --error: #FF5555;
+  --on-error: #282A36;
+  --error-container: #44475A;
+  --on-error-container: #FF5555;
+  --outline: #6272A4;
+  --outline-variant: #44475A;
 
   -gtk-icon-palette: warning var(--error), error var(--error), success var(--primary);
 
