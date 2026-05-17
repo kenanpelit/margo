@@ -926,7 +926,13 @@ fn category_icon(label: &str) -> &'static str {
         "Compositor" => "preferences-desktop-display-symbolic",
         "System" => "preferences-system-symbolic",
         "Run" => "utilities-terminal-symbolic",
-        "Insert" => "format-text-symbolic",
+        // input-keyboard-symbolic is the cross-theme name that
+        // exists in MargoMaterial, kora, breeze, and Adwaita —
+        // semantically a good fit for "type a character to
+        // insert" (symbols / emoji / clipboard paste). The
+        // previously-used "format-text-symbolic" doesn't exist in
+        // MargoMaterial and rendered as a missing-icon glyph.
+        "Insert" => "input-keyboard-symbolic",
         "Search" => "system-search-symbolic",
         "Connect" => "network-server-symbolic",
         _ => "view-list-symbolic",
