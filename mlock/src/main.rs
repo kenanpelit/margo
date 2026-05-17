@@ -54,11 +54,23 @@ fn main() -> std::process::ExitCode {
 
 fn init_logging() {
     let filter = std::env::var("MLOCK_LOG").unwrap_or_else(|_| "info".to_string());
-    // Always tee to /tmp/mlock-debug.log so the user can post-mortem
+    // Always tee to a debug log so the user can post-mortem
     // from a TTY after a stuck lock (stderr is invisible when the
     // session is locked + no terminal attached).
-    let log_path = std::env::var("MLOCK_LOG_FILE")
-        .unwrap_or_else(|_| "/tmp/mlock-debug.log".to_string());
+    //
+    // Default to `$XDG_RUNTIME_DIR/mlock-debug.log` so the file is
+    // per-user (no `/tmp/mlock-debug.log` collisions on shared
+    // machines, no symlink races in world-writable /tmp). Fall
+    // back to `/tmp/` only when XDG_RUNTIME_DIR is unset — that
+    // shouldn't happen on systemd-managed sessions, but mlock can
+    // run on weird setups (TTY-only, recovery shells) so we keep
+    // the fallback rather than refusing to log.
+    let log_path = std::env::var("MLOCK_LOG_FILE").unwrap_or_else(|_| {
+        match std::env::var("XDG_RUNTIME_DIR") {
+            Ok(dir) if !dir.is_empty() => format!("{dir}/mlock-debug.log"),
+            _ => "/tmp/mlock-debug.log".to_string(),
+        }
+    });
     let file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)

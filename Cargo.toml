@@ -117,18 +117,13 @@ zbus = "5"
 
 # Wayle service crates (audio / battery / bt / brightness / media /
 # network / sysinfo / systray / weather …). `wayle-hyprland` is
-# pinned here for the initial port; it will be replaced with an
-# in-tree margo client in Phase 2 of the mshell work.
+# intentionally excluded — replaced by the in-tree
+# `mshell-margo-client` crate that talks margo's dwl-ipc-v2 +
+# foreign-toplevel-list + state.json instead of Hyprland's socket.
 wayle-audio = "0.1"
 wayle-battery = "0.1"
 wayle-bluetooth = "0.1"
 wayle-brightness = "0.1"
-# wayle-hyprland was here for the Phase 1 import — replaced by the
-# in-tree `mshell-margo-client` crate that mirrors the same API
-# surface on top of margo's dwl-ipc-v2 / foreign-toplevel-list /
-# state.json. Leave commented out so the crate doesn't sneak back
-# in via a future copy-paste from upstream OkShell.
-# wayle-hyprland = "0.2"
 wayle-media = "0.1"
 wayle-network = "0.1"
 wayle-notification = "0.1"

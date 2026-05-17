@@ -125,9 +125,18 @@ impl Drop for CommandHistory {
 }
 
 fn default_path() -> PathBuf {
-    dirs::cache_dir()
-        .map(|d| d.join("margo").join("launcher_command_history.json"))
-        .unwrap_or_else(|| PathBuf::from("/tmp/margo_launcher_command_history.json"))
+    // Per-user XDG cache. Same fallback chain as `frecency.rs` —
+    // prefer runtime dir over /tmp/ so we don't race other users
+    // for a predictable name.
+    if let Some(d) = dirs::cache_dir() {
+        return d.join("margo").join("launcher_command_history.json");
+    }
+    if let Ok(d) = std::env::var("XDG_RUNTIME_DIR") {
+        if !d.is_empty() {
+            return PathBuf::from(d).join("margo_launcher_command_history.json");
+        }
+    }
+    PathBuf::from("/tmp/margo_launcher_command_history.json")
 }
 
 /// Public accessor for the conventional history file path —

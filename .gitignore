@@ -14,3 +14,10 @@ flake.nix
 
 # mkdocs build output (W4.3)
 /site/
+
+# Throwaway screenshots that accumulate in repo root during
+# UI work (dashbord*.png from the dashboard work, test.png
+# from screenshot-widget iterations, …). Add specific names
+# to .git/info/exclude if you want to keep one.
+*.png
+
