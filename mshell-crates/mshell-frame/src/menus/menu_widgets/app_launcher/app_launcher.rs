@@ -179,8 +179,8 @@ impl Component for AppLauncherModel {
             set_orientation: gtk::Orientation::Vertical,
 
             gtk::Box {
+                add_css_class: "app-launcher-search-row",
                 set_orientation: gtk::Orientation::Horizontal,
-                set_margin_bottom: 8,
 
                 gtk::Image {
                     add_css_class: "app-launcher-search-icon",
@@ -810,10 +810,34 @@ impl AppLauncherModel {
     }
 }
 
+/// Icon name for a category pill. Maps each category label to a
+/// themed icon that hints at the category's purpose without
+/// committing to a text label. The pill renders the icon followed
+/// by the label (icon-led layout) so the strip stays scannable
+/// without giving up the textual hint.
+///
+/// Falls back to `"view-list-symbolic"` for unknown labels — that
+/// way a future provider that lands with a fresh category still
+/// gets a sensible default until someone adds a mapping here.
+fn category_icon(label: &str) -> &'static str {
+    match label {
+        "All" => "view-grid-symbolic",
+        "Apps" => "view-app-grid-symbolic",
+        "Compositor" => "preferences-desktop-display-symbolic",
+        "System" => "preferences-system-symbolic",
+        "Run" => "utilities-terminal-symbolic",
+        "Insert" => "format-text-symbolic",
+        "Search" => "system-search-symbolic",
+        "Connect" => "network-server-symbolic",
+        _ => "view-list-symbolic",
+    }
+}
+
 /// (Re)render the category tab strip. Clears the existing children
 /// and stamps one button per category from the runtime, with the
-/// active one carrying the `selected` CSS class. Clicking a button
-/// jumps to that category.
+/// active one carrying the `selected` CSS class. Each pill is an
+/// `icon + label` pair — icon for at-a-glance recognition, label
+/// for clarity. Clicking a pill jumps directly to that category.
 fn rebuild_category_strip(
     strip: &gtk::Box,
     model: &AppLauncherModel,
@@ -833,10 +857,23 @@ fn rebuild_category_strip(
             classes.push("selected");
         }
         btn.set_css_classes(&classes);
-        let label = gtk::Label::new(Some(&cat.label));
-        label.set_margin_start(8);
-        label.set_margin_end(8);
-        btn.set_child(Some(&label));
+        btn.set_tooltip_text(Some(&cat.label));
+
+        // Pill content: icon + label in a small horizontal box. The
+        // box's spacing handles the icon→label gap; the SCSS adds
+        // breathing room on the outer pill.
+        let inner = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        inner.add_css_class("app-launcher-category-pill-content");
+
+        let img = gtk::Image::from_icon_name(category_icon(&cat.label));
+        img.add_css_class("app-launcher-category-pill-icon");
+        inner.append(&img);
+
+        let lbl = gtk::Label::new(Some(&cat.label));
+        lbl.add_css_class("app-launcher-category-pill-label");
+        inner.append(&lbl);
+
+        btn.set_child(Some(&inner));
         let sender_clone = sender.clone();
         let label_str = cat.label.clone();
         btn.connect_clicked(move |_| {

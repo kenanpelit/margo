@@ -1,75 +1,130 @@
 @use "../03-primitives/buttons";
 
+// ── App Launcher — clock-menu visual language ───────────────────
+//
+// Mirrors the `_clock.scss` aesthetic: rounded surface-variant
+// card containing the result list, primary-tint selection state,
+// pill-shape category chips at the top, and a focused search
+// header that picks up the accent on focus. Three vertical bands
+// stacked inside the menu surface:
+//
+//   ┌─────────────────────────────────────────────┐
+//   │  🔍  search entry              ~  👁         │  search header (primary accent on focus)
+//   ├─────────────────────────────────────────────┤
+//   │  [All] [Apps] [Compositor] [System] [Run] … │  category pill strip
+//   ├─────────────────────────────────────────────┤
+//   │  ┌─────────────────────────────────────────┐│
+//   │  │  1  🦊  Firefox                       ★ ││
+//   │  │  2  📁  Files                            ││  rows on a single surface-variant
+//   │  │  3  ⚙️   Settings                        ││  card; selected row picks up primary
+//   │  │ …                                         ││  tint with on-primary icon + label
+//   │  └─────────────────────────────────────────┘│
+//   └─────────────────────────────────────────────┘
+//
+// Shared tokens: --radius-widget for the card, --primary +
+// --on-primary for the accent state, --surface-variant for the
+// list card background, --surface-container-high for hover.
+
+// ── Search header ────────────────────────────────────────────────
+//
+// The GtkEntry itself uses the .ok-entry primitive; we wrap it
+// with .app-launcher-search-row which adds breathing room and
+// stamps the focus accent.
+
+.app-launcher-search-row {
+  margin-bottom: 10px;
+}
+
+// Larger, bolder magnifier glyph that picks up the primary tint
+// to match the calendar-hero day number tone. Sits left of the
+// search entry.
 .app-launcher-search-icon {
-  color: var(--on-surface);
-  -gtk-icon-size: var(--icon-md);
-  padding: 4px 4px 4px 2px;
-}
-
-.app-launcher-check checkmark {
-  color: var(--on-surface);
-  -gtk-icon-size: var(--icon-sm);
-}
-
-.app-launcher-check check {
-  min-width: 14px;
-  min-height: 14px;
-}
-
-.app-launcher-item {
-  transition: padding-left 200ms ease-in-out;
-
-  &.selected {
-    padding-left: 30px;
-  }
-
-  image {
-    -gtk-icon-size: var(--icon-md);
-  }
-}
-
-// "1".."9" digit shown on the first nine result rows; pressing
-// Ctrl+N activates the matching row. Small, monospace-ish, dim
-// by default so it reads as a hint rather than a primary label.
-.app-launcher-quick-key {
-  color: var(--on-surface-variant);
-  opacity: 0.55;
-  font-feature-settings: "tnum";
-  font-size: 0.75em;
-  min-width: 14px;
-}
-
-// ★ rendered when an item is pinned. Accent-coloured + slightly
-// inset from the right edge so it reads as a state badge.
-.app-launcher-pin-marker {
   color: var(--primary);
-  font-size: 0.85em;
-  opacity: 0.9;
+  -gtk-icon-size: var(--icon-md);
+  padding: 4px 10px 4px 4px;
 }
 
-// Fuzzy / exact indicator: small "~/=" next to the search entry.
-// One-character label rendered in the on-surface-variant tone —
-// flips between glyphs based on the runtime's exact-search flag
-// (toggled via Ctrl+E).
+// Search entry — bigger font + accent ring on focus so it reads
+// as the screen's primary input affordance.
+.app-launcher-search-row > entry,
+.app-launcher-search-row entry.ok-entry {
+  background-color: var(--surface-container);
+  color: var(--on-surface);
+  border-radius: var(--radius-widget);
+  padding: 9px 12px;
+  font-size: 1.05em;
+  border: 2px solid transparent;
+  transition: border-color 120ms ease-in-out, background-color 120ms ease-in-out;
+
+  &:focus,
+  &:focus-within {
+    border-color: var(--primary);
+    background-color: var(--surface-container-high);
+  }
+}
+
+// Fuzzy / exact indicator chip. Renders as a small rounded badge
+// instead of a bare glyph so the state reads at a glance — the
+// background flips primary when exact mode is on.
 .app-launcher-exact-mode {
+  background-color: var(--surface-container);
   color: var(--on-surface-variant);
-  opacity: 0.65;
+  border-radius: 999px;
+  padding: 2px 9px;
   font-family: monospace;
-  font-size: 0.9em;
+  font-size: 0.85em;
+  font-weight: 600;
+  min-height: 0;
+  margin: 0 4px;
 }
 
-// Tab strip rendered above the result list. One pill per provider
-// category (Apps / Compositor / System / Run / Insert / Search /
-// Connect, plus implicit "All"). Cycled via Tab / Shift+Tab; pills
-// also accept direct mouse clicks.
+// Show-hidden eye button (existing `ok-button-surface` primitive
+// handles the visual; we just give it a fixed shape so it sits
+// flush with the search entry).
+.app-launcher-search-row > button {
+  border-radius: var(--radius-widget);
+  padding: 6px 10px;
+  margin-left: 4px;
+}
+
+// ── Category pill strip ─────────────────────────────────────────
+//
+// One pill per provider category. Active pill picks up primary
+// accent (matches "today" highlight in calendar grid).
+.app-launcher-category-strip {
+  margin-bottom: 10px;
+  // 6 px gap between pills — keeps the strip compact but
+  // tappable without overlap.
+}
+
 .app-launcher-category-pill {
-  padding: 2px 0;
+  padding: 3px 0;
   border-radius: 999px;
   background-color: var(--surface-container);
   color: var(--on-surface-variant);
-  font-size: 0.78em;
+  font-size: 0.82em;
+  font-weight: 500;
+  letter-spacing: 0.02em;
   min-height: 0;
-  transition: background-color 120ms ease-in-out, color 120ms ease-in-out;
+  transition: background-color 120ms ease-in-out, color 120ms ease-in-out,
+    font-weight 120ms ease-in-out;
+
+  // Icon+label box inside the pill carries the horizontal padding
+  // so GTK button's intrinsic min-width doesn't push pills wider.
+  > .app-launcher-category-pill-content {
+    padding: 2px 12px;
+  }
+
+  // Icon sits a hair larger than the surrounding label so the
+  // pill reads icon-first when scanning the row.
+  .app-launcher-category-pill-icon {
+    -gtk-icon-size: 14px;
+  }
+
+  .app-launcher-category-pill-label {
+    // Inherits the pill's color; this rule exists only as a hook
+    // for future per-category accent overrides.
+  }
 
   &:hover {
     background-color: var(--surface-container-high);
@@ -79,5 +134,122 @@
   &.selected {
     background-color: var(--primary);
     color: var(--on-primary);
+    font-weight: 600;
+
+    .app-launcher-category-pill-icon,
+    .app-launcher-category-pill-label {
+      color: var(--on-primary);
+    }
   }
+}
+
+// ── Result list card ────────────────────────────────────────────
+//
+// Result rows live on a clearly inset card — darker than the
+// surrounding menu surface so the list reads as a focused "well"
+// rather than blending into the chrome.
+//
+// Margo's brand palette has a tight value range (#282A36 surface,
+// #44475A surface-variant, #6272A4 outline) — picking surface-
+// container-lowest gives the deepest tone, then a subtle primary
+// outline-tint border establishes the card edge without competing
+// with the row hover/selection treatments below. The combination
+// keeps the same calendar-grid-card "tile inside the panel" shape
+// while feeling distinctly margo (the Dracula-style dark cool
+// palette) rather than the previous mid-grey wash.
+.app-launcher-menu-widget > scrolledwindow {
+  background-color: var(--surface-container-lowest);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-widget);
+  padding: 6px;
+}
+
+// ── Result row ──────────────────────────────────────────────────
+//
+// Default: transparent, on-surface-variant text.
+// Hover: surface-container-high (the same colour the calendar
+//        prev/next buttons use on hover, so the whole shell feels
+//        consistent under the pointer).
+// Selected (keyboard nav): primary accent — drops the icon /
+//        label / pin marker / quick-key to the on-primary tone
+//        so contrast survives the tint swap.
+.app-launcher-item {
+  background-color: transparent;
+  border-radius: var(--radius-widget);
+  padding: 8px 12px;
+  margin: 1px 0;
+  transition: background-color 120ms ease-in-out, color 120ms ease-in-out;
+
+  image {
+    -gtk-icon-size: var(--icon-md);
+  }
+
+  &:hover {
+    background-color: var(--surface-container-high);
+  }
+
+  &.selected {
+    background-color: var(--primary);
+    color: var(--on-primary);
+
+    image {
+      color: var(--on-primary);
+    }
+
+    .label-medium-bold,
+    .label-small {
+      color: var(--on-primary);
+    }
+
+    // Quick-key digit on a selected row picks up an inverted-but-
+    // still-dim tone so it stays a hint, not a competing primary
+    // label.
+    .app-launcher-quick-key {
+      color: var(--on-primary);
+      opacity: 0.75;
+    }
+
+    .app-launcher-pin-marker {
+      color: var(--on-primary);
+      opacity: 1;
+    }
+  }
+}
+
+// ── Quick-activate digits ───────────────────────────────────────
+//
+// "1".."9" hint at the start of the first nine rows. Renders as a
+// faded mono-numeric label — Ctrl+N activates the matching row.
+.app-launcher-quick-key {
+  color: var(--on-surface-variant);
+  opacity: 0.55;
+  font-family: monospace;
+  font-feature-settings: "tnum";
+  font-size: 0.78em;
+  font-weight: 600;
+  min-width: 16px;
+  padding: 0 4px;
+}
+
+// ── Pin marker ──────────────────────────────────────────────────
+//
+// ★ glyph at the end of pinned rows. Accent-coloured by default,
+// flips to on-primary when the row is the selection (see above).
+.app-launcher-pin-marker {
+  color: var(--primary);
+  font-size: 0.9em;
+  opacity: 0.95;
+  padding: 0 4px;
+}
+
+// ── Legacy / shared classes still in use elsewhere ──────────────
+
+.app-launcher-check checkmark {
+  color: var(--on-surface);
+  -gtk-icon-size: var(--icon-sm);
+}
+
+.app-launcher-check check {
+  min-width: 14px;
+  min-height: 14px;
 }
