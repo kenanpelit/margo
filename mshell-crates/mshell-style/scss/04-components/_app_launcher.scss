@@ -242,6 +242,60 @@
   padding: 0 4px;
 }
 
+// ── Keybind hint footer ─────────────────────────────────────────
+//
+// Walker-style row of small "key + label" chips at the bottom of
+// the launcher. Always-on bindings (↵ Activate / Tab Categories /
+// Esc Close / Ctrl+E Exact / Ctrl+R Last) anchor the strip;
+// contextual ones (Pin / Unpin / Delete / Alt action) only render
+// when the selected row supports them. Each chip is a horizontal
+// box with a keycap-styled label on the left and a regular caption
+// on the right.
+.app-launcher-binds-strip {
+  // Subtle top divider line so the footer reads as a distinct
+  // band, but no card chrome — keeps the menu's visual weight
+  // on the result list above.
+  border-top: 1px solid var(--outline-variant);
+  padding-top: 8px;
+  // Wrap when there are too many chips to fit on one line so
+  // contextual hints (Pin / Remove / Alt action) don't push
+  // always-on ones off-screen on narrow monitors. (GtkBox doesn't
+  // wrap by itself, but if we ever swap this for a FlowBox the
+  // chip styles below keep working.)
+}
+
+.app-launcher-bind-chip {
+  background-color: var(--surface-container);
+  border-radius: 999px;
+  padding: 1px 4px 1px 1px;
+  // Keep chip vertical centre aligned with sibling chips even
+  // when the key glyph and label have different baselines.
+  min-height: 0;
+}
+
+// The keycap. Slightly darker bg + bold mono font so it visually
+// reads as a key chip, not a regular label.
+.app-launcher-bind-key {
+  background-color: var(--surface-container-high);
+  color: var(--on-surface);
+  border-radius: 6px;
+  padding: 1px 6px;
+  font-family: monospace;
+  font-size: 0.72em;
+  font-weight: 700;
+}
+
+// Plain caption that follows the keycap. Lower-contrast so the
+// row reads as "press [KEY] to <action>" rather than two equal
+// halves.
+.app-launcher-bind-label {
+  color: var(--on-surface-variant);
+  opacity: 0.85;
+  font-size: 0.78em;
+  padding-right: 8px;
+  letter-spacing: 0.01em;
+}
+
 // ── Legacy / shared classes still in use elsewhere ──────────────
 
 .app-launcher-check checkmark {

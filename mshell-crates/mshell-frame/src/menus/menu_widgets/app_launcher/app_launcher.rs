@@ -263,6 +263,20 @@ impl Component for AppLauncherModel {
                 #[name = "apps_box"]
                 gtk::Box {},
             },
+
+            // Keybind hint strip — walker-style footer that lists
+            // the currently-relevant keyboard shortcuts. Refreshed
+            // any time the selection changes so contextual binds
+            // (alt action, delete, pin) only appear when they
+            // apply to the focused row.
+            #[name = "binds_strip"]
+            gtk::Box {
+                add_css_class: "app-launcher-binds-strip",
+                set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 6,
+                set_margin_top: 10,
+                set_halign: gtk::Align::Start,
+            },
         }
     }
 
@@ -493,10 +507,12 @@ impl Component for AppLauncherModel {
         widgets.apps_box.append(model.dynamic_box.widget());
         widgets.root.add_controller(key_controller);
 
-        // Initial category strip + result render. Both depend on
-        // the runtime being constructed so we run them after the
-        // model is built but before the first frame.
+        // Initial category strip + binds strip + result render.
+        // All three depend on the runtime being constructed so we
+        // run them after the model is built but before the first
+        // frame.
         rebuild_category_strip(&widgets.category_strip, &model, &sender);
+        rebuild_binds_strip(&widgets.binds_strip, &model);
 
         sender.input(AppLauncherInput::FilterChanged(String::new()));
 
@@ -671,6 +687,12 @@ impl Component for AppLauncherModel {
             }
         }
 
+        // Keep the bind-hint footer in sync with the current
+        // selection / category / pin / exact state. Cheap (≤ 7
+        // chips) and the strip is highly contextual, so a refresh
+        // after every input keeps the displayed shortcuts honest.
+        rebuild_binds_strip(&widgets.binds_strip, self);
+
         self.update_view(widgets, sender);
     }
 }
@@ -807,6 +829,84 @@ impl AppLauncherModel {
                 return;
             }
         }
+    }
+}
+
+/// One keybind hint = visible key chip + caption. Carried as
+/// owned strings so the helper is free of lifetimes when called
+/// from `rebuild_binds_strip`.
+struct BindHint {
+    key: &'static str,
+    label: &'static str,
+}
+
+/// (Re)render the keybind hint strip at the bottom of the launcher.
+/// Walker-style: each hint is a small chip showing the key combo
+/// followed by what it does. The list is built contextually from
+/// the selected row's capabilities — Pin only appears if the row
+/// has a `usage_key`, Delete only if its provider opts in via
+/// `can_delete`, Alt Action only if the provider returns an
+/// `alt_action` for it. The always-on bindings (Activate / Tab /
+/// Esc / Ctrl+1-9) anchor the strip so it never collapses below
+/// a useful minimum size.
+fn rebuild_binds_strip(strip: &gtk::Box, model: &AppLauncherModel) {
+    // Tear down old chips. GTK4 has no `clear()`.
+    while let Some(child) = strip.first_child() {
+        strip.remove(&child);
+    }
+
+    let mut hints: Vec<BindHint> = vec![
+        BindHint { key: "↵",       label: "Activate"   },
+        BindHint { key: "Ctrl 1-9", label: "Quick"     },
+        BindHint { key: "Tab",     label: "Categories" },
+    ];
+
+    // Contextual chips. Only show what the selected row supports
+    // so the strip is honest about what actually works right now.
+    let selected = model
+        .selected_id
+        .as_ref()
+        .and_then(|id| model.results.iter().find(|d| &d.item.id == id));
+    if let Some(d) = selected {
+        let item = &d.item;
+        // Alt action — Ctrl+Enter does something only if the
+        // provider returned an alt_action closure.
+        if model.runtime.borrow().alt_action(item).is_some() {
+            hints.push(BindHint { key: "Ctrl ↵", label: "Alt action" });
+        }
+        // Pin — needs a usage_key (calculator results don't have
+        // one; pinning them would be a no-op).
+        if item.usage_key.is_some() {
+            hints.push(BindHint {
+                key: "Ctrl ⇧ P",
+                label: if d.pinned { "Unpin" } else { "Pin" },
+            });
+        }
+        // Delete — only when the provider claims the row.
+        if model.runtime.borrow().can_delete(item) {
+            hints.push(BindHint { key: "Del", label: "Remove" });
+        }
+    }
+
+    // Always-on tail — search-entry-level shortcuts that apply
+    // regardless of selection.
+    hints.push(BindHint { key: "Ctrl E", label: "Exact" });
+    hints.push(BindHint { key: "Ctrl R", label: "Last" });
+    hints.push(BindHint { key: "Esc",   label: "Close" });
+
+    for hint in &hints {
+        let chip = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+        chip.add_css_class("app-launcher-bind-chip");
+
+        let key_lbl = gtk::Label::new(Some(hint.key));
+        key_lbl.add_css_class("app-launcher-bind-key");
+        chip.append(&key_lbl);
+
+        let cap_lbl = gtk::Label::new(Some(hint.label));
+        cap_lbl.add_css_class("app-launcher-bind-label");
+        chip.append(&cap_lbl);
+
+        strip.append(&chip);
     }
 }
 
