@@ -398,8 +398,13 @@ impl Component for AppLauncherModel {
             .detach();
 
         // Keyboard navigation — the full power-user binding set. See
-        // module-level docs for the table.
+        // module-level docs for the table. Capture phase so our
+        // handler runs *before* the search entry's default Tab
+        // behaviour (which moves focus to the next widget and would
+        // otherwise swallow Tab before our category-cycle code
+        // could see it).
         let key_controller = gtk::EventControllerKey::new();
+        key_controller.set_propagation_phase(gtk::PropagationPhase::Capture);
         let sender_clone = sender.clone();
         key_controller.connect_key_pressed(move |_, key, _, modifier| {
             let ctrl = modifier.contains(gdk::ModifierType::CONTROL_MASK);
@@ -881,71 +886,85 @@ impl AppLauncherModel {
     }
 }
 
-/// One keybind hint = visible key chip + caption. Carried as
-/// owned strings so the helper is free of lifetimes when called
-/// from `rebuild_binds_strip`.
+/// One keybind hint = visible key chip + caption + whether it
+/// applies to the current selection. Always-rendered hints have
+/// `applicable: true` regardless of state; contextual hints (Pin /
+/// Remove / Alt) flip their `applicable` flag based on the
+/// selected row's capabilities.
+///
+/// We render *every* hint every time — the inapplicable ones go
+/// to `opacity: 0` instead of being removed. That keeps the
+/// strip's natural width identical across selections so the
+/// launcher menu doesn't slide sideways when navigation toggles
+/// the contextual chips.
 struct BindHint {
     key: &'static str,
     label: &'static str,
+    applicable: bool,
 }
 
 /// (Re)render the keybind hint strip at the bottom of the launcher.
 /// Walker-style: each hint is a small chip showing the key combo
-/// followed by what it does. The list is built contextually from
-/// the selected row's capabilities — Pin only appears if the row
-/// has a `usage_key`, Delete only if its provider opts in via
-/// `can_delete`, Alt Action only if the provider returns an
-/// `alt_action` for it. The always-on bindings (Activate / Tab /
-/// Esc / Ctrl+1-9) anchor the strip so it never collapses below
-/// a useful minimum size.
+/// followed by what it does. The chip set is **fixed** in size —
+/// always 9 chips, in a stable order — so the strip's intrinsic
+/// width never changes as the selection moves. Contextual chips
+/// (Alt action / Pin·Unpin / Remove) fade to `opacity: 0` when
+/// they don't apply rather than being removed; the slot is still
+/// allocated.
 fn rebuild_binds_strip(strip: &gtk::Box, model: &AppLauncherModel) {
+    // Snapshot the selected row's capabilities so we can flip
+    // contextual chips on/off without holding two runtime borrows.
+    let selected = model
+        .selected_id
+        .as_ref()
+        .and_then(|id| model.results.iter().find(|d| &d.item.id == id));
+    let (has_alt, has_pin, has_delete) = if let Some(d) = selected {
+        let item = &d.item;
+        let rt = model.runtime.borrow();
+        (
+            rt.alt_action(item).is_some(),
+            item.usage_key.is_some(),
+            rt.can_delete(item),
+        )
+    } else {
+        (false, false, false)
+    };
+
+    // Static caption — toggling between "Pin" and "Unpin" would
+    // change the chip's natural width and slide every chip to its
+    // right. The row's ★ glyph already shows whether the item is
+    // pinned right now; the chip just labels what the keybind does
+    // (toggle pin state).
+    let pin_label: &'static str = "Pin";
+
+    // Stable order matches the keyboard mental model: activation
+    // first, then power keys, then panel-level binds (Exact /
+    // Last / Close). Inapplicable chips reserve their slot via
+    // opacity 0 so the strip's natural width is identical for
+    // every selection.
+    let hints: [BindHint; 9] = [
+        BindHint { key: "↵",        label: "Activate",   applicable: true },
+        BindHint { key: "Ctrl ↵",   label: "Alt action", applicable: has_alt },
+        BindHint { key: "Ctrl 1-9", label: "Quick",      applicable: true },
+        BindHint { key: "Tab",      label: "Categories", applicable: true },
+        BindHint { key: "Ctrl ⇧ P", label: pin_label,    applicable: has_pin },
+        BindHint { key: "Del",      label: "Remove",     applicable: has_delete },
+        BindHint { key: "Ctrl E",   label: "Exact",      applicable: true },
+        BindHint { key: "Ctrl R",   label: "Last",       applicable: true },
+        BindHint { key: "Esc",      label: "Close",      applicable: true },
+    ];
+
     // Tear down old chips. GTK4 has no `clear()`.
     while let Some(child) = strip.first_child() {
         strip.remove(&child);
     }
 
-    let mut hints: Vec<BindHint> = vec![
-        BindHint { key: "↵",       label: "Activate"   },
-        BindHint { key: "Ctrl 1-9", label: "Quick"     },
-        BindHint { key: "Tab",     label: "Categories" },
-    ];
-
-    // Contextual chips. Only show what the selected row supports
-    // so the strip is honest about what actually works right now.
-    let selected = model
-        .selected_id
-        .as_ref()
-        .and_then(|id| model.results.iter().find(|d| &d.item.id == id));
-    if let Some(d) = selected {
-        let item = &d.item;
-        // Alt action — Ctrl+Enter does something only if the
-        // provider returned an alt_action closure.
-        if model.runtime.borrow().alt_action(item).is_some() {
-            hints.push(BindHint { key: "Ctrl ↵", label: "Alt action" });
-        }
-        // Pin — needs a usage_key (calculator results don't have
-        // one; pinning them would be a no-op).
-        if item.usage_key.is_some() {
-            hints.push(BindHint {
-                key: "Ctrl ⇧ P",
-                label: if d.pinned { "Unpin" } else { "Pin" },
-            });
-        }
-        // Delete — only when the provider claims the row.
-        if model.runtime.borrow().can_delete(item) {
-            hints.push(BindHint { key: "Del", label: "Remove" });
-        }
-    }
-
-    // Always-on tail — search-entry-level shortcuts that apply
-    // regardless of selection.
-    hints.push(BindHint { key: "Ctrl E", label: "Exact" });
-    hints.push(BindHint { key: "Ctrl R", label: "Last" });
-    hints.push(BindHint { key: "Esc",   label: "Close" });
-
     for hint in &hints {
         let chip = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         chip.add_css_class("app-launcher-bind-chip");
+        // Inapplicable chip stays in layout (reserves its width)
+        // but goes transparent so the user reads it as off.
+        chip.set_opacity(if hint.applicable { 1.0 } else { 0.0 });
 
         let key_lbl = gtk::Label::new(Some(hint.key));
         key_lbl.add_css_class("app-launcher-bind-key");

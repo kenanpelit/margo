@@ -103,11 +103,19 @@
   background-color: var(--surface-container);
   color: var(--on-surface-variant);
   font-size: 0.82em;
+  // Keep weight FIXED across hover / selected so the pill's
+  // natural width never changes. Pre-fix used `font-weight: 600`
+  // for the selected state, which made e.g. "Compositor" measure
+  // ~12 px wider when active than when idle — that shifted the
+  // entire pill strip's natural width and the launcher menu
+  // visibly slid sideways on every Tab cycle. The selected pill
+  // is already differentiated by the `--primary` background tint
+  // + `--on-primary` foreground; we don't need a width-changing
+  // weight bump on top.
   font-weight: 500;
   letter-spacing: 0.02em;
   min-height: 0;
-  transition: background-color 120ms ease-in-out, color 120ms ease-in-out,
-    font-weight 120ms ease-in-out;
+  transition: background-color 120ms ease-in-out, color 120ms ease-in-out;
 
   // Icon+label box inside the pill carries the horizontal padding
   // so GTK button's intrinsic min-width doesn't push pills wider.
@@ -134,7 +142,7 @@
   &.selected {
     background-color: var(--primary);
     color: var(--on-primary);
-    font-weight: 600;
+    // No font-weight change here — see the comment above.
 
     .app-launcher-category-pill-icon,
     .app-launcher-category-pill-label {
