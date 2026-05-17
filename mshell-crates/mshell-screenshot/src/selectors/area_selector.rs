@@ -2,10 +2,18 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use crate::common::*;
+use crate::selectors::window_selector::{WindowRect, build_window_rects};
 use crate::utils::find_gdk_monitor;
 use gtk4::prelude::*;
 use gtk4::{cairo, gdk, glib};
 use gtk4_layer_shell::LayerShell;
+
+/// Snap distance in output-local pixels — if the drag's bounding
+/// box edges land this close to a window edge, the selection
+/// snaps to that window. Loose enough that a sloppy drag still
+/// catches the intended window; tight enough that intentional
+/// "I want this slice" drags through a window don't get hijacked.
+const SNAP_THRESHOLD_PX: f64 = 18.0;
 
 #[derive(Debug, Clone)]
 pub struct RegionSelection {
@@ -21,6 +29,12 @@ struct SharedState {
     drag_current: Cell<Option<(f64, f64)>>,
     on_done: RefCell<Option<Box<dyn FnOnce(Result<RegionSelection>)>>>,
     windows: RefCell<Vec<gtk4::Window>>,
+    /// Snapshot of every visible window across all outputs taken
+    /// once at selector startup. Used by drag-end snap-to-window:
+    /// fresh-fetching per drag-end would race with the user
+    /// dragging windows around mid-selection, and the visible set
+    /// rarely changes inside a single selector lifetime anyway.
+    window_rects: Vec<WindowRect>,
 }
 
 impl SharedState {
@@ -59,6 +73,7 @@ where
         drag_current: Cell::new(None),
         on_done: RefCell::new(Some(Box::new(on_done))),
         windows: RefCell::new(Vec::new()),
+        window_rects: build_window_rects(),
     });
 
     let gdk_display = gdk::Display::default().expect("no display");
@@ -163,12 +178,29 @@ fn create_overlay_window(
             let rh = (ey - sy).abs();
 
             if rw > 5.0 && rh > 5.0 {
+                // Snap-to-window: if the user's rough drag lines
+                // up with a visible window's bbox on this output
+                // (every edge within SNAP_THRESHOLD_PX), replace
+                // the freehand rect with the window's exact
+                // bounds. Shift-modifier holds suppress the snap
+                // for cases where the user explicitly wants a
+                // slice through a window.
+                let shift_held = gesture
+                    .current_event_state()
+                    .contains(gdk::ModifierType::SHIFT_MASK);
+                let (final_x, final_y, final_w, final_h) = if shift_held {
+                    (rx, ry, rw, rh)
+                } else {
+                    snap_to_window(&state_end.window_rects, &output_name, rx, ry, rw, rh)
+                        .unwrap_or((rx, ry, rw, rh))
+                };
+
                 let region = RegionSelection {
                     output: output_name.clone(),
-                    x: rx as i32,
-                    y: ry as i32,
-                    width: rw as i32,
-                    height: rh as i32,
+                    x: final_x as i32,
+                    y: final_y as i32,
+                    width: final_w as i32,
+                    height: final_h as i32,
                 };
                 state_end.fire(Ok(region));
             } else {
@@ -295,6 +327,48 @@ fn gcd(mut a: u32, mut b: u32) -> u32 {
         a = t;
     }
     a.max(1)
+}
+
+/// Replace a sloppy drag rect with a window's exact bbox when
+/// every drag edge lands within `SNAP_THRESHOLD_PX` of that
+/// window's edge on the same output. Returns the snapped
+/// rectangle on success, `None` when no window qualifies (caller
+/// keeps the raw drag rect). When multiple windows qualify the
+/// smallest-area one wins so nested layouts (a popup inside a
+/// terminal inside a stacked workspace) snap to the most
+/// specific match.
+fn snap_to_window(
+    windows: &[WindowRect],
+    output: &str,
+    rx: f64,
+    ry: f64,
+    rw: f64,
+    rh: f64,
+) -> Option<(f64, f64, f64, f64)> {
+    let mut best: Option<(&WindowRect, f64)> = None;
+    for w in windows {
+        if w.output != output {
+            continue;
+        }
+        let edge_left = (rx - w.x).abs();
+        let edge_top = (ry - w.y).abs();
+        let edge_right = ((rx + rw) - (w.x + w.width)).abs();
+        let edge_bottom = ((ry + rh) - (w.y + w.height)).abs();
+        if edge_left > SNAP_THRESHOLD_PX
+            || edge_top > SNAP_THRESHOLD_PX
+            || edge_right > SNAP_THRESHOLD_PX
+            || edge_bottom > SNAP_THRESHOLD_PX
+        {
+            continue;
+        }
+        let area = w.width * w.height;
+        match best {
+            None => best = Some((w, area)),
+            Some((_, ba)) if area < ba => best = Some((w, area)),
+            _ => {}
+        }
+    }
+    best.map(|(w, _)| (w.x, w.y, w.width, w.height))
 }
 
 /// Compute the current rectangle from an in-progress drag.

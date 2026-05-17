@@ -8,21 +8,25 @@ use gtk4::{cairo, gdk, glib};
 use gtk4_layer_shell::LayerShell;
 use mshell_services::margo_service;
 
+/// One window's geometry for selectors that need to reason
+/// about open windows (window_selector for picking, area_selector
+/// for snap-to-window). `pub(crate)` so siblings can reuse it
+/// without exposing the type past the crate boundary.
 #[derive(Debug, Clone)]
-struct WindowRect {
-    output: String,
+pub(crate) struct WindowRect {
+    pub(crate) output: String,
     /// Hyprland window address.
-    address: String,
+    pub(crate) address: String,
     /// Output-local coordinates.
-    x: f64,
-    y: f64,
-    width: f64,
-    height: f64,
+    pub(crate) x: f64,
+    pub(crate) y: f64,
+    pub(crate) width: f64,
+    pub(crate) height: f64,
     /// Global coordinates (for capture).
-    global_x: i32,
-    global_y: i32,
-    global_w: i32,
-    global_h: i32,
+    pub(crate) global_x: i32,
+    pub(crate) global_y: i32,
+    pub(crate) global_w: i32,
+    pub(crate) global_h: i32,
 }
 
 struct OverlayInfo {
@@ -130,7 +134,7 @@ where
     }
 }
 
-fn build_window_rects() -> Vec<WindowRect> {
+pub(crate) fn build_window_rects() -> Vec<WindowRect> {
     let hyprland = margo_service();
     let clients = hyprland.clients.get();
     let monitors = hyprland.monitors.get();
