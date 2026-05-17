@@ -2614,6 +2614,21 @@ impl MargoState {
         self.monitor_at_point(self.input_pointer.x, self.input_pointer.y)
     }
 
+    /// Detect monitor crossings on pointer motion and refresh
+    /// state.json when the cursor enters a new output. Cheap inside
+    /// the common case (same monitor → integer compare, no I/O);
+    /// only crossings — rare relative to motion events — pay the
+    /// serialization cost. Keeps `state.active_output` in sync so
+    /// `Super+Space` on an empty monitor opens the launcher there,
+    /// not on whichever monitor most-recently had a focused client.
+    pub fn refresh_pointer_monitor_tracking(&mut self) {
+        let current = self.pointer_monitor();
+        if self.input_pointer.last_monitor != current {
+            self.input_pointer.last_monitor = current;
+            self.write_state_file();
+        }
+    }
+
     fn monitor_at_point(&self, x: f64, y: f64) -> Option<usize> {
         self.monitors.iter().position(|mon| {
             let area = mon.monitor_area;

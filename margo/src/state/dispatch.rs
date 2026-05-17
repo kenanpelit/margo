@@ -1103,6 +1103,13 @@ impl MargoState {
 
         crate::protocols::dwl_ipc::broadcast_monitor(self, current);
         crate::protocols::dwl_ipc::broadcast_monitor(self, next);
+        // We warped the pointer ourselves (without going through
+        // libinput's motion handler), so the
+        // `refresh_pointer_monitor_tracking` call there never
+        // fires. Run it manually so state.json's `active_output`
+        // updates immediately — otherwise Super+Space right after
+        // focusmon would still target the previous monitor.
+        self.refresh_pointer_monitor_tracking();
         self.request_repaint();
     }
 

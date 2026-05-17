@@ -535,24 +535,30 @@ impl MargoService {
     /// connector name. Used by the IPC layer to decide which
     /// per-monitor Frame should host a newly-toggled menu.
     ///
-    /// Resolution order:
-    ///   1. The **focused client**'s monitor — strongest signal
-    ///      for "where the user is interacting"; updates the
-    ///      instant the user clicks / alt-tabs anywhere on a real
-    ///      window. Bypasses the `active_output` lag we've seen
-    ///      right after reboot, where margo's top-level field can
-    ///      stay pinned to whichever output enumerated first
-    ///      (typically `eDP-1`) until the first manual interaction
-    ///      explicitly switches it.
-    ///   2. `state.active_output` — margo's own active-output
-    ///      notion, used when no client is focused (empty
-    ///      desktop) or state.json hasn't propagated yet.
+    /// Trusts margo's `active_output` field. As of the
+    /// pointer-monitor-tracking fix in margo's state_file.rs,
+    /// `active_output` is **pointer-first**:
+    ///   * cursor crossing into another monitor rewrites state.json
+    ///   * `focusmon` dispatch likewise refreshes state.json
+    ///   * focused-client monitor is only the fallback when the
+    ///     pointer hasn't been observed yet (boot, or pointer
+    ///     outside every output area)
+    ///
+    /// We used to prefer the focused client's monitor here to dodge
+    /// a stale `active_output`; that read-side workaround now
+    /// fights the compositor — when the user moves the cursor to
+    /// an empty monitor, the focused client on the previous
+    /// monitor would still win and the launcher would open on the
+    /// wrong output. Trust the compositor's signal.
     pub async fn active_monitor_name(&self) -> Option<String> {
         let state = state_json::read()?;
-        if let Some(c) = state.clients.iter().find(|c| c.focused) {
-            return Some(c.monitor.clone());
+        if !state.active_output.is_empty() {
+            return Some(state.active_output);
         }
-        Some(state.active_output)
+        // Margo hasn't yet written a non-empty active_output —
+        // fall back to the focused client's monitor as a
+        // best-effort guess (matches the old startup-race behavior).
+        state.clients.iter().find(|c| c.focused).map(|c| c.monitor.clone())
     }
 
     /// Snapshot the focused client.

@@ -630,6 +630,7 @@ fn handle_pointer_motion<B: InputBackend, E: PointerMotionEvent<B>>(
     state.input_pointer.y += event.delta_y();
     state.clamp_pointer_to_outputs();
     state.input_pointer.motion_events += 1;
+    state.refresh_pointer_monitor_tracking();
     state.request_repaint();
 
     // Pointer-constraints enforcement. Two cases:
@@ -901,6 +902,7 @@ fn handle_pointer_motion_abs<B: InputBackend, E: PointerMotionAbsoluteEvent<B>>(
         state.input_pointer.y = pos.y;
         state.clamp_pointer_to_outputs();
         state.input_pointer.motion_events += 1;
+        state.refresh_pointer_monitor_tracking();
         let pos = Point::from((state.input_pointer.x, state.input_pointer.y));
         log_pointer_motion(state, "absolute", pos);
         state.request_repaint();

@@ -51,6 +51,13 @@ pub struct PointerState {
     pub mode: CursorMode,
     pub grab_x: f64,
     pub grab_y: f64,
+    /// Monitor index the pointer was last on. Used to gate
+    /// `write_state_file()` to *crossings* only — motion within
+    /// the same monitor stays cheap; crossings rewrite state.json
+    /// so mshell's `active_monitor_name()` sees the new output
+    /// even when no client is focused (empty monitor / sloppy
+    /// focus into empty space).
+    pub last_monitor: Option<usize>,
 }
 
 // ── Touch state ───────────────────────────────────────────────────────────────

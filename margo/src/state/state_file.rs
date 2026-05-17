@@ -50,6 +50,29 @@ impl MargoState {
         use serde_json::json;
 
         let focused_idx = self.focused_client_idx();
+        // The compositor's "where is the user looking" signal that
+        // mshell needs for menu placement. Crucially this is
+        // **pointer-first**, not focused-client-first:
+        //
+        // * focused_monitor() prefers the focused client → leaves
+        //   active_output stuck on monitor A when the user moves
+        //   the cursor to empty monitor B (the focused client on A
+        //   keeps focus, so focused_monitor() returns A). Pressing
+        //   Super+Space then opens the launcher on A — the bug.
+        // * pointer-first matches user intent: the cursor is the
+        //   most reliable signal of "where I'm about to look /
+        //   click", whether or not the cursor is over a focusable
+        //   client.
+        //
+        // Fallback order: pointer monitor → focused client's
+        // monitor (cursor outside any output area) → first
+        // enumerated monitor (initial startup, no pointer events
+        // yet).
+        let focused_mon_idx = self
+            .input_pointer
+            .last_monitor
+            .or_else(|| focused_idx.and_then(|i| self.clients.get(i)).map(|c| c.monitor))
+            .unwrap_or(0);
         let outputs: Vec<_> = self
             .monitors
             .iter()
@@ -61,10 +84,7 @@ impl MargoState {
                 let refresh = mode.map(|m| m.refresh).unwrap_or(0);
                 let active_tag = mon.tagset[mon.seltags];
                 let prev_tag = mon.tagset[mon.seltags ^ 1];
-                let active_output = focused_idx
-                    .and_then(|fc| self.clients.get(fc))
-                    .map(|c| c.monitor == i)
-                    .unwrap_or(false);
+                let active_output = i == focused_mon_idx;
                 json!({
                     "name": mon.name,
                     "active": active_output,
@@ -175,13 +195,15 @@ impl MargoState {
             .map(|l| serde_json::Value::String(l.name().to_string()))
             .collect();
 
-        // Active output: the one the focused client is on, else the
-        // first monitor.
-        let active_output = focused_idx
-            .and_then(|idx| self.clients.get(idx))
-            .and_then(|c| self.monitors.get(c.monitor))
+        // Active output: the monitor `focused_monitor()` resolves
+        // to. Includes pointer-monitor fallback, so cursor-only
+        // crossings and `focusmon` to an empty output update the
+        // field — mshell's `active_monitor_name()` is then able to
+        // route menus to that output.
+        let active_output = self
+            .monitors
+            .get(focused_mon_idx)
             .map(|m| m.name.clone())
-            .or_else(|| self.monitors.first().map(|m| m.name.clone()))
             .unwrap_or_default();
 
         // Diagnostics from the most recent reload (or initial parse).
