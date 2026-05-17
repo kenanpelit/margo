@@ -11,17 +11,19 @@
 //! Pages:
 //! 1. **Welcome** — intro to margo + what the wizard will ask.
 //! 2. **Theme** — Light / Dark matugen mode + 12h / 24h clock.
-//! 3. **Wallpaper** — directory the wallpaper rotation pulls from.
-//! 4. **Done** — summary + Apply button that serialises the
-//!    profile YAML into place.
+//! 3. **Keyboard** — xkb layout picker (us, tr, de, …) +
+//!    optional variant string for fine-tuning.
+//! 4. **Wallpaper** — directory the wallpaper rotation pulls from.
+//! 5. **Done** — summary + Apply that writes both files.
 //!
-//! Wizard intentionally writes ONLY the shell-side profile
-//! (`mshell-config`'s `Config`). The compositor's `margo.conf` is
-//! left to its built-in defaults — touching it here would mean
-//! shipping a second template + parser dependency, and the user
-//! can hit `mctl config edit` later. The shell profile alone is
-//! enough to flip the major visible knobs (theme, clock, wallpaper
-//! source).
+//! Apply touches two files:
+//! - `~/.config/margo/mshell/profiles/default.yaml` — shell profile,
+//!   fully serialised from a default `Config` + user choices.
+//! - `~/.config/margo/config.conf` — compositor config, surgical
+//!   line-level edit so we don't have to ship a full margo-config
+//!   serialiser. Only `xkb_rules_layout` (and `xkb_rules_variant`
+//!   when non-empty) are written; everything else stays at
+//!   built-in defaults until the user runs `mctl config edit`.
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -78,6 +80,7 @@ fn main() {
 enum Page {
     Welcome,
     Theme,
+    Keyboard,
     Wallpaper,
     Done,
 }
@@ -87,8 +90,9 @@ impl Page {
         match self {
             Self::Welcome => 0,
             Self::Theme => 1,
-            Self::Wallpaper => 2,
-            Self::Done => 3,
+            Self::Keyboard => 2,
+            Self::Wallpaper => 3,
+            Self::Done => 4,
         }
     }
 
@@ -96,6 +100,7 @@ impl Page {
         match self {
             Self::Welcome => "welcome",
             Self::Theme => "theme",
+            Self::Keyboard => "keyboard",
             Self::Wallpaper => "wallpaper",
             Self::Done => "done",
         }
@@ -104,7 +109,8 @@ impl Page {
     fn next(self) -> Option<Self> {
         match self {
             Self::Welcome => Some(Self::Theme),
-            Self::Theme => Some(Self::Wallpaper),
+            Self::Theme => Some(Self::Keyboard),
+            Self::Keyboard => Some(Self::Wallpaper),
             Self::Wallpaper => Some(Self::Done),
             Self::Done => None,
         }
@@ -114,11 +120,37 @@ impl Page {
         match self {
             Self::Welcome => None,
             Self::Theme => Some(Self::Welcome),
-            Self::Wallpaper => Some(Self::Theme),
+            Self::Keyboard => Some(Self::Theme),
+            Self::Wallpaper => Some(Self::Keyboard),
             Self::Done => Some(Self::Wallpaper),
         }
     }
+
+    fn total() -> u32 {
+        5
+    }
 }
+
+/// Common xkb keyboard layouts surfaced in the wizard dropdown.
+/// `(xkb code, display name)`. Order is roughly "most-likely
+/// first" for an Anglophone install, but the user can flip the
+/// custom-override entry on for any code xkbcommon understands.
+const COMMON_LAYOUTS: &[(&str, &str)] = &[
+    ("us", "English (US)"),
+    ("gb", "English (UK)"),
+    ("tr", "Türkçe"),
+    ("de", "Deutsch"),
+    ("fr", "Français"),
+    ("es", "Español"),
+    ("it", "Italiano"),
+    ("pt", "Português"),
+    ("ru", "Русский"),
+    ("ua", "Українська"),
+    ("ar", "العربية"),
+    ("ja", "日本語"),
+    ("cn", "中文"),
+    ("kr", "한국어"),
+];
 
 /// Wizard-side mirror of every knob the pages can toggle. Folded
 /// into a fresh `Config::default()` on Apply — keeping the user's
@@ -128,6 +160,12 @@ impl Page {
 struct Choices {
     matugen_mode: MatugenMode,
     clock_24h: bool,
+    /// xkb layout code (e.g. `"us"`, `"tr"`, `"de"`). Written to
+    /// `~/.config/margo/config.conf` as `xkb_rules_layout = …`.
+    xkb_layout: String,
+    /// Optional xkb variant (e.g. `"dvorak"`, `"f"`). Empty
+    /// string skips writing the line entirely.
+    xkb_variant: String,
     wallpaper_dir: PathBuf,
 }
 
@@ -136,6 +174,8 @@ impl Choices {
         Self {
             matugen_mode: MatugenMode::Dark,
             clock_24h: true,
+            xkb_layout: detect_default_xkb_layout(),
+            xkb_variant: String::new(),
             wallpaper_dir: dirs::picture_dir()
                 .map(|p| p.join("wallpapers"))
                 .unwrap_or_else(|| {
@@ -144,6 +184,30 @@ impl Choices {
                         .unwrap_or_else(|| PathBuf::from("/usr/share/backgrounds"))
                 }),
         }
+    }
+}
+
+/// Pick a reasonable default xkb layout from the environment.
+/// `LANG` / `LC_ALL` end in the country code (e.g. `tr_TR.UTF-8`,
+/// `en_US.UTF-8`) which maps 1:1 to most xkb layouts; if the
+/// match looks weird the user can always override on the page.
+fn detect_default_xkb_layout() -> String {
+    let lang = std::env::var("LC_ALL")
+        .or_else(|_| std::env::var("LANG"))
+        .unwrap_or_default()
+        .to_lowercase();
+    // Pull the country fragment: "tr_tr.utf-8" → "tr".
+    let country = lang
+        .split('_')
+        .nth(1)
+        .and_then(|s| s.split('.').next())
+        .unwrap_or("");
+    // Recognise the codes we ship in the dropdown so we land on a
+    // known entry; otherwise fall back to "us".
+    if COMMON_LAYOUTS.iter().any(|(code, _)| *code == country) {
+        country.to_string()
+    } else {
+        "us".to_string()
     }
 }
 
@@ -167,6 +231,8 @@ enum WizardInput {
     Cancel,
     MatugenModeChanged(MatugenMode),
     Clock24hChanged(bool),
+    XkbLayoutChanged(String),
+    XkbVariantChanged(String),
     WallpaperDirPicked(PathBuf),
     OpenWallpaperPicker,
 }
@@ -195,8 +261,9 @@ impl SimpleComponent for WizardModel {
                     add_css_class: "title-3",
                     #[watch]
                     set_label: &format!(
-                        "Step {} of 4",
-                        model.page.index() + 1
+                        "Step {} of {}",
+                        model.page.index() + 1,
+                        Page::total(),
                     ),
                     set_halign: gtk::Align::Start,
                 },
@@ -300,6 +367,107 @@ impl SimpleComponent for WizardModel {
                         },
                     },
 
+                    add_named[Some(Page::Keyboard.name())] = &gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_spacing: 16,
+
+                        gtk::Label {
+                            add_css_class: "title-2",
+                            set_label: "Keyboard layout",
+                            set_halign: gtk::Align::Start,
+                        },
+
+                        gtk::Label {
+                            set_label: "Pick the xkb layout the compositor should load on startup. The list covers the most common entries; override the layout / variant text fields below for anything xkbcommon understands.",
+                            set_halign: gtk::Align::Start,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_max_width_chars: 60,
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 16,
+                            gtk::Label {
+                                set_label: "Layout:",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                            #[name = "layout_dropdown"]
+                            gtk::DropDown {
+                                set_model: Some(&gtk::StringList::new(
+                                    &COMMON_LAYOUTS
+                                        .iter()
+                                        .map(|(code, name)| format!("{name} ({code})"))
+                                        .collect::<Vec<_>>()
+                                        .iter()
+                                        .map(|s| s.as_str())
+                                        .collect::<Vec<_>>(),
+                                )),
+                                #[watch]
+                                set_selected: COMMON_LAYOUTS
+                                    .iter()
+                                    .position(|(code, _)| *code == model.choices.xkb_layout)
+                                    .unwrap_or(0) as u32,
+                                connect_selected_notify[sender] => move |dd| {
+                                    let idx = dd.selected() as usize;
+                                    if let Some((code, _)) = COMMON_LAYOUTS.get(idx) {
+                                        sender.input(WizardInput::XkbLayoutChanged((*code).to_string()));
+                                    }
+                                },
+                            },
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 16,
+                            gtk::Label {
+                                set_label: "Override layout code:",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                            #[name = "layout_override_entry"]
+                            gtk::Entry {
+                                set_placeholder_text: Some("e.g. us,tr or dvorak"),
+                                set_width_chars: 18,
+                                #[watch]
+                                set_text: &model.choices.xkb_layout,
+                                connect_changed[sender] => move |e| {
+                                    sender.input(WizardInput::XkbLayoutChanged(e.text().to_string()));
+                                },
+                            },
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 16,
+                            gtk::Label {
+                                set_label: "Variant (optional):",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                            #[name = "variant_entry"]
+                            gtk::Entry {
+                                set_placeholder_text: Some("e.g. f, dvorak, intl"),
+                                set_width_chars: 18,
+                                #[watch]
+                                set_text: &model.choices.xkb_variant,
+                                connect_changed[sender] => move |e| {
+                                    sender.input(WizardInput::XkbVariantChanged(e.text().to_string()));
+                                },
+                            },
+                        },
+
+                        gtk::Label {
+                            add_css_class: "dim-label",
+                            set_label: "Pre-filled from your $LANG when it maps to a known layout. Empty variant skips the line entirely so the system default applies.",
+                            set_halign: gtk::Align::Start,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_max_width_chars: 60,
+                        },
+                    },
+
                     add_named[Some(Page::Wallpaper.name())] = &gtk::Box {
                         set_orientation: gtk::Orientation::Vertical,
                         set_spacing: 16,
@@ -358,11 +526,18 @@ impl SimpleComponent for WizardModel {
                         gtk::Label {
                             #[watch]
                             set_label: &format!(
-                                "Color mode:      {:?}\nClock format:    {}\nWallpaper dir:   {}\nProfile target:  {}",
+                                "Color mode:      {:?}\nClock format:    {}\nXkb layout:      {}{}\nWallpaper dir:   {}\nProfile target:  {}\nMargo config:    {}",
                                 model.choices.matugen_mode,
                                 if model.choices.clock_24h { "24-hour" } else { "12-hour" },
+                                model.choices.xkb_layout,
+                                if model.choices.xkb_variant.is_empty() {
+                                    String::new()
+                                } else {
+                                    format!(" (variant: {})", model.choices.xkb_variant)
+                                },
                                 model.choices.wallpaper_dir.display(),
                                 default_config_path().display(),
+                                margo_conf_path().display(),
                             ),
                             add_css_class: "monospace",
                             set_halign: gtk::Align::Start,
@@ -476,6 +651,12 @@ impl SimpleComponent for WizardModel {
             WizardInput::Clock24hChanged(v) => {
                 self.choices.clock_24h = v;
             }
+            WizardInput::XkbLayoutChanged(s) => {
+                self.choices.xkb_layout = s.trim().to_string();
+            }
+            WizardInput::XkbVariantChanged(s) => {
+                self.choices.xkb_variant = s.trim().to_string();
+            }
             WizardInput::WallpaperDirPicked(path) => {
                 self.choices.wallpaper_dir = path;
             }
@@ -506,12 +687,30 @@ impl SimpleComponent for WizardModel {
     }
 }
 
-/// Fold the user's wizard choices into a freshly-defaulted
-/// `Config` and write the YAML to disk. Returns the absolute path
-/// of the written file so the success label can show it.
-fn apply_choices(choices: &Choices) -> Result<PathBuf> {
-    let mut cfg = Config::default();
+/// Canonical compositor-side config path. Margo reads
+/// `~/.config/margo/config.conf` at startup (see
+/// `margo-config::parser::default_config_path`); we mirror the
+/// path here rather than depending on margo-config just for one
+/// constant.
+fn margo_conf_path() -> PathBuf {
+    dirs::home_dir()
+        .map(|h| h.join(".config/margo/config.conf"))
+        .unwrap_or_else(|| PathBuf::from("/tmp/margo-config.conf"))
+}
 
+/// Fold the user's wizard choices into:
+/// 1. a freshly-defaulted shell-side `Config` (serialised to
+///    `default.yaml`), and
+/// 2. surgical `xkb_rules_layout` / `xkb_rules_variant` lines in
+///    `config.conf` (created if missing, patched in-place if
+///    present — non-xkb config keeps the user's existing tweaks).
+///
+/// Returns the profile path so the Done page can show it; the
+/// margo.conf path is logged but not surfaced as the "success"
+/// path since it's a secondary side-effect.
+fn apply_choices(choices: &Choices) -> Result<PathBuf> {
+    // ── shell profile ─────────────────────────────────────────
+    let mut cfg = Config::default();
     cfg.general.clock_format_24_h = choices.clock_24h;
     cfg.theme.matugen.mode = choices.matugen_mode;
     cfg.wallpaper.wallpaper_dir = choices.wallpaper_dir.display().to_string();
@@ -526,7 +725,78 @@ fn apply_choices(choices: &Choices) -> Result<PathBuf> {
         .context("serialize Config to YAML")?;
     std::fs::write(&target, yaml)
         .with_context(|| format!("write profile {}", target.display()))?;
-
     tracing::info!(path = %target.display(), "wrote profile");
+
+    // ── compositor xkb lines ──────────────────────────────────
+    write_xkb_to_margo_conf(&choices.xkb_layout, &choices.xkb_variant)
+        .with_context(|| "patch xkb_rules_* in margo config.conf")?;
+
     Ok(target)
+}
+
+/// Read `~/.config/margo/config.conf` (or treat as empty when
+/// missing), patch `xkb_rules_layout` + `xkb_rules_variant`
+/// lines in-place, and write the result back. Lines outside the
+/// xkb pair are preserved verbatim so a user who already
+/// hand-edited margo.conf doesn't lose unrelated tweaks.
+///
+/// Empty `variant` deletes the existing variant line entirely;
+/// passing the system default (empty) explicitly is more useful
+/// than leaving a stale variant in place.
+fn write_xkb_to_margo_conf(layout: &str, variant: &str) -> Result<()> {
+    let path = margo_conf_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).with_context(|| {
+            format!("create margo dir {}", parent.display())
+        })?;
+    }
+
+    let existing = std::fs::read_to_string(&path).unwrap_or_default();
+    let mut out = String::with_capacity(existing.len() + 128);
+    let mut saw_layout = false;
+    let mut saw_variant = false;
+
+    for line in existing.lines() {
+        let trimmed = line.trim_start();
+        if let Some(rest) = trimmed.strip_prefix("xkb_rules_layout") {
+            // matches `xkb_rules_layout = …` (with or without
+            // whitespace around the `=`); replace the entire line.
+            if rest.trim_start().starts_with('=') {
+                out.push_str(&format!("xkb_rules_layout = {}\n", layout));
+                saw_layout = true;
+                continue;
+            }
+        }
+        if let Some(rest) = trimmed.strip_prefix("xkb_rules_variant") {
+            if rest.trim_start().starts_with('=') {
+                if variant.is_empty() {
+                    // Drop the line — empty variant means "use
+                    // system default", so a stale value would be
+                    // surprising.
+                    saw_variant = true;
+                    continue;
+                }
+                out.push_str(&format!("xkb_rules_variant = {}\n", variant));
+                saw_variant = true;
+                continue;
+            }
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+
+    if !saw_layout {
+        if !out.is_empty() && !out.ends_with('\n') {
+            out.push('\n');
+        }
+        out.push_str(&format!("xkb_rules_layout = {}\n", layout));
+    }
+    if !saw_variant && !variant.is_empty() {
+        out.push_str(&format!("xkb_rules_variant = {}\n", variant));
+    }
+
+    std::fs::write(&path, out)
+        .with_context(|| format!("write margo config {}", path.display()))?;
+    tracing::info!(path = %path.display(), layout, variant, "patched xkb rules");
+    Ok(())
 }
