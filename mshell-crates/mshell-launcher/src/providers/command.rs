@@ -189,6 +189,13 @@ impl Provider for CommandProvider {
             self.history.borrow_mut().forget(expr);
         }
     }
+
+    /// Run tab — surface the command history without the `>cmd`
+    /// prefix so the user can browse past commands and rerun them
+    /// with a single keystroke.
+    fn browse(&self) -> Vec<LauncherItem> {
+        self.search(">cmd")
+    }
 }
 
 fn spawn_shell(expression: &str) {

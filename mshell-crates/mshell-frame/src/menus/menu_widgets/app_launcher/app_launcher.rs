@@ -22,12 +22,16 @@
 //! | `Shift+Tab`          | previous provider category          |
 //! | `Enter`              | activate selected                   |
 //! | `Ctrl+Enter`         | provider's alt action (if any)      |
-//! | `Alt+1` .. `Alt+9`   | activate the Nth result             |
+//! | `Ctrl+1` .. `Ctrl+9` | activate the Nth result             |
 //! | `Ctrl+Shift+P`       | toggle pin on selected (★)          |
 //! | `Delete`             | delete frecency/history entry       |
 //! | `Ctrl+E`             | toggle fuzzy / exact-substring mode |
 //! | `Ctrl+R`             | resume last query                   |
 //! | `Esc`                | close                               |
+//!
+//! Ctrl+N rather than Alt+N for quick activate because margo's
+//! compositor config uses Alt+N for user-defined dispatches; the
+//! launcher would otherwise have to fight the compositor's bind.
 //!
 //! Note: we use **Ctrl+Shift+P** for pin (instead of plain Ctrl+P)
 //! because Ctrl+P is the historical "previous selection" emacs
@@ -339,10 +343,14 @@ impl Component for AppLauncherModel {
             let shift = modifier.contains(gdk::ModifierType::SHIFT_MASK);
             let alt = modifier.contains(gdk::ModifierType::ALT_MASK);
 
-            // Alt+1..Alt+9 → quick activate. Handled first so the
+            // Ctrl+1..Ctrl+9 → quick activate. Handled first so the
             // digit keys don't fall through to the search entry as
-            // typed input.
-            if alt && !ctrl {
+            // typed input. Bound to Ctrl rather than Alt because
+            // margo's compositor config already uses Alt+N for
+            // user-defined dispatches; the launcher's keyboard
+            // grab catches Ctrl+digit cleanly without colliding
+            // with the compositor binds.
+            if ctrl && !alt {
                 let digit = match key {
                     gdk::Key::_1 => Some(1u8),
                     gdk::Key::_2 => Some(2),

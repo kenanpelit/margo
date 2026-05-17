@@ -226,6 +226,12 @@ impl Provider for WireplumberProvider {
             })
             .collect()
     }
+
+    /// System tab — show every sink + source without the `audio`
+    /// prefix.
+    fn browse(&self) -> Vec<LauncherItem> {
+        self.search("audio")
+    }
 }
 
 #[cfg(test)]

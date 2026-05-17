@@ -257,6 +257,13 @@ impl Provider for ScriptsProvider {
     fn can_delete(&self, item: &crate::LauncherItem) -> bool {
         item.id.starts_with("scripts:")
     }
+
+    /// Run tab — surface every `start-*` script even without the
+    /// `>start` prefix. Re-uses the search path so the same item
+    /// shape (icon, on_activate spawn) is produced.
+    fn browse(&self) -> Vec<LauncherItem> {
+        self.search(">start")
+    }
 }
 
 #[cfg(test)]

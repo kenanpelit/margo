@@ -29,8 +29,8 @@
 }
 
 // "1".."9" digit shown on the first nine result rows; pressing
-// Alt+N activates the matching row. Small, monospace-ish, dim by
-// default so it reads as a hint rather than a primary label.
+// Ctrl+N activates the matching row. Small, monospace-ish, dim
+// by default so it reads as a hint rather than a primary label.
 .app-launcher-quick-key {
   color: var(--on-surface-variant);
   opacity: 0.55;

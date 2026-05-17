@@ -271,7 +271,22 @@ impl Provider for SymbolsProvider {
             return Vec::new();
         }
         let filter = trimmed.trim_start_matches('.').trim();
+        self.build_items(filter)
+    }
 
+    /// Insert tab — show every symbol so the user can browse the
+    /// full catalogue without typing the `.` prefix.
+    fn browse(&self) -> Vec<LauncherItem> {
+        self.build_items("")
+    }
+}
+
+impl SymbolsProvider {
+    /// Shared filter+build path used by both `search()` (via `.`
+    /// prefix) and `browse()` (via the Insert category tab). The
+    /// only difference is the source of the filter string —
+    /// `search()` strips the dot, `browse()` passes empty.
+    fn build_items(&self, filter: &str) -> Vec<LauncherItem> {
         SYMBOLS
             .iter()
             .enumerate()

@@ -252,6 +252,14 @@ impl Provider for ProviderListProvider {
             })
             .collect()
     }
+
+    /// Search tab — surface the cheatsheet without the `;`
+    /// prefix so the user can pick any provider directly from
+    /// the visible list. Activation still writes the row's
+    /// example query to the search entry.
+    fn browse(&self) -> Vec<LauncherItem> {
+        self.search(";")
+    }
 }
 
 #[cfg(test)]

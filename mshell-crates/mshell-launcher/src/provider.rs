@@ -47,6 +47,19 @@ pub trait Provider {
     /// pinned/popular list (Apps) or nothing (Calculator).
     fn search(&self, query: &str) -> Vec<LauncherItem>;
 
+    /// Full content of this provider, surfaced when the user picks
+    /// the provider's category from the Tab strip and the search
+    /// entry is empty. Defaults to `search("")` so the bulk of
+    /// providers don't need to override it; prefix-only providers
+    /// (Symbols, Emoji, Clipboard, ProviderList, …) override this
+    /// to return the same rows they'd produce after the user typed
+    /// the prefix — without that, picking their category tab would
+    /// give an empty list because `search("")` short-circuits to
+    /// "wait for the prefix".
+    fn browse(&self) -> Vec<LauncherItem> {
+        self.search("")
+    }
+
     /// Notification hook called when the launcher panel opens. Lets
     /// providers refresh stale data (Apps re-scans desktop entries,
     /// Settings rebuilds its index after a theme change). Default:

@@ -95,7 +95,18 @@ impl Provider for EmojiProvider {
             return Vec::new();
         }
         let filter = trimmed.trim_start_matches(':').trim();
+        self.build_items(filter)
+    }
 
+    /// Insert tab — surface the top BROWSE_LIMIT emojis so the
+    /// user can scroll the catalogue without the `:` prefix.
+    fn browse(&self) -> Vec<LauncherItem> {
+        self.build_items("")
+    }
+}
+
+impl EmojiProvider {
+    fn build_items(&self, filter: &str) -> Vec<LauncherItem> {
         let mut scored: Vec<(f64, &emojis::Emoji)> = emojis::iter()
             .filter_map(|e| match_score(e, filter).map(|s| (s, e)))
             .collect();

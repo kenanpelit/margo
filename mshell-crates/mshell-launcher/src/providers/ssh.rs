@@ -265,6 +265,12 @@ impl Provider for SshProvider {
         // launcher invocations show up. Cheap (~ms).
         self.refresh();
     }
+
+    /// Connect tab — list every host from assh.yml without
+    /// requiring the `ssh ` prefix.
+    fn browse(&self) -> Vec<LauncherItem> {
+        self.search("ssh")
+    }
 }
 
 /// Spawn `<terminal> -e ssh <host>`. wezterm wants `start --`,

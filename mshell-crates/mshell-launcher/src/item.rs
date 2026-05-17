@@ -81,9 +81,10 @@ pub struct DisplayItem {
     /// of empty-browse mode regardless of frecency.
     pub pinned: bool,
 
-    /// Visual hint label for the **Alt+N** quick-activate shortcut:
+    /// Visual hint label for the **Ctrl+N** quick-activate shortcut:
     /// `"1"` through `"9"` for the first nine results, empty string
-    /// for the rest.
+    /// for the rest. Ctrl+N rather than Alt+N because margo's
+    /// compositor config already uses Alt+N for user dispatches.
     pub quick_key: String,
 }
 

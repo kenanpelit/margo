@@ -191,6 +191,12 @@ impl Provider for PlayerctlProvider {
 
         results
     }
+
+    /// System tab — surface transport controls + per-player rows
+    /// without the `player` prefix.
+    fn browse(&self) -> Vec<LauncherItem> {
+        self.search("player")
+    }
 }
 
 #[cfg(test)]

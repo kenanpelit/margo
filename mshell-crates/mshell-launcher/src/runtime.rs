@@ -328,21 +328,47 @@ impl LauncherRuntime {
             }
         }
 
-        // Regular search OR empty-query browse. Collect from
-        // every searching provider (filtered by active category
-        // if set), apply frecency boost + pin bonus, sort
-        // descending by score.
+        // Regular search OR empty-query browse. Two paths:
+        //
+        // 1. **Specific category + empty query** → call each
+        //    in-category provider's `browse()`, **bypassing**
+        //    `handles_search`. This is what lets the prefix-only
+        //    providers (Symbols / Emoji / Clipboard / Scripts /
+        //    Bluetooth / ProviderList / …) fill their category
+        //    tabs with real content the moment the user picks
+        //    that tab. Without bypass, every prefix-only provider
+        //    would render an empty tab — making the strip mostly
+        //    useless beyond the few `handles_search=true`
+        //    providers (Apps, Calc, Settings, Websearch, Mctl).
+        //
+        // 2. **All-category OR non-empty query** → standard search
+        //    pipeline: only providers that opted into search via
+        //    `handles_search` contribute; prefix-only providers
+        //    stay silent unless their `handles_command` already
+        //    caught the query above.
         let active = self.active_category.as_deref();
-        let mut results: Vec<LauncherItem> = self
-            .providers
-            .iter()
-            .filter(|p| p.handles_search())
-            .filter(|p| match active {
-                None => true,
-                Some(cat) => p.category() == cat,
-            })
-            .flat_map(|p| p.search(query))
-            .collect();
+        let in_specific_category_browse =
+            active.is_some() && active != Some("All") && trimmed.is_empty();
+
+        let mut results: Vec<LauncherItem> = if in_specific_category_browse {
+            let cat = active.unwrap();
+            self.providers
+                .iter()
+                .filter(|p| p.category() == cat)
+                .flat_map(|p| p.browse())
+                .collect()
+        } else {
+            self.providers
+                .iter()
+                .filter(|p| p.handles_search())
+                .filter(|p| match active {
+                    None => true,
+                    Some("All") => true,
+                    Some(cat) => p.category() == cat,
+                })
+                .flat_map(|p| p.search(query))
+                .collect()
+        };
 
         // Exact-search mode (Ctrl+E): post-filter to rows whose
         // *name* contains the trimmed query as a contiguous
