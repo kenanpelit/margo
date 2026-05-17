@@ -117,6 +117,12 @@ pub enum FrameInput {
     ToggleNotificationMenu,
     ToggleScreenshotMenu,
     ToggleAppLauncherMenu,
+    /// Same as `ToggleAppLauncherMenu` but also forwards a
+    /// `SelectCategory(tab)` into the underlying
+    /// `AppLauncherModel` once the menu is open. Bridges
+    /// `mshellctl menu app-launcher --tab Run` to the runtime's
+    /// existing category-cycle path.
+    ToggleAppLauncherMenuWithTab(String),
     ToggleWallpaperMenu,
     ToggleNufwMenu,
     ToggleNdnsMenu,
@@ -921,6 +927,24 @@ impl Component for Frame {
             }
             FrameInput::ToggleAppLauncherMenu => {
                 self.toggle_menu(APP_LAUNCHER_MENU, widgets);
+                self.sync_keyboard_mode(root);
+            }
+            FrameInput::ToggleAppLauncherMenuWithTab(tab) => {
+                // If the launcher is already visible AND already
+                // on the requested tab, treat the call as a
+                // toggle (close it). Otherwise: open if hidden,
+                // then forward SelectCategory so the AppLauncher
+                // widget swaps tabs. The launcher state lives
+                // inside its widget controller, so we just send
+                // the message and let the runtime handle the
+                // "unknown tab" fall back to "All".
+                if !self.is_menu_visible_now(APP_LAUNCHER_MENU, widgets) {
+                    self.toggle_menu(APP_LAUNCHER_MENU, widgets);
+                }
+                self.app_launcher_menu
+                    .sender()
+                    .send(MenuInput::AppLauncherSelectCategory(tab))
+                    .ok();
                 self.sync_keyboard_mode(root);
             }
             FrameInput::ToggleWallpaperMenu => {

@@ -74,6 +74,11 @@ pub(crate) enum ShellInput {
     Quit,
     ToggleQuickSettings(Option<String>),
     ToggleAppLauncher(Option<String>),
+    /// Open the app launcher AND pre-select the named category
+    /// tab. The String carries the tab label (e.g. "Run",
+    /// "Insert"). Unknown labels silently fall back to "All"
+    /// once the launcher's `select_category` runs.
+    ToggleAppLauncherWithTab(Option<String>, String),
     ToggleClipboard(Option<String>),
     ToggleClockMenu(Option<String>),
     ToggleNotifications(Option<String>),
@@ -403,6 +408,11 @@ impl Component for Shell {
             ShellInput::ToggleAppLauncher(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
                     frame.emit(FrameInput::ToggleAppLauncherMenu);
+                }
+            }
+            ShellInput::ToggleAppLauncherWithTab(monitor_name, tab) => {
+                if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
+                    frame.emit(FrameInput::ToggleAppLauncherMenuWithTab(tab));
                 }
             }
             ShellInput::ToggleScreenshotMenu(monitor_name) => {

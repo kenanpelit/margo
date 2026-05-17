@@ -101,6 +101,12 @@ pub(crate) enum MenuInput {
     SetMaximumHeight(i32),
     AddHyprlandScreenshareWidget,
     ForwardHyprlandScreenshareReply(tokio::sync::oneshot::Sender<String>, String),
+    /// Forward a category-tab pick to the embedded
+    /// AppLauncherModel when this menu hosts one. Used by
+    /// `mshellctl menu app-launcher --tab <name>` to open the
+    /// launcher on a specific tab — frame fires the toggle,
+    /// then sends this so the runtime's `select_category` runs.
+    AppLauncherSelectCategory(String),
 }
 
 #[derive(Debug)]
@@ -783,6 +789,26 @@ impl Component for MenuModel {
                         .sender()
                         .send(ScreenshareMenuWidgetInput::SetReply(reply, payload))
                         .ok();
+                }
+            }
+            MenuInput::AppLauncherSelectCategory(label) => {
+                // Forward to the AppLauncherModel if this menu
+                // hosts one. The launcher widget is the only
+                // controller in the AppLauncher menu's widget
+                // list (per `dashboard_menu.widgets =
+                // [AppLauncher]` in the default config), but we
+                // scan-and-downcast to stay robust against future
+                // configs that interleave other widgets.
+                for controller in &self.widget_controllers {
+                    if let Some(launcher) =
+                        controller.downcast_ref::<Controller<AppLauncherModel>>()
+                    {
+                        launcher
+                            .sender()
+                            .send(AppLauncherInput::SelectCategory(label.clone()))
+                            .ok();
+                        break;
+                    }
                 }
             }
         }

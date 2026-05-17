@@ -42,6 +42,12 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 IPCCommand::AppLauncher => {
                     app_sender.emit(ShellInput::ToggleAppLauncher(active_monitor().await));
                 }
+                IPCCommand::AppLauncherTab(tab) => {
+                    app_sender.emit(ShellInput::ToggleAppLauncherWithTab(
+                        active_monitor().await,
+                        tab,
+                    ));
+                }
                 IPCCommand::QuickSettings => {
                     app_sender.emit(ShellInput::ToggleQuickSettings(active_monitor().await));
                 }
@@ -240,10 +246,34 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
     });
 }
 
+/// Tabs the app launcher renders in the category strip, in the
+/// order the AppLauncherModel registers its providers. Kept here
+/// — rather than asking the launcher runtime at IPC-query time
+/// — because the runtime only exists while the launcher panel is
+/// open; the wizard / CLI consumer wants the list any time
+/// mshell is running.
+///
+/// If you add a new provider whose `category()` returns a fresh
+/// string, append it here so `mshellctl menu app-launcher
+/// --list-tabs` stays accurate.
+pub const APP_LAUNCHER_TABS: &[&str] = &[
+    "All",
+    "Run",
+    "System",
+    "Insert",
+    "Search",
+    "Compositor",
+    "Connect",
+];
+
 enum IPCCommand {
     Quit,
     QuickSettings,
     AppLauncher,
+    /// `mshellctl menu app-launcher --tab <name>` — open the
+    /// launcher and pre-select the named category tab. Unknown
+    /// names silently fall back to "All".
+    AppLauncherTab(String),
     Clock,
     Clipboard,
     Notifications,
@@ -311,6 +341,19 @@ impl IPCService {
     }
     async fn app_launcher(&self) {
         let _ = self.tx.send(IPCCommand::AppLauncher);
+    }
+    /// Open (or refocus) the app launcher and pre-select the
+    /// named category tab. Unknown names silently fall back to
+    /// "All" — the launcher's `select_category` is permissive.
+    async fn app_launcher_tab(&self, tab: String) {
+        let _ = self.tx.send(IPCCommand::AppLauncherTab(tab));
+    }
+    /// Return the known launcher category tab names so the CLI
+    /// can offer `--list-tabs` without round-tripping through
+    /// the live runtime (which only exists while the panel is
+    /// open). See `APP_LAUNCHER_TABS` for the source list.
+    async fn list_app_launcher_tabs(&self) -> Vec<String> {
+        APP_LAUNCHER_TABS.iter().map(|s| (*s).to_string()).collect()
     }
     async fn clock(&self) {
         let _ = self.tx.send(IPCCommand::Clock);

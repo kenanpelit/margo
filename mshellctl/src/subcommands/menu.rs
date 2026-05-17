@@ -1,4 +1,4 @@
-use crate::bus::bus_command;
+use crate::bus::{bus_command, bus_command_with_arg, bus_command_with_reply};
 use clap::Subcommand;
 
 #[derive(Subcommand, Debug)]
@@ -25,8 +25,20 @@ pub enum SessionAction {
 
 #[derive(Subcommand, Debug)]
 pub enum MenuCommands {
-    /// Toggle the app launcher menu
-    AppLauncher,
+    /// Toggle the app launcher menu, optionally pre-selecting a
+    /// category tab. With no flags this is a pure toggle. Use
+    /// `--list-tabs` to discover valid tab names, `--tab <name>`
+    /// to jump straight to a tab.
+    AppLauncher {
+        /// Pre-select the named category tab (e.g. "Run",
+        /// "Insert"). Unknown names fall back to "All".
+        #[arg(long)]
+        tab: Option<String>,
+        /// List the known category tab names and exit without
+        /// opening the launcher.
+        #[arg(long, conflicts_with = "tab")]
+        list_tabs: bool,
+    },
     /// Toggle the clipboard menu
     Clipboard,
     /// Toggle the clock menu
@@ -75,8 +87,18 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         MenuCommands::QuickSettings => {
             bus_command("QuickSettings").await?;
         }
-        MenuCommands::AppLauncher => {
-            bus_command("AppLauncher").await?;
+        MenuCommands::AppLauncher { tab, list_tabs } => {
+            if list_tabs {
+                let tabs: Vec<String> =
+                    bus_command_with_reply("ListAppLauncherTabs").await?;
+                for t in tabs {
+                    println!("{t}");
+                }
+            } else if let Some(name) = tab {
+                bus_command_with_arg("AppLauncherTab", &name).await?;
+            } else {
+                bus_command("AppLauncher").await?;
+            }
         }
         MenuCommands::Clipboard => {
             bus_command("Clipboard").await?;
