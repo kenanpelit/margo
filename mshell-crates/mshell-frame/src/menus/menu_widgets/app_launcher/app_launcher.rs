@@ -64,7 +64,7 @@ use mshell_launcher::{DisplayItem, FrecencyStore, LauncherItem, LauncherRuntime}
 use reactive_graph::traits::*;
 use relm4::gtk::glib;
 use relm4::gtk::prelude::*;
-use relm4::gtk::{RevealerTransitionType, ScrolledWindow, gdk, gio};
+use relm4::gtk::{RevealerTransitionType, ScrolledWindow, gdk, gio, pango};
 use relm4::{
     Component, ComponentController, ComponentParts, ComponentSender, Controller, RelmWidgetExt, gtk,
 };
@@ -960,6 +960,20 @@ fn rebuild_binds_strip(strip: &gtk::Box, model: &AppLauncherModel) {
 
         let cap_lbl = gtk::Label::new(Some(hint.label));
         cap_lbl.add_css_class("app-launcher-bind-label");
+        // The unshrinkable sum of all nine chips otherwise pins the
+        // launcher's minimum width past ~720 px (GTK4 4.22's
+        // ScrolledWindow honours `set_width_request` only as a
+        // floor — never below the child's minimum — and
+        // `min/max_content_width` are no-ops when `hscrollbar-policy:
+        // Never`; see gtkscrolledwindow.c:1896). Letting the
+        // caption ellipsize drops each chip's *minimum* from
+        // `key + full_label_natural` to `key + ellipsis (~10 px)`,
+        // while its *natural* stays the full text so wide allocations
+        // still render "key + Activate" with no truncation. The
+        // launcher panel's measured minimum drops from ~720 → ~590
+        // and `set_width_request` from the Settings spinner can
+        // finally take effect.
+        cap_lbl.set_ellipsize(pango::EllipsizeMode::End);
         chip.append(&cap_lbl);
 
         strip.append(&chip);
@@ -1033,6 +1047,18 @@ fn rebuild_category_strip(
 
         let lbl = gtk::Label::new(Some(&cat.label));
         lbl.add_css_class("app-launcher-category-pill-label");
+        // Allow the pill caption to ellipsize so the strip's
+        // *minimum* width per pill drops from its full text natural
+        // to icon + ellipsis (~50 px). The natural is unchanged so
+        // wide launchers still render every full category name in
+        // a single row. Tooltip carries the full text for the
+        // abbreviated state at very narrow widths. See the matching
+        // comment in `rebuild_binds_strip` for the underlying GTK4
+        // sizing reason (outer menu ScrolledWindow's hscrollbar
+        // policy makes `min/max_content_width` no-ops, so the only
+        // way to honour a smaller `minimum_width` is to reduce the
+        // child tree's measured minimum).
+        lbl.set_ellipsize(pango::EllipsizeMode::End);
         inner.append(&lbl);
 
         btn.set_child(Some(&inner));
