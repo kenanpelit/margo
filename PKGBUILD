@@ -6,9 +6,13 @@
 #   * first-party helpers: `mctl` (dwl-ipc-v2 client), `mlock` (PAM
 #     lockscreen), `mlayout` (per-tag layout profile manager),
 #     `mscreenshot` (grim/slurp pipeline), `mvisual` (output
-#     monitor-profile manager)
+#     monitor-profile manager), `mpicker` (native colour picker —
+#     frozen screencap + zoom lens, drops the hyprpicker dep)
 #   * `mshell` first-party desktop shell (GTK4 + relm4 + layer-shell)
 #     and its `mshellctl` / `mshellshare` IPC siblings
+#   * `mwizard` first-launch setup wizard (writes the shell profile
+#     YAML + xkb_rules_layout into config.conf the first time the
+#     user runs margo with no existing profile)
 #
 # mshell speaks `dwl-ipc-v2` against `margo`. The bundle replaces
 # the previous "compositor-only" `margo-git` so a single
@@ -27,7 +31,8 @@ license=("GPL-3.0-or-later")
 # Runtime libraries — split into compositor-side and mshell-side so
 # trimming this list back to a shell-less build later is mechanical.
 # Verified with `ldd /usr/bin/margo /usr/bin/mlock /usr/bin/mshell
-# /usr/bin/mshellctl` against a fresh release build.
+# /usr/bin/mshellctl /usr/bin/mpicker /usr/bin/mwizard` against a
+# fresh release build.
 depends=(
   # ── Compositor + helpers ────────────────────────────────────────
   glibc
@@ -182,10 +187,13 @@ build() {
   # resolution.
   cargo build --frozen --release \
     -p margo -p start-margo \
-    -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual
+    -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mpicker
 
+  # mshell trio + mwizard (GTK4 + relm4). mwizard depends on
+  # mshell-config to write the shell profile, so it builds
+  # alongside the rest of the shell stack.
   cargo build --frozen --release \
-    -p mshell -p mshellctl -p mshellshare
+    -p mshell -p mshellctl -p mshellshare -p mwizard
 }
 
 check() {
@@ -216,8 +224,8 @@ package() {
   local bin
   for bin in \
       margo start-margo \
-      mctl mlock mlayout mscreenshot mvisual \
-      mshell mshellctl mshellshare; do
+      mctl mlock mlayout mscreenshot mvisual mpicker \
+      mshell mshellctl mshellshare mwizard; do
     install -Dm755 "$CARGO_TARGET_DIR/release/$bin" "$pkgdir/usr/bin/$bin"
   done
 
