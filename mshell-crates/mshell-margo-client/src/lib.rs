@@ -100,11 +100,39 @@ impl<T: Clone + Send + Sync + 'static> Reactive<T> {
         }
     }
 
-    /// Subscribe — returns a `Stream<Item = T>` that yields the
-    /// new value on every `set()`. Lossy on slow consumers
-    /// (broadcast `Lagged` errors are silently dropped, mirroring
-    /// the upstream's `wayle_core::Reactive::watch` behaviour).
+    /// Subscribe — returns a `Stream<Item = T>` that **immediately
+    /// yields the current value** to the new subscriber, then yields
+    /// the new value on every subsequent `set()`. Lossy on slow
+    /// consumers (broadcast `Lagged` errors are silently dropped).
+    ///
+    /// The "current value first" semantics is critical for widgets
+    /// that subscribe *after* the initial `set()` has fired. Margo's
+    /// workspaces vec, for example, only gets `set()` once per
+    /// session (tag_count = 9, fixed); without snapshot-on-subscribe,
+    /// any widget that spawns after the sync poll's first apply would
+    /// never see a notification and would render empty until some
+    /// later membership change — which doesn't happen — so the user
+    /// would see an empty tag row until they opened a window
+    /// (the first window mapping eventually flips workspace `windows`
+    /// counts, but only via per-tag Reactive sets, not the outer
+    /// `workspaces` vec). Snapshot-on-subscribe makes that race
+    /// disappear: the widget's own subscription is the trigger that
+    /// fills it in.
     pub fn watch(&self) -> Pin<Box<dyn Stream<Item = T> + Send>> {
+        // Subscribe FIRST, then snapshot. This way the only race
+        // window is between subscribe and snapshot — and in that
+        // window any concurrent `set()` will both update the value
+        // (so our snapshot is current or newer) AND broadcast (so
+        // we get it through the live stream). Worst case: the
+        // subscriber sees the same value twice in a row (snapshot
+        // + live), which is harmless — every downstream consumer
+        // re-snapshots on receipt and just re-renders the same
+        // state. If we did snapshot-then-subscribe, a `set()` in
+        // the window would slip through both gates: we'd yield the
+        // pre-set snapshot, and the broadcast would fire before
+        // our subscribe captured it, so the new value would be
+        // lost until the next `set()` — which for the workspaces
+        // vec is "never".
         let mut sender_slot = self.inner.sender.write().unwrap();
         let sender = sender_slot.get_or_insert_with(|| {
             let (tx, _) = tokio::sync::broadcast::channel(64);
@@ -112,9 +140,16 @@ impl<T: Clone + Send + Sync + 'static> Reactive<T> {
         });
         let rx = sender.subscribe();
         drop(sender_slot);
-        Box::pin(tokio_stream::wrappers::BroadcastStream::new(rx).filter_map(
-            |r| async move { r.ok() },
-        ))
+        let current = self
+            .inner
+            .value
+            .read()
+            .expect("Reactive<T> RwLock poisoned")
+            .clone();
+        let initial = futures::stream::once(async move { current });
+        let live = tokio_stream::wrappers::BroadcastStream::new(rx)
+            .filter_map(|r| async move { r.ok() });
+        Box::pin(initial.chain(live))
     }
 }
 

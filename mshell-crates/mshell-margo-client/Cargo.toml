@@ -11,6 +11,14 @@ license.workspace = true
 anyhow.workspace = true
 futures.workspace = true
 libc.workspace = true
+# inotify-based reactive watch on $XDG_RUNTIME_DIR/margo/state.json.
+# Replaces the 250 ms steady-state poll with kernel-driven wakeups:
+# every mctl / arrange / focus event in margo rewrites state.json,
+# and inotify delivers that within ~1 ms instead of the worst-case
+# 250 ms poll latency. The polling path stays as a long-interval
+# fallback (2 s) in case inotify init fails or the parent directory
+# doesn't exist at startup.
+notify.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
