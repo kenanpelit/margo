@@ -184,7 +184,12 @@
 .app-launcher-item {
   background-color: transparent;
   border-radius: var(--radius-widget);
-  padding: 8px 12px;
+  // Tightened vertical padding (was 8px) — the previous value
+  // visually read as a blank line above + below each row, so a
+  // single app entry filled four "lines" of the panel (blank /
+  // name / description / blank). 4px keeps the touch-target
+  // height comfortable while collapsing the perceived gaps.
+  padding: 4px 12px;
   margin: 1px 0;
   transition: background-color 120ms ease-in-out, color 120ms ease-in-out;
 
