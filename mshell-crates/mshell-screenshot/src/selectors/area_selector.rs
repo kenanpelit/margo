@@ -236,9 +236,16 @@ fn draw_overlay(
         cr.rectangle(sx, sy, sw, sh);
         cr.stroke().ok();
 
-        // Dimension label.
+        // Dimension + aspect-ratio label. The ratio chunk lands
+        // right after the px count so the user reading the badge
+        // gets "what is this region exactly" in one glance —
+        // useful both for capture sizing (16:9 thumbnail vs 1:1
+        // avatar) and for editing decisions (does this fit a
+        // socials post format).
         cr.set_font_size(14.0);
-        let label = format!("{}×{}", sw as i32, sh as i32);
+        let w_i = sw as i32;
+        let h_i = sh as i32;
+        let label = format!("{}×{}  ({})", w_i, h_i, aspect_label(w_i, h_i));
         if let Ok(extents) = cr.text_extents(&label) {
             let tx = sx + (sw - extents.width()) / 2.0;
             let ty = sy + sh + 20.0;
@@ -246,6 +253,48 @@ fn draw_overlay(
             cr.show_text(&label).ok();
         }
     }
+}
+
+/// Friendly description of `w:h` — named tag when it matches a
+/// common screen / social format within a small ε, otherwise the
+/// reduced fraction so e.g. 800×600 reads as "4:3" and 1735×973
+/// reads as "1735:973" (the user's odd custom drag). ε is 0.5 %
+/// to absorb sub-pixel drift from the drag clamp.
+fn aspect_label(w: i32, h: i32) -> String {
+    if w <= 0 || h <= 0 {
+        return "—".into();
+    }
+    let ratio = w as f64 / h as f64;
+    let presets = [
+        ("1:1", 1.0),
+        ("4:3", 4.0 / 3.0),
+        ("3:2", 3.0 / 2.0),
+        ("16:10", 16.0 / 10.0),
+        ("16:9", 16.0 / 9.0),
+        ("21:9", 21.0 / 9.0),
+        ("32:9", 32.0 / 9.0),
+        ("9:16", 9.0 / 16.0),
+        ("3:4", 3.0 / 4.0),
+        ("2:3", 2.0 / 3.0),
+    ];
+    for (name, target) in presets {
+        if (ratio - target).abs() / target < 0.005 {
+            return name.into();
+        }
+    }
+    // Fall back to the reduced fraction so odd drags still carry
+    // a readable label (e.g. "5:3" for 1920×1152).
+    let g = gcd(w.unsigned_abs(), h.unsigned_abs()) as i32;
+    format!("{}:{}", w / g.max(1), h / g.max(1))
+}
+
+fn gcd(mut a: u32, mut b: u32) -> u32 {
+    while b != 0 {
+        let t = b;
+        b = a % b;
+        a = t;
+    }
+    a.max(1)
 }
 
 /// Compute the current rectangle from an in-progress drag.
