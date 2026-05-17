@@ -158,7 +158,6 @@ build() {
   cd "$srcdir/margo"
 
   export RUSTUP_TOOLCHAIN=stable
-  export CARGO_TARGET_DIR="$srcdir/target"
 
   # `--remap-path-prefix` rewrites the build dir to `/build` in
   # the embedded debug strings; otherwise pacman warns about a
@@ -175,25 +174,36 @@ build() {
   export CXXFLAGS="${CXXFLAGS:-} -ffile-prefix-map=$srcdir=/build"
 
   # Two invocations on purpose — do NOT collapse back to a single
-  # `--workspace` build. The mshell trio pulls the `wayle-*` crates,
-  # which enable `zbus`'s `tokio` feature. With a `--workspace`
-  # build, Cargo feature unification turns `zbus/tokio` on for the
-  # one shared `zbus` artifact, and the compositor links that same
-  # build. margo drives zbus over `async-io` and never enters a
+  # `--workspace` build. The mshell trio + mpicker pull the
+  # `wayle-*` crates (transitively via mshell-services), which
+  # enable `zbus`'s `tokio` feature. With a `--workspace` build —
+  # or even two `-p` invocations sharing a single CARGO_TARGET_DIR
+  # — Cargo's shared build cache ends up storing one zbus rlib
+  # with `tokio` activated and re-linking the compositor against
+  # it. margo drives zbus over `async-io` and never enters a
   # Tokio runtime, so zbus's tokio executor panics at startup
-  # ("there is no reactor running") and the session dies. Building
-  # the compositor-side bins in their own invocation keeps the
-  # `wayle-*` → `zbus/tokio` subtree out of margo's feature
-  # resolution.
-  cargo build --frozen --release \
-    -p margo -p start-margo \
-    -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mpicker
+  # ("there is no reactor running") and the session dies.
+  #
+  # Each invocation gets its own CARGO_TARGET_DIR so the
+  # compositor's zbus artifact (async-io only) and the shell's
+  # zbus artifact (async-io + tokio) live in completely isolated
+  # build caches with no chance of cross-contamination. Both
+  # target dirs land under $srcdir so makepkg cleans them up
+  # automatically.
+  local compositor_target="$srcdir/target-compositor"
+  local shell_target="$srcdir/target-shell"
+
+  CARGO_TARGET_DIR="$compositor_target" \
+    cargo build --frozen --release \
+      -p margo -p start-margo \
+      -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mpicker
 
   # mshell trio + mwizard (GTK4 + relm4). mwizard depends on
   # mshell-config to write the shell profile, so it builds
   # alongside the rest of the shell stack.
-  cargo build --frozen --release \
-    -p mshell -p mshellctl -p mshellshare -p mwizard
+  CARGO_TARGET_DIR="$shell_target" \
+    cargo build --frozen --release \
+      -p mshell -p mshellctl -p mshellshare -p mwizard
 }
 
 check() {
@@ -203,11 +213,15 @@ check() {
   # a packager environment; the compositor + mshell want a live
   # Wayland session. Test failures are non-blocking — surface
   # them as warnings but let pacman still ship the build.
-  cargo test --frozen --release \
-    --package margo-config \
-    --package margo-layouts \
-    --package mctl \
-    --package mlayout ||
+  #
+  # Reuse the compositor target dir so the already-built artifacts
+  # for these crates don't get re-compiled into a third cache.
+  CARGO_TARGET_DIR="$srcdir/target-compositor" \
+    cargo test --frozen --release \
+      --package margo-config \
+      --package margo-layouts \
+      --package mctl \
+      --package mlayout ||
     echo "::: margo: test suite reported failures (non-blocking)"
 }
 
@@ -215,18 +229,25 @@ package() {
   cd "$srcdir/margo"
 
   # ── Binaries ─────────────────────────────────────────────────────
-  # Compositor + helpers + mshell trio, all from the same Cargo
-  # workspace `--workspace --release` invocation above. The bin
-  # list is the full set of `[[bin]]` targets in the workspace as
-  # of the dev/mshell-port → main merge; keep in sync with
-  # `cargo metadata --format-version 1 | jq '.packages[].targets[]
-  # | select(.kind[0]=="bin") | .name'`.
+  # Two separate target dirs — compositor-side bins live under
+  # `target-compositor/release/`, shell-side bins under
+  # `target-shell/release/`. The split mirrors `build()`'s
+  # isolated invocations and is what prevents zbus/tokio leak
+  # into the compositor binary (see the long comment there).
+  local compositor_target="$srcdir/target-compositor"
+  local shell_target="$srcdir/target-shell"
+
   local bin
   for bin in \
       margo start-margo \
-      mctl mlock mlayout mscreenshot mvisual mpicker \
+      mctl mlock mlayout mscreenshot mvisual mpicker; do
+    install -Dm755 "$compositor_target/release/$bin" \
+      "$pkgdir/usr/bin/$bin"
+  done
+  for bin in \
       mshell mshellctl mshellshare mwizard; do
-    install -Dm755 "$CARGO_TARGET_DIR/release/$bin" "$pkgdir/usr/bin/$bin"
+    install -Dm755 "$shell_target/release/$bin" \
+      "$pkgdir/usr/bin/$bin"
   done
 
   # ── Wayland session entry ──────────────────────────────────────
