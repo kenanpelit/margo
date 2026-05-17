@@ -20,9 +20,9 @@
 | L1 | /tmp paths (mlock + launcher) | ✅ DONE — XDG_RUNTIME_DIR fallback | `01933b3` |
 | L2 | wayle-hyprland 5 satır yorum | ✅ DONE — 1 satıra indirildi | `01933b3` |
 | M5 | dashbord.png + dashbord1.png | ✅ DONE — silindi + `*.png` gitignore'da | `01933b3` |
+| **H1** | menu_settings.rs 4041 LOC refactor | ✅ **DONE — 4041 → 394 LOC (-3373 satır)** | `a71aeb4` |
 
-**Kalan büyük işler (#186, #187, #188, #189)** — odaklanmış ayrı session'lara değer:
-- `#186` menu_settings.rs makro refactor (H1) — 2-3 saat
+**Kalan büyük işler (#187, #188, #189)** — odaklanmış ayrı session'lara değer:
 - `#187` Production unwrap audit (gerçek hotspot'lar) — 1-2 saat
 - `#188` margo/state.rs bölme (M1) — yarım gün
 - `#189` Config crate yeniden adlandırma (M2) — 1 saat, ama 93 dosyaya dokunur
