@@ -630,7 +630,11 @@ impl Default for Menus {
                                 ],
                                 spacing: 10,
                                 orientation: Orientation::Vertical,
-                                minimum_width: 320,
+                                // Equalised with the right column —
+                                // both sides share the same width so
+                                // the dashboard reads as a symmetric
+                                // two-pane layout.
+                                minimum_width: 400,
                             }),
                             // Right column = standalone QS clone.
                             // Keep the widget list in lock-step
@@ -667,12 +671,11 @@ impl Default for Menus {
                                 ],
                                 spacing: 8,
                                 orientation: Orientation::Vertical,
-                                // Match the standalone QS's
-                                // breathing room: each tile gets
-                                // ~440 px width so the rows feel
-                                // like the new QS image, not a
-                                // cramped dashboard sidebar.
-                                minimum_width: 440,
+                                // Equalised with the left column —
+                                // 400 px on each side keeps the
+                                // standalone-QS breathing room while
+                                // making the dashboard symmetric.
+                                minimum_width: 400,
                             }),
                         ],
                         spacing: 12,
@@ -680,11 +683,11 @@ impl Default for Menus {
                         minimum_width: 0,
                     }),
                 ],
-                // Bumped from 760 — 320 (left) + 12 (spacing) +
-                // 440 (right) + ~40 (menu padding) wants ~810,
-                // round up to 840 so the menu opens at a width
-                // where neither column needs to negotiate down.
-                minimum_width: 840,
+                // 400 (left) + 12 (spacing) + 400 (right) + ~40
+                // (menu padding) wants ~852; round to 860 so the
+                // outer menu opens at a width where both equal-
+                // sized columns slot in without renegotiation.
+                minimum_width: 860,
                 maximum_height: 0,
             },
             margo_layout_menu: Menu {

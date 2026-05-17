@@ -63,17 +63,21 @@
   .quick-actions-menu-widget,
   .calendar-menu-widget,
   .weather-menu-widget {
-    // surface-container reads as a distinct tile against the
-    // menu's deeper surface-container-lowest bg — clearer
-    // separation than surface-variant gave us, matches the
-    // standalone QS visual now used as the canonical reference.
-    // The outline-variant border makes each tile pop even on
-    // theme palettes where surface-container is only a hair
-    // off the menu bg (Dracula-cool variants).
+    // Tile chrome that mirrors the standalone QS image
+    // (dashbord1.png) — distinct surface-container rectangle,
+    // crisp outline ring, generous padding so the icon + label
+    // sit centred with breathing room.
+    //
+    // The outline is drawn with `box-shadow inset` instead of
+    // `border` because GTK4 collapses border on Box widgets
+    // whose child widget already paints to the edge (revealer
+    // rows do this), making the border invisible in the
+    // dashboard 2-col layout. box-shadow paints over the
+    // child's drawing layer so the ring is always visible.
     background-color: var(--surface-container);
     color: var(--on-surface);
-    border: 1px solid var(--outline-variant);
     border-radius: var(--radius-widget);
+    box-shadow: inset 0 0 0 1px var(--outline-variant);
     padding: 14px 16px;
     margin: 6px 0;
   }

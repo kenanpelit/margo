@@ -123,7 +123,13 @@ impl Component for MenuModel {
         #[root]
         #[name = "scrolled_window"]
         gtk::ScrolledWindow {
-            set_css_classes: &["menu-scroll-window", model.css_class.as_str()],
+            // CSS classes are wired post-`view_output!` so the
+            // dashboard's space-separated `"quick-settings-menu
+            // dashboard-menu"` is split into two distinct classes
+            // (a single slice entry would be treated as one
+            // multi-word class and break `.quick-settings-menu`
+            // descendant selectors).
+            set_css_classes: &["menu-scroll-window"],
             set_vscrollbar_policy: gtk::PolicyType::Automatic,
             set_hscrollbar_policy: gtk::PolicyType::Never,
             set_propagate_natural_height: true,
@@ -633,6 +639,15 @@ impl Component for MenuModel {
         };
 
         let widgets = view_output!();
+
+        // Apply per-menu CSS classes one-by-one so multi-class
+        // strings like dashboard's `"quick-settings-menu
+        // dashboard-menu"` register as two separate classes —
+        // letting `.quick-settings-menu .network-menu-widget`
+        // rules match descendants of the dashboard root.
+        let mut classes: Vec<&str> = vec!["menu-scroll-window"];
+        classes.extend(model.css_class.split_whitespace());
+        widgets.scrolled_window.set_css_classes(&classes);
 
         if let MenuType::Wallpaper = params.menu_type {
             widgets.widget_container.set_margin_all(8);
