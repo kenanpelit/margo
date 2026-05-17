@@ -34,9 +34,10 @@
 
 **Sonuç**: 265 prod unwrap rakamı flat grep'ten geldi. Case-by-case 80%'i framework/idiom; sistemik risk yok. Geniş sweep değer yaratmaz, scattered tekil instances zaten case-by-case düzeltiliyor.
 
-**Kalan büyük işler (#188, #189)**:
-- `#188` margo/state.rs bölme (M1) — yarım gün
-- `#189` Config crate yeniden adlandırma (M2) — 1 saat, ama 93 dosyaya dokunur
+**M2 ikinci tur audit sonucu**: `mshell_config::Config` ve `margo_config::Config` ikisini de import eden **tek bir dosya bile yok** (display_settings.rs ikisini import ediyor ama farklı tipler için — `margo_config::TwilightMode` + `mshell_config::atomic_write`). İsim çakışması teorik, pratik yok. Rename'in 126 file blast radius'una karşı yararı sıfır. **#189 kapatıldı (CANCELLED)**.
+
+**Kalan büyük iş (#188)**:
+- `#188` margo/state.rs bölme (M1) — zaten kısmen bölünmüş (`state/{handlers,animation_tick,dispatch,...}` modülleri var). Geri kalan 3484 LOC `MargoState` impl block — daha fazla extract için compositor internal'larıyla yakın çalışma gerek; yarım gün+, ayrı session'da tek başına.
 
 ---
 
