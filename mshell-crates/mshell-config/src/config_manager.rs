@@ -11,7 +11,9 @@ use tracing::{error, info};
 
 use crate::config_utils::*;
 use crate::errors::{ProfileCreateError, ProfileDeleteError};
-use crate::paths::*;
+use crate::paths::{
+    DEFAULT_PROFILE_NAME, default_config_path, profile_path, profiles_dir,
+};
 use crate::schema::config::Config;
 
 pub struct ConfigManager {

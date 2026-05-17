@@ -1,0 +1,21 @@
+[package]
+name = "mwizard"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "First-launch setup wizard for margo + mshell"
+
+[[bin]]
+name = "mwizard"
+path = "src/main.rs"
+
+[dependencies]
+mshell-config = { workspace = true }
+gtk4.workspace = true
+relm4.workspace = true
+serde_yaml.workspace = true
+dirs.workspace = true
+clap.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

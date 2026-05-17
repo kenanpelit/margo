@@ -9,6 +9,7 @@ members = [
     "mpicker",
     "mscreenshot",
     "mvisual",
+    "mwizard",
     "start-margo",
     # Shell — port of OkShell. 3 binaries (mshell, mshellctl,
     # mshellshare) + 26 helper crates under mshell-crates/.
