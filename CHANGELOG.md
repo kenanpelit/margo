@@ -7,6 +7,173 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.6.2] – 2026-05-17
+
+### Added
+
+- **mshell-launcher — provider-based app launcher with 19 providers.**
+  The legacy single-purpose `AppLauncher` widget is replaced by a
+  provider runtime + a uniform 0–200 scoring scale so results from
+  every source interleave cleanly. Providers ship in two crates:
+
+  Compositor-independent (in `mshell-launcher`):
+  - **Apps** — fuzzy-search desktop entries, frecency-boosted.
+  - **Calculator** — inline math via `evalexpr`, `2+2` → `4`, `sqrt(2)` etc.
+  - **Session** — Lock / Logout / Suspend / Reboot / Shutdown.
+  - **Settings** — jumps directly to a Settings sidebar section.
+  - **Command** (`>cmd echo hi`) — run a shell command, history-aware.
+  - **Scripts** (`>start brave`) — fuzzy-launch `start-*` scripts from
+    `$PATH`, frecency-boosted.
+  - **Clipboard** (`>clip`) / **Clear** (`>clear`) — history browse / wipe.
+  - **Symbols** (`.arrow`) — Unicode special chars (→ ± π …).
+  - **Emoji** (`:smile`) — keyword emoji picker.
+  - **Websearch** (`g`/`y`/`ddg`/`gh`/`aur`/`arch`/`wiki`) — open the
+    query in the default browser.
+  - **ProviderList** (`;`) — discoverable cheatsheet of every prefix.
+  - **Playerctl** (`player`) — MPRIS play / pause / next.
+  - **ArchPkgs** (`p`) — Arch / AUR package search.
+  - **Wireplumber** (`audio`) — sink / source switcher.
+  - **Bluetooth** (`bt`) — bluez 5.65+ paired-devices picker.
+  - **Ssh** (`ssh <host>`) — opens `$TERMINAL -e ssh <name>` against
+    hosts in `~/.ssh/assh.yml` (assh format).
+
+  Compositor-aware (in `mshell-frame`, pull `mshell-margo-client`):
+  - **Windows** (`win [query]`) — alt-tab-style open-window switcher.
+  - **Mctl** — margo compositor quick-actions (wallpaper next, twilight,
+    screenshot region, …).
+  - **Tags** (`tag [N]`) — switch focused output to tag N (1–9), with
+    glyph indicators ● active / ◐ occupied / ○ empty.
+
+  Cross-cutting:
+  - Frecency cache at `~/.cache/margo/launcher_usage.json` (boost
+    `5·log2(1+count)` applied in both browse and command-mode dispatch).
+  - Command history cache at `~/.cache/margo/launcher_command_history.json`.
+  - Toast notification on activation (visual feedback).
+  - `>` palette enumerates every provider's `commands()`.
+  - **Launcher** settings page with cache-clear buttons + scripts list.
+
+- **mshell-auth: real PAM authentication.** Shared `libpam` FFI extracted
+  from mlock so mshell-lockscreen can actually unlock. The previous PAM
+  stub always failed; mlock's libpam wiring now lives in a shared
+  `mshell_auth::pam` module (avoids the bindgen/clang-sys problem the
+  `pam-sys` crate has on Arch).
+
+- **Margo layout switcher — in-frame menu (rewrite).** Replaces the
+  legacy in-bar `gtk::PopoverMenu` (xdg_popup, detached feel) with a
+  regular menu surface that slides out from the bar like every other
+  menu in mshell.
+
+- **mshell-settings — Menus promoted to top-level sidebar entry.**
+  Previously buried under a sub-section. Tab / Up / Down now walk the
+  left sidebar.
+
+### Changed
+
+- **mshell-margo-client: `Reactive::watch()` snapshot-on-subscribe.**
+  New subscribers receive the current value before any subsequent
+  `set()` broadcasts (BehaviorSubject semantics). The old change-only
+  stream missed the single startup `set()` for the workspaces vec
+  (margo's `tag_count = 9` is fixed, so the membership never changes
+  in steady state) — symptom was bar widgets that sat empty until the
+  user opened a window. The watcher now fills in on the first scheduler
+  tick.
+
+- **mshell-margo-client: inotify-based `state.json` watch.** Replaces
+  the 250 ms steady-state poll with kernel-driven wakeups (notify v9,
+  parent-dir watch so atomic-rename writes survive). A 2 s polling
+  loop stays as a safety net (init failure, parent dir not yet
+  created). Idle CPU drops since mshell is no longer waking up 4×
+  per second forever.
+
+- **mshell-style: compile-time baseline = Margo brand palette.** SCSS
+  `_colors.scss` ships the Margo (Dracula-style) palette instead of
+  Everforest so the first paint on first login matches the steady
+  state.
+
+- **mshell-style: matugen output cached to disk.** Last successful
+  matugen CSS is atomically written to `~/.cache/mshell/last_theme.css`
+  and loaded synchronously at startup. On every login after the first
+  there's no theme flash — the cached palette paints from frame one
+  and the async matugen run that follows is visually a no-op.
+
+- **margo: state.json `active_output` is now pointer-first.** Previously
+  the field tracked the focused-client's monitor, which left it stuck on
+  the old output when the user moved the cursor (or ran `focusmon`) to
+  an empty monitor. Mshell's IPC handler then routed `Super+Space` to
+  the wrong frame. The field now follows the pointer monitor and
+  refreshes on cursor crossings + `focusmon` dispatches.
+
+- **mshell: settings deep-navigation race + +1 pt fonts + scale slider.**
+  Launcher → Settings → specific section no longer slams Settings shut.
+  All Settings fonts wrapped in
+  `calc(Npx * var(--font-scale-settings, 1.0))` so the Settings →
+  General "Settings font scale" slider rescales the panel dynamically.
+
+- **mshell: symlink-preserving config writes.** Writing through `dcli` /
+  `stow` / `chezmoi` symlinks no longer replaces the link with a
+  regular file.
+
+- **margo_tags widget cleanup (~150 lines).** Now that the underlying
+  Reactive race is fixed (BehaviorSubject + inotify + `focused_idx`
+  null-parse), the five-layer belt-and-suspender stack (cold-start
+  poll, brute-force timer, bootstrap_rows fallback, …) is gone. One
+  clean subscriber loop.
+
+### Fixed
+
+- **The big one — mshell-margo-client parses `null` `focused_idx`.**
+  Root cause of "tag pills on the bar stay empty until the first
+  window opens, *every login*". At session start margo writes
+  `focused_idx: null` (no client focused yet); the old schema required
+  `i64` and rejected the whole document with `invalid type: null,
+  expected i64`. `apply_snapshot()` never ran, `service.workspaces`
+  stayed empty, and the snapshot-on-subscribe stream yielded an empty
+  vec. Opening any window flipped `focused_idx` to a real integer →
+  parse OK → 9 workspaces published → pills appeared. Now declared
+  `Option<i64>` with an explicit deserializer documenting the wire
+  shape. **Verified end-to-end after a fresh reboot:** 9 pills paint
+  before any window opens.
+
+- **mshell-launcher: dispatch fires for every prefix, not just `>`.**
+  Symbols (`.`), Emoji (`:`), `;`, `audio`, `bt`, `player`, `p`, `ssh`,
+  `tag`, `win` previously hit no provider and silently returned nothing.
+  Every provider's `handles_command()` now participates in dispatch.
+
+- **mshell-launcher: frecency boost applies in command-mode too.**
+  `>start brave` no longer always sorts alphabetically.
+
+- **mshell-launcher: `bt` prefix works with bluez 5.65+.** Upstream
+  removed the `bluetoothctl paired-devices` subcommand; try
+  `devices Paired` first, fall back to the old form.
+
+- **mshell-launcher: `lock` actually locks.** Session provider routes
+  through `mshellctl menu session lock` (mshell's in-process session
+  dispatcher); the old `loginctl lock-session` is a no-op under margo
+  (no logind session-locking integration).
+
+- **mshell-launcher: `;` cheatsheet click writes to the search entry.**
+  Previously updated the internal filter without touching the visible
+  `GtkEntry`.
+
+- **mshell-launcher: Settings deep navigation race.** Activating
+  `settings:display` no longer races `CloseMenus` against
+  `OpenSettingsAtSection`.
+
+- **mshell-ndns: probe accumulates DNS from Global + per-link.** Old
+  parser only read Global; DNS servers configured on a single link
+  were missed. Presets now apply via `nmcli con mod` + `up`.
+
+- **mshell: DNS preset active highlight + 8 layout icons.**
+
+- **mshell: session menu Tab navigation.** Tab cycles entries; key
+  controller attached to the menu's root so focus traversal works even
+  before any child has been clicked.
+
+### Removed
+
+- **mshell-launcher: stale `set_on_activated` from AppsProvider.** Dead
+  code from an earlier provider trait shape.
+
 ## [0.6.1] – 2026-05-16
 
 ### Added
