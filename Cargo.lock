@@ -3532,6 +3532,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "mpicker"
+version = "0.6.3"
+dependencies = [
+ "anyhow",
+ "clap",
+ "gtk4",
+ "gtk4-layer-shell",
+ "image",
+ "mshell-screenshot",
+]
+
+[[package]]
 name = "mscreenshot"
 version = "0.6.3"
 dependencies = [
@@ -3659,6 +3671,7 @@ dependencies = [
  "mshell-notification-popups",
  "mshell-osd",
  "mshell-polkit",
+ "mshell-screenshot",
  "mshell-services",
  "mshell-session",
  "mshell-settings",

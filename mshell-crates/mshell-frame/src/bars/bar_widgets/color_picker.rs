@@ -1,30 +1,30 @@
-use mshell_utils::hypr_picker::spawn_color_picker;
+use mshell_utils::picker::spawn_color_picker;
 use relm4::gtk::Orientation;
 use relm4::gtk::prelude::{ButtonExt, WidgetExt};
 use relm4::{ComponentParts, ComponentSender, SimpleComponent, gtk};
 
 #[derive(Debug, Clone)]
-pub(crate) struct HyprPickerModel {
+pub(crate) struct ColorPickerModel {
     orientation: Orientation,
 }
 
 #[derive(Debug)]
-pub(crate) enum HyprPickerInput {
+pub(crate) enum ColorPickerInput {
     Clicked,
 }
 
 #[derive(Debug)]
-pub(crate) enum HyprPickerOutput {}
+pub(crate) enum ColorPickerOutput {}
 
-pub(crate) struct HyprPickerInit {
+pub(crate) struct ColorPickerInit {
     pub(crate) orientation: Orientation,
 }
 
 #[relm4::component(pub)]
-impl SimpleComponent for HyprPickerModel {
-    type Input = HyprPickerInput;
-    type Output = HyprPickerOutput;
-    type Init = HyprPickerInit;
+impl SimpleComponent for ColorPickerModel {
+    type Input = ColorPickerInput;
+    type Output = ColorPickerOutput;
+    type Init = ColorPickerInit;
 
     view! {
         #[root]
@@ -40,7 +40,7 @@ impl SimpleComponent for HyprPickerModel {
                 set_hexpand: false,
                 set_vexpand: false,
                 connect_clicked[sender] => move |_| {
-                    sender.input(HyprPickerInput::Clicked);
+                    sender.input(ColorPickerInput::Clicked);
                 },
 
                 #[name="image"]
@@ -60,7 +60,7 @@ impl SimpleComponent for HyprPickerModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let model = HyprPickerModel {
+        let model = ColorPickerModel {
             orientation: params.orientation,
         };
 
@@ -71,7 +71,7 @@ impl SimpleComponent for HyprPickerModel {
 
     fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>) {
         match message {
-            HyprPickerInput::Clicked => spawn_color_picker(0),
+            ColorPickerInput::Clicked => spawn_color_picker(0),
         }
     }
 }

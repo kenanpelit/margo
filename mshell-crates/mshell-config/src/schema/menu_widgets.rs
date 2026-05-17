@@ -156,7 +156,7 @@ pub struct QuickActionsConfig {
 pub enum QuickActionWidget {
     AirplaneMode,
     DoNotDisturb,
-    HyprPicker,
+    ColorPicker,
     IdleInhibitor,
     Lock,
     Logout,
@@ -171,7 +171,7 @@ impl QuickActionWidget {
         match self {
             QuickActionWidget::AirplaneMode => "Airplane Mode",
             QuickActionWidget::DoNotDisturb => "Do Not Disturb",
-            QuickActionWidget::HyprPicker => "Color Picker",
+            QuickActionWidget::ColorPicker => "Color Picker",
             QuickActionWidget::IdleInhibitor => "Idle Inhibitor",
             QuickActionWidget::Lock => "Lock",
             QuickActionWidget::Logout => "Logout",
@@ -190,7 +190,7 @@ impl QuickActionWidget {
         &[
             QuickActionWidget::AirplaneMode,
             QuickActionWidget::DoNotDisturb,
-            QuickActionWidget::HyprPicker,
+            QuickActionWidget::ColorPicker,
             QuickActionWidget::IdleInhibitor,
             QuickActionWidget::Lock,
             QuickActionWidget::Logout,

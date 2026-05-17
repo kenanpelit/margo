@@ -4,8 +4,8 @@ use crate::menus::menu_widgets::quick_action::actions::airplane_mode::{
 use crate::menus::menu_widgets::quick_action::actions::do_not_disturb::{
     DoNotDisturbInit, DoNotDisturbModel,
 };
-use crate::menus::menu_widgets::quick_action::actions::hypr_picker::{
-    HyprPickerInit, HyprPickerModel, HyprPickerOutput,
+use crate::menus::menu_widgets::quick_action::actions::color_picker::{
+    ColorPickerInit, ColorPickerModel, ColorPickerOutput,
 };
 use crate::menus::menu_widgets::quick_action::actions::idle_inhibitor::{
     IdleInhibitorInit, IdleInhibitorModel,
@@ -103,11 +103,11 @@ impl QuickActionsModel {
                     .launch(DoNotDisturbInit {})
                     .detach(),
             ),
-            QuickActionWidget::HyprPicker => Box::new(
-                HyprPickerModel::builder()
-                    .launch(HyprPickerInit {})
+            QuickActionWidget::ColorPicker => Box::new(
+                ColorPickerModel::builder()
+                    .launch(ColorPickerInit {})
                     .forward(sender.output_sender(), |msg| match msg {
-                        HyprPickerOutput::CloseMenu => QuickActionsOutput::CloseMenu,
+                        ColorPickerOutput::CloseMenu => QuickActionsOutput::CloseMenu,
                     }),
             ),
             QuickActionWidget::IdleInhibitor => Box::new(

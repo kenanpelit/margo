@@ -30,7 +30,7 @@ pub(crate) enum BarPillKind {
     Battery,
     Bluetooth,
     DarkMode,
-    HyprPicker,
+    ColorPicker,
     KeepAwake,
     Lock,
     Logout,
@@ -57,7 +57,7 @@ impl BarPillKind {
             Self::Battery => "Battery",
             Self::Bluetooth => "Bluetooth",
             Self::DarkMode => "Dark Mode Toggle",
-            Self::HyprPicker => "HyprPicker",
+            Self::ColorPicker => "ColorPicker",
             Self::KeepAwake => "Keep Awake",
             Self::Lock => "Lock",
             Self::Logout => "Logout",
@@ -98,7 +98,7 @@ impl BarPillKind {
             Self::DarkMode => {
                 "One-click flip between Light and Dark matugen modes. Icon reflects the mode you'd switch *to*."
             }
-            Self::HyprPicker => {
+            Self::ColorPicker => {
                 "Picks a colour from the screen and copies hex/rgb to the clipboard. Click to start picking."
             }
             Self::KeepAwake => {

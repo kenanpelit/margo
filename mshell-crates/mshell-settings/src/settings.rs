@@ -701,7 +701,7 @@ impl Component for SettingsWindowModel {
             WidgetEntry::Pill { kind: BarPillKind::Battery, stack_name: "pill_battery", label: "Battery", icon: "battery-good-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::Bluetooth, stack_name: "pill_bluetooth", label: "Bluetooth", icon: "bluetooth-active-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::DarkMode, stack_name: "pill_dark_mode", label: "Dark Mode Toggle", icon: "weather-clear-night-symbolic" },
-            WidgetEntry::Pill { kind: BarPillKind::HyprPicker, stack_name: "pill_hypr_picker", label: "HyprPicker", icon: "color-select-symbolic" },
+            WidgetEntry::Pill { kind: BarPillKind::ColorPicker, stack_name: "pill_color_picker", label: "ColorPicker", icon: "color-select-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::KeepAwake, stack_name: "pill_keep_awake", label: "Keep Awake", icon: "eye-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::Lock, stack_name: "pill_lock", label: "Lock", icon: "system-lock-screen-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::Logout, stack_name: "pill_logout", label: "Logout", icon: "system-log-out-symbolic" },

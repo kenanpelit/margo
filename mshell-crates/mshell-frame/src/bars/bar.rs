@@ -11,7 +11,7 @@ use crate::bars::bar_widgets::sysstat::{
     CpuMonitorInit, CpuMonitorModel, RamMonitorInit, RamMonitorModel, TempMonitorInit,
     TempMonitorModel,
 };
-use crate::bars::bar_widgets::hypr_picker::{HyprPickerInit, HyprPickerModel};
+use crate::bars::bar_widgets::color_picker::{ColorPickerInit, ColorPickerModel};
 use crate::bars::bar_widgets::margo_dock::{
     MargoDockInit, MargoDockModel, MargoDockOutput,
 };
@@ -511,9 +511,9 @@ impl BarModel {
                     .launch(MargoTagsInit { orientation })
                     .detach(),
             ),
-            BarWidget::HyprPicker => Box::new(
-                HyprPickerModel::builder()
-                    .launch(HyprPickerInit { orientation })
+            BarWidget::ColorPicker => Box::new(
+                ColorPickerModel::builder()
+                    .launch(ColorPickerInit { orientation })
                     .detach(),
             ),
             BarWidget::Lock => Box::new(

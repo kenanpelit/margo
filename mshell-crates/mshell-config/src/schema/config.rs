@@ -471,7 +471,7 @@ impl Default for Menus {
                         widgets: vec![
                             QuickActionWidget::AirplaneMode,
                             QuickActionWidget::Nightlight,
-                            QuickActionWidget::HyprPicker,
+                            QuickActionWidget::ColorPicker,
                             QuickActionWidget::Settings,
                         ],
                     }),
@@ -643,7 +643,7 @@ impl Default for Menus {
                                         widgets: vec![
                                             QuickActionWidget::AirplaneMode,
                                             QuickActionWidget::Nightlight,
-                                            QuickActionWidget::HyprPicker,
+                                            QuickActionWidget::ColorPicker,
                                             QuickActionWidget::Settings,
                                         ],
                                     }),

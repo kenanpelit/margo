@@ -1,27 +1,27 @@
-use mshell_utils::hypr_picker::spawn_color_picker;
+use mshell_utils::picker::spawn_color_picker;
 use relm4::gtk::prelude::{ButtonExt, WidgetExt};
 use relm4::{ComponentParts, ComponentSender, SimpleComponent, gtk};
 
 #[derive(Debug, Clone)]
-pub(crate) struct HyprPickerModel {}
+pub(crate) struct ColorPickerModel {}
 
 #[derive(Debug)]
-pub(crate) enum HyprPickerInput {
+pub(crate) enum ColorPickerInput {
     Clicked,
 }
 
 #[derive(Debug)]
-pub(crate) enum HyprPickerOutput {
+pub(crate) enum ColorPickerOutput {
     CloseMenu,
 }
 
-pub(crate) struct HyprPickerInit {}
+pub(crate) struct ColorPickerInit {}
 
 #[relm4::component(pub)]
-impl SimpleComponent for HyprPickerModel {
-    type Input = HyprPickerInput;
-    type Output = HyprPickerOutput;
-    type Init = HyprPickerInit;
+impl SimpleComponent for ColorPickerModel {
+    type Input = ColorPickerInput;
+    type Output = ColorPickerOutput;
+    type Init = ColorPickerInit;
 
     view! {
         #[root]
@@ -32,7 +32,7 @@ impl SimpleComponent for HyprPickerModel {
                 set_hexpand: false,
                 set_vexpand: false,
                 connect_clicked[sender] => move |_| {
-                    sender.input(HyprPickerInput::Clicked);
+                    sender.input(ColorPickerInput::Clicked);
                 },
 
                 #[name = "action_icon_image"]
@@ -52,7 +52,7 @@ impl SimpleComponent for HyprPickerModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let model = HyprPickerModel {};
+        let model = ColorPickerModel {};
 
         let widgets = view_output!();
 
@@ -61,8 +61,8 @@ impl SimpleComponent for HyprPickerModel {
 
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>) {
         match message {
-            HyprPickerInput::Clicked => {
-                let _ = sender.output(HyprPickerOutput::CloseMenu);
+            ColorPickerInput::Clicked => {
+                let _ = sender.output(ColorPickerOutput::CloseMenu);
                 spawn_color_picker(300);
             }
         }

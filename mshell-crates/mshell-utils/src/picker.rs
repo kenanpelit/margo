@@ -99,7 +99,7 @@ pub fn spawn_color_picker(delay_millis: u64) {
         };
 
         let Some(color) = extract_hex_color(&stdout) else {
-            error!("hyprpicker output did not contain a hex color: {stdout:?}");
+            error!("picker output did not contain a hex color: {stdout:?}");
             return;
         };
 

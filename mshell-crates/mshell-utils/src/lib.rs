@@ -7,7 +7,7 @@ pub mod brightness;
 pub mod clear_box;
 pub mod gtk;
 pub mod hover_scroll;
-pub mod hypr_picker;
+pub mod picker;
 pub mod margo;
 pub mod idle;
 pub mod key_mode;
