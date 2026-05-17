@@ -7,6 +7,105 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.6.3] – 2026-05-17
+
+### Added
+
+- **Power-user keyboard bindings for the launcher.** Walker- and
+  noctalia-inspired shortcuts that work out of the box, no config
+  required:
+  - **Ctrl+1..Ctrl+9** — activate the Nth result (no arrow keys).
+  - **Ctrl+Shift+P** — toggle pin on the selected item. Pinned
+    items rank at the top of every browse pass with a ★ marker,
+    saved to `~/.cache/margo/launcher_pins.json`. Ctrl+Shift+P
+    rather than plain Ctrl+P so the emacs "previous selection"
+    binding stays intact.
+  - **Tab / Shift+Tab** — cycle through provider categories
+    (Apps → Compositor → System → Run → Insert → Search → Connect
+    → All).
+  - **Delete** — drop the selected frecency / history entry
+    (Apps frecency forget, Command history `forget(expr)`,
+    Scripts frecency forget). Provider opts in via `can_delete`.
+  - **Ctrl+E** — toggle fuzzy ↔ exact-substring matching. Visible
+    `~/=` chip indicator next to the search entry.
+  - **Ctrl+R** — repopulate the search entry with the last query
+    the launcher saw before closing.
+  - **Ctrl+Enter** — run the provider's alt action: Apps launch
+    in `$TERMINAL` with a "press enter to close" shell wrapper;
+    Websearch copies the resolved URL to the clipboard.
+  - **PageDown / PageUp** — jump 10 rows at a time.
+
+- **Category tab strip** — small pill row above the result list,
+  one pill per provider category with an icon + label pair.
+  Selected pill picks up the primary accent; tooltip shows the
+  full category name on hover. Pills also accept direct mouse
+  clicks. Mappings: All → view-grid, Apps → app-grid,
+  Compositor → display, System → preferences-system, Run →
+  terminal, Insert → input-keyboard, Search → search, Connect →
+  server.
+
+- **Walker-style keybind hint footer.** Small chip strip at the
+  bottom of the launcher that lists the currently-relevant
+  shortcuts. Always-on chips (↵ Activate / Ctrl 1-9 Quick / Tab
+  Categories / Ctrl E Exact / Ctrl R Last / Esc Close) anchor
+  the strip; contextual chips (Ctrl ↵ Alt action / Ctrl ⇧ P
+  Pin·Unpin / Del Remove) only render when the selected row
+  actually supports the action.
+
+- **`Provider::browse(filter)` trait method.** Lets prefix-only
+  providers (Symbols, Emoji, Clipboard, Scripts, Tags, Bluetooth,
+  Wireplumber, Playerctl, ProviderList, Ssh, Command) fill their
+  category tab with real content — typing inside the tab also
+  narrows by filter. Default impl falls through to `search(filter)`
+  so providers like Apps / Calculator / Websearch work unchanged.
+
+- **`Provider::can_delete(item)`, `delete_item(item)`, `alt_action(item)`,
+  `category()`** — four new optional trait methods that drive the
+  Delete / Ctrl+Enter / Tab strip features. All have sensible
+  defaults so existing providers compile without edits.
+
+- **`DisplayItem` wrapper** — runtime-stamped decorations
+  (pinned flag, quick-key digit) handed to the UI. Providers still
+  emit raw `LauncherItem`; the runtime wraps each one after
+  scoring so the prefix-only providers don't need to know about
+  pins or quick keys.
+
+### Changed
+
+- **Launcher redesign — clock-menu visual language.** The launcher
+  now reads like the rest of the mshell card stack rather than the
+  previous flat list:
+  - Search header: bigger entry font, accent ring on focus (mirrors
+    the calendar-hero day number tone), small chip-style fuzzy/exact
+    badge.
+  - Result list: deep margo-tone card (`--surface-container-lowest`
+    + 1 px `--outline-variant` border) — clear "well inside the
+    panel" effect instead of the previous mid-grey wash that
+    blended into the menu surface on the tight Margo palette.
+  - Result rows: transparent default, hover picks up
+    `--surface-container-high`, selected row flips to `--primary`
+    with icon + label + quick-key + ★ all reflowing to
+    `--on-primary` so contrast survives the tint swap.
+
+- **Default browse pipeline** — runtime tracks an `active_category`.
+  Selecting a specific tab bypasses `handles_search` and calls
+  `browse(filter)` on every provider in the category, so the
+  prefix-only providers actually contribute to their tab. The
+  All tab keeps the standard search pipeline. Runtime also adds
+  a name+description substring post-filter for category-tab mode
+  so providers that don't filter themselves still respond to typing.
+
+### Fixed
+
+- **Insert tab icon** — switched from `format-text-symbolic`
+  (missing in MargoMaterial → rendered as missing-icon glyph) to
+  `input-keyboard-symbolic` which exists in MargoMaterial / kora
+  / breeze / Adwaita.
+
+- **Bind hint chips repaint contextually** — selecting a calculator
+  result drops Pin / Remove / Alt-action; selecting a pinned app
+  flips the chip label from "Pin" to "Unpin" automatically.
+
 ## [0.6.2] – 2026-05-17
 
 ### Added
