@@ -18,48 +18,63 @@ pub(crate) struct MenuSettingsModel {
     quick_settings_widget_list_controller: Controller<MenuWidgetListModel>,
     quick_settings_position: Position,
     quick_settings_min_width: i32,
+    quick_settings_max_height: i32,
     clock_widget_list_controller: Controller<MenuWidgetListModel>,
     clock_position: Position,
     clock_min_width: i32,
+    clock_max_height: i32,
     clipboard_widget_list_controller: Controller<MenuWidgetListModel>,
     clipboard_position: Position,
     clipboard_min_width: i32,
+    clipboard_max_height: i32,
     screenshot_widget_list_controller: Controller<MenuWidgetListModel>,
     screenshot_position: Position,
     screenshot_min_width: i32,
+    screenshot_max_height: i32,
     notifications_widget_list_controller: Controller<MenuWidgetListModel>,
     notifications_position: Position,
     notifications_min_width: i32,
+    notifications_max_height: i32,
     app_launcher_widget_list_controller: Controller<MenuWidgetListModel>,
     app_launcher_position: Position,
     app_launcher_min_width: i32,
+    app_launcher_max_height: i32,
     wallpaper_widget_list_controller: Controller<MenuWidgetListModel>,
     wallpaper_position: Position,
     wallpaper_min_width: i32,
+    wallpaper_max_height: i32,
     nufw_widget_list_controller: Controller<MenuWidgetListModel>,
     nufw_position: Position,
     nufw_min_width: i32,
+    nufw_max_height: i32,
     ndns_widget_list_controller: Controller<MenuWidgetListModel>,
     ndns_position: Position,
     ndns_min_width: i32,
+    ndns_max_height: i32,
     npodman_widget_list_controller: Controller<MenuWidgetListModel>,
     npodman_position: Position,
     npodman_min_width: i32,
+    npodman_max_height: i32,
     nnotes_widget_list_controller: Controller<MenuWidgetListModel>,
     nnotes_position: Position,
     nnotes_min_width: i32,
+    nnotes_max_height: i32,
     nip_widget_list_controller: Controller<MenuWidgetListModel>,
     nip_position: Position,
     nip_min_width: i32,
+    nip_max_height: i32,
     nnetwork_widget_list_controller: Controller<MenuWidgetListModel>,
     nnetwork_position: Position,
     nnetwork_min_width: i32,
+    nnetwork_max_height: i32,
     npower_widget_list_controller: Controller<MenuWidgetListModel>,
     npower_position: Position,
     npower_min_width: i32,
+    npower_max_height: i32,
     media_player_widget_list_controller: Controller<MenuWidgetListModel>,
     media_player_position: Position,
     media_player_min_width: i32,
+    media_player_max_height: i32,
     screenshare_position: Position,
     left_menu_expansion_type: VerticalMenuExpansion,
     right_menu_expansion_type: VerticalMenuExpansion,
@@ -71,48 +86,63 @@ pub(crate) enum MenuSettingsInput {
     QuickSettingsWidgetListChanged(Vec<MenuWidget>),
     QuickSettingsPositionChanged(Position),
     QuickSettingsMinWidthChanged(i32),
+    QuickSettingsMaxHeightChanged(i32),
     ClockWidgetListChanged(Vec<MenuWidget>),
     ClockPositionChanged(Position),
     ClockMinWidthChanged(i32),
+    ClockMaxHeightChanged(i32),
     ClipboardWidgetListChanged(Vec<MenuWidget>),
     ClipboardPositionChanged(Position),
     ClipboardMinWidthChanged(i32),
+    ClipboardMaxHeightChanged(i32),
     ScreenshotWidgetListChanged(Vec<MenuWidget>),
     ScreenshotPositionChanged(Position),
     ScreenshotMinWidthChanged(i32),
+    ScreenshotMaxHeightChanged(i32),
     NotificationsWidgetListChanged(Vec<MenuWidget>),
     NotificationsPositionChanged(Position),
     NotificationsMinWidthChanged(i32),
+    NotificationsMaxHeightChanged(i32),
     AppLauncherWidgetListChanged(Vec<MenuWidget>),
     AppLauncherPositionChanged(Position),
     AppLauncherMinWidthChanged(i32),
+    AppLauncherMaxHeightChanged(i32),
     WallpaperWidgetListChanged(Vec<MenuWidget>),
     WallpaperPositionChanged(Position),
     WallpaperMinWidthChanged(i32),
+    WallpaperMaxHeightChanged(i32),
     NufwWidgetListChanged(Vec<MenuWidget>),
     NufwPositionChanged(Position),
     NufwMinWidthChanged(i32),
+    NufwMaxHeightChanged(i32),
     NdnsWidgetListChanged(Vec<MenuWidget>),
     NdnsPositionChanged(Position),
     NdnsMinWidthChanged(i32),
+    NdnsMaxHeightChanged(i32),
     NpodmanWidgetListChanged(Vec<MenuWidget>),
     NpodmanPositionChanged(Position),
     NpodmanMinWidthChanged(i32),
+    NpodmanMaxHeightChanged(i32),
     NnotesWidgetListChanged(Vec<MenuWidget>),
     NnotesPositionChanged(Position),
     NnotesMinWidthChanged(i32),
+    NnotesMaxHeightChanged(i32),
     NipWidgetListChanged(Vec<MenuWidget>),
     NipPositionChanged(Position),
     NipMinWidthChanged(i32),
+    NipMaxHeightChanged(i32),
     NnetworkWidgetListChanged(Vec<MenuWidget>),
     NnetworkPositionChanged(Position),
     NnetworkMinWidthChanged(i32),
+    NnetworkMaxHeightChanged(i32),
     NpowerWidgetListChanged(Vec<MenuWidget>),
     NpowerPositionChanged(Position),
     NpowerMinWidthChanged(i32),
+    NpowerMaxHeightChanged(i32),
     MediaPlayerWidgetListChanged(Vec<MenuWidget>),
     MediaPlayerPositionChanged(Position),
     MediaPlayerMinWidthChanged(i32),
+    MediaPlayerMaxHeightChanged(i32),
     ScreensharePositionChanged(Position),
     LeftMenuExpansionChanged(VerticalMenuExpansion),
     RightMenuExpansionChanged(VerticalMenuExpansion),
@@ -120,48 +150,63 @@ pub(crate) enum MenuSettingsInput {
     QuickSettingsWidgetListEffect(Vec<MenuWidget>),
     QuickSettingsPositionEffect(Position),
     QuickSettingsMinWidthEffect(i32),
+    QuickSettingsMaxHeightEffect(i32),
     ClockWidgetListEffect(Vec<MenuWidget>),
     ClockPositionEffect(Position),
     ClockMinWidthEffect(i32),
+    ClockMaxHeightEffect(i32),
     ClipboardWidgetListEffect(Vec<MenuWidget>),
     ClipboardPositionEffect(Position),
     ClipboardMinWidthEffect(i32),
+    ClipboardMaxHeightEffect(i32),
     ScreenshotWidgetListEffect(Vec<MenuWidget>),
     ScreenshotPositionEffect(Position),
     ScreenshotMinWidthEffect(i32),
+    ScreenshotMaxHeightEffect(i32),
     NotificationsWidgetListEffect(Vec<MenuWidget>),
     NotificationsPositionEffect(Position),
     NotificationsMinWidthEffect(i32),
+    NotificationsMaxHeightEffect(i32),
     AppLauncherWidgetListEffect(Vec<MenuWidget>),
     AppLauncherPositionEffect(Position),
     AppLauncherMinWidthEffect(i32),
+    AppLauncherMaxHeightEffect(i32),
     WallpaperWidgetListEffect(Vec<MenuWidget>),
     WallpaperPositionEffect(Position),
     WallpaperMinWidthEffect(i32),
+    WallpaperMaxHeightEffect(i32),
     NufwWidgetListEffect(Vec<MenuWidget>),
     NufwPositionEffect(Position),
     NufwMinWidthEffect(i32),
+    NufwMaxHeightEffect(i32),
     NdnsWidgetListEffect(Vec<MenuWidget>),
     NdnsPositionEffect(Position),
     NdnsMinWidthEffect(i32),
+    NdnsMaxHeightEffect(i32),
     NpodmanWidgetListEffect(Vec<MenuWidget>),
     NpodmanPositionEffect(Position),
     NpodmanMinWidthEffect(i32),
+    NpodmanMaxHeightEffect(i32),
     NnotesWidgetListEffect(Vec<MenuWidget>),
     NnotesPositionEffect(Position),
     NnotesMinWidthEffect(i32),
+    NnotesMaxHeightEffect(i32),
     NipWidgetListEffect(Vec<MenuWidget>),
     NipPositionEffect(Position),
     NipMinWidthEffect(i32),
+    NipMaxHeightEffect(i32),
     NnetworkWidgetListEffect(Vec<MenuWidget>),
     NnetworkPositionEffect(Position),
     NnetworkMinWidthEffect(i32),
+    NnetworkMaxHeightEffect(i32),
     NpowerWidgetListEffect(Vec<MenuWidget>),
     NpowerPositionEffect(Position),
     NpowerMinWidthEffect(i32),
+    NpowerMaxHeightEffect(i32),
     MediaPlayerWidgetListEffect(Vec<MenuWidget>),
     MediaPlayerPositionEffect(Position),
     MediaPlayerMinWidthEffect(i32),
+    MediaPlayerMaxHeightEffect(i32),
     ScreensharePositionEffect(Position),
     LeftMenuExpansionEffect(VerticalMenuExpansion),
     RightMenuExpansionEffect(VerticalMenuExpansion),
@@ -397,6 +442,43 @@ impl Component for MenuSettingsModel {
                     },
                 },
 
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Maximum Height",
+                            set_hexpand: true,
+                        },
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Viewport cap in pixels. The menu scrolls vertically past this. 0 = no cap.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::SpinButton {
+                        set_range: (0.0, 10000.0),
+                        set_increments: (10.0, 50.0),
+                        #[watch]
+                        #[block_signal(qs_max_height_handler)]
+                        set_value: model.quick_settings_max_height as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(MenuSettingsInput::QuickSettingsMaxHeightChanged(s.value() as i32));
+                        } @qs_max_height_handler,
+                    },
+                },
+
                 model.quick_settings_widget_list_controller.widget().clone() {},
 
                 gtk::Separator {},
@@ -481,6 +563,43 @@ impl Component for MenuSettingsModel {
                         connect_value_changed[sender] => move |s| {
                             sender.input(MenuSettingsInput::ClockMinWidthChanged(s.value() as i32));
                         } @clock_min_width_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Maximum Height",
+                            set_hexpand: true,
+                        },
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Viewport cap in pixels. The menu scrolls vertically past this. 0 = no cap.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::SpinButton {
+                        set_range: (0.0, 10000.0),
+                        set_increments: (10.0, 50.0),
+                        #[watch]
+                        #[block_signal(clock_max_height_handler)]
+                        set_value: model.clock_max_height as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(MenuSettingsInput::ClockMaxHeightChanged(s.value() as i32));
+                        } @clock_max_height_handler,
                     },
                 },
 
@@ -571,6 +690,43 @@ impl Component for MenuSettingsModel {
                     },
                 },
 
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Maximum Height",
+                            set_hexpand: true,
+                        },
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Viewport cap in pixels. The menu scrolls vertically past this. 0 = no cap.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::SpinButton {
+                        set_range: (0.0, 10000.0),
+                        set_increments: (10.0, 50.0),
+                        #[watch]
+                        #[block_signal(clip_max_height_handler)]
+                        set_value: model.clipboard_max_height as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(MenuSettingsInput::ClipboardMaxHeightChanged(s.value() as i32));
+                        } @clip_max_height_handler,
+                    },
+                },
+
                 model.clipboard_widget_list_controller.widget().clone() {},
 
                 gtk::Separator {},
@@ -655,6 +811,43 @@ impl Component for MenuSettingsModel {
                         connect_value_changed[sender] => move |s| {
                             sender.input(MenuSettingsInput::ScreenshotMinWidthChanged(s.value() as i32));
                         } @ss_min_width_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Maximum Height",
+                            set_hexpand: true,
+                        },
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Viewport cap in pixels. The menu scrolls vertically past this. 0 = no cap.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::SpinButton {
+                        set_range: (0.0, 10000.0),
+                        set_increments: (10.0, 50.0),
+                        #[watch]
+                        #[block_signal(ss_max_height_handler)]
+                        set_value: model.screenshot_max_height as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(MenuSettingsInput::ScreenshotMaxHeightChanged(s.value() as i32));
+                        } @ss_max_height_handler,
                     },
                 },
 
@@ -745,6 +938,43 @@ impl Component for MenuSettingsModel {
                     },
                 },
 
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Maximum Height",
+                            set_hexpand: true,
+                        },
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Viewport cap in pixels. The menu scrolls vertically past this. 0 = no cap.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::SpinButton {
+                        set_range: (0.0, 10000.0),
+                        set_increments: (10.0, 50.0),
+                        #[watch]
+                        #[block_signal(not_max_height_handler)]
+                        set_value: model.notifications_max_height as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(MenuSettingsInput::NotificationsMaxHeightChanged(s.value() as i32));
+                        } @not_max_height_handler,
+                    },
+                },
+
                 model.notifications_widget_list_controller.widget().clone() {},
 
                 gtk::Separator {},
@@ -829,6 +1059,43 @@ impl Component for MenuSettingsModel {
                         connect_value_changed[sender] => move |s| {
                             sender.input(MenuSettingsInput::AppLauncherMinWidthChanged(s.value() as i32));
                         } @al_min_width_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Maximum Height",
+                            set_hexpand: true,
+                        },
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Viewport cap in pixels. The menu scrolls vertically past this. 0 = no cap.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::SpinButton {
+                        set_range: (0.0, 10000.0),
+                        set_increments: (10.0, 50.0),
+                        #[watch]
+                        #[block_signal(al_max_height_handler)]
+                        set_value: model.app_launcher_max_height as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(MenuSettingsInput::AppLauncherMaxHeightChanged(s.value() as i32));
+                        } @al_max_height_handler,
                     },
                 },
 
@@ -919,6 +1186,43 @@ impl Component for MenuSettingsModel {
                     },
                 },
 
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Maximum Height",
+                            set_hexpand: true,
+                        },
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Viewport cap in pixels. The menu scrolls vertically past this. 0 = no cap.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::SpinButton {
+                        set_range: (0.0, 10000.0),
+                        set_increments: (10.0, 50.0),
+                        #[watch]
+                        #[block_signal(wall_max_height_handler)]
+                        set_value: model.wallpaper_max_height as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(MenuSettingsInput::WallpaperMaxHeightChanged(s.value() as i32));
+                        } @wall_max_height_handler,
+                    },
+                },
+
                 model.wallpaper_widget_list_controller.widget().clone() {},
 
                 gtk::Separator {},
@@ -1006,6 +1310,43 @@ impl Component for MenuSettingsModel {
                     },
                 },
 
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Maximum Height",
+                            set_hexpand: true,
+                        },
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Viewport cap in pixels. The menu scrolls vertically past this. 0 = no cap.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::SpinButton {
+                        set_range: (0.0, 10000.0),
+                        set_increments: (10.0, 50.0),
+                        #[watch]
+                        #[block_signal(nufw_max_height_handler)]
+                        set_value: model.nufw_max_height as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(MenuSettingsInput::NufwMaxHeightChanged(s.value() as i32));
+                        } @nufw_max_height_handler,
+                    },
+                },
+
                 model.nufw_widget_list_controller.widget().clone() {},
 
                 gtk::Separator {},
@@ -1086,6 +1427,43 @@ impl Component for MenuSettingsModel {
                         connect_value_changed[sender] => move |s| {
                             sender.input(MenuSettingsInput::NdnsMinWidthChanged(s.value() as i32));
                         } @ndns_min_width_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Maximum Height",
+                            set_hexpand: true,
+                        },
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Viewport cap in pixels. The menu scrolls vertically past this. 0 = no cap.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::SpinButton {
+                        set_range: (0.0, 10000.0),
+                        set_increments: (10.0, 50.0),
+                        #[watch]
+                        #[block_signal(ndns_max_height_handler)]
+                        set_value: model.ndns_max_height as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(MenuSettingsInput::NdnsMaxHeightChanged(s.value() as i32));
+                        } @ndns_max_height_handler,
                     },
                 },
 
@@ -1172,6 +1550,43 @@ impl Component for MenuSettingsModel {
                     },
                 },
 
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Maximum Height",
+                            set_hexpand: true,
+                        },
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Viewport cap in pixels. The menu scrolls vertically past this. 0 = no cap.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::SpinButton {
+                        set_range: (0.0, 10000.0),
+                        set_increments: (10.0, 50.0),
+                        #[watch]
+                        #[block_signal(npodman_max_height_handler)]
+                        set_value: model.npodman_max_height as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(MenuSettingsInput::NpodmanMaxHeightChanged(s.value() as i32));
+                        } @npodman_max_height_handler,
+                    },
+                },
+
                 model.npodman_widget_list_controller.widget().clone() {},
 
                 gtk::Separator {},
@@ -1252,6 +1667,43 @@ impl Component for MenuSettingsModel {
                         connect_value_changed[sender] => move |s| {
                             sender.input(MenuSettingsInput::NnotesMinWidthChanged(s.value() as i32));
                         } @nnotes_min_width_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Maximum Height",
+                            set_hexpand: true,
+                        },
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Viewport cap in pixels. The menu scrolls vertically past this. 0 = no cap.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::SpinButton {
+                        set_range: (0.0, 10000.0),
+                        set_increments: (10.0, 50.0),
+                        #[watch]
+                        #[block_signal(nnotes_max_height_handler)]
+                        set_value: model.nnotes_max_height as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(MenuSettingsInput::NnotesMaxHeightChanged(s.value() as i32));
+                        } @nnotes_max_height_handler,
                     },
                 },
 
@@ -1338,6 +1790,43 @@ impl Component for MenuSettingsModel {
                     },
                 },
 
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Maximum Height",
+                            set_hexpand: true,
+                        },
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Viewport cap in pixels. The menu scrolls vertically past this. 0 = no cap.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::SpinButton {
+                        set_range: (0.0, 10000.0),
+                        set_increments: (10.0, 50.0),
+                        #[watch]
+                        #[block_signal(nip_max_height_handler)]
+                        set_value: model.nip_max_height as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(MenuSettingsInput::NipMaxHeightChanged(s.value() as i32));
+                        } @nip_max_height_handler,
+                    },
+                },
+
                 model.nip_widget_list_controller.widget().clone() {},
 
                 gtk::Separator {},
@@ -1418,6 +1907,43 @@ impl Component for MenuSettingsModel {
                         connect_value_changed[sender] => move |s| {
                             sender.input(MenuSettingsInput::NnetworkMinWidthChanged(s.value() as i32));
                         } @nnetwork_min_width_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Maximum Height",
+                            set_hexpand: true,
+                        },
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Viewport cap in pixels. The menu scrolls vertically past this. 0 = no cap.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::SpinButton {
+                        set_range: (0.0, 10000.0),
+                        set_increments: (10.0, 50.0),
+                        #[watch]
+                        #[block_signal(nnetwork_max_height_handler)]
+                        set_value: model.nnetwork_max_height as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(MenuSettingsInput::NnetworkMaxHeightChanged(s.value() as i32));
+                        } @nnetwork_max_height_handler,
                     },
                 },
 
@@ -1504,6 +2030,43 @@ impl Component for MenuSettingsModel {
                     },
                 },
 
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Maximum Height",
+                            set_hexpand: true,
+                        },
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Viewport cap in pixels. The menu scrolls vertically past this. 0 = no cap.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::SpinButton {
+                        set_range: (0.0, 10000.0),
+                        set_increments: (10.0, 50.0),
+                        #[watch]
+                        #[block_signal(npower_max_height_handler)]
+                        set_value: model.npower_max_height as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(MenuSettingsInput::NpowerMaxHeightChanged(s.value() as i32));
+                        } @npower_max_height_handler,
+                    },
+                },
+
                 model.npower_widget_list_controller.widget().clone() {},
 
                 gtk::Separator {},
@@ -1584,6 +2147,43 @@ impl Component for MenuSettingsModel {
                         connect_value_changed[sender] => move |s| {
                             sender.input(MenuSettingsInput::MediaPlayerMinWidthChanged(s.value() as i32));
                         } @media_player_min_width_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Maximum Height",
+                            set_hexpand: true,
+                        },
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Viewport cap in pixels. The menu scrolls vertically past this. 0 = no cap.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::SpinButton {
+                        set_range: (0.0, 10000.0),
+                        set_increments: (10.0, 50.0),
+                        #[watch]
+                        #[block_signal(media_player_max_height_handler)]
+                        set_value: model.media_player_max_height as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(MenuSettingsInput::MediaPlayerMaxHeightChanged(s.value() as i32));
+                        } @media_player_max_height_handler,
                     },
                 },
 
@@ -1678,6 +2278,13 @@ impl Component for MenuSettingsModel {
         let sender_clone = sender.clone();
         effects.push(move |_| {
             let config = config_manager().config();
+            let value = config.menus().quick_settings_menu().maximum_height().get();
+            sender_clone.input(MenuSettingsInput::QuickSettingsMaxHeightEffect(value));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let config = config_manager().config();
             let value = config.menus().quick_settings_menu().widgets().get();
             sender_clone.input(MenuSettingsInput::QuickSettingsWidgetListEffect(value));
         });
@@ -1694,6 +2301,13 @@ impl Component for MenuSettingsModel {
             let config = config_manager().config();
             let value = config.menus().clock_menu().minimum_width().get();
             sender_clone.input(MenuSettingsInput::ClockMinWidthEffect(value));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let config = config_manager().config();
+            let value = config.menus().clock_menu().maximum_height().get();
+            sender_clone.input(MenuSettingsInput::ClockMaxHeightEffect(value));
         });
 
         let sender_clone = sender.clone();
@@ -1720,6 +2334,13 @@ impl Component for MenuSettingsModel {
         let sender_clone = sender.clone();
         effects.push(move |_| {
             let config = config_manager().config();
+            let value = config.menus().clipboard_menu().maximum_height().get();
+            sender_clone.input(MenuSettingsInput::ClipboardMaxHeightEffect(value));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let config = config_manager().config();
             let value = config.menus().clipboard_menu().widgets().get();
             sender_clone.input(MenuSettingsInput::ClipboardWidgetListEffect(value));
         });
@@ -1736,6 +2357,13 @@ impl Component for MenuSettingsModel {
             let config = config_manager().config();
             let value = config.menus().screenshot_menu().minimum_width().get();
             sender_clone.input(MenuSettingsInput::ScreenshotMinWidthEffect(value));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let config = config_manager().config();
+            let value = config.menus().screenshot_menu().maximum_height().get();
+            sender_clone.input(MenuSettingsInput::ScreenshotMaxHeightEffect(value));
         });
 
         let sender_clone = sender.clone();
@@ -1762,6 +2390,13 @@ impl Component for MenuSettingsModel {
         let sender_clone = sender.clone();
         effects.push(move |_| {
             let config = config_manager().config();
+            let value = config.menus().notification_menu().maximum_height().get();
+            sender_clone.input(MenuSettingsInput::NotificationsMaxHeightEffect(value));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let config = config_manager().config();
             let value = config.menus().notification_menu().widgets().get();
             sender_clone.input(MenuSettingsInput::NotificationsWidgetListEffect(value));
         });
@@ -1778,6 +2413,13 @@ impl Component for MenuSettingsModel {
             let config = config_manager().config();
             let value = config.menus().app_launcher_menu().minimum_width().get();
             sender_clone.input(MenuSettingsInput::AppLauncherMinWidthEffect(value));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let config = config_manager().config();
+            let value = config.menus().app_launcher_menu().maximum_height().get();
+            sender_clone.input(MenuSettingsInput::AppLauncherMaxHeightEffect(value));
         });
 
         let sender_clone = sender.clone();
@@ -1804,6 +2446,13 @@ impl Component for MenuSettingsModel {
         let sender_clone = sender.clone();
         effects.push(move |_| {
             let config = config_manager().config();
+            let value = config.menus().wallpaper_menu().maximum_height().get();
+            sender_clone.input(MenuSettingsInput::WallpaperMaxHeightEffect(value));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let config = config_manager().config();
             let value = config.menus().wallpaper_menu().widgets().get();
             sender_clone.input(MenuSettingsInput::WallpaperWidgetListEffect(value));
         });
@@ -1825,6 +2474,13 @@ impl Component for MenuSettingsModel {
         let sender_clone = sender.clone();
         effects.push(move |_| {
             let config = config_manager().config();
+            let value = config.menus().nufw_menu().maximum_height().get();
+            sender_clone.input(MenuSettingsInput::NufwMaxHeightEffect(value));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let config = config_manager().config();
             let value = config.menus().nufw_menu().widgets().get();
             sender_clone.input(MenuSettingsInput::NufwWidgetListEffect(value));
         });
@@ -1840,6 +2496,13 @@ impl Component for MenuSettingsModel {
             let config = config_manager().config();
             let value = config.menus().ndns_menu().minimum_width().get();
             sender_clone.input(MenuSettingsInput::NdnsMinWidthEffect(value));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let config = config_manager().config();
+            let value = config.menus().ndns_menu().maximum_height().get();
+            sender_clone.input(MenuSettingsInput::NdnsMaxHeightEffect(value));
         });
         let sender_clone = sender.clone();
         effects.push(move |_| {
@@ -1860,6 +2523,13 @@ impl Component for MenuSettingsModel {
             let value = config.menus().npodman_menu().minimum_width().get();
             sender_clone.input(MenuSettingsInput::NpodmanMinWidthEffect(value));
         });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let config = config_manager().config();
+            let value = config.menus().npodman_menu().maximum_height().get();
+            sender_clone.input(MenuSettingsInput::NpodmanMaxHeightEffect(value));
+        });
         let sender_clone = sender.clone();
         effects.push(move |_| {
             let config = config_manager().config();
@@ -1878,6 +2548,13 @@ impl Component for MenuSettingsModel {
             let config = config_manager().config();
             let value = config.menus().nnotes_menu().minimum_width().get();
             sender_clone.input(MenuSettingsInput::NnotesMinWidthEffect(value));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let config = config_manager().config();
+            let value = config.menus().nnotes_menu().maximum_height().get();
+            sender_clone.input(MenuSettingsInput::NnotesMaxHeightEffect(value));
         });
         let sender_clone = sender.clone();
         effects.push(move |_| {
@@ -1898,6 +2575,13 @@ impl Component for MenuSettingsModel {
             let value = config.menus().nip_menu().minimum_width().get();
             sender_clone.input(MenuSettingsInput::NipMinWidthEffect(value));
         });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let config = config_manager().config();
+            let value = config.menus().nip_menu().maximum_height().get();
+            sender_clone.input(MenuSettingsInput::NipMaxHeightEffect(value));
+        });
         let sender_clone = sender.clone();
         effects.push(move |_| {
             let config = config_manager().config();
@@ -1916,6 +2600,13 @@ impl Component for MenuSettingsModel {
             let config = config_manager().config();
             let value = config.menus().nnetwork_menu().minimum_width().get();
             sender_clone.input(MenuSettingsInput::NnetworkMinWidthEffect(value));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let config = config_manager().config();
+            let value = config.menus().nnetwork_menu().maximum_height().get();
+            sender_clone.input(MenuSettingsInput::NnetworkMaxHeightEffect(value));
         });
         let sender_clone = sender.clone();
         effects.push(move |_| {
@@ -1936,6 +2627,13 @@ impl Component for MenuSettingsModel {
             let value = config.menus().npower_menu().minimum_width().get();
             sender_clone.input(MenuSettingsInput::NpowerMinWidthEffect(value));
         });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let config = config_manager().config();
+            let value = config.menus().npower_menu().maximum_height().get();
+            sender_clone.input(MenuSettingsInput::NpowerMaxHeightEffect(value));
+        });
         let sender_clone = sender.clone();
         effects.push(move |_| {
             let config = config_manager().config();
@@ -1954,6 +2652,13 @@ impl Component for MenuSettingsModel {
             let config = config_manager().config();
             let value = config.menus().media_player_menu().minimum_width().get();
             sender_clone.input(MenuSettingsInput::MediaPlayerMinWidthEffect(value));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let config = config_manager().config();
+            let value = config.menus().media_player_menu().maximum_height().get();
+            sender_clone.input(MenuSettingsInput::MediaPlayerMaxHeightEffect(value));
         });
         let sender_clone = sender.clone();
         effects.push(move |_| {
@@ -2223,6 +2928,12 @@ impl Component for MenuSettingsModel {
                 .quick_settings_menu()
                 .minimum_width()
                 .get_untracked(),
+            quick_settings_max_height: config_manager()
+                .config()
+                .menus()
+                .quick_settings_menu()
+                .maximum_height()
+                .get_untracked(),
             clock_widget_list_controller,
             clock_position: config_manager()
                 .config()
@@ -2235,6 +2946,12 @@ impl Component for MenuSettingsModel {
                 .menus()
                 .clock_menu()
                 .minimum_width()
+                .get_untracked(),
+            clock_max_height: config_manager()
+                .config()
+                .menus()
+                .clock_menu()
+                .maximum_height()
                 .get_untracked(),
             clipboard_widget_list_controller,
             clipboard_position: config_manager()
@@ -2249,6 +2966,12 @@ impl Component for MenuSettingsModel {
                 .clipboard_menu()
                 .minimum_width()
                 .get_untracked(),
+            clipboard_max_height: config_manager()
+                .config()
+                .menus()
+                .clipboard_menu()
+                .maximum_height()
+                .get_untracked(),
             screenshot_widget_list_controller,
             screenshot_position: config_manager()
                 .config()
@@ -2261,6 +2984,12 @@ impl Component for MenuSettingsModel {
                 .menus()
                 .screenshot_menu()
                 .minimum_width()
+                .get_untracked(),
+            screenshot_max_height: config_manager()
+                .config()
+                .menus()
+                .screenshot_menu()
+                .maximum_height()
                 .get_untracked(),
             notifications_widget_list_controller,
             notifications_position: config_manager()
@@ -2275,6 +3004,12 @@ impl Component for MenuSettingsModel {
                 .notification_menu()
                 .minimum_width()
                 .get_untracked(),
+            notifications_max_height: config_manager()
+                .config()
+                .menus()
+                .notification_menu()
+                .maximum_height()
+                .get_untracked(),
             app_launcher_widget_list_controller,
             app_launcher_position: config_manager()
                 .config()
@@ -2287,6 +3022,12 @@ impl Component for MenuSettingsModel {
                 .menus()
                 .app_launcher_menu()
                 .minimum_width()
+                .get_untracked(),
+            app_launcher_max_height: config_manager()
+                .config()
+                .menus()
+                .app_launcher_menu()
+                .maximum_height()
                 .get_untracked(),
             wallpaper_widget_list_controller,
             wallpaper_position: config_manager()
@@ -2301,6 +3042,12 @@ impl Component for MenuSettingsModel {
                 .wallpaper_menu()
                 .minimum_width()
                 .get_untracked(),
+            wallpaper_max_height: config_manager()
+                .config()
+                .menus()
+                .wallpaper_menu()
+                .maximum_height()
+                .get_untracked(),
             nufw_widget_list_controller,
             nufw_position: config_manager()
                 .config()
@@ -2313,6 +3060,12 @@ impl Component for MenuSettingsModel {
                 .menus()
                 .nufw_menu()
                 .minimum_width()
+                .get_untracked(),
+            nufw_max_height: config_manager()
+                .config()
+                .menus()
+                .nufw_menu()
+                .maximum_height()
                 .get_untracked(),
             ndns_widget_list_controller,
             ndns_position: config_manager()
@@ -2327,6 +3080,12 @@ impl Component for MenuSettingsModel {
                 .ndns_menu()
                 .minimum_width()
                 .get_untracked(),
+            ndns_max_height: config_manager()
+                .config()
+                .menus()
+                .ndns_menu()
+                .maximum_height()
+                .get_untracked(),
             npodman_widget_list_controller,
             npodman_position: config_manager()
                 .config()
@@ -2339,6 +3098,12 @@ impl Component for MenuSettingsModel {
                 .menus()
                 .npodman_menu()
                 .minimum_width()
+                .get_untracked(),
+            npodman_max_height: config_manager()
+                .config()
+                .menus()
+                .npodman_menu()
+                .maximum_height()
                 .get_untracked(),
             nnotes_widget_list_controller,
             nnotes_position: config_manager()
@@ -2353,6 +3118,12 @@ impl Component for MenuSettingsModel {
                 .nnotes_menu()
                 .minimum_width()
                 .get_untracked(),
+            nnotes_max_height: config_manager()
+                .config()
+                .menus()
+                .nnotes_menu()
+                .maximum_height()
+                .get_untracked(),
             nip_widget_list_controller,
             nip_position: config_manager()
                 .config()
@@ -2365,6 +3136,12 @@ impl Component for MenuSettingsModel {
                 .menus()
                 .nip_menu()
                 .minimum_width()
+                .get_untracked(),
+            nip_max_height: config_manager()
+                .config()
+                .menus()
+                .nip_menu()
+                .maximum_height()
                 .get_untracked(),
             nnetwork_widget_list_controller,
             nnetwork_position: config_manager()
@@ -2379,6 +3156,12 @@ impl Component for MenuSettingsModel {
                 .nnetwork_menu()
                 .minimum_width()
                 .get_untracked(),
+            nnetwork_max_height: config_manager()
+                .config()
+                .menus()
+                .nnetwork_menu()
+                .maximum_height()
+                .get_untracked(),
             npower_widget_list_controller,
             npower_position: config_manager()
                 .config()
@@ -2392,6 +3175,12 @@ impl Component for MenuSettingsModel {
                 .npower_menu()
                 .minimum_width()
                 .get_untracked(),
+            npower_max_height: config_manager()
+                .config()
+                .menus()
+                .npower_menu()
+                .maximum_height()
+                .get_untracked(),
             media_player_widget_list_controller,
             media_player_position: config_manager()
                 .config()
@@ -2404,6 +3193,12 @@ impl Component for MenuSettingsModel {
                 .menus()
                 .media_player_menu()
                 .minimum_width()
+                .get_untracked(),
+            media_player_max_height: config_manager()
+                .config()
+                .menus()
+                .media_player_menu()
+                .maximum_height()
                 .get_untracked(),
             screenshare_position: config_manager()
                 .config()
@@ -2454,6 +3249,12 @@ impl Component for MenuSettingsModel {
                     config.menus.quick_settings_menu.minimum_width = width;
                 });
             }
+            MenuSettingsInput::QuickSettingsMaxHeightChanged(height) => {
+                self.quick_settings_max_height = height;
+                config_manager().update_config(|config| {
+                    config.menus.quick_settings_menu.maximum_height = height;
+                });
+            }
             MenuSettingsInput::ClockWidgetListChanged(widgets) => {
                 let config_manager = config_manager();
                 config_manager.update_config(|config| {
@@ -2470,6 +3271,12 @@ impl Component for MenuSettingsModel {
                 self.clock_min_width = width;
                 config_manager().update_config(|config| {
                     config.menus.clock_menu.minimum_width = width;
+                });
+            }
+            MenuSettingsInput::ClockMaxHeightChanged(height) => {
+                self.clock_max_height = height;
+                config_manager().update_config(|config| {
+                    config.menus.clock_menu.maximum_height = height;
                 });
             }
             MenuSettingsInput::WallpaperWidgetListChanged(widgets) => {
@@ -2490,6 +3297,12 @@ impl Component for MenuSettingsModel {
                     config.menus.wallpaper_menu.minimum_width = width;
                 });
             }
+            MenuSettingsInput::WallpaperMaxHeightChanged(height) => {
+                self.wallpaper_max_height = height;
+                config_manager().update_config(|config| {
+                    config.menus.wallpaper_menu.maximum_height = height;
+                });
+            }
             MenuSettingsInput::NufwWidgetListChanged(widgets) => {
                 let config_manager = config_manager();
                 config_manager.update_config(|config| {
@@ -2506,6 +3319,12 @@ impl Component for MenuSettingsModel {
                 self.nufw_min_width = width;
                 config_manager().update_config(|config| {
                     config.menus.nufw_menu.minimum_width = width;
+                });
+            }
+            MenuSettingsInput::NufwMaxHeightChanged(height) => {
+                self.nufw_max_height = height;
+                config_manager().update_config(|config| {
+                    config.menus.nufw_menu.maximum_height = height;
                 });
             }
             MenuSettingsInput::NdnsWidgetListChanged(widgets) => {
@@ -2525,6 +3344,12 @@ impl Component for MenuSettingsModel {
                     config.menus.ndns_menu.minimum_width = width;
                 });
             }
+            MenuSettingsInput::NdnsMaxHeightChanged(height) => {
+                self.ndns_max_height = height;
+                config_manager().update_config(|config| {
+                    config.menus.ndns_menu.maximum_height = height;
+                });
+            }
             MenuSettingsInput::NpodmanWidgetListChanged(widgets) => {
                 config_manager().update_config(|config| {
                     config.menus.npodman_menu.widgets = widgets;
@@ -2540,6 +3365,12 @@ impl Component for MenuSettingsModel {
                 self.npodman_min_width = width;
                 config_manager().update_config(|config| {
                     config.menus.npodman_menu.minimum_width = width;
+                });
+            }
+            MenuSettingsInput::NpodmanMaxHeightChanged(height) => {
+                self.npodman_max_height = height;
+                config_manager().update_config(|config| {
+                    config.menus.npodman_menu.maximum_height = height;
                 });
             }
             MenuSettingsInput::NnotesWidgetListChanged(widgets) => {
@@ -2559,6 +3390,12 @@ impl Component for MenuSettingsModel {
                     config.menus.nnotes_menu.minimum_width = width;
                 });
             }
+            MenuSettingsInput::NnotesMaxHeightChanged(height) => {
+                self.nnotes_max_height = height;
+                config_manager().update_config(|config| {
+                    config.menus.nnotes_menu.maximum_height = height;
+                });
+            }
             MenuSettingsInput::NipWidgetListChanged(widgets) => {
                 config_manager().update_config(|config| {
                     config.menus.nip_menu.widgets = widgets;
@@ -2574,6 +3411,12 @@ impl Component for MenuSettingsModel {
                 self.nip_min_width = width;
                 config_manager().update_config(|config| {
                     config.menus.nip_menu.minimum_width = width;
+                });
+            }
+            MenuSettingsInput::NipMaxHeightChanged(height) => {
+                self.nip_max_height = height;
+                config_manager().update_config(|config| {
+                    config.menus.nip_menu.maximum_height = height;
                 });
             }
             MenuSettingsInput::NnetworkWidgetListChanged(widgets) => {
@@ -2593,6 +3436,12 @@ impl Component for MenuSettingsModel {
                     config.menus.nnetwork_menu.minimum_width = width;
                 });
             }
+            MenuSettingsInput::NnetworkMaxHeightChanged(height) => {
+                self.nnetwork_max_height = height;
+                config_manager().update_config(|config| {
+                    config.menus.nnetwork_menu.maximum_height = height;
+                });
+            }
             MenuSettingsInput::NpowerWidgetListChanged(widgets) => {
                 config_manager().update_config(|config| {
                     config.menus.npower_menu.widgets = widgets;
@@ -2610,6 +3459,12 @@ impl Component for MenuSettingsModel {
                     config.menus.npower_menu.minimum_width = width;
                 });
             }
+            MenuSettingsInput::NpowerMaxHeightChanged(height) => {
+                self.npower_max_height = height;
+                config_manager().update_config(|config| {
+                    config.menus.npower_menu.maximum_height = height;
+                });
+            }
             MenuSettingsInput::MediaPlayerWidgetListChanged(widgets) => {
                 config_manager().update_config(|config| {
                     config.menus.media_player_menu.widgets = widgets;
@@ -2625,6 +3480,12 @@ impl Component for MenuSettingsModel {
                 self.media_player_min_width = width;
                 config_manager().update_config(|config| {
                     config.menus.media_player_menu.minimum_width = width;
+                });
+            }
+            MenuSettingsInput::MediaPlayerMaxHeightChanged(height) => {
+                self.media_player_max_height = height;
+                config_manager().update_config(|config| {
+                    config.menus.media_player_menu.maximum_height = height;
                 });
             }
             MenuSettingsInput::NotificationsWidgetListChanged(widgets) => {
@@ -2645,6 +3506,12 @@ impl Component for MenuSettingsModel {
                     config.menus.notification_menu.minimum_width = width;
                 });
             }
+            MenuSettingsInput::NotificationsMaxHeightChanged(height) => {
+                self.notifications_max_height = height;
+                config_manager().update_config(|config| {
+                    config.menus.notification_menu.maximum_height = height;
+                });
+            }
             MenuSettingsInput::ClipboardWidgetListChanged(widgets) => {
                 let config_manager = config_manager();
                 config_manager.update_config(|config| {
@@ -2661,6 +3528,12 @@ impl Component for MenuSettingsModel {
                 self.clipboard_min_width = width;
                 config_manager().update_config(|config| {
                     config.menus.clipboard_menu.minimum_width = width;
+                });
+            }
+            MenuSettingsInput::ClipboardMaxHeightChanged(height) => {
+                self.clipboard_max_height = height;
+                config_manager().update_config(|config| {
+                    config.menus.clipboard_menu.maximum_height = height;
                 });
             }
             MenuSettingsInput::ScreenshotWidgetListChanged(widgets) => {
@@ -2681,6 +3554,12 @@ impl Component for MenuSettingsModel {
                     config.menus.screenshot_menu.minimum_width = width;
                 });
             }
+            MenuSettingsInput::ScreenshotMaxHeightChanged(height) => {
+                self.screenshot_max_height = height;
+                config_manager().update_config(|config| {
+                    config.menus.screenshot_menu.maximum_height = height;
+                });
+            }
             MenuSettingsInput::AppLauncherWidgetListChanged(widgets) => {
                 let config_manager = config_manager();
                 config_manager.update_config(|config| {
@@ -2697,6 +3576,12 @@ impl Component for MenuSettingsModel {
                 self.app_launcher_min_width = width;
                 config_manager().update_config(|config| {
                     config.menus.app_launcher_menu.minimum_width = width;
+                });
+            }
+            MenuSettingsInput::AppLauncherMaxHeightChanged(height) => {
+                self.app_launcher_max_height = height;
+                config_manager().update_config(|config| {
+                    config.menus.app_launcher_menu.maximum_height = height;
                 });
             }
             MenuSettingsInput::ScreensharePositionChanged(position) => {
@@ -2727,6 +3612,9 @@ impl Component for MenuSettingsModel {
             MenuSettingsInput::QuickSettingsMinWidthEffect(width) => {
                 self.quick_settings_min_width = width;
             }
+            MenuSettingsInput::QuickSettingsMaxHeightEffect(height) => {
+                self.quick_settings_max_height = height;
+            }
             MenuSettingsInput::ClockWidgetListEffect(widgets) => {
                 self.clock_widget_list_controller
                     .emit(MenuWidgetListInput::SetWidgetsEffect(widgets));
@@ -2736,6 +3624,9 @@ impl Component for MenuSettingsModel {
             }
             MenuSettingsInput::ClockMinWidthEffect(width) => {
                 self.clock_min_width = width;
+            }
+            MenuSettingsInput::ClockMaxHeightEffect(height) => {
+                self.clock_max_height = height;
             }
             MenuSettingsInput::ClipboardWidgetListEffect(widgets) => {
                 self.clipboard_widget_list_controller
@@ -2747,6 +3638,9 @@ impl Component for MenuSettingsModel {
             MenuSettingsInput::ClipboardMinWidthEffect(width) => {
                 self.clipboard_min_width = width;
             }
+            MenuSettingsInput::ClipboardMaxHeightEffect(height) => {
+                self.clipboard_max_height = height;
+            }
             MenuSettingsInput::ScreenshotWidgetListEffect(widgets) => {
                 self.screenshot_widget_list_controller
                     .emit(MenuWidgetListInput::SetWidgetsEffect(widgets));
@@ -2756,6 +3650,9 @@ impl Component for MenuSettingsModel {
             }
             MenuSettingsInput::ScreenshotMinWidthEffect(width) => {
                 self.screenshot_min_width = width;
+            }
+            MenuSettingsInput::ScreenshotMaxHeightEffect(height) => {
+                self.screenshot_max_height = height;
             }
             MenuSettingsInput::NotificationsWidgetListEffect(widgets) => {
                 self.notifications_widget_list_controller
@@ -2767,6 +3664,9 @@ impl Component for MenuSettingsModel {
             MenuSettingsInput::NotificationsMinWidthEffect(width) => {
                 self.notifications_min_width = width;
             }
+            MenuSettingsInput::NotificationsMaxHeightEffect(height) => {
+                self.notifications_max_height = height;
+            }
             MenuSettingsInput::AppLauncherWidgetListEffect(widgets) => {
                 self.app_launcher_widget_list_controller
                     .emit(MenuWidgetListInput::SetWidgetsEffect(widgets));
@@ -2776,6 +3676,9 @@ impl Component for MenuSettingsModel {
             }
             MenuSettingsInput::AppLauncherMinWidthEffect(width) => {
                 self.app_launcher_min_width = width;
+            }
+            MenuSettingsInput::AppLauncherMaxHeightEffect(height) => {
+                self.app_launcher_max_height = height;
             }
             MenuSettingsInput::WallpaperWidgetListEffect(widgets) => {
                 self.wallpaper_widget_list_controller
@@ -2787,6 +3690,9 @@ impl Component for MenuSettingsModel {
             MenuSettingsInput::WallpaperMinWidthEffect(width) => {
                 self.wallpaper_min_width = width;
             }
+            MenuSettingsInput::WallpaperMaxHeightEffect(height) => {
+                self.wallpaper_max_height = height;
+            }
             MenuSettingsInput::NufwWidgetListEffect(widgets) => {
                 self.nufw_widget_list_controller
                     .emit(MenuWidgetListInput::SetWidgetsEffect(widgets));
@@ -2796,6 +3702,9 @@ impl Component for MenuSettingsModel {
             }
             MenuSettingsInput::NufwMinWidthEffect(width) => {
                 self.nufw_min_width = width;
+            }
+            MenuSettingsInput::NufwMaxHeightEffect(height) => {
+                self.nufw_max_height = height;
             }
             MenuSettingsInput::NdnsWidgetListEffect(widgets) => {
                 self.ndns_widget_list_controller
@@ -2807,6 +3716,9 @@ impl Component for MenuSettingsModel {
             MenuSettingsInput::NdnsMinWidthEffect(width) => {
                 self.ndns_min_width = width;
             }
+            MenuSettingsInput::NdnsMaxHeightEffect(height) => {
+                self.ndns_max_height = height;
+            }
             MenuSettingsInput::NpodmanWidgetListEffect(widgets) => {
                 self.npodman_widget_list_controller
                     .emit(MenuWidgetListInput::SetWidgetsEffect(widgets));
@@ -2816,6 +3728,9 @@ impl Component for MenuSettingsModel {
             }
             MenuSettingsInput::NpodmanMinWidthEffect(width) => {
                 self.npodman_min_width = width;
+            }
+            MenuSettingsInput::NpodmanMaxHeightEffect(height) => {
+                self.npodman_max_height = height;
             }
             MenuSettingsInput::NnotesWidgetListEffect(widgets) => {
                 self.nnotes_widget_list_controller
@@ -2827,6 +3742,9 @@ impl Component for MenuSettingsModel {
             MenuSettingsInput::NnotesMinWidthEffect(width) => {
                 self.nnotes_min_width = width;
             }
+            MenuSettingsInput::NnotesMaxHeightEffect(height) => {
+                self.nnotes_max_height = height;
+            }
             MenuSettingsInput::NipWidgetListEffect(widgets) => {
                 self.nip_widget_list_controller
                     .emit(MenuWidgetListInput::SetWidgetsEffect(widgets));
@@ -2836,6 +3754,9 @@ impl Component for MenuSettingsModel {
             }
             MenuSettingsInput::NipMinWidthEffect(width) => {
                 self.nip_min_width = width;
+            }
+            MenuSettingsInput::NipMaxHeightEffect(height) => {
+                self.nip_max_height = height;
             }
             MenuSettingsInput::NnetworkWidgetListEffect(widgets) => {
                 self.nnetwork_widget_list_controller
@@ -2847,6 +3768,9 @@ impl Component for MenuSettingsModel {
             MenuSettingsInput::NnetworkMinWidthEffect(width) => {
                 self.nnetwork_min_width = width;
             }
+            MenuSettingsInput::NnetworkMaxHeightEffect(height) => {
+                self.nnetwork_max_height = height;
+            }
             MenuSettingsInput::NpowerWidgetListEffect(widgets) => {
                 self.npower_widget_list_controller
                     .emit(MenuWidgetListInput::SetWidgetsEffect(widgets));
@@ -2857,6 +3781,9 @@ impl Component for MenuSettingsModel {
             MenuSettingsInput::NpowerMinWidthEffect(width) => {
                 self.npower_min_width = width;
             }
+            MenuSettingsInput::NpowerMaxHeightEffect(height) => {
+                self.npower_max_height = height;
+            }
             MenuSettingsInput::MediaPlayerWidgetListEffect(widgets) => {
                 self.media_player_widget_list_controller
                     .emit(MenuWidgetListInput::SetWidgetsEffect(widgets));
@@ -2866,6 +3793,9 @@ impl Component for MenuSettingsModel {
             }
             MenuSettingsInput::MediaPlayerMinWidthEffect(width) => {
                 self.media_player_min_width = width;
+            }
+            MenuSettingsInput::MediaPlayerMaxHeightEffect(height) => {
+                self.media_player_max_height = height;
             }
             MenuSettingsInput::ScreensharePositionEffect(position) => {
                 self.screenshare_position = position;
