@@ -74,7 +74,10 @@ where
                 Err(e) => return on_done(Err(e)),
             };
             select_region(&outputs, move |region_result| {
-                on_done(region_result.map(ScreenSelection::Region));
+                // Pure preview / select API has no use for the
+                // shortcut's output-target override — just unwrap
+                // the RegionSelection half of the commit tuple.
+                on_done(region_result.map(|(region, _override)| ScreenSelection::Region(region)));
             });
         }
         ScreenSelectAreaRequest::SelectMonitor => {
@@ -109,7 +112,10 @@ pub fn record_screen<S, D>(
                 Err(e) => return on_started(Err(e.into())),
             };
             select_region(&outputs, move |region_result| match region_result {
-                Ok(region) => {
+                // Recording cares only about the rect — Ctrl+S /
+                // Ctrl+E shortcut overrides are screenshot-only,
+                // so the second tuple element is discarded.
+                Ok((region, _override)) => {
                     let args = WfRecorderArgs::Region {
                         x: region.x,
                         y: region.y,
@@ -193,12 +199,19 @@ where
             };
             let target = request.target.clone();
             select_region(&outputs, move |region_result| match region_result {
-                Ok(region) => capture_and_finish_async(
-                    move || CaptureBackend::new()?.capture_region(&region),
-                    target,
-                    delay,
-                    on_done,
-                ),
+                // Ctrl+S / Ctrl+E inside the selector can override
+                // the OutputTarget the calling widget originally
+                // wanted — that's the whole point of the in-selector
+                // shortcuts. `None` keeps the caller's target.
+                Ok((region, override_target)) => {
+                    let final_target = override_target.unwrap_or(target);
+                    capture_and_finish_async(
+                        move || CaptureBackend::new()?.capture_region(&region),
+                        final_target,
+                        delay,
+                        on_done,
+                    );
+                }
                 Err(e) => on_done(Err(e)),
             });
         }

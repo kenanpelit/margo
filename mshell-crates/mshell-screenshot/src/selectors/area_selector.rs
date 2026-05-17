@@ -1,6 +1,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
+use crate::OutputTarget;
 use crate::common::*;
 use crate::selectors::window_selector::{WindowRect, build_window_rects};
 use crate::utils::find_gdk_monitor;
@@ -24,10 +25,21 @@ pub struct RegionSelection {
     pub height: i32,
 }
 
+/// What the selector wants the caller to do with the rect once
+/// the user commits. `None` is the default — the caller (e.g.
+/// `take_screenshot`) keeps whatever `OutputTarget` it was
+/// originally given. `Some(target)` is a user-driven override
+/// triggered by an in-selector shortcut: Ctrl+S forces
+/// `OutputTarget::File`, Ctrl+E forces `OutputTarget::EditAndSave`,
+/// so the user can re-purpose any "Area" capture button into a
+/// save-to-disk or open-in-satty flow without backing out and
+/// reconfiguring the widget.
+pub type RegionCommit = (RegionSelection, Option<OutputTarget>);
+
 struct SharedState {
     drag_start: Cell<Option<(f64, f64)>>,
     drag_current: Cell<Option<(f64, f64)>>,
-    on_done: RefCell<Option<Box<dyn FnOnce(Result<RegionSelection>)>>>,
+    on_done: RefCell<Option<Box<dyn FnOnce(Result<RegionCommit>)>>>,
     windows: RefCell<Vec<gtk4::Window>>,
     /// Snapshot of every visible window across all outputs taken
     /// once at selector startup. Used by drag-end snap-to-window:
@@ -50,7 +62,7 @@ struct SharedState {
 }
 
 impl SharedState {
-    fn fire(&self, result: Result<RegionSelection>) {
+    fn fire(&self, result: Result<RegionCommit>) {
         for window in self.windows.borrow().iter() {
             window.close();
         }
@@ -71,7 +83,7 @@ impl SharedState {
 /// windows are destroyed automatically.
 pub fn select_region<F>(outputs: &[OutputInfo], on_done: F)
 where
-    F: FnOnce(Result<RegionSelection>) + 'static,
+    F: FnOnce(Result<RegionCommit>) + 'static,
 {
     if outputs.is_empty() {
         on_done(Err(ScreenshotError::CaptureFailed(
@@ -270,23 +282,24 @@ fn create_overlay_window(
                 glib::Propagation::Stop
             }
             gdk::Key::Return | gdk::Key::KP_Enter => {
-                let region = state_key
-                    .selection
-                    .borrow()
-                    .as_ref()
-                    .map(|(o, x, y, w, h)| RegionSelection {
-                        output: o.clone(),
-                        x: *x as i32,
-                        y: *y as i32,
-                        width: *w as i32,
-                        height: *h as i32,
-                    });
-                if let Some(region) = region {
-                    state_key.fire(Ok(region));
-                    glib::Propagation::Stop
-                } else {
-                    glib::Propagation::Proceed
-                }
+                fire_preview(&state_key, None)
+            }
+            // Ctrl+S → commit but force the OutputTarget to File
+            // (save-to-disk, no clipboard, no editor) regardless
+            // of whatever target the calling widget originally
+            // wanted. Lets the user repurpose any "Area" button
+            // into a quick save without backing out.
+            gdk::Key::S | gdk::Key::s
+                if modifier.contains(gdk::ModifierType::CONTROL_MASK) =>
+            {
+                fire_preview(&state_key, Some(OutputTarget::File))
+            }
+            // Ctrl+E → commit + force EditAndSave (open in
+            // satty / swappy). Same override mechanic as Ctrl+S.
+            gdk::Key::E | gdk::Key::e
+                if modifier.contains(gdk::ModifierType::CONTROL_MASK) =>
+            {
+                fire_preview(&state_key, Some(OutputTarget::EditAndSave))
             }
             gdk::Key::Up | gdk::Key::Down | gdk::Key::Left | gdk::Key::Right => {
                 let step =
@@ -416,6 +429,32 @@ fn gcd(mut a: u32, mut b: u32) -> u32 {
         a = t;
     }
     a.max(1)
+}
+
+/// Common commit path used by Enter, Ctrl+S, and Ctrl+E. Reads
+/// the preview-state selection, builds a `RegionSelection`, and
+/// fires the on_done callback with the (possibly empty) target
+/// override. `override_target` is `None` for Enter (caller's
+/// chosen target wins) and `Some(t)` for Ctrl+S / Ctrl+E (the
+/// shortcut overrides whatever target the caller passed in).
+fn fire_preview(state: &SharedState, override_target: Option<OutputTarget>) -> glib::Propagation {
+    let region = state
+        .selection
+        .borrow()
+        .as_ref()
+        .map(|(o, x, y, w, h)| RegionSelection {
+            output: o.clone(),
+            x: *x as i32,
+            y: *y as i32,
+            width: *w as i32,
+            height: *h as i32,
+        });
+    if let Some(region) = region {
+        state.fire(Ok((region, override_target)));
+        glib::Propagation::Stop
+    } else {
+        glib::Propagation::Proceed
+    }
 }
 
 /// Nudge the preview-state selection by `(dx, dy)` pixels and
