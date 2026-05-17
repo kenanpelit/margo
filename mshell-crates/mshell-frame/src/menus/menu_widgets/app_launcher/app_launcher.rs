@@ -177,6 +177,21 @@ impl Component for AppLauncherModel {
         gtk::Box {
             add_css_class: "app-launcher-menu-widget",
             set_orientation: gtk::Orientation::Vertical,
+            // Lock horizontal sizing so the launcher menu never
+            // jitters between selections. The bind-hint footer
+            // shows 5–8 contextual chips and the category strip
+            // is 8 pills wide — without `hexpand: true` here, the
+            // root's natural width fluctuates as those rows
+            // rebuild, the parent menu re-requests size, and the
+            // whole panel visibly grows/shrinks during keyboard
+            // navigation. Filling the parent allocation (which is
+            // capped at the menu's configured `minimum_width`)
+            // forces every child to lay out inside a stable
+            // box — chips cluster at the left via their own
+            // `halign: Start`, long row names ellipsize, and the
+            // outer width stops moving.
+            set_hexpand: true,
+            set_halign: gtk::Align::Fill,
 
             gtk::Box {
                 add_css_class: "app-launcher-search-row",
@@ -253,22 +268,39 @@ impl Component for AppLauncherModel {
                 set_spacing: 6,
                 set_margin_bottom: 8,
                 set_halign: gtk::Align::Start,
+                set_hexpand: true,
             },
 
             #[name = "scrolled_window"]
             ScrolledWindow {
                 set_vscrollbar_policy: gtk::PolicyType::Automatic,
+                set_hscrollbar_policy: gtk::PolicyType::Never,
                 set_propagate_natural_height: true,
+                // Don't let an extra-long row name push the
+                // launcher wider than the parent's allocation —
+                // labels inside each row already ellipsize, so
+                // capping the natural width here is what makes
+                // the cap actually fire.
+                set_propagate_natural_width: false,
+                set_hexpand: true,
 
                 #[name = "apps_box"]
-                gtk::Box {},
+                gtk::Box {
+                    set_hexpand: true,
+                },
             },
 
             // Keybind hint strip — walker-style footer that lists
             // the currently-relevant keyboard shortcuts. Refreshed
             // any time the selection changes so contextual binds
             // (alt action, delete, pin) only appear when they
-            // apply to the focused row.
+            // apply to the focused row. `hexpand: true` so the
+            // strip itself always fills the available width —
+            // chips cluster at the start via their own halign,
+            // but the row's allocation never changes shape as
+            // chip count fluctuates. Without this, every
+            // selection swap would re-request the menu's natural
+            // width and the panel jitters.
             #[name = "binds_strip"]
             gtk::Box {
                 add_css_class: "app-launcher-binds-strip",
@@ -276,6 +308,7 @@ impl Component for AppLauncherModel {
                 set_spacing: 6,
                 set_margin_top: 10,
                 set_halign: gtk::Align::Start,
+                set_hexpand: true,
             },
         }
     }
