@@ -515,7 +515,13 @@ fn pick_editor() -> Option<String> {
     {
         return Some(forced);
     }
-    for cand in ["swappy", "satty", "gimp", "krita"] {
+    // Satty is the preferred annotation tool across margo (and the
+    // shell scripts agree — `screenshot` and `scripts/screenshot`
+    // both call satty first). swappy stays in the fallback chain
+    // for users who still have it on PATH but not satty; gimp/
+    // krita are the last-resort openers that let the user save
+    // manually.
+    for cand in ["satty", "swappy", "gimp", "krita"] {
         if which(cand) {
             return Some(cand.to_string());
         }
