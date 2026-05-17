@@ -534,8 +534,9 @@ fn apply(service: &MargoService, state: &StateJson) {
     // focused window. Only re-publish when the focused *client*
     // actually changes (same Arc is reused across title edits, so
     // typing doesn't spuriously fire `focused_client`).
-    let focused_client = usize::try_from(state.focused_idx)
-        .ok()
+    let focused_client = state
+        .focused_idx
+        .and_then(|i| usize::try_from(i).ok())
         .and_then(|idx| next_clients.get(idx).cloned());
     let focused_changed = match (service.focused_client.get(), &focused_client) {
         (Some(prev), Some(next)) => prev.address.get() != next.address.get(),

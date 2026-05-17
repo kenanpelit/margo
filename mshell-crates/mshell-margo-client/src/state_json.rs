@@ -11,11 +11,34 @@ use serde::Deserialize;
 #[derive(Debug, Clone, Deserialize)]
 pub struct StateJson {
     pub active_output: String,
-    pub focused_idx: i64,
+    /// `null` in the JSON when no client is focused — common at
+    /// session start, on every workspace that has no windows, and
+    /// briefly during focus-out transitions. Margo serialises the
+    /// raw `Option<usize>` as `null`/integer; the old `i64`-only
+    /// type rejected the whole document with `invalid type: null,
+    /// expected i64` and `apply_snapshot` never ran. Symptom: at
+    /// first login the tag-pill row stayed empty until the user
+    /// opened a window (which gave focused_idx a real integer and
+    /// the parser finally accepted the snapshot).
+    #[serde(default, deserialize_with = "deserialize_focused_idx")]
+    pub focused_idx: Option<i64>,
     pub layouts: Vec<String>,
     pub outputs: Vec<RawOutput>,
     pub clients: Vec<RawClient>,
     pub tag_count: u32,
+}
+
+/// Coerce `null` / missing / integer into `Option<i64>`. serde's
+/// default behaviour for `Option<i64>` already accepts `null` and
+/// missing, but margo emits `focused_idx` as `null` (not absent)
+/// in the JSON, and an older version of this schema declared the
+/// field as bare `i64`, so we keep the explicit deserializer for
+/// belt-and-suspenders (and to document the wire shape).
+fn deserialize_focused_idx<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<i64>::deserialize(deserializer)
 }
 
 #[derive(Debug, Clone, Deserialize)]
