@@ -24,20 +24,15 @@ fn extract_hex_color(s: &str) -> Option<String> {
     None
 }
 
-/// Spawn the picker binary and capture its stdout hex. Prefers
-/// margo's native `mpicker` (frozen screencap + zoom lens, ships
-/// in this workspace); falls back to `hyprpicker` for users who
-/// haven't installed mpicker yet. Either tool prints the picked
-/// colour as its first stdout line; we don't pass `-a` because
-/// the caller (`spawn_color_picker`) copies + notifies itself
-/// once it has the hex token in hand.
+/// Spawn margo's native `mpicker` and capture its stdout hex.
+/// No hyprpicker fallback — mpicker is the canonical picker
+/// across margo (frozen screencap + zoom lens, ships with this
+/// workspace). If mpicker is missing the spawn fails fast so the
+/// caller logs the real problem instead of silently degrading.
+/// We don't pass `-a` because the caller (`spawn_color_picker`)
+/// copies + notifies itself once it has the hex token in hand.
 async fn run_picker() -> anyhow::Result<String> {
-    let tool = if which("mpicker") {
-        "mpicker"
-    } else {
-        "hyprpicker"
-    };
-    let out = Command::new(tool)
+    let out = Command::new("mpicker")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -49,18 +44,6 @@ async fn run_picker() -> anyhow::Result<String> {
     }
 
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
-}
-
-fn which(cmd: &str) -> bool {
-    let Some(path) = std::env::var_os("PATH") else {
-        return false;
-    };
-    for dir in std::env::split_paths(&path) {
-        if dir.join(cmd).is_file() {
-            return true;
-        }
-    }
-    false
 }
 
 async fn wl_copy(text: &str) -> anyhow::Result<()> {

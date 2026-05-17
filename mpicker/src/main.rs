@@ -28,7 +28,7 @@ use gtk4::prelude::*;
 use gtk4::{cairo, gdk, glib};
 use gtk4_layer_shell::LayerShell;
 use image::{Rgba, RgbaImage};
-use mshell_screenshot::{CaptureBackend, OutputInfo, query_outputs};
+use mshell_screenshot::{CaptureBackend, OutputInfo};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -69,39 +69,56 @@ static PICKED: Mutex<Option<String>> = Mutex::new(None);
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-
-    let outputs = query_outputs().map_err(|e| anyhow::anyhow!("query outputs: {e}"))?;
-    if outputs.is_empty() {
-        anyhow::bail!("no outputs found");
-    }
-
-    // Capture every output BEFORE we open the layer-shell
-    // overlays — once the overlay covers the screen the captured
-    // frame would just be a dark mask. Do this synchronously
-    // (each capture is ~tens of ms), store as RgbaImage keyed
-    // by output name.
-    let backend = CaptureBackend::new().map_err(|e| anyhow::anyhow!("backend: {e}"))?;
-    let mut frames: HashMap<String, RgbaImage> = HashMap::new();
-    for out in &outputs {
-        let img = backend
-            .capture_output(&out.name)
-            .map_err(|e| anyhow::anyhow!("capture {}: {e}", out.name))?;
-        frames.insert(out.name.clone(), img);
-    }
-    if !cli.quiet {
-        eprintln!("mpicker: captured {} output(s)", frames.len());
-    }
+    let quiet = cli.quiet;
 
     let app = gtk4::Application::builder()
         .application_id("com.mshell.picker")
         .flags(gtk4::gio::ApplicationFlags::NON_UNIQUE)
         .build();
 
-    let outputs_rc = Rc::new(outputs);
-    let frames_rc = Rc::new(frames);
     let cli_rc = Rc::new(cli);
     app.connect_activate(move |app| {
-        open_overlays(app, &outputs_rc, &frames_rc, &cli_rc);
+        // Output enumeration + capture happens here, AFTER GTK is
+        // initialised, so we can rely on `gdk::Display` for the
+        // monitor list. We can't call `mshell_screenshot::query_outputs`
+        // — that path goes through margo_service which only exists
+        // inside the mshell process. Capture itself (wlr-screencopy
+        // via CaptureBackend) is process-independent and works fine
+        // from a standalone CLI like ours.
+        let outputs = match enumerate_outputs() {
+            Ok(o) if !o.is_empty() => o,
+            Ok(_) => {
+                eprintln!("mpicker: no outputs found");
+                return;
+            }
+            Err(e) => {
+                eprintln!("mpicker: enumerate outputs: {e}");
+                return;
+            }
+        };
+        let backend = match CaptureBackend::new() {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!("mpicker: backend: {e}");
+                return;
+            }
+        };
+        let mut frames: HashMap<String, RgbaImage> = HashMap::new();
+        for out in &outputs {
+            match backend.capture_output(&out.name) {
+                Ok(img) => {
+                    frames.insert(out.name.clone(), img);
+                }
+                Err(e) => {
+                    eprintln!("mpicker: capture {}: {e}", out.name);
+                    return;
+                }
+            }
+        }
+        if !quiet {
+            eprintln!("mpicker: captured {} output(s)", frames.len());
+        }
+        open_overlays(app, &Rc::new(outputs), &Rc::new(frames), &cli_rc);
     });
 
     // Drop argv so GTK doesn't try to parse our --autocopy etc.
@@ -303,6 +320,39 @@ fn find_gdk_monitor(
         }
     }
     None
+}
+
+/// Enumerate outputs via GDK monitors. Used in place of
+/// `mshell_screenshot::query_outputs` because that helper depends
+/// on `margo_service`, which is only initialised inside the
+/// mshell process — calling it from a standalone CLI panics. GDK
+/// gives us the monitor connector name (which is what wlr-
+/// screencopy keys on inside `CaptureBackend::capture_output`)
+/// plus the bounding rect we need for per-output state.
+fn enumerate_outputs() -> Result<Vec<OutputInfo>> {
+    let display = gdk::Display::default().ok_or_else(|| anyhow::anyhow!("no default display"))?;
+    let monitors = display.monitors();
+    let mut outputs = Vec::new();
+    for i in 0..monitors.n_items() {
+        let Some(obj) = monitors.item(i) else { continue };
+        let Ok(mon): std::result::Result<gdk::Monitor, _> = obj.downcast() else {
+            continue;
+        };
+        let geom = mon.geometry();
+        let name = mon
+            .connector()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| format!("output-{i}"));
+        outputs.push(OutputInfo {
+            name,
+            x: geom.x(),
+            y: geom.y(),
+            width: geom.width(),
+            height: geom.height(),
+            scale: mon.scale_factor() as f64,
+        });
+    }
+    Ok(outputs)
 }
 
 fn draw_overlay(
