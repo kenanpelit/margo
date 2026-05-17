@@ -1,10 +1,12 @@
 mod capture;
 mod common;
+pub mod editor;
 pub mod record;
 mod selectors;
 mod utils;
 
 pub use capture::{CaptureBackend, ScreenshotResult};
+pub use editor::{editor_available, launch_editor_blocking, pick_editor};
 pub use selectors::area_selector::select_region;
 
 use crate::common::*;
@@ -30,6 +32,11 @@ pub enum OutputTarget {
     FileAndClipboard,
     File,
     Clipboard,
+    /// Capture → open in `pick_editor()` (satty / swappy / …) →
+    /// when the editor writes its output, copy that file to the
+    /// clipboard too. Falls back to the original capture for the
+    /// clipboard step when the editor exits without saving.
+    EditAndSave,
 }
 
 #[derive(Debug, Clone)]
@@ -283,7 +290,94 @@ fn finish_capture(image: image::RgbaImage, target: &OutputTarget) -> Result<Scre
                 in_clipboard: true,
             })
         }
+        OutputTarget::EditAndSave => finish_with_editor(image),
     }
+}
+
+/// Edit-then-save flow:
+///   1. Persist the raw capture to a temp PNG (editor input).
+///   2. Pick + launch the editor synchronously, telling it to
+///      write its annotated output to the user's Screenshots dir.
+///   3. If the editor wrote that output, clipboard it and report
+///      the annotated path; otherwise fall back to the raw capture
+///      (still saved + clipboarded) so the user is never left with
+///      no screenshot at all.
+/// If no editor is available, behaves identically to
+/// `FileAndClipboard` and warns via the returned path remaining
+/// unedited.
+fn finish_with_editor(image: image::RgbaImage) -> Result<ScreenshotResult> {
+    let raw_path = default_screenshot_path();
+    save_to_file(&image, &raw_path)?;
+    let Some(editor) = editor::pick_editor() else {
+        // No annotation tool installed — degrade to FileAndClipboard.
+        copy_to_clipboard(&image)?;
+        return Ok(ScreenshotResult {
+            saved_path: Some(raw_path),
+            in_clipboard: true,
+        });
+    };
+
+    // Editor writes its annotated output to a sibling path so the
+    // raw + annotated coexist on disk. Suffix is added before the
+    // extension so the file still ends in .png.
+    let annotated_path = annotated_sibling(&raw_path);
+
+    match editor::launch_editor_blocking(&raw_path, &annotated_path, &editor) {
+        Ok(true) => {
+            // Editor saved → clipboard the annotated PNG.
+            if let Ok(bytes) = std::fs::read(&annotated_path) {
+                let _ = copy_png_bytes_to_clipboard(&bytes);
+            }
+            Ok(ScreenshotResult {
+                saved_path: Some(annotated_path),
+                in_clipboard: true,
+            })
+        }
+        Ok(false) => {
+            // Editor closed without saving (or fire-and-forget tool
+            // like gimp/krita). Clipboard the raw capture so the
+            // user still gets something useful.
+            copy_to_clipboard(&image)?;
+            Ok(ScreenshotResult {
+                saved_path: Some(raw_path),
+                in_clipboard: true,
+            })
+        }
+        Err(e) => Err(e),
+    }
+}
+
+fn annotated_sibling(path: &PathBuf) -> PathBuf {
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("shot");
+    let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("png");
+    let mut out = path.clone();
+    out.set_file_name(format!("{stem}-edit.{ext}"));
+    out
+}
+
+fn copy_png_bytes_to_clipboard(bytes: &[u8]) -> Result<()> {
+    use std::process::{Command, Stdio};
+    let mut child = Command::new("wl-copy")
+        .arg("--type")
+        .arg("image/png")
+        .stdin(Stdio::piped())
+        .spawn()
+        .map_err(|e| ScreenshotError::ClipboardFailed(format!("failed to spawn wl-copy: {e}")))?;
+    if let Some(mut stdin) = child.stdin.take() {
+        use std::io::Write;
+        stdin
+            .write_all(bytes)
+            .map_err(|e| ScreenshotError::ClipboardFailed(e.to_string()))?;
+    }
+    let status = child
+        .wait()
+        .map_err(|e| ScreenshotError::ClipboardFailed(e.to_string()))?;
+    if !status.success() {
+        return Err(ScreenshotError::ClipboardFailed(
+            "wl-copy exited with non-zero status".into(),
+        ));
+    }
+    Ok(())
 }
 
 fn save_to_file(image: &image::RgbaImage, path: &PathBuf) -> Result<()> {
