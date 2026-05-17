@@ -150,9 +150,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for AppData {
                     ),
                 );
             }
-            "wl_seat" => {
+            "wl_seat"
                 // Only need the first seat — the keyboard/pointer seat.
-                if state.seat.is_none() {
+                if state.seat.is_none() => {
                     state.seat = Some(registry.bind::<wl_seat::WlSeat, _, _>(
                         name,
                         version.min(5),
@@ -160,7 +160,6 @@ impl Dispatch<wl_registry::WlRegistry, ()> for AppData {
                         (),
                     ));
                 }
-            }
             _ => {}
         }
     }

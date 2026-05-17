@@ -70,7 +70,7 @@ pub async fn init_services(
         async { Ok::<_, anyhow::Error>(BatteryService::new().await?) },
         async { Ok::<_, anyhow::Error>(BluetoothService::new().await?) },
         async { Ok::<_, anyhow::Error>(BrightnessService::new().await?) },
-        async { Ok::<_, anyhow::Error>(MargoService::new().await?) },
+        async { MargoService::new().await },
         line_power_fut,
         async {
             // `with_art_cache()` resolves MPRIS `mpris:artUrl`s (incl.

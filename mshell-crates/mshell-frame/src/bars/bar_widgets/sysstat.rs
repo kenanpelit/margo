@@ -249,7 +249,7 @@ impl Component for TempMonitorModel {
         let sensor_path = find_cpu_temp_sensor();
         let celsius = sensor_path
             .as_ref()
-            .and_then(|p| read_temp_millideg(p))
+            .and_then(read_temp_millideg)
             .map(|t| t / 1000)
             .unwrap_or(0);
 

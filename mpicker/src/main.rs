@@ -130,11 +130,10 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     if let Some(color) = picked {
         println!("{}", color);
-        if cli.autocopy {
-            if let Err(e) = wl_copy(&color) {
+        if cli.autocopy
+            && let Err(e) = wl_copy(&color) {
                 eprintln!("mpicker: wl-copy failed: {e}");
             }
-        }
         if cli.notify {
             let _ = std::process::Command::new("notify-send")
                 .arg("--app-name=Color Picker")

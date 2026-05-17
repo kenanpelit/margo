@@ -315,7 +315,7 @@ fn sync_view(model: &NipMenuWidgetModel) {
     // Detail rows.
     let info = snap.info.clone().unwrap_or_default();
     for (caption, label) in &model.detail_values {
-        let value = detail_value(*caption, &info);
+        let value = detail_value(caption, &info);
         label.set_label(if value.is_empty() { "—" } else { &value });
     }
 

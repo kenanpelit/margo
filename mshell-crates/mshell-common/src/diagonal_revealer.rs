@@ -88,6 +88,12 @@ glib::wrapper! {
         @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
 }
 
+impl Default for DiagonalRevealer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DiagonalRevealer {
     pub fn new() -> Self {
         glib::Object::new()

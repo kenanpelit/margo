@@ -481,7 +481,7 @@ fn read_offer_data(
     // Flush the connection so the compositor sees the receive request
     // and forwards it to the source app. Without this, the read below
     // will block forever waiting for data that was never requested.
-    conn.flush().map_err(|e| std::io::Error::other(e))?;
+    conn.flush().map_err(std::io::Error::other)?;
 
     // Close the write end so we get EOF when the source is done.
     drop(write_fd);

@@ -577,12 +577,12 @@ impl Component for AppLauncherModel {
             }
             AppLauncherInput::Activate => {
                 if let Some(id) = &self.selected_id.clone() {
-                    self.activate_id(&id, /*alt=*/ false);
+                    self.activate_id(id, /*alt=*/ false);
                 }
             }
             AppLauncherInput::AltActivate => {
                 if let Some(id) = &self.selected_id.clone() {
-                    self.activate_id(&id, /*alt=*/ true);
+                    self.activate_id(id, /*alt=*/ true);
                 }
             }
             AppLauncherInput::ActivateRow(id) => {

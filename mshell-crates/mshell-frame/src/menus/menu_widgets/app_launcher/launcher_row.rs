@@ -220,7 +220,7 @@ fn lookup_app_by_id_suffix(suffix: &str) -> Option<DesktopAppInfo> {
         .filter_map(|info| info.downcast::<DesktopAppInfo>().ok())
         .find(|info| {
             info.id()
-                .map(|g| g.to_string() == suffix)
+                .map(|g| g == suffix)
                 .unwrap_or(false)
         })
 }

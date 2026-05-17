@@ -493,11 +493,7 @@ impl MargoService {
             // Pattern: `hl.dsp.focus({ workspace = "r-1" })` or
             // `… workspace = "5" …`. Extract the quoted token.
             extract_quoted(trimmed).map(|t| translate_workspace(&t))
-        } else if let Some(rest) = trimmed.strip_prefix("dispatch ") {
-            Some(rest.split_whitespace().map(String::from).collect())
-        } else {
-            None
-        };
+        } else { trimmed.strip_prefix("dispatch ").map(|rest| rest.split_whitespace().map(String::from).collect()) };
 
         let Some(args) = mctl_args else {
             tracing::warn!(cmd = %trimmed, "dispatch: unrecognised command, ignoring");
@@ -532,14 +528,13 @@ impl MargoService {
     /// empty string.
     pub async fn eval(&self, query: &str) -> Result<String> {
         tracing::debug!(query = %query, "mshell-margo-client: eval");
-        if query.contains("layout") {
-            if let Some(state) = state_json::read()
+        if query.contains("layout")
+            && let Some(state) = state_json::read()
                 && let Some(out) = state.outputs.iter().find(|o| o.active)
                 && let Some(name) = state.layouts.get(out.layout_idx)
             {
                 return Ok(name.clone());
             }
-        }
         Ok(String::new())
     }
 

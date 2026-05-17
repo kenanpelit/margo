@@ -185,12 +185,12 @@ impl ScheduleData {
 }
 
 fn resolve_dir(dir: &str) -> PathBuf {
-    let raw = if dir.trim().is_empty() {
+    
+    if dir.trim().is_empty() {
         default_dir()
     } else {
         expand_tilde(dir)
-    };
-    raw
+    }
 }
 
 /// Default schedule the bootstrap seeds on first run. A warm

@@ -149,14 +149,13 @@ pub(crate) fn spawn(service: &Arc<MargoService>) {
                     // armed successfully, subsequent retries are no-ops
                     // (notify v9 returns Ok / WatchExists; we treat any
                     // non-error as "already watching").
-                    if !watching {
-                        if let Some(w) = watcher.as_mut()
+                    if !watching
+                        && let Some(w) = watcher.as_mut()
                             && w.watch(&parent, RecursiveMode::NonRecursive).is_ok()
                         {
                             watching = true;
                             tracing::debug!(parent = %parent.display(), "mshell-margo-client: inotify watch armed on retry");
                         }
-                    }
                 },
             }
 
@@ -268,7 +267,7 @@ fn apply(service: &MargoService, state: &StateJson) {
                         .find(|c| c.app_id == *app_id && c.tags & bit != 0)
                 })
             });
-        let last_window: Option<Address> = last.map(|c| client_address(c));
+        let last_window: Option<Address> = last.map(client_address);
         let last_window_title: String = last.map(|c| c.title.clone()).unwrap_or_default();
         let tiled_layout = state
             .outputs

@@ -87,8 +87,8 @@ fn parse_search(stdout: &str) -> Vec<Hit> {
         // none.
         let description = match iter.peek() {
             Some(next) if next.starts_with(' ') || next.starts_with('\t') => {
-                let s = iter.next().unwrap().trim().to_string();
-                s
+                
+                iter.next().unwrap().trim().to_string()
             }
             _ => String::new(),
         };

@@ -68,6 +68,7 @@ impl Default for Idle {
 /// through your own script. Non-empty commands run via `sh -c`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
 #[serde(default)]
+#[derive(Default)]
 pub struct Session {
     pub lock_command: String,
     pub logout_command: String,
@@ -76,17 +77,6 @@ pub struct Session {
     pub shutdown_command: String,
 }
 
-impl Default for Session {
-    fn default() -> Self {
-        Self {
-            lock_command: String::new(),
-            logout_command: String::new(),
-            suspend_command: String::new(),
-            reboot_command: String::new(),
-            shutdown_command: String::new(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
 #[serde(default)]
@@ -354,19 +344,12 @@ impl Default for Bars {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
 #[serde(default)]
+#[derive(Default)]
 pub struct BarWidgets {
     pub quick_settings: QuickSettingsBarWidget,
     pub system_update: SystemUpdateBarWidget,
 }
 
-impl Default for BarWidgets {
-    fn default() -> Self {
-        Self {
-            quick_settings: QuickSettingsBarWidget::default(),
-            system_update: SystemUpdateBarWidget::default(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
 #[serde(default)]
