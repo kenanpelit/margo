@@ -267,9 +267,14 @@ impl Provider for SshProvider {
     }
 
     /// Connect tab — list every host from assh.yml without
-    /// requiring the `ssh ` prefix.
-    fn browse(&self) -> Vec<LauncherItem> {
-        self.search("ssh")
+    /// requiring the `ssh ` prefix; `filter` narrows by host /
+    /// hostname / user substring.
+    fn browse(&self, filter: &str) -> Vec<LauncherItem> {
+        if filter.is_empty() {
+            self.search("ssh")
+        } else {
+            self.search(&format!("ssh {filter}"))
+        }
     }
 }
 

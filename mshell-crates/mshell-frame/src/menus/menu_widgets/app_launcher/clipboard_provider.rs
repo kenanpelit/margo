@@ -206,11 +206,14 @@ impl Provider for ClipboardProvider {
             .collect()
     }
 
-    /// Insert tab — show the full clipboard history without the
-    /// `>clip` prefix. Re-uses the search path with an empty
-    /// prefix so scoring + MRU ordering match.
-    fn browse(&self) -> Vec<LauncherItem> {
-        self.search(">clip")
+    /// Insert tab — surface clipboard history without the
+    /// `>clip` prefix and filter by the user's query.
+    fn browse(&self, filter: &str) -> Vec<LauncherItem> {
+        if filter.is_empty() {
+            self.search(">clip")
+        } else {
+            self.search(&format!(">clip {filter}"))
+        }
     }
 }
 

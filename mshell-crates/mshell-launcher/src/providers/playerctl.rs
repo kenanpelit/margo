@@ -193,8 +193,11 @@ impl Provider for PlayerctlProvider {
     }
 
     /// System tab — surface transport controls + per-player rows
-    /// without the `player` prefix.
-    fn browse(&self) -> Vec<LauncherItem> {
+    /// without the `player` prefix. The player provider's search()
+    /// doesn't itself filter, but the runtime's name-substring
+    /// post-filter (active when typing inside a category) handles
+    /// the narrowing.
+    fn browse(&self, _filter: &str) -> Vec<LauncherItem> {
         self.search("player")
     }
 }

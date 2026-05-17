@@ -229,10 +229,13 @@ impl Provider for BluetoothProvider {
     }
 
     /// System tab — surface the paired devices list without the
-    /// `bt` prefix. Re-uses the search path so connect / disconnect
-    /// behaviour and the connected-first ordering are identical.
-    fn browse(&self) -> Vec<LauncherItem> {
-        self.search("bt")
+    /// `bt` prefix; `filter` narrows by device name substring.
+    fn browse(&self, filter: &str) -> Vec<LauncherItem> {
+        if filter.is_empty() {
+            self.search("bt")
+        } else {
+            self.search(&format!("bt {filter}"))
+        }
     }
 }
 

@@ -275,9 +275,11 @@ impl Provider for SymbolsProvider {
     }
 
     /// Insert tab — show every symbol so the user can browse the
-    /// full catalogue without typing the `.` prefix.
-    fn browse(&self) -> Vec<LauncherItem> {
-        self.build_items("")
+    /// full catalogue without typing the `.` prefix. `filter` is
+    /// the user's query while on the tab; passed straight through
+    /// to the build path (substring match against name + char).
+    fn browse(&self, filter: &str) -> Vec<LauncherItem> {
+        self.build_items(filter)
     }
 }
 

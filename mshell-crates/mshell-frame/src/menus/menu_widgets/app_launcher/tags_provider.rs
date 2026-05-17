@@ -165,11 +165,14 @@ impl Provider for TagsProvider {
             .collect()
     }
 
-    /// Compositor tab — show all nine tag rows without the `tag`
-    /// prefix. Re-uses the search path so the active/occupied/empty
-    /// glyphs and `mctl tags` dispatch are identical.
-    fn browse(&self) -> Vec<LauncherItem> {
-        self.search("tag")
+    /// Compositor tab — show the 9 tag rows without the `tag`
+    /// prefix; `filter` narrows to the matching tag number.
+    fn browse(&self, filter: &str) -> Vec<LauncherItem> {
+        if filter.is_empty() {
+            self.search("tag")
+        } else {
+            self.search(&format!("tag {filter}"))
+        }
     }
 }
 

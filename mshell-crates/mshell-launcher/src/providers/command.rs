@@ -191,10 +191,14 @@ impl Provider for CommandProvider {
     }
 
     /// Run tab — surface the command history without the `>cmd`
-    /// prefix so the user can browse past commands and rerun them
-    /// with a single keystroke.
-    fn browse(&self) -> Vec<LauncherItem> {
-        self.search(">cmd")
+    /// prefix; non-empty `filter` becomes the live "Run: …" row
+    /// (so the Run tab doubles as a command-line shell entry).
+    fn browse(&self, filter: &str) -> Vec<LauncherItem> {
+        if filter.is_empty() {
+            self.search(">cmd")
+        } else {
+            self.search(&format!(">cmd {filter}"))
+        }
     }
 }
 

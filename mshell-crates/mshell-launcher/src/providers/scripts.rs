@@ -259,10 +259,13 @@ impl Provider for ScriptsProvider {
     }
 
     /// Run tab — surface every `start-*` script even without the
-    /// `>start` prefix. Re-uses the search path so the same item
-    /// shape (icon, on_activate spawn) is produced.
-    fn browse(&self) -> Vec<LauncherItem> {
-        self.search(">start")
+    /// `>start` prefix; `filter` narrows by name substring.
+    fn browse(&self, filter: &str) -> Vec<LauncherItem> {
+        if filter.is_empty() {
+            self.search(">start")
+        } else {
+            self.search(&format!(">start {filter}"))
+        }
     }
 }
 

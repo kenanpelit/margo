@@ -47,17 +47,23 @@ pub trait Provider {
     /// pinned/popular list (Apps) or nothing (Calculator).
     fn search(&self, query: &str) -> Vec<LauncherItem>;
 
-    /// Full content of this provider, surfaced when the user picks
-    /// the provider's category from the Tab strip and the search
-    /// entry is empty. Defaults to `search("")` so the bulk of
-    /// providers don't need to override it; prefix-only providers
-    /// (Symbols, Emoji, Clipboard, ProviderList, …) override this
-    /// to return the same rows they'd produce after the user typed
-    /// the prefix — without that, picking their category tab would
-    /// give an empty list because `search("")` short-circuits to
-    /// "wait for the prefix".
-    fn browse(&self) -> Vec<LauncherItem> {
-        self.search("")
+    /// Content of this provider for the category-tab path,
+    /// optionally filtered by the user's current query.
+    ///
+    /// Called by the runtime when the user has Tab'd onto this
+    /// provider's category and is browsing inside it. Defaults to
+    /// `search(filter)` so providers that already serve raw
+    /// queries (Apps, Calculator, Websearch, …) work unchanged.
+    /// Prefix-only providers (Symbols, Emoji, Clipboard, Scripts,
+    /// Bluetooth, ProviderList, …) override this to synthesise
+    /// the prefix internally — e.g. EmojiProvider's override does
+    /// `self.search(&format!(":{filter}"))` so typing "smile" on
+    /// the Insert tab returns the same rows as `:smile` would.
+    ///
+    /// `filter` is the user's query, already trimmed by the
+    /// runtime. Empty string means "show the full browse list".
+    fn browse(&self, filter: &str) -> Vec<LauncherItem> {
+        self.search(filter)
     }
 
     /// Notification hook called when the launcher panel opens. Lets

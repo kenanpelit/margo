@@ -330,54 +330,64 @@ impl LauncherRuntime {
 
         // Regular search OR empty-query browse. Two paths:
         //
-        // 1. **Specific category + empty query** → call each
-        //    in-category provider's `browse()`, **bypassing**
+        // 1. **Specific category active** → call each in-category
+        //    provider's `browse(filter)`, **bypassing**
         //    `handles_search`. This is what lets the prefix-only
         //    providers (Symbols / Emoji / Clipboard / Scripts /
         //    Bluetooth / ProviderList / …) fill their category
         //    tabs with real content the moment the user picks
-        //    that tab. Without bypass, every prefix-only provider
-        //    would render an empty tab — making the strip mostly
-        //    useless beyond the few `handles_search=true`
-        //    providers (Apps, Calc, Settings, Websearch, Mctl).
+        //    that tab AND lets the user filter inside the tab by
+        //    typing. Each prefix-only provider's `browse` impl
+        //    synthesises the prefix internally so typing "smile"
+        //    on the Insert tab is equivalent to ":smile". Without
+        //    bypass, every prefix-only provider would render an
+        //    empty tab — making the strip mostly useless beyond
+        //    the few `handles_search=true` providers.
         //
-        // 2. **All-category OR non-empty query** → standard search
-        //    pipeline: only providers that opted into search via
-        //    `handles_search` contribute; prefix-only providers
-        //    stay silent unless their `handles_command` already
-        //    caught the query above.
+        // 2. **All-category** → standard search pipeline: only
+        //    providers that opted into search via `handles_search`
+        //    contribute; prefix-only providers stay silent unless
+        //    their `handles_command` already caught the query above.
         let active = self.active_category.as_deref();
-        let in_specific_category_browse =
-            active.is_some() && active != Some("All") && trimmed.is_empty();
+        let in_specific_category = matches!(active, Some(c) if c != "All");
 
-        let mut results: Vec<LauncherItem> = if in_specific_category_browse {
+        let mut results: Vec<LauncherItem> = if in_specific_category {
             let cat = active.unwrap();
             self.providers
                 .iter()
                 .filter(|p| p.category() == cat)
-                .flat_map(|p| p.browse())
+                .flat_map(|p| p.browse(trimmed))
                 .collect()
         } else {
             self.providers
                 .iter()
                 .filter(|p| p.handles_search())
-                .filter(|p| match active {
-                    None => true,
-                    Some("All") => true,
-                    Some(cat) => p.category() == cat,
-                })
                 .flat_map(|p| p.search(query))
                 .collect()
         };
 
+        // Category-tab filter fallback. When the user is on a
+        // specific category and typing, providers *should* filter
+        // their `browse(filter)` output themselves. Some don't —
+        // PlayerctlProvider returns its full transport/player list
+        // regardless of the rest of the query, for instance.
+        // Apply a uniform name-substring post-filter here so the
+        // user's typing always narrows results visually, even
+        // when the provider's own filter is a no-op.
+        if in_specific_category && !trimmed.is_empty() {
+            let needle = trimmed.to_ascii_lowercase();
+            results.retain(|item| {
+                item.name.to_ascii_lowercase().contains(&needle)
+                    || item.description.to_ascii_lowercase().contains(&needle)
+            });
+        }
+
         // Exact-search mode (Ctrl+E): post-filter to rows whose
         // *name* contains the trimmed query as a contiguous
-        // case-insensitive substring. We can't push this into the
-        // providers without a trait signature change, so the
-        // runtime does the gating here — providers still run their
-        // fuzzy matchers, we just drop the rows whose match was
-        // discontiguous. Empty query bypasses the filter (browse
-        // mode is supposed to show everything).
+        // case-insensitive substring. Stacks with the category
+        // filter above — both are name-substring narrowing, so
+        // running both is idempotent (the category filter already
+        // covers the exact-search semantics within a tab).
         if self.exact_search && !trimmed.is_empty() {
             let needle = trimmed.to_ascii_lowercase();
             results.retain(|item| item.name.to_ascii_lowercase().contains(&needle));

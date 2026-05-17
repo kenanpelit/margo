@@ -98,10 +98,11 @@ impl Provider for EmojiProvider {
         self.build_items(filter)
     }
 
-    /// Insert tab — surface the top BROWSE_LIMIT emojis so the
-    /// user can scroll the catalogue without the `:` prefix.
-    fn browse(&self) -> Vec<LauncherItem> {
-        self.build_items("")
+    /// Insert tab — surface emojis without the `:` prefix and
+    /// filter them by the user's query (matched as a substring
+    /// against the emoji name + shortcode).
+    fn browse(&self, filter: &str) -> Vec<LauncherItem> {
+        self.build_items(filter)
     }
 }
 
