@@ -17,8 +17,15 @@
 | H3 | clippy `--fix` sweep | ✅ DONE (37 öneri uygulandı) | `4c2dadf` |
 | H2 | margo/session.rs 21 unwrap | ❌ FALSE POSITIVE — hepsi test kodunda |
 | M4 | compositor.rs panic | ❌ TASARIM — Smithay trait invariant'ı |
+| L1 | /tmp paths (mlock + launcher) | ✅ DONE — XDG_RUNTIME_DIR fallback | `01933b3` |
+| L2 | wayle-hyprland 5 satır yorum | ✅ DONE — 1 satıra indirildi | `01933b3` |
+| M5 | dashbord.png + dashbord1.png | ✅ DONE — silindi + `*.png` gitignore'da | `01933b3` |
 
-**Kalan büyük işler (H1, H2-gerçek, M1, M2)** — odaklanmış ayrı session'lara değer.
+**Kalan büyük işler (#186, #187, #188, #189)** — odaklanmış ayrı session'lara değer:
+- `#186` menu_settings.rs makro refactor (H1) — 2-3 saat
+- `#187` Production unwrap audit (gerçek hotspot'lar) — 1-2 saat
+- `#188` margo/state.rs bölme (M1) — yarım gün
+- `#189` Config crate yeniden adlandırma (M2) — 1 saat, ama 93 dosyaya dokunur
 
 ---
 
