@@ -684,6 +684,7 @@ impl Component for SettingsWindowModel {
             WidgetEntry::Menu { kind: MenuKind::AppLauncher, stack_name: "app_launcher", label: "App Launcher", icon: "view-grid-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::Clipboard, stack_name: "clipboard", label: "Clipboard", icon: "edit-paste-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::Clock, stack_name: "clock", label: "Clock", icon: "alarm-symbolic" },
+            WidgetEntry::Menu { kind: MenuKind::Dashboard, stack_name: "dashboard", label: "Dashboard", icon: "view-grid-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::Ndns, stack_name: "ndns", label: "DNS / VPN", icon: "network-vpn-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::MediaPlayer, stack_name: "media_player", label: "Media Player", icon: "media-playback-start-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::Nnetwork, stack_name: "nnetwork", label: "Network Console", icon: "network-workgroup-symbolic" },
