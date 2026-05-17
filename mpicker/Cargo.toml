@@ -1,0 +1,19 @@
+[package]
+name = "mpicker"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Color picker for margo — frozen screencap + cursor zoom lens, clicks the pixel hex/rgb/hsl/cmyk to stdout (and optionally to the clipboard)."
+repository.workspace = true
+
+[[bin]]
+name = "mpicker"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+gtk4.workspace = true
+gtk4-layer-shell.workspace = true
+image.workspace = true
+mshell-screenshot.workspace = true

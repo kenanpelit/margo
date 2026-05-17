@@ -6,6 +6,7 @@ members = [
     "mctl",
     "mlayout",
     "mlock",
+    "mpicker",
     "mscreenshot",
     "mvisual",
     "start-margo",

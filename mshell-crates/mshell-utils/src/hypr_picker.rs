@@ -24,9 +24,20 @@ fn extract_hex_color(s: &str) -> Option<String> {
     None
 }
 
-async fn run_hyprpicker() -> anyhow::Result<String> {
-    let out = Command::new("hyprpicker")
-        // do NOT use -a; we'll copy ourselves
+/// Spawn the picker binary and capture its stdout hex. Prefers
+/// margo's native `mpicker` (frozen screencap + zoom lens, ships
+/// in this workspace); falls back to `hyprpicker` for users who
+/// haven't installed mpicker yet. Either tool prints the picked
+/// colour as its first stdout line; we don't pass `-a` because
+/// the caller (`spawn_color_picker`) copies + notifies itself
+/// once it has the hex token in hand.
+async fn run_picker() -> anyhow::Result<String> {
+    let tool = if which("mpicker") {
+        "mpicker"
+    } else {
+        "hyprpicker"
+    };
+    let out = Command::new(tool)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -38,6 +49,18 @@ async fn run_hyprpicker() -> anyhow::Result<String> {
     }
 
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+fn which(cmd: &str) -> bool {
+    let Some(path) = std::env::var_os("PATH") else {
+        return false;
+    };
+    for dir in std::env::split_paths(&path) {
+        if dir.join(cmd).is_file() {
+            return true;
+        }
+    }
+    false
 }
 
 async fn wl_copy(text: &str) -> anyhow::Result<()> {
@@ -84,10 +107,10 @@ async fn notify(color: &str) {
 pub fn spawn_color_picker(delay_millis: u64) {
     tokio::spawn(async move {
         sleep(core::time::Duration::from_millis(delay_millis)).await;
-        let stdout = match run_hyprpicker().await {
+        let stdout = match run_picker().await {
             Ok(s) => s,
             Err(e) => {
-                error!("hyprpicker failed: {e}");
+                error!("color picker failed: {e}");
                 return;
             }
         };

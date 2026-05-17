@@ -6,12 +6,14 @@ mod selectors;
 mod utils;
 
 pub use capture::{CaptureBackend, ScreenshotResult};
+pub use common::OutputInfo;
 pub use editor::{editor_available, launch_editor_blocking, pick_editor};
 pub use selectors::area_selector::select_region;
+pub use utils::query_outputs;
 
 use crate::common::*;
 use crate::record::{RecordHandle, RecordResult, WfRecorderArgs, start_recording};
-use crate::utils::{default_screenshot_path, query_outputs};
+use crate::utils::default_screenshot_path;
 use gtk4::glib;
 use image::ImageEncoder;
 use selectors::area_selector::RegionSelection;
