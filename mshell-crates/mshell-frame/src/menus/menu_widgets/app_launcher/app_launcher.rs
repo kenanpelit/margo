@@ -152,6 +152,12 @@ pub(crate) enum AppLauncherInput {
     SetSearchText(String),
     ShowHiddenAppsChanged,
     ThemeChanged,
+    /// Right-click context menu → Pin/Unpin. Carries the
+    /// item's `usage_key` so the runtime can persist the toggle
+    /// regardless of which row is currently keyboard-selected.
+    TogglePinFromRow(String),
+    /// Right-click context menu → Hide/Unhide.
+    ToggleHiddenFromRow(String),
 }
 
 #[derive(Debug)]
@@ -366,6 +372,12 @@ impl Component for AppLauncherModel {
                     })
                     .forward(sender_for_rows.input_sender(), |out| match out {
                         LauncherRowOutput::Activated(id) => AppLauncherInput::ActivateRow(id),
+                        LauncherRowOutput::TogglePin(key) => {
+                            AppLauncherInput::TogglePinFromRow(key)
+                        }
+                        LauncherRowOutput::ToggleHidden(key) => {
+                            AppLauncherInput::ToggleHiddenFromRow(key)
+                        }
                     });
                 Box::new(controller) as Box<dyn GenericWidgetController>
             }),
@@ -726,6 +738,27 @@ impl Component for AppLauncherModel {
             AppLauncherInput::ThemeChanged => {
                 self.push_results_to_dynamic_box();
                 self.broadcast_selection();
+            }
+            AppLauncherInput::TogglePinFromRow(key) => {
+                if !key.is_empty() {
+                    let _ = self.runtime.borrow_mut().toggle_pin(&key);
+                    self.recompute_results();
+                    self.push_results_to_dynamic_box();
+                    self.broadcast_selection();
+                    self.broadcast_pin_state();
+                }
+            }
+            AppLauncherInput::ToggleHiddenFromRow(key) => {
+                if !key.is_empty() {
+                    let _ = self.runtime.borrow_mut().toggle_hidden(&key);
+                    // Hidden items vanish from browse mode on
+                    // requery (empty filter); when the user has a
+                    // non-empty filter the row stays visible but
+                    // the context-menu label flips.
+                    self.recompute_results();
+                    self.push_results_to_dynamic_box();
+                    self.broadcast_selection();
+                }
             }
         }
 
@@ -1093,6 +1126,7 @@ fn clone_display_item(src: &DisplayItem) -> DisplayItem {
         item: clone_launcher_item(&src.item),
         pinned: src.pinned,
         quick_key: src.quick_key.clone(),
+        hidden: src.hidden,
     }
 }
 

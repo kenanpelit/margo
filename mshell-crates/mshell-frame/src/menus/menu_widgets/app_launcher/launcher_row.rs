@@ -21,13 +21,16 @@ use reactive_graph::traits::GetUntracked;
 use relm4::gtk::gio::DesktopAppInfo;
 use relm4::gtk::prelude::*;
 use relm4::gtk::{gio, pango};
-use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use relm4::{Component, ComponentParts, ComponentSender, RelmWidgetExt, gtk};
 
 /// One row in the result list.
 pub(crate) struct LauncherRowModel {
     item: LauncherItem,
     /// Pin flag stamped by the runtime — drives the ★ glyph.
     pinned: bool,
+    /// Hidden flag stamped by the runtime — flips the
+    /// right-click context menu label between "Hide" / "Unhide".
+    hidden: bool,
     /// `"1".."9"` quick-activate digit, or empty string for rows
     /// past the first nine.
     quick_key: String,
@@ -52,6 +55,13 @@ pub(crate) enum LauncherRowOutput {
     /// item's `on_activate` closure (the runtime is the only side
     /// that holds the closure + the frecency store).
     Activated(String),
+    /// User picked "Pin" / "Unpin" from the row's context menu.
+    /// Parent calls `runtime.toggle_pin(usage_key)`.
+    TogglePin(String),
+    /// User picked "Hide" / "Unhide" from the row's context menu.
+    /// Parent calls `runtime.toggle_hidden(usage_key)`. Hidden
+    /// items disappear from the empty-browse list on next query.
+    ToggleHidden(String),
 }
 
 pub(crate) struct LauncherRowInit {
@@ -80,6 +90,39 @@ impl Component for LauncherRowModel {
             set_can_focus: false,
             connect_clicked[sender] => move |_| {
                 sender.input(LauncherRowInput::Activate);
+            },
+
+            // The popover anchors against `button` (parent) so it
+            // pops down right under the row. Items emit input
+            // messages that the row forwards to the parent
+            // launcher widget for runtime mutation.
+            #[name = "context_menu"]
+            gtk::Popover {
+                set_position: gtk::PositionType::Bottom,
+                set_has_arrow: false,
+                set_autohide: true,
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 2,
+                    set_margin_all: 4,
+
+                    #[name = "pin_button"]
+                    gtk::Button {
+                        add_css_class: "flat",
+                        #[watch]
+                        set_label: if model.pinned { "Unpin" } else { "Pin" },
+                        set_halign: gtk::Align::Fill,
+                    },
+
+                    #[name = "hide_button"]
+                    gtk::Button {
+                        add_css_class: "flat",
+                        #[watch]
+                        set_label: if model.hidden { "Unhide" } else { "Hide" },
+                        set_halign: gtk::Align::Fill,
+                    },
+                },
             },
 
             gtk::Box {
@@ -152,10 +195,18 @@ impl Component for LauncherRowModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let DisplayItem { item, pinned, quick_key } = params.display;
+        let DisplayItem { item, pinned, quick_key, hidden } = params.display;
+        // Hide the context menu entirely for rows without a
+        // usage_key — those are synthetic (commands palette, etc.)
+        // and the Pin/Hide actions would have nothing to persist
+        // against. Capture this before moving `item` into the
+        // model so the gesture closure can check it without a
+        // second clone.
+        let has_usage_key = item.usage_key.is_some();
         let model = LauncherRowModel {
             item,
             pinned,
+            hidden,
             quick_key,
             is_selected: false,
         };
@@ -163,6 +214,39 @@ impl Component for LauncherRowModel {
         let widgets = view_output!();
 
         apply_icon(&widgets.image, &model.item);
+
+        // Right-click → open the context popover anchored on the
+        // button. SECONDARY gesture so it doesn't collide with
+        // the left-click Activate signal on the same button.
+        let gesture = gtk::GestureClick::new();
+        gesture.set_button(gtk::gdk::BUTTON_SECONDARY);
+        let popover = widgets.context_menu.clone();
+        gesture.connect_pressed(move |_, _, _, _| {
+            if has_usage_key {
+                popover.popup();
+            }
+        });
+        widgets.button.add_controller(gesture);
+
+        // Wire the popover buttons here (rather than in the
+        // declarative view) so we capture the usage_key once and
+        // dodge the partial-move-of-model issue inside view! closures.
+        let usage_key = model.item.usage_key.clone().unwrap_or_default();
+        let popdown = widgets.context_menu.clone();
+        let sender_pin = sender.clone();
+        let key_pin = usage_key.clone();
+        widgets.pin_button.connect_clicked(move |_| {
+            popdown.popdown();
+            let _ = sender_pin.output(LauncherRowOutput::TogglePin(key_pin.clone()));
+        });
+        let popdown = widgets.context_menu.clone();
+        let sender_hide = sender.clone();
+        let key_hide = usage_key;
+        widgets.hide_button.connect_clicked(move |_| {
+            popdown.popdown();
+            let _ = sender_hide.output(LauncherRowOutput::ToggleHidden(key_hide.clone()));
+        });
+
         // `root` is held by the view's `#[root]` reference; the
         // local binding is a small unused alias the macro
         // generates, which we silence here.

@@ -86,6 +86,14 @@ pub struct DisplayItem {
     /// for the rest. Ctrl+N rather than Alt+N because margo's
     /// compositor config already uses Alt+N for user dispatches.
     pub quick_key: String,
+
+    /// True when the item's [`LauncherItem::usage_key`] is in the
+    /// user's [`crate::hidden::HiddenStore`]. Hidden items only
+    /// appear in **search** results (non-empty query); they're
+    /// suppressed from browse-mode (empty-query) listings. The UI
+    /// uses this flag to flip the right-click context menu label
+    /// between "Hide" and "Unhide".
+    pub hidden: bool,
 }
 
 impl std::fmt::Debug for DisplayItem {
@@ -94,6 +102,7 @@ impl std::fmt::Debug for DisplayItem {
             .field("item", &self.item)
             .field("pinned", &self.pinned)
             .field("quick_key", &self.quick_key)
+            .field("hidden", &self.hidden)
             .finish()
     }
 }

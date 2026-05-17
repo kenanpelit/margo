@@ -40,6 +40,7 @@
 //! the Command provider, not the Apps fuzzy matcher).
 
 pub mod frecency;
+pub mod hidden;
 pub mod history;
 pub mod item;
 pub mod notify;
@@ -50,6 +51,7 @@ pub mod runtime;
 pub mod scoring;
 
 pub use frecency::FrecencyStore;
+pub use hidden::HiddenStore;
 pub use history::CommandHistory;
 pub use item::{DisplayItem, LauncherItem};
 pub use pin::PinStore;

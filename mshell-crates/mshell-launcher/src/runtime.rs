@@ -43,6 +43,7 @@
 use crate::{
     frecency::FrecencyStore,
     item::{DisplayItem, LauncherItem},
+    hidden::HiddenStore,
     pin::PinStore,
     provider::Provider,
     scoring::usage_boost,
@@ -78,6 +79,7 @@ pub struct LauncherRuntime {
     providers: Vec<Box<dyn Provider>>,
     frecency: FrecencyStore,
     pins: PinStore,
+    hidden: HiddenStore,
     /// When `Some`, only providers whose `category()` matches this
     /// label contribute to empty-browse + regular-search results.
     /// `None` ("All" tab) lets every provider participate. Cycled
@@ -101,20 +103,32 @@ impl LauncherRuntime {
             providers: Vec::new(),
             frecency,
             pins: PinStore::load(),
+            hidden: HiddenStore::load(),
             active_category: None,
             exact_search: false,
             last_query: String::new(),
         }
     }
 
-    /// Construct with caller-supplied frecency *and* pin stores.
-    /// Used by integration tests so they can hand the runtime an
-    /// ephemeral pin file alongside the ephemeral frecency file.
+    /// Construct with caller-supplied frecency *and* pin stores
+    /// (hidden store still loads from disk). Used by integration
+    /// tests so they can hand the runtime ephemeral state files.
     pub fn with_stores(frecency: FrecencyStore, pins: PinStore) -> Self {
+        Self::with_all_stores(frecency, pins, HiddenStore::load())
+    }
+
+    /// Construct with caller-supplied frecency / pin / hidden
+    /// stores. Tests pass ephemeral files for full isolation.
+    pub fn with_all_stores(
+        frecency: FrecencyStore,
+        pins: PinStore,
+        hidden: HiddenStore,
+    ) -> Self {
         Self {
             providers: Vec::new(),
             frecency,
             pins,
+            hidden,
             active_category: None,
             exact_search: false,
             last_query: String::new(),
@@ -189,6 +203,7 @@ impl LauncherRuntime {
         if let Some(key) = &item.usage_key {
             self.frecency.forget(key);
             self.pins.unpin(key);
+            self.hidden.unhide(key);
         }
     }
 
@@ -393,6 +408,22 @@ impl LauncherRuntime {
             results.retain(|item| item.name.to_ascii_lowercase().contains(&needle));
         }
 
+        // Browse-mode hidden filter. When the query is empty the
+        // user is in "what do I have?" browse mode — items the
+        // user has explicitly hidden should be suppressed so the
+        // list reads as the curated subset they care about. When
+        // they're actively typing they probably want to *find* a
+        // hidden item (right-click → Unhide), so we leave hidden
+        // rows in for non-empty queries.
+        if trimmed.is_empty() {
+            results.retain(|item| {
+                item.usage_key
+                    .as_deref()
+                    .map(|k| !self.hidden.is_hidden(k))
+                    .unwrap_or(true)
+            });
+        }
+
         self.decorate(self.apply_frecency_and_sort(results))
     }
 
@@ -417,8 +448,11 @@ impl LauncherRuntime {
         results
     }
 
-    /// Wrap each [`LauncherItem`] in a [`DisplayItem`] carrying the
-    /// runtime-stamped decorations (pin flag, quick-key digit).
+    /// Wrap each [`LauncherItem`] in a [`DisplayItem`] carrying
+    /// the runtime-stamped decorations (pin flag, hidden flag,
+    /// quick-key digit). The hidden flag lets the UI flip the
+    /// right-click context-menu label between "Hide" and
+    /// "Unhide" without re-querying the store per row.
     fn decorate(&self, items: Vec<LauncherItem>) -> Vec<DisplayItem> {
         items
             .into_iter()
@@ -429,14 +463,33 @@ impl LauncherRuntime {
                     .as_deref()
                     .map(|k| self.pins.is_pinned(k))
                     .unwrap_or(false);
+                let hidden = item
+                    .usage_key
+                    .as_deref()
+                    .map(|k| self.hidden.is_hidden(k))
+                    .unwrap_or(false);
                 let quick_key = if idx < 9 {
                     (idx + 1).to_string()
                 } else {
                     String::new()
                 };
-                DisplayItem { item, pinned, quick_key }
+                DisplayItem { item, pinned, quick_key, hidden }
             })
             .collect()
+    }
+
+    /// True when the given usage_key is hidden. UI uses this to
+    /// label the right-click context-menu entry.
+    pub fn is_hidden(&self, key: &str) -> bool {
+        self.hidden.is_hidden(key)
+    }
+
+    /// Toggle hide state for a usage_key. Returns the new state
+    /// (`true` = now hidden). UI binds this to the "Hide" /
+    /// "Unhide" entry in the launcher row's right-click context
+    /// menu. Persists immediately.
+    pub fn toggle_hidden(&mut self, key: &str) -> bool {
+        self.hidden.toggle(key)
     }
 }
 
