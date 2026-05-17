@@ -11,6 +11,14 @@ pub enum BarWidget {
     Bluetooth,
     Clipboard,
     Clock,
+    /// Compound clock-style pill that opens the **dashboard** menu
+    /// (clock hero + calendar + weather + media player + the QS
+    /// tile stack). Shares Clock's `[tempo]` format list — the
+    /// label cycles through the same chrono-strftime presets on
+    /// right-click — so a user who switches from Clock to Dashboard
+    /// keeps their preferred date/time wording without any extra
+    /// config.
+    Dashboard,
     CpuMonitor,
     CpuTemp,
     DarkMode,
@@ -71,6 +79,7 @@ impl BarWidget {
             BarWidget::Bluetooth => "Bluetooth",
             BarWidget::Clipboard => "Clipboard",
             BarWidget::Clock => "Clock",
+            BarWidget::Dashboard => "Dashboard",
             BarWidget::DarkMode => "Dark Mode Toggle",
             BarWidget::CpuMonitor => "CPU Load",
             BarWidget::CpuTemp => "CPU Temperature",
@@ -120,6 +129,7 @@ impl BarWidget {
             BarWidget::Bluetooth,
             BarWidget::Clipboard,
             BarWidget::Clock,
+            BarWidget::Dashboard,
             BarWidget::CpuMonitor,
             BarWidget::CpuTemp,
             BarWidget::DarkMode,

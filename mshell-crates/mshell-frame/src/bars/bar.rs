@@ -4,6 +4,7 @@ use crate::bars::bar_widgets::battery::{BatteryInit, BatteryModel};
 use crate::bars::bar_widgets::bluetooth::{BluetoothInit, BluetoothModel};
 use crate::bars::bar_widgets::clipboard::{ClipboardInit, ClipboardModel, ClipboardOutput};
 use crate::bars::bar_widgets::clock::{ClockInit, ClockModel, ClockOutput};
+use crate::bars::bar_widgets::dashboard::{DashboardInit, DashboardModel, DashboardOutput};
 use crate::bars::bar_widgets::dark_mode::{DarkModeInit, DarkModeModel};
 use crate::bars::bar_widgets::keep_awake::{KeepAwakeInit, KeepAwakeModel};
 use crate::bars::bar_widgets::lock_keys::{LockKeysInit, LockKeysModel};
@@ -117,6 +118,7 @@ pub(crate) enum BarInput {
 #[derive(Debug)]
 pub(crate) enum BarOutput {
     ClockClicked,
+    DashboardClicked,
     ClipboardClicked,
     MainMenuClicked,
     NotificationsClicked,
@@ -457,6 +459,13 @@ impl BarModel {
                     .launch(ClockInit { orientation })
                     .forward(sender.output_sender(), |msg| match msg {
                         ClockOutput::Clicked => BarOutput::ClockClicked,
+                    }),
+            ),
+            BarWidget::Dashboard => Box::new(
+                DashboardModel::builder()
+                    .launch(DashboardInit { orientation })
+                    .forward(sender.output_sender(), |msg| match msg {
+                        DashboardOutput::Clicked => BarOutput::DashboardClicked,
                     }),
             ),
             BarWidget::DarkMode => Box::new(
