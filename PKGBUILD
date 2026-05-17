@@ -158,6 +158,7 @@ build() {
   cd "$srcdir/margo"
 
   export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR="$srcdir/target"
 
   # `--remap-path-prefix` rewrites the build dir to `/build` in
   # the embedded debug strings; otherwise pacman warns about a
@@ -174,36 +175,38 @@ build() {
   export CXXFLAGS="${CXXFLAGS:-} -ffile-prefix-map=$srcdir=/build"
 
   # Two invocations on purpose — do NOT collapse back to a single
-  # `--workspace` build. The mshell trio + mpicker pull the
-  # `wayle-*` crates (transitively via mshell-services), which
-  # enable `zbus`'s `tokio` feature. With a `--workspace` build —
-  # or even two `-p` invocations sharing a single CARGO_TARGET_DIR
-  # — Cargo's shared build cache ends up storing one zbus rlib
-  # with `tokio` activated and re-linking the compositor against
-  # it. margo drives zbus over `async-io` and never enters a
-  # Tokio runtime, so zbus's tokio executor panics at startup
-  # ("there is no reactor running") and the session dies.
+  # `--workspace` build. The shell-side crates pull the `wayle-*`
+  # transitively (via `mshell-services`), which enables `zbus`'s
+  # `tokio` feature. With a `--workspace` build — or any
+  # invocation that mixes shell-side crates with the compositor
+  # — Cargo's per-invocation feature unification turns on
+  # `zbus/tokio` for the shared zbus artifact, and the compositor
+  # links against it. margo drives zbus over `async-io` and
+  # never enters a Tokio runtime, so zbus's tokio executor
+  # panics at startup ("there is no reactor running, must be
+  # called from the context of a Tokio 1.x runtime") and the
+  # session dies. Splitting the invocations is enough to keep
+  # the feature graphs isolated because Cargo only unifies
+  # features within a single `cargo build` resolution.
   #
-  # Each invocation gets its own CARGO_TARGET_DIR so the
-  # compositor's zbus artifact (async-io only) and the shell's
-  # zbus artifact (async-io + tokio) live in completely isolated
-  # build caches with no chance of cross-contamination. Both
-  # target dirs land under $srcdir so makepkg cleans them up
-  # automatically.
-  local compositor_target="$srcdir/target-compositor"
-  local shell_target="$srcdir/target-shell"
+  # *** Crucial: mpicker belongs in the SHELL invocation, NOT
+  # the compositor one. mpicker depends on `mshell-screenshot`,
+  # which depends on `mshell-services` → `wayle-*` → zbus/tokio.
+  # Putting it in the compositor build group re-contaminates
+  # margo via feature unification even though mpicker itself
+  # doesn't talk to D-Bus.
+  cargo build --frozen --release \
+    -p margo -p start-margo \
+    -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual
 
-  CARGO_TARGET_DIR="$compositor_target" \
-    cargo build --frozen --release \
-      -p margo -p start-margo \
-      -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mpicker
-
-  # mshell trio + mwizard (GTK4 + relm4). mwizard depends on
-  # mshell-config to write the shell profile, so it builds
-  # alongside the rest of the shell stack.
-  CARGO_TARGET_DIR="$shell_target" \
-    cargo build --frozen --release \
-      -p mshell -p mshellctl -p mshellshare -p mwizard
+  # mshell trio + mpicker + mwizard. mpicker pulls
+  # mshell-screenshot (→ wayle-* → zbus/tokio), so it has to
+  # live with the rest of the tokio-using stack to keep
+  # feature unification from leaking back into margo's build.
+  # mwizard depends on mshell-config to write the shell
+  # profile, so it builds alongside the rest of the shell stack.
+  cargo build --frozen --release \
+    -p mshell -p mshellctl -p mshellshare -p mpicker -p mwizard
 }
 
 check() {
@@ -213,15 +216,11 @@ check() {
   # a packager environment; the compositor + mshell want a live
   # Wayland session. Test failures are non-blocking — surface
   # them as warnings but let pacman still ship the build.
-  #
-  # Reuse the compositor target dir so the already-built artifacts
-  # for these crates don't get re-compiled into a third cache.
-  CARGO_TARGET_DIR="$srcdir/target-compositor" \
-    cargo test --frozen --release \
-      --package margo-config \
-      --package margo-layouts \
-      --package mctl \
-      --package mlayout ||
+  cargo test --frozen --release \
+    --package margo-config \
+    --package margo-layouts \
+    --package mctl \
+    --package mlayout ||
     echo "::: margo: test suite reported failures (non-blocking)"
 }
 
@@ -229,25 +228,20 @@ package() {
   cd "$srcdir/margo"
 
   # ── Binaries ─────────────────────────────────────────────────────
-  # Two separate target dirs — compositor-side bins live under
-  # `target-compositor/release/`, shell-side bins under
-  # `target-shell/release/`. The split mirrors `build()`'s
-  # isolated invocations and is what prevents zbus/tokio leak
-  # into the compositor binary (see the long comment there).
-  local compositor_target="$srcdir/target-compositor"
-  local shell_target="$srcdir/target-shell"
-
+  # All binaries land in the same target dir; the split in
+  # `build()` is about isolating the *feature graphs* (so margo
+  # stays linked against a zbus without tokio), not the output
+  # paths. Cargo's per-invocation rlib hashing means the second
+  # invocation builds its own zbus(async-io+tokio) artifact
+  # without overwriting the first invocation's zbus(async-io)
+  # rlib — both coexist in target/release/deps under different
+  # hashes, and each binary links against the right one.
   local bin
   for bin in \
       margo start-margo \
-      mctl mlock mlayout mscreenshot mvisual mpicker; do
-    install -Dm755 "$compositor_target/release/$bin" \
-      "$pkgdir/usr/bin/$bin"
-  done
-  for bin in \
-      mshell mshellctl mshellshare mwizard; do
-    install -Dm755 "$shell_target/release/$bin" \
-      "$pkgdir/usr/bin/$bin"
+      mctl mlock mlayout mscreenshot mvisual \
+      mshell mshellctl mshellshare mpicker mwizard; do
+    install -Dm755 "$CARGO_TARGET_DIR/release/$bin" "$pkgdir/usr/bin/$bin"
   done
 
   # ── Wayland session entry ──────────────────────────────────────
