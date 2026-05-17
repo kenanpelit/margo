@@ -549,6 +549,44 @@ mod tests {
         assert!(out[0].pinned);
     }
 
+    /// Browse mode (empty query) keeps every pinned item above every
+    /// unpinned one, and preserves the provider's own ordering inside
+    /// each tier. Stable sort + uniform PIN_BONUS make this
+    /// emergent — pinned items all carry the same score so their
+    /// relative order matches what the provider returned (Apps
+    /// returns alphabetical, so pinned apps come out alphabetical).
+    /// Regression guard for #147: any future change to scoring
+    /// must not let an unpinned item slip ahead of a pinned one
+    /// in the empty-query browse list.
+    #[test]
+    fn pinned_apps_top_of_browse_alphabetical() {
+        let mut rt = LauncherRuntime::with_stores(ephemeral_frecency(), ephemeral_pins());
+        // Score 0.0 mirrors AppsProvider's empty-query browse
+        // return (apps_provider.rs:149-155).
+        rt.register(Box::new(StubProvider {
+            name: "stub".into(),
+            items: vec![
+                ("alpha".into(), 0.0),
+                ("bravo".into(), 0.0),
+                ("charlie".into(), 0.0),
+                ("delta".into(), 0.0),
+            ],
+        }));
+        rt.toggle_pin("stub:charlie");
+        rt.toggle_pin("stub:alpha");
+
+        let out = rt.query("");
+
+        assert_eq!(out[0].item.name, "alpha");
+        assert!(out[0].pinned);
+        assert_eq!(out[1].item.name, "charlie");
+        assert!(out[1].pinned);
+        assert_eq!(out[2].item.name, "bravo");
+        assert!(!out[2].pinned);
+        assert_eq!(out[3].item.name, "delta");
+        assert!(!out[3].pinned);
+    }
+
     #[test]
     fn quick_keys_assigned_to_first_nine_rows() {
         let mut rt = LauncherRuntime::with_stores(ephemeral_frecency(), ephemeral_pins());
