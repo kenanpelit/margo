@@ -74,6 +74,19 @@ impl FrecencyStore {
         self.dirty = true;
     }
 
+    /// Drop the usage counter for `key` entirely. The next `count()`
+    /// will return 0 again. Used by the launcher UI when the user
+    /// presses Delete on a result row whose provider opted in via
+    /// `can_delete`: the runtime calls this to forget the user-
+    /// learned ranking, so a single mis-bumped entry (typo, errant
+    /// click) doesn't haunt the top of the list forever. No-op for
+    /// keys that don't have a counter.
+    pub fn forget(&mut self, key: &str) {
+        if self.inner.counts.remove(key).is_some() {
+            self.dirty = true;
+        }
+    }
+
     /// Write the store to disk if anything changed since the last
     /// flush. Errors are logged at warn level but not returned —
     /// failing to record a usage count must never break launching

@@ -188,6 +188,10 @@ impl Provider for ScriptsProvider {
         "Scripts"
     }
 
+    fn category(&self) -> &str {
+        "Run"
+    }
+
     fn handles_search(&self) -> bool {
         // Don't pollute the empty-query browse: a 40-script
         // flood at the top of the apps list would bury Firefox
@@ -244,6 +248,14 @@ impl Provider for ScriptsProvider {
         // readdirs) and ensures new scripts the user added with
         // `chmod +x` between opens show up immediately.
         self.refresh();
+    }
+
+    /// Allow Delete on script rows so a mis-bumped frecency entry
+    /// (typo'd script name, accidental Enter) can be cleared. The
+    /// runtime handles the actual frecency forget; we have no
+    /// provider-owned state to drop (scripts come from PATH).
+    fn can_delete(&self, item: &crate::LauncherItem) -> bool {
+        item.id.starts_with("scripts:")
     }
 }
 

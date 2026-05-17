@@ -43,6 +43,7 @@ pub mod frecency;
 pub mod history;
 pub mod item;
 pub mod notify;
+pub mod pin;
 pub mod provider;
 pub mod providers;
 pub mod runtime;
@@ -50,6 +51,7 @@ pub mod scoring;
 
 pub use frecency::FrecencyStore;
 pub use history::CommandHistory;
-pub use item::LauncherItem;
+pub use item::{DisplayItem, LauncherItem};
+pub use pin::PinStore;
 pub use provider::Provider;
-pub use runtime::LauncherRuntime;
+pub use runtime::{LauncherRuntime, ProviderCategory};

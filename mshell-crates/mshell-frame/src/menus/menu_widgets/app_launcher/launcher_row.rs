@@ -1,7 +1,8 @@
 //! Generic row component for the unified launcher result list.
 //!
-//! Renders any [`LauncherItem`] uniformly: 32 px icon, bold name,
-//! greyed description, hover highlight, selection ring. The
+//! Renders any [`DisplayItem`] uniformly: small numeric
+//! quick-activate hint, 32 px icon, bold name, greyed description,
+//! optional ★ pin marker, hover highlight, selection ring. The
 //! activation callback baked into the item is invoked on click —
 //! the row doesn't know whether it's launching an app, copying a
 //! calculator result or jumping to a Settings tab.
@@ -14,7 +15,7 @@
 
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, IconsStoreFields, ThemeStoreFields};
-use mshell_launcher::LauncherItem;
+use mshell_launcher::{DisplayItem, LauncherItem};
 use mshell_utils::app_icon::app_icon::set_icon;
 use reactive_graph::traits::GetUntracked;
 use relm4::gtk::gio::DesktopAppInfo;
@@ -25,6 +26,11 @@ use relm4::{Component, ComponentParts, ComponentSender, gtk};
 /// One row in the result list.
 pub(crate) struct LauncherRowModel {
     item: LauncherItem,
+    /// Pin flag stamped by the runtime — drives the ★ glyph.
+    pinned: bool,
+    /// `"1".."9"` quick-activate digit, or empty string for rows
+    /// past the first nine.
+    quick_key: String,
     is_selected: bool,
 }
 
@@ -33,6 +39,9 @@ pub(crate) enum LauncherRowInput {
     /// Sent by the parent on arrow-key nav. The row compares
     /// against `self.item.id` and toggles its highlight class.
     SelectionChanged(String),
+    /// Sent by the parent when a pin / unpin happens so the ★ can
+    /// repaint without rebuilding the whole row controller.
+    PinChanged(bool),
     /// Fired by the inner GtkButton's `clicked` signal.
     Activate,
 }
@@ -46,7 +55,7 @@ pub(crate) enum LauncherRowOutput {
 }
 
 pub(crate) struct LauncherRowInit {
-    pub item: LauncherItem,
+    pub display: DisplayItem,
 }
 
 #[relm4::component(pub(crate))]
@@ -76,6 +85,17 @@ impl Component for LauncherRowModel {
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
 
+                #[name = "quick_key_label"]
+                gtk::Label {
+                    add_css_class: "app-launcher-quick-key",
+                    set_label: &model.quick_key,
+                    set_visible: !model.quick_key.is_empty(),
+                    set_halign: gtk::Align::Center,
+                    set_valign: gtk::Align::Center,
+                    set_margin_end: 8,
+                    set_width_chars: 1,
+                },
+
                 #[name = "image"]
                 gtk::Image {
                     set_halign: gtk::Align::Center,
@@ -103,6 +123,21 @@ impl Component for LauncherRowModel {
                         set_ellipsize: pango::EllipsizeMode::End,
                     },
                 },
+
+                // ★ pin marker — always present in the layout (so the
+                // row width stays stable across pin/unpin) but only
+                // visible when `pinned`. CSS class drives a subtle
+                // accent tint so the star reads as a state badge.
+                #[name = "pin_marker"]
+                gtk::Label {
+                    add_css_class: "app-launcher-pin-marker",
+                    set_label: "\u{2605}",
+                    #[watch]
+                    set_visible: model.pinned,
+                    set_halign: gtk::Align::End,
+                    set_valign: gtk::Align::Center,
+                    set_margin_start: 8,
+                },
             },
         }
     }
@@ -112,8 +147,11 @@ impl Component for LauncherRowModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
+        let DisplayItem { item, pinned, quick_key } = params.display;
         let model = LauncherRowModel {
-            item: params.item,
+            item,
+            pinned,
+            quick_key,
             is_selected: false,
         };
 
@@ -137,6 +175,9 @@ impl Component for LauncherRowModel {
         match message {
             LauncherRowInput::SelectionChanged(selected_id) => {
                 self.is_selected = selected_id == self.item.id;
+            }
+            LauncherRowInput::PinChanged(pinned) => {
+                self.pinned = pinned;
             }
             LauncherRowInput::Activate => {
                 let _ = sender.output(LauncherRowOutput::Activated(self.item.id.clone()));

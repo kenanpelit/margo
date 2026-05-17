@@ -136,6 +136,10 @@ impl Provider for WebsearchProvider {
         "Web search"
     }
 
+    fn category(&self) -> &str {
+        "Search"
+    }
+
     fn search(&self, query: &str) -> Vec<LauncherItem> {
         let trimmed = query.trim();
         // We need at least "<keyword> something". A keyword
@@ -198,6 +202,41 @@ impl Provider for WebsearchProvider {
                 on_activate: Rc::new(|| {}),
             })
             .collect()
+    }
+
+    /// Ctrl+Enter on a websearch row → copy the URL to the
+    /// clipboard instead of opening the browser. Useful for
+    /// "share this link" style flows or pasting into a different
+    /// browser than xdg-open's default.
+    fn alt_action(&self, item: &LauncherItem) -> Option<std::rc::Rc<dyn Fn() + 'static>> {
+        // Recover the engine + query from the item. The display
+        // name is `"{label}: {query}"`; we reconstruct the URL by
+        // looking up the matching engine by keyword (suffix of
+        // the item's id) and re-encoding the query.
+        let keyword = item.id.strip_prefix("websearch:")?;
+        let engine = self
+            .engines
+            .iter()
+            .find(|e| e.keyword == keyword)?
+            .clone();
+        // The query is everything after `"{engine.label}: "`.
+        let query = item.name.split_once(": ").map(|(_, q)| q.to_string())?;
+        Some(std::rc::Rc::new(move || {
+            let url = engine.url_for(&query);
+            let mut child = match Command::new("wl-copy").stdin(std::process::Stdio::piped()).spawn() {
+                Ok(c) => c,
+                Err(err) => {
+                    tracing::warn!(?err, "wl-copy spawn failed for websearch alt-action");
+                    return;
+                }
+            };
+            if let Some(mut stdin) = child.stdin.take() {
+                use std::io::Write as _;
+                let _ = stdin.write_all(url.as_bytes());
+            }
+            let _ = child.wait();
+            toast("URL copied", url);
+        }))
     }
 }
 

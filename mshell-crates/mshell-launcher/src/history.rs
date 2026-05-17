@@ -81,6 +81,20 @@ impl CommandHistory {
         self.dirty = true;
     }
 
+    /// Remove a specific entry by string match. Used when the user
+    /// presses Delete on a history row in the launcher UI so a
+    /// one-time command they regret never re-surfaces. Flushes the
+    /// change to disk straight away (delete operations are rare).
+    /// No-op if the expression isn't in the history.
+    pub fn forget(&mut self, expression: &str) {
+        let before = self.inner.entries.len();
+        self.inner.entries.retain(|e| e != expression);
+        if self.inner.entries.len() != before {
+            self.dirty = true;
+            self.flush();
+        }
+    }
+
     /// Persist the store if anything changed. Idempotent.
     pub fn flush(&mut self) {
         if !self.dirty {

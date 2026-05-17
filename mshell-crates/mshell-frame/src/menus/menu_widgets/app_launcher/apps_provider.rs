@@ -188,4 +188,56 @@ impl Provider for AppsProvider {
         // monitor backs the list.
         self.refresh();
     }
+
+    /// Apps opt in to Delete so the user can clear an over-promoted
+    /// frecency entry (mis-clicked package leaks to the top of
+    /// browse-mode forever). The runtime handles the actual
+    /// frecency forget; the provider has no per-app state to drop.
+    fn can_delete(&self, item: &mshell_launcher::LauncherItem) -> bool {
+        item.id.starts_with("apps:")
+    }
+
+    /// Ctrl+Enter on an app → launch in $TERMINAL. Resolves the
+    /// desktop entry and spawns `$TERMINAL -e <exec>`, falling back
+    /// to `kitty / alacritty / foot / wezterm` in order if the env
+    /// var is unset. The terminal binary itself decides how to
+    /// keep the window open after the program exits — most respect
+    /// `hold_open` style flags or rely on the program being a shell.
+    fn alt_action(
+        &self,
+        item: &mshell_launcher::LauncherItem,
+    ) -> Option<std::rc::Rc<dyn Fn() + 'static>> {
+        let app_id = item.id.strip_prefix("apps:")?;
+        // Resolve and clone what the closure needs *now* so the
+        // captured state is plain owned strings (Rc<dyn Fn> can't
+        // hold a `DesktopAppInfo` ergonomically across threads).
+        let info = relm4::gtk::gio::DesktopAppInfo::new(app_id)?;
+        let exec = info.commandline()?.to_string_lossy().to_string();
+        let term = std::env::var("TERMINAL").ok().filter(|t| !t.is_empty());
+        Some(std::rc::Rc::new(move || {
+            // Probe for a known terminal via PATH-style file lookup
+            // (no extra crate dep — walks $PATH manually). $TERMINAL
+            // wins when set; otherwise we pick the first installed
+            // candidate so the user doesn't have to configure
+            // anything in the common case.
+            let term_bin = term.clone().unwrap_or_else(|| {
+                let path = std::env::var_os("PATH").unwrap_or_default();
+                for candidate in ["kitty", "alacritty", "foot", "wezterm", "xterm"] {
+                    let found = std::env::split_paths(&path)
+                        .any(|dir| dir.join(candidate).is_file());
+                    if found {
+                        return candidate.to_string();
+                    }
+                }
+                "xterm".to_string()
+            });
+            let cmd = format!("{exec}; echo; echo '[press enter to close]'; read");
+            let _ = std::process::Command::new(&term_bin)
+                .arg("-e")
+                .arg("sh")
+                .arg("-c")
+                .arg(&cmd)
+                .spawn();
+        }))
+    }
 }

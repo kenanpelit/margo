@@ -27,3 +27,57 @@
     -gtk-icon-size: var(--icon-md);
   }
 }
+
+// "1".."9" digit shown on the first nine result rows; pressing
+// Alt+N activates the matching row. Small, monospace-ish, dim by
+// default so it reads as a hint rather than a primary label.
+.app-launcher-quick-key {
+  color: var(--on-surface-variant);
+  opacity: 0.55;
+  font-feature-settings: "tnum";
+  font-size: 0.75em;
+  min-width: 14px;
+}
+
+// ★ rendered when an item is pinned. Accent-coloured + slightly
+// inset from the right edge so it reads as a state badge.
+.app-launcher-pin-marker {
+  color: var(--primary);
+  font-size: 0.85em;
+  opacity: 0.9;
+}
+
+// Fuzzy / exact indicator: small "~/=" next to the search entry.
+// One-character label rendered in the on-surface-variant tone —
+// flips between glyphs based on the runtime's exact-search flag
+// (toggled via Ctrl+E).
+.app-launcher-exact-mode {
+  color: var(--on-surface-variant);
+  opacity: 0.65;
+  font-family: monospace;
+  font-size: 0.9em;
+}
+
+// Tab strip rendered above the result list. One pill per provider
+// category (Apps / Compositor / System / Run / Insert / Search /
+// Connect, plus implicit "All"). Cycled via Tab / Shift+Tab; pills
+// also accept direct mouse clicks.
+.app-launcher-category-pill {
+  padding: 2px 0;
+  border-radius: 999px;
+  background-color: var(--surface-container);
+  color: var(--on-surface-variant);
+  font-size: 0.78em;
+  min-height: 0;
+  transition: background-color 120ms ease-in-out, color 120ms ease-in-out;
+
+  &:hover {
+    background-color: var(--surface-container-high);
+    color: var(--on-surface);
+  }
+
+  &.selected {
+    background-color: var(--primary);
+    color: var(--on-primary);
+  }
+}

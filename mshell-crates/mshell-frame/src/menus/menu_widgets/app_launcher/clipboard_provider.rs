@@ -83,6 +83,10 @@ impl Provider for ClipboardProvider {
         "Clipboard"
     }
 
+    fn category(&self) -> &str {
+        "Insert"
+    }
+
     fn handles_search(&self) -> bool {
         // Only contributes through commands() / handles_command —
         // raw clipboard items would flood the empty-query browse

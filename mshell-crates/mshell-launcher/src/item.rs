@@ -63,6 +63,40 @@ pub struct LauncherItem {
     pub on_activate: Rc<dyn Fn() + 'static>,
 }
 
+/// Runtime-decorated view of a [`LauncherItem`] handed to the UI.
+///
+/// Providers always emit raw [`LauncherItem`]; the runtime wraps
+/// each one in a `DisplayItem` after `apply_frecency_and_sort` so
+/// it can carry decorations the UI needs to render (pin marker,
+/// quick-activate digit) without polluting the provider-facing
+/// API or forcing every existing provider to set placeholder
+/// fields.
+pub struct DisplayItem {
+    /// The raw item produced by the provider.
+    pub item: LauncherItem,
+
+    /// True when the item's [`LauncherItem::usage_key`] is in the
+    /// user's [`crate::pin::PinStore`]. The UI renders a ★ glyph
+    /// next to pinned rows and the runtime bubbles them to the top
+    /// of empty-browse mode regardless of frecency.
+    pub pinned: bool,
+
+    /// Visual hint label for the **Alt+N** quick-activate shortcut:
+    /// `"1"` through `"9"` for the first nine results, empty string
+    /// for the rest.
+    pub quick_key: String,
+}
+
+impl std::fmt::Debug for DisplayItem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DisplayItem")
+            .field("item", &self.item)
+            .field("pinned", &self.pinned)
+            .field("quick_key", &self.quick_key)
+            .finish()
+    }
+}
+
 impl std::fmt::Debug for LauncherItem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("LauncherItem")

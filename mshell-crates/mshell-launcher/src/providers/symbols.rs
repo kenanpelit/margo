@@ -237,6 +237,10 @@ impl Provider for SymbolsProvider {
         "Symbols"
     }
 
+    fn category(&self) -> &str {
+        "Insert"
+    }
+
     fn handles_search(&self) -> bool {
         // `.` triggers — never bleed symbols into the regular
         // app browse list.

@@ -57,4 +57,38 @@ pub trait Provider {
     /// Lets providers drop transient state (open file handles,
     /// in-flight async requests). Default: no-op.
     fn on_closed(&mut self) {}
+
+    /// Coarse category bucket the provider falls under. Drives the
+    /// Tab/Shift+Tab provider-cycle and the visual category strip
+    /// above the result list. Providers that share a category
+    /// (e.g. Symbols + Emoji both `"Insert"`) flow into the same
+    /// tab and the user cycles between buckets, not every individual
+    /// provider. Default: `"All"` (the catch-all bucket the runtime
+    /// uses for "no filter, mix everything").
+    fn category(&self) -> &str {
+        "All"
+    }
+
+    /// True when the runtime should let the user delete this item
+    /// (Delete key in the UI). Providers with a frecency or history
+    /// backing store return true here for any item they own.
+    /// Default: false.
+    fn can_delete(&self, _item: &LauncherItem) -> bool {
+        false
+    }
+
+    /// Side-effect to perform when the user presses Delete on the
+    /// item. Typically removes the matching frecency / history entry
+    /// from the provider's backing cache. The runtime never calls
+    /// this without first checking `can_delete`.
+    fn delete_item(&mut self, _item: &LauncherItem) {}
+
+    /// Optional alternative action — bound to Ctrl+Enter in the UI.
+    /// Apps return a "launch in terminal" closure, Files return
+    /// "open enclosing folder", Websearch returns "copy URL", etc.
+    /// `None` (the default) means Ctrl+Enter falls back to the
+    /// regular `on_activate` for that item.
+    fn alt_action(&self, _item: &LauncherItem) -> Option<std::rc::Rc<dyn Fn() + 'static>> {
+        None
+    }
 }

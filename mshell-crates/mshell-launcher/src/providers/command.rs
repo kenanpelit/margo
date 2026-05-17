@@ -63,6 +63,10 @@ impl Provider for CommandProvider {
         "Command"
     }
 
+    fn category(&self) -> &str {
+        "Run"
+    }
+
     fn handles_search(&self) -> bool {
         // Only contributes through commands() / handles_command —
         // a stray ">" inside an app name shouldn't trigger shell
@@ -169,6 +173,21 @@ impl Provider for CommandProvider {
         }
 
         results
+    }
+
+    /// Only history rows can be deleted — the live "Run: …" row
+    /// the user is currently composing isn't a stored entry.
+    fn can_delete(&self, item: &LauncherItem) -> bool {
+        item.id.starts_with("cmd:history:")
+    }
+
+    /// Drop the matching history entry. The row's display name is
+    /// `"Run: <expression>"` — strip the prefix to recover the
+    /// original expression and ask the history store to forget it.
+    fn delete_item(&mut self, item: &LauncherItem) {
+        if let Some(expr) = item.name.strip_prefix("Run: ") {
+            self.history.borrow_mut().forget(expr);
+        }
     }
 }
 

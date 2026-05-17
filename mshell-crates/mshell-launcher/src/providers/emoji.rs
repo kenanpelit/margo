@@ -63,6 +63,10 @@ impl Provider for EmojiProvider {
         "Emoji"
     }
 
+    fn category(&self) -> &str {
+        "Insert"
+    }
+
     fn handles_search(&self) -> bool {
         false
     }

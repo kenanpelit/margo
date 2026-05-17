@@ -160,6 +160,10 @@ impl Provider for SettingsProvider {
         "Settings"
     }
 
+    fn category(&self) -> &str {
+        "System"
+    }
+
     fn commands(&self) -> Vec<LauncherItem> {
         vec![LauncherItem {
             id: "settings:palette".into(),

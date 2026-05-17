@@ -160,6 +160,10 @@ impl Provider for SshProvider {
         "SSH"
     }
 
+    fn category(&self) -> &str {
+        "Connect"
+    }
+
     fn handles_search(&self) -> bool {
         // `ssh` is a real word the user might type to find an
         // app (Filezilla SSH? OpenSSH-something?). Stay out of

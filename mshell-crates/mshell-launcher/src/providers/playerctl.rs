@@ -87,6 +87,10 @@ impl Provider for PlayerctlProvider {
         "Player"
     }
 
+    fn category(&self) -> &str {
+        "System"
+    }
+
     fn handles_search(&self) -> bool {
         false
     }

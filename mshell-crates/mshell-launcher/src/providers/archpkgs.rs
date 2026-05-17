@@ -128,6 +128,10 @@ impl Provider for ArchLinuxPkgsProvider {
         "Arch packages"
     }
 
+    fn category(&self) -> &str {
+        "Search"
+    }
+
     fn handles_search(&self) -> bool {
         false
     }

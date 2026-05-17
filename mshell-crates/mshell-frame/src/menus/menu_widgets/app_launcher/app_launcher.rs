@@ -9,11 +9,30 @@
 //!
 //! ## Keyboard model
 //!
-//! Same as the old widget — readline / vim / emacs conventions:
-//! `Down|Tab|Ctrl+N|Ctrl+J` → next, `Up|Shift+Tab|Ctrl+P|Ctrl+K` →
-//! previous, `Enter` → activate, `Escape` → close. The search
-//! entry receives focus on every open so users can start typing
-//! immediately.
+//! Power-user bindings inspired by walker (quick-activate) and
+//! noctalia (Tab cycle, Delete, …):
+//!
+//! | Key                  | Action                              |
+//! |---|---|
+//! | `↓` / `Ctrl+N` / `Ctrl+J` | select next                    |
+//! | `↑` / `Ctrl+P` / `Ctrl+K` | select previous                |
+//! | `PageDown`           | jump 10 rows forward                |
+//! | `PageUp`             | jump 10 rows backward               |
+//! | `Tab`                | next provider category              |
+//! | `Shift+Tab`          | previous provider category          |
+//! | `Enter`              | activate selected                   |
+//! | `Ctrl+Enter`         | provider's alt action (if any)      |
+//! | `Alt+1` .. `Alt+9`   | activate the Nth result             |
+//! | `Ctrl+Shift+P`       | toggle pin on selected (★)          |
+//! | `Delete`             | delete frecency/history entry       |
+//! | `Ctrl+E`             | toggle fuzzy / exact-substring mode |
+//! | `Ctrl+R`             | resume last query                   |
+//! | `Esc`                | close                               |
+//!
+//! Note: we use **Ctrl+Shift+P** for pin (instead of plain Ctrl+P)
+//! because Ctrl+P is the historical "previous selection" emacs
+//! binding the launcher already exposes — overloading it would
+//! break a long-standing muscle-memory shortcut.
 
 use crate::menus::menu_widgets::app_launcher::apps_provider::AppsProvider;
 use crate::menus::menu_widgets::app_launcher::clipboard_provider::ClipboardProvider;
@@ -37,7 +56,7 @@ use mshell_launcher::providers::{
     MctlProvider, PlayerctlProvider, ProviderListProvider, ScriptsProvider, SessionProvider,
     SettingsProvider, SshProvider, SymbolsProvider, WebsearchProvider, WireplumberProvider,
 };
-use mshell_launcher::{FrecencyStore, LauncherItem, LauncherRuntime};
+use mshell_launcher::{DisplayItem, FrecencyStore, LauncherItem, LauncherRuntime};
 use reactive_graph::traits::*;
 use relm4::gtk::glib;
 use relm4::gtk::prelude::*;
@@ -49,17 +68,16 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 pub(crate) struct AppLauncherModel {
-    dynamic_box: Controller<DynamicBoxModel<LauncherItem, String>>,
-    /// Runtime owns the providers + frecency. Wrapped in
-    /// `RefCell<Rc<>>` because the Apps provider needs to be
-    /// mutated (toggle show_hidden) from within the widget's
-    /// update path while the runtime simultaneously borrows
-    /// providers immutably during `query()`. Two-borrow split via
+    dynamic_box: Controller<DynamicBoxModel<DisplayItem, String>>,
+    /// Runtime owns the providers + frecency + pins. Wrapped in
+    /// `RefCell` because the Apps provider needs to be mutated
+    /// (toggle show_hidden) from within the widget's update path
+    /// while the runtime simultaneously borrows providers
+    /// immutably during `query()`. Two-borrow split via
     /// `Rc<AppsProvider>` on the side.
     runtime: RefCell<LauncherRuntime>,
     /// Shared handle to the Apps provider so we can toggle the
-    /// `show_hidden` flag without going through the runtime
-    /// (which only exposes immutable provider access).
+    /// `show_hidden` flag without going through the runtime.
     apps_provider: Rc<AppsProvider>,
     /// Closes the launcher menu. Set in init; called after every
     /// item activation. RefCell<Option<...>> so the closure can
@@ -67,11 +85,15 @@ pub(crate) struct AppLauncherModel {
     /// model type.
     close_sender: RefCell<Option<Box<dyn Fn() + 'static>>>,
     filter: String,
-    results: Vec<LauncherItem>,
+    results: Vec<DisplayItem>,
     /// Stable id of the currently-selected row. We store the id
     /// rather than an index so reordering between keystrokes
     /// doesn't strand the highlight on a different row.
     selected_id: Option<String>,
+    /// Cached label for the active provider category — drives the
+    /// tab-strip highlight without re-asking the runtime on every
+    /// repaint.
+    active_category: String,
     is_revealed: bool,
     _effects: EffectScope,
 }
@@ -79,13 +101,43 @@ pub(crate) struct AppLauncherModel {
 #[derive(Debug)]
 pub(crate) enum AppLauncherInput {
     FilterChanged(String),
+    /// Plain Enter on the search entry — activate the currently-
+    /// selected row.
     Activate,
+    /// Ctrl+Enter — activate the selected row's *alt* action (the
+    /// provider's `alt_action`, if any; otherwise falls back to
+    /// the regular activation).
+    AltActivate,
     ParentRevealChanged(bool),
     DownPressed,
     UpPressed,
+    /// PageDown — jump 10 rows forward.
+    PageDownPressed,
+    /// PageUp — jump 10 rows backward.
+    PageUpPressed,
     /// User pressed Enter on a specific row (via mouse click or
     /// Tab+Enter on the focused row). Carries the row id.
     ActivateRow(String),
+    /// Alt+N — activate the row with quick_key = N. Carries the
+    /// digit (1..=9) so the handler can find the matching row.
+    QuickActivate(u8),
+    /// Tab — cycle to the next provider category (Apps → Insert →
+    /// Compositor → All → …). `delta` is +1 or -1.
+    CycleCategory(i32),
+    /// Direct-jump to a named category. Fired by mouse-click on a
+    /// category pill in the tab strip.
+    SelectCategory(String),
+    /// Ctrl+Shift+P — toggle pin on the selected item.
+    TogglePin,
+    /// Delete — remove the selected item from its provider's
+    /// frecency / history store (provider must opt in via
+    /// `can_delete`).
+    DeleteEntry,
+    /// Ctrl+E — toggle fuzzy ↔ exact-substring matching.
+    ToggleExactSearch,
+    /// Ctrl+R — repopulate the search entry with the last query
+    /// the launcher saw before closing.
+    ResumeLastQuery,
     /// Programmatic search-text swap — used by the
     /// `ProviderListProvider` cheatsheet to drop the chosen
     /// prefix's example query into the search entry so the user
@@ -144,6 +196,21 @@ impl Component for AppLauncherModel {
                     },
                 },
 
+                // Exact-search indicator — small "≈/=" pill next to
+                // the eye toggle that tells the user whether fuzzy
+                // (~) or exact (=) matching is active. CSS handles
+                // the visual style; the label text is the only
+                // model-bound thing.
+                #[name = "exact_indicator"]
+                gtk::Label {
+                    add_css_class: "app-launcher-exact-mode",
+                    #[watch]
+                    set_label: if model.runtime.borrow().is_exact_search() { "=" } else { "~" },
+                    set_margin_start: 6,
+                    set_margin_end: 6,
+                    set_valign: gtk::Align::Center,
+                },
+
                 gtk::Button {
                     add_css_class: "ok-button-surface",
                     set_hexpand: false,
@@ -168,6 +235,22 @@ impl Component for AppLauncherModel {
                 }
             },
 
+            // Category tab strip — noctalia-style. One pill per
+            // distinct provider category in registration order
+            // (with implicit "All" first). The selected pill gets
+            // the `selected` CSS class. Tab / Shift+Tab cycle
+            // through them; clicking a pill jumps directly. Rebuilt
+            // any time recompute_results runs so a freshly-cycled
+            // category swaps highlight without a full re-render.
+            #[name = "category_strip"]
+            gtk::Box {
+                add_css_class: "app-launcher-category-strip",
+                set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 6,
+                set_margin_bottom: 8,
+                set_halign: gtk::Align::Start,
+            },
+
             #[name = "scrolled_window"]
             ScrolledWindow {
                 set_vscrollbar_policy: gtk::PolicyType::Automatic,
@@ -184,44 +267,13 @@ impl Component for AppLauncherModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        // Build provider stack. Order matters for command-mode
-        // dispatch — first matching wins — and for the empty-query
-        // browse list (concatenated in registration order).
         let apps_provider = Rc::new(AppsProvider::new());
 
-        // Apps provider: launch happens in the activate closure;
-        // closing the launcher is handled centrally in
-        // `activate_id` so we don't wire a per-launch callback.
-
-        // Settings provider: route through the in-process
-        // section-backend bridge so the panel opens AND the
-        // sidebar jumps to the selected section. The chain is
-        // `open_settings_at_section` (mshell-settings static) →
-        // registered closure in mshell-core/relm_app.rs →
-        // tokio mpsc → ShellInput::OpenSettingsAtSection →
-        // FrameInput::OpenSettingsAtSection →
-        // SettingsWindowInput::ActivateSection. We avoid going
-        // through `mshellctl` here so the launcher doesn't
-        // depend on a CLI being on $PATH for what's really an
-        // in-process navigation.
         let settings_provider = SettingsProvider::new(Rc::new(move |section_id| {
             mshell_settings::open_settings_at_section(section_id);
         }));
 
         let mut runtime = LauncherRuntime::new(FrecencyStore::load());
-        // Order matters for empty-query browse — first-registered
-        // providers' results show first when the user opens the
-        // launcher without typing. Apps go first (the most common
-        // browse target), Windows second (alt-tab replacement
-        // for `Open Apps Switcher` muscle memory), then the
-        // typed-only providers in roughly "expected frequency".
-        // ProviderListProvider needs a callback that rewrites
-        // the launcher's search entry. Sending `SetSearchText`
-        // (not `FilterChanged`) ensures the visible GtkEntry
-        // text updates too — otherwise the user clicks a `;`
-        // cheatsheet row, the filter changes internally, but
-        // the entry still displays `;` and they can't tell
-        // anything happened.
         let sender_for_search = sender.clone();
         let provider_list_provider = ProviderListProvider::new(Rc::new(move |text: &str| {
             let _ = sender_for_search
@@ -249,20 +301,13 @@ impl Component for AppLauncherModel {
         runtime.register(Box::new(SshProvider::new()));
         runtime.register(Box::new(CommandProvider::new()));
 
-        // Sender clone for the dynamic-box factory's per-row
-        // controller wiring — we need to keep the original sender
-        // for the rest of init.
         let sender_for_rows = sender.clone();
-        let factory = DynamicBoxFactory::<LauncherItem, String> {
-            id: Box::new(|item| item.id.clone()),
-            create: Box::new(move |item| {
-                // Pass the whole LauncherItem by value into the
-                // row component. Item itself isn't cloneable
-                // (Rc<dyn Fn()> is, but the runtime moved the
-                // owned value to us already) so we move it.
+        let factory = DynamicBoxFactory::<DisplayItem, String> {
+            id: Box::new(|d| d.item.id.clone()),
+            create: Box::new(move |d| {
                 let controller: Controller<LauncherRowModel> = LauncherRowModel::builder()
                     .launch(LauncherRowInit {
-                        item: clone_launcher_item(item),
+                        display: clone_display_item(d),
                     })
                     .forward(sender_for_rows.input_sender(), |out| match out {
                         LauncherRowOutput::Activated(id) => AppLauncherInput::ActivateRow(id),
@@ -272,7 +317,7 @@ impl Component for AppLauncherModel {
             update: None,
         };
 
-        let dynamic: Controller<DynamicBoxModel<LauncherItem, String>> = DynamicBoxModel::builder()
+        let dynamic: Controller<DynamicBoxModel<DisplayItem, String>> = DynamicBoxModel::builder()
             .launch(DynamicBoxInit {
                 factory,
                 orientation: gtk::Orientation::Vertical,
@@ -285,19 +330,101 @@ impl Component for AppLauncherModel {
             })
             .detach();
 
-        // Keyboard navigation. See module-level docs for the full
-        // list of accepted bindings.
+        // Keyboard navigation — the full power-user binding set. See
+        // module-level docs for the table.
         let key_controller = gtk::EventControllerKey::new();
         let sender_clone = sender.clone();
         key_controller.connect_key_pressed(move |_, key, _, modifier| {
             let ctrl = modifier.contains(gdk::ModifierType::CONTROL_MASK);
             let shift = modifier.contains(gdk::ModifierType::SHIFT_MASK);
+            let alt = modifier.contains(gdk::ModifierType::ALT_MASK);
+
+            // Alt+1..Alt+9 → quick activate. Handled first so the
+            // digit keys don't fall through to the search entry as
+            // typed input.
+            if alt && !ctrl {
+                let digit = match key {
+                    gdk::Key::_1 => Some(1u8),
+                    gdk::Key::_2 => Some(2),
+                    gdk::Key::_3 => Some(3),
+                    gdk::Key::_4 => Some(4),
+                    gdk::Key::_5 => Some(5),
+                    gdk::Key::_6 => Some(6),
+                    gdk::Key::_7 => Some(7),
+                    gdk::Key::_8 => Some(8),
+                    gdk::Key::_9 => Some(9),
+                    _ => None,
+                };
+                if let Some(n) = digit {
+                    sender_clone.input(AppLauncherInput::QuickActivate(n));
+                    return glib::Propagation::Stop;
+                }
+            }
+
+            // Tab / Shift+Tab → category cycle. Replaces the old
+            // "Tab = Down" binding — that's still available via
+            // arrow keys / Ctrl+N. The category cycle is the
+            // noctalia pattern and lets the user sweep through
+            // provider buckets when the empty-browse list is too
+            // long to scroll.
+            if matches!(key, gdk::Key::Tab) && !ctrl && !alt {
+                let delta = if shift { -1 } else { 1 };
+                sender_clone.input(AppLauncherInput::CycleCategory(delta));
+                return glib::Propagation::Stop;
+            }
+            if matches!(key, gdk::Key::ISO_Left_Tab) && !ctrl && !alt {
+                sender_clone.input(AppLauncherInput::CycleCategory(-1));
+                return glib::Propagation::Stop;
+            }
+
+            // Ctrl+Shift+P → toggle pin. Single Ctrl+P stays
+            // bound to "previous selection" (emacs muscle memory).
+            if ctrl && shift && matches!(key, gdk::Key::P | gdk::Key::p) {
+                sender_clone.input(AppLauncherInput::TogglePin);
+                return glib::Propagation::Stop;
+            }
+
+            // Ctrl+E → toggle exact-substring mode.
+            if ctrl && !shift && !alt && matches!(key, gdk::Key::E | gdk::Key::e) {
+                sender_clone.input(AppLauncherInput::ToggleExactSearch);
+                return glib::Propagation::Stop;
+            }
+
+            // Ctrl+R → resume last query.
+            if ctrl && !shift && !alt && matches!(key, gdk::Key::R | gdk::Key::r) {
+                sender_clone.input(AppLauncherInput::ResumeLastQuery);
+                return glib::Propagation::Stop;
+            }
+
+            // Delete → remove the selected frecency / history entry.
+            if matches!(key, gdk::Key::Delete) && !ctrl && !alt {
+                sender_clone.input(AppLauncherInput::DeleteEntry);
+                return glib::Propagation::Stop;
+            }
+
+            // PageUp / PageDown → 10-row jump.
+            if matches!(key, gdk::Key::Page_Down) {
+                sender_clone.input(AppLauncherInput::PageDownPressed);
+                return glib::Propagation::Stop;
+            }
+            if matches!(key, gdk::Key::Page_Up) {
+                sender_clone.input(AppLauncherInput::PageUpPressed);
+                return glib::Propagation::Stop;
+            }
+
+            // Ctrl+Enter → alt action.
+            if ctrl && !shift && matches!(key, gdk::Key::Return | gdk::Key::KP_Enter) {
+                sender_clone.input(AppLauncherInput::AltActivate);
+                return glib::Propagation::Stop;
+            }
+
+            // Existing navigation: Down / Up / Ctrl+N|J / Ctrl+P|K.
+            // (Ctrl+P pinning lives behind the *Shift* combo handled
+            // above so the bare Ctrl+P emacs binding is preserved.)
             let is_down = matches!(key, gdk::Key::Down)
-                || (matches!(key, gdk::Key::Tab) && !shift)
-                || (ctrl && matches!(key, gdk::Key::n | gdk::Key::N | gdk::Key::j | gdk::Key::J));
-            let is_up = matches!(key, gdk::Key::Up | gdk::Key::ISO_Left_Tab)
-                || (matches!(key, gdk::Key::Tab) && shift)
-                || (ctrl && matches!(key, gdk::Key::p | gdk::Key::P | gdk::Key::k | gdk::Key::K));
+                || (ctrl && !shift && matches!(key, gdk::Key::n | gdk::Key::N | gdk::Key::j | gdk::Key::J));
+            let is_up = matches!(key, gdk::Key::Up)
+                || (ctrl && !shift && matches!(key, gdk::Key::p | gdk::Key::P | gdk::Key::k | gdk::Key::K));
             if is_down {
                 sender_clone.input(AppLauncherInput::DownPressed);
                 glib::Propagation::Stop
@@ -314,65 +441,32 @@ impl Component for AppLauncherModel {
 
         let mut effect_scope = EffectScope::new();
 
-        // Re-render results when the icon theme changes — apps
-        // need their matugen-filtered icons re-applied.
         let sender_clone = sender.clone();
         effect_scope.push(move |_| {
-            let _ = config_manager()
-                .config()
-                .theme()
-                .icons()
-                .app_icon_theme()
-                .get();
-            let _ = config_manager()
-                .config()
-                .theme()
-                .icons()
-                .apply_theme_filter()
-                .get();
+            let _ = config_manager().config().theme().icons().app_icon_theme().get();
+            let _ = config_manager().config().theme().icons().apply_theme_filter().get();
             let _ = config_manager().config().theme().theme().get();
-            let _ = config_manager()
-                .config()
-                .theme()
-                .icons()
-                .filter_strength()
-                .get();
-            let _ = config_manager()
-                .config()
-                .theme()
-                .icons()
-                .monochrome_strength()
-                .get();
-            let _ = config_manager()
-                .config()
-                .theme()
-                .icons()
-                .contrast_strength()
-                .get();
+            let _ = config_manager().config().theme().icons().filter_strength().get();
+            let _ = config_manager().config().theme().icons().monochrome_strength().get();
+            let _ = config_manager().config().theme().icons().contrast_strength().get();
             sender_clone.input(AppLauncherInput::ThemeChanged);
         });
 
-        // Refresh apps when desktop entries change (install /
-        // uninstall while the launcher is open).
         let sender_clone = sender.clone();
         let monitor = gio::AppInfoMonitor::get();
         monitor.connect_changed(move |_| {
             sender_clone.input(AppLauncherInput::FilterChanged(String::new()));
         });
 
-        // Initial population — runtime.on_opened triggers Apps
-        // provider refresh, FilterChanged populates the list.
         runtime.on_opened();
 
-        // Close-sender wired after construction so activate_id
-        // can fire a CloseMenu output without going through the
-        // input loop (which would race the row-controller
-        // teardown).
         let close_sender_cell: RefCell<Option<Box<dyn Fn() + 'static>>> = RefCell::new(None);
         let sender_for_close = sender.clone();
         *close_sender_cell.borrow_mut() = Some(Box::new(move || {
             let _ = sender_for_close.output(AppLauncherOutput::CloseMenu);
         }));
+
+        let active_category = runtime.active_category_label();
 
         let model = AppLauncherModel {
             dynamic_box: dynamic,
@@ -382,6 +476,7 @@ impl Component for AppLauncherModel {
             filter: String::new(),
             results: Vec::new(),
             selected_id: None,
+            active_category,
             is_revealed: false,
             _effects: effect_scope,
         };
@@ -389,6 +484,11 @@ impl Component for AppLauncherModel {
         let widgets = view_output!();
         widgets.apps_box.append(model.dynamic_box.widget());
         widgets.root.add_controller(key_controller);
+
+        // Initial category strip + result render. Both depend on
+        // the runtime being constructed so we run them after the
+        // model is built but before the first frame.
+        rebuild_category_strip(&widgets.category_strip, &model, &sender);
 
         sender.input(AppLauncherInput::FilterChanged(String::new()));
 
@@ -410,23 +510,95 @@ impl Component for AppLauncherModel {
                 self.broadcast_selection();
             }
             AppLauncherInput::Activate => {
-                // Enter on the search entry — activate whatever
-                // row is currently selected.
-                tracing::info!(target: "mshell::launcher", "Activate input, selected_id={:?}", self.selected_id);
                 if let Some(id) = &self.selected_id.clone() {
-                    self.activate_id(id);
+                    self.activate_id(&id, /*alt=*/ false);
+                }
+            }
+            AppLauncherInput::AltActivate => {
+                if let Some(id) = &self.selected_id.clone() {
+                    self.activate_id(&id, /*alt=*/ true);
                 }
             }
             AppLauncherInput::ActivateRow(id) => {
-                tracing::info!(target: "mshell::launcher", "ActivateRow input id={id}");
-                self.activate_id(&id);
+                self.activate_id(&id, /*alt=*/ false);
+            }
+            AppLauncherInput::QuickActivate(n) => {
+                // Activate the row whose quick_key matches N (1..9).
+                let target = self
+                    .results
+                    .iter()
+                    .find(|d| d.quick_key == n.to_string())
+                    .map(|d| d.item.id.clone());
+                if let Some(id) = target {
+                    self.activate_id(&id, /*alt=*/ false);
+                }
+            }
+            AppLauncherInput::CycleCategory(delta) => {
+                let new_label = self.runtime.borrow_mut().cycle_category(delta);
+                self.active_category = new_label;
+                rebuild_category_strip(&widgets.category_strip, self, &sender);
+                self.recompute_results();
+                self.push_results_to_dynamic_box();
+                self.broadcast_selection();
+            }
+            AppLauncherInput::SelectCategory(label) => {
+                let new_label = self.runtime.borrow_mut().select_category(&label);
+                self.active_category = new_label;
+                rebuild_category_strip(&widgets.category_strip, self, &sender);
+                self.recompute_results();
+                self.push_results_to_dynamic_box();
+                self.broadcast_selection();
+            }
+            AppLauncherInput::TogglePin => {
+                // Pin operates on the selected item's usage_key —
+                // if the item has none (calculator results, command
+                // palette entries) the action is silently a no-op.
+                let key = self
+                    .selected_id
+                    .as_ref()
+                    .and_then(|id| self.results.iter().find(|d| &d.item.id == id))
+                    .and_then(|d| d.item.usage_key.clone());
+                if let Some(k) = key {
+                    let _ = self.runtime.borrow_mut().toggle_pin(&k);
+                    self.recompute_results();
+                    self.push_results_to_dynamic_box();
+                    self.broadcast_selection();
+                    self.broadcast_pin_state();
+                }
+            }
+            AppLauncherInput::DeleteEntry => {
+                // Snapshot the selected item; ask the runtime
+                // whether the owning provider claims it; delete +
+                // re-query.
+                let selected_item = self
+                    .selected_id
+                    .as_ref()
+                    .and_then(|id| self.results.iter().find(|d| &d.item.id == id))
+                    .map(|d| clone_launcher_item(&d.item));
+                if let Some(item) = selected_item
+                    && self.runtime.borrow().can_delete(&item)
+                {
+                    self.runtime.borrow_mut().delete_item(&item);
+                    self.recompute_results();
+                    self.push_results_to_dynamic_box();
+                    self.broadcast_selection();
+                }
+            }
+            AppLauncherInput::ToggleExactSearch => {
+                let _ = self.runtime.borrow_mut().toggle_exact_search();
+                // Re-run the current query under the new matcher.
+                self.recompute_results();
+                self.push_results_to_dynamic_box();
+                self.broadcast_selection();
+            }
+            AppLauncherInput::ResumeLastQuery => {
+                let last = self.runtime.borrow().last_query().to_string();
+                if !last.is_empty() {
+                    widgets.search_entry.set_text(&last);
+                    widgets.search_entry.set_position(-1);
+                }
             }
             AppLauncherInput::SetSearchText(text) => {
-                // Setting the GtkEntry's text triggers its own
-                // `connect_changed` → FilterChanged path so we
-                // don't need to recompute here. Move the caret
-                // to the end + refocus so the user can keep
-                // typing without an extra click.
                 widgets.search_entry.set_text(&text);
                 widgets.search_entry.set_position(-1);
                 widgets.search_entry.grab_focus();
@@ -454,8 +626,14 @@ impl Component for AppLauncherModel {
                     if let Some(window) = widgets.apps_box.toplevel_window() {
                         window.set_keyboard_mode(KeyboardMode::None);
                     }
-                    self.runtime.borrow_mut().on_closed();
-                    self.runtime.borrow_mut().flush();
+                    // Snapshot the current query for Ctrl+R the
+                    // next time the launcher opens.
+                    {
+                        let mut rt = self.runtime.borrow_mut();
+                        rt.remember_query(&self.filter);
+                        rt.on_closed();
+                        rt.flush();
+                    }
                 }
                 self.is_revealed = revealed;
             }
@@ -469,9 +647,17 @@ impl Component for AppLauncherModel {
                 self.broadcast_selection();
                 self.ensure_selected_visible(&widgets.scrolled_window);
             }
+            AppLauncherInput::PageDownPressed => {
+                self.move_selection(10);
+                self.broadcast_selection();
+                self.ensure_selected_visible(&widgets.scrolled_window);
+            }
+            AppLauncherInput::PageUpPressed => {
+                self.move_selection(-10);
+                self.broadcast_selection();
+                self.ensure_selected_visible(&widgets.scrolled_window);
+            }
             AppLauncherInput::ThemeChanged => {
-                // Force a full re-render so app icons pick up the
-                // new matugen filter values.
                 self.push_results_to_dynamic_box();
                 self.broadcast_selection();
             }
@@ -484,18 +670,11 @@ impl Component for AppLauncherModel {
 impl AppLauncherModel {
     fn recompute_results(&mut self) {
         self.results = self.runtime.borrow().query(&self.filter);
-        // Keep selection on the first row by default. The runtime
-        // already sorts so [0] is the best match.
-        self.selected_id = self.results.first().map(|i| i.id.clone());
+        self.selected_id = self.results.first().map(|d| d.item.id.clone());
     }
 
     fn push_results_to_dynamic_box(&self) {
-        // Materialise items by cloning each one (Rc<dyn Fn> is
-        // cheap to clone); the dynamic box keeps controllers
-        // keyed by id and replaces a row's controller only when
-        // its key changes — so re-sending the same items just
-        // re-runs the factory once per visible row.
-        let cloned: Vec<LauncherItem> = self.results.iter().map(clone_launcher_item).collect();
+        let cloned: Vec<DisplayItem> = self.results.iter().map(clone_display_item).collect();
         let _ = self
             .dynamic_box
             .sender()
@@ -517,6 +696,35 @@ impl AppLauncherModel {
         });
     }
 
+    /// Send each row its fresh pin state. Called after a pin toggle
+    /// — the DynamicBox reconciler keeps existing controllers
+    /// (factory has `update: None`), so without this broadcast the
+    /// ★ glyph would be stuck on the pre-toggle state until the
+    /// row is rebuilt for some other reason. Maps by row id, so
+    /// rows whose pin state didn't change still get the same value
+    /// sent back to them (cheap and idempotent).
+    fn broadcast_pin_state(&self) {
+        // Build an id → pinned lookup once instead of an O(n²)
+        // scan inside the per-entry callback.
+        let pinned_by_id: std::collections::HashMap<String, bool> = self
+            .results
+            .iter()
+            .map(|d| (d.item.id.clone(), d.pinned))
+            .collect();
+        self.dynamic_box.model().for_each_entry(|key, entry| {
+            if let Some(pinned) = pinned_by_id.get(key)
+                && let Some(ctrl) = entry
+                    .controller
+                    .as_ref()
+                    .downcast_ref::<Controller<LauncherRowModel>>()
+            {
+                let _ = ctrl
+                    .sender()
+                    .send(LauncherRowInput::PinChanged(*pinned));
+            }
+        });
+    }
+
     fn move_selection(&mut self, delta: isize) {
         if self.results.is_empty() {
             self.selected_id = None;
@@ -525,35 +733,37 @@ impl AppLauncherModel {
         let current = self
             .selected_id
             .as_ref()
-            .and_then(|id| self.results.iter().position(|i| &i.id == id))
+            .and_then(|id| self.results.iter().position(|d| &d.item.id == id))
             .unwrap_or(0);
         let target = (current as isize + delta).clamp(0, self.results.len() as isize - 1) as usize;
-        self.selected_id = Some(self.results[target].id.clone());
+        self.selected_id = Some(self.results[target].item.id.clone());
     }
 
-    fn activate_id(&mut self, id: &str) {
-        let Some(item) = self.results.iter().find(|i| i.id == id) else {
-            tracing::warn!(target: "mshell::launcher", "activate_id: no item with id={id} in {} results", self.results.len());
+    fn activate_id(&mut self, id: &str, alt: bool) {
+        let Some(display) = self.results.iter().find(|d| d.item.id == id) else {
             return;
         };
-        if let Some(key) = &item.usage_key {
+        // Snapshot the bits we need before borrowing the runtime
+        // mutably — `record_usage` takes &mut.
+        let usage_key = display.item.usage_key.clone();
+        let item_clone = clone_launcher_item(&display.item);
+        if let Some(key) = &usage_key {
             self.runtime.borrow_mut().record_usage(key);
         }
-        (item.on_activate)();
-        // Most activations want the launcher dismissed after
-        // they run — Apps, Calc, Cmd, Session, Mctl, Scripts,
-        // Windows, Clipboard all expect the panel to go away.
-        //
-        // Settings is the exception: its on_activate kicks off a
-        // tokio-bridge chain that ends with `toggle_menu(SETTINGS_MENU)`
-        // making Settings the visible stack child (auto-hiding
-        // the launcher via stack-swap). If we also fired
-        // `CloseMenus` here the two messages would race in the
-        // tokio scheduler — sometimes the close-all arrives
-        // *after* the settings-open and slams Settings back off
-        // half a frame after it appears. Skipping the post-close
-        // for `settings:*` items lets the section-nav chain own
-        // the visibility transition unambiguously.
+        if alt {
+            // Provider's alt action if any; otherwise fall through
+            // to the regular on_activate so Ctrl+Enter never feels
+            // dead.
+            let alt_fn = self.runtime.borrow().alt_action(&item_clone);
+            match alt_fn {
+                Some(f) => f(),
+                None => (item_clone.on_activate)(),
+            }
+        } else {
+            (item_clone.on_activate)();
+        }
+        // Same auto-close-skip as before: Settings owns its own
+        // visibility transition via the section-nav chain.
         let auto_close = !id.starts_with("settings:");
         if auto_close {
             let _ = self.close_sender.borrow().as_ref().map(|s| s());
@@ -592,11 +802,45 @@ impl AppLauncherModel {
     }
 }
 
-/// `LauncherItem` is intentionally not `Clone` (the runtime hands
-/// ownership to the UI in one go) but the UI does need to clone
-/// items: once for the dynamic box, once for the runtime's
-/// internal sort buffer. This helper centralises the field-wise
-/// copy so future fields don't get forgotten.
+/// (Re)render the category tab strip. Clears the existing children
+/// and stamps one button per category from the runtime, with the
+/// active one carrying the `selected` CSS class. Clicking a button
+/// jumps to that category.
+fn rebuild_category_strip(
+    strip: &gtk::Box,
+    model: &AppLauncherModel,
+    sender: &ComponentSender<AppLauncherModel>,
+) {
+    // Tear down old buttons. GTK4 doesn't ship a `clear()` so we
+    // walk children until first_child is None.
+    while let Some(child) = strip.first_child() {
+        strip.remove(&child);
+    }
+    let categories = model.runtime.borrow().categories();
+    let active = model.active_category.clone();
+    for cat in categories {
+        let btn = gtk::Button::new();
+        let mut classes: Vec<&str> = vec!["app-launcher-category-pill"];
+        if cat.label == active {
+            classes.push("selected");
+        }
+        btn.set_css_classes(&classes);
+        let label = gtk::Label::new(Some(&cat.label));
+        label.set_margin_start(8);
+        label.set_margin_end(8);
+        btn.set_child(Some(&label));
+        let sender_clone = sender.clone();
+        let label_str = cat.label.clone();
+        btn.connect_clicked(move |_| {
+            let _ = sender_clone
+                .input_sender()
+                .send(AppLauncherInput::SelectCategory(label_str.clone()));
+        });
+        strip.append(&btn);
+    }
+}
+
+/// Clone helper for the LauncherItem field set.
 fn clone_launcher_item(src: &LauncherItem) -> LauncherItem {
     LauncherItem {
         id: src.id.clone(),
@@ -611,12 +855,13 @@ fn clone_launcher_item(src: &LauncherItem) -> LauncherItem {
     }
 }
 
-/// Helper a future PR will call from notify-style providers; for
-/// now lives next to the widget so we don't have to grow the
-/// launcher crate with notify-rust dep before there's a real
-/// caller.
-#[allow(dead_code)]
-fn _placeholder_notify_helper() {}
+fn clone_display_item(src: &DisplayItem) -> DisplayItem {
+    DisplayItem {
+        item: clone_launcher_item(&src.item),
+        pinned: src.pinned,
+        quick_key: src.quick_key.clone(),
+    }
+}
 
 /// Thin newtype wrapper that lets us hand a shared `Rc<AppsProvider>`
 /// to the runtime (which wants `Box<dyn Provider>`) while keeping
@@ -648,5 +893,9 @@ impl mshell_launcher::Provider for AppsProviderHandle {
         // AppsProvider uses interior mutability (RefCell) so we
         // can call its mutable-looking ops through &self.
         self.0.refresh();
+    }
+
+    fn category(&self) -> &str {
+        "Apps"
     }
 }

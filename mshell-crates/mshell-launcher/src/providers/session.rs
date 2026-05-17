@@ -206,6 +206,10 @@ impl Provider for SessionProvider {
         "Session"
     }
 
+    fn category(&self) -> &str {
+        "System"
+    }
+
     fn commands(&self) -> Vec<LauncherItem> {
         // Advertised in the bare `>` palette so users discover
         // the session shortcuts without remembering keyword

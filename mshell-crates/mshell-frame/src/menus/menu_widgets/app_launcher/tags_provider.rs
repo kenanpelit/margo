@@ -64,6 +64,10 @@ impl Provider for TagsProvider {
         "Tags"
     }
 
+    fn category(&self) -> &str {
+        "Compositor"
+    }
+
     fn handles_search(&self) -> bool {
         // Don't bleed nine tag rows into the regular app
         // browse. Reach tags via the `tag` prefix.

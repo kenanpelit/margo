@@ -130,6 +130,10 @@ impl Provider for WireplumberProvider {
         "Audio"
     }
 
+    fn category(&self) -> &str {
+        "System"
+    }
+
     fn handles_search(&self) -> bool {
         false
     }

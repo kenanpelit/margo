@@ -128,6 +128,10 @@ impl Provider for CalculatorProvider {
         "Calculator"
     }
 
+    fn category(&self) -> &str {
+        "Run"
+    }
+
     fn search(&self, query: &str) -> Vec<LauncherItem> {
         let trimmed = query.trim();
         if !self.looks_like_math(trimmed) {

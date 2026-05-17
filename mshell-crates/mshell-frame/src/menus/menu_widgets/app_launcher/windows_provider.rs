@@ -150,6 +150,10 @@ impl Provider for WindowsProvider {
         "Windows"
     }
 
+    fn category(&self) -> &str {
+        "Compositor"
+    }
+
     fn handles_command(&self, query: &str) -> bool {
         // Explicit `win` / `windows` prefix as an alternative to
         // the empty-browse + fuzzy access path. Useful when the

@@ -113,6 +113,10 @@ impl Provider for BluetoothProvider {
         "Bluetooth"
     }
 
+    fn category(&self) -> &str {
+        "System"
+    }
+
     fn handles_search(&self) -> bool {
         false
     }

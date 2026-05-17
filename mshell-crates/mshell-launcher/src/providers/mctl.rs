@@ -235,6 +235,10 @@ impl Provider for MctlProvider {
         "Margo"
     }
 
+    fn category(&self) -> &str {
+        "Compositor"
+    }
+
     fn commands(&self) -> Vec<LauncherItem> {
         vec![LauncherItem {
             id: "mctl:palette".into(),

@@ -184,6 +184,10 @@ impl Provider for ProviderListProvider {
         "Providers"
     }
 
+    fn category(&self) -> &str {
+        "Search"
+    }
+
     fn handles_search(&self) -> bool {
         false
     }
