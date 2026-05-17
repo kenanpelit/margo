@@ -8,6 +8,20 @@
 
 ---
 
+## ✅ Bu turun düzeltmeleri
+
+| # | Bulgu | Durum | Commit |
+|---|---|---|---|
+| C1 | matugen `flatten()` sonsuz döngü | ✅ DONE | `bbe9f58` |
+| C2 | CLAUDE.md güncellenmesi | ✅ DONE (yerel — `.gitignore`'da) |
+| H3 | clippy `--fix` sweep | ✅ DONE (37 öneri uygulandı) | `4c2dadf` |
+| H2 | margo/session.rs 21 unwrap | ❌ FALSE POSITIVE — hepsi test kodunda |
+| M4 | compositor.rs panic | ❌ TASARIM — Smithay trait invariant'ı |
+
+**Kalan büyük işler (H1, H2-gerçek, M1, M2)** — odaklanmış ayrı session'lara değer.
+
+---
+
 ## 🔴 CRITICAL — Aktif bug, hemen düzeltilmeli
 
 ### C1. `matugen.rs` — sonsuz döngü riski
