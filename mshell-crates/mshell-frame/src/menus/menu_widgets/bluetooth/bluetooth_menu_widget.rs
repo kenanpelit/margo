@@ -48,7 +48,7 @@ impl Component for BluetoothMenuWidgetModel {
     view! {
         #[root]
         gtk::Box {
-            add_css_class: "audio-out-menu-widget",
+            add_css_class: "bluetooth-menu-widget",
 
             model.revealer_row.widget().clone() {}
         }

@@ -55,6 +55,7 @@
 // 2-col body's nested widgets get card chrome automatically.
 .quick-settings-menu {
   .network-menu-widget,
+  .bluetooth-menu-widget,
   .audio-out-menu-widget,
   .audio-in-menu-widget,
   .power-profiles-menu-widget,
@@ -62,11 +63,19 @@
   .quick-actions-menu-widget,
   .calendar-menu-widget,
   .weather-menu-widget {
-    background-color: var(--surface-variant);
-    color: var(--on-surface-variant);
+    // surface-container reads as a distinct tile against the
+    // menu's deeper surface-container-lowest bg — clearer
+    // separation than surface-variant gave us, matches the
+    // standalone QS visual now used as the canonical reference.
+    // The outline-variant border makes each tile pop even on
+    // theme palettes where surface-container is only a hair
+    // off the menu bg (Dracula-cool variants).
+    background-color: var(--surface-container);
+    color: var(--on-surface);
+    border: 1px solid var(--outline-variant);
     border-radius: var(--radius-widget);
-    padding: 12px 14px;
-    margin: 4px 0;
+    padding: 14px 16px;
+    margin: 6px 0;
   }
 
   // Container widgets — used by the dashboard for the 2-col body
@@ -85,6 +94,15 @@
     padding: 0;
     margin: 0;
   }
+
+  // QuickActions sits in its own tile (the rule above hands it
+  // surface-container chrome). The inner buttons should read as
+  // a compact toolbar inside that tile, not as another set of
+  // chunky cards — strip per-button background + match the
+  // tile's vertical rhythm.
+  .quick-actions-menu-widget {
+    padding: 8px 10px;
+  }
 }
 
 // Dashboard-specific tweaks — applied on top of the
@@ -98,14 +116,14 @@
   }
 
   // The footer Power row (QuickActions) sits flush below the
-  // body — give it a touch more breathing room and a subtle
-  // top border so it reads as a separate band.
+  // body — give it its own card chrome, same as the in-body
+  // QuickActions tile, so it reads as a sibling tile rather
+  // than a borderless transparent strip.
   > box > .quick-actions-menu-widget:last-child {
-    border-top: 1px solid var(--outline-variant);
-    margin-top: 8px;
-    padding-top: 12px;
-    border-radius: 0;
-    background-color: transparent;
+    margin-top: 10px;
+    background-color: var(--surface-container);
+    border-radius: var(--radius-widget);
+    padding: 10px 14px;
   }
 }
 
