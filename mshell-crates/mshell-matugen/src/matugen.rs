@@ -32,13 +32,21 @@ struct ChildWaiter {
 
 impl ChildWaiter {
     fn wait(self) {
-        for line in self.reader.lines().flatten() {
+        // `map_while(Result::ok)` instead of `.flatten()`: if the
+        // underlying `Lines<BufReader<_>>` iterator starts handing
+        // out persistent `Err` (broken pipe, decoded UTF-8 error
+        // mid-stream, …), `flatten()` would spin forever because
+        // the iterator is infinite. `map_while` stops at the first
+        // `Err`, which is the right call here — we're tailing the
+        // child for log lines, so a corrupted stream just means
+        // we drop the rest of the noise.
+        for line in self.reader.lines().map_while(Result::ok) {
             if !line.trim().is_empty() {
                 debug!("matugen: {}", line.trim());
             }
         }
         if let Some(stderr) = self.stderr {
-            for line in BufReader::new(stderr).lines().flatten() {
+            for line in BufReader::new(stderr).lines().map_while(Result::ok) {
                 if !line.trim().is_empty() {
                     debug!("matugen stderr: {}", line.trim());
                 }
