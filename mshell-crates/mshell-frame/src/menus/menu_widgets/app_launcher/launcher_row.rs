@@ -124,16 +124,21 @@ impl Component for LauncherRowModel {
                     },
                 },
 
-                // ★ pin marker — always present in the layout (so the
-                // row width stays stable across pin/unpin) but only
-                // visible when `pinned`. CSS class drives a subtle
-                // accent tint so the star reads as a state badge.
+                // ★ pin marker — always present in the layout (the
+                // glyph reserves the same physical space whether
+                // pinned or not so the row's width is stable
+                // across pin/unpin transitions). Opacity flips the
+                // glyph between visible (pinned) and invisible
+                // (unpinned) — using `set_visible: false` would
+                // collapse the label and shift the rest of the
+                // row right, which the user perceives as the
+                // panel "jittering" during keyboard navigation.
                 #[name = "pin_marker"]
                 gtk::Label {
                     add_css_class: "app-launcher-pin-marker",
                     set_label: "\u{2605}",
                     #[watch]
-                    set_visible: model.pinned,
+                    set_opacity: if model.pinned { 1.0 } else { 0.0 },
                     set_halign: gtk::Align::End,
                     set_valign: gtk::Align::Center,
                     set_margin_start: 8,

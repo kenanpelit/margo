@@ -71,6 +71,15 @@ use relm4::{
 use std::cell::RefCell;
 use std::rc::Rc;
 
+/// Hard outer width of the launcher menu, in pixels. Matches
+/// `config.menus.app_launcher_menu.minimum_width` (410) minus the
+/// menu surface's 20 px-per-side widget_container margin. Used as
+/// the `set_width_request` value on the launcher root box (inlined
+/// as a literal because relm4's `view!` macro can't reference
+/// module-level consts from the macro body).
+#[allow(dead_code)]
+const ROOT_FIXED_WIDTH: i32 = 370;
+
 pub(crate) struct AppLauncherModel {
     dynamic_box: Controller<DynamicBoxModel<DisplayItem, String>>,
     /// Runtime owns the providers + frecency + pins. Wrapped in
@@ -177,19 +186,26 @@ impl Component for AppLauncherModel {
         gtk::Box {
             add_css_class: "app-launcher-menu-widget",
             set_orientation: gtk::Orientation::Vertical,
-            // Lock horizontal sizing so the launcher menu never
-            // jitters between selections. The bind-hint footer
-            // shows 5–8 contextual chips and the category strip
-            // is 8 pills wide — without `hexpand: true` here, the
-            // root's natural width fluctuates as those rows
-            // rebuild, the parent menu re-requests size, and the
-            // whole panel visibly grows/shrinks during keyboard
-            // navigation. Filling the parent allocation (which is
-            // capped at the menu's configured `minimum_width`)
-            // forces every child to lay out inside a stable
-            // box — chips cluster at the left via their own
-            // `halign: Start`, long row names ellipsize, and the
-            // outer width stops moving.
+            // Lock the launcher's outer width so the panel never
+            // jitters between selections, category swaps, or
+            // result-list reloads. The parent menu surface is
+            // configured to `minimum_width = 410` (in
+            // `config.menus.app_launcher_menu.minimum_width`) and
+            // its widget_container adds a 20 px margin on each
+            // side, leaving 370 px for the launcher. Pinning the
+            // root to that exact width — both via
+            // `set_width_request` (floor) and via `hexpand: true`
+            // / `halign: Fill` (so it can't shrink below the
+            // parent allocation either) — gives us a hard outer
+            // dimension. Every inner band (search row, category
+            // strip, result card, binds strip) then lays out
+            // inside that dimension and can't push the menu wider.
+            // 370 = menu.minimum_width (410) − 2 × widget_container
+            // margin (20). See the const ROOT_FIXED_WIDTH below
+            // for the rationale; the literal is inlined here
+            // because relm4's `view!` macro can't see module-level
+            // consts from this position.
+            set_width_request: 370,
             set_hexpand: true,
             set_halign: gtk::Align::Fill,
 
