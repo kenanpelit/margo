@@ -43,6 +43,11 @@ pub enum MenuWidget {
     Screenshots,
     ScreenRecording,
     Spacer(SpacerConfig),
+    /// Combined system-health tile — active power profile, battery
+    /// %, and CPU package temperature in one compact card. Lives
+    /// in the dashboard's right column where each of the three
+    /// metrics was previously its own widget.
+    SystemStatus,
     ThemePicker,
     Wallpaper,
     Weather,
@@ -93,6 +98,7 @@ impl MenuWidget {
             MenuWidget::Screenshots => "Screenshots",
             MenuWidget::ScreenRecording => "Screen Recording",
             MenuWidget::Spacer(_) => "Spacer",
+            MenuWidget::SystemStatus => "System Status",
             MenuWidget::ThemePicker => "Theme Picker",
             MenuWidget::Wallpaper => "Wallpaper",
             MenuWidget::Weather => "Weather",
@@ -140,6 +146,7 @@ impl MenuWidget {
             MenuWidget::Screenshots,
             MenuWidget::ScreenRecording,
             MenuWidget::Spacer(SpacerConfig { size: 16 }),
+            MenuWidget::SystemStatus,
             MenuWidget::ThemePicker,
             MenuWidget::Wallpaper,
             MenuWidget::Weather,

@@ -627,7 +627,13 @@ impl Default for Menus {
                                     MenuWidget::Bluetooth,
                                     MenuWidget::AudioOutput,
                                     MenuWidget::AudioInput,
-                                    MenuWidget::PowerProfiles,
+                                    // SystemStatus replaces the
+                                    // standalone PowerProfiles tile
+                                    // — combines profile + battery
+                                    // + CPU temp in one compact card
+                                    // (per the user's "power profile
+                                    // çok yalnız kalmış" critique).
+                                    MenuWidget::SystemStatus,
                                     MenuWidget::MediaPlayer,
                                     MenuWidget::Spacer(SpacerConfig { size: 12 }),
                                     MenuWidget::QuickActions(QuickActionsConfig {

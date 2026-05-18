@@ -1,0 +1,64 @@
+// Dashboard System tile — three-metric summary card (power
+// profile, battery, CPU temp).
+//
+// Lives in the dashboard's right column where the standalone
+// PowerProfiles widget used to sit alone — replaces it with a
+// compact horizontal trio so the right column reads as a row of
+// glanceable tiles instead of a strip of one-metric rows.
+
+.system-status-menu-widget {
+  // The shared .quick-settings-menu rule above gives the card
+  // its surface-container background, radius, and padding; we
+  // only need per-cell layout here.
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.system-status-cell {
+  // 6px vertical breathing between the icon+value row and the
+  // caption underneath. Each cell shares the same width via the
+  // parent Box's set_homogeneous so the trio aligns visually
+  // even when one metric is wider than the others.
+  padding: 4px 8px;
+
+  // Severity tinting on battery + temp cells. Matches the
+  // cpu-dashboard / margo-tag visual language: calm = inherit,
+  // warn = primary, danger = error.
+  &.warn .system-status-value,
+  &.warn .system-status-icon {
+    color: var(--primary);
+  }
+  &.danger .system-status-value,
+  &.danger .system-status-icon {
+    color: var(--error, #ef4444);
+  }
+}
+
+.system-status-icon {
+  -gtk-icon-size: 18px;
+  color: var(--on-surface);
+}
+
+.system-status-value {
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface);
+  letter-spacing: -0.01em;
+}
+
+.system-status-caption {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--on-surface-variant);
+  opacity: 0.7;
+  letter-spacing: 0.02em;
+}
+
+// Vertical divider rules between cells. GTK4 doesn't paint
+// `border-left` on a Box reliably, so we use a box-shadow inset
+// on the right edge of each cell (the last one masks it via
+// :last-child).
+.system-status-menu-widget .system-status-cell + .system-status-cell {
+  box-shadow: inset 1px 0 0 0 var(--outline-variant);
+}

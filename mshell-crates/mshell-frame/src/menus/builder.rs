@@ -68,6 +68,7 @@ use crate::menus::menu_widgets::session::session_menu_widget::{
     SessionMenuWidgetInit, SessionMenuWidgetModel, SessionMenuWidgetOutput,
 };
 use crate::menus::menu_widgets::spacer::{SpacerInit, SpacerModel};
+use crate::menus::menu_widgets::system_status::{SystemStatusInit, SystemStatusModel};
 use crate::menus::menu_widgets::theme_picker::theme_picker_menu_widget::{
     ThemePickerMenuWidgetInit, ThemePickerMenuWidgetModel,
 };
@@ -252,5 +253,10 @@ pub fn build_widget(
                 .detach(),
         ),
         MenuWidget::Weather => Box::new(WeatherModel::builder().launch(WeatherInit {}).detach()),
+        MenuWidget::SystemStatus => Box::new(
+            SystemStatusModel::builder()
+                .launch(SystemStatusInit {})
+                .detach(),
+        ),
     }
 }
