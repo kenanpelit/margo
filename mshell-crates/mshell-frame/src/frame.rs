@@ -664,7 +664,7 @@ impl Component for Frame {
         let npower_menu = Self::build_menu(&sender, MenuType::Npower);
         let audio_dashboard_menu = Self::build_menu(&sender, MenuType::AudioDashboard);
         let cpu_dashboard_menu = Self::build_menu(&sender, MenuType::CpuDashboard);
-        let bluetooth_menu = Self::build_menu(&sender, MenuType::QuickSettings);
+        let bluetooth_menu = Self::build_menu(&sender, MenuType::Bluetooth);
         let media_player_menu = Self::build_menu(&sender, MenuType::MediaPlayer);
         let session_menu = Self::build_menu(&sender, MenuType::Session);
         let dashboard_menu = Self::build_menu(&sender, MenuType::Dashboard);
