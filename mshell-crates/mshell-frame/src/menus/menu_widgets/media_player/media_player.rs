@@ -96,7 +96,10 @@ impl Component for MediaPlayerModel {
                 #[name = "cover"]
                 gtk::Image {
                     add_css_class: "media-player-cover",
-                    set_pixel_size: 72,
+                    // Bumped from 72 → 96 so the cover reads as
+                    // the visual anchor of the hero rather than
+                    // a thumbnail next to the metadata.
+                    set_pixel_size: 96,
                     set_valign: gtk::Align::Center,
                 },
 

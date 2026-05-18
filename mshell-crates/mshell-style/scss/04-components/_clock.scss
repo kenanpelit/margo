@@ -5,40 +5,50 @@
   font-size: var(--font-bar);
 }
 
-// ── Quick-settings clock hero ───────────────────────────────────
+// ── Quick-settings / dashboard clock hero ──────────────────────
 //
-// Mirrors `.calendar-hero` (primary-bg rounded rectangle) but
-// keeps time as the headline since quick-settings is action-
-// oriented. Used by `menu_widgets/clock.rs` at the top of the
-// quick-settings menu.
+// Re-tuned from a "header" to a "status strip": shorter padding,
+// smaller type, flat accent (no purple wash). The hero now reads
+// as the first row of the panel rather than a giant primary
+// banner. Time stays prominent (it's the headline) but the
+// weekday + date sit tight against it instead of sprawling.
+//
+// The accent treatment is intentionally subtle — a thin primary
+// underline on the bottom edge instead of a full background tint.
+// Keeps the hero from dominating the dashboard's visual weight.
 .qs-clock-hero {
-  background-color: var(--primary);
-  color: var(--on-primary);
+  background-color: var(--surface-container);
+  color: var(--on-surface);
   border-radius: var(--radius-widget);
-  padding: 14px 18px;
-  margin: 4px 0;
+  padding: 10px 14px;
+  margin: 2px 0;
+  // Single-pixel accent strip on the bottom edge — replaces the
+  // full primary fill so the hero reads as compositor chrome,
+  // not as a "big call-to-action" banner.
+  box-shadow: inset 0 -2px 0 0 var(--primary);
 }
 
 .qs-clock-hero-time {
-  font-size: 42px;
-  font-weight: 700;
-  color: var(--on-primary);
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--on-surface);
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 
 .qs-clock-hero-weekday {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--on-primary);
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--on-surface);
+  // No more uppercase — feels less "shouting" at this scale.
+  letter-spacing: 0;
 }
 
 .qs-clock-hero-date {
-  font-size: 12px;
-  color: var(--on-primary);
-  opacity: 0.75;
-  margin-top: 2px;
+  font-size: 11px;
+  color: var(--on-surface-variant);
+  opacity: 0.85;
+  margin-top: 1px;
 }
 
 // ── Quick-settings / dashboard card stack ──────────────────────
@@ -63,23 +73,21 @@
   .quick-actions-menu-widget,
   .calendar-menu-widget,
   .weather-menu-widget {
-    // Tile chrome that mirrors the standalone QS image
-    // (dashbord1.png) — distinct surface-container rectangle,
-    // crisp outline ring, generous padding so the icon + label
-    // sit centred with breathing room.
+    // Tile chrome — surface-container card. Switched from a
+    // crisp inset outline ring to contrast-only separation:
+    // the surface-container value itself is what reads the
+    // tile out from the menu background, no extra ring needed.
+    // Premium UIs tend to use contrast/shadow rather than
+    // borders for card delineation — this drops the "debug UI"
+    // feel from stacking visible rings on every tile.
     //
-    // The outline is drawn with `box-shadow inset` instead of
-    // `border` because GTK4 collapses border on Box widgets
-    // whose child widget already paints to the edge (revealer
-    // rows do this), making the border invisible in the
-    // dashboard 2-col layout. box-shadow paints over the
-    // child's drawing layer so the ring is always visible.
+    // Padding pulled in slightly (12 vs 14) so the dashboard's
+    // 2-col layout doesn't feel sprawling.
     background-color: var(--surface-container);
     color: var(--on-surface);
     border-radius: var(--radius-widget);
-    box-shadow: inset 0 0 0 1px var(--outline-variant);
-    padding: 14px 16px;
-    margin: 6px 0;
+    padding: 12px 14px;
+    margin: 4px 0;
   }
 
   // Container widgets — used by the dashboard for the 2-col body
@@ -101,11 +109,24 @@
 
   // QuickActions sits in its own tile (the rule above hands it
   // surface-container chrome). The inner buttons should read as
-  // a compact toolbar inside that tile, not as another set of
-  // chunky cards — strip per-button background + match the
-  // tile's vertical rhythm.
+  // a compact control-center bar, not a tablet launcher — tight
+  // padding, no extra per-button chunk.
   .quick-actions-menu-widget {
-    padding: 8px 10px;
+    padding: 6px 8px;
+    margin: 2px 0;
+
+    // The inner box that holds the action buttons; pack them
+    // tighter so the row reads as a dense control strip rather
+    // than a sparse launcher grid.
+    > box {
+      column-gap: 4px;
+    }
+
+    button {
+      padding: 6px 8px;
+      min-width: 32px;
+      min-height: 32px;
+    }
   }
 }
 
@@ -124,10 +145,10 @@
   // QuickActions tile, so it reads as a sibling tile rather
   // than a borderless transparent strip.
   > box > .quick-actions-menu-widget:last-child {
-    margin-top: 10px;
+    margin-top: 8px;
     background-color: var(--surface-container);
     border-radius: var(--radius-widget);
-    padding: 10px 14px;
+    padding: 6px 10px;
   }
 }
 
@@ -161,11 +182,11 @@
 }
 
 .calendar-hero-month {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--on-primary);
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
+  // Dropped uppercase + tracking — same rationale as the QS
+  // clock hero. Reads cleaner at compositor-strip scale.
 }
 
 .calendar-hero-weekday {

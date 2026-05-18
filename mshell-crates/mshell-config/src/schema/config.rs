@@ -568,48 +568,44 @@ impl Default for Menus {
                 maximum_height: 0,
             },
             dashboard_menu: Menu {
-                // GNOME-style compound dashboard:
+                // Rebalanced two-column dashboard:
                 //
-                //   ┌── Hero (Clock widget — big time + date) ──┐
+                //   ┌── Hero (compact Clock status strip) ─────┐
                 //   ├── 2-col row ─────────────────────────────┤
-                //   │ ┌─ LEFT ─────┐  ┌─ RIGHT (QS clone) ───┐ │
-                //   │ │ Calendar   │  │ Network              │ │
-                //   │ │ Weather    │  │ Bluetooth            │ │
-                //   │ │ MediaPlayer│  │ AudioOutput          │ │
-                //   │ │            │  │ AudioInput           │ │
-                //   │ │            │  │ PowerProfiles        │ │
-                //   │ │            │  │ Spacer               │ │
-                //   │ │            │  │ QuickActions (toggle)│ │
-                //   │ │            │  │ Spacer               │ │
-                //   │ │            │  │ QuickActions (power) │ │
-                //   │ └────────────┘  └──────────────────────┘ │
+                //   │ ┌─ LEFT (calendar/weather) ┐  ┌─ RIGHT (controls + media) ─┐ │
+                //   │ │ CalendarGrid             │  │ Network                    │ │
+                //   │ │ Weather                  │  │ Bluetooth                  │ │
+                //   │ │                          │  │ AudioOutput                │ │
+                //   │ │                          │  │ AudioInput                 │ │
+                //   │ │                          │  │ PowerProfiles              │ │
+                //   │ │                          │  │ MediaPlayer                │ │
+                //   │ │                          │  │ QuickActions (toggle)      │ │
+                //   │ │                          │  │ QuickActions (power)       │ │
+                //   │ └──────────────────────────┘  └────────────────────────────┘ │
                 //   └──────────────────────────────────────────┘
                 //
-                // Right column is now a verbatim mirror of the
-                // standalone quick_settings_menu widget list
-                // (minus Clock + MediaPlayer, since the Clock hero
-                // and the left-column MediaPlayer already cover
-                // those roles). The previous bottom-of-menu Power
-                // footer is gone — the power QuickActions row now
-                // lives inside the right column itself, matching
-                // QS exactly so the two menus stay in sync.
+                // Compared with the previous layout: MediaPlayer
+                // moved from the left to the right-column bottom.
+                // The left column is now pure "time/date context"
+                // (calendar + weather) so it reads as a focused
+                // information panel; the right column carries all
+                // the actionable controls + the now-rich media
+                // surface as the bottom anchor.
                 position: Position::Top,
                 widgets: vec![
                     // ── Hero band ──
                     MenuWidget::Clock,
-                    MenuWidget::Spacer(SpacerConfig { size: 10 }),
+                    MenuWidget::Spacer(SpacerConfig { size: 8 }),
                     // ── 2-col body ──
                     MenuWidget::Container(ContainerConfig {
                         widgets: vec![
-                            // Left column — uses CalendarGrid (no
-                            // hero band) since the dashboard's
-                            // top Clock widget already fills the
-                            // "big time + date" role.
+                            // Left column = "today at a glance"
+                            // — calendar + weather only. The
+                            // Clock above already covers time.
                             MenuWidget::Container(ContainerConfig {
                                 widgets: vec![
                                     MenuWidget::CalendarGrid,
                                     MenuWidget::Weather,
-                                    MenuWidget::MediaPlayer,
                                 ],
                                 spacing: 10,
                                 orientation: Orientation::Vertical,
@@ -619,13 +615,12 @@ impl Default for Menus {
                                 // two-pane layout.
                                 minimum_width: 400,
                             }),
-                            // Right column = standalone QS clone.
-                            // Keep the widget list in lock-step
-                            // with quick_settings_menu above so
-                            // the two menus render the same tile
-                            // stack (Clock + MediaPlayer skipped —
-                            // covered by the dashboard's hero +
-                            // left column).
+                            // Right column = controls + media.
+                            // Connectivity / audio / power on top,
+                            // media as the bottom anchor (richer
+                            // surface so it deserves the visual
+                            // weight), then the two QuickActions
+                            // bars (toggle + power) tucked under.
                             MenuWidget::Container(ContainerConfig {
                                 widgets: vec![
                                     MenuWidget::Network,
@@ -633,7 +628,8 @@ impl Default for Menus {
                                     MenuWidget::AudioOutput,
                                     MenuWidget::AudioInput,
                                     MenuWidget::PowerProfiles,
-                                    MenuWidget::Spacer(SpacerConfig { size: 20 }),
+                                    MenuWidget::MediaPlayer,
+                                    MenuWidget::Spacer(SpacerConfig { size: 12 }),
                                     MenuWidget::QuickActions(QuickActionsConfig {
                                         widgets: vec![
                                             QuickActionWidget::AirplaneMode,
@@ -642,7 +638,7 @@ impl Default for Menus {
                                             QuickActionWidget::Settings,
                                         ],
                                     }),
-                                    MenuWidget::Spacer(SpacerConfig { size: 20 }),
+                                    MenuWidget::Spacer(SpacerConfig { size: 6 }),
                                     MenuWidget::QuickActions(QuickActionsConfig {
                                         widgets: vec![
                                             QuickActionWidget::Logout,

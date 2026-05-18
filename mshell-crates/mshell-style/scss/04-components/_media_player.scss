@@ -6,22 +6,35 @@
 // mirror of the active MPRIS player.
 
 .media-player-menu-widget {
-  border: solid var(--border-width) var(--outline);
+  // Border dropped — the parent card chrome already provides
+  // separation; doubling it up made the widget feel fenced-in
+  // inside the dashboard's card stack.
   border-radius: var(--radius-widget);
   padding: 8px;
 }
 
 // ── Hero row: album cover + track / artist ──────────────────
 .media-player-hero {
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 
 .media-player-cover {
   border-radius: var(--radius-widget);
-  margin-right: 10px;
+  margin-right: 14px;
   background-color: var(--surface-variant);
-  min-width: 72px;
-  min-height: 72px;
+  // Bumped to 96 to match the Rust set_pixel_size — cover is
+  // the visual anchor of the hero band.
+  min-width: 96px;
+  min-height: 96px;
+}
+
+// Slim the seek bar — the default ok-progress-bar is thicker
+// than the rest of the dashboard typography rhythm reads
+// cleanly with. 4 px trough keeps the value glyph visible but
+// stops dominating the row.
+.media-player-menu-widget .ok-progress-bar {
+  trough { min-height: 4px; border-radius: 999px; }
+  highlight { min-height: 4px; border-radius: 999px; }
 }
 
 // ── Bar pill ────────────────────────────────────────────────
