@@ -32,6 +32,7 @@ const NNOTES_MENU: &str = "nnotes";
 const NIP_MENU: &str = "nip";
 const NNETWORK_MENU: &str = "nnetwork";
 const NPOWER_MENU: &str = "npower";
+const AUDIO_DASHBOARD_MENU: &str = "audio_dashboard";
 const MEDIA_PLAYER_MENU: &str = "media_player";
 const SESSION_MENU: &str = "session";
 const SETTINGS_MENU: &str = "settings";
@@ -83,6 +84,7 @@ pub struct Frame {
     nip_menu: Controller<MenuModel>,
     nnetwork_menu: Controller<MenuModel>,
     npower_menu: Controller<MenuModel>,
+    audio_dashboard_menu: Controller<MenuModel>,
     media_player_menu: Controller<MenuModel>,
     session_menu: Controller<MenuModel>,
     /// Settings panel — uses its own dedicated model (not
@@ -131,6 +133,7 @@ pub enum FrameInput {
     ToggleNipMenu,
     ToggleNnetworkMenu,
     ToggleNpowerMenu,
+    ToggleAudioDashboardMenu,
     ToggleMediaPlayerMenu,
     ToggleSessionMenu,
     ToggleSettingsMenu,
@@ -653,6 +656,7 @@ impl Component for Frame {
         let nip_menu = Self::build_menu(&sender, MenuType::Nip);
         let nnetwork_menu = Self::build_menu(&sender, MenuType::Nnetwork);
         let npower_menu = Self::build_menu(&sender, MenuType::Npower);
+        let audio_dashboard_menu = Self::build_menu(&sender, MenuType::AudioDashboard);
         let media_player_menu = Self::build_menu(&sender, MenuType::MediaPlayer);
         let session_menu = Self::build_menu(&sender, MenuType::Session);
         let dashboard_menu = Self::build_menu(&sender, MenuType::Dashboard);
@@ -821,6 +825,7 @@ impl Component for Frame {
             nip_menu,
             nnetwork_menu,
             npower_menu,
+            audio_dashboard_menu,
             media_player_menu,
             session_menu,
             settings_menu,
@@ -977,6 +982,10 @@ impl Component for Frame {
             }
             FrameInput::ToggleNpowerMenu => {
                 self.toggle_menu(NPOWER_MENU, widgets);
+                self.sync_keyboard_mode(root);
+            }
+            FrameInput::ToggleAudioDashboardMenu => {
+                self.toggle_menu(AUDIO_DASHBOARD_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
             FrameInput::ToggleMediaPlayerMenu => {
@@ -1659,6 +1668,20 @@ impl Frame {
         let nip_menu_widget: Widget = self.nip_menu.widget().clone().upcast();
         let nnetwork_menu_widget: Widget = self.nnetwork_menu.widget().clone().upcast();
         let npower_menu_widget: Widget = self.npower_menu.widget().clone().upcast();
+        // AudioDashboard menu position read directly from config
+        // to avoid threading it through the already 19-arg
+        // RepositionMenus signature. Position changes via settings
+        // hot-reload won't pick up until the next restart, but
+        // the menu pins to its default Top position which is the
+        // target users actually want.
+        let audio_dashboard_menu_widget: Widget =
+            self.audio_dashboard_menu.widget().clone().upcast();
+        let audio_dashboard_menu_position = mshell_config::config_manager::config_manager()
+            .config()
+            .menus()
+            .audio_dashboard_menu()
+            .position()
+            .get();
         let media_player_menu_widget: Widget =
             self.media_player_menu.widget().clone().upcast();
         let session_menu_widget: Widget = self.session_menu.widget().clone().upcast();
@@ -1756,6 +1779,12 @@ impl Frame {
         );
         Self::add_to_stack(
             widgets,
+            &audio_dashboard_menu_widget,
+            AUDIO_DASHBOARD_MENU,
+            &audio_dashboard_menu_position,
+        );
+        Self::add_to_stack(
+            widgets,
             &media_player_menu_widget,
             MEDIA_PLAYER_MENU,
             &media_player_menu_position,
@@ -1845,6 +1874,7 @@ impl Frame {
                 BarOutput::NipClicked => FrameInput::ToggleNipMenu,
                 BarOutput::NnetworkClicked => FrameInput::ToggleNnetworkMenu,
                 BarOutput::NpowerClicked => FrameInput::ToggleNpowerMenu,
+                BarOutput::AudioDashboardClicked => FrameInput::ToggleAudioDashboardMenu,
                 BarOutput::MediaPlayerClicked => FrameInput::ToggleMediaPlayerMenu,
                 BarOutput::MargoLayoutClicked => FrameInput::ToggleMargoLayoutMenu,
                 BarOutput::CloseMenu => FrameInput::CloseMenus,

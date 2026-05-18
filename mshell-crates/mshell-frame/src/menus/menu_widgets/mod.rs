@@ -1,4 +1,5 @@
 pub(crate) mod app_launcher;
+pub(crate) mod audio_dashboard_menu;
 pub(crate) mod audio_in;
 pub(crate) mod audio_out;
 pub(crate) mod bluetooth;

@@ -400,6 +400,7 @@ pub struct Menus {
     pub nip_menu: Menu,
     pub nnetwork_menu: Menu,
     pub npower_menu: Menu,
+    pub audio_dashboard_menu: Menu,
     pub media_player_menu: Menu,
     pub session_menu: Menu,
     /// Settings panel — embeds in the frame's menu stack instead
@@ -542,6 +543,12 @@ impl Default for Menus {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::Npower],
                 minimum_width: 360,
+                maximum_height: 0,
+            },
+            audio_dashboard_menu: Menu {
+                position: Position::Top,
+                widgets: vec![MenuWidget::AudioDashboardMenu],
+                minimum_width: 400,
                 maximum_height: 0,
             },
             media_player_menu: Menu {

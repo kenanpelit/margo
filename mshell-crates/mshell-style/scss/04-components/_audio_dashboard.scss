@@ -1,11 +1,12 @@
-// Audio Dashboard bar pill + popover surface.
+// Audio Dashboard bar pill + layer-shell menu surface.
 //
-// Visual language follows the CPU Dashboard pill: chip chrome
-// from `ok-button-surface` + `ok-bar-widget`, inner cluster that
-// hosts the metric pairs, severity-friendly tinting (none today
-// — audio doesn't have a clear "danger" threshold), and a wide
-// Popover with sectioned controls.
+// The pill follows the standard ok-button-surface chrome
+// (matches CpuDashboard, npower, npodman, etc.). The menu is a
+// dedicated `audio-dashboard-menu` surface in the layer-shell
+// stack so it opens anchored to the bar, not as a free-floating
+// popover window.
 
+// ── Bar pill ──────────────────────────────────────────────────
 .audio-dashboard-bar-widget {
   transition: color 180ms ease-in-out;
 }
@@ -24,9 +25,11 @@
   opacity: 0.4;
 }
 
-// ── Popover surface ────────────────────────────────────────────
-.audio-dashboard-menu {
-  > contents { padding: 0; }
+// ── Menu surface ──────────────────────────────────────────────
+.audio-dashboard-menu-widget {
+  // Already wrapped in the standard menu surface (rounded
+  // background + outline from the menu chrome), so only worry
+  // about the inner section rhythm here.
 }
 
 .audio-dashboard-section-label {
@@ -35,7 +38,6 @@
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--on-surface-variant);
-  margin-top: 4px;
 }
 
 .audio-dashboard-icon {
@@ -51,11 +53,10 @@
   letter-spacing: -0.01em;
 }
 
-// Mute toggle button — flat, no chrome, hover gives the same
-// primary tint the bar pills use.
+// Mute toggle button — flat, no chrome, hover = primary tint.
 .audio-dashboard-mute-button {
   all: unset;
-  padding: 4px 6px;
+  padding: 6px 8px;
   border-radius: var(--radius-widget);
   transition: background-color 180ms;
 
@@ -64,7 +65,7 @@
   }
 }
 
-// Slim GTK4 scale matching the CompactAudio menu widget.
+// Slim GTK4 scale matching the rest of the dashboard rhythm.
 .audio-dashboard-slider {
   trough {
     min-height: 4px;
@@ -77,34 +78,64 @@
     background-color: var(--primary);
   }
   slider {
-    min-width: 12px;
-    min-height: 12px;
+    min-width: 14px;
+    min-height: 14px;
     border-radius: 999px;
     background-color: var(--primary);
-    margin: -4px;
+    margin: -5px;
   }
 }
 
-// Device picker list — flat rows that highlight on hover and
-// show a check icon on the currently-active device.
+// ── Device picker list ───────────────────────────────────────
+//
+// Each row is a flat Button that strips its default chrome and
+// uses surface-variant on hover. The currently-active default
+// device gets the primary fill + on-primary text so it reads as
+// "this is the one in use".
+
 .audio-dashboard-device-list {
-  margin-top: 4px;
+  margin-top: 6px;
+  margin-bottom: 2px;
 }
 
 .audio-dashboard-device-row {
   all: unset;
-  padding: 6px 10px;
+  padding: 8px 12px;
   border-radius: var(--radius-widget);
   font-size: 12px;
   color: var(--on-surface);
-  transition: background-color 180ms;
+  transition: background-color 160ms, color 160ms;
+  cursor: pointer;
 
   &:hover {
-    background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
+    background-color: unquote("color-mix(in srgb, var(--primary) 12%, transparent)");
   }
+
+  // Active default device — solid primary tint.
+  &.active {
+    background-color: var(--primary);
+    color: var(--on-primary);
+
+    .audio-dashboard-device-label,
+    .audio-dashboard-device-icon,
+    .audio-dashboard-device-check {
+      color: var(--on-primary);
+    }
+  }
+}
+
+.audio-dashboard-device-icon {
+  -gtk-icon-size: 14px;
+  color: var(--on-surface-variant);
+  opacity: 0.85;
+}
+
+.audio-dashboard-device-label {
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .audio-dashboard-device-check {
   -gtk-icon-size: 14px;
-  color: var(--primary);
+  color: var(--on-primary);
 }
