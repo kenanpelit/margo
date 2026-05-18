@@ -142,62 +142,52 @@
     align-items: flex-start;
   }
 
-  // ── Left column visual merges (Daily Overview group) ────
+  // ── Visual merges via adjacent-sibling selectors ──────
   //
-  // Calendar (CalendarGrid) + Weather are stacked in the left
-  // column and conceptually both "today at a glance" — merge
-  // them into one visual card by stripping their inter-card
-  // gap, sharing the surface-container fill, and rounding only
-  // the outer corners. A faint top-rule on Weather separates
-  // the two regions inside the merged surface.
+  // GTK4's CSS engine doesn't support :has(), so we can only
+  // style the LATER widget in a pair. The earlier widget's
+  // bottom corners get squared off via a dashboard-scoped
+  // descendant rule below — it's safe because the dashboard
+  // config always pairs these widgets the same way.
   //
-  // The selector keys on adjacent-sibling (`+`) so the rule
-  // only fires when the two widgets actually sit next to each
-  // other; if the user reorders the dashboard config the merge
-  // gracefully falls back to two separate cards.
+  // Each pair: kill the inter-card gap, square the touching
+  // corners, paint a faint 1 px top-rule on the lower widget
+  // so the seam reads as one card with an internal divider.
+
+  // Calendar + Weather (left column "Daily Overview").
   .calendar-menu-widget + .weather-menu-widget {
     margin-top: 0;
     border-top-left-radius: 0;
     border-top-right-radius: 0;
     box-shadow: inset 0 1px 0 0 var(--outline-variant);
   }
-  .calendar-menu-widget:has(+ .weather-menu-widget) {
-    margin-bottom: 0;
-    border-bottom-left-radius: 0;
-    border-bottom-right-radius: 0;
-  }
 
-  // ── Right-column audio cluster merge ────────────────────
-  //
-  // AudioOutput (sink) + AudioInput (source) are conceptually
-  // one "Audio" panel — merge them the same way as the Daily
-  // Overview pair above so the right column reads as 4 logical
-  // tiles instead of 6.
+  // AudioOutput + AudioInput (right column "Audio").
   .audio-out-menu-widget + .audio-in-menu-widget {
     margin-top: 0;
     border-top-left-radius: 0;
     border-top-right-radius: 0;
     box-shadow: inset 0 1px 0 0 var(--outline-variant);
   }
-  .audio-out-menu-widget:has(+ .audio-in-menu-widget) {
-    margin-bottom: 0;
-    border-bottom-left-radius: 0;
-    border-bottom-right-radius: 0;
-  }
 
-  // ── Network + Bluetooth (Connectivity) merge ────────────
-  //
-  // Both are toggle-style widgets for "what am I connected to"
-  // — merge into a single Connectivity surface so the top of
-  // the right column doesn't repeat the same "row with a chip
-  // on it" shape three times in a row.
+  // Network + Bluetooth (right column "Connectivity").
   .network-menu-widget + .bluetooth-menu-widget {
     margin-top: 0;
     border-top-left-radius: 0;
     border-top-right-radius: 0;
     box-shadow: inset 0 1px 0 0 var(--outline-variant);
   }
-  .network-menu-widget:has(+ .bluetooth-menu-widget) {
+
+  // Earlier-widget bottom-corner squareoff. Since :has() is
+  // out, target by structural assumption — in the dashboard
+  // config these widgets are always followed by their pair,
+  // so it's safe to always round-off their bottom corners.
+  // (For the standalone QS menu the same widgets are NOT
+  // paired this way; the `.dashboard-menu` scope is what
+  // keeps this from leaking there.)
+  .calendar-menu-widget,
+  .audio-out-menu-widget,
+  .network-menu-widget {
     margin-bottom: 0;
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
