@@ -33,3 +33,24 @@
         padding: 4px 6px;
     }
 }
+
+// Theme-coloured hover for bar pills.
+//
+// The base `ok-button-surface` mixin in 03-primitives paints hover
+// as `color-mix(--on-surface 8%, --surface)` — a near-white tint
+// that reads flat against the bar. We re-tint that hover step with
+// the matugen `--primary` accent so the pill picks up the user's
+// chosen colour scheme on cursor-over without overshooting it.
+//
+// 14 % accent keeps it readable on both light and dark themes;
+// raising it past ~20 % makes light themes hard to look at.
+//
+// Targets:
+//   - the outer Box (when it carries `.ok-button-surface`, as on
+//     npodman / nnetwork / cpu-dashboard / sysstat / etc)
+//   - the inner `.ok-button-flat` Button so the pill animates as
+//     one surface when the cursor enters either layer
+.ok-bar-widget.ok-button-surface:hover,
+.ok-bar-widget > button.ok-button-flat:hover {
+    background-color: unquote("color-mix(in srgb, var(--primary) 14%, var(--surface))");
+}

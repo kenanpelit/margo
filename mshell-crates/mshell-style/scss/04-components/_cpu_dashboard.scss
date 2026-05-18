@@ -18,13 +18,23 @@
   transition: color 180ms ease-in-out;
 }
 
+// Targeting `label` + `image` inside the cluster (not just the
+// cluster Box) is load-bearing here: the primitive
+// `.ok-button-surface label { color: var(--on-surface) }` rule
+// in 03-primitives/_buttons.scss has higher specificity than a
+// plain `color` on the cluster Box, so the labels would never
+// repaint. Hitting `label` / `image` directly with the .warn
+// / .danger ladder bumps specificity past the surface rule.
 .cpu-dashboard-bar-cluster {
-  transition: color 180ms ease-in-out;
-
-  &.warn {
+  label, image {
+    transition: color 180ms ease-in-out;
+  }
+  &.warn label,
+  &.warn image {
     color: var(--primary);
   }
-  &.danger {
+  &.danger label,
+  &.danger image {
     color: var(--error, #ef4444);
   }
 }

@@ -49,8 +49,7 @@ impl Component for CpuMonitorModel {
     view! {
         #[root]
         gtk::Box {
-            add_css_class: "sysstat-bar-widget",
-            add_css_class: "cpu",
+            set_css_classes: &["ok-button-surface", "ok-bar-widget", "sysstat-bar-widget", "cpu"],
             set_hexpand: model._orientation == Orientation::Vertical,
             set_vexpand: model._orientation == Orientation::Horizontal,
             set_halign: gtk::Align::Center,
@@ -138,8 +137,7 @@ impl Component for RamMonitorModel {
     view! {
         #[root]
         gtk::Box {
-            add_css_class: "sysstat-bar-widget",
-            add_css_class: "ram",
+            set_css_classes: &["ok-button-surface", "ok-bar-widget", "sysstat-bar-widget", "ram"],
             set_hexpand: model._orientation == Orientation::Vertical,
             set_vexpand: model._orientation == Orientation::Horizontal,
             set_halign: gtk::Align::Center,
@@ -219,8 +217,7 @@ impl Component for TempMonitorModel {
     view! {
         #[root]
         gtk::Box {
-            add_css_class: "sysstat-bar-widget",
-            add_css_class: "temp",
+            set_css_classes: &["ok-button-surface", "ok-bar-widget", "sysstat-bar-widget", "temp"],
             set_hexpand: model._orientation == Orientation::Vertical,
             set_vexpand: model._orientation == Orientation::Horizontal,
             set_halign: gtk::Align::Center,
