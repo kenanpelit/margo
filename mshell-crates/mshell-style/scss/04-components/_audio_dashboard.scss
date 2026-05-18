@@ -1,0 +1,110 @@
+// Audio Dashboard bar pill + popover surface.
+//
+// Visual language follows the CPU Dashboard pill: chip chrome
+// from `ok-button-surface` + `ok-bar-widget`, inner cluster that
+// hosts the metric pairs, severity-friendly tinting (none today
+// — audio doesn't have a clear "danger" threshold), and a wide
+// Popover with sectioned controls.
+
+.audio-dashboard-bar-widget {
+  transition: color 180ms ease-in-out;
+}
+
+.audio-dashboard-bar-cluster {
+  transition: color 180ms ease-in-out;
+}
+
+.audio-dashboard-bar-label {
+  font-size: var(--font-bar);
+  font-variant-numeric: tabular-nums;
+}
+
+.audio-dashboard-bar-sep {
+  font-size: var(--font-bar);
+  opacity: 0.4;
+}
+
+// ── Popover surface ────────────────────────────────────────────
+.audio-dashboard-menu {
+  > contents { padding: 0; }
+}
+
+.audio-dashboard-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
+  margin-top: 4px;
+}
+
+.audio-dashboard-icon {
+  -gtk-icon-size: 16px;
+  color: var(--on-surface-variant);
+}
+
+.audio-dashboard-value {
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface);
+  letter-spacing: -0.01em;
+}
+
+// Mute toggle button — flat, no chrome, hover gives the same
+// primary tint the bar pills use.
+.audio-dashboard-mute-button {
+  all: unset;
+  padding: 4px 6px;
+  border-radius: var(--radius-widget);
+  transition: background-color 180ms;
+
+  &:hover {
+    background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
+  }
+}
+
+// Slim GTK4 scale matching the CompactAudio menu widget.
+.audio-dashboard-slider {
+  trough {
+    min-height: 4px;
+    border-radius: 999px;
+    background-color: var(--surface-container-high);
+  }
+  highlight {
+    min-height: 4px;
+    border-radius: 999px;
+    background-color: var(--primary);
+  }
+  slider {
+    min-width: 12px;
+    min-height: 12px;
+    border-radius: 999px;
+    background-color: var(--primary);
+    margin: -4px;
+  }
+}
+
+// Device picker list — flat rows that highlight on hover and
+// show a check icon on the currently-active device.
+.audio-dashboard-device-list {
+  margin-top: 4px;
+}
+
+.audio-dashboard-device-row {
+  all: unset;
+  padding: 6px 10px;
+  border-radius: var(--radius-widget);
+  font-size: 12px;
+  color: var(--on-surface);
+  transition: background-color 180ms;
+
+  &:hover {
+    background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
+  }
+}
+
+.audio-dashboard-device-check {
+  -gtk-icon-size: 14px;
+  color: var(--primary);
+}

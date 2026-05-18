@@ -27,6 +27,7 @@ pub(crate) enum BarPillKind {
     ActiveWindow,
     AudioInput,
     AudioOutput,
+    AudioDashboard,
     Battery,
     Bluetooth,
     DarkMode,
@@ -58,6 +59,7 @@ impl BarPillKind {
             Self::ActiveWindow => "Active Window",
             Self::AudioInput => "Audio Input",
             Self::AudioOutput => "Audio Output",
+            Self::AudioDashboard => "Audio Dashboard",
             Self::Battery => "Battery",
             Self::Bluetooth => "Bluetooth",
             Self::DarkMode => "Dark Mode Toggle",
@@ -96,6 +98,9 @@ impl BarPillKind {
             }
             Self::AudioOutput => {
                 "Speaker volume + mute toggle. Click opens the audio-output menu to pick a sink device."
+            }
+            Self::AudioDashboard => {
+                "Combined audio pill: default output and input volumes + icons on one chip. Right-click cycles Both / Output-only / Input-only. Click opens a Popover with sliders, mute toggles, and device pickers for both sides."
             }
             Self::Battery => {
                 "Charge percentage + charging state. Right-click flips between percentage label and minimal icon-only."

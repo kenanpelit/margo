@@ -439,6 +439,11 @@ impl BarModel {
                     .launch(AudioOutputInit {})
                     .detach(),
             ),
+            BarWidget::AudioDashboard => Box::new(
+                crate::bars::bar_widgets::audio_dashboard::AudioDashboardModel::builder()
+                    .launch(crate::bars::bar_widgets::audio_dashboard::AudioDashboardInit {})
+                    .detach(),
+            ),
             BarWidget::ActiveWindow => Box::new(
                 ActiveWindowModel::builder()
                     .launch(ActiveWindowInit {})

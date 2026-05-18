@@ -699,6 +699,7 @@ impl Component for SettingsWindowModel {
             WidgetEntry::Pill { kind: BarPillKind::ActiveWindow, stack_name: "pill_active_window", label: "Active Window", icon: "window-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::AudioInput, stack_name: "pill_audio_input", label: "Audio Input", icon: "microphone-sensitivity-medium-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::AudioOutput, stack_name: "pill_audio_output", label: "Audio Output", icon: "audio-volume-medium-symbolic" },
+            WidgetEntry::Pill { kind: BarPillKind::AudioDashboard, stack_name: "pill_audio_dashboard", label: "Audio Dashboard", icon: "audio-volume-high-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::Battery, stack_name: "pill_battery", label: "Battery", icon: "battery-good-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::Bluetooth, stack_name: "pill_bluetooth", label: "Bluetooth", icon: "bluetooth-active-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::DarkMode, stack_name: "pill_dark_mode", label: "Dark Mode Toggle", icon: "weather-clear-night-symbolic" },

@@ -7,6 +7,12 @@ pub enum BarWidget {
     ActiveWindow,
     AudioInput,
     AudioOutput,
+    /// Combined audio dashboard pill — surfaces both default
+    /// output (sink) and default input (source) volumes in one
+    /// cluster with right-click cycle (Both/OutputOnly/InputOnly).
+    /// Click opens a Popover with sliders, mute toggles, and
+    /// device pickers for both sides.
+    AudioDashboard,
     Battery,
     Bluetooth,
     Clipboard,
@@ -83,6 +89,7 @@ impl BarWidget {
             BarWidget::ActiveWindow => "Active Window",
             BarWidget::AudioInput => "Audio Input",
             BarWidget::AudioOutput => "Audio Output",
+            BarWidget::AudioDashboard => "Audio Dashboard",
             BarWidget::Battery => "Battery",
             BarWidget::Bluetooth => "Bluetooth",
             BarWidget::Clipboard => "Clipboard",
