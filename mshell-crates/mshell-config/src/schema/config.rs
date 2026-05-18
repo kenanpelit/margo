@@ -618,11 +618,11 @@ impl Default for Menus {
                                 minimum_width: 400,
                             }),
                             // Right column = controls + media.
-                            // Connectivity / audio / power on top,
+                            // Connectivity / audio / system on top,
                             // media as the bottom anchor (richer
                             // surface so it deserves the visual
-                            // weight), then the two QuickActions
-                            // bars (toggle + power) tucked under.
+                            // weight). QuickActions moved out to
+                            // the dashboard root bottom row.
                             MenuWidget::Container(ContainerConfig {
                                 widgets: vec![
                                     MenuWidget::Network,
@@ -637,24 +637,6 @@ impl Default for Menus {
                                     // çok yalnız kalmış" critique).
                                     MenuWidget::SystemStatus,
                                     MenuWidget::MediaPlayer,
-                                    MenuWidget::Spacer(SpacerConfig { size: 12 }),
-                                    MenuWidget::QuickActions(QuickActionsConfig {
-                                        widgets: vec![
-                                            QuickActionWidget::AirplaneMode,
-                                            QuickActionWidget::Nightlight,
-                                            QuickActionWidget::ColorPicker,
-                                            QuickActionWidget::Settings,
-                                        ],
-                                    }),
-                                    MenuWidget::Spacer(SpacerConfig { size: 6 }),
-                                    MenuWidget::QuickActions(QuickActionsConfig {
-                                        widgets: vec![
-                                            QuickActionWidget::Logout,
-                                            QuickActionWidget::Lock,
-                                            QuickActionWidget::Reboot,
-                                            QuickActionWidget::Shutdown,
-                                        ],
-                                    }),
                                 ],
                                 spacing: 8,
                                 orientation: Orientation::Vertical,
@@ -668,6 +650,29 @@ impl Default for Menus {
                         spacing: 12,
                         orientation: Orientation::Horizontal,
                         minimum_width: 0,
+                    }),
+                    // ── Bottom centred QuickActions strip ──
+                    //
+                    // Both toggle (AirplaneMode / Nightlight /
+                    // ColorPicker / Settings) and power (Logout /
+                    // Lock / Reboot / Shutdown) buttons share one
+                    // horizontal row. QuickActions widget already
+                    // centres itself via `set_align: Center`, so
+                    // sitting at the dashboard root puts it as a
+                    // sibling of the column container — centred
+                    // under the body.
+                    MenuWidget::Spacer(SpacerConfig { size: 10 }),
+                    MenuWidget::QuickActions(QuickActionsConfig {
+                        widgets: vec![
+                            QuickActionWidget::AirplaneMode,
+                            QuickActionWidget::Nightlight,
+                            QuickActionWidget::ColorPicker,
+                            QuickActionWidget::Settings,
+                            QuickActionWidget::Logout,
+                            QuickActionWidget::Lock,
+                            QuickActionWidget::Reboot,
+                            QuickActionWidget::Shutdown,
+                        ],
                     }),
                 ],
                 // 400 (left) + 12 (spacing) + 400 (right) + ~40

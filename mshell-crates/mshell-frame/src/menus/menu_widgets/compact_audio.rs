@@ -245,6 +245,13 @@ impl Component for CompactAudioModel {
                 if self.suppress_output_signal {
                     return;
                 }
+                // Optimistic local update — the wayle write below
+                // is async and the watcher round-trip can take long
+                // enough that the % label visibly lags behind the
+                // dragging finger. Update the model up front so
+                // update_view repaints the label immediately; the
+                // watcher will reconcile if the device clamps/maps.
+                self.output_percent = v;
                 if let Some(d) = &self.output_device {
                     let d = d.clone();
                     glib::spawn_future_local(async move {
@@ -256,6 +263,7 @@ impl Component for CompactAudioModel {
                 if self.suppress_input_signal {
                     return;
                 }
+                self.input_percent = v;
                 if let Some(d) = &self.input_device {
                     let d = d.clone();
                     glib::spawn_future_local(async move {

@@ -13,13 +13,24 @@
 //! Data plumbed from the same wayle services the existing
 //! widgets use, so a state change there propagates here for free.
 
+use mshell_common::WatcherToken;
 use mshell_services::bluetooth_service;
-use mshell_utils::bluetooth::{set_bluetooth_icon, set_bluetooth_label, spawn_bluetooth_devices_watcher};
+use mshell_utils::bluetooth::{
+    set_bluetooth_icon, set_bluetooth_label, spawn_bluetooth_device_watcher,
+    spawn_bluetooth_devices_watcher, spawn_bluetooth_enabled_watcher,
+};
 use mshell_utils::network::{set_network_icon, set_network_label, spawn_network_watcher};
 use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
-pub(crate) struct ConnectivityModel {}
+pub(crate) struct ConnectivityModel {
+    /// Per-device connection-state watchers — re-spawned every
+    /// time the device list changes (paired / unpaired). Without
+    /// these we'd miss individual `connected` flips entirely:
+    /// `spawn_bluetooth_devices_watcher` only fires on list
+    /// add/remove, not on a paired device toggling its connection.
+    bt_device_token: WatcherToken,
+}
 
 #[derive(Debug)]
 pub(crate) enum ConnectivityInput {}
@@ -32,7 +43,11 @@ pub(crate) struct ConnectivityInit {}
 #[derive(Debug)]
 pub(crate) enum ConnectivityCommandOutput {
     NetworkChanged,
-    BluetoothChanged,
+    /// Adapter on/off OR device list changed — refresh + respawn
+    /// the per-device connection watchers.
+    BluetoothStatusChanged,
+    /// Some paired device flipped its `connected` flag.
+    BluetoothConnectionChanged,
 }
 
 #[relm4::component(pub)]
@@ -104,15 +119,29 @@ impl Component for ConnectivityModel {
             || ConnectivityCommandOutput::NetworkChanged,
             || ConnectivityCommandOutput::NetworkChanged,
         );
+        spawn_bluetooth_enabled_watcher(&sender, || {
+            ConnectivityCommandOutput::BluetoothStatusChanged
+        });
         spawn_bluetooth_devices_watcher(&sender, || {
-            ConnectivityCommandOutput::BluetoothChanged
+            ConnectivityCommandOutput::BluetoothStatusChanged
         });
 
-        let model = ConnectivityModel {};
+        let mut model = ConnectivityModel {
+            bt_device_token: WatcherToken::new(),
+        };
         let widgets = view_output!();
 
         apply_network(&widgets);
         apply_bluetooth(&widgets);
+
+        // Initial per-device connection watchers — see model
+        // doc-comment for why this matters.
+        let token = model.bt_device_token.reset();
+        for device in bluetooth_service().devices.get() {
+            spawn_bluetooth_device_watcher(&device, token.clone(), &sender, || {
+                ConnectivityCommandOutput::BluetoothConnectionChanged
+            });
+        }
 
         let _ = root;
         ComponentParts { model, widgets }
@@ -122,12 +151,23 @@ impl Component for ConnectivityModel {
         &mut self,
         widgets: &mut Self::Widgets,
         message: Self::CommandOutput,
-        _sender: ComponentSender<Self>,
+        sender: ComponentSender<Self>,
         _root: &Self::Root,
     ) {
         match message {
             ConnectivityCommandOutput::NetworkChanged => apply_network(widgets),
-            ConnectivityCommandOutput::BluetoothChanged => apply_bluetooth(widgets),
+            ConnectivityCommandOutput::BluetoothStatusChanged => {
+                apply_bluetooth(widgets);
+                // Device list may have grown / shrunk — recycle
+                // the per-device watchers against the new set.
+                let token = self.bt_device_token.reset();
+                for device in bluetooth_service().devices.get() {
+                    spawn_bluetooth_device_watcher(&device, token.clone(), &sender, || {
+                        ConnectivityCommandOutput::BluetoothConnectionChanged
+                    });
+                }
+            }
+            ConnectivityCommandOutput::BluetoothConnectionChanged => apply_bluetooth(widgets),
         }
     }
 }
