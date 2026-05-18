@@ -16,12 +16,33 @@
 //! power-saver = green.
 
 use mshell_services::{battery_service, line_power_service, power_profile_service};
-use mshell_utils::battery::{spawn_battery_online_watcher, spawn_battery_watcher};
+use mshell_utils::battery::{
+    get_battery_icon, get_charging_battery_icon, spawn_battery_online_watcher,
+    spawn_battery_watcher,
+};
 use mshell_utils::power_profile::spawn_active_profile_watcher;
-use relm4::gtk::prelude::{ButtonExt, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, GestureSingleExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use wayle_battery::types::DeviceState;
 use wayle_power_profiles::types::profile::PowerProfile;
+
+/// Visual-mode cycle driven by right-click on the pill.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DisplayMode {
+    Both,
+    BatteryOnly,
+    ProfileOnly,
+}
+
+impl DisplayMode {
+    fn next(self) -> Self {
+        match self {
+            DisplayMode::Both => DisplayMode::BatteryOnly,
+            DisplayMode::BatteryOnly => DisplayMode::ProfileOnly,
+            DisplayMode::ProfileOnly => DisplayMode::Both,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Profile {
@@ -98,11 +119,16 @@ pub(crate) struct PowerState {
 #[derive(Debug)]
 pub(crate) struct NpowerModel {
     state: PowerState,
+    /// Cycles via right-click. Default shows both profile icon
+    /// and battery icon + %. Ephemeral (in-memory only); the
+    /// pill always starts a session in `Both`.
+    mode: DisplayMode,
 }
 
 #[derive(Debug)]
 pub(crate) enum NpowerInput {
     Clicked,
+    CycleMode,
 }
 
 #[derive(Debug)]
@@ -142,11 +168,54 @@ impl Component for NpowerModel {
                     sender.input(NpowerInput::Clicked);
                 },
 
-                #[name="image"]
-                gtk::Image {
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 6,
                     set_halign: gtk::Align::Center,
                     set_valign: gtk::Align::Center,
-                }
+
+                    // ── Profile slot ────────────────────────────
+                    #[name="image"]
+                    gtk::Image {
+                        set_halign: gtk::Align::Center,
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        set_visible: matches!(
+                            model.mode,
+                            DisplayMode::Both | DisplayMode::ProfileOnly,
+                        ),
+                    },
+
+                    // ── Battery slot (icon + percent) ───────────
+                    //
+                    // Wrapped so they show/hide as a unit; a
+                    // dangling % label without its icon would
+                    // look broken.
+                    #[name="battery_slot"]
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 4,
+                        set_halign: gtk::Align::Center,
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        set_visible: matches!(
+                            model.mode,
+                            DisplayMode::Both | DisplayMode::BatteryOnly,
+                        ) && model.state.battery_available,
+
+                        #[name="battery_image"]
+                        gtk::Image {
+                            set_halign: gtk::Align::Center,
+                            set_valign: gtk::Align::Center,
+                        },
+                        #[name="battery_label"]
+                        gtk::Label {
+                            add_css_class: "battery-bar-label",
+                            set_halign: gtk::Align::Center,
+                            set_valign: gtk::Align::Center,
+                        },
+                    },
+                },
             }
         }
     }
@@ -165,23 +234,46 @@ impl Component for NpowerModel {
 
         let model = NpowerModel {
             state: read_power_state(),
+            mode: DisplayMode::Both,
         };
         let widgets = view_output!();
-        apply_visual(&widgets.image, &root, &model.state);
+
+        // Right-click cycles the visible slots: Both → BatteryOnly
+        // → ProfileOnly → Both. Left-click already opens the
+        // npower menu — secondary click is the cycle channel so
+        // we don't fight the primary action.
+        let gesture = gtk::GestureClick::new();
+        gesture.set_button(gtk::gdk::BUTTON_SECONDARY);
+        let sender_clone = sender.clone();
+        gesture.connect_pressed(move |_, _, _, _| {
+            sender_clone.input(NpowerInput::CycleMode);
+        });
+        widgets.button.add_controller(gesture);
+
+        apply_visual(&widgets, &root, &model.state);
         ComponentParts { model, widgets }
     }
 
-    fn update(
+    fn update_with_view(
         &mut self,
+        widgets: &mut Self::Widgets,
         message: Self::Input,
         sender: ComponentSender<Self>,
-        _root: &Self::Root,
+        root: &Self::Root,
     ) {
         match message {
             NpowerInput::Clicked => {
                 let _ = sender.output(NpowerOutput::Clicked);
             }
+            NpowerInput::CycleMode => {
+                self.mode = self.mode.next();
+            }
         }
+        // The state→icon application path also refreshes the
+        // tooltip, so run it on every input even when only the
+        // mode changed — keeps the tooltip's mode hint accurate.
+        apply_visual(widgets, root, &self.state);
+        self.update_view(widgets, sender);
     }
 
     fn update_cmd_with_view(
@@ -196,16 +288,36 @@ impl Component for NpowerModel {
                 let state = read_power_state();
                 if self.state != state {
                     self.state = state;
-                    apply_visual(&widgets.image, root, &self.state);
+                    apply_visual(widgets, root, &self.state);
                 }
             }
         }
     }
 }
 
-fn apply_visual(image: &gtk::Image, root: &gtk::Box, s: &PowerState) {
+fn apply_visual(widgets: &NpowerModelWidgets, root: &gtk::Box, s: &PowerState) {
     let profile = s.profile.unwrap_or(Profile::Unknown);
-    image.set_icon_name(Some(profile.icon()));
+    widgets.image.set_icon_name(Some(profile.icon()));
+
+    // Battery icon + percent label. The slot wrapper's #[watch]
+    // set_visible already hides the cluster when battery is
+    // unavailable, but we still want to write the icon name so
+    // a hot-plugged battery shows up correctly on the next state
+    // change.
+    if let Some(pct) = s.battery_percent {
+        let pct_f = pct as f64;
+        let on_ac = s.power_source == "ac"
+            || s.battery_status == "Charging"
+            || s.battery_status == "Full"
+            || s.battery_status == "Fully charged";
+        let icon = if on_ac {
+            get_charging_battery_icon(pct_f)
+        } else {
+            get_battery_icon(pct_f)
+        };
+        widgets.battery_image.set_icon_name(Some(icon));
+        widgets.battery_label.set_label(&format!("{pct}%"));
+    }
 
     let tooltip = if let Some(err) = &s.error {
         format!("Power: {err}")
@@ -232,6 +344,8 @@ fn apply_visual(image: &gtk::Image, root: &gtk::Box, s: &PowerState) {
                 _ => "unknown",
             }
         ));
+        lines.push(String::new());
+        lines.push("Right-click: cycle display mode".to_string());
         lines.join("\n")
     };
     root.set_tooltip_text(Some(&tooltip));
