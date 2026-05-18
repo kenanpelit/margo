@@ -17,6 +17,7 @@ use crate::menus::menu_widgets::clipboard::clipboard::{
     ClipboardInit, ClipboardModel, ClipboardOutput,
 };
 use crate::menus::menu_widgets::clock::{ClockInit, ClockModel};
+use crate::menus::menu_widgets::compact_audio::{CompactAudioInit, CompactAudioModel};
 use crate::menus::menu_widgets::connectivity::{ConnectivityInit, ConnectivityModel};
 use crate::menus::menu_widgets::container::{ContainerInit, ContainerModel};
 use crate::menus::menu_widgets::daily_overview::{DailyOverviewInit, DailyOverviewModel};
@@ -126,6 +127,11 @@ pub fn build_widget(
             ))
         }
         MenuWidget::Clock => Box::new(ClockModel::builder().launch(ClockInit {}).detach()),
+        MenuWidget::CompactAudio => Box::new(
+            CompactAudioModel::builder()
+                .launch(CompactAudioInit {})
+                .detach(),
+        ),
         MenuWidget::Connectivity => Box::new(
             ConnectivityModel::builder()
                 .launch(ConnectivityInit {})

@@ -6,6 +6,7 @@ pub(crate) mod calendar;
 pub(crate) mod calendar_grid;
 pub(crate) mod clipboard;
 pub(crate) mod clock;
+pub(crate) mod compact_audio;
 pub(crate) mod connectivity;
 pub(crate) mod container;
 pub(crate) mod daily_overview;

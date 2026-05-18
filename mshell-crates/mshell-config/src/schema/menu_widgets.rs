@@ -18,6 +18,11 @@ pub enum MenuWidget {
     CalendarGrid,
     Clipboard,
     Clock,
+    /// Compact two-row Volume + Mic slider tile. Drops the
+    /// revealer-row chrome the standalone AudioOutput +
+    /// AudioInput widgets carry, surfacing just the sliders +
+    /// percentages in a single card.
+    CompactAudio,
     /// Compact horizontal WiFi + Bluetooth status row. Replaces
     /// the stacked Network + Bluetooth widget pair when the
     /// dashboard wants a tighter "connectivity at a glance" view.
@@ -93,6 +98,7 @@ impl MenuWidget {
             MenuWidget::CalendarGrid => "Calendar Grid",
             MenuWidget::Clipboard => "Clipboard",
             MenuWidget::Clock => "Clock",
+            MenuWidget::CompactAudio => "Compact Audio",
             MenuWidget::Connectivity => "Connectivity",
             MenuWidget::Container(_) => "Container",
             MenuWidget::DailyOverview => "Daily Overview",
@@ -144,6 +150,7 @@ impl MenuWidget {
             MenuWidget::CalendarGrid,
             MenuWidget::Clipboard,
             MenuWidget::Clock,
+            MenuWidget::CompactAudio,
             MenuWidget::Connectivity,
             MenuWidget::Container(ContainerConfig::default()),
             MenuWidget::DailyOverview,

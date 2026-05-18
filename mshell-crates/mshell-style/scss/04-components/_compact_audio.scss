@@ -1,0 +1,53 @@
+// Dashboard "Compact Audio" tile — Volume + Mic sliders in one
+// tight card, replacing the standalone AudioOutput + AudioInput
+// widgets when the user wants tighter density.
+
+.compact-audio-menu-widget {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.compact-audio-row {
+  padding: 4px 2px;
+}
+
+.compact-audio-icon {
+  -gtk-icon-size: 16px;
+  color: var(--on-surface-variant);
+  opacity: 0.85;
+}
+
+.compact-audio-caption {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--on-surface);
+  min-width: 56px;
+}
+
+.compact-audio-value {
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface);
+}
+
+// Slim GTK4 scale — match the media player's seek-bar rhythm.
+.compact-audio-slider {
+  trough {
+    min-height: 4px;
+    border-radius: 999px;
+    background-color: var(--surface-container-high);
+  }
+  highlight {
+    min-height: 4px;
+    border-radius: 999px;
+    background-color: var(--primary);
+  }
+  slider {
+    min-width: 12px;
+    min-height: 12px;
+    border-radius: 999px;
+    background-color: var(--primary);
+    margin: -4px;
+  }
+}
