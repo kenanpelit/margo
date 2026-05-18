@@ -12,7 +12,6 @@
 //! underneath, intel finishes off the card.
 
 use crate::menus::menu_widgets::calendar_grid::{CalendarGridInit, CalendarGridModel};
-use crate::menus::menu_widgets::overview_intel::{OverviewIntelInit, OverviewIntelModel};
 use crate::menus::menu_widgets::weather::weather::{WeatherInit, WeatherModel};
 use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
@@ -20,7 +19,6 @@ use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Con
 pub(crate) struct DailyOverviewModel {
     _calendar: Controller<CalendarGridModel>,
     _weather: Controller<WeatherModel>,
-    _intel: Controller<OverviewIntelModel>,
 }
 
 #[derive(Debug)]
@@ -60,21 +58,12 @@ impl Component for DailyOverviewModel {
                 set_orientation: gtk::Orientation::Horizontal,
             },
 
-            // Weather underneath the calendar.
+            // Weather underneath the calendar — intel section
+            // removed at user request ("hava durumunun altından
+            // kaldıralım onu"); alerts now live in a standalone
+            // tile elsewhere in the dashboard config so they're
+            // separated from the date/weather context.
             #[name = "weather_slot"]
-            gtk::Box {
-                add_css_class: "daily-overview-section",
-                set_orientation: gtk::Orientation::Vertical,
-            },
-
-            gtk::Separator {
-                add_css_class: "daily-overview-divider",
-                set_orientation: gtk::Orientation::Horizontal,
-            },
-
-            // Intel bullets at the bottom — matches the user's
-            // mockup where the day summary closes the card.
-            #[name = "intel_slot"]
             gtk::Box {
                 add_css_class: "daily-overview-section",
                 set_orientation: gtk::Orientation::Vertical,
@@ -91,14 +80,10 @@ impl Component for DailyOverviewModel {
             .launch(CalendarGridInit {})
             .detach();
         let weather = WeatherModel::builder().launch(WeatherInit {}).detach();
-        let intel = OverviewIntelModel::builder()
-            .launch(OverviewIntelInit {})
-            .detach();
 
         let model = DailyOverviewModel {
             _calendar: calendar,
             _weather: weather,
-            _intel: intel,
         };
 
         let widgets = view_output!();
@@ -107,7 +92,6 @@ impl Component for DailyOverviewModel {
             .calendar_slot
             .append(model._calendar.widget());
         widgets.weather_slot.append(model._weather.widget());
-        widgets.intel_slot.append(model._intel.widget());
 
         let _ = root;
         ComponentParts { model, widgets }

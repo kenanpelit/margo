@@ -599,16 +599,12 @@ impl Default for Menus {
                     // ── 2-col body ──
                     MenuWidget::Container(ContainerConfig {
                         widgets: vec![
-                            // Left column = "today at a glance"
-                            // — overview intel card on top
-                            // (notifications + battery + thermal
-                            // signals), then calendar + weather.
+                            // Left column = pure "today at a glance"
+                            // — calendar + weather only, no alert
+                            // chatter. The DailyOverview wrapper
+                            // merges them into one tile.
                             MenuWidget::Container(ContainerConfig {
-                                widgets: vec![
-                                    MenuWidget::OverviewIntel,
-                                    MenuWidget::CalendarGrid,
-                                    MenuWidget::Weather,
-                                ],
+                                widgets: vec![MenuWidget::DailyOverview],
                                 spacing: 10,
                                 orientation: Orientation::Vertical,
                                 // Equalised with the right column —
@@ -617,24 +613,21 @@ impl Default for Menus {
                                 // two-pane layout.
                                 minimum_width: 400,
                             }),
-                            // Right column = controls + media.
-                            // Connectivity / audio / system on top,
-                            // media as the bottom anchor (richer
-                            // surface so it deserves the visual
-                            // weight). QuickActions moved out to
-                            // the dashboard root bottom row.
+                            // Right column = controls + media, with
+                            // OverviewIntel pinned at the top so the
+                            // urgency signals (notifications, low
+                            // battery, thermal alerts) sit separate
+                            // from the calendar/weather context
+                            // group on the left.
                             MenuWidget::Container(ContainerConfig {
                                 widgets: vec![
-                                    MenuWidget::Network,
-                                    MenuWidget::Bluetooth,
-                                    MenuWidget::AudioOutput,
-                                    MenuWidget::AudioInput,
+                                    MenuWidget::OverviewIntel,
+                                    MenuWidget::Connectivity,
+                                    MenuWidget::CompactAudio,
                                     // SystemStatus replaces the
                                     // standalone PowerProfiles tile
                                     // — combines profile + battery
-                                    // + CPU temp in one compact card
-                                    // (per the user's "power profile
-                                    // çok yalnız kalmış" critique).
+                                    // + CPU temp in one compact card.
                                     MenuWidget::SystemStatus,
                                     MenuWidget::MediaPlayer,
                                 ],

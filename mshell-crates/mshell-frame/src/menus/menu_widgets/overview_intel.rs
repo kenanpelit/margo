@@ -26,8 +26,6 @@ use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::path::PathBuf;
 use std::time::Duration;
-use time::OffsetDateTime;
-use time::format_description::parse;
 
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
 
@@ -46,7 +44,6 @@ pub(crate) struct OverviewIntelModel {
     has_battery: bool,
     temp_celsius: i32,
     temp_sensor_path: Option<PathBuf>,
-    today_label: String,
     _effects: EffectScope,
 }
 
@@ -82,13 +79,10 @@ impl Component for OverviewIntelModel {
             set_hexpand: true,
             set_spacing: 4,
 
-            // ── Date header ─────────────────────────────────────
-            gtk::Label {
-                add_css_class: "overview-intel-header",
-                #[watch]
-                set_label: model.today_label.as_str(),
-                set_halign: gtk::Align::Start,
-            },
+            // Date header dropped — the Clock hero sitting above
+            // already shows weekday + month-day, so repeating it
+            // here was duplicating compositor chrome. Bullets now
+            // start at the top of the card.
 
             // ── Notifications line ──────────────────────────────
             gtk::Box {
@@ -228,7 +222,6 @@ impl Component for OverviewIntelModel {
             .and_then(read_temp_millideg)
             .map(|t| t / 1000)
             .unwrap_or(0);
-        let today_label = format_today_label();
 
         let model = OverviewIntelModel {
             notification_count,
@@ -237,7 +230,6 @@ impl Component for OverviewIntelModel {
             has_battery,
             temp_celsius,
             temp_sensor_path,
-            today_label,
             _effects: EffectScope::new(),
         };
 
@@ -282,7 +274,6 @@ impl Component for OverviewIntelModel {
                 {
                     self.temp_celsius = t / 1000;
                 }
-                self.today_label = format_today_label();
             }
         }
     }
@@ -338,17 +329,6 @@ fn quiet_summary(model: &OverviewIntelModel) -> String {
         parts.push(format!("{}°C", model.temp_celsius));
     }
     parts.join(" · ")
-}
-
-fn format_today_label() -> String {
-    let now = OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc());
-    let fmt = parse("[weekday repr:long], [month repr:long] [day padding:none]")
-        .ok();
-    if let Some(fmt) = fmt {
-        now.format(&fmt).unwrap_or_default().to_uppercase()
-    } else {
-        String::from("TODAY")
-    }
 }
 
 // ── Battery state helpers ──────────────────────────────────────
