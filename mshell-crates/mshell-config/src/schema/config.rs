@@ -400,8 +400,14 @@ pub struct Menus {
     pub nip_menu: Menu,
     pub nnetwork_menu: Menu,
     pub npower_menu: Menu,
+    // Default-on-missing so older user YAML files (predating
+    // these menu types) still parse — the field falls back to
+    // its Default impl which encodes the right widget + position.
+    #[serde(default = "default_audio_dashboard_menu")]
     pub audio_dashboard_menu: Menu,
+    #[serde(default = "default_cpu_dashboard_menu")]
     pub cpu_dashboard_menu: Menu,
+    #[serde(default = "default_bluetooth_menu")]
     pub bluetooth_menu: Menu,
     pub media_player_menu: Menu,
     pub session_menu: Menu,
@@ -421,6 +427,33 @@ pub struct Menus {
     pub margo_layout_menu: Menu,
     pub left_menu_expansion_type: VerticalMenuExpansion,
     pub right_menu_expansion_type: VerticalMenuExpansion,
+}
+
+fn default_audio_dashboard_menu() -> Menu {
+    Menu {
+        position: Position::Top,
+        widgets: vec![MenuWidget::AudioDashboardMenu],
+        minimum_width: 400,
+        maximum_height: 0,
+    }
+}
+
+fn default_cpu_dashboard_menu() -> Menu {
+    Menu {
+        position: Position::Top,
+        widgets: vec![MenuWidget::CpuDashboardMenu],
+        minimum_width: 380,
+        maximum_height: 0,
+    }
+}
+
+fn default_bluetooth_menu() -> Menu {
+    Menu {
+        position: Position::Top,
+        widgets: vec![MenuWidget::Bluetooth],
+        minimum_width: 400,
+        maximum_height: 0,
+    }
 }
 
 impl Default for Menus {
