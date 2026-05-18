@@ -87,52 +87,47 @@ impl Component for SystemStatusModel {
         #[root]
         gtk::Box {
             add_css_class: "system-status-menu-widget",
-            set_orientation: gtk::Orientation::Horizontal,
+            set_orientation: gtk::Orientation::Vertical,
             set_hexpand: true,
-            set_homogeneous: true,
+            set_spacing: 4,
 
-            // ── Power profile column ────────────────────────────
+            // ── Power profile row ───────────────────────────────
             gtk::Box {
-                add_css_class: "system-status-cell",
-                set_orientation: gtk::Orientation::Vertical,
-                set_spacing: 2,
-                set_halign: gtk::Align::Center,
-                set_valign: gtk::Align::Center,
+                add_css_class: "system-status-row",
+                set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 10,
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 6,
-                    set_halign: gtk::Align::Center,
-
-                    gtk::Image {
-                        add_css_class: "system-status-icon",
-                        #[watch]
-                        set_icon_name: Some(get_power_profile_icon(&model.profile)),
-                    },
-                    gtk::Label {
-                        add_css_class: "system-status-value",
-                        #[watch]
-                        set_label: get_power_profile_label(&model.profile),
-                    },
+                gtk::Image {
+                    add_css_class: "system-status-icon",
+                    #[watch]
+                    set_icon_name: Some(get_power_profile_icon(&model.profile)),
                 },
                 gtk::Label {
                     add_css_class: "system-status-caption",
-                    set_label: "Power Profile",
+                    set_label: "Power Mode",
+                    set_halign: gtk::Align::Start,
+                },
+                // Right-pushed value.
+                gtk::Box {
+                    set_hexpand: true,
+                },
+                gtk::Label {
+                    add_css_class: "system-status-value",
+                    #[watch]
+                    set_label: get_power_profile_label(&model.profile),
+                    set_halign: gtk::Align::End,
                 },
             },
 
-            // ── Battery column ──────────────────────────────────
+            // ── Battery row ─────────────────────────────────────
             gtk::Box {
-                add_css_class: "system-status-cell",
                 #[watch]
                 set_visible: model.has_battery,
-                set_orientation: gtk::Orientation::Vertical,
-                set_spacing: 2,
-                set_halign: gtk::Align::Center,
-                set_valign: gtk::Align::Center,
+                set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 10,
                 #[watch]
                 set_css_classes: &[
-                    "system-status-cell",
+                    "system-status-row",
                     if model.battery_percent <= BATTERY_LOW_PERCENT
                         && !model.battery_charging
                     {
@@ -142,65 +137,60 @@ impl Component for SystemStatusModel {
                     },
                 ],
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 6,
-                    set_halign: gtk::Align::Center,
-
-                    gtk::Image {
-                        add_css_class: "system-status-icon",
-                        #[watch]
-                        set_icon_name: Some(battery_icon_name(
-                            model.battery_percent,
-                            model.battery_charging,
-                        )),
-                    },
-                    gtk::Label {
-                        add_css_class: "system-status-value",
-                        #[watch]
-                        set_label: &format!("{}%", model.battery_percent),
-                    },
+                gtk::Image {
+                    add_css_class: "system-status-icon",
+                    #[watch]
+                    set_icon_name: Some(battery_icon_name(
+                        model.battery_percent,
+                        model.battery_charging,
+                    )),
                 },
                 gtk::Label {
                     add_css_class: "system-status-caption",
                     #[watch]
                     set_label: battery_state_label(model.battery_state, model.battery_charging),
+                    set_halign: gtk::Align::Start,
+                },
+                gtk::Box {
+                    set_hexpand: true,
+                },
+                gtk::Label {
+                    add_css_class: "system-status-value",
+                    #[watch]
+                    set_label: &format!("{}%", model.battery_percent),
+                    set_halign: gtk::Align::End,
                 },
             },
 
-            // ── Temperature column ─────────────────────────────
+            // ── Temperature row ─────────────────────────────────
             gtk::Box {
-                add_css_class: "system-status-cell",
                 #[watch]
                 set_visible: model.temp_sensor_path.is_some(),
-                set_orientation: gtk::Orientation::Vertical,
-                set_spacing: 2,
-                set_halign: gtk::Align::Center,
-                set_valign: gtk::Align::Center,
+                set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 10,
                 #[watch]
                 set_css_classes: &[
-                    "system-status-cell",
+                    "system-status-row",
                     if model.temp_celsius >= TEMP_WARN_CELSIUS { "warn" } else { "calm" },
                 ],
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 6,
-                    set_halign: gtk::Align::Center,
-
-                    gtk::Image {
-                        add_css_class: "system-status-icon",
-                        set_icon_name: Some("temperature-symbolic"),
-                    },
-                    gtk::Label {
-                        add_css_class: "system-status-value",
-                        #[watch]
-                        set_label: &format!("{}°C", model.temp_celsius),
-                    },
+                gtk::Image {
+                    add_css_class: "system-status-icon",
+                    set_icon_name: Some("temperature-symbolic"),
                 },
                 gtk::Label {
                     add_css_class: "system-status-caption",
                     set_label: "CPU Temp",
+                    set_halign: gtk::Align::Start,
+                },
+                gtk::Box {
+                    set_hexpand: true,
+                },
+                gtk::Label {
+                    add_css_class: "system-status-value",
+                    #[watch]
+                    set_label: &format!("{}°C", model.temp_celsius),
+                    set_halign: gtk::Align::End,
                 },
             },
         }

@@ -39,7 +39,9 @@ static WEEKDAY_FORMAT: once_cell::sync::Lazy<Vec<time::format_description::Forma
 
 static DATE_FORMAT: once_cell::sync::Lazy<Vec<time::format_description::FormatItem<'static>>> =
     once_cell::sync::Lazy::new(|| {
-        parse("[month repr:long] [day padding:none], [year repr:full base:calendar]").unwrap()
+        // Compact for the inline `WEEKDAY · MONTH DAY` strip —
+        // dropping the year keeps the hero a single tight line.
+        parse("[month repr:long] [day padding:none]").unwrap()
     });
 
 #[derive(Debug)]
@@ -75,7 +77,7 @@ impl SimpleComponent for ClockModel {
             add_css_class: "qs-clock-hero",
             set_orientation: Orientation::Horizontal,
             set_hexpand: true,
-            set_spacing: 16,
+            set_spacing: 12,
             set_valign: gtk::Align::Center,
 
             gtk::Label {
@@ -86,26 +88,24 @@ impl SimpleComponent for ClockModel {
                 set_halign: gtk::Align::Start,
             },
 
+            // Spacer pushes the date label to the far right.
             gtk::Box {
-                set_orientation: Orientation::Vertical,
                 set_hexpand: true,
+            },
+
+            // Single-line weekday · date — replaces the previous
+            // stacked two-line right block. Reads as a status
+            // strip footer rather than a header.
+            gtk::Label {
+                add_css_class: "qs-clock-hero-meta",
+                #[watch]
+                set_label: &format!(
+                    "{} · {}",
+                    model.weekday_label.to_uppercase(),
+                    model.date_label,
+                ),
                 set_valign: gtk::Align::Center,
                 set_halign: gtk::Align::End,
-                set_spacing: 0,
-
-                gtk::Label {
-                    add_css_class: "qs-clock-hero-weekday",
-                    #[watch]
-                    set_label: model.weekday_label.as_str(),
-                    set_halign: gtk::Align::End,
-                },
-
-                gtk::Label {
-                    add_css_class: "qs-clock-hero-date",
-                    #[watch]
-                    set_label: model.date_label.as_str(),
-                    set_halign: gtk::Align::End,
-                },
             },
         }
     }

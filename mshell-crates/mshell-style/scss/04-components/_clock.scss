@@ -36,19 +36,15 @@
   letter-spacing: -0.01em;
 }
 
-.qs-clock-hero-weekday {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--on-surface);
-  // No more uppercase — feels less "shouting" at this scale.
-  letter-spacing: 0;
-}
-
-.qs-clock-hero-date {
+// Combined single-line weekday · date label that replaces the
+// previous two-line weekday + date stack. Smaller-tracking
+// uppercase reads as a quiet date stamp next to the big time.
+.qs-clock-hero-meta {
   font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
   color: var(--on-surface-variant);
-  opacity: 0.85;
-  margin-top: 1px;
+  font-variant-numeric: tabular-nums;
 }
 
 // ── Quick-settings / dashboard card stack ──────────────────────

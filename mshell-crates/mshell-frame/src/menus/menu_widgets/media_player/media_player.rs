@@ -107,7 +107,13 @@ impl Component for MediaPlayerModel {
                     set_orientation: gtk::Orientation::Vertical,
                     set_hexpand: true,
                     set_valign: gtk::Align::Center,
+                    set_spacing: 4,
 
+                    // Inline `Title — Artist` — single line so the
+                    // hero reads tight against the larger cover.
+                    // When the artist string is empty we just show
+                    // the title (handled in the update fn — both
+                    // fields combine into track_name).
                     #[name = "track_scroll_window"]
                     gtk::ScrolledWindow {
                         set_policy: (gtk::PolicyType::External, gtk::PolicyType::Never),
@@ -116,32 +122,25 @@ impl Component for MediaPlayerModel {
 
                         #[name = "track"]
                         gtk::Label {
-                            add_css_class: "label-small-bold-variant",
+                            add_css_class: "media-player-track",
                             #[watch]
                             set_label: model.track_name.as_str(),
-                            set_xalign: 0.5,
+                            set_xalign: 0.0,
                             set_wrap: false,
                             set_max_width_chars: -1,
                             set_ellipsize: pango::EllipsizeMode::None,
                         },
                     },
 
+                    // Hidden but kept in the tree — the existing
+                    // scroll helper attaches to its hadjustment.
                     #[name = "artist_scroll_window"]
                     gtk::ScrolledWindow {
+                        set_visible: false,
                         set_policy: (gtk::PolicyType::External, gtk::PolicyType::Never),
-                        set_overflow: gtk::Overflow::Hidden,
-                        set_hexpand: true,
 
                         #[name = "artist"]
-                        gtk::Label {
-                            add_css_class: "label-small-bold",
-                            #[watch]
-                            set_label: model.artist_name.as_str(),
-                            set_xalign: 0.5,
-                            set_wrap: false,
-                            set_max_width_chars: -1,
-                            set_ellipsize: pango::EllipsizeMode::None,
-                        },
+                        gtk::Label {},
                     },
                 },
             },
@@ -481,15 +480,19 @@ impl Component for MediaPlayerModel {
                 let title = self.player.metadata.title.get();
                 let artist = self.player.metadata.artist.get();
 
-                if self.track_name != title {
-                    self.track_name = title;
+                // Combine into one inline string — "Title — Artist"
+                // when both, just the title when artist is empty.
+                let combined = if artist.trim().is_empty() {
+                    title.clone()
+                } else {
+                    format!("{title}  —  {artist}")
+                };
+
+                if self.track_name != combined {
+                    self.track_name = combined;
                     widgets.track_scroll_window.hadjustment().set_value(0.0);
                 }
-
-                if self.artist_name != artist {
-                    self.artist_name = artist;
-                    widgets.artist_scroll_window.hadjustment().set_value(0.0);
-                }
+                self.artist_name = artist;
 
                 apply_cover(&widgets.cover, &self.player);
             }

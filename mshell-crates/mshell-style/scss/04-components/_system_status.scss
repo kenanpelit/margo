@@ -1,29 +1,20 @@
-// Dashboard System tile — three-metric summary card (power
-// profile, battery, CPU temp).
+// Dashboard System tile — vertical labeled-value list.
 //
-// Lives in the dashboard's right column where the standalone
-// PowerProfiles widget used to sit alone — replaces it with a
-// compact horizontal trio so the right column reads as a row of
-// glanceable tiles instead of a strip of one-metric rows.
+// Each row: icon + caption on the left, value on the right.
+// Reads as a settings-style key/value list (Power Mode →
+// Performance / Battery → 84% / CPU Temp → 58°C) rather than a
+// horizontal trio of metric blocks.
 
 .system-status-menu-widget {
-  // The shared .quick-settings-menu rule above gives the card
-  // its surface-container background, radius, and padding; we
-  // only need per-cell layout here.
-  padding-top: 8px;
-  padding-bottom: 8px;
+  padding-top: 6px;
+  padding-bottom: 6px;
 }
 
-.system-status-cell {
-  // 6px vertical breathing between the icon+value row and the
-  // caption underneath. Each cell shares the same width via the
-  // parent Box's set_homogeneous so the trio aligns visually
-  // even when one metric is wider than the others.
-  padding: 4px 8px;
+.system-status-row {
+  padding: 4px 2px;
 
-  // Severity tinting on battery + temp cells. Matches the
-  // cpu-dashboard / margo-tag visual language: calm = inherit,
-  // warn = primary, danger = error.
+  // Severity tinting on the value glyph + icon. Calm = inherit
+  // surface text colour; warn = primary accent; danger = error.
   &.warn .system-status-value,
   &.warn .system-status-icon {
     color: var(--primary);
@@ -35,30 +26,22 @@
 }
 
 .system-status-icon {
-  -gtk-icon-size: 18px;
+  -gtk-icon-size: 16px;
+  color: var(--on-surface-variant);
+  opacity: 0.85;
+}
+
+.system-status-caption {
+  font-size: 12px;
+  font-weight: 500;
   color: var(--on-surface);
+  letter-spacing: 0;
 }
 
 .system-status-value {
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--on-surface);
   letter-spacing: -0.01em;
-}
-
-.system-status-caption {
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--on-surface-variant);
-  opacity: 0.7;
-  letter-spacing: 0.02em;
-}
-
-// Vertical divider rules between cells. GTK4 doesn't paint
-// `border-left` on a Box reliably, so we use a box-shadow inset
-// on the right edge of each cell (the last one masks it via
-// :last-child).
-.system-status-menu-widget .system-status-cell + .system-status-cell {
-  box-shadow: inset 1px 0 0 0 var(--outline-variant);
 }
