@@ -6,9 +6,9 @@ use crate::menus::menu_widgets::audio_in::audio_in_menu_widget::{
 use crate::menus::menu_widgets::audio_out::audio_out_menu_widget::{
     AudioOutMenuWidgetInput, AudioOutMenuWidgetModel,
 };
-// BluetoothMenuWidget no longer needs ParentRevealChanged
-// dispatch — the redesigned dashboard-style widget collapses
-// automatically without revealer state to reset.
+use crate::menus::menu_widgets::bluetooth::bluetooth_menu_widget::{
+    BluetoothMenuWidgetInput, BluetoothMenuWidgetModel,
+};
 use crate::menus::menu_widgets::network::network_menu_widget::{
     NetworkMenuWidgetInput, NetworkMenuWidgetModel,
 };
@@ -767,11 +767,14 @@ impl Component for MenuModel {
                             .send(NetworkMenuWidgetInput::ParentRevealChanged(visible))
                             .ok();
                     }
-                    // Bluetooth menu widget no longer carries
-                    // a ParentRevealChanged input (the redesigned
-                    // dashboard-style version doesn't need to
-                    // collapse a revealer on hide). Skip.
-                    let _ = visible;
+                    if let Some(controller) =
+                        controller.downcast_ref::<Controller<BluetoothMenuWidgetModel>>()
+                    {
+                        controller
+                            .sender()
+                            .send(BluetoothMenuWidgetInput::ParentRevealChanged(visible))
+                            .ok();
+                    }
                     if let Some(controller) =
                         controller.downcast_ref::<Controller<AudioOutMenuWidgetModel>>()
                     {
