@@ -133,7 +133,6 @@ pub(crate) enum BarOutput {
     NipClicked,
     NnetworkClicked,
     NpowerClicked,
-    AudioDashboardClicked,
     MediaPlayerClicked,
     /// Margo layout switcher bar pill clicked. Frame catches and
     /// toggles the in-stack MargoLayout menu (replaces the
@@ -443,10 +442,7 @@ impl BarModel {
             BarWidget::AudioDashboard => Box::new(
                 crate::bars::bar_widgets::audio_dashboard::AudioDashboardModel::builder()
                     .launch(crate::bars::bar_widgets::audio_dashboard::AudioDashboardInit {})
-                    .forward(sender.output_sender(), |msg| match msg {
-                        crate::bars::bar_widgets::audio_dashboard::AudioDashboardOutput::Clicked
-                            => BarOutput::AudioDashboardClicked,
-                    }),
+                    .detach(),
             ),
             BarWidget::ActiveWindow => Box::new(
                 ActiveWindowModel::builder()

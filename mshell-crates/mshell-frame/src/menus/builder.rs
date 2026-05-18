@@ -2,9 +2,6 @@ use crate::menus::menu::{MenuModel, MenuOutput};
 use crate::menus::menu_widgets::app_launcher::app_launcher::{
     AppLauncherInit, AppLauncherModel, AppLauncherOutput,
 };
-use crate::menus::menu_widgets::audio_dashboard_menu::audio_dashboard_menu_widget::{
-    AudioDashboardMenuWidgetInit, AudioDashboardMenuWidgetModel,
-};
 use crate::menus::menu_widgets::audio_in::audio_in_menu_widget::{
     AudioInMenuWidgetInit, AudioInMenuWidgetModel,
 };
@@ -107,11 +104,6 @@ pub fn build_widget(
         MenuWidget::AudioOutput => Box::new(
             AudioOutMenuWidgetModel::builder()
                 .launch(AudioOutMenuWidgetInit {})
-                .detach(),
-        ),
-        MenuWidget::AudioDashboardMenu => Box::new(
-            AudioDashboardMenuWidgetModel::builder()
-                .launch(AudioDashboardMenuWidgetInit {})
                 .detach(),
         ),
         MenuWidget::Bluetooth => Box::new(

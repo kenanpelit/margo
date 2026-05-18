@@ -8,11 +8,6 @@ pub enum MenuWidget {
     AppLauncher,
     AudioInput,
     AudioOutput,
-    /// Audio dashboard menu — sliders + mute toggles + clickable
-    /// device pickers for both default output (sink) and default
-    /// input (source). Lives in the layer-shell menu stack so it
-    /// opens contiguous with the bar.
-    AudioDashboardMenu,
     Bluetooth,
     Calendar,
     /// Month grid only — the same `gtk::Calendar` half of the
@@ -93,7 +88,6 @@ impl MenuWidget {
             MenuWidget::AppLauncher => "App Launcher",
             MenuWidget::AudioInput => "Audio Input",
             MenuWidget::AudioOutput => "Audio Output",
-            MenuWidget::AudioDashboardMenu => "Audio Dashboard",
             MenuWidget::Bluetooth => "Bluetooth",
             MenuWidget::Calendar => "Calendar",
             MenuWidget::CalendarGrid => "Calendar Grid",
@@ -145,7 +139,6 @@ impl MenuWidget {
             MenuWidget::AppLauncher,
             MenuWidget::AudioInput,
             MenuWidget::AudioOutput,
-            MenuWidget::AudioDashboardMenu,
             MenuWidget::Bluetooth,
             MenuWidget::Calendar,
             MenuWidget::CalendarGrid,
