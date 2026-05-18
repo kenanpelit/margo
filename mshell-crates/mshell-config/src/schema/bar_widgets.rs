@@ -11,6 +11,14 @@ pub enum BarWidget {
     Bluetooth,
     Clipboard,
     Clock,
+    /// Combined CPU dashboard pill — single chip showing live
+    /// CPU load + package temperature with threshold-driven
+    /// colour states (calm / warn / danger). Left-click opens
+    /// the rich CPU dashboard menu with per-core bars + memory
+    /// + load averages. Replaces the standalone CpuMonitor +
+    /// CpuTemp pills for users who prefer the consolidated chip
+    /// (the originals stay available).
+    CpuDashboard,
     /// Compound clock-style pill that opens the **dashboard** menu
     /// (clock hero + calendar + weather + media player + the QS
     /// tile stack). Shares Clock's `[tempo]` format list — the
@@ -79,6 +87,7 @@ impl BarWidget {
             BarWidget::Bluetooth => "Bluetooth",
             BarWidget::Clipboard => "Clipboard",
             BarWidget::Clock => "Clock",
+            BarWidget::CpuDashboard => "CPU Dashboard",
             BarWidget::Dashboard => "Dashboard",
             BarWidget::DarkMode => "Dark Mode Toggle",
             BarWidget::CpuMonitor => "CPU Load",
@@ -129,6 +138,7 @@ impl BarWidget {
             BarWidget::Bluetooth,
             BarWidget::Clipboard,
             BarWidget::Clock,
+            BarWidget::CpuDashboard,
             BarWidget::Dashboard,
             BarWidget::CpuMonitor,
             BarWidget::CpuTemp,

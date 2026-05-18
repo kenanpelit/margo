@@ -31,7 +31,11 @@ pub(crate) enum BarPillKind {
     Bluetooth,
     DarkMode,
     ColorPicker,
+    CpuDashboard,
+    CpuMonitor,
+    CpuTemp,
     KeepAwake,
+    RamMonitor,
     Lock,
     Logout,
     MargoDock,
@@ -58,7 +62,11 @@ impl BarPillKind {
             Self::Bluetooth => "Bluetooth",
             Self::DarkMode => "Dark Mode Toggle",
             Self::ColorPicker => "ColorPicker",
+            Self::CpuDashboard => "CPU Dashboard",
+            Self::CpuMonitor => "CPU Load",
+            Self::CpuTemp => "CPU Temperature",
             Self::KeepAwake => "Keep Awake",
+            Self::RamMonitor => "RAM Used",
             Self::Lock => "Lock",
             Self::Logout => "Logout",
             Self::MargoDock => "Margo Dock",
@@ -101,6 +109,15 @@ impl BarPillKind {
             Self::ColorPicker => {
                 "Picks a colour from the screen and copies hex/rgb to the clipboard. Click to start picking."
             }
+            Self::CpuDashboard => {
+                "Combined CPU pill: live load % + package temperature on one chip with calm/warn/danger colour states. Click opens a popover with per-core load bars, RAM usage, and load averages."
+            }
+            Self::CpuMonitor => {
+                "Single CPU load percentage. Polls /proc/stat every 2 s. Pair with CPU Temperature for a two-chip view; use CPU Dashboard for the combined alternative."
+            }
+            Self::CpuTemp => {
+                "CPU package temperature in °C. Probes /sys/class/hwmon for coretemp / k10temp / zenpower / acpitz in that order."
+            }
             Self::KeepAwake => {
                 "Toggles the system idle inhibitor. Active = no auto-lock / suspend / dim. Same backend as `mctl idle inhibit`."
             }
@@ -127,6 +144,9 @@ impl BarPillKind {
             Self::Reboot => "Reboots the system. Confirms with a dialog.",
             Self::RecordingIndicator => {
                 "Lights up while a screen-recording is in progress. Click stops the recording."
+            }
+            Self::RamMonitor => {
+                "Used RAM as a percentage of MemTotal (matches `free -h`'s used column). Polls /proc/meminfo every 2 s."
             }
             Self::Shutdown => "Powers off the system. Confirms with a dialog.",
             Self::Tray => {

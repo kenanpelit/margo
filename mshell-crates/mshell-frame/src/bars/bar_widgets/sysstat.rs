@@ -310,6 +310,23 @@ where
     });
 }
 
+/// Public re-export of the cpu-stat reader for `cpu_dashboard.rs`
+/// — keeps a single source of truth for `/proc/stat` parsing
+/// instead of duplicating the column layout.
+pub(crate) fn read_cpu_stat_pub() -> (u64, u64) {
+    read_cpu_stat()
+}
+
+/// Public re-export of the temperature-millideg reader.
+pub(crate) fn read_temp_millideg_pub(path: &std::path::PathBuf) -> Option<i32> {
+    read_temp_millideg(path)
+}
+
+/// Public re-export of the hwmon sensor probe.
+pub(crate) fn find_cpu_temp_sensor_pub() -> Option<std::path::PathBuf> {
+    find_cpu_temp_sensor()
+}
+
 fn read_cpu_stat() -> (u64, u64) {
     let Ok(s) = std::fs::read_to_string("/proc/stat") else {
         return (0, 0);

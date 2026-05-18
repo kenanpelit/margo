@@ -4,6 +4,7 @@ use crate::bars::bar_widgets::battery::{BatteryInit, BatteryModel};
 use crate::bars::bar_widgets::bluetooth::{BluetoothInit, BluetoothModel};
 use crate::bars::bar_widgets::clipboard::{ClipboardInit, ClipboardModel, ClipboardOutput};
 use crate::bars::bar_widgets::clock::{ClockInit, ClockModel, ClockOutput};
+use crate::bars::bar_widgets::cpu_dashboard::{CpuDashboardInit, CpuDashboardModel};
 use crate::bars::bar_widgets::dashboard::{DashboardInit, DashboardModel, DashboardOutput};
 use crate::bars::bar_widgets::dark_mode::{DarkModeInit, DarkModeModel};
 use crate::bars::bar_widgets::keep_awake::{KeepAwakeInit, KeepAwakeModel};
@@ -460,6 +461,11 @@ impl BarModel {
                     .forward(sender.output_sender(), |msg| match msg {
                         ClockOutput::Clicked => BarOutput::ClockClicked,
                     }),
+            ),
+            BarWidget::CpuDashboard => Box::new(
+                CpuDashboardModel::builder()
+                    .launch(CpuDashboardInit { orientation })
+                    .detach(),
             ),
             BarWidget::Dashboard => Box::new(
                 DashboardModel::builder()
