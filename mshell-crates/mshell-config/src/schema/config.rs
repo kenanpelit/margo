@@ -600,10 +600,12 @@ impl Default for Menus {
                     MenuWidget::Container(ContainerConfig {
                         widgets: vec![
                             // Left column = "today at a glance"
-                            // — calendar + weather only. The
-                            // Clock above already covers time.
+                            // — overview intel card on top
+                            // (notifications + battery + thermal
+                            // signals), then calendar + weather.
                             MenuWidget::Container(ContainerConfig {
                                 widgets: vec![
+                                    MenuWidget::OverviewIntel,
                                     MenuWidget::CalendarGrid,
                                     MenuWidget::Weather,
                                 ],

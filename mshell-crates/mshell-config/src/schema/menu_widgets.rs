@@ -36,6 +36,11 @@ pub enum MenuWidget {
     Notifications,
     Npodman,
     Npower,
+    /// Dashboard "what's happening now" summary card — pulls
+    /// notification count, low-battery state, and CPU thermals
+    /// into one glanceable list. Lives at the top of the
+    /// dashboard's left column.
+    OverviewIntel,
     Nufw,
     PowerProfiles,
     QuickActions(QuickActionsConfig),
@@ -91,6 +96,7 @@ impl MenuWidget {
             MenuWidget::Notifications => "Notifications",
             MenuWidget::Npodman => "Podman",
             MenuWidget::Npower => "Power Profile Menu",
+            MenuWidget::OverviewIntel => "Overview Intelligence",
             MenuWidget::Nufw => "UFW Firewall",
             MenuWidget::PowerProfiles => "Power Profiles",
             MenuWidget::QuickActions(_) => "Quick Actions",
@@ -139,6 +145,7 @@ impl MenuWidget {
             MenuWidget::Notifications,
             MenuWidget::Npodman,
             MenuWidget::Npower,
+            MenuWidget::OverviewIntel,
             MenuWidget::Nufw,
             MenuWidget::PowerProfiles,
             MenuWidget::QuickActions(QuickActionsConfig::default()),

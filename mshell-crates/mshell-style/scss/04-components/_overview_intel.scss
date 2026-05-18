@@ -1,0 +1,65 @@
+// Dashboard "Overview Intelligence" tile.
+//
+// Sits at the top of the dashboard's left column — pulls
+// notification count, battery state, and CPU temp signals into
+// a single "what's happening" list. Visual language matches
+// the system-status card: monospace-like rhythm, dot bullets,
+// severity tinting via calm / warn / danger.
+
+.overview-intel-menu-widget {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.overview-intel-header {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--on-surface-variant);
+  opacity: 0.85;
+  margin-bottom: 4px;
+}
+
+.overview-intel-dot {
+  font-size: 8px;
+  color: var(--on-surface-variant);
+  opacity: 0.4;
+  margin-right: 2px;
+}
+
+.overview-intel-line {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--on-surface);
+  font-variant-numeric: tabular-nums;
+
+  // Calm bullet matches surrounding text. Warn pulls the
+  // primary accent so the line lights up but doesn't shout.
+  // Danger pulls error red — the universal "look at me".
+  &.warn {
+    color: var(--primary);
+  }
+  &.danger {
+    color: var(--error, #ef4444);
+    font-weight: 600;
+  }
+}
+
+// Tint the bullet alongside the line so the row reads as one
+// signal rather than a generic-coloured dot next to a coloured
+// label.
+.overview-intel-line.warn ~ .overview-intel-dot,
+.overview-intel-line.warn + .overview-intel-dot {
+  color: var(--primary);
+  opacity: 0.9;
+}
+
+// The "Quiet — nothing urgent" fallback when no alerts fire.
+// Lower-contrast tone so it reads as ambient information, not
+// a status to act on.
+.overview-intel-quiet {
+  font-size: 12px;
+  color: var(--on-surface-variant);
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}

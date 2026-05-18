@@ -52,6 +52,7 @@ use crate::menus::menu_widgets::npodman::npodman_menu_widget::{
 use crate::menus::menu_widgets::nufw::nufw_menu_widget::{
     NufwMenuWidgetInit, NufwMenuWidgetModel,
 };
+use crate::menus::menu_widgets::overview_intel::{OverviewIntelInit, OverviewIntelModel};
 use crate::menus::menu_widgets::power_profile::power_profile_menu_widget::{
     PowerProfileMenuWidgetInit, PowerProfileMenuWidgetModel,
 };
@@ -256,6 +257,11 @@ pub fn build_widget(
         MenuWidget::SystemStatus => Box::new(
             SystemStatusModel::builder()
                 .launch(SystemStatusInit {})
+                .detach(),
+        ),
+        MenuWidget::OverviewIntel => Box::new(
+            OverviewIntelModel::builder()
+                .launch(OverviewIntelInit {})
                 .detach(),
         ),
     }

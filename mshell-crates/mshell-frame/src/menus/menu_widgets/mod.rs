@@ -19,6 +19,7 @@ pub(crate) mod notifications;
 pub(crate) mod npodman;
 pub(crate) mod npower;
 pub(crate) mod nufw;
+pub(crate) mod overview_intel;
 pub(crate) mod power_profile;
 pub(crate) mod quick_action;
 pub(crate) mod screen_record;
