@@ -139,29 +139,42 @@ impl Component for CpuDashboardModel {
     view! {
         #[root]
         gtk::Box {
-            #[watch]
             set_css_classes: &[
+                "ok-button-surface",
+                "ok-bar-widget",
                 "cpu-dashboard-bar-widget",
-                severity_class(model.cpu_percent, model.temp_celsius),
             ],
-            set_hexpand: model._orientation == Orientation::Vertical,
-            set_vexpand: model._orientation == Orientation::Horizontal,
-            set_halign: gtk::Align::Center,
-            set_valign: gtk::Align::Center,
+            set_hexpand: false,
+            set_vexpand: false,
+            set_has_tooltip: true,
 
             #[name = "button"]
             gtk::Button {
-                set_css_classes: &["ok-button-surface", "ok-bar-widget"],
+                set_css_classes: &["ok-button-flat"],
+                set_hexpand: true,
+                set_vexpand: true,
                 connect_clicked[sender] => move |_| {
                     sender.input(CpuDashboardInput::ToggleMenu);
                 },
 
+                // Single cluster carries the severity class so we
+                // tint label + icon together while the outer pill
+                // chrome (`ok-button-surface`) stays exactly like
+                // npodman / nnetwork / ndns.
                 gtk::Box {
                     set_orientation: gtk::Orientation::Horizontal,
                     set_spacing: 6,
+                    set_halign: gtk::Align::Center,
+                    set_valign: gtk::Align::Center,
+                    #[watch]
+                    set_css_classes: &[
+                        "cpu-dashboard-bar-cluster",
+                        severity_class(model.cpu_percent, model.temp_celsius),
+                    ],
 
                     gtk::Image {
                         set_icon_name: Some("computer-symbolic"),
+                        add_css_class: "cpu-dashboard-bar-icon",
                     },
                     gtk::Label {
                         add_css_class: "cpu-dashboard-bar-label",
@@ -176,6 +189,15 @@ impl Component for CpuDashboardModel {
                         add_css_class: "cpu-dashboard-bar-label",
                         #[watch]
                         set_label: &format!("{}°C", model.temp_celsius),
+                    },
+                    gtk::Label {
+                        add_css_class: "cpu-dashboard-bar-sep",
+                        set_label: "·",
+                    },
+                    gtk::Label {
+                        add_css_class: "cpu-dashboard-bar-label",
+                        #[watch]
+                        set_label: &format!("{}%", model.ram_percent),
                     },
                 },
             },
@@ -453,6 +475,19 @@ impl Component for CpuDashboardModel {
                     self.load_5m = b;
                     self.load_15m = c;
                 }
+
+                // ── Tooltip ───────────────────────────────────
+                // Quick at-a-glance summary on hover, mirroring
+                // the npodman pill convention.
+                _root.set_tooltip_text(Some(&format!(
+                    "CPU {}%  ·  Temp {}°C  ·  RAM {}%\nLoad {:.2} / {:.2} / {:.2}",
+                    self.cpu_percent,
+                    self.temp_celsius,
+                    self.ram_percent,
+                    self.load_1m,
+                    self.load_5m,
+                    self.load_15m,
+                )));
             }
             CpuDashboardInput::ToggleMenu => {
                 if widgets.popover.is_visible() {

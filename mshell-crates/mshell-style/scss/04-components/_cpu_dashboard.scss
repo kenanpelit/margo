@@ -1,23 +1,31 @@
-// Combined CPU dashboard pill — single chip with calm/warn/danger
-// colour states + a Popover surface that reuses the same ladder
-// for the hero card and the per-core/RAM progress bars. Lives
-// next to `_battery.scss` in the bar-widget cluster.
+// CPU dashboard bar pill — the pill chrome itself (rounded
+// surface + hover) comes from `ok-button-surface` + `ok-bar-widget`
+// so the pill stays visually aligned with npodman / nnetwork /
+// ndns / etc. We only tint the cluster (icon + labels) per
+// severity:
+//
+//   calm   → inherit standard bar text colour (no override)
+//   warn   → theme primary (Material You accent)
+//   danger → universal error red
+//
+// The hero card and the per-core / RAM progress bars inside
+// the popover use the same ladder so the visual language is
+// consistent end to end.
 
 .cpu-dashboard-bar-widget {
-  // The bar pill itself is the standard ok-button-surface; the
-  // calm/warn/danger CSS classes get applied here so we can tint
-  // the outline ring + label tone independently from the button
-  // press chrome.
-  border-radius: var(--radius-widget);
-  transition: box-shadow 180ms ease-in-out;
+  // No extra ring / box-shadow here — the standard
+  // ok-button-surface chrome already paints the pill.
+  transition: color 180ms ease-in-out;
+}
+
+.cpu-dashboard-bar-cluster {
+  transition: color 180ms ease-in-out;
 
   &.warn {
-    box-shadow: inset 0 0 0 1px var(--tertiary, #f59e0b);
-    .cpu-dashboard-bar-label { color: var(--tertiary, #f59e0b); }
+    color: var(--primary);
   }
   &.danger {
-    box-shadow: inset 0 0 0 1px var(--error, #ef4444);
-    .cpu-dashboard-bar-label { color: var(--error, #ef4444); }
+    color: var(--error, #ef4444);
   }
 }
 
@@ -50,9 +58,9 @@
   transition: background-color 200ms, color 200ms, box-shadow 200ms;
 
   &.warn {
-    background-color: var(--tertiary-container, rgba(245, 158, 11, 0.15));
-    color: var(--on-tertiary-container, #f59e0b);
-    box-shadow: inset 0 0 0 1px var(--tertiary, #f59e0b);
+    background-color: var(--primary-container, rgba(99, 102, 241, 0.15));
+    color: var(--on-primary-container, var(--primary));
+    box-shadow: inset 0 0 0 1px var(--primary);
   }
   &.danger {
     background-color: var(--error-container, rgba(239, 68, 68, 0.15));
@@ -123,6 +131,9 @@
     background-color: var(--primary);
     border: none;
   }
-  &.warn progress { background-color: var(--tertiary, #f59e0b); }
+  // calm intentionally has no override — bars use the primary
+  // accent by default so the surface still reads colourful at
+  // low load. warn keeps the same accent (it *is* the colour
+  // scheme colour); danger switches to red.
   &.danger progress { background-color: var(--error, #ef4444); }
 }
