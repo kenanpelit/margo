@@ -600,11 +600,15 @@ impl Default for Menus {
                     MenuWidget::Container(ContainerConfig {
                         widgets: vec![
                             // Left column = pure "today at a glance"
-                            // — calendar + weather only, no alert
-                            // chatter. The DailyOverview wrapper
-                            // merges them into one tile.
+                            // — calendar and weather as their own
+                            // tiles. (Previously wrapped in a
+                            // DailyOverview merged surface; user
+                            // asked for them separated.)
                             MenuWidget::Container(ContainerConfig {
-                                widgets: vec![MenuWidget::DailyOverview],
+                                widgets: vec![
+                                    MenuWidget::CalendarGrid,
+                                    MenuWidget::Weather,
+                                ],
                                 spacing: 10,
                                 orientation: Orientation::Vertical,
                                 // Equalised with the right column —

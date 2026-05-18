@@ -9,7 +9,6 @@ pub(crate) mod clock;
 pub(crate) mod compact_audio;
 pub(crate) mod connectivity;
 pub(crate) mod container;
-pub(crate) mod daily_overview;
 pub(crate) mod divider;
 pub(crate) mod margo_layout;
 pub(crate) mod media_player;

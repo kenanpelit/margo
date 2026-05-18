@@ -28,11 +28,6 @@ pub enum MenuWidget {
     /// dashboard wants a tighter "connectivity at a glance" view.
     Connectivity,
     Container(ContainerConfig),
-    /// Dashboard left-column tile that bundles CalendarGrid +
-    /// Weather + OverviewIntel into one merged surface — the
-    /// child chromes are stripped via SCSS so they read as
-    /// three segments of one card.
-    DailyOverview,
     Divider,
     /// Margo layout switcher — a vertical list of the 14 layouts
     /// the compositor knows about (tile / scroller / grid /
@@ -101,7 +96,6 @@ impl MenuWidget {
             MenuWidget::CompactAudio => "Compact Audio",
             MenuWidget::Connectivity => "Connectivity",
             MenuWidget::Container(_) => "Container",
-            MenuWidget::DailyOverview => "Daily Overview",
             MenuWidget::Divider => "Divider",
             MenuWidget::MargoLayout => "Margo Layout",
             MenuWidget::MediaPlayer => "Media Player",
@@ -153,7 +147,6 @@ impl MenuWidget {
             MenuWidget::CompactAudio,
             MenuWidget::Connectivity,
             MenuWidget::Container(ContainerConfig::default()),
-            MenuWidget::DailyOverview,
             MenuWidget::Divider,
             MenuWidget::MargoLayout,
             MenuWidget::MediaPlayer,

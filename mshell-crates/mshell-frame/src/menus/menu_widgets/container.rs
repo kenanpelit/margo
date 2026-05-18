@@ -37,6 +37,15 @@ impl SimpleComponent for ContainerModel {
             add_css_class: "container-menu-widget",
             set_orientation: model.orientation,
             set_hexpand: true,
+            // vexpand lets a Container claim parent height — used
+            // by the dashboard's 2-col body so left + right columns
+            // share the same height regardless of which side has
+            // more / taller tiles. Children still pile from the
+            // top in vertical containers; the trailing space in
+            // the shorter column reads as a balanced visual frame
+            // instead of leaving the columns mis-aligned.
+            set_vexpand: true,
+            set_valign: gtk::Align::Fill,
             set_spacing: model.spacing,
             set_width_request: model.minimum_width,
         }
