@@ -33,8 +33,6 @@ const NIP_MENU: &str = "nip";
 const NNETWORK_MENU: &str = "nnetwork";
 const NPOWER_MENU: &str = "npower";
 const AUDIO_DASHBOARD_MENU: &str = "audio_dashboard";
-const CPU_DASHBOARD_MENU: &str = "cpu_dashboard";
-const BLUETOOTH_MENU: &str = "bluetooth";
 const MEDIA_PLAYER_MENU: &str = "media_player";
 const SESSION_MENU: &str = "session";
 const SETTINGS_MENU: &str = "settings";
@@ -87,8 +85,6 @@ pub struct Frame {
     nnetwork_menu: Controller<MenuModel>,
     npower_menu: Controller<MenuModel>,
     audio_dashboard_menu: Controller<MenuModel>,
-    cpu_dashboard_menu: Controller<MenuModel>,
-    bluetooth_menu: Controller<MenuModel>,
     media_player_menu: Controller<MenuModel>,
     session_menu: Controller<MenuModel>,
     /// Settings panel — uses its own dedicated model (not
@@ -138,8 +134,6 @@ pub enum FrameInput {
     ToggleNnetworkMenu,
     ToggleNpowerMenu,
     ToggleAudioDashboardMenu,
-    ToggleCpuDashboardMenu,
-    ToggleBluetoothMenu,
     ToggleMediaPlayerMenu,
     ToggleSessionMenu,
     ToggleSettingsMenu,
@@ -663,8 +657,6 @@ impl Component for Frame {
         let nnetwork_menu = Self::build_menu(&sender, MenuType::Nnetwork);
         let npower_menu = Self::build_menu(&sender, MenuType::Npower);
         let audio_dashboard_menu = Self::build_menu(&sender, MenuType::AudioDashboard);
-        let cpu_dashboard_menu = Self::build_menu(&sender, MenuType::CpuDashboard);
-        let bluetooth_menu = Self::build_menu(&sender, MenuType::QuickSettings);
         let media_player_menu = Self::build_menu(&sender, MenuType::MediaPlayer);
         let session_menu = Self::build_menu(&sender, MenuType::Session);
         let dashboard_menu = Self::build_menu(&sender, MenuType::Dashboard);
@@ -834,8 +826,6 @@ impl Component for Frame {
             nnetwork_menu,
             npower_menu,
             audio_dashboard_menu,
-            cpu_dashboard_menu,
-            bluetooth_menu,
             media_player_menu,
             session_menu,
             settings_menu,
@@ -996,14 +986,6 @@ impl Component for Frame {
             }
             FrameInput::ToggleAudioDashboardMenu => {
                 self.toggle_menu(AUDIO_DASHBOARD_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
-            FrameInput::ToggleCpuDashboardMenu => {
-                self.toggle_menu(CPU_DASHBOARD_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
-            FrameInput::ToggleBluetoothMenu => {
-                self.toggle_menu(BLUETOOTH_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
             FrameInput::ToggleMediaPlayerMenu => {
@@ -1700,22 +1682,6 @@ impl Frame {
             .audio_dashboard_menu()
             .position()
             .get();
-        let cpu_dashboard_menu_widget: Widget =
-            self.cpu_dashboard_menu.widget().clone().upcast();
-        let cpu_dashboard_menu_position = mshell_config::config_manager::config_manager()
-            .config()
-            .menus()
-            .cpu_dashboard_menu()
-            .position()
-            .get();
-        let bluetooth_menu_widget: Widget =
-            self.bluetooth_menu.widget().clone().upcast();
-        let bluetooth_menu_position = mshell_config::config_manager::config_manager()
-            .config()
-            .menus()
-            .bluetooth_menu()
-            .position()
-            .get();
         let media_player_menu_widget: Widget =
             self.media_player_menu.widget().clone().upcast();
         let session_menu_widget: Widget = self.session_menu.widget().clone().upcast();
@@ -1819,18 +1785,6 @@ impl Frame {
         );
         Self::add_to_stack(
             widgets,
-            &cpu_dashboard_menu_widget,
-            CPU_DASHBOARD_MENU,
-            &cpu_dashboard_menu_position,
-        );
-        Self::add_to_stack(
-            widgets,
-            &bluetooth_menu_widget,
-            BLUETOOTH_MENU,
-            &bluetooth_menu_position,
-        );
-        Self::add_to_stack(
-            widgets,
             &media_player_menu_widget,
             MEDIA_PLAYER_MENU,
             &media_player_menu_position,
@@ -1921,8 +1875,6 @@ impl Frame {
                 BarOutput::NnetworkClicked => FrameInput::ToggleNnetworkMenu,
                 BarOutput::NpowerClicked => FrameInput::ToggleNpowerMenu,
                 BarOutput::AudioDashboardClicked => FrameInput::ToggleAudioDashboardMenu,
-                BarOutput::CpuDashboardClicked => FrameInput::ToggleCpuDashboardMenu,
-                BarOutput::BluetoothClicked => FrameInput::ToggleBluetoothMenu,
                 BarOutput::MediaPlayerClicked => FrameInput::ToggleMediaPlayerMenu,
                 BarOutput::MargoLayoutClicked => FrameInput::ToggleMargoLayoutMenu,
                 BarOutput::CloseMenu => FrameInput::CloseMenus,

@@ -96,14 +96,12 @@ struct CoreRow {
 #[derive(Debug)]
 pub(crate) enum CpuDashboardInput {
     Poll,
-    Clicked,
+    ToggleMenu,
     ToggleRamInBar,
 }
 
 #[derive(Debug)]
-pub(crate) enum CpuDashboardOutput {
-    Clicked,
-}
+pub(crate) enum CpuDashboardOutput {}
 
 pub(crate) struct CpuDashboardInit {
     pub(crate) orientation: Orientation,
@@ -170,7 +168,7 @@ impl Component for CpuDashboardModel {
                 set_hexpand: true,
                 set_vexpand: true,
                 connect_clicked[sender] => move |_| {
-                    sender.input(CpuDashboardInput::Clicked);
+                    sender.input(CpuDashboardInput::ToggleMenu);
                 },
 
                 // Single cluster carries the severity class so we
@@ -228,9 +226,128 @@ impl Component for CpuDashboardModel {
                 },
             },
 
-            // Popover dropped — bar pill now emits Clicked and
-            // the layer-shell menu (MenuType::CpuDashboard) renders
-            // the rich content via cpu_dashboard_menu_widget.
+            // ── Popover menu surface ─────────────────────────
+            //
+            // Anchored on the bar button so it pops directly
+            // below the pill. `autohide=true` closes it on any
+            // click outside the popover area, matching the
+            // mshell menu conventions.
+            #[name = "popover"]
+            gtk::Popover {
+                set_position: gtk::PositionType::Bottom,
+                set_has_arrow: false,
+                set_autohide: true,
+                add_css_class: "cpu-dashboard-menu",
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 14,
+                    set_margin_all: 16,
+                    set_width_request: 360,
+
+                    // Hero card — big CPU% + temp side by side.
+                    gtk::Box {
+                        #[watch]
+                        set_css_classes: &[
+                            "cpu-dashboard-hero",
+                            severity_class(model.cpu_percent, model.temp_celsius),
+                        ],
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 24,
+                        set_homogeneous: true,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_spacing: 2,
+                            gtk::Label {
+                                add_css_class: "cpu-dashboard-hero-value",
+                                #[watch]
+                                set_label: &format!("{}%", model.cpu_percent),
+                                set_halign: gtk::Align::Center,
+                            },
+                            gtk::Label {
+                                add_css_class: "cpu-dashboard-hero-caption",
+                                set_label: "CPU LOAD",
+                                set_halign: gtk::Align::Center,
+                            },
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_spacing: 2,
+                            gtk::Label {
+                                add_css_class: "cpu-dashboard-hero-value",
+                                #[watch]
+                                set_label: &format!("{}°C", model.temp_celsius),
+                                set_halign: gtk::Align::Center,
+                            },
+                            gtk::Label {
+                                add_css_class: "cpu-dashboard-hero-caption",
+                                set_label: "PACKAGE TEMP",
+                                set_halign: gtk::Align::Center,
+                            },
+                        },
+                    },
+
+                    // Per-core load bars.
+                    gtk::Label {
+                        add_css_class: "cpu-dashboard-section-label",
+                        set_label: "PER-CORE LOAD",
+                        set_halign: gtk::Align::Start,
+                    },
+                    #[name = "cores_box"]
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_spacing: 4,
+                    },
+
+                    // Memory.
+                    gtk::Label {
+                        add_css_class: "cpu-dashboard-section-label",
+                        set_label: "MEMORY",
+                        set_halign: gtk::Align::Start,
+                    },
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 8,
+                        #[name = "ram_bar"]
+                        gtk::ProgressBar {
+                            set_hexpand: true,
+                            #[watch]
+                            set_fraction: (model.ram_percent as f64) / 100.0,
+                            #[watch]
+                            set_css_classes: &[
+                                "cpu-dashboard-bar",
+                                if model.ram_percent >= 90 { "danger" }
+                                else if model.ram_percent >= 75 { "warn" }
+                                else { "calm" },
+                            ],
+                        },
+                        gtk::Label {
+                            add_css_class: "cpu-dashboard-bar-value",
+                            #[watch]
+                            set_label: &format!("{}%", model.ram_percent),
+                            set_width_chars: 4,
+                        },
+                    },
+
+                    // Load averages.
+                    gtk::Label {
+                        add_css_class: "cpu-dashboard-section-label",
+                        set_label: "LOAD AVERAGE (1m · 5m · 15m)",
+                        set_halign: gtk::Align::Start,
+                    },
+                    gtk::Label {
+                        add_css_class: "cpu-dashboard-loadavg",
+                        #[watch]
+                        set_label: &format!(
+                            "{:.2}    {:.2}    {:.2}",
+                            model.load_1m, model.load_5m, model.load_15m,
+                        ),
+                        set_halign: gtk::Align::Start,
+                    },
+                },
+            },
         }
     }
 
@@ -312,9 +429,7 @@ impl Component for CpuDashboardModel {
     ) {
         match message {
             CpuDashboardInput::Poll => {
-                // Aggregate CPU only — per-core / RAM bar / load
-                // avg moved into the menu widget. The bar pill
-                // surfaces just the chip metrics (CPU% · Temp · RAM%).
+                // ── Aggregate CPU ─────────────────────────────
                 let (total, idle) = read_cpu_stat_pub();
                 let delta_total = total.saturating_sub(self.prev_total);
                 let delta_idle = idle.saturating_sub(self.prev_idle);
@@ -324,20 +439,101 @@ impl Component for CpuDashboardModel {
                 }
                 self.prev_total = total;
                 self.prev_idle = idle;
+
+                // ── Per-core ──────────────────────────────────
+                let per_core = read_per_core_cpu_stat();
+                if self.cores.prev_total.len() != per_core.len() {
+                    // Hot-plug / first poll — reset.
+                    self.cores.prev_total = per_core.iter().map(|(t, _)| *t).collect();
+                    self.cores.prev_idle = per_core.iter().map(|(_, i)| *i).collect();
+                    self.cores.percent = vec![0; per_core.len()];
+                } else {
+                    for (i, (t, idl)) in per_core.iter().enumerate() {
+                        let dt = t.saturating_sub(self.cores.prev_total[i]);
+                        let di = idl.saturating_sub(self.cores.prev_idle[i]);
+                        if dt > 0 {
+                            let busy = dt.saturating_sub(di);
+                            self.cores.percent[i] = ((busy * 100) / dt) as u32;
+                        }
+                        self.cores.prev_total[i] = *t;
+                        self.cores.prev_idle[i] = *idl;
+                    }
+                }
+
+                // Grow / shrink the rendered bars to match the
+                // current core count.
+                while self.core_rows.len() < self.cores.percent.len() {
+                    let i = self.core_rows.len();
+                    let container = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+                    let lbl = gtk::Label::new(Some(&format!("c{i}")));
+                    lbl.add_css_class("cpu-dashboard-core-label");
+                    lbl.set_width_chars(3);
+                    lbl.set_xalign(0.0);
+                    let bar = gtk::ProgressBar::new();
+                    bar.set_hexpand(true);
+                    bar.add_css_class("cpu-dashboard-bar");
+                    let pct_label = gtk::Label::new(Some("0%"));
+                    pct_label.add_css_class("cpu-dashboard-bar-value");
+                    pct_label.set_width_chars(4);
+                    container.append(&lbl);
+                    container.append(&bar);
+                    container.append(&pct_label);
+                    widgets.cores_box.append(&container);
+                    self.core_rows.push(CoreRow { container, bar, pct_label });
+                }
+                while self.core_rows.len() > self.cores.percent.len() {
+                    if let Some(row) = self.core_rows.pop() {
+                        widgets.cores_box.remove(&row.container);
+                    }
+                }
+
+                for (i, p) in self.cores.percent.iter().enumerate() {
+                    if let Some(row) = self.core_rows.get(i) {
+                        row.bar.set_fraction((*p as f64) / 100.0);
+                        row.bar
+                            .set_css_classes(&["cpu-dashboard-bar", cpu_only_severity(*p)]);
+                        row.pct_label.set_label(&format!("{p}%"));
+                    }
+                }
+
+                // ── Temperature ───────────────────────────────
                 if let Some(p) = &self.sensor_path
                     && let Some(t) = read_temp_millideg_pub(p)
                 {
                     self.temp_celsius = t / 1000;
                 }
-                self.ram_percent = read_ram_used_percent_local().unwrap_or(self.ram_percent);
 
+                // ── Memory + load avg ─────────────────────────
+                self.ram_percent = read_ram_used_percent_local().unwrap_or(self.ram_percent);
+                if let Some((a, b, c)) = read_loadavg() {
+                    self.load_1m = a;
+                    self.load_5m = b;
+                    self.load_15m = c;
+                }
+
+                // ── Tooltip ───────────────────────────────────
+                // Quick at-a-glance summary on hover, mirroring
+                // the npodman pill convention.
                 _root.set_tooltip_text(Some(&format!(
-                    "CPU {}%  ·  Temp {}°C  ·  RAM {}%",
-                    self.cpu_percent, self.temp_celsius, self.ram_percent,
+                    "CPU {}%  ·  Temp {}°C  ·  RAM {}%\nLoad {:.2} / {:.2} / {:.2}",
+                    self.cpu_percent,
+                    self.temp_celsius,
+                    self.ram_percent,
+                    self.load_1m,
+                    self.load_5m,
+                    self.load_15m,
                 )));
             }
-            CpuDashboardInput::Clicked => {
-                let _ = sender.output(CpuDashboardOutput::Clicked);
+            CpuDashboardInput::ToggleMenu => {
+                if widgets.popover.is_visible() {
+                    widgets.popover.popdown();
+                } else {
+                    widgets.popover.popup();
+                    // Force a fresh sample so the popover never
+                    // opens with stale text in the gap between
+                    // the last tick and the click.
+                    sender.input(CpuDashboardInput::Poll);
+                }
             }
             CpuDashboardInput::ToggleRamInBar => {
                 self.show_ram_in_bar = !self.show_ram_in_bar;

@@ -13,10 +13,6 @@ pub enum MenuWidget {
     /// input (source). Lives in the layer-shell menu stack so it
     /// opens contiguous with the bar.
     AudioDashboardMenu,
-    /// CPU dashboard menu — hero (CPU% + temp), per-core load
-    /// bars, RAM usage, load averages. Lives in the layer-shell
-    /// menu stack so it opens contiguous with the bar.
-    CpuDashboardMenu,
     Bluetooth,
     Calendar,
     /// Month grid only — the same `gtk::Calendar` half of the
@@ -98,7 +94,6 @@ impl MenuWidget {
             MenuWidget::AudioInput => "Audio Input",
             MenuWidget::AudioOutput => "Audio Output",
             MenuWidget::AudioDashboardMenu => "Audio Dashboard",
-            MenuWidget::CpuDashboardMenu => "CPU Dashboard",
             MenuWidget::Bluetooth => "Bluetooth",
             MenuWidget::Calendar => "Calendar",
             MenuWidget::CalendarGrid => "Calendar Grid",
@@ -151,7 +146,6 @@ impl MenuWidget {
             MenuWidget::AudioInput,
             MenuWidget::AudioOutput,
             MenuWidget::AudioDashboardMenu,
-            MenuWidget::CpuDashboardMenu,
             MenuWidget::Bluetooth,
             MenuWidget::Calendar,
             MenuWidget::CalendarGrid,
