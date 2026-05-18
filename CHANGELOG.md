@@ -7,6 +7,164 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.7.0] – 2026-05-18
+
+### Added
+
+- **`mwizard` — first-launch setup wizard.** New top-level
+  binary that opens when no
+  `~/.config/margo/mshell/profiles/default.yaml` exists and
+  walks the user through 5 pages: Welcome → Theme
+  (Dark/Light matugen + 24h/12h clock) → Keyboard (xkb
+  layout from 14 common codes, defaults from `$LANG`, with
+  free-form layout + variant overrides) → Wallpaper
+  (FileDialog picker) → Done. Writes both `default.yaml`
+  (full shell profile) and `~/.config/margo/config.conf`
+  (surgical `xkb_rules_*` line patch). `mwizard --force`
+  re-runs even when a profile exists. No-flag `mwizard` is a
+  no-op when a profile is already there, so it's safe to
+  hook into a session-start script.
+
+- **`mpicker` — native colour picker binary.** Replaces the
+  hyprpicker fallback that used to ship in `mshell-utils`.
+  Frozen wlr-screencopy + 10× zoom lens overlay + hex chip;
+  CLI supports `--autocopy`, `--notify`, `--no-zoom`,
+  `--format hex/rgb/hsl/cmyk`, `--lowercase-hex`,
+  `--quiet`. Bundled in the `margo-git` package; mshell's
+  launcher ColorPicker button calls `mpicker` directly with
+  no hyprpicker fallback.
+
+- **Dashboard menu — compound clock + calendar + weather +
+  quick settings.** Two-column 860 px panel: left holds
+  Clock hero / CalendarGrid / Weather / MediaPlayer; right
+  is a verbatim clone of the standalone Quick Settings
+  widget stack (Network / Bluetooth / Audio Out / Audio In /
+  Power Profile + the two QuickActions rows). Columns
+  equalised at 400 px each. Open via `mshellctl menu
+  dashboard` or the new Dashboard bar pill.
+
+- **Dashboard bar widget.** New `BarWidget::Dashboard` —
+  Clock-style pill that shows the current time/date using
+  the shared `[tempo]` chrono format list. Left-click
+  toggles the dashboard menu, right-click double-press
+  cycles formats.
+
+- **Settings → Widgets → Dashboard + Settings → Menus →
+  Dashboard.** Both entry points are now in the Settings
+  UI; Menus page covers position / min-width / max-height /
+  widget list.
+
+- **Per-menu `maximum_height` config.** Spinbox in the
+  Menus settings page caps the vertical viewport of any
+  menu; scroll-past behaviour kicks in when the content
+  overflows.
+
+- **Launcher right-click context menu — Pin/Unpin +
+  Hide/Unhide.** New `HiddenStore` mirrors `PinStore` at
+  `~/.cache/margo/launcher_hidden.json`. Hidden items only
+  appear in search results (non-empty query), suppressed
+  from empty-query browse mode so the user can curate the
+  at-a-glance app pile without losing the ability to type
+  the app name. Right-click menu auto-suppresses on rows
+  without a `usage_key` (calculator, command palette).
+
+- **`mshellctl menu app-launcher --tab <name>` and
+  `--list-tabs`.** Open the launcher pre-selected on a
+  category (All / Run / System / Insert / Search /
+  Compositor / Connect). `--list-tabs` prints the known
+  categories.
+
+- **mscreenshot region selector via mshell IPC.**
+  `mscreenshot area` now bridges to mshell's rich in-shell
+  selector (preview state, snap, aspect info) when mshell
+  is running, drops to the bare `slurp` overlay otherwise.
+  New IPC method `SelectRegion` returns the picked geometry
+  to the CLI.
+
+- **Screenshot widget UX polish.** Area selector grew
+  preview state (Enter to commit, arrows to nudge,
+  Shift+arrows for 10 px jumps), aspect-ratio chip,
+  snap-to-window helper, Ctrl+S / Ctrl+E shortcuts that
+  override the commit target. Inline annotate path now
+  prefers `satty` over `swappy` to match the rest of the
+  workspace.
+
+### Changed
+
+- **`menu_settings.rs` collapsed 4041 → 394 LOC** via a new
+  `MenuConfigPanel` sub-component + extended `MenuKind` with
+  Notifications/Wallpaper variants + `read_widgets` /
+  `tracked_widgets` / `write_widgets`. Adding a new menu to
+  the aggregate Menus page is now ~10 lines instead of
+  ~250.
+
+- **HyprPicker → ColorPicker rename across the workspace.**
+  Drops the Hyprland brand from a margo-native helper that
+  was never tied to Hyprland after the mpicker port. No
+  serde aliases — user YAMLs need a one-time
+  `s/HyprPicker/ColorPicker` sweep; the in-tree default
+  profile is already migrated.
+
+- **App launcher row padding tightened 8 → 1 px** so each
+  app visually reads as 2 lines (name + description)
+  instead of the previous "blank / name / desc / blank"
+  4-line feel.
+
+- **`mshell-config::paths` module is now `pub`** so external
+  binaries (mwizard, future tools) can resolve the profile
+  path without re-deriving the layout.
+
+- **mshell + launcher caches honour `$XDG_RUNTIME_DIR`**
+  instead of `/tmp/` for fallback paths — per-user,
+  race-free on shared machines.
+
+### Fixed
+
+- **Compositor zbus/tokio panic at session start.**
+  Packaging bug: a single `cargo build -p margo -p ...`
+  invocation that included mpicker pulled in
+  `mshell-screenshot` → `mshell-services` → `wayle-*` →
+  `zbus[tokio]` via Cargo's per-invocation feature
+  unification. The compositor linked against the
+  tokio-enabled zbus and panicked at `start_object_server`
+  ("there is no reactor running, must be called from the
+  context of a Tokio 1.x runtime"). Fix: PKGBUILD puts
+  mpicker in the shell-side invocation alongside mshell so
+  the compositor's zbus stays `async-io`-only.
+
+- **Dashboard right column wasn't rendering card chrome.**
+  `MenuModel`'s `css_class` field stored
+  `"quick-settings-menu dashboard-menu"` as a single literal
+  class name (`set_css_classes` was being passed the whole
+  string as one entry), so `.quick-settings-menu
+  .network-menu-widget` descendant selectors never matched.
+  Split on whitespace post-`view_output!`.
+
+- **matugen "no progress, hangs forever" bug.** The
+  output-log drainer thread used `.flatten()` on a
+  `BufReader::lines()` iterator; a single persistent IO
+  error spun the thread forever instead of bailing.
+  Switched to `.map_while(Result::ok)`.
+
+- **PKGBUILD bundled bin list complete.** mwizard + mpicker
+  now appear in both the build invocations and the install
+  loop. Ldd verification comment refreshed.
+
+### Engineering
+
+- `cargo clippy --fix --workspace` sweep — 37 auto-fixes
+  landed.
+- `CODE_REVIEW.md` — full audit report (Critical / High /
+  Medium / Low findings) added at repo root, with a status
+  table tracking which findings landed in this release.
+- Production `unwrap()` audit (`#187`) — case-by-case
+  review confirmed the flat-grep count of 265 prod unwraps
+  was largely a false alarm; 80 %+ are framework
+  guarantees (Mutex::lock in single-threaded GTK, GTK
+  downcast_ref, const-string parsing, PipeWire format
+  invariants). `capture.rs` documented its in-vec
+  invariant via `expect()`.
+
 ## [0.6.3] – 2026-05-17
 
 ### Added

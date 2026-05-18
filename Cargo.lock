@@ -3340,7 +3340,7 @@ dependencies = [
 
 [[package]]
 name = "margo"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "accesskit",
  "accesskit_unix",
@@ -3382,7 +3382,7 @@ dependencies = [
 
 [[package]]
 name = "margo-config"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "bitflags 2.11.1",
@@ -3394,7 +3394,7 @@ dependencies = [
 
 [[package]]
 name = "margo-layouts"
-version = "0.6.3"
+version = "0.7.0"
 
 [[package]]
 name = "matchers"
@@ -3417,7 +3417,7 @@ dependencies = [
 
 [[package]]
 name = "mctl"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -3493,7 +3493,7 @@ dependencies = [
 
 [[package]]
 name = "mlayout"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -3503,7 +3503,7 @@ dependencies = [
 
 [[package]]
 name = "mlock"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "cairo-rs 0.22.0",
@@ -3533,7 +3533,7 @@ dependencies = [
 
 [[package]]
 name = "mpicker"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -3545,7 +3545,7 @@ dependencies = [
 
 [[package]]
 name = "mscreenshot"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -3556,7 +3556,7 @@ dependencies = [
 
 [[package]]
 name = "mshell"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "clap",
  "mshell-cli-style",
@@ -3566,7 +3566,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-auth"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "futures",
  "libc",
@@ -3577,7 +3577,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-cache"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "image",
  "mshell-config",
@@ -3590,14 +3590,14 @@ dependencies = [
 
 [[package]]
 name = "mshell-cli-style"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "clap",
 ]
 
 [[package]]
 name = "mshell-clipboard"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "image",
  "libc",
@@ -3610,7 +3610,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-clut-gen"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "image",
  "lutgen",
@@ -3621,7 +3621,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-common"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "futures",
  "gtk4-layer-shell",
@@ -3638,7 +3638,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-config"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "dirs",
  "figment",
@@ -3656,7 +3656,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-core"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "any_spawner",
  "anyhow",
@@ -3691,7 +3691,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-frame"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "cairo-rs 0.22.0",
  "chrono",
@@ -3734,7 +3734,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-gamma"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "libc",
@@ -3745,7 +3745,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-idle"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "libc",
@@ -3759,7 +3759,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-image"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "image",
  "lutgen",
@@ -3771,7 +3771,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-launcher"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "dirs",
@@ -3788,7 +3788,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-lockscreen"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "gtk4",
  "gtk4-layer-shell",
@@ -3808,14 +3808,14 @@ dependencies = [
 
 [[package]]
 name = "mshell-logging"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "tracing-subscriber",
 ]
 
 [[package]]
 name = "mshell-margo-client"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "futures",
@@ -3830,7 +3830,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-matugen"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "gtk4",
@@ -3843,7 +3843,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-notification-popups"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "gtk4",
  "gtk4-layer-shell",
@@ -3861,7 +3861,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-osd"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "futures",
  "gtk4",
@@ -3883,7 +3883,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-polkit"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "gtk4",
@@ -3897,7 +3897,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-screenshot"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "dirs",
@@ -3922,7 +3922,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-services"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "mshell-margo-client",
@@ -3944,7 +3944,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-session"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "futures",
  "gtk4-layer-shell",
@@ -3961,7 +3961,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-settings"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "dirs",
  "fontconfig",
@@ -3981,14 +3981,14 @@ dependencies = [
 
 [[package]]
 name = "mshell-sounds"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "rodio",
 ]
 
 [[package]]
 name = "mshell-style"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "grass",
@@ -4007,7 +4007,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-utils"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "futures",
@@ -4037,7 +4037,7 @@ dependencies = [
 
 [[package]]
 name = "mshell-wallpaper"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "gtk4",
  "gtk4-layer-shell",
@@ -4054,7 +4054,7 @@ dependencies = [
 
 [[package]]
 name = "mshellctl"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -4066,7 +4066,7 @@ dependencies = [
 
 [[package]]
 name = "mshellshare"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -4078,7 +4078,7 @@ dependencies = [
 
 [[package]]
 name = "mvisual"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "gtk4",
  "margo-layouts",
@@ -4086,7 +4086,7 @@ dependencies = [
 
 [[package]]
 name = "mwizard"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -6245,7 +6245,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
 name = "start-margo"
-version = "0.6.3"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "clap",
