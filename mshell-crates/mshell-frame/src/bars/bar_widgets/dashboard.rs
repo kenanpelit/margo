@@ -101,9 +101,16 @@ impl SimpleComponent for DashboardModel {
     ) -> ComponentParts<Self> {
         let base_config = mshell_config::config_manager::config_manager().config();
 
+        // `input_sender().send()` not `sender_clone.input()` —
+        // self-cancels the tick when the controller drops so a
+        // bar-rebuild on widget reorder can't abort mshell with
+        // "The runtime of the component was shutdown". See
+        // sysstat.rs `schedule_poll` for the full story.
         let sender_clone = sender.clone();
         let id = glib::timeout_add_local(std::time::Duration::from_secs(1), move || {
-            sender_clone.input(DashboardInput::UpdateTime);
+            if sender_clone.input_sender().send(DashboardInput::UpdateTime).is_err() {
+                return glib::ControlFlow::Break;
+            }
             glib::ControlFlow::Continue
         });
 

@@ -108,12 +108,21 @@ impl Component for LockKeysModel {
         // Glib main-loop poll. Lock keys don't toggle fast — a
         // 500 ms tick keeps the indicator responsive without
         // measurable CPU cost (three tiny sysfs reads per tick).
+        //
+        // `input_sender().send()` (Result) instead of `s.input()`
+        // (panics on closed channel) so the timer self-cancels
+        // when the bar rebuild path drops this controller —
+        // otherwise a config-driven widget reorder leaves this
+        // closure ticking against a dead receiver and the next
+        // .input() aborts mshell.
         {
             let s = sender.clone();
             relm4::gtk::glib::timeout_add_local(
                 Duration::from_millis(500),
                 move || {
-                    s.input(LockKeysInput::Poll);
+                    if s.input_sender().send(LockKeysInput::Poll).is_err() {
+                        return relm4::gtk::glib::ControlFlow::Break;
+                    }
                     relm4::gtk::glib::ControlFlow::Continue
                 },
             );

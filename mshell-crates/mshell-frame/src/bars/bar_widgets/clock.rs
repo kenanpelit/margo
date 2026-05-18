@@ -125,9 +125,17 @@ impl SimpleComponent for ClockModel {
         // none of the formats contain `%S`, but the cost of an extra
         // 59 no-op frames a minute is rounding error — keep the path
         // uniform.
+        // `input_sender().send()` not `sender_clone.input()` —
+        // see sysstat.rs `schedule_poll` for the panic-on-
+        // closed-channel rationale. ClockModel's Drop impl also
+        // removes the source by id, but the send-then-Break
+        // path is the belt-and-braces fix for a tick that
+        // arrives after Drop ran.
         let sender_clone = sender.clone();
         let id = glib::timeout_add_local(std::time::Duration::from_secs(1), move || {
-            sender_clone.input(ClockInput::UpdateTime);
+            if sender_clone.input_sender().send(ClockInput::UpdateTime).is_err() {
+                return glib::ControlFlow::Break;
+            }
             glib::ControlFlow::Continue
         });
 

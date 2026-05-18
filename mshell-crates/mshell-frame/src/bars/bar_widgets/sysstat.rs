@@ -287,6 +287,15 @@ impl Component for TempMonitorModel {
 /// all want the same 2 s cadence on the same thread. The closure
 /// is monomorphised per call site so each component's enum is
 /// untouched.
+///
+/// Uses `input_sender().send()` (returns Result) instead of
+/// `sender.input()` (panics on closed channel) so the timer
+/// self-cancels when the owning component is dropped — the bar
+/// rebuild path on a config-driven widget reorder tears down
+/// the old controllers but doesn't drop the glib timeouts they
+/// registered, and the next tick would otherwise panic mshell
+/// with "The runtime of the component was shutdown" inside
+/// relm4's channel::component.rs.
 fn schedule_poll<I, F>(sender: relm4::ComponentSender<I>, make_msg: F)
 where
     I: relm4::Component,
@@ -294,7 +303,9 @@ where
     F: Fn() -> I::Input + 'static,
 {
     relm4::gtk::glib::timeout_add_local(POLL_INTERVAL, move || {
-        sender.input(make_msg());
+        if sender.input_sender().send(make_msg()).is_err() {
+            return relm4::gtk::glib::ControlFlow::Break;
+        }
         relm4::gtk::glib::ControlFlow::Continue
     });
 }

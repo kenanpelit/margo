@@ -113,9 +113,22 @@ impl Component for MargoLayoutModel {
         // `Tick` if the live layout index differs from the last
         // observation. Cheap enough to leave on permanently:
         // state.json reads are <1 ms.
+        //
+        // `input_sender().send()` (Result) instead of
+        // `sender_tick.input()` (panics on closed channel) so
+        // the timer self-cancels when the bar rebuild path
+        // drops this controller — the existing `_timeout:
+        // SourceId` only stops the source when the model is
+        // explicitly dropped, but a relm4 controller teardown
+        // doesn't guarantee Drop-then-next-tick ordering, and
+        // an in-flight tick on a half-dropped controller would
+        // abort mshell with "The runtime of the component was
+        // shutdown".
         let sender_tick = sender.clone();
         let timeout = glib::timeout_add_local(ACTIVE_POLL_INTERVAL, move || {
-            sender_tick.input(MargoLayoutInput::Tick);
+            if sender_tick.input_sender().send(MargoLayoutInput::Tick).is_err() {
+                return glib::ControlFlow::Break;
+            }
             glib::ControlFlow::Continue
         });
 
