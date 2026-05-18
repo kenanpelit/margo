@@ -73,6 +73,12 @@ pub(crate) struct CpuDashboardModel {
     cores: CoreDeltas,
     sensor_path: Option<PathBuf>,
     _orientation: Orientation,
+    /// Whether the bar pill cluster also surfaces the RAM
+    /// percentage. Off by default — the bar reads CPU% · Temp°C
+    /// only; right-click flips this on so users who watch memory
+    /// can opt in. Toggles via the pill's secondary-click
+    /// gesture. Ephemeral (in-memory only).
+    show_ram_in_bar: bool,
     /// Per-core widgets, lazily grown to match the cpu count
     /// detected on first poll. Each entry owns the row's bar +
     /// percent label so we can refresh both without walking the
@@ -91,6 +97,7 @@ struct CoreRow {
 pub(crate) enum CpuDashboardInput {
     Poll,
     ToggleMenu,
+    ToggleRamInBar,
 }
 
 #[derive(Debug)]
@@ -197,14 +204,24 @@ impl Component for CpuDashboardModel {
                         #[watch]
                         set_label: &format!("{}°C", model.temp_celsius),
                     },
-                    gtk::Label {
-                        add_css_class: "cpu-dashboard-bar-sep",
-                        set_label: "·",
-                    },
-                    gtk::Label {
-                        add_css_class: "cpu-dashboard-bar-label",
+                    // RAM slot — hidden by default. Wrap separator
+                    // + label in one Box so they show/hide as a
+                    // unit (don't want a dangling ` · ` glyph).
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 6,
                         #[watch]
-                        set_label: &format!("{}%", model.ram_percent),
+                        set_visible: model.show_ram_in_bar,
+
+                        gtk::Label {
+                            add_css_class: "cpu-dashboard-bar-sep",
+                            set_label: "·",
+                        },
+                        gtk::Label {
+                            add_css_class: "cpu-dashboard-bar-label",
+                            #[watch]
+                            set_label: &format!("{}%", model.ram_percent),
+                        },
                     },
                 },
             },
@@ -348,6 +365,13 @@ impl Component for CpuDashboardModel {
             .and_then(read_temp_millideg_pub)
             .map(|t| t / 1000)
             .unwrap_or(0);
+        // Prime RAM up front so the popover shows a real value
+        // the first time it opens instead of "0%" until the
+        // 2 s poll fires.
+        let ram_percent = read_ram_used_percent_local().unwrap_or(0);
+        // Prime load avg too for the same reason.
+        let (load_1m, load_5m, load_15m) =
+            read_loadavg().unwrap_or((0.0, 0.0, 0.0));
 
         // Self-cancelling timer — see sysstat.rs schedule_poll
         // for the panic-on-closed-channel rationale.
@@ -366,26 +390,30 @@ impl Component for CpuDashboardModel {
         let model = CpuDashboardModel {
             cpu_percent: 0,
             temp_celsius,
-            ram_percent: 0,
-            load_1m: 0.0,
-            load_5m: 0.0,
-            load_15m: 0.0,
+            ram_percent,
+            load_1m,
+            load_5m,
+            load_15m,
             prev_total,
             prev_idle,
             cores: CoreDeltas::default(),
             sensor_path,
             _orientation: params.orientation,
+            show_ram_in_bar: false,
             core_rows: Vec::new(),
         };
 
         let widgets = view_output!();
 
-        // Right-click on the pill is reserved for future use
-        // (e.g. cycle compact / verbose label modes). Wire an
-        // empty SECONDARY gesture now so the click doesn't fall
-        // through to the parent bar's drag-handle area.
+        // Right-click toggles RAM% visibility in the bar cluster.
+        // Default is hidden (CPU% · Temp°C); right-click adds the
+        // RAM slot to the row, right-click again removes it.
         let gesture = gtk::GestureClick::new();
         gesture.set_button(gtk::gdk::BUTTON_SECONDARY);
+        let sender_clone = sender.clone();
+        gesture.connect_pressed(move |_, _, _, _| {
+            sender_clone.input(CpuDashboardInput::ToggleRamInBar);
+        });
         widgets.button.add_controller(gesture);
 
         let _ = root;
@@ -506,6 +534,9 @@ impl Component for CpuDashboardModel {
                     // the last tick and the click.
                     sender.input(CpuDashboardInput::Poll);
                 }
+            }
+            CpuDashboardInput::ToggleRamInBar => {
+                self.show_ram_in_bar = !self.show_ram_in_bar;
             }
         }
         self.update_view(widgets, sender);
