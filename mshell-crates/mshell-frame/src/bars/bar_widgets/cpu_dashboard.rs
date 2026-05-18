@@ -35,12 +35,19 @@ use std::time::Duration;
 
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
 
-// Threshold ceilings for the three visual states. Tunable here
-// only — the rest of the code reads them by name.
-const CPU_WARN_PERCENT: u32 = 50;
-const CPU_DANGER_PERCENT: u32 = 80;
-const TEMP_WARN_CELSIUS: i32 = 60;
-const TEMP_DANGER_CELSIUS: i32 = 80;
+// Threshold ceilings for the three visual states. Tuned high
+// enough that an idle desktop sits in "calm" — the previous
+// 50/60 floor was tripping on a typical idle temp (65–70 °C on
+// most laptops) and made the pill read as a permanent warn.
+//
+// Now:
+//   warn  → real load you'd notice (~70 % CPU or hot package)
+//   danger → sustained pegging (>90 % CPU or thermal throttle
+//            territory)
+const CPU_WARN_PERCENT: u32 = 70;
+const CPU_DANGER_PERCENT: u32 = 90;
+const TEMP_WARN_CELSIUS: i32 = 80;
+const TEMP_DANGER_CELSIUS: i32 = 90;
 
 /// Per-core delta cache. Indexed by the core id reported in
 /// `/proc/stat` (`cpu0`, `cpu1`, …). Resized as needed so we

@@ -34,23 +34,42 @@
     }
 }
 
+// Unify all bar pills against the margo-tag visual language:
+// a transparent surface that lets the bar's own background read
+// through, with a faint primary-tinted wash on hover. This drops
+// the "every widget is its own raised pill" look and makes the
+// bar read as one continuous strip where individual widgets
+// announce themselves only when hovered or in an active state.
+//
+// The override is scoped to `.ok-bar-widget` so non-bar uses of
+// `.ok-button-surface` (Settings cards, menu rows, etc.) keep
+// the filled surface they were designed for.
+.ok-bar-widget,
+.ok-bar-widget.ok-button-surface,
+.ok-bar-widget > button.ok-button-flat,
+.ok-bar-widget > button.ok-button-surface {
+    background-color: transparent;
+    // Drop the outline / inset shadow some widgets paint via
+    // their `.ok-button-surface` rule so the pill blends into
+    // the bar surface instead of stamping a chip outline.
+    box-shadow: none;
+}
+
 // Theme-coloured hover for bar pills.
 //
-// The base `ok-button-surface` mixin in 03-primitives paints hover
-// as `color-mix(--on-surface 8%, --surface)` — a near-white tint
-// that reads flat against the bar. We re-tint that hover step with
-// the matugen `--primary` accent so the pill picks up the user's
-// chosen colour scheme on cursor-over without overshooting it.
+// Mirrors the margo-tag hover wash: a primary-tinted overlay
+// (14 %) over the otherwise-transparent pill. The pill rounds to
+// `--radius-widget` so the hover surface respects the same
+// rounded geometry the margo tags use.
 //
-// 14 % accent keeps it readable on both light and dark themes;
-// raising it past ~20 % makes light themes hard to look at.
-//
-// Targets:
-//   - the outer Box (when it carries `.ok-button-surface`, as on
-//     npodman / nnetwork / cpu-dashboard / sysstat / etc)
-//   - the inner `.ok-button-flat` Button so the pill animates as
-//     one surface when the cursor enters either layer
+// Targets both the outer Box (when it carries any of the
+// button-* primitive classes the bar widgets use) and the inner
+// `.ok-button-flat` Button — so the pill responds as one surface
+// whether the cursor enters the wrapper or the click target.
 .ok-bar-widget.ok-button-surface:hover,
-.ok-bar-widget > button.ok-button-flat:hover {
-    background-color: unquote("color-mix(in srgb, var(--primary) 14%, var(--surface))");
+.ok-bar-widget.ok-button-flat:hover,
+.ok-bar-widget > button.ok-button-flat:hover,
+.ok-bar-widget > button.ok-button-surface:hover {
+    background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
+    border-radius: var(--radius-widget);
 }
