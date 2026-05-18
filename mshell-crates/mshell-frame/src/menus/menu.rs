@@ -56,6 +56,8 @@ pub(crate) enum MenuType {
     Nnetwork,
     Npower,
     AudioDashboard,
+    CpuDashboard,
+    Bluetooth,
     MediaPlayer,
     Session,
     /// Combined clock + quick-settings dashboard. Renders the
@@ -556,6 +558,57 @@ impl Component for MenuModel {
                 effects.push(move |_| {
                     let config = config.clone();
                     let maximum_height = config.menus().audio_dashboard_menu().maximum_height().get();
+                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
+                });
+            }
+            MenuType::CpuDashboard => {
+                css_class = "cpu-dashboard-menu".to_string();
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let widgets = config.menus().cpu_dashboard_menu().widgets().get();
+                    sender_clone.input(MenuInput::SetWidget(widgets));
+                });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let minimum_width = config.menus().cpu_dashboard_menu().minimum_width().get();
+                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
+                });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let maximum_height = config.menus().cpu_dashboard_menu().maximum_height().get();
+                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
+                });
+            }
+            MenuType::Bluetooth => {
+                // Reuse the .quick-settings-menu CSS so the existing
+                // bluetooth_menu_widget's revealer-row design gets
+                // the same card chrome it does inside the QS panel.
+                css_class = "quick-settings-menu bluetooth-menu".to_string();
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let widgets = config.menus().bluetooth_menu().widgets().get();
+                    sender_clone.input(MenuInput::SetWidget(widgets));
+                });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let minimum_width = config.menus().bluetooth_menu().minimum_width().get();
+                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
+                });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let maximum_height = config.menus().bluetooth_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
                 });
             }

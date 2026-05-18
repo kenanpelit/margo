@@ -401,6 +401,8 @@ pub struct Menus {
     pub nnetwork_menu: Menu,
     pub npower_menu: Menu,
     pub audio_dashboard_menu: Menu,
+    pub cpu_dashboard_menu: Menu,
+    pub bluetooth_menu: Menu,
     pub media_player_menu: Menu,
     pub session_menu: Menu,
     /// Settings panel — embeds in the frame's menu stack instead
@@ -548,6 +550,18 @@ impl Default for Menus {
             audio_dashboard_menu: Menu {
                 position: Position::Top,
                 widgets: vec![MenuWidget::AudioDashboardMenu],
+                minimum_width: 400,
+                maximum_height: 0,
+            },
+            cpu_dashboard_menu: Menu {
+                position: Position::Top,
+                widgets: vec![MenuWidget::CpuDashboardMenu],
+                minimum_width: 380,
+                maximum_height: 0,
+            },
+            bluetooth_menu: Menu {
+                position: Position::Top,
+                widgets: vec![MenuWidget::Bluetooth],
                 minimum_width: 400,
                 maximum_height: 0,
             },

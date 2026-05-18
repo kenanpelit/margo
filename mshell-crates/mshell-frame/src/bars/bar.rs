@@ -134,6 +134,8 @@ pub(crate) enum BarOutput {
     NnetworkClicked,
     NpowerClicked,
     AudioDashboardClicked,
+    CpuDashboardClicked,
+    BluetoothClicked,
     MediaPlayerClicked,
     /// Margo layout switcher bar pill clicked. Frame catches and
     /// toggles the in-stack MargoLayout menu (replaces the
@@ -454,9 +456,14 @@ impl BarModel {
                     .detach(),
             ),
             BarWidget::Battery => Box::new(BatteryModel::builder().launch(BatteryInit {}).detach()),
-            BarWidget::Bluetooth => {
-                Box::new(BluetoothModel::builder().launch(BluetoothInit {}).detach())
-            }
+            BarWidget::Bluetooth => Box::new(
+                BluetoothModel::builder()
+                    .launch(BluetoothInit {})
+                    .forward(sender.output_sender(), |msg| match msg {
+                        crate::bars::bar_widgets::bluetooth::BluetoothOutput::Clicked
+                            => BarOutput::BluetoothClicked,
+                    }),
+            ),
             BarWidget::Clipboard => Box::new(
                 ClipboardModel::builder()
                     .launch(ClipboardInit { orientation })
@@ -474,7 +481,10 @@ impl BarModel {
             BarWidget::CpuDashboard => Box::new(
                 CpuDashboardModel::builder()
                     .launch(CpuDashboardInit { orientation })
-                    .detach(),
+                    .forward(sender.output_sender(), |msg| match msg {
+                        crate::bars::bar_widgets::cpu_dashboard::CpuDashboardOutput::Clicked
+                            => BarOutput::CpuDashboardClicked,
+                    }),
             ),
             BarWidget::Dashboard => Box::new(
                 DashboardModel::builder()
