@@ -1,0 +1,26 @@
+// Compact dashboard "Connectivity" tile — one horizontal row
+// with WiFi on the left and Bluetooth on the right.
+//
+// Replaces the stacked Network + Bluetooth widget pair when the
+// dashboard wants a single-line "what am I connected to" read.
+
+.connectivity-menu-widget {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.connectivity-cell {
+  padding: 4px 2px;
+}
+
+.connectivity-icon {
+  -gtk-icon-size: 18px;
+  color: var(--primary);
+}
+
+.connectivity-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--on-surface);
+  letter-spacing: -0.01em;
+}

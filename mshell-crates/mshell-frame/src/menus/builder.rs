@@ -17,7 +17,9 @@ use crate::menus::menu_widgets::clipboard::clipboard::{
     ClipboardInit, ClipboardModel, ClipboardOutput,
 };
 use crate::menus::menu_widgets::clock::{ClockInit, ClockModel};
+use crate::menus::menu_widgets::connectivity::{ConnectivityInit, ConnectivityModel};
 use crate::menus::menu_widgets::container::{ContainerInit, ContainerModel};
+use crate::menus::menu_widgets::daily_overview::{DailyOverviewInit, DailyOverviewModel};
 use crate::menus::menu_widgets::divider::{DividerMenuWidgetInit, DividerMenuWidgetModel};
 use crate::menus::menu_widgets::margo_layout::margo_layout_menu_widget::{
     MargoLayoutMenuWidgetInit, MargoLayoutMenuWidgetModel, MargoLayoutMenuWidgetOutput,
@@ -124,6 +126,11 @@ pub fn build_widget(
             ))
         }
         MenuWidget::Clock => Box::new(ClockModel::builder().launch(ClockInit {}).detach()),
+        MenuWidget::Connectivity => Box::new(
+            ConnectivityModel::builder()
+                .launch(ConnectivityInit {})
+                .detach(),
+        ),
         MenuWidget::Divider => Box::new(
             DividerMenuWidgetModel::builder()
                 .launch(DividerMenuWidgetInit { orientation })
@@ -208,6 +215,11 @@ pub fn build_widget(
                 .forward(sender.output_sender(), |msg| match msg {
                     QuickActionsOutput::CloseMenu => MenuOutput::CloseMenu,
                 }),
+        ),
+        MenuWidget::DailyOverview => Box::new(
+            DailyOverviewModel::builder()
+                .launch(DailyOverviewInit {})
+                .detach(),
         ),
         MenuWidget::Container(config) => Box::new(
             ContainerModel::builder()
