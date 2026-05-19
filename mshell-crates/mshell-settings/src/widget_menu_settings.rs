@@ -29,6 +29,7 @@ pub(crate) enum MenuKind {
     Clock,
     CpuDashboard,
     Dashboard,
+    MargoLayout,
     MediaPlayer,
     Ndns,
     Nip,
@@ -53,6 +54,7 @@ impl MenuKind {
             Self::Clock => "Clock",
             Self::CpuDashboard => "CPU Dashboard",
             Self::Dashboard => "Dashboard",
+            Self::MargoLayout => "Margo Layout",
             Self::MediaPlayer => "Media Player",
             Self::Ndns => "DNS / VPN",
             Self::Nip => "Public IP",
@@ -92,6 +94,7 @@ impl MenuKind {
             MenuKind::Nnotes,
             MenuKind::Nip,
             MenuKind::Nnetwork,
+            MenuKind::MargoLayout,
         ]
     }
 
@@ -120,6 +123,7 @@ impl MenuKind {
             Self::Bluetooth => m.bluetooth_menu().position().get_untracked(),
             Self::CpuDashboard => m.cpu_dashboard_menu().position().get_untracked(),
             Self::AudioDashboard => m.audio_dashboard_menu().position().get_untracked(),
+            Self::MargoLayout => m.margo_layout_menu().position().get_untracked(),
         }
     }
 
@@ -145,6 +149,7 @@ impl MenuKind {
             Self::Bluetooth => m.bluetooth_menu().minimum_width().get_untracked(),
             Self::CpuDashboard => m.cpu_dashboard_menu().minimum_width().get_untracked(),
             Self::AudioDashboard => m.audio_dashboard_menu().minimum_width().get_untracked(),
+            Self::MargoLayout => m.margo_layout_menu().minimum_width().get_untracked(),
         }
     }
 
@@ -170,6 +175,7 @@ impl MenuKind {
             Self::Bluetooth => m.bluetooth_menu().position().get(),
             Self::CpuDashboard => m.cpu_dashboard_menu().position().get(),
             Self::AudioDashboard => m.audio_dashboard_menu().position().get(),
+            Self::MargoLayout => m.margo_layout_menu().position().get(),
         }
     }
 
@@ -195,6 +201,7 @@ impl MenuKind {
             Self::Bluetooth => m.bluetooth_menu().minimum_width().get(),
             Self::CpuDashboard => m.cpu_dashboard_menu().minimum_width().get(),
             Self::AudioDashboard => m.audio_dashboard_menu().minimum_width().get(),
+            Self::MargoLayout => m.margo_layout_menu().minimum_width().get(),
         }
     }
 
@@ -219,6 +226,7 @@ impl MenuKind {
             Self::Bluetooth => c.menus.bluetooth_menu.position = p,
             Self::CpuDashboard => c.menus.cpu_dashboard_menu.position = p,
             Self::AudioDashboard => c.menus.audio_dashboard_menu.position = p,
+            Self::MargoLayout => c.menus.margo_layout_menu.position = p,
         });
     }
 
@@ -243,6 +251,7 @@ impl MenuKind {
             Self::Bluetooth => c.menus.bluetooth_menu.minimum_width = w,
             Self::CpuDashboard => c.menus.cpu_dashboard_menu.minimum_width = w,
             Self::AudioDashboard => c.menus.audio_dashboard_menu.minimum_width = w,
+            Self::MargoLayout => c.menus.margo_layout_menu.minimum_width = w,
         });
     }
 
@@ -268,6 +277,7 @@ impl MenuKind {
             Self::Bluetooth => m.bluetooth_menu().maximum_height().get_untracked(),
             Self::CpuDashboard => m.cpu_dashboard_menu().maximum_height().get_untracked(),
             Self::AudioDashboard => m.audio_dashboard_menu().maximum_height().get_untracked(),
+            Self::MargoLayout => m.margo_layout_menu().maximum_height().get_untracked(),
         }
     }
 
@@ -293,6 +303,7 @@ impl MenuKind {
             Self::Bluetooth => m.bluetooth_menu().maximum_height().get(),
             Self::CpuDashboard => m.cpu_dashboard_menu().maximum_height().get(),
             Self::AudioDashboard => m.audio_dashboard_menu().maximum_height().get(),
+            Self::MargoLayout => m.margo_layout_menu().maximum_height().get(),
         }
     }
 
@@ -317,6 +328,7 @@ impl MenuKind {
             Self::Bluetooth => c.menus.bluetooth_menu.maximum_height = h,
             Self::CpuDashboard => c.menus.cpu_dashboard_menu.maximum_height = h,
             Self::AudioDashboard => c.menus.audio_dashboard_menu.maximum_height = h,
+            Self::MargoLayout => c.menus.margo_layout_menu.maximum_height = h,
         });
     }
 
@@ -344,6 +356,7 @@ impl MenuKind {
             Self::Bluetooth => m.bluetooth_menu().widgets().get_untracked(),
             Self::CpuDashboard => m.cpu_dashboard_menu().widgets().get_untracked(),
             Self::AudioDashboard => m.audio_dashboard_menu().widgets().get_untracked(),
+            Self::MargoLayout => m.margo_layout_menu().widgets().get_untracked(),
         }
     }
 
@@ -372,6 +385,7 @@ impl MenuKind {
             Self::Bluetooth => m.bluetooth_menu().widgets().get(),
             Self::CpuDashboard => m.cpu_dashboard_menu().widgets().get(),
             Self::AudioDashboard => m.audio_dashboard_menu().widgets().get(),
+            Self::MargoLayout => m.margo_layout_menu().widgets().get(),
         }
     }
 
@@ -401,6 +415,7 @@ impl MenuKind {
             Self::Bluetooth => c.menus.bluetooth_menu.widgets = widgets,
             Self::CpuDashboard => c.menus.cpu_dashboard_menu.widgets = widgets,
             Self::AudioDashboard => c.menus.audio_dashboard_menu.widgets = widgets,
+            Self::MargoLayout => c.menus.margo_layout_menu.widgets = widgets,
         });
     }
 }

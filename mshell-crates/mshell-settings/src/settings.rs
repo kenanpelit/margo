@@ -698,6 +698,7 @@ impl Component for SettingsWindowModel {
             WidgetEntry::Menu { kind: MenuKind::Bluetooth, stack_name: "bluetooth", label: "Bluetooth", icon: "bluetooth-active-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::CpuDashboard, stack_name: "cpu_dashboard", label: "CPU Dashboard", icon: "computer-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::AudioDashboard, stack_name: "audio_dashboard", label: "Audio Dashboard", icon: "audio-volume-high-symbolic" },
+            WidgetEntry::Menu { kind: MenuKind::MargoLayout, stack_name: "margo_layout", label: "Margo Layout Switcher", icon: "view-grid-symbolic" },
             // Bar-only pills (no menu surface — just info pages).
             WidgetEntry::Pill { kind: BarPillKind::ActiveWindow, stack_name: "pill_active_window", label: "Active Window", icon: "window-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::AudioInput, stack_name: "pill_audio_input", label: "Audio Input", icon: "microphone-sensitivity-medium-symbolic" },
@@ -712,7 +713,6 @@ impl Component for SettingsWindowModel {
             WidgetEntry::Pill { kind: BarPillKind::Lock, stack_name: "pill_lock", label: "Lock", icon: "system-lock-screen-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::Logout, stack_name: "pill_logout", label: "Logout", icon: "system-log-out-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::MargoDock, stack_name: "pill_margo_dock", label: "Margo Dock", icon: "view-grid-symbolic" },
-            WidgetEntry::Pill { kind: BarPillKind::MargoLayoutSwitcher, stack_name: "pill_margo_layout", label: "Margo Layout Switcher", icon: "layout-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::MargoTags, stack_name: "pill_margo_tags", label: "Margo Tags", icon: "square-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::Network, stack_name: "pill_network", label: "Network", icon: "network-wired-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::PowerProfile, stack_name: "pill_power_profile", label: "Power Profile", icon: "power-profile-balanced-symbolic" },

@@ -37,7 +37,6 @@ pub(crate) enum BarPillKind {
     Lock,
     Logout,
     MargoDock,
-    MargoLayoutSwitcher,
     MargoTags,
     Network,
     PowerProfile,
@@ -66,7 +65,6 @@ impl BarPillKind {
             Self::Lock => "Lock",
             Self::Logout => "Logout",
             Self::MargoDock => "Margo Dock",
-            Self::MargoLayoutSwitcher => "Margo Layout Switcher",
             Self::MargoTags => "Margo Tags",
             Self::Network => "Network",
             Self::PowerProfile => "Power Profile",
@@ -115,9 +113,6 @@ impl BarPillKind {
             Self::Logout => "Logs out of the session. Confirms with a dialog.",
             Self::MargoDock => {
                 "Pinned-app dock surfaced through margo's foreign-toplevel list. Click to launch / focus a window."
-            }
-            Self::MargoLayoutSwitcher => {
-                "Current tag's tiling layout (tile / scroller / monocle / dwindle / …). Click cycles forward."
             }
             Self::MargoTags => {
                 "1–9 tag pills with focus / occupied / urgent states. Click to switch tags, scroll to cycle."
