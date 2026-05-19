@@ -127,6 +127,7 @@ pub(crate) enum BarOutput {
     AppLauncherClicked,
     WallpaperClicked,
     NufwClicked,
+    BluetoothClicked,
     NdnsClicked,
     NpodmanClicked,
     NnotesClicked,
@@ -450,9 +451,14 @@ impl BarModel {
                     .detach(),
             ),
             BarWidget::Battery => Box::new(BatteryModel::builder().launch(BatteryInit {}).detach()),
-            BarWidget::Bluetooth => {
-                Box::new(BluetoothModel::builder().launch(BluetoothInit {}).detach())
-            }
+            BarWidget::Bluetooth => Box::new(
+                BluetoothModel::builder()
+                    .launch(BluetoothInit {})
+                    .forward(sender.output_sender(), |msg| match msg {
+                        crate::bars::bar_widgets::bluetooth::BluetoothOutput::Clicked
+                            => BarOutput::BluetoothClicked,
+                    }),
+            ),
             BarWidget::Clipboard => Box::new(
                 ClipboardModel::builder()
                     .launch(ClipboardInit { orientation })

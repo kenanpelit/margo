@@ -400,6 +400,10 @@ pub struct Menus {
     pub nip_menu: Menu,
     pub nnetwork_menu: Menu,
     pub npower_menu: Menu,
+    // Default-on-missing so older user YAML predating these menu
+    // types still parses cleanly.
+    #[serde(default = "default_bluetooth_menu")]
+    pub bluetooth_menu: Menu,
     pub media_player_menu: Menu,
     pub session_menu: Menu,
     /// Settings panel — embeds in the frame's menu stack instead
@@ -418,6 +422,15 @@ pub struct Menus {
     pub margo_layout_menu: Menu,
     pub left_menu_expansion_type: VerticalMenuExpansion,
     pub right_menu_expansion_type: VerticalMenuExpansion,
+}
+
+fn default_bluetooth_menu() -> Menu {
+    Menu {
+        position: Position::Top,
+        widgets: vec![MenuWidget::Bluetooth],
+        minimum_width: 400,
+        maximum_height: 0,
+    }
 }
 
 impl Default for Menus {
@@ -544,6 +557,7 @@ impl Default for Menus {
                 minimum_width: 360,
                 maximum_height: 0,
             },
+            bluetooth_menu: default_bluetooth_menu(),
             media_player_menu: Menu {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::MediaPlayer],

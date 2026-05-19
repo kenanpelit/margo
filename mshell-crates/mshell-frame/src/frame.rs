@@ -26,6 +26,7 @@ const NOTIFICATION_MENU: &str = "notification";
 const WALLPAPER_MENU: &str = "wallpaper";
 const SCREENSHARE_MENU: &str = "screenshare";
 const NUFW_MENU: &str = "nufw";
+const BLUETOOTH_MENU: &str = "bluetooth";
 const NDNS_MENU: &str = "ndns";
 const NPODMAN_MENU: &str = "npodman";
 const NNOTES_MENU: &str = "nnotes";
@@ -77,6 +78,7 @@ pub struct Frame {
     wallpaper_menu: Controller<MenuModel>,
     screenshare_menu: Controller<MenuModel>,
     nufw_menu: Controller<MenuModel>,
+    bluetooth_menu: Controller<MenuModel>,
     ndns_menu: Controller<MenuModel>,
     npodman_menu: Controller<MenuModel>,
     nnotes_menu: Controller<MenuModel>,
@@ -125,6 +127,7 @@ pub enum FrameInput {
     ToggleAppLauncherMenuWithTab(String),
     ToggleWallpaperMenu,
     ToggleNufwMenu,
+    ToggleBluetoothMenu,
     ToggleNdnsMenu,
     ToggleNpodmanMenu,
     ToggleNnotesMenu,
@@ -647,6 +650,7 @@ impl Component for Frame {
         let wallpaper_menu = Self::build_menu(&sender, MenuType::Wallpaper);
         let screenshare_menu = Self::build_menu(&sender, MenuType::HyprlandScreenshare);
         let nufw_menu = Self::build_menu(&sender, MenuType::Nufw);
+        let bluetooth_menu = Self::build_menu(&sender, MenuType::Bluetooth);
         let ndns_menu = Self::build_menu(&sender, MenuType::Ndns);
         let npodman_menu = Self::build_menu(&sender, MenuType::Npodman);
         let nnotes_menu = Self::build_menu(&sender, MenuType::Nnotes);
@@ -815,6 +819,7 @@ impl Component for Frame {
             wallpaper_menu,
             screenshare_menu,
             nufw_menu,
+            bluetooth_menu,
             ndns_menu,
             npodman_menu,
             nnotes_menu,
@@ -953,6 +958,10 @@ impl Component for Frame {
             }
             FrameInput::ToggleNufwMenu => {
                 self.toggle_menu(NUFW_MENU, widgets);
+                self.sync_keyboard_mode(root);
+            }
+            FrameInput::ToggleBluetoothMenu => {
+                self.toggle_menu(BLUETOOTH_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
             FrameInput::ToggleNdnsMenu => {
@@ -1653,6 +1662,15 @@ impl Frame {
         let wallpaper_menu_widget: Widget = self.wallpaper_menu.widget().clone().upcast();
         let screenshare_menu_widget: Widget = self.screenshare_menu.widget().clone().upcast();
         let nufw_menu_widget: Widget = self.nufw_menu.widget().clone().upcast();
+        // Bluetooth menu position read directly from config (skip
+        // the 19-arg RepositionMenus signature — defaults work).
+        let bluetooth_menu_widget: Widget = self.bluetooth_menu.widget().clone().upcast();
+        let bluetooth_menu_position = mshell_config::config_manager::config_manager()
+            .config()
+            .menus()
+            .bluetooth_menu()
+            .position()
+            .get();
         let ndns_menu_widget: Widget = self.ndns_menu.widget().clone().upcast();
         let npodman_menu_widget: Widget = self.npodman_menu.widget().clone().upcast();
         let nnotes_menu_widget: Widget = self.nnotes_menu.widget().clone().upcast();
@@ -1722,6 +1740,12 @@ impl Frame {
             &nufw_menu_widget,
             NUFW_MENU,
             &nufw_menu_position,
+        );
+        Self::add_to_stack(
+            widgets,
+            &bluetooth_menu_widget,
+            BLUETOOTH_MENU,
+            &bluetooth_menu_position,
         );
         Self::add_to_stack(
             widgets,
@@ -1839,6 +1863,7 @@ impl Frame {
                 BarOutput::AppLauncherClicked => FrameInput::ToggleAppLauncherMenu,
                 BarOutput::WallpaperClicked => FrameInput::ToggleWallpaperMenu,
                 BarOutput::NufwClicked => FrameInput::ToggleNufwMenu,
+                BarOutput::BluetoothClicked => FrameInput::ToggleBluetoothMenu,
                 BarOutput::NdnsClicked => FrameInput::ToggleNdnsMenu,
                 BarOutput::NpodmanClicked => FrameInput::ToggleNpodmanMenu,
                 BarOutput::NnotesClicked => FrameInput::ToggleNnotesMenu,

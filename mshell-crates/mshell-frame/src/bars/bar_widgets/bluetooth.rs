@@ -20,7 +20,7 @@ use mshell_utils::bluetooth::{
     set_bluetooth_icon, spawn_bluetooth_device_watcher, spawn_bluetooth_devices_watcher,
     spawn_bluetooth_enabled_watcher,
 };
-use relm4::gtk::prelude::WidgetExt;
+use relm4::gtk::prelude::{ButtonExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
 #[derive(Debug)]
@@ -32,10 +32,14 @@ pub(crate) struct BluetoothModel {
 }
 
 #[derive(Debug)]
-pub(crate) enum BluetoothInput {}
+pub(crate) enum BluetoothInput {
+    Clicked,
+}
 
 #[derive(Debug)]
-pub(crate) enum BluetoothOutput {}
+pub(crate) enum BluetoothOutput {
+    Clicked,
+}
 
 pub(crate) struct BluetoothInit {}
 
@@ -63,12 +67,19 @@ impl Component for BluetoothModel {
             set_hexpand: false,
             set_vexpand: false,
 
-            #[name="image"]
-            gtk::Image {
+            gtk::Button {
+                set_css_classes: &["ok-button-flat"],
                 set_hexpand: true,
                 set_vexpand: true,
-                set_halign: gtk::Align::Center,
-                set_valign: gtk::Align::Center,
+                connect_clicked[sender] => move |_| {
+                    sender.input(BluetoothInput::Clicked);
+                },
+
+                #[name="image"]
+                gtk::Image {
+                    set_halign: gtk::Align::Center,
+                    set_valign: gtk::Align::Center,
+                }
             }
         }
     }
@@ -101,6 +112,19 @@ impl Component for BluetoothModel {
         }
 
         ComponentParts { model, widgets }
+    }
+
+    fn update(
+        &mut self,
+        message: Self::Input,
+        sender: ComponentSender<Self>,
+        _root: &Self::Root,
+    ) {
+        match message {
+            BluetoothInput::Clicked => {
+                let _ = sender.output(BluetoothOutput::Clicked);
+            }
+        }
     }
 
     fn update_cmd_with_view(
