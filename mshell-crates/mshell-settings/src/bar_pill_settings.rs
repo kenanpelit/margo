@@ -27,12 +27,9 @@ pub(crate) enum BarPillKind {
     ActiveWindow,
     AudioInput,
     AudioOutput,
-    AudioDashboard,
     Battery,
-    Bluetooth,
     DarkMode,
     ColorPicker,
-    CpuDashboard,
     CpuMonitor,
     CpuTemp,
     KeepAwake,
@@ -59,12 +56,9 @@ impl BarPillKind {
             Self::ActiveWindow => "Active Window",
             Self::AudioInput => "Audio Input",
             Self::AudioOutput => "Audio Output",
-            Self::AudioDashboard => "Audio Dashboard",
             Self::Battery => "Battery",
-            Self::Bluetooth => "Bluetooth",
             Self::DarkMode => "Dark Mode Toggle",
             Self::ColorPicker => "ColorPicker",
-            Self::CpuDashboard => "CPU Dashboard",
             Self::CpuMonitor => "CPU Load",
             Self::CpuTemp => "CPU Temperature",
             Self::KeepAwake => "Keep Awake",
@@ -99,23 +93,14 @@ impl BarPillKind {
             Self::AudioOutput => {
                 "Speaker volume + mute toggle. Click opens the audio-output menu to pick a sink device."
             }
-            Self::AudioDashboard => {
-                "Combined audio pill: default output and input volumes + icons on one chip. Right-click cycles Both / Output-only / Input-only. Click opens a Popover with sliders, mute toggles, and device pickers for both sides."
-            }
             Self::Battery => {
                 "Charge percentage + charging state. Right-click flips between percentage label and minimal icon-only."
-            }
-            Self::Bluetooth => {
-                "Adapter state + connected device count. Click opens the Bluetooth menu for pairing / disconnect."
             }
             Self::DarkMode => {
                 "One-click flip between Light and Dark matugen modes. Icon reflects the mode you'd switch *to*."
             }
             Self::ColorPicker => {
                 "Picks a colour from the screen and copies hex/rgb to the clipboard. Click to start picking."
-            }
-            Self::CpuDashboard => {
-                "Combined CPU pill: live load % + package temperature on one chip with calm/warn/danger colour states. Click opens a popover with per-core load bars, RAM usage, and load averages."
             }
             Self::CpuMonitor => {
                 "Single CPU load percentage. Polls /proc/stat every 2 s. Pair with CPU Temperature for a two-chip view; use CPU Dashboard for the combined alternative."

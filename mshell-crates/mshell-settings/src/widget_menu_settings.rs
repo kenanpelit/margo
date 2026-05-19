@@ -23,8 +23,11 @@ use relm4::{Component, ComponentParts, ComponentSender, gtk};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MenuKind {
     AppLauncher,
+    AudioDashboard,
+    Bluetooth,
     Clipboard,
     Clock,
+    CpuDashboard,
     Dashboard,
     MediaPlayer,
     Ndns,
@@ -44,8 +47,11 @@ impl MenuKind {
     pub(crate) fn display_name(self) -> &'static str {
         match self {
             Self::AppLauncher => "App Launcher",
+            Self::AudioDashboard => "Audio Dashboard",
+            Self::Bluetooth => "Bluetooth",
             Self::Clipboard => "Clipboard",
             Self::Clock => "Clock",
+            Self::CpuDashboard => "CPU Dashboard",
             Self::Dashboard => "Dashboard",
             Self::MediaPlayer => "Media Player",
             Self::Ndns => "DNS / VPN",
@@ -77,6 +83,9 @@ impl MenuKind {
             MenuKind::Wallpaper,
             MenuKind::MediaPlayer,
             MenuKind::Npower,
+            MenuKind::Bluetooth,
+            MenuKind::CpuDashboard,
+            MenuKind::AudioDashboard,
             MenuKind::Nufw,
             MenuKind::Ndns,
             MenuKind::Npodman,
@@ -108,6 +117,9 @@ impl MenuKind {
             Self::QuickSettings => m.quick_settings_menu().position().get_untracked(),
             Self::Screenshot => m.screenshot_menu().position().get_untracked(),
             Self::Nufw => m.nufw_menu().position().get_untracked(),
+            Self::Bluetooth => m.bluetooth_menu().position().get_untracked(),
+            Self::CpuDashboard => m.cpu_dashboard_menu().position().get_untracked(),
+            Self::AudioDashboard => m.audio_dashboard_menu().position().get_untracked(),
         }
     }
 
@@ -130,6 +142,9 @@ impl MenuKind {
             Self::QuickSettings => m.quick_settings_menu().minimum_width().get_untracked(),
             Self::Screenshot => m.screenshot_menu().minimum_width().get_untracked(),
             Self::Nufw => m.nufw_menu().minimum_width().get_untracked(),
+            Self::Bluetooth => m.bluetooth_menu().minimum_width().get_untracked(),
+            Self::CpuDashboard => m.cpu_dashboard_menu().minimum_width().get_untracked(),
+            Self::AudioDashboard => m.audio_dashboard_menu().minimum_width().get_untracked(),
         }
     }
 
@@ -152,6 +167,9 @@ impl MenuKind {
             Self::QuickSettings => m.quick_settings_menu().position().get(),
             Self::Screenshot => m.screenshot_menu().position().get(),
             Self::Nufw => m.nufw_menu().position().get(),
+            Self::Bluetooth => m.bluetooth_menu().position().get(),
+            Self::CpuDashboard => m.cpu_dashboard_menu().position().get(),
+            Self::AudioDashboard => m.audio_dashboard_menu().position().get(),
         }
     }
 
@@ -174,6 +192,9 @@ impl MenuKind {
             Self::QuickSettings => m.quick_settings_menu().minimum_width().get(),
             Self::Screenshot => m.screenshot_menu().minimum_width().get(),
             Self::Nufw => m.nufw_menu().minimum_width().get(),
+            Self::Bluetooth => m.bluetooth_menu().minimum_width().get(),
+            Self::CpuDashboard => m.cpu_dashboard_menu().minimum_width().get(),
+            Self::AudioDashboard => m.audio_dashboard_menu().minimum_width().get(),
         }
     }
 
@@ -195,6 +216,9 @@ impl MenuKind {
             Self::QuickSettings => c.menus.quick_settings_menu.position = p,
             Self::Screenshot => c.menus.screenshot_menu.position = p,
             Self::Nufw => c.menus.nufw_menu.position = p,
+            Self::Bluetooth => c.menus.bluetooth_menu.position = p,
+            Self::CpuDashboard => c.menus.cpu_dashboard_menu.position = p,
+            Self::AudioDashboard => c.menus.audio_dashboard_menu.position = p,
         });
     }
 
@@ -216,6 +240,9 @@ impl MenuKind {
             Self::QuickSettings => c.menus.quick_settings_menu.minimum_width = w,
             Self::Screenshot => c.menus.screenshot_menu.minimum_width = w,
             Self::Nufw => c.menus.nufw_menu.minimum_width = w,
+            Self::Bluetooth => c.menus.bluetooth_menu.minimum_width = w,
+            Self::CpuDashboard => c.menus.cpu_dashboard_menu.minimum_width = w,
+            Self::AudioDashboard => c.menus.audio_dashboard_menu.minimum_width = w,
         });
     }
 
@@ -238,6 +265,9 @@ impl MenuKind {
             Self::QuickSettings => m.quick_settings_menu().maximum_height().get_untracked(),
             Self::Screenshot => m.screenshot_menu().maximum_height().get_untracked(),
             Self::Nufw => m.nufw_menu().maximum_height().get_untracked(),
+            Self::Bluetooth => m.bluetooth_menu().maximum_height().get_untracked(),
+            Self::CpuDashboard => m.cpu_dashboard_menu().maximum_height().get_untracked(),
+            Self::AudioDashboard => m.audio_dashboard_menu().maximum_height().get_untracked(),
         }
     }
 
@@ -260,6 +290,9 @@ impl MenuKind {
             Self::QuickSettings => m.quick_settings_menu().maximum_height().get(),
             Self::Screenshot => m.screenshot_menu().maximum_height().get(),
             Self::Nufw => m.nufw_menu().maximum_height().get(),
+            Self::Bluetooth => m.bluetooth_menu().maximum_height().get(),
+            Self::CpuDashboard => m.cpu_dashboard_menu().maximum_height().get(),
+            Self::AudioDashboard => m.audio_dashboard_menu().maximum_height().get(),
         }
     }
 
@@ -281,6 +314,9 @@ impl MenuKind {
             Self::QuickSettings => c.menus.quick_settings_menu.maximum_height = h,
             Self::Screenshot => c.menus.screenshot_menu.maximum_height = h,
             Self::Nufw => c.menus.nufw_menu.maximum_height = h,
+            Self::Bluetooth => c.menus.bluetooth_menu.maximum_height = h,
+            Self::CpuDashboard => c.menus.cpu_dashboard_menu.maximum_height = h,
+            Self::AudioDashboard => c.menus.audio_dashboard_menu.maximum_height = h,
         });
     }
 
@@ -305,6 +341,9 @@ impl MenuKind {
             Self::QuickSettings => m.quick_settings_menu().widgets().get_untracked(),
             Self::Screenshot => m.screenshot_menu().widgets().get_untracked(),
             Self::Nufw => m.nufw_menu().widgets().get_untracked(),
+            Self::Bluetooth => m.bluetooth_menu().widgets().get_untracked(),
+            Self::CpuDashboard => m.cpu_dashboard_menu().widgets().get_untracked(),
+            Self::AudioDashboard => m.audio_dashboard_menu().widgets().get_untracked(),
         }
     }
 
@@ -330,6 +369,9 @@ impl MenuKind {
             Self::QuickSettings => m.quick_settings_menu().widgets().get(),
             Self::Screenshot => m.screenshot_menu().widgets().get(),
             Self::Nufw => m.nufw_menu().widgets().get(),
+            Self::Bluetooth => m.bluetooth_menu().widgets().get(),
+            Self::CpuDashboard => m.cpu_dashboard_menu().widgets().get(),
+            Self::AudioDashboard => m.audio_dashboard_menu().widgets().get(),
         }
     }
 
@@ -356,6 +398,9 @@ impl MenuKind {
             Self::QuickSettings => c.menus.quick_settings_menu.widgets = widgets,
             Self::Screenshot => c.menus.screenshot_menu.widgets = widgets,
             Self::Nufw => c.menus.nufw_menu.widgets = widgets,
+            Self::Bluetooth => c.menus.bluetooth_menu.widgets = widgets,
+            Self::CpuDashboard => c.menus.cpu_dashboard_menu.widgets = widgets,
+            Self::AudioDashboard => c.menus.audio_dashboard_menu.widgets = widgets,
         });
     }
 }

@@ -13,3 +13,12 @@
 .bluetooth-bar-widget.connected image {
   color: var(--primary);
 }
+
+// Menu row label — `set_bluetooth_label` adds `.bt-connected` to
+// the revealer-row label when a device is live, so the connected
+// device's name in the open Bluetooth menu reads in the matugen
+// accent (matching the bar pill's connected icon tint).
+label.bt-connected {
+  color: var(--primary);
+  font-weight: 600;
+}

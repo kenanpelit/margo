@@ -1,6 +1,7 @@
 use mshell_common::{watch, watch_cancellable};
 use mshell_services::bluetooth_service;
 use relm4::gtk::gdk;
+use relm4::gtk::prelude::WidgetExt;
 use relm4::{Component, ComponentSender, gtk};
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
@@ -25,6 +26,10 @@ pub fn set_bluetooth_label(label: &gtk::Label) {
     let available = bluetooth.available.get();
     let enabled = bluetooth.enabled.get();
 
+    // Drop the live-connection tint up front; re-added below only
+    // when at least one device is actually connected.
+    label.remove_css_class("bt-connected");
+
     if !available {
         label.set_label("Bluetooth Hardware Missing");
         return;
@@ -48,8 +53,18 @@ pub fn set_bluetooth_label(label: &gtk::Label) {
 
     match connected.len() {
         0 => label.set_label("Bluetooth — no devices"),
-        1 => label.set_label(&connected[0]),
-        n => label.set_label(&format!("{} ({} connected)", connected[0], n)),
+        1 => {
+            label.set_label(&connected[0]);
+            // Live connection — tint the name with the matugen
+            // accent so the menu row reads "this is hooked up
+            // right now", mirroring the bar pill's `.connected`
+            // cue.
+            label.add_css_class("bt-connected");
+        }
+        n => {
+            label.set_label(&format!("{} ({} connected)", connected[0], n));
+            label.add_css_class("bt-connected");
+        }
     }
 }
 
