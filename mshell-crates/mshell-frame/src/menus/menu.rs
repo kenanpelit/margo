@@ -567,7 +567,10 @@ impl Component for MenuModel {
                 });
             }
             MenuType::AudioDashboard => {
-                css_class = "audio-dashboard-menu".to_string();
+                // Same card-stack chrome as the Bluetooth menu so
+                // the AudioOut / AudioIn revealer rows get the
+                // polished surface-variant card treatment.
+                css_class = "quick-settings-menu audio-dashboard-menu".to_string();
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {

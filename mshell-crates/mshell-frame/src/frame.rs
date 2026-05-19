@@ -1848,22 +1848,25 @@ impl Frame {
             DASHBOARD_MENU,
             &dashboard_menu_position,
         );
-        // Margo Layout menu uses the same Top anchor as Clock /
-        // Dashboard since its content (a vertical layout list) is
-        // most natural under the bar. Bar pill output cascades
-        // through `BarOutput::MargoLayoutClicked` to
+        // Margo Layout menu — position read from config (the
+        // Settings → Menus page exposes the knob). Bar pill output
+        // cascades through `BarOutput::MargoLayoutClicked` to
         // `FrameInput::ToggleMargoLayoutMenu` which calls
         // `toggle_menu(MARGO_LAYOUT_MENU, …)` against the same
-        // stack. Position is hardcoded `Top` for the MVP — a
-        // follow-up can wire it through `RepositionMenus` once
-        // the Settings UI exposes the per-menu position knob.
+        // stack.
         let margo_layout_menu_widget: Widget =
             self.margo_layout_menu.widget().clone().upcast();
+        let margo_layout_menu_position = mshell_config::config_manager::config_manager()
+            .config()
+            .menus()
+            .margo_layout_menu()
+            .position()
+            .get();
         Self::add_to_stack(
             widgets,
             &margo_layout_menu_widget,
             MARGO_LAYOUT_MENU,
-            &Position::Top,
+            &margo_layout_menu_position,
         );
     }
 
