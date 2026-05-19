@@ -404,6 +404,10 @@ pub struct Menus {
     // types still parses cleanly.
     #[serde(default = "default_bluetooth_menu")]
     pub bluetooth_menu: Menu,
+    #[serde(default = "default_cpu_dashboard_menu")]
+    pub cpu_dashboard_menu: Menu,
+    #[serde(default = "default_audio_dashboard_menu")]
+    pub audio_dashboard_menu: Menu,
     pub media_player_menu: Menu,
     pub session_menu: Menu,
     /// Settings panel — embeds in the frame's menu stack instead
@@ -428,6 +432,24 @@ fn default_bluetooth_menu() -> Menu {
     Menu {
         position: Position::Top,
         widgets: vec![MenuWidget::Bluetooth],
+        minimum_width: 400,
+        maximum_height: 0,
+    }
+}
+
+fn default_cpu_dashboard_menu() -> Menu {
+    Menu {
+        position: Position::Top,
+        widgets: vec![MenuWidget::CpuDashboard],
+        minimum_width: 380,
+        maximum_height: 0,
+    }
+}
+
+fn default_audio_dashboard_menu() -> Menu {
+    Menu {
+        position: Position::Top,
+        widgets: vec![MenuWidget::AudioDashboard],
         minimum_width: 400,
         maximum_height: 0,
     }
@@ -558,6 +580,8 @@ impl Default for Menus {
                 maximum_height: 0,
             },
             bluetooth_menu: default_bluetooth_menu(),
+            cpu_dashboard_menu: default_cpu_dashboard_menu(),
+            audio_dashboard_menu: default_audio_dashboard_menu(),
             media_player_menu: Menu {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::MediaPlayer],

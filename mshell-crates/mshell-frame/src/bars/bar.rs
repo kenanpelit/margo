@@ -128,6 +128,8 @@ pub(crate) enum BarOutput {
     WallpaperClicked,
     NufwClicked,
     BluetoothClicked,
+    CpuDashboardClicked,
+    AudioDashboardClicked,
     NdnsClicked,
     NpodmanClicked,
     NnotesClicked,
@@ -443,7 +445,10 @@ impl BarModel {
             BarWidget::AudioDashboard => Box::new(
                 crate::bars::bar_widgets::audio_dashboard::AudioDashboardModel::builder()
                     .launch(crate::bars::bar_widgets::audio_dashboard::AudioDashboardInit {})
-                    .detach(),
+                    .forward(sender.output_sender(), |msg| match msg {
+                        crate::bars::bar_widgets::audio_dashboard::AudioDashboardOutput::Clicked
+                            => BarOutput::AudioDashboardClicked,
+                    }),
             ),
             BarWidget::ActiveWindow => Box::new(
                 ActiveWindowModel::builder()
@@ -476,7 +481,10 @@ impl BarModel {
             BarWidget::CpuDashboard => Box::new(
                 CpuDashboardModel::builder()
                     .launch(CpuDashboardInit { orientation })
-                    .detach(),
+                    .forward(sender.output_sender(), |msg| match msg {
+                        crate::bars::bar_widgets::cpu_dashboard::CpuDashboardOutput::Clicked
+                            => BarOutput::CpuDashboardClicked,
+                    }),
             ),
             BarWidget::Dashboard => Box::new(
                 DashboardModel::builder()

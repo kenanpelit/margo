@@ -56,6 +56,12 @@ pub enum MenuCommands {
     Wallpaper,
     /// Toggle the UFW firewall menu
     Nufw,
+    /// Toggle the Bluetooth menu (connect/disconnect/scan/pair)
+    Bluetooth,
+    /// Toggle the CPU Dashboard menu (CPU, temp, RAM, load)
+    CpuDashboard,
+    /// Toggle the Audio Dashboard menu (output + input mixer)
+    AudioDashboard,
     /// Toggle the DNS / VPN menu
     Ndns,
     /// Toggle the Podman menu
@@ -125,6 +131,15 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::Nufw => {
             bus_command("Nufw").await?;
+        }
+        MenuCommands::Bluetooth => {
+            bus_command("Bluetooth").await?;
+        }
+        MenuCommands::CpuDashboard => {
+            bus_command("CpuDashboard").await?;
+        }
+        MenuCommands::AudioDashboard => {
+            bus_command("AudioDashboard").await?;
         }
         MenuCommands::Ndns => {
             bus_command("Ndns").await?;

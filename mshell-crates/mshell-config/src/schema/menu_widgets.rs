@@ -6,6 +6,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, JsonSchema)]
 pub enum MenuWidget {
     AppLauncher,
+    /// Audio Dashboard menu — output + input mute / slider /
+    /// device-picker card stack. The menu content for the
+    /// `audio_dashboard` bar pill.
+    AudioDashboard,
     AudioInput,
     AudioOutput,
     Bluetooth,
@@ -28,6 +32,10 @@ pub enum MenuWidget {
     /// dashboard wants a tighter "connectivity at a glance" view.
     Connectivity,
     Container(ContainerConfig),
+    /// CPU Dashboard menu — hero (CPU% + temp), per-core bars,
+    /// RAM bar, load-avg footer. The menu content for the
+    /// `cpu_dashboard` bar pill.
+    CpuDashboard,
     Divider,
     /// Margo layout switcher — a vertical list of the 14 layouts
     /// the compositor knows about (tile / scroller / grid /
@@ -86,6 +94,7 @@ impl MenuWidget {
     pub fn display_name(&self) -> &'static str {
         match self {
             MenuWidget::AppLauncher => "App Launcher",
+            MenuWidget::AudioDashboard => "Audio Dashboard",
             MenuWidget::AudioInput => "Audio Input",
             MenuWidget::AudioOutput => "Audio Output",
             MenuWidget::Bluetooth => "Bluetooth",
@@ -96,6 +105,7 @@ impl MenuWidget {
             MenuWidget::CompactAudio => "Compact Audio",
             MenuWidget::Connectivity => "Connectivity",
             MenuWidget::Container(_) => "Container",
+            MenuWidget::CpuDashboard => "CPU Dashboard",
             MenuWidget::Divider => "Divider",
             MenuWidget::MargoLayout => "Margo Layout",
             MenuWidget::MediaPlayer => "Media Player",
@@ -137,6 +147,7 @@ impl MenuWidget {
     pub fn all_defaults() -> Vec<MenuWidget> {
         vec![
             MenuWidget::AppLauncher,
+            MenuWidget::AudioDashboard,
             MenuWidget::AudioInput,
             MenuWidget::AudioOutput,
             MenuWidget::Bluetooth,
@@ -147,6 +158,7 @@ impl MenuWidget {
             MenuWidget::CompactAudio,
             MenuWidget::Connectivity,
             MenuWidget::Container(ContainerConfig::default()),
+            MenuWidget::CpuDashboard,
             MenuWidget::Divider,
             MenuWidget::MargoLayout,
             MenuWidget::MediaPlayer,

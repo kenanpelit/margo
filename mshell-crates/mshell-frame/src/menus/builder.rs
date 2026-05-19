@@ -2,6 +2,9 @@ use crate::menus::menu::{MenuModel, MenuOutput};
 use crate::menus::menu_widgets::app_launcher::app_launcher::{
     AppLauncherInit, AppLauncherModel, AppLauncherOutput,
 };
+use crate::menus::menu_widgets::audio_dashboard::audio_dashboard_menu_widget::{
+    AudioDashboardMenuWidgetInit, AudioDashboardMenuWidgetModel,
+};
 use crate::menus::menu_widgets::audio_in::audio_in_menu_widget::{
     AudioInMenuWidgetInit, AudioInMenuWidgetModel,
 };
@@ -20,6 +23,9 @@ use crate::menus::menu_widgets::clock::{ClockInit, ClockModel};
 use crate::menus::menu_widgets::compact_audio::{CompactAudioInit, CompactAudioModel};
 use crate::menus::menu_widgets::connectivity::{ConnectivityInit, ConnectivityModel};
 use crate::menus::menu_widgets::container::{ContainerInit, ContainerModel};
+use crate::menus::menu_widgets::cpu_dashboard::cpu_dashboard_menu_widget::{
+    CpuDashboardMenuWidgetInit, CpuDashboardMenuWidgetModel,
+};
 use crate::menus::menu_widgets::divider::{DividerMenuWidgetInit, DividerMenuWidgetModel};
 use crate::menus::menu_widgets::margo_layout::margo_layout_menu_widget::{
     MargoLayoutMenuWidgetInit, MargoLayoutMenuWidgetModel, MargoLayoutMenuWidgetOutput,
@@ -101,6 +107,11 @@ pub fn build_widget(
                 .launch(AudioInMenuWidgetInit {})
                 .detach(),
         ),
+        MenuWidget::AudioDashboard => Box::new(
+            AudioDashboardMenuWidgetModel::builder()
+                .launch(AudioDashboardMenuWidgetInit {})
+                .detach(),
+        ),
         MenuWidget::AudioOutput => Box::new(
             AudioOutMenuWidgetModel::builder()
                 .launch(AudioOutMenuWidgetInit {})
@@ -134,6 +145,11 @@ pub fn build_widget(
         MenuWidget::Connectivity => Box::new(
             ConnectivityModel::builder()
                 .launch(ConnectivityInit {})
+                .detach(),
+        ),
+        MenuWidget::CpuDashboard => Box::new(
+            CpuDashboardMenuWidgetModel::builder()
+                .launch(CpuDashboardMenuWidgetInit {})
                 .detach(),
         ),
         MenuWidget::Divider => Box::new(

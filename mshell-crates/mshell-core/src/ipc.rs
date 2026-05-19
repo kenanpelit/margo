@@ -78,6 +78,15 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 IPCCommand::Nufw => {
                     app_sender.emit(ShellInput::ToggleNufwMenu(active_monitor().await));
                 }
+                IPCCommand::Bluetooth => {
+                    app_sender.emit(ShellInput::ToggleBluetoothMenu(active_monitor().await));
+                }
+                IPCCommand::CpuDashboard => {
+                    app_sender.emit(ShellInput::ToggleCpuDashboardMenu(active_monitor().await));
+                }
+                IPCCommand::AudioDashboard => {
+                    app_sender.emit(ShellInput::ToggleAudioDashboardMenu(active_monitor().await));
+                }
                 IPCCommand::Ndns => {
                     app_sender.emit(ShellInput::ToggleNdnsMenu(active_monitor().await));
                 }
@@ -284,6 +293,9 @@ enum IPCCommand {
     Screenshot,
     Wallpaper,
     Nufw,
+    Bluetooth,
+    CpuDashboard,
+    AudioDashboard,
     Ndns,
     Npodman,
     Nnotes,
@@ -378,6 +390,15 @@ impl IPCService {
     }
     async fn nufw(&self) {
         let _ = self.tx.send(IPCCommand::Nufw);
+    }
+    async fn bluetooth(&self) {
+        let _ = self.tx.send(IPCCommand::Bluetooth);
+    }
+    async fn cpu_dashboard(&self) {
+        let _ = self.tx.send(IPCCommand::CpuDashboard);
+    }
+    async fn audio_dashboard(&self) {
+        let _ = self.tx.send(IPCCommand::AudioDashboard);
     }
     async fn ndns(&self) {
         let _ = self.tx.send(IPCCommand::Ndns);

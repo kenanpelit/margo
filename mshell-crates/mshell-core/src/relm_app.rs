@@ -88,6 +88,9 @@ pub(crate) enum ShellInput {
     ToggleWallpaperMenu(Option<String>),
     CycleWallpaper(mshell_cache::wallpaper::CycleDirection),
     ToggleNufwMenu(Option<String>),
+    ToggleBluetoothMenu(Option<String>),
+    ToggleCpuDashboardMenu(Option<String>),
+    ToggleAudioDashboardMenu(Option<String>),
     ToggleNdnsMenu(Option<String>),
     ToggleNpodmanMenu(Option<String>),
     ToggleNnotesMenu(Option<String>),
@@ -468,6 +471,21 @@ impl Component for Shell {
             ShellInput::ToggleNufwMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
                     frame.emit(FrameInput::ToggleNufwMenu);
+                }
+            }
+            ShellInput::ToggleBluetoothMenu(monitor_name) => {
+                if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
+                    frame.emit(FrameInput::ToggleBluetoothMenu);
+                }
+            }
+            ShellInput::ToggleCpuDashboardMenu(monitor_name) => {
+                if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
+                    frame.emit(FrameInput::ToggleCpuDashboardMenu);
+                }
+            }
+            ShellInput::ToggleAudioDashboardMenu(monitor_name) => {
+                if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
+                    frame.emit(FrameInput::ToggleAudioDashboardMenu);
                 }
             }
             ShellInput::ToggleNdnsMenu(monitor_name) => {

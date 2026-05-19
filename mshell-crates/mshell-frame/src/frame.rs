@@ -27,6 +27,8 @@ const WALLPAPER_MENU: &str = "wallpaper";
 const SCREENSHARE_MENU: &str = "screenshare";
 const NUFW_MENU: &str = "nufw";
 const BLUETOOTH_MENU: &str = "bluetooth";
+const CPU_DASHBOARD_MENU: &str = "cpu_dashboard";
+const AUDIO_DASHBOARD_MENU: &str = "audio_dashboard";
 const NDNS_MENU: &str = "ndns";
 const NPODMAN_MENU: &str = "npodman";
 const NNOTES_MENU: &str = "nnotes";
@@ -79,6 +81,8 @@ pub struct Frame {
     screenshare_menu: Controller<MenuModel>,
     nufw_menu: Controller<MenuModel>,
     bluetooth_menu: Controller<MenuModel>,
+    cpu_dashboard_menu: Controller<MenuModel>,
+    audio_dashboard_menu: Controller<MenuModel>,
     ndns_menu: Controller<MenuModel>,
     npodman_menu: Controller<MenuModel>,
     nnotes_menu: Controller<MenuModel>,
@@ -128,6 +132,8 @@ pub enum FrameInput {
     ToggleWallpaperMenu,
     ToggleNufwMenu,
     ToggleBluetoothMenu,
+    ToggleCpuDashboardMenu,
+    ToggleAudioDashboardMenu,
     ToggleNdnsMenu,
     ToggleNpodmanMenu,
     ToggleNnotesMenu,
@@ -651,6 +657,8 @@ impl Component for Frame {
         let screenshare_menu = Self::build_menu(&sender, MenuType::HyprlandScreenshare);
         let nufw_menu = Self::build_menu(&sender, MenuType::Nufw);
         let bluetooth_menu = Self::build_menu(&sender, MenuType::Bluetooth);
+        let cpu_dashboard_menu = Self::build_menu(&sender, MenuType::CpuDashboard);
+        let audio_dashboard_menu = Self::build_menu(&sender, MenuType::AudioDashboard);
         let ndns_menu = Self::build_menu(&sender, MenuType::Ndns);
         let npodman_menu = Self::build_menu(&sender, MenuType::Npodman);
         let nnotes_menu = Self::build_menu(&sender, MenuType::Nnotes);
@@ -820,6 +828,8 @@ impl Component for Frame {
             screenshare_menu,
             nufw_menu,
             bluetooth_menu,
+            cpu_dashboard_menu,
+            audio_dashboard_menu,
             ndns_menu,
             npodman_menu,
             nnotes_menu,
@@ -962,6 +972,14 @@ impl Component for Frame {
             }
             FrameInput::ToggleBluetoothMenu => {
                 self.toggle_menu(BLUETOOTH_MENU, widgets);
+                self.sync_keyboard_mode(root);
+            }
+            FrameInput::ToggleCpuDashboardMenu => {
+                self.toggle_menu(CPU_DASHBOARD_MENU, widgets);
+                self.sync_keyboard_mode(root);
+            }
+            FrameInput::ToggleAudioDashboardMenu => {
+                self.toggle_menu(AUDIO_DASHBOARD_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
             FrameInput::ToggleNdnsMenu => {
@@ -1671,6 +1689,22 @@ impl Frame {
             .bluetooth_menu()
             .position()
             .get();
+        let cpu_dashboard_menu_widget: Widget =
+            self.cpu_dashboard_menu.widget().clone().upcast();
+        let cpu_dashboard_menu_position = mshell_config::config_manager::config_manager()
+            .config()
+            .menus()
+            .cpu_dashboard_menu()
+            .position()
+            .get();
+        let audio_dashboard_menu_widget: Widget =
+            self.audio_dashboard_menu.widget().clone().upcast();
+        let audio_dashboard_menu_position = mshell_config::config_manager::config_manager()
+            .config()
+            .menus()
+            .audio_dashboard_menu()
+            .position()
+            .get();
         let ndns_menu_widget: Widget = self.ndns_menu.widget().clone().upcast();
         let npodman_menu_widget: Widget = self.npodman_menu.widget().clone().upcast();
         let nnotes_menu_widget: Widget = self.nnotes_menu.widget().clone().upcast();
@@ -1746,6 +1780,18 @@ impl Frame {
             &bluetooth_menu_widget,
             BLUETOOTH_MENU,
             &bluetooth_menu_position,
+        );
+        Self::add_to_stack(
+            widgets,
+            &cpu_dashboard_menu_widget,
+            CPU_DASHBOARD_MENU,
+            &cpu_dashboard_menu_position,
+        );
+        Self::add_to_stack(
+            widgets,
+            &audio_dashboard_menu_widget,
+            AUDIO_DASHBOARD_MENU,
+            &audio_dashboard_menu_position,
         );
         Self::add_to_stack(
             widgets,
@@ -1864,6 +1910,8 @@ impl Frame {
                 BarOutput::WallpaperClicked => FrameInput::ToggleWallpaperMenu,
                 BarOutput::NufwClicked => FrameInput::ToggleNufwMenu,
                 BarOutput::BluetoothClicked => FrameInput::ToggleBluetoothMenu,
+                BarOutput::CpuDashboardClicked => FrameInput::ToggleCpuDashboardMenu,
+                BarOutput::AudioDashboardClicked => FrameInput::ToggleAudioDashboardMenu,
                 BarOutput::NdnsClicked => FrameInput::ToggleNdnsMenu,
                 BarOutput::NpodmanClicked => FrameInput::ToggleNpodmanMenu,
                 BarOutput::NnotesClicked => FrameInput::ToggleNnotesMenu,

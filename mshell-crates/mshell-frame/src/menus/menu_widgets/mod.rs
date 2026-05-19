@@ -1,4 +1,5 @@
 pub(crate) mod app_launcher;
+pub(crate) mod audio_dashboard;
 pub(crate) mod audio_in;
 pub(crate) mod audio_out;
 pub(crate) mod bluetooth;
@@ -9,6 +10,7 @@ pub(crate) mod clock;
 pub(crate) mod compact_audio;
 pub(crate) mod connectivity;
 pub(crate) mod container;
+pub(crate) mod cpu_dashboard;
 pub(crate) mod divider;
 pub(crate) mod margo_layout;
 pub(crate) mod media_player;
