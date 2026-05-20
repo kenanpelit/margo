@@ -1,24 +1,20 @@
 //! Per-tag pill button for the bar's MargoTags row.
 //!
-//! Each pill is a `gtk::Button` rendering the tag's 1-indexed
-//! number ("1".."9") with an occupancy dot centred beneath it.
-//! State is conveyed on two
-//! **orthogonal** CSS axes, one class each — so they compose
-//! cleanly instead of fighting for the same visual language:
+//! Each pill is a `gtk::Button` rendering just the tag's 1-indexed
+//! number ("1".."9"). State is conveyed on two **orthogonal** CSS
+//! axes, one class each — so they compose cleanly instead of
+//! fighting for the same visual language:
 //!
 //!   * `.tag-active`      — this tag is the focused workspace on
 //!                          its owner monitor. Drawn as a filled
 //!                          accent capsule (you are here).
 //!   * `.tag-has-windows` — there's at least one client on the
-//!                          tag. Lights up the occupancy dot
-//!                          (has content). Independent of focus,
-//!                          so an active tag with windows shows
-//!                          both the capsule and the dot.
+//!                          tag. Tints the digit `--primary` (the
+//!                          theme accent, "has content"). Independent
+//!                          of focus, so an active tag still shows the
+//!                          filled capsule with on-primary digit.
 //!
-//! A tag with neither class is empty + unfocused: dim digit, no
-//! dot. The dot always occupies its layout space (the SCSS
-//! toggles opacity, not visibility) so the digit never shifts
-//! and the row reads as a stable grid.
+//! A tag with neither class is empty + unfocused: a dim digit.
 //!
 //! Window-count and active-state are both reactive: per-tag
 //! `workspace.windows.watch()` + `workspace.monitor_id.watch()`
@@ -34,7 +30,7 @@
 use futures::StreamExt;
 use mshell_margo_client::{Workspace, WorkspaceInfo};
 use mshell_utils::margo::is_an_active_workspace;
-use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::{ButtonExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::sync::Arc;
 use tracing::warn;
@@ -62,12 +58,11 @@ impl Component for MargoTagModel {
     type Output = MargoTagOutput;
     type Init = Arc<Workspace>;
 
-    // Material active-indicator pill: the tag digit with an
-    // occupancy dot centred beneath it. All visual state lives in
-    // `_margo_tag.scss`, keyed off the `.tag-active` /
-    // `.tag-has-windows` classes computed by `tag_classes`. The dot
-    // is a plain box the SCSS fades in/out, so nothing here needs to
-    // react to it.
+    // Material active-indicator pill: just the tag digit. All visual
+    // state lives in `_margo_tag.scss`, keyed off the `.tag-active` /
+    // `.tag-has-windows` classes computed by `tag_classes` — the
+    // focused tag fills with `--primary`, an occupied (but unfocused)
+    // tag tints its digit `--primary`, an empty one stays dim.
     view! {
         #[root]
         gtk::Box {
@@ -84,26 +79,11 @@ impl Component for MargoTagModel {
                     sender.input(MargoTagInput::WorkspaceClicked);
                 },
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Vertical,
-                    set_spacing: 2,
+                gtk::Label {
+                    add_css_class: "margo-tag-label",
                     set_halign: gtk::Align::Center,
                     set_valign: gtk::Align::Center,
-
-                    gtk::Label {
-                        add_css_class: "margo-tag-label",
-                        set_label: &model.workspace.id.get().to_string(),
-                    },
-
-                    // Occupancy dot — a small box centred under the
-                    // digit. SCSS toggles its opacity on
-                    // `.tag-has-windows`; it always holds its 4px of
-                    // vertical space so the digit never shifts.
-                    gtk::Box {
-                        add_css_class: "margo-tag-dot",
-                        set_halign: gtk::Align::Center,
-                        set_valign: gtk::Align::Center,
-                    },
+                    set_label: &model.workspace.id.get().to_string(),
                 },
             }
         }

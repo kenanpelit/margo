@@ -1,23 +1,19 @@
 // MargoTag — one pill per tag in the bar's workspace row.
 //
-// Material-3 "active indicator" idiom: the focused tag is a fully
-// rounded filled --primary capsule; occupancy is a small dot
-// centred *beneath* the digit. Two orthogonal CSS classes:
+// Material-3 "active indicator" idiom, digit-only (no dot). Two
+// orthogonal CSS classes:
 //   .tag-active       → filled --primary capsule  (you are here)
-//   .tag-has-windows  → the occupancy dot lights up (has content)
-// They compose: an active tag with windows shows both.
+//   .tag-has-windows  → the digit tints --primary  (has content)
+// They compose: a focused tag is the filled capsule with an
+// on-primary digit; an occupied-but-unfocused tag shows an accent
+// (--primary) digit; an empty unfocused tag stays dim.
 //
-//   inactive empty     1     dim digit, dot hidden
-//   inactive occupied  2     full digit + accent dot beneath
-//                      •
-//   active   empty    (4)    accent capsule
-//   active   occupied (3)    accent capsule + on-primary dot
-//                      •
+//   inactive empty     1   dim digit
+//   inactive occupied  2   accent (--primary) digit
+//   active   (any)    (3)  filled capsule + on-primary digit
 //
-// The dot always occupies its 4px of vertical space (opacity, not
-// visibility) so the digit never shifts and the row reads as a
-// stable grid. State changes cross-fade (--motion-medium) so focus
-// switches feel like a native compositor component, not a repaint.
+// State changes cross-fade (--motion-medium) so focus switches feel
+// like a native compositor component, not a repaint.
 
 // `min-width` / `min-height` live on the *base* `.margo-tag` rule,
 // NOT a `.bar-top .margo-tag` descendant selector: relm4 builds the
@@ -30,7 +26,7 @@
 .margo-tag {
   all: unset;
   min-width: 24px;
-  min-height: 26px;
+  min-height: 24px;
   // A selectable chip → pick the pill token from the shape scale,
   // not the config-driven --radius-widget (DESIGN.md §1).
   border-radius: var(--radius-pill);
@@ -50,22 +46,10 @@
 .bar-left  .margo-tag,
 .bar-right .margo-tag {
   min-width: 30px;
-  min-height: 26px;
+  min-height: 24px;
 }
 
-// ── Inner glyphs ────────────────────────────────────────────
-// Occupancy dot: a 4px circle centred beneath the digit. Hidden
-// (opacity 0) until `.tag-has-windows`; always holds its space so
-// the digit never shifts.
-.margo-tag-dot {
-  min-width: 4px;
-  min-height: 4px;
-  border-radius: var(--radius-pill);
-  background-color: var(--primary);
-  opacity: 0;                 // hidden until .tag-has-windows
-  transition: opacity var(--motion-medium) var(--ease-standard),
-              background-color var(--motion-medium) var(--ease-standard);
-}
+// ── Digit ───────────────────────────────────────────────────
 .margo-tag-label {
   font-size: 0.8em;
   font-weight: 500;
@@ -76,12 +60,10 @@
               color var(--motion-medium) var(--ease-standard);
 }
 
-// ── has-windows: occupancy dot + full-strength digit ────────
-.margo-tag.tag-has-windows .margo-tag-dot {
-  opacity: 1;
-}
+// ── has-windows: accent (theme-coloured) digit ──────────────
 .margo-tag.tag-has-windows .margo-tag-label {
-  opacity: 0.9;
+  color: var(--primary);
+  opacity: 1;
 }
 
 // ── hover (non-active): the canonical primary state-layer ────
@@ -100,14 +82,10 @@
 .margo-tag.tag-active:hover {
   background-color: unquote("color-mix(in srgb, var(--on-primary) 10%, var(--primary))");
 }
+// On-primary digit wins over the has-windows accent tint (the capsule
+// already conveys "here", so the digit must read against --primary).
 .margo-tag.tag-active .margo-tag-label {
   color: var(--on-primary);
   font-weight: 700;
   opacity: 1;
-}
-// Dot inside the capsule: on-primary tint. Opacity is still driven
-// by `.tag-has-windows` above, so an active-but-empty tag keeps the
-// dot hidden.
-.margo-tag.tag-active .margo-tag-dot {
-  background-color: var(--on-primary);
 }
