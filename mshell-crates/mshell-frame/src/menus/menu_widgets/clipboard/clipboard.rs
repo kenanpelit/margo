@@ -14,12 +14,16 @@ pub(crate) struct ClipboardModel {
     dynamic_box: Controller<DynamicBoxModel<ClipboardEntry, u64>>,
     history: ClipboardHistory,
     delete_button_visible: bool,
+    /// Active tab: false = All, true = Favorites (pinned only).
+    show_pinned_only: bool,
 }
 
 #[derive(Debug)]
 pub(crate) enum ClipboardInput {
     Refresh,
     DeleteAllClicked,
+    /// Switch tab. `true` = Favorites (pinned only), `false` = All.
+    SetPinnedFilter(bool),
 }
 
 #[derive(Debug)]
@@ -70,11 +74,46 @@ impl Component for ClipboardModel {
                 },
             },
 
+            // Tab strip — All vs Favorites (pinned only).
+            gtk::Box {
+                add_css_class: "clipboard-tabs",
+                set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 4,
+                set_halign: gtk::Align::Start,
+
+                #[name = "tab_all"]
+                gtk::Button {
+                    #[watch]
+                    set_css_classes: if model.show_pinned_only {
+                        &["clipboard-tab"]
+                    } else {
+                        &["clipboard-tab", "active"]
+                    },
+                    set_label: "All",
+                    connect_clicked[sender] => move |_| {
+                        sender.input(ClipboardInput::SetPinnedFilter(false));
+                    },
+                },
+                #[name = "tab_pinned"]
+                gtk::Button {
+                    #[watch]
+                    set_css_classes: if model.show_pinned_only {
+                        &["clipboard-tab", "active"]
+                    } else {
+                        &["clipboard-tab"]
+                    },
+                    set_label: "★ Favorites",
+                    connect_clicked[sender] => move |_| {
+                        sender.input(ClipboardInput::SetPinnedFilter(true));
+                    },
+                },
+            },
+
             gtk::Label {
                 add_css_class: "label-medium",
                 #[watch]
                 set_visible: !model.delete_button_visible,
-                set_label: "Empty",
+                set_label: if model.show_pinned_only { "No favorites yet" } else { "Empty" },
             },
 
             gtk::ScrolledWindow {
@@ -156,9 +195,15 @@ impl Component for ClipboardModel {
             dynamic_box: dynamic,
             history,
             delete_button_visible: false,
+            show_pinned_only: false,
         };
 
         let widgets = view_output!();
+
+        // Populate immediately so the list (and the active tab)
+        // reflect current history on first open, not just after the
+        // next clipboard event.
+        sender.input(ClipboardInput::Refresh);
 
         ComponentParts { model, widgets }
     }
@@ -172,12 +217,19 @@ impl Component for ClipboardModel {
     ) {
         match message {
             ClipboardInput::Refresh => {
-                let items = self.history.entries();
+                let mut items = self.history.entries();
+                if self.show_pinned_only {
+                    items.retain(|e| e.pinned);
+                }
                 self.delete_button_visible = !items.is_empty();
                 self.dynamic_box
                     .sender()
                     .send(DynamicBoxInput::SetItems(items))
                     .unwrap();
+            }
+            ClipboardInput::SetPinnedFilter(pinned_only) => {
+                self.show_pinned_only = pinned_only;
+                sender.input(ClipboardInput::Refresh);
             }
             ClipboardInput::DeleteAllClicked => {
                 clipboard_service().clear_history();

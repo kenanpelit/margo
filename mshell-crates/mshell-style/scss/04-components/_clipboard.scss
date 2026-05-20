@@ -24,3 +24,48 @@
 .clipboard-trash-button {
   background-color: transparent;
 }
+
+// Pin / favourite toggle. Unpinned reads as a dim outline-variant
+// star so it doesn't shout; pinned flips to a filled primary chip
+// so favourites are unmistakable at a glance.
+.clipboard-pin-button {
+  background-color: transparent;
+
+  image {
+    color: var(--outline);
+    transition: color 150ms ease-in-out;
+  }
+
+  &:hover image {
+    color: var(--on-surface);
+  }
+
+  &.pinned {
+    background-color: unquote("color-mix(in srgb, var(--primary) 20%, transparent)");
+
+    image {
+      color: var(--primary);
+    }
+  }
+}
+
+// ── Clipboard tabs (All / Favorites) ───────────────────────────
+.clipboard-tabs {
+  .clipboard-tab {
+    all: unset;
+    padding: 4px 14px;
+    border-radius: var(--radius-widget);
+    color: var(--on-surface-variant);
+    transition: background-color 150ms, color 150ms;
+
+    &:hover {
+      background-color: unquote("color-mix(in srgb, var(--primary) 10%, transparent)");
+    }
+
+    &.active {
+      background-color: unquote("color-mix(in srgb, var(--primary) 16%, transparent)");
+      color: var(--primary);
+      font-weight: 600;
+    }
+  }
+}

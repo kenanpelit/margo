@@ -36,8 +36,15 @@ impl Component for ClipboardItemModel {
             // entries are exempt from eviction + auto-clear and
             // persist to disk; the icon reflects the current state.
             add_overlay = &gtk::Button {
-                add_css_class: "ok-button-surface",
-                add_css_class: "clipboard-pin-button",
+                // `.pinned` flips the chrome to the accent so a
+                // favourite reads at a glance vs the dim outline of
+                // an unpinned item (item is rebuilt on each refresh,
+                // so the init state is always current).
+                set_css_classes: if model.entry.pinned {
+                    &["ok-button-surface", "clipboard-pin-button", "pinned"]
+                } else {
+                    &["ok-button-surface", "clipboard-pin-button"]
+                },
                 set_halign: gtk::Align::Start,
                 set_valign: gtk::Align::Start,
                 set_hexpand: false,
