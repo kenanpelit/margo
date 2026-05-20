@@ -36,12 +36,93 @@ const SENSITIVE_HINT_MIME: &str = "x-kde-passwordManagerHint";
 /// to persist).
 type SharedSettings = Arc<Mutex<ClipboardSettings>>;
 
-/// Write the current history to disk per the active persist mode.
-/// Cheap (≤ max_entries entries; image blobs are content-addressed
-/// and written once) so we just call it after every mutation.
+/// Write the current history to disk *synchronously*, per the active
+/// persist mode. Used only at startup (before the background writer
+/// thread exists), when the calling thread is the sole writer. Every
+/// runtime mutation goes through [`Persister::request`] instead, so
+/// the on-disk store is never rewritten more than once per burst.
 fn persist_now(history: &ClipboardHistory, settings: &SharedSettings) {
     let mode = settings.lock().unwrap().persist;
     persist::save(&history.entries(), mode);
+}
+
+/// Message to the background persist thread.
+enum PersistMsg {
+    /// Mark the on-disk store dirty. The persist thread coalesces a
+    /// burst of these into a single write once the burst settles.
+    Save,
+}
+
+/// Background, debounced disk writer — the *sole* owner of clipboard
+/// disk writes once the watcher is up.
+///
+/// `persist::save` is `O(n)`: it re-serialises the whole history to
+/// `history.json` every call. Doing that synchronously on every copy
+/// (and every pin/delete click) put an `O(n)` rewrite on the hot
+/// path. This collapses a burst of mutations into one write, and —
+/// because it snapshots `history` + the active mode at *flush* time,
+/// not request time — a coalesced write always reflects the latest
+/// state (e.g. a "clear" that lands mid-burst is honoured, never
+/// overwritten by a stale snapshot). Being the only writer also means
+/// no two threads race on the `history.json.tmp` temp file.
+#[derive(Clone)]
+struct Persister {
+    tx: mpsc::Sender<PersistMsg>,
+}
+
+impl Persister {
+    /// Trailing debounce: after the last edit in a burst, wait this
+    /// long with no further edits before writing.
+    const DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(800);
+    /// Hard cap from the burst's first edit, so a continuous stream
+    /// of copies still reaches disk on a bounded cadence.
+    const MAX_WINDOW: std::time::Duration = std::time::Duration::from_secs(4);
+
+    fn spawn(history: ClipboardHistory, settings: SharedSettings) -> Self {
+        let (tx, rx) = mpsc::channel::<PersistMsg>();
+        let _ = thread::Builder::new()
+            .name("mshell-clipboard-persist".into())
+            .spawn(move || persist_loop(history, settings, rx));
+        Self { tx }
+    }
+
+    /// Request a (debounced) save. Cheap and non-blocking — never
+    /// touches the disk on the caller's thread.
+    fn request(&self) {
+        let _ = self.tx.send(PersistMsg::Save);
+    }
+}
+
+fn persist_loop(
+    history: ClipboardHistory,
+    settings: SharedSettings,
+    rx: mpsc::Receiver<PersistMsg>,
+) {
+    use std::sync::mpsc::RecvTimeoutError;
+    use std::time::Instant;
+
+    // Block until the first dirty signal; `recv` returning Err means
+    // every sender dropped (shell shutting down) — exit the thread.
+    while rx.recv().is_ok() {
+        // A burst started. Coalesce until it quiets for DEBOUNCE, or
+        // until MAX_WINDOW elapses since the burst's first edit.
+        let burst_start = Instant::now();
+        loop {
+            let elapsed = burst_start.elapsed();
+            if elapsed >= Persister::MAX_WINDOW {
+                break;
+            }
+            let wait = Persister::DEBOUNCE.min(Persister::MAX_WINDOW - elapsed);
+            match rx.recv_timeout(wait) {
+                Ok(PersistMsg::Save) => continue, // more edits — keep coalescing
+                Err(RecvTimeoutError::Timeout) => break, // settled — write now
+                Err(RecvTimeoutError::Disconnected) => break,
+            }
+        }
+        // Snapshot at flush time so a coalesced write is never stale.
+        let mode = settings.lock().unwrap().persist;
+        persist::save(&history.entries(), mode);
+    }
 }
 
 /// 10 MB
@@ -82,6 +163,7 @@ pub struct ClipboardWatcher {
     event_tx: broadcast::Sender<ClipboardEvent>,
     command_tx: mpsc::Sender<WatcherCommand>,
     settings: SharedSettings,
+    persister: Persister,
 }
 
 impl ClipboardWatcher {
@@ -105,7 +187,13 @@ impl ClipboardWatcher {
 
         let shared: SharedSettings = Arc::new(Mutex::new(settings));
         // Re-persist after the load-time prune so disk matches RAM.
+        // Synchronous: we're still single-threaded here, before the
+        // background writer or watcher threads exist.
         persist_now(&history, &shared);
+
+        // From here on the persist thread is the sole disk writer;
+        // all runtime mutations route through it (debounced).
+        let persister = Persister::spawn(history.clone(), shared.clone());
 
         let (event_tx, _) = broadcast::channel(BROADCAST_CAPACITY);
         let (command_tx, command_rx) = mpsc::channel();
@@ -113,12 +201,17 @@ impl ClipboardWatcher {
         let watcher_history = history.clone();
         let watcher_tx = event_tx.clone();
         let watcher_settings = shared.clone();
+        let watcher_persister = persister.clone();
         thread::Builder::new()
             .name("mshell-clipboard-watcher".into())
             .spawn(move || {
-                if let Err(e) =
-                    run_watcher(watcher_history, watcher_tx, command_rx, watcher_settings)
-                {
+                if let Err(e) = run_watcher(
+                    watcher_history,
+                    watcher_tx,
+                    command_rx,
+                    watcher_settings,
+                    watcher_persister,
+                ) {
                     error!("Clipboard watcher died: {e}");
                 }
             })?;
@@ -128,6 +221,7 @@ impl ClipboardWatcher {
             event_tx,
             command_tx,
             settings: shared,
+            persister,
         })
     }
 
@@ -146,7 +240,7 @@ impl ClipboardWatcher {
     pub fn copy_entry(&self, id: u64) {
         if let Some(entry) = self.history.get(id) {
             self.history.promote(id);
-            persist_now(&self.history, &self.settings);
+            self.persister.request();
             self.broadcast(ClipboardEvent::NewEntry(id));
             let _ = self.command_tx.send(WatcherCommand::SetSelection {
                 mime_type: entry.mime_type.clone(),
@@ -157,28 +251,28 @@ impl ClipboardWatcher {
 
     pub fn delete_entry(&self, id: u64) {
         if self.history.remove(id) {
-            persist_now(&self.history, &self.settings);
+            self.persister.request();
             self.broadcast(ClipboardEvent::EntryRemoved(id));
         }
     }
 
     pub fn clear_history(&self) {
         self.history.clear();
-        persist_now(&self.history, &self.settings);
+        self.persister.request();
         self.broadcast(ClipboardEvent::Cleared);
     }
 
     /// Clear everything except pinned (favourite) entries.
     pub fn clear_unpinned(&self) {
         self.history.clear_unpinned();
-        persist_now(&self.history, &self.settings);
+        self.persister.request();
         self.broadcast(ClipboardEvent::Cleared);
     }
 
     /// Toggle the pinned flag on an entry, persist, and refresh.
     pub fn toggle_pin(&self, id: u64) {
         if self.history.toggle_pin(id).is_some() {
-            persist_now(&self.history, &self.settings);
+            self.persister.request();
             self.broadcast(ClipboardEvent::NewEntry(id));
         }
     }
@@ -192,7 +286,7 @@ impl ClipboardWatcher {
                 .prune_older_than(new.clear_after_hours as i64 * 3600);
         }
         *self.settings.lock().unwrap() = new;
-        persist_now(&self.history, &self.settings);
+        self.persister.request();
         self.broadcast(ClipboardEvent::Cleared);
     }
 }
@@ -208,6 +302,7 @@ struct WatcherState {
     conn: Connection,
     command_rx: mpsc::Receiver<WatcherCommand>,
     settings: SharedSettings,
+    persister: Persister,
 
     // Globals
     manager: Option<ExtDataControlManagerV1>,
@@ -233,6 +328,7 @@ fn run_watcher(
     event_tx: broadcast::Sender<ClipboardEvent>,
     command_rx: mpsc::Receiver<WatcherCommand>,
     settings: SharedSettings,
+    persister: Persister,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let conn = Connection::connect_to_env()?;
     let display = conn.display();
@@ -246,6 +342,7 @@ fn run_watcher(
         conn: conn.clone(),
         command_rx,
         settings,
+        persister,
         manager: None,
         seat: None,
         device: None,
@@ -446,7 +543,7 @@ impl Dispatch<ExtDataControlDeviceV1, ()> for WatcherState {
                             // Build the entry and push it into history.
                             if let Some(entry) = build_entry(mime, data) {
                                 let id = state.history.push(entry);
-                                persist_now(&state.history, &state.settings);
+                                state.persister.request();
                                 let _ = state.event_tx.send(ClipboardEvent::NewEntry(id));
                             }
                         }

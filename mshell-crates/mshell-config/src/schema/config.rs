@@ -472,11 +472,13 @@ impl Default for Menus {
             clipboard_menu: Menu {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::Clipboard],
-                // Sized for the tabbed ListBox layout: ~460 px wide
-                // reads text previews comfortably; a 640 px cap keeps
-                // the panel from running the full screen height.
-                minimum_width: 460,
-                maximum_height: 640,
+                // Golden-ratio proportions (φ ≈ 1.618): the tabbed
+                // ListBox reads best as a portrait golden rectangle
+                // (890/550 ≈ φ) that is also the golden section of a
+                // 1440-tall screen (890/1440 ≈ 1/φ). Tune in Settings
+                // → Widgets → Clipboard for other monitor heights.
+                minimum_width: 550,
+                maximum_height: 890,
             },
             quick_settings_menu: Menu {
                 position: Position::TopLeft,

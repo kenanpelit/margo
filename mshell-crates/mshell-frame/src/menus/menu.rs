@@ -9,6 +9,7 @@ use crate::menus::menu_widgets::audio_out::audio_out_menu_widget::{
 use crate::menus::menu_widgets::bluetooth::bluetooth_menu_widget::{
     BluetoothMenuWidgetInput, BluetoothMenuWidgetModel,
 };
+use crate::menus::menu_widgets::clipboard::clipboard::{ClipboardInput, ClipboardModel};
 use crate::menus::menu_widgets::network::network_menu_widget::{
     NetworkMenuWidgetInput, NetworkMenuWidgetModel,
 };
@@ -828,6 +829,14 @@ impl Component for MenuModel {
                         controller
                             .sender()
                             .send(SessionMenuWidgetInput::ParentRevealChanged(visible))
+                            .ok();
+                    }
+                    if let Some(controller) =
+                        controller.downcast_ref::<Controller<ClipboardModel>>()
+                    {
+                        controller
+                            .sender()
+                            .send(ClipboardInput::ParentRevealChanged(visible))
                             .ok();
                     }
                 }

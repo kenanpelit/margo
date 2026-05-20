@@ -33,6 +33,11 @@ pub(crate) enum ClipboardInput {
     DeleteSelected,
     /// Pin / unpin the selected entry (Ctrl+P).
     PinSelected,
+    /// The frame's clipboard menu was revealed (`true`) or hidden
+    /// (`false`). On reveal we pull keyboard focus into the list so
+    /// Tab / Ctrl+n/k / Enter work immediately — without first
+    /// needing a mouse click to put focus in the surface.
+    ParentRevealChanged(bool),
 }
 
 #[derive(Debug)]
@@ -119,6 +124,7 @@ impl Component for ClipboardModel {
 
             gtk::Label {
                 add_css_class: "label-small",
+                add_css_class: "clipboard-hint",
                 set_halign: gtk::Align::Start,
                 set_label: "Tab: switch · Ctrl+n/k: move · Enter: copy · Ctrl+p: pin · Delete: remove",
                 set_xalign: 0.0,
@@ -284,6 +290,23 @@ impl Component for ClipboardModel {
             ClipboardInput::DeleteAllClicked => {
                 clipboard_service().clear_history();
                 let _ = sender.output(ClipboardOutput::CloseMenu);
+            }
+            ClipboardInput::ParentRevealChanged(revealed) => {
+                if revealed {
+                    // Re-sync to current history, then defer the focus
+                    // grab to an idle tick so the layer surface has
+                    // finished mapping/allocating — grabbing focus on a
+                    // not-yet-mapped row silently no-ops, which is the
+                    // exact "keys dead until I click" symptom.
+                    self.rebuild_rows();
+                    let list_box = self.list_box.clone();
+                    gtk::glib::idle_add_local_once(move || {
+                        if let Some(row) = list_box.row_at_index(0) {
+                            list_box.select_row(Some(&row));
+                            row.grab_focus();
+                        }
+                    });
+                }
             }
         }
 

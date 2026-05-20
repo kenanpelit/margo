@@ -71,6 +71,13 @@
   }
 }
 
+// Keyboard-shortcut hint strip under the tabs. Reference info, not
+// a focal point — drop it to the dim outline token so it recedes
+// and doesn't compete with the entries.
+.clipboard-hint {
+  color: var(--outline);
+}
+
 // ── Clipboard tabs (All / Favorites) ───────────────────────────
 .clipboard-tabs {
   .clipboard-tab {
