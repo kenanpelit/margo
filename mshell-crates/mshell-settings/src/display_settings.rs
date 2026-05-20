@@ -23,6 +23,7 @@ use relm4::gtk::prelude::{
     BoxExt, ButtonExt, EditableExt, EntryExt, OrientableExt, ToggleButtonExt, WidgetExt,
 };
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::Duration;
 use tracing::warn;
@@ -124,6 +125,16 @@ pub(crate) struct DisplaySettingsModel {
     /// Where margo reads the schedule from. Surfaced in the UI
     /// so the user knows which files to edit.
     schedule_dir_display: String,
+    /// The editable schedule list container. Rebuilt imperatively
+    /// (add / delete / time-move re-sorts the rows) so we keep a
+    /// handle rather than re-deriving it from `widgets` each time.
+    schedule_grid: gtk::Box,
+    /// Presets whose temp/gamma spin changed since the last commit.
+    /// Flushed together on the debounce so a slider drag lands one
+    /// `mctl twilight preset set` per preset, not one per tick.
+    dirty_presets: HashSet<String>,
+    /// Debounce handle for the preset-spin → `mctl preset set` flush.
+    preset_debounce: Option<glib::JoinHandle<()>>,
     /// Layout sub-page — owns its own state. Kept on the parent
     /// model so the controller isn't dropped after `init` returns.
     layout_controller: Controller<LayoutSettingsModel>,
@@ -157,6 +168,27 @@ pub(crate) enum DisplaySettingsInput {
     /// `presets/*.toml` files; `mctl twilight preset` is the
     /// scriptable equivalent.
     OpenPresetsFolder,
+    /// A preset row's temperature/gamma spin changed. Debounced into
+    /// a coalesced `mctl twilight preset set` + reload.
+    PresetTempGammaEdited { name: String, temp: u32, gamma: u32 },
+    /// Debounce fired — flush every dirty preset to disk via `mctl`.
+    PresetCommit,
+    /// A preset row's schedule time was re-entered (Enter). Moves the
+    /// `schedule.conf` line from `old_time` to `new_time`.
+    ScheduleTimeEdited {
+        old_time: String,
+        new_time: String,
+        name: String,
+    },
+    /// Delete a preset (file + its schedule line).
+    PresetDeleted { name: String },
+    /// Add-row "Add" clicked — create a preset and schedule it.
+    PresetAdded {
+        name: String,
+        time: String,
+        temp: u32,
+        gamma: u32,
+    },
 }
 
 #[derive(Debug)]
@@ -847,7 +879,7 @@ impl Component for DisplaySettingsModel {
                     add_css_class: "label-small",
                     #[watch]
                     set_label: &format!(
-                        "Active when Mode = Schedule. Margo interpolates between consecutive presets in mired space as the day progresses. Files live in {}. Edit by hand + `mctl reload`, or use `mctl twilight preset list / set / schedule` for scripted changes.",
+                        "Active when Mode = Schedule. Margo interpolates between consecutive presets in mired space as the day progresses. Edit a row's time (press Enter), temperature or brightness below and it applies live; the bottom row adds a new preset. Files live in {}.",
                         model.schedule_dir_display
                     ),
                     set_halign: gtk::Align::Start,
@@ -867,14 +899,11 @@ impl Component for DisplaySettingsModel {
                     set_natural_wrap_mode: gtk::NaturalWrapMode::None,
                 },
 
-                #[name = "schedule_grid"]
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Vertical,
-                    add_css_class: "twilight-schedule-list",
-                    set_spacing: 4,
-                    #[watch]
-                    set_visible: !model.schedule_rows.is_empty(),
-                },
+                // Editable schedule list — built imperatively in
+                // `init` / `populate_schedule_editor` (spin buttons +
+                // delete + an add row), embedded here by reference.
+                #[local_ref]
+                schedule_grid -> gtk::Box {},
 
                 gtk::Separator {},
 
@@ -941,42 +970,28 @@ impl Component for DisplaySettingsModel {
             .launch(LayoutSettingsInit {})
             .detach();
 
+        // The editable schedule list lives in its own box so we can
+        // rebuild it imperatively after each add / delete / time-move.
+        let schedule_grid = gtk::Box::new(gtk::Orientation::Vertical, 4);
+        schedule_grid.add_css_class("twilight-schedule-list");
+
         let model = DisplaySettingsModel {
             state,
             mode_model,
             reload_debounce: None,
             schedule_rows,
             schedule_dir_display,
+            schedule_grid: schedule_grid.clone(),
+            dirty_presets: HashSet::new(),
+            preset_debounce: None,
             layout_controller,
         };
 
         let widgets = view_output!();
 
-        // Populate the schedule list once at init. Re-runs aren't
-        // wired yet — user clicks "Sweep day → night" and
-        // reopens Settings to see new state. Future: refresh on
-        // reload.
-        for row in &model.schedule_rows {
-            let row_box = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-            row_box.add_css_class("twilight-schedule-row");
-            let time = gtk::Label::new(Some(&row.time_hhmm));
-            time.add_css_class("label-medium-bold");
-            time.set_width_chars(6);
-            time.set_xalign(0.0);
-            row_box.append(&time);
-            let name = gtk::Label::new(Some(&row.preset_name));
-            name.add_css_class("label-medium");
-            name.set_hexpand(true);
-            name.set_xalign(0.0);
-            row_box.append(&name);
-            let temp = gtk::Label::new(Some(&format!("{} K", row.temp_k)));
-            temp.add_css_class("label-small");
-            row_box.append(&temp);
-            let gamma = gtk::Label::new(Some(&format!("{}%", row.gamma_pct)));
-            gamma.add_css_class("label-small");
-            row_box.append(&gamma);
-            widgets.schedule_grid.append(&row_box);
-        }
+        // Fill the editor with the rows loaded from disk + the trailing
+        // "add preset" row.
+        populate_schedule_editor(&model.schedule_grid, &model.schedule_rows, &sender);
 
         ComponentParts { model, widgets }
     }
@@ -1126,6 +1141,141 @@ impl Component for DisplaySettingsModel {
                         Err(e) => warn!(error = %e, dir = %dir_str, "xdg-open spawn failed"),
                     }
                 });
+                return;
+            }
+            DisplaySettingsInput::PresetTempGammaEdited { name, temp, gamma } => {
+                // Optimistically reflect the new values in every row
+                // that uses this preset, then debounce the disk write
+                // so a slider drag lands one `preset set`, not 30.
+                for row in self
+                    .schedule_rows
+                    .iter_mut()
+                    .filter(|r| r.preset_name == name)
+                {
+                    row.temp_k = temp;
+                    row.gamma_pct = gamma;
+                }
+                self.dirty_presets.insert(name);
+                if let Some(h) = self.preset_debounce.take() {
+                    h.abort();
+                }
+                let sender_clone = sender.clone();
+                self.preset_debounce = Some(glib::spawn_future_local(async move {
+                    glib::timeout_future(Duration::from_millis(DEBOUNCE_MS)).await;
+                    sender_clone.input(DisplaySettingsInput::PresetCommit);
+                }));
+                return;
+            }
+            DisplaySettingsInput::PresetCommit => {
+                self.preset_debounce = None;
+                let names: Vec<String> = self.dirty_presets.drain().collect();
+                if names.is_empty() {
+                    return;
+                }
+                let mut cmds: Vec<Vec<String>> = Vec::new();
+                for name in names {
+                    if let Some(row) = self.schedule_rows.iter().find(|r| r.preset_name == name) {
+                        cmds.push(vec![
+                            "twilight".into(),
+                            "preset".into(),
+                            "set".into(),
+                            name,
+                            row.temp_k.to_string(),
+                            row.gamma_pct.to_string(),
+                        ]);
+                    }
+                }
+                cmds.push(vec!["reload".into()]);
+                run_mctl_seq(cmds);
+                return;
+            }
+            DisplaySettingsInput::ScheduleTimeEdited {
+                old_time,
+                new_time,
+                name,
+            } => {
+                if parse_hhmm(&new_time).is_none() || new_time == old_time {
+                    // Invalid or unchanged — repaint to reset the entry.
+                    populate_schedule_editor(&self.schedule_grid, &self.schedule_rows, &sender);
+                    return;
+                }
+                if let Some(row) = self
+                    .schedule_rows
+                    .iter_mut()
+                    .find(|r| r.time_hhmm == old_time && r.preset_name == name)
+                {
+                    row.time_hhmm = new_time.clone();
+                }
+                self.schedule_rows.sort_by(|a, b| a.time_hhmm.cmp(&b.time_hhmm));
+                run_mctl_seq(vec![
+                    vec![
+                        "twilight".into(),
+                        "preset".into(),
+                        "schedule".into(),
+                        "remove".into(),
+                        old_time,
+                    ],
+                    vec![
+                        "twilight".into(),
+                        "preset".into(),
+                        "schedule".into(),
+                        "set".into(),
+                        new_time,
+                        name,
+                    ],
+                    vec!["reload".into()],
+                ]);
+                populate_schedule_editor(&self.schedule_grid, &self.schedule_rows, &sender);
+                return;
+            }
+            DisplaySettingsInput::PresetDeleted { name } => {
+                self.schedule_rows.retain(|r| r.preset_name != name);
+                run_mctl_seq(vec![
+                    vec!["twilight".into(), "preset".into(), "remove".into(), name],
+                    vec!["reload".into()],
+                ]);
+                populate_schedule_editor(&self.schedule_grid, &self.schedule_rows, &sender);
+                return;
+            }
+            DisplaySettingsInput::PresetAdded {
+                name,
+                time,
+                temp,
+                gamma,
+            } => {
+                let name = name.trim().to_string();
+                if name.is_empty() || parse_hhmm(&time).is_none() {
+                    warn!(name, time, "twilight: add preset rejected (empty name or bad HH:MM)");
+                    populate_schedule_editor(&self.schedule_grid, &self.schedule_rows, &sender);
+                    return;
+                }
+                self.schedule_rows.push(ScheduleRow {
+                    time_hhmm: time.clone(),
+                    preset_name: name.clone(),
+                    temp_k: temp,
+                    gamma_pct: gamma,
+                });
+                self.schedule_rows.sort_by(|a, b| a.time_hhmm.cmp(&b.time_hhmm));
+                run_mctl_seq(vec![
+                    vec![
+                        "twilight".into(),
+                        "preset".into(),
+                        "set".into(),
+                        name.clone(),
+                        temp.to_string(),
+                        gamma.to_string(),
+                    ],
+                    vec![
+                        "twilight".into(),
+                        "preset".into(),
+                        "schedule".into(),
+                        "set".into(),
+                        time,
+                        name,
+                    ],
+                    vec!["reload".into()],
+                ]);
+                populate_schedule_editor(&self.schedule_grid, &self.schedule_rows, &sender);
                 return;
             }
         }
@@ -1307,6 +1457,178 @@ fn spawn_mctl(args: &[&str]) {
             Err(e) => warn!(error = %e, args = ?owned, "mctl spawn failed"),
         }
     });
+}
+
+/// Run several `mctl` invocations in order, stopping on the first
+/// spawn failure. Used for preset edits where ordering matters
+/// (a `schedule set` must follow the `preset set` that creates the
+/// file, and the `reload` must come last).
+fn run_mctl_seq(cmds: Vec<Vec<String>>) {
+    relm4::spawn(async move {
+        for c in cmds {
+            match tokio::process::Command::new("mctl").args(&c).status().await {
+                Ok(s) if s.success() => {}
+                Ok(s) => warn!(?s, args = ?c, "mctl seq returned non-zero"),
+                Err(e) => {
+                    warn!(error = %e, args = ?c, "mctl seq spawn failed");
+                    break;
+                }
+            }
+        }
+    });
+}
+
+/// (Re)build the editable schedule list: one row per preset (time
+/// entry, name, temp / gamma spin buttons, delete) plus a trailing
+/// "add preset" row. Called at init and after every structural edit
+/// (add / delete / time-move re-sorts the rows).
+fn populate_schedule_editor(
+    container: &gtk::Box,
+    rows: &[ScheduleRow],
+    sender: &ComponentSender<DisplaySettingsModel>,
+) {
+    while let Some(child) = container.first_child() {
+        container.remove(&child);
+    }
+
+    for row in rows {
+        let row_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        row_box.add_css_class("twilight-schedule-row");
+
+        // Time — editing + Enter moves the `schedule.conf` line.
+        let time = gtk::Entry::new();
+        time.set_text(&row.time_hhmm);
+        time.set_width_chars(5);
+        time.set_max_width_chars(5);
+        time.add_css_class("twilight-time-entry");
+        {
+            let sender = sender.clone();
+            let old_time = row.time_hhmm.clone();
+            let name = row.preset_name.clone();
+            time.connect_activate(move |e| {
+                sender.input(DisplaySettingsInput::ScheduleTimeEdited {
+                    old_time: old_time.clone(),
+                    new_time: e.text().to_string(),
+                    name: name.clone(),
+                });
+            });
+        }
+        row_box.append(&time);
+
+        let name_label = gtk::Label::new(Some(&row.preset_name));
+        name_label.add_css_class("label-medium");
+        name_label.set_hexpand(true);
+        name_label.set_xalign(0.0);
+        row_box.append(&name_label);
+
+        // Temp + gamma spin buttons, committed together (debounced).
+        // Values are set *before* the handlers connect so seeding the
+        // spin doesn't fire a spurious edit on every repaint.
+        let temp = gtk::SpinButton::with_range(1000.0, 25000.0, 100.0);
+        temp.set_value(row.temp_k as f64);
+        let gamma = gtk::SpinButton::with_range(10.0, 200.0, 5.0);
+        gamma.set_value(row.gamma_pct as f64);
+        {
+            let sender = sender.clone();
+            let name = row.preset_name.clone();
+            let gamma_ref = gamma.clone();
+            temp.connect_value_changed(move |s| {
+                sender.input(DisplaySettingsInput::PresetTempGammaEdited {
+                    name: name.clone(),
+                    temp: s.value() as u32,
+                    gamma: gamma_ref.value() as u32,
+                });
+            });
+        }
+        {
+            let sender = sender.clone();
+            let name = row.preset_name.clone();
+            let temp_ref = temp.clone();
+            gamma.connect_value_changed(move |s| {
+                sender.input(DisplaySettingsInput::PresetTempGammaEdited {
+                    name: name.clone(),
+                    temp: temp_ref.value() as u32,
+                    gamma: s.value() as u32,
+                });
+            });
+        }
+        row_box.append(&temp);
+        let k = gtk::Label::new(Some("K"));
+        k.add_css_class("label-small");
+        row_box.append(&k);
+        row_box.append(&gamma);
+        let pct = gtk::Label::new(Some("%"));
+        pct.add_css_class("label-small");
+        row_box.append(&pct);
+
+        let del = gtk::Button::from_icon_name("user-trash-symbolic");
+        del.add_css_class("flat");
+        del.set_tooltip_text(Some("Delete preset"));
+        {
+            let sender = sender.clone();
+            let name = row.preset_name.clone();
+            del.connect_clicked(move |_| {
+                sender.input(DisplaySettingsInput::PresetDeleted { name: name.clone() });
+            });
+        }
+        row_box.append(&del);
+
+        container.append(&row_box);
+    }
+
+    // ── Add-preset row ──────────────────────────────────────────
+    let add_box = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    add_box.add_css_class("twilight-schedule-row");
+    add_box.add_css_class("twilight-add-row");
+
+    let add_time = gtk::Entry::new();
+    add_time.set_width_chars(5);
+    add_time.set_max_width_chars(5);
+    add_time.set_placeholder_text(Some("HH:MM"));
+    add_box.append(&add_time);
+
+    let add_name = gtk::Entry::new();
+    add_name.set_hexpand(true);
+    add_name.set_placeholder_text(Some("preset name"));
+    add_box.append(&add_name);
+
+    let add_temp = gtk::SpinButton::with_range(1000.0, 25000.0, 100.0);
+    add_temp.set_value(4000.0);
+    add_box.append(&add_temp);
+    let k2 = gtk::Label::new(Some("K"));
+    k2.add_css_class("label-small");
+    add_box.append(&k2);
+
+    let add_gamma = gtk::SpinButton::with_range(10.0, 200.0, 5.0);
+    add_gamma.set_value(100.0);
+    add_box.append(&add_gamma);
+    let pct2 = gtk::Label::new(Some("%"));
+    pct2.add_css_class("label-small");
+    add_box.append(&pct2);
+
+    let add_btn = gtk::Button::from_icon_name("list-add-symbolic");
+    add_btn.add_css_class("flat");
+    add_btn.set_tooltip_text(Some("Add preset"));
+    {
+        let sender = sender.clone();
+        let add_name = add_name.clone();
+        let add_time = add_time.clone();
+        let add_temp = add_temp.clone();
+        let add_gamma = add_gamma.clone();
+        add_btn.connect_clicked(move |_| {
+            sender.input(DisplaySettingsInput::PresetAdded {
+                name: add_name.text().to_string(),
+                time: add_time.text().to_string(),
+                temp: add_temp.value() as u32,
+                gamma: add_gamma.value() as u32,
+            });
+            add_name.set_text("");
+            add_time.set_text("");
+        });
+    }
+    add_box.append(&add_btn);
+
+    container.append(&add_box);
 }
 
 // ── Schedule-mode preset loader ─────────────────────────────────
