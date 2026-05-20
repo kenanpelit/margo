@@ -1,6 +1,6 @@
 use crate::relm_app::{Shell, ShellInput};
 use mshell_cache::wallpaper::set_wallpaper;
-use mshell_services::{audio_service, brightness_service, margo_service};
+use mshell_services::{audio_service, brightness_service, margo_service, notification_service};
 use mshell_session::session_lock::session_lock;
 use mshell_settings::{close_settings, open_settings};
 use mshell_utils::session::SessionAction;
@@ -374,6 +374,22 @@ impl IPCService {
     }
     async fn notifications_read_popups(&self) {
         let _ = self.tx.send(IPCCommand::NotificationsReadPopups);
+    }
+    /// Do Not Disturb — set/clear/toggle directly on the global
+    /// notification service (the bar pill + popups subscribe to it).
+    async fn notification_dnd_on(&self) {
+        notification_service().set_dnd(true);
+    }
+    async fn notification_dnd_off(&self) {
+        notification_service().set_dnd(false);
+    }
+    async fn notification_dnd_toggle(&self) {
+        let service = notification_service();
+        service.set_dnd(!service.dnd.get());
+    }
+    /// Number of notifications currently in history (for bars / scripts).
+    async fn notification_count(&self) -> u32 {
+        notification_service().notifications.get().len() as u32
     }
     async fn screenshot(&self) {
         let _ = self.tx.send(IPCCommand::Screenshot);

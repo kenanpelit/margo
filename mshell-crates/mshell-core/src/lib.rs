@@ -5,9 +5,11 @@ mod relm_app;
 use crate::relm_app::{Shell, ShellInit};
 use any_spawner::Executor;
 use mshell_config::schema::config::{
-    ConfigStoreFields, GeneralStoreFields, IconsStoreFields, ThemeStoreFields,
+    ConfigStoreFields, GeneralStoreFields, IconsStoreFields, NotificationsStoreFields,
+    ThemeStoreFields,
 };
 use mshell_idle::inhibitor::IdleInhibitor;
+use mshell_services::notification_service;
 use mshell_services::weather_service;
 use reactive_graph::effect::Effect;
 use reactive_graph::traits::{Get, GetUntracked};
@@ -116,6 +118,19 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         gtk::Settings::default()
             .unwrap()
             .set_gtk_icon_theme_name(Some(theme.as_str()));
+    });
+
+    // Sync the per-app notification blocklist from config → service.
+    // Runs once at startup (applies the persisted list) and re-runs
+    // whenever Settings edits it, so a mute takes effect immediately
+    // and survives restart.
+    Effect::new(|_| {
+        let blocklist = mshell_config::config_manager::config_manager()
+            .config()
+            .notifications()
+            .blocklist()
+            .get();
+        notification_service().set_blocklist(blocklist);
     });
 
     // skip first run

@@ -1,18 +1,17 @@
-use mshell_common::dynamic_box::dynamic_box::{
-    DynamicBoxFactory, DynamicBoxInit, DynamicBoxInput, DynamicBoxModel,
-};
-use mshell_common::dynamic_box::generic_widget_controller::GenericWidgetController;
 use mshell_common::notification::{NotificationInit, NotificationModel, NotificationOutput};
 use mshell_services::notification_service;
 use mshell_utils::notifications::{spawn_dnd_watcher, spawn_notifications_watcher};
-use relm4::gtk::RevealerTransitionType;
-use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
+use std::collections::HashMap;
 use std::sync::Arc;
 use wayle_notification::core::notification::Notification;
 
 pub(crate) struct NotificationsModel {
-    dynamic_box_controller: Controller<DynamicBoxModel<Arc<Notification>, u32>>,
+    /// Live notification widget controllers, kept alive while their
+    /// widgets are parented in the (re)grouped list. Rebuilt on every
+    /// change so per-app grouping stays correct.
+    notif_controllers: Vec<Controller<NotificationModel>>,
     empty_label_visible: bool,
     dnd: bool,
 }
@@ -105,10 +104,10 @@ impl Component for NotificationsModel {
                 set_propagate_natural_height: true,
                 set_propagate_natural_width: false,
 
+                #[name = "list"]
                 gtk::Box {
                     set_orientation: gtk::Orientation::Vertical,
-
-                    model.dynamic_box_controller.widget().clone() {},
+                    set_spacing: 10,
                 },
             },
         }
@@ -123,39 +122,8 @@ impl Component for NotificationsModel {
 
         spawn_dnd_watcher(&sender, || NotificationsCommandOutput::DndChanged);
 
-        let sender_clone = sender.clone();
-        let notifications_dynamic_box_factory = DynamicBoxFactory::<Arc<Notification>, u32> {
-            id: Box::new(|item| item.id),
-            create: Box::new(move |item| {
-                let notification = item.clone();
-                let notifications_controller = NotificationModel::builder()
-                    .launch(NotificationInit { notification })
-                    .forward(sender_clone.output_sender(), |msg| match msg {
-                        NotificationOutput::ActionActivated => NotificationsOutput::CloseMenu,
-                    });
-
-                Box::new(notifications_controller) as Box<dyn GenericWidgetController>
-            }),
-            update: None,
-        };
-
-        let notifications_dynamic_box_controller: Controller<
-            DynamicBoxModel<Arc<Notification>, u32>,
-        > = DynamicBoxModel::builder()
-            .launch(DynamicBoxInit {
-                factory: notifications_dynamic_box_factory,
-                orientation: gtk::Orientation::Vertical,
-                spacing: 10,
-                transition_type: RevealerTransitionType::SlideDown,
-                transition_duration_ms: 200,
-                reverse: false,
-                retain_entries: false,
-                allow_drag_and_drop: false,
-            })
-            .detach();
-
         let model = NotificationsModel {
-            dynamic_box_controller: notifications_dynamic_box_controller,
+            notif_controllers: Vec::new(),
             empty_label_visible: true,
             dnd: false,
         };
@@ -201,8 +169,7 @@ impl Component for NotificationsModel {
             NotificationsCommandOutput::NotificationsChanged => {
                 let notifications = notification_service().notifications.get();
                 self.empty_label_visible = notifications.is_empty();
-                self.dynamic_box_controller
-                    .emit(DynamicBoxInput::SetItems(notifications));
+                self.rebuild_list(&widgets.list, &notifications, &sender);
             }
             NotificationsCommandOutput::DndChanged => {
                 let service = notification_service();
@@ -211,5 +178,67 @@ impl Component for NotificationsModel {
         }
 
         self.update_view(widgets, sender);
+    }
+}
+
+impl NotificationsModel {
+    /// Rebuild the history list, grouping notifications by app name.
+    /// A single notification from an app renders directly; two or more
+    /// collapse into an expandable group header ("App (N)"). New
+    /// controllers replace the old ones so their widgets stay alive.
+    fn rebuild_list(
+        &mut self,
+        list: &gtk::Box,
+        notifications: &[Arc<Notification>],
+        sender: &ComponentSender<Self>,
+    ) {
+        // Drop the old widgets, then the old controllers.
+        while let Some(child) = list.first_child() {
+            list.remove(&child);
+        }
+        self.notif_controllers.clear();
+
+        // Group by app name, preserving first-seen order.
+        let mut order: Vec<String> = Vec::new();
+        let mut groups: HashMap<String, Vec<Arc<Notification>>> = HashMap::new();
+        for n in notifications {
+            let app = n.app_name.get().unwrap_or_default();
+            if !groups.contains_key(&app) {
+                order.push(app.clone());
+            }
+            groups.entry(app).or_default().push(n.clone());
+        }
+
+        for app in order {
+            let items = groups.remove(&app).unwrap_or_default();
+            let build = |n: &Arc<Notification>, this: &mut Self| -> gtk::Box {
+                let controller = NotificationModel::builder()
+                    .launch(NotificationInit {
+                        notification: n.clone(),
+                    })
+                    .forward(sender.output_sender(), |msg| match msg {
+                        NotificationOutput::ActionActivated => NotificationsOutput::CloseMenu,
+                    });
+                let widget = controller.widget().clone();
+                this.notif_controllers.push(controller);
+                widget
+            };
+
+            if items.len() == 1 {
+                let w = build(&items[0], self);
+                list.append(&w);
+            } else {
+                let inner = gtk::Box::new(gtk::Orientation::Vertical, 10);
+                for n in &items {
+                    let w = build(n, self);
+                    inner.append(&w);
+                }
+                let expander = gtk::Expander::new(Some(&format!("{app}  ({})", items.len())));
+                expander.add_css_class("notification-group");
+                expander.set_expanded(false);
+                expander.set_child(Some(&inner));
+                list.append(&expander);
+            }
+        }
     }
 }

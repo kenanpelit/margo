@@ -715,12 +715,19 @@ impl Default for Menus {
 #[serde(default)]
 pub struct Notifications {
     pub notification_position: NotificationPosition,
+    /// App names (substring match, case-insensitive) whose
+    /// notifications are silently dropped — the per-app mute list.
+    /// Applied to the wayle service's blocklist on startup and
+    /// whenever it changes.
+    #[serde(default)]
+    pub blocklist: Vec<String>,
 }
 
 impl Default for Notifications {
     fn default() -> Self {
         Self {
             notification_position: NotificationPosition::Right,
+            blocklist: Vec::new(),
         }
     }
 }

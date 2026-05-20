@@ -38,6 +38,30 @@
   }
 }
 
+// Per-app group in the history panel — a collapsible Expander
+// titled "App (N)". The title reads as a quiet section label; the
+// arrow + title get the canonical hover wash.
+.notification-group {
+  > title {
+    border-radius: var(--radius-sm);
+    padding: 4px 6px;
+    color: var(--on-surface-variant);
+    font-weight: 600;
+    transition: background-color var(--motion-fast) var(--ease-standard);
+
+    &:hover {
+      background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
+    }
+  }
+}
+
+// Settings → muted-apps row (app name + remove button).
+.notification-mute-row {
+  padding: 4px 4px 4px 10px;
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-container-high);
+}
+
 // Detected 2FA / OTP code → one-click copy chip. Soft accent card so
 // it invites the click without shouting.
 .notification-code-copy {

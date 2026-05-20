@@ -1,12 +1,25 @@
 use crate::bus::{bus_command, bus_command_with_arg, bus_command_with_reply};
 use clap::Subcommand;
 
+#[derive(clap::ValueEnum, Clone, Debug)]
+pub enum DndState {
+    On,
+    Off,
+}
+
 #[derive(Subcommand, Debug)]
 pub enum NotificationAction {
     /// Clear every notification — history and on-screen popups
     Clears,
     /// Dismiss the on-screen popups, keeping them in history
     Read,
+    /// Toggle Do Not Disturb, or set it explicitly with `on` / `off`
+    Dnd {
+        #[arg(value_enum)]
+        state: Option<DndState>,
+    },
+    /// Print the current notification count (history)
+    Count,
 }
 
 #[derive(Subcommand, Debug)]
@@ -116,6 +129,15 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
             }
             Some(NotificationAction::Read) => {
                 bus_command("NotificationsReadPopups").await?;
+            }
+            Some(NotificationAction::Dnd { state }) => match state {
+                Some(DndState::On) => bus_command("NotificationDndOn").await?,
+                Some(DndState::Off) => bus_command("NotificationDndOff").await?,
+                None => bus_command("NotificationDndToggle").await?,
+            },
+            Some(NotificationAction::Count) => {
+                let count: u32 = bus_command_with_reply("NotificationCount").await?;
+                println!("{count}");
             }
         },
         MenuCommands::Screenshot => {
