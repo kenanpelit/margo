@@ -189,13 +189,16 @@ impl Component for ValentMenuWidgetModel {
                 let _ = sender.output(ValentMenuWidgetOutput::CloseMenu);
             }
             ValentMenuWidgetInput::PickShare(id) => {
-                let win = widgets
-                    .content
-                    .root()
-                    .and_downcast::<gtk::Window>();
-                let dialog = gtk::FileDialog::builder().title("Send file to phone").build();
+                // Parent must be `None`: a layer-shell surface has no
+                // xdg_toplevel, so handing it to the file-chooser
+                // portal as a parent aborts GTK (crashing the shell).
+                // The wallpaper menu picks folders the same way.
+                let dialog = gtk::FileDialog::builder()
+                    .title("Send file to phone")
+                    .modal(true)
+                    .build();
                 let sender = sender.clone();
-                dialog.open(win.as_ref(), gtk::gio::Cancellable::NONE, move |res| {
+                dialog.open(gtk::Window::NONE, gtk::gio::Cancellable::NONE, move |res| {
                     if let Ok(file) = res {
                         if let Some(path) = file.path() {
                             sender.input(ValentMenuWidgetInput::Share(
@@ -365,20 +368,41 @@ fn connected_card(
             .map(|c| format!("{c}%"))
             .unwrap_or_else(|| "Unknown".into()),
     ));
-    stats.append(&stat_row(
-        network_type_icon(&device.network_type),
-        "Network",
-        if device.network_type.is_empty() {
-            "Unknown"
-        } else {
-            &device.network_type
-        },
-    ));
-    stats.append(&stat_row(
-        signal_icon(device.network_strength),
-        "Signal",
-        signal_text(device.network_strength),
-    ));
+
+    // Cellular stats only show when the phone's connectivity report
+    // plugin actually sends data — otherwise both rows just read
+    // "Unknown", which looks broken. A muted hint explains why.
+    let has_connectivity =
+        device.network_strength >= 0 || !device.network_type.is_empty();
+    if has_connectivity {
+        stats.append(&stat_row(
+            network_type_icon(&device.network_type),
+            "Network",
+            if device.network_type.is_empty() {
+                "Unknown"
+            } else {
+                &device.network_type
+            },
+        ));
+        stats.append(&stat_row(
+            signal_icon(device.network_strength),
+            "Signal",
+            signal_text(device.network_strength),
+        ));
+    } else {
+        let hint = gtk::Label::builder()
+            .label(
+                "Cellular report unavailable — enable the \
+                 \"Connectivity report\" plugin in the KDE Connect \
+                 app on your phone.",
+            )
+            .halign(gtk::Align::Start)
+            .xalign(0.0)
+            .wrap(true)
+            .build();
+        hint.add_css_class("label-small");
+        stats.append(&hint);
+    }
     card.append(&stats);
 
     card
