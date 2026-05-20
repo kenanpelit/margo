@@ -21,28 +21,10 @@ use mshell_utils::battery::{
     spawn_battery_watcher,
 };
 use mshell_utils::power_profile::spawn_active_profile_watcher;
-use relm4::gtk::prelude::{BoxExt, ButtonExt, GestureSingleExt, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use wayle_battery::types::DeviceState;
 use wayle_power_profiles::types::profile::PowerProfile;
-
-/// Visual-mode cycle driven by right-click on the pill.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum DisplayMode {
-    Both,
-    BatteryOnly,
-    ProfileOnly,
-}
-
-impl DisplayMode {
-    fn next(self) -> Self {
-        match self {
-            DisplayMode::Both => DisplayMode::BatteryOnly,
-            DisplayMode::BatteryOnly => DisplayMode::ProfileOnly,
-            DisplayMode::ProfileOnly => DisplayMode::Both,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Profile {
@@ -119,16 +101,11 @@ pub(crate) struct PowerState {
 #[derive(Debug)]
 pub(crate) struct PowerModel {
     state: PowerState,
-    /// Cycles via right-click. Default shows both profile icon
-    /// and battery icon + %. Ephemeral (in-memory only); the
-    /// pill always starts a session in `Both`.
-    mode: DisplayMode,
 }
 
 #[derive(Debug)]
 pub(crate) enum PowerInput {
     Clicked,
-    CycleMode,
 }
 
 #[derive(Debug)]
@@ -174,16 +151,18 @@ impl Component for PowerModel {
                     set_halign: gtk::Align::Center,
                     set_valign: gtk::Align::Center,
 
-                    // ── Profile slot ────────────────────────────
+                    // ── Profile slot (fallback only) ────────────
+                    //
+                    // The pill leads with the battery; the power-
+                    // profile glyph shows only when there's no
+                    // battery (desktops) so the pill never goes
+                    // empty.
                     #[name="image"]
                     gtk::Image {
                         set_halign: gtk::Align::Center,
                         set_valign: gtk::Align::Center,
                         #[watch]
-                        set_visible: matches!(
-                            model.mode,
-                            DisplayMode::Both | DisplayMode::ProfileOnly,
-                        ),
+                        set_visible: !model.state.battery_available,
                     },
 
                     // ── Battery slot (icon + percent) ───────────
@@ -198,10 +177,7 @@ impl Component for PowerModel {
                         set_halign: gtk::Align::Center,
                         set_valign: gtk::Align::Center,
                         #[watch]
-                        set_visible: matches!(
-                            model.mode,
-                            DisplayMode::Both | DisplayMode::BatteryOnly,
-                        ) && model.state.battery_available,
+                        set_visible: model.state.battery_available,
 
                         #[name="battery_image"]
                         gtk::Image {
@@ -234,21 +210,8 @@ impl Component for PowerModel {
 
         let model = PowerModel {
             state: read_power_state(),
-            mode: DisplayMode::Both,
         };
         let widgets = view_output!();
-
-        // Right-click cycles the visible slots: Both → BatteryOnly
-        // → ProfileOnly → Both. Left-click already opens the
-        // power menu — secondary click is the cycle channel so
-        // we don't fight the primary action.
-        let gesture = gtk::GestureClick::new();
-        gesture.set_button(gtk::gdk::BUTTON_SECONDARY);
-        let sender_clone = sender.clone();
-        gesture.connect_pressed(move |_, _, _, _| {
-            sender_clone.input(PowerInput::CycleMode);
-        });
-        widgets.button.add_controller(gesture);
 
         apply_visual(&widgets, &root, &model.state);
         ComponentParts { model, widgets }
@@ -265,13 +228,7 @@ impl Component for PowerModel {
             PowerInput::Clicked => {
                 let _ = sender.output(PowerOutput::Clicked);
             }
-            PowerInput::CycleMode => {
-                self.mode = self.mode.next();
-            }
         }
-        // The state→icon application path also refreshes the
-        // tooltip, so run it on every input even when only the
-        // mode changed — keeps the tooltip's mode hint accurate.
         apply_visual(widgets, root, &self.state);
         self.update_view(widgets, sender);
     }
@@ -344,8 +301,6 @@ fn apply_visual(widgets: &PowerModelWidgets, root: &gtk::Box, s: &PowerState) {
                 _ => "unknown",
             }
         ));
-        lines.push(String::new());
-        lines.push("Right-click: cycle display mode".to_string());
         lines.join("\n")
     };
     root.set_tooltip_text(Some(&tooltip));
