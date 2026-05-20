@@ -66,6 +66,8 @@ pub(crate) struct NetworkMenuWidgetModel {
     tx_area: gtk::DrawingArea,
     rx_speed_label: gtk::Label,
     tx_speed_label: gtk::Label,
+    rx_peak_label: gtk::Label,
+    tx_peak_label: gtk::Label,
     rx_hist: Rc<RefCell<Vec<f64>>>,
     tx_hist: Rc<RefCell<Vec<f64>>>,
 }
@@ -175,6 +177,10 @@ impl Component for NetworkMenuWidgetModel {
                             set_xalign: 0.0,
                         },
                         #[local_ref]
+                        rx_peak_label_widget -> gtk::Label {
+                            add_css_class: "network-traffic-peak",
+                        },
+                        #[local_ref]
                         rx_speed_label_widget -> gtk::Label {
                             set_css_classes: &["network-traffic-speed", "network-rx"],
                         },
@@ -203,6 +209,10 @@ impl Component for NetworkMenuWidgetModel {
                             set_label: "Upload",
                             set_hexpand: true,
                             set_xalign: 0.0,
+                        },
+                        #[local_ref]
+                        tx_peak_label_widget -> gtk::Label {
+                            add_css_class: "network-traffic-peak",
                         },
                         #[local_ref]
                         tx_speed_label_widget -> gtk::Label {
@@ -292,6 +302,8 @@ impl Component for NetworkMenuWidgetModel {
         // Traffic graphs + live-speed labels.
         let rx_speed_label_widget = gtk::Label::new(Some("0B/s"));
         let tx_speed_label_widget = gtk::Label::new(Some("0B/s"));
+        let rx_peak_label_widget = gtk::Label::new(None);
+        let tx_peak_label_widget = gtk::Label::new(None);
         let rx_area_widget = gtk::DrawingArea::new();
         let tx_area_widget = gtk::DrawingArea::new();
         let rx_hist: Rc<RefCell<Vec<f64>>> = Rc::new(RefCell::new(Vec::new()));
@@ -359,6 +371,8 @@ impl Component for NetworkMenuWidgetModel {
             tx_area: tx_area_widget.clone(),
             rx_speed_label: rx_speed_label_widget.clone(),
             tx_speed_label: tx_speed_label_widget.clone(),
+            rx_peak_label: rx_peak_label_widget.clone(),
+            tx_peak_label: tx_peak_label_widget.clone(),
             rx_hist,
             tx_hist,
         };
@@ -438,6 +452,8 @@ impl Component for NetworkMenuWidgetModel {
                     .set_label(&format!("{}/s", format_speed(sample.up_bps)));
                 set_idle(&self.rx_speed_label, sample.down_bps);
                 set_idle(&self.tx_speed_label, sample.up_bps);
+                self.rx_peak_label.set_label(&peak_text(&self.rx_hist));
+                self.tx_peak_label.set_label(&peak_text(&self.tx_hist));
                 self.rx_area.queue_draw();
                 self.tx_area.queue_draw();
                 return;
@@ -670,6 +686,17 @@ fn push_capped(hist: &Rc<RefCell<Vec<f64>>>, value: f64) {
     }
 }
 
+/// "peak X/s" label text from a history window (empty while warming
+/// up so the row stays clean).
+fn peak_text(hist: &Rc<RefCell<Vec<f64>>>) -> String {
+    let peak = hist.borrow().iter().copied().fold(0.0_f64, f64::max);
+    if peak < 1.0 {
+        String::new()
+    } else {
+        format!("peak {}/s", format_speed(peak as u64))
+    }
+}
+
 /// Dim a speed label when its direction is idle (below threshold).
 fn set_idle(label: &gtk::Label, bps: u64) {
     if bps >= IDLE_THRESHOLD {
@@ -679,18 +706,21 @@ fn set_idle(label: &gtk::Label, bps: u64) {
     }
 }
 
-/// Draw a filled history sparkline. The accent colour comes from the
-/// area's resolved CSS `color` (set via `.network-rx` / `.network-tx`
-/// in SCSS), so it tracks the matugen theme automatically. The graph
-/// auto-scales to the window's peak.
+/// Draw a smooth filled history sparkline. The accent colour comes
+/// from the area's resolved CSS `color` (`.network-rx` / `.network-tx`
+/// in SCSS), so it tracks the matugen theme automatically. The line is
+/// a Catmull-Rom spline, the fill an accent→transparent gradient.
+/// Auto-scales to the window's peak.
 fn draw_graph(area: &gtk::DrawingArea, cr: &gtk::cairo::Context, w: i32, h: i32, hist: &[f64]) {
+    use gtk::cairo::{LineCap, LineJoin, LinearGradient};
+
     let (w, h) = (w as f64, h as f64);
     let c = area.color();
     let (r, g, b) = (c.red() as f64, c.green() as f64, c.blue() as f64);
 
     // Faint baseline gridlines at 1/3 + 2/3 height.
     cr.set_line_width(1.0);
-    cr.set_source_rgba(r, g, b, 0.10);
+    cr.set_source_rgba(r, g, b, 0.08);
     for frac in [0.33_f64, 0.66] {
         let y = h * (1.0 - frac);
         cr.move_to(0.0, y);
@@ -704,29 +734,54 @@ fn draw_graph(area: &gtk::DrawingArea, cr: &gtk::cairo::Context, w: i32, h: i32,
     let max = hist.iter().copied().fold(1.0_f64, f64::max);
     let n = hist.len();
     let step = w / (n as f64 - 1.0);
-    let y_at = |v: f64| h - (v / max) * h;
+    // Leave 2 px headroom top + bottom so the stroke + end dot aren't
+    // clipped at the peak / baseline.
+    let pts: Vec<(f64, f64)> = hist
+        .iter()
+        .enumerate()
+        .map(|(i, v)| (i as f64 * step, h - 2.0 - (v / max) * (h - 4.0)))
+        .collect();
 
-    // Filled area under the curve.
-    cr.move_to(0.0, h);
-    for (i, v) in hist.iter().enumerate() {
-        cr.line_to(i as f64 * step, y_at(*v));
-    }
+    // Gradient-filled area under the smooth curve.
+    smooth_path(cr, &pts);
     cr.line_to(w, h);
+    cr.line_to(0.0, h);
     cr.close_path();
-    cr.set_source_rgba(r, g, b, 0.16);
+    let grad = LinearGradient::new(0.0, 0.0, 0.0, h);
+    grad.add_color_stop_rgba(0.0, r, g, b, 0.32);
+    grad.add_color_stop_rgba(1.0, r, g, b, 0.0);
+    let _ = cr.set_source(&grad);
     let _ = cr.fill();
 
-    // Stroke the curve on top.
-    cr.set_line_width(1.5);
-    cr.set_source_rgba(r, g, b, 0.9);
-    for (i, v) in hist.iter().enumerate() {
-        let x = i as f64 * step;
-        let y = y_at(*v);
-        if i == 0 {
-            cr.move_to(x, y);
-        } else {
-            cr.line_to(x, y);
-        }
-    }
+    // Stroke the curve on top, rounded.
+    cr.set_line_width(2.0);
+    cr.set_line_cap(LineCap::Round);
+    cr.set_line_join(LineJoin::Round);
+    cr.set_source_rgba(r, g, b, 0.95);
+    smooth_path(cr, &pts);
     let _ = cr.stroke();
+
+    // "Now" dot at the leading (right-most) sample.
+    if let Some(&(x, y)) = pts.last() {
+        cr.set_source_rgba(r, g, b, 1.0);
+        cr.arc(x, y, 2.5, 0.0, std::f64::consts::TAU);
+        let _ = cr.fill();
+    }
+}
+
+/// Emit a Catmull-Rom spline through `pts` as cairo `curve_to`s
+/// (move_to first point, then one cubic per segment). Endpoints are
+/// clamped so the curve starts/ends exactly on the data.
+fn smooth_path(cr: &gtk::cairo::Context, pts: &[(f64, f64)]) {
+    let n = pts.len();
+    cr.move_to(pts[0].0, pts[0].1);
+    for i in 0..n - 1 {
+        let p0 = pts[i.saturating_sub(1)];
+        let p1 = pts[i];
+        let p2 = pts[i + 1];
+        let p3 = pts[(i + 2).min(n - 1)];
+        let c1 = (p1.0 + (p2.0 - p0.0) / 6.0, p1.1 + (p2.1 - p0.1) / 6.0);
+        let c2 = (p2.0 - (p3.0 - p1.0) / 6.0, p2.1 - (p3.1 - p1.1) / 6.0);
+        cr.curve_to(c1.0, c1.1, c2.0, c2.1, p2.0, p2.1);
+    }
 }

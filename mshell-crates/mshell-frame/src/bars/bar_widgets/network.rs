@@ -16,7 +16,7 @@
 use mshell_common::WatcherToken;
 use mshell_services::network_service;
 use mshell_utils::network::{spawn_network_watcher, spawn_wifi_watcher, spawn_wired_watcher};
-use relm4::gtk::prelude::{ButtonExt, GestureSingleExt, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, GestureSingleExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::time::Duration;
 use wayle_network::types::connectivity::ConnectionType;
@@ -157,17 +157,41 @@ impl Component for NetworkModel {
                     sender.input(NetworkInput::Clicked);
                 },
 
-                // Speed text + signal icon share the same slot;
-                // `apply_visual` toggles `set_visible` so exactly
-                // one shows at a time.
+                // Two display modes share the slot; `apply_visual`
+                // toggles `set_visible` so exactly one shows. Icon
+                // mode is the signal/wired glyph plus live ↓↑
+                // activity arrows that brighten with traffic; Speed
+                // mode is the `↓ … ↑ …` readout.
                 gtk::Box {
                     set_halign: gtk::Align::Center,
                     set_valign: gtk::Align::Center,
 
-                    #[name="image"]
-                    gtk::Image {
+                    #[name="icon_group"]
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 3,
                         set_halign: gtk::Align::Center,
                         set_valign: gtk::Align::Center,
+
+                        #[name="image"]
+                        gtk::Image {
+                            set_halign: gtk::Align::Center,
+                            set_valign: gtk::Align::Center,
+                        },
+                        #[name="rx_arrow"]
+                        gtk::Image {
+                            set_css_classes: &["network-arrow", "network-rx"],
+                            set_icon_name: Some("go-down-symbolic"),
+                            set_pixel_size: 11,
+                            set_valign: gtk::Align::Center,
+                        },
+                        #[name="tx_arrow"]
+                        gtk::Image {
+                            set_css_classes: &["network-arrow", "network-tx"],
+                            set_icon_name: Some("go-up-symbolic"),
+                            set_pixel_size: 11,
+                            set_valign: gtk::Align::Center,
+                        },
                     },
 
                     #[name="speed_label"]
@@ -246,6 +270,9 @@ impl Component for NetworkModel {
         let widgets = view_output!();
         apply_visual(
             &widgets.image,
+            &widgets.icon_group,
+            &widgets.rx_arrow,
+            &widgets.tx_arrow,
             &widgets.speed_label,
             &root,
             &model.state,
@@ -301,6 +328,9 @@ impl Component for NetworkModel {
         }
         apply_visual(
             &widgets.image,
+            &widgets.icon_group,
+            &widgets.rx_arrow,
+            &widgets.tx_arrow,
             &widgets.speed_label,
             root,
             &self.state,
@@ -471,12 +501,28 @@ pub(crate) fn read_network_state() -> NetworkState {
 
 fn apply_visual(
     image: &gtk::Image,
+    icon_group: &gtk::Box,
+    rx_arrow: &gtk::Image,
+    tx_arrow: &gtk::Image,
     speed_label: &gtk::Label,
     root: &gtk::Box,
     s: &NetworkState,
     speed: SpeedSample,
     mode: DisplayMode,
 ) {
+    // Live activity arrows: bright when that direction is moving
+    // bytes, dim when idle.
+    const ARROW_ACTIVE: u64 = 3000;
+    let set_arrow = |arrow: &gtk::Image, bps: u64| {
+        if bps >= ARROW_ACTIVE {
+            arrow.remove_css_class("idle");
+        } else {
+            arrow.add_css_class("idle");
+        }
+    };
+    set_arrow(rx_arrow, speed.down_bps);
+    set_arrow(tx_arrow, speed.up_bps);
+
     let icon = if !s.available {
         "network-wired-disconnected-symbolic"
     } else {
@@ -519,11 +565,11 @@ fn apply_visual(
     match mode {
         DisplayMode::Speed => {
             speed_label.set_visible(true);
-            image.set_visible(false);
+            icon_group.set_visible(false);
         }
         DisplayMode::Icon => {
             speed_label.set_visible(false);
-            image.set_visible(true);
+            icon_group.set_visible(true);
         }
     }
 

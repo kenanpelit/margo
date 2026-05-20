@@ -11,6 +11,12 @@
 .network-rx { color: var(--primary); }
 .network-tx { color: var(--secondary); }
 
+// Bar-pill live activity arrows — bright on traffic, dim when idle.
+.network-arrow {
+  transition: opacity var(--motion-fast) var(--ease-standard);
+  &.idle { opacity: 0.28; }
+}
+
 .network-traffic-label {
   font-size: var(--font-bar);
   font-weight: 600;
@@ -24,6 +30,16 @@
 
   // Dim when the direction is idle (below the activity threshold).
   &.idle { opacity: 0.45; }
+}
+
+// Muted rolling-window peak, sits left of the live speed.
+.network-traffic-peak {
+  font-family: monospace;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface-variant);
+  opacity: 0.7;
+  margin-right: 8px;
 }
 
 // ── Bar pill ──────────────────────────────────────────────
