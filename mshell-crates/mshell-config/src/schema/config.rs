@@ -652,8 +652,12 @@ impl Default for Menus {
                                 // Equalised with the right column —
                                 // both sides share the same width so
                                 // the dashboard reads as a symmetric
-                                // two-pane layout.
+                                // two-pane layout. The parent's
+                                // `homogeneous` is what actually forces
+                                // the equal split; this width is the
+                                // shared floor.
                                 minimum_width: 400,
+                                homogeneous: false,
                             }),
                             // Right column = controls + media, with
                             // OverviewIntel pinned at the top so the
@@ -680,11 +684,16 @@ impl Default for Menus {
                                 // standalone-QS breathing room while
                                 // making the dashboard symmetric.
                                 minimum_width: 400,
+                                homogeneous: false,
                             }),
                         ],
                         spacing: 12,
                         orientation: Orientation::Horizontal,
                         minimum_width: 0,
+                        // Force the two columns to identical widths
+                        // regardless of which side's content is
+                        // naturally wider — symmetric two-pane body.
+                        homogeneous: true,
                     }),
                     // ── Bottom centred QuickActions strip ──
                     //

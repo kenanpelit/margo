@@ -143,13 +143,18 @@ impl Component for OverviewIntelModel {
             },
 
             // ── Temperature line ────────────────────────────────
+            //
+            // Always visible when a sensor exists (user asked for
+            // CPU temp to be a permanent readout, not just a hot
+            // alert). Severity colour + wording escalate as it
+            // climbs: calm "CPU NN°C" → warn/danger "CPU running
+            // hot (NN°C)".
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
                 set_spacing: 8,
                 set_halign: gtk::Align::Start,
                 #[watch]
-                set_visible: model.temp_sensor_path.is_some()
-                    && model.temp_celsius >= TEMP_WARN_CELSIUS,
+                set_visible: model.temp_sensor_path.is_some(),
 
                 gtk::Label {
                     add_css_class: "overview-intel-dot",
@@ -162,10 +167,7 @@ impl Component for OverviewIntelModel {
                         temp_severity(model.temp_celsius),
                     ],
                     #[watch]
-                    set_label: &format!(
-                        "CPU running hot ({}°C)",
-                        model.temp_celsius
-                    ),
+                    set_label: &temp_line(model.temp_celsius),
                     set_halign: gtk::Align::Start,
                 },
             },
@@ -301,6 +303,14 @@ fn battery_severity(percent: i32, charging: bool) -> &'static str {
     }
 }
 
+fn temp_line(celsius: i32) -> String {
+    if celsius >= TEMP_WARN_CELSIUS {
+        format!("CPU running hot ({celsius}°C)")
+    } else {
+        format!("CPU temperature {celsius}°C")
+    }
+}
+
 fn temp_severity(celsius: i32) -> &'static str {
     if celsius >= TEMP_DANGER_CELSIUS {
         "danger"
@@ -320,13 +330,12 @@ fn has_any_alert(model: &OverviewIntelModel) -> bool {
 }
 
 fn quiet_summary(model: &OverviewIntelModel) -> String {
+    // Temp lives on its own always-visible line now, so it's
+    // intentionally omitted here to avoid showing the °C twice.
     let mut parts: Vec<String> = vec!["Quiet — nothing urgent".to_string()];
     if model.has_battery {
         let charge_word = if model.battery_charging { "charging" } else { "battery" };
         parts.push(format!("{}% {}", model.battery_percent, charge_word));
-    }
-    if model.temp_sensor_path.is_some() {
-        parts.push(format!("{}°C", model.temp_celsius));
     }
     parts.join(" · ")
 }

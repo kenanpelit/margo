@@ -11,6 +11,7 @@ pub(crate) struct ContainerModel {
     spacing: i32,
     orientation: gtk::Orientation,
     minimum_width: i32,
+    homogeneous: bool,
 }
 
 #[derive(Debug)]
@@ -48,6 +49,11 @@ impl SimpleComponent for ContainerModel {
             set_valign: gtk::Align::Fill,
             set_spacing: model.spacing,
             set_width_request: model.minimum_width,
+            // When set, every child gets an identical allocation
+            // along the orientation axis — the dashboard's 2-col
+            // body uses this so left + right panes are exactly the
+            // same width regardless of natural content width.
+            set_homogeneous: model.homogeneous,
         }
     }
 
@@ -80,6 +86,7 @@ impl SimpleComponent for ContainerModel {
                 gtk::Orientation::Vertical
             },
             minimum_width: params.config.minimum_width,
+            homogeneous: params.config.homogeneous,
         };
 
         let widgets = view_output!();

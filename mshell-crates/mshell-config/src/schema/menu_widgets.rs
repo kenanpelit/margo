@@ -252,6 +252,13 @@ pub struct ContainerConfig {
     pub spacing: i32,
     pub orientation: Orientation,
     pub minimum_width: i32,
+    /// Force every child to the same size along the orientation
+    /// axis. Used by the dashboard's 2-column body so the left and
+    /// right panes get identical widths regardless of which side's
+    /// content is naturally wider. Default-on-missing so older YAML
+    /// still parses.
+    #[serde(default)]
+    pub homogeneous: bool,
 }
 
 impl Default for ContainerConfig {
@@ -261,6 +268,7 @@ impl Default for ContainerConfig {
             spacing: 0,
             orientation: Orientation::Horizontal,
             minimum_width: 0,
+            homogeneous: false,
         }
     }
 }
