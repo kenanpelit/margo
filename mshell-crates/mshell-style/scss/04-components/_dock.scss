@@ -22,7 +22,7 @@
 }
 
 .bar-dock-indicator {
-  border-radius: 90px;
+  border-radius: var(--radius-pill);
   background-color: var(--on-surface);
   min-width: 4px;
   min-height: 4px;
@@ -34,7 +34,7 @@
 }
 
 .bar-dock-indicator-line-horizontal {
-  border-radius: 90px;
+  border-radius: var(--radius-pill);
   background-color: var(--on-surface);
   min-width: 16px;
   min-height: 4px;
@@ -42,7 +42,7 @@
 }
 
 .bar-dock-indicator-line-vertical {
-  border-radius: 90px;
+  border-radius: var(--radius-pill);
   background-color: var(--on-surface);
   min-width: 4px;
   min-height: 16px;

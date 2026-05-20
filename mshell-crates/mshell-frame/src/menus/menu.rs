@@ -753,7 +753,7 @@ impl Component for MenuModel {
                 });
             }
             MenuType::MargoLayout => {
-                css_class = "margo-layout-menu".to_string();
+                css_class = "quick-settings-menu margo-layout-menu".to_string();
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {

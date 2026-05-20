@@ -1,0 +1,36 @@
+@use "../02-functions/index" as *;
+// MargoLayout switcher menu — the §5 device-row pattern. Each layout
+// is a flat button row (icon + name); hover is the canonical 14%
+// primary state-layer, the active layout tints icon + label primary
+// (§3 active = primary tint, no badge / size change).
+
+.margo-layout-menu-widget-rows {
+  // Rows stack vertically inside the quick-settings card.
+}
+
+.margo-layout-menu-row {
+  all: unset;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  @include state-layer();
+
+  &.selected {
+    .margo-layout-menu-icon,
+    .margo-layout-menu-label {
+      color: var(--primary);
+    }
+    .margo-layout-menu-label {
+      font-weight: 600;
+    }
+  }
+}
+
+.margo-layout-menu-icon {
+  -gtk-icon-size: var(--icon-md);
+  color: var(--on-surface-variant);
+}
+
+.margo-layout-menu-label {
+  font-size: var(--font-bar);
+  color: var(--on-surface);
+}
