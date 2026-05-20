@@ -93,15 +93,18 @@ impl SimpleComponent for ContainerModel {
 
         let widgets = view_output!();
 
-        for controller in &model.widget_controllers {
+        // `fill` makes ONLY the last child stretch to claim the
+        // container's remaining space; the children above keep
+        // their natural sizes and stack from the top. The dashboard
+        // columns use this so the bottom anchor card (Weather on the
+        // left, MediaPlayer on the right) grows to fill the column
+        // while the tiles above it sit at natural height — and since
+        // both columns share the same total height, the two bottom
+        // cards end up the same size.
+        let last_index = model.widget_controllers.len().saturating_sub(1);
+        for (i, controller) in model.widget_controllers.iter().enumerate() {
             let child = controller.root_widget();
-            // `fill` columns stretch their tiles to claim the
-            // container's full height, so the shorter side reaches
-            // the same bottom edge as the taller one. Extra space
-            // is shared across children (each keeps its natural
-            // minimum), giving a balanced fill rather than equal
-            // halves.
-            if model.fill {
+            if model.fill && i == last_index {
                 child.set_vexpand(true);
                 child.set_valign(gtk::Align::Fill);
             }

@@ -259,10 +259,12 @@ pub struct ContainerConfig {
     /// still parses.
     #[serde(default)]
     pub homogeneous: bool,
-    /// Give every child `vexpand` so they stretch to fill the
-    /// container's height — used by the dashboard columns so the
-    /// shorter side's tiles grow to reach the same bottom edge as
-    /// the taller side (equal column "length"). Default-off.
+    /// Make the LAST child stretch to fill the container's
+    /// remaining space (children above keep natural sizes, stacked
+    /// from the top). Used by the dashboard columns so the bottom
+    /// anchor card (Weather / MediaPlayer) grows to fill the column
+    /// — and since both columns share the same total height, the
+    /// two bottom cards end up the same size. Default-off.
     #[serde(default)]
     pub fill: bool,
 }
