@@ -1,5 +1,3 @@
-use crate::bars::bar_widgets::audio_input::{AudioInputInit, AudioInputModel};
-use crate::bars::bar_widgets::audio_output::{AudioOutputInit, AudioOutputModel};
 use crate::bars::bar_widgets::battery::{BatteryInit, BatteryModel};
 use crate::bars::bar_widgets::bluetooth::{BluetoothInit, BluetoothModel};
 use crate::bars::bar_widgets::clipboard::{ClipboardInit, ClipboardModel, ClipboardOutput};
@@ -9,10 +7,6 @@ use crate::bars::bar_widgets::dashboard::{DashboardInit, DashboardModel, Dashboa
 use crate::bars::bar_widgets::dark_mode::{DarkModeInit, DarkModeModel};
 use crate::bars::bar_widgets::keep_awake::{KeepAwakeInit, KeepAwakeModel};
 use crate::bars::bar_widgets::lock_keys::{LockKeysInit, LockKeysModel};
-use crate::bars::bar_widgets::sysstat::{
-    CpuMonitorInit, CpuMonitorModel, RamMonitorInit, RamMonitorModel, TempMonitorInit,
-    TempMonitorModel,
-};
 use crate::bars::bar_widgets::color_picker::{ColorPickerInit, ColorPickerModel};
 use crate::bars::bar_widgets::margo_dock::{
     MargoDockInit, MargoDockModel, MargoDockOutput,
@@ -23,7 +17,6 @@ use crate::bars::bar_widgets::margo_tags::{
 };
 use crate::bars::bar_widgets::lock::{LockInit, LockModel, LockOutput};
 use crate::bars::bar_widgets::logout::{LogoutInit, LogoutModel};
-use crate::bars::bar_widgets::network::{NetworkInit, NetworkModel};
 use crate::bars::bar_widgets::ndns::{NdnsInit, NdnsModel};
 use crate::bars::bar_widgets::nip::{NipInit, NipModel};
 use crate::bars::bar_widgets::nnetwork::{NnetworkInit, NnetworkModel};
@@ -432,16 +425,6 @@ impl BarModel {
         sender: &ComponentSender<Self>,
     ) -> Box<dyn GenericWidgetController> {
         match widget {
-            BarWidget::AudioInput => Box::new(
-                AudioInputModel::builder()
-                    .launch(AudioInputInit {})
-                    .detach(),
-            ),
-            BarWidget::AudioOutput => Box::new(
-                AudioOutputModel::builder()
-                    .launch(AudioOutputInit {})
-                    .detach(),
-            ),
             BarWidget::AudioDashboard => Box::new(
                 crate::bars::bar_widgets::audio_dashboard::AudioDashboardModel::builder()
                     .launch(crate::bars::bar_widgets::audio_dashboard::AudioDashboardInit {})
@@ -508,21 +491,6 @@ impl BarModel {
                     .launch(LockKeysInit { orientation })
                     .detach(),
             ),
-            BarWidget::CpuMonitor => Box::new(
-                CpuMonitorModel::builder()
-                    .launch(CpuMonitorInit { orientation })
-                    .detach(),
-            ),
-            BarWidget::CpuTemp => Box::new(
-                TempMonitorModel::builder()
-                    .launch(TempMonitorInit { orientation })
-                    .detach(),
-            ),
-            BarWidget::RamMonitor => Box::new(
-                RamMonitorModel::builder()
-                    .launch(RamMonitorInit { orientation })
-                    .detach(),
-            ),
             BarWidget::MargoDock => Box::new(
                 MargoDockModel::builder()
                     .launch(MargoDockInit {
@@ -569,7 +537,6 @@ impl BarModel {
                         QuickSettingOutput::Clicked => BarOutput::MainMenuClicked,
                     }),
             ),
-            BarWidget::Network => Box::new(NetworkModel::builder().launch(NetworkInit {}).detach()),
             BarWidget::Ndns => Box::new(
                 NdnsModel::builder()
                     .launch(NdnsInit {})

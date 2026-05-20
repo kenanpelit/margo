@@ -25,20 +25,14 @@ use relm4::{Component, ComponentParts, ComponentSender, gtk};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BarPillKind {
     ActiveWindow,
-    AudioInput,
-    AudioOutput,
     Battery,
     DarkMode,
     ColorPicker,
-    CpuMonitor,
-    CpuTemp,
     KeepAwake,
-    RamMonitor,
     Lock,
     Logout,
     MargoDock,
     MargoTags,
-    Network,
     PowerProfile,
     Privacy,
     Reboot,
@@ -53,20 +47,14 @@ impl BarPillKind {
     pub(crate) fn display_name(self) -> &'static str {
         match self {
             Self::ActiveWindow => "Active Window",
-            Self::AudioInput => "Audio Input",
-            Self::AudioOutput => "Audio Output",
             Self::Battery => "Battery",
             Self::DarkMode => "Dark Mode Toggle",
             Self::ColorPicker => "ColorPicker",
-            Self::CpuMonitor => "CPU Load",
-            Self::CpuTemp => "CPU Temperature",
             Self::KeepAwake => "Keep Awake",
-            Self::RamMonitor => "RAM Used",
             Self::Lock => "Lock",
             Self::Logout => "Logout",
             Self::MargoDock => "Margo Dock",
             Self::MargoTags => "Margo Tags",
-            Self::Network => "Network",
             Self::PowerProfile => "Power Profile",
             Self::Privacy => "Privacy",
             Self::Reboot => "Reboot",
@@ -85,12 +73,6 @@ impl BarPillKind {
             Self::ActiveWindow => {
                 "Shows the title of the currently focused window. Click to cycle through windows on the active tag."
             }
-            Self::AudioInput => {
-                "Mic input level + mute toggle. Click opens the audio-input menu to pick a source device."
-            }
-            Self::AudioOutput => {
-                "Speaker volume + mute toggle. Click opens the audio-output menu to pick a sink device."
-            }
             Self::Battery => {
                 "Charge percentage + charging state. Right-click flips between percentage label and minimal icon-only."
             }
@@ -99,12 +81,6 @@ impl BarPillKind {
             }
             Self::ColorPicker => {
                 "Picks a colour from the screen and copies hex/rgb to the clipboard. Click to start picking."
-            }
-            Self::CpuMonitor => {
-                "Single CPU load percentage. Polls /proc/stat every 2 s. Pair with CPU Temperature for a two-chip view; use CPU Dashboard for the combined alternative."
-            }
-            Self::CpuTemp => {
-                "CPU package temperature in °C. Probes /sys/class/hwmon for coretemp / k10temp / zenpower / acpitz in that order."
             }
             Self::KeepAwake => {
                 "Toggles the system idle inhibitor. Active = no auto-lock / suspend / dim. Same backend as `mctl idle inhibit`."
@@ -117,9 +93,6 @@ impl BarPillKind {
             Self::MargoTags => {
                 "1–9 tag pills with focus / occupied / urgent states. Click to switch tags, scroll to cycle."
             }
-            Self::Network => {
-                "Connectivity state (wired / wifi / offline). Click opens the network menu for SSID selection."
-            }
             Self::PowerProfile => {
                 "power-profiles-daemon state (Performance / Balanced / Power Saver). Click cycles forward."
             }
@@ -129,9 +102,6 @@ impl BarPillKind {
             Self::Reboot => "Reboots the system. Confirms with a dialog.",
             Self::RecordingIndicator => {
                 "Lights up while a screen-recording is in progress. Click stops the recording."
-            }
-            Self::RamMonitor => {
-                "Used RAM as a percentage of MemTotal (matches `free -h`'s used column). Polls /proc/meminfo every 2 s."
             }
             Self::Shutdown => "Powers off the system. Confirms with a dialog.",
             Self::Tray => {

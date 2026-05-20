@@ -1,8 +1,6 @@
 pub(crate) mod active_window;
 pub(crate) mod app_launcher;
 pub(crate) mod audio_dashboard;
-pub(crate) mod audio_input;
-pub(crate) mod audio_output;
 pub(crate) mod battery;
 pub(crate) mod bluetooth;
 pub(crate) mod clipboard;
@@ -23,7 +21,6 @@ pub(crate) mod lock;
 pub(crate) mod logout;
 pub(crate) mod media_player;
 pub(crate) mod ndns;
-pub(crate) mod network;
 pub(crate) mod nnetwork;
 pub(crate) mod nnotes;
 pub(crate) mod nip;
