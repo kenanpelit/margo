@@ -1,5 +1,6 @@
 use std::hash::{Hash, Hasher};
 
+use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
 #[derive(Clone, Debug)]
@@ -10,6 +11,10 @@ pub struct ClipboardEntry {
     pub data: Vec<u8>,
     pub preview: EntryPreview,
     pub content_hash: u64,
+    /// Pinned (favourite) entries are exempt from `max_entries`
+    /// eviction and every auto-clear policy, and persist to disk
+    /// regardless of the persist mode.
+    pub pinned: bool,
 }
 
 impl ClipboardEntry {
@@ -17,6 +22,10 @@ impl ClipboardEntry {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         data.hash(&mut hasher);
         hasher.finish()
+    }
+
+    pub fn is_text(&self) -> bool {
+        self.mime_type.starts_with("text/")
     }
 }
 
@@ -37,4 +46,61 @@ pub enum EntryPreview {
 impl EntryPreview {
     pub const TEXT_PREVIEW_LEN: usize = 200;
     pub const THUMBNAIL_SIZE: u32 = 512;
+
+    /// Build a preview from raw clipboard bytes. Shared by the live
+    /// watcher and the on-disk loader so a restored entry renders
+    /// identically to a freshly-copied one.
+    pub fn build(mime_type: &str, data: &[u8]) -> EntryPreview {
+        if mime_type.starts_with("text/") {
+            let text = String::from_utf8_lossy(data);
+            let truncated: String = text.chars().take(Self::TEXT_PREVIEW_LEN).collect();
+            EntryPreview::Text(truncated)
+        } else if mime_type.starts_with("image/") {
+            crate::thumbnail::generate_thumbnail(data).unwrap_or_else(|| EntryPreview::Binary {
+                mime_type: mime_type.to_string(),
+                size: data.len(),
+            })
+        } else {
+            EntryPreview::Binary {
+                mime_type: mime_type.to_string(),
+                size: data.len(),
+            }
+        }
+    }
+}
+
+/// On-disk form of a clipboard entry. The (potentially large) RGBA
+/// `preview` is intentionally NOT serialized — it's regenerated
+/// from `data` on load. Text payloads are stored inline; image /
+/// binary payloads live in a content-addressed blob file and are
+/// referenced here by `content_hash`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PersistedEntry {
+    pub id: u64,
+    /// Unix seconds.
+    pub timestamp: i64,
+    pub mime_type: String,
+    pub content_hash: u64,
+    pub pinned: bool,
+    /// `Some` for text payloads (stored inline). `None` means the
+    /// payload is in `blobs/<content_hash>.bin`.
+    pub inline_text: Option<String>,
+}
+
+impl PersistedEntry {
+    pub fn from_entry(e: &ClipboardEntry) -> Self {
+        let inline_text = if e.is_text() {
+            Some(String::from_utf8_lossy(&e.data).into_owned())
+        } else {
+            None
+        };
+        Self {
+            id: e.id,
+            timestamp: e.timestamp.unix_timestamp(),
+            mime_type: e.mime_type.clone(),
+            content_hash: e.content_hash,
+            pinned: e.pinned,
+            inline_text,
+        }
+    }
 }

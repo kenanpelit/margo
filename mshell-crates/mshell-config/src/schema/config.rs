@@ -1,4 +1,5 @@
 use crate::schema::bar_widgets::BarWidget;
+use crate::schema::clipboard::Clipboard;
 use crate::schema::content_fit::ContentFit;
 use crate::schema::location_query::{LocationQueryConfig, OrdF64};
 use crate::schema::menu_widgets::{
@@ -28,6 +29,7 @@ pub struct Config {
     pub tempo: Tempo,
     pub idle: Idle,
     pub session: Session,
+    pub clipboard: Clipboard,
 }
 
 /// Idle manager — staged actions as the session sits idle. Each

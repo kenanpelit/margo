@@ -1,6 +1,7 @@
 use std::io::Read;
 use std::os::unix::io::{AsFd, AsRawFd, FromRawFd, OwnedFd};
 use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 use time::OffsetDateTime;
@@ -21,7 +22,27 @@ use wayland_protocols::ext::data_control::v1::client::{
 
 use crate::entry::{ClipboardEntry, EntryPreview};
 use crate::history::ClipboardHistory;
-use crate::thumbnail;
+use crate::persist;
+use crate::settings::{ClearPolicy, ClipboardSettings};
+
+/// MIME hint password managers (KeePassXC, Bitwarden, KDE Klipper,
+/// …) attach to a copy they consider secret. When `skip_sensitive`
+/// is on we drop any offer advertising it so passwords never enter
+/// history.
+const SENSITIVE_HINT_MIME: &str = "x-kde-passwordManagerHint";
+
+/// Live, shareable settings — read by the watcher thread on each
+/// new offer and by the UI thread on each mutation (to decide what
+/// to persist).
+type SharedSettings = Arc<Mutex<ClipboardSettings>>;
+
+/// Write the current history to disk per the active persist mode.
+/// Cheap (≤ max_entries entries; image blobs are content-addressed
+/// and written once) so we just call it after every mutation.
+fn persist_now(history: &ClipboardHistory, settings: &SharedSettings) {
+    let mode = settings.lock().unwrap().persist;
+    persist::save(&history.entries(), mode);
+}
 
 /// 10 MB
 const MAX_DATA_SIZE: usize = 10 * 1024 * 1024;
@@ -60,22 +81,44 @@ pub struct ClipboardWatcher {
     history: ClipboardHistory,
     event_tx: broadcast::Sender<ClipboardEvent>,
     command_tx: mpsc::Sender<WatcherCommand>,
+    settings: SharedSettings,
 }
 
 impl ClipboardWatcher {
     /// Spawns a background thread that connects to the Wayland compositor
     /// and listens for clipboard changes via `ext-data-control-v1`.
-    pub fn start(max_entries: usize) -> Result<Self, Box<dyn std::error::Error>> {
-        let history = ClipboardHistory::new(max_entries);
+    pub fn start(settings: ClipboardSettings) -> Result<Self, Box<dyn std::error::Error>> {
+        let history = ClipboardHistory::new(settings.max_entries);
+
+        // Restore persisted history, then apply the clear policy so
+        // the rolling (non-pinned) entries honour the user's choice
+        // on this launch. Pinned entries always survive.
+        let restored = persist::load();
+        history.load_snapshot(restored);
+        match settings.clear_policy {
+            ClearPolicy::Never => {}
+            ClearPolicy::OnLogout => history.clear_unpinned(),
+            ClearPolicy::AfterHours => {
+                history.prune_older_than(settings.clear_after_hours as i64 * 3600);
+            }
+        }
+
+        let shared: SharedSettings = Arc::new(Mutex::new(settings));
+        // Re-persist after the load-time prune so disk matches RAM.
+        persist_now(&history, &shared);
+
         let (event_tx, _) = broadcast::channel(BROADCAST_CAPACITY);
         let (command_tx, command_rx) = mpsc::channel();
 
         let watcher_history = history.clone();
         let watcher_tx = event_tx.clone();
+        let watcher_settings = shared.clone();
         thread::Builder::new()
             .name("mshell-clipboard-watcher".into())
             .spawn(move || {
-                if let Err(e) = run_watcher(watcher_history, watcher_tx, command_rx) {
+                if let Err(e) =
+                    run_watcher(watcher_history, watcher_tx, command_rx, watcher_settings)
+                {
                     error!("Clipboard watcher died: {e}");
                 }
             })?;
@@ -84,6 +127,7 @@ impl ClipboardWatcher {
             history,
             event_tx,
             command_tx,
+            settings: shared,
         })
     }
 
@@ -102,6 +146,7 @@ impl ClipboardWatcher {
     pub fn copy_entry(&self, id: u64) {
         if let Some(entry) = self.history.get(id) {
             self.history.promote(id);
+            persist_now(&self.history, &self.settings);
             self.broadcast(ClipboardEvent::NewEntry(id));
             let _ = self.command_tx.send(WatcherCommand::SetSelection {
                 mime_type: entry.mime_type.clone(),
@@ -112,12 +157,42 @@ impl ClipboardWatcher {
 
     pub fn delete_entry(&self, id: u64) {
         if self.history.remove(id) {
+            persist_now(&self.history, &self.settings);
             self.broadcast(ClipboardEvent::EntryRemoved(id));
         }
     }
 
     pub fn clear_history(&self) {
         self.history.clear();
+        persist_now(&self.history, &self.settings);
+        self.broadcast(ClipboardEvent::Cleared);
+    }
+
+    /// Clear everything except pinned (favourite) entries.
+    pub fn clear_unpinned(&self) {
+        self.history.clear_unpinned();
+        persist_now(&self.history, &self.settings);
+        self.broadcast(ClipboardEvent::Cleared);
+    }
+
+    /// Toggle the pinned flag on an entry, persist, and refresh.
+    pub fn toggle_pin(&self, id: u64) {
+        if self.history.toggle_pin(id).is_some() {
+            persist_now(&self.history, &self.settings);
+            self.broadcast(ClipboardEvent::NewEntry(id));
+        }
+    }
+
+    /// Apply a live settings change (from the Settings UI). Updates
+    /// the shared knobs, resizes/prunes history, and re-persists.
+    pub fn apply_settings(&self, new: ClipboardSettings) {
+        self.history.set_max_entries(new.max_entries);
+        if new.clear_policy == ClearPolicy::AfterHours {
+            self.history
+                .prune_older_than(new.clear_after_hours as i64 * 3600);
+        }
+        *self.settings.lock().unwrap() = new;
+        persist_now(&self.history, &self.settings);
         self.broadcast(ClipboardEvent::Cleared);
     }
 }
@@ -132,6 +207,7 @@ struct WatcherState {
     event_tx: broadcast::Sender<ClipboardEvent>,
     conn: Connection,
     command_rx: mpsc::Receiver<WatcherCommand>,
+    settings: SharedSettings,
 
     // Globals
     manager: Option<ExtDataControlManagerV1>,
@@ -156,6 +232,7 @@ fn run_watcher(
     history: ClipboardHistory,
     event_tx: broadcast::Sender<ClipboardEvent>,
     command_rx: mpsc::Receiver<WatcherCommand>,
+    settings: SharedSettings,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let conn = Connection::connect_to_env()?;
     let display = conn.display();
@@ -168,6 +245,7 @@ fn run_watcher(
         event_tx,
         conn: conn.clone(),
         command_rx,
+        settings,
         manager: None,
         seat: None,
         device: None,
@@ -336,13 +414,39 @@ impl Dispatch<ExtDataControlDeviceV1, ()> for WatcherState {
                     }
                 };
 
+                // Read the live filter knobs.
+                let (skip_sensitive, image_history) = {
+                    let s = state.settings.lock().unwrap();
+                    (s.skip_sensitive, s.image_history)
+                };
+
+                // Password managers (KeePassXC / Bitwarden / KDE)
+                // tag secret copies with this hint mime — drop them
+                // entirely so passwords never enter history.
+                if skip_sensitive
+                    && pending
+                        .mime_types
+                        .iter()
+                        .any(|m| m == SENSITIVE_HINT_MIME)
+                {
+                    debug!("Skipped sensitive (password-manager) clipboard entry");
+                    pending.offer.destroy();
+                    return;
+                }
+
                 // Pick the best MIME type and read the data.
                 if let Some(mime) = pick_best_mime(&pending.mime_types) {
+                    // Honour the image-history toggle.
+                    if !image_history && mime.starts_with("image/") {
+                        pending.offer.destroy();
+                        return;
+                    }
                     match read_offer_data(&pending.offer, &mime, &state.conn) {
                         Ok(data) => {
                             // Build the entry and push it into history.
                             if let Some(entry) = build_entry(mime, data) {
                                 let id = state.history.push(entry);
+                                persist_now(&state.history, &state.settings);
                                 let _ = state.event_tx.send(ClipboardEvent::NewEntry(id));
                             }
                         }
@@ -523,22 +627,7 @@ fn build_entry(mime_type: String, data: Vec<u8>) -> Option<ClipboardEntry> {
     }
 
     let content_hash = ClipboardEntry::content_hash(&data);
-
-    let preview = if mime_type.starts_with("text/") {
-        let text = String::from_utf8_lossy(&data);
-        let truncated: String = text.chars().take(EntryPreview::TEXT_PREVIEW_LEN).collect();
-        EntryPreview::Text(truncated)
-    } else if mime_type.starts_with("image/") {
-        thumbnail::generate_thumbnail(&data).unwrap_or_else(|| EntryPreview::Binary {
-            mime_type: mime_type.clone(),
-            size: data.len(),
-        })
-    } else {
-        EntryPreview::Binary {
-            mime_type: mime_type.clone(),
-            size: data.len(),
-        }
-    };
+    let preview = EntryPreview::build(&mime_type, &data);
 
     Some(ClipboardEntry {
         id: 0, // assigned by ClipboardHistory::push
@@ -547,5 +636,6 @@ fn build_entry(mime_type: String, data: Vec<u8>) -> Option<ClipboardEntry> {
         content_hash,
         preview,
         data,
+        pinned: false,
     })
 }

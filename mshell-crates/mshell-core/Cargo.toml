@@ -13,6 +13,7 @@ any_spawner.workspace = true
 dirs.workspace = true
 gtk4-layer-shell.workspace = true
 mshell-cache.workspace = true
+mshell-clipboard.workspace = true
 mshell-common.workspace = true
 mshell-config.workspace = true
 mshell-frame.workspace = true

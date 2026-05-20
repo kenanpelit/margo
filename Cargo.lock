@@ -3601,6 +3601,8 @@ version = "0.7.0"
 dependencies = [
  "image",
  "libc",
+ "serde",
+ "serde_json",
  "time",
  "tokio",
  "tracing",
@@ -3663,6 +3665,7 @@ dependencies = [
  "dirs",
  "gtk4-layer-shell",
  "mshell-cache",
+ "mshell-clipboard",
  "mshell-common",
  "mshell-config",
  "mshell-frame",

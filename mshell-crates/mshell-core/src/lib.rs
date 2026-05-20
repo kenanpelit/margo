@@ -71,6 +71,14 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let config_manager = mshell_config::config_manager::config_manager();
     config_manager.watch_config();
 
+    // Seed the clipboard watcher's settings from config before any
+    // bar/menu widget touches `clipboard_service()` (which is lazy
+    // and would otherwise spin up with defaults). Persistence +
+    // history-size + sensitive-skip all flow from here.
+    mshell_clipboard::init_settings(clipboard_settings_from_config(
+        &config_manager.config().get_untracked().clipboard,
+    ));
+
     // Initialize the effects in the wallpaper store
     let _ = mshell_cache::wallpaper::wallpaper_store();
 
@@ -145,4 +153,28 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     info!("Goodbye!");
 
     Ok(())
+}
+
+/// Map the YAML clipboard config onto the clipboard crate's
+/// runtime settings (the crate is config-agnostic by design).
+fn clipboard_settings_from_config(
+    c: &mshell_config::schema::clipboard::Clipboard,
+) -> mshell_clipboard::ClipboardSettings {
+    use mshell_config::schema::clipboard::{ClipboardClearPolicy, ClipboardPersist};
+    mshell_clipboard::ClipboardSettings {
+        max_entries: c.max_entries.max(1),
+        persist: match c.persist {
+            ClipboardPersist::None => mshell_clipboard::PersistMode::None,
+            ClipboardPersist::FavoritesOnly => mshell_clipboard::PersistMode::FavoritesOnly,
+            ClipboardPersist::All => mshell_clipboard::PersistMode::All,
+        },
+        clear_policy: match c.clear_policy {
+            ClipboardClearPolicy::Never => mshell_clipboard::ClearPolicy::Never,
+            ClipboardClearPolicy::AfterHours => mshell_clipboard::ClearPolicy::AfterHours,
+            ClipboardClearPolicy::OnLogout => mshell_clipboard::ClearPolicy::OnLogout,
+        },
+        clear_after_hours: c.clear_after_hours,
+        skip_sensitive: c.skip_sensitive,
+        image_history: c.image_history,
+    }
 }

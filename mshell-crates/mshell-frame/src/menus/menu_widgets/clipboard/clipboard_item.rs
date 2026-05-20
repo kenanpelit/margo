@@ -13,6 +13,7 @@ pub(crate) struct ClipboardItemModel {
 pub(crate) enum ClipboardItemInput {
     DeleteEntry,
     CopyEntry,
+    TogglePin,
 }
 
 #[derive(Debug)]
@@ -31,6 +32,33 @@ impl Component for ClipboardItemModel {
     view! {
         #[root]
         gtk::Overlay {
+            // Pin / favourite toggle — top-left corner. Pinned
+            // entries are exempt from eviction + auto-clear and
+            // persist to disk; the icon reflects the current state.
+            add_overlay = &gtk::Button {
+                add_css_class: "ok-button-surface",
+                add_css_class: "clipboard-pin-button",
+                set_halign: gtk::Align::Start,
+                set_valign: gtk::Align::Start,
+                set_hexpand: false,
+                set_vexpand: false,
+                set_margin_all: 8,
+                connect_clicked[sender] => move |_| {
+                    sender.input(ClipboardItemInput::TogglePin);
+                },
+
+                #[name="pin_image"]
+                gtk::Image {
+                    set_halign: gtk::Align::Center,
+                    set_valign: gtk::Align::Center,
+                    set_icon_name: Some(if model.entry.pinned {
+                        "starred-symbolic"
+                    } else {
+                        "non-starred-symbolic"
+                    }),
+                },
+            },
+
             add_overlay = &gtk::Button {
                 add_css_class: "ok-button-surface",
                 add_css_class: "clipboard-trash-button",
@@ -156,6 +184,9 @@ impl Component for ClipboardItemModel {
             }
             ClipboardItemInput::CopyEntry => {
                 clipboard_service().copy_entry(self.entry.id);
+            }
+            ClipboardItemInput::TogglePin => {
+                clipboard_service().toggle_pin(self.entry.id);
             }
         }
         self.update_view(widgets, sender);

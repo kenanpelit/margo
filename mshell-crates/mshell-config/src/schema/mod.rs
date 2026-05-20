@@ -1,4 +1,5 @@
 pub mod bar_widgets;
+pub mod clipboard;
 pub mod config;
 pub mod content_fit;
 pub mod location_query;
