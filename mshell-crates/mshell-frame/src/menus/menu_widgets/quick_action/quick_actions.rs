@@ -16,9 +16,7 @@ use crate::menus::menu_widgets::quick_action::actions::night_light::{
     NightLightInit, NightLightModel,
 };
 use crate::menus::menu_widgets::quick_action::actions::reboot::{RebootInit, RebootModel};
-use crate::menus::menu_widgets::quick_action::actions::settings::{
-    SettingsInit, SettingsModel, SettingsOutput,
-};
+use crate::menus::menu_widgets::quick_action::actions::settings::{SettingsInit, SettingsModel};
 use crate::menus::menu_widgets::quick_action::actions::shutdown::{ShutdownInit, ShutdownModel};
 use mshell_common::dynamic_box::generic_widget_controller::GenericWidgetController;
 use mshell_config::schema::menu_widgets::{QuickActionWidget, QuickActionsConfig};
@@ -133,12 +131,10 @@ impl QuickActionsModel {
                 Box::new(RebootModel::builder().launch(RebootInit {}).detach())
             }
             QuickActionWidget::Settings => {
-                Box::new(SettingsModel::builder().launch(SettingsInit {}).forward(
-                    sender.output_sender(),
-                    |msg| match msg {
-                        SettingsOutput::CloseMenu => QuickActionsOutput::CloseMenu,
-                    },
-                ))
+                // No output to forward — the Settings button toggles
+                // the embedded Settings menu directly via
+                // `open_settings()`, which also hides this menu.
+                Box::new(SettingsModel::builder().launch(SettingsInit {}).detach())
             }
             QuickActionWidget::Shutdown => {
                 Box::new(ShutdownModel::builder().launch(ShutdownInit {}).detach())

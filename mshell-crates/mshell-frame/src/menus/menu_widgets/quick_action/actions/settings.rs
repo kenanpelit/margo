@@ -10,9 +10,7 @@ pub(crate) enum SettingsInput {
 }
 
 #[derive(Debug)]
-pub(crate) enum SettingsOutput {
-    CloseMenu,
-}
+pub(crate) enum SettingsOutput {}
 
 pub(crate) struct SettingsInit {}
 
@@ -58,10 +56,15 @@ impl SimpleComponent for SettingsModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>) {
+    fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>) {
         match message {
             SettingsInput::Clicked => {
-                let _ = sender.output(SettingsOutput::CloseMenu);
+                // `open_settings()` toggles the embedded Settings menu,
+                // which resets every reveal flag — so it already hides
+                // the dashboard / quick-settings menu this button lives
+                // in. Emitting a separate CloseMenu raced the toggle:
+                // the multi-hop close propagation often landed *after*
+                // the toggle opened Settings, slamming it shut again.
                 open_settings();
             }
         }
