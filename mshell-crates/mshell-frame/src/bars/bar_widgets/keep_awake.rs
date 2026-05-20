@@ -69,12 +69,11 @@ impl Component for KeepAwakeModel {
             set_tooltip_text: Some(&tooltip(model.active, model.remaining)),
 
             gtk::Button {
-                #[watch]
-                set_css_classes: if model.active {
-                    &["ok-button-surface", "ok-bar-widget", "selected"]
-                } else {
-                    &["ok-button-surface", "ok-bar-widget"]
-                },
+                // Always the plain bar-pill surface — active state is a
+                // primary icon tint (DESIGN.md §3), not the filled
+                // `selected` capsule (which forces on-primary text that
+                // vanishes against the transparent bar background).
+                set_css_classes: &["ok-button-surface", "ok-bar-widget"],
                 set_hexpand: false,
                 set_vexpand: false,
                 connect_clicked[sender] => move |_| {

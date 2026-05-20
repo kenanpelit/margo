@@ -3,10 +3,17 @@
 // radius-pill chips, tabular numerals.
 
 // ── Bar pill ──────────────────────────────────────────────
+// Countdown stays the default bar text colour so it reads on the
+// transparent pill; the active state only tints the eye icon
+// (DESIGN.md §3 active = primary tint).
 .keep-awake-bar-label {
   font-size: var(--font-bar);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
+  color: var(--on-surface);
+}
+.keep-awake-bar-widget.active image {
+  color: var(--primary);
 }
 
 // ── Panel ─────────────────────────────────────────────────
