@@ -122,7 +122,7 @@ impl Component for CpuDashboardModel {
                 // Single cluster carries the severity class so we
                 // tint label + icon together while the outer pill
                 // chrome (`ok-button-surface`) stays exactly like
-                // npodman / nnetwork / ndns.
+                // podman / network / dns.
                 gtk::Box {
                     set_orientation: gtk::Orientation::Horizontal,
                     set_spacing: 6,

@@ -48,9 +48,6 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                         tab,
                     ));
                 }
-                IPCCommand::QuickSettings => {
-                    app_sender.emit(ShellInput::ToggleQuickSettings(active_monitor().await));
-                }
                 IPCCommand::Clock => {
                     app_sender.emit(ShellInput::ToggleClockMenu(active_monitor().await));
                 }
@@ -75,8 +72,8 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 IPCCommand::WallpaperCycle(direction) => {
                     app_sender.emit(ShellInput::CycleWallpaper(direction));
                 }
-                IPCCommand::Nufw => {
-                    app_sender.emit(ShellInput::ToggleNufwMenu(active_monitor().await));
+                IPCCommand::Ufw => {
+                    app_sender.emit(ShellInput::ToggleUfwMenu(active_monitor().await));
                 }
                 IPCCommand::Bluetooth => {
                     app_sender.emit(ShellInput::ToggleBluetoothMenu(active_monitor().await));
@@ -87,23 +84,23 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 IPCCommand::AudioDashboard => {
                     app_sender.emit(ShellInput::ToggleAudioDashboardMenu(active_monitor().await));
                 }
-                IPCCommand::Ndns => {
-                    app_sender.emit(ShellInput::ToggleNdnsMenu(active_monitor().await));
+                IPCCommand::Dns => {
+                    app_sender.emit(ShellInput::ToggleDnsMenu(active_monitor().await));
                 }
-                IPCCommand::Npodman => {
-                    app_sender.emit(ShellInput::ToggleNpodmanMenu(active_monitor().await));
+                IPCCommand::Podman => {
+                    app_sender.emit(ShellInput::TogglePodmanMenu(active_monitor().await));
                 }
-                IPCCommand::Nnotes => {
-                    app_sender.emit(ShellInput::ToggleNnotesMenu(active_monitor().await));
+                IPCCommand::Notes => {
+                    app_sender.emit(ShellInput::ToggleNotesMenu(active_monitor().await));
                 }
-                IPCCommand::Nip => {
-                    app_sender.emit(ShellInput::ToggleNipMenu(active_monitor().await));
+                IPCCommand::Ip => {
+                    app_sender.emit(ShellInput::ToggleIpMenu(active_monitor().await));
                 }
-                IPCCommand::Nnetwork => {
-                    app_sender.emit(ShellInput::ToggleNnetworkMenu(active_monitor().await));
+                IPCCommand::Network => {
+                    app_sender.emit(ShellInput::ToggleNetworkMenu(active_monitor().await));
                 }
-                IPCCommand::Npower => {
-                    app_sender.emit(ShellInput::ToggleNpowerMenu(active_monitor().await));
+                IPCCommand::Power => {
+                    app_sender.emit(ShellInput::TogglePowerMenu(active_monitor().await));
                 }
                 IPCCommand::MediaPlayer => {
                     app_sender.emit(ShellInput::ToggleMediaPlayerMenu(active_monitor().await));
@@ -277,7 +274,6 @@ pub const APP_LAUNCHER_TABS: &[&str] = &[
 
 enum IPCCommand {
     Quit,
-    QuickSettings,
     AppLauncher,
     /// `mshellctl menu app-launcher --tab <name>` — open the
     /// launcher and pre-select the named category tab. Unknown
@@ -292,16 +288,16 @@ enum IPCCommand {
     SessionAction(SessionAction),
     Screenshot,
     Wallpaper,
-    Nufw,
+    Ufw,
     Bluetooth,
     CpuDashboard,
     AudioDashboard,
-    Ndns,
-    Npodman,
-    Nnotes,
-    Nip,
-    Nnetwork,
-    Npower,
+    Dns,
+    Podman,
+    Notes,
+    Ip,
+    Network,
+    Power,
     MediaPlayer,
     Dashboard,
     CloseAllMenus,
@@ -348,9 +344,6 @@ impl IPCService {
     async fn quit(&self) {
         let _ = self.tx.send(IPCCommand::Quit);
     }
-    async fn quick_settings(&self) {
-        let _ = self.tx.send(IPCCommand::QuickSettings);
-    }
     async fn app_launcher(&self) {
         let _ = self.tx.send(IPCCommand::AppLauncher);
     }
@@ -388,8 +381,8 @@ impl IPCService {
     async fn wallpaper(&self) {
         let _ = self.tx.send(IPCCommand::Wallpaper);
     }
-    async fn nufw(&self) {
-        let _ = self.tx.send(IPCCommand::Nufw);
+    async fn ufw(&self) {
+        let _ = self.tx.send(IPCCommand::Ufw);
     }
     async fn bluetooth(&self) {
         let _ = self.tx.send(IPCCommand::Bluetooth);
@@ -400,23 +393,23 @@ impl IPCService {
     async fn audio_dashboard(&self) {
         let _ = self.tx.send(IPCCommand::AudioDashboard);
     }
-    async fn ndns(&self) {
-        let _ = self.tx.send(IPCCommand::Ndns);
+    async fn dns(&self) {
+        let _ = self.tx.send(IPCCommand::Dns);
     }
-    async fn npodman(&self) {
-        let _ = self.tx.send(IPCCommand::Npodman);
+    async fn podman(&self) {
+        let _ = self.tx.send(IPCCommand::Podman);
     }
-    async fn nnotes(&self) {
-        let _ = self.tx.send(IPCCommand::Nnotes);
+    async fn notes(&self) {
+        let _ = self.tx.send(IPCCommand::Notes);
     }
-    async fn nip(&self) {
-        let _ = self.tx.send(IPCCommand::Nip);
+    async fn ip(&self) {
+        let _ = self.tx.send(IPCCommand::Ip);
     }
-    async fn nnetwork(&self) {
-        let _ = self.tx.send(IPCCommand::Nnetwork);
+    async fn network(&self) {
+        let _ = self.tx.send(IPCCommand::Network);
     }
-    async fn npower(&self) {
-        let _ = self.tx.send(IPCCommand::Npower);
+    async fn power(&self) {
+        let _ = self.tx.send(IPCCommand::Power);
     }
     async fn media_player(&self) {
         let _ = self.tx.send(IPCCommand::MediaPlayer);

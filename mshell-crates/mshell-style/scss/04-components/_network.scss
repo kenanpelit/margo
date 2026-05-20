@@ -1,0 +1,87 @@
+// Network Console menu widget — wifi list + controls.
+
+.network-menu-widget { padding: 0; }
+
+// ── Bar pill ──────────────────────────────────────────────
+.network-bar-widget.online image {
+  color: var(--primary);
+}
+.network-bar-widget.offline image {
+  color: var(--on-surface-variant);
+}
+
+// Live `↓ … ↑ …` throughput text — the default bar display.
+// Tabular numerals keep the width from jittering as the digits
+// change once a second; the slightly-smaller monospace font
+// fits two figures into a bar-pill footprint.
+// Speed readout is intentionally a touch smaller than the
+// shared --font-bar size — figures like "12.3 MB/s" are wide and
+// the monospace face needs the extra breathing room to not push
+// the rest of the bar around as throughput ticks.
+.network-speed-label {
+  font-family: monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: calc(var(--font-bar) * 0.9);
+}
+.network-bar-widget.online .network-speed-label {
+  color: var(--on-surface);
+}
+.network-bar-widget.offline .network-speed-label {
+  color: var(--on-surface-variant);
+  opacity: 0.7;
+}
+
+// MB/s+ throughput → matugen accent. Overrides the base
+// on-surface tone above (higher specificity via the extra
+// class) so the readout pops the moment traffic gets heavy.
+.network-bar-widget .network-speed-label.high-rate {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+// ── Hero card ────────────────────────────────────────────
+.network-hero {
+  padding: 10px 12px;
+  border-radius: var(--radius-widget);
+  background-color: var(--surface-container-high);
+}
+
+// ── Connectivity badge ───────────────────────────────────
+.network-badge {
+  padding: 2px 10px;
+  border-radius: 9999px;
+  font-weight: 600;
+  font-size: 0.85em;
+  background-color: var(--surface-variant);
+  color: var(--on-surface-variant);
+}
+.network-badge.network-badge-online {
+  background-color: var(--primary);
+  color: var(--on-primary);
+}
+.network-badge.network-badge-limited {
+  background-color: var(--primary-container);
+  color: var(--on-primary-container);
+}
+.network-badge.network-badge-offline {
+  background-color: var(--error-container);
+  color: var(--on-error-container);
+}
+.network-badge.network-badge-unknown {
+  opacity: 0.7;
+}
+
+// ── Network list rows ────────────────────────────────────
+.network-list row {
+  padding: 0;
+  border-radius: var(--radius-widget);
+  margin-bottom: 4px;
+  background-color: var(--surface-container-high);
+}
+.network-list row:last-child {
+  margin-bottom: 0;
+}
+.network-lock {
+  -gtk-icon-size: 14px;
+  opacity: 0.7;
+}

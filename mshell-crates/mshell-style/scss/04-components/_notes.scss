@@ -1,0 +1,68 @@
+// Notes Hub menu widget — scratchpad / notes / todos tabs.
+
+.notes-menu-widget { padding: 0; }
+
+// ── Bar pill ──────────────────────────────────────────────
+.notes-bar-widget.has-pending image {
+  color: var(--primary);
+}
+
+// ── Header counters ──────────────────────────────────────
+.notes-counter {
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 0.8em;
+  font-weight: 600;
+  background-color: var(--surface-variant);
+  color: var(--on-surface-variant);
+}
+
+// ── Scratchpad TextView ──────────────────────────────────
+.notes-scratchpad {
+  border-radius: var(--radius-widget);
+  background-color: var(--surface-variant);
+  border: 1px solid var(--outline);
+}
+.notes-scratchpad text {
+  background-color: transparent;
+}
+
+// ── + Add buttons / entries ──────────────────────────────
+.notes-add {
+  padding: 4px 8px;
+  border-radius: var(--radius-widget);
+}
+
+// ── List rows + cards ───────────────────────────────────
+.notes-list row {
+  padding: 0;
+  border-radius: var(--radius-widget);
+  margin-bottom: 4px;
+  background-color: transparent;
+}
+.notes-card {
+  padding: 6px 8px;
+  border-radius: var(--radius-widget);
+  background-color: var(--surface-variant);
+  border: 1px solid var(--outline);
+}
+.notes-card-title {
+  font-weight: 600;
+}
+.notes-card-body {
+  border-radius: var(--radius-widget);
+  background-color: transparent;
+}
+.notes-card-body text {
+  background-color: transparent;
+}
+
+// ── Todo rows ────────────────────────────────────────────
+.notes-todo-entry {
+  background-color: transparent;
+  border: none;
+}
+.notes-todo-entry.completed {
+  opacity: 0.55;
+  text-decoration: line-through;
+}

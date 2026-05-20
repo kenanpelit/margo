@@ -1,7 +1,7 @@
 // CPU dashboard bar pill — the pill chrome itself (rounded
 // surface + hover) comes from `ok-button-surface` + `ok-bar-widget`
-// so the pill stays visually aligned with npodman / nnetwork /
-// ndns / etc. We only tint the cluster (icon + labels) per
+// so the pill stays visually aligned with podman / network /
+// dns / etc. We only tint the cluster (icon + labels) per
 // severity:
 //
 //   calm   → inherit standard bar text colour (no override)

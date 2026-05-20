@@ -19,22 +19,21 @@ use crate::menus::menu::{MenuInit, MenuInput, MenuModel, MenuOutput, MenuType};
 
 const CLOCK_MENU: &str = "clock";
 const CLIPBOARD_MENU: &str = "clipboard";
-const QUICK_SETTINGS_MENU: &str = "quick_settings";
 const APP_LAUNCHER_MENU: &str = "app_launcher";
 const SCREENSHOT_MENU: &str = "screenshot";
 const NOTIFICATION_MENU: &str = "notification";
 const WALLPAPER_MENU: &str = "wallpaper";
 const SCREENSHARE_MENU: &str = "screenshare";
-const NUFW_MENU: &str = "nufw";
+const NUFW_MENU: &str = "ufw";
 const BLUETOOTH_MENU: &str = "bluetooth";
 const CPU_DASHBOARD_MENU: &str = "cpu_dashboard";
 const AUDIO_DASHBOARD_MENU: &str = "audio_dashboard";
-const NDNS_MENU: &str = "ndns";
-const NPODMAN_MENU: &str = "npodman";
-const NNOTES_MENU: &str = "nnotes";
-const NIP_MENU: &str = "nip";
-const NNETWORK_MENU: &str = "nnetwork";
-const NPOWER_MENU: &str = "npower";
+const NDNS_MENU: &str = "dns";
+const NPODMAN_MENU: &str = "podman";
+const NNOTES_MENU: &str = "notes";
+const NIP_MENU: &str = "ip";
+const NNETWORK_MENU: &str = "network";
+const NPOWER_MENU: &str = "power";
 const MEDIA_PLAYER_MENU: &str = "media_player";
 const SESSION_MENU: &str = "session";
 const SETTINGS_MENU: &str = "settings";
@@ -73,22 +72,21 @@ pub struct Frame {
     bottom_spacer: Controller<FrameSpacerModel>,
     clock_menu: Controller<MenuModel>,
     clipboard_menu: Controller<MenuModel>,
-    quick_settings_menu: Controller<MenuModel>,
     notification_menu: Controller<MenuModel>,
     screenshot_menu: Controller<MenuModel>,
     app_launcher_menu: Controller<MenuModel>,
     wallpaper_menu: Controller<MenuModel>,
     screenshare_menu: Controller<MenuModel>,
-    nufw_menu: Controller<MenuModel>,
+    ufw_menu: Controller<MenuModel>,
     bluetooth_menu: Controller<MenuModel>,
     cpu_dashboard_menu: Controller<MenuModel>,
     audio_dashboard_menu: Controller<MenuModel>,
-    ndns_menu: Controller<MenuModel>,
-    npodman_menu: Controller<MenuModel>,
-    nnotes_menu: Controller<MenuModel>,
-    nip_menu: Controller<MenuModel>,
-    nnetwork_menu: Controller<MenuModel>,
-    npower_menu: Controller<MenuModel>,
+    dns_menu: Controller<MenuModel>,
+    podman_menu: Controller<MenuModel>,
+    notes_menu: Controller<MenuModel>,
+    ip_menu: Controller<MenuModel>,
+    network_menu: Controller<MenuModel>,
+    power_menu: Controller<MenuModel>,
     media_player_menu: Controller<MenuModel>,
     session_menu: Controller<MenuModel>,
     /// Settings panel — uses its own dedicated model (not
@@ -113,13 +111,12 @@ pub enum FrameInput {
     SetRightMenuExpansionType(VerticalMenuExpansion),
     RepositionMenus(
         Position, Position, Position, Position, Position, Position, Position, Position, Position,
-        Position, Position, Position, Position, Position, Position, Position, Position, Position,
+        Position, Position, Position, Position, Position, Position, Position, Position,
         // dashboard_menu_position
         Position,
     ),
     ToggleClockMenu,
     ToggleClipboardMenu,
-    ToggleQuickSettingsMenu,
     ToggleNotificationMenu,
     ToggleScreenshotMenu,
     ToggleAppLauncherMenu,
@@ -130,16 +127,16 @@ pub enum FrameInput {
     /// existing category-cycle path.
     ToggleAppLauncherMenuWithTab(String),
     ToggleWallpaperMenu,
-    ToggleNufwMenu,
+    ToggleUfwMenu,
     ToggleBluetoothMenu,
     ToggleCpuDashboardMenu,
     ToggleAudioDashboardMenu,
-    ToggleNdnsMenu,
-    ToggleNpodmanMenu,
-    ToggleNnotesMenu,
-    ToggleNipMenu,
-    ToggleNnetworkMenu,
-    ToggleNpowerMenu,
+    ToggleDnsMenu,
+    TogglePodmanMenu,
+    ToggleNotesMenu,
+    ToggleIpMenu,
+    ToggleNetworkMenu,
+    TogglePowerMenu,
     ToggleMediaPlayerMenu,
     ToggleSessionMenu,
     ToggleSettingsMenu,
@@ -662,22 +659,21 @@ impl Component for Frame {
 
         let calendar_menu = Self::build_menu(&sender, MenuType::Clock);
         let clipboard_menu = Self::build_menu(&sender, MenuType::Clipboard);
-        let main_menu = Self::build_menu(&sender, MenuType::QuickSettings);
         let notification_menu = Self::build_menu(&sender, MenuType::Notifications);
         let screenshot_menu = Self::build_menu(&sender, MenuType::Screenshot);
         let app_launcher_menu = Self::build_menu(&sender, MenuType::AppLauncher);
         let wallpaper_menu = Self::build_menu(&sender, MenuType::Wallpaper);
         let screenshare_menu = Self::build_menu(&sender, MenuType::HyprlandScreenshare);
-        let nufw_menu = Self::build_menu(&sender, MenuType::Nufw);
+        let ufw_menu = Self::build_menu(&sender, MenuType::Ufw);
         let bluetooth_menu = Self::build_menu(&sender, MenuType::Bluetooth);
         let cpu_dashboard_menu = Self::build_menu(&sender, MenuType::CpuDashboard);
         let audio_dashboard_menu = Self::build_menu(&sender, MenuType::AudioDashboard);
-        let ndns_menu = Self::build_menu(&sender, MenuType::Ndns);
-        let npodman_menu = Self::build_menu(&sender, MenuType::Npodman);
-        let nnotes_menu = Self::build_menu(&sender, MenuType::Nnotes);
-        let nip_menu = Self::build_menu(&sender, MenuType::Nip);
-        let nnetwork_menu = Self::build_menu(&sender, MenuType::Nnetwork);
-        let npower_menu = Self::build_menu(&sender, MenuType::Npower);
+        let dns_menu = Self::build_menu(&sender, MenuType::Dns);
+        let podman_menu = Self::build_menu(&sender, MenuType::Podman);
+        let notes_menu = Self::build_menu(&sender, MenuType::Notes);
+        let ip_menu = Self::build_menu(&sender, MenuType::Ip);
+        let network_menu = Self::build_menu(&sender, MenuType::Network);
+        let power_menu = Self::build_menu(&sender, MenuType::Power);
         let media_player_menu = Self::build_menu(&sender, MenuType::MediaPlayer);
         let session_menu = Self::build_menu(&sender, MenuType::Session);
         let dashboard_menu = Self::build_menu(&sender, MenuType::Dashboard);
@@ -730,9 +726,6 @@ impl Component for Frame {
             let config = menu_config.clone();
             let clipboard_menu_position = config.menus().clipboard_menu().position().get();
             let config = menu_config.clone();
-            let quick_settings_menu_position =
-                config.menus().quick_settings_menu().position().get();
-            let config = menu_config.clone();
             let notification_menu_position = config.menus().notification_menu().position().get();
             let config = menu_config.clone();
             let screenshot_menu_position = config.menus().screenshot_menu().position().get();
@@ -743,19 +736,19 @@ impl Component for Frame {
             let config = menu_config.clone();
             let screenshare_menu_position = config.menus().screenshare_menu().position().get();
             let config = menu_config.clone();
-            let nufw_menu_position = config.menus().nufw_menu().position().get();
+            let ufw_menu_position = config.menus().ufw_menu().position().get();
             let config = menu_config.clone();
-            let ndns_menu_position = config.menus().ndns_menu().position().get();
+            let dns_menu_position = config.menus().dns_menu().position().get();
             let config = menu_config.clone();
-            let npodman_menu_position = config.menus().npodman_menu().position().get();
+            let podman_menu_position = config.menus().podman_menu().position().get();
             let config = menu_config.clone();
-            let nnotes_menu_position = config.menus().nnotes_menu().position().get();
+            let notes_menu_position = config.menus().notes_menu().position().get();
             let config = menu_config.clone();
-            let nip_menu_position = config.menus().nip_menu().position().get();
+            let ip_menu_position = config.menus().ip_menu().position().get();
             let config = menu_config.clone();
-            let nnetwork_menu_position = config.menus().nnetwork_menu().position().get();
+            let network_menu_position = config.menus().network_menu().position().get();
             let config = menu_config.clone();
-            let npower_menu_position = config.menus().npower_menu().position().get();
+            let power_menu_position = config.menus().power_menu().position().get();
             let config = menu_config.clone();
             let media_player_menu_position =
                 config.menus().media_player_menu().position().get();
@@ -768,19 +761,18 @@ impl Component for Frame {
             sender_clone.input(FrameInput::RepositionMenus(
                 clock_menu_position,
                 clipboard_menu_position,
-                quick_settings_menu_position,
                 notification_menu_position,
                 screenshot_menu_position,
                 app_launcher_menu_position,
                 wallpaper_menu_position,
                 screenshare_menu_position,
-                nufw_menu_position,
-                ndns_menu_position,
-                npodman_menu_position,
-                nnotes_menu_position,
-                nip_menu_position,
-                nnetwork_menu_position,
-                npower_menu_position,
+                ufw_menu_position,
+                dns_menu_position,
+                podman_menu_position,
+                notes_menu_position,
+                ip_menu_position,
+                network_menu_position,
+                power_menu_position,
                 media_player_menu_position,
                 session_menu_position,
                 settings_menu_position,
@@ -833,22 +825,21 @@ impl Component for Frame {
             bottom_spacer,
             clock_menu: calendar_menu,
             clipboard_menu,
-            quick_settings_menu: main_menu,
             notification_menu,
             screenshot_menu,
             app_launcher_menu,
             wallpaper_menu,
             screenshare_menu,
-            nufw_menu,
+            ufw_menu,
             bluetooth_menu,
             cpu_dashboard_menu,
             audio_dashboard_menu,
-            ndns_menu,
-            npodman_menu,
-            nnotes_menu,
-            nip_menu,
-            nnetwork_menu,
-            npower_menu,
+            dns_menu,
+            podman_menu,
+            notes_menu,
+            ip_menu,
+            network_menu,
+            power_menu,
             media_player_menu,
             session_menu,
             settings_menu,
@@ -891,19 +882,18 @@ impl Component for Frame {
             FrameInput::RepositionMenus(
                 clock_menu_position,
                 clipboard_menu_position,
-                quick_settings_menu_position,
                 notification_menu_position,
                 screenshot_menu_position,
                 app_launcher_menu_position,
                 wallpaper_menu_position,
                 screenshare_menu_position,
-                nufw_menu_position,
-                ndns_menu_position,
-                npodman_menu_position,
-                nnotes_menu_position,
-                nip_menu_position,
-                nnetwork_menu_position,
-                npower_menu_position,
+                ufw_menu_position,
+                dns_menu_position,
+                podman_menu_position,
+                notes_menu_position,
+                ip_menu_position,
+                network_menu_position,
+                power_menu_position,
                 media_player_menu_position,
                 session_menu_position,
                 settings_menu_position,
@@ -914,19 +904,18 @@ impl Component for Frame {
                     widgets,
                     clock_menu_position,
                     clipboard_menu_position,
-                    quick_settings_menu_position,
                     notification_menu_position,
                     screenshot_menu_position,
                     app_launcher_menu_position,
                     wallpaper_menu_position,
                     screenshare_menu_position,
-                    nufw_menu_position,
-                    ndns_menu_position,
-                    npodman_menu_position,
-                    nnotes_menu_position,
-                    nip_menu_position,
-                    nnetwork_menu_position,
-                    npower_menu_position,
+                    ufw_menu_position,
+                    dns_menu_position,
+                    podman_menu_position,
+                    notes_menu_position,
+                    ip_menu_position,
+                    network_menu_position,
+                    power_menu_position,
                     media_player_menu_position,
                     session_menu_position,
                     settings_menu_position,
@@ -939,10 +928,6 @@ impl Component for Frame {
             }
             FrameInput::ToggleClipboardMenu => {
                 self.toggle_menu(CLIPBOARD_MENU, widgets);
-                self.sync_keyboard_mode(root);
-            }
-            FrameInput::ToggleQuickSettingsMenu => {
-                self.toggle_menu(QUICK_SETTINGS_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
             FrameInput::ToggleNotificationMenu => {
@@ -979,7 +964,7 @@ impl Component for Frame {
                 self.toggle_menu(WALLPAPER_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
-            FrameInput::ToggleNufwMenu => {
+            FrameInput::ToggleUfwMenu => {
                 self.toggle_menu(NUFW_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
@@ -995,27 +980,27 @@ impl Component for Frame {
                 self.toggle_menu(AUDIO_DASHBOARD_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
-            FrameInput::ToggleNdnsMenu => {
+            FrameInput::ToggleDnsMenu => {
                 self.toggle_menu(NDNS_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
-            FrameInput::ToggleNpodmanMenu => {
+            FrameInput::TogglePodmanMenu => {
                 self.toggle_menu(NPODMAN_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
-            FrameInput::ToggleNnotesMenu => {
+            FrameInput::ToggleNotesMenu => {
                 self.toggle_menu(NNOTES_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
-            FrameInput::ToggleNipMenu => {
+            FrameInput::ToggleIpMenu => {
                 self.toggle_menu(NIP_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
-            FrameInput::ToggleNnetworkMenu => {
+            FrameInput::ToggleNetworkMenu => {
                 self.toggle_menu(NNETWORK_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
-            FrameInput::ToggleNpowerMenu => {
+            FrameInput::TogglePowerMenu => {
                 self.toggle_menu(NPOWER_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
@@ -1093,11 +1078,6 @@ impl Component for Frame {
                     .unwrap_or_default();
 
                 self.clipboard_menu
-                    .sender()
-                    .send(MenuInput::RevealChanged(false))
-                    .unwrap_or_default();
-
-                self.quick_settings_menu
                     .sender()
                     .send(MenuInput::RevealChanged(false))
                     .unwrap_or_default();
@@ -1427,13 +1407,6 @@ impl Frame {
             ))
             .unwrap_or_default();
 
-        self.quick_settings_menu
-            .sender()
-            .send(MenuInput::RevealChanged(
-                name == QUICK_SETTINGS_MENU && now_visible,
-            ))
-            .unwrap_or_default();
-
         self.notification_menu
             .sender()
             .send(MenuInput::RevealChanged(
@@ -1675,19 +1648,18 @@ impl Frame {
         widgets: &FrameWidgets,
         clock_menu_position: Position,
         clipboard_menu_position: Position,
-        quick_settings_position: Position,
         notification_menu_position: Position,
         screenshot_menu_position: Position,
         app_launcher_menu_position: Position,
         wallpaper_menu_position: Position,
         screenshare_menu_position: Position,
-        nufw_menu_position: Position,
-        ndns_menu_position: Position,
-        npodman_menu_position: Position,
-        nnotes_menu_position: Position,
-        nip_menu_position: Position,
-        nnetwork_menu_position: Position,
-        npower_menu_position: Position,
+        ufw_menu_position: Position,
+        dns_menu_position: Position,
+        podman_menu_position: Position,
+        notes_menu_position: Position,
+        ip_menu_position: Position,
+        network_menu_position: Position,
+        power_menu_position: Position,
         media_player_menu_position: Position,
         session_menu_position: Position,
         settings_menu_position: Position,
@@ -1695,13 +1667,12 @@ impl Frame {
     ) {
         let clock_widget: Widget = self.clock_menu.widget().clone().upcast();
         let clipboard_widget: Widget = self.clipboard_menu.widget().clone().upcast();
-        let quick_settings_widget: Widget = self.quick_settings_menu.widget().clone().upcast();
         let notification_menu_widget: Widget = self.notification_menu.widget().clone().upcast();
         let screenshot_menu_widget: Widget = self.screenshot_menu.widget().clone().upcast();
         let app_launcher_menu_widget: Widget = self.app_launcher_menu.widget().clone().upcast();
         let wallpaper_menu_widget: Widget = self.wallpaper_menu.widget().clone().upcast();
         let screenshare_menu_widget: Widget = self.screenshare_menu.widget().clone().upcast();
-        let nufw_menu_widget: Widget = self.nufw_menu.widget().clone().upcast();
+        let ufw_menu_widget: Widget = self.ufw_menu.widget().clone().upcast();
         // Bluetooth menu position read directly from config (skip
         // the 19-arg RepositionMenus signature — defaults work).
         let bluetooth_menu_widget: Widget = self.bluetooth_menu.widget().clone().upcast();
@@ -1727,12 +1698,12 @@ impl Frame {
             .audio_dashboard_menu()
             .position()
             .get();
-        let ndns_menu_widget: Widget = self.ndns_menu.widget().clone().upcast();
-        let npodman_menu_widget: Widget = self.npodman_menu.widget().clone().upcast();
-        let nnotes_menu_widget: Widget = self.nnotes_menu.widget().clone().upcast();
-        let nip_menu_widget: Widget = self.nip_menu.widget().clone().upcast();
-        let nnetwork_menu_widget: Widget = self.nnetwork_menu.widget().clone().upcast();
-        let npower_menu_widget: Widget = self.npower_menu.widget().clone().upcast();
+        let dns_menu_widget: Widget = self.dns_menu.widget().clone().upcast();
+        let podman_menu_widget: Widget = self.podman_menu.widget().clone().upcast();
+        let notes_menu_widget: Widget = self.notes_menu.widget().clone().upcast();
+        let ip_menu_widget: Widget = self.ip_menu.widget().clone().upcast();
+        let network_menu_widget: Widget = self.network_menu.widget().clone().upcast();
+        let power_menu_widget: Widget = self.power_menu.widget().clone().upcast();
         let media_player_menu_widget: Widget =
             self.media_player_menu.widget().clone().upcast();
         let session_menu_widget: Widget = self.session_menu.widget().clone().upcast();
@@ -1754,12 +1725,6 @@ impl Frame {
             &clipboard_widget,
             CLIPBOARD_MENU,
             &clipboard_menu_position,
-        );
-        Self::add_to_stack(
-            widgets,
-            &quick_settings_widget,
-            QUICK_SETTINGS_MENU,
-            &quick_settings_position,
         );
         Self::add_to_stack(
             widgets,
@@ -1793,9 +1758,9 @@ impl Frame {
         );
         Self::add_to_stack(
             widgets,
-            &nufw_menu_widget,
+            &ufw_menu_widget,
             NUFW_MENU,
-            &nufw_menu_position,
+            &ufw_menu_position,
         );
         Self::add_to_stack(
             widgets,
@@ -1817,34 +1782,34 @@ impl Frame {
         );
         Self::add_to_stack(
             widgets,
-            &ndns_menu_widget,
+            &dns_menu_widget,
             NDNS_MENU,
-            &ndns_menu_position,
+            &dns_menu_position,
         );
         Self::add_to_stack(
             widgets,
-            &npodman_menu_widget,
+            &podman_menu_widget,
             NPODMAN_MENU,
-            &npodman_menu_position,
+            &podman_menu_position,
         );
         Self::add_to_stack(
             widgets,
-            &nnotes_menu_widget,
+            &notes_menu_widget,
             NNOTES_MENU,
-            &nnotes_menu_position,
+            &notes_menu_position,
         );
-        Self::add_to_stack(widgets, &nip_menu_widget, NIP_MENU, &nip_menu_position);
+        Self::add_to_stack(widgets, &ip_menu_widget, NIP_MENU, &ip_menu_position);
         Self::add_to_stack(
             widgets,
-            &nnetwork_menu_widget,
+            &network_menu_widget,
             NNETWORK_MENU,
-            &nnetwork_menu_position,
+            &network_menu_position,
         );
         Self::add_to_stack(
             widgets,
-            &npower_menu_widget,
+            &power_menu_widget,
             NPOWER_MENU,
-            &npower_menu_position,
+            &power_menu_position,
         );
         Self::add_to_stack(
             widgets,
@@ -1928,21 +1893,20 @@ impl Frame {
                 BarOutput::ClockClicked => FrameInput::ToggleClockMenu,
                 BarOutput::DashboardClicked => FrameInput::ToggleDashboardMenu,
                 BarOutput::ClipboardClicked => FrameInput::ToggleClipboardMenu,
-                BarOutput::MainMenuClicked => FrameInput::ToggleQuickSettingsMenu,
                 BarOutput::NotificationsClicked => FrameInput::ToggleNotificationMenu,
                 BarOutput::ScreenshotClicked => FrameInput::ToggleScreenshotMenu,
                 BarOutput::AppLauncherClicked => FrameInput::ToggleAppLauncherMenu,
                 BarOutput::WallpaperClicked => FrameInput::ToggleWallpaperMenu,
-                BarOutput::NufwClicked => FrameInput::ToggleNufwMenu,
+                BarOutput::UfwClicked => FrameInput::ToggleUfwMenu,
                 BarOutput::BluetoothClicked => FrameInput::ToggleBluetoothMenu,
                 BarOutput::CpuDashboardClicked => FrameInput::ToggleCpuDashboardMenu,
                 BarOutput::AudioDashboardClicked => FrameInput::ToggleAudioDashboardMenu,
-                BarOutput::NdnsClicked => FrameInput::ToggleNdnsMenu,
-                BarOutput::NpodmanClicked => FrameInput::ToggleNpodmanMenu,
-                BarOutput::NnotesClicked => FrameInput::ToggleNnotesMenu,
-                BarOutput::NipClicked => FrameInput::ToggleNipMenu,
-                BarOutput::NnetworkClicked => FrameInput::ToggleNnetworkMenu,
-                BarOutput::NpowerClicked => FrameInput::ToggleNpowerMenu,
+                BarOutput::DnsClicked => FrameInput::ToggleDnsMenu,
+                BarOutput::PodmanClicked => FrameInput::TogglePodmanMenu,
+                BarOutput::NotesClicked => FrameInput::ToggleNotesMenu,
+                BarOutput::IpClicked => FrameInput::ToggleIpMenu,
+                BarOutput::NetworkClicked => FrameInput::ToggleNetworkMenu,
+                BarOutput::PowerClicked => FrameInput::TogglePowerMenu,
                 BarOutput::MediaPlayerClicked => FrameInput::ToggleMediaPlayerMenu,
                 BarOutput::MargoLayoutClicked => FrameInput::ToggleMargoLayoutMenu,
                 BarOutput::CloseMenu => FrameInput::CloseMenus,

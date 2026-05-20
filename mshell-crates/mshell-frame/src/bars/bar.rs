@@ -1,4 +1,3 @@
-use crate::bars::bar_widgets::battery::{BatteryInit, BatteryModel};
 use crate::bars::bar_widgets::bluetooth::{BluetoothInit, BluetoothModel};
 use crate::bars::bar_widgets::clipboard::{ClipboardInit, ClipboardModel, ClipboardOutput};
 use crate::bars::bar_widgets::clock::{ClockInit, ClockModel, ClockOutput};
@@ -17,25 +16,21 @@ use crate::bars::bar_widgets::margo_tags::{
 };
 use crate::bars::bar_widgets::lock::{LockInit, LockModel, LockOutput};
 use crate::bars::bar_widgets::logout::{LogoutInit, LogoutModel};
-use crate::bars::bar_widgets::ndns::{NdnsInit, NdnsModel};
-use crate::bars::bar_widgets::nip::{NipInit, NipModel};
-use crate::bars::bar_widgets::nnetwork::{NnetworkInit, NnetworkModel};
-use crate::bars::bar_widgets::nnotes::{NnotesInit, NnotesModel};
-use crate::bars::bar_widgets::npodman::{NpodmanInit, NpodmanModel};
-use crate::bars::bar_widgets::npower::{NpowerInit, NpowerModel};
+use crate::bars::bar_widgets::dns::{DnsInit, DnsModel};
+use crate::bars::bar_widgets::ip::{IpInit, IpModel};
+use crate::bars::bar_widgets::network::{NetworkInit, NetworkModel};
+use crate::bars::bar_widgets::notes::{NotesInit, NotesModel};
+use crate::bars::bar_widgets::podman::{PodmanInit, PodmanModel};
+use crate::bars::bar_widgets::power::{PowerInit, PowerModel};
 use crate::bars::bar_widgets::media_player::{
     MediaPlayerInit, MediaPlayerModel, MediaPlayerOutput,
 };
 use crate::bars::bar_widgets::active_window::{ActiveWindowInit, ActiveWindowModel};
-use crate::bars::bar_widgets::nufw::{NufwInit, NufwModel};
+use crate::bars::bar_widgets::ufw::{UfwInit, UfwModel};
 use crate::bars::bar_widgets::notifications::{
     NotificationsInit, NotificationsModel, NotificationsOutput,
 };
-use crate::bars::bar_widgets::power_profile::{PowerProfileInit, PowerProfileModel};
 use crate::bars::bar_widgets::privacy::{PrivacyInit, PrivacyModel};
-use crate::bars::bar_widgets::quick_settings::{
-    QuickSettingOutput, QuickSettingsInit, QuickSettingsModel,
-};
 use crate::bars::bar_widgets::reboot::{RebootInit, RebootModel};
 use crate::bars::bar_widgets::recording_indicator::{
     RecordingIndicatorInit, RecordingIndicatorModel,
@@ -114,21 +109,20 @@ pub(crate) enum BarOutput {
     ClockClicked,
     DashboardClicked,
     ClipboardClicked,
-    MainMenuClicked,
     NotificationsClicked,
     ScreenshotClicked,
     AppLauncherClicked,
     WallpaperClicked,
-    NufwClicked,
+    UfwClicked,
     BluetoothClicked,
     CpuDashboardClicked,
     AudioDashboardClicked,
-    NdnsClicked,
-    NpodmanClicked,
-    NnotesClicked,
-    NipClicked,
-    NnetworkClicked,
-    NpowerClicked,
+    DnsClicked,
+    PodmanClicked,
+    NotesClicked,
+    IpClicked,
+    NetworkClicked,
+    PowerClicked,
     MediaPlayerClicked,
     /// Margo layout switcher bar pill clicked. Frame catches and
     /// toggles the in-stack MargoLayout menu (replaces the
@@ -438,7 +432,6 @@ impl BarModel {
                     .launch(ActiveWindowInit {})
                     .detach(),
             ),
-            BarWidget::Battery => Box::new(BatteryModel::builder().launch(BatteryInit {}).detach()),
             BarWidget::Bluetooth => Box::new(
                 BluetoothModel::builder()
                     .launch(BluetoothInit {})
@@ -530,64 +523,57 @@ impl BarModel {
                     .launch(LogoutInit { orientation })
                     .detach(),
             ),
-            BarWidget::QuickSettings => Box::new(
-                QuickSettingsModel::builder()
-                    .launch(QuickSettingsInit { orientation })
+            BarWidget::Dns => Box::new(
+                DnsModel::builder()
+                    .launch(DnsInit {})
                     .forward(sender.output_sender(), |msg| match msg {
-                        QuickSettingOutput::Clicked => BarOutput::MainMenuClicked,
-                    }),
-            ),
-            BarWidget::Ndns => Box::new(
-                NdnsModel::builder()
-                    .launch(NdnsInit {})
-                    .forward(sender.output_sender(), |msg| match msg {
-                        crate::bars::bar_widgets::ndns::NdnsOutput::Clicked => {
-                            BarOutput::NdnsClicked
+                        crate::bars::bar_widgets::dns::DnsOutput::Clicked => {
+                            BarOutput::DnsClicked
                         }
                     }),
             ),
-            BarWidget::Nip => Box::new(
-                NipModel::builder()
-                    .launch(NipInit {})
+            BarWidget::Ip => Box::new(
+                IpModel::builder()
+                    .launch(IpInit {})
                     .forward(sender.output_sender(), |msg| match msg {
-                        crate::bars::bar_widgets::nip::NipOutput::Clicked => {
-                            BarOutput::NipClicked
+                        crate::bars::bar_widgets::ip::IpOutput::Clicked => {
+                            BarOutput::IpClicked
                         }
                     }),
             ),
-            BarWidget::Nnetwork => Box::new(
-                NnetworkModel::builder()
-                    .launch(NnetworkInit {})
+            BarWidget::Network => Box::new(
+                NetworkModel::builder()
+                    .launch(NetworkInit {})
                     .forward(sender.output_sender(), |msg| match msg {
-                        crate::bars::bar_widgets::nnetwork::NnetworkOutput::Clicked => {
-                            BarOutput::NnetworkClicked
+                        crate::bars::bar_widgets::network::NetworkOutput::Clicked => {
+                            BarOutput::NetworkClicked
                         }
                     }),
             ),
-            BarWidget::Nnotes => Box::new(
-                NnotesModel::builder()
-                    .launch(NnotesInit {})
+            BarWidget::Notes => Box::new(
+                NotesModel::builder()
+                    .launch(NotesInit {})
                     .forward(sender.output_sender(), |msg| match msg {
-                        crate::bars::bar_widgets::nnotes::NnotesOutput::Clicked => {
-                            BarOutput::NnotesClicked
+                        crate::bars::bar_widgets::notes::NotesOutput::Clicked => {
+                            BarOutput::NotesClicked
                         }
                     }),
             ),
-            BarWidget::Npodman => Box::new(
-                NpodmanModel::builder()
-                    .launch(NpodmanInit {})
+            BarWidget::Podman => Box::new(
+                PodmanModel::builder()
+                    .launch(PodmanInit {})
                     .forward(sender.output_sender(), |msg| match msg {
-                        crate::bars::bar_widgets::npodman::NpodmanOutput::Clicked => {
-                            BarOutput::NpodmanClicked
+                        crate::bars::bar_widgets::podman::PodmanOutput::Clicked => {
+                            BarOutput::PodmanClicked
                         }
                     }),
             ),
-            BarWidget::Npower => Box::new(
-                NpowerModel::builder()
-                    .launch(NpowerInit {})
+            BarWidget::Power => Box::new(
+                PowerModel::builder()
+                    .launch(PowerInit {})
                     .forward(sender.output_sender(), |msg| match msg {
-                        crate::bars::bar_widgets::npower::NpowerOutput::Clicked => {
-                            BarOutput::NpowerClicked
+                        crate::bars::bar_widgets::power::PowerOutput::Clicked => {
+                            BarOutput::PowerClicked
                         }
                     }),
             ),
@@ -598,12 +584,12 @@ impl BarModel {
                         MediaPlayerOutput::Clicked => BarOutput::MediaPlayerClicked,
                     }),
             ),
-            BarWidget::Nufw => Box::new(
-                NufwModel::builder()
-                    .launch(NufwInit {})
+            BarWidget::Ufw => Box::new(
+                UfwModel::builder()
+                    .launch(UfwInit {})
                     .forward(sender.output_sender(), |msg| match msg {
-                        crate::bars::bar_widgets::nufw::NufwOutput::Clicked => {
-                            BarOutput::NufwClicked
+                        crate::bars::bar_widgets::ufw::UfwOutput::Clicked => {
+                            BarOutput::UfwClicked
                         }
                     }),
             ),
@@ -613,11 +599,6 @@ impl BarModel {
                     .forward(sender.output_sender(), |msg| match msg {
                         NotificationsOutput::Clicked => BarOutput::NotificationsClicked,
                     }),
-            ),
-            BarWidget::PowerProfile => Box::new(
-                PowerProfileModel::builder()
-                    .launch(PowerProfileInit {})
-                    .detach(),
             ),
             BarWidget::Privacy => Box::new(
                 PrivacyModel::builder()

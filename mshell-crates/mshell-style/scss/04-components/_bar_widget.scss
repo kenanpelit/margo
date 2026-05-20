@@ -53,6 +53,11 @@
     // their `.ok-button-surface` rule so the pill blends into
     // the bar surface instead of stamping a chip outline.
     box-shadow: none;
+    border-radius: var(--radius-widget);
+    // Calm motion (DESIGN.md §1 Motion): the hover/active state-layer
+    // fades in instead of snapping. Set on the base so the transition
+    // runs in both directions.
+    transition: background-color var(--motion-fast) var(--ease-standard);
 }
 
 // Theme-coloured hover for bar pills.
@@ -71,5 +76,15 @@
 .ok-bar-widget > button.ok-button-flat:hover,
 .ok-bar-widget > button.ok-button-surface:hover {
     background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
+    border-radius: var(--radius-widget);
+}
+
+// Pressed state-layer: a touch stronger than hover so a click reads
+// as tactile feedback (DESIGN.md §9 states: hover / pressed).
+.ok-bar-widget.ok-button-surface:active,
+.ok-bar-widget.ok-button-flat:active,
+.ok-bar-widget > button.ok-button-flat:active,
+.ok-bar-widget > button.ok-button-surface:active {
+    background-color: unquote("color-mix(in srgb, var(--primary) 22%, transparent)");
     border-radius: var(--radius-widget);
 }

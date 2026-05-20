@@ -322,7 +322,7 @@ impl Default for Bars {
             top_bar: HorizontalBar {
                 minimum_height: 0,
                 reveal_by_default: true,
-                left_widgets: vec![BarWidget::QuickSettings, BarWidget::MargoTags],
+                left_widgets: vec![BarWidget::MargoTags],
                 center_widgets: vec![BarWidget::MargoDock],
                 right_widgets: vec![
                     BarWidget::RecordingIndicator,
@@ -333,8 +333,7 @@ impl Default for Bars {
                     BarWidget::Notifications,
                     BarWidget::AudioDashboard,
                     BarWidget::Bluetooth,
-                    BarWidget::Nnetwork,
-                    BarWidget::Battery,
+                    BarWidget::Network,
                     BarWidget::Clock,
                 ],
             },
@@ -388,19 +387,18 @@ impl Default for SystemUpdateBarWidget {
 pub struct Menus {
     pub clock_menu: Menu,
     pub clipboard_menu: Menu,
-    pub quick_settings_menu: Menu,
     pub notification_menu: Menu,
     pub screenshot_menu: Menu,
     pub app_launcher_menu: Menu,
     pub wallpaper_menu: Menu,
     pub screenshare_menu: ScreenshareMenu,
-    pub nufw_menu: Menu,
-    pub ndns_menu: Menu,
-    pub npodman_menu: Menu,
-    pub nnotes_menu: Menu,
-    pub nip_menu: Menu,
-    pub nnetwork_menu: Menu,
-    pub npower_menu: Menu,
+    pub ufw_menu: Menu,
+    pub dns_menu: Menu,
+    pub podman_menu: Menu,
+    pub notes_menu: Menu,
+    pub ip_menu: Menu,
+    pub network_menu: Menu,
+    pub power_menu: Menu,
     // Default-on-missing so older user YAML predating these menu
     // types still parses cleanly.
     #[serde(default = "default_bluetooth_menu")]
@@ -480,38 +478,6 @@ impl Default for Menus {
                 minimum_width: 550,
                 maximum_height: 890,
             },
-            quick_settings_menu: Menu {
-                position: Position::TopLeft,
-                widgets: vec![
-                    MenuWidget::Clock,
-                    MenuWidget::Network,
-                    MenuWidget::Bluetooth,
-                    MenuWidget::AudioOutput,
-                    MenuWidget::AudioInput,
-                    MenuWidget::PowerProfiles,
-                    MenuWidget::MediaPlayer,
-                    MenuWidget::Spacer(SpacerConfig { size: 20 }),
-                    MenuWidget::QuickActions(QuickActionsConfig {
-                        widgets: vec![
-                            QuickActionWidget::AirplaneMode,
-                            QuickActionWidget::Nightlight,
-                            QuickActionWidget::ColorPicker,
-                            QuickActionWidget::Settings,
-                        ],
-                    }),
-                    MenuWidget::Spacer(SpacerConfig { size: 20 }),
-                    MenuWidget::QuickActions(QuickActionsConfig {
-                        widgets: vec![
-                            QuickActionWidget::Logout,
-                            QuickActionWidget::Lock,
-                            QuickActionWidget::Reboot,
-                            QuickActionWidget::Shutdown,
-                        ],
-                    }),
-                ],
-                minimum_width: 410,
-                maximum_height: 0,
-            },
             notification_menu: Menu {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::Notifications],
@@ -543,45 +509,45 @@ impl Default for Menus {
             screenshare_menu: ScreenshareMenu {
                 position: Position::TopRight,
             },
-            nufw_menu: Menu {
+            ufw_menu: Menu {
                 position: Position::TopRight,
-                widgets: vec![MenuWidget::Nufw],
+                widgets: vec![MenuWidget::Ufw],
                 minimum_width: 410,
                 maximum_height: 0,
             },
-            ndns_menu: Menu {
+            dns_menu: Menu {
                 position: Position::TopRight,
-                widgets: vec![MenuWidget::Ndns],
+                widgets: vec![MenuWidget::Dns],
                 minimum_width: 420,
                 maximum_height: 0,
             },
-            npodman_menu: Menu {
+            podman_menu: Menu {
                 position: Position::TopRight,
-                widgets: vec![MenuWidget::Npodman],
+                widgets: vec![MenuWidget::Podman],
                 minimum_width: 540,
                 maximum_height: 0,
             },
-            nnotes_menu: Menu {
+            notes_menu: Menu {
                 position: Position::TopRight,
-                widgets: vec![MenuWidget::Nnotes],
+                widgets: vec![MenuWidget::Notes],
                 minimum_width: 480,
                 maximum_height: 0,
             },
-            nip_menu: Menu {
+            ip_menu: Menu {
                 position: Position::TopRight,
-                widgets: vec![MenuWidget::Nip],
+                widgets: vec![MenuWidget::Ip],
                 minimum_width: 380,
                 maximum_height: 0,
             },
-            nnetwork_menu: Menu {
+            network_menu: Menu {
                 position: Position::TopRight,
-                widgets: vec![MenuWidget::Nnetwork],
+                widgets: vec![MenuWidget::Network],
                 minimum_width: 460,
                 maximum_height: 0,
             },
-            npower_menu: Menu {
+            power_menu: Menu {
                 position: Position::TopRight,
-                widgets: vec![MenuWidget::Npower],
+                widgets: vec![MenuWidget::Power],
                 minimum_width: 360,
                 maximum_height: 0,
             },

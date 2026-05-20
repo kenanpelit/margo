@@ -1,5 +1,7 @@
 separator.divider-menu-widget.horizontal {
-  min-height: 4px;
-  border-radius: var(--radius-widget);
-  background-color: var(--outline);
+  // Calm hairline: thinner + --outline-variant (DESIGN.md hairline
+  // token) so the divider separates sections without a heavy bar.
+  min-height: 2px;
+  border-radius: var(--radius-pill);
+  background-color: var(--outline-variant);
 }

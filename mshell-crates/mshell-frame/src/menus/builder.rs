@@ -33,37 +33,34 @@ use crate::menus::menu_widgets::margo_layout::margo_layout_menu_widget::{
 use crate::menus::menu_widgets::media_player::media_players::{
     MediaPlayersInit, MediaPlayersModel,
 };
-use crate::menus::menu_widgets::ndns::ndns_menu_widget::{
-    NdnsMenuWidgetInit, NdnsMenuWidgetModel,
+use crate::menus::menu_widgets::dns::dns_menu_widget::{
+    DnsMenuWidgetInit, DnsMenuWidgetModel,
+};
+use crate::menus::menu_widgets::network_toggle::network_menu_widget::{
+    NetworkToggleMenuWidgetInit, NetworkToggleMenuWidgetModel,
+};
+use crate::menus::menu_widgets::ip::ip_menu_widget::{
+    IpMenuWidgetInit, IpMenuWidgetModel,
 };
 use crate::menus::menu_widgets::network::network_menu_widget::{
     NetworkMenuWidgetInit, NetworkMenuWidgetModel,
 };
-use crate::menus::menu_widgets::nip::nip_menu_widget::{
-    NipMenuWidgetInit, NipMenuWidgetModel,
+use crate::menus::menu_widgets::notes::notes_menu_widget::{
+    NotesMenuWidgetInit, NotesMenuWidgetModel,
 };
-use crate::menus::menu_widgets::nnetwork::nnetwork_menu_widget::{
-    NnetworkMenuWidgetInit, NnetworkMenuWidgetModel,
-};
-use crate::menus::menu_widgets::nnotes::nnotes_menu_widget::{
-    NnotesMenuWidgetInit, NnotesMenuWidgetModel,
-};
-use crate::menus::menu_widgets::npower::npower_menu_widget::{
-    NpowerMenuWidgetInit, NpowerMenuWidgetModel,
+use crate::menus::menu_widgets::power::power_menu_widget::{
+    PowerMenuWidgetInit, PowerMenuWidgetModel,
 };
 use crate::menus::menu_widgets::notifications::notifications::{
     NotificationsInit, NotificationsModel, NotificationsOutput,
 };
-use crate::menus::menu_widgets::npodman::npodman_menu_widget::{
-    NpodmanMenuWidgetInit, NpodmanMenuWidgetModel,
+use crate::menus::menu_widgets::podman::podman_menu_widget::{
+    PodmanMenuWidgetInit, PodmanMenuWidgetModel,
 };
-use crate::menus::menu_widgets::nufw::nufw_menu_widget::{
-    NufwMenuWidgetInit, NufwMenuWidgetModel,
+use crate::menus::menu_widgets::ufw::ufw_menu_widget::{
+    UfwMenuWidgetInit, UfwMenuWidgetModel,
 };
 use crate::menus::menu_widgets::overview_intel::{OverviewIntelInit, OverviewIntelModel};
-use crate::menus::menu_widgets::power_profile::power_profile_menu_widget::{
-    PowerProfileMenuWidgetInit, PowerProfileMenuWidgetModel,
-};
 use crate::menus::menu_widgets::quick_action::quick_actions::{
     QuickActionsInit, QuickActionsModel, QuickActionsOutput,
 };
@@ -169,9 +166,19 @@ pub fn build_widget(
                 .launch(MediaPlayersInit {})
                 .detach(),
         ),
-        MenuWidget::Ndns => Box::new(
-            NdnsMenuWidgetModel::builder()
-                .launch(NdnsMenuWidgetInit {})
+        MenuWidget::Dns => Box::new(
+            DnsMenuWidgetModel::builder()
+                .launch(DnsMenuWidgetInit {})
+                .detach(),
+        ),
+        MenuWidget::NetworkToggle => Box::new(
+            NetworkToggleMenuWidgetModel::builder()
+                .launch(NetworkToggleMenuWidgetInit {})
+                .detach(),
+        ),
+        MenuWidget::Ip => Box::new(
+            IpMenuWidgetModel::builder()
+                .launch(IpMenuWidgetInit {})
                 .detach(),
         ),
         MenuWidget::Network => Box::new(
@@ -179,24 +186,14 @@ pub fn build_widget(
                 .launch(NetworkMenuWidgetInit {})
                 .detach(),
         ),
-        MenuWidget::Nip => Box::new(
-            NipMenuWidgetModel::builder()
-                .launch(NipMenuWidgetInit {})
+        MenuWidget::Notes => Box::new(
+            NotesMenuWidgetModel::builder()
+                .launch(NotesMenuWidgetInit {})
                 .detach(),
         ),
-        MenuWidget::Nnetwork => Box::new(
-            NnetworkMenuWidgetModel::builder()
-                .launch(NnetworkMenuWidgetInit {})
-                .detach(),
-        ),
-        MenuWidget::Nnotes => Box::new(
-            NnotesMenuWidgetModel::builder()
-                .launch(NnotesMenuWidgetInit {})
-                .detach(),
-        ),
-        MenuWidget::Npower => Box::new(
-            NpowerMenuWidgetModel::builder()
-                .launch(NpowerMenuWidgetInit {})
+        MenuWidget::Power => Box::new(
+            PowerMenuWidgetModel::builder()
+                .launch(PowerMenuWidgetInit {})
                 .detach(),
         ),
         MenuWidget::Notifications => Box::new(
@@ -213,19 +210,14 @@ pub fn build_widget(
                     SessionMenuWidgetOutput::CloseMenu => MenuOutput::CloseMenu,
                 }),
         ),
-        MenuWidget::Npodman => Box::new(
-            NpodmanMenuWidgetModel::builder()
-                .launch(NpodmanMenuWidgetInit {})
+        MenuWidget::Podman => Box::new(
+            PodmanMenuWidgetModel::builder()
+                .launch(PodmanMenuWidgetInit {})
                 .detach(),
         ),
-        MenuWidget::Nufw => Box::new(
-            NufwMenuWidgetModel::builder()
-                .launch(NufwMenuWidgetInit {})
-                .detach(),
-        ),
-        MenuWidget::PowerProfiles => Box::new(
-            PowerProfileMenuWidgetModel::builder()
-                .launch(PowerProfileMenuWidgetInit {})
+        MenuWidget::Ufw => Box::new(
+            UfwMenuWidgetModel::builder()
+                .launch(UfwMenuWidgetInit {})
                 .detach(),
         ),
         MenuWidget::QuickActions(config) => Box::new(

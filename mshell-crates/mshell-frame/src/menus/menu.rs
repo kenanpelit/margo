@@ -10,11 +10,8 @@ use crate::menus::menu_widgets::bluetooth::bluetooth_menu_widget::{
     BluetoothMenuWidgetInput, BluetoothMenuWidgetModel,
 };
 use crate::menus::menu_widgets::clipboard::clipboard::{ClipboardInput, ClipboardModel};
-use crate::menus::menu_widgets::network::network_menu_widget::{
-    NetworkMenuWidgetInput, NetworkMenuWidgetModel,
-};
-use crate::menus::menu_widgets::power_profile::power_profile_menu_widget::{
-    PowerProfileMenuWidgetInput, PowerProfileMenuWidgetModel,
+use crate::menus::menu_widgets::network_toggle::network_menu_widget::{
+    NetworkToggleMenuWidgetInput, NetworkToggleMenuWidgetModel,
 };
 use crate::menus::menu_widgets::screenshare::screenshare_menu_widget::{
     ScreenshareMenuWidgetInit, ScreenshareMenuWidgetInput, ScreenshareMenuWidgetModel,
@@ -44,18 +41,17 @@ pub(crate) enum MenuType {
     Clipboard,
     Clock,
     Notifications,
-    QuickSettings,
     Screenshot,
     AppLauncher,
     Wallpaper,
     HyprlandScreenshare,
-    Nufw,
-    Ndns,
-    Npodman,
-    Nnotes,
-    Nip,
-    Nnetwork,
-    Npower,
+    Ufw,
+    Dns,
+    Podman,
+    Notes,
+    Ip,
+    Network,
+    Power,
     Bluetooth,
     CpuDashboard,
     AudioDashboard,
@@ -82,8 +78,8 @@ pub(crate) struct MenuModel {
     // store is coarse — a write to any field reaches every effect
     // bound to it — so without this guard every unrelated config
     // touch tears down and recreates each menu's content widgets,
-    // which silently re-runs their probe loops (ndns / nufw /
-    // npodman shell out on init). Mirrors the bar's guard.
+    // which silently re-runs their probe loops (dns / ufw /
+    // podman shell out on init). Mirrors the bar's guard.
     widget_kinds: Vec<MenuWidget>,
     minimum_width: i32,
     /// Maximum visible content height in pixels. 0 = no cap
@@ -249,30 +245,6 @@ impl Component for MenuModel {
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
                 });
             }
-            MenuType::QuickSettings => {
-                css_class = "quick-settings-menu".to_string();
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.menus().quick_settings_menu().widgets().get();
-                    sender_clone.input(MenuInput::SetWidget(widgets));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let minimum_width = config.menus().quick_settings_menu().minimum_width().get();
-                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let maximum_height = config.menus().quick_settings_menu().maximum_height().get();
-                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                });
-            }
             MenuType::Notifications => {
                 css_class = "notifications-menu".to_string();
                 let config = base_config.clone();
@@ -373,147 +345,147 @@ impl Component for MenuModel {
                 css_class = "hyprland-screenshare-menu".to_string();
                 sender.input(MenuInput::AddHyprlandScreenshareWidget);
             }
-            MenuType::Nufw => {
-                css_class = "nufw-menu".to_string();
+            MenuType::Ufw => {
+                css_class = "ufw-menu".to_string();
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let widgets = config.menus().nufw_menu().widgets().get();
+                    let widgets = config.menus().ufw_menu().widgets().get();
                     sender_clone.input(MenuInput::SetWidget(widgets));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let minimum_width = config.menus().nufw_menu().minimum_width().get();
+                    let minimum_width = config.menus().ufw_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let maximum_height = config.menus().nufw_menu().maximum_height().get();
+                    let maximum_height = config.menus().ufw_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
                 });
             }
-            MenuType::Ndns => {
-                css_class = "ndns-menu".to_string();
+            MenuType::Dns => {
+                css_class = "dns-menu".to_string();
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let widgets = config.menus().ndns_menu().widgets().get();
+                    let widgets = config.menus().dns_menu().widgets().get();
                     sender_clone.input(MenuInput::SetWidget(widgets));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let minimum_width = config.menus().ndns_menu().minimum_width().get();
+                    let minimum_width = config.menus().dns_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let maximum_height = config.menus().ndns_menu().maximum_height().get();
+                    let maximum_height = config.menus().dns_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
                 });
             }
-            MenuType::Npodman => {
-                css_class = "npodman-menu".to_string();
+            MenuType::Podman => {
+                css_class = "podman-menu".to_string();
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let widgets = config.menus().npodman_menu().widgets().get();
+                    let widgets = config.menus().podman_menu().widgets().get();
                     sender_clone.input(MenuInput::SetWidget(widgets));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let minimum_width = config.menus().npodman_menu().minimum_width().get();
+                    let minimum_width = config.menus().podman_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let maximum_height = config.menus().npodman_menu().maximum_height().get();
+                    let maximum_height = config.menus().podman_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
                 });
             }
-            MenuType::Nnotes => {
-                css_class = "nnotes-menu".to_string();
+            MenuType::Notes => {
+                css_class = "notes-menu".to_string();
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let widgets = config.menus().nnotes_menu().widgets().get();
+                    let widgets = config.menus().notes_menu().widgets().get();
                     sender_clone.input(MenuInput::SetWidget(widgets));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let minimum_width = config.menus().nnotes_menu().minimum_width().get();
+                    let minimum_width = config.menus().notes_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let maximum_height = config.menus().nnotes_menu().maximum_height().get();
+                    let maximum_height = config.menus().notes_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
                 });
             }
-            MenuType::Nip => {
-                css_class = "nip-menu".to_string();
+            MenuType::Ip => {
+                css_class = "ip-menu".to_string();
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let widgets = config.menus().nip_menu().widgets().get();
+                    let widgets = config.menus().ip_menu().widgets().get();
                     sender_clone.input(MenuInput::SetWidget(widgets));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let minimum_width = config.menus().nip_menu().minimum_width().get();
+                    let minimum_width = config.menus().ip_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let maximum_height = config.menus().nip_menu().maximum_height().get();
+                    let maximum_height = config.menus().ip_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
                 });
             }
-            MenuType::Nnetwork => {
-                css_class = "nnetwork-menu".to_string();
+            MenuType::Network => {
+                css_class = "network-menu".to_string();
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let widgets = config.menus().nnetwork_menu().widgets().get();
+                    let widgets = config.menus().network_menu().widgets().get();
                     sender_clone.input(MenuInput::SetWidget(widgets));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let minimum_width = config.menus().nnetwork_menu().minimum_width().get();
+                    let minimum_width = config.menus().network_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let maximum_height = config.menus().nnetwork_menu().maximum_height().get();
+                    let maximum_height = config.menus().network_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
                 });
             }
@@ -599,27 +571,27 @@ impl Component for MenuModel {
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
                 });
             }
-            MenuType::Npower => {
-                css_class = "npower-menu".to_string();
+            MenuType::Power => {
+                css_class = "power-menu".to_string();
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let widgets = config.menus().npower_menu().widgets().get();
+                    let widgets = config.menus().power_menu().widgets().get();
                     sender_clone.input(MenuInput::SetWidget(widgets));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let minimum_width = config.menus().npower_menu().minimum_width().get();
+                    let minimum_width = config.menus().power_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let maximum_height = config.menus().npower_menu().maximum_height().get();
+                    let maximum_height = config.menus().power_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
                 });
             }
@@ -771,11 +743,11 @@ impl Component for MenuModel {
                             .ok();
                     }
                     if let Some(controller) =
-                        controller.downcast_ref::<Controller<NetworkMenuWidgetModel>>()
+                        controller.downcast_ref::<Controller<NetworkToggleMenuWidgetModel>>()
                     {
                         controller
                             .sender()
-                            .send(NetworkMenuWidgetInput::ParentRevealChanged(visible))
+                            .send(NetworkToggleMenuWidgetInput::ParentRevealChanged(visible))
                             .ok();
                     }
                     if let Some(controller) =
@@ -800,14 +772,6 @@ impl Component for MenuModel {
                         controller
                             .sender()
                             .send(AudioInMenuWidgetInput::ParentRevealChanged(visible))
-                            .ok();
-                    }
-                    if let Some(controller) =
-                        controller.downcast_ref::<Controller<PowerProfileMenuWidgetModel>>()
-                    {
-                        controller
-                            .sender()
-                            .send(PowerProfileMenuWidgetInput::ParentRevealChanged(visible))
                             .ok();
                     }
                     if let Some(controller) =

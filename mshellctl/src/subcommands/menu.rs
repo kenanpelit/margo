@@ -48,14 +48,12 @@ pub enum MenuCommands {
         #[command(subcommand)]
         action: Option<NotificationAction>,
     },
-    /// Toggle the quick settings menu
-    QuickSettings,
     /// Toggle the screenshot menu
     Screenshot,
     /// Toggle the wallpaper menu
     Wallpaper,
     /// Toggle the UFW firewall menu
-    Nufw,
+    Ufw,
     /// Toggle the Bluetooth menu (connect/disconnect/scan/pair)
     Bluetooth,
     /// Toggle the CPU Dashboard menu (CPU, temp, RAM, load)
@@ -63,17 +61,17 @@ pub enum MenuCommands {
     /// Toggle the Audio Dashboard menu (output + input mixer)
     AudioDashboard,
     /// Toggle the DNS / VPN menu
-    Ndns,
+    Dns,
     /// Toggle the Podman menu
-    Npodman,
+    Podman,
     /// Toggle the Notes Hub menu
-    Nnotes,
+    Notes,
     /// Toggle the Public IP menu
-    Nip,
+    Ip,
     /// Toggle the Network Console menu
-    Nnetwork,
-    /// Toggle the Power Profile (npower) menu
-    Npower,
+    Network,
+    /// Toggle the Power Profile (power) menu
+    Power,
     /// Toggle the Media Player menu
     MediaPlayer,
     /// Toggle the session / power menu, or run a session action
@@ -90,9 +88,6 @@ pub enum MenuCommands {
 
 pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
     match command {
-        MenuCommands::QuickSettings => {
-            bus_command("QuickSettings").await?;
-        }
         MenuCommands::AppLauncher { tab, list_tabs } => {
             if list_tabs {
                 let tabs: Vec<String> =
@@ -129,8 +124,8 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         MenuCommands::Wallpaper => {
             bus_command("Wallpaper").await?;
         }
-        MenuCommands::Nufw => {
-            bus_command("Nufw").await?;
+        MenuCommands::Ufw => {
+            bus_command("Ufw").await?;
         }
         MenuCommands::Bluetooth => {
             bus_command("Bluetooth").await?;
@@ -141,23 +136,23 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         MenuCommands::AudioDashboard => {
             bus_command("AudioDashboard").await?;
         }
-        MenuCommands::Ndns => {
-            bus_command("Ndns").await?;
+        MenuCommands::Dns => {
+            bus_command("Dns").await?;
         }
-        MenuCommands::Npodman => {
-            bus_command("Npodman").await?;
+        MenuCommands::Podman => {
+            bus_command("Podman").await?;
         }
-        MenuCommands::Nnotes => {
-            bus_command("Nnotes").await?;
+        MenuCommands::Notes => {
+            bus_command("Notes").await?;
         }
-        MenuCommands::Nip => {
-            bus_command("Nip").await?;
+        MenuCommands::Ip => {
+            bus_command("Ip").await?;
         }
-        MenuCommands::Nnetwork => {
-            bus_command("Nnetwork").await?;
+        MenuCommands::Network => {
+            bus_command("Network").await?;
         }
-        MenuCommands::Npower => {
-            bus_command("Npower").await?;
+        MenuCommands::Power => {
+            bus_command("Power").await?;
         }
         MenuCommands::MediaPlayer => {
             bus_command("MediaPlayer").await?;

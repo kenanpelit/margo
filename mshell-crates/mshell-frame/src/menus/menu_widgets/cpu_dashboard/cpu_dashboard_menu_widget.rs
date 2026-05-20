@@ -2,7 +2,7 @@
 //! `MenuType::CpuDashboard`. Mirrors the popover content that
 //! used to live inside the `cpu_dashboard` bar pill, ported into
 //! the layer-shell menu surface so it opens contiguous with the
-//! bar like ufw/ndns instead of as a standalone xdg_popup.
+//! bar like ufw/dns instead of as a standalone xdg_popup.
 //!
 //! Renders four sections, all driven by a 2 s self-cancelling
 //! poll over `/proc/stat`, `/proc/meminfo`, `/proc/loadavg`, and

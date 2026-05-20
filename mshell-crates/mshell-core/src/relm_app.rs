@@ -72,7 +72,6 @@ pub(crate) enum ShellInput {
     AddWindowGroup(String, Monitor),
     RemoveWindowGroup(String),
     Quit,
-    ToggleQuickSettings(Option<String>),
     ToggleAppLauncher(Option<String>),
     /// Open the app launcher AND pre-select the named category
     /// tab. The String carries the tab label (e.g. "Run",
@@ -87,16 +86,16 @@ pub(crate) enum ShellInput {
     ToggleScreenshotMenu(Option<String>),
     ToggleWallpaperMenu(Option<String>),
     CycleWallpaper(mshell_cache::wallpaper::CycleDirection),
-    ToggleNufwMenu(Option<String>),
+    ToggleUfwMenu(Option<String>),
     ToggleBluetoothMenu(Option<String>),
     ToggleCpuDashboardMenu(Option<String>),
     ToggleAudioDashboardMenu(Option<String>),
-    ToggleNdnsMenu(Option<String>),
-    ToggleNpodmanMenu(Option<String>),
-    ToggleNnotesMenu(Option<String>),
-    ToggleNipMenu(Option<String>),
-    ToggleNnetworkMenu(Option<String>),
-    ToggleNpowerMenu(Option<String>),
+    ToggleDnsMenu(Option<String>),
+    TogglePodmanMenu(Option<String>),
+    ToggleNotesMenu(Option<String>),
+    ToggleIpMenu(Option<String>),
+    ToggleNetworkMenu(Option<String>),
+    TogglePowerMenu(Option<String>),
     ToggleMediaPlayerMenu(Option<String>),
     ToggleSessionMenu(Option<String>),
     ToggleSettingsMenu(Option<String>),
@@ -453,11 +452,6 @@ impl Component for Shell {
                     frame.emit(FrameInput::ToggleClockMenu);
                 }
             }
-            ShellInput::ToggleQuickSettings(monitor_name) => {
-                if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleQuickSettingsMenu);
-                }
-            }
             ShellInput::ToggleWallpaperMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
                     frame.emit(FrameInput::ToggleWallpaperMenu);
@@ -468,9 +462,9 @@ impl Component for Shell {
                 // (called by `cycle_wallpaper`) kicks glib work.
                 mshell_cache::wallpaper::cycle_wallpaper(direction);
             }
-            ShellInput::ToggleNufwMenu(monitor_name) => {
+            ShellInput::ToggleUfwMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleNufwMenu);
+                    frame.emit(FrameInput::ToggleUfwMenu);
                 }
             }
             ShellInput::ToggleBluetoothMenu(monitor_name) => {
@@ -488,34 +482,34 @@ impl Component for Shell {
                     frame.emit(FrameInput::ToggleAudioDashboardMenu);
                 }
             }
-            ShellInput::ToggleNdnsMenu(monitor_name) => {
+            ShellInput::ToggleDnsMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleNdnsMenu);
+                    frame.emit(FrameInput::ToggleDnsMenu);
                 }
             }
-            ShellInput::ToggleNpodmanMenu(monitor_name) => {
+            ShellInput::TogglePodmanMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleNpodmanMenu);
+                    frame.emit(FrameInput::TogglePodmanMenu);
                 }
             }
-            ShellInput::ToggleNnotesMenu(monitor_name) => {
+            ShellInput::ToggleNotesMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleNnotesMenu);
+                    frame.emit(FrameInput::ToggleNotesMenu);
                 }
             }
-            ShellInput::ToggleNipMenu(monitor_name) => {
+            ShellInput::ToggleIpMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleNipMenu);
+                    frame.emit(FrameInput::ToggleIpMenu);
                 }
             }
-            ShellInput::ToggleNnetworkMenu(monitor_name) => {
+            ShellInput::ToggleNetworkMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleNnetworkMenu);
+                    frame.emit(FrameInput::ToggleNetworkMenu);
                 }
             }
-            ShellInput::ToggleNpowerMenu(monitor_name) => {
+            ShellInput::TogglePowerMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
-                    frame.emit(FrameInput::ToggleNpowerMenu);
+                    frame.emit(FrameInput::TogglePowerMenu);
                 }
             }
             ShellInput::ToggleMediaPlayerMenu(monitor_name) => {

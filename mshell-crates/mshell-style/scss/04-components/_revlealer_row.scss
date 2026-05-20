@@ -1,5 +1,5 @@
 .revealer-row-action-button-inner {
-  transition: transform 200ms ease;
+  transition: transform var(--motion-medium) var(--ease-standard);
 }
 
 .revealer-row-action-button-inner.revealed {
@@ -7,12 +7,15 @@
 }
 
 .revealer-row-content {
-  background-color: transparent;
-  border: 2px solid var(--outline);
-  border-radius: var(--radius-widget);
-  padding: 4px;
+  // Surfaces over borders (DESIGN.md §0/§1): the expanded detail
+  // (device list, etc.) sits in a recessed tonal well + faint inset
+  // shadow instead of a hard 2px outline box.
+  background-color: var(--surface-container-low);
+  border-radius: var(--radius-sm);
+  padding: 6px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18);
   opacity: 0;
-  transition: opacity 200ms ease;
+  transition: opacity var(--motion-medium) var(--ease-standard);
 }
 
 .revealer-row-content.revealed {

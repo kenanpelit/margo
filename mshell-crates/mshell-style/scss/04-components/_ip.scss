@@ -1,0 +1,48 @@
+// Public IP menu widget — hero card + detail rows.
+
+.ip-menu-widget { padding: 0; }
+
+// ── Bar pill error tint ──────────────────────────────────
+.ip-bar-widget.error image {
+  color: var(--error);
+}
+
+// ── Hero card ────────────────────────────────────────────
+.ip-hero {
+  padding: 10px 12px;
+  border-radius: var(--radius-widget);
+  background-color: var(--surface-container-high);
+}
+.ip-ip-address {
+  font-family: monospace;
+  font-size: 1.25em;
+  font-weight: 700;
+}
+
+// ── Status badge ─────────────────────────────────────────
+.ip-badge {
+  padding: 2px 10px;
+  border-radius: 9999px;
+  font-weight: 600;
+  font-size: 0.85em;
+  background-color: var(--surface-variant);
+  color: var(--on-surface-variant);
+}
+.ip-badge.ip-badge-ok {
+  background-color: var(--primary);
+  color: var(--on-primary);
+}
+.ip-badge.ip-badge-loading {
+  background-color: var(--surface-variant);
+  color: var(--on-surface-variant);
+  opacity: 0.7;
+}
+.ip-badge.ip-badge-err {
+  background-color: var(--error-container);
+  color: var(--on-error-container);
+}
+
+// ── Detail rows ──────────────────────────────────────────
+.ip-detail-row {
+  padding: 3px 4px;
+}
