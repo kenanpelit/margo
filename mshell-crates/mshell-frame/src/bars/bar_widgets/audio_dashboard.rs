@@ -26,10 +26,15 @@ use mshell_utils::audio::{
 use relm4::gtk::prelude::{
     BoxExt, ButtonExt, GestureSingleExt, OrientableExt, WidgetExt,
 };
+use relm4::gtk::{EventControllerScroll, EventControllerScrollFlags};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::sync::Arc;
 use wayle_audio::core::device::input::InputDevice;
 use wayle_audio::core::device::output::OutputDevice;
+use wayle_audio::volume::types::Volume;
+
+/// Volume step per scroll notch on the bar pill.
+const SCROLL_STEP: f64 = 0.05;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DisplayMode {
@@ -74,6 +79,10 @@ pub(crate) struct AudioDashboardModel {
 pub(crate) enum AudioDashboardInput {
     Clicked,
     CycleMode,
+    /// Scroll on the output slot — `delta` is the signed volume step.
+    AdjustOutput(f64),
+    /// Scroll on the input slot — `delta` is the signed volume step.
+    AdjustInput(f64),
     DefaultOutputChanged,
     DefaultInputChanged,
     OutputVolumeOrMuteChanged,
@@ -129,6 +138,7 @@ impl Component for AudioDashboardModel {
                     set_valign: gtk::Align::Center,
 
                     // ── Output slot ─────────────────────────────
+                    #[name = "output_slot"]
                     gtk::Box {
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 4,
@@ -162,6 +172,7 @@ impl Component for AudioDashboardModel {
                     },
 
                     // ── Input slot ──────────────────────────────
+                    #[name = "input_slot"]
                     gtk::Box {
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 4,
@@ -264,6 +275,14 @@ impl Component for AudioDashboardModel {
         });
         widgets.button.add_controller(gesture);
 
+        // Scroll over each slot to nudge its volume — up = louder.
+        attach_scroll(&widgets.output_slot, &sender, |delta| {
+            AudioDashboardInput::AdjustOutput(delta)
+        });
+        attach_scroll(&widgets.input_slot, &sender, |delta| {
+            AudioDashboardInput::AdjustInput(delta)
+        });
+
         let _ = root;
         let parts = ComponentParts { model, widgets };
         apply_tooltip(&parts.model, &parts.widgets);
@@ -312,6 +331,22 @@ impl Component for AudioDashboardModel {
             AudioDashboardInput::CycleMode => {
                 self.mode = self.mode.next();
             }
+            AudioDashboardInput::AdjustOutput(delta) => {
+                if let Some(d) = self.output_device.clone() {
+                    let target = (self.output_percent + delta).clamp(0.0, 1.0);
+                    relm4::spawn(async move {
+                        let _ = d.set_volume(Volume::stereo(target, target)).await;
+                    });
+                }
+            }
+            AudioDashboardInput::AdjustInput(delta) => {
+                if let Some(d) = self.input_device.clone() {
+                    let target = (self.input_percent + delta).clamp(0.0, 1.0);
+                    relm4::spawn(async move {
+                        let _ = d.set_volume(Volume::stereo(target, target)).await;
+                    });
+                }
+            }
             AudioDashboardInput::DefaultOutputChanged => {
                 self.output_device = audio_service().default_output.get();
                 if let Some(d) = &self.output_device {
@@ -359,6 +394,25 @@ impl Component for AudioDashboardModel {
         apply_tooltip(self, widgets);
         self.update_view(widgets, sender);
     }
+}
+
+/// Wire vertical scroll over `w` to nudge a volume: scroll up sends a
+/// `+SCROLL_STEP` delta, down a `-SCROLL_STEP`, via `make`.
+fn attach_scroll(
+    w: &gtk::Box,
+    sender: &ComponentSender<AudioDashboardModel>,
+    make: fn(f64) -> AudioDashboardInput,
+) {
+    let controller = EventControllerScroll::new(EventControllerScrollFlags::VERTICAL);
+    let sender = sender.clone();
+    controller.connect_scroll(move |_, _dx, dy| {
+        if dy != 0.0 {
+            let delta = if dy < 0.0 { SCROLL_STEP } else { -SCROLL_STEP };
+            sender.input(make(delta));
+        }
+        gtk::glib::Propagation::Stop
+    });
+    w.add_controller(controller);
 }
 
 fn read_output_state(d: &Option<Arc<OutputDevice>>) -> (f64, bool, String) {
