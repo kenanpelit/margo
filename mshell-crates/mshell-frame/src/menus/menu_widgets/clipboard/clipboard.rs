@@ -2,8 +2,30 @@ use crate::menus::menu_widgets::clipboard::clipboard_item::ClipboardItemModel;
 use mshell_clipboard::{ClipboardEntry, ClipboardHistory, clipboard_service};
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
+use std::cell::Cell;
 use tokio::sync::broadcast;
 use tracing::{error, warn};
+
+thread_local! {
+    /// True while the `/` filter field is open on the focused
+    /// clipboard menu. Lives at module scope (not in the model) so
+    /// the frame's Esc handler — which owns the Escape keybind on the
+    /// layer surface — can check it and route Esc to "exit search"
+    /// instead of "close menu". Only the keyboard-focused surface
+    /// receives Esc, and only an open clipboard sets this, so the
+    /// flag unambiguously refers to the menu the user is in.
+    static SEARCH_ACTIVE: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Whether the clipboard `/` filter is currently open. Read by the
+/// frame's Esc handler (see `frame.rs`).
+pub(crate) fn search_is_active() -> bool {
+    SEARCH_ACTIVE.with(|c| c.get())
+}
+
+fn set_search_active(active: bool) {
+    SEARCH_ACTIVE.with(|c| c.set(active));
+}
 
 pub(crate) struct ClipboardModel {
     list_box: gtk::ListBox,
@@ -17,6 +39,10 @@ pub(crate) struct ClipboardModel {
     delete_button_visible: bool,
     /// Active tab: false = All (unpinned), true = Favorites (pinned).
     show_pinned_only: bool,
+    /// Current `/` filter query (lower-cased substring match). The
+    /// open/closed state lives in the [`SEARCH_ACTIVE`] thread-local
+    /// so the frame's Esc handler can read it.
+    search_query: String,
 }
 
 #[derive(Debug)]
@@ -38,6 +64,12 @@ pub(crate) enum ClipboardInput {
     /// Tab / Ctrl+n/k / Enter work immediately — without first
     /// needing a mouse click to put focus in the surface.
     ParentRevealChanged(bool),
+    /// `/` pressed — open the vim-style filter field and focus it.
+    EnterSearch,
+    /// Esc while searching — clear the filter and return to the list.
+    ExitSearch,
+    /// The filter text changed — re-filter the list live.
+    SearchChanged(String),
 }
 
 #[derive(Debug)]
@@ -122,11 +154,33 @@ impl Component for ClipboardModel {
                 },
             },
 
+            // Vim-style filter field — hidden until `/` is pressed,
+            // then slides down and takes focus. Live-filters the list.
+            #[name = "search_revealer"]
+            gtk::Revealer {
+                set_transition_type: gtk::RevealerTransitionType::SlideDown,
+                set_transition_duration: 120,
+
+                #[name = "search_entry"]
+                gtk::Entry {
+                    add_css_class: "ok-entry",
+                    add_css_class: "clipboard-search",
+                    set_placeholder_text: Some("Filter clipboard…  (Esc to exit)"),
+                    set_hexpand: true,
+                    connect_changed[sender] => move |entry| {
+                        sender.input(ClipboardInput::SearchChanged(entry.text().to_string()));
+                    },
+                    connect_activate[sender] => move |_| {
+                        sender.input(ClipboardInput::CopySelected);
+                    },
+                },
+            },
+
             gtk::Label {
                 add_css_class: "label-small",
                 add_css_class: "clipboard-hint",
                 set_halign: gtk::Align::Start,
-                set_label: "Tab: switch · Ctrl+n/k: move · Enter: copy · Ctrl+p: pin · Delete: remove",
+                set_label: "/: search · Tab: switch · Ctrl+n/k: move · Enter: copy · Ctrl+p: pin · Delete: remove",
                 set_xalign: 0.0,
             },
 
@@ -196,12 +250,38 @@ impl Component for ClipboardModel {
 
         // Keyboard control on the menu root (clipse-style): Tab to
         // switch tabs, Ctrl+n / Ctrl+k to move, Enter to copy, Delete
-        // to remove. Arrow keys are handled natively by the ListBox.
+        // to remove, `/` to open the filter (vim). Arrow keys are
+        // handled natively by the ListBox in normal mode.
+        //
+        // The controller runs in the *Capture* phase so it sees keys
+        // before the focused search entry. That lets nav shortcuts
+        // (Ctrl+n/k, Enter, …) keep working while typing a filter,
+        // while plain characters fall through (`Proceed`) into the
+        // entry. `search_active` decides the few keys whose meaning
+        // flips between modes: `/`, Esc and Backspace/Delete.
         let key_sender = sender.clone();
         let key = gtk::EventControllerKey::new();
+        key.set_propagation_phase(gtk::PropagationPhase::Capture);
         key.connect_key_pressed(move |_, keyval, _, modifier| {
             let ctrl = modifier.contains(gtk::gdk::ModifierType::CONTROL_MASK);
+            let searching = search_is_active();
             match keyval {
+                // `/` opens the filter — but only in normal mode; while
+                // searching it's a literal character for the entry.
+                gtk::gdk::Key::slash if !searching && !ctrl => {
+                    key_sender.input(ClipboardInput::EnterSearch);
+                    gtk::glib::Propagation::Stop
+                }
+                // Esc closes the filter while searching; otherwise let
+                // the frame handle it (close the menu).
+                gtk::gdk::Key::Escape => {
+                    if searching {
+                        key_sender.input(ClipboardInput::ExitSearch);
+                        gtk::glib::Propagation::Stop
+                    } else {
+                        gtk::glib::Propagation::Proceed
+                    }
+                }
                 gtk::gdk::Key::Tab | gtk::gdk::Key::ISO_Left_Tab => {
                     key_sender.input(ClipboardInput::ToggleTab);
                     gtk::glib::Propagation::Stop
@@ -214,13 +294,30 @@ impl Component for ClipboardModel {
                     key_sender.input(ClipboardInput::SelectPrev);
                     gtk::glib::Propagation::Stop
                 }
+                // Arrow keys drive the list explicitly while searching
+                // (the focused entry would otherwise eat them as cursor
+                // moves). In normal mode the ListBox handles them.
+                gtk::gdk::Key::Down if searching => {
+                    key_sender.input(ClipboardInput::SelectNext);
+                    gtk::glib::Propagation::Stop
+                }
+                gtk::gdk::Key::Up if searching => {
+                    key_sender.input(ClipboardInput::SelectPrev);
+                    gtk::glib::Propagation::Stop
+                }
                 gtk::gdk::Key::p if ctrl => {
                     key_sender.input(ClipboardInput::PinSelected);
                     gtk::glib::Propagation::Stop
                 }
+                // Backspace/Delete remove an entry in normal mode, but
+                // edit the query while searching.
                 gtk::gdk::Key::Delete | gtk::gdk::Key::BackSpace => {
-                    key_sender.input(ClipboardInput::DeleteSelected);
-                    gtk::glib::Propagation::Stop
+                    if searching {
+                        gtk::glib::Propagation::Proceed
+                    } else {
+                        key_sender.input(ClipboardInput::DeleteSelected);
+                        gtk::glib::Propagation::Stop
+                    }
                 }
                 gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter => {
                     key_sender.input(ClipboardInput::CopySelected);
@@ -238,6 +335,7 @@ impl Component for ClipboardModel {
             history,
             delete_button_visible: false,
             show_pinned_only: false,
+            search_query: String::new(),
         };
 
         let widgets = view_output!();
@@ -291,8 +389,37 @@ impl Component for ClipboardModel {
                 clipboard_service().clear_history();
                 let _ = sender.output(ClipboardOutput::CloseMenu);
             }
+            ClipboardInput::EnterSearch => {
+                set_search_active(true);
+                widgets.search_revealer.set_reveal_child(true);
+                // Defer the focus grab so the just-revealed entry has
+                // mapped/allocated before we focus it.
+                let entry = widgets.search_entry.clone();
+                gtk::glib::idle_add_local_once(move || {
+                    entry.grab_focus();
+                });
+            }
+            ClipboardInput::ExitSearch => {
+                set_search_active(false);
+                self.search_query.clear();
+                widgets.search_entry.set_text("");
+                widgets.search_revealer.set_reveal_child(false);
+                // Rebuild with the cleared filter; search_active is now
+                // false so this re-grabs focus into the list.
+                self.rebuild_rows();
+            }
+            ClipboardInput::SearchChanged(text) => {
+                self.search_query = text;
+                self.rebuild_rows();
+            }
             ClipboardInput::ParentRevealChanged(revealed) => {
                 if revealed {
+                    // Open fresh: any stale filter from a previous
+                    // session is cleared so the full history shows.
+                    set_search_active(false);
+                    self.search_query.clear();
+                    widgets.search_entry.set_text("");
+                    widgets.search_revealer.set_reveal_child(false);
                     // Re-sync to current history, then defer the focus
                     // grab to an idle tick so the layer surface has
                     // finished mapping/allocating — grabbing focus on a
@@ -319,12 +446,16 @@ impl ClipboardModel {
     fn rebuild_rows(&mut self) {
         // All = the full rolling history in recency order (pinned
         // entries appear in their natural position, marked with a
-        // star). Favorites = pinned only.
+        // star). Favorites = pinned only. The `/` filter narrows
+        // whichever tab is active by a case-insensitive substring of
+        // the entry's full content.
+        let query = self.search_query.to_lowercase();
         let items: Vec<ClipboardEntry> = self
             .history
             .entries()
             .into_iter()
             .filter(|e| !self.show_pinned_only || e.pinned)
+            .filter(|e| query.is_empty() || e.search_haystack().contains(&query))
             .collect();
 
         // Tear down old rows.
@@ -345,10 +476,13 @@ impl ClipboardModel {
 
         // Keep a selection so keyboard control has an anchor, and
         // pull focus into the list (when mapped) so Ctrl+n/k / Enter
-        // / Delete land here as soon as the menu is open.
+        // / Delete land here as soon as the menu is open. While the
+        // `/` filter is active, DON'T grab focus — that would steal
+        // it from the search entry mid-keystroke. The selection still
+        // tracks row 0 so Ctrl+n/k / Enter operate on the top match.
         if let Some(row) = self.list_box.row_at_index(0) {
             self.list_box.select_row(Some(&row));
-            if self.list_box.is_mapped() {
+            if self.list_box.is_mapped() && !search_is_active() {
                 row.grab_focus();
             }
         }

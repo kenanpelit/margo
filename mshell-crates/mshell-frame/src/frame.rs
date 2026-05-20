@@ -159,6 +159,9 @@ pub enum FrameInput {
     /// replacement for the legacy bar popover).
     ToggleMargoLayoutMenu,
     CloseMenus,
+    /// Esc while the clipboard `/` filter is open — tell the clipboard
+    /// menu to leave search mode instead of closing the whole menu.
+    ClipboardExitSearch,
     ToggleScreenshareMenu(tokio::sync::oneshot::Sender<String>, String),
     BarToggleTop,
     BarToggleBottom,
@@ -615,7 +618,13 @@ impl Component for Frame {
             .trigger(&gtk::KeyvalTrigger::new(gdk::Key::Escape, gdk::ModifierType::empty()))
             .action(&gtk::CallbackAction::new(move |_, _| {
                 tracing::debug!("frame: ESC shortcut fired");
-                sender_esc.input(FrameInput::CloseMenus);
+                // If the clipboard `/` filter is open, Esc leaves search
+                // mode (vim semantics) instead of closing the menu.
+                if crate::menus::menu_widgets::clipboard::clipboard::search_is_active() {
+                    sender_esc.input(FrameInput::ClipboardExitSearch);
+                } else {
+                    sender_esc.input(FrameInput::CloseMenus);
+                }
                 gtk::glib::Propagation::Stop
             }))
             .build();
@@ -630,7 +639,11 @@ impl Component for Frame {
         key_ctrl.connect_key_pressed(move |_, keyval, _, _| {
             tracing::debug!(?keyval, "frame: key_pressed");
             if keyval == gdk::Key::Escape {
-                sender_esc2.input(FrameInput::CloseMenus);
+                if crate::menus::menu_widgets::clipboard::clipboard::search_is_active() {
+                    sender_esc2.input(FrameInput::ClipboardExitSearch);
+                } else {
+                    sender_esc2.input(FrameInput::CloseMenus);
+                }
                 gtk::glib::Propagation::Stop
             } else {
                 gtk::glib::Propagation::Proceed
@@ -1054,6 +1067,15 @@ impl Component for Frame {
                     .emit(ForwardHyprlandScreenshareReply(reply, payload));
                 self.toggle_menu(SCREENSHARE_MENU, widgets);
                 self.sync_keyboard_mode(root);
+            }
+            FrameInput::ClipboardExitSearch => {
+                // Forward to this frame's own clipboard menu. The
+                // keyboard-focused surface is the one that received
+                // Esc, so its clipboard is the one in search mode.
+                self.clipboard_menu
+                    .sender()
+                    .send(MenuInput::ClipboardExitSearch)
+                    .unwrap_or_default();
             }
             FrameInput::CloseMenus => {
                 self.left_revealed = false;

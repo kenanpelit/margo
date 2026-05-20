@@ -27,6 +27,19 @@ impl ClipboardEntry {
     pub fn is_text(&self) -> bool {
         self.mime_type.starts_with("text/")
     }
+
+    /// Lower-cased haystack for substring search. Text entries match
+    /// on their *full* content (not the 200-char preview), so a query
+    /// finds text that scrolled off the visible snippet. Image /
+    /// binary entries match on their MIME type, so e.g. `png` still
+    /// surfaces a copied image.
+    pub fn search_haystack(&self) -> String {
+        if self.is_text() {
+            String::from_utf8_lossy(&self.data).to_lowercase()
+        } else {
+            self.mime_type.to_lowercase()
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

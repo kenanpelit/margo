@@ -100,6 +100,9 @@ pub(crate) struct MenuModel {
 #[derive(Debug)]
 pub(crate) enum MenuInput {
     RevealChanged(bool),
+    /// Esc was pressed while the clipboard `/` filter is open — leave
+    /// search mode (instead of closing the menu). Routed by the frame.
+    ClipboardExitSearch,
     SetWidget(Vec<MenuWidget>),
     SetMinimumWidth(i32),
     SetMaximumHeight(i32),
@@ -837,6 +840,18 @@ impl Component for MenuModel {
                         controller
                             .sender()
                             .send(ClipboardInput::ParentRevealChanged(visible))
+                            .ok();
+                    }
+                }
+            }
+            MenuInput::ClipboardExitSearch => {
+                for controller in &self.widget_controllers {
+                    if let Some(controller) =
+                        controller.downcast_ref::<Controller<ClipboardModel>>()
+                    {
+                        controller
+                            .sender()
+                            .send(ClipboardInput::ExitSearch)
                             .ok();
                     }
                 }

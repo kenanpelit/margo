@@ -78,6 +78,14 @@
   color: var(--outline);
 }
 
+// Vim-style `/` filter field. Uses the shared .ok-entry primitive
+// for the input chrome; this just gives it breathing room above the
+// result list when revealed.
+.clipboard-search {
+  margin-top: 4px;
+  margin-bottom: 4px;
+}
+
 // ── Clipboard tabs (All / Favorites) ───────────────────────────
 .clipboard-tabs {
   .clipboard-tab {
