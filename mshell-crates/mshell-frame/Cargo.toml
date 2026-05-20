@@ -28,6 +28,7 @@ mshell-sounds.workspace = true
 mshell-utils.workspace = true
 reactive_graph.workspace = true
 reactive_stores.workspace = true
+regex.workspace = true
 relm4.workspace = true
 time.workspace = true
 chrono.workspace = true

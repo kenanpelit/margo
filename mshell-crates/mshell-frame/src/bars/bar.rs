@@ -117,6 +117,7 @@ pub(crate) enum BarOutput {
     BluetoothClicked,
     CpuDashboardClicked,
     SystemUpdateClicked,
+    ValentClicked,
     AudioDashboardClicked,
     DnsClicked,
     PodmanClicked,
@@ -639,6 +640,14 @@ impl BarModel {
                     .forward(sender.output_sender(), |msg| match msg {
                         crate::bars::bar_widgets::system_update::SystemUpdateOutput::Clicked
                             => BarOutput::SystemUpdateClicked,
+                    }),
+            ),
+            BarWidget::Valent => Box::new(
+                crate::bars::bar_widgets::valent::ValentModel::builder()
+                    .launch(crate::bars::bar_widgets::valent::ValentInit { orientation })
+                    .forward(sender.output_sender(), |msg| match msg {
+                        crate::bars::bar_widgets::valent::ValentOutput::Clicked
+                            => BarOutput::ValentClicked,
                     }),
             ),
             BarWidget::VpnIndicator => Box::new(

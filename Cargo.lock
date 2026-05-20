@@ -3718,6 +3718,7 @@ dependencies = [
  "nucleo-matcher",
  "reactive_graph",
  "reactive_stores",
+ "regex",
  "relm4",
  "serde",
  "serde_json",

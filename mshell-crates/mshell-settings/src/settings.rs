@@ -703,6 +703,7 @@ impl Component for SettingsWindowModel {
             WidgetEntry::Menu { kind: MenuKind::CpuDashboard, stack_name: "cpu_dashboard", label: "CPU Dashboard", icon: "computer-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::AudioDashboard, stack_name: "audio_dashboard", label: "Audio Dashboard", icon: "audio-volume-high-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::SystemUpdate, stack_name: "system_update", label: "System Updates", icon: "software-update-available-symbolic" },
+            WidgetEntry::Menu { kind: MenuKind::Valent, stack_name: "valent", label: "Valent Connect", icon: "phone-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::MargoLayout, stack_name: "margo_layout", label: "Margo Layout Switcher", icon: "view-grid-symbolic" },
             // Bar-only pills (no menu surface — just info pages).
             WidgetEntry::Pill { kind: BarPillKind::ActiveWindow, stack_name: "pill_active_window", label: "Active Window", icon: "window-symbolic" },

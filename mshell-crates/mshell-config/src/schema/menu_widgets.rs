@@ -72,6 +72,9 @@ pub enum MenuWidget {
     /// `system_update` bar pill's panel — pending updates grouped by
     /// source (repo / AUR / Flatpak) with Refresh + Update.
     SystemUpdate,
+    /// `valent` bar pill's panel — paired phone status (battery,
+    /// connectivity) + find / ping / browse / share / pair actions.
+    Valent,
     ThemePicker,
     Wallpaper,
     Weather,
@@ -128,6 +131,7 @@ impl MenuWidget {
             MenuWidget::Spacer(_) => "Spacer",
             MenuWidget::SystemStatus => "System Status",
             MenuWidget::SystemUpdate => "System Updates",
+            MenuWidget::Valent => "Valent Connect",
             MenuWidget::ThemePicker => "Theme Picker",
             MenuWidget::Wallpaper => "Wallpaper",
             MenuWidget::Weather => "Weather",
@@ -181,6 +185,7 @@ impl MenuWidget {
             MenuWidget::Spacer(SpacerConfig { size: 16 }),
             MenuWidget::SystemStatus,
             MenuWidget::SystemUpdate,
+            MenuWidget::Valent,
             MenuWidget::ThemePicker,
             MenuWidget::Wallpaper,
             MenuWidget::Weather,

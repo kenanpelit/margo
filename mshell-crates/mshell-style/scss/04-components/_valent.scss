@@ -1,0 +1,60 @@
+// Valent (KDE Connect) — bar pill + panel. Phone-status pill shows
+// a device-state icon next to the battery %; the panel groups the
+// connected device's stats + actions on a surface-container card,
+// per DESIGN.md (surfaces over borders, radius-md cards, tabular
+// numerals, on-surface-variant for secondary text).
+
+// ── Bar pill ────────────────────────────────────────────────────
+.valent-bar-label {
+  font-size: var(--font-bar);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+// ── Panel ───────────────────────────────────────────────────────
+.valent-menu-widget {
+  padding: 4px;
+}
+
+.valent-header-icon {
+  color: var(--primary);
+}
+
+.valent-content {
+  // The state cards fill the panel body.
+}
+
+// Surface card hosting whichever state is current (connected /
+// pairing / unreachable / info).
+.valent-card {
+  background-color: var(--surface-container);
+  border-radius: var(--radius-md);
+  padding: 16px;
+}
+
+.valent-info-icon {
+  color: var(--on-surface-variant);
+  opacity: 0.8;
+}
+
+// One stat row: tinted icon + caption/value column.
+.valent-stat {
+  .valent-stat-icon {
+    color: var(--on-surface);
+  }
+}
+
+.valent-stat-caption {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
+}
+
+.valent-stat-value {
+  font-size: var(--font-bar);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface);
+}

@@ -78,6 +78,9 @@ use crate::menus::menu_widgets::system_status::{SystemStatusInit, SystemStatusMo
 use crate::menus::menu_widgets::system_update::system_update_menu_widget::{
     SystemUpdateMenuWidgetInit, SystemUpdateMenuWidgetModel, SystemUpdateMenuWidgetOutput,
 };
+use crate::menus::menu_widgets::valent::valent_menu_widget::{
+    ValentMenuWidgetInit, ValentMenuWidgetModel, ValentMenuWidgetOutput,
+};
 use crate::menus::menu_widgets::theme_picker::theme_picker_menu_widget::{
     ThemePickerMenuWidgetInit, ThemePickerMenuWidgetModel,
 };
@@ -157,6 +160,13 @@ pub fn build_widget(
                 .launch(SystemUpdateMenuWidgetInit {})
                 .forward(sender.output_sender(), |msg| match msg {
                     SystemUpdateMenuWidgetOutput::CloseMenu => MenuOutput::CloseMenu,
+                }),
+        ),
+        MenuWidget::Valent => Box::new(
+            ValentMenuWidgetModel::builder()
+                .launch(ValentMenuWidgetInit {})
+                .forward(sender.output_sender(), |msg| match msg {
+                    ValentMenuWidgetOutput::CloseMenu => MenuOutput::CloseMenu,
                 }),
         ),
         MenuWidget::Divider => Box::new(

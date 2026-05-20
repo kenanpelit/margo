@@ -75,6 +75,8 @@ pub enum MenuCommands {
     AudioDashboard,
     /// Toggle the System Updates menu (repo / AUR / Flatpak)
     SystemUpdate,
+    /// Toggle the Valent Connect menu (phone status + actions)
+    Valent,
     /// Toggle the DNS / VPN menu
     Dns,
     /// Toggle the Podman menu
@@ -162,6 +164,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::SystemUpdate => {
             bus_command("SystemUpdate").await?;
+        }
+        MenuCommands::Valent => {
+            bus_command("Valent").await?;
         }
         MenuCommands::Dns => {
             bus_command("Dns").await?;

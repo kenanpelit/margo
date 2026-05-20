@@ -43,6 +43,7 @@ pub(crate) enum MenuKind {
     Power,
     Screenshot,
     SystemUpdate,
+    Valent,
     Ufw,
     Wallpaper,
 }
@@ -68,6 +69,7 @@ impl MenuKind {
             Self::Power => "Power Profile",
             Self::Screenshot => "Screenshot",
             Self::SystemUpdate => "System Updates",
+            Self::Valent => "Valent Connect",
             Self::Ufw => "UFW Firewall",
             Self::Wallpaper => "Wallpaper",
         }
@@ -91,6 +93,7 @@ impl MenuKind {
             MenuKind::CpuDashboard,
             MenuKind::AudioDashboard,
             MenuKind::SystemUpdate,
+            MenuKind::Valent,
             MenuKind::Ufw,
             MenuKind::Dns,
             MenuKind::Podman,
@@ -126,6 +129,7 @@ impl MenuKind {
             Self::CpuDashboard => m.cpu_dashboard_menu().position().get_untracked(),
             Self::AudioDashboard => m.audio_dashboard_menu().position().get_untracked(),
             Self::SystemUpdate => m.system_update_menu().position().get_untracked(),
+            Self::Valent => m.valent_menu().position().get_untracked(),
             Self::MargoLayout => m.margo_layout_menu().position().get_untracked(),
         }
     }
@@ -152,6 +156,7 @@ impl MenuKind {
             Self::CpuDashboard => m.cpu_dashboard_menu().minimum_width().get_untracked(),
             Self::AudioDashboard => m.audio_dashboard_menu().minimum_width().get_untracked(),
             Self::SystemUpdate => m.system_update_menu().minimum_width().get_untracked(),
+            Self::Valent => m.valent_menu().minimum_width().get_untracked(),
             Self::MargoLayout => m.margo_layout_menu().minimum_width().get_untracked(),
         }
     }
@@ -178,6 +183,7 @@ impl MenuKind {
             Self::CpuDashboard => m.cpu_dashboard_menu().position().get(),
             Self::AudioDashboard => m.audio_dashboard_menu().position().get(),
             Self::SystemUpdate => m.system_update_menu().position().get(),
+            Self::Valent => m.valent_menu().position().get(),
             Self::MargoLayout => m.margo_layout_menu().position().get(),
         }
     }
@@ -204,6 +210,7 @@ impl MenuKind {
             Self::CpuDashboard => m.cpu_dashboard_menu().minimum_width().get(),
             Self::AudioDashboard => m.audio_dashboard_menu().minimum_width().get(),
             Self::SystemUpdate => m.system_update_menu().minimum_width().get(),
+            Self::Valent => m.valent_menu().minimum_width().get(),
             Self::MargoLayout => m.margo_layout_menu().minimum_width().get(),
         }
     }
@@ -229,6 +236,7 @@ impl MenuKind {
             Self::CpuDashboard => c.menus.cpu_dashboard_menu.position = p,
             Self::AudioDashboard => c.menus.audio_dashboard_menu.position = p,
             Self::SystemUpdate => c.menus.system_update_menu.position = p,
+            Self::Valent => c.menus.valent_menu.position = p,
             Self::MargoLayout => c.menus.margo_layout_menu.position = p,
         });
     }
@@ -254,6 +262,7 @@ impl MenuKind {
             Self::CpuDashboard => c.menus.cpu_dashboard_menu.minimum_width = w,
             Self::AudioDashboard => c.menus.audio_dashboard_menu.minimum_width = w,
             Self::SystemUpdate => c.menus.system_update_menu.minimum_width = w,
+            Self::Valent => c.menus.valent_menu.minimum_width = w,
             Self::MargoLayout => c.menus.margo_layout_menu.minimum_width = w,
         });
     }
@@ -280,6 +289,7 @@ impl MenuKind {
             Self::CpuDashboard => m.cpu_dashboard_menu().maximum_height().get_untracked(),
             Self::AudioDashboard => m.audio_dashboard_menu().maximum_height().get_untracked(),
             Self::SystemUpdate => m.system_update_menu().maximum_height().get_untracked(),
+            Self::Valent => m.valent_menu().maximum_height().get_untracked(),
             Self::MargoLayout => m.margo_layout_menu().maximum_height().get_untracked(),
         }
     }
@@ -306,6 +316,7 @@ impl MenuKind {
             Self::CpuDashboard => m.cpu_dashboard_menu().maximum_height().get(),
             Self::AudioDashboard => m.audio_dashboard_menu().maximum_height().get(),
             Self::SystemUpdate => m.system_update_menu().maximum_height().get(),
+            Self::Valent => m.valent_menu().maximum_height().get(),
             Self::MargoLayout => m.margo_layout_menu().maximum_height().get(),
         }
     }
@@ -331,6 +342,7 @@ impl MenuKind {
             Self::CpuDashboard => c.menus.cpu_dashboard_menu.maximum_height = h,
             Self::AudioDashboard => c.menus.audio_dashboard_menu.maximum_height = h,
             Self::SystemUpdate => c.menus.system_update_menu.maximum_height = h,
+            Self::Valent => c.menus.valent_menu.maximum_height = h,
             Self::MargoLayout => c.menus.margo_layout_menu.maximum_height = h,
         });
     }
@@ -359,6 +371,7 @@ impl MenuKind {
             Self::CpuDashboard => m.cpu_dashboard_menu().widgets().get_untracked(),
             Self::AudioDashboard => m.audio_dashboard_menu().widgets().get_untracked(),
             Self::SystemUpdate => m.system_update_menu().widgets().get_untracked(),
+            Self::Valent => m.valent_menu().widgets().get_untracked(),
             Self::MargoLayout => m.margo_layout_menu().widgets().get_untracked(),
         }
     }
@@ -388,6 +401,7 @@ impl MenuKind {
             Self::CpuDashboard => m.cpu_dashboard_menu().widgets().get(),
             Self::AudioDashboard => m.audio_dashboard_menu().widgets().get(),
             Self::SystemUpdate => m.system_update_menu().widgets().get(),
+            Self::Valent => m.valent_menu().widgets().get(),
             Self::MargoLayout => m.margo_layout_menu().widgets().get(),
         }
     }
@@ -418,6 +432,7 @@ impl MenuKind {
             Self::CpuDashboard => c.menus.cpu_dashboard_menu.widgets = widgets,
             Self::AudioDashboard => c.menus.audio_dashboard_menu.widgets = widgets,
             Self::SystemUpdate => c.menus.system_update_menu.widgets = widgets,
+            Self::Valent => c.menus.valent_menu.widgets = widgets,
             Self::MargoLayout => c.menus.margo_layout_menu.widgets = widgets,
         });
     }
