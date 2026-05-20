@@ -341,3 +341,9 @@
     background-color: var(--primary-container);
     color: var(--on-primary-container);
 }
+
+// Settings → Launcher: one editable script row (name + edit + trash).
+.launcher-script-row {
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+}
