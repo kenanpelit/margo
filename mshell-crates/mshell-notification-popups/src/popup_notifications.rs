@@ -58,7 +58,7 @@ impl Component for PopupNotificationsModel {
 
             gtk::Box {
                 set_orientation: gtk::Orientation::Vertical,
-                set_width_request: 400,
+                set_width_request: 460,
 
                 model.dynamic_box_controller.widget().clone() {},
             }

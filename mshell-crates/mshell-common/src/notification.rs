@@ -123,7 +123,7 @@ impl Component for NotificationModel {
                         set_wrap: true,
                         set_wrap_mode: pango::WrapMode::WordChar,
                         set_width_chars: 20,
-                        set_max_width_chars: 40,
+                        set_max_width_chars: 44,
                     },
 
                     #[name = "body_label"]
@@ -133,7 +133,7 @@ impl Component for NotificationModel {
                         set_wrap: true,
                         set_wrap_mode: pango::WrapMode::WordChar,
                         set_width_chars: 20,
-                        set_max_width_chars: 40,
+                        set_max_width_chars: 44,
                     },
                 },
             },
