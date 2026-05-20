@@ -379,10 +379,31 @@ fn build_image(icon: &str, pixel_size: i32) -> gtk::Image {
         let path = icon.strip_prefix("file://").unwrap_or(icon);
         gtk::Image::from_file(path)
     } else {
-        gtk::Image::from_icon_name(icon)
+        gtk::Image::from_icon_name(&resolve_icon_name(icon))
     };
     img.set_pixel_size(pixel_size);
     img
+}
+
+/// mshell ships a symbolic-only icon theme (MargoMaterial → Adwaita),
+/// but most apps send `notify-send -i` *plain* freedesktop names
+/// (`audio-volume-high`, `dialog-error`, …) which then resolve to
+/// nothing and render a blank header. When the plain name isn't in the
+/// active theme but its `-symbolic` sibling is, use that instead.
+fn resolve_icon_name(name: &str) -> String {
+    if name.ends_with("-symbolic") {
+        return name.to_string();
+    }
+    if let Some(display) = gtk::gdk::Display::default() {
+        let theme = gtk::IconTheme::for_display(&display);
+        if !theme.has_icon(name) {
+            let symbolic = format!("{name}-symbolic");
+            if theme.has_icon(&symbolic) {
+                return symbolic;
+            }
+        }
+    }
+    name.to_string()
 }
 
 /// Detect a 2FA / OTP code in notification text: a standalone run of
