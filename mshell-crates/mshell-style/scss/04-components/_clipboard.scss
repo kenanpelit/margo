@@ -4,6 +4,28 @@
   @include buttons.button-base('--surface', '--on-surface');
   @include buttons.state-layers('--surface', '--on-surface');
   border: var(--outline) solid var(--border-width);
+  transition: border-color 150ms ease-in-out;
+}
+
+// Keyboard-/click-selected row gets a matugen-accent border so the
+// active entry is unmistakable as you move with Ctrl+n / Ctrl+k.
+// Suppress the ListBox's default selection background so only the
+// border reads.
+.clipboard-list {
+  background: transparent;
+
+  row {
+    background: transparent;
+
+    &:selected {
+      background: transparent;
+
+      .clipboard-item {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 1px var(--primary);
+      }
+    }
+  }
 }
 
 .clipboard-item-title {

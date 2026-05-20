@@ -31,6 +31,8 @@ pub(crate) enum ClipboardInput {
     SelectPrev,
     CopySelected,
     DeleteSelected,
+    /// Pin / unpin the selected entry (Ctrl+P).
+    PinSelected,
 }
 
 #[derive(Debug)]
@@ -118,7 +120,7 @@ impl Component for ClipboardModel {
             gtk::Label {
                 add_css_class: "label-small",
                 set_halign: gtk::Align::Start,
-                set_label: "Tab: switch · Ctrl+n/Ctrl+k: move · Enter: copy · Delete: remove",
+                set_label: "Tab: switch · Ctrl+n/k: move · Enter: copy · Ctrl+p: pin · Delete: remove",
                 set_xalign: 0.0,
             },
 
@@ -206,6 +208,10 @@ impl Component for ClipboardModel {
                     key_sender.input(ClipboardInput::SelectPrev);
                     gtk::glib::Propagation::Stop
                 }
+                gtk::gdk::Key::p if ctrl => {
+                    key_sender.input(ClipboardInput::PinSelected);
+                    gtk::glib::Propagation::Stop
+                }
                 gtk::gdk::Key::Delete | gtk::gdk::Key::BackSpace => {
                     key_sender.input(ClipboardInput::DeleteSelected);
                     gtk::glib::Propagation::Stop
@@ -266,6 +272,13 @@ impl Component for ClipboardModel {
                 if let Some(id) = self.selected_id() {
                     clipboard_service().delete_entry(id);
                     // broadcast → Refresh rebuilds the list.
+                }
+            }
+            ClipboardInput::PinSelected => {
+                if let Some(id) = self.selected_id() {
+                    clipboard_service().toggle_pin(id);
+                    // broadcast → Refresh; the entry hops between
+                    // the All and Favorites tabs accordingly.
                 }
             }
             ClipboardInput::DeleteAllClicked => {
