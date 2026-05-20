@@ -704,12 +704,12 @@ impl Component for SettingsWindowModel {
             WidgetEntry::Menu { kind: MenuKind::AudioDashboard, stack_name: "audio_dashboard", label: "Audio Dashboard", icon: "audio-volume-high-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::SystemUpdate, stack_name: "system_update", label: "System Updates", icon: "software-update-available-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::Valent, stack_name: "valent", label: "Valent Connect", icon: "phone-symbolic" },
+            WidgetEntry::Menu { kind: MenuKind::KeepAwake, stack_name: "keep_awake", label: "Keep Awake", icon: "eye-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::MargoLayout, stack_name: "margo_layout", label: "Margo Layout Switcher", icon: "view-grid-symbolic" },
             // Bar-only pills (no menu surface — just info pages).
             WidgetEntry::Pill { kind: BarPillKind::ActiveWindow, stack_name: "pill_active_window", label: "Active Window", icon: "window-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::DarkMode, stack_name: "pill_dark_mode", label: "Dark Mode Toggle", icon: "weather-clear-night-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::ColorPicker, stack_name: "pill_color_picker", label: "ColorPicker", icon: "color-select-symbolic" },
-            WidgetEntry::Pill { kind: BarPillKind::KeepAwake, stack_name: "pill_keep_awake", label: "Keep Awake", icon: "eye-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::Lock, stack_name: "pill_lock", label: "Lock", icon: "system-lock-screen-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::Logout, stack_name: "pill_logout", label: "Logout", icon: "system-log-out-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::MargoDock, stack_name: "pill_margo_dock", label: "Margo Dock", icon: "view-grid-symbolic" },

@@ -118,6 +118,7 @@ pub(crate) enum BarOutput {
     CpuDashboardClicked,
     SystemUpdateClicked,
     ValentClicked,
+    KeepAwakeClicked,
     AudioDashboardClicked,
     DnsClicked,
     PodmanClicked,
@@ -479,7 +480,10 @@ impl BarModel {
             BarWidget::KeepAwake => Box::new(
                 KeepAwakeModel::builder()
                     .launch(KeepAwakeInit { orientation })
-                    .detach(),
+                    .forward(sender.output_sender(), |msg| match msg {
+                        crate::bars::bar_widgets::keep_awake::KeepAwakeOutput::Clicked
+                            => BarOutput::KeepAwakeClicked,
+                    }),
             ),
             BarWidget::LockKeys => Box::new(
                 LockKeysModel::builder()

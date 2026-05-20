@@ -12,6 +12,7 @@ pub(crate) mod connectivity;
 pub(crate) mod container;
 pub(crate) mod cpu_dashboard;
 pub(crate) mod divider;
+pub(crate) mod keep_awake;
 pub(crate) mod margo_layout;
 pub(crate) mod media_player;
 pub(crate) mod dns;

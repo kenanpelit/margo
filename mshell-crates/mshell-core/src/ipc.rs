@@ -90,6 +90,9 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 IPCCommand::Valent => {
                     app_sender.emit(ShellInput::ToggleValentMenu(active_monitor().await));
                 }
+                IPCCommand::KeepAwake => {
+                    app_sender.emit(ShellInput::ToggleKeepAwakeMenu(active_monitor().await));
+                }
                 IPCCommand::Dns => {
                     app_sender.emit(ShellInput::ToggleDnsMenu(active_monitor().await));
                 }
@@ -300,6 +303,7 @@ enum IPCCommand {
     AudioDashboard,
     SystemUpdate,
     Valent,
+    KeepAwake,
     Dns,
     Podman,
     Notes,
@@ -422,6 +426,9 @@ impl IPCService {
     }
     async fn valent(&self) {
         let _ = self.tx.send(IPCCommand::Valent);
+    }
+    async fn keep_awake(&self) {
+        let _ = self.tx.send(IPCCommand::KeepAwake);
     }
     async fn dns(&self) {
         let _ = self.tx.send(IPCCommand::Dns);

@@ -20,7 +20,6 @@ pub(crate) enum BarPillKind {
     ActiveWindow,
     DarkMode,
     ColorPicker,
-    KeepAwake,
     Lock,
     Logout,
     MargoDock,
@@ -39,7 +38,6 @@ impl BarPillKind {
             Self::ActiveWindow => "Active Window",
             Self::DarkMode => "Dark Mode Toggle",
             Self::ColorPicker => "ColorPicker",
-            Self::KeepAwake => "Keep Awake",
             Self::Lock => "Lock",
             Self::Logout => "Logout",
             Self::MargoDock => "Margo Dock",
@@ -65,9 +63,6 @@ impl BarPillKind {
             }
             Self::ColorPicker => {
                 "Picks a colour from the screen and copies hex/rgb to the clipboard. Click to start picking."
-            }
-            Self::KeepAwake => {
-                "Toggles the system idle inhibitor. Active = no auto-lock / suspend / dim. Same backend as `mctl idle inhibit`."
             }
             Self::Lock => "Locks the session immediately (no confirmation).",
             Self::Logout => "Logs out of the session. Confirms with a dialog.",

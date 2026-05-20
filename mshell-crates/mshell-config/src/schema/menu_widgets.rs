@@ -75,6 +75,9 @@ pub enum MenuWidget {
     /// `valent` bar pill's panel — paired phone status (battery,
     /// connectivity) + find / ping / browse / share / pair actions.
     Valent,
+    /// `keep_awake` bar pill's panel — duration grid (30m / 1h / …
+    /// / ∞), live countdown, quick-extend, turn-off.
+    KeepAwake,
     ThemePicker,
     Wallpaper,
     Weather,
@@ -132,6 +135,7 @@ impl MenuWidget {
             MenuWidget::SystemStatus => "System Status",
             MenuWidget::SystemUpdate => "System Updates",
             MenuWidget::Valent => "Valent Connect",
+            MenuWidget::KeepAwake => "Keep Awake",
             MenuWidget::ThemePicker => "Theme Picker",
             MenuWidget::Wallpaper => "Wallpaper",
             MenuWidget::Weather => "Weather",
@@ -186,6 +190,7 @@ impl MenuWidget {
             MenuWidget::SystemStatus,
             MenuWidget::SystemUpdate,
             MenuWidget::Valent,
+            MenuWidget::KeepAwake,
             MenuWidget::ThemePicker,
             MenuWidget::Wallpaper,
             MenuWidget::Weather,

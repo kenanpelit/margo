@@ -92,6 +92,7 @@ pub(crate) enum ShellInput {
     ToggleAudioDashboardMenu(Option<String>),
     ToggleSystemUpdateMenu(Option<String>),
     ToggleValentMenu(Option<String>),
+    ToggleKeepAwakeMenu(Option<String>),
     ToggleDnsMenu(Option<String>),
     TogglePodmanMenu(Option<String>),
     ToggleNotesMenu(Option<String>),
@@ -492,6 +493,11 @@ impl Component for Shell {
             ShellInput::ToggleValentMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
                     frame.emit(FrameInput::ToggleValentMenu);
+                }
+            }
+            ShellInput::ToggleKeepAwakeMenu(monitor_name) => {
+                if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
+                    frame.emit(FrameInput::ToggleKeepAwakeMenu);
                 }
             }
             ShellInput::ToggleDnsMenu(monitor_name) => {

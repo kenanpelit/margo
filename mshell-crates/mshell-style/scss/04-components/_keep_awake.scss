@@ -1,0 +1,33 @@
+// Keep Awake — bar pill countdown + duration-picker panel
+// (keep-awake-plus port). DESIGN.md: surface cards, radius-md,
+// radius-pill chips, tabular numerals.
+
+// ── Bar pill ──────────────────────────────────────────────
+.keep-awake-bar-label {
+  font-size: var(--font-bar);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+// ── Panel ─────────────────────────────────────────────────
+.keep-awake-menu-widget {
+  padding: 4px;
+}
+
+.keep-awake-header-icon {
+  color: var(--primary);
+}
+
+// Duration grid — pill-shaped surface tiles, primary on hover.
+.keep-awake-tile {
+  min-width: 64px;
+  padding: 8px 0;
+  border-radius: var(--radius-pill);
+  font-variant-numeric: tabular-nums;
+  background-color: var(--surface-container);
+  transition: background-color var(--motion-fast) var(--ease-standard);
+
+  &:hover {
+    background-color: color-mix(in srgb, var(--primary) 16%, var(--surface-container));
+  }
+}

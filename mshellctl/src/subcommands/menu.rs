@@ -77,6 +77,8 @@ pub enum MenuCommands {
     SystemUpdate,
     /// Toggle the Valent Connect menu (phone status + actions)
     Valent,
+    /// Toggle the Keep Awake menu (duration grid + countdown)
+    KeepAwake,
     /// Toggle the DNS / VPN menu
     Dns,
     /// Toggle the Podman menu
@@ -167,6 +169,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::Valent => {
             bus_command("Valent").await?;
+        }
+        MenuCommands::KeepAwake => {
+            bus_command("KeepAwake").await?;
         }
         MenuCommands::Dns => {
             bus_command("Dns").await?;
