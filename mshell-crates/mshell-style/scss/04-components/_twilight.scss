@@ -38,3 +38,17 @@
 .twilight-mode-button {
   font-variant-numeric: tabular-nums;
 }
+
+// Schedule preset chips — pill-shaped surface tiles, primary on hover
+// (same idiom as the keep-awake duration grid).
+.twilight-preset-chip {
+  min-width: 64px;
+  padding: 6px 0;
+  border-radius: var(--radius-pill);
+  background-color: var(--surface-container);
+  transition: background-color var(--motion-fast) var(--ease-standard);
+
+  &:hover {
+    background-color: color-mix(in srgb, var(--primary) 16%, var(--surface-container));
+  }
+}

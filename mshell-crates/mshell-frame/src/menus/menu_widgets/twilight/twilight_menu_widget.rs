@@ -9,19 +9,27 @@
 
 use crate::twilight::{self, TwilightStatus};
 use relm4::gtk::glib;
-use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, RangeExt, ScaleExt, WidgetExt};
+use relm4::gtk::prelude::{
+    BoxExt, ButtonExt, FlowBoxChildExt, OrientableExt, RangeExt, ScaleExt, WidgetExt,
+};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Poll cadence while the panel is open.
 const POLL: Duration = Duration::from_secs(2);
 /// Trailing debounce on the temperature slider so a drag lands one
 /// `preview`, not one per pixel.
 const TEMP_DEBOUNCE_MS: u64 = 120;
+/// After a user action (mode / toggle), ignore poll results this long
+/// so the optimistic UI isn't clobbered by an in-flight stale read
+/// before margo has applied the change + refreshed state.json.
+const SETTLE: Duration = Duration::from_millis(1200);
 
 pub(crate) struct TwilightMenuWidgetModel {
     status: TwilightStatus,
     temp_debounce: Option<glib::JoinHandle<()>>,
+    /// Polls landing before this instant are dropped (settle window).
+    settle_until: Instant,
 }
 
 #[derive(Debug)]
@@ -38,6 +46,8 @@ pub(crate) enum TwilightMenuWidgetInput {
     TempCommit(u32),
     /// Drop any preview/test override and resume the schedule.
     Reset,
+    /// Apply a schedule preset's look immediately (live preview).
+    ApplyPreset { temp: u32, gamma: u32 },
 }
 
 #[derive(Debug)]
@@ -168,6 +178,32 @@ impl Component for TwilightMenuWidgetModel {
                 },
             },
 
+            // Schedule presets — populated imperatively in `init` (a
+            // chip per preset that previews its temperature/gamma).
+            // Hidden when there are no presets on disk.
+            #[name = "presets_section"]
+            gtk::Box {
+                set_orientation: gtk::Orientation::Vertical,
+                set_spacing: 6,
+                set_visible: false,
+
+                gtk::Label {
+                    add_css_class: "twilight-section-label",
+                    set_halign: gtk::Align::Start,
+                    set_label: "Presets",
+                },
+                #[name = "presets_grid"]
+                gtk::FlowBox {
+                    add_css_class: "twilight-preset-grid",
+                    set_selection_mode: gtk::SelectionMode::None,
+                    set_homogeneous: true,
+                    set_min_children_per_line: 3,
+                    set_max_children_per_line: 4,
+                    set_row_spacing: 6,
+                    set_column_spacing: 6,
+                },
+            },
+
             gtk::Button {
                 add_css_class: "ok-button-surface",
                 set_label: "Resume schedule",
@@ -210,8 +246,17 @@ impl Component for TwilightMenuWidgetModel {
         let model = TwilightMenuWidgetModel {
             status: TwilightStatus::default(),
             temp_debounce: None,
+            settle_until: Instant::now(),
         };
         let widgets = view_output!();
+
+        // Fill the preset grid from disk; hide the section if empty.
+        let presets = twilight::load_presets();
+        for p in &presets {
+            widgets.presets_grid.insert(&preset_chip(p, &sender), -1);
+        }
+        widgets.presets_section.set_visible(!presets.is_empty());
+
         ComponentParts { model, widgets }
     }
 
@@ -223,6 +268,7 @@ impl Component for TwilightMenuWidgetModel {
             TwilightMenuWidgetInput::Toggle => {
                 let on = !self.status.enabled;
                 self.status.enabled = on;
+                self.settle_until = Instant::now() + SETTLE;
                 twilight::run(vec![
                     "twilight".into(),
                     "set".into(),
@@ -231,6 +277,7 @@ impl Component for TwilightMenuWidgetModel {
             }
             TwilightMenuWidgetInput::SetMode(mode) => {
                 self.status.mode = mode.to_string();
+                self.settle_until = Instant::now() + SETTLE;
                 twilight::run(vec!["twilight".into(), "set".into(), format!("mode={mode}")]);
             }
             TwilightMenuWidgetInput::TempChanged(k) => {
@@ -250,6 +297,19 @@ impl Component for TwilightMenuWidgetModel {
             TwilightMenuWidgetInput::Reset => {
                 twilight::run(vec!["twilight".into(), "reset".into()]);
             }
+            TwilightMenuWidgetInput::ApplyPreset { temp, gamma } => {
+                // Live-preview the preset's look. Optimistically reflect
+                // the temperature so the readout updates immediately.
+                self.status.current_temp_k = Some(temp);
+                self.status.current_gamma_pct = Some(gamma);
+                self.settle_until = Instant::now() + SETTLE;
+                twilight::run(vec![
+                    "twilight".into(),
+                    "preview".into(),
+                    temp.to_string(),
+                    gamma.to_string(),
+                ]);
+            }
         }
     }
 
@@ -261,10 +321,36 @@ impl Component for TwilightMenuWidgetModel {
     ) {
         match message {
             TwilightMenuWidgetCommandOutput::Polled(s) => {
-                sender.input(TwilightMenuWidgetInput::Refresh(s));
+                // Drop polls that land inside the settle window so an
+                // in-flight stale read can't revert a just-made change.
+                if Instant::now() >= self.settle_until {
+                    sender.input(TwilightMenuWidgetInput::Refresh(s));
+                }
             }
         }
     }
+}
+
+/// One preset chip — previews the preset's temperature/gamma on click.
+fn preset_chip(
+    p: &twilight::Preset,
+    sender: &ComponentSender<TwilightMenuWidgetModel>,
+) -> gtk::FlowBoxChild {
+    let btn = gtk::Button::with_label(&p.name);
+    btn.add_css_class("twilight-preset-chip");
+    btn.set_hexpand(true);
+    btn.set_tooltip_text(Some(&format!("{} K · {}%", p.temp_k, p.gamma_pct)));
+    {
+        let sender = sender.clone();
+        let (temp, gamma) = (p.temp_k, p.gamma_pct);
+        btn.connect_clicked(move |_| {
+            sender.input(TwilightMenuWidgetInput::ApplyPreset { temp, gamma });
+        });
+    }
+    let child = gtk::FlowBoxChild::new();
+    child.set_child(Some(&btn));
+    child.set_focusable(false);
+    child
 }
 
 /// CSS classes for a mode button — `selected` when it's the active mode.
