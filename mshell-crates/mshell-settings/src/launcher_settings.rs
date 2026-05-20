@@ -215,7 +215,7 @@ impl Component for LauncherSettingsModel {
                     gtk::Label { set_label: "History size", set_hexpand: true, set_halign: gtk::Align::Start },
                     #[name = "cb_max"]
                     gtk::SpinButton {
-                        set_adjustment: &gtk::Adjustment::new(100.0, 5.0, 1000.0, 5.0, 25.0, 0.0),
+                        set_adjustment: &gtk::Adjustment::new(100.0, 5.0, 10000.0, 5.0, 100.0, 0.0),
                         set_digits: 0,
                         connect_value_changed[sender] => move |s| {
                             sender.input(LauncherSettingsInput::SetClipboardMaxEntries(s.value() as i32));

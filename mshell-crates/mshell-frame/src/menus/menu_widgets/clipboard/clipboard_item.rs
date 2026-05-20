@@ -32,59 +32,54 @@ impl Component for ClipboardItemModel {
     view! {
         #[root]
         gtk::Overlay {
-            // Pin / favourite toggle — top-left corner. Pinned
-            // entries are exempt from eviction + auto-clear and
-            // persist to disk; the icon reflects the current state.
-            add_overlay = &gtk::Button {
-                // `.pinned` flips the chrome to the accent so a
-                // favourite reads at a glance vs the dim outline of
-                // an unpinned item (item is rebuilt on each refresh,
-                // so the init state is always current).
-                set_css_classes: if model.entry.pinned {
-                    &["ok-button-surface", "clipboard-pin-button", "pinned"]
-                } else {
-                    &["ok-button-surface", "clipboard-pin-button"]
-                },
-                set_halign: gtk::Align::Start,
-                set_valign: gtk::Align::Start,
-                set_hexpand: false,
-                set_vexpand: false,
-                set_margin_all: 8,
-                connect_clicked[sender] => move |_| {
-                    sender.input(ClipboardItemInput::TogglePin);
-                },
-
-                #[name="pin_image"]
-                gtk::Image {
-                    set_halign: gtk::Align::Center,
-                    set_valign: gtk::Align::Center,
-                    set_icon_name: Some(if model.entry.pinned {
-                        "starred-symbolic"
-                    } else {
-                        "non-starred-symbolic"
-                    }),
-                },
-            },
-
-            add_overlay = &gtk::Button {
-                add_css_class: "ok-button-surface",
-                add_css_class: "clipboard-trash-button",
+            // Action cluster — top-right, grouped so neither button
+            // sits over the `#id` title (top-left). Pin first, then
+            // trash. `.pinned` flips the pin chrome to the accent so
+            // a favourite reads at a glance vs a dim outline star
+            // (item is rebuilt on each refresh — init state is
+            // always current).
+            add_overlay = &gtk::Box {
+                set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 6,
                 set_halign: gtk::Align::End,
                 set_valign: gtk::Align::Start,
-                set_hexpand: false,
-                set_vexpand: false,
                 set_margin_all: 8,
-                connect_clicked[sender] => move |_| {
-                    sender.input(ClipboardItemInput::DeleteEntry);
+
+                gtk::Button {
+                    set_css_classes: if model.entry.pinned {
+                        &["ok-button-surface", "clipboard-pin-button", "pinned"]
+                    } else {
+                        &["ok-button-surface", "clipboard-pin-button"]
+                    },
+                    connect_clicked[sender] => move |_| {
+                        sender.input(ClipboardItemInput::TogglePin);
+                    },
+
+                    #[name="pin_image"]
+                    gtk::Image {
+                        set_halign: gtk::Align::Center,
+                        set_valign: gtk::Align::Center,
+                        set_icon_name: Some(if model.entry.pinned {
+                            "starred-symbolic"
+                        } else {
+                            "non-starred-symbolic"
+                        }),
+                    },
                 },
 
-                #[name="image"]
-                gtk::Image {
-                    set_hexpand: true,
-                    set_vexpand: true,
-                    set_halign: gtk::Align::Center,
-                    set_valign: gtk::Align::Center,
-                    set_icon_name: Some("trash-symbolic"),
+                gtk::Button {
+                    add_css_class: "ok-button-surface",
+                    add_css_class: "clipboard-trash-button",
+                    connect_clicked[sender] => move |_| {
+                        sender.input(ClipboardItemInput::DeleteEntry);
+                    },
+
+                    #[name="image"]
+                    gtk::Image {
+                        set_halign: gtk::Align::Center,
+                        set_valign: gtk::Align::Center,
+                        set_icon_name: Some("trash-symbolic"),
+                    },
                 },
             },
 
