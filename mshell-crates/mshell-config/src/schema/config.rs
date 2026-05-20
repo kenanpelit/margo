@@ -356,12 +356,22 @@ pub struct SystemUpdateBarWidget {
     /// 180 (= 3 h). The pill also supports right-click → immediate
     /// manual refresh for when this cadence is too lazy.
     pub check_interval_minutes: u32,
+    /// Count official-repo updates (pacman `checkupdates`, or the
+    /// distro fallback). Toggle in Settings → System Updates.
+    pub check_repo: bool,
+    /// Count AUR updates via an AUR helper (`paru -Qua` / `yay -Qua`).
+    pub check_aur: bool,
+    /// Count Flatpak updates (`flatpak remote-ls --updates`).
+    pub check_flatpak: bool,
 }
 
 impl Default for SystemUpdateBarWidget {
     fn default() -> Self {
         Self {
             check_interval_minutes: 180,
+            check_repo: true,
+            check_aur: true,
+            check_flatpak: true,
         }
     }
 }
