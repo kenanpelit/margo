@@ -278,9 +278,12 @@
   // chip styles below keep working.)
 }
 
+// Reference info, not a focal point — same treatment as the
+// clipboard hint strip: no filled chip, no bright keycap. The chip
+// is now just a layout container so the key + caption stay grouped
+// and the strip's fixed-width slotting still works.
 .app-launcher-bind-chip {
-  background-color: var(--surface-container);
-  border-radius: 999px;
+  background-color: transparent;
   // Compromise padding: tight enough so the launcher can narrow
   // past ~720 px (pre-tighten floor), loose enough so chips
   // breathe at the user's preferred panel widths around 620 px.
@@ -293,28 +296,27 @@
   min-height: 0;
 }
 
-// The keycap. Slightly darker bg + bold mono font so it visually
-// reads as a key chip, not a regular label.
+// The keycap. Flat + dim like the rest of the footer — the mono
+// font + bold weight are enough to read it as a key without a
+// filled background that would make the strip shout.
 .app-launcher-bind-key {
-  background-color: var(--surface-container-high);
-  color: var(--on-surface);
-  border-radius: 6px;
+  background-color: transparent;
+  color: var(--outline);
   // Compromise padding: middle ground between the original 6 px
   // (~720 floor) and the aggressive 4 px (~590 floor). 5 px lands
   // near ~620 — visually balanced and still leaves headroom for
   // the Settings spinner.
-  padding: 1px 5px;
+  padding: 1px 5px 1px 1px;
   font-family: monospace;
   font-size: 0.72em;
   font-weight: 700;
 }
 
-// Plain caption that follows the keycap. Lower-contrast so the
-// row reads as "press [KEY] to <action>" rather than two equal
-// halves.
+// Caption that follows the keycap. Same dim --outline token as the
+// keycap and the clipboard hint, so the whole footer recedes as one
+// quiet band rather than competing with the result list.
 .app-launcher-bind-label {
-  color: var(--on-surface-variant);
-  opacity: 0.85;
+  color: var(--outline);
   font-size: 0.78em;
   // Compromise padding between original (8 px → ~720 floor) and
   // aggressive (4 px → ~590). 5 px keeps the label visually
