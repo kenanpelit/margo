@@ -1,34 +1,39 @@
 // MargoTag — one pill per tag in the bar's workspace row.
 //
-// Two orthogonal visual axes, one CSS class each:
-//   .tag-active       → filled accent capsule  (you are here)
+// Material-3 "active indicator" idiom: the focused tag is a fully
+// rounded filled --primary capsule; occupancy is a small dot
+// centred *beneath* the digit. Two orthogonal CSS classes:
+//   .tag-active       → filled --primary capsule  (you are here)
 //   .tag-has-windows  → the occupancy dot lights up (has content)
 // They compose: an active tag with windows shows both.
 //
-//   inactive empty     3       dim digit, dot hidden
-//   inactive occupied  ●3      full digit + accent dot
-//   active   empty     [ 4 ]   accent capsule
-//   active   occupied  [ ●4 ]  accent capsule + dot
+//   inactive empty     1     dim digit, dot hidden
+//   inactive occupied  2     full digit + accent dot beneath
+//                      •
+//   active   empty    (4)    accent capsule
+//   active   occupied (3)    accent capsule + on-primary dot
+//                      •
 //
-// The dot always occupies layout space (opacity, not visibility)
-// so every pill keeps a constant width and the row reads as a
-// stable grid — no reflow when windows open or focus moves.
-// State changes cross-fade (160 ms) so focus switches feel like
-// a native compositor component, not a repaint.
+// The dot always occupies its 4px of vertical space (opacity, not
+// visibility) so the digit never shifts and the row reads as a
+// stable grid. State changes cross-fade (--motion-medium) so focus
+// switches feel like a native compositor component, not a repaint.
 
-// `min-width` / `min-height` live on the *base* `.margo-tag`
-// rule, NOT a `.bar-top .margo-tag` descendant selector: relm4
-// builds the pill in `view_output!()` *before* it's parented
-// under the bar, so a descendant selector wouldn't match yet and
-// `all: unset` would leave the button at a 0×0 request — the
-// enclosing GtkRevealer then animates open to nothing and the
-// tag never appears until some later re-render. A single-class
-// rule always matches, so the pill has a real size from frame 1.
+// `min-width` / `min-height` live on the *base* `.margo-tag` rule,
+// NOT a `.bar-top .margo-tag` descendant selector: relm4 builds the
+// pill in `view_output!()` *before* it's parented under the bar, so
+// a descendant selector wouldn't match yet and `all: unset` would
+// leave the button at a 0×0 request — the enclosing GtkRevealer then
+// animates open to nothing and the tag never appears until some
+// later re-render. A single-class rule always matches, so the pill
+// has a real size from frame 1.
 .margo-tag {
   all: unset;
-  min-width: 22px;
-  min-height: 24px;
-  border-radius: var(--radius-widget);
+  min-width: 24px;
+  min-height: 26px;
+  // A selectable chip → pick the pill token from the shape scale,
+  // not the config-driven --radius-widget (DESIGN.md §1).
+  border-radius: var(--radius-pill);
   margin: 0 1px;
   // Focus switch = selection change → --motion-medium (DESIGN.md
   // §Motion "selection / focus glow").
@@ -37,25 +42,29 @@
     color var(--motion-medium) var(--ease-standard);
 
   > * {
-    padding: 2px 7px;
+    padding: 2px 8px;
   }
 }
 
-// Vertical bars want a wider, shorter pill.
+// Vertical bars want a wider pill.
 .bar-left  .margo-tag,
 .bar-right .margo-tag {
   min-width: 30px;
-  min-height: 22px;
+  min-height: 26px;
 }
 
 // ── Inner glyphs ────────────────────────────────────────────
+// Occupancy dot: a 4px circle centred beneath the digit. Hidden
+// (opacity 0) until `.tag-has-windows`; always holds its space so
+// the digit never shifts.
 .margo-tag-dot {
-  font-size: 0.5em;
-  margin-right: 3px;
-  color: var(--primary);
+  min-width: 4px;
+  min-height: 4px;
+  border-radius: var(--radius-pill);
+  background-color: var(--primary);
   opacity: 0;                 // hidden until .tag-has-windows
   transition: opacity var(--motion-medium) var(--ease-standard),
-              color var(--motion-medium) var(--ease-standard);
+              background-color var(--motion-medium) var(--ease-standard);
 }
 .margo-tag-label {
   font-size: 0.8em;
@@ -96,9 +105,9 @@
   font-weight: 700;
   opacity: 1;
 }
-// Dot inside the capsule: on-primary tint. Opacity is still
-// driven by `.tag-has-windows` above, so an active-but-empty tag
-// keeps the dot hidden.
+// Dot inside the capsule: on-primary tint. Opacity is still driven
+// by `.tag-has-windows` above, so an active-but-empty tag keeps the
+// dot hidden.
 .margo-tag.tag-active .margo-tag-dot {
-  color: var(--on-primary);
+  background-color: var(--on-primary);
 }

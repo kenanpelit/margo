@@ -1,7 +1,8 @@
 //! Per-tag pill button for the bar's MargoTags row.
 //!
-//! Each pill is a `gtk::Button` rendering an occupancy dot + the
-//! tag's 1-indexed number ("1".."9"). State is conveyed on two
+//! Each pill is a `gtk::Button` rendering the tag's 1-indexed
+//! number ("1".."9") with an occupancy dot centred beneath it.
+//! State is conveyed on two
 //! **orthogonal** CSS axes, one class each — so they compose
 //! cleanly instead of fighting for the same visual language:
 //!
@@ -15,8 +16,8 @@
 //!                          both the capsule and the dot.
 //!
 //! A tag with neither class is empty + unfocused: dim digit, no
-//! dot. The dot always occupies layout space (the SCSS toggles
-//! opacity, not visibility) so every pill keeps a constant width
+//! dot. The dot always occupies its layout space (the SCSS
+//! toggles opacity, not visibility) so the digit never shifts
 //! and the row reads as a stable grid.
 //!
 //! Window-count and active-state are both reactive: per-tag
@@ -61,11 +62,12 @@ impl Component for MargoTagModel {
     type Output = MargoTagOutput;
     type Init = Arc<Workspace>;
 
-    // Single-row pill: occupancy dot + tag digit, side by side.
-    // All visual state lives in `_margo_tag.scss`, keyed off the
-    // `.tag-active` / `.tag-has-windows` classes computed by
-    // `tag_classes`. The dot label is a static glyph — the SCSS
-    // fades it in/out, so nothing here needs to react to it.
+    // Material active-indicator pill: the tag digit with an
+    // occupancy dot centred beneath it. All visual state lives in
+    // `_margo_tag.scss`, keyed off the `.tag-active` /
+    // `.tag-has-windows` classes computed by `tag_classes`. The dot
+    // is a plain box the SCSS fades in/out, so nothing here needs to
+    // react to it.
     view! {
         #[root]
         gtk::Box {
@@ -83,19 +85,24 @@ impl Component for MargoTagModel {
                 },
 
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 0,
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 2,
                     set_halign: gtk::Align::Center,
                     set_valign: gtk::Align::Center,
 
                     gtk::Label {
-                        add_css_class: "margo-tag-dot",
-                        set_label: "\u{25cf}",
-                    },
-
-                    gtk::Label {
                         add_css_class: "margo-tag-label",
                         set_label: &model.workspace.id.get().to_string(),
+                    },
+
+                    // Occupancy dot — a small box centred under the
+                    // digit. SCSS toggles its opacity on
+                    // `.tag-has-windows`; it always holds its 4px of
+                    // vertical space so the digit never shifts.
+                    gtk::Box {
+                        add_css_class: "margo-tag-dot",
+                        set_halign: gtk::Align::Center,
+                        set_valign: gtk::Align::Center,
                     },
                 },
             }
