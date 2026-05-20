@@ -472,8 +472,11 @@ impl Default for Menus {
             clipboard_menu: Menu {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::Clipboard],
-                minimum_width: 410,
-                maximum_height: 0,
+                // Sized for the tabbed ListBox layout: ~460 px wide
+                // reads text previews comfortably; a 640 px cap keeps
+                // the panel from running the full screen height.
+                minimum_width: 460,
+                maximum_height: 640,
             },
             quick_settings_menu: Menu {
                 position: Position::TopLeft,

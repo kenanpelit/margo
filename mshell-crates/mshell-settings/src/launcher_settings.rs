@@ -9,38 +9,11 @@
 //! Layout follows the Apple-style hero + section-heading pattern
 //! the rest of Settings already uses (idle / theme / wallpaper).
 
-use mshell_config::config_manager::config_manager;
-use mshell_config::schema::clipboard::{ClipboardClearPolicy, ClipboardPersist};
 use mshell_launcher::providers::ScriptsProvider;
 use mshell_launcher::{frecency, history};
-use reactive_graph::traits::GetUntracked;
 use relm4::gtk::glib;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
-
-/// Read the current clipboard config and push it to the running
-/// watcher (live max-entries / persist / clear-policy / sensitive /
-/// image-history change). Called after each settings mutation.
-fn apply_clipboard_config() {
-    use mshell_clipboard::{ClearPolicy, ClipboardSettings, PersistMode};
-    let c = config_manager().config().get_untracked().clipboard;
-    mshell_clipboard::clipboard_service().apply_settings(ClipboardSettings {
-        max_entries: c.max_entries.max(1),
-        persist: match c.persist {
-            ClipboardPersist::None => PersistMode::None,
-            ClipboardPersist::FavoritesOnly => PersistMode::FavoritesOnly,
-            ClipboardPersist::All => PersistMode::All,
-        },
-        clear_policy: match c.clear_policy {
-            ClipboardClearPolicy::Never => ClearPolicy::Never,
-            ClipboardClearPolicy::AfterHours => ClearPolicy::AfterHours,
-            ClipboardClearPolicy::OnLogout => ClearPolicy::OnLogout,
-        },
-        clear_after_hours: c.clear_after_hours,
-        skip_sensitive: c.skip_sensitive,
-        image_history: c.image_history,
-    });
-}
 
 #[derive(Debug)]
 pub(crate) struct LauncherSettingsModel {
@@ -62,17 +35,8 @@ pub(crate) enum LauncherSettingsInput {
     /// `mshell_clipboard::clipboard_service()`. Effect is
     /// immediate — no file to remove.
     ClearClipboard,
-    /// Clear everything except pinned (favourite) clipboard entries.
-    ClearClipboardUnpinned,
     /// Re-scan PATH to refresh the indexed-scripts display.
     RefreshScripts,
-    // ── Clipboard behaviour knobs (write config + live-apply) ──
-    SetClipboardMaxEntries(i32),
-    SetClipboardPersist(u32),
-    SetClipboardClearPolicy(u32),
-    SetClipboardClearHours(i32),
-    SetClipboardSkipSensitive(bool),
-    SetClipboardImageHistory(bool),
 }
 
 #[derive(Debug)]
@@ -192,117 +156,6 @@ impl Component for LauncherSettingsModel {
                 // Cache ────────────────────────────────────────
                 gtk::Label {
                     add_css_class: "label-large-bold",
-                    set_label: "Clipboard history",
-                    set_halign: gtk::Align::Start,
-                    set_margin_top: 12,
-                },
-
-                gtk::Label {
-                    add_css_class: "label-small",
-                    set_label: "Tracks every copy from any app via the \
-                                Wayland clipboard. Pinned (★) entries are \
-                                exempt from eviction + auto-clear and \
-                                persist regardless of the persist mode.",
-                    set_halign: gtk::Align::Start,
-                    set_xalign: 0.0,
-                    set_wrap: true,
-                    set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 12,
-                    gtk::Label { set_label: "History size", set_hexpand: true, set_halign: gtk::Align::Start },
-                    #[name = "cb_max"]
-                    gtk::SpinButton {
-                        set_adjustment: &gtk::Adjustment::new(100.0, 5.0, 10000.0, 5.0, 100.0, 0.0),
-                        set_digits: 0,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(LauncherSettingsInput::SetClipboardMaxEntries(s.value() as i32));
-                        },
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 12,
-                    gtk::Label { set_label: "Persist to disk", set_hexpand: true, set_halign: gtk::Align::Start },
-                    #[name = "cb_persist"]
-                    gtk::DropDown {
-                        connect_selected_notify[sender] => move |d| {
-                            sender.input(LauncherSettingsInput::SetClipboardPersist(d.selected()));
-                        },
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 12,
-                    gtk::Label { set_label: "Auto-clear", set_hexpand: true, set_halign: gtk::Align::Start },
-                    #[name = "cb_clear"]
-                    gtk::DropDown {
-                        connect_selected_notify[sender] => move |d| {
-                            sender.input(LauncherSettingsInput::SetClipboardClearPolicy(d.selected()));
-                        },
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 12,
-                    gtk::Label { set_label: "Clear after (hours)", set_hexpand: true, set_halign: gtk::Align::Start },
-                    #[name = "cb_hours"]
-                    gtk::SpinButton {
-                        set_adjustment: &gtk::Adjustment::new(24.0, 1.0, 720.0, 1.0, 6.0, 0.0),
-                        set_digits: 0,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(LauncherSettingsInput::SetClipboardClearHours(s.value() as i32));
-                        },
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 12,
-                    gtk::Label { set_label: "Skip password-manager copies", set_hexpand: true, set_halign: gtk::Align::Start },
-                    #[name = "cb_sensitive"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        connect_state_set[sender] => move |_, state| {
-                            sender.input(LauncherSettingsInput::SetClipboardSkipSensitive(state));
-                            glib::Propagation::Proceed
-                        },
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 12,
-                    gtk::Label { set_label: "Keep image copies", set_hexpand: true, set_halign: gtk::Align::Start },
-                    #[name = "cb_images"]
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        connect_state_set[sender] => move |_, state| {
-                            sender.input(LauncherSettingsInput::SetClipboardImageHistory(state));
-                            glib::Propagation::Proceed
-                        },
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 12,
-                    gtk::Button {
-                        add_css_class: "ok-button-surface",
-                        set_label: "Clear unpinned",
-                        connect_clicked[sender] => move |_| {
-                            sender.input(LauncherSettingsInput::ClearClipboardUnpinned);
-                        },
-                    },
-                },
-
-                gtk::Label {
-                    add_css_class: "label-large-bold",
                     set_label: "Cache",
                     set_halign: gtk::Align::Start,
                     set_margin_top: 12,
@@ -387,21 +240,6 @@ impl Component for LauncherSettingsModel {
 
         rebuild_scripts_box(&widgets.scripts_box, &model.indexed_scripts);
 
-        // Prime the clipboard controls from config.
-        let cb = config_manager().config().get_untracked().clipboard;
-        widgets.cb_persist.set_model(Some(&gtk::StringList::new(
-            &ClipboardPersist::display_names(),
-        )));
-        widgets.cb_persist.set_selected(cb.persist.to_index());
-        widgets.cb_clear.set_model(Some(&gtk::StringList::new(
-            &ClipboardClearPolicy::display_names(),
-        )));
-        widgets.cb_clear.set_selected(cb.clear_policy.to_index());
-        widgets.cb_max.set_value(cb.max_entries as f64);
-        widgets.cb_hours.set_value(cb.clear_after_hours as f64);
-        widgets.cb_sensitive.set_active(cb.skip_sensitive);
-        widgets.cb_images.set_active(cb.image_history);
-
         let _ = root;
         ComponentParts { model, widgets }
     }
@@ -440,40 +278,6 @@ impl Component for LauncherSettingsModel {
                     "Clipboard cleared",
                     "All entries removed.",
                 );
-            }
-            LauncherSettingsInput::ClearClipboardUnpinned => {
-                mshell_clipboard::clipboard_service().clear_unpinned();
-                mshell_launcher::notify::toast(
-                    "Clipboard cleared",
-                    "Unpinned entries removed; favorites kept.",
-                );
-            }
-            LauncherSettingsInput::SetClipboardMaxEntries(v) => {
-                config_manager().update_config(|c| c.clipboard.max_entries = v.max(1) as usize);
-                apply_clipboard_config();
-            }
-            LauncherSettingsInput::SetClipboardPersist(i) => {
-                config_manager()
-                    .update_config(|c| c.clipboard.persist = ClipboardPersist::from_index(i));
-                apply_clipboard_config();
-            }
-            LauncherSettingsInput::SetClipboardClearPolicy(i) => {
-                config_manager().update_config(|c| {
-                    c.clipboard.clear_policy = ClipboardClearPolicy::from_index(i)
-                });
-                apply_clipboard_config();
-            }
-            LauncherSettingsInput::SetClipboardClearHours(v) => {
-                config_manager().update_config(|c| c.clipboard.clear_after_hours = v.max(1) as u32);
-                apply_clipboard_config();
-            }
-            LauncherSettingsInput::SetClipboardSkipSensitive(on) => {
-                config_manager().update_config(|c| c.clipboard.skip_sensitive = on);
-                apply_clipboard_config();
-            }
-            LauncherSettingsInput::SetClipboardImageHistory(on) => {
-                config_manager().update_config(|c| c.clipboard.image_history = on);
-                apply_clipboard_config();
             }
             LauncherSettingsInput::RefreshScripts => {
                 self.indexed_scripts = rebuild_indexed_scripts();

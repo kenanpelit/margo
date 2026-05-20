@@ -667,11 +667,13 @@ impl Component for SettingsWindowModel {
             },
             Notifications,
             Session,
+            Clipboard,
         }
 
         impl WidgetEntry {
             fn label(&self) -> &'static str {
                 match self {
+                    Self::Clipboard => "Clipboard",
                     Self::Menu { label, .. } | Self::Pill { label, .. } => label,
                     Self::Notifications => "Notifications",
                     Self::Session => "Session",
@@ -682,7 +684,10 @@ impl Component for SettingsWindowModel {
         let mut entries: Vec<WidgetEntry> = vec![
             // Menu surfaces (own their own widget_menu_settings page).
             WidgetEntry::Menu { kind: MenuKind::AppLauncher, stack_name: "app_launcher", label: "App Launcher", icon: "view-grid-symbolic" },
-            WidgetEntry::Menu { kind: MenuKind::Clipboard, stack_name: "clipboard", label: "Clipboard", icon: "edit-paste-symbolic" },
+            // Clipboard owns a richer page (menu size + history
+            // behaviour), so it's a dedicated entry rather than the
+            // generic per-menu settings.
+            WidgetEntry::Clipboard,
             WidgetEntry::Menu { kind: MenuKind::Clock, stack_name: "clock", label: "Clock", icon: "alarm-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::Dashboard, stack_name: "dashboard", label: "Dashboard", icon: "view-grid-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::Ndns, stack_name: "ndns", label: "DNS / VPN", icon: "network-vpn-symbolic" },
@@ -786,6 +791,23 @@ impl Component for SettingsWindowModel {
                         model.session_settings_controller.widget(),
                         Some("session"),
                     );
+                }
+                WidgetEntry::Clipboard => {
+                    let btn = make_sub_btn(
+                        "Clipboard",
+                        "edit-paste-symbolic",
+                        "clipboard",
+                        group_anchor.as_ref(),
+                    );
+                    if group_anchor.is_none() {
+                        group_anchor = Some(btn.clone());
+                    }
+                    widgets_sub_sidebar_box.append(&btn);
+                    let ctrl = crate::clipboard_settings::ClipboardSettingsModel::builder()
+                        .launch(crate::clipboard_settings::ClipboardSettingsInit {})
+                        .detach();
+                    widgets_sub_stack.add_named(ctrl.widget(), Some("clipboard"));
+                    Box::leak(Box::new(ctrl));
                 }
             }
         }

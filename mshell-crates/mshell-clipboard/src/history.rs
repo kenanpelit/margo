@@ -74,19 +74,11 @@ impl ClipboardHistory {
 
     pub fn entries(&self) -> Vec<ClipboardEntry> {
         let inner = self.inner.lock().unwrap();
-        // Pinned first (recency order within each group), then the
-        // rolling history. The UI reads this order top-to-bottom.
-        let mut pinned: Vec<ClipboardEntry> = Vec::new();
-        let mut rest: Vec<ClipboardEntry> = Vec::new();
-        for e in inner.entries.iter() {
-            if e.pinned {
-                pinned.push(e.clone());
-            } else {
-                rest.push(e.clone());
-            }
-        }
-        pinned.extend(rest);
-        pinned
+        // Plain recency order (newest first). Pinned entries keep
+        // their natural position — they're marked with a star, not
+        // hoisted to the top; the Favorites tab is where they're
+        // shown in isolation.
+        inner.entries.iter().cloned().collect()
     }
 
     pub fn get(&self, id: u64) -> Option<ClipboardEntry> {

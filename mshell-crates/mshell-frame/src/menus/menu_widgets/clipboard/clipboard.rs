@@ -294,14 +294,14 @@ impl Component for ClipboardModel {
 impl ClipboardModel {
     /// Rebuild the ListBox rows from the (filtered) history.
     fn rebuild_rows(&mut self) {
-        // All = unpinned only; Favorites = pinned only. Favourites
-        // live solely under their own tab so the All view stays the
-        // rolling history without the pinned ones doubling up.
+        // All = the full rolling history in recency order (pinned
+        // entries appear in their natural position, marked with a
+        // star). Favorites = pinned only.
         let items: Vec<ClipboardEntry> = self
             .history
             .entries()
             .into_iter()
-            .filter(|e| e.pinned == self.show_pinned_only)
+            .filter(|e| !self.show_pinned_only || e.pinned)
             .collect();
 
         // Tear down old rows.
