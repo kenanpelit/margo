@@ -8,3 +8,51 @@
   padding: 16px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
 }
+
+// Per-app icon in the header — sits left of the app name, dimmed
+// like the rest of the header metadata.
+.notification-app-icon {
+  -gtk-icon-size: 16px;
+  color: var(--on-surface-variant);
+  opacity: 0.9;
+}
+
+// Body image / album-art thumbnail. Card-shaped (--radius-sm) so a
+// square cover reads as a tile, not a raw rectangle.
+.notification-image {
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-container-highest);
+}
+
+// The body row carries the default action: show a pointer + a calm
+// primary state-layer on hover so it reads as "click to open"
+// (DESIGN.md §7), eased on the motion tokens.
+.notification-clickable {
+  border-radius: var(--radius-sm);
+  margin: -4px;
+  padding: 4px;
+  transition: background-color var(--motion-fast) var(--ease-standard);
+
+  &:hover {
+    background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
+  }
+}
+
+// Detected 2FA / OTP code → one-click copy chip. Soft accent card so
+// it invites the click without shouting.
+.notification-code-copy {
+  all: unset;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background-color: var(--secondary-container, var(--surface-container-highest));
+  color: var(--on-secondary-container, var(--on-surface));
+  font-variant-numeric: tabular-nums;
+  transition: background-color var(--motion-fast) var(--ease-standard);
+
+  image {
+    -gtk-icon-size: 14px;
+  }
+  &:hover {
+    background-color: unquote("color-mix(in srgb, var(--primary) 22%, var(--secondary-container, var(--surface-container-highest)))");
+  }
+}

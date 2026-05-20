@@ -19,6 +19,11 @@ static TIME_FORMAT_12: once_cell::sync::Lazy<Vec<time::format_description::Forma
         parse("[hour repr:12 padding:zero]:[minute padding:zero] [period case:lower]").unwrap()
     });
 
+/// Pixel size for the body image / album-art thumbnail.
+const BODY_IMAGE_SIZE: i32 = 72;
+/// Pixel size for the per-app icon in the header.
+const APP_ICON_SIZE: i32 = 16;
+
 #[derive(Debug, Clone)]
 pub struct NotificationModel {
     notification: Arc<Notification>,
@@ -59,8 +64,12 @@ impl Component for NotificationModel {
             set_hexpand: true,
             set_spacing: 8,
 
+            #[name = "header"]
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 6,
+                // The per-app icon is prepended here in init() when the
+                // notification carries an `app_icon`.
 
                 gtk::Label {
                     add_css_class: "label-small-bold-variant",
@@ -94,24 +103,45 @@ impl Component for NotificationModel {
                 },
             },
 
-            gtk::Label {
-                add_css_class: "label-medium-bold",
-                set_label: model.notification.summary.get().as_str(),
-                set_xalign: 0.0,
-                set_wrap: true,
-                set_wrap_mode: pango::WrapMode::WordChar,
-                set_width_chars: 20,
-                set_max_width_chars: 40,
+            // Body row: optional left thumbnail (album art / image hint,
+            // prepended in init) + the text column. Clicking this row
+            // invokes the default action when the notification has one.
+            #[name = "content"]
+            gtk::Box {
+                set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 10,
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 4,
+                    set_hexpand: true,
+
+                    gtk::Label {
+                        add_css_class: "label-medium-bold",
+                        set_label: model.notification.summary.get().as_str(),
+                        set_xalign: 0.0,
+                        set_wrap: true,
+                        set_wrap_mode: pango::WrapMode::WordChar,
+                        set_width_chars: 20,
+                        set_max_width_chars: 40,
+                    },
+
+                    #[name = "body_label"]
+                    gtk::Label {
+                        add_css_class: "label-small",
+                        set_xalign: 0.0,
+                        set_wrap: true,
+                        set_wrap_mode: pango::WrapMode::WordChar,
+                        set_width_chars: 20,
+                        set_max_width_chars: 40,
+                    },
+                },
             },
 
-            gtk::Label {
-                add_css_class: "label-small",
-                set_label: model.notification.body.get().unwrap_or("".to_string()).as_str(),
-                set_xalign: 0.0,
-                set_wrap: true,
-                set_wrap_mode: pango::WrapMode::WordChar,
-                set_width_chars: 20,
-                set_max_width_chars: 40,
+            // Detected 2FA / OTP code → one-click copy (filled in init).
+            #[name = "code_container"]
+            gtk::Box {
+                set_orientation: gtk::Orientation::Horizontal,
             },
 
             #[name = "actions_container"]
@@ -170,10 +200,111 @@ impl Component for NotificationModel {
 
         let widgets = view_output!();
 
+        // ── Body text: render notification-spec markup when it's valid,
+        // otherwise fall back to the literal string. Apps that don't
+        // escape `&`/`<` would crash a blind set_markup, so validate
+        // through pango first.
+        let body = model.notification.body.get().unwrap_or_default();
+        apply_body_text(&widgets.body_label, &body);
+
+        // ── Per-app icon in the header (icon name or absolute path).
+        if let Some(icon) = model.notification.app_icon.get() {
+            let icon = icon.trim();
+            if !icon.is_empty() {
+                let img = build_image(icon, APP_ICON_SIZE);
+                img.add_css_class("notification-app-icon");
+                widgets.header.prepend(&img);
+            }
+        }
+
+        // ── Body image / album art thumbnail (wayle resolves image-data
+        // hints to a cached file path).
+        if let Some(path) = model.notification.image_path.get() {
+            let path = path.trim();
+            if !path.is_empty() {
+                let img = gtk::Image::from_file(path);
+                img.set_pixel_size(BODY_IMAGE_SIZE);
+                img.set_valign(gtk::Align::Start);
+                img.add_css_class("notification-image");
+                widgets.content.prepend(&img);
+            }
+        }
+
+        // ── Body-row gesture: one GestureDrag drives BOTH
+        //   • tap → invoke the default action (open the app / chat), and
+        //   • horizontal swipe past a threshold → dismiss the toast,
+        // with the opacity fading during the drag for feedback. Scoped
+        // to `content` so the close button + action buttons stay clear.
+        // Unifying into one gesture avoids click-vs-drag conflicts.
+        let default_key = model.notification.default_action.get().map(|a| a.id.clone());
+        if default_key.is_some() {
+            widgets.content.add_css_class("notification-clickable");
+        }
+        let drag = gtk::GestureDrag::new();
+        let root_for_update = root.clone();
+        drag.connect_drag_update(move |_, off_x, _| {
+            let fade = (off_x.abs() / 320.0).min(0.6);
+            root_for_update.set_opacity(1.0 - fade);
+        });
+        let notification = model.notification.clone();
+        let sender_clone = sender.clone();
+        let root_for_end = root.clone();
+        drag.connect_drag_end(move |_, off_x, off_y| {
+            if off_x.abs() > 64.0 && off_x.abs() > off_y.abs() {
+                // Swipe → dismiss.
+                notification.dismiss();
+                let _ = sender_clone.output(NotificationOutput::ActionActivated);
+            } else if off_x.abs() < 8.0 && off_y.abs() < 8.0 {
+                // Tap → default action.
+                root_for_end.set_opacity(1.0);
+                if let Some(key) = default_key.clone() {
+                    let notification = notification.clone();
+                    let sender_clone = sender_clone.clone();
+                    tokio::spawn(async move {
+                        let _ = notification.invoke(&key).await;
+                        let _ = sender_clone.output(NotificationOutput::ActionActivated);
+                    });
+                }
+            } else {
+                // Incomplete drag → snap back.
+                root_for_end.set_opacity(1.0);
+            }
+        });
+        widgets.content.add_controller(drag);
+
+        // ── 2FA / OTP code detection → one-click copy. Scans summary +
+        // body for a 4–8 digit run or a 3-3 grouped code.
+        let haystack = format!("{} {}", model.notification.summary.get(), body);
+        if let Some(code) = detect_code(&haystack) {
+            let btn = gtk::Button::new();
+            btn.add_css_class("notification-code-copy");
+            let content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+            let icon = gtk::Image::from_icon_name("edit-copy-symbolic");
+            let label = gtk::Label::new(Some(&format!("Copy code  {code}")));
+            content.append(&icon);
+            content.append(&label);
+            btn.set_child(Some(&content));
+            let code_for_click = code.clone();
+            btn.connect_clicked(move |b| {
+                b.clipboard().set_text(&code_for_click);
+            });
+            widgets.code_container.append(&btn);
+        }
+
+        // ── Explicit action buttons. With the action-icons capability,
+        // the action id is an icon name rather than a label.
+        let action_icons = model.notification.action_icons.get();
         let actions = &model.notification.actions.get();
         if !actions.is_empty() {
             for action in actions {
-                let btn = gtk::Button::with_label(&action.label);
+                let btn = if action_icons {
+                    let b = gtk::Button::new();
+                    b.set_child(Some(&gtk::Image::from_icon_name(&action.id)));
+                    b.set_tooltip_text(Some(&action.label));
+                    b
+                } else {
+                    gtk::Button::with_label(&action.label)
+                };
                 btn.add_css_class("ok-button-primary");
 
                 let notification = model.notification.clone();
@@ -229,4 +360,76 @@ impl Component for NotificationModel {
 
         self.update_view(widgets, sender);
     }
+}
+
+/// Set a label to notification-spec markup when the body parses as
+/// valid pango markup, else to the raw text. Apps frequently send
+/// unescaped `&`/`<`, which would otherwise be dropped by set_markup.
+fn apply_body_text(label: &gtk::Label, body: &str) {
+    if body.contains('<') && pango::parse_markup(body, '\u{0}').is_ok() {
+        label.set_markup(body);
+    } else {
+        label.set_label(body);
+    }
+}
+
+/// Build a header/app image from either an icon name or a file path.
+fn build_image(icon: &str, pixel_size: i32) -> gtk::Image {
+    let img = if icon.starts_with('/') || icon.starts_with("file://") {
+        let path = icon.strip_prefix("file://").unwrap_or(icon);
+        gtk::Image::from_file(path)
+    } else {
+        gtk::Image::from_icon_name(icon)
+    };
+    img.set_pixel_size(pixel_size);
+    img
+}
+
+/// Detect a 2FA / OTP code in notification text: a standalone run of
+/// 4–8 digits, or a `123-456` / `123 456` grouped code. Returns the
+/// first match (digits only, separators stripped). Hand-rolled to
+/// avoid a regex dependency.
+fn detect_code(text: &str) -> Option<String> {
+    let bytes = text.as_bytes();
+    let n = bytes.len();
+    let mut i = 0;
+    while i < n {
+        if !bytes[i].is_ascii_digit() {
+            i += 1;
+            continue;
+        }
+        // Must start on a token boundary (not mid-number/word).
+        if i > 0 && (bytes[i - 1].is_ascii_digit() || bytes[i - 1].is_ascii_alphabetic()) {
+            while i < n && bytes[i].is_ascii_digit() {
+                i += 1;
+            }
+            continue;
+        }
+        let start = i;
+        while i < n && bytes[i].is_ascii_digit() {
+            i += 1;
+        }
+        let first_len = i - start;
+
+        // `123-456` / `123 456` grouped form.
+        if first_len == 3
+            && i + 4 <= n
+            && (bytes[i] == b'-' || bytes[i] == b' ')
+            && bytes[i + 1..i + 4].iter().all(|b| b.is_ascii_digit())
+            && (i + 4 == n || !bytes[i + 4].is_ascii_digit())
+        {
+            let mut code = String::with_capacity(6);
+            code.push_str(&text[start..start + 3]);
+            code.push_str(&text[i + 1..i + 4]);
+            return Some(code);
+        }
+
+        // Plain 4–8 digit run on a token boundary.
+        if (4..=8).contains(&first_len)
+            && (i == n || !bytes[i].is_ascii_alphabetic())
+        {
+            return Some(text[start..i].to_string());
+        }
+    }
+    None
 }
