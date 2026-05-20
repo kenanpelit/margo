@@ -770,6 +770,25 @@ impl Component for Frame {
             let settings_menu_position = config.menus().settings_menu().position().get();
             let config = menu_config.clone();
             let dashboard_menu_position = config.menus().dashboard_menu().position().get();
+            // These menus are placed by `apply_left_and_right_side_children`
+            // reading their position straight from config (not passed as a
+            // RepositionMenus arg), so subscribe the effect to them here too
+            // — otherwise moving them in Settings doesn't re-fire this effect
+            // and the menu stays put until restart.
+            let config = menu_config.clone();
+            let _ = config.menus().cpu_dashboard_menu().position().get();
+            let config = menu_config.clone();
+            let _ = config.menus().audio_dashboard_menu().position().get();
+            let config = menu_config.clone();
+            let _ = config.menus().bluetooth_menu().position().get();
+            let config = menu_config.clone();
+            let _ = config.menus().system_update_menu().position().get();
+            let config = menu_config.clone();
+            let _ = config.menus().valent_menu().position().get();
+            let config = menu_config.clone();
+            let _ = config.menus().keep_awake_menu().position().get();
+            let config = menu_config.clone();
+            let _ = config.menus().margo_layout_menu().position().get();
             sender_clone.input(FrameInput::RepositionMenus(
                 clock_menu_position,
                 clipboard_menu_position,
