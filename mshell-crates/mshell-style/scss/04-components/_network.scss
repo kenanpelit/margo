@@ -58,25 +58,18 @@
 // shared --font-bar size — figures like "12.3 MB/s" are wide and
 // the monospace face needs the extra breathing room to not push
 // the rest of the bar around as throughput ticks.
+// Each direction's readout carries `.network-rx` (primary) /
+// `.network-tx` (secondary) for colour, and `.idle` to dim when
+// that direction is quiet — so ↓ and ↑ read apart at a glance and
+// the live one pops.
 .network-speed-label {
   font-family: monospace;
   font-variant-numeric: tabular-nums;
-  font-size: calc(var(--font-bar) * 0.9);
-}
-.network-bar-widget.online .network-speed-label {
-  color: var(--on-surface);
-}
-.network-bar-widget.offline .network-speed-label {
-  color: var(--on-surface-variant);
-  opacity: 0.7;
-}
-
-// MB/s+ throughput → matugen accent. Overrides the base
-// on-surface tone above (higher specificity via the extra
-// class) so the readout pops the moment traffic gets heavy.
-.network-bar-widget .network-speed-label.high-rate {
-  color: var(--primary);
   font-weight: 600;
+  font-size: calc(var(--font-bar) * 0.9);
+  transition: opacity var(--motion-fast) var(--ease-standard);
+
+  &.idle { opacity: 0.4; }
 }
 
 // ── Hero card ────────────────────────────────────────────

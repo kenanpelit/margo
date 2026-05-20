@@ -16,7 +16,9 @@
 use mshell_common::WatcherToken;
 use mshell_services::network_service;
 use mshell_utils::network::{spawn_network_watcher, spawn_wifi_watcher, spawn_wired_watcher};
-use relm4::gtk::prelude::{BoxExt, ButtonExt, GestureSingleExt, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::{
+    BoxExt, ButtonExt, GestureSingleExt, IsA, OrientableExt, WidgetExt,
+};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::time::Duration;
 use wayle_network::types::connectivity::ConnectionType;
@@ -194,11 +196,25 @@ impl Component for NetworkModel {
                         },
                     },
 
-                    #[name="speed_label"]
-                    gtk::Label {
-                        add_css_class: "network-speed-label",
+                    // Speed mode: per-direction coloured readout —
+                    // ↓ rides the primary accent, ↑ the secondary,
+                    // each dimming when its direction is idle.
+                    #[name="speed_group"]
+                    gtk::Box {
+                        add_css_class: "network-speed-group",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 6,
                         set_halign: gtk::Align::Center,
                         set_valign: gtk::Align::Center,
+
+                        #[name="rx_speed"]
+                        gtk::Label {
+                            set_css_classes: &["network-speed-label", "network-rx"],
+                        },
+                        #[name="tx_speed"]
+                        gtk::Label {
+                            set_css_classes: &["network-speed-label", "network-tx"],
+                        },
                     },
                 }
             }
@@ -273,7 +289,9 @@ impl Component for NetworkModel {
             &widgets.icon_group,
             &widgets.rx_arrow,
             &widgets.tx_arrow,
-            &widgets.speed_label,
+            &widgets.speed_group,
+            &widgets.rx_speed,
+            &widgets.tx_speed,
             &root,
             &model.state,
             model.speed,
@@ -331,7 +349,9 @@ impl Component for NetworkModel {
             &widgets.icon_group,
             &widgets.rx_arrow,
             &widgets.tx_arrow,
-            &widgets.speed_label,
+            &widgets.speed_group,
+            &widgets.rx_speed,
+            &widgets.tx_speed,
             root,
             &self.state,
             self.speed,
@@ -499,29 +519,37 @@ pub(crate) fn read_network_state() -> NetworkState {
     state
 }
 
+/// Below this bytes/s a direction reads as quiet — its arrow + speed
+/// label gain the `.idle` class (dimmed in SCSS).
+const IDLE_THRESHOLD: u64 = 3000;
+
+fn set_idle<W: IsA<gtk::Widget>>(w: &W, bps: u64) {
+    if bps >= IDLE_THRESHOLD {
+        w.remove_css_class("idle");
+    } else {
+        w.add_css_class("idle");
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn apply_visual(
     image: &gtk::Image,
     icon_group: &gtk::Box,
     rx_arrow: &gtk::Image,
     tx_arrow: &gtk::Image,
-    speed_label: &gtk::Label,
+    speed_group: &gtk::Box,
+    rx_speed: &gtk::Label,
+    tx_speed: &gtk::Label,
     root: &gtk::Box,
     s: &NetworkState,
     speed: SpeedSample,
     mode: DisplayMode,
 ) {
-    // Live activity arrows: bright when that direction is moving
-    // bytes, dim when idle.
-    const ARROW_ACTIVE: u64 = 3000;
-    let set_arrow = |arrow: &gtk::Image, bps: u64| {
-        if bps >= ARROW_ACTIVE {
-            arrow.remove_css_class("idle");
-        } else {
-            arrow.add_css_class("idle");
-        }
-    };
-    set_arrow(rx_arrow, speed.down_bps);
-    set_arrow(tx_arrow, speed.up_bps);
+    // Arrows + speed labels dim when their direction is idle.
+    set_idle(rx_arrow, speed.down_bps);
+    set_idle(tx_arrow, speed.up_bps);
+    set_idle(rx_speed, speed.down_bps);
+    set_idle(tx_speed, speed.up_bps);
 
     let icon = if !s.available {
         "network-wired-disconnected-symbolic"
@@ -540,35 +568,20 @@ fn apply_visual(
     };
     image.set_icon_name(Some(icon));
 
-    // `↓ … ↑ …` live throughput. Each figure is right-padded to
-    // a fixed 5-char field (`{:>5}`) so the pill width stays
-    // rock-steady as the digits tick — only the numbers move,
-    // the widget never reflows the bar. Kept populated even in
-    // Icon mode (hidden) so a mode-flip is instant.
-    speed_label.set_label(&format!(
-        "\u{2193}{:>5} \u{2191}{:>5}",
-        format_speed(speed.down_bps),
-        format_speed(speed.up_bps)
-    ));
-
-    // Tint the readout with the matugen accent once either
-    // direction crosses 1 MB/s — a quiet "this is real traffic
-    // now" signal without changing the layout. Sub-MB stays the
-    // plain on-surface tone via the base `.online` rule.
-    const ONE_MB: u64 = 1024 * 1024;
-    if speed.down_bps >= ONE_MB || speed.up_bps >= ONE_MB {
-        speed_label.add_css_class("high-rate");
-    } else {
-        speed_label.remove_css_class("high-rate");
-    }
+    // `↓ …` / `↑ …` live throughput, one coloured label each. Each
+    // figure is right-padded to a fixed 5-char field (`{:>5}`) so the
+    // pill width stays rock-steady as the digits tick. Kept populated
+    // even in Icon mode (hidden) so a mode-flip is instant.
+    rx_speed.set_label(&format!("\u{2193}{:>5}", format_speed(speed.down_bps)));
+    tx_speed.set_label(&format!("\u{2191}{:>5}", format_speed(speed.up_bps)));
 
     match mode {
         DisplayMode::Speed => {
-            speed_label.set_visible(true);
+            speed_group.set_visible(true);
             icon_group.set_visible(false);
         }
         DisplayMode::Icon => {
-            speed_label.set_visible(false);
+            speed_group.set_visible(false);
             icon_group.set_visible(true);
         }
     }
