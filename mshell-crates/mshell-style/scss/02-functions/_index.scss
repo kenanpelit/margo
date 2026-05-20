@@ -1,0 +1,36 @@
+// ── Interaction state-layer (the one canonical hover / press wash) ──
+//
+// DESIGN.md §1 Motion + §7 state-on-interactive: EVERY hoverable
+// surface in the shell — bar pills, menu rows, action buttons,
+// device rows, workspace tags — shares one interaction identity:
+// a Material-3 "state layer" of --primary tinted into the element's
+// resting background, fading in over --motion-fast. 14% on hover,
+// 22% on press.
+//
+// Pass the element's resting background as $base so the wash
+// composites over it (solid tiles stay opaque). Leave it
+// `transparent` for pills / flat rows that sit directly on the bar
+// or a menu card. Use this everywhere instead of ad-hoc
+// --surface-container-* hover swaps so the whole desktop hovers the
+// same way.
+@mixin state-layer($base: transparent) {
+  transition: background-color var(--motion-fast) var(--ease-standard);
+
+  &:hover {
+    background-color: unquote("color-mix(in srgb, var(--primary) 14%, #{$base})");
+  }
+  &:active {
+    background-color: unquote("color-mix(in srgb, var(--primary) 22%, #{$base})");
+  }
+}
+
+// Variant for an element already filled with --primary (a selected
+// tab / active workspace capsule): the state layer is --on-primary,
+// so the fill lightens on hover instead of doubling the accent.
+@mixin state-layer-selected {
+  transition: background-color var(--motion-fast) var(--ease-standard);
+
+  &:hover {
+    background-color: unquote("color-mix(in srgb, var(--on-primary) 10%, var(--primary))");
+  }
+}

@@ -3,6 +3,9 @@
   background-color: var(#{$bg});
   color: var(#{$fg});
   border-radius: var(--radius-widget);
+  // Calm motion: the hover / press state-layer fades in instead of
+  // snapping, matching every other surface (DESIGN.md §Motion).
+  transition: background-color var(--motion-fast) var(--ease-standard);
   image, label {
     color: var(#{$fg-content});
     -gtk-icon-size: var(--icon-sm);
@@ -12,9 +15,27 @@
   }
 }
 
+// The shell-wide interaction wash. Every `.ok-button-*` (settings,
+// dialogs, screenshot, wallpaper, session, theme cards, …) hovers
+// with the SAME canonical accent state-layer the bar pills, tags,
+// and menu rows use (DESIGN.md §4/§5/§7): --primary at 14% hover /
+// 22% press, composited over the button's resting background. A
+// button already filled with --primary (selected / primary variant)
+// lightens with its --on colour so the accent doesn't double up.
 @mixin state-layers($base, $on) {
   &:hover {
-    background-color: unquote("color-mix(in srgb, var(#{$on}) 8%, var(#{$base}))");
+    @if $base == '--primary' {
+      background-color: unquote("color-mix(in srgb, var(#{$on}) 10%, var(#{$base}))");
+    } @else {
+      background-color: unquote("color-mix(in srgb, var(--primary) 14%, var(#{$base}))");
+    }
+  }
+  &:active {
+    @if $base == '--primary' {
+      background-color: unquote("color-mix(in srgb, var(#{$on}) 16%, var(#{$base}))");
+    } @else {
+      background-color: unquote("color-mix(in srgb, var(--primary) 22%, var(#{$base}))");
+    }
   }
   &:disabled {
     background-color: unquote("color-mix(in srgb, var(--on-surface) 12%, transparent)");

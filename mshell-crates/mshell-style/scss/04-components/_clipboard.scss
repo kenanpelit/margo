@@ -96,7 +96,7 @@
     transition: background-color 150ms, color 150ms;
 
     &:hover {
-      background-color: unquote("color-mix(in srgb, var(--primary) 10%, transparent)");
+      background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
     }
 
     &.active {

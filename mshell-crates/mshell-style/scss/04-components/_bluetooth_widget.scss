@@ -10,6 +10,11 @@
 // Disconnected / disabled states fall through to the default
 // `.ok-button-surface` styling — no extra rules needed.
 
+// Tint fades both ways (DESIGN.md §3 active tint + §Motion), so
+// connect/disconnect eases instead of snapping.
+.bluetooth-bar-widget image {
+  transition: color var(--motion-fast) var(--ease-standard);
+}
 .bluetooth-bar-widget.connected image {
   color: var(--primary);
 }
@@ -21,4 +26,5 @@
 label.bt-connected {
   color: var(--primary);
   font-weight: 600;
+  transition: color var(--motion-fast) var(--ease-standard);
 }

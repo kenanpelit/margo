@@ -1,3 +1,10 @@
+@use "../02-functions/index" as *;
+// The menubutton's inner button doesn't carry the .ok-button-flat
+// class the bar-pill hover selectors target, so give it the shared
+// canonical state-layer directly — the layout pill then hovers
+// exactly like every other bar pill (DESIGN.md §4 / §7).
 menubutton.ok-bar-widget > button {
     border: none;
+    border-radius: var(--radius-widget);
+    @include state-layer();
 }

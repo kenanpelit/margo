@@ -144,7 +144,7 @@
   // Hover = primary state-layer wash (not a solid fill) so idle and
   // hovered chips stay low-contrast.
   &:hover {
-    background-color: unquote("color-mix(in srgb, var(--primary) 12%, transparent)");
+    background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
     color: var(--on-surface);
   }
 
@@ -233,7 +233,7 @@
 
   // Hover = primary state-layer wash, not a solid surface fill.
   &:hover {
-    background-color: unquote("color-mix(in srgb, var(--primary) 10%, transparent)");
+    background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
   }
 
   &.selected {

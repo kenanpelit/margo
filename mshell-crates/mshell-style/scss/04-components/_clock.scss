@@ -1,3 +1,4 @@
+@use "../02-functions/index" as *;
 // Bar clock — uses the shared `--font-bar` token so all status
 // pills (battery / media / active window / clock / network)
 // stay in step.
@@ -134,19 +135,11 @@
       padding: 6px 8px;
       min-width: 36px;
       min-height: 36px;
-      // Buttons are list-item shaped (--radius-sm = 12). Each is
-      // interactive, so it carries a state layer (DESIGN.md §7):
-      // a calm tonal hover wash that eases in via the motion
-      // tokens, never a sudden colour swap.
+      // Buttons are list-item shaped (--radius-sm = 12). The shared
+      // canonical state-layer (DESIGN.md §7) gives the same primary
+      // hover/press wash every bar pill and menu row uses.
       border-radius: var(--radius-sm);
-      transition: background-color var(--motion-fast) var(--ease-standard);
-
-      &:hover {
-        background-color: var(--surface-container-high);
-      }
-      &:active {
-        background-color: var(--surface-container-highest);
-      }
+      @include state-layer();
     }
   }
 }
@@ -343,12 +336,7 @@
       min-height: 24px;
       min-width: 24px;
       padding: 2px;
-      transition: background-color var(--motion-fast) var(--ease-standard);
-
-      &:hover {
-        // Sit one tier above the grid card it lives on.
-        background-color: var(--surface-container-highest);
-      }
+      @include state-layer();
     }
   }
 }

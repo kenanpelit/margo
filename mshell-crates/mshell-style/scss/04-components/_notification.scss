@@ -1,8 +1,10 @@
+// Corner toast. Surfaces over borders (DESIGN.md §0.1): a raised
+// tonal surface + soft elevation shadow separates the toast from
+// arbitrary wallpaper without a hard outline ring. Card shape
+// (--radius-md) and comfortable notification density (16px).
 .notification {
-  background-color: var(--surface);
-  border-radius: var(--radius-widget);
-  border-width: var(--border-width);
-  border-style: solid;
-  border-color: var(--outline);
-  padding: 8px;
+  background-color: var(--surface-container-high);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
 }

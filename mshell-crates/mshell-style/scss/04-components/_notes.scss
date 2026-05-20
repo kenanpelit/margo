@@ -1,3 +1,4 @@
+@use "../02-functions/index" as *;
 // Notes Hub menu widget — scratchpad / notes / todos tabs.
 
 .notes-menu-widget { padding: 0; }
@@ -32,11 +33,7 @@
 .notes-add {
   padding: 4px 8px;
   border-radius: var(--radius-sm);
-  transition: background-color var(--motion-fast) var(--ease-standard);
-
-  &:hover {
-    background-color: var(--surface-container-highest);
-  }
+  @include state-layer();
 }
 
 // ── List rows + cards ───────────────────────────────────

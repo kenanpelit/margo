@@ -1,3 +1,4 @@
+@use "../02-functions/index" as *;
 // ── Bar pill icon tinting ────────────────────────────────────
 // Mirrors the bluetooth widget pattern: tint the icon based on
 // the three states surfaced by `apply_visual` on the bar widget
@@ -63,10 +64,7 @@
   border-radius: var(--radius-sm);
   margin-bottom: 4px;
   background-color: var(--surface-container-high);
-  transition: background-color var(--motion-fast) var(--ease-standard);
-}
-.ufw-rule-list row:hover {
-  background-color: var(--surface-container-highest);
+  @include state-layer(var(--surface-container-high));
 }
 .ufw-rule-list row:last-child {
   margin-bottom: 0;

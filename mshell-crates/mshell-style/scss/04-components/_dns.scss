@@ -1,3 +1,4 @@
+@use "../02-functions/index" as *;
 // DNS / VPN menu widget — matches the design language of the
 // other layer-shell menus (ufw, clipboard, screenshot, quick-
 // settings) by reusing the same matugen tokens and the standard
@@ -62,8 +63,8 @@
   border-radius: var(--radius-sm);
   transition: background-color var(--motion-fast) var(--ease-standard);
 }
-.dns-action:hover {
-  background-color: var(--surface-container-high);
+.dns-action:not(.selected):hover {
+  background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
 }
 .dns-action.selected {
   background-color: var(--primary);
@@ -79,10 +80,7 @@
   padding: 8px 12px;
   border-radius: var(--radius-sm);
   background-color: var(--surface-container-high);
-  transition: background-color var(--motion-fast) var(--ease-standard);
-}
-.dns-preset-row:hover {
-  background-color: var(--surface-container-highest);
+  @include state-layer(var(--surface-container-high));
 }
 .dns-preset-row image {
   -gtk-icon-size: 18px;

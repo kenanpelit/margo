@@ -30,9 +30,11 @@
   min-height: 24px;
   border-radius: var(--radius-widget);
   margin: 0 1px;
+  // Focus switch = selection change → --motion-medium (DESIGN.md
+  // §Motion "selection / focus glow").
   transition:
-    background-color 160ms ease,
-    color 160ms ease;
+    background-color var(--motion-medium) var(--ease-standard),
+    color var(--motion-medium) var(--ease-standard);
 
   > * {
     padding: 2px 7px;
@@ -52,7 +54,8 @@
   margin-right: 3px;
   color: var(--primary);
   opacity: 0;                 // hidden until .tag-has-windows
-  transition: opacity 160ms ease, color 160ms ease;
+  transition: opacity var(--motion-medium) var(--ease-standard),
+              color var(--motion-medium) var(--ease-standard);
 }
 .margo-tag-label {
   font-size: 0.8em;
@@ -60,7 +63,8 @@
   font-variant-numeric: tabular-nums;
   color: var(--on-surface);
   opacity: 0.4;               // dim until occupied or active
-  transition: opacity 160ms ease, color 160ms ease;
+  transition: opacity var(--motion-medium) var(--ease-standard),
+              color var(--motion-medium) var(--ease-standard);
 }
 
 // ── has-windows: occupancy dot + full-strength digit ────────
@@ -71,17 +75,21 @@
   opacity: 0.9;
 }
 
-// ── hover (non-active): faint wash ──────────────────────────
-.margo-tag:hover {
-  background-color: unquote("color-mix(in srgb, var(--on-surface) 10%, transparent)");
+// ── hover (non-active): the canonical primary state-layer ────
+// Same 14 % primary wash every bar pill and menu row uses, so the
+// workspace tags hover with one shared identity (DESIGN.md §7).
+.margo-tag:not(.tag-active):hover {
+  background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
 }
 
 // ── active: filled accent capsule ───────────────────────────
 .margo-tag.tag-active {
   background-color: var(--primary);
 }
+// Already filled with --primary, so its state layer lightens with
+// --on-primary instead of doubling the accent (state-layer-selected).
 .margo-tag.tag-active:hover {
-  background-color: unquote("color-mix(in srgb, var(--on-primary) 8%, var(--primary))");
+  background-color: unquote("color-mix(in srgb, var(--on-primary) 10%, var(--primary))");
 }
 .margo-tag.tag-active .margo-tag-label {
   color: var(--on-primary);

@@ -36,7 +36,7 @@
               color var(--motion-medium) var(--ease-standard);
 }
 .power-profile-button:not(.selected):hover {
-  background-color: var(--surface-container-high);
+  background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
 }
 
 // ── Power-control buttons (Cycle / Lock Auto / Idle) ─────
@@ -48,7 +48,7 @@
   transition: background-color var(--motion-fast) var(--ease-standard);
 }
 .power-control-button:not(.selected):hover {
-  background-color: var(--surface-container-high);
+  background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
 }
 // Active button: tinted backdrop per profile. The `.selected`
 // class is always paired with one `.profile-*` class by

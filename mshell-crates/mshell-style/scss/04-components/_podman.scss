@@ -1,3 +1,4 @@
+@use "../02-functions/index" as *;
 // Podman menu widget — container / image / pod tabs styling
 // using the same matugen tokens (`--primary`, `--surface-variant`,
 // `--outline`) every other layer-shell menu uses.
@@ -67,10 +68,7 @@
   border-radius: var(--radius-sm);
   margin-bottom: 4px;
   background-color: var(--surface-container-high);
-  transition: background-color var(--motion-fast) var(--ease-standard);
-}
-.podman-row-list row:hover {
-  background-color: var(--surface-container-highest);
+  @include state-layer(var(--surface-container-high));
 }
 .podman-row-list row:last-child {
   margin-bottom: 0;

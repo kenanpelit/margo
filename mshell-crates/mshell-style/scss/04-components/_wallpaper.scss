@@ -1,13 +1,18 @@
+// Photo thumbnails can't take a colour wash over the image, so the
+// hover highlight is a border + slight zoom instead — but the
+// highlight COLOUR is the same --primary accent every other hover
+// uses, so it reads as one identity (DESIGN.md §7). Eases on the
+// shared motion tokens.
 .wallpaper-thumbnail {
     transition:
-        border 150ms ease,
-        transform 150ms ease;
+        border var(--motion-medium) var(--ease-standard),
+        transform var(--motion-medium) var(--ease-standard);
     margin: 4px;
-    border: 2px solid var(--outline);
-    border-radius: var(--radius-widget);
+    border: 2px solid var(--outline-variant);
+    border-radius: var(--radius-md);
 
     &:hover {
-        border: 2px solid var(--on-surface);
+        border: 2px solid var(--primary);
         transform: scale(1.02);
     }
 }
