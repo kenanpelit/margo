@@ -14,16 +14,17 @@ use mshell_config::schema::config::{ConfigStoreFields, LauncherStoreFields, Scri
 use mshell_launcher::providers::ScriptsProvider;
 use mshell_launcher::{frecency, history};
 use reactive_graph::traits::GetUntracked;
-use relm4::gtk::glib;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
 #[derive(Debug)]
 pub(crate) struct LauncherSettingsModel {
-    /// Short names of the currently-indexed `>start` scripts,
-    /// re-scanned on init / refresh. Per-script autostart state
-    /// (enabled + delay) lives in config, looked up by name.
-    indexed_scripts: Vec<String>,
+    /// User-managed startup-script list — the source of truth.
+    /// Add by name (text entry below), delete per row; each entry
+    /// carries its run-at-startup toggle + post-startup delay.
+    /// Mirrors `config.launcher.autostart_scripts`, refreshed on
+    /// every add / remove.
+    scripts: Vec<ScriptAutostart>,
 }
 
 #[derive(Debug)]
@@ -37,8 +38,11 @@ pub(crate) enum LauncherSettingsInput {
     /// `mshell_clipboard::clipboard_service()`. Effect is
     /// immediate — no file to remove.
     ClearClipboard,
-    /// Re-scan PATH to refresh the indexed-scripts display.
-    RefreshScripts,
+    /// Add a script to the startup list by name (text entry).
+    /// No-op on empty / duplicate names.
+    AddScript(String),
+    /// Remove a script from the startup list (delete button).
+    RemoveScript(String),
     /// Toggle a script's run-at-startup flag (by short name).
     SetAutostart(String, bool),
     /// Set how many seconds after startup a script runs (by name).
@@ -120,12 +124,14 @@ impl Component for LauncherSettingsModel {
                     add_css_class: "label-small",
                     #[watch]
                     set_label: &format!(
-                        "Run any `{prefix}*` executable on $PATH via `>start` \
-                         in the launcher. Tick a script to run it at shell \
-                         startup, and set how many seconds after startup it \
-                         should launch. Indexed: {count} script(s).",
+                        "Type a script name and click Add to put it on the \
+                         startup list. Tick a row to run it at shell startup, \
+                         and set how many seconds after startup it should \
+                         launch. Names match executables on $PATH (e.g. \
+                         `{prefix}foo`), which also run via `>start` in the \
+                         launcher. {count} script(s) listed.",
                         prefix = ScriptsProvider::DEFAULT_PREFIX,
-                        count = model.indexed_scripts.len(),
+                        count = model.scripts.len(),
                     ),
                     set_halign: gtk::Align::Start,
                     set_xalign: 0.0,
@@ -150,12 +156,29 @@ impl Component for LauncherSettingsModel {
 
                 gtk::Box {
                     set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 12,
+                    set_spacing: 8,
+
+                    #[name = "name_entry"]
+                    gtk::Entry {
+                        set_hexpand: true,
+                        set_placeholder_text: Some("script name, e.g. start-foo"),
+                        // Enter in the entry adds too.
+                        connect_activate[sender] => move |e| {
+                            sender.input(LauncherSettingsInput::AddScript(
+                                e.text().to_string(),
+                            ));
+                            e.set_text("");
+                        },
+                    },
+
                     gtk::Button {
-                        add_css_class: "ok-button-surface",
-                        set_label: "Refresh",
-                        connect_clicked[sender] => move |_| {
-                            sender.input(LauncherSettingsInput::RefreshScripts);
+                        add_css_class: "ok-button-primary",
+                        set_label: "Add",
+                        connect_clicked[sender, name_entry] => move |_| {
+                            sender.input(LauncherSettingsInput::AddScript(
+                                name_entry.text().to_string(),
+                            ));
+                            name_entry.set_text("");
                         },
                     },
                 },
@@ -240,12 +263,12 @@ impl Component for LauncherSettingsModel {
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let model = LauncherSettingsModel {
-            indexed_scripts: rebuild_indexed_scripts(),
+            scripts: read_autostart_scripts(),
         };
 
         let widgets = view_output!();
 
-        rebuild_scripts_box(&widgets.scripts_box, &model.indexed_scripts, &sender);
+        rebuild_scripts_box(&widgets.scripts_box, &model.scripts, &sender);
 
         let _ = root;
         ComponentParts { model, widgets }
@@ -286,9 +309,24 @@ impl Component for LauncherSettingsModel {
                     "All entries removed.",
                 );
             }
-            LauncherSettingsInput::RefreshScripts => {
-                self.indexed_scripts = rebuild_indexed_scripts();
-                rebuild_scripts_box(&widgets.scripts_box, &self.indexed_scripts, &sender);
+            LauncherSettingsInput::AddScript(name) => {
+                let name = name.trim().to_string();
+                if name.is_empty() || self.scripts.iter().any(|e| e.name == name) {
+                    // Empty or already listed — nothing to do.
+                    return;
+                }
+                // New entries default to enabled so "type + Add" is
+                // enough to autostart; the toggle turns it back off.
+                upsert_autostart(&name, |e| e.enabled = true);
+                self.scripts = read_autostart_scripts();
+                rebuild_scripts_box(&widgets.scripts_box, &self.scripts, &sender);
+            }
+            LauncherSettingsInput::RemoveScript(name) => {
+                config_manager().update_config(|config| {
+                    config.launcher.autostart_scripts.retain(|e| e.name != name);
+                });
+                self.scripts = read_autostart_scripts();
+                rebuild_scripts_box(&widgets.scripts_box, &self.scripts, &sender);
             }
             LauncherSettingsInput::SetAutostart(name, enabled) => {
                 upsert_autostart(&name, |e| e.enabled = enabled);
@@ -301,18 +339,22 @@ impl Component for LauncherSettingsModel {
     }
 }
 
-/// Re-scan PATH for `start-*` executables → short names.
-fn rebuild_indexed_scripts() -> Vec<String> {
-    ScriptsProvider::new().indexed_names()
+/// Snapshot the user's startup-script list from config.
+fn read_autostart_scripts() -> Vec<ScriptAutostart> {
+    config_manager()
+        .config()
+        .launcher()
+        .autostart_scripts()
+        .get_untracked()
 }
 
-/// Repaint the scripts list: one row per discovered script with an
-/// autostart toggle + a "after N s" delay spin. Initial states are
-/// read from `config.launcher.autostart_scripts` (keyed by name);
-/// toggling / spinning persists back through `upsert_autostart`.
+/// Repaint the startup-scripts list: one row per configured entry —
+/// name, "after N s" delay spin, run-at-startup toggle, and a delete
+/// button. Toggle / spin persist through `upsert_autostart`; delete
+/// routes back through `RemoveScript`.
 fn rebuild_scripts_box(
     scripts_box: &gtk::Box,
-    scripts: &[String],
+    scripts: &[ScriptAutostart],
     sender: &ComponentSender<LauncherSettingsModel>,
 ) {
     while let Some(child) = scripts_box.first_child() {
@@ -320,8 +362,8 @@ fn rebuild_scripts_box(
     }
     if scripts.is_empty() {
         let empty = gtk::Label::builder()
-            .label("No scripts found. Drop a start-* executable onto $PATH, \
-                   then hit Refresh.")
+            .label("No startup scripts yet. Type a script name above and \
+                   click Add.")
             .halign(gtk::Align::Start)
             .xalign(0.0)
             .wrap(true)
@@ -331,16 +373,8 @@ fn rebuild_scripts_box(
         return;
     }
 
-    let autostart = config_manager()
-        .config()
-        .launcher()
-        .autostart_scripts()
-        .get_untracked();
-
-    for name in scripts {
-        let cfg = autostart.iter().find(|e| &e.name == name);
-        let enabled = cfg.map(|c| c.enabled).unwrap_or(false);
-        let delay = cfg.map(|c| c.delay_secs).unwrap_or(0);
+    for entry in scripts {
+        let name = entry.name.clone();
 
         let row = gtk::Box::builder()
             .orientation(gtk::Orientation::Horizontal)
@@ -350,7 +384,7 @@ fn rebuild_scripts_box(
 
         let icon = gtk::Image::from_icon_name("utilities-terminal-symbolic");
         let label = gtk::Label::builder()
-            .label(name)
+            .label(&name)
             .halign(gtk::Align::Start)
             .hexpand(true)
             .xalign(0.0)
@@ -366,7 +400,7 @@ fn rebuild_scripts_box(
         delay_spin.set_digits(0);
         delay_spin.set_valign(gtk::Align::Center);
         delay_spin.set_tooltip_text(Some("Seconds after startup before this runs"));
-        delay_spin.set_value(delay as f64); // before connect → no spurious input
+        delay_spin.set_value(entry.delay_secs as f64); // before connect → no spurious input
         let secs = gtk::Label::new(Some("s"));
         secs.add_css_class("label-small");
         {
@@ -387,7 +421,7 @@ fn rebuild_scripts_box(
         let toggle = gtk::Switch::new();
         toggle.set_valign(gtk::Align::Center);
         toggle.set_tooltip_text(Some("Run at shell startup"));
-        toggle.set_active(enabled); // before connect → no spurious input
+        toggle.set_active(entry.enabled); // before connect → no spurious input
         {
             let name = name.clone();
             let sender = sender.clone();
@@ -397,9 +431,22 @@ fn rebuild_scripts_box(
         }
         row.append(&toggle);
 
+        // Delete — drop the entry from the startup list.
+        let delete = gtk::Button::from_icon_name("user-trash-symbolic");
+        delete.add_css_class("ok-button-flat");
+        delete.set_valign(gtk::Align::Center);
+        delete.set_tooltip_text(Some("Remove from startup list"));
+        {
+            let name = name.clone();
+            let sender = sender.clone();
+            delete.connect_clicked(move |_| {
+                sender.input(LauncherSettingsInput::RemoveScript(name.clone()));
+            });
+        }
+        row.append(&delete);
+
         scripts_box.append(&row);
     }
-    let _ = glib::MainContext::default();
 }
 
 /// Find-or-insert a script's autostart entry by name and mutate it,
