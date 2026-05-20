@@ -5,8 +5,8 @@ mod relm_app;
 use crate::relm_app::{Shell, ShellInit};
 use any_spawner::Executor;
 use mshell_config::schema::config::{
-    ConfigStoreFields, GeneralStoreFields, IconsStoreFields, NotificationsStoreFields,
-    ThemeStoreFields,
+    ConfigStoreFields, GeneralStoreFields, IconsStoreFields, LauncherStoreFields,
+    NotificationsStoreFields, ThemeStoreFields,
 };
 use mshell_idle::inhibitor::IdleInhibitor;
 use mshell_services::notification_service;
@@ -132,6 +132,29 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             .get();
         notification_service().set_blocklist(blocklist);
     });
+
+    // Autostart: run each `>start` script the user ticked in Settings,
+    // `delay_secs` after startup. Spawned by short name via the session
+    // $PATH (the same way ScriptsProvider discovered it). One-shot at
+    // boot — not reactive; toggling in Settings applies next launch.
+    for entry in mshell_config::config_manager::config_manager()
+        .config()
+        .launcher()
+        .autostart_scripts()
+        .get_untracked()
+        .into_iter()
+        .filter(|e| e.enabled && !e.name.is_empty())
+    {
+        tokio_rt().spawn(async move {
+            if entry.delay_secs > 0 {
+                tokio::time::sleep(std::time::Duration::from_secs(entry.delay_secs as u64))
+                    .await;
+            }
+            if let Err(err) = std::process::Command::new(&entry.name).spawn() {
+                tracing::warn!(script = %entry.name, ?err, "autostart: spawn failed");
+            }
+        });
+    }
 
     // skip first run
     let initialized = Cell::new(false);

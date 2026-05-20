@@ -9,20 +9,21 @@
 //! Layout follows the Apple-style hero + section-heading pattern
 //! the rest of Settings already uses (idle / theme / wallpaper).
 
+use mshell_config::config_manager::config_manager;
+use mshell_config::schema::config::{ConfigStoreFields, LauncherStoreFields, ScriptAutostart};
 use mshell_launcher::providers::ScriptsProvider;
 use mshell_launcher::{frecency, history};
+use reactive_graph::traits::GetUntracked;
 use relm4::gtk::glib;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
-use std::path::PathBuf;
-use std::process::Command;
 
 #[derive(Debug)]
 pub(crate) struct LauncherSettingsModel {
-    /// Snapshot of the currently-indexed `>start` scripts as
-    /// `(name, absolute path)`. Re-scanned on init and after every
-    /// add / delete / refresh; the path is what edit + delete act on.
-    indexed_scripts: Vec<(String, PathBuf)>,
+    /// Short names of the currently-indexed `>start` scripts,
+    /// re-scanned on init / refresh. Per-script autostart state
+    /// (enabled + delay) lives in config, looked up by name.
+    indexed_scripts: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -38,13 +39,10 @@ pub(crate) enum LauncherSettingsInput {
     ClearClipboard,
     /// Re-scan PATH to refresh the indexed-scripts display.
     RefreshScripts,
-    /// Open a script file in the system default editor (xdg-open).
-    EditScript(PathBuf),
-    /// Move a script file to the trash (recoverable), then re-scan.
-    DeleteScript(PathBuf),
-    /// Create a new `start-<name>` script (shebang + chmod +x) in a
-    /// writable scripts dir, open it for editing, then re-scan.
-    NewScript(String),
+    /// Toggle a script's run-at-startup flag (by short name).
+    SetAutostart(String, bool),
+    /// Set how many seconds after startup a script runs (by name).
+    SetDelay(String, u32),
 }
 
 #[derive(Debug)]
@@ -122,9 +120,10 @@ impl Component for LauncherSettingsModel {
                     add_css_class: "label-small",
                     #[watch]
                     set_label: &format!(
-                        "Type `>start` in the launcher to run any \
-                         executable on $PATH whose name starts with \
-                         `{prefix}`. Indexed: {count} script(s).",
+                        "Run any `{prefix}*` executable on $PATH via `>start` \
+                         in the launcher. Tick a script to run it at shell \
+                         startup, and set how many seconds after startup it \
+                         should launch. Indexed: {count} script(s).",
                         prefix = ScriptsProvider::DEFAULT_PREFIX,
                         count = model.indexed_scripts.len(),
                     ),
@@ -132,25 +131,6 @@ impl Component for LauncherSettingsModel {
                     set_xalign: 0.0,
                     set_wrap: true,
                     set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                },
-
-                // New script: type a name → create start-<name> + open.
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 8,
-
-                    #[name = "new_script_entry"]
-                    gtk::Entry {
-                        set_hexpand: true,
-                        set_placeholder_text: Some("New script name (e.g. brave-ai → start-brave-ai)"),
-                    },
-
-                    #[name = "new_script_add"]
-                    gtk::Button {
-                        add_css_class: "ok-button-primary",
-                        set_valign: gtk::Align::Center,
-                        set_label: "New script",
-                    },
                 },
 
                 #[name = "scripts_scroll"]
@@ -267,29 +247,6 @@ impl Component for LauncherSettingsModel {
 
         rebuild_scripts_box(&widgets.scripts_box, &model.indexed_scripts, &sender);
 
-        // Wire the "New script" entry + button (Enter or click).
-        let entry = widgets.new_script_entry.clone();
-        let submit = {
-            let sender = sender.clone();
-            move |entry: &gtk::Entry| {
-                let name = entry.text().trim().to_string();
-                if !name.is_empty() {
-                    sender.input(LauncherSettingsInput::NewScript(name));
-                    entry.set_text("");
-                }
-            }
-        };
-        {
-            let entry = entry.clone();
-            let submit = submit.clone();
-            widgets
-                .new_script_add
-                .connect_clicked(move |_| submit(&entry));
-        }
-        widgets
-            .new_script_entry
-            .connect_activate(move |e| submit(e));
-
         let _ = root;
         ComponentParts { model, widgets }
     }
@@ -333,64 +290,29 @@ impl Component for LauncherSettingsModel {
                 self.indexed_scripts = rebuild_indexed_scripts();
                 rebuild_scripts_box(&widgets.scripts_box, &self.indexed_scripts, &sender);
             }
-            LauncherSettingsInput::EditScript(path) => {
-                open_in_editor(&path);
+            LauncherSettingsInput::SetAutostart(name, enabled) => {
+                upsert_autostart(&name, |e| e.enabled = enabled);
             }
-            LauncherSettingsInput::DeleteScript(path) => {
-                let name = path
-                    .file_name()
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_default();
-                if trash_file(&path) {
-                    mshell_launcher::notify::toast(
-                        "Script moved to trash",
-                        &format!("{name} — recover from your trash if needed."),
-                    );
-                    self.indexed_scripts = rebuild_indexed_scripts();
-                    rebuild_scripts_box(&widgets.scripts_box, &self.indexed_scripts, &sender);
-                } else {
-                    mshell_launcher::notify::toast(
-                        "Delete failed",
-                        &format!("Could not move {name} to trash."),
-                    );
-                }
-            }
-            LauncherSettingsInput::NewScript(name) => {
-                match create_script(&self.indexed_scripts, &name) {
-                    Ok(path) => {
-                        open_in_editor(&path);
-                        mshell_launcher::notify::toast(
-                            "Script created",
-                            &format!(
-                                "{} — opened for editing.",
-                                path.file_name().unwrap_or_default().to_string_lossy()
-                            ),
-                        );
-                        self.indexed_scripts = rebuild_indexed_scripts();
-                        rebuild_scripts_box(&widgets.scripts_box, &self.indexed_scripts, &sender);
-                    }
-                    Err(err) => {
-                        mshell_launcher::notify::toast("Could not create script", &err);
-                    }
-                }
+            LauncherSettingsInput::SetDelay(name, secs) => {
+                upsert_autostart(&name, |e| e.delay_secs = secs);
             }
         }
         self.update_view(widgets, sender);
     }
 }
 
-/// Re-scan PATH for `start-*` executables → `(name, path)` pairs.
-/// Cheap (~tens of ms for ~500 PATH entries) so it's fine to run on
-/// every add / delete / refresh.
-fn rebuild_indexed_scripts() -> Vec<(String, PathBuf)> {
-    ScriptsProvider::new().indexed()
+/// Re-scan PATH for `start-*` executables → short names.
+fn rebuild_indexed_scripts() -> Vec<String> {
+    ScriptsProvider::new().indexed_names()
 }
 
-/// Replace every child in `scripts_box` with one editable row:
-/// terminal icon + name + Edit (open in editor) + Delete (trash).
+/// Repaint the scripts list: one row per discovered script with an
+/// autostart toggle + a "after N s" delay spin. Initial states are
+/// read from `config.launcher.autostart_scripts` (keyed by name);
+/// toggling / spinning persists back through `upsert_autostart`.
 fn rebuild_scripts_box(
     scripts_box: &gtk::Box,
-    scripts: &[(String, PathBuf)],
+    scripts: &[String],
     sender: &ComponentSender<LauncherSettingsModel>,
 ) {
     while let Some(child) = scripts_box.first_child() {
@@ -398,8 +320,8 @@ fn rebuild_scripts_box(
     }
     if scripts.is_empty() {
         let empty = gtk::Label::builder()
-            .label("No scripts yet. Use \u{201c}New script\u{201d} above, or drop a \
-                   start-* executable onto $PATH.")
+            .label("No scripts found. Drop a start-* executable onto $PATH, \
+                   then hit Refresh.")
             .halign(gtk::Align::Start)
             .xalign(0.0)
             .wrap(true)
@@ -408,7 +330,18 @@ fn rebuild_scripts_box(
         scripts_box.append(&empty);
         return;
     }
-    for (name, path) in scripts {
+
+    let autostart = config_manager()
+        .config()
+        .launcher()
+        .autostart_scripts()
+        .get_untracked();
+
+    for name in scripts {
+        let cfg = autostart.iter().find(|e| &e.name == name);
+        let enabled = cfg.map(|c| c.enabled).unwrap_or(false);
+        let delay = cfg.map(|c| c.delay_secs).unwrap_or(0);
+
         let row = gtk::Box::builder()
             .orientation(gtk::Orientation::Horizontal)
             .spacing(8)
@@ -423,118 +356,71 @@ fn rebuild_scripts_box(
             .xalign(0.0)
             .build();
         label.add_css_class("label-medium");
-        label.set_tooltip_text(Some(&path.display().to_string()));
         row.append(&icon);
         row.append(&label);
 
-        let edit = gtk::Button::new();
-        edit.add_css_class("ok-button-surface");
-        edit.set_valign(gtk::Align::Center);
-        edit.set_tooltip_text(Some("Edit script"));
-        edit.set_child(Some(&gtk::Image::from_icon_name("document-edit-symbolic")));
+        // Delay: "after N s" — relevant once autostart is on.
+        let after = gtk::Label::new(Some("after"));
+        after.add_css_class("label-small");
+        let delay_spin = gtk::SpinButton::with_range(0.0, 3600.0, 1.0);
+        delay_spin.set_digits(0);
+        delay_spin.set_valign(gtk::Align::Center);
+        delay_spin.set_tooltip_text(Some("Seconds after startup before this runs"));
+        delay_spin.set_value(delay as f64); // before connect → no spurious input
+        let secs = gtk::Label::new(Some("s"));
+        secs.add_css_class("label-small");
         {
-            let path = path.clone();
+            let name = name.clone();
             let sender = sender.clone();
-            edit.connect_clicked(move |_| {
-                sender.input(LauncherSettingsInput::EditScript(path.clone()));
+            delay_spin.connect_value_changed(move |s| {
+                sender.input(LauncherSettingsInput::SetDelay(
+                    name.clone(),
+                    s.value().max(0.0) as u32,
+                ));
             });
         }
-        row.append(&edit);
+        row.append(&after);
+        row.append(&delay_spin);
+        row.append(&secs);
 
-        let del = gtk::Button::new();
-        del.add_css_class("ok-button-surface");
-        del.set_valign(gtk::Align::Center);
-        del.set_tooltip_text(Some("Delete (move to trash)"));
-        del.set_child(Some(&gtk::Image::from_icon_name("user-trash-symbolic")));
+        // Autostart toggle.
+        let toggle = gtk::Switch::new();
+        toggle.set_valign(gtk::Align::Center);
+        toggle.set_tooltip_text(Some("Run at shell startup"));
+        toggle.set_active(enabled); // before connect → no spurious input
         {
-            let path = path.clone();
+            let name = name.clone();
             let sender = sender.clone();
-            del.connect_clicked(move |_| {
-                sender.input(LauncherSettingsInput::DeleteScript(path.clone()));
+            toggle.connect_active_notify(move |sw| {
+                sender.input(LauncherSettingsInput::SetAutostart(name.clone(), sw.is_active()));
             });
         }
-        row.append(&del);
+        row.append(&toggle);
 
         scripts_box.append(&row);
     }
     let _ = glib::MainContext::default();
 }
 
-/// Open a file in the system default app (a text editor for scripts).
-fn open_in_editor(path: &PathBuf) {
-    let _ = Command::new("xdg-open").arg(path).spawn();
-}
-
-/// Move a file to the trash via `gio trash` (recoverable, not `rm`).
-fn trash_file(path: &PathBuf) -> bool {
-    Command::new("gio")
-        .arg("trash")
-        .arg(path)
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
-}
-
-/// Create a new `start-<name>` script (shebang + executable bit) and
-/// return its path, or a user-facing error string.
-fn create_script(existing: &[(String, PathBuf)], raw_name: &str) -> Result<PathBuf, String> {
-    use std::os::unix::fs::PermissionsExt;
-
-    let cleaned: String = raw_name
-        .trim()
-        .chars()
-        .map(|c| if c.is_whitespace() { '-' } else { c })
-        .collect();
-    let file_name = if cleaned.starts_with(ScriptsProvider::DEFAULT_PREFIX) {
-        cleaned
-    } else {
-        format!("{}{}", ScriptsProvider::DEFAULT_PREFIX, cleaned)
-    };
-    if file_name == ScriptsProvider::DEFAULT_PREFIX {
-        return Err("Empty script name.".into());
-    }
-
-    let dir = scripts_target_dir(existing);
-    std::fs::create_dir_all(&dir).map_err(|e| format!("create dir: {e}"))?;
-    let path = dir.join(&file_name);
-    if path.exists() {
-        return Err(format!("{file_name} already exists in {}.", dir.display()));
-    }
-
-    std::fs::write(
-        &path,
-        "#!/usr/bin/env bash\n# Created from margo launcher settings.\n\n",
-    )
-    .map_err(|e| format!("write: {e}"))?;
-    if let Ok(meta) = std::fs::metadata(&path) {
-        let mut perms = meta.permissions();
-        perms.set_mode(0o755);
-        let _ = std::fs::set_permissions(&path, perms);
-    }
-    Ok(path)
-}
-
-/// Where new scripts land: the first writable parent dir among the
-/// user's existing scripts, else `~/.local/bin`.
-fn scripts_target_dir(existing: &[(String, PathBuf)]) -> PathBuf {
-    for (_, p) in existing {
-        if let Some(parent) = p.parent() {
-            if is_writable_dir(parent) {
-                return parent.to_path_buf();
-            }
+/// Find-or-insert a script's autostart entry by name and mutate it,
+/// persisting to config (the startup runner + Settings both read it).
+fn upsert_autostart(name: &str, mutate: impl FnOnce(&mut ScriptAutostart)) {
+    config_manager().update_config(|config| {
+        if let Some(entry) = config
+            .launcher
+            .autostart_scripts
+            .iter_mut()
+            .find(|e| e.name == name)
+        {
+            mutate(entry);
+        } else {
+            let mut entry = ScriptAutostart {
+                name: name.to_string(),
+                enabled: false,
+                delay_secs: 0,
+            };
+            mutate(&mut entry);
+            config.launcher.autostart_scripts.push(entry);
         }
-    }
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".into());
-    PathBuf::from(home).join(".local/bin")
-}
-
-fn is_writable_dir(dir: &std::path::Path) -> bool {
-    let probe = dir.join(".margo-write-probe");
-    match std::fs::File::create(&probe) {
-        Ok(_) => {
-            let _ = std::fs::remove_file(&probe);
-            true
-        }
-        Err(_) => false,
-    }
+    });
 }

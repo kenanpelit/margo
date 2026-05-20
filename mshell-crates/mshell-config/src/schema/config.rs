@@ -29,6 +29,7 @@ pub struct Config {
     pub idle: Idle,
     pub session: Session,
     pub clipboard: Clipboard,
+    pub launcher: Launcher,
 }
 
 /// Idle manager — staged actions as the session sits idle. Each
@@ -707,6 +708,41 @@ impl Default for Menus {
             },
             left_menu_expansion_type: VerticalMenuExpansion::AlwaysExpanded,
             right_menu_expansion_type: VerticalMenuExpansion::AlwaysExpanded,
+        }
+    }
+}
+
+/// Launcher-wide settings (currently the `>start` script autostart
+/// list). Each entry is keyed by the script's short name.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize, Store, Patch, JsonSchema,
+)]
+#[serde(default)]
+pub struct Launcher {
+    /// Scripts the user opted into running at shell startup, with a
+    /// per-script delay. Names match `ScriptsProvider` short names
+    /// (e.g. `start-brave-ai`).
+    pub autostart_scripts: Vec<ScriptAutostart>,
+}
+
+/// One `>start` script's autostart configuration.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[serde(default)]
+pub struct ScriptAutostart {
+    /// Script short name (e.g. `start-brave-ai`).
+    pub name: String,
+    /// Run this script at shell startup.
+    pub enabled: bool,
+    /// Seconds to wait after startup before running it.
+    pub delay_secs: u32,
+}
+
+impl Default for ScriptAutostart {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            enabled: false,
+            delay_secs: 0,
         }
     }
 }
