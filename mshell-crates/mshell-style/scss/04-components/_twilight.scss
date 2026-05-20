@@ -1,0 +1,40 @@
+// Twilight — bar pill + quick-control panel for margo's blue-light
+// filter. DESIGN.md: §3 active = primary icon tint (no filled
+// capsule); §4 bar pill on the shared surface; §5 menu cards.
+
+// ── Bar pill ──────────────────────────────────────────────
+// Temperature readout stays the default bar text colour; the active
+// state only tints the icon (DESIGN.md §3).
+.twilight-bar-label {
+  font-size: var(--font-bar);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface);
+}
+.twilight-bar-widget.active image {
+  color: var(--primary);
+}
+
+// ── Panel ─────────────────────────────────────────────────
+.twilight-menu-widget {
+  padding: 4px;
+}
+
+.twilight-header-icon {
+  color: var(--primary);
+}
+
+// Section label above the temperature slider (DESIGN.md §1 fonts).
+.twilight-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
+}
+
+// Mode selector — four equal segmented buttons; the active mode
+// tints primary (the shared `.selected` surface treatment).
+.twilight-mode-button {
+  font-variant-numeric: tabular-nums;
+}

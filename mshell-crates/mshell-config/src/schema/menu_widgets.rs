@@ -78,6 +78,9 @@ pub enum MenuWidget {
     /// `keep_awake` bar pill's panel — duration grid (30m / 1h / …
     /// / ∞), live countdown, quick-extend, turn-off.
     KeepAwake,
+    /// `twilight` bar pill's panel — master toggle, current temp /
+    /// phase, mode selector, temperature slider, schedule presets.
+    Twilight,
     ThemePicker,
     Wallpaper,
     Weather,
@@ -136,6 +139,7 @@ impl MenuWidget {
             MenuWidget::SystemUpdate => "System Updates",
             MenuWidget::Valent => "Valent Connect",
             MenuWidget::KeepAwake => "Keep Awake",
+            MenuWidget::Twilight => "Twilight",
             MenuWidget::ThemePicker => "Theme Picker",
             MenuWidget::Wallpaper => "Wallpaper",
             MenuWidget::Weather => "Weather",
@@ -191,6 +195,7 @@ impl MenuWidget {
             MenuWidget::SystemUpdate,
             MenuWidget::Valent,
             MenuWidget::KeepAwake,
+            MenuWidget::Twilight,
             MenuWidget::ThemePicker,
             MenuWidget::Wallpaper,
             MenuWidget::Weather,

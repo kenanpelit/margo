@@ -34,6 +34,7 @@ pub(crate) mod spacer;
 pub(crate) mod system_status;
 pub(crate) mod system_update;
 pub(crate) mod theme_picker;
+pub(crate) mod twilight;
 pub(crate) mod valent;
 pub(crate) mod wallpaper;
 pub(crate) mod weather;

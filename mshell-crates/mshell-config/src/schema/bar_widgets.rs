@@ -31,6 +31,11 @@ pub enum BarWidget {
     /// config.
     Dashboard,
     DarkMode,
+    /// Twilight (built-in blue-light filter) pill. Left-click opens
+    /// the Twilight panel (toggle + temperature + mode + presets);
+    /// right-click flips the filter on/off. State polled from
+    /// `mctl twilight status`.
+    Twilight,
     KeepAwake,
     LockKeys,
     MargoDock,
@@ -86,6 +91,7 @@ impl BarWidget {
             BarWidget::CpuDashboard => "CPU Dashboard",
             BarWidget::Dashboard => "Dashboard",
             BarWidget::DarkMode => "Dark Mode Toggle",
+            BarWidget::Twilight => "Twilight (blue-light filter)",
             BarWidget::KeepAwake => "Keep Awake",
             BarWidget::LockKeys => "Lock Keys (Caps/Num/Scroll)",
             BarWidget::MargoDock => "Margo Dock",
@@ -130,6 +136,7 @@ impl BarWidget {
             BarWidget::CpuDashboard,
             BarWidget::Dashboard,
             BarWidget::DarkMode,
+            BarWidget::Twilight,
             BarWidget::KeepAwake,
             BarWidget::LockKeys,
             BarWidget::MargoDock,

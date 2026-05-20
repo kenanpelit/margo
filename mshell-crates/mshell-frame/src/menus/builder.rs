@@ -84,6 +84,9 @@ use crate::menus::menu_widgets::valent::valent_menu_widget::{
 use crate::menus::menu_widgets::keep_awake::keep_awake_menu_widget::{
     KeepAwakeMenuWidgetInit, KeepAwakeMenuWidgetModel, KeepAwakeMenuWidgetOutput,
 };
+use crate::menus::menu_widgets::twilight::twilight_menu_widget::{
+    TwilightMenuWidgetInit, TwilightMenuWidgetModel,
+};
 use crate::menus::menu_widgets::theme_picker::theme_picker_menu_widget::{
     ThemePickerMenuWidgetInit, ThemePickerMenuWidgetModel,
 };
@@ -178,6 +181,11 @@ pub fn build_widget(
                 .forward(sender.output_sender(), |msg| match msg {
                     KeepAwakeMenuWidgetOutput::CloseMenu => MenuOutput::CloseMenu,
                 }),
+        ),
+        MenuWidget::Twilight => Box::new(
+            TwilightMenuWidgetModel::builder()
+                .launch(TwilightMenuWidgetInit {})
+                .detach(),
         ),
         MenuWidget::Divider => Box::new(
             DividerMenuWidgetModel::builder()

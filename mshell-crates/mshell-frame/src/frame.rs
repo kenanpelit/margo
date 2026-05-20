@@ -31,6 +31,7 @@ const AUDIO_DASHBOARD_MENU: &str = "audio_dashboard";
 const SYSTEM_UPDATE_MENU: &str = "system_update";
 const VALENT_MENU: &str = "valent";
 const KEEP_AWAKE_MENU: &str = "keep_awake";
+const TWILIGHT_MENU: &str = "twilight";
 const NDNS_MENU: &str = "dns";
 const NPODMAN_MENU: &str = "podman";
 const NNOTES_MENU: &str = "notes";
@@ -87,6 +88,7 @@ pub struct Frame {
     system_update_menu: Controller<MenuModel>,
     valent_menu: Controller<MenuModel>,
     keep_awake_menu: Controller<MenuModel>,
+    twilight_menu: Controller<MenuModel>,
     dns_menu: Controller<MenuModel>,
     podman_menu: Controller<MenuModel>,
     notes_menu: Controller<MenuModel>,
@@ -140,6 +142,7 @@ pub enum FrameInput {
     ToggleSystemUpdateMenu,
     ToggleValentMenu,
     ToggleKeepAwakeMenu,
+    ToggleTwilightMenu,
     ToggleDnsMenu,
     TogglePodmanMenu,
     ToggleNotesMenu,
@@ -680,6 +683,7 @@ impl Component for Frame {
         let system_update_menu = Self::build_menu(&sender, MenuType::SystemUpdate);
         let valent_menu = Self::build_menu(&sender, MenuType::Valent);
         let keep_awake_menu = Self::build_menu(&sender, MenuType::KeepAwake);
+        let twilight_menu = Self::build_menu(&sender, MenuType::Twilight);
         let dns_menu = Self::build_menu(&sender, MenuType::Dns);
         let podman_menu = Self::build_menu(&sender, MenuType::Podman);
         let notes_menu = Self::build_menu(&sender, MenuType::Notes);
@@ -788,6 +792,8 @@ impl Component for Frame {
             let config = menu_config.clone();
             let _ = config.menus().keep_awake_menu().position().get();
             let config = menu_config.clone();
+            let _ = config.menus().twilight_menu().position().get();
+            let config = menu_config.clone();
             let _ = config.menus().margo_layout_menu().position().get();
             sender_clone.input(FrameInput::RepositionMenus(
                 clock_menu_position,
@@ -868,6 +874,7 @@ impl Component for Frame {
             system_update_menu,
             valent_menu,
             keep_awake_menu,
+            twilight_menu,
             dns_menu,
             podman_menu,
             notes_menu,
@@ -1024,6 +1031,10 @@ impl Component for Frame {
             }
             FrameInput::ToggleKeepAwakeMenu => {
                 self.toggle_menu(KEEP_AWAKE_MENU, widgets);
+                self.sync_keyboard_mode(root);
+            }
+            FrameInput::ToggleTwilightMenu => {
+                self.toggle_menu(TWILIGHT_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
             FrameInput::ToggleDnsMenu => {
@@ -1766,6 +1777,13 @@ impl Frame {
             .keep_awake_menu()
             .position()
             .get();
+        let twilight_menu_widget: Widget = self.twilight_menu.widget().clone().upcast();
+        let twilight_menu_position = mshell_config::config_manager::config_manager()
+            .config()
+            .menus()
+            .twilight_menu()
+            .position()
+            .get();
         let dns_menu_widget: Widget = self.dns_menu.widget().clone().upcast();
         let podman_menu_widget: Widget = self.podman_menu.widget().clone().upcast();
         let notes_menu_widget: Widget = self.notes_menu.widget().clone().upcast();
@@ -1865,6 +1883,12 @@ impl Frame {
             &keep_awake_menu_widget,
             KEEP_AWAKE_MENU,
             &keep_awake_menu_position,
+        );
+        Self::add_to_stack(
+            widgets,
+            &twilight_menu_widget,
+            TWILIGHT_MENU,
+            &twilight_menu_position,
         );
         Self::add_to_stack(
             widgets,
@@ -1990,6 +2014,7 @@ impl Frame {
                 BarOutput::SystemUpdateClicked => FrameInput::ToggleSystemUpdateMenu,
                 BarOutput::ValentClicked => FrameInput::ToggleValentMenu,
                 BarOutput::KeepAwakeClicked => FrameInput::ToggleKeepAwakeMenu,
+                BarOutput::TwilightClicked => FrameInput::ToggleTwilightMenu,
                 BarOutput::DnsClicked => FrameInput::ToggleDnsMenu,
                 BarOutput::PodmanClicked => FrameInput::TogglePodmanMenu,
                 BarOutput::NotesClicked => FrameInput::ToggleNotesMenu,

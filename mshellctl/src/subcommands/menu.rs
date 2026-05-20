@@ -79,6 +79,8 @@ pub enum MenuCommands {
     Valent,
     /// Toggle the Keep Awake menu (duration grid + countdown)
     KeepAwake,
+    /// Toggle the Twilight menu (toggle + temperature + mode + presets)
+    Twilight,
     /// Toggle the DNS / VPN menu
     Dns,
     /// Toggle the Podman menu
@@ -172,6 +174,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::KeepAwake => {
             bus_command("KeepAwake").await?;
+        }
+        MenuCommands::Twilight => {
+            bus_command("Twilight").await?;
         }
         MenuCommands::Dns => {
             bus_command("Dns").await?;

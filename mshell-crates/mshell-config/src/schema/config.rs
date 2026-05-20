@@ -408,6 +408,8 @@ pub struct Menus {
     pub valent_menu: Menu,
     #[serde(default = "default_keep_awake_menu")]
     pub keep_awake_menu: Menu,
+    #[serde(default = "default_twilight_menu")]
+    pub twilight_menu: Menu,
     pub media_player_menu: Menu,
     pub session_menu: Menu,
     /// Settings panel — embeds in the frame's menu stack instead
@@ -460,6 +462,15 @@ fn default_keep_awake_menu() -> Menu {
         position: Position::TopRight,
         widgets: vec![MenuWidget::KeepAwake],
         minimum_width: 320,
+        maximum_height: 0,
+    }
+}
+
+fn default_twilight_menu() -> Menu {
+    Menu {
+        position: Position::TopRight,
+        widgets: vec![MenuWidget::Twilight],
+        minimum_width: 360,
         maximum_height: 0,
     }
 }
@@ -585,6 +596,7 @@ impl Default for Menus {
             system_update_menu: default_system_update_menu(),
             valent_menu: default_valent_menu(),
             keep_awake_menu: default_keep_awake_menu(),
+            twilight_menu: default_twilight_menu(),
             media_player_menu: Menu {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::MediaPlayer],

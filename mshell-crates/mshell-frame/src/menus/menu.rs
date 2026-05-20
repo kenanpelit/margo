@@ -62,6 +62,9 @@ pub(crate) enum MenuType {
     Valent,
     /// `keep_awake` bar pill's panel — duration grid + countdown.
     KeepAwake,
+    /// `twilight` bar pill's panel — toggle + temperature + mode +
+    /// schedule presets.
+    Twilight,
     MediaPlayer,
     Session,
     /// Combined clock + quick-settings dashboard. Renders the
@@ -650,6 +653,30 @@ impl Component for MenuModel {
                     let config = config.clone();
                     let maximum_height =
                         config.menus().keep_awake_menu().maximum_height().get();
+                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
+                });
+            }
+            MenuType::Twilight => {
+                css_class = "twilight-menu".to_string();
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let widgets = config.menus().twilight_menu().widgets().get();
+                    sender_clone.input(MenuInput::SetWidget(widgets));
+                });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let minimum_width = config.menus().twilight_menu().minimum_width().get();
+                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
+                });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let maximum_height = config.menus().twilight_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
                 });
             }
