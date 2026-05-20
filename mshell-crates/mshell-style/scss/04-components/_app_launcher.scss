@@ -50,16 +50,19 @@
 .app-launcher-search-row entry.ok-entry {
   background-color: var(--surface-container);
   color: var(--on-surface);
-  border-radius: var(--radius-widget);
-  padding: 9px 12px;
+  // Material search field: pill-ish (radius-xl) filled tonal surface.
+  border-radius: var(--radius-xl);
+  padding: 10px 16px;
   font-size: 1.05em;
   border: 2px solid transparent;
-  transition: border-color 120ms ease-in-out, background-color 120ms ease-in-out;
+  transition: background-color var(--motion-medium) var(--ease-standard),
+              box-shadow var(--motion-medium) var(--ease-standard);
 
   &:focus,
   &:focus-within {
-    border-color: var(--primary);
     background-color: var(--surface-container-high);
+    // Soft accent glow instead of a hard 2px ring — calmer focus cue.
+    box-shadow: 0 0 0 3px unquote("color-mix(in srgb, var(--primary) 26%, transparent)");
   }
 }
 
@@ -99,8 +102,11 @@
 
 .app-launcher-category-pill {
   padding: 3px 0;
-  border-radius: 999px;
-  background-color: var(--surface-container);
+  border-radius: var(--radius-pill);
+  // Material filter-chip: recessive (transparent) by default, a soft
+  // tonal accent when selected — lower contrast than the old solid
+  // surface-container pill so the strip reads calm.
+  background-color: transparent;
   color: var(--on-surface-variant);
   font-size: 0.82em;
   // Keep weight FIXED across hover / selected so the pill's
@@ -115,7 +121,8 @@
   font-weight: 500;
   letter-spacing: 0.02em;
   min-height: 0;
-  transition: background-color 120ms ease-in-out, color 120ms ease-in-out;
+  transition: background-color var(--motion-fast) var(--ease-standard),
+              color var(--motion-fast) var(--ease-standard);
 
   // Icon+label box inside the pill carries the horizontal padding
   // so GTK button's intrinsic min-width doesn't push pills wider.
@@ -134,19 +141,27 @@
     // for future per-category accent overrides.
   }
 
+  // Hover = primary state-layer wash (not a solid fill) so idle and
+  // hovered chips stay low-contrast.
   &:hover {
-    background-color: var(--surface-container-high);
+    background-color: unquote("color-mix(in srgb, var(--primary) 12%, transparent)");
     color: var(--on-surface);
   }
 
   &.selected {
-    background-color: var(--primary);
-    color: var(--on-primary);
-    // No font-weight change here — see the comment above.
+    // Soft tonal accent (primary-container) rather than a full --primary
+    // fill — keeps the margo purple identity but at chip-appropriate,
+    // lower contrast. No font-weight change (width stability, above).
+    background-color: var(--primary-container);
+    color: var(--on-primary-container);
 
     .app-launcher-category-pill-icon,
     .app-launcher-category-pill-label {
-      color: var(--on-primary);
+      color: var(--on-primary-container);
+    }
+
+    &:hover {
+      background-color: var(--primary-container);
     }
   }
 }
@@ -167,9 +182,14 @@
 // palette) rather than the previous mid-grey wash.
 .app-launcher-menu-widget > scrolledwindow {
   background-color: var(--surface-container-lowest);
-  border: 1px solid var(--outline-variant);
-  border-radius: var(--radius-widget);
+  border-radius: var(--radius-md);
   padding: 6px;
+  // Surfaces over borders (DESIGN.md §0/§1): the darker well + a faint
+  // inset shadow read as a recessed list without a hard outline. At
+  // runtime matugen makes surface-container-lowest distinctly darker
+  // than the menu surface; the static baseline collapses them, which
+  // only affects the first-paint frame.
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.22);
 }
 
 // ── Result row ──────────────────────────────────────────────────
@@ -183,28 +203,46 @@
 //        so contrast survives the tint swap.
 .app-launcher-item {
   background-color: transparent;
-  border-radius: var(--radius-widget);
+  border-radius: var(--radius-sm);
   // Tightened vertical padding (was 8px → 4px → 2px → 1px).
   // Original value read as a blank line above + below each row
   // (every app filled four "lines" of the panel: blank / name /
   // description / blank). 1px keeps the rows visually distinct
   // via the 1px outer margin below while collapsing the gap to
-  // the minimum the panel can show.
+  // the minimum the panel can show. (Density: launcher = medium /
+  // tight per DESIGN.md — many results must stay visible.)
   padding: 1px 12px;
   margin: 1px 0;
-  transition: background-color 120ms ease-in-out, color 120ms ease-in-out;
+  transition: background-color var(--motion-fast) var(--ease-standard),
+              color var(--motion-fast) var(--ease-standard),
+              box-shadow var(--motion-medium) var(--ease-standard);
 
   image {
     -gtk-icon-size: var(--icon-md);
   }
 
+  // Title vs subtitle hierarchy (DESIGN.md §1 Fonts): SemiBold name,
+  // regular dim description.
+  .label-medium-bold {
+    font-weight: 600;
+  }
+  .label-small {
+    color: var(--on-surface-variant);
+    opacity: 0.7;
+  }
+
+  // Hover = primary state-layer wash, not a solid surface fill.
   &:hover {
-    background-color: var(--surface-container-high);
+    background-color: unquote("color-mix(in srgb, var(--primary) 10%, transparent)");
   }
 
   &.selected {
     background-color: var(--primary);
     color: var(--on-primary);
+    // Tonal elevation: a soft primary-tinted shadow lifts the selected
+    // row off the well so the keyboard cursor reads as "raised", not
+    // just tinted (DESIGN.md §0 tonal elevation).
+    box-shadow: 0 2px 8px unquote("color-mix(in srgb, var(--primary) 38%, transparent)");
 
     image {
       color: var(--on-primary);
@@ -213,6 +251,7 @@
     .label-medium-bold,
     .label-small {
       color: var(--on-primary);
+      opacity: 1;
     }
 
     // Quick-key digit on a selected row picks up an inverted-but-
@@ -271,11 +310,15 @@
   // on the result list above.
   border-top: 1px solid var(--outline-variant);
   padding-top: 8px;
-  // Wrap when there are too many chips to fit on one line so
-  // contextual hints (Pin / Remove / Alt action) don't push
-  // always-on ones off-screen on narrow monitors. (GtkBox doesn't
-  // wrap by itself, but if we ever swap this for a FlowBox the
-  // chip styles below keep working.)
+
+  // It's a GtkFlowBox now: chips wrap onto a second line so every
+  // shortcut shows its FULL label (no ellipsis). Strip GTK's default
+  // flowboxchild padding/min-size so the chips stay tight.
+  > flowboxchild {
+    padding: 0;
+    min-width: 0;
+    min-height: 0;
+  }
 }
 
 // Reference info, not a focal point — same treatment as the

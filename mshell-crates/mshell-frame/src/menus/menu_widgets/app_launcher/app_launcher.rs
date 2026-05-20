@@ -300,24 +300,25 @@ impl Component for AppLauncherModel {
                 },
             },
 
-            // Keybind hint strip — walker-style footer that lists
-            // the currently-relevant keyboard shortcuts. Refreshed
-            // any time the selection changes so contextual binds
-            // (alt action, delete, pin) only appear when they
-            // apply to the focused row. `hexpand: true` so the
-            // strip itself always fills the available width —
-            // chips cluster at the start via their own halign,
-            // but the row's allocation never changes shape as
-            // chip count fluctuates. Without this, every
-            // selection swap would re-request the menu's natural
-            // width and the panel jitters.
+            // Keybind hint strip — walker-style footer listing the
+            // currently-relevant shortcuts. A FlowBox (not a single-
+            // line Box) so chips **wrap** onto a second line and each
+            // shows its FULL label — no ellipsis. The FlowBox's
+            // minimum width is just the widest single chip, so it
+            // never forces the panel wider; it simply reflows within
+            // whatever width the panel has.
             #[name = "binds_strip"]
-            gtk::Box {
+            gtk::FlowBox {
                 add_css_class: "app-launcher-binds-strip",
                 set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 3,
+                set_selection_mode: gtk::SelectionMode::None,
+                set_column_spacing: 8,
+                set_row_spacing: 4,
+                set_max_children_per_line: 24,
+                set_min_children_per_line: 1,
+                set_homogeneous: false,
                 set_margin_top: 10,
-                set_halign: gtk::Align::Start,
+                set_halign: gtk::Align::Fill,
                 set_hexpand: true,
             },
         }
@@ -932,7 +933,7 @@ struct BindHint {
 /// (Alt action / Pin·Unpin / Remove) fade to `opacity: 0` when
 /// they don't apply rather than being removed; the slot is still
 /// allocated.
-fn rebuild_binds_strip(strip: &gtk::Box, model: &AppLauncherModel) {
+fn rebuild_binds_strip(strip: &gtk::FlowBox, model: &AppLauncherModel) {
     // Snapshot the selected row's capabilities so we can flip
     // contextual chips on/off without holding two runtime borrows.
     let selected = model
@@ -981,32 +982,26 @@ fn rebuild_binds_strip(strip: &gtk::Box, model: &AppLauncherModel) {
     }
 
     for hint in &hints {
+        // Skip inapplicable contextual chips entirely. The FlowBox
+        // reflows on its own, so we no longer need opacity-0 spacer
+        // chips to keep a single-line strip's width stable.
+        if !hint.applicable {
+            continue;
+        }
+
         let chip = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         chip.add_css_class("app-launcher-bind-chip");
-        // Inapplicable chip stays in layout (reserves its width)
-        // but goes transparent so the user reads it as off.
-        chip.set_opacity(if hint.applicable { 1.0 } else { 0.0 });
 
         let key_lbl = gtk::Label::new(Some(hint.key));
         key_lbl.add_css_class("app-launcher-bind-key");
         chip.append(&key_lbl);
 
+        // Full label, no ellipsize — the FlowBox wraps chips that
+        // don't fit onto the next line instead of truncating them,
+        // and a single chip's natural width never forces the panel
+        // wider than its own ~one-chip minimum.
         let cap_lbl = gtk::Label::new(Some(hint.label));
         cap_lbl.add_css_class("app-launcher-bind-label");
-        // The unshrinkable sum of all nine chips otherwise pins the
-        // launcher's minimum width past ~720 px (GTK4 4.22's
-        // ScrolledWindow honours `set_width_request` only as a
-        // floor — never below the child's minimum — and
-        // `min/max_content_width` are no-ops when `hscrollbar-policy:
-        // Never`; see gtkscrolledwindow.c:1896). Letting the
-        // caption ellipsize drops each chip's *minimum* from
-        // `key + full_label_natural` to `key + ellipsis (~10 px)`,
-        // while its *natural* stays the full text so wide allocations
-        // still render "key + Activate" with no truncation. The
-        // launcher panel's measured minimum drops from ~720 → ~590
-        // and `set_width_request` from the Settings spinner can
-        // finally take effect.
-        cap_lbl.set_ellipsize(pango::EllipsizeMode::End);
         chip.append(&cap_lbl);
 
         strip.append(&chip);
