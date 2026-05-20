@@ -25,7 +25,6 @@ use relm4::{Component, ComponentParts, ComponentSender, gtk};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BarPillKind {
     ActiveWindow,
-    Battery,
     DarkMode,
     ColorPicker,
     KeepAwake,
@@ -33,7 +32,6 @@ pub(crate) enum BarPillKind {
     Logout,
     MargoDock,
     MargoTags,
-    PowerProfile,
     Privacy,
     Reboot,
     RecordingIndicator,
@@ -47,7 +45,6 @@ impl BarPillKind {
     pub(crate) fn display_name(self) -> &'static str {
         match self {
             Self::ActiveWindow => "Active Window",
-            Self::Battery => "Battery",
             Self::DarkMode => "Dark Mode Toggle",
             Self::ColorPicker => "ColorPicker",
             Self::KeepAwake => "Keep Awake",
@@ -55,7 +52,6 @@ impl BarPillKind {
             Self::Logout => "Logout",
             Self::MargoDock => "Margo Dock",
             Self::MargoTags => "Margo Tags",
-            Self::PowerProfile => "Power Profile",
             Self::Privacy => "Privacy",
             Self::Reboot => "Reboot",
             Self::RecordingIndicator => "Recording Indicator",
@@ -73,9 +69,6 @@ impl BarPillKind {
             Self::ActiveWindow => {
                 "Shows the title of the currently focused window. Click to cycle through windows on the active tag."
             }
-            Self::Battery => {
-                "Charge percentage + charging state. Right-click flips between percentage label and minimal icon-only."
-            }
             Self::DarkMode => {
                 "One-click flip between Light and Dark matugen modes. Icon reflects the mode you'd switch *to*."
             }
@@ -92,9 +85,6 @@ impl BarPillKind {
             }
             Self::MargoTags => {
                 "1–9 tag pills with focus / occupied / urgent states. Click to switch tags, scroll to cycle."
-            }
-            Self::PowerProfile => {
-                "power-profiles-daemon state (Performance / Balanced / Power Saver). Click cycles forward."
             }
             Self::Privacy => {
                 "Lights up whenever an app is using the microphone or a camera. Mic detection rides PipeWire's recording-streams list (zero noise overhead); camera state is polled every 3 s with `fuser /dev/video*`. The pill hides itself when nothing is active so the bar stays quiet by default. Tooltip names which apps are recording."

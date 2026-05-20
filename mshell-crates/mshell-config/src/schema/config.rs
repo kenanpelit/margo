@@ -6,7 +6,6 @@ use crate::schema::menu_widgets::{
     ContainerConfig, MenuWidget, QuickActionWidget, QuickActionsConfig, SpacerConfig,
 };
 use crate::schema::position::{NotificationPosition, Orientation, Position};
-use crate::schema::quick_settings_icon::QuickSettingsIcon;
 use crate::schema::temperature::TemperatureUnitConfig;
 use crate::schema::themes::{
     MatugenContrast, MatugenMode, MatugenPreference, MatugenType, Themes, WindowOpacity,
@@ -346,23 +345,7 @@ impl Default for Bars {
 #[serde(default)]
 #[derive(Default)]
 pub struct BarWidgets {
-    pub quick_settings: QuickSettingsBarWidget,
     pub system_update: SystemUpdateBarWidget,
-}
-
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
-#[serde(default)]
-pub struct QuickSettingsBarWidget {
-    pub icon: QuickSettingsIcon,
-}
-
-impl Default for QuickSettingsBarWidget {
-    fn default() -> Self {
-        Self {
-            icon: QuickSettingsIcon::Arch,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]

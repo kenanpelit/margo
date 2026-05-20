@@ -6,10 +6,8 @@ use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::bar_widgets::BarWidget;
 use mshell_config::schema::config::{
-    BarWidgetsStoreFields, BarsStoreFields, ConfigStoreFields, FrameStoreFields,
-    HorizontalBarStoreFields, QuickSettingsBarWidgetStoreFields,
+    BarsStoreFields, ConfigStoreFields, FrameStoreFields, HorizontalBarStoreFields,
 };
-use mshell_config::schema::quick_settings_icon::QuickSettingsIcon;
 use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::factory::{DynamicIndex, FactoryVecDeque};
 use relm4::gtk::prelude::*;
@@ -36,7 +34,6 @@ pub(crate) struct BarSettingsModel {
     bottom_min_height: i32,
     top_reveal_by_default: bool,
     bottom_reveal_by_default: bool,
-    quick_settings_icon: QuickSettingsIcon,
     /// Debounce handles for the two `min_height` spin buttons.
     ///
     /// Each click of the SpinButton's up / down arrow fires
@@ -76,7 +73,6 @@ pub(crate) enum BarSettingsInput {
     CommitBottomMinHeight,
     TopRevealByDefaultChanged(bool),
     BottomRevealByDefaultChanged(bool),
-    QuickSettingsIconChanged(QuickSettingsIcon),
 
     TopStartEffect(Vec<BarWidget>),
     TopCenterEffect(Vec<BarWidget>),
@@ -88,7 +84,6 @@ pub(crate) enum BarSettingsInput {
     BottomMinHeightEffect(i32),
     TopRevealByDefaultEffect(bool),
     BottomRevealByDefaultEffect(bool),
-    QuickSettingsIconEffect(QuickSettingsIcon),
 }
 
 #[derive(Debug)]
@@ -379,53 +374,6 @@ impl Component for BarSettingsModel {
                 model.bottom_bar_center_controller.widget().clone() {},
                 model.bottom_bar_end_controller.widget().clone() {},
 
-                gtk::Separator {},
-
-                gtk::Label {
-                    add_css_class: "label-large-bold",
-                    set_label: "Bar Widgets",
-                    set_halign: gtk::Align::Start,
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Quick Settings Icon",
-                            set_hexpand: true,
-                        },
-
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "The icon for quick settings.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
-
-                    gtk::DropDown {
-                        set_width_request: 150,
-                        set_valign: gtk::Align::Center,
-                        set_model: Some(&gtk::StringList::new(&QuickSettingsIcon::display_names())),
-                        #[watch]
-                        #[block_signal(handler)]
-                        set_selected: model.quick_settings_icon.to_index(),
-                        connect_selected_notify[sender] => move |dd| {
-                            sender.input(BarSettingsInput::QuickSettingsIconChanged(
-                                QuickSettingsIcon::from_index(dd.selected())
-                            ));
-                        } @handler,
-                    },
-                },
             },
         }
     }
@@ -557,13 +505,6 @@ impl Component for BarSettingsModel {
         // (× 2 for Right). The settings UI no longer surfaces those
         // panels.
 
-        let sender_clone = sender.clone();
-        effects.push(move |_| {
-            let config = config_manager().config();
-            let value = config.bars().widgets().quick_settings().icon().get();
-            sender_clone.input(BarSettingsInput::QuickSettingsIconEffect(value));
-        });
-
         let top_bar_start_controller = WidgetSectionModel::builder()
             .launch(WidgetSectionInit {
                 bar_section: BarSection::Start,
@@ -678,13 +619,6 @@ impl Component for BarSettingsModel {
                 .bars()
                 .bottom_bar()
                 .reveal_by_default()
-                .get_untracked(),
-            quick_settings_icon: config_manager()
-                .config()
-                .bars()
-                .widgets()
-                .quick_settings()
-                .icon()
                 .get_untracked(),
             top_min_height_debounce: None,
             bottom_min_height_debounce: None,
@@ -810,12 +744,6 @@ impl Component for BarSettingsModel {
                     config.bars.bottom_bar.reveal_by_default = reveal;
                 });
             }
-            BarSettingsInput::QuickSettingsIconChanged(icon) => {
-                self.quick_settings_icon = icon;
-                config_manager().update_config(|config| {
-                    config.bars.widgets.quick_settings.icon = icon;
-                });
-            }
             BarSettingsInput::TopStartEffect(widgets) => {
                 self.top_bar_start_controller
                     .emit(WidgetSectionInput::SetWidgetsEffect(widgets));
@@ -851,9 +779,6 @@ impl Component for BarSettingsModel {
             }
             BarSettingsInput::BottomRevealByDefaultEffect(reveal) => {
                 self.bottom_reveal_by_default = reveal;
-            }
-            BarSettingsInput::QuickSettingsIconEffect(icon) => {
-                self.quick_settings_icon = icon;
             }
         }
 
