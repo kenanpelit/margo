@@ -12,6 +12,7 @@ pub(crate) struct ContainerModel {
     orientation: gtk::Orientation,
     minimum_width: i32,
     homogeneous: bool,
+    fill: bool,
 }
 
 #[derive(Debug)]
@@ -87,12 +88,24 @@ impl SimpleComponent for ContainerModel {
             },
             minimum_width: params.config.minimum_width,
             homogeneous: params.config.homogeneous,
+            fill: params.config.fill,
         };
 
         let widgets = view_output!();
 
         for controller in &model.widget_controllers {
-            widgets.widget_container.append(&controller.root_widget());
+            let child = controller.root_widget();
+            // `fill` columns stretch their tiles to claim the
+            // container's full height, so the shorter side reaches
+            // the same bottom edge as the taller one. Extra space
+            // is shared across children (each keeps its natural
+            // minimum), giving a balanced fill rather than equal
+            // halves.
+            if model.fill {
+                child.set_vexpand(true);
+                child.set_valign(gtk::Align::Fill);
+            }
+            widgets.widget_container.append(&child);
         }
 
         ComponentParts { model, widgets }

@@ -259,6 +259,12 @@ pub struct ContainerConfig {
     /// still parses.
     #[serde(default)]
     pub homogeneous: bool,
+    /// Give every child `vexpand` so they stretch to fill the
+    /// container's height — used by the dashboard columns so the
+    /// shorter side's tiles grow to reach the same bottom edge as
+    /// the taller side (equal column "length"). Default-off.
+    #[serde(default)]
+    pub fill: bool,
 }
 
 impl Default for ContainerConfig {
@@ -269,6 +275,7 @@ impl Default for ContainerConfig {
             orientation: Orientation::Horizontal,
             minimum_width: 0,
             homogeneous: false,
+            fill: false,
         }
     }
 }

@@ -658,6 +658,10 @@ impl Default for Menus {
                                 // shared floor.
                                 minimum_width: 400,
                                 homogeneous: false,
+                                // Stretch this column's tiles to fill
+                                // its height so both columns end at the
+                                // same bottom edge.
+                                fill: true,
                             }),
                             // Right column = controls + media, with
                             // OverviewIntel pinned at the top so the
@@ -685,6 +689,10 @@ impl Default for Menus {
                                 // making the dashboard symmetric.
                                 minimum_width: 400,
                                 homogeneous: false,
+                                // Stretch this column's tiles to fill
+                                // its height so both columns end at the
+                                // same bottom edge.
+                                fill: true,
                             }),
                         ],
                         spacing: 12,
@@ -694,6 +702,9 @@ impl Default for Menus {
                         // regardless of which side's content is
                         // naturally wider — symmetric two-pane body.
                         homogeneous: true,
+                        // Horizontal body: per-column fill is set on
+                        // the inner vertical columns, not here.
+                        fill: false,
                     }),
                     // ── Bottom centred QuickActions strip ──
                     //
