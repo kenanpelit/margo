@@ -28,6 +28,7 @@ const NUFW_MENU: &str = "ufw";
 const BLUETOOTH_MENU: &str = "bluetooth";
 const CPU_DASHBOARD_MENU: &str = "cpu_dashboard";
 const AUDIO_DASHBOARD_MENU: &str = "audio_dashboard";
+const SYSTEM_UPDATE_MENU: &str = "system_update";
 const NDNS_MENU: &str = "dns";
 const NPODMAN_MENU: &str = "podman";
 const NNOTES_MENU: &str = "notes";
@@ -81,6 +82,7 @@ pub struct Frame {
     bluetooth_menu: Controller<MenuModel>,
     cpu_dashboard_menu: Controller<MenuModel>,
     audio_dashboard_menu: Controller<MenuModel>,
+    system_update_menu: Controller<MenuModel>,
     dns_menu: Controller<MenuModel>,
     podman_menu: Controller<MenuModel>,
     notes_menu: Controller<MenuModel>,
@@ -131,6 +133,7 @@ pub enum FrameInput {
     ToggleBluetoothMenu,
     ToggleCpuDashboardMenu,
     ToggleAudioDashboardMenu,
+    ToggleSystemUpdateMenu,
     ToggleDnsMenu,
     TogglePodmanMenu,
     ToggleNotesMenu,
@@ -668,6 +671,7 @@ impl Component for Frame {
         let bluetooth_menu = Self::build_menu(&sender, MenuType::Bluetooth);
         let cpu_dashboard_menu = Self::build_menu(&sender, MenuType::CpuDashboard);
         let audio_dashboard_menu = Self::build_menu(&sender, MenuType::AudioDashboard);
+        let system_update_menu = Self::build_menu(&sender, MenuType::SystemUpdate);
         let dns_menu = Self::build_menu(&sender, MenuType::Dns);
         let podman_menu = Self::build_menu(&sender, MenuType::Podman);
         let notes_menu = Self::build_menu(&sender, MenuType::Notes);
@@ -834,6 +838,7 @@ impl Component for Frame {
             bluetooth_menu,
             cpu_dashboard_menu,
             audio_dashboard_menu,
+            system_update_menu,
             dns_menu,
             podman_menu,
             notes_menu,
@@ -978,6 +983,10 @@ impl Component for Frame {
             }
             FrameInput::ToggleAudioDashboardMenu => {
                 self.toggle_menu(AUDIO_DASHBOARD_MENU, widgets);
+                self.sync_keyboard_mode(root);
+            }
+            FrameInput::ToggleSystemUpdateMenu => {
+                self.toggle_menu(SYSTEM_UPDATE_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
             FrameInput::ToggleDnsMenu => {
@@ -1698,6 +1707,14 @@ impl Frame {
             .audio_dashboard_menu()
             .position()
             .get();
+        let system_update_menu_widget: Widget =
+            self.system_update_menu.widget().clone().upcast();
+        let system_update_menu_position = mshell_config::config_manager::config_manager()
+            .config()
+            .menus()
+            .system_update_menu()
+            .position()
+            .get();
         let dns_menu_widget: Widget = self.dns_menu.widget().clone().upcast();
         let podman_menu_widget: Widget = self.podman_menu.widget().clone().upcast();
         let notes_menu_widget: Widget = self.notes_menu.widget().clone().upcast();
@@ -1779,6 +1796,12 @@ impl Frame {
             &audio_dashboard_menu_widget,
             AUDIO_DASHBOARD_MENU,
             &audio_dashboard_menu_position,
+        );
+        Self::add_to_stack(
+            widgets,
+            &system_update_menu_widget,
+            SYSTEM_UPDATE_MENU,
+            &system_update_menu_position,
         );
         Self::add_to_stack(
             widgets,
@@ -1901,6 +1924,7 @@ impl Frame {
                 BarOutput::BluetoothClicked => FrameInput::ToggleBluetoothMenu,
                 BarOutput::CpuDashboardClicked => FrameInput::ToggleCpuDashboardMenu,
                 BarOutput::AudioDashboardClicked => FrameInput::ToggleAudioDashboardMenu,
+                BarOutput::SystemUpdateClicked => FrameInput::ToggleSystemUpdateMenu,
                 BarOutput::DnsClicked => FrameInput::ToggleDnsMenu,
                 BarOutput::PodmanClicked => FrameInput::TogglePodmanMenu,
                 BarOutput::NotesClicked => FrameInput::ToggleNotesMenu,

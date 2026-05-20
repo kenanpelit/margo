@@ -84,6 +84,9 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 IPCCommand::AudioDashboard => {
                     app_sender.emit(ShellInput::ToggleAudioDashboardMenu(active_monitor().await));
                 }
+                IPCCommand::SystemUpdate => {
+                    app_sender.emit(ShellInput::ToggleSystemUpdateMenu(active_monitor().await));
+                }
                 IPCCommand::Dns => {
                     app_sender.emit(ShellInput::ToggleDnsMenu(active_monitor().await));
                 }
@@ -292,6 +295,7 @@ enum IPCCommand {
     Bluetooth,
     CpuDashboard,
     AudioDashboard,
+    SystemUpdate,
     Dns,
     Podman,
     Notes,
@@ -408,6 +412,9 @@ impl IPCService {
     }
     async fn audio_dashboard(&self) {
         let _ = self.tx.send(IPCCommand::AudioDashboard);
+    }
+    async fn system_update(&self) {
+        let _ = self.tx.send(IPCCommand::SystemUpdate);
     }
     async fn dns(&self) {
         let _ = self.tx.send(IPCCommand::Dns);

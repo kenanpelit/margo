@@ -7,18 +7,11 @@
 //! position/min-width pair like menu surfaces have.
 //!
 //! These pages surface the widget so the Settings sidebar is
-//! complete, and pointer users to the right place to edit its
-//! placement. Future per-pill knobs (e.g. Battery's percentage
-//! visibility, Active Window's title truncation length) land
-//! here without a new file — extend the view with a match arm
-//! against `BarPillKind`.
+//! complete, and point the user to the right place to edit its
+//! placement. Widgets that DO have a menu surface (System
+//! Updates, CPU Dashboard, …) are configured under Widgets →
+//! Menus instead, not here.
 
-use mshell_common::scoped_effects::EffectScope;
-use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{
-    BarWidgetsStoreFields, BarsStoreFields, ConfigStoreFields, SystemUpdateBarWidgetStoreFields,
-};
-use reactive_graph::traits::{Get, GetUntracked};
 use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
@@ -36,7 +29,6 @@ pub(crate) enum BarPillKind {
     Reboot,
     RecordingIndicator,
     Shutdown,
-    SystemUpdate,
     Tray,
     VpnIndicator,
 }
@@ -56,7 +48,6 @@ impl BarPillKind {
             Self::Reboot => "Reboot",
             Self::RecordingIndicator => "Recording Indicator",
             Self::Shutdown => "Shutdown",
-            Self::SystemUpdate => "System Updates",
             Self::Tray => "System Tray",
             Self::VpnIndicator => "VPN Indicator",
         }
@@ -100,31 +91,16 @@ impl BarPillKind {
             Self::VpnIndicator => {
                 "Visual cue when a VPN tunnel is up (NetworkManager / wg-quick / openvpn)."
             }
-            Self::SystemUpdate => {
-                "Pending OS update count (pacman / yay / paru / dnf / apt). Polls every 30 min; auto-hides when zero updates are available. Click opens a terminal running the upgrade command. AUR helpers are preferred when present so a single click covers repo + AUR."
-            }
         }
     }
 }
 
 pub(crate) struct BarPillSettingsModel {
     kind: BarPillKind,
-    /// SystemUpdate-only: live mirror of the configured check
-    /// interval. Other kinds keep this at 0 (the field is unused
-    /// for them — the view hides the SystemUpdate section unless
-    /// kind == SystemUpdate).
-    check_interval_minutes: u32,
-    _effects: EffectScope,
 }
 
 #[derive(Debug)]
-pub(crate) enum BarPillSettingsInput {
-    /// SpinButton change for the SystemUpdate check interval.
-    CheckIntervalChanged(u32),
-    /// Reactive effect heard a config-side change (e.g. someone
-    /// hand-edited the YAML). Pull the new value into the model.
-    CheckIntervalEffect(u32),
-}
+pub(crate) enum BarPillSettingsInput {}
 
 #[derive(Debug)]
 pub(crate) enum BarPillSettingsOutput {}
@@ -163,10 +139,6 @@ impl Component for BarPillSettingsModel {
                     set_spacing: 16,
                     gtk::Image {
                         add_css_class: "settings-hero-icon",
-                        // `utilities-tweak-symbolic` doesn't ship in
-                        // MargoMaterial OR Adwaita. `view-grid-symbolic`
-                        // is in both — and conceptually fits a "per-pill
-                        // grid of cadence / position / visibility" page.
                         set_icon_name: Some("view-grid-symbolic"),
                         set_valign: gtk::Align::Center,
                     },
@@ -180,7 +152,7 @@ impl Component for BarPillSettingsModel {
                         },
                         gtk::Label {
                             add_css_class: "settings-hero-subtitle",
-                            set_label: "Per-pill cadence, position, visibility, and per-pill overrides.",
+                            set_label: "Per-pill placement and behaviour.",
                             set_halign: gtk::Align::Start,
                             set_xalign: 0.0,
                             set_wrap: true,
@@ -221,62 +193,6 @@ impl Component for BarPillSettingsModel {
                     set_wrap: true,
                     set_natural_wrap_mode: gtk::NaturalWrapMode::None,
                 },
-
-                // ── System-update-specific knobs ─────────────
-                //
-                // Only shown when this page is the SystemUpdate
-                // pill. Other kinds get the placement copy alone.
-                gtk::Separator {
-                    #[watch]
-                    set_visible: model.kind == BarPillKind::SystemUpdate,
-                },
-
-                gtk::Label {
-                    add_css_class: "label-large-bold",
-                    set_label: "Check interval",
-                    set_halign: gtk::Align::Start,
-                    #[watch]
-                    set_visible: model.kind == BarPillKind::SystemUpdate,
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-                    #[watch]
-                    set_visible: model.kind == BarPillKind::SystemUpdate,
-
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Every (minutes)",
-                            set_hexpand: true,
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "How often to re-check pending upgrades. Default 180 (3 h). Use right-click on the pill itself for an immediate manual re-check between scheduled probes — handy when you just ran an upgrade outside mshell.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
-
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (1.0, 1440.0),
-                        set_increments: (5.0, 30.0),
-                        set_digits: 0,
-                        #[watch]
-                        #[block_signal(interval_handler)]
-                        set_value: model.check_interval_minutes as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(BarPillSettingsInput::CheckIntervalChanged(s.value() as u32));
-                        } @interval_handler,
-                    },
-                },
             }
         }
     }
@@ -284,41 +200,9 @@ impl Component for BarPillSettingsModel {
     fn init(
         params: Self::Init,
         root: Self::Root,
-        sender: ComponentSender<Self>,
+        _sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let kind = params.kind;
-
-        let check_interval_minutes = config_manager()
-            .config()
-            .bars()
-            .widgets()
-            .system_update()
-            .check_interval_minutes()
-            .get_untracked();
-
-        // Subscribe to interval changes so external edits (e.g.
-        // hand-edited YAML reloaded by margo) repaint the spin.
-        // We only need this when the SystemUpdate page is in view
-        // — other kinds keep the effect harmless (the read just
-        // doesn't drive a UI field).
-        let mut effects = EffectScope::new();
-        let sender_clone = sender.clone();
-        effects.push(move |_| {
-            let v = config_manager()
-                .config()
-                .bars()
-                .widgets()
-                .system_update()
-                .check_interval_minutes()
-                .get();
-            sender_clone.input(BarPillSettingsInput::CheckIntervalEffect(v));
-        });
-
-        let model = BarPillSettingsModel {
-            kind,
-            check_interval_minutes,
-            _effects: effects,
-        };
+        let model = BarPillSettingsModel { kind: params.kind };
         let widgets = view_output!();
         ComponentParts { model, widgets }
     }
@@ -329,19 +213,6 @@ impl Component for BarPillSettingsModel {
         _sender: ComponentSender<Self>,
         _root: &Self::Root,
     ) {
-        match message {
-            BarPillSettingsInput::CheckIntervalChanged(v) => {
-                if self.check_interval_minutes == v {
-                    return;
-                }
-                self.check_interval_minutes = v;
-                config_manager().update_config(move |config| {
-                    config.bars.widgets.system_update.check_interval_minutes = v;
-                });
-            }
-            BarPillSettingsInput::CheckIntervalEffect(v) => {
-                self.check_interval_minutes = v;
-            }
-        }
+        match message {}
     }
 }

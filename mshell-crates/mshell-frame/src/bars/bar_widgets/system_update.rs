@@ -48,7 +48,10 @@ pub(crate) enum SystemUpdateInput {
 }
 
 #[derive(Debug)]
-pub(crate) enum SystemUpdateOutput {}
+pub(crate) enum SystemUpdateOutput {
+    /// Left click — the frame opens the System Updates panel.
+    Clicked,
+}
 
 pub(crate) struct SystemUpdateInit {
     pub(crate) orientation: Orientation,
@@ -186,11 +189,9 @@ impl Component for SystemUpdateModel {
     ) {
         match message {
             SystemUpdateInput::Clicked => {
-                // Stage 2 will open the panel here; for now the click
-                // runs the upgrade in a terminal (prior behaviour).
-                relm4::spawn(async move {
-                    system_update::launch_terminal_upgrade(ProbeConfig::from_config()).await;
-                });
+                // Open the System Updates panel; the panel's Update
+                // button runs the upgrade.
+                let _ = sender.output(SystemUpdateOutput::Clicked);
             }
             SystemUpdateInput::ManualRefresh => {
                 let cmd_sender = sender.command_sender().clone();

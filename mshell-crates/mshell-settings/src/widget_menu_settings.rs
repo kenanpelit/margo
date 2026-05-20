@@ -11,7 +11,10 @@
 
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{ConfigStoreFields, MenuStoreFields, MenusStoreFields};
+use mshell_config::schema::config::{
+    BarWidgetsStoreFields, BarsStoreFields, ConfigStoreFields, MenuStoreFields, MenusStoreFields,
+    SystemUpdateBarWidgetStoreFields,
+};
 use mshell_config::schema::position::Position;
 use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
@@ -39,6 +42,7 @@ pub(crate) enum MenuKind {
     Podman,
     Power,
     Screenshot,
+    SystemUpdate,
     Ufw,
     Wallpaper,
 }
@@ -63,6 +67,7 @@ impl MenuKind {
             Self::Podman => "Podman",
             Self::Power => "Power Profile",
             Self::Screenshot => "Screenshot",
+            Self::SystemUpdate => "System Updates",
             Self::Ufw => "UFW Firewall",
             Self::Wallpaper => "Wallpaper",
         }
@@ -85,6 +90,7 @@ impl MenuKind {
             MenuKind::Bluetooth,
             MenuKind::CpuDashboard,
             MenuKind::AudioDashboard,
+            MenuKind::SystemUpdate,
             MenuKind::Ufw,
             MenuKind::Dns,
             MenuKind::Podman,
@@ -119,6 +125,7 @@ impl MenuKind {
             Self::Bluetooth => m.bluetooth_menu().position().get_untracked(),
             Self::CpuDashboard => m.cpu_dashboard_menu().position().get_untracked(),
             Self::AudioDashboard => m.audio_dashboard_menu().position().get_untracked(),
+            Self::SystemUpdate => m.system_update_menu().position().get_untracked(),
             Self::MargoLayout => m.margo_layout_menu().position().get_untracked(),
         }
     }
@@ -144,6 +151,7 @@ impl MenuKind {
             Self::Bluetooth => m.bluetooth_menu().minimum_width().get_untracked(),
             Self::CpuDashboard => m.cpu_dashboard_menu().minimum_width().get_untracked(),
             Self::AudioDashboard => m.audio_dashboard_menu().minimum_width().get_untracked(),
+            Self::SystemUpdate => m.system_update_menu().minimum_width().get_untracked(),
             Self::MargoLayout => m.margo_layout_menu().minimum_width().get_untracked(),
         }
     }
@@ -169,6 +177,7 @@ impl MenuKind {
             Self::Bluetooth => m.bluetooth_menu().position().get(),
             Self::CpuDashboard => m.cpu_dashboard_menu().position().get(),
             Self::AudioDashboard => m.audio_dashboard_menu().position().get(),
+            Self::SystemUpdate => m.system_update_menu().position().get(),
             Self::MargoLayout => m.margo_layout_menu().position().get(),
         }
     }
@@ -194,6 +203,7 @@ impl MenuKind {
             Self::Bluetooth => m.bluetooth_menu().minimum_width().get(),
             Self::CpuDashboard => m.cpu_dashboard_menu().minimum_width().get(),
             Self::AudioDashboard => m.audio_dashboard_menu().minimum_width().get(),
+            Self::SystemUpdate => m.system_update_menu().minimum_width().get(),
             Self::MargoLayout => m.margo_layout_menu().minimum_width().get(),
         }
     }
@@ -218,6 +228,7 @@ impl MenuKind {
             Self::Bluetooth => c.menus.bluetooth_menu.position = p,
             Self::CpuDashboard => c.menus.cpu_dashboard_menu.position = p,
             Self::AudioDashboard => c.menus.audio_dashboard_menu.position = p,
+            Self::SystemUpdate => c.menus.system_update_menu.position = p,
             Self::MargoLayout => c.menus.margo_layout_menu.position = p,
         });
     }
@@ -242,6 +253,7 @@ impl MenuKind {
             Self::Bluetooth => c.menus.bluetooth_menu.minimum_width = w,
             Self::CpuDashboard => c.menus.cpu_dashboard_menu.minimum_width = w,
             Self::AudioDashboard => c.menus.audio_dashboard_menu.minimum_width = w,
+            Self::SystemUpdate => c.menus.system_update_menu.minimum_width = w,
             Self::MargoLayout => c.menus.margo_layout_menu.minimum_width = w,
         });
     }
@@ -267,6 +279,7 @@ impl MenuKind {
             Self::Bluetooth => m.bluetooth_menu().maximum_height().get_untracked(),
             Self::CpuDashboard => m.cpu_dashboard_menu().maximum_height().get_untracked(),
             Self::AudioDashboard => m.audio_dashboard_menu().maximum_height().get_untracked(),
+            Self::SystemUpdate => m.system_update_menu().maximum_height().get_untracked(),
             Self::MargoLayout => m.margo_layout_menu().maximum_height().get_untracked(),
         }
     }
@@ -292,6 +305,7 @@ impl MenuKind {
             Self::Bluetooth => m.bluetooth_menu().maximum_height().get(),
             Self::CpuDashboard => m.cpu_dashboard_menu().maximum_height().get(),
             Self::AudioDashboard => m.audio_dashboard_menu().maximum_height().get(),
+            Self::SystemUpdate => m.system_update_menu().maximum_height().get(),
             Self::MargoLayout => m.margo_layout_menu().maximum_height().get(),
         }
     }
@@ -316,6 +330,7 @@ impl MenuKind {
             Self::Bluetooth => c.menus.bluetooth_menu.maximum_height = h,
             Self::CpuDashboard => c.menus.cpu_dashboard_menu.maximum_height = h,
             Self::AudioDashboard => c.menus.audio_dashboard_menu.maximum_height = h,
+            Self::SystemUpdate => c.menus.system_update_menu.maximum_height = h,
             Self::MargoLayout => c.menus.margo_layout_menu.maximum_height = h,
         });
     }
@@ -343,6 +358,7 @@ impl MenuKind {
             Self::Bluetooth => m.bluetooth_menu().widgets().get_untracked(),
             Self::CpuDashboard => m.cpu_dashboard_menu().widgets().get_untracked(),
             Self::AudioDashboard => m.audio_dashboard_menu().widgets().get_untracked(),
+            Self::SystemUpdate => m.system_update_menu().widgets().get_untracked(),
             Self::MargoLayout => m.margo_layout_menu().widgets().get_untracked(),
         }
     }
@@ -371,6 +387,7 @@ impl MenuKind {
             Self::Bluetooth => m.bluetooth_menu().widgets().get(),
             Self::CpuDashboard => m.cpu_dashboard_menu().widgets().get(),
             Self::AudioDashboard => m.audio_dashboard_menu().widgets().get(),
+            Self::SystemUpdate => m.system_update_menu().widgets().get(),
             Self::MargoLayout => m.margo_layout_menu().widgets().get(),
         }
     }
@@ -400,6 +417,7 @@ impl MenuKind {
             Self::Bluetooth => c.menus.bluetooth_menu.widgets = widgets,
             Self::CpuDashboard => c.menus.cpu_dashboard_menu.widgets = widgets,
             Self::AudioDashboard => c.menus.audio_dashboard_menu.widgets = widgets,
+            Self::SystemUpdate => c.menus.system_update_menu.widgets = widgets,
             Self::MargoLayout => c.menus.margo_layout_menu.widgets = widgets,
         });
     }
@@ -412,6 +430,10 @@ pub(crate) struct WidgetMenuSettingsModel {
     minimum_width: i32,
     /// Maximum visible content height in pixels. 0 = no cap.
     maximum_height: i32,
+    /// SystemUpdate-only: the pill's poll cadence in minutes.
+    /// Unused (kept at 0) for every other kind — the view hides
+    /// the cadence section unless `kind == SystemUpdate`.
+    check_interval_minutes: u32,
     position_model: gtk::StringList,
     _effects: EffectScope,
 }
@@ -424,6 +446,8 @@ pub(crate) enum WidgetMenuSettingsInput {
     PositionEffect(Position),
     MinWidthEffect(i32),
     MaxHeightEffect(i32),
+    CheckIntervalChanged(u32),
+    CheckIntervalEffect(u32),
 }
 
 #[derive(Debug)]
@@ -610,6 +634,56 @@ impl Component for WidgetMenuSettingsModel {
                         } @max_height_handler,
                     },
                 },
+
+                // ── System-update-only cadence ───────────────
+                //
+                // The repo / AUR / Flatpak source toggles live in
+                // the panel itself (open the menu → top row); only
+                // the poll cadence is a set-once preference, so it
+                // stays here. Hidden for every other menu kind.
+                gtk::Separator {
+                    #[watch]
+                    set_visible: model.kind == MenuKind::SystemUpdate,
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+                    #[watch]
+                    set_visible: model.kind == MenuKind::SystemUpdate,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Check interval (minutes)",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "How often the pill re-checks pending upgrades. Default 180 (3 h). Right-click the pill for an immediate manual re-check. Which sources to probe (Repo / AUR / Flatpak) is toggled inside the panel itself.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::SpinButton {
+                        set_valign: gtk::Align::Center,
+                        set_range: (1.0, 1440.0),
+                        set_increments: (5.0, 30.0),
+                        set_digits: 0,
+                        #[watch]
+                        #[block_signal(interval_handler)]
+                        set_value: model.check_interval_minutes as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(WidgetMenuSettingsInput::CheckIntervalChanged(s.value() as u32));
+                        } @interval_handler,
+                    },
+                },
             }
         }
     }
@@ -641,12 +715,34 @@ impl Component for WidgetMenuSettingsModel {
             let h = kind.tracked_max_height();
             sender_clone.input(WidgetMenuSettingsInput::MaxHeightEffect(h));
         });
+        // SystemUpdate-only: track the pill's poll cadence so an
+        // external `mshellctl config reload` repaints the spin.
+        // Harmless for other kinds — the read just doesn't drive
+        // a visible field.
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let v = config_manager()
+                .config()
+                .bars()
+                .widgets()
+                .system_update()
+                .check_interval_minutes()
+                .get();
+            sender_clone.input(WidgetMenuSettingsInput::CheckIntervalEffect(v));
+        });
 
         let model = WidgetMenuSettingsModel {
             kind,
             position: kind.read_position(),
             minimum_width: kind.read_min_width(),
             maximum_height: kind.read_max_height(),
+            check_interval_minutes: config_manager()
+                .config()
+                .bars()
+                .widgets()
+                .system_update()
+                .check_interval_minutes()
+                .get_untracked(),
             position_model,
             _effects: effects,
         };
@@ -682,9 +778,18 @@ impl Component for WidgetMenuSettingsModel {
                     self.kind.write_max_height(h);
                 }
             }
+            WidgetMenuSettingsInput::CheckIntervalChanged(v) => {
+                if self.check_interval_minutes != v {
+                    self.check_interval_minutes = v;
+                    config_manager().update_config(move |c| {
+                        c.bars.widgets.system_update.check_interval_minutes = v;
+                    });
+                }
+            }
             WidgetMenuSettingsInput::PositionEffect(p) => self.position = p,
             WidgetMenuSettingsInput::MinWidthEffect(w) => self.minimum_width = w,
             WidgetMenuSettingsInput::MaxHeightEffect(h) => self.maximum_height = h,
+            WidgetMenuSettingsInput::CheckIntervalEffect(v) => self.check_interval_minutes = v,
         }
     }
 }

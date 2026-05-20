@@ -17,3 +17,75 @@
 .system-update-bar-widget.error {
   color: var(--error);
 }
+
+// ── System Updates panel ──────────────────────────────────────
+// The panel content for MenuType::SystemUpdate: a header row, a
+// per-source summary line, the scrollable grouped table, then the
+// full-width Update button. Follows DESIGN.md — surface-container
+// card, on-surface-variant for secondary text, radius-md/-sm
+// scale, tabular numerals for versions.
+.system-update-menu-widget {
+  padding: 4px;
+}
+
+// Source toggle row — Repo / AUR / Flatpak switches sitting on
+// a faint surface chip so the controls read as one grouped band.
+.system-update-sources {
+  padding: 6px 10px;
+  border-radius: var(--radius-pill);
+  background-color: var(--surface-container);
+
+  .system-update-source label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    color: var(--on-surface-variant);
+  }
+}
+
+.system-update-list {
+  padding: 2px 0;
+}
+
+// Source group header (Repo / AUR / Flatpak) — matches the
+// dashboard section-label treatment so headings read uniformly.
+.system-update-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
+  margin-top: 8px;
+  margin-bottom: 2px;
+
+  // Drop the leading gap on the very first header so the table
+  // hugs the summary line above it.
+  &:first-child {
+    margin-top: 0;
+  }
+}
+
+// One pending package: name on the left, `old → new` on the
+// right. Flat by default (it isn't actionable); a faint surface
+// tint on hover keeps the row legible while scanning.
+.system-update-row {
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: background-color var(--motion-fast) var(--ease-standard);
+
+  &:hover {
+    background-color: color-mix(in srgb, var(--primary) 14%, transparent);
+  }
+}
+
+.system-update-name {
+  font-size: var(--font-bar);
+  color: var(--on-surface);
+}
+
+.system-update-version {
+  font-family: monospace;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface-variant);
+}

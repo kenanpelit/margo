@@ -69,6 +69,9 @@ pub enum MenuWidget {
     /// in the dashboard's right column where each of the three
     /// metrics was previously its own widget.
     SystemStatus,
+    /// `system_update` bar pill's panel — pending updates grouped by
+    /// source (repo / AUR / Flatpak) with Refresh + Update.
+    SystemUpdate,
     ThemePicker,
     Wallpaper,
     Weather,
@@ -124,6 +127,7 @@ impl MenuWidget {
             MenuWidget::ScreenRecording => "Screen Recording",
             MenuWidget::Spacer(_) => "Spacer",
             MenuWidget::SystemStatus => "System Status",
+            MenuWidget::SystemUpdate => "System Updates",
             MenuWidget::ThemePicker => "Theme Picker",
             MenuWidget::Wallpaper => "Wallpaper",
             MenuWidget::Weather => "Weather",
@@ -176,6 +180,7 @@ impl MenuWidget {
             MenuWidget::ScreenRecording,
             MenuWidget::Spacer(SpacerConfig { size: 16 }),
             MenuWidget::SystemStatus,
+            MenuWidget::SystemUpdate,
             MenuWidget::ThemePicker,
             MenuWidget::Wallpaper,
             MenuWidget::Weather,

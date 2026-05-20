@@ -73,6 +73,8 @@ pub enum MenuCommands {
     CpuDashboard,
     /// Toggle the Audio Dashboard menu (output + input mixer)
     AudioDashboard,
+    /// Toggle the System Updates menu (repo / AUR / Flatpak)
+    SystemUpdate,
     /// Toggle the DNS / VPN menu
     Dns,
     /// Toggle the Podman menu
@@ -157,6 +159,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::AudioDashboard => {
             bus_command("AudioDashboard").await?;
+        }
+        MenuCommands::SystemUpdate => {
+            bus_command("SystemUpdate").await?;
         }
         MenuCommands::Dns => {
             bus_command("Dns").await?;

@@ -31,6 +31,7 @@ pub(crate) mod screenshot;
 pub(crate) mod session;
 pub(crate) mod spacer;
 pub(crate) mod system_status;
+pub(crate) mod system_update;
 pub(crate) mod theme_picker;
 pub(crate) mod wallpaper;
 pub(crate) mod weather;

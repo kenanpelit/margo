@@ -401,6 +401,8 @@ pub struct Menus {
     pub cpu_dashboard_menu: Menu,
     #[serde(default = "default_audio_dashboard_menu")]
     pub audio_dashboard_menu: Menu,
+    #[serde(default = "default_system_update_menu")]
+    pub system_update_menu: Menu,
     pub media_player_menu: Menu,
     pub session_menu: Menu,
     /// Settings panel — embeds in the frame's menu stack instead
@@ -427,6 +429,15 @@ fn default_bluetooth_menu() -> Menu {
         widgets: vec![MenuWidget::Bluetooth],
         minimum_width: 400,
         maximum_height: 0,
+    }
+}
+
+fn default_system_update_menu() -> Menu {
+    Menu {
+        position: Position::TopRight,
+        widgets: vec![MenuWidget::SystemUpdate],
+        minimum_width: 460,
+        maximum_height: 620,
     }
 }
 
@@ -548,6 +559,7 @@ impl Default for Menus {
             bluetooth_menu: default_bluetooth_menu(),
             cpu_dashboard_menu: default_cpu_dashboard_menu(),
             audio_dashboard_menu: default_audio_dashboard_menu(),
+            system_update_menu: default_system_update_menu(),
             media_player_menu: Menu {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::MediaPlayer],

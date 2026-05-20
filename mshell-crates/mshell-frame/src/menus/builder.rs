@@ -75,6 +75,9 @@ use crate::menus::menu_widgets::session::session_menu_widget::{
 };
 use crate::menus::menu_widgets::spacer::{SpacerInit, SpacerModel};
 use crate::menus::menu_widgets::system_status::{SystemStatusInit, SystemStatusModel};
+use crate::menus::menu_widgets::system_update::system_update_menu_widget::{
+    SystemUpdateMenuWidgetInit, SystemUpdateMenuWidgetModel, SystemUpdateMenuWidgetOutput,
+};
 use crate::menus::menu_widgets::theme_picker::theme_picker_menu_widget::{
     ThemePickerMenuWidgetInit, ThemePickerMenuWidgetModel,
 };
@@ -148,6 +151,13 @@ pub fn build_widget(
             CpuDashboardMenuWidgetModel::builder()
                 .launch(CpuDashboardMenuWidgetInit {})
                 .detach(),
+        ),
+        MenuWidget::SystemUpdate => Box::new(
+            SystemUpdateMenuWidgetModel::builder()
+                .launch(SystemUpdateMenuWidgetInit {})
+                .forward(sender.output_sender(), |msg| match msg {
+                    SystemUpdateMenuWidgetOutput::CloseMenu => MenuOutput::CloseMenu,
+                }),
         ),
         MenuWidget::Divider => Box::new(
             DividerMenuWidgetModel::builder()

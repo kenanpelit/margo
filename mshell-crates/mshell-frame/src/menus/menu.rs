@@ -55,6 +55,9 @@ pub(crate) enum MenuType {
     Bluetooth,
     CpuDashboard,
     AudioDashboard,
+    /// `system_update` bar pill's panel — pending updates grouped
+    /// by source (repo / AUR / Flatpak) with Refresh + Update.
+    SystemUpdate,
     MediaPlayer,
     Session,
     /// Combined clock + quick-settings dashboard. Renders the
@@ -568,6 +571,32 @@ impl Component for MenuModel {
                     let config = config.clone();
                     let maximum_height =
                         config.menus().audio_dashboard_menu().maximum_height().get();
+                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
+                });
+            }
+            MenuType::SystemUpdate => {
+                css_class = "system-update-menu".to_string();
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let widgets = config.menus().system_update_menu().widgets().get();
+                    sender_clone.input(MenuInput::SetWidget(widgets));
+                });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let minimum_width =
+                        config.menus().system_update_menu().minimum_width().get();
+                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
+                });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let maximum_height =
+                        config.menus().system_update_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
                 });
             }

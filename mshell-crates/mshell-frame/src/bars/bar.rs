@@ -116,6 +116,7 @@ pub(crate) enum BarOutput {
     UfwClicked,
     BluetoothClicked,
     CpuDashboardClicked,
+    SystemUpdateClicked,
     AudioDashboardClicked,
     DnsClicked,
     PodmanClicked,
@@ -635,7 +636,10 @@ impl BarModel {
             BarWidget::SystemUpdate => Box::new(
                 SystemUpdateModel::builder()
                     .launch(SystemUpdateInit { orientation })
-                    .detach(),
+                    .forward(sender.output_sender(), |msg| match msg {
+                        crate::bars::bar_widgets::system_update::SystemUpdateOutput::Clicked
+                            => BarOutput::SystemUpdateClicked,
+                    }),
             ),
             BarWidget::VpnIndicator => Box::new(
                 VpnIndicatorModel::builder()

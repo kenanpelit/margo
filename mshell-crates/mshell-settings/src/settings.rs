@@ -702,6 +702,7 @@ impl Component for SettingsWindowModel {
             WidgetEntry::Menu { kind: MenuKind::Bluetooth, stack_name: "bluetooth", label: "Bluetooth", icon: "bluetooth-active-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::CpuDashboard, stack_name: "cpu_dashboard", label: "CPU Dashboard", icon: "computer-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::AudioDashboard, stack_name: "audio_dashboard", label: "Audio Dashboard", icon: "audio-volume-high-symbolic" },
+            WidgetEntry::Menu { kind: MenuKind::SystemUpdate, stack_name: "system_update", label: "System Updates", icon: "software-update-available-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::MargoLayout, stack_name: "margo_layout", label: "Margo Layout Switcher", icon: "view-grid-symbolic" },
             // Bar-only pills (no menu surface — just info pages).
             WidgetEntry::Pill { kind: BarPillKind::ActiveWindow, stack_name: "pill_active_window", label: "Active Window", icon: "window-symbolic" },
@@ -717,7 +718,6 @@ impl Component for SettingsWindowModel {
             WidgetEntry::Pill { kind: BarPillKind::RecordingIndicator, stack_name: "pill_recording", label: "Recording Indicator", icon: "media-record-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::Shutdown, stack_name: "pill_shutdown", label: "Shutdown", icon: "system-shutdown-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::Tray, stack_name: "pill_tray", label: "System Tray", icon: "view-list-symbolic" },
-            WidgetEntry::Pill { kind: BarPillKind::SystemUpdate, stack_name: "pill_system_update", label: "System Updates", icon: "software-update-available-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::VpnIndicator, stack_name: "pill_vpn", label: "VPN Indicator", icon: "network-vpn-symbolic" },
             // Rich pages with their own controllers.
             WidgetEntry::Notifications,
