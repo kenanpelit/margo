@@ -20,15 +20,23 @@
 
 // ── Hero card ────────────────────────────────────────────
 .power-hero {
-  padding: 10px 12px;
-  border-radius: var(--radius-widget);
+  padding: 12px;
+  border-radius: var(--radius-md);
   background-color: var(--surface-container-high);
 }
 
 // ── Profile switcher buttons ─────────────────────────────
+// list-item shape; selection backdrop fades in, and the unset
+// (non-selected) state carries a calm tonal hover (DESIGN.md
+// §7 state-on-interactive / §Motion).
 .power-profile-button {
   padding: 10px 4px;
-  border-radius: var(--radius-widget);
+  border-radius: var(--radius-sm);
+  transition: background-color var(--motion-medium) var(--ease-standard),
+              color var(--motion-medium) var(--ease-standard);
+}
+.power-profile-button:not(.selected):hover {
+  background-color: var(--surface-container-high);
 }
 
 // ── Power-control buttons (Cycle / Lock Auto / Idle) ─────
@@ -36,7 +44,11 @@
 // carries the active-state tint for Lock Auto / Idle Toggle.
 .power-control-button {
   padding: 8px 4px;
-  border-radius: var(--radius-widget);
+  border-radius: var(--radius-sm);
+  transition: background-color var(--motion-fast) var(--ease-standard);
+}
+.power-control-button:not(.selected):hover {
+  background-color: var(--surface-container-high);
 }
 // Active button: tinted backdrop per profile. The `.selected`
 // class is always paired with one `.profile-*` class by

@@ -9,8 +9,8 @@
 
 // ── Hero card ────────────────────────────────────────────
 .ip-hero {
-  padding: 10px 12px;
-  border-radius: var(--radius-widget);
+  padding: 12px;
+  border-radius: var(--radius-md);
   background-color: var(--surface-container-high);
 }
 .ip-ip-address {
@@ -22,10 +22,10 @@
 // ── Status badge ─────────────────────────────────────────
 .ip-badge {
   padding: 2px 10px;
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   font-weight: 600;
   font-size: 0.85em;
-  background-color: var(--surface-variant);
+  background-color: var(--surface-container-high);
   color: var(--on-surface-variant);
 }
 .ip-badge.ip-badge-ok {
@@ -33,7 +33,7 @@
   color: var(--on-primary);
 }
 .ip-badge.ip-badge-loading {
-  background-color: var(--surface-variant);
+  background-color: var(--surface-container-high);
   color: var(--on-surface-variant);
   opacity: 0.7;
 }

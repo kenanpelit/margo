@@ -25,6 +25,7 @@
   color: var(--on-surface-variant);
   opacity: 0.4;
   margin-right: 2px;
+  transition: color var(--motion-fast) var(--ease-standard);
 }
 
 .overview-intel-line {
@@ -32,6 +33,8 @@
   font-weight: 500;
   color: var(--on-surface);
   font-variant-numeric: tabular-nums;
+  // Calm/warn/danger escalation eases in (DESIGN.md §Motion).
+  transition: color var(--motion-fast) var(--ease-standard);
 
   // Calm bullet matches surrounding text. Warn pulls the
   // primary accent so the line lights up but doesn't shout.

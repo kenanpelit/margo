@@ -13,9 +13,12 @@
   padding: 4px 2px;
 }
 
+// Connected → primary active tint (DESIGN.md §3); the fade keeps
+// connect/disconnect from snapping colour.
 .connectivity-icon {
   -gtk-icon-size: 18px;
   color: var(--primary);
+  transition: color var(--motion-fast) var(--ease-standard);
 }
 
 .connectivity-label {

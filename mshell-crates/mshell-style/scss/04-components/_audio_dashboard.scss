@@ -7,11 +7,11 @@
 // Popover with sectioned controls.
 
 .audio-dashboard-bar-widget {
-  transition: color 180ms ease-in-out;
+  transition: color var(--motion-fast) var(--ease-standard);
 }
 
 .audio-dashboard-bar-cluster {
-  transition: color 180ms ease-in-out;
+  transition: color var(--motion-fast) var(--ease-standard);
 }
 
 .audio-dashboard-bar-label {
@@ -56,8 +56,8 @@
 .audio-dashboard-mute-button {
   all: unset;
   padding: 4px 6px;
-  border-radius: var(--radius-widget);
-  transition: background-color 180ms;
+  border-radius: var(--radius-sm);
+  transition: background-color var(--motion-fast) var(--ease-standard);
 
   &:hover {
     background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
@@ -68,18 +68,18 @@
 .audio-dashboard-slider {
   trough {
     min-height: 4px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background-color: var(--surface-container-high);
   }
   highlight {
     min-height: 4px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background-color: var(--primary);
   }
   slider {
     min-width: 12px;
     min-height: 12px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background-color: var(--primary);
     margin: -4px;
   }
@@ -94,10 +94,10 @@
 .audio-dashboard-device-row {
   all: unset;
   padding: 6px 10px;
-  border-radius: var(--radius-widget);
+  border-radius: var(--radius-sm);
   font-size: 12px;
   color: var(--on-surface);
-  transition: background-color 180ms;
+  transition: background-color var(--motion-fast) var(--ease-standard);
 
   &:hover {
     background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");

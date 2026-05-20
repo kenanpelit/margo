@@ -17,10 +17,12 @@
   opacity: 0.85;
 }
 
+// "Volume" / "Mic" are row labels → secondary tier, dim against
+// the bright tabular value (DESIGN.md §Typography hierarchy).
 .compact-audio-caption {
   font-size: 12px;
   font-weight: 500;
-  color: var(--on-surface);
+  color: var(--on-surface-variant);
   min-width: 56px;
 }
 
@@ -32,21 +34,22 @@
 }
 
 // Slim GTK4 scale — match the media player's seek-bar rhythm.
+// Pill troughs/handle use the --radius-pill shape token.
 .compact-audio-slider {
   trough {
     min-height: 4px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background-color: var(--surface-container-high);
   }
   highlight {
     min-height: 4px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background-color: var(--primary);
   }
   slider {
     min-width: 12px;
     min-height: 12px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background-color: var(--primary);
     margin: -4px;
   }

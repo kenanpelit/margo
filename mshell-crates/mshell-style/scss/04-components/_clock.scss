@@ -19,9 +19,12 @@
 .qs-clock-hero {
   background-color: var(--surface-container);
   color: var(--on-surface);
-  border-radius: var(--radius-widget);
-  padding: 10px 14px;
-  margin: 2px 0;
+  // Card shape from the M3 shape scale (--radius-md = 16), not the
+  // config-driven --radius-widget: corner geometry is design
+  // language, not a per-user knob (DESIGN.md §Shape scale).
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  margin: 4px 0;
   // Single-pixel accent strip on the bottom edge — replaces the
   // full primary fill so the hero reads as compositor chrome,
   // not as a "big call-to-action" banner.
@@ -85,9 +88,14 @@
     // 2-col layout doesn't feel sprawling.
     background-color: var(--surface-container);
     color: var(--on-surface);
-    border-radius: var(--radius-widget);
-    padding: 12px 14px;
+    // Tile = card → --radius-md (16) from the M3 shape scale.
+    border-radius: var(--radius-md);
+    padding: 12px 16px;
     margin: 4px 0;
+    // Calm motion: tonal/seam changes (e.g. severity-driven
+    // child tints, the dashboard merge square-offs) ease in
+    // rather than hard-swapping (DESIGN.md §Motion).
+    transition: background-color var(--motion-fast) var(--ease-standard);
   }
 
   // Container widgets — used by the dashboard for the 2-col body
@@ -112,8 +120,8 @@
   // a compact control-center bar, not a tablet launcher — tight
   // padding, no extra per-button chunk.
   .quick-actions-menu-widget {
-    padding: 6px 8px;
-    margin: 2px 0;
+    padding: 4px 8px;
+    margin: 4px 0;
 
     // The inner box that holds the action buttons; pack them
     // tighter so the row reads as a dense control strip rather
@@ -124,8 +132,21 @@
 
     button {
       padding: 6px 8px;
-      min-width: 32px;
-      min-height: 32px;
+      min-width: 36px;
+      min-height: 36px;
+      // Buttons are list-item shaped (--radius-sm = 12). Each is
+      // interactive, so it carries a state layer (DESIGN.md §7):
+      // a calm tonal hover wash that eases in via the motion
+      // tokens, never a sudden colour swap.
+      border-radius: var(--radius-sm);
+      transition: background-color var(--motion-fast) var(--ease-standard);
+
+      &:hover {
+        background-color: var(--surface-container-high);
+      }
+      &:active {
+        background-color: var(--surface-container-highest);
+      }
     }
   }
 }
@@ -198,8 +219,8 @@
   > box > .quick-actions-menu-widget:last-child {
     margin-top: 8px;
     background-color: var(--surface-container);
-    border-radius: var(--radius-widget);
-    padding: 6px 10px;
+    border-radius: var(--radius-md);
+    padding: 4px 8px;
   }
 }
 
@@ -217,8 +238,8 @@
 .calendar-hero {
   background-color: var(--primary);
   color: var(--on-primary);
-  border-radius: var(--radius-widget);
-  padding: 14px 18px;
+  border-radius: var(--radius-md);
+  padding: 16px;
 }
 
 .calendar-hero-day {
@@ -261,9 +282,13 @@
 // We restyle them to read as a card without rebuilding the
 // widget from scratch.
 .calendar-grid-card {
-  background-color: var(--surface-variant);
+  // Grid sits nested inside the calendar tile (--surface-container),
+  // so it steps up one tonal tier to --surface-container-high to
+  // read as a raised inner surface (DESIGN.md §Surface elevation),
+  // instead of the legacy flat --surface-variant.
+  background-color: var(--surface-container-high);
   color: var(--on-surface-variant);
-  border-radius: var(--radius-widget);
+  border-radius: var(--radius-md);
   padding: 8px 4px;
 
   calendar {
@@ -285,7 +310,7 @@
       padding: 6px 4px;
       min-width: 28px;
       color: var(--on-surface-variant);
-      border-radius: 999px;
+      border-radius: var(--radius-pill);
 
       // Today gets the primary accent ring.
       &.today {
@@ -314,13 +339,15 @@
     button {
       background-color: transparent;
       color: var(--on-surface-variant);
-      border-radius: 999px;
+      border-radius: var(--radius-pill);
       min-height: 24px;
       min-width: 24px;
       padding: 2px;
+      transition: background-color var(--motion-fast) var(--ease-standard);
 
       &:hover {
-        background-color: var(--surface-container-high);
+        // Sit one tier above the grid card it lives on.
+        background-color: var(--surface-container-highest);
       }
     }
   }

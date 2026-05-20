@@ -13,8 +13,13 @@
   -gtk-icon-size: 20px;
 }
 
+// Surfaces over borders (DESIGN.md §0.1): the detail block reads
+// as a grouped sub-surface via a one-tier tonal step, not a hard
+// outline ring. Inside the dashboard's surface-container weather
+// tile this nests as a raised inner surface; standalone it still
+// groups the hourly/detail rows without a "debug UI" border.
 .weather-container {
-  border: solid var(--border-width) var(--outline);
-  border-radius: var(--radius-widget);
+  background-color: var(--surface-container-high);
+  border-radius: var(--radius-md);
   padding: 8px;
 }

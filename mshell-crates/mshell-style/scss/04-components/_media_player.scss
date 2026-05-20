@@ -8,8 +8,8 @@
 .media-player-menu-widget {
   // Border dropped — the parent card chrome already provides
   // separation; doubling it up made the widget feel fenced-in
-  // inside the dashboard's card stack.
-  border-radius: var(--radius-widget);
+  // inside the dashboard's card stack. Card shape = --radius-md.
+  border-radius: var(--radius-md);
   padding: 8px;
 }
 
@@ -19,9 +19,11 @@
 }
 
 .media-player-cover {
-  border-radius: var(--radius-widget);
-  margin-right: 14px;
-  background-color: var(--surface-variant);
+  border-radius: var(--radius-md);
+  margin-right: 16px;
+  // Placeholder fill behind album art — one tonal tier above the
+  // card it sits on.
+  background-color: var(--surface-container-high);
   // Bumped to 96 to match the Rust set_pixel_size — cover is
   // the visual anchor of the hero band.
   min-width: 96px;
@@ -43,8 +45,8 @@
 // cleanly with. 4 px trough keeps the value glyph visible but
 // stops dominating the row.
 .media-player-menu-widget .ok-progress-bar {
-  trough { min-height: 4px; border-radius: 999px; }
-  highlight { min-height: 4px; border-radius: 999px; }
+  trough { min-height: 4px; border-radius: var(--radius-pill); }
+  highlight { min-height: 4px; border-radius: var(--radius-pill); }
 }
 
 // ── Bar pill ────────────────────────────────────────────────

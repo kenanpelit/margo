@@ -29,12 +29,18 @@
   -gtk-icon-size: 16px;
   color: var(--on-surface-variant);
   opacity: 0.85;
+  // Severity tint fades in, never hard-swaps (DESIGN.md §Motion).
+  transition: color var(--motion-fast) var(--ease-standard);
 }
 
+// The caption is the row *label* ("Power Mode" / "Battery" /
+// "CPU Temp"), so it sits on the secondary text tier — dim
+// against the bright SemiBold value. Hierarchy via weight +
+// opacity, not size soup (DESIGN.md §Typography).
 .system-status-caption {
   font-size: 12px;
   font-weight: 500;
-  color: var(--on-surface);
+  color: var(--on-surface-variant);
   letter-spacing: 0;
 }
 
@@ -44,4 +50,5 @@
   font-variant-numeric: tabular-nums;
   color: var(--on-surface);
   letter-spacing: -0.01em;
+  transition: color var(--motion-fast) var(--ease-standard);
 }

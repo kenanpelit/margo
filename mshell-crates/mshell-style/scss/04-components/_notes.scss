@@ -10,18 +10,19 @@
 // ── Header counters ──────────────────────────────────────
 .notes-counter {
   padding: 2px 8px;
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   font-size: 0.8em;
   font-weight: 600;
-  background-color: var(--surface-variant);
+  background-color: var(--surface-container-high);
   color: var(--on-surface-variant);
 }
 
 // ── Scratchpad TextView ──────────────────────────────────
+// Surfaces over borders (DESIGN.md §0.1): the editing well reads
+// via a tonal surface step, not a hard outline ring.
 .notes-scratchpad {
-  border-radius: var(--radius-widget);
-  background-color: var(--surface-variant);
-  border: 1px solid var(--outline);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-container-high);
 }
 .notes-scratchpad text {
   background-color: transparent;
@@ -30,27 +31,33 @@
 // ── + Add buttons / entries ──────────────────────────────
 .notes-add {
   padding: 4px 8px;
-  border-radius: var(--radius-widget);
+  border-radius: var(--radius-sm);
+  transition: background-color var(--motion-fast) var(--ease-standard);
+
+  &:hover {
+    background-color: var(--surface-container-highest);
+  }
 }
 
 // ── List rows + cards ───────────────────────────────────
 .notes-list row {
   padding: 0;
-  border-radius: var(--radius-widget);
+  border-radius: var(--radius-sm);
   margin-bottom: 4px;
   background-color: transparent;
 }
+// Note cards: tonal surface, no outline ring (surfaces over
+// borders). --radius-md card shape.
 .notes-card {
   padding: 6px 8px;
-  border-radius: var(--radius-widget);
-  background-color: var(--surface-variant);
-  border: 1px solid var(--outline);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-container-high);
 }
 .notes-card-title {
   font-weight: 600;
 }
 .notes-card-body {
-  border-radius: var(--radius-widget);
+  border-radius: var(--radius-sm);
   background-color: transparent;
 }
 .notes-card-body text {
