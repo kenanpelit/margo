@@ -314,7 +314,7 @@ impl Component for NetworkModel {
 /// network interfaces from `/proc/net/dev`. Skips `lo` and the
 /// usual virtual prefixes so VPN tunnels / bridges / docker
 /// veths don't double-count the physical link's traffic.
-async fn read_net_totals() -> (u64, u64) {
+pub(crate) async fn read_net_totals() -> (u64, u64) {
     let raw = match tokio::fs::read_to_string("/proc/net/dev").await {
         Ok(r) => r,
         Err(_) => return (0, 0),
@@ -349,7 +349,7 @@ async fn read_net_totals() -> (u64, u64) {
 /// `0`, `512B`, `4.2K`, `1.5M`. Whole numbers below 10 of each
 /// unit get one decimal; above that they're rounded so the
 /// label width stays stable.
-fn format_speed(bps: u64) -> String {
+pub(crate) fn format_speed(bps: u64) -> String {
     const K: u64 = 1024;
     const M: u64 = K * 1024;
     if bps >= M {

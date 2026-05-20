@@ -23,7 +23,8 @@
 //! re-probe.
 
 use crate::bars::bar_widgets::network::{
-    LinkKind, NetworkState, WifiNetwork, read_network_state, wifi_signal_icon,
+    LinkKind, NetworkState, SpeedSample, WifiNetwork, format_speed, read_net_totals,
+    read_network_state, wifi_signal_icon,
 };
 use mshell_common::WatcherToken;
 use mshell_utils::network::{
@@ -32,10 +33,22 @@ use mshell_utils::network::{
 };
 use relm4::gtk::glib;
 use relm4::gtk::prelude::{
-    BoxExt, ButtonExt, ListBoxRowExt, ObjectExt, OrientableExt, WidgetExt,
+    BoxExt, ButtonExt, DrawingAreaExt, DrawingAreaExtManual, ListBoxRowExt, ObjectExt,
+    OrientableExt, WidgetExt,
 };
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::time::Duration;
 use tracing::warn;
+
+/// Rolling traffic-history window length (samples). At the 2 s poll
+/// cadence below that's ~2 minutes of history.
+const HISTORY_LEN: usize = 60;
+/// Poll cadence for the `/proc/net/dev` throughput sampler.
+const SPEED_INTERVAL: Duration = Duration::from_secs(2);
+/// Bytes/s below which a direction reads as idle (dims its label).
+const IDLE_THRESHOLD: u64 = 3000;
 
 pub(crate) struct NetworkMenuWidgetModel {
     state: NetworkState,
@@ -48,6 +61,13 @@ pub(crate) struct NetworkMenuWidgetModel {
     network_list: gtk::ListBox,
     wifi_watcher_token: WatcherToken,
     wired_watcher_token: WatcherToken,
+    // ── Traffic graphs (network-indicator port) ──
+    rx_area: gtk::DrawingArea,
+    tx_area: gtk::DrawingArea,
+    rx_speed_label: gtk::Label,
+    tx_speed_label: gtk::Label,
+    rx_hist: Rc<RefCell<Vec<f64>>>,
+    tx_hist: Rc<RefCell<Vec<f64>>>,
 }
 
 impl std::fmt::Debug for NetworkMenuWidgetModel {
@@ -79,6 +99,8 @@ pub(crate) enum NetworkMenuWidgetCommandOutput {
     WifiChanged,
     /// The wired device was (un)plugged — re-arm its sub-watcher.
     WiredChanged,
+    /// A fresh `/proc/net/dev` throughput sample (down/up bytes/s).
+    SpeedTick(SpeedSample),
 }
 
 #[relm4::component(pub(crate))]
@@ -128,6 +150,75 @@ impl Component for NetworkMenuWidgetModel {
                     set_valign: gtk::Align::Center,
                 },
             },
+
+            // ── Traffic (live RX / TX + history graphs) ─────────
+            gtk::Box {
+                add_css_class: "network-traffic",
+                set_orientation: gtk::Orientation::Vertical,
+                set_spacing: 8,
+
+                // Download (RX).
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 2,
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 6,
+                        gtk::Image {
+                            add_css_class: "network-rx",
+                            set_icon_name: Some("network-receive-symbolic"),
+                        },
+                        gtk::Label {
+                            add_css_class: "network-traffic-label",
+                            set_label: "Download",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                        },
+                        #[local_ref]
+                        rx_speed_label_widget -> gtk::Label {
+                            set_css_classes: &["network-traffic-speed", "network-rx"],
+                        },
+                    },
+                    #[local_ref]
+                    rx_area_widget -> gtk::DrawingArea {
+                        add_css_class: "network-rx",
+                        set_hexpand: true,
+                        set_content_height: 60,
+                    },
+                },
+
+                // Upload (TX).
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 2,
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 6,
+                        gtk::Image {
+                            add_css_class: "network-tx",
+                            set_icon_name: Some("network-transmit-symbolic"),
+                        },
+                        gtk::Label {
+                            add_css_class: "network-traffic-label",
+                            set_label: "Upload",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                        },
+                        #[local_ref]
+                        tx_speed_label_widget -> gtk::Label {
+                            set_css_classes: &["network-traffic-speed", "network-tx"],
+                        },
+                    },
+                    #[local_ref]
+                    tx_area_widget -> gtk::DrawingArea {
+                        add_css_class: "network-tx",
+                        set_hexpand: true,
+                        set_content_height: 60,
+                    },
+                },
+            },
+
+            gtk::Separator { set_orientation: gtk::Orientation::Horizontal },
 
             // ── Controls ────────────────────────────────────────
             gtk::Box {
@@ -198,6 +289,47 @@ impl Component for NetworkMenuWidgetModel {
         let wifi_switch_widget = gtk::Switch::new();
         let network_list_widget = gtk::ListBox::new();
 
+        // Traffic graphs + live-speed labels.
+        let rx_speed_label_widget = gtk::Label::new(Some("0B/s"));
+        let tx_speed_label_widget = gtk::Label::new(Some("0B/s"));
+        let rx_area_widget = gtk::DrawingArea::new();
+        let tx_area_widget = gtk::DrawingArea::new();
+        let rx_hist: Rc<RefCell<Vec<f64>>> = Rc::new(RefCell::new(Vec::new()));
+        let tx_hist: Rc<RefCell<Vec<f64>>> = Rc::new(RefCell::new(Vec::new()));
+        {
+            let h = rx_hist.clone();
+            rx_area_widget
+                .set_draw_func(move |a, cr, w, ht| draw_graph(a, cr, w, ht, &h.borrow()));
+        }
+        {
+            let h = tx_hist.clone();
+            tx_area_widget
+                .set_draw_func(move |a, cr, w, ht| draw_graph(a, cr, w, ht, &h.borrow()));
+        }
+
+        // `/proc/net/dev` throughput sampler — its own poll loop,
+        // independent of the D-Bus state watchers.
+        sender.command(|out, shutdown| async move {
+            let shutdown_fut = shutdown.wait();
+            tokio::pin!(shutdown_fut);
+            let mut prev = read_net_totals().await;
+            loop {
+                tokio::select! {
+                    () = &mut shutdown_fut => break,
+                    _ = tokio::time::sleep(SPEED_INTERVAL) => {}
+                }
+                let cur = read_net_totals().await;
+                let secs = SPEED_INTERVAL.as_secs().max(1);
+                let down = cur.0.saturating_sub(prev.0) / secs;
+                let up = cur.1.saturating_sub(prev.1) / secs;
+                prev = cur;
+                let _ = out.send(NetworkMenuWidgetCommandOutput::SpeedTick(SpeedSample {
+                    down_bps: down,
+                    up_bps: up,
+                }));
+            }
+        });
+
         let toggle_sender = sender.clone();
         let wifi_switch_signal = wifi_switch_widget.connect_state_set(move |_, want_on| {
             toggle_sender.input(NetworkMenuWidgetInput::SetWifiEnabled(want_on));
@@ -223,6 +355,12 @@ impl Component for NetworkMenuWidgetModel {
             network_list: network_list_widget.clone(),
             wifi_watcher_token: WatcherToken::new(),
             wired_watcher_token: WatcherToken::new(),
+            rx_area: rx_area_widget.clone(),
+            tx_area: tx_area_widget.clone(),
+            rx_speed_label: rx_speed_label_widget.clone(),
+            tx_speed_label: tx_speed_label_widget.clone(),
+            rx_hist,
+            tx_hist,
         };
         arm_wifi_watchers(&sender, &mut model.wifi_watcher_token);
         arm_wired_watcher(&sender, &mut model.wired_watcher_token);
@@ -287,6 +425,22 @@ impl Component for NetworkMenuWidgetModel {
             }
             NetworkMenuWidgetCommandOutput::WiredChanged => {
                 arm_wired_watcher(&sender, &mut self.wired_watcher_token);
+            }
+            NetworkMenuWidgetCommandOutput::SpeedTick(sample) => {
+                // Throughput updates are frequent and unrelated to the
+                // NM state — repaint just the graphs + labels, never
+                // the (expensive) AP-list rebuild below.
+                push_capped(&self.rx_hist, sample.down_bps as f64);
+                push_capped(&self.tx_hist, sample.up_bps as f64);
+                self.rx_speed_label
+                    .set_label(&format!("{}/s", format_speed(sample.down_bps)));
+                self.tx_speed_label
+                    .set_label(&format!("{}/s", format_speed(sample.up_bps)));
+                set_idle(&self.rx_speed_label, sample.down_bps);
+                set_idle(&self.tx_speed_label, sample.up_bps);
+                self.rx_area.queue_draw();
+                self.tx_area.queue_draw();
+                return;
             }
         }
         let state = read_network_state();
@@ -502,4 +656,77 @@ fn make_network_row(
 
     row.set_child(Some(&outer));
     row
+}
+
+// ── Traffic-graph helpers (network-indicator port) ──────────────
+
+/// Append a sample to a rolling history, capped at [`HISTORY_LEN`].
+fn push_capped(hist: &Rc<RefCell<Vec<f64>>>, value: f64) {
+    let mut h = hist.borrow_mut();
+    h.push(value);
+    let len = h.len();
+    if len > HISTORY_LEN {
+        h.drain(0..len - HISTORY_LEN);
+    }
+}
+
+/// Dim a speed label when its direction is idle (below threshold).
+fn set_idle(label: &gtk::Label, bps: u64) {
+    if bps >= IDLE_THRESHOLD {
+        label.remove_css_class("idle");
+    } else {
+        label.add_css_class("idle");
+    }
+}
+
+/// Draw a filled history sparkline. The accent colour comes from the
+/// area's resolved CSS `color` (set via `.network-rx` / `.network-tx`
+/// in SCSS), so it tracks the matugen theme automatically. The graph
+/// auto-scales to the window's peak.
+fn draw_graph(area: &gtk::DrawingArea, cr: &gtk::cairo::Context, w: i32, h: i32, hist: &[f64]) {
+    let (w, h) = (w as f64, h as f64);
+    let c = area.color();
+    let (r, g, b) = (c.red() as f64, c.green() as f64, c.blue() as f64);
+
+    // Faint baseline gridlines at 1/3 + 2/3 height.
+    cr.set_line_width(1.0);
+    cr.set_source_rgba(r, g, b, 0.10);
+    for frac in [0.33_f64, 0.66] {
+        let y = h * (1.0 - frac);
+        cr.move_to(0.0, y);
+        cr.line_to(w, y);
+        let _ = cr.stroke();
+    }
+
+    if hist.len() < 2 {
+        return;
+    }
+    let max = hist.iter().copied().fold(1.0_f64, f64::max);
+    let n = hist.len();
+    let step = w / (n as f64 - 1.0);
+    let y_at = |v: f64| h - (v / max) * h;
+
+    // Filled area under the curve.
+    cr.move_to(0.0, h);
+    for (i, v) in hist.iter().enumerate() {
+        cr.line_to(i as f64 * step, y_at(*v));
+    }
+    cr.line_to(w, h);
+    cr.close_path();
+    cr.set_source_rgba(r, g, b, 0.16);
+    let _ = cr.fill();
+
+    // Stroke the curve on top.
+    cr.set_line_width(1.5);
+    cr.set_source_rgba(r, g, b, 0.9);
+    for (i, v) in hist.iter().enumerate() {
+        let x = i as f64 * step;
+        let y = y_at(*v);
+        if i == 0 {
+            cr.move_to(x, y);
+        } else {
+            cr.line_to(x, y);
+        }
+    }
+    let _ = cr.stroke();
 }

@@ -3,6 +3,29 @@
 
 .network-menu-widget { padding: 0; }
 
+// ── Traffic graphs (network-indicator port) ───────────────
+// RX rides the primary accent, TX the secondary, so the two
+// directions read apart at a glance. The DrawingArea's cairo
+// draw reads its resolved `color`, so these classes set both
+// the icon/label tint AND the graph stroke/fill colour.
+.network-rx { color: var(--primary); }
+.network-tx { color: var(--secondary); }
+
+.network-traffic-label {
+  font-size: var(--font-bar);
+  font-weight: 600;
+  color: var(--on-surface-variant);
+}
+
+.network-traffic-speed {
+  font-family: monospace;
+  font-size: var(--font-bar);
+  font-variant-numeric: tabular-nums;
+
+  // Dim when the direction is idle (below the activity threshold).
+  &.idle { opacity: 0.45; }
+}
+
 // ── Bar pill ──────────────────────────────────────────────
 .network-bar-widget.online image {
   color: var(--primary);
