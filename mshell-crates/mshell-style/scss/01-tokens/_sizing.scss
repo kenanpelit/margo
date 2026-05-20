@@ -4,12 +4,35 @@
   //overridden by style manager
   --radius-window: 8px;
 
+  // Material-3 shape scale. Semantic radii so components share one
+  // corner language instead of every surface using --radius-widget.
+  // Fixed (not config-driven): corner geometry is part of the design
+  // language, not a per-user knob — see DESIGN.md §Shape language.
+  --radius-xs: 8px;     // small chips, inline badges
+  --radius-sm: 12px;    // buttons, list items
+  --radius-md: 16px;    // cards, tiles
+  --radius-lg: 24px;    // launcher / menu surfaces
+  --radius-xl: 28px;    // search field
+  --radius-pill: 999px; // fully-rounded pills (category chips)
+
   //overridden by style manager
   --border-width: 2px;
 
   --padding-sm: 4px;
   --padding-md: 8px;
   --padding-lg: 16px;
+  --padding-xl: 24px;
+
+  // ── Motion vocabulary (DESIGN.md §Motion) ─────────────────────────
+  // Calm, responsive motion: short durations + Material easing. Drives
+  // CSS transitions (hover / focus / selection). Heavier choreography
+  // (staggered lists, shared-axis) would live in Rust scoped_effects.
+  --motion-fast: 120ms;    // hover / state-layer
+  --motion-medium: 200ms;  // selection / focus glow
+  --motion-slow: 320ms;    // surface expand / reveal
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);    // most transitions
+  --ease-decelerate: cubic-bezier(0, 0, 0, 1);    // enter / expand
+  --ease-accelerate: cubic-bezier(0.3, 0, 1, 1);  // exit / collapse
 
   --icon-sm: 16px;
   --icon-md: 24px;

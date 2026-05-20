@@ -13,6 +13,45 @@ so a new widget looks like it always belonged.
 
 ---
 
+## 0. Design philosophy
+
+Margo should feel **calm, intelligent, adaptive, composable, and
+keyboard-first** — workstation-grade, not flashy. Fast and breathable;
+focused and distraction-free. It is uniquely Margo: not a clone of
+GNOME, KDE, macOS, or Raycast, but it respects Linux/Wayland workflows.
+
+Guiding rules (these set the *intent*; §1–§11 are the binding details):
+
+1. **Surfaces over borders.** Express grouping and depth with layered
+   tonal surfaces + subtle shadow, not hard outlines or boxed layouts.
+   A border is a fallback for when two adjacent surface tones are too
+   close to separate on their own (see §1 Surface elevation).
+2. **Tonal elevation.** Raise an element by shifting it to a brighter
+   surface container, not by stacking heavy drop shadows.
+3. **Typography creates hierarchy.** Titles SemiBold; secondary text
+   regular at reduced opacity; metadata dimmest. Don't lean on many
+   font weights.
+4. **Adaptive density.** Density scales with context — launcher medium,
+   menus compact, settings relaxed, notifications comfortable (§1).
+5. **Calm motion.** Motion explains spatial relationships and
+   reinforces focus; it never bounces, never plays. Prefer fades, soft
+   springs, shared-axis (§1 Motion).
+6. **One icon family.** Symbolic, consistent optical size + stroke.
+   Never mix flat / skeuomorphic / symbolic in one surface.
+7. **State on every interactive element.** hover / focus / pressed /
+   disabled, expressed via opacity overlays + tonal shifts, never a
+   sudden colour swap (§3, §5).
+8. **Spacing scale: 4 / 8 / 12 / 16 / 24 / 32 / 48.** Use it
+   consistently; align content; avoid floating, uneven, crowded
+   layouts.
+9. **Accessibility:** ≥40px interactive targets, WCAG-AA text contrast,
+   keyboard-first is mandatory.
+
+The launcher is the heart of the desktop: it must open instantly, feel
+lightweight, stay visually calm, and keep search primary.
+
+---
+
 ## 1. Design tokens (never hardcode — always use the CSS variable)
 
 All colours come from matugen at runtime (`:root` overridden by the
@@ -35,12 +74,79 @@ re-themes with the wallpaper.
 | `--outline` / `--outline-variant` | Borders, inset hairlines. |
 | `--error` / `--on-error-container` / `--error-container` | Danger state only. |
 
-### Sizing / radius (`01-tokens/_sizing.scss`)
-- Radius: `--radius-widget` (8px, cards/pills), `--radius-window`.
-- Padding scale: `--padding-sm` 4, `--padding-md` 8, `--padding-lg` 16.
+### Surface elevation (tonal layering, not borders)
+Express depth by stepping up the surface tier, darkest → brightest:
+
+| Tier | Use |
+|---|---|
+| `--surface` | window / frame background |
+| `--surface-container-lowest` / `--low` | inset "well" (result list card) |
+| `--surface-container` | default card / tile |
+| `--surface-container-high` | raised card, hover, **selected** row base |
+| `--surface-container-highest` | slider trough, top-most chip |
+| `--secondary-container` | category chips, soft toggles |
+
+Prefer one tier of separation between a container and its parent. **Add
+a border only when the runtime palette's two adjacent tiers are too
+close to read** (the static Margo baseline collapses several tiers — at
+runtime matugen separates them, so a border that looks needed in the
+first-paint baseline is often redundant once themed; verify before
+adding `--outline-variant`).
+
+### Shape scale (`01-tokens/_sizing.scss`)
+Material-3 corner language — pick by component class, don't reuse
+`--radius-widget` everywhere:
+
+| Token | px | Use |
+|---|---|---|
+| `--radius-xs` | 8 | small chips, inline badges |
+| `--radius-sm` | 12 | buttons, list items |
+| `--radius-md` | 16 | cards, tiles |
+| `--radius-lg` | 24 | launcher / menu surfaces |
+| `--radius-xl` | 28 | search field |
+| `--radius-pill` | 999 | fully-rounded category chips |
+
+(`--radius-widget` / `--radius-window` remain config-driven for the
+frame; the scale above is the fixed design language.)
+
+### Sizing / padding / icons
+- Padding scale: `--padding-sm` 4, `--padding-md` 8, `--padding-lg` 16,
+  `--padding-xl` 24. Spacing always snaps to **4 / 8 / 12 / 16 / 24 /
+  32 / 48**.
 - Icon scale: `--icon-sm` 16, `--icon-md` 24, `--icon-lg` 32.
 
+### Density tiers
+Density adapts to context (philosophy §4). Tune row/control padding,
+not a magic height: keep the vertical rhythm legible without inflating
+a results-heavy surface.
+
+| Surface | Density |
+|---|---|
+| Launcher / clipboard | **medium** (compact rows, scannable; do not balloon list-item height — many results must stay visible) |
+| Menus (QS, dashboards) | compact |
+| Settings | relaxed |
+| Notifications | comfortable |
+
+### Motion (`01-tokens/_sizing.scss`)
+Calm, responsive motion only (philosophy §5). CSS transitions use:
+- Durations: `--motion-fast` 120ms (hover/state-layer),
+  `--motion-medium` 200ms (selection/focus glow), `--motion-slow` 320ms
+  (surface expand/reveal).
+- Easing: `--ease-standard` (most), `--ease-decelerate` (enter/expand),
+  `--ease-accelerate` (exit/collapse).
+
+Always animate `background-color` / `color` / `border-color` / `opacity`
+on state change — never a hard swap. Heavier choreography (staggered
+list fade, shared-axis open) belongs in Rust `scoped_effects`, kept
+minimal; the bar/menu must never bounce or feel playful.
+
 ### Fonts (`01-tokens/_font.scss`)
+- **Hierarchy via weight + opacity, not size soup** (philosophy §3):
+  a row/card **title** is SemiBold `--on-surface`; its **subtitle /
+  description** is *regular* `--on-surface-variant` (often slightly
+  reduced opacity); **metadata** (counts, hints, keycaps) is the
+  dimmest tier (`--outline`). Titles and subtitles should read as
+  clearly different ranks, not two near-equal lines.
 - Bar pill text: **`--font-bar`** (single knob for every status pill —
   always use it for bar labels so they stay in step).
 - Section labels in menus: `11px`, `font-weight: 600`,
