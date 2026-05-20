@@ -2,22 +2,24 @@
 
 .monitor-chip {
     padding-left: 12px;
-    border-radius: var(--radius-widget);
+    border-radius: var(--radius-sm);
     background-color: var(--primary);
 }
 
 .monitor-chip-empty {
     margin-top: 4px;
     margin-left: 3px;
-    padding: 6px 12px;
-    border-radius: var(--radius-widget);
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
     background-color: var(--primary);
 }
 
+// Surfaces over borders (DESIGN.md §0.1): the section reads as a
+// tonal card, not a hard outline ring. --radius-md card shape.
 .settings-bar-widget-section {
-    padding: 20px;
-    border-radius: var(--radius-widget);
-    border: 2px solid var(--outline);
+    padding: var(--padding-lg);
+    border-radius: var(--radius-md);
+    background-color: var(--surface-container);
 }
 
 .settings-bar-widget-section-list {
@@ -48,24 +50,25 @@
 }
 
 .settings-bar-widget-add-item {
-    padding: 6px 10px;
-    border-radius: var(--radius-widget);
-    // Match the popover-menu look: left-aligned label, no frame,
-    // hover-accent on the surface-container colour so the active
-    // row reads like a menu hover.
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    // Canonical interaction wash — same primary state-layer as every
+    // menu row / button across the shell (DESIGN.md §7).
+    transition: background-color var(--motion-fast) var(--ease-standard);
     label {
         font-size: var(--font-medium);
     }
 
     &:hover {
-        background-color: var(--surface-container-high);
+        background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
     }
 }
 
+// Tonal card, not a hard outline ring (surfaces over borders).
 .settings-menu-widget-section {
-    padding: 20px;
-    border-radius: var(--radius-widget);
-    border: 2px solid var(--outline);
+    padding: var(--padding-lg);
+    border-radius: var(--radius-md);
+    background-color: var(--surface-container);
 }
 
 .settings-menu-widget-section-list {
@@ -82,7 +85,7 @@
 .settings-sidebar,
 .settings-subsidebar {
     background-color: var(--surface);
-    padding: 10px;
+    padding: 12px;
 
     .sidebar-button {
         @include buttons.button-base("--surface", "--on-surface");
@@ -122,8 +125,11 @@
     }
 }
 
+// Sidebar and content are both --surface (same tonal tier), so a
+// hairline is the justified fallback separator (DESIGN.md §0.1) —
+// softened to a 1px --outline-variant rule, not the heavy 2px outline.
 .settings-sidebar {
-    border-right: solid var(--border-width) var(--outline);
+    border-right: solid 1px var(--outline-variant);
 }
 
 .settings-stack {
@@ -198,14 +204,15 @@
 // dividers can run edge-to-edge).
 .boxed-list {
     background-color: var(--surface-container);
-    border-radius: 14px;
+    border-radius: var(--radius-md);
     padding: 0;
     overflow: hidden;
 
-    // First/last row corner clipping happens via overflow:hidden
-    // above; row hover backgrounds therefore round naturally.
+    // Internal row separator: a 2px --outline-variant hairline, the
+    // shared divider treatment (DESIGN.md §1). overflow:hidden clips
+    // the first/last row corners so hover backgrounds round naturally.
     > .action-row + .action-row {
-        border-top: 1px solid var(--outline);
+        border-top: 1px solid var(--outline-variant);
     }
 }
 
@@ -218,9 +225,13 @@
 .action-row {
     padding: 12px 16px;
     min-height: 44px;
+    // Canonical primary state-layer over the boxed-list's
+    // surface-container base — identical hover identity to every
+    // other row in the shell (DESIGN.md §7), eased on motion tokens.
+    transition: background-color var(--motion-fast) var(--ease-standard);
 
     &:hover {
-        background-color: var(--surface-container-high);
+        background-color: unquote("color-mix(in srgb, var(--primary) 14%, var(--surface-container))");
     }
 
     .action-row-title {
@@ -314,12 +325,18 @@
 }
 
 .layout-row {
-    padding: 10px 12px;
-    border-radius: var(--radius-widget);
-    background-color: var(--surface-variant);
+    padding: 12px;
+    border-radius: var(--radius-sm);
+    background-color: var(--surface-container-high);
     color: var(--on-surface-variant);
+    transition: background-color var(--motion-fast) var(--ease-standard);
+
+    &:hover {
+        background-color: unquote("color-mix(in srgb, var(--primary) 14%, var(--surface-container-high))");
+    }
 }
 
+// Active layout: soft accent card (selected state, not a hover).
 .layout-row-active {
     background-color: var(--primary-container);
     color: var(--on-primary-container);
