@@ -11,17 +11,19 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// What part of the history is written to disk (and reloaded on
-/// the next launch). Default `FavoritesOnly` keeps the privacy
-/// posture sane — the rolling history stays in RAM and dies with
-/// the session, only entries the user explicitly pins persist.
+/// the next launch). Default `All` matches what people expect from
+/// a clipboard manager — the full rolling history survives a reboot.
+/// `skip_sensitive` (on by default) already keeps password-manager
+/// copies out of the store, so persisting everything stays safe;
+/// drop to `FavoritesOnly` or `None` for a stricter privacy posture.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, Store, JsonSchema)]
 pub enum ClipboardPersist {
     /// Nothing on disk — history is RAM-only (clears on restart).
     None,
     /// Only pinned (favourite) entries persist across restarts.
-    #[default]
     FavoritesOnly,
     /// The full rolling history persists across restarts.
+    #[default]
     All,
 }
 
@@ -155,7 +157,7 @@ impl Default for Clipboard {
     fn default() -> Self {
         Self {
             max_entries: 100,
-            persist: ClipboardPersist::FavoritesOnly,
+            persist: ClipboardPersist::All,
             clear_policy: ClipboardClearPolicy::Never,
             clear_after_hours: 24,
             skip_sensitive: true,
