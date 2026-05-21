@@ -14,6 +14,7 @@ pub(crate) struct NotificationSettingsModel {
     show_close_button: bool,
     show_action_buttons: bool,
     group_notifications: bool,
+    popup_width: i32,
     blocklist: Vec<String>,
     _effects: EffectScope,
 }
@@ -28,6 +29,8 @@ pub(crate) enum NotificationSettingsInput {
     ShowActionsEffect(bool),
     GroupChanged(bool),
     GroupEffect(bool),
+    PopupWidthChanged(i32),
+    PopupWidthEffect(i32),
     BlocklistAdd(String),
     BlocklistRemove(String),
     BlocklistEffect(Vec<String>),
@@ -224,6 +227,44 @@ impl Component for NotificationSettingsModel {
                         gtk::Label {
                             add_css_class: "label-medium-bold",
                             set_halign: gtk::Align::Start,
+                            set_label: "Popup width",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Width (px) of the corner popup toasts. Separate from the history menu width in Widgets → Notifications.",
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    #[name = "popup_width_spin"]
+                    gtk::SpinButton {
+                        set_valign: gtk::Align::Center,
+                        set_range: (200.0, 1200.0),
+                        set_increments: (10.0, 50.0),
+                        set_digits: 0,
+                        #[watch]
+                        #[block_signal(popup_width_handler)]
+                        set_value: model.popup_width as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(NotificationSettingsInput::PopupWidthChanged(s.value() as i32));
+                        } @popup_width_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
                             set_label: "Group by app",
                             set_hexpand: true,
                         },
@@ -343,6 +384,16 @@ impl Component for NotificationSettingsModel {
             sender_clone.input(NotificationSettingsInput::GroupEffect(v));
         });
 
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let v = config_manager()
+                .config()
+                .notifications()
+                .popup_width()
+                .get();
+            sender_clone.input(NotificationSettingsInput::PopupWidthEffect(v));
+        });
+
         let model = NotificationSettingsModel {
             position: config_manager()
                 .config()
@@ -363,6 +414,11 @@ impl Component for NotificationSettingsModel {
                 .config()
                 .notifications()
                 .group_notifications()
+                .get_untracked(),
+            popup_width: config_manager()
+                .config()
+                .notifications()
+                .popup_width()
                 .get_untracked(),
             blocklist: config_manager()
                 .config()
@@ -444,6 +500,15 @@ impl Component for NotificationSettingsModel {
             }
             NotificationSettingsInput::GroupEffect(v) => {
                 self.group_notifications = v;
+            }
+            NotificationSettingsInput::PopupWidthChanged(w) => {
+                self.popup_width = w;
+                config_manager().update_config(move |config| {
+                    config.notifications.popup_width = w;
+                });
+            }
+            NotificationSettingsInput::PopupWidthEffect(w) => {
+                self.popup_width = w;
             }
             NotificationSettingsInput::BlocklistAdd(name) => {
                 let exists = self

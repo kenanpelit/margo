@@ -20,12 +20,14 @@ use wayle_notification::core::notification::Notification;
 
 pub struct PopupNotificationsModel {
     dynamic_box_controller: Controller<DynamicBoxModel<Arc<Notification>, u32>>,
+    popup_width: i32,
     _effects: EffectScope,
 }
 
 #[derive(Debug)]
 pub enum PopupNotificationsInput {
     PositionChanged(NotificationPosition),
+    WidthChanged(i32),
 }
 
 #[derive(Debug)]
@@ -62,9 +64,11 @@ impl Component for PopupNotificationsModel {
             set_visible: false,
             set_default_height: 1,
 
+            #[name = "content_box"]
             gtk::Box {
                 set_orientation: gtk::Orientation::Vertical,
-                set_width_request: 460,
+                // Initial width; live changes arrive via WidthChanged.
+                set_width_request: model.popup_width,
 
                 model.dynamic_box_controller.widget().clone() {},
             }
@@ -81,6 +85,12 @@ impl Component for PopupNotificationsModel {
         let position = config
             .notifications()
             .notification_position()
+            .get_untracked();
+
+        let popup_width = config_manager()
+            .config()
+            .notifications()
+            .popup_width()
             .get_untracked();
 
         root.init_layer_shell();
@@ -136,8 +146,16 @@ impl Component for PopupNotificationsModel {
             sender_clone.input(PopupNotificationsInput::PositionChanged(position))
         });
 
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let config = config_manager().config();
+            let width = config.notifications().popup_width().get();
+            sender_clone.input(PopupNotificationsInput::WidthChanged(width))
+        });
+
         let model = PopupNotificationsModel {
             dynamic_box_controller: notifications_dynamic_box_controller,
+            popup_width,
             _effects: effects,
         };
 
@@ -148,7 +166,7 @@ impl Component for PopupNotificationsModel {
 
     fn update_with_view(
         &mut self,
-        _widgets: &mut Self::Widgets,
+        widgets: &mut Self::Widgets,
         message: Self::Input,
         _sender: ComponentSender<Self>,
         root: &Self::Root,
@@ -156,6 +174,10 @@ impl Component for PopupNotificationsModel {
         match message {
             PopupNotificationsInput::PositionChanged(pos) => {
                 set_position(pos, root);
+            }
+            PopupNotificationsInput::WidthChanged(width) => {
+                self.popup_width = width;
+                widgets.content_box.set_width_request(width);
             }
         }
     }

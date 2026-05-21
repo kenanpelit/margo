@@ -882,6 +882,11 @@ pub struct Notifications {
     /// from the same app collapse into an expandable "App (N)" header.
     /// On by default. Set `false` for a flat, chronological list.
     pub group_notifications: bool,
+    /// Width (px) of the corner popup toasts. Independent of the
+    /// notification *history* menu width (that lives in
+    /// `menus.notification_menu.minimum_width`); this is the
+    /// transient toast surface anchored to a screen corner.
+    pub popup_width: i32,
 }
 
 impl Default for Notifications {
@@ -892,6 +897,7 @@ impl Default for Notifications {
             show_close_button: true,
             show_action_buttons: false,
             group_notifications: true,
+            popup_width: 460,
         }
     }
 }
