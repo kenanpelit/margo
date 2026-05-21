@@ -5,6 +5,16 @@
   @include buttons.state-layers('--surface', '--on-surface');
   border: var(--outline) solid var(--border-width);
   transition: border-color 150ms ease-in-out;
+  // button-base pads every direct child (`> * { padding: --padding-md }`)
+  // — meant for a button's icon/label. Here the children are the `#id`
+  // title and the preview box, so that rule stacked 8px under the id +
+  // 8px over the preview = a ~20px "blank line". Pad the card itself
+  // instead and zero the per-child padding, so the id sits right above
+  // the preview (only the box's own 4px spacing remains).
+  padding: var(--padding-md);
+  > * {
+    padding: 0;
+  }
 }
 
 // Keyboard-/click-selected row gets a matugen-accent border so the
