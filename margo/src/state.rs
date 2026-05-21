@@ -579,6 +579,7 @@ pub struct MargoState {
     pub input_gesture: GestureState,
 
     pub foreign_toplevel_list: ForeignToplevelListState,
+    pub wlr_foreign_toplevel: crate::protocols::wlr_foreign_toplevel::WlrForeignToplevelState,
     pub layer_surfaces: Vec<LayerSurface>,
     pub lock_surfaces: Vec<(Output, smithay::wayland::session_lock::LockSurface)>,
 
@@ -893,6 +894,11 @@ impl MargoState {
 
         let xwayland_shell_state = XWaylandShellState::new::<Self>(&dh);
         let foreign_toplevel_list = ForeignToplevelListState::new::<Self>(&dh);
+        let wlr_foreign_toplevel =
+            crate::protocols::wlr_foreign_toplevel::WlrForeignToplevelState::new::<Self, _>(
+                &dh,
+                |_client| true,
+            );
 
         // wlr_gamma_control_v1 — sunsetr / gammastep / wlsunset use this to
         // push night-light ramps to outputs. Allow all clients (no privileged
@@ -973,6 +979,7 @@ impl MargoState {
             input_touch: Default::default(),
             input_gesture: Default::default(),
             foreign_toplevel_list,
+            wlr_foreign_toplevel,
             layer_surfaces: vec![],
             lock_surfaces: vec![],
             clients: vec![],
@@ -2291,6 +2298,9 @@ impl MargoState {
         let _ = output;
         self.space.refresh();
         self.popups.cleanup();
+        // Mirror the toplevel set to wlr-foreign-toplevel-management clients.
+        // Diffing + idempotent, so running it per-output post-render is fine.
+        crate::protocols::wlr_foreign_toplevel::refresh(self);
     }
 
     /// Send `wl_surface.frame` done callbacks to every surface visible
