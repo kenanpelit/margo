@@ -149,8 +149,15 @@ fixed paths and warn.
 
 ## Risks / known limitations
 
-- `gtk4-layer-shell` may need the source build on some 24.04 hosts
-  (handled).
-- Other Debian derivatives / non-24.04 Ubuntu: best-effort, warned.
+- **GTK ≥ 4.20 hard requirement (Debian/Ubuntu).** margo's gtk4-rs
+  (0.10) needs GTK ≥ 4.19. **Ubuntu 24.04 LTS ships GTK 4.14 and is
+  unsupported** — confirmed on a live 24.04.3 VM, where the whole noble
+  archive (incl. backports) caps at 4.14, so `apt upgrade` cannot help.
+  The installer gates on `pkg-config --modversion gtk4` and aborts early
+  with a clear message. Supported: Ubuntu 25.10+ / 26.04 LTS or any
+  distro with GTK 4.20+.
+- `gtk4-layer-shell` is not packaged on Ubuntu; the installer builds it
+  from source with `-Dintrospection=false -Dvapi=false` (verified on the
+  VM).
 - Arch path installs the pushed GitHub HEAD, not local uncommitted work
   (by design, matching `rebuild.sh`).

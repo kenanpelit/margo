@@ -96,27 +96,67 @@ A first-party GTK4 + relm4 + gtk4-layer-shell desktop shell that consumes `dwl-i
 
 ## Install
 
-### Arch (PKGBUILD)
-
-```bash
-git clone https://github.com/kenanpelit/margo_build ~/.kod/margo_build
-cd ~/.kod/margo_build && makepkg -si
-```
-
-Installs all nine binaries (compositor + shell + helpers), the Wayland session entry, example layouts and example configs. PAM service file for `mlock` lands in `/etc/pam.d/`. Runtime tools (`grim`, `slurp`, `wl-clipboard`) come in as dependencies; `swappy` / `satty` are optional screenshot editors picked up at runtime.
-
-### From source
+The repository ships a single installer, [`install.sh`](install.sh), that
+detects your distribution and does the right thing — build, install, and
+uninstall. Clone the repo and run it:
 
 ```bash
 git clone https://github.com/kenanpelit/margo
-cd margo && cargo build --release --workspace
+cd margo
+./install.sh            # build + install (detects distro)
+./install.sh uninstall  # remove margo
+./install.sh --help
+```
+
+It installs all twelve binaries (compositor + shell + helpers), the
+`margo-portal` screencast/screenshot backend, the Wayland session entry,
+example configs and layouts, and shell completions.
+
+### Arch / CachyOS
+
+Uses the repo `PKGBUILD` with `makepkg` (a `-git` package built from the
+pushed GitHub HEAD), then installs it with `pacman` — the same flow as
+`makepkg -si`. Build dependencies are resolved by `makepkg`. Uninstall
+runs `pacman -R margo-git`.
+
+```bash
+./install.sh            # makepkg build + pacman install
+./install.sh uninstall  # pacman -R margo-git
+```
+
+### Ubuntu / Debian
+
+> **Requires GTK ≥ 4.20.** margo's GTK4 bindings need GTK 4.19+, so
+> **Ubuntu 24.04 LTS (GTK 4.14) is not supported** — and `apt upgrade`
+> won't help, because an LTS keeps the same GTK for its lifetime. Use
+> **Ubuntu 25.10+ / 26.04 LTS** (or any distro with GTK 4.20+). The
+> installer verifies the GTK version up front and stops early with a
+> clear message on older releases.
+
+The Ubuntu path installs the build dependencies via `apt`, bootstraps a
+current Rust toolchain with `rustup` if the system one is too old (margo
+is Rust edition 2024), builds `gtk4-layer-shell` from source when it
+isn't packaged, then compiles and installs to `/usr`. Every installed
+path is recorded in `/usr/local/share/margo/install-manifest.txt`, so
+`uninstall` removes exactly what was added.
+
+```bash
+./install.sh deps       # install build dependencies only (optional)
+./install.sh            # deps + Rust + build + install
+./install.sh uninstall  # remove (reads the install manifest)
+```
+
+### Manual (any distro)
+
+```bash
+cargo build --release --workspace
 for bin in margo start-margo mctl mshell mshellctl mlock mlayout mscreenshot mvisual; do
   sudo install -Dm755 target/release/$bin /usr/bin/$bin
 done
 sudo install -Dm644 margo.desktop /usr/share/wayland-sessions/margo.desktop
 ```
 
-System dependencies: `wayland`, `libinput`, `libxkbcommon`, `seatd`, `mesa`, `libdrm`, `pixman`, `pcre2`, `cairo`, `pango`, `pam`, `gtk4`, `gtk4-layer-shell`, `xorg-xwayland` (optional). Runtime: `grim`, `slurp`, `wl-clipboard` for screenshots; `wlr-randr` for live monitor re-layout; `notify-send` (libnotify) for `mscreenshot`'s notification action buttons.
+System dependencies: `wayland`, `libinput`, `libxkbcommon`, `seatd`, `mesa`, `libdrm`, `pixman`, `pcre2`, `cairo`, `pango`, `pam`, `gtk4` (≥ 4.20), `gtk4-layer-shell`, `xorg-xwayland` (optional). Runtime: `grim`, `slurp`, `wl-clipboard` for screenshots; `wlr-randr` for live monitor re-layout; `notify-send` (libnotify) for `mscreenshot`'s notification action buttons.
 
 ### Nix flake
 
