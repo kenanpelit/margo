@@ -53,6 +53,7 @@ impl Component for KeybindsMenuWidgetModel {
                 },
             },
 
+            #[name = "search_entry"]
             gtk::Entry {
                 add_css_class: "keybinds-search",
                 set_placeholder_text: Some("Filter shortcuts…"),
@@ -90,6 +91,15 @@ impl Component for KeybindsMenuWidgetModel {
         let widgets = view_output!();
 
         rebuild(&model.content, &model.sections, "");
+
+        // Focus the filter each time the panel is shown so the user can
+        // type immediately (the frame grants the menu keyboard focus).
+        {
+            let entry = widgets.search_entry.clone();
+            root.connect_map(move |_| {
+                entry.grab_focus();
+            });
+        }
 
         ComponentParts { model, widgets }
     }
