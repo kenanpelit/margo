@@ -410,6 +410,8 @@ pub struct Menus {
     pub keep_awake_menu: Menu,
     #[serde(default = "default_twilight_menu")]
     pub twilight_menu: Menu,
+    #[serde(default = "default_keybinds_menu")]
+    pub keybinds_menu: Menu,
     pub media_player_menu: Menu,
     pub session_menu: Menu,
     /// Settings panel — embeds in the frame's menu stack instead
@@ -472,6 +474,18 @@ fn default_twilight_menu() -> Menu {
         widgets: vec![MenuWidget::Twilight],
         minimum_width: 360,
         maximum_height: 0,
+    }
+}
+
+fn default_keybinds_menu() -> Menu {
+    Menu {
+        position: Position::Top,
+        widgets: vec![MenuWidget::Keybinds],
+        // Wide enough for the two-column "combo | description" rows
+        // without wrapping common labels; capped height so the long
+        // shortcut list scrolls instead of overflowing the screen.
+        minimum_width: 720,
+        maximum_height: 720,
     }
 }
 
@@ -597,6 +611,7 @@ impl Default for Menus {
             valent_menu: default_valent_menu(),
             keep_awake_menu: default_keep_awake_menu(),
             twilight_menu: default_twilight_menu(),
+            keybinds_menu: default_keybinds_menu(),
             media_player_menu: Menu {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::MediaPlayer],

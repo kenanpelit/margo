@@ -84,6 +84,9 @@ use crate::menus::menu_widgets::valent::valent_menu_widget::{
 use crate::menus::menu_widgets::keep_awake::keep_awake_menu_widget::{
     KeepAwakeMenuWidgetInit, KeepAwakeMenuWidgetModel, KeepAwakeMenuWidgetOutput,
 };
+use crate::menus::menu_widgets::keybinds::keybinds_menu_widget::{
+    KeybindsMenuWidgetInit, KeybindsMenuWidgetModel,
+};
 use crate::menus::menu_widgets::twilight::twilight_menu_widget::{
     TwilightMenuWidgetInit, TwilightMenuWidgetModel,
 };
@@ -185,6 +188,11 @@ pub fn build_widget(
         MenuWidget::Twilight => Box::new(
             TwilightMenuWidgetModel::builder()
                 .launch(TwilightMenuWidgetInit {})
+                .detach(),
+        ),
+        MenuWidget::Keybinds => Box::new(
+            KeybindsMenuWidgetModel::builder()
+                .launch(KeybindsMenuWidgetInit {})
                 .detach(),
         ),
         MenuWidget::Divider => Box::new(

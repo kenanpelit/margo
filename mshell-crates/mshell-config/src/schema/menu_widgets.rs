@@ -81,6 +81,10 @@ pub enum MenuWidget {
     /// `twilight` bar pill's panel — master toggle, current temp /
     /// phase, mode selector, temperature slider, schedule presets.
     Twilight,
+    /// `keybinds` bar pill's panel — searchable cheatsheet of every
+    /// shortcut parsed live from margo's `config.conf`, grouped by
+    /// action category.
+    Keybinds,
     ThemePicker,
     Wallpaper,
     Weather,
@@ -140,6 +144,7 @@ impl MenuWidget {
             MenuWidget::Valent => "Valent Connect",
             MenuWidget::KeepAwake => "Keep Awake",
             MenuWidget::Twilight => "Twilight",
+            MenuWidget::Keybinds => "Keyboard Shortcuts",
             MenuWidget::ThemePicker => "Theme Picker",
             MenuWidget::Wallpaper => "Wallpaper",
             MenuWidget::Weather => "Weather",
@@ -196,6 +201,7 @@ impl MenuWidget {
             MenuWidget::Valent,
             MenuWidget::KeepAwake,
             MenuWidget::Twilight,
+            MenuWidget::Keybinds,
             MenuWidget::ThemePicker,
             MenuWidget::Wallpaper,
             MenuWidget::Weather,

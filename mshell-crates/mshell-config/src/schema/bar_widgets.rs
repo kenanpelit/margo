@@ -37,6 +37,11 @@ pub enum BarWidget {
     /// `mctl twilight status`.
     Twilight,
     KeepAwake,
+    /// Keybind cheatsheet pill — a keyboard glyph; click opens a
+    /// searchable cheatsheet of every shortcut parsed live from
+    /// margo's `config.conf` (`bind = …` lines, including `source`
+    /// pulls), grouped by action category.
+    Keybinds,
     LockKeys,
     MargoDock,
     MargoLayoutSwitcher,
@@ -93,6 +98,7 @@ impl BarWidget {
             BarWidget::DarkMode => "Dark Mode Toggle",
             BarWidget::Twilight => "Twilight (blue-light filter)",
             BarWidget::KeepAwake => "Keep Awake",
+            BarWidget::Keybinds => "Keyboard Shortcuts",
             BarWidget::LockKeys => "Lock Keys (Caps/Num/Scroll)",
             BarWidget::MargoDock => "Margo Dock",
             BarWidget::MargoLayoutSwitcher => "Margo Layout Switcher",
@@ -138,6 +144,7 @@ impl BarWidget {
             BarWidget::DarkMode,
             BarWidget::Twilight,
             BarWidget::KeepAwake,
+            BarWidget::Keybinds,
             BarWidget::LockKeys,
             BarWidget::MargoDock,
             BarWidget::MargoLayoutSwitcher,

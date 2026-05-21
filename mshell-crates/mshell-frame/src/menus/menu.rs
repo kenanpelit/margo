@@ -65,6 +65,9 @@ pub(crate) enum MenuType {
     /// `twilight` bar pill's panel — toggle + temperature + mode +
     /// schedule presets.
     Twilight,
+    /// `keybinds` bar pill's panel — searchable cheatsheet of every
+    /// shortcut parsed live from margo's `config.conf`.
+    Keybinds,
     MediaPlayer,
     Session,
     /// Combined clock + quick-settings dashboard. Renders the
@@ -677,6 +680,30 @@ impl Component for MenuModel {
                 effects.push(move |_| {
                     let config = config.clone();
                     let maximum_height = config.menus().twilight_menu().maximum_height().get();
+                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
+                });
+            }
+            MenuType::Keybinds => {
+                css_class = "keybinds-menu".to_string();
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let widgets = config.menus().keybinds_menu().widgets().get();
+                    sender_clone.input(MenuInput::SetWidget(widgets));
+                });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let minimum_width = config.menus().keybinds_menu().minimum_width().get();
+                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
+                });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let maximum_height = config.menus().keybinds_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
                 });
             }

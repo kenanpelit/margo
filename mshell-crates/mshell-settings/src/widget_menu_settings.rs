@@ -46,6 +46,7 @@ pub(crate) enum MenuKind {
     Valent,
     KeepAwake,
     Twilight,
+    Keybinds,
     Ufw,
     Wallpaper,
 }
@@ -74,6 +75,7 @@ impl MenuKind {
             Self::Valent => "Valent Connect",
             Self::KeepAwake => "Keep Awake",
             Self::Twilight => "Twilight",
+            Self::Keybinds => "Keyboard Shortcuts",
             Self::Ufw => "UFW Firewall",
             Self::Wallpaper => "Wallpaper",
         }
@@ -100,6 +102,7 @@ impl MenuKind {
             MenuKind::Valent,
             MenuKind::KeepAwake,
             MenuKind::Twilight,
+            MenuKind::Keybinds,
             MenuKind::Ufw,
             MenuKind::Dns,
             MenuKind::Podman,
@@ -138,6 +141,7 @@ impl MenuKind {
             Self::Valent => m.valent_menu().position().get_untracked(),
             Self::KeepAwake => m.keep_awake_menu().position().get_untracked(),
             Self::Twilight => m.twilight_menu().position().get_untracked(),
+            Self::Keybinds => m.keybinds_menu().position().get_untracked(),
             Self::MargoLayout => m.margo_layout_menu().position().get_untracked(),
         }
     }
@@ -167,6 +171,7 @@ impl MenuKind {
             Self::Valent => m.valent_menu().minimum_width().get_untracked(),
             Self::KeepAwake => m.keep_awake_menu().minimum_width().get_untracked(),
             Self::Twilight => m.twilight_menu().minimum_width().get_untracked(),
+            Self::Keybinds => m.keybinds_menu().minimum_width().get_untracked(),
             Self::MargoLayout => m.margo_layout_menu().minimum_width().get_untracked(),
         }
     }
@@ -196,6 +201,7 @@ impl MenuKind {
             Self::Valent => m.valent_menu().position().get(),
             Self::KeepAwake => m.keep_awake_menu().position().get(),
             Self::Twilight => m.twilight_menu().position().get(),
+            Self::Keybinds => m.keybinds_menu().position().get(),
             Self::MargoLayout => m.margo_layout_menu().position().get(),
         }
     }
@@ -225,6 +231,7 @@ impl MenuKind {
             Self::Valent => m.valent_menu().minimum_width().get(),
             Self::KeepAwake => m.keep_awake_menu().minimum_width().get(),
             Self::Twilight => m.twilight_menu().minimum_width().get(),
+            Self::Keybinds => m.keybinds_menu().minimum_width().get(),
             Self::MargoLayout => m.margo_layout_menu().minimum_width().get(),
         }
     }
@@ -253,6 +260,7 @@ impl MenuKind {
             Self::Valent => c.menus.valent_menu.position = p,
             Self::KeepAwake => c.menus.keep_awake_menu.position = p,
             Self::Twilight => c.menus.twilight_menu.position = p,
+            Self::Keybinds => c.menus.keybinds_menu.position = p,
             Self::MargoLayout => c.menus.margo_layout_menu.position = p,
         });
     }
@@ -281,6 +289,7 @@ impl MenuKind {
             Self::Valent => c.menus.valent_menu.minimum_width = w,
             Self::KeepAwake => c.menus.keep_awake_menu.minimum_width = w,
             Self::Twilight => c.menus.twilight_menu.minimum_width = w,
+            Self::Keybinds => c.menus.keybinds_menu.minimum_width = w,
             Self::MargoLayout => c.menus.margo_layout_menu.minimum_width = w,
         });
     }
@@ -310,6 +319,7 @@ impl MenuKind {
             Self::Valent => m.valent_menu().maximum_height().get_untracked(),
             Self::KeepAwake => m.keep_awake_menu().maximum_height().get_untracked(),
             Self::Twilight => m.twilight_menu().maximum_height().get_untracked(),
+            Self::Keybinds => m.keybinds_menu().maximum_height().get_untracked(),
             Self::MargoLayout => m.margo_layout_menu().maximum_height().get_untracked(),
         }
     }
@@ -339,6 +349,7 @@ impl MenuKind {
             Self::Valent => m.valent_menu().maximum_height().get(),
             Self::KeepAwake => m.keep_awake_menu().maximum_height().get(),
             Self::Twilight => m.twilight_menu().maximum_height().get(),
+            Self::Keybinds => m.keybinds_menu().maximum_height().get(),
             Self::MargoLayout => m.margo_layout_menu().maximum_height().get(),
         }
     }
@@ -367,6 +378,7 @@ impl MenuKind {
             Self::Valent => c.menus.valent_menu.maximum_height = h,
             Self::KeepAwake => c.menus.keep_awake_menu.maximum_height = h,
             Self::Twilight => c.menus.twilight_menu.maximum_height = h,
+            Self::Keybinds => c.menus.keybinds_menu.maximum_height = h,
             Self::MargoLayout => c.menus.margo_layout_menu.maximum_height = h,
         });
     }
@@ -398,6 +410,7 @@ impl MenuKind {
             Self::Valent => m.valent_menu().widgets().get_untracked(),
             Self::KeepAwake => m.keep_awake_menu().widgets().get_untracked(),
             Self::Twilight => m.twilight_menu().widgets().get_untracked(),
+            Self::Keybinds => m.keybinds_menu().widgets().get_untracked(),
             Self::MargoLayout => m.margo_layout_menu().widgets().get_untracked(),
         }
     }
@@ -430,6 +443,7 @@ impl MenuKind {
             Self::Valent => m.valent_menu().widgets().get(),
             Self::KeepAwake => m.keep_awake_menu().widgets().get(),
             Self::Twilight => m.twilight_menu().widgets().get(),
+            Self::Keybinds => m.keybinds_menu().widgets().get(),
             Self::MargoLayout => m.margo_layout_menu().widgets().get(),
         }
     }
@@ -463,6 +477,7 @@ impl MenuKind {
             Self::Valent => c.menus.valent_menu.widgets = widgets,
             Self::KeepAwake => c.menus.keep_awake_menu.widgets = widgets,
             Self::Twilight => c.menus.twilight_menu.widgets = widgets,
+            Self::Keybinds => c.menus.keybinds_menu.widgets = widgets,
             Self::MargoLayout => c.menus.margo_layout_menu.widgets = widgets,
         });
     }

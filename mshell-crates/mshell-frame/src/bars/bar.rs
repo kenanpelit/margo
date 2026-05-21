@@ -5,6 +5,7 @@ use crate::bars::bar_widgets::cpu_dashboard::{CpuDashboardInit, CpuDashboardMode
 use crate::bars::bar_widgets::dashboard::{DashboardInit, DashboardModel, DashboardOutput};
 use crate::bars::bar_widgets::dark_mode::{DarkModeInit, DarkModeModel};
 use crate::bars::bar_widgets::keep_awake::{KeepAwakeInit, KeepAwakeModel};
+use crate::bars::bar_widgets::keybinds::{KeybindsInit, KeybindsModel};
 use crate::bars::bar_widgets::twilight::{TwilightInit, TwilightModel};
 use crate::bars::bar_widgets::lock_keys::{LockKeysInit, LockKeysModel};
 use crate::bars::bar_widgets::color_picker::{ColorPickerInit, ColorPickerModel};
@@ -121,6 +122,7 @@ pub(crate) enum BarOutput {
     ValentClicked,
     KeepAwakeClicked,
     TwilightClicked,
+    KeybindsClicked,
     AudioDashboardClicked,
     DnsClicked,
     PodmanClicked,
@@ -493,6 +495,14 @@ impl BarModel {
                     .forward(sender.output_sender(), |msg| match msg {
                         crate::bars::bar_widgets::twilight::TwilightOutput::Clicked
                             => BarOutput::TwilightClicked,
+                    }),
+            ),
+            BarWidget::Keybinds => Box::new(
+                KeybindsModel::builder()
+                    .launch(KeybindsInit { orientation })
+                    .forward(sender.output_sender(), |msg| match msg {
+                        crate::bars::bar_widgets::keybinds::KeybindsOutput::Clicked
+                            => BarOutput::KeybindsClicked,
                     }),
             ),
             BarWidget::LockKeys => Box::new(

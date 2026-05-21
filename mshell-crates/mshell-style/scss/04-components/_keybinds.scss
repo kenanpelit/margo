@@ -1,0 +1,93 @@
+// Keybinds — bar pill + searchable cheatsheet panel. Shortcuts are
+// parsed live from margo's config.conf. DESIGN.md: §3 bar pill on the
+// shared surface (icon-only, no active tint — it's a launcher, not a
+// toggle); §1 soft-tinted chips per modifier; §5 menu chrome.
+
+// ── Bar pill ──────────────────────────────────────────────
+// Plain keyboard glyph; nothing to indicate "live", so the icon keeps
+// the default bar colour.
+.keybinds-bar-widget image {
+  color: var(--on-surface);
+}
+
+// ── Panel ─────────────────────────────────────────────────
+.keybinds-menu-widget {
+  padding: 4px;
+}
+
+.keybinds-header-icon {
+  color: var(--primary);
+}
+
+// Filter field — search-pill idiom (DESIGN.md §1 radius-xl).
+.keybinds-search {
+  border-radius: var(--radius-xl);
+  background-color: var(--surface-container-highest);
+  padding: 4px 12px;
+}
+
+// Category header above each shortcut group (DESIGN.md §1 section
+// label: small, SemiBold, tracked, on-surface-variant).
+.keybinds-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
+  margin-top: 8px;
+  margin-bottom: 2px;
+}
+
+// One shortcut row: combo cluster (left) + description (right).
+.keybinds-row {
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+
+  &:hover {
+    background-color: var(--surface-container);
+  }
+}
+
+.keybinds-desc {
+  font-size: var(--font-bar);
+  color: var(--on-surface-variant);
+}
+
+// ── Key-combo chips ───────────────────────────────────────
+// Soft-tinted keycaps. Each modifier gets its own Material hue so a
+// combo reads at a glance; the trigger key is a neutral surface cap.
+.keybind-chip {
+  min-width: 18px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.keybind-mod.mod-super {
+  background-color: var(--primary-container);
+  color: var(--on-primary-container);
+}
+.keybind-mod.mod-ctrl {
+  background-color: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+.keybind-mod.mod-shift {
+  background-color: var(--tertiary-container);
+  color: var(--on-tertiary-container);
+}
+.keybind-mod.mod-alt {
+  background-color: var(--error-container);
+  color: var(--on-error-container);
+}
+.keybind-mod.mod-other {
+  background-color: var(--surface-container-high);
+  color: var(--on-surface-variant);
+}
+
+// Trigger key — neutral raised cap, distinct from the tinted mods.
+.keybind-key {
+  background-color: var(--surface-container-highest);
+  color: var(--on-surface);
+}
