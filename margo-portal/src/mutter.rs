@@ -76,3 +76,16 @@ pub trait Introspect {
     /// `window-id → { "app-id": s, "title": s, … }`.
     fn get_windows(&self) -> zbus::Result<HashMap<u64, HashMap<String, OwnedValue>>>;
 }
+
+/// `com.mshell.Shell` — the desktop shell. We call its `Screenshare`
+/// picker (the DESIGN.md-styled source chooser) so the user gets the
+/// same UI the rest of margo uses. Blocks until the user picks; returns
+/// `[SELECTION]/window:<id>` | `/screen:<connector>` | `` (cancel).
+#[proxy(
+    interface = "com.mshell.Shell",
+    default_service = "com.mshell.Shell",
+    default_path = "/com/mshell/Shell"
+)]
+pub trait Shell {
+    fn screenshare(&self, payload: &str) -> zbus::Result<String>;
+}
