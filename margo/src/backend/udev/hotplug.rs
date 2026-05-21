@@ -316,7 +316,6 @@ pub(super) fn setup_connector(
         canvas_saved_zoom: 1.0,
         minimap_visible: false,
         dwl_ipc: crate::protocols::dwl_ipc::DwlIpcState::new(),
-        ext_workspace: crate::protocols::ext_workspace::ExtWorkspaceState::new(),
         scale: 1.0,
         transform: 0,
         enabled: true,

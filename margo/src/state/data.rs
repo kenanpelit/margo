@@ -20,10 +20,7 @@ use smithay::{
 use crate::{
     animation::{ClientAnimation, OpacityAnimation},
     layout::{LayoutId, Pertag, Rect},
-    protocols::{
-        dwl_ipc::DwlIpcState, ext_workspace::ExtWorkspaceState,
-        foreign_toplevel::ForeignToplevelHandle,
-    },
+    protocols::{dwl_ipc::DwlIpcState, foreign_toplevel::ForeignToplevelHandle},
     MAX_TAGS,
 };
 
@@ -388,7 +385,6 @@ pub struct MargoMonitor {
     pub canvas_saved_zoom: f32,
     pub minimap_visible: bool,
     pub dwl_ipc: DwlIpcState,
-    pub ext_workspace: ExtWorkspaceState,
     pub scale: f32,
     pub transform: i32,
     pub enabled: bool,

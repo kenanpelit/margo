@@ -44,5 +44,6 @@ mod xdg_shell;
 mod xdg_system_bell;
 mod xdg_toplevel_icon;
 mod xdg_toplevel_tag;
+mod ext_workspace;
 mod wlr_foreign_toplevel;
 mod xwayland_keyboard_grab;
