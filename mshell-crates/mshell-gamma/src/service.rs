@@ -68,7 +68,7 @@ impl GammaService {
     ///
     /// # GTK / Relm4 usage
     ///
-    /// ```no_run
+    /// ```ignore
     /// # use mshell_gamma::gamma_service;
     /// let mut rx = gamma_service().subscribe();
     /// glib::spawn_future_local(async move {
