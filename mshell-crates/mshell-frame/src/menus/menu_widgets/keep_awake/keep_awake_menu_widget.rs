@@ -64,7 +64,7 @@ impl Component for KeepAwakeMenuWidgetModel {
                 set_spacing: 8,
                 gtk::Image {
                     add_css_class: "keep-awake-header-icon",
-                    set_icon_name: Some("eye-open-negative-filled-symbolic"),
+                    set_icon_name: Some("eye-symbolic"),
                 },
                 gtk::Box {
                     set_orientation: gtk::Orientation::Vertical,
