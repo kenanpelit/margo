@@ -412,6 +412,8 @@ pub struct Menus {
     pub twilight_menu: Menu,
     #[serde(default = "default_keybinds_menu")]
     pub keybinds_menu: Menu,
+    #[serde(default = "default_ssh_menu")]
+    pub ssh_menu: Menu,
     pub media_player_menu: Menu,
     pub session_menu: Menu,
     /// Settings panel — embeds in the frame's menu stack instead
@@ -485,6 +487,17 @@ fn default_keybinds_menu() -> Menu {
         // without wrapping common labels; capped height so the long
         // shortcut list scrolls instead of overflowing the screen.
         minimum_width: 720,
+        maximum_height: 720,
+    }
+}
+
+fn default_ssh_menu() -> Menu {
+    Menu {
+        position: Position::TopRight,
+        widgets: vec![MenuWidget::SshSessions],
+        // Roomy enough for "host + user@hostname:port" rows; capped
+        // height so a large ~/.ssh/config scrolls.
+        minimum_width: 460,
         maximum_height: 720,
     }
 }
@@ -612,6 +625,7 @@ impl Default for Menus {
             keep_awake_menu: default_keep_awake_menu(),
             twilight_menu: default_twilight_menu(),
             keybinds_menu: default_keybinds_menu(),
+            ssh_menu: default_ssh_menu(),
             media_player_menu: Menu {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::MediaPlayer],

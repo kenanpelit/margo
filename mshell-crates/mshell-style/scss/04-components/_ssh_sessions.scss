@@ -1,0 +1,94 @@
+// SSH Sessions — bar pill + searchable host panel. Hosts are parsed
+// from ~/.ssh/config; active `ssh` clients are detected via pgrep.
+// DESIGN.md: §3 active = primary tint; §1 chips/labels; §5 menu rows.
+
+// ── Bar pill ──────────────────────────────────────────────
+// Terminal glyph; the active state tints the icon + count primary.
+.ssh-sessions-bar-label {
+  font-size: var(--font-bar);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--primary);
+}
+.ssh-sessions-bar-widget.active image {
+  color: var(--primary);
+}
+
+// ── Panel ─────────────────────────────────────────────────
+.ssh-sessions-menu-widget {
+  padding: 4px;
+}
+
+.ssh-sessions-header-icon {
+  color: var(--primary);
+}
+
+// Active-session count chip in the header.
+.ssh-sessions-count {
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background-color: var(--primary-container);
+  color: var(--on-primary-container);
+}
+
+.ssh-sessions-search {
+  border-radius: var(--radius-xl);
+  background-color: var(--surface-container-highest);
+  padding: 4px 12px;
+}
+
+// One host row — flat list item; hover + active tint per DESIGN.md.
+.ssh-host-row {
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+
+  &:hover {
+    background-color: var(--surface-container);
+  }
+
+  // The currently-connected host: soft primary wash + accent name.
+  &.active {
+    background-color: color-mix(in srgb, var(--primary) 12%, transparent);
+
+    .ssh-host-name {
+      color: var(--primary);
+      font-weight: 600;
+    }
+  }
+}
+
+// Status dot — dim when idle, primary when a session is live.
+.ssh-status-dot {
+  min-width: 8px;
+  min-height: 8px;
+  border-radius: var(--radius-pill);
+  background-color: var(--outline);
+
+  &.active {
+    background-color: var(--primary);
+  }
+}
+
+.ssh-host-name {
+  font-size: var(--font-bar);
+  color: var(--on-surface);
+}
+
+.ssh-host-sub {
+  font-size: 11px;
+  color: var(--on-surface-variant);
+  font-variant-numeric: tabular-nums;
+}
+
+// Trailing connect affordance — recedes until row hover.
+.ssh-host-go {
+  color: var(--on-surface-variant);
+  opacity: 0;
+}
+.ssh-host-row:hover .ssh-host-go {
+  opacity: 1;
+}

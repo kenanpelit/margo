@@ -95,6 +95,7 @@ pub(crate) enum ShellInput {
     ToggleKeepAwakeMenu(Option<String>),
     ToggleTwilightMenu(Option<String>),
     ToggleKeybindsMenu(Option<String>),
+    ToggleSshSessionsMenu(Option<String>),
     ToggleDnsMenu(Option<String>),
     TogglePodmanMenu(Option<String>),
     ToggleNotesMenu(Option<String>),
@@ -510,6 +511,11 @@ impl Component for Shell {
             ShellInput::ToggleKeybindsMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
                     frame.emit(FrameInput::ToggleKeybindsMenu);
+                }
+            }
+            ShellInput::ToggleSshSessionsMenu(monitor_name) => {
+                if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
+                    frame.emit(FrameInput::ToggleSshSessionsMenu);
                 }
             }
             ShellInput::ToggleDnsMenu(monitor_name) => {

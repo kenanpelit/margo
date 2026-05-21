@@ -87,6 +87,9 @@ use crate::menus::menu_widgets::keep_awake::keep_awake_menu_widget::{
 use crate::menus::menu_widgets::keybinds::keybinds_menu_widget::{
     KeybindsMenuWidgetInit, KeybindsMenuWidgetModel,
 };
+use crate::menus::menu_widgets::ssh_sessions::ssh_sessions_menu_widget::{
+    SshSessionsMenuWidgetInit, SshSessionsMenuWidgetModel,
+};
 use crate::menus::menu_widgets::twilight::twilight_menu_widget::{
     TwilightMenuWidgetInit, TwilightMenuWidgetModel,
 };
@@ -193,6 +196,11 @@ pub fn build_widget(
         MenuWidget::Keybinds => Box::new(
             KeybindsMenuWidgetModel::builder()
                 .launch(KeybindsMenuWidgetInit {})
+                .detach(),
+        ),
+        MenuWidget::SshSessions => Box::new(
+            SshSessionsMenuWidgetModel::builder()
+                .launch(SshSessionsMenuWidgetInit {})
                 .detach(),
         ),
         MenuWidget::Divider => Box::new(

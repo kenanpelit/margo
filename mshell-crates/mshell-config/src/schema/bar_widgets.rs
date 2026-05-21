@@ -42,6 +42,10 @@ pub enum BarWidget {
     /// margo's `config.conf` (`bind = …` lines, including `source`
     /// pulls), grouped by action category.
     Keybinds,
+    /// SSH Sessions pill — terminal glyph + live count of active `ssh`
+    /// clients; click opens a searchable host list from `~/.ssh/config`
+    /// (active first), click a host to connect in a new terminal.
+    SshSessions,
     LockKeys,
     MargoDock,
     MargoLayoutSwitcher,
@@ -99,6 +103,7 @@ impl BarWidget {
             BarWidget::Twilight => "Twilight (blue-light filter)",
             BarWidget::KeepAwake => "Keep Awake",
             BarWidget::Keybinds => "Keyboard Shortcuts",
+            BarWidget::SshSessions => "SSH Sessions",
             BarWidget::LockKeys => "Lock Keys (Caps/Num/Scroll)",
             BarWidget::MargoDock => "Margo Dock",
             BarWidget::MargoLayoutSwitcher => "Margo Layout Switcher",
@@ -145,6 +150,7 @@ impl BarWidget {
             BarWidget::Twilight,
             BarWidget::KeepAwake,
             BarWidget::Keybinds,
+            BarWidget::SshSessions,
             BarWidget::LockKeys,
             BarWidget::MargoDock,
             BarWidget::MargoLayoutSwitcher,

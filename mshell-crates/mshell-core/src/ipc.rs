@@ -99,6 +99,9 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 IPCCommand::Keybinds => {
                     app_sender.emit(ShellInput::ToggleKeybindsMenu(active_monitor().await));
                 }
+                IPCCommand::SshSessions => {
+                    app_sender.emit(ShellInput::ToggleSshSessionsMenu(active_monitor().await));
+                }
                 IPCCommand::Dns => {
                     app_sender.emit(ShellInput::ToggleDnsMenu(active_monitor().await));
                 }
@@ -312,6 +315,7 @@ enum IPCCommand {
     KeepAwake,
     Twilight,
     Keybinds,
+    SshSessions,
     Dns,
     Podman,
     Notes,
@@ -443,6 +447,9 @@ impl IPCService {
     }
     async fn keybinds(&self) {
         let _ = self.tx.send(IPCCommand::Keybinds);
+    }
+    async fn ssh_sessions(&self) {
+        let _ = self.tx.send(IPCCommand::SshSessions);
     }
     async fn dns(&self) {
         let _ = self.tx.send(IPCCommand::Dns);

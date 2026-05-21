@@ -85,6 +85,10 @@ pub enum MenuWidget {
     /// shortcut parsed live from margo's `config.conf`, grouped by
     /// action category.
     Keybinds,
+    /// `ssh_sessions` bar pill's panel — searchable host list parsed
+    /// from `~/.ssh/config`, active connections first, click to
+    /// connect in a new terminal.
+    SshSessions,
     ThemePicker,
     Wallpaper,
     Weather,
@@ -145,6 +149,7 @@ impl MenuWidget {
             MenuWidget::KeepAwake => "Keep Awake",
             MenuWidget::Twilight => "Twilight",
             MenuWidget::Keybinds => "Keyboard Shortcuts",
+            MenuWidget::SshSessions => "SSH Sessions",
             MenuWidget::ThemePicker => "Theme Picker",
             MenuWidget::Wallpaper => "Wallpaper",
             MenuWidget::Weather => "Weather",
@@ -202,6 +207,7 @@ impl MenuWidget {
             MenuWidget::KeepAwake,
             MenuWidget::Twilight,
             MenuWidget::Keybinds,
+            MenuWidget::SshSessions,
             MenuWidget::ThemePicker,
             MenuWidget::Wallpaper,
             MenuWidget::Weather,

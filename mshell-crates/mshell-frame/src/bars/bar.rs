@@ -6,6 +6,7 @@ use crate::bars::bar_widgets::dashboard::{DashboardInit, DashboardModel, Dashboa
 use crate::bars::bar_widgets::dark_mode::{DarkModeInit, DarkModeModel};
 use crate::bars::bar_widgets::keep_awake::{KeepAwakeInit, KeepAwakeModel};
 use crate::bars::bar_widgets::keybinds::{KeybindsInit, KeybindsModel};
+use crate::bars::bar_widgets::ssh_sessions::{SshSessionsInit, SshSessionsModel};
 use crate::bars::bar_widgets::twilight::{TwilightInit, TwilightModel};
 use crate::bars::bar_widgets::lock_keys::{LockKeysInit, LockKeysModel};
 use crate::bars::bar_widgets::color_picker::{ColorPickerInit, ColorPickerModel};
@@ -123,6 +124,7 @@ pub(crate) enum BarOutput {
     KeepAwakeClicked,
     TwilightClicked,
     KeybindsClicked,
+    SshSessionsClicked,
     AudioDashboardClicked,
     DnsClicked,
     PodmanClicked,
@@ -503,6 +505,14 @@ impl BarModel {
                     .forward(sender.output_sender(), |msg| match msg {
                         crate::bars::bar_widgets::keybinds::KeybindsOutput::Clicked
                             => BarOutput::KeybindsClicked,
+                    }),
+            ),
+            BarWidget::SshSessions => Box::new(
+                SshSessionsModel::builder()
+                    .launch(SshSessionsInit { orientation })
+                    .forward(sender.output_sender(), |msg| match msg {
+                        crate::bars::bar_widgets::ssh_sessions::SshSessionsOutput::Clicked
+                            => BarOutput::SshSessionsClicked,
                     }),
             ),
             BarWidget::LockKeys => Box::new(

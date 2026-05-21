@@ -83,6 +83,8 @@ pub enum MenuCommands {
     Twilight,
     /// Toggle the keybind cheatsheet menu (searchable shortcut list)
     Keybinds,
+    /// Toggle the SSH Sessions menu (searchable ~/.ssh/config host list)
+    SshSessions,
     /// Toggle the DNS / VPN menu
     Dns,
     /// Toggle the Podman menu
@@ -182,6 +184,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::Keybinds => {
             bus_command("Keybinds").await?;
+        }
+        MenuCommands::SshSessions => {
+            bus_command("SshSessions").await?;
         }
         MenuCommands::Dns => {
             bus_command("Dns").await?;

@@ -33,6 +33,7 @@ pub(crate) mod reboot;
 pub(crate) mod recording_indicator;
 pub(crate) mod screenshot;
 pub(crate) mod shutdown;
+pub(crate) mod ssh_sessions;
 pub(crate) mod system_tray;
 pub(crate) mod system_tray_item;
 pub(crate) mod system_update;
