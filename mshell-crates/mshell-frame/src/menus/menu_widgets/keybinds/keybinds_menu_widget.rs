@@ -62,16 +62,17 @@ impl Component for KeybindsMenuWidgetModel {
                 },
             },
 
-            gtk::ScrolledWindow {
-                set_vexpand: true,
-                set_hscrollbar_policy: gtk::PolicyType::Never,
-                set_min_content_height: 280,
-
-                #[local_ref]
-                content -> gtk::Box {
-                    set_orientation: gtk::Orientation::Vertical,
-                    set_spacing: 4,
-                },
+            // The list is appended directly to the menu's own
+            // ScrolledWindow (see `MenuModel`), which clamps the
+            // viewport at `keybinds_menu.maximum_height` and scrolls.
+            // An inner ScrolledWindow here would pin a constant
+            // natural height (so the outer `propagate_natural_height`
+            // never saw the real list size — the height setting did
+            // nothing) and would also swallow scroll-wheel events.
+            #[local_ref]
+            content -> gtk::Box {
+                set_orientation: gtk::Orientation::Vertical,
+                set_spacing: 4,
             },
         }
     }
