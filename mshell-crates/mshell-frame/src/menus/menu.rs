@@ -60,6 +60,8 @@ pub(crate) enum MenuType {
     SystemUpdate,
     /// `valent` bar pill's panel — paired phone status + actions.
     Valent,
+    /// `weather` bar pill's panel — the Current / Hourly / Daily surface.
+    Weather,
     /// `keep_awake` bar pill's panel — duration grid + countdown.
     KeepAwake,
     /// `twilight` bar pill's panel — toggle + temperature + mode +
@@ -634,6 +636,30 @@ impl Component for MenuModel {
                 effects.push(move |_| {
                     let config = config.clone();
                     let maximum_height = config.menus().valent_menu().maximum_height().get();
+                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
+                });
+            }
+            MenuType::Weather => {
+                css_class = "weather-menu".to_string();
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let widgets = config.menus().weather_menu().widgets().get();
+                    sender_clone.input(MenuInput::SetWidget(widgets));
+                });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let minimum_width = config.menus().weather_menu().minimum_width().get();
+                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
+                });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let maximum_height = config.menus().weather_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
                 });
             }

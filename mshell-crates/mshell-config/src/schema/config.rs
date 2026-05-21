@@ -408,6 +408,8 @@ pub struct Menus {
     pub valent_menu: Menu,
     #[serde(default = "default_keep_awake_menu")]
     pub keep_awake_menu: Menu,
+    #[serde(default = "default_weather_menu")]
+    pub weather_menu: Menu,
     #[serde(default = "default_twilight_menu")]
     pub twilight_menu: Menu,
     #[serde(default = "default_keybinds_menu")]
@@ -466,6 +468,15 @@ fn default_keep_awake_menu() -> Menu {
         position: Position::TopRight,
         widgets: vec![MenuWidget::KeepAwake],
         minimum_width: 320,
+        maximum_height: 0,
+    }
+}
+
+fn default_weather_menu() -> Menu {
+    Menu {
+        position: Position::TopRight,
+        widgets: vec![MenuWidget::Weather],
+        minimum_width: 380,
         maximum_height: 0,
     }
 }
@@ -623,6 +634,7 @@ impl Default for Menus {
             system_update_menu: default_system_update_menu(),
             valent_menu: default_valent_menu(),
             keep_awake_menu: default_keep_awake_menu(),
+            weather_menu: default_weather_menu(),
             twilight_menu: default_twilight_menu(),
             keybinds_menu: default_keybinds_menu(),
             ssh_menu: default_ssh_menu(),

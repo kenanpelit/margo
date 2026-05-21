@@ -72,6 +72,7 @@ pub enum BarWidget {
     Tray,
     VpnIndicator,
     Wallpaper,
+    Weather,
 }
 
 impl PatchField for BarWidget {
@@ -130,6 +131,7 @@ impl BarWidget {
             BarWidget::Tray => "Tray",
             BarWidget::VpnIndicator => "VPN Indicator",
             BarWidget::Wallpaper => "Wallpaper",
+            BarWidget::Weather => "Weather",
         }
     }
 
@@ -177,6 +179,7 @@ impl BarWidget {
             BarWidget::Tray,
             BarWidget::VpnIndicator,
             BarWidget::Wallpaper,
+            BarWidget::Weather,
         ]
     }
 }

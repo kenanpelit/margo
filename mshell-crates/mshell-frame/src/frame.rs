@@ -30,6 +30,7 @@ const CPU_DASHBOARD_MENU: &str = "cpu_dashboard";
 const AUDIO_DASHBOARD_MENU: &str = "audio_dashboard";
 const SYSTEM_UPDATE_MENU: &str = "system_update";
 const VALENT_MENU: &str = "valent";
+const WEATHER_MENU: &str = "weather";
 const KEEP_AWAKE_MENU: &str = "keep_awake";
 const TWILIGHT_MENU: &str = "twilight";
 const KEYBINDS_MENU: &str = "keybinds";
@@ -89,6 +90,7 @@ pub struct Frame {
     audio_dashboard_menu: Controller<MenuModel>,
     system_update_menu: Controller<MenuModel>,
     valent_menu: Controller<MenuModel>,
+    weather_menu: Controller<MenuModel>,
     keep_awake_menu: Controller<MenuModel>,
     twilight_menu: Controller<MenuModel>,
     keybinds_menu: Controller<MenuModel>,
@@ -145,6 +147,7 @@ pub enum FrameInput {
     ToggleAudioDashboardMenu,
     ToggleSystemUpdateMenu,
     ToggleValentMenu,
+    ToggleWeatherMenu,
     ToggleKeepAwakeMenu,
     ToggleTwilightMenu,
     ToggleKeybindsMenu,
@@ -688,6 +691,7 @@ impl Component for Frame {
         let audio_dashboard_menu = Self::build_menu(&sender, MenuType::AudioDashboard);
         let system_update_menu = Self::build_menu(&sender, MenuType::SystemUpdate);
         let valent_menu = Self::build_menu(&sender, MenuType::Valent);
+        let weather_menu = Self::build_menu(&sender, MenuType::Weather);
         let keep_awake_menu = Self::build_menu(&sender, MenuType::KeepAwake);
         let twilight_menu = Self::build_menu(&sender, MenuType::Twilight);
         let keybinds_menu = Self::build_menu(&sender, MenuType::Keybinds);
@@ -798,6 +802,8 @@ impl Component for Frame {
             let config = menu_config.clone();
             let _ = config.menus().valent_menu().position().get();
             let config = menu_config.clone();
+            let _ = config.menus().weather_menu().position().get();
+            let config = menu_config.clone();
             let _ = config.menus().keep_awake_menu().position().get();
             let config = menu_config.clone();
             let _ = config.menus().twilight_menu().position().get();
@@ -885,6 +891,7 @@ impl Component for Frame {
             audio_dashboard_menu,
             system_update_menu,
             valent_menu,
+            weather_menu,
             keep_awake_menu,
             twilight_menu,
             keybinds_menu,
@@ -1041,6 +1048,10 @@ impl Component for Frame {
             }
             FrameInput::ToggleValentMenu => {
                 self.toggle_menu(VALENT_MENU, widgets);
+                self.sync_keyboard_mode(root);
+            }
+            FrameInput::ToggleWeatherMenu => {
+                self.toggle_menu(WEATHER_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
             FrameInput::ToggleKeepAwakeMenu => {
@@ -1792,6 +1803,13 @@ impl Frame {
             .valent_menu()
             .position()
             .get();
+        let weather_menu_widget: Widget = self.weather_menu.widget().clone().upcast();
+        let weather_menu_position = mshell_config::config_manager::config_manager()
+            .config()
+            .menus()
+            .weather_menu()
+            .position()
+            .get();
         let keep_awake_menu_widget: Widget = self.keep_awake_menu.widget().clone().upcast();
         let keep_awake_menu_position = mshell_config::config_manager::config_manager()
             .config()
@@ -1913,6 +1931,12 @@ impl Frame {
             &valent_menu_widget,
             VALENT_MENU,
             &valent_menu_position,
+        );
+        Self::add_to_stack(
+            widgets,
+            &weather_menu_widget,
+            WEATHER_MENU,
+            &weather_menu_position,
         );
         Self::add_to_stack(
             widgets,
@@ -2061,6 +2085,7 @@ impl Frame {
                 BarOutput::AudioDashboardClicked => FrameInput::ToggleAudioDashboardMenu,
                 BarOutput::SystemUpdateClicked => FrameInput::ToggleSystemUpdateMenu,
                 BarOutput::ValentClicked => FrameInput::ToggleValentMenu,
+                BarOutput::WeatherClicked => FrameInput::ToggleWeatherMenu,
                 BarOutput::KeepAwakeClicked => FrameInput::ToggleKeepAwakeMenu,
                 BarOutput::TwilightClicked => FrameInput::ToggleTwilightMenu,
                 BarOutput::KeybindsClicked => FrameInput::ToggleKeybindsMenu,

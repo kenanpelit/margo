@@ -1,5 +1,6 @@
 use crate::bars::bar_widgets::bluetooth::{BluetoothInit, BluetoothModel};
 use crate::bars::bar_widgets::clipboard::{ClipboardInit, ClipboardModel, ClipboardOutput};
+use crate::bars::bar_widgets::weather::{WeatherInit, WeatherModel, WeatherOutput};
 use crate::bars::bar_widgets::clock::{ClockInit, ClockModel, ClockOutput};
 use crate::bars::bar_widgets::cpu_dashboard::{CpuDashboardInit, CpuDashboardModel};
 use crate::bars::bar_widgets::dashboard::{DashboardInit, DashboardModel, DashboardOutput};
@@ -121,6 +122,7 @@ pub(crate) enum BarOutput {
     CpuDashboardClicked,
     SystemUpdateClicked,
     ValentClicked,
+    WeatherClicked,
     KeepAwakeClicked,
     TwilightClicked,
     KeybindsClicked,
@@ -447,6 +449,13 @@ impl BarModel {
                     .forward(sender.output_sender(), |msg| match msg {
                         crate::bars::bar_widgets::bluetooth::BluetoothOutput::Clicked
                             => BarOutput::BluetoothClicked,
+                    }),
+            ),
+            BarWidget::Weather => Box::new(
+                WeatherModel::builder()
+                    .launch(WeatherInit { orientation })
+                    .forward(sender.output_sender(), |msg| match msg {
+                        WeatherOutput::Clicked => BarOutput::WeatherClicked,
                     }),
             ),
             BarWidget::Clipboard => Box::new(

@@ -309,7 +309,7 @@ impl Component for GeneralSettingsModel {
                         gtk::Label {
                             add_css_class: "label-medium-bold",
                             set_halign: gtk::Align::Start,
-                            set_label: "City, Country",
+                            set_label: "City / district, Country",
                             set_hexpand: true,
                         },
 
@@ -811,11 +811,11 @@ impl Component for GeneralSettingsModel {
             GeneralSettingsInput::ChangeCityClicked => {
                 let dialog = TextEntryDialogModel::builder()
                     .launch(TextEntryDialogInit {
-                        message: "Enter location details".to_string(),
+                        message: "Enter a city or district name".to_string(),
                         negative_label: "Cancel".to_string(),
                         positive_label: "Done".to_string(),
-                        entry_placeholder: "City".to_string(),
-                        entry2_placeholder: "Country Code".to_string(),
+                        entry_placeholder: "City / district (e.g. Kadıköy)".to_string(),
+                        entry2_placeholder: "Country code (e.g. TR)".to_string(),
                         show_second_entry: true,
                     })
                     .forward(sender.input_sender(), |msg| match msg {
