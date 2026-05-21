@@ -1,6 +1,10 @@
 use mshell_common::notification::{NotificationInit, NotificationModel, NotificationOutput};
+use mshell_common::scoped_effects::EffectScope;
+use mshell_config::config_manager::config_manager;
+use mshell_config::schema::config::{ConfigStoreFields, NotificationsStoreFields};
 use mshell_services::notification_service;
 use mshell_utils::notifications::{spawn_dnd_watcher, spawn_notifications_watcher};
+use reactive_graph::traits::{Get, GetUntracked};
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 use std::collections::HashMap;
@@ -14,12 +18,17 @@ pub(crate) struct NotificationsModel {
     notif_controllers: Vec<Controller<NotificationModel>>,
     empty_label_visible: bool,
     dnd: bool,
+    /// Re-runs `rebuild_list` when the `group_notifications` toggle
+    /// changes, so the Settings switch applies to an open menu live.
+    _effects: EffectScope,
 }
 
 #[derive(Debug)]
 pub(crate) enum NotificationsInput {
     ClearAllClicked,
     DndClicked,
+    /// The `group_notifications` config toggle flipped — rebuild the list.
+    GroupingChanged,
 }
 
 #[derive(Debug)]
@@ -122,10 +131,23 @@ impl Component for NotificationsModel {
 
         spawn_dnd_watcher(&sender, || NotificationsCommandOutput::DndChanged);
 
+        // Re-render the history live when the grouping toggle flips.
+        let mut effects = EffectScope::new();
+        let eff_sender = sender.clone();
+        effects.push(move |_| {
+            let _ = config_manager()
+                .config()
+                .notifications()
+                .group_notifications()
+                .get();
+            eff_sender.input(NotificationsInput::GroupingChanged);
+        });
+
         let model = NotificationsModel {
             notif_controllers: Vec::new(),
             empty_label_visible: true,
             dnd: false,
+            _effects: effects,
         };
 
         let widgets = view_output!();
@@ -152,6 +174,11 @@ impl Component for NotificationsModel {
                 let dnd = service.dnd.get();
 
                 service.set_dnd(!dnd);
+            }
+            NotificationsInput::GroupingChanged => {
+                let notifications = notification_service().notifications.get();
+                self.empty_label_visible = notifications.is_empty();
+                self.rebuild_list(&widgets.list, &notifications, &sender);
             }
         }
 
@@ -198,7 +225,36 @@ impl NotificationsModel {
         }
         self.notif_controllers.clear();
 
-        // Group by app name, preserving first-seen order.
+        let build = |n: &Arc<Notification>, this: &mut Self| -> gtk::Box {
+            let controller = NotificationModel::builder()
+                .launch(NotificationInit {
+                    notification: n.clone(),
+                })
+                .forward(sender.output_sender(), |msg| match msg {
+                    NotificationOutput::ActionActivated => NotificationsOutput::CloseMenu,
+                });
+            let widget = controller.widget().clone();
+            this.notif_controllers.push(controller);
+            widget
+        };
+
+        // Grouping off → flat, chronological list, one row per notification.
+        let group = config_manager()
+            .config()
+            .notifications()
+            .group_notifications()
+            .get_untracked();
+        if !group {
+            for n in notifications {
+                let w = build(n, self);
+                list.append(&w);
+            }
+            return;
+        }
+
+        // Group by app name, preserving first-seen order. A single
+        // notification renders directly; two or more collapse into an
+        // expandable "App (N)" header.
         let mut order: Vec<String> = Vec::new();
         let mut groups: HashMap<String, Vec<Arc<Notification>>> = HashMap::new();
         for n in notifications {
@@ -211,19 +267,6 @@ impl NotificationsModel {
 
         for app in order {
             let items = groups.remove(&app).unwrap_or_default();
-            let build = |n: &Arc<Notification>, this: &mut Self| -> gtk::Box {
-                let controller = NotificationModel::builder()
-                    .launch(NotificationInit {
-                        notification: n.clone(),
-                    })
-                    .forward(sender.output_sender(), |msg| match msg {
-                        NotificationOutput::ActionActivated => NotificationsOutput::CloseMenu,
-                    });
-                let widget = controller.widget().clone();
-                this.notif_controllers.push(controller);
-                widget
-            };
-
             if items.len() == 1 {
                 let w = build(&items[0], self);
                 list.append(&w);

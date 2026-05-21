@@ -864,6 +864,10 @@ pub struct Notifications {
     /// Off by default — these are the large buttons that clutter toasts;
     /// turn on if you act on notifications straight from the popup.
     pub show_action_buttons: bool,
+    /// Group the notification history by app: two or more notifications
+    /// from the same app collapse into an expandable "App (N)" header.
+    /// On by default. Set `false` for a flat, chronological list.
+    pub group_notifications: bool,
 }
 
 impl Default for Notifications {
@@ -873,6 +877,7 @@ impl Default for Notifications {
             blocklist: Vec::new(),
             show_close_button: true,
             show_action_buttons: false,
+            group_notifications: true,
         }
     }
 }

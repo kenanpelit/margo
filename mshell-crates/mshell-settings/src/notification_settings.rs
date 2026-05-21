@@ -13,6 +13,7 @@ pub(crate) struct NotificationSettingsModel {
     position: NotificationPosition,
     show_close_button: bool,
     show_action_buttons: bool,
+    group_notifications: bool,
     blocklist: Vec<String>,
     _effects: EffectScope,
 }
@@ -25,6 +26,8 @@ pub(crate) enum NotificationSettingsInput {
     ShowCloseEffect(bool),
     ShowActionsChanged(bool),
     ShowActionsEffect(bool),
+    GroupChanged(bool),
+    GroupEffect(bool),
     BlocklistAdd(String),
     BlocklistRemove(String),
     BlocklistEffect(Vec<String>),
@@ -211,6 +214,41 @@ impl Component for NotificationSettingsModel {
                     },
                 },
 
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Group by app",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Collapse 2+ notifications from the same app into an expandable group in the history. Off = flat list.",
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    #[name = "group_switch"]
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        #[block_signal(group_handler)]
+                        set_active: model.group_notifications,
+                        connect_active_notify[sender] => move |s| {
+                            sender.input(NotificationSettingsInput::GroupChanged(s.is_active()));
+                        } @group_handler,
+                    },
+                },
+
                 gtk::Label {
                     add_css_class: "label-large-bold",
                     set_label: "Muted apps",
@@ -295,6 +333,16 @@ impl Component for NotificationSettingsModel {
             sender_clone.input(NotificationSettingsInput::ShowActionsEffect(v));
         });
 
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let v = config_manager()
+                .config()
+                .notifications()
+                .group_notifications()
+                .get();
+            sender_clone.input(NotificationSettingsInput::GroupEffect(v));
+        });
+
         let model = NotificationSettingsModel {
             position: config_manager()
                 .config()
@@ -310,6 +358,11 @@ impl Component for NotificationSettingsModel {
                 .config()
                 .notifications()
                 .show_action_buttons()
+                .get_untracked(),
+            group_notifications: config_manager()
+                .config()
+                .notifications()
+                .group_notifications()
                 .get_untracked(),
             blocklist: config_manager()
                 .config()
@@ -382,6 +435,15 @@ impl Component for NotificationSettingsModel {
             }
             NotificationSettingsInput::ShowActionsEffect(v) => {
                 self.show_action_buttons = v;
+            }
+            NotificationSettingsInput::GroupChanged(v) => {
+                self.group_notifications = v;
+                config_manager().update_config(move |config| {
+                    config.notifications.group_notifications = v;
+                });
+            }
+            NotificationSettingsInput::GroupEffect(v) => {
+                self.group_notifications = v;
             }
             NotificationSettingsInput::BlocklistAdd(name) => {
                 let exists = self
