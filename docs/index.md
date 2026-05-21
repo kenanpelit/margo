@@ -86,6 +86,16 @@ scripts. The whole shell recolours itself from your wallpaper.
 
 ![Twilight — the built-in blue-light filter with schedule presets](assets/showcase-twilight.webp){ loading=lazy }
 
+![Power profiles — saver / balanced / performance, plus power controls](assets/showcase-power.webp){ loading=lazy }
+
+![DNS / VPN — one-tap switching between DNS presets](assets/showcase-dns.webp){ loading=lazy }
+
+![Keep Awake — a temporary idle inhibitor with a duration grid](assets/showcase-keepawake.webp){ loading=lazy }
+
+![Podman — containers, images, and pods at a glance](assets/showcase-podman.webp){ loading=lazy }
+
+![Notes Hub — scratchpad, notes, and todos](assets/showcase-notes.webp){ loading=lazy }
+
 </div>
 
 ---
