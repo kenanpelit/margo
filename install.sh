@@ -342,6 +342,12 @@ debian_install_files() {
 
   # ── license ──
   install_file 644 "${REPO_ROOT}/LICENSE" "/usr/share/licenses/${DEB_DOCNAME}/LICENSE"
+  # Upstream attributions (mango/dwl/dwm/OkShell/niri/noctalia).
+  local lic
+  for lic in "${REPO_ROOT}"/licenses/*; do
+    [ -f "$lic" ] || continue
+    install_file 644 "$lic" "/usr/share/licenses/${DEB_DOCNAME}/$(basename "$lic")"
+  done
 }
 
 debian_install() {

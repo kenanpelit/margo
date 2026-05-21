@@ -9,17 +9,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Changed
 
-- **License set trimmed to match the actual code lineage.** Removed
-  `LICENSE.wlroots`, `LICENSE.tinywl` and `LICENSE.sway` — margo is a
+- **License set trimmed + reorganised to match the actual code lineage.**
+  Removed the wlroots / tinywl / sway license files — margo is a
   pure-Smithay Rust compositor and carries no code derived from any of
   them (audit confirmed: 0 derived files; the only mentions are
   interop/behaviour comments, and the one shipped wlr protocol XML
-  self-attributes its own copyright). Added `LICENSE.niri`
-  (GPL-3.0-or-later) for the three protocol files ported from niri in
-  0.7.4, and `LICENSE.noctalia` (MIT) for the mshell widgets that
-  reimplement noctalia patterns. Kept `LICENSE.mango`, `LICENSE.dwl`,
-  `LICENSE.dwm` (compositor lineage) and `LICENSE.OkShell` (shell fork).
-  README / CONTRIBUTING acknowledgements updated to match.
+  self-attributes its own copyright). Added attributions that were
+  actually missing: **niri** (GPL-3.0-or-later) for the three protocol
+  files ported in 0.7.4, and **noctalia** (MIT) for the mshell widgets
+  that reimplement noctalia patterns. The project's own `LICENSE` stays
+  at the repo root; all upstream attributions (mango, dwl, dwm, OkShell,
+  niri, noctalia) now live in a **`licenses/`** directory. `PKGBUILD`,
+  `install.sh` and the post-install smoke test ship/verify the whole
+  set; README / CONTRIBUTING updated to match.
 
 ## [0.7.4] – 2026-05-21
 

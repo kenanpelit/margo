@@ -442,15 +442,15 @@ package() {
   done
 
   # ── Licenses ───────────────────────────────────────────────────
-  # margo inherits portions of dwl, dwm, sway, tinywl, wlroots,
-  # mango, and OkShell. Every upstream header is shipped so
-  # downstream attribution is preserved on every install.
+  # margo's own license at the root; upstream attributions in
+  # licenses/ (mango/dwl/dwm — compositor lineage; OkShell — shell
+  # fork; niri/noctalia — ported code). All are shipped so downstream
+  # attribution is preserved on every install.
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   local lic
-  for lic in LICENSE.dwl LICENSE.dwm LICENSE.sway LICENSE.tinywl \
-             LICENSE.wlroots LICENSE.mango LICENSE.OkShell; do
+  for lic in licenses/*; do
     [[ -f "$lic" ]] || continue
-    install -Dm644 "$lic" "$pkgdir/usr/share/licenses/$pkgname/$lic"
+    install -Dm644 "$lic" "$pkgdir/usr/share/licenses/$pkgname/$(basename "$lic")"
   done
 }
 

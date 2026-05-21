@@ -146,7 +146,7 @@ failures.
 
 GPL-3.0-or-later. By submitting code you agree to license it under the
 same terms. Derived portions are preserved under their respective
-licences — see `LICENSE.*`: mango / dwl / OkShell / niri (GPL-3.0+),
+licences — see `licenses/`: mango / dwl / OkShell / niri (GPL-3.0+),
 dwm / noctalia (MIT). margo carries no wlroots / tinywl / sway code
 (it is pure-Smithay), so those upstream licences are not included.
 

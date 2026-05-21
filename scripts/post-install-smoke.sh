@@ -198,11 +198,11 @@ if [[ -f "$LICENSE_DIR/LICENSE" ]]; then
 else
     fail "primary LICENSE missing in $LICENSE_DIR"
 fi
-# Upstream attribution headers (dwl/dwm/sway/tinywl/wlroots). These
-# may legitimately be absent if margo loses the corresponding code
-# during refactors — note rather than fail so we don't trip every
+# Upstream attribution files (installed from licenses/ as basenames).
+# These may legitimately be absent if margo loses the corresponding
+# code during refactors — note rather than fail so we don't trip every
 # release.
-for lic in LICENSE.dwl LICENSE.dwm LICENSE.sway LICENSE.tinywl LICENSE.wlroots; do
+for lic in mango dwl dwm OkShell niri noctalia; do
     if [[ -f "$LICENSE_DIR/$lic" ]]; then
         note "  $lic present"
     fi
