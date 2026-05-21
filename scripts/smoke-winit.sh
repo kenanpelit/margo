@@ -65,13 +65,10 @@ fail() {
 }
 
 # ── Pre-flight ───────────────────────────────────────────────────────────────
-
-if [[ -z "${WAYLAND_DISPLAY:-}" && -z "${DISPLAY:-}" ]]; then
-    fail "neither WAYLAND_DISPLAY nor DISPLAY set; need a parent session for --winit"
-fi
-if ! command -v kitty >/dev/null 2>&1; then
-    fail "kitty not installed — needed as the test client"
-fi
+# The nested-session requirements (a parent DISPLAY / WAYLAND_DISPLAY and
+# kitty as the test client) are checked at stage 2 instead, so the build
+# and config-parse checks run headless — and so SMOKE_NO_NESTED can stop
+# cleanly before any of that on a GPU-less CI runner.
 
 if [[ "$BUILD" == "1" ]]; then
     say "→ building margo (release)"
@@ -107,7 +104,26 @@ say "→ stage 1: config parse"
 "$MARGO_BIN" --help >/dev/null 2>&1 || fail "margo --help exited non-zero"
 ok "binary launches"
 
+# A GPU-less host (GitHub-hosted runners) can't bring up a nested winit
+# session — there's no DRM CRTC and software-GL EGL init never publishes a
+# Wayland socket. SMOKE_NO_NESTED=1 stops here with the build +
+# binary-launch + config-parse checks green; run the script without the
+# flag inside a real margo / Wayland desktop for the full nested e2e.
+if [[ "${SMOKE_NO_NESTED:-0}" == "1" ]]; then
+    ok "SMOKE_NO_NESTED=1 — skipping the nested winit boot (needs a real GPU session)"
+    exit 0
+fi
+
 # ── Stage 2: nested session bring-up ─────────────────────────────────────────
+
+# Nested-only requirements: a parent session to host --winit, and kitty
+# as the test client.
+if [[ -z "${WAYLAND_DISPLAY:-}" && -z "${DISPLAY:-}" ]]; then
+    fail "neither WAYLAND_DISPLAY nor DISPLAY set; need a parent session for --winit"
+fi
+if ! command -v kitty >/dev/null 2>&1; then
+    fail "kitty not installed — needed as the test client"
+fi
 
 say "→ stage 2: launching margo --winit"
 # Run margo in nested mode, with a startup-command that spawns kitty so

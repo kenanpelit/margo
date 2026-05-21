@@ -29,18 +29,19 @@ jobs:
     timeout-minutes: 25
 
     steps:
-      # margo's link deps (compositor only — no GTK here, we build just
-      # margo + mctl) plus the smoke-only bits: kitty (real Wayland
-      # client) and xorg-server-xvfb (provides Xvfb). mesa supplies the
-      # software GL/EGL the winit backend renders against.
+      # margo's compositor link deps (no GTK — we build just margo + mctl).
+      # No kitty / Xvfb here: the nested winit boot needs a real GPU
+      # session, which a hosted runner doesn't have, so CI runs the script
+      # with SMOKE_NO_NESTED=1 (build + --help + config-parse, headless).
+      # The full nested e2e is a local check — run scripts/smoke-winit.sh
+      # inside your margo / Wayland desktop.
       - name: System dependencies (pacman)
         run: |
           pacman -Syu --noconfirm --needed \
             git rustup clang pkgconf \
             wayland wayland-protocols libinput libxkbcommon \
             mesa libdrm seatd pixman libgudev systemd-libs \
-            pcre2 pam cairo pango dbus pipewire \
-            kitty xorg-server-xvfb
+            pcre2 pam cairo pango dbus pipewire
           rustup default stable
 
       - uses: actions/checkout@v4
@@ -48,26 +49,17 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
-      # Release build of just the binaries the smoke script probes for
-      # (target/release/{margo,mctl}).
+      # Clean-room release build of the binaries the smoke script probes
+      # for (target/release/{margo,mctl}) — distinct from ci.yml's cached
+      # workspace build.
       - name: cargo build (release)
         run: cargo build --release -p margo -p mctl
 
-      # Arch has no `xvfb-run`; start Xvfb by hand on :99, point DISPLAY
-      # at it, force software GL so the winit backend works headless.
-      - name: smoke-winit under Xvfb
-        run: |
-          Xvfb :99 -screen 0 1280x720x24 -nolisten tcp &
-          sleep 2
-          scripts/smoke-winit.sh
+      - name: smoke (build + launch + config, headless)
+        run: scripts/smoke-winit.sh
         env:
-          DISPLAY: ':99'
           SMOKE_VERBOSE: '1'
-          LIBGL_ALWAYS_SOFTWARE: '1'
-          # Cold llvmpipe EGL init under Xvfb is much slower than a GPU,
-          # so give the nested compositor 40 s to publish its socket.
-          SMOKE_BOOT_TRIES: '400'
-          GALLIUM_DRIVER: llvmpipe
+          SMOKE_NO_NESTED: '1'
 
       - name: Upload smoke logs on failure
         if: failure()
