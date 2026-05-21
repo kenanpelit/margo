@@ -704,6 +704,7 @@ impl Component for SettingsWindowModel {
             WidgetEntry::Menu { kind: MenuKind::AudioDashboard, stack_name: "audio_dashboard", label: "Audio Dashboard", icon: "audio-volume-high-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::SystemUpdate, stack_name: "system_update", label: "System Updates", icon: "software-update-available-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::Valent, stack_name: "valent", label: "Valent Connect", icon: "phone-symbolic" },
+            WidgetEntry::Menu { kind: MenuKind::Weather, stack_name: "weather", label: "Weather", icon: "weather-few-clouds-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::KeepAwake, stack_name: "keep_awake", label: "Keep Awake", icon: "eye-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::Twilight, stack_name: "twilight", label: "Twilight", icon: "weather-clear-night-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::Keybinds, stack_name: "keybinds", label: "Keyboard Shortcuts", icon: "input-keyboard-symbolic" },
