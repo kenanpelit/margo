@@ -856,6 +856,14 @@ pub struct Notifications {
     /// whenever it changes.
     #[serde(default)]
     pub blocklist: Vec<String>,
+    /// Show the small close (✕) button in each notification's header.
+    /// On by default — it's the primary manual dismiss (a horizontal
+    /// swipe also dismisses). Set `false` for a cleaner toast.
+    pub show_close_button: bool,
+    /// Show the app-provided action buttons (View / Open / Reply / …).
+    /// Off by default — these are the large buttons that clutter toasts;
+    /// turn on if you act on notifications straight from the popup.
+    pub show_action_buttons: bool,
 }
 
 impl Default for Notifications {
@@ -863,6 +871,8 @@ impl Default for Notifications {
         Self {
             notification_position: NotificationPosition::Right,
             blocklist: Vec::new(),
+            show_close_button: true,
+            show_action_buttons: false,
         }
     }
 }

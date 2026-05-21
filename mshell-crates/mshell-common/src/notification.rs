@@ -1,5 +1,7 @@
 use crate::scoped_effects::EffectScope;
-use mshell_config::schema::config::{ConfigStoreFields, GeneralStoreFields};
+use mshell_config::schema::config::{
+    ConfigStoreFields, GeneralStoreFields, NotificationsStoreFields,
+};
 use reactive_graph::traits::{Get, GetUntracked};
 use relm4::gtk::pango;
 use relm4::gtk::prelude::*;
@@ -84,6 +86,7 @@ impl Component for NotificationModel {
                     set_label: model.time.as_str(),
                 },
 
+                #[name = "close_button"]
                 gtk::Button {
                     add_css_class: "ok-button-surface",
                     set_margin_start: 4,
@@ -183,6 +186,19 @@ impl Component for NotificationModel {
             time = odt.format(&TIME_FORMAT_12).unwrap();
         }
 
+        // Per-notification button visibility (read once; applies to
+        // notifications created after a config change).
+        let show_close_button = base_config
+            .clone()
+            .notifications()
+            .show_close_button()
+            .get_untracked();
+        let show_action_buttons = base_config
+            .clone()
+            .notifications()
+            .show_action_buttons()
+            .get_untracked();
+
         let mut effects = EffectScope::new();
 
         let sender_clone = sender.clone();
@@ -199,6 +215,9 @@ impl Component for NotificationModel {
         };
 
         let widgets = view_output!();
+
+        // Header close (✕) button — configurable (notifications.show_close_button).
+        widgets.close_button.set_visible(show_close_button);
 
         // ── Body text: render notification-spec markup when it's valid,
         // otherwise fall back to the literal string. Apps that don't
@@ -299,7 +318,7 @@ impl Component for NotificationModel {
         // the action id is an icon name rather than a label.
         let action_icons = model.notification.action_icons.get();
         let actions = &model.notification.actions.get();
-        if !actions.is_empty() {
+        if show_action_buttons && !actions.is_empty() {
             for action in actions {
                 let btn = if action_icons {
                     let b = gtk::Button::new();

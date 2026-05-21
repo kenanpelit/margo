@@ -11,6 +11,8 @@ use relm4::{Component, ComponentParts, ComponentSender, gtk};
 #[derive(Debug, Clone)]
 pub(crate) struct NotificationSettingsModel {
     position: NotificationPosition,
+    show_close_button: bool,
+    show_action_buttons: bool,
     blocklist: Vec<String>,
     _effects: EffectScope,
 }
@@ -19,6 +21,10 @@ pub(crate) struct NotificationSettingsModel {
 pub(crate) enum NotificationSettingsInput {
     PositionChanged(NotificationPosition),
     PositionEffect(NotificationPosition),
+    ShowCloseChanged(bool),
+    ShowCloseEffect(bool),
+    ShowActionsChanged(bool),
+    ShowActionsEffect(bool),
     BlocklistAdd(String),
     BlocklistRemove(String),
     BlocklistEffect(Vec<String>),
@@ -131,6 +137,82 @@ impl Component for NotificationSettingsModel {
 
                 gtk::Label {
                     add_css_class: "label-large-bold",
+                    set_label: "Toast content",
+                    set_halign: gtk::Align::Start,
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Close button",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Show the small ✕ button on each notification (swipe also dismisses).",
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    #[name = "show_close_switch"]
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        #[block_signal(close_handler)]
+                        set_active: model.show_close_button,
+                        connect_active_notify[sender] => move |s| {
+                            sender.input(NotificationSettingsInput::ShowCloseChanged(s.is_active()));
+                        } @close_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Action buttons",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Show app-provided buttons (View / Open / Reply / …). Off keeps toasts clean.",
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    #[name = "show_actions_switch"]
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        #[block_signal(actions_handler)]
+                        set_active: model.show_action_buttons,
+                        connect_active_notify[sender] => move |s| {
+                            sender.input(NotificationSettingsInput::ShowActionsChanged(s.is_active()));
+                        } @actions_handler,
+                    },
+                },
+
+                gtk::Label {
+                    add_css_class: "label-large-bold",
                     set_label: "Muted apps",
                     set_halign: gtk::Align::Start,
                 },
@@ -193,11 +275,41 @@ impl Component for NotificationSettingsModel {
             sender_clone.input(NotificationSettingsInput::BlocklistEffect(list));
         });
 
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let v = config_manager()
+                .config()
+                .notifications()
+                .show_close_button()
+                .get();
+            sender_clone.input(NotificationSettingsInput::ShowCloseEffect(v));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let v = config_manager()
+                .config()
+                .notifications()
+                .show_action_buttons()
+                .get();
+            sender_clone.input(NotificationSettingsInput::ShowActionsEffect(v));
+        });
+
         let model = NotificationSettingsModel {
             position: config_manager()
                 .config()
                 .notifications()
                 .notification_position()
+                .get_untracked(),
+            show_close_button: config_manager()
+                .config()
+                .notifications()
+                .show_close_button()
+                .get_untracked(),
+            show_action_buttons: config_manager()
+                .config()
+                .notifications()
+                .show_action_buttons()
                 .get_untracked(),
             blocklist: config_manager()
                 .config()
@@ -252,6 +364,24 @@ impl Component for NotificationSettingsModel {
             }
             NotificationSettingsInput::PositionEffect(position) => {
                 self.position = position;
+            }
+            NotificationSettingsInput::ShowCloseChanged(v) => {
+                self.show_close_button = v;
+                config_manager().update_config(move |config| {
+                    config.notifications.show_close_button = v;
+                });
+            }
+            NotificationSettingsInput::ShowCloseEffect(v) => {
+                self.show_close_button = v;
+            }
+            NotificationSettingsInput::ShowActionsChanged(v) => {
+                self.show_action_buttons = v;
+                config_manager().update_config(move |config| {
+                    config.notifications.show_action_buttons = v;
+                });
+            }
+            NotificationSettingsInput::ShowActionsEffect(v) => {
+                self.show_action_buttons = v;
             }
             NotificationSettingsInput::BlocklistAdd(name) => {
                 let exists = self
