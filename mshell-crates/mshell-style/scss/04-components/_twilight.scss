@@ -82,4 +82,17 @@
   &:hover {
     background-color: color-mix(in srgb, var(--primary) 16%, var(--surface-container));
   }
+
+  // The preset whose schedule slot is live right now (schedule mode):
+  // filled primary, matching the selected mode button (DESIGN.md §3).
+  &.active {
+    background-color: var(--primary);
+    color: var(--on-primary);
+    label {
+      color: var(--on-primary);
+    }
+    &:hover {
+      background-color: var(--primary);
+    }
+  }
 }

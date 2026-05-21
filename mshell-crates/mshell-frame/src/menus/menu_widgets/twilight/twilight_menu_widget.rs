@@ -30,6 +30,11 @@ pub(crate) struct TwilightMenuWidgetModel {
     temp_debounce: Option<glib::JoinHandle<()>>,
     /// Polls landing before this instant are dropped (settle window).
     settle_until: Instant,
+    /// Schedule presets in time order (from `schedule.conf`).
+    presets: Vec<twilight::Preset>,
+    /// Chip buttons, parallel to `presets`, so the currently-scheduled
+    /// one can be tinted active without rebuilding the grid.
+    preset_buttons: Vec<gtk::Button>,
 }
 
 #[derive(Debug)]
@@ -245,19 +250,26 @@ impl Component for TwilightMenuWidgetModel {
             }
         });
 
-        let model = TwilightMenuWidgetModel {
+        let mut model = TwilightMenuWidgetModel {
             status: TwilightStatus::default(),
             temp_debounce: None,
             settle_until: Instant::now(),
+            presets: Vec::new(),
+            preset_buttons: Vec::new(),
         };
         let widgets = view_output!();
 
         // Fill the preset grid from disk; hide the section if empty.
         let presets = twilight::load_presets();
+        let mut buttons = Vec::with_capacity(presets.len());
         for p in &presets {
-            widgets.presets_grid.insert(&preset_chip(p, &sender), -1);
+            let (child, btn) = preset_chip(p, &sender);
+            widgets.presets_grid.insert(&child, -1);
+            buttons.push(btn);
         }
         widgets.presets_section.set_visible(!presets.is_empty());
+        model.presets = presets;
+        model.preset_buttons = buttons;
 
         ComponentParts { model, widgets }
     }
@@ -313,6 +325,7 @@ impl Component for TwilightMenuWidgetModel {
                 ]);
             }
         }
+        self.refresh_active_chip();
     }
 
     fn update_cmd(
@@ -333,11 +346,61 @@ impl Component for TwilightMenuWidgetModel {
     }
 }
 
+impl TwilightMenuWidgetModel {
+    /// Tint the chip whose schedule slot is live right now — but only
+    /// in schedule mode (see [`active_preset_index`]); clears the
+    /// highlight in every other mode.
+    fn refresh_active_chip(&self) {
+        let active = active_preset_index(&self.presets, &self.status.mode);
+        for (i, btn) in self.preset_buttons.iter().enumerate() {
+            if Some(i) == active {
+                btn.add_css_class("active");
+            } else {
+                btn.remove_css_class("active");
+            }
+        }
+    }
+}
+
+/// Index of the preset whose schedule slot contains "now" — only
+/// meaningful in `schedule` mode and when every preset carries a time.
+/// Presets are time-sorted; the active slot is the last one whose start
+/// time has passed, wrapping to the final slot before the first time
+/// (it runs from the previous evening through midnight).
+fn active_preset_index(presets: &[twilight::Preset], mode: &str) -> Option<usize> {
+    if mode != "schedule" || presets.is_empty() {
+        return None;
+    }
+    let times: Vec<u32> = presets
+        .iter()
+        .map(|p| p.time.as_deref().and_then(parse_hhmm))
+        .collect::<Option<Vec<_>>>()?;
+    let now = glib::DateTime::now_local().ok()?;
+    let now_min = now.hour() as u32 * 60 + now.minute() as u32;
+    let mut active = times.len() - 1;
+    for (i, &t) in times.iter().enumerate() {
+        if t <= now_min {
+            active = i;
+        } else {
+            break;
+        }
+    }
+    Some(active)
+}
+
+/// `"HH:MM"` → minutes since midnight.
+fn parse_hhmm(s: &str) -> Option<u32> {
+    let (h, m) = s.trim().split_once(':')?;
+    Some(h.trim().parse::<u32>().ok()? * 60 + m.trim().parse::<u32>().ok()?)
+}
+
 /// One preset chip — previews the preset's temperature/gamma on click.
+/// Returns the grid child plus the inner button (kept so the active
+/// slot can be tinted later).
 fn preset_chip(
     p: &twilight::Preset,
     sender: &ComponentSender<TwilightMenuWidgetModel>,
-) -> gtk::FlowBoxChild {
+) -> (gtk::FlowBoxChild, gtk::Button) {
     let btn = gtk::Button::with_label(&p.name);
     btn.add_css_class("twilight-preset-chip");
     btn.set_hexpand(true);
@@ -352,7 +415,7 @@ fn preset_chip(
     let child = gtk::FlowBoxChild::new();
     child.set_child(Some(&btn));
     child.set_focusable(false);
-    child
+    (child, btn)
 }
 
 /// CSS classes for a mode button — `selected` when it's the active mode.
