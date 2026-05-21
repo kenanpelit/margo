@@ -7,6 +7,52 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.7.4] – 2026-05-21
+
+### Added
+
+- **Three Wayland protocols**, closing the gap with mango / Hyprland on
+  the set wlroots compositors get for free:
+  - **`zwlr_foreign_toplevel_manager_v1` (write-side).** Taskbars and
+    docks can now *act* on toplevels — activate, close, (un)fullscreen —
+    not just list them. Runs alongside the existing read-only
+    `ext-foreign-toplevel-list-v1`; activate jumps to the window's tag
+    and focuses it. The mshell active-window pill becomes clickable.
+  - **`ext_workspace_v1`.** The standardized workspace protocol, so
+    shells that don't speak dwl-ipc (sfwbar, ironbar, …) can show
+    margo's tags. Each output is a workspace group with 9 fixed
+    tag-workspaces; "active" mirrors the monitor's tag bitmask. dwl-ipc
+    still runs in parallel.
+  - **`zwlr_virtual_pointer_manager_v1`.** Synthetic pointer injection —
+    companion to the existing virtual-keyboard. `wtype --click`, remote
+    desktop and accessibility tools can drive the cursor, buttons and
+    scroll through margo's normal input path.
+
+  margo now advertises **~57 Wayland globals — ahead of mango (~53) and
+  niri (~41)**, pursuing Hyprland (~67). See `docs/protocol-comparison.md`.
+
+- **Configurable notification buttons.** Toast action buttons and the
+  close button are now toggled from **Settings → Notifications** (default:
+  action buttons off, close button on), trimming the default toast.
+
+### Fixed
+
+- **Stuck notification toast.** A dismissed toast could linger as a
+  half-collapsed remnant (a dangling "View" button) because the
+  always-visible layer-shell overlay kept its last committed frame. The
+  popup surface now hides when the list empties, so the compositor drops
+  it — matching the mshell-osd lifecycle.
+
+### Notes
+
+- **Test coverage** expanded: integration tests for the 14 tiling-layout
+  algorithms, window-rule parsing, the mshell-config YAML schema, and
+  multi-output placement. CI runs the full suite in an Arch container.
+- **Three protocols remain unadvertised** — `zwlr_output_power_management_v1`,
+  `wp_tearing_control_v1`, `wp_drm_lease_device_v1` — blocked by smithay
+  capability (no tearing / async page-flip), margo's State/backend split
+  (drm-lease), or untested-DRM risk (DPMS). Tracked in `road_map.md` §15.10.
+
 ## [0.7.3] – 2026-05-21
 
 ### Added
