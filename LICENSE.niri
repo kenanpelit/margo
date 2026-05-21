@@ -1,0 +1,22 @@
+niri — https://github.com/YaLTeR/niri
+
+Copyright © Ivan Molodetskikh <yalterz@gmail.com> and the niri contributors.
+
+Licensed under the GNU General Public License v3.0 or later
+(SPDX: GPL-3.0-or-later). The full license text is in ./LICENSE.
+
+Portions of margo are ported from niri. As of margo 0.7.4 these are the
+three hand-rolled Wayland protocol implementations, adapted to margo's
+state/tag model:
+
+  - margo/src/protocols/wlr_foreign_toplevel.rs   (from niri's protocols/foreign_toplevel.rs, wlr half)
+  - margo/src/protocols/ext_workspace.rs          (from niri's protocols/ext_workspace.rs)
+  - margo/src/protocols/virtual_pointer.rs         (from niri's protocols/virtual_pointer.rs)
+
+margo additionally borrows architectural patterns from niri (frame-callback
+scheduling, hotplug handling, the screencast portal shape, transactional
+resize). Those are reimplementations, not copied code; the files above are
+the portions derived from niri source and covered by this notice.
+
+niri is GPL-3.0-or-later and margo is GPL-3.0-or-later, so the two are
+license-compatible.

@@ -7,6 +7,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Changed
+
+- **License set trimmed to match the actual code lineage.** Removed
+  `LICENSE.wlroots`, `LICENSE.tinywl` and `LICENSE.sway` — margo is a
+  pure-Smithay Rust compositor and carries no code derived from any of
+  them (audit confirmed: 0 derived files; the only mentions are
+  interop/behaviour comments, and the one shipped wlr protocol XML
+  self-attributes its own copyright). Added `LICENSE.niri`
+  (GPL-3.0-or-later) for the three protocol files ported from niri in
+  0.7.4, and `LICENSE.noctalia` (MIT) for the mshell widgets that
+  reimplement noctalia patterns. Kept `LICENSE.mango`, `LICENSE.dwl`,
+  `LICENSE.dwm` (compositor lineage) and `LICENSE.OkShell` (shell fork).
+  README / CONTRIBUTING acknowledgements updated to match.
+
 ## [0.7.4] – 2026-05-21
 
 ### Added

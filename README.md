@@ -310,9 +310,9 @@ Engine: [Rhai] (pure Rust, sandboxed by default). Reference: [`docs/scripting-de
 
 ## Acknowledgements
 
-Built on [Smithay]. Patterns and inventory borrowed from [niri](https://github.com/YaLTeR/niri) (focus oracle, hotplug, screencast portal, transactional resize), [mango](https://github.com/mangowm/mango) (feature inventory, IPC surface, default keybinds), [dwl](https://codeberg.org/dwl/dwl) (the original dwm-on-wlroots), [anvil](https://github.com/Smithay/smithay/tree/master/anvil) (Smithay's reference compositor), and [Hyprland](https://hypr.land) (color-management protocol shape). `mlock` follows the architecture of [nlock](https://github.com/OldUser101/nlock) and [waylock](https://codeberg.org/ifreund/waylock).
+Built on [Smithay]. The compositor is a Rust rewrite of [mango](https://github.com/mangowm/mango) (which forked [dwl](https://codeberg.org/dwl/dwl), itself a dwm-on-wlroots descendant) — the tag model, pertag, layout algorithms and dwl-ipc protocol trace back through that line. The shell (mshell) is a fork of OkShell. Wayland protocol code is ported from [niri](https://github.com/YaLTeR/niri) (foreign-toplevel write-side, ext-workspace, virtual-pointer), and mshell widgets reimplement patterns from [noctalia](https://github.com/noctalia-dev/noctalia-shell). margo additionally borrows architectural patterns (not code) from niri (focus oracle, hotplug, screencast portal, transactional resize), [anvil](https://github.com/Smithay/smithay/tree/master/anvil) (Smithay's reference compositor) and [Hyprland](https://hypr.land) (color-management protocol shape). `mlock` follows the architecture of [nlock](https://github.com/OldUser101/nlock) and [waylock](https://codeberg.org/ifreund/waylock).
 
-Original portions of dwl, dwm, sway, tinywl, and wlroots are preserved under their respective licenses — see `LICENSE.*`.
+Derived portions are preserved under their respective licenses — see `LICENSE.*`: mango, dwl, OkShell, niri (GPL-3.0-or-later), dwm and noctalia (MIT). margo is **GPL-3.0-or-later**. (margo is a pure-Smithay Rust compositor; it carries no wlroots, tinywl or sway code, so those upstream licenses are not included.)
 
 ## License
 
