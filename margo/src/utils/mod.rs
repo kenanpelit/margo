@@ -6,6 +6,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::Result;
 
 /// Spawn a program asynchronously (mirrors C `spawn`).
+///
+/// Goes through `setsid --fork` so the command runs in its own session
+/// and the short-lived setsid shim exits immediately — the real
+/// process then reparents to init, which reaps it. Without this, every
+/// short-lived keybind spawn (mlock via the `alt+l` bind, screenshot
+/// tools, …) piled up as a `<defunct>` zombie under margo, because the
+/// old code dropped the `Child` without ever `wait()`ing. (A global
+/// SIGCHLD reaper would race the explicit `wait()`s margo does for
+/// grim / xwayland, so detach-and-reparent is the safe fix.)
 pub fn spawn<I, S>(args: I) -> Result<()>
 where
     I: IntoIterator<Item = S>,
@@ -13,24 +22,33 @@ where
 {
     let mut it = args.into_iter();
     let program = it.next().ok_or_else(|| anyhow::anyhow!("empty spawn args"))?;
-    Command::new(program)
-        .args(it)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()?;
-    Ok(())
+    let cmd = Command::new("setsid");
+    spawn_detached(cmd, |c| {
+        c.arg("--fork").arg(program).args(it);
+    })
 }
 
-/// Spawn a shell command via `sh -c`.
+/// Spawn a shell command via `sh -c` (detached + reaped, see [`spawn`]).
 pub fn spawn_shell(cmd: &str) -> Result<()> {
-    Command::new("sh")
-        .arg("-c")
-        .arg(cmd)
+    let command = Command::new("setsid");
+    spawn_detached(command, |c| {
+        c.arg("--fork").arg("sh").arg("-c").arg(cmd);
+    })
+}
+
+/// Finish configuring `cmd` (null stdio + the caller's args via `build`),
+/// launch it, and reap the short-lived `setsid` shim on a detached
+/// thread so it can't linger as a zombie either.
+fn spawn_detached(mut cmd: Command, build: impl FnOnce(&mut Command)) -> Result<()> {
+    build(&mut cmd);
+    let mut child = cmd
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()?;
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
     Ok(())
 }
 
