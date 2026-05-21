@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.freedesktop.impl.portal.desktop.margo
+Exec=/usr/lib/margo/margo-portal
+SystemdService=margo-portal.service

@@ -1,0 +1,10 @@
+[Unit]
+Description=margo native xdg-desktop-portal backend (ScreenCast)
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=dbus
+BusName=org.freedesktop.impl.portal.desktop.margo
+ExecStart=/usr/lib/margo/margo-portal
+Restart=on-failure

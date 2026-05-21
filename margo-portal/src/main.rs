@@ -1,0 +1,44 @@
+//! `margo-portal` — margo's native xdg-desktop-portal backend.
+//!
+//! Currently serves `org.freedesktop.impl.portal.ScreenCast` so browser
+//! meeting clients can share a **window** (or monitor) without the
+//! GNOME portal backend. Capture itself is margo's own
+//! (PipeWire + per-window/per-output via the compositor's
+//! `org.gnome.Mutter.ScreenCast` shim); this daemon only orchestrates
+//! the portal handshake and hands back the PipeWire node id.
+//!
+//! Activated lazily by D-Bus on first portal call; stays up for the
+//! session. Selected as the ScreenCast backend via
+//! `margo-portals.conf` (`org.freedesktop.impl.portal.ScreenCast=margo`).
+
+mod mutter;
+mod picker;
+mod screencast;
+
+use anyhow::Result;
+use screencast::ScreenCastBackend;
+use tracing::info;
+use tracing_subscriber::EnvFilter;
+use zbus::connection;
+
+const BUS_NAME: &str = "org.freedesktop.impl.portal.desktop.margo";
+const OBJECT_PATH: &str = "/org/freedesktop/portal/desktop";
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
+        .init();
+
+    // One session-bus connection: it both hosts our portal interface
+    // and reaches margo's Mutter shim.
+    let conn = connection::Builder::session()?.build().await?;
+    conn.object_server()
+        .at(OBJECT_PATH, ScreenCastBackend::new(conn.clone()))
+        .await?;
+    conn.request_name(BUS_NAME).await?;
+
+    info!("margo-portal: serving {BUS_NAME} at {OBJECT_PATH}");
+    std::future::pending::<()>().await;
+    Ok(())
+}
