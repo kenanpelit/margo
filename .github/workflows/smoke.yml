@@ -39,7 +39,7 @@ jobs:
             git rustup clang pkgconf \
             wayland wayland-protocols libinput libxkbcommon \
             mesa libdrm seatd pixman libgudev systemd-libs \
-            pcre2 pam cairo pango dbus \
+            pcre2 pam cairo pango dbus pipewire \
             kitty xorg-server-xvfb
           rustup default stable
 
