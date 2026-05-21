@@ -1,11 +1,13 @@
 # Built-in xdg-desktop-portal backend — design notes
 
-> Status: **planning + scaffolding**. The portals.conf shipped at
-> `assets/margo-portals.conf` currently routes ScreenCast / Screenshot
-> / RemoteDesktop to `none`; users who need them have to install
-> `xdg-desktop-portal-wlr`. This document is the migration plan toward
-> hosting these implementations natively inside `margo-portal`, a
-> dedicated D-Bus daemon shipped alongside the compositor.
+> Status: **ScreenCast shipped (M2)**. `margo-portal` is a real daemon
+> implementing `org.freedesktop.impl.portal.ScreenCast`; window +
+> monitor share work natively — capture is the compositor's own Mutter
+> shim → PipeWire, the picker is mshell's Screenshare chooser — and
+> `assets/margo-portals.conf` routes `ScreenCast=margo;gnome`. No GNOME
+> portal package is needed for screen-share. Screenshot (M1) and
+> RemoteDesktop (M3) are still served by the gnome backend; the
+> sections below remain the plan for hosting them natively too.
 
 ## Why a built-in backend
 

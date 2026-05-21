@@ -206,7 +206,8 @@ build() {
   # mwizard depends on mshell-config to write the shell
   # profile, so it builds alongside the rest of the shell stack.
   cargo build --frozen --release \
-    -p mshell -p mshellctl -p mshellshare -p mpicker -p mwizard
+    -p mshell -p mshellctl -p mshellshare -p mpicker -p mwizard \
+    -p margo-portal
 }
 
 check() {
@@ -312,6 +313,22 @@ package() {
     install -Dm644 "assets/margo-portals.conf" \
       "$pkgdir/usr/share/xdg-desktop-portal/margo-portals.conf"
   fi
+
+  # ── Native portal backend (margo-portal) ───────────────────────
+  # The ScreenCast impl (window + monitor share) that lets
+  # margo-portals.conf route `ScreenCast=margo` — capture is the
+  # compositor's own (Mutter shim → PipeWire). Binary lives under
+  # /usr/lib (D-Bus-activated, not a user-facing CLI); ships its
+  # `.portal` registration, D-Bus activation service, and systemd
+  # user unit.
+  install -Dm755 "$CARGO_TARGET_DIR/release/margo-portal" \
+    "$pkgdir/usr/lib/margo/margo-portal"
+  install -Dm644 "assets/margo.portal" \
+    "$pkgdir/usr/share/xdg-desktop-portal/portals/margo.portal"
+  install -Dm644 "assets/dbus/org.freedesktop.impl.portal.desktop.margo.service" \
+    "$pkgdir/usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.margo.service"
+  install -Dm644 "assets/margo-portal.service" \
+    "$pkgdir/usr/lib/systemd/user/margo-portal.service"
 
   # ── Session integration examples ───────────────────────────────
   # Wayland session entry, uwsm wrapper, plain launcher, and a
