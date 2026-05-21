@@ -313,6 +313,16 @@ pub fn draw_lock_frame(
         draw_battery(&cr, width as f64 - 32.0, 28.0, bat);
     }
 
+    // 15. Top-left keyboard layout (multi-layout setups only).
+    //     Absolutely positioned like the battery, so it never
+    //     perturbs the centred stack's height maths.
+    if let Some(name) = seat.layout_name() {
+        let lay = layout(&cr, &name.to_uppercase(), FONT_CAPS_PT, true);
+        cr.set_source_rgba(MUTED.0, MUTED.1, MUTED.2, 0.8);
+        cr.move_to(32.0, 24.0);
+        pangocairo::functions::show_layout(&cr, &lay);
+    }
+
     surface.flush();
     Ok(())
 }

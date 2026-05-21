@@ -60,6 +60,30 @@ impl SeatState {
             None => false,
         }
     }
+
+    /// Name of the currently-active keyboard layout, or `None` when the
+    /// keymap has a single layout (nothing worth showing). Used by the
+    /// renderer for a top-left layout indicator on multi-layout setups.
+    pub fn layout_name(&self) -> Option<String> {
+        let keymap = self.xkb_keymap.as_ref()?;
+        if keymap.num_layouts() <= 1 {
+            return None;
+        }
+        let st = self.xkb_state.as_ref()?;
+        let active = (0..keymap.num_layouts())
+            .find(|&i| st.layout_index_is_active(i, xkb::STATE_LAYOUT_EFFECTIVE))
+            .unwrap_or(0);
+        let name = keymap.layout_get_name(active);
+        (!name.is_empty()).then(|| name.to_string())
+    }
+}
+
+/// Fire-and-forget a `playerctl` subcommand for the lock-screen media
+/// keys. Errors are logged, not surfaced — the locker keeps working.
+fn spawn_playerctl(cmd: &str) {
+    if let Err(e) = std::process::Command::new("playerctl").arg(cmd).spawn() {
+        debug!("playerctl {cmd} failed: {e}");
+    }
 }
 
 impl Drop for SeatState {
@@ -185,6 +209,20 @@ fn handle_keypress(state: &mut MlockState, key: u32, qh: &QueueHandle<MlockState
         }
         xkb::Keysym::F3 => {
             state.power_request(crate::power::PowerAction::Suspend);
+            return;
+        }
+        // Media keys drive the active MPRIS player via playerctl, so
+        // headphones / keyboard media keys keep working while locked.
+        xkb::Keysym::XF86_AudioPlay | xkb::Keysym::XF86_AudioPause => {
+            spawn_playerctl("play-pause");
+            return;
+        }
+        xkb::Keysym::XF86_AudioNext => {
+            spawn_playerctl("next");
+            return;
+        }
+        xkb::Keysym::XF86_AudioPrev => {
+            spawn_playerctl("previous");
             return;
         }
         _ => {}
