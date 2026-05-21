@@ -1111,3 +1111,68 @@ impl VerticalMenuExpansion {
         ]
     }
 }
+
+#[cfg(test)]
+mod schema_tests {
+    use super::Config;
+
+    /// An empty YAML map → every field falls back to its default.
+    #[test]
+    fn empty_map_deserializes_to_default() {
+        let cfg: Config = serde_yaml::from_str("{}").unwrap();
+        assert_eq!(cfg, Config::default());
+    }
+
+    /// New notification button toggles: off / on by default.
+    #[test]
+    fn notification_button_defaults() {
+        let cfg: Config = serde_yaml::from_str("{}").unwrap();
+        assert!(
+            !cfg.notifications.show_action_buttons,
+            "action buttons should be hidden by default"
+        );
+        assert!(
+            cfg.notifications.show_close_button,
+            "close button should be shown by default"
+        );
+    }
+
+    #[test]
+    fn explicit_notification_buttons_parse() {
+        let cfg: Config = serde_yaml::from_str(
+            "notifications:\n  show_action_buttons: true\n  show_close_button: false\n",
+        )
+        .unwrap();
+        assert!(cfg.notifications.show_action_buttons);
+        assert!(!cfg.notifications.show_close_button);
+    }
+
+    /// A partial config only sets the listed fields; everything else
+    /// (including untouched sub-structs) keeps its default.
+    #[test]
+    fn partial_yaml_keeps_other_defaults() {
+        let cfg: Config =
+            serde_yaml::from_str("general:\n  clock_format_24_h: true\n").unwrap();
+        assert!(cfg.general.clock_format_24_h);
+        // notifications section was never mentioned → defaults intact.
+        assert!(cfg.notifications.show_close_button);
+        assert!(!cfg.notifications.show_action_buttons);
+    }
+
+    /// Unknown keys are ignored (forward-compat: a newer config on an
+    /// older binary must still load).
+    #[test]
+    fn unknown_top_level_key_is_ignored() {
+        let parsed = serde_yaml::from_str::<Config>("a_key_from_the_future: 42\n");
+        assert!(parsed.is_ok(), "unknown keys should not fail the parse");
+    }
+
+    /// Serialising the default config and reading it back is lossless.
+    #[test]
+    fn default_config_round_trips_through_yaml() {
+        let def = Config::default();
+        let yaml = serde_yaml::to_string(&def).unwrap();
+        let back: Config = serde_yaml::from_str(&yaml).unwrap();
+        assert_eq!(back, def);
+    }
+}
