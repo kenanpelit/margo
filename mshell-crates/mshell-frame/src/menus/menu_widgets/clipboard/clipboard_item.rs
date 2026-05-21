@@ -92,7 +92,7 @@ impl Component for ClipboardItemModel {
                 gtk::Box {
                     add_css_class: "clipboard-item",
                     set_orientation: gtk::Orientation::Vertical,
-                    set_spacing: 2,
+                    set_spacing: 0,
 
                     gtk::Label {
                         add_css_class: "clipboard-item-title",
@@ -125,9 +125,13 @@ impl Component for ClipboardItemModel {
             EntryPreview::Text(text) => {
                 let label = gtk::Label::builder()
                     .label(text)
-                    .halign(gtk::Align::Start)
+                    // Fill the row width (xalign keeps the text left) so a
+                    // wider clipboard menu reflows the preview instead of
+                    // leaving it hugging the left edge at a fixed width.
+                    .halign(gtk::Align::Fill)
+                    .hexpand(true)
+                    .xalign(0.0)
                     .ellipsize(gtk::pango::EllipsizeMode::End)
-                    .max_width_chars(60)
                     .lines(2)
                     .wrap(true)
                     .wrap_mode(gtk::pango::WrapMode::WordChar)
