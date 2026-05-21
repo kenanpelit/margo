@@ -188,7 +188,7 @@ pub fn draw_lock_frame(
 
     // 5. Avatar.
     if let Some(av) = avatar {
-        draw_avatar(&cr, cx, y + AVATAR_SIZE / 2.0, AVATAR_SIZE / 2.0, av)?;
+        draw_avatar(&cr, cx, y + AVATAR_SIZE / 2.0, AVATAR_SIZE / 2.0, av, accent)?;
         y += AVATAR_SIZE + GAP_AVATAR_GREETING;
     }
 
@@ -214,7 +214,7 @@ pub fn draw_lock_frame(
     let shake_dx = shake_offset(seat);
     let card_x = cx - card_w / 2.0 + shake_dx;
 
-    draw_card_with_shadow(&cr, card_x, y, card_w, card_h);
+    draw_card_with_shadow(&cr, card_x, y, card_w, card_h, accent);
 
     // 10. Dots / placeholder pill.
     let band_y = y + CARD_PADDING_Y + DOTS_BAND_HEIGHT / 2.0;
@@ -408,7 +408,7 @@ fn shake_offset(seat: &SeatState) -> f64 {
     (t * SHAKE_FREQ_HZ * std::f64::consts::TAU).sin() * SHAKE_AMPLITUDE * envelope
 }
 
-fn draw_card_with_shadow(cr: &cairo::Context, x: f64, y: f64, w: f64, h: f64) {
+fn draw_card_with_shadow(cr: &cairo::Context, x: f64, y: f64, w: f64, h: f64, accent: (f64, f64, f64)) {
     // Soft shadow: stack three increasingly faded, increasingly larger
     // rounded rects — cheap blur fake that reads convincingly.
     for (offset, alpha) in [(2.0, 0.18), (6.0, 0.12), (12.0, 0.07)] {
@@ -430,8 +430,10 @@ fn draw_card_with_shadow(cr: &cairo::Context, x: f64, y: f64, w: f64, h: f64) {
     rounded_rect(cr, x, y, w, h, CARD_RADIUS);
     cr.set_source_rgba(1.0, 1.0, 1.0, CARD_ALPHA);
     cr.fill_preserve().ok();
-    cr.set_line_width(1.0);
-    cr.set_source_rgba(1.0, 1.0, 1.0, 0.22);
+    // Accent border — always visible, so the matugen theme reads on
+    // the lock screen even before the user starts typing.
+    cr.set_line_width(1.5);
+    cr.set_source_rgba(accent.0, accent.1, accent.2, 0.55);
     cr.stroke().ok();
 }
 
@@ -463,6 +465,7 @@ fn draw_avatar(
     cy: f64,
     radius: f64,
     img: &image::RgbaImage,
+    accent: (f64, f64, f64),
 ) -> Result<()> {
     let (iw, ih) = (img.width() as i32, img.height() as i32);
     let stride = iw * 4;
@@ -490,10 +493,10 @@ fn draw_avatar(
     cr.paint().ok();
     cr.restore()?;
 
-    // Subtle ring around the avatar.
+    // Accent ring around the avatar — matugen theme cue.
     cr.arc(cx, cy, radius, 0.0, std::f64::consts::TAU);
     cr.set_line_width(AVATAR_RING_W);
-    cr.set_source_rgba(1.0, 1.0, 1.0, 0.32);
+    cr.set_source_rgba(accent.0, accent.1, accent.2, 0.75);
     cr.stroke().ok();
     Ok(())
 }
