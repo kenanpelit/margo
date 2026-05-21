@@ -50,10 +50,10 @@ pub enum Commands {
         #[command(subcommand)]
         command: BrightnessCommands,
     },
-    /// Commands for locking the session
+    /// Lock the session. Bare `lock` locks; `lock check` reports state.
     Lock {
         #[command(subcommand)]
-        command: LockCommands,
+        command: Option<LockCommands>,
     },
     /// Commands for the settings window
     Settings {

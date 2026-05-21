@@ -9,12 +9,13 @@ pub enum LockCommands {
     Check,
 }
 
-pub async fn execute(command: LockCommands) -> anyhow::Result<()> {
+pub async fn execute(command: Option<LockCommands>) -> anyhow::Result<()> {
     match command {
-        LockCommands::Activate => {
+        // Bare `mshellctl lock` (no subcommand) locks — the common case.
+        None | Some(LockCommands::Activate) => {
             bus_command("Lock").await?;
         }
-        LockCommands::Check => {
+        Some(LockCommands::Check) => {
             let locked: bool = bus_command_with_reply("CheckLock").await?;
             println!("{}", if locked { "locked" } else { "unlocked" });
         }
