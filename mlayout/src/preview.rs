@@ -329,4 +329,57 @@ mod tests {
             );
         }
     }
+
+    fn layout_of(outputs: Vec<LayoutOutput>) -> Layout {
+        Layout {
+            path: Default::default(),
+            slug: "t".into(),
+            name: "t".into(),
+            shortcuts: vec![],
+            outputs,
+        }
+    }
+
+    #[test]
+    fn auto_outputs_pack_left_to_right_in_connector_order() {
+        // Fed out of order, all auto → sorted by connector, cumulative x.
+        let placed = place_outputs(&layout_of(vec![
+            out("DP-3", 0, 0, 300, 1080),
+            out("DP-1", 0, 0, 100, 1080),
+            out("DP-2", 0, 0, 200, 1080),
+        ]));
+        let labels: Vec<&str> = placed.iter().map(|p| p.label.as_str()).collect();
+        assert_eq!(labels, ["DP-1", "DP-2", "DP-3"], "should be connector-sorted");
+        assert_eq!(placed[0].x, 0);
+        assert_eq!(placed[1].x, 100);
+        assert_eq!(placed[2].x, 300);
+    }
+
+    #[test]
+    fn lone_explicit_output_keeps_its_position_and_size() {
+        let placed = place_outputs(&layout_of(vec![out("DP-1", 500, 0, 1920, 1080)]));
+        assert_eq!(placed.len(), 1);
+        assert_eq!(placed[0].x, 500);
+        assert_eq!(placed[0].width, 1920);
+        assert_eq!(placed[0].height, 1080);
+    }
+
+    #[test]
+    fn overlapping_explicit_outputs_are_bumped_apart() {
+        // Two explicit outputs at the same spot → the second is moved
+        // flush-right so the rectangles no longer overlap.
+        let placed = place_outputs(&layout_of(vec![
+            out("DP-1", 100, 0, 1920, 1080),
+            out("DP-2", 100, 0, 1920, 1080),
+        ]));
+        let a = placed.iter().find(|p| p.label == "DP-1").unwrap();
+        let b = placed.iter().find(|p| p.label == "DP-2").unwrap();
+        let no_overlap = a.x + a.width <= b.x || b.x + b.width <= a.x;
+        assert!(no_overlap, "outputs should not overlap: {a:?} vs {b:?}");
+    }
+
+    #[test]
+    fn empty_layout_places_nothing() {
+        assert!(place_outputs(&layout_of(vec![])).is_empty());
+    }
 }
