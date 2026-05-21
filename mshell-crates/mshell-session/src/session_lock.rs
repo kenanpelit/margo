@@ -58,11 +58,26 @@ fn mlock_running() -> bool {
         if !pid.bytes().all(|b| b.is_ascii_digit()) {
             continue;
         }
-        if let Ok(comm) = std::fs::read_to_string(format!("/proc/{pid}/comm"))
-            && comm.trim() == "mlock"
-        {
-            return true;
+        let Ok(comm) = std::fs::read_to_string(format!("/proc/{pid}/comm")) else {
+            continue;
+        };
+        if comm.trim() != "mlock" {
+            continue;
         }
+        // Skip a zombie (`<defunct>`): an mlock that has exited but not
+        // yet been reaped still carries comm == "mlock", yet it isn't
+        // locking anything. Counting it would wedge `lock_session`
+        // forever ("already running" → never spawns a real lock), which
+        // is exactly the "mshellctl lock does nothing but check says
+        // locked" failure. /proc/<pid>/stat is `PID (comm) STATE …`;
+        // comm may contain ')', so read the state after the LAST ')'.
+        if let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat"))
+            && let Some((_, rest)) = stat.rsplit_once(')')
+            && rest.trim_start().starts_with('Z')
+        {
+            continue;
+        }
+        return true;
     }
     false
 }
