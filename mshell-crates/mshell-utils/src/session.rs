@@ -99,7 +99,7 @@ pub fn run_session_action(action: SessionAction) {
     }
     match action {
         SessionAction::Lock => {
-            mshell_session::session_lock::session_lock().lock();
+            mshell_session::session_lock::lock_session();
         }
         SessionAction::Logout => spawn(&["systemctl", "--user", "exit"]),
         SessionAction::Suspend => spawn(&["systemctl", "suspend"]),

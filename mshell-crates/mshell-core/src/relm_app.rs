@@ -10,7 +10,7 @@ use mshell_config::schema::config::{
 use mshell_idle::idle_manager::{self, IdleConfig, IdleStage};
 use mshell_idle::inhibitor::IdleInhibitor;
 use mshell_services::margo_service;
-use mshell_session::session_lock::session_lock;
+use mshell_session::session_lock::{lock_session, session_locked};
 use mshell_frame::frame::{Frame, FrameInit, FrameInput};
 use mshell_lockscreen::lock_screen_manager::{LockScreenManagerInit, LockScreenManagerModel};
 use mshell_notification_popups::popup_notifications::{
@@ -813,15 +813,15 @@ fn spawn_idle_manager() -> tokio::sync::watch::Sender<IdleConfig> {
                 IdleStage::Lock => {
                     if !inhibited {
                         dim_overlay.set_visible(true);
-                        if !session_lock().is_locked() {
-                            session_lock().lock();
+                        if !session_locked() {
+                            lock_session();
                         }
                     }
                 }
                 IdleStage::Suspend => {
                     if !inhibited {
-                        if !session_lock().is_locked() {
-                            session_lock().lock();
+                        if !session_locked() {
+                            lock_session();
                         }
                         if let Err(e) =
                             std::process::Command::new("systemctl").arg("suspend").spawn()

@@ -1,7 +1,7 @@
 use crate::relm_app::{Shell, ShellInput};
 use mshell_cache::wallpaper::set_wallpaper;
 use mshell_services::{audio_service, brightness_service, margo_service, notification_service};
-use mshell_session::session_lock::session_lock;
+use mshell_session::session_lock::{lock_session, session_locked};
 use mshell_settings::{close_settings, open_settings};
 use mshell_utils::session::SessionAction;
 use mshell_sounds::play_audio_volume_change;
@@ -189,10 +189,10 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                     set_wallpaper(&path);
                 }
                 IPCCommand::Lock => {
-                    session_lock().lock();
+                    lock_session();
                 }
                 IPCCommand::CheckLock(reply) => {
-                    let _ = reply.send(session_lock().is_locked());
+                    let _ = reply.send(session_locked());
                 }
                 IPCCommand::Screenshare(reply, payload) => {
                     app_sender.emit(ShellInput::ToggleScreenshareMenu(

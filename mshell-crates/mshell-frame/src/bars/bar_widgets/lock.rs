@@ -1,4 +1,4 @@
-use mshell_session::session_lock::session_lock;
+use mshell_session::session_lock::lock_session;
 use relm4::gtk::Orientation;
 use relm4::gtk::prelude::{ButtonExt, WidgetExt};
 use relm4::{ComponentParts, ComponentSender, SimpleComponent, gtk};
@@ -75,7 +75,7 @@ impl SimpleComponent for LockModel {
         match message {
             LockInput::Clicked => {
                 let _ = sender.output(LockOutput::CloseMenu);
-                session_lock().lock();
+                lock_session();
             }
         }
     }
