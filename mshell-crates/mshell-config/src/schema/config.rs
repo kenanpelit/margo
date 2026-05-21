@@ -778,6 +778,8 @@ impl Default for Menus {
                             QuickActionWidget::AirplaneMode,
                             QuickActionWidget::Nightlight,
                             QuickActionWidget::ColorPicker,
+                            QuickActionWidget::Wallpaper,
+                            QuickActionWidget::Screenshot,
                             QuickActionWidget::Settings,
                             QuickActionWidget::Logout,
                             QuickActionWidget::Lock,

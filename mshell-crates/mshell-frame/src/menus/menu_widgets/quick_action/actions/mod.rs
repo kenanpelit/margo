@@ -6,5 +6,7 @@ pub(crate) mod lock;
 pub(crate) mod logout;
 pub(crate) mod night_light;
 pub(crate) mod reboot;
+pub(crate) mod screenshot;
 pub(crate) mod settings;
 pub(crate) mod shutdown;
+pub(crate) mod wallpaper;

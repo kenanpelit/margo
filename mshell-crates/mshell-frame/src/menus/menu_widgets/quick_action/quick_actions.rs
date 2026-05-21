@@ -16,7 +16,13 @@ use crate::menus::menu_widgets::quick_action::actions::night_light::{
     NightLightInit, NightLightModel,
 };
 use crate::menus::menu_widgets::quick_action::actions::reboot::{RebootInit, RebootModel};
+use crate::menus::menu_widgets::quick_action::actions::screenshot::{
+    ScreenshotInit, ScreenshotModel, ScreenshotOutput,
+};
 use crate::menus::menu_widgets::quick_action::actions::settings::{SettingsInit, SettingsModel};
+use crate::menus::menu_widgets::quick_action::actions::wallpaper::{
+    WallpaperInit, WallpaperModel, WallpaperOutput,
+};
 use crate::menus::menu_widgets::quick_action::actions::shutdown::{ShutdownInit, ShutdownModel};
 use mshell_common::dynamic_box::generic_widget_controller::GenericWidgetController;
 use mshell_config::schema::menu_widgets::{QuickActionWidget, QuickActionsConfig};
@@ -130,6 +136,20 @@ impl QuickActionsModel {
             QuickActionWidget::Reboot => {
                 Box::new(RebootModel::builder().launch(RebootInit {}).detach())
             }
+            QuickActionWidget::Wallpaper => Box::new(
+                WallpaperModel::builder()
+                    .launch(WallpaperInit {})
+                    .forward(sender.output_sender(), |msg| match msg {
+                        WallpaperOutput::CloseMenu => QuickActionsOutput::CloseMenu,
+                    }),
+            ),
+            QuickActionWidget::Screenshot => Box::new(
+                ScreenshotModel::builder()
+                    .launch(ScreenshotInit {})
+                    .forward(sender.output_sender(), |msg| match msg {
+                        ScreenshotOutput::CloseMenu => QuickActionsOutput::CloseMenu,
+                    }),
+            ),
             QuickActionWidget::Settings => {
                 // No output to forward — the Settings button toggles
                 // the embedded Settings menu directly via

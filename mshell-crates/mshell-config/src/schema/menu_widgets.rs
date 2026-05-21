@@ -230,6 +230,8 @@ pub enum QuickActionWidget {
     Logout,
     Nightlight,
     Reboot,
+    Wallpaper,
+    Screenshot,
     Settings,
     Shutdown,
 }
@@ -245,6 +247,8 @@ impl QuickActionWidget {
             QuickActionWidget::Logout => "Logout",
             QuickActionWidget::Nightlight => "Night Light",
             QuickActionWidget::Reboot => "Reboot",
+            QuickActionWidget::Wallpaper => "Wallpaper",
+            QuickActionWidget::Screenshot => "Screenshot",
             QuickActionWidget::Settings => "Settings",
             QuickActionWidget::Shutdown => "Shutdown",
         }
@@ -264,6 +268,8 @@ impl QuickActionWidget {
             QuickActionWidget::Logout,
             QuickActionWidget::Nightlight,
             QuickActionWidget::Reboot,
+            QuickActionWidget::Wallpaper,
+            QuickActionWidget::Screenshot,
             QuickActionWidget::Settings,
             QuickActionWidget::Shutdown,
         ]
