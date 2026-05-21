@@ -1,25 +1,62 @@
 # Install
 
-Three supported paths: an Arch PKGBUILD, build-from-source, and a Nix flake.
-
-## Arch (PKGBUILD)
+The repository ships a single installer, `install.sh`, that detects your
+distribution and does the right thing — build, install, and uninstall.
+Clone the repo and run it:
 
 ```bash
-git clone https://github.com/kenanpelit/margo_build ~/.kod/margo_build
-cd ~/.kod/margo_build && makepkg -si
+git clone https://github.com/kenanpelit/margo
+cd margo
+./install.sh            # build + install (detects distro)
+./install.sh uninstall  # remove margo
+./install.sh --help
 ```
 
-This installs `margo`, `mctl`, `mlayout`, `mscreenshot`, the Wayland-session entry, and the example layouts. Required runtime tools (`grim`, `slurp`, `wl-clipboard`) come in as dependencies; `swappy` / `satty` are optional editors picked up at runtime.
+It installs all twelve binaries (compositor + shell + helpers), the
+`margo-portal` screencast/screenshot backend, the Wayland session entry,
+example configs and layouts, and shell completions.
 
-## From source
+## Arch / CachyOS
+
+Uses the repo `PKGBUILD` with `makepkg` (a `-git` package built from the
+pushed GitHub HEAD), then installs it with `pacman` — the same flow as
+`makepkg -si`. Build dependencies are resolved by `makepkg`.
+
+```bash
+./install.sh            # makepkg build + pacman install
+./install.sh uninstall  # pacman -R margo-git
+```
+
+## Ubuntu / Debian
+
+!!! warning "Requires GTK ≥ 4.20"
+    margo's GTK4 bindings need GTK 4.19+, so **Ubuntu 24.04 LTS (GTK 4.14)
+    is not supported** — and `apt upgrade` won't help, because an LTS keeps
+    the same GTK for its lifetime. Use **Ubuntu 25.10+ / 26.04 LTS** (or any
+    distro with GTK 4.20+). The installer verifies the GTK version up front
+    and stops early with a clear message on older releases.
+
+The Ubuntu path installs the build dependencies via `apt`, bootstraps a
+current Rust toolchain with `rustup` if the system one is too old (margo is
+Rust edition 2024), builds `gtk4-layer-shell` from source when it isn't
+packaged, then compiles and installs to `/usr`. Every installed path is
+recorded in `/usr/local/share/margo/install-manifest.txt`, so `uninstall`
+removes exactly what was added.
+
+```bash
+./install.sh deps       # install build dependencies only (optional)
+./install.sh            # deps + Rust + build + install
+./install.sh uninstall  # remove (reads the install manifest)
+```
+
+## Manual (any distro)
 
 ```bash
 git clone https://github.com/kenanpelit/margo
 cd margo && cargo build --release --workspace
-sudo install -Dm755 target/release/margo        /usr/bin/margo
-sudo install -Dm755 target/release/mctl         /usr/bin/mctl
-sudo install -Dm755 target/release/mlayout      /usr/bin/mlayout
-sudo install -Dm755 target/release/mscreenshot  /usr/bin/mscreenshot
+for bin in margo start-margo mctl mshell mshellctl mlock mlayout mscreenshot mvisual; do
+  sudo install -Dm755 target/release/$bin /usr/bin/$bin
+done
 sudo install -Dm644 margo.desktop /usr/share/wayland-sessions/margo.desktop
 ```
 
@@ -27,7 +64,9 @@ sudo install -Dm644 margo.desktop /usr/share/wayland-sessions/margo.desktop
 
 | Required | Used for |
 |---|---|
-| `wayland`, `libinput`, `libxkbcommon`, `seatd`, `mesa`, `libdrm`, `pixman`, `pcre2` | core |
+| `wayland`, `libinput`, `libxkbcommon`, `seatd`, `mesa`, `libdrm`, `pixman`, `pcre2` | compositor core |
+| `gtk4` (≥ 4.20), `gtk4-layer-shell`, `cairo`, `pango`, `pam` | shell + lock screen |
+| `pipewire`, `gstreamer` | screencast + media |
 | `xorg-xwayland` | X11 client support (optional but recommended) |
 | `grim`, `slurp`, `wl-clipboard` | screenshot pipeline (`mscreenshot`) |
 | `wlr-randr` | live monitor re-layout via `mlayout` |
@@ -54,11 +93,13 @@ cargo build --release --features a11y,profile-with-tracy
 nix run github:kenanpelit/margo
 ```
 
-The flake exposes `packages.default`, a `devShells.default` with `rust-analyzer` + `clippy`, plus `nixosModules.margo` and `hmModules.margo`.
+The flake exposes `packages.default`, a `devShells.default` with
+`rust-analyzer` + `clippy`, plus `nixosModules.margo` and `hmModules.margo`.
 
 ## First run
 
-After installation, log out, pick **margo** in your display manager's session menu, log in. If you don't have a display manager:
+After installation, log out, pick **margo** in your display manager's
+session menu, log in. If you don't have a display manager:
 
 ```bash
 # launch from a TTY via UWSM (recommended — gets the full systemd
@@ -66,7 +107,8 @@ After installation, log out, pick **margo** in your display manager's session me
 uwsm start margo-uwsm.desktop
 ```
 
-A blank screen with a cursor means margo is running but no client / bar is mapped yet. Spawn one:
+A blank screen with a cursor means margo is running but no client / bar is
+mapped yet. Spawn one:
 
 ```bash
 super + Return        # default kitty
@@ -77,7 +119,7 @@ Drop a config:
 
 ```bash
 mkdir -p ~/.config/margo
-cp /usr/share/doc/margo-git/config.example.conf ~/.config/margo/config.conf
+cp /usr/share/doc/margo*/config.example.conf ~/.config/margo/config.conf
 mctl reload
 ```
 
@@ -87,4 +129,5 @@ Validate it:
 mctl check-config
 ```
 
-For the full smoke-test pass after first install (lock screen, screenshots, multi-monitor, idle, etc.), see [the manual checklist](manual-checklist.md).
+For the full smoke-test pass after first install (lock screen, screenshots,
+multi-monitor, idle, etc.), see [the manual checklist](manual-checklist.md).
