@@ -66,7 +66,11 @@ impl EntryPreview {
     pub fn build(mime_type: &str, data: &[u8]) -> EntryPreview {
         if mime_type.starts_with("text/") {
             let text = String::from_utf8_lossy(data);
-            let truncated: String = text.chars().take(Self::TEXT_PREVIEW_LEN).collect();
+            // Trim leading/trailing whitespace so a copied line with a
+            // leading newline/indent doesn't render as a blank line
+            // under the `#id`. Only the *preview* is trimmed — the
+            // full `data` (what actually gets re-copied) is untouched.
+            let truncated: String = text.trim().chars().take(Self::TEXT_PREVIEW_LEN).collect();
             EntryPreview::Text(truncated)
         } else if mime_type.starts_with("image/") {
             crate::thumbnail::generate_thumbnail(data).unwrap_or_else(|| EntryPreview::Binary {

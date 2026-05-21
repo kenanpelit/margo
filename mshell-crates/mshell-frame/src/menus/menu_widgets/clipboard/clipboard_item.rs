@@ -92,7 +92,7 @@ impl Component for ClipboardItemModel {
                 gtk::Box {
                     add_css_class: "clipboard-item",
                     set_orientation: gtk::Orientation::Vertical,
-                    set_spacing: 0,
+                    set_spacing: 4,
 
                     gtk::Label {
                         add_css_class: "clipboard-item-title",
