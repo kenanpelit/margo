@@ -1,163 +1,172 @@
-# Wayland Protocol Surface — margo vs niri vs Hyprland
+# Wayland Protocol Surface — margo vs niri vs Hyprland vs mango
 
-> **Last refreshed:** 2026-05-15
-> **Method:** Walked smithay `delegate_*!` macros + hand-rolled `GlobalDispatch` impls in margo, niri's same set, and Hyprland's `src/protocols/` directory.
+> **Last refreshed:** 2026-05-21
+> **Sources walked (all at that day's `HEAD`):**
+> - **margo** — this repo (smithay `delegate_*!` macros + hand-rolled `GlobalDispatch`).
+> - **niri** `26.4.0` (`4294948`) — same smithay method.
+> - **Hyprland** `0.55.0` (`v0.55.0-55-g95d9ae2`) — `src/protocols/*.cpp` + `src/protocols/core/`.
+> - **mango** `0.13.1` (`0.13.1-19-gda1e1ca`) — wlroots `wlr_*_create()` call sites + `protocols/*.xml`.
 
 This document is the source-of-truth audit of which Wayland protocols
-each Rust- or C++-backed daily-driver compositor advertises. It's
-maintained alongside `road_map.md` §15.10 (the work plan); this file
-is the **read-side reference** for "what does each compositor
-actually advertise."
+each daily-driver compositor advertises. **mango** — the C/wlroots
+(dwl-derived) compositor that margo is the Rust rewrite of — is
+included so the comparison shows what margo gained, kept, and dropped
+relative to its own origin. Maintained alongside `road_map.md`
+§15.10; this file is the **read-side reference** for "what does each
+compositor actually advertise."
 
 ## Legend
 
 | Mark | Meaning |
 |---|---|
 | ✅ | shipped / advertised |
-| ⚠️ | partial (e.g. read-only, no write-side) |
+| ⚠️ | partial (e.g. read-only, no write-side; or reached via a different mechanism) |
 | ❌ | not advertised |
-| 🔧 | hand-rolled (not from smithay) |
-| ↺ | smithay-native (delegate macro / built-in state) |
 
 ## Headline score
 
-| Compositor | Protocols advertised (approx.) | Note |
-|---|---|---|
-| **Hyprland** | ~62 | Widest surface — includes Hyprland-specific protocols (`focus_grab`, `global_shortcuts`, `toplevel_export`, `toplevel_mapping`, `hyprland_surface`) |
-| **margo** | **~54** | **Passed niri** on 2026-05-15; pursuing Hyprland on standard protocols |
-| **niri** | ~41 | Tightest surface; deliberately minimal |
+Counted with each project's native method (delegate macros / protocol
+files / `wlr_*_create` globals), **core protocols included** so the
+numbers are comparable.
 
-## Core baseline — present in all three
+| Compositor | Protocols (approx.) | Stack | Note |
+|---|---|---|---|
+| **Hyprland** `0.55.0` | **~67** | C++ (hand-rolled) | Widest surface — 61 protocol modules + 6 core, plus Hyprland-only extensions |
+| **margo** | **~54** | Rust / smithay | Modern surface; **passed niri**, **drew level with mango** on a different protocol mix |
+| **mango** `0.13.1` | **~53** | C / wlroots | Broad-but-legacy: wlroots hands it everything, including protocols margo still lacks |
+| **niri** `26.4.0` | **~41** | Rust / smithay | Tightest surface; deliberately minimal |
 
-All daily-driver Wayland compositors must ship these. No comparison
-table — assume ✅ everywhere.
+The headline story shifted this refresh: **margo (~54) has effectively
+drawn level with its own C ancestor mango (~53) in raw count — but with
+a deliberately different mix.** margo carries the *modern* protocol
+surface (HDR colour-management, content-type, fifo/commit-timing,
+security-context, pointer-warp, xdg-dialog, system-bell, toplevel-icon,
+toplevel-tag, xwayland-keyboard-grab) that mango's wlroots base does not
+expose, while mango still wins the *legacy wlroots freebies* (tearing,
+drm-lease, virtual-pointer, output-power, ext-workspace,
+foreign-toplevel write-side, export-dmabuf) that margo has not wired up
+yet. The remaining six margo gaps are, almost exactly, that
+wlroots-freebie set.
 
-- `wl_compositor` / `wl_shm` / `wl_seat` / `wl_output`
+## Core baseline — present in all four
+
+All four advertise these. No comparison table — assume ✅ everywhere.
+
+- `wl_compositor` / `wl_subcompositor` / `wl_shm` / `wl_seat` / `wl_output`
 - `wp_viewporter`, `wp_presentation_time`, `wp_cursor_shape_v1`,
   `wp_fractional_scale_v1`
 - `zwlr_layer_shell_v1`
-- `xdg_shell`, `xdg_activation_v1`, `xdg_decoration_unstable_v1`
+- `xdg_shell`, `xdg_activation_v1`, `xdg_decoration_unstable_v1`,
+  `xdg_foreign_v2`
 - `linux_dmabuf_v1`
 - `ext_session_lock_v1`, `ext_idle_notifier_v1`,
   `zwp_idle_inhibit_manager_v1`
 - `wl_data_device`, `zwlr_data_control_manager_v1`,
+  `ext_data_control_manager_v1`,
   `zwp_primary_selection_device_manager_v1`
-- `zwp_pointer_constraints_v1`, `zwp_relative_pointer_manager_v1`
+- `zwp_pointer_constraints_v1`, `zwp_relative_pointer_manager_v1`,
+  `zwp_pointer_gestures_v1`
 - `zwp_text_input_manager_v3`, `zwp_input_method_manager_v2`,
   `zwp_virtual_keyboard_manager_v1`
+- `zwp_tablet_manager_v2`
+- `zwlr_gamma_control_manager_v1`, `zwlr_screencopy_manager_v1`
+- `org_kde_kwin_server_decoration`, `wp_single_pixel_buffer_v1`
+- `zwp_keyboard_shortcuts_inhibit_v1`
+- `zwlr_output_manager_v1` (**output-management** — read topology + apply
+  scale/transform/position; all four ship it, was previously missing
+  from this audit)
 
-## Recently shipped — margo's catch-up batch (this session)
+## Modern protocol surface — where margo leads the pack
 
-Sixteen protocols added in one pass on 2026-05-15; see commits
-`dc44818`, `74a0edb`, `c146aac`. All are smithay-native delegations.
+These are the protocols that separate a *current* compositor from a
+*legacy wlroots* one. margo and Hyprland carry almost the full set;
+niri and mango each miss large chunks.
 
-| Protocol | margo | niri | Hyprland | Use case |
-|---|---|---|---|---|
-| `zwp_keyboard_shortcuts_inhibit_v1` | ↺ ✅ | ↺ ✅ | ✅ | VNC / RDP / VM keyboard grab |
-| `zwp_pointer_gestures_v1` | ↺ ✅ | ↺ ✅ | ✅ | Touchpad pinch / swipe |
-| `xdg_foreign_v2` | ↺ ✅ | ↺ ✅ | ✅ | Firefox PiP, xdg-portal screencast |
-| `wp_single_pixel_buffer_v1` | ↺ ✅ | ↺ ✅ | ✅ | Solid-color buffer optimization |
-| `zwp_tablet_manager_v2` | ↺ ✅ | ↺ ✅ | ✅ | Wacom / Huion drawing tablets |
-| `wp_security_context_v1` | ↺ ✅ | ↺ ✅ | ✅ | Flatpak / sandboxed clients |
-| `org_kde_kwin_server_decoration` | ↺ ✅ | ↺ ✅ | ✅ | Legacy Qt5 / KDE decoration |
-| `wp_content_type_v1` | ↺ ✅ | ❌ | ✅ | Game / video / photo hint |
-| `wp_fifo_v1` | ↺ ✅ | ❌ | ✅ | FIFO commit ordering |
-| `wp_commit_timing_v1` | ↺ ✅ | ❌ | ✅ | Explicit commit-time targets |
-| `wp_alpha_modifier_v1` | ↺ ✅ | ❌ | ✅ | Per-surface alpha hint |
-| `xdg_wm_dialog_v1` | ↺ ✅ | ❌ | ✅ | Modal dialog hint |
-| `zwp_xwayland_keyboard_grab_v1` | ↺ ✅ | ❌ | ❌ | XWayland-side kb grab (**margo unique**) |
-| `xdg_toplevel_icon_v1` | ↺ ✅ | ❌ | ❌ | Inline app icons on toplevels (**margo unique**) |
-| `xdg_system_bell_v1` | ↺ ✅ | ❌ | ✅ | System bell |
-| `wp_pointer_warp_v1` | ↺ ✅ | ❌ | ✅ | Programmatic cursor warp |
-| `xdg_toplevel_tag_v1` | ↺ ✅ | ❌ | ❌ | Semantic toplevel tags (**margo unique**) |
-
-## Remaining gaps in margo — vs niri / Hyprland
-
-Six protocols margo doesn't advertise that at least one of niri /
-Hyprland does. All require hand-rolled work (smithay either has no
-impl, or the smithay impl needs backend hookup). Deferred to a
-dedicated session per project policy.
-
-| Protocol | margo | niri | Hyprland | Cost | Daily-driver value |
+| Protocol | margo | niri | Hyprland | mango | Use case |
 |---|---|---|---|---|---|
-| `zwlr_foreign_toplevel_manager_v1` (write-side) | ⚠️ list-only | 🔧 ✅ | ✅ | ~669 LOC (niri ref) | mshell bar click-to-activate / close / minimize |
-| `ext_workspace_v1` | ❌ | 🔧 ✅ | ✅ | ~715 LOC (niri ref) + tag ↔ workspace semantic design | Modern workspace protocol — needed for shells that don't speak dwl-ipc |
-| `zwlr_virtual_pointer_manager_v1` | ❌ | 🔧 ✅ | ✅ | ~563 LOC (niri ref) | Companion to virtual-keyboard — remote-desktop / accessibility / `wtype --click` |
-| `wp_drm_lease_device_v1` | ❌ | 🔧 ✅ | ✅ | smithay-native, udev backend hookup | VR headsets (Valve Index, Vive), DP gaming displays bypass compositor |
-| `zwlr_output_power_management_v1` | ❌ | ❌ | ✅ | Hand-rolled (no smithay) | Wayland-side DPMS — `wlopm`, mshell DPMS control |
-| `wp_tearing_control_v1` | ❌ | ❌ | ✅ | Hand-rolled (no smithay) | Variable-refresh / immediate-page-flip for games |
+| `wp_color_management_v1` (HDR) | ✅ | ❌ | ✅ | ❌ | HDR / wide-gamut output |
+| `linux_drm_syncobj_v1` (explicit sync) | ✅ | ❌ | ✅ | ✅ | Tear-free GPU sync, NVIDIA |
+| `ext_image_copy_capture_v1` + capture-source | ✅ | ❌ | ✅ | ✅ | Modern screencast (replaces screencopy) |
+| `xwayland_shell_v1` | ✅ | ⚠️ diff path | ✅ | ❌ | HiDPI XWayland scaling |
+| `wp_content_type_v1` | ✅ | ❌ | ✅ | ❌ | Game / video / photo hint |
+| `wp_fifo_v1` | ✅ | ❌ | ✅ | ❌ | FIFO commit ordering |
+| `wp_commit_timing_v1` | ✅ | ❌ | ✅ | ❌ | Explicit commit-time targets |
+| `wp_alpha_modifier_v1` | ✅ | ❌ | ✅ | ✅ | Per-surface alpha hint |
+| `xdg_wm_dialog_v1` | ✅ | ❌ | ✅ | ❌ | Modal dialog hint |
+| `xdg_system_bell_v1` | ✅ | ❌ | ✅ | ❌ | System bell |
+| `wp_pointer_warp_v1` | ✅ | ❌ | ✅ | ❌ | Programmatic cursor warp |
+| `wp_security_context_v1` | ✅ | ✅ | ✅ | ❌ | Flatpak / sandboxed clients |
 
-## Where margo is **ahead** of niri
+## margo's unique / near-unique protocols
 
-Eight protocols margo advertises that niri doesn't. The first four
-land via margo's already-shipped HDR / screencast / explicit-sync
-work; the last four landed in this session's catch-up batch.
+| Protocol | margo | niri | Hyprland | mango | Note |
+|---|---|---|---|---|---|
+| `zwp_xwayland_keyboard_grab_v1` | ✅ | ❌ | ❌ | ❌ | **margo unique** — X11-side kb grab for VNC/VM/remote |
+| `xdg_toplevel_icon_v1` | ✅ | ❌ | ❌ | ❌ | **margo unique** — inline app icons on toplevels |
+| `xdg_toplevel_tag_v1` | ✅ | ❌ | ✅ | ❌ | Semantic toplevel tags (Hyprland ships `XDGTag` too) |
 
-| Protocol | margo | niri | Why niri doesn't have it |
-|---|---|---|---|
-| `wp_color_management_v1` | 🔧 ✅ | ❌ | niri has no HDR work yet |
-| `ext_image_capture_source_v1` family | ↺ ✅ | ❌ | niri uses screencopy-only |
-| `linux_drm_syncobj_v1` (explicit sync) | ↺ ✅ | ❌ | niri pending |
-| `xwayland_shell_v1` (HiDPI XWayland scaling) | ↺ ✅ | (different mechanism) | niri reaches it via a different code path |
-| `wp_content_type_v1` | ↺ ✅ | ❌ | This session |
-| `wp_fifo_v1` + `wp_commit_timing_v1` | ↺ ✅ | ❌ | This session |
-| `wp_alpha_modifier_v1` | ↺ ✅ | ❌ | This session |
-| `xdg_wm_dialog_v1` | ↺ ✅ | ❌ | This session |
+> **Correction this refresh:** `xdg_toplevel_tag_v1` is **no longer
+> margo-unique** — Hyprland 0.55 ships it as `XDGTag.cpp`. The previous
+> "margo unique vs both niri and Hyprland" claim was stale. Only
+> `xwayland_keyboard_grab` and `xdg_toplevel_icon` remain unique to
+> margo across all four.
 
-## Where margo is **ahead** of both niri AND Hyprland
+## The remaining six margo gaps — = the wlroots freebies
 
-Three protocols margo advertises that **neither** of the other two
-do. All three landed in this session's bonus batch (`c146aac`).
+Six protocols margo doesn't (fully) advertise. The pattern is now
+clear: **these are exactly the protocols wlroots hands mango and
+Hyprland for free, plus the two niri also hand-rolled.** smithay either
+has no impl or needs backend hookup, so margo has deferred them to a
+dedicated session.
 
-| Protocol | Reason it matters |
-|---|---|
-| `zwp_xwayland_keyboard_grab_v1` | X11-side keyboard grab. Complements `keyboard_shortcuts_inhibit_v1` — same VNC / VM / remote-desktop story via the XWayland mechanism. |
-| `xdg_toplevel_icon_v1` | Toplevels ship their own inline PNG / SVG icon instead of the bar inferring from `.desktop`. mshell taskbar consumer is the natural next step. |
-| `xdg_toplevel_tag_v1` | Semantic tags + description strings on toplevels — feeds window-rule matching once a UI consumer is wired up. |
+| Protocol | margo | niri | Hyprland | mango | Daily-driver value |
+|---|---|---|---|---|---|
+| `zwlr_foreign_toplevel_manager_v1` (write-side) | ⚠️ list-only | ✅ | ✅ | ✅ | mshell bar click-to-activate / close / minimize |
+| `ext_workspace_v1` | ❌ scaffold | ✅ | ✅ | ✅ | Workspace protocol for shells that don't speak dwl-ipc |
+| `zwlr_virtual_pointer_manager_v1` | ❌ | ✅ | ✅ | ✅ | Remote-desktop / accessibility / `wtype --click` |
+| `zwlr_output_power_management_v1` | ❌ | ❌ | ✅ | ✅ | Wayland-side DPMS — `wlopm`, mshell blank-output |
+| `wp_tearing_control_v1` | ❌ | ❌ | ✅ | ✅ | Immediate-page-flip for games |
+| `wp_drm_lease_device_v1` | ❌ | ✅ | ✅ | ✅ | VR headsets / DP gaming displays |
 
-## Hyprland-specific protocols (informational, not gaps)
+- `ext_workspace_v1` exists as an empty scaffold in margo
+  (`protocols/ext_workspace.rs`) — state struct only, no global; tag
+  state is exposed via `dwl-ipc-unstable-v2` instead.
+- `zwlr_foreign_toplevel_manager_v1` is **read-side only** in margo: it
+  advertises `ext-foreign-toplevel-list-v1` (the list), not the wlr
+  write-side manager with `activate`/`close`/`set_minimized` requests.
 
-Protocols Hyprland ships that are tied to its plugin / ecosystem
-model and don't have an obvious margo use-case. Listed here so they
-don't show up as "missing" in future audits.
+## Compositor-specific protocols (informational, not gaps)
 
-| Protocol | What it does |
-|---|---|
-| `focus_grab` | Hyprland-internal grab semantics |
-| `global_shortcuts` | xdg-desktop-portal global-shortcuts helper |
-| `toplevel_export` / `toplevel_mapping` | Hyprland-flavored toplevel-export protocol |
-| `hyprland_surface` | Hyprland-flavored surface extensions (rounding hints, opacity) |
-| `xdg_output_v1` (legacy) | Pre-`wl_output v4` HiDPI workaround — most apps don't need it |
-| `mesa_drm` | Compatibility shim Hyprland keeps for older mesa |
-| `CTM_control` | Hyprland-specific color-transform-matrix control (different mechanism from `wp_color_management_v1`) |
+Tied to each project's own ecosystem; not counted as margo gaps.
 
-## Niri-specific protocols (informational)
-
-Protocols niri ships that are niri-internal. Not gaps for margo.
-
-| Protocol | What it does |
-|---|---|
-| `background_effect` | niri's own surface effects extension |
-| `mutter_x11_interop` | XWayland tweak niri inherits from mutter |
+| Protocol | Who | What it does |
+|---|---|---|
+| `focus_grab` | Hyprland | Internal grab semantics |
+| `global_shortcuts` | Hyprland | xdg-desktop-portal global-shortcuts helper |
+| `toplevel_export` / `toplevel_mapping` | Hyprland | Hyprland-flavored toplevel export |
+| `hyprland_surface` | Hyprland | Rounding / opacity surface hints |
+| `CTM_control` | Hyprland | Color-transform-matrix (pre-`wp_color_management`) |
+| `mesa_drm` | Hyprland | Compat shim for older mesa |
+| `background_effect` | niri **and** Hyprland | Surface blur / effect extension |
+| `mutter_x11_interop` | niri | XWayland tweak inherited from mutter |
+| `xdg_output_v1` (legacy) | Hyprland **and** mango | Pre-`wl_output v4` HiDPI workaround |
+| `zwlr_export_dmabuf_manager_v1` | mango only | Legacy wlroots screencast (superseded by image-copy-capture) |
 
 ## Sequencing — when to take the remaining six
 
-The deferred six are intentionally back-loaded. From most useful to
-least, given margo's current trajectory:
+Back-loaded by design. Most-useful-first, given margo's trajectory:
 
-1. **`zwlr_foreign_toplevel_manager_v1`** (write-side) — gates
-   mshell bar click-to-activate. Highest UX leverage.
-2. **`ext_workspace_v1`** — lets shells that don't speak dwl-ipc
-   (sfwbar, ironbar) show margo workspaces. Needs a semantics design
-   pass (tags ↔ workspaces).
+1. **`zwlr_foreign_toplevel_manager_v1`** (write-side) — gates mshell
+   bar click-to-activate. Highest UX leverage; niri's ~669-LOC impl is
+   the reference.
+2. **`ext_workspace_v1`** — lets non-dwl-ipc shells (sfwbar, ironbar)
+   show margo workspaces. Needs a tags ↔ workspaces semantics pass.
 3. **`zwlr_virtual_pointer_manager_v1`** — pairs with the already-
-   shipped virtual-keyboard. Unlocks accessibility tooling.
-4. **`zwlr_output_power_management_v1`** — Wayland-side DPMS so
-   mshell can blank outputs without going through libdrm directly.
-5. **`wp_tearing_control_v1`** — only matters for game-oriented users;
-   parallels HDR Phase 2 work in tone (perf-tuning).
-6. **`wp_drm_lease_device_v1`** — VR headsets / gaming displays.
-   Smithay does the protocol; the cost is udev-backend connector
-   exposure, which is a different code area.
+   shipped virtual-keyboard; unlocks accessibility tooling.
+4. **`zwlr_output_power_management_v1`** — Wayland-side DPMS so mshell
+   can blank outputs without libdrm.
+5. **`wp_tearing_control_v1`** — game-oriented users only.
+6. **`wp_drm_lease_device_v1`** — VR / gaming displays; smithay does the
+   protocol, cost is udev-backend connector exposure.
 
 See `road_map.md` §15.10 for the work plan and rationale.
