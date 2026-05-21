@@ -7,6 +7,82 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.7.1] – 2026-05-21
+
+### Added
+
+- **Twilight (blue-light filter) UI.** Bar pill + quick-control
+  panel — master toggle, live temperature / phase / mode readout,
+  source-mode selector (Auto / Manual / Static / Schedule), a
+  temperature slider that previews live, and schedule-preset
+  chips. A live schedule-preset editor lands in Settings →
+  Display. In Schedule mode the preset whose time slot is current
+  is tinted with the accent. `mshellctl menu twilight`.
+- **Keyboard-shortcuts cheatsheet.** Bar pill + searchable menu
+  built live from `config.conf` `bind =` lines (following
+  `source` includes), grouped by action category with
+  colour-coded modifier chips. `mshellctl menu keybinds`.
+- **Valent Connect.** Bar pill + panel — paired-phone battery /
+  connectivity status plus find / ping / browse / share / pair
+  actions. Ported from the noctalia plugin.
+- **System Updates.** Pill + panel listing pending updates grouped
+  by source (repo / AUR / Flatpak) with Refresh + Update and
+  per-source toggles in Settings.
+- **Keep Awake (idle inhibitor).** Bar pill + duration-picker menu
+  (30 m / 1 h / … / ∞) with a live countdown and quick-extend.
+- **Audio dashboard.** Combined output+input bar pill — scroll the
+  icon to change volume — opening a revealer-row menu with
+  sliders, mute toggles, and device pickers for both sides.
+- **CPU + Power pills.** Combined CPU dashboard pill + per-core /
+  RAM / load menu; combined Power pill (profile + battery) with
+  right-click cycle, plus a battery-only mode.
+- **Network Console.** Live activity arrows and TX/RX traffic
+  graphs on the pill + panel; default ↓/↑ speed readouts coloured
+  per direction.
+- **Clipboard history.** Persistence, favorites / pin,
+  sensitive-skip, All / Favorites tabs, keyboard navigation,
+  vim-style `/` search, debounced writes, configurable entry
+  limit. Persists the full history by default.
+- **Notifications.** Album art / app icon, click-to-open,
+  swipe-to-dismiss, action icons, body markup, 2FA-code copy,
+  per-app grouping, mute blocklist, and `mshellctl` DND / count.
+- **Launcher startup scripts.** User-managed autostart list — add
+  by name, per-script enable toggle + startup delay, delete.
+- **Dashboard widgets.** CompactAudio, Connectivity, OverviewIntel
+  and SystemStatus tiles; equal-width two-column body with a
+  last-child-fill so bottom cards match.
+- **Bluetooth** standalone layer-shell menu.
+- **matugen-driven window borders.** The compositor's border
+  colours now follow the shell's palette: mshell generates
+  `~/.config/margo/colors.conf` from the active scheme and
+  `mctl reload`s on change. `source` it from `config.conf` to
+  override the static border colours (`rootcolor` stays static).
+
+### Changed
+
+- **Material-3 design language.** Sweep across bars, menus, the
+  dashboard, and the Settings window, codified in
+  `mshell-frame/DESIGN.md`.
+- **margo tag / layout widgets** redesigned to the M3 spec —
+  active-indicator pill, tag occupancy as an accent digit.
+- De-`n`-prefixed the ported plugin widgets and removed six
+  redundant standalone bar pills.
+- Twilight temperature slider now reads whole kelvin.
+
+### Fixed
+
+- **Twilight:** presets now appear in the menu, the mode no longer
+  reverts on a poll race, and the temperature slider is visible
+  (it was an unstyled, invisible `GtkScale`).
+- **Notifications:** resolve icon-name `image-path` hints (and the
+  `-symbolic` fallback) so `notify-send -i <name>` icons render
+  instead of a broken-image placeholder.
+- **Keep Awake** countdown was invisible on the active pill.
+- **Frame:** re-place menus whose anchor was changed in Settings.
+- Valent file-share crash + clearer no-connectivity state; Settings
+  ghost Battery / PowerProfile pills; dashboard CompactAudio
+  percentage and Bluetooth-connected detection.
+
 ## [0.7.0] – 2026-05-18
 
 ### Added
