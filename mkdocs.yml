@@ -67,6 +67,8 @@ nav:
       - HDR + colour management: hdr-design.md
       - Built-in portal: portal-design.md
       - Scripting engine: scripting-design.md
+      - Cross-distro installer: install-script.md
+      - Wayland protocol comparison: protocol-comparison.md
   - Roadmap: roadmap.md
   - Changelog: changelog.md
   - Contributing: contributing.md

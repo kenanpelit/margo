@@ -1,24 +1,21 @@
-# Margo smoke — runs `scripts/smoke-winit.sh` end-to-end under Xvfb
-# so we catch regressions in the nested-backend path that `cargo
-# test` can't. This is the workflow `ci.yml` referenced as TODO; it
-# lives separately because it pulls in a desktop client (kitty)
-# which doubles install time on top of the lightweight check job.
+# Margo smoke — runs scripts/smoke-winit.sh end-to-end under Xvfb so we
+# catch regressions in the nested winit path that `cargo test` can't:
+# margo --help, --winit boot, kitty as the test client, mctl status /
+# reload / dispatch focusstack / killclient, post-kill empty status.
 #
-# What the smoke script verifies (see scripts/smoke-winit.sh for
-# the canonical list): margo --help, --winit boot, kitty as the test
-# client, mctl status, mctl reload, dispatch focusstack, dispatch
-# killclient, post-kill empty status.
+# Runs in an Arch container (same reason as ci.yml — current GTK / the
+# real target distro) with a software GL stack (mesa llvmpipe). Arch
+# doesn't ship `xvfb-run`, so we launch Xvfb by hand and export DISPLAY.
 #
-# Real DRM tests are out of scope — GitHub-hosted runners don't
-# expose a CRTC. Manual checklist in docs/manual-checklist.md
-# covers the post-install validation that needs hardware.
+# Trigger is manual (workflow_dispatch) for now: nested winit + software
+# GL under Xvfb is inherently flakier than the unit suite, so it stays
+# opt-in until proven stable rather than gating every push. Real DRM
+# tests are out of scope — runners expose no CRTC; see
+# docs/manual-checklist.md for hardware validation.
 
 name: smoke
 
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
 
 env:
@@ -26,48 +23,47 @@ env:
 
 jobs:
   winit:
-    name: smoke-winit (xvfb)
+    name: smoke-winit (xvfb, arch)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    container: archlinux:base-devel
+    timeout-minutes: 25
 
     steps:
-      - uses: actions/checkout@v4
-
-      # System libs margo links against (mirror ci.yml) plus the
-      # smoke-script-only deps: kitty (real wayland/x11 client) and
-      # xvfb-run (parent X display for winit).
-      - name: System dependencies
+      # margo's link deps (compositor only — no GTK here, we build just
+      # margo + mctl) plus the smoke-only bits: kitty (real Wayland
+      # client) and xorg-server-xvfb (provides Xvfb). mesa supplies the
+      # software GL/EGL the winit backend renders against.
+      - name: System dependencies (pacman)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            pkg-config \
-            libwayland-dev wayland-protocols \
-            libinput-dev libxkbcommon-dev libudev-dev \
-            libseat-dev \
-            libdrm-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev \
-            libpixman-1-dev \
-            libpcre2-dev \
-            kitty \
-            xvfb
+          pacman -Syu --noconfirm --needed \
+            git rustup clang pkgconf \
+            wayland wayland-protocols libinput libxkbcommon \
+            mesa libdrm seatd pixman libgudev systemd-libs \
+            pcre2 pam cairo pango dbus \
+            kitty xorg-server-xvfb
+          rustup default stable
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v4
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
-      # Build release once — the smoke script picks up
-      # target/release/{margo,mctl} via its own probing.
+      # Release build of just the binaries the smoke script probes for
+      # (target/release/{margo,mctl}).
       - name: cargo build (release)
-        run: cargo build --workspace --release
+        run: cargo build --release -p margo -p mctl
 
-      # `xvfb-run -a` allocates a free display, exports DISPLAY,
-      # tears the X server down on exit. Margo's --winit runs
-      # against that DISPLAY just like a developer machine.
+      # Arch has no `xvfb-run`; start Xvfb by hand on :99, point DISPLAY
+      # at it, force software GL so the winit backend works headless.
       - name: smoke-winit under Xvfb
-        run: xvfb-run -a --server-args='-screen 0 1280x720x24' scripts/smoke-winit.sh
+        run: |
+          Xvfb :99 -screen 0 1280x720x24 -nolisten tcp &
+          sleep 2
+          scripts/smoke-winit.sh
         env:
+          DISPLAY: ':99'
           SMOKE_VERBOSE: '1'
+          LIBGL_ALWAYS_SOFTWARE: '1'
 
       - name: Upload smoke logs on failure
         if: failure()

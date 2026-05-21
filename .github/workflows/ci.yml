@@ -1,19 +1,18 @@
-# Margo CI — keep the lightweight checks fast (~3 minutes total) so they
-# run on every push without becoming the reason people stop pushing.
+# Margo CI — build / test / clippy / config-validate.
 #
-# Scope today: catch the regressions that block a release (compile
-# break, test failure, broken example config). Stylistic checks
-# (rustfmt, clippy lint promotion) are intentionally not gating —
-# the codebase has organic drift from many sessions and a 283-hunk
-# fmt sweep would be its own commit, not a CI gate.
+# Runs inside an Arch Linux container (not ubuntu-latest) on purpose:
+# the GTK shell crates (mshell, mpicker, mvisual, …) use gtk4-rs 0.10,
+# which needs GTK >= 4.19 at build time. GitHub's Ubuntu runners ship
+# GTK 4.14, so a `--workspace` build can't link there. Arch always
+# tracks current GTK (4.22+) and is margo's real target distro
+# (CachyOS/Arch), so the whole workspace builds and the full test suite
+# runs against the same library versions users get.
 #
-# What's NOT covered here:
-#   * `scripts/smoke-winit.sh` — covered separately in `smoke.yml`
-#     (runs end-to-end under Xvfb with kitty as the test client).
-#     Lives in its own workflow so the lightweight path stays fast.
-#   * Real DRM session — impossible on GitHub-hosted runners.
-#     Manual post-install validation lives in
-#     `docs/manual-checklist.md`.
+# Not covered here:
+#   * scripts/smoke-winit.sh — end-to-end nested boot under Xvfb, in
+#     `smoke.yml` (manual / on-demand; it needs a software GL stack).
+#   * Real DRM session — impossible on GitHub-hosted runners. Manual
+#     post-install validation lives in docs/manual-checklist.md.
 
 name: ci
 
@@ -28,30 +27,33 @@ env:
 
 jobs:
   check:
-    name: build / test / config-validate
+    name: build / test / clippy / config (arch)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    container: archlinux:base-devel
+    timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v4
-
-      # System libraries margo links against — smithay's transitive
-      # deps (wayland, libinput, libxkbcommon, libseat, libgbm/libEGL,
-      # libdrm, libudev) plus the regex crate's PCRE2 backend.
-      - name: System dependencies
+      # Build/link deps mirror the PKGBUILD depends + makedepends:
+      # smithay's native stack (wayland, libinput, libxkbcommon, libseat,
+      # mesa, libdrm, libgudev, systemd-libs), the regex crate's PCRE2
+      # backend, PAM/cairo/pango for mlock, and the full GTK4 + GStreamer
+      # + audio stack for mshell. `rustup` provides a current toolchain
+      # with clippy (margo is Rust edition 2024, needs >= 1.85). git is
+      # required by actions/checkout inside the container.
+      - name: System dependencies (pacman)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            pkg-config \
-            libwayland-dev wayland-protocols \
-            libinput-dev libxkbcommon-dev libudev-dev \
-            libseat-dev \
-            libdrm-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev \
-            libpixman-1-dev \
-            libpcre2-dev
+          pacman -Syu --noconfirm --needed \
+            git rustup clang pkgconf \
+            wayland wayland-protocols libinput libxkbcommon \
+            mesa libdrm seatd pixman libgudev systemd-libs \
+            pcre2 pam cairo pango dbus \
+            gtk4 gtk4-layer-shell gdk-pixbuf2 graphene fontconfig freetype2 \
+            gstreamer gst-plugins-base gst-plugins-base-libs gst-plugins-good \
+            alsa-lib libpulse pipewire
+          rustup default stable
+          rustup component add clippy
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v4
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
@@ -63,22 +65,20 @@ jobs:
         run: cargo test --workspace
 
       - name: cargo clippy (gating)
-        # W1.4: clippy is now a gate. Cleanup pass landed (51
-        # warnings → 0); future drift caught at PR time. Project
-        # lint posture in `clippy.toml` + crate-level allows in
-        # `margo/src/main.rs` document which categories are
-        # intentionally suppressed (cosmetic doc-list indents +
-        # `too_many_arguments` on render helpers).
+        # clippy is a gate: a cleanup pass landed (51 warnings → 0) and
+        # the project lint posture lives in clippy.toml + crate-level
+        # allows. Drift is caught at PR time.
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: mctl check-config (bundled example)
-        # Validates that an example user config parses without
-        # unknown fields, regex compile errors, or duplicate
-        # binds. Falls back to a minimal stub if no example is
-        # checked in yet.
+        # Validates that an example user config parses without unknown
+        # fields, regex compile errors, or duplicate binds. Falls back to
+        # a minimal stub if no example is checked in.
         run: |
           if [ -f assets/example/config.conf ]; then
             CFG=assets/example/config.conf
+          elif [ -f margo/src/config.example.conf ]; then
+            CFG=margo/src/config.example.conf
           else
             CFG=/tmp/margo-min.conf
             cat > "$CFG" <<'EOF'
