@@ -11,7 +11,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg" alt="License"></a>
-  <a href="Cargo.toml"><img src="https://img.shields.io/badge/version-0.6.1-success" alt="Version"></a>
+  <a href="Cargo.toml"><img src="https://img.shields.io/badge/version-0.7.3-success" alt="Version"></a>
   <a href="Cargo.toml"><img src="https://img.shields.io/badge/rust-1.85%2B-orange?logo=rust" alt="Rust"></a>
   <a href="https://github.com/Smithay/smithay"><img src="https://img.shields.io/badge/built%20on-Smithay-blueviolet" alt="Smithay"></a>
   <a href="https://kenanpelit.github.io/margo/"><img src="https://img.shields.io/badge/docs-online-blue" alt="Docs"></a>
@@ -24,6 +24,32 @@
 [Smithay]: https://github.com/Smithay/smithay
 [mango]: https://github.com/mangowm/mango
 [noctalia]: https://github.com/noctalia-dev/noctalia-shell
+
+## Screenshots
+
+<p align="center">
+  <img src="docs/assets/showcase-desktop.webp" width="820" alt="The margo desktop with the mshell top bar">
+</p>
+
+Everything below is part of the default install — the whole shell recolours
+itself from your wallpaper with Material You.
+
+<table>
+<tr>
+<td align="center" width="25%"><img src="docs/assets/grid-dashboard.webp" alt="Dashboard"><br><sub><b>Dashboard</b><br>clock · calendar · weather · quick-settings · media</sub></td>
+<td align="center" width="25%"><img src="docs/assets/grid-launcher.webp" alt="App launcher"><br><sub><b>App launcher</b><br>fuzzy apps + ~15 providers</sub></td>
+<td align="center" width="25%"><img src="docs/assets/grid-twilight.webp" alt="Twilight"><br><sub><b>Twilight</b><br>blue-light filter + schedule presets</sub></td>
+<td align="center" width="25%"><img src="docs/assets/grid-power.webp" alt="Power profiles"><br><sub><b>Power profiles</b><br>saver · balanced · performance</sub></td>
+</tr>
+<tr>
+<td align="center" width="25%"><img src="docs/assets/grid-dns.webp" alt="DNS / VPN"><br><sub><b>DNS / VPN</b><br>one-tap preset switching</sub></td>
+<td align="center" width="25%"><img src="docs/assets/grid-keepawake.webp" alt="Keep Awake"><br><sub><b>Keep Awake</b><br>temporary idle inhibitor</sub></td>
+<td align="center" width="25%"><img src="docs/assets/grid-podman.webp" alt="Podman"><br><sub><b>Podman</b><br>containers · images · pods</sub></td>
+<td align="center" width="25%"><img src="docs/assets/grid-notes.webp" alt="Notes Hub"><br><sub><b>Notes Hub</b><br>scratchpad · notes · todos</sub></td>
+</tr>
+</table>
+
+<sub>These are eight of mshell's 30-plus widgets. More on the <a href="https://kenanpelit.github.io/margo/">documentation site</a>.</sub>
 
 ## Binaries
 
