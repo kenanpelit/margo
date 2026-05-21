@@ -19,6 +19,14 @@
   color: var(--primary);
 }
 
+// Connected device name (`bluetooth.rs::refresh` reveals it only when
+// a device is live). Match the bar type scale; left at the resting
+// on-surface colour so the accent stays on the icon (the "live" cue)
+// and the name reads as plain, legible text.
+.bluetooth-bar-label {
+  font-size: var(--font-bar);
+}
+
 // Menu row label — `set_bluetooth_label` adds `.bt-connected` to
 // the revealer-row label when a device is live, so the connected
 // device's name in the open Bluetooth menu reads in the matugen

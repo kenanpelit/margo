@@ -20,7 +20,7 @@ use mshell_utils::bluetooth::{
     set_bluetooth_icon, spawn_bluetooth_device_watcher, spawn_bluetooth_devices_watcher,
     spawn_bluetooth_enabled_watcher,
 };
-use relm4::gtk::prelude::{ButtonExt, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
 #[derive(Debug)]
@@ -75,10 +75,27 @@ impl Component for BluetoothModel {
                     sender.input(BluetoothInput::Clicked);
                 },
 
-                #[name="image"]
-                gtk::Image {
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 6,
                     set_halign: gtk::Align::Center,
                     set_valign: gtk::Align::Center,
+
+                    #[name="image"]
+                    gtk::Image {
+                        set_halign: gtk::Align::Center,
+                        set_valign: gtk::Align::Center,
+                    },
+
+                    // Connected device name. Hidden (icon-only) until a
+                    // device connects; `refresh` fills + reveals it.
+                    #[name="label"]
+                    gtk::Label {
+                        add_css_class: "bluetooth-bar-label",
+                        set_visible: false,
+                        set_ellipsize: gtk::pango::EllipsizeMode::End,
+                        set_max_width_chars: 18,
+                    },
                 }
             }
         }
@@ -98,7 +115,7 @@ impl Component for BluetoothModel {
 
         let widgets = view_output!();
 
-        refresh(&widgets.image, &root);
+        refresh(&widgets.image, &widgets.label, &root);
 
         // Initial per-device connectivity watchers — the watcher
         // for the device LIST only re-fires on add/remove, so
@@ -136,7 +153,7 @@ impl Component for BluetoothModel {
     ) {
         match message {
             BluetoothCommandOutput::StatusChanged => {
-                refresh(&widgets.image, root);
+                refresh(&widgets.image, &widgets.label, root);
 
                 // Device list may have grown / shrunk — cancel the
                 // previous batch of per-device watchers and respawn
@@ -150,25 +167,38 @@ impl Component for BluetoothModel {
                 }
             }
             BluetoothCommandOutput::ConnectionChanged => {
-                refresh(&widgets.image, root);
+                refresh(&widgets.image, &widgets.label, root);
             }
         }
     }
 }
 
-fn refresh(image: &gtk::Image, root: &gtk::Box) {
+fn refresh(image: &gtk::Image, label: &gtk::Label, root: &gtk::Box) {
     set_bluetooth_icon(image);
 
     let svc = bluetooth_service();
-    let any_connected = svc
-        .available
-        .get()
-        && svc.enabled.get()
-        && svc.devices.get().iter().any(|d| d.connected.get());
-
-    if any_connected {
-        root.add_css_class("connected");
+    // Name of the first currently-connected device, if any. Only the
+    // adapter being present + on counts — a stale `connected` flag on a
+    // disabled adapter shouldn't surface a name.
+    let connected_name = if svc.available.get() && svc.enabled.get() {
+        svc.devices
+            .get()
+            .iter()
+            .find(|d| d.connected.get())
+            .map(|d| d.alias.get().to_string())
     } else {
-        root.remove_css_class("connected");
+        None
+    };
+
+    match connected_name {
+        Some(name) => {
+            label.set_text(&name);
+            label.set_visible(true);
+            root.add_css_class("connected");
+        }
+        None => {
+            label.set_visible(false);
+            root.remove_css_class("connected");
+        }
     }
 }
