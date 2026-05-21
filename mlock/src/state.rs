@@ -28,6 +28,9 @@ pub struct MlockState {
     /// Pre-loaded user avatar (192×192 RGBA). `None` if neither
     /// `~/.face` nor `AccountsService` provided one.
     pub avatar: Option<image::RgbaImage>,
+    /// Matugen accent (primary) read once at startup; tints the
+    /// password dots / placeholder so the locker tracks the theme.
+    pub accent: (f64, f64, f64),
     /// Minute-precision wall clock — bumped by `tick()` so we can
     /// avoid full re-renders when nothing changed.
     last_minute: u32,
@@ -86,11 +89,13 @@ impl MlockState {
         if avatar.is_some() {
             info!("avatar loaded (~/.face or AccountsService)");
         }
+        let accent = crate::render::matugen_accent();
 
         let mut state = Self {
             conn: conn.clone(),
             wallpaper,
             avatar,
+            accent,
             last_minute: 0,
             compositor: None,
             shm: None,
@@ -319,6 +324,7 @@ impl MlockState {
                     &self.user,
                     self.wallpaper.as_ref(),
                     self.avatar.as_ref(),
+                    self.accent,
                 )?;
             }
         }
@@ -541,6 +547,7 @@ impl Dispatch<ext_session_lock_surface_v1::ExtSessionLockSurfaceV1, usize> for M
                         &user,
                         wallpaper.as_ref(),
                         avatar.as_ref(),
+                        state.accent,
                     ) {
                         Ok(()) => info!(idx, "initial render dispatched"),
                         Err(e) => warn!(idx, "initial render failed: {e:#}"),

@@ -64,6 +64,43 @@ const SHAKE_DURATION_MS: u64 = 400;
 const SHAKE_AMPLITUDE: f64 = 10.0;
 const SHAKE_FREQ_HZ: f64 = 14.0;
 
+/// Matugen accent (`primary_color.base`) read from the shell's palette
+/// at `$XDG_CACHE_HOME/margo/mshell-colors.toml`, so the locker's input
+/// accent tracks the wallpaper theme. Falls back to the neutral text
+/// colour when the file is absent (fresh install / no matugen run yet).
+/// Hand-parsed to keep a TOML dependency out of the locker.
+pub fn matugen_accent() -> (f64, f64, f64) {
+    read_accent().unwrap_or(TEXT)
+}
+
+fn read_accent() -> Option<(f64, f64, f64)> {
+    let base = std::env::var_os("XDG_CACHE_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".cache")))?;
+    let text = std::fs::read_to_string(base.join("margo").join("mshell-colors.toml")).ok()?;
+    for line in text.lines() {
+        let Some(rest) = line.trim_start().strip_prefix("primary_color") else {
+            continue;
+        };
+        // rest looks like: `    = { base = "#ffb2be", strong = … }`
+        let after_base = rest.split("base").nth(1)?;
+        let hash = after_base.find('#')?;
+        let hex: String = after_base[hash + 1..].chars().take(6).collect();
+        return parse_hex6(&hex);
+    }
+    None
+}
+
+fn parse_hex6(hex: &str) -> Option<(f64, f64, f64)> {
+    if hex.len() != 6 {
+        return None;
+    }
+    let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+    let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+    let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+    Some((r as f64 / 255.0, g as f64 / 255.0, b as f64 / 255.0))
+}
+
 pub fn draw_lock_frame(
     pixels: &mut [u8],
     width: i32,
@@ -73,6 +110,7 @@ pub fn draw_lock_frame(
     user: &str,
     wallpaper: Option<&image::RgbaImage>,
     avatar: Option<&image::RgbaImage>,
+    accent: (f64, f64, f64),
 ) -> Result<()> {
     let surface = unsafe {
         ImageSurface::create_for_data_unsafe(
@@ -186,14 +224,14 @@ pub fn draw_lock_frame(
         let total_dot_w =
             visible_dots as f64 * (DOT_RADIUS * 2.0 + DOT_SPACING) - DOT_SPACING;
         let mut dx = cx - total_dot_w / 2.0 + DOT_RADIUS + shake_dx;
-        cr.set_source_rgb(TEXT.0, TEXT.1, TEXT.2);
+        cr.set_source_rgb(accent.0, accent.1, accent.2);
         for _ in 0..visible_dots {
             cr.arc(dx, band_y, DOT_RADIUS, 0.0, std::f64::consts::TAU);
             cr.fill().ok();
             dx += DOT_RADIUS * 2.0 + DOT_SPACING;
         }
     } else {
-        cr.set_source_rgba(TEXT.0, TEXT.1, TEXT.2, 0.4);
+        cr.set_source_rgba(accent.0, accent.1, accent.2, 0.4);
         cr.rectangle(
             cx - PLACEHOLDER_PILL_W / 2.0 + shake_dx,
             band_y - PLACEHOLDER_PILL_H / 2.0,

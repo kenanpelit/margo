@@ -58,6 +58,7 @@ impl MlockSurface {
         user: &str,
         wallpaper: Option<&image::RgbaImage>,
         avatar: Option<&image::RgbaImage>,
+        accent: (f64, f64, f64),
     ) -> Result<()> {
         if self.width == 0 || self.height == 0 {
             return Ok(());
@@ -98,6 +99,7 @@ impl MlockSurface {
             user,
             wallpaper,
             avatar,
+            accent,
         )?;
 
         // Hand the buffer off to the compositor. wl_shm_pool needs an
