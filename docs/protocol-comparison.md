@@ -32,21 +32,21 @@ numbers are comparable.
 | Compositor | Protocols (approx.) | Stack | Note |
 |---|---|---|---|
 | **Hyprland** `0.55.0` | **~67** | C++ (hand-rolled) | Widest surface — 61 protocol modules + 6 core, plus Hyprland-only extensions |
-| **margo** | **~54** | Rust / smithay | Modern surface; **passed niri**, **drew level with mango** on a different protocol mix |
-| **mango** `0.13.1` | **~53** | C / wlroots | Broad-but-legacy: wlroots hands it everything, including protocols margo still lacks |
+| **margo** | **~57** | Rust / smithay | Modern surface; **passed niri and mango**; pursuing Hyprland |
+| **mango** `0.13.1` | **~53** | C / wlroots | Broad-but-legacy: wlroots hands it everything for free |
 | **niri** `26.4.0` | **~41** | Rust / smithay | Tightest surface; deliberately minimal |
 
-The headline story shifted this refresh: **margo (~54) has effectively
-drawn level with its own C ancestor mango (~53) in raw count — but with
-a deliberately different mix.** margo carries the *modern* protocol
-surface (HDR colour-management, content-type, fifo/commit-timing,
-security-context, pointer-warp, xdg-dialog, system-bell, toplevel-icon,
-toplevel-tag, xwayland-keyboard-grab) that mango's wlroots base does not
-expose, while mango still wins the *legacy wlroots freebies* (tearing,
-drm-lease, virtual-pointer, output-power, ext-workspace,
-foreign-toplevel write-side, export-dmabuf) that margo has not wired up
-yet. The remaining six margo gaps are, almost exactly, that
-wlroots-freebie set.
+The headline story shifted this refresh: **margo (~57) has overtaken its
+own C ancestor mango (~53)** after hand-rolling three protocols mango got
+from wlroots — `zwlr_foreign_toplevel_manager_v1` (write-side, P2),
+`ext_workspace_v1` (P5) and `zwlr_virtual_pointer_manager_v1` (P7). margo
+already led on the *modern* surface (HDR colour-management, content-type,
+fifo/commit-timing, security-context, pointer-warp, xdg-dialog,
+system-bell, toplevel-icon, toplevel-tag, xwayland-keyboard-grab) that
+mango's wlroots base doesn't expose; closing the workspace / toplevel /
+virtual-pointer gap puts it ahead outright. The three protocols still
+unadvertised (`output_power`, `tearing_control`, `drm_lease`) are
+blocked, not just deferred — see "remaining three gaps" below.
 
 ## Core baseline — present in all four
 
@@ -111,29 +111,36 @@ niri and mango each miss large chunks.
 > `xwayland_keyboard_grab` and `xdg_toplevel_icon` remain unique to
 > margo across all four.
 
-## The remaining six margo gaps — = the wlroots freebies
+## Recently shipped — the wlroots-freebie catch-up (P2 / P5 / P7)
 
-Six protocols margo doesn't (fully) advertise. The pattern is now
-clear: **these are exactly the protocols wlroots hands mango and
-Hyprland for free, plus the two niri also hand-rolled.** smithay either
-has no impl or needs backend hookup, so margo has deferred them to a
-dedicated session.
+Three protocols mango/Hyprland get for free from wlroots, hand-rolled in
+margo (ported from niri) so it no longer trails on them:
 
-| Protocol | margo | niri | Hyprland | mango | Daily-driver value |
+| Protocol | margo | niri | Hyprland | mango | What it unlocks |
 |---|---|---|---|---|---|
-| `zwlr_foreign_toplevel_manager_v1` (write-side) | ⚠️ list-only | ✅ | ✅ | ✅ | mshell bar click-to-activate / close / minimize |
-| `ext_workspace_v1` | ❌ scaffold | ✅ | ✅ | ✅ | Workspace protocol for shells that don't speak dwl-ipc |
-| `zwlr_virtual_pointer_manager_v1` | ❌ | ✅ | ✅ | ✅ | Remote-desktop / accessibility / `wtype --click` |
-| `zwlr_output_power_management_v1` | ❌ | ❌ | ✅ | ✅ | Wayland-side DPMS — `wlopm`, mshell blank-output |
-| `wp_tearing_control_v1` | ❌ | ❌ | ✅ | ✅ | Immediate-page-flip for games |
-| `wp_drm_lease_device_v1` | ❌ | ✅ | ✅ | ✅ | VR headsets / DP gaming displays |
+| `zwlr_foreign_toplevel_manager_v1` (write-side) | ✅ | ✅ | ✅ | ✅ | Taskbar click-to-activate / close / (un)fullscreen (mshell active-window pill) |
+| `ext_workspace_v1` | ✅ | ✅ | ✅ | ✅ | Workspace state for shells that don't speak dwl-ipc (sfwbar, ironbar) |
+| `zwlr_virtual_pointer_manager_v1` | ✅ | ✅ | ✅ | ✅ | Synthetic pointer — `wtype --click`, remote desktop, accessibility |
 
-- `ext_workspace_v1` exists as an empty scaffold in margo
-  (`protocols/ext_workspace.rs`) — state struct only, no global; tag
-  state is exposed via `dwl-ipc-unstable-v2` instead.
-- `zwlr_foreign_toplevel_manager_v1` is **read-side only** in margo: it
-  advertises `ext-foreign-toplevel-list-v1` (the list), not the wlr
-  write-side manager with `activate`/`close`/`set_minimized` requests.
+margo's foreign-toplevel write-side runs *alongside* the existing
+smithay `ext-foreign-toplevel-list-v1` (read side stays untouched).
+`ext_workspace_v1` maps each output to a workspace group with 9 fixed
+tag-workspaces (active = bitmask membership); dwl-ipc still runs in
+parallel. `virtual_pointer` feeds margo's normal input path.
+
+## The remaining three gaps — blocked, not just deferred
+
+These three are **not** a matter of effort — each hits a concrete
+upstream or architectural wall (confirmed by source audit 2026-05-21):
+
+| Protocol | margo | niri | Hyprland | mango | Why margo can't ship it cleanly today |
+|---|---|---|---|---|---|
+| `zwlr_output_power_management_v1` | ❌ | ❌ | ✅ | ✅ | Doable via margo's deferred-queue pattern, but DPMS off/on is an untested DRM-path change with a black-screen failure mode — needs on-hardware iteration |
+| `wp_tearing_control_v1` | ❌ | ❌ | ✅ | ✅ | **Upstream-blocked**: smithay's `DrmCompositor` exposes no tearing / async page-flip (`FrameFlags` has no tearing variant) and the `wp_tearing_control` bindings aren't in the pinned wayland-protocols. Advertising it would be a no-op lie to clients |
+| `wp_drm_lease_device_v1` | ❌ | ✅ | ✅ | ✅ | **Architecture-blocked**: `lease_request` must synchronously build a `DrmLeaseBuilder` from the live `DrmDevice`, which lives in the udev `BackendData` that `MargoState` deliberately cannot reach (the deferred-queue pattern can't help — the return is synchronous) |
+
+Both niri and margo lack `output_power` + `tearing`; only `drm_lease`
+is something niri has that margo doesn't. None blocks daily-driver use.
 
 ## Compositor-specific protocols (informational, not gaps)
 
@@ -152,21 +159,20 @@ Tied to each project's own ecosystem; not counted as margo gaps.
 | `xdg_output_v1` (legacy) | Hyprland **and** mango | Pre-`wl_output v4` HiDPI workaround |
 | `zwlr_export_dmabuf_manager_v1` | mango only | Legacy wlroots screencast (superseded by image-copy-capture) |
 
-## Sequencing — when to take the remaining six
+## Unblocking the remaining three
 
-Back-loaded by design. Most-useful-first, given margo's trajectory:
+Each needs a prerequisite, not just a coding session:
 
-1. **`zwlr_foreign_toplevel_manager_v1`** (write-side) — gates mshell
-   bar click-to-activate. Highest UX leverage; niri's ~669-LOC impl is
-   the reference.
-2. **`ext_workspace_v1`** — lets non-dwl-ipc shells (sfwbar, ironbar)
-   show margo workspaces. Needs a tags ↔ workspaces semantics pass.
-3. **`zwlr_virtual_pointer_manager_v1`** — pairs with the already-
-   shipped virtual-keyboard; unlocks accessibility tooling.
-4. **`zwlr_output_power_management_v1`** — Wayland-side DPMS so mshell
-   can blank outputs without libdrm.
-5. **`wp_tearing_control_v1`** — game-oriented users only.
-6. **`wp_drm_lease_device_v1`** — VR / gaming displays; smithay does the
-   protocol, cost is udev-backend connector exposure.
+1. **`zwlr_output_power_management_v1`** — implementable now via margo's
+   deferred-queue pattern (`pending_output_mode_changes` is the model),
+   but the DPMS apply needs on-hardware iteration before it's safe to
+   ship — a wrong re-enable path black-screens the output.
+2. **`wp_tearing_control_v1`** — wait for smithay's `DrmCompositor` to
+   expose tearing / async page-flip (FrameFlags variant). Until then any
+   advertisement is a no-op. Track upstream smithay.
+3. **`wp_drm_lease_device_v1`** — needs `MargoState` to reach the udev
+   `DrmDevice` synchronously (a small backend-access change to the
+   deliberate State/BackendData split). Lowest value (VR / leased
+   connectors), so lowest priority.
 
-See `road_map.md` §15.10 for the work plan and rationale.
+See `road_map.md` §15.10 for the full work log and blocker analysis.

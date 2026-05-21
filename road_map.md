@@ -1,6 +1,6 @@
 # Margo Road Map
 
-> **Last updated:** 2026-05-15 — Phase 1 closed at **v0.1.6**; Phase 2 (Quality & growth) opens; Wayland protocol parity sweep (§15.10) closed 11/17 Tier items + 5 bonus smithay-natives in a single day. Side-by-side audit lives in `docs/protocol-comparison.md`.
+> **Last updated:** 2026-05-21 — Phase 1 closed at **v0.1.6**; Phase 2 (Quality & growth) open. Wayland protocol parity sweep (§15.10): 14/17 Tier items + 5 bonus shipped (P2/P5/P7 hand-rolled niri ports landed 2026-05-21 → ~57 globals, past mango). The last 3 (P11/P12/P13) are blocked by smithay capability / margo architecture, not effort. Side-by-side audit lives in `docs/protocol-comparison.md`.
 > **Branch:** `main` (single-branch — Rust port complete; the C tree remains as legacy reference under `src/`)
 > **Status:** Daily-driver Wayland compositor at niri-class feature parity. Phase 1 (catch-and-surpass-niri sweep) closed; Phase 2 (quality, polish, growth) open.
 
@@ -696,48 +696,54 @@ protocols, not consuming standardized ones).
 > that file for "who advertises what." This section is the **work
 > plan**: which gaps to close, in what order, and with what cost.
 
-#### Status snapshot — 2026-05-15
+#### Status snapshot — 2026-05-21
 
 After a single-day sweep landed in commits `dc44818` (P1, P3, P4,
 P9), `74a0edb` (P6, P8, P10, P14, P15, P16, P17), and `c146aac`
 (bonus: xwayland-keyboard-grab, xdg-toplevel-icon, xdg-system-bell,
 pointer-warp, xdg-toplevel-tag), margo's protocol surface grew from
-~38 to **~54 advertised globals**, passing niri (~41) and pursuing
-Hyprland (~62) on standard protocols.
+~38 to ~54 advertised globals (2026-05-15).
+
+**2026-05-21 update:** P2 (`e2ba73a`), P5 (`bf11bce`) and P7
+(`7fdbcca`) shipped — the three "wlroots-freebie" protocols
+(foreign-toplevel write-side, ext-workspace, virtual-pointer), each
+hand-rolled from a niri reference. Surface is now **~57 advertised
+globals**, **past mango (~53)** and pursuing Hyprland (~67). The
+remaining three (P11, P12, P13) are blocked, not just deferred — see
+their rows + the unblocking notes below.
 
 | Tier | Shipped | Pending | Note |
 |---|---|---|---|
-| Tier 1 (daily-driver) | 3/5 (P1, P3, P4) | 2 (P2, P5) | Both pending are hand-rolled (smithay has no impl or only partial) |
-| Tier 2 (niche / common) | 4/6 (P6, P8, P9, P10) | 2 (P7, P11) | P7 hand-rolled; P11 backend-coupled |
-| Tier 3 (Hyprland fast-adopters) | 4/6 (P14, P15, P16, P17) | 2 (P12, P13) | Both hand-rolled (no smithay) |
+| Tier 1 (daily-driver) | 5/5 (P1–P5) | — | P2, P5 shipped 2026-05-21 (niri ports) |
+| Tier 2 (niche / common) | 5/6 (P6, P7, P8, P9, P10) | 1 (P11) | P7 shipped 2026-05-21; P11 architecture-blocked |
+| Tier 3 (Hyprland fast-adopters) | 4/6 (P14, P15, P16, P17) | 2 (P12, P13) | P12 feasible-but-deferred; P13 upstream-blocked |
 | Bonus (smithay-native extras) | 5/5 | — | xwayland-keyboard-grab, toplevel-icon, system-bell, pointer-warp, toplevel-tag |
 
-The remaining 6 are intentionally back-loaded — all are either
-hand-rolled work (no smithay delegate) or backend-coupled (P11
-needs udev connector exposure). Per project policy, large
-hand-rolled protocol implementations get dedicated sessions rather
-than being batched with low-cost smithay delegations.
+The remaining 3 (P11, P12, P13) are **blocked, not just back-loaded** —
+P11 by margo's State/BackendData split, P13 by smithay (no tearing /
+async page-flip), P12 by the untested-DPMS / black-screen risk. See the
+per-row notes + "Unblocking the remaining three" below.
 
 #### Tier 1 — daily-driver impact (high value, low/medium cost)
 
 | # | Protocol | What it enables | smithay support | Cost |
 |---|---|---|---|---|
 | **P1** ✅ | `zwp_keyboard_shortcuts_inhibit_manager_v1` | VNC / RDP / VirtualBox-style clients can grab all host shortcuts (Super, Ctrl+Alt) so the keys reach the guest. **Direct follow-up to the v0.5.0 XWayland keyboard fix.** Shipped in `dc44818` — `input_handler.rs` short-circuits the keybinding match when the focused surface has an active inhibitor. Auto-activate policy (matches niri). | `delegate_keyboard_shortcuts_inhibit!` | low (~1 file) |
-| **P2** ⏸️ | `zwlr_foreign_toplevel_manager_v1` (wlr, **write-side**) | Bar / dock click-to-activate, close, minimize on toplevels. mshell's active-window pill is read-only today because margo only exposes `ext-foreign-toplevel-list-v1` (list-only). Adding write-side unlocks taskbar UX. | hand-rolled — smithay only has list side (niri reference ~669 LOC) | mid (deferred — dedicated session) |
+| **P2** ✅ | `zwlr_foreign_toplevel_manager_v1` (wlr, **write-side**) | Bar / dock click-to-activate, close, (un)fullscreen on toplevels. Shipped `e2ba73a` — additive `WlrForeignToplevelState` alongside the smithay ext-list (read side untouched), refreshed per-repaint; activate reuses the xdg-activation focus+raise path. maximize/minimize no-op (tiling). | hand-rolled — ported from niri (~669 LOC ref) | done 2026-05-21 |
 | **P3** ✅ | `zwp_pointer_gestures_v1` | Touchpad pinch / swipe gestures forwarded to clients (Firefox pinch-zoom, GNOME apps, Inkscape). Shipped in `dc44818`. | `delegate_pointer_gestures!` | low |
 | **P4** ✅ | `xdg_foreign_v2` | Cross-process surface embedding — Firefox / Chromium Picture-in-Picture, xdg-desktop-portal screencast window targeting. Shipped in `dc44818`. | `delegate_xdg_foreign!` | low |
-| **P5** ⏸️ | `ext_workspace_v1` | Modern standardized workspace protocol (margo currently exposes workspaces only via dwl-ipc-v2). Required for shells that don't speak dwl-ipc (sfwbar, ironbar, etc.) to show workspace state. | hand-rolled — niri reference ~715 LOC + tag ↔ workspace semantics design | mid (deferred — dedicated session) |
+| **P5** ✅ | `ext_workspace_v1` | Modern standardized workspace protocol. Shipped `bf11bce` — output = workspace group, 9 fixed tag-workspaces per group, active = bitmask membership in the monitor tagset, activate → warp+view_tag. Replaced the empty per-monitor scaffold with a single global state. dwl-ipc stays in parallel. | hand-rolled — ported from niri (~715 LOC ref) + margo tag-model semantics | done 2026-05-21 |
 
 #### Tier 2 — niche but common (medium value)
 
 | # | Protocol | What it enables | smithay support | Cost |
 |---|---|---|---|---|
 | **P6** ✅ | `zwp_tablet_manager_v2` | Wacom / Huion drawing tablets — pen pressure, tilt, eraser, buttons. Shipped in `74a0edb` — folded the orphan `impl TabletSeatHandler` that was sitting in state.rs into the new handler file. | `delegate_tablet_manager!` | mid |
-| **P7** ⏸️ | `zwlr_virtual_pointer_manager_v1` | Companion to v0.4.8's `zwp_virtual_keyboard_v1` — remote-desktop / accessibility / `wtype --click` style pointer injection. | hand-rolled — niri reference ~563 LOC | low (deferred — dedicated session) |
+| **P7** ✅ | `zwlr_virtual_pointer_manager_v1` | Companion to `zwp_virtual_keyboard_v1` — remote-desktop / accessibility / `wtype --click` pointer injection. Shipped `7fdbcca` — near-verbatim niri port; synthetic `VirtualPointerInputBackend` events fed through `input_handler::handle_input` (same focus/constraint path as libinput). | hand-rolled — ported from niri (~563 LOC ref) | done 2026-05-21 |
 | **P8** ✅ | `wp_security_context_v1` | Flatpak / sandboxed app identification. Shipped in `74a0edb` — handler inserts listener source into calloop. Restricted-client enforcement (gating sensitive protocols) is a follow-up. | `delegate_security_context!` | low |
 | **P9** ✅ | `wp_single_pixel_buffer_v1` | Solid-color buffer optimization — modern apps (GTK4, kwin clients) skip a real buffer alloc for opaque-fill regions. Shipped in `dc44818`. | `delegate_single_pixel_buffer!` | trivial |
 | **P10** ✅ | `org_kde_kwin_server_decoration` | Legacy KDE SSD/CSD negotiation — some older Qt5 / KDE apps still expect it. Shipped in `74a0edb` with default mode Server (matches margo's SSD-first xdg-decoration policy). | `delegate_kde_decoration!` | trivial |
-| **P11** ⏸️ | `wp_drm_lease_device_v1` | DRM leasing — VR headsets (Valve Index, Vive), exclusive-output gaming displays bypass the compositor. | `delegate_drm_lease!` available, but needs udev backend connector exposure | mid (deferred — backend session) |
+| **P11** 🚧 | `wp_drm_lease_device_v1` | DRM leasing — VR headsets (Valve Index, Vive), exclusive-output gaming displays bypass the compositor. | **architecture-blocked** (audit 2026-05-21): smithay's `DrmLeaseState` exists, but `lease_request` must *synchronously* build a `DrmLeaseBuilder` from the live `DrmDevice`, which lives in the udev `BackendData` that `MargoState` deliberately cannot reach (state.rs:250). The deferred-queue pattern can't help (sync return). Needs a backend-access change to `MargoState`. Lowest value. | blocked |
 
 #### Tier 3 — Hyprland-only fast-adopters (track, not blocker)
 
@@ -747,8 +753,8 @@ specific gap.
 
 | # | Protocol | What it enables | smithay support |
 |---|---|---|---|
-| **P12** ⏸️ | `zwlr_output_power_management_v1` | Wayland-side DPMS — `wlopm` and shells (mshell) can blank outputs without going through libdrm directly. | hand-rolled — no smithay impl |
-| **P13** ⏸️ | `wp_tearing_control_v1` | Variable-refresh / immediate-page-flip mode for games. | hand-rolled — no smithay impl |
+| **P12** ⏸️ | `zwlr_output_power_management_v1` | Wayland-side DPMS — `wlopm` and shells (mshell) can blank outputs without going through libdrm directly. | **feasible, deferred** (audit 2026-05-21): bindings exist (`wayland_protocols_wlr::output_power_management`), implementable via margo's deferred-queue pattern (`pending_output_mode_changes` is the model). Deferred because the DPMS off/on apply is an untested DRM-path change with a black-screen failure mode — needs on-hardware iteration. |
+| **P13** 🚧 | `wp_tearing_control_v1` | Variable-refresh / immediate-page-flip mode for games. | **upstream-blocked** (audit 2026-05-21): smithay's `DrmCompositor` exposes no tearing / async page-flip — `FrameFlags` has no tearing variant — and `wp_tearing_control` bindings aren't in the pinned wayland-protocols. Advertising it would be a no-op. Track upstream smithay. |
 | **P14** ✅ | `wp_content_type_v1` | Apps signal "this is video / this is game" — compositor can disable presentation-time hints, enable tearing, etc. Shipped in `74a0edb`. | `delegate_content_type!` |
 | **P15** ✅ | `wp_fifo_v1` + `wp_commit_timing_v1` | Newer presentation-pacing protocols. Shipped in `74a0edb`. | `delegate_fifo!` + `delegate_commit_timing!` |
 | **P16** ✅ | `wp_alpha_modifier_v1` | Per-surface alpha hint. Shipped in `74a0edb`. | `delegate_alpha_modifier!` |
@@ -779,29 +785,25 @@ work:
 | `wp_pointer_warp_v1` | Programmatic cursor warp requests. Default no-op (opt-in policy). |
 | `xdg_toplevel_tag_v1` | Semantic tags + descriptions on toplevels. Default no-op; could feed window-rule matching. |
 
-#### Recommended sequencing — remaining six
+#### Unblocking the remaining three
 
-Original sequencing closed for P1, P3, P4, P9 (smithay-native, batched
-2026-05-15). The six pending items below are all hand-rolled or
-backend-coupled and each warrants its own session.
+P1, P3, P4, P9 (smithay-native) batched 2026-05-15. P2, P5, P7
+(hand-rolled niri ports) shipped 2026-05-21. The three left each need
+a *prerequisite*, not just a coding session:
 
-1. **P2 — `wlr_foreign_toplevel_manager_v1` write-side** (~669 LOC,
-   niri reference). Highest UX leverage: gates mshell bar
-   click-to-activate / close / minimize. The natural next session.
-2. **P5 — `ext_workspace_v1`** (~715 LOC + tag ↔ workspace semantics
-   design). Unlocks shells that don't speak dwl-ipc. Needs a design
-   pass before code.
-3. **P7 — `wlr_virtual_pointer_v1`** (~563 LOC, niri reference).
-   Pairs cleanly with the already-shipped `virtual_keyboard_v1`;
-   completes the synthetic-input story.
-4. **P12 — `wlr_output_power_management_v1`** (hand-rolled — smithay
-   has nothing). Wayland-side DPMS for mshell. Lower than P2/P5
-   because mshell can shell out to `wlopm` today.
-5. **P13 — `wp_tearing_control_v1`** (hand-rolled). Only matters for
-   game-oriented users; parallels HDR Phase 2 tone (perf-tuning).
-6. **P11 — `wp_drm_lease_device_v1`** (smithay-native delegate, but
-   needs udev backend connector exposure). Best paired with other
-   udev backend work, not on its own.
+1. **P12 — `zwlr_output_power_management_v1`** — implementable now via
+   the deferred-queue pattern (`pending_output_mode_changes` is the
+   model), but the DPMS apply needs on-hardware iteration before it's
+   safe to ship: a wrong re-enable path black-screens the output. Do it
+   with a reboot/TTY-recovery loop, not blind.
+2. **P13 — `wp_tearing_control_v1`** — wait for smithay's
+   `DrmCompositor` to expose tearing / async page-flip (a `FrameFlags`
+   variant). Until then, any advertisement is a no-op lie. Track
+   upstream smithay; revisit on the next smithay bump.
+3. **P11 — `wp_drm_lease_device_v1`** — needs `MargoState` to reach the
+   udev `DrmDevice` synchronously (a small, deliberate-by-design
+   backend-access change to the State/BackendData split). Lowest value
+   (VR / leased connectors), so lowest priority.
 
 ---
 
