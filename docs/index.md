@@ -33,6 +33,8 @@ screen-share and screenshot portal**.
 
 You don't assemble a desktop around margo. You install it and you have one.
 
+![The margo desktop with the mshell top bar](assets/showcase-desktop.webp){ loading=lazy }
+
 [Smithay]: https://github.com/Smithay/smithay
 [mango]: https://github.com/mangowm/mango
 
@@ -68,6 +70,23 @@ piece and themed as one piece.
 The honest pitch: niri's scrollable tiling and Hyprland's ecosystem are great.
 margo's bet is **one integrated, modern, Rust stack** — compositor + shell +
 portals — that looks polished and works out of the box.
+
+---
+
+## Showcase
+
+Everything below is part of the default install — no extra packages, no glue
+scripts. The whole shell recolours itself from your wallpaper.
+
+<div class="grid" markdown>
+
+![Dashboard — clock, calendar, weather, quick-settings sliders, and media in one panel](assets/showcase-dashboard.webp){ loading=lazy }
+
+![App launcher — fuzzy apps with frecency, plus ~15 providers and category tabs](assets/showcase-launcher.webp){ loading=lazy }
+
+![Twilight — the built-in blue-light filter with schedule presets](assets/showcase-twilight.webp){ loading=lazy }
+
+</div>
 
 ---
 
