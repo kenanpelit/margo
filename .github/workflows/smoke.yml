@@ -64,6 +64,10 @@ jobs:
           DISPLAY: ':99'
           SMOKE_VERBOSE: '1'
           LIBGL_ALWAYS_SOFTWARE: '1'
+          # Cold llvmpipe EGL init under Xvfb is much slower than a GPU,
+          # so give the nested compositor 40 s to publish its socket.
+          SMOKE_BOOT_TRIES: '400'
+          GALLIUM_DRIVER: llvmpipe
 
       - name: Upload smoke logs on failure
         if: failure()

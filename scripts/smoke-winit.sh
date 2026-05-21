@@ -139,9 +139,13 @@ trap cleanup EXIT INT TERM
 
 # Wait for the nested compositor to publish a wayland socket. winit
 # logs the new display name as `info: starting Wayland nested backend
-# on wayland-N` (or similar). Grep until it appears, capped at 8 s.
+# on wayland-N` (or similar). Grep until it appears. The poll count is
+# `SMOKE_BOOT_TRIES` × 0.1 s (default 80 = 8 s); CI bumps it because
+# cold software-GL (llvmpipe) EGL init under Xvfb is far slower than a
+# real GPU.
 WAYLAND_DISPLAY_NESTED=""
-for _ in $(seq 1 80); do
+boot_tries="${SMOKE_BOOT_TRIES:-80}"
+for _ in $(seq 1 "$boot_tries"); do
     sleep 0.1
     line="$(grep -oE 'wayland-[0-9]+' "$LOG" | tail -n 1 || true)"
     if [[ -n "$line" ]]; then
@@ -150,7 +154,7 @@ for _ in $(seq 1 80); do
     fi
 done
 if [[ -z "$WAYLAND_DISPLAY_NESTED" ]]; then
-    fail "nested margo did not announce a wayland socket within 8 s"
+    fail "nested margo did not announce a wayland socket within $((boot_tries / 10)) s"
 fi
 ok "nested socket: $WAYLAND_DISPLAY_NESTED"
 
