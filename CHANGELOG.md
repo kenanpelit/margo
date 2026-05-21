@@ -7,6 +7,31 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.7.3] – 2026-05-21
+
+### Added
+
+- **Cross-distro `install.sh`.** A single self-contained installer at
+  the repo root that detects the distribution and builds, installs, and
+  uninstalls margo. On **Arch / CachyOS** it builds via the repo
+  `PKGBUILD` with `makepkg` and installs with `pacman` (uninstall =
+  `pacman -R margo-git`). On **Debian / Ubuntu** it installs the apt
+  build deps, bootstraps a current Rust via `rustup` when the system one
+  is too old, builds `gtk4-layer-shell` from source when it isn't
+  packaged, compiles the workspace, and installs to `/usr` — recording
+  every path in a manifest so `uninstall` removes exactly what was
+  added. Validated end-to-end on Ubuntu 24.04.3.
+
+### Notes
+
+- **Ubuntu requires GTK ≥ 4.20.** margo's gtk4-rs (0.10) needs GTK 4.19+,
+  so Ubuntu 24.04 LTS (GTK 4.14) cannot build the shell, and `apt
+  upgrade` won't change that for the LTS lifetime. Use Ubuntu 25.10+ /
+  26.04 LTS or any distro with GTK 4.20+. `install.sh` checks the GTK
+  version up front and stops early with a clear message. README install
+  section rewritten around the installer; design in
+  `docs/install-script.md`.
+
 ## [0.7.2] – 2026-05-21
 
 ### Added
