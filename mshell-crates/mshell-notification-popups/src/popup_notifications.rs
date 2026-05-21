@@ -53,7 +53,13 @@ impl Component for PopupNotificationsModel {
         gtk::Window {
             set_css_classes: &["popup-notifications-window", "window-opacity"],
             set_decorated: false,
-            set_visible: true,
+            // Start hidden and toggle with the popup count (see
+            // NotificationsChanged). An always-visible layer-shell overlay
+            // keeps showing its last committed frame after the toasts are
+            // removed — leaving a half-collapsed remnant ("stuck View
+            // button") on screen. Hiding the surface when empty makes the
+            // compositor drop it. Same lifecycle mshell-osd uses.
+            set_visible: false,
             set_default_height: 1,
 
             gtk::Box {
@@ -159,7 +165,7 @@ impl Component for PopupNotificationsModel {
         widgets: &mut Self::Widgets,
         message: Self::CommandOutput,
         sender: ComponentSender<Self>,
-        _root: &Self::Root,
+        root: &Self::Root,
     ) {
         match message {
             PopupNotificationsCommandOutput::NotificationsChanged => {
@@ -168,6 +174,11 @@ impl Component for PopupNotificationsModel {
                     count = notifications.len(),
                     "popup_notifications: NotificationsChanged → SetItems"
                 );
+                // Show the overlay surface only while there are toasts.
+                // Hiding it when the list empties forces the compositor to
+                // drop the surface, so a removed toast can't linger as a
+                // stale / half-collapsed frame.
+                root.set_visible(!notifications.is_empty());
                 self.dynamic_box_controller
                     .emit(DynamicBoxInput::SetItems(notifications));
             }
