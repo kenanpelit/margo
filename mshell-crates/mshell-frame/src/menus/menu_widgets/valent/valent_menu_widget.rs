@@ -456,7 +456,7 @@ fn unreachable_card(
     sender: &ComponentSender<ValentMenuWidgetModel>,
 ) -> gtk::Box {
     let card = info_card(
-        "phone-disconnected-symbolic",
+        "phone-symbolic",
         &format!("{} is paired but not reachable.", device.name),
     );
     let unpair = gtk::Button::with_label("Unpair");
