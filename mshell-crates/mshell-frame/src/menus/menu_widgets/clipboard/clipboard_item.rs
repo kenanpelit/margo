@@ -92,7 +92,7 @@ impl Component for ClipboardItemModel {
                 gtk::Box {
                     add_css_class: "clipboard-item",
                     set_orientation: gtk::Orientation::Vertical,
-                    set_spacing: 12,
+                    set_spacing: 2,
 
                     gtk::Label {
                         add_css_class: "clipboard-item-title",
@@ -132,7 +132,7 @@ impl Component for ClipboardItemModel {
                     .wrap(true)
                     .wrap_mode(gtk::pango::WrapMode::WordChar)
                     .build();
-                label.add_css_class("label-small-bold");
+                label.add_css_class("label-medium-bold");
                 widgets.preview_box.append(&label);
             }
             EntryPreview::Image {
