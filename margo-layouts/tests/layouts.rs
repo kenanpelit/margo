@@ -3,7 +3,7 @@
 //! index preservation, containment), a few exact geometries for the
 //! master-stack layouts, and the `LayoutId` name/symbol round-trips.
 
-use margo_layouts::{arrange, ArrangeCtx, GapConfig, LayoutId, Rect};
+use margo_layouts::{ArrangeCtx, GapConfig, LayoutId, Rect, arrange};
 
 const WA: Rect = Rect {
     x: 0,
@@ -130,7 +130,10 @@ fn contained_layouts_keep_every_rect_inside_the_work_area() {
                         && r.y + r.height <= WA.y + WA.height,
                     "{layout:?} n={n} client {idx} escaped the work area: {r:?}"
                 );
-                assert!(r.width > 0 && r.height > 0, "{layout:?} gave client {idx} a degenerate rect: {r:?}");
+                assert!(
+                    r.width > 0 && r.height > 0,
+                    "{layout:?} gave client {idx} a degenerate rect: {r:?}"
+                );
             }
         }
     }
@@ -153,7 +156,10 @@ fn tile_puts_master_left_of_stack() {
     let out = arrange(LayoutId::Tile, &ctx(&tiled, &gaps, &props, 1, 0.5));
     let master = out[0].1;
     let stack = out[1].1;
-    assert!(master.x < stack.x, "master {master:?} should sit left of stack {stack:?}");
+    assert!(
+        master.x < stack.x,
+        "master {master:?} should sit left of stack {stack:?}"
+    );
     // No overlap horizontally.
     assert!(master.x + master.width <= stack.x);
 }
@@ -166,7 +172,10 @@ fn right_tile_puts_master_right_of_stack() {
     let out = arrange(LayoutId::RightTile, &ctx(&tiled, &gaps, &props, 1, 0.5));
     let master = out[0].1;
     let stack = out[1].1;
-    assert!(master.x > stack.x, "master {master:?} should sit right of stack {stack:?}");
+    assert!(
+        master.x > stack.x,
+        "master {master:?} should sit right of stack {stack:?}"
+    );
 }
 
 #[test]
@@ -241,14 +250,22 @@ fn nmaster_at_least_client_count_makes_one_column() {
 #[test]
 fn layout_names_round_trip() {
     for &l in LayoutId::all_tileable() {
-        assert_eq!(LayoutId::from_name(l.name()), Some(l), "name round-trip failed for {l:?}");
+        assert_eq!(
+            LayoutId::from_name(l.name()),
+            Some(l),
+            "name round-trip failed for {l:?}"
+        );
     }
 }
 
 #[test]
 fn layout_symbols_round_trip() {
     for &l in LayoutId::all_tileable() {
-        assert_eq!(LayoutId::from_symbol(l.symbol()), Some(l), "symbol round-trip failed for {l:?}");
+        assert_eq!(
+            LayoutId::from_symbol(l.symbol()),
+            Some(l),
+            "symbol round-trip failed for {l:?}"
+        );
     }
 }
 

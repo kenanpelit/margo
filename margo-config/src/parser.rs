@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use tracing::{error, warn};
 use xkbcommon::xkb;
 
@@ -75,13 +75,7 @@ fn parse_file(cfg: &mut Config, path: &Path, required: bool) -> Result<()> {
             continue;
         }
         if let Err(e) = parse_line(cfg, line, path) {
-            error!(
-                "{}:{}: {} — {:?}",
-                path.display(),
-                lineno + 1,
-                e,
-                line
-            );
+            error!("{}:{}: {} — {:?}", path.display(), lineno + 1, e, line);
         }
     }
     Ok(())
@@ -240,9 +234,7 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
         "animation_spring_damping_ratio" => {
             cfg.animation_spring_damping_ratio = val.trim().parse().unwrap_or(1.0)
         }
-        "animation_spring_mass" => {
-            cfg.animation_spring_mass = val.trim().parse().unwrap_or(1.0)
-        }
+        "animation_spring_mass" => cfg.animation_spring_mass = val.trim().parse().unwrap_or(1.0),
 
         // scroller
         "scroller_structs" => cfg.scroller_structs = parse_i32(val),
@@ -348,21 +340,13 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
         "twilight_day_gamma" => cfg.twilight_day_gamma = parse_u32(val).clamp(10, 200),
         "twilight_night_gamma" => cfg.twilight_night_gamma = parse_u32(val).clamp(10, 200),
         "twilight_transition_s" => cfg.twilight_transition_s = parse_u32(val).clamp(30, 7200),
-        "twilight_update_interval" => {
-            cfg.twilight_update_interval = parse_u32(val).clamp(10, 300)
-        }
+        "twilight_update_interval" => cfg.twilight_update_interval = parse_u32(val).clamp(10, 300),
         "twilight_latitude" => cfg.twilight_latitude = parse_f32(val).clamp(-90.0, 90.0),
-        "twilight_longitude" => {
-            cfg.twilight_longitude = parse_f32(val).clamp(-180.0, 180.0)
-        }
+        "twilight_longitude" => cfg.twilight_longitude = parse_f32(val).clamp(-180.0, 180.0),
         "twilight_sunrise" => cfg.twilight_sunrise_sec = parse_hms_to_seconds(val),
         "twilight_sunset" => cfg.twilight_sunset_sec = parse_hms_to_seconds(val),
-        "twilight_static_temp" => {
-            cfg.twilight_static_temp = parse_u32(val).clamp(1000, 25000)
-        }
-        "twilight_static_gamma" => {
-            cfg.twilight_static_gamma = parse_u32(val).clamp(10, 200)
-        }
+        "twilight_static_temp" => cfg.twilight_static_temp = parse_u32(val).clamp(1000, 25000),
+        "twilight_static_gamma" => cfg.twilight_static_gamma = parse_u32(val).clamp(10, 200),
         "twilight_schedule_dir" => cfg.twilight_schedule_dir = val.trim().to_string(),
         "hot_corner_top_left" => cfg.hot_corner_top_left = val.trim().to_string(),
         "hot_corner_top_right" => cfg.hot_corner_top_right = val.trim().to_string(),
@@ -424,9 +408,9 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
                 "contain" => crate::types::WallpaperFit::Contain,
                 "fill" => crate::types::WallpaperFit::Fill,
                 "center" => crate::types::WallpaperFit::Center,
-                other => bail!(
-                    "wallpaper_fit must be one of cover|contain|fill|center, got `{other}`"
-                ),
+                other => {
+                    bail!("wallpaper_fit must be one of cover|contain|fill|center, got `{other}`")
+                }
             };
         }
 
@@ -677,7 +661,8 @@ fn parse_switchbind(cfg: &mut Config, val: &str) -> Result<()> {
     let fold = parse_fold(&parts[0]);
     let action = parts[1].clone();
     let arg = build_arg(&parts[2..]);
-    cfg.switch_bindings.push(SwitchBinding { fold, action, arg });
+    cfg.switch_bindings
+        .push(SwitchBinding { fold, action, arg });
     Ok(())
 }
 
@@ -751,9 +736,7 @@ fn parse_windowrule(cfg: &mut Config, val: &str) -> Result<()> {
             "appid" | "app_id" => rule.id = Some(v),
             "title" => rule.title = Some(v),
             // Niri-style exclude clauses — invert the match.
-            "exclude_appid" | "exclude_app_id" | "not_appid" => {
-                rule.exclude_id = Some(v)
-            }
+            "exclude_appid" | "exclude_app_id" | "not_appid" => rule.exclude_id = Some(v),
             "exclude_title" | "not_title" => rule.exclude_title = Some(v),
             // Niri-style size constraints. Apply to both tiled (clamps the
             // computed geometry) and floating windows.
@@ -795,9 +778,7 @@ fn parse_windowrule(cfg: &mut Config, val: &str) -> Result<()> {
                     rule.height = parse_i32_s(&v);
                 }
             }
-            "isfloating" | "floating" | "is_floating" => {
-                rule.is_floating = Some(parse_bool_s(&v))
-            }
+            "isfloating" | "floating" | "is_floating" => rule.is_floating = Some(parse_bool_s(&v)),
             "isfullscreen" | "fullscreen" | "is_fullscreen" => {
                 rule.is_fullscreen = Some(parse_bool_s(&v))
             }
@@ -805,9 +786,7 @@ fn parse_windowrule(cfg: &mut Config, val: &str) -> Result<()> {
                 rule.is_fake_fullscreen = Some(parse_bool_s(&v))
             }
             "scroller_proportion" => rule.scroller_proportion = Some(parse_f32_s(&v)),
-            "scroller_proportion_single" => {
-                rule.scroller_proportion_single = Some(parse_f32_s(&v))
-            }
+            "scroller_proportion_single" => rule.scroller_proportion_single = Some(parse_f32_s(&v)),
             "animation_type_open" => rule.animation_type_open = Some(v),
             "animation_type_close" => rule.animation_type_close = Some(v),
             "layer_animation_type_open" => rule.layer_animation_type_open = Some(v),
@@ -824,9 +803,7 @@ fn parse_windowrule(cfg: &mut Config, val: &str) -> Result<()> {
             "isglobal" => rule.is_global = Some(parse_bool_s(&v)),
             // Accept the same three spellings as `isfloating` so
             // user typos don't silently drop on the floor.
-            "isoverlay" | "is_overlay" | "overlay" => {
-                rule.is_overlay = Some(parse_bool_s(&v))
-            }
+            "isoverlay" | "is_overlay" | "overlay" => rule.is_overlay = Some(parse_bool_s(&v)),
             "allow_shortcuts_inhibit" => rule.allow_shortcuts_inhibit = Some(parse_bool_s(&v)),
             "ignore_maximize" => rule.ignore_maximize = Some(parse_bool_s(&v)),
             "ignore_minimize" => rule.ignore_minimize = Some(parse_bool_s(&v)),
@@ -880,8 +857,7 @@ fn parse_monitorrule(cfg: &mut Config, val: &str) -> Result<()> {
             other => warn!("unknown monitorrule option: {}", other),
         }
     }
-    if rule.name.is_none() && rule.make.is_none() && rule.model.is_none() && rule.serial.is_none()
-    {
+    if rule.name.is_none() && rule.make.is_none() && rule.model.is_none() && rule.serial.is_none() {
         bail!("monitorrule must specify at least one of: name, make, model, serial");
     }
     cfg.monitor_rules.push(rule);
@@ -1239,9 +1215,7 @@ fn parse_bezier(s: &str) -> Result<BezierCurve> {
 // ── CSV helpers ──────────────────────────────────────────────────────────────
 
 fn split_csv(s: &str, max: usize) -> Vec<String> {
-    s.splitn(max, ',')
-        .map(|p| p.trim().to_string())
-        .collect()
+    s.splitn(max, ',').map(|p| p.trim().to_string()).collect()
 }
 
 /// Split comma-separated `key:value` pairs.
@@ -1257,9 +1231,7 @@ fn split_csv_colon(s: &str) -> Vec<(String, String)> {
 }
 
 fn parse_float_list(s: &str) -> Vec<f32> {
-    s.split(',')
-        .filter_map(|t| t.trim().parse().ok())
-        .collect()
+    s.split(',').filter_map(|t| t.trim().parse().ok()).collect()
 }
 
 // ── Primitive parsers ────────────────────────────────────────────────────────
@@ -1603,10 +1575,7 @@ mod tests {
 
     #[test]
     fn parses_source_and_unsigned_bind_args() {
-        let dir = std::env::temp_dir().join(format!(
-            "margo-config-test-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("margo-config-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let main = dir.join("config.conf");
         let extra = dir.join("extra.conf");
@@ -1626,24 +1595,26 @@ mod tests {
             .map(|bind| bind.arg.ui)
             .collect();
         assert_eq!(cfg.default_layout, "scroller");
-        assert!(cfg
-            .key_bindings
-            .iter()
-            .any(|bind| bind.action == "view" && bind.arg.ui == u32::MAX), "view args: {view_args:?}");
-        assert!(cfg
-            .key_bindings
-            .iter()
-            .any(|bind| bind.action == "view" && bind.arg.ui == 1), "view args: {view_args:?}");
+        assert!(
+            cfg.key_bindings
+                .iter()
+                .any(|bind| bind.action == "view" && bind.arg.ui == u32::MAX),
+            "view args: {view_args:?}"
+        );
+        assert!(
+            cfg.key_bindings
+                .iter()
+                .any(|bind| bind.action == "view" && bind.arg.ui == 1),
+            "view args: {view_args:?}"
+        );
 
         let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
     fn parses_floating_windowrule_with_aliases() {
-        let dir = std::env::temp_dir().join(format!(
-            "margo-windowrule-test-{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("margo-windowrule-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let main = dir.join("config.conf");
 
@@ -1663,7 +1634,9 @@ mod tests {
         assert_eq!(rule.offset_y, -15);
         assert_eq!(
             rule.id.as_deref(),
-            Some(r"^(com\.github\.hluk\.copyq|copyq|wiremix|org\.pulseaudio\.pavucontrol|io\.ente\.auth)$")
+            Some(
+                r"^(com\.github\.hluk\.copyq|copyq|wiremix|org\.pulseaudio\.pavucontrol|io\.ente\.auth)$"
+            )
         );
 
         let _ = std::fs::remove_dir_all(dir);
@@ -1671,10 +1644,7 @@ mod tests {
 
     #[test]
     fn parses_gap_aliases() {
-        let dir = std::env::temp_dir().join(format!(
-            "margo-gaps-test-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("margo-gaps-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let main = dir.join("config.conf");
 
@@ -1693,5 +1663,67 @@ mod tests {
         assert_eq!(cfg.gappov, 8);
 
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Write `content` to a temp config and return the parsed `Config`.
+    /// `unique` keeps parallel test dirs from colliding (tests run on
+    /// separate threads inside one process, so the PID alone isn't).
+    fn parse_conf(unique: &str, content: &str) -> super::Config {
+        let dir = std::env::temp_dir().join(format!("margo-cfg-{unique}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let main = dir.join("config.conf");
+        std::fs::write(&main, content).unwrap();
+        let cfg = parse_config(Some(&main)).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        cfg
+    }
+
+    #[test]
+    fn windowrule_percent_sets_fractional_size() {
+        // `width:50%` / `height:25%` → fractions, not absolute pixels.
+        let cfg = parse_conf("frac", "windowrule = width:50%,height:25%,appid:^foo$\n");
+        let rule = cfg.window_rules.first().expect("rule parsed");
+        assert_eq!(rule.width_fraction, Some(0.5));
+        assert_eq!(rule.height_fraction, Some(0.25));
+    }
+
+    #[test]
+    fn windowrule_clamps_oversized_percent() {
+        // A typo like `200%` pins to full size rather than overflowing.
+        let cfg = parse_conf("fracclamp", "windowrule = width:200%,appid:^foo$\n");
+        assert_eq!(cfg.window_rules[0].width_fraction, Some(1.0));
+    }
+
+    #[test]
+    fn windowrule_absolute_size_leaves_fraction_unset() {
+        let cfg = parse_conf("abssize", "windowrule = width:600,height:480,appid:^foo$\n");
+        let rule = &cfg.window_rules[0];
+        assert_eq!(rule.width, 600);
+        assert_eq!(rule.height, 480);
+        assert_eq!(rule.width_fraction, None);
+        assert_eq!(rule.height_fraction, None);
+    }
+
+    #[test]
+    fn windowrule_monitor_and_monitor_name_are_aliases() {
+        let cfg = parse_conf(
+            "mon",
+            "windowrule = monitor:DP-3,appid:^a$\nwindowrule = monitor_name:eDP-1,appid:^b$\n",
+        );
+        assert_eq!(cfg.window_rules[0].monitor.as_deref(), Some("DP-3"));
+        assert_eq!(cfg.window_rules[1].monitor.as_deref(), Some("eDP-1"));
+    }
+
+    #[test]
+    fn windowrule_overlay_aliases_all_set_is_overlay() {
+        // isoverlay / is_overlay / overlay are equivalent.
+        let cfg = parse_conf(
+            "ovl",
+            "windowrule = isoverlay:1,appid:^a$\nwindowrule = is_overlay:1,appid:^b$\nwindowrule = overlay:1,appid:^c$\n",
+        );
+        assert_eq!(cfg.window_rules.len(), 3);
+        for r in &cfg.window_rules {
+            assert_eq!(r.is_overlay, Some(true), "overlay not set for {:?}", r.id);
+        }
     }
 }
