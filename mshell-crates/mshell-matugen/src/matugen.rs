@@ -1,4 +1,4 @@
-use crate::css_mapping::to_css;
+use crate::css_mapping::{to_css, to_margo_colors};
 use crate::json_struct::{MatugenTheme, MatugenThemeCustomOnly};
 use mshell_config::schema::config::Matugen;
 use relm4::gtk::glib;
@@ -319,7 +319,10 @@ fn read_json_from_child(mut child: std::process::Child) -> MatugenResult {
     }
 
     let css = match serde_json::from_str::<MatugenTheme>(&json_buf) {
-        Ok(theme) => Ok(to_css(&theme)),
+        Ok(theme) => {
+            write_margo_colors(&theme);
+            Ok(to_css(&theme))
+        }
         Err(e) => Err(e.into()),
     };
 
@@ -330,5 +333,46 @@ fn read_json_from_child(mut child: std::process::Child) -> MatugenResult {
             stderr,
             child,
         }),
+    }
+}
+
+/// Mirror the palette into margo's window-border colours: write
+/// `~/.config/margo/colors.conf` (which the user's `config.conf`
+/// `source`s) and hot-reload the compositor so borders track the
+/// scheme live. No-ops when there's no margo config to drive — and
+/// since the reload is idempotent, it's harmless if the file isn't
+/// sourced. Failures are swallowed: this is a best-effort side channel,
+/// never a reason to fail the shell's own theme apply.
+fn write_margo_colors(theme: &MatugenTheme) {
+    let Some(home) = std::env::var_os("HOME") else {
+        return;
+    };
+    let margo_dir = PathBuf::from(home).join(".config/margo");
+    // Only touch a real margo setup.
+    if !margo_dir.join("config.conf").exists() {
+        return;
+    }
+
+    let body = to_margo_colors(theme);
+    let path = margo_dir.join("colors.conf");
+    // Skip the write + reload when nothing changed (avoids a needless
+    // compositor reload on every wallpaper rotation when the palette is
+    // unchanged — e.g. a static theme).
+    if std::fs::read_to_string(&path).ok().as_deref() == Some(body.as_str()) {
+        return;
+    }
+    if let Err(e) = std::fs::write(&path, &body) {
+        debug!(error = %e, "matugen: failed to write margo colors.conf");
+        return;
+    }
+
+    match Command::new("mctl")
+        .arg("reload")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        Ok(_) => info!("matugen: wrote margo colors.conf + triggered reload"),
+        Err(e) => debug!(error = %e, "matugen: mctl reload spawn failed"),
     }
 }
