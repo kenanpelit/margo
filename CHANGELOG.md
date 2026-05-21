@@ -7,6 +7,32 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.7.2] – 2026-05-21
+
+### Added
+
+- **Native Screenshot portal.** `margo-portal` now serves
+  `org.freedesktop.impl.portal.Screenshot` in addition to
+  `ScreenCast`, driving the compositor's `org.gnome.Shell.Screenshot`
+  shim. The shim's screenshot path was previously a stub that always
+  failed; it now captures the desktop via `grim` to a temp PNG
+  (asynchronously, off the compositor event loop) and returns a
+  `file://` URI to the requesting app.
+
+### Changed
+
+- **gnome-portal-free sessions.** `margo-portals.conf` no longer
+  routes any interface to `xdg-desktop-portal-gnome`:
+  `ScreenCast=margo`, `Screenshot=margo`, `RemoteDesktop=none`,
+  `default=gtk`. `Secret` stays on `gnome-keyring` (the standalone
+  freedesktop secret daemon — not the gnome portal). `margo.portal`
+  advertises `Screenshot` with `UseIn=margo`, and the wayland-session
+  entries declare `DesktopNames=margo` (dropping `mango;wlroots`) to
+  keep portal config resolution unambiguous.
+- **Packaging.** `xdg-desktop-portal` and `xdg-desktop-portal-gtk`
+  are now hard dependencies; the `xdg-desktop-portal-gnome` and
+  `polkit-gnome` optdepends were dropped.
+
 ## [0.7.1] – 2026-05-21
 
 ### Added
