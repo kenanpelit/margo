@@ -288,7 +288,7 @@ fn rebuild_content(
 
     let Some(device) = report.main_device(&preferred_id()) else {
         container.append(&info_card(
-            "phone-disconnected-symbolic",
+            "phone-symbolic",
             "No devices found. Pair the KDE Connect app on your phone over the same network.",
         ));
         return;

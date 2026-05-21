@@ -47,11 +47,11 @@ pub(crate) struct Device {
 
 impl Device {
     pub(crate) fn connection_icon(&self) -> &'static str {
-        if self.reachable {
-            "phone-symbolic"
-        } else {
-            "phone-disconnected-symbolic"
-        }
+        // `phone-disconnected-symbolic` isn't a real freedesktop icon, so
+        // the bar pill rendered blank when a device was unreachable. Use
+        // the always-present `phone-symbolic`; the disconnected state is
+        // conveyed by the (absent) battery label + tooltip.
+        "phone-symbolic"
     }
 }
 
@@ -88,8 +88,11 @@ impl ValentReport {
         if !self.daemon_available {
             return "dialog-warning-symbolic";
         }
+        // Always a real, theme-present icon so the pill never renders
+        // blank — previously `phone-disconnected-symbolic` (nonexistent)
+        // made the whole widget disappear when no device was paired.
         match self.main_device(preferred_id) {
-            None => "phone-disconnected-symbolic",
+            None => "phone-symbolic",
             Some(d) => d.connection_icon(),
         }
     }
