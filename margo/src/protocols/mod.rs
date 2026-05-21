@@ -8,4 +8,5 @@ pub mod generated;
 pub mod layer_shell;
 pub mod output_management;
 pub mod screencopy;
+pub mod virtual_pointer;
 pub mod wlr_foreign_toplevel;

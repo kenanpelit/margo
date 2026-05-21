@@ -581,6 +581,7 @@ pub struct MargoState {
     pub foreign_toplevel_list: ForeignToplevelListState,
     pub wlr_foreign_toplevel: crate::protocols::wlr_foreign_toplevel::WlrForeignToplevelState,
     pub ext_workspace_state: crate::protocols::ext_workspace::ExtWorkspaceManagerState,
+    pub virtual_pointer_state: crate::protocols::virtual_pointer::VirtualPointerManagerState,
     pub layer_surfaces: Vec<LayerSurface>,
     pub lock_surfaces: Vec<(Output, smithay::wayland::session_lock::LockSurface)>,
 
@@ -905,6 +906,11 @@ impl MargoState {
                 &dh,
                 |_client| true,
             );
+        let virtual_pointer_state =
+            crate::protocols::virtual_pointer::VirtualPointerManagerState::new::<Self, _>(
+                &dh,
+                |_client| true,
+            );
 
         // wlr_gamma_control_v1 — sunsetr / gammastep / wlsunset use this to
         // push night-light ramps to outputs. Allow all clients (no privileged
@@ -987,6 +993,7 @@ impl MargoState {
             foreign_toplevel_list,
             wlr_foreign_toplevel,
             ext_workspace_state,
+            virtual_pointer_state,
             layer_surfaces: vec![],
             lock_surfaces: vec![],
             clients: vec![],
