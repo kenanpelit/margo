@@ -172,6 +172,8 @@ impl Component for TwilightMenuWidgetModel {
                 set_increments: (100.0, 500.0),
                 set_value: 4000.0,
                 set_draw_value: true,
+                // Whole kelvin only — no spurious "3035.7" decimal.
+                set_digits: 0,
                 set_value_pos: gtk::PositionType::Right,
                 connect_value_changed[sender] => move |s| {
                     sender.input(TwilightMenuWidgetInput::TempChanged(s.value() as u32));
