@@ -65,8 +65,10 @@ impl ScreenCastBackend {
     async fn capture(&self, source: &Source, cursor_mode: u32) -> anyhow::Result<u32> {
         let sc = MutterScreenCastProxy::new(&self.conn).await?;
         let mutter_session_path = sc.create_session(HashMap::new()).await?;
-        let session =
-            MutterSessionProxy::builder(&self.conn).path(mutter_session_path.clone())?.build().await?;
+        let session = MutterSessionProxy::builder(&self.conn)
+            .path(mutter_session_path.clone())?
+            .build()
+            .await?;
 
         // Cursor mode → Mutter's enum (Hidden=0, Embedded=1, Metadata=2).
         let mutter_cursor: u32 = if cursor_mode & CURSOR_METADATA != 0 {
@@ -90,7 +92,10 @@ impl ScreenCastBackend {
 
         // Subscribe to the node-added signal *before* starting so we
         // don't miss it.
-        let stream = MutterStreamProxy::builder(&self.conn).path(stream_path)?.build().await?;
+        let stream = MutterStreamProxy::builder(&self.conn)
+            .path(stream_path)?
+            .build()
+            .await?;
         let mut added = stream.receive_pipe_wire_stream_added().await?;
 
         session.start().await?;
@@ -140,7 +145,9 @@ impl ScreenCastBackend {
 
         // Export a minimal impl.portal.Session object so the frontend
         // can Close it.
-        let session_obj = PortalSession { handle: key.clone() };
+        let session_obj = PortalSession {
+            handle: key.clone(),
+        };
         if let Err(e) = server.at(session_handle.as_ref(), session_obj).await {
             warn!(error = %e, "create_session: failed to export Session object");
             self.sessions.lock().unwrap().remove(&key);

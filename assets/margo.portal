@@ -1,4 +1,4 @@
 [portal]
 DBusName=org.freedesktop.impl.portal.desktop.margo
-Interfaces=org.freedesktop.impl.portal.ScreenCast;
-UseIn=margo;mango;
+Interfaces=org.freedesktop.impl.portal.ScreenCast;org.freedesktop.impl.portal.Screenshot;
+UseIn=margo;

@@ -52,6 +52,12 @@ depends=(
   cairo           # `mlock` software renderer
   pango           # `mlock` + mshell text shaping
   dbus            # screencast / portal D-Bus shims
+  # ── Portals (gnome-free) ────────────────────────────────────────
+  # Frontend daemon reads our margo.portal + margo-portals.conf and
+  # activates margo-portal for ScreenCast/Screenshot; the gtk backend
+  # serves the FileChooser/OpenURI/Notification/etc routes.
+  xdg-desktop-portal
+  xdg-desktop-portal-gtk
   libnotify       # `notify-send` from the config-reload toast path
   grim            # `mscreenshot` capture pipeline
   slurp
@@ -87,9 +93,7 @@ makedepends=(
 optdepends=(
   # Sessions & XDG plumbing
   "uwsm: systemd-driven session entry (graphical-session.target)"
-  "xdg-desktop-portal-gnome: GTK file picker, color picker, screencast"
-  "xdg-desktop-portal-wlr: alternative wlroots-native portal stack"
-  "polkit-gnome: graphical authentication agent"
+  "xdg-desktop-portal-wlr: alternative wlroots-native screencast backend (not used by default; margo-portal serves ScreenCast/Screenshot natively)"
   # Toolkit Wayland backends (for non-GTK apps under margo)
   "qt5-wayland: Qt5 native Wayland backend"
   "qt6-wayland: Qt6 native Wayland backend"
@@ -315,12 +319,12 @@ package() {
   fi
 
   # ── Native portal backend (margo-portal) ───────────────────────
-  # The ScreenCast impl (window + monitor share) that lets
-  # margo-portals.conf route `ScreenCast=margo` — capture is the
-  # compositor's own (Mutter shim → PipeWire). Binary lives under
-  # /usr/lib (D-Bus-activated, not a user-facing CLI); ships its
-  # `.portal` registration, D-Bus activation service, and systemd
-  # user unit.
+  # Serves ScreenCast (window + monitor share) and Screenshot, so
+  # margo-portals.conf routes both to `margo` with no GNOME portal.
+  # Capture is the compositor's own (Mutter / Shell.Screenshot shim
+  # → PipeWire / PNG). Binary lives under /usr/lib (D-Bus-activated,
+  # not a user-facing CLI); ships its `.portal` registration, D-Bus
+  # activation service, and systemd user unit.
   install -Dm755 "$CARGO_TARGET_DIR/release/margo-portal" \
     "$pkgdir/usr/lib/margo/margo-portal"
   install -Dm644 "assets/margo.portal" \

@@ -17,10 +17,8 @@ use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
 )]
 pub trait MutterScreenCast {
     /// Mint a capture session; returns its object path.
-    fn create_session(
-        &self,
-        properties: HashMap<&str, Value<'_>>,
-    ) -> zbus::Result<OwnedObjectPath>;
+    fn create_session(&self, properties: HashMap<&str, Value<'_>>)
+    -> zbus::Result<OwnedObjectPath>;
 
     #[zbus(property)]
     fn version(&self) -> zbus::Result<i32>;
@@ -42,10 +40,7 @@ pub trait MutterSession {
 
     /// Capture one window (`window-id` in `properties`). Returns the
     /// Stream path.
-    fn record_window(
-        &self,
-        properties: HashMap<&str, Value<'_>>,
-    ) -> zbus::Result<OwnedObjectPath>;
+    fn record_window(&self, properties: HashMap<&str, Value<'_>>) -> zbus::Result<OwnedObjectPath>;
 
     fn start(&self) -> zbus::Result<()>;
     fn stop(&self) -> zbus::Result<()>;
@@ -88,4 +83,24 @@ pub trait Introspect {
 )]
 pub trait Shell {
     fn screenshare(&self, payload: &str) -> zbus::Result<String>;
+}
+
+/// `org.gnome.Shell.Screenshot` — margo's screenshot shim (compositor
+/// screencopy → PNG, native colour pick). Backs the Screenshot portal.
+#[proxy(
+    interface = "org.gnome.Shell.Screenshot",
+    default_service = "org.gnome.Shell.Screenshot",
+    default_path = "/org/gnome/Shell/Screenshot"
+)]
+pub trait ShellScreenshot {
+    /// `(include_cursor, flash, filename) -> (success, filename_used)`.
+    fn screenshot(
+        &self,
+        include_cursor: bool,
+        flash: bool,
+        filename: &str,
+    ) -> zbus::Result<(bool, String)>;
+
+    /// Returns `{ "color": (ddd) }`.
+    fn pick_color(&self) -> zbus::Result<HashMap<String, OwnedValue>>;
 }

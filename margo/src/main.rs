@@ -691,16 +691,50 @@ fn main() -> Result<()> {
                     return;
                 };
                 match msg {
-                    ScreenshotToCompositor::TakeScreenshot { include_cursor: _ } => {
-                        // Hand off to the existing margo-screenshot
-                        // script — it knows the user's preferred
-                        // dir / filename pattern. Block-style
-                        // synchronous output isn't great for the
-                        // portal contract; revisit when we have
-                        // an in-process screenshot path.
-                        let _ = utils::spawn_shell("mscreenshot screen");
-                        let _ = resp_tx
-                            .try_send(CompositorToScreenshot::ScreenshotResult(None));
+                    ScreenshotToCompositor::TakeScreenshot { include_cursor } => {
+                        // Capture the whole desktop to a temp PNG via
+                        // `grim` — a child process that speaks
+                        // wlr-screencopy, so margo's event loop keeps
+                        // servicing it while it runs. We must NOT block
+                        // here (that would deadlock the capture), so we
+                        // wait for grim in a detached thread and report
+                        // the resulting path back to the portal shim.
+                        // The portal frontend turns it into the
+                        // `file://` URI the requesting app receives.
+                        let runtime = std::env::var("XDG_RUNTIME_DIR")
+                            .unwrap_or_else(|_| "/tmp".to_owned());
+                        let stamp = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_millis())
+                            .unwrap_or(0);
+                        let path = std::path::PathBuf::from(format!(
+                            "{runtime}/margo-portal-shot-{stamp}.png"
+                        ));
+                        let mut cmd = std::process::Command::new("grim");
+                        if include_cursor {
+                            cmd.arg("-c");
+                        }
+                        cmd.arg(&path);
+                        match cmd.spawn() {
+                            Ok(mut child) => {
+                                let resp = resp_tx.clone();
+                                std::thread::spawn(move || {
+                                    let ok = matches!(child.wait(), Ok(s) if s.success())
+                                        && path.exists();
+                                    let _ = resp.try_send(
+                                        CompositorToScreenshot::ScreenshotResult(
+                                            ok.then_some(path),
+                                        ),
+                                    );
+                                });
+                            }
+                            Err(e) => {
+                                warn!("grim spawn for portal screenshot failed: {e}");
+                                let _ = resp_tx.try_send(
+                                    CompositorToScreenshot::ScreenshotResult(None),
+                                );
+                            }
+                        }
                     }
                     ScreenshotToCompositor::PickColor(reply) => {
                         // No in-tree color picker yet — let the

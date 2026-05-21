@@ -14,9 +14,11 @@
 mod mutter;
 mod picker;
 mod screencast;
+mod screenshot;
 
 use anyhow::Result;
 use screencast::ScreenCastBackend;
+use screenshot::ScreenshotBackend;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 use zbus::connection;
@@ -27,7 +29,9 @@ const OBJECT_PATH: &str = "/org/freedesktop/portal/desktop";
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
         .init();
 
     // One session-bus connection: it both hosts our portal interface
@@ -35,6 +39,9 @@ async fn main() -> Result<()> {
     let conn = connection::Builder::session()?.build().await?;
     conn.object_server()
         .at(OBJECT_PATH, ScreenCastBackend::new(conn.clone()))
+        .await?;
+    conn.object_server()
+        .at(OBJECT_PATH, ScreenshotBackend::new(conn.clone()))
         .await?;
     conn.request_name(BUS_NAME).await?;
 

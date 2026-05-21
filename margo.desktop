@@ -4,6 +4,6 @@ Comment=A feature-rich Wayland compositor
 Exec=margo
 Type=Application
 TryExec=margo
-DesktopNames=margo;mango;wlroots
+DesktopNames=margo
 X-GDM-SessionType=wayland
 X-Session-Type=wayland
