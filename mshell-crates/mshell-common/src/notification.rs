@@ -217,13 +217,17 @@ impl Component for NotificationModel {
             }
         }
 
-        // ── Body image / album art thumbnail (wayle resolves image-data
-        // hints to a cached file path).
+        // ── Body image / album art thumbnail. wayle resolves image-data
+        // hints to a cached file path, but the `image-path` hint may
+        // *also* be a bare freedesktop icon name (the spec allows both,
+        // and libnotify's `notify-send -i <name>` routes the icon there,
+        // leaving `app_icon` empty). Go through `build_image` so a name
+        // resolves via the icon theme instead of failing `from_file` and
+        // rendering a broken-image placeholder.
         if let Some(path) = model.notification.image_path.get() {
             let path = path.trim();
             if !path.is_empty() {
-                let img = gtk::Image::from_file(path);
-                img.set_pixel_size(BODY_IMAGE_SIZE);
+                let img = build_image(path, BODY_IMAGE_SIZE);
                 img.set_valign(gtk::Align::Start);
                 img.add_css_class("notification-image");
                 widgets.content.prepend(&img);
