@@ -20,6 +20,7 @@ mod clipboard_settings;
 mod display_settings;
 mod fonts_settings;
 mod general_settings;
+mod weather_settings;
 mod idle_settings;
 mod launcher_settings;
 mod layout_settings;

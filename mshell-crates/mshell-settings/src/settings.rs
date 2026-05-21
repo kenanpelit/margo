@@ -2,6 +2,7 @@ use crate::bar_settings::bar_settings::{BarSettingsInit, BarSettingsModel};
 use crate::display_settings::{DisplaySettingsInit, DisplaySettingsModel};
 use crate::fonts_settings::{FontsSettingsInit, FontsSettingsModel};
 use crate::general_settings::{GeneralSettingsInit, GeneralSettingsModel};
+use crate::weather_settings::{WeatherSettingsInit, WeatherSettingsModel};
 use crate::idle_settings::{IdleSettingsInit, IdleSettingsModel};
 use crate::launcher_settings::{LauncherSettingsInit, LauncherSettingsModel};
 use crate::menu_settings::menu_settings::{MenuSettingsInit, MenuSettingsModel};
@@ -18,6 +19,7 @@ use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Con
 
 pub struct SettingsWindowModel {
     general_settings_controller: Controller<GeneralSettingsModel>,
+    weather_settings_controller: Controller<WeatherSettingsModel>,
     wallpaper_settings_controller: Controller<WallpaperSettingsModel>,
     theme_settings_controller: Controller<ThemeSettingsModel>,
     fonts_settings_controller: Controller<FontsSettingsModel>,
@@ -204,6 +206,27 @@ impl Component for SettingsWindowModel {
                         },
                     },
 
+                    #[name = "weather_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("weather"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("weather-few-clouds-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Weather",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
                     #[name = "idle_btn"]
                     gtk::ToggleButton {
                         add_css_class: "sidebar-button",
@@ -369,6 +392,10 @@ impl Component for SettingsWindowModel {
             .launch(GeneralSettingsInit {})
             .detach();
 
+        let weather_settings_controller = WeatherSettingsModel::builder()
+            .launch(WeatherSettingsInit {})
+            .detach();
+
         let wallpaper_settings_controller = WallpaperSettingsModel::builder()
             .launch(WallpaperSettingsInit {})
             .detach();
@@ -411,6 +438,7 @@ impl Component for SettingsWindowModel {
 
         let model = SettingsWindowModel {
             general_settings_controller,
+            weather_settings_controller,
             wallpaper_settings_controller,
             theme_settings_controller,
             fonts_settings_controller,
@@ -510,6 +538,12 @@ impl Component for SettingsWindowModel {
             model.general_settings_controller.widget(),
             Some("general"),
             "General",
+        );
+
+        widgets.stack.add_titled(
+            model.weather_settings_controller.widget(),
+            Some("weather"),
+            "Weather",
         );
 
         widgets.stack.add_titled(

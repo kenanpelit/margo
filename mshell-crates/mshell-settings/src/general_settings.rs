@@ -7,8 +7,6 @@ use mshell_config::schema::config::{
     ConfigStoreFields, GeneralStoreFields, SizingStoreFields, ThemeAttributesStoreFields,
     ThemeStoreFields,
 };
-use mshell_config::schema::location_query::{LocationQueryConfig, LocationQueryType, OrdF64};
-use mshell_config::schema::temperature::TemperatureUnitConfig;
 use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk::glib;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, CastNone, ListModelExt, OrientableExt, WidgetExt};
@@ -19,14 +17,6 @@ pub(crate) struct GeneralSettingsModel {
     available_profiles: gtk::StringList,
     new_profile_dialog: Option<Controller<TextEntryDialogModel>>,
     time_format_24_h: bool,
-    location_query_types: gtk::StringList,
-    active_location_query_type: LocationQueryType,
-    location_lat_lon: String,
-    location_city: String,
-    lat_lon_dialog: Option<Controller<TextEntryDialogModel>>,
-    city_dialog: Option<Controller<TextEntryDialogModel>>,
-    weather_unit_types: gtk::StringList,
-    active_weather_unit_type: TemperatureUnitConfig,
     show_screen_corners: bool,
     screen_corner_radius: i32,
     network_osd_enabled: bool,
@@ -50,14 +40,6 @@ pub(crate) enum GeneralSettingsInput {
     NewProfileNameChosen(String),
     DialogCanceled,
     DeleteProfileClicked,
-    LocationQueryTypeSelected(LocationQueryType),
-    LocationQueryEffect(LocationQueryConfig),
-    ChangeCoordinatesClicked,
-    ChangeCityClicked,
-    LatLonChosen(String, String),
-    CityChosen(String, String),
-    WeatherUnitTypeSelected(TemperatureUnitConfig),
-    WeatherUnitTypeEffect(TemperatureUnitConfig),
     ShowScreenCornersToggled(bool),
     ShowScreenCornersEffect(bool),
     ScreenCornerRadiusChanged(i32),
@@ -203,182 +185,6 @@ impl Component for GeneralSettingsModel {
                             glib::Propagation::Proceed
                         } @time_format_handler,
                     }
-                },
-
-                gtk::Separator {},
-
-                gtk::Label {
-                    add_css_class: "label-large-bold",
-                    set_label: "Weather",
-                    set_halign: gtk::Align::Start,
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Location Query Type",
-                            set_hexpand: true,
-                        },
-
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "How to determine the location.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
-
-                    #[name = "location_query_type_dropdown"]
-                    gtk::DropDown {
-                        set_width_request: 200,
-                        set_valign: gtk::Align::Center,
-                        set_model: Some(&model.location_query_types),
-                        #[watch]
-                        #[block_signal(lqt_handler)]
-                        set_selected: LocationQueryType::all()
-                            .iter()
-                            .position(|k| k == &model.active_location_query_type)
-                            .unwrap_or(0) as u32,
-                        connect_selected_notify[sender] => move |dd| {
-                            let idx = dd.selected() as usize;
-                            if let Some(kind) = LocationQueryType::all().get(idx) {
-                                sender.input(GeneralSettingsInput::LocationQueryTypeSelected(*kind));
-                            }
-                        } @lqt_handler,
-                    },
-                },
-
-                gtk::Box {
-                    #[watch]
-                    set_visible: model.active_location_query_type == LocationQueryType::Coordinates,
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Lat Lon",
-                            set_hexpand: true,
-                        },
-
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            #[watch]
-                            set_label: model.location_lat_lon.as_str(),
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
-
-                    gtk::Button {
-                        set_css_classes: &["label-medium", "ok-button-primary"],
-                        set_label: "Change Coordinates",
-                        set_halign: gtk::Align::Start,
-                        set_hexpand: false,
-                        connect_clicked[sender] => move |_| {
-                            sender.input(GeneralSettingsInput::ChangeCoordinatesClicked);
-                        },
-                    },
-                },
-
-                gtk::Box {
-                    #[watch]
-                    set_visible: model.active_location_query_type == LocationQueryType::City,
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "City / district, Country",
-                            set_hexpand: true,
-                        },
-
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            #[watch]
-                            set_label: model.location_city.as_str(),
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
-
-                    gtk::Button {
-                        set_css_classes: &["label-medium", "ok-button-primary"],
-                        set_label: "Change Location",
-                        set_halign: gtk::Align::Start,
-                        set_hexpand: false,
-                        connect_clicked[sender] => move |_| {
-                            sender.input(GeneralSettingsInput::ChangeCityClicked);
-                        },
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Weather units",
-                            set_hexpand: true,
-                        },
-
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Units in which weather information should be displayed.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
-
-                    #[name = "weather_unit_type_dropdown"]
-                    gtk::DropDown {
-                        set_width_request: 200,
-                        set_valign: gtk::Align::Center,
-                        set_model: Some(&model.weather_unit_types),
-                        #[watch]
-                        #[block_signal(unit_handler)]
-                        set_selected: TemperatureUnitConfig::all()
-                            .iter()
-                            .position(|k| k == &model.active_weather_unit_type)
-                            .unwrap_or(0) as u32,
-                        connect_selected_notify[sender] => move |dd| {
-                            let idx = dd.selected() as usize;
-                            if let Some(kind) = TemperatureUnitConfig::all().get(idx) {
-                                sender.input(GeneralSettingsInput::WeatherUnitTypeSelected(*kind));
-                            }
-                        } @unit_handler,
-                    },
                 },
 
                 // ── Screen corners ─────────────────────────────
@@ -561,20 +367,6 @@ impl Component for GeneralSettingsModel {
 
         let sender_clone = sender.clone();
         effects.push(move |_| {
-            let config = config_manager().config();
-            let location_query = config.general().weather_location_query().get();
-            sender_clone.input(GeneralSettingsInput::LocationQueryEffect(location_query));
-        });
-
-        let sender_clone = sender.clone();
-        effects.push(move |_| {
-            let config = config_manager().config();
-            let value = config.general().temperature_unit().get();
-            sender_clone.input(GeneralSettingsInput::WeatherUnitTypeEffect(value));
-        });
-
-        let sender_clone = sender.clone();
-        effects.push(move |_| {
             let v = config_manager()
                 .config()
                 .general()
@@ -615,42 +407,11 @@ impl Component for GeneralSettingsModel {
             sender_clone.input(GeneralSettingsInput::SettingsFontScaleEffect(v));
         });
 
-        let location_query_types = gtk::StringList::new(
-            &LocationQueryType::all()
-                .iter()
-                .map(|p| p.label())
-                .collect::<Vec<_>>(),
-        );
-
-        let weather_unit_types = gtk::StringList::new(
-            &TemperatureUnitConfig::all()
-                .iter()
-                .map(|p| p.label())
-                .collect::<Vec<_>>(),
-        );
-
         let model = GeneralSettingsModel {
             active_profile: None,
             available_profiles: gtk::StringList::new(&[]),
             new_profile_dialog: None,
             time_format_24_h: false,
-            location_query_types,
-            active_location_query_type: config_manager()
-                .config()
-                .general()
-                .weather_location_query()
-                .get_untracked()
-                .kind(),
-            location_lat_lon: "0.0, 0.0".to_string(),
-            location_city: "Nowhere".to_string(),
-            lat_lon_dialog: None,
-            city_dialog: None,
-            weather_unit_types,
-            active_weather_unit_type: config_manager()
-                .config()
-                .general()
-                .temperature_unit()
-                .get_untracked(),
             show_screen_corners: config_manager()
                 .config()
                 .general()
@@ -759,101 +520,6 @@ impl Component for GeneralSettingsModel {
             }
             GeneralSettingsInput::TimeFormat24HEffect(format) => {
                 self.time_format_24_h = format;
-            }
-            GeneralSettingsInput::LocationQueryTypeSelected(query_type) => {
-                let config_manager = config_manager();
-                config_manager.update_config(|config| {
-                    config.general.weather_location_query =
-                        if query_type == LocationQueryType::Coordinates {
-                            LocationQueryConfig::Coordinates {
-                                lat: OrdF64(0.0),
-                                lon: OrdF64(0.0),
-                            }
-                        } else {
-                            LocationQueryConfig::City {
-                                name: String::new(),
-                                country: String::new(),
-                            }
-                        };
-                });
-            }
-            GeneralSettingsInput::LocationQueryEffect(query) => match query {
-                LocationQueryConfig::Coordinates { lat, lon } => {
-                    self.location_lat_lon = format!("{}, {}", lat.0, lon.0);
-                    self.active_location_query_type = LocationQueryType::Coordinates;
-                }
-                LocationQueryConfig::City { name, country } => {
-                    self.location_city = format!("{}, {}", name, country);
-                    self.active_location_query_type = LocationQueryType::City;
-                }
-            },
-            GeneralSettingsInput::ChangeCoordinatesClicked => {
-                let dialog = TextEntryDialogModel::builder()
-                    .launch(TextEntryDialogInit {
-                        message: "Enter location coordinates".to_string(),
-                        negative_label: "Cancel".to_string(),
-                        positive_label: "Done".to_string(),
-                        entry_placeholder: "lat".to_string(),
-                        entry2_placeholder: "lon".to_string(),
-                        show_second_entry: true,
-                    })
-                    .forward(sender.input_sender(), |msg| match msg {
-                        TextEntryDialogOutput::PositiveSelected(lat, lon) => {
-                            GeneralSettingsInput::LatLonChosen(lat, lon)
-                        }
-                        TextEntryDialogOutput::NegativeSelected => {
-                            GeneralSettingsInput::DialogCanceled
-                        }
-                    });
-
-                self.lat_lon_dialog = Some(dialog);
-            }
-            GeneralSettingsInput::ChangeCityClicked => {
-                let dialog = TextEntryDialogModel::builder()
-                    .launch(TextEntryDialogInit {
-                        message: "Enter a city or district name".to_string(),
-                        negative_label: "Cancel".to_string(),
-                        positive_label: "Done".to_string(),
-                        entry_placeholder: "City / district (e.g. Kadıköy)".to_string(),
-                        entry2_placeholder: "Country code (e.g. TR)".to_string(),
-                        show_second_entry: true,
-                    })
-                    .forward(sender.input_sender(), |msg| match msg {
-                        TextEntryDialogOutput::PositiveSelected(city, country) => {
-                            GeneralSettingsInput::CityChosen(city, country)
-                        }
-                        TextEntryDialogOutput::NegativeSelected => {
-                            GeneralSettingsInput::DialogCanceled
-                        }
-                    });
-
-                self.city_dialog = Some(dialog);
-            }
-            GeneralSettingsInput::LatLonChosen(lat, lon) => {
-                if let (Ok(lat), Ok(lon)) = (lat.parse::<f64>(), lon.parse::<f64>()) {
-                    config_manager().update_config(|config| {
-                        config.general.weather_location_query = LocationQueryConfig::Coordinates {
-                            lat: OrdF64(lat),
-                            lon: OrdF64(lon),
-                        };
-                    });
-                }
-            }
-            GeneralSettingsInput::CityChosen(city, country) => {
-                config_manager().update_config(|config| {
-                    config.general.weather_location_query = LocationQueryConfig::City {
-                        name: city,
-                        country,
-                    }
-                })
-            }
-            GeneralSettingsInput::WeatherUnitTypeSelected(unit) => {
-                config_manager().update_config(|config| {
-                    config.general.temperature_unit = unit;
-                })
-            }
-            GeneralSettingsInput::WeatherUnitTypeEffect(unit) => {
-                self.active_weather_unit_type = unit;
             }
             GeneralSettingsInput::ShowScreenCornersToggled(v) => {
                 config_manager().update_config(|c| {
