@@ -1,5 +1,9 @@
 use crate::menus::menu_widgets::clipboard::clipboard_item::ClipboardItemModel;
 use mshell_clipboard::{ClipCategory, ClipboardEntry, ClipboardHistory, clipboard_service};
+use mshell_config::config_manager::config_manager;
+use mshell_config::schema::clipboard::{ClipboardDensity, ClipboardStoreFields};
+use mshell_config::schema::config::ConfigStoreFields;
+use reactive_graph::traits::GetUntracked;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 use std::cell::Cell;
@@ -94,6 +98,19 @@ fn tab_classes(active: bool) -> &'static [&'static str] {
 /// favorites tab keeps just its glyph + count.
 fn tab_label(tab: ClipTab, counts: &[usize; 5]) -> String {
     format!("{} {}", tab.base_label(), counts[tab.index()])
+}
+
+/// Toggle the `compact` row-density class on the menu root from the
+/// configured `clipboard.density`. Read on init + each reveal so a
+/// Settings change applies on the next open without a restart.
+fn apply_density(root: &gtk::Box) {
+    let compact = config_manager().config().clipboard().density().get_untracked()
+        == ClipboardDensity::Compact;
+    if compact {
+        root.add_css_class("compact");
+    } else {
+        root.remove_css_class("compact");
+    }
 }
 
 pub(crate) struct ClipboardModel {
@@ -452,6 +469,9 @@ impl Component for ClipboardModel {
 
         let widgets = view_output!();
 
+        // Apply the configured row density to the root.
+        apply_density(&root);
+
         // Populate immediately so the list + active tab reflect
         // current history on first open, not just after an event.
         sender.input(ClipboardInput::Refresh);
@@ -464,7 +484,7 @@ impl Component for ClipboardModel {
         widgets: &mut Self::Widgets,
         message: Self::Input,
         sender: ComponentSender<Self>,
-        _root: &Self::Root,
+        root: &Self::Root,
     ) {
         match message {
             ClipboardInput::Refresh => self.rebuild_rows(),
@@ -548,6 +568,8 @@ impl Component for ClipboardModel {
             }
             ClipboardInput::ParentRevealChanged(revealed) => {
                 if revealed {
+                    // Pick up a Settings density change without a restart.
+                    apply_density(root);
                     // Open fresh: any stale filter from a previous
                     // session is cleared so the full history shows.
                     set_search_active(false);

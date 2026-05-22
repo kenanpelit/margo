@@ -8,7 +8,7 @@
 //! live-applied to the running watcher.
 
 use mshell_config::config_manager::config_manager;
-use mshell_config::schema::clipboard::{ClipboardClearPolicy, ClipboardPersist};
+use mshell_config::schema::clipboard::{ClipboardClearPolicy, ClipboardDensity, ClipboardPersist};
 use mshell_config::schema::position::Position;
 use reactive_graph::traits::GetUntracked;
 use relm4::gtk::glib;
@@ -53,6 +53,7 @@ pub(crate) enum ClipboardSettingsInput {
     SetMaxEntries(i32),
     SetPersist(u32),
     SetClearPolicy(u32),
+    SetDensity(u32),
     SetClearHours(i32),
     SetSkipSensitive(bool),
     SetImageHistory(bool),
@@ -207,6 +208,18 @@ impl Component for ClipboardSettingsModel {
                 gtk::Box {
                     set_orientation: gtk::Orientation::Horizontal,
                     set_spacing: 12,
+                    gtk::Label { set_label: "Panel density", set_hexpand: true, set_halign: gtk::Align::Start },
+                    #[name = "cb_density"]
+                    gtk::DropDown {
+                        connect_selected_notify[sender] => move |d| {
+                            sender.input(ClipboardSettingsInput::SetDensity(d.selected()));
+                        },
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 12,
                     gtk::Label { set_label: "Auto-clear", set_hexpand: true, set_halign: gtk::Align::Start },
                     #[name = "cb_clear"]
                     gtk::DropDown {
@@ -307,6 +320,10 @@ impl Component for ClipboardSettingsModel {
             &ClipboardPersist::display_names(),
         )));
         widgets.cb_persist.set_selected(cb.persist.to_index());
+        widgets.cb_density.set_model(Some(&gtk::StringList::new(
+            &ClipboardDensity::display_names(),
+        )));
+        widgets.cb_density.set_selected(cb.density.to_index());
         widgets.cb_clear.set_model(Some(&gtk::StringList::new(
             &ClipboardClearPolicy::display_names(),
         )));
@@ -350,6 +367,12 @@ impl Component for ClipboardSettingsModel {
                 config_manager()
                     .update_config(|c| c.clipboard.clear_policy = ClipboardClearPolicy::from_index(i));
                 apply_clipboard_config();
+            }
+            ClipboardSettingsInput::SetDensity(i) => {
+                // UI-only knob — the clipboard menu reads it on the next
+                // reveal, so no apply_clipboard_config() (service-side).
+                config_manager()
+                    .update_config(|c| c.clipboard.density = ClipboardDensity::from_index(i));
             }
             ClipboardSettingsInput::SetClearHours(v) => {
                 config_manager().update_config(|c| c.clipboard.clear_after_hours = v.max(1) as u32);

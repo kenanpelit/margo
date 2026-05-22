@@ -134,6 +134,58 @@ impl ClipboardClearPolicy {
     }
 }
 
+/// Row density of the clipboard history panel. `Comfortable` (default)
+/// keeps the roomy padding; `Compact` tightens it so more entries fit
+/// on screen at once.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, Store, JsonSchema)]
+pub enum ClipboardDensity {
+    #[default]
+    Comfortable,
+    Compact,
+}
+
+impl PatchField for ClipboardDensity {
+    fn patch_field(
+        &mut self,
+        new: Self,
+        path: &StorePath,
+        notify: &mut dyn FnMut(&StorePath),
+        _keys: Option<&KeyMap>,
+    ) {
+        if *self != new {
+            *self = new;
+            notify(path);
+        }
+    }
+}
+
+impl ClipboardDensity {
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            ClipboardDensity::Comfortable => "Comfortable",
+            ClipboardDensity::Compact => "Compact",
+        }
+    }
+
+    pub fn display_names() -> Vec<&'static str> {
+        vec!["Comfortable", "Compact"]
+    }
+
+    pub fn from_index(i: u32) -> Self {
+        match i {
+            1 => ClipboardDensity::Compact,
+            _ => ClipboardDensity::Comfortable,
+        }
+    }
+
+    pub fn to_index(self) -> u32 {
+        match self {
+            ClipboardDensity::Comfortable => 0,
+            ClipboardDensity::Compact => 1,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, reactive_stores::Patch, JsonSchema)]
 #[serde(default)]
 pub struct Clipboard {
@@ -151,6 +203,8 @@ pub struct Clipboard {
     pub skip_sensitive: bool,
     /// Keep image copies in history (off = text/binary only).
     pub image_history: bool,
+    /// Row density of the history panel.
+    pub density: ClipboardDensity,
 }
 
 impl Default for Clipboard {
@@ -162,6 +216,7 @@ impl Default for Clipboard {
             clear_after_hours: 24,
             skip_sensitive: true,
             image_history: true,
+            density: ClipboardDensity::Comfortable,
         }
     }
 }

@@ -19,6 +19,18 @@
   }
 }
 
+// Compact density (Settings → clipboard.density): tighter card padding
+// + row gap so more entries fit on screen. Comfortable is the default
+// (no class).
+.clipboard-menu-widget.compact {
+  .clipboard-item {
+    padding: var(--padding-sm);
+  }
+  .clipboard-list row {
+    margin-bottom: 2px;
+  }
+}
+
 // The keyboard-/click-selected row gets a single matugen-accent ring so
 // the active entry is unmistakable as you move with Ctrl+n / Ctrl+k.
 // Suppress the ListBox's default selection background so only the accent
