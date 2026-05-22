@@ -4,6 +4,14 @@
 
 .session-menu-widget { padding: 0; }
 
+// The post-arm countdown / cancel hint ("Shutdown in 3…  (Esc to
+// cancel)"). Reference info, not a focal point — drop it to the dim
+// outline token (same as .clipboard-hint and the launcher binds
+// strip) so it recedes instead of shouting in bright --on-surface.
+.session-status {
+  color: var(--outline);
+}
+
 .session-button {
   padding: 10px 4px;
   border-radius: var(--radius-widget);
