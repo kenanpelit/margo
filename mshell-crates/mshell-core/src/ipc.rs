@@ -132,6 +132,9 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 IPCCommand::Dashboard => {
                     app_sender.emit(ShellInput::ToggleDashboardMenu(active_monitor().await));
                 }
+                IPCCommand::MShellDash => {
+                    app_sender.emit(ShellInput::ToggleMShellDashMenu(active_monitor().await));
+                }
                 IPCCommand::SessionAction(action) => {
                     app_sender.emit(ShellInput::RunSessionAction(action));
                 }
@@ -328,6 +331,7 @@ enum IPCCommand {
     Power,
     MediaPlayer,
     Dashboard,
+    MShellDash,
     CloseAllMenus,
     VolumeUp,
     VolumeDown,
@@ -484,6 +488,9 @@ impl IPCService {
     }
     async fn dashboard(&self) {
         let _ = self.tx.send(IPCCommand::Dashboard);
+    }
+    async fn mshelldash(&self) {
+        let _ = self.tx.send(IPCCommand::MShellDash);
     }
     async fn session_lock(&self) {
         let _ = self.tx.send(IPCCommand::SessionAction(SessionAction::Lock));

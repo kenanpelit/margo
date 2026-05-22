@@ -16,6 +16,7 @@ use crate::frame_draw_widget::FrameDrawWidget;
 use crate::frame_spacer::{FrameSpacerInit, FrameSpacerInput, FrameSpacerModel};
 use crate::menus::menu::MenuInput::ForwardHyprlandScreenshareReply;
 use crate::menus::menu::{MenuInit, MenuInput, MenuModel, MenuOutput, MenuType};
+use crate::menus::menu_widgets::mshelldash::mshelldash::{MShellDashInit, MShellDashModel};
 
 const CLOCK_MENU: &str = "clock";
 const CLIPBOARD_MENU: &str = "clipboard";
@@ -46,6 +47,7 @@ const SESSION_MENU: &str = "session";
 const SETTINGS_MENU: &str = "settings";
 const DASHBOARD_MENU: &str = "dashboard";
 const MARGO_LAYOUT_MENU: &str = "margo_layout";
+const MSHELLDASH_MENU: &str = "mshelldash";
 
 pub struct Frame {
     // Margo's mshell ships only horizontal bars — vertical Left /
@@ -109,6 +111,9 @@ pub struct Frame {
     settings_menu: Controller<mshell_settings::SettingsWindowModel>,
     dashboard_menu: Controller<MenuModel>,
     margo_layout_menu: Controller<MenuModel>,
+    /// mshelldash — standalone tabbed dashboard (own model, like
+    /// `settings_menu`; not part of the generic `MenuModel` pipeline).
+    mshelldash_menu: Controller<MShellDashModel>,
     /// Pending keyboard-mode switch held inside the 90 ms debounce
     /// window. Replaced on every `sync_keyboard_mode` call; the
     /// timer reads whatever value was last written.
@@ -173,6 +178,8 @@ pub enum FrameInput {
     /// doesn't linger on a monitor the user is no longer viewing.
     CloseSettingsMenu,
     ToggleDashboardMenu,
+    /// Open / close the standalone tabbed mshelldash surface.
+    ToggleMShellDashMenu,
     /// Open / close the Margo layout switcher menu (in-frame
     /// replacement for the legacy bar popover).
     ToggleMargoLayoutMenu,
@@ -720,6 +727,12 @@ impl Component for Frame {
             })
             .detach();
 
+        // mshelldash — same custom-model pattern as Settings: own
+        // controller per Frame, toggled by name via `toggle_menu`.
+        let mshelldash_menu = MShellDashModel::builder()
+            .launch(MShellDashInit {})
+            .detach();
+
         let mut effects = EffectScope::new();
 
         let config = base_config.clone();
@@ -907,6 +920,7 @@ impl Component for Frame {
             settings_menu,
             dashboard_menu,
             margo_layout_menu,
+            mshelldash_menu,
             pending_kbd_mode: std::rc::Rc::new(std::cell::RefCell::new(None)),
             pending_kbd_mode_timeout: std::rc::Rc::new(std::cell::RefCell::new(None)),
             _effects: effects,
@@ -1131,6 +1145,10 @@ impl Component for Frame {
             }
             FrameInput::ToggleDashboardMenu => {
                 self.toggle_menu(DASHBOARD_MENU, widgets);
+                self.sync_keyboard_mode(root);
+            }
+            FrameInput::ToggleMShellDashMenu => {
+                self.toggle_menu(MSHELLDASH_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
             FrameInput::ToggleMargoLayoutMenu => {
@@ -1849,6 +1867,8 @@ impl Frame {
         let session_menu_widget: Widget = self.session_menu.widget().clone().upcast();
         let settings_menu_widget: Widget = self.settings_menu.widget().clone().upcast();
         let dashboard_menu_widget: Widget = self.dashboard_menu.widget().clone().upcast();
+        let mshelldash_menu_widget: Widget =
+            self.mshelldash_menu.widget().clone().upcast();
 
         widgets.left_stack.remove_all();
         widgets.right_stack.remove_all();
@@ -2016,6 +2036,14 @@ impl Frame {
             &dashboard_menu_widget,
             DASHBOARD_MENU,
             &dashboard_menu_position,
+        );
+        // mshelldash — fixed Top anchor for now (wave 1). Config-driven
+        // positioning can follow once it earns a Settings → Menus entry.
+        Self::add_to_stack(
+            widgets,
+            &mshelldash_menu_widget,
+            MSHELLDASH_MENU,
+            &Position::Top,
         );
         // Margo Layout menu — position read from config (the
         // Settings → Menus page exposes the knob). Bar pill output

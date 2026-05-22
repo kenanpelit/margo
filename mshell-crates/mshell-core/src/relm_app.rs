@@ -113,6 +113,7 @@ pub(crate) enum ShellInput {
     /// provider through the `SECTION_BACKEND` bridge.
     OpenSettingsAtSection(Option<String>, String),
     ToggleDashboardMenu(Option<String>),
+    ToggleMShellDashMenu(Option<String>),
     RunSessionAction(mshell_utils::session::SessionAction),
     CloseAllMenus,
     ToggleScreenshareMenu(Option<String>, tokio::sync::oneshot::Sender<String>, String),
@@ -606,6 +607,11 @@ impl Component for Shell {
             ShellInput::ToggleDashboardMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
                     frame.emit(FrameInput::ToggleDashboardMenu);
+                }
+            }
+            ShellInput::ToggleMShellDashMenu(monitor_name) => {
+                if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
+                    frame.emit(FrameInput::ToggleMShellDashMenu);
                 }
             }
             ShellInput::RunSessionAction(action) => {

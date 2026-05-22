@@ -1,0 +1,62 @@
+// mshelldash — standalone tabbed dashboard surface.
+//
+// DESIGN.md compliant: the panel is a plain --surface card rounded to
+// the window-chrome radius and clipped (GtkBox ignores CSS `overflow`,
+// so the Rust side also calls `set_overflow(Hidden)`). Tabs reuse the
+// canonical `ok-button-surface` state-layer; the active tab promotes to
+// a primary-tinted pill via `.selected`. No outline rings (§0.1), all
+// type on the --font-* scale (§Type), matugen tokens only (§Color).
+
+.mshelldash {
+  border-radius: var(--radius-window);
+  background-color: var(--surface);
+  overflow: hidden;
+  padding: 12px;
+  // A floor width so narrow tabs (Overview) don't collapse the panel
+  // while wide ones (Wallpaper grid) drive the natural size.
+  min-width: 440px;
+}
+
+// ── Tab bar ────────────────────────────────────────────────────
+.mshelldash-tabbar {
+  // Sits in a subtle inset tray so the row of tabs reads as one unit
+  // distinct from the content below (surface over border — a tonal
+  // step, not a ring).
+  background-color: var(--surface-container);
+  border-radius: var(--radius-md);
+  padding: 4px;
+}
+
+.mshelldash-tab {
+  // `ok-button-surface` already paints the chrome + 14%/22% hover/press
+  // state layer; we only tune geometry + the selected promotion here.
+  border-radius: var(--radius-sm);
+  padding: 8px 6px;
+
+  label {
+    font-size: var(--font-sm);
+    font-weight: 500;
+  }
+  image {
+    -gtk-icon-size: 16px;
+  }
+
+  &.selected {
+    background-color: var(--primary);
+
+    // Inner labels/icons hardcode --on-surface (03-primitives), so flip
+    // them to --on-primary for the active pill — same idiom the Settings
+    // sidebar uses for its checked button.
+    label,
+    image {
+      color: var(--on-primary);
+    }
+  }
+}
+
+// ── Page stack ─────────────────────────────────────────────────
+.mshelldash-stack {
+  // The reused child widgets bring their own internal padding, so the
+  // stack just needs breathing room above the tab bar.
+  margin-top: 12px;
+}
