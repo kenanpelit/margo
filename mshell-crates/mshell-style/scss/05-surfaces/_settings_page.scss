@@ -1,3 +1,8 @@
-.settings-page {
-  padding: 20px;
-}
+// `.settings-page` is fully styled in 04-components/_settings.scss
+// (padding 24/32/32/32, --surface background, the +1pt settings font
+// scale, and the Apple-style legacy-label cascade). This file used to
+// re-declare `.settings-page { padding: 20px }`, and because
+// 05-surfaces is @imported after 04-components that flat 20px silently
+// overrode the intended asymmetric padding. Left intentionally empty so
+// the canonical rule wins; add page-surface rules here only if they
+// don't collide with the component definition.

@@ -56,7 +56,10 @@
     // menu row / button across the shell (DESIGN.md §7).
     transition: background-color var(--motion-fast) var(--ease-standard);
     label {
-        font-size: var(--font-medium);
+        // Was `--font-medium`, which is not a defined token (the scale
+        // is --font-2xs … --font-xxxl) so it resolved to nothing and the
+        // label fell back to the inherited size. Use the real --font-md.
+        font-size: var(--font-md);
     }
 
     &:hover {
