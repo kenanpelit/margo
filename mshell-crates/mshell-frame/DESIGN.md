@@ -293,6 +293,42 @@ for instance, is just AudioOut + AudioIn revealer rows stacked.
 - The **active** entry shows a `check-symbolic` in `--primary`.
   Clicking a row makes it the active one.
 
+### Scrollable lists & footers (the "dark band" rule)
+A `gtk::ListBox` inside a `gtk::ScrolledWindow` (ufw rules, podman
+rows, …) has TWO traps. Both must be handled or a short list paints a
+dark block of slack between the last card and the footer:
+
+- **Keep the list + its scroller transparent.** A bare `GtkListBox`
+  paints the theme's default opaque `list` / view background. Any
+  reserved scroll height the rows don't fill then reads as a dark band.
+  Always add `.<name>-list, .<name>-menu scrolledwindow {
+  background-color: transparent; }` so slack reads as the panel
+  surface (the way the DNS menu's plain card column already ends
+  cleanly). The row cards keep their own `--surface-container-high`.
+- **Size to content, don't reserve a floor.** `set_min_content_height:
+  0` + `set_propagate_natural_height: true` + a `set_max_content_height`
+  cap. The list then ends right after the last card (≈16px before the
+  footer) and only scrolls once it passes the max. A fixed
+  `min_content_height` (180/240/…) reserves empty height = the band.
+- **Footer is its own region.** Refresh / man-page / action buttons
+  live in a row *below* the list on the panel surface (≈16px
+  `margin_top`), never inside the scroller — so the list visibly ends
+  and the footer reads as separate.
+
+### Buttons that toggle their own label
+If a button swaps its label between states (`Apply` ⇄ `Active`,
+`Connect` ⇄ `Connected`), pin a fixed `min-width` (CSS class) so it
+doesn't reflow when the text length changes — otherwise a column of
+them ends up ragged. See `.dns-preset-apply`.
+
+### Read / unread markers
+Bar status that has a "new vs. seen" distinction (notifications) uses a
+three-state corner dot via `gtk::Overlay`, not just an icon swap:
+unread → solid `--error` dot; seen-history → small dim
+`--on-surface-variant` dot; empty → no dot. Track `total` vs an
+acknowledged `seen` count (bump `seen = total` when the user opens the
+surface). See `bars/bar_widgets/notifications.rs`.
+
 ---
 
 ## 6. Bar → menu wiring checklist
@@ -430,7 +466,8 @@ PascalCase on the bus: `mshellctl menu cpu-dashboard` →
 points → §8 register as Menu → §10 IPC verb → §11 build+verify.
 
 **New menu content:** §5 reuse revealer-row / quick-settings card →
-§3 active tint if stateful → §1 tokens only.
+§3 active tint if stateful → §1 tokens only. Scrollable list? §5 keep
+the ListBox + scroller transparent and size-to-content (no dark band).
 
 **New dashboard tile:** drop into a column's widget list; if it's the
 big "anchor" put it last (§7 `fill`); keep quiet tiles compact above;
