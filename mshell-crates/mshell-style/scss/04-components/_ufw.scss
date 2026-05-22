@@ -56,6 +56,16 @@
 }
 
 // ── Rule list ────────────────────────────────────────────────
+// The ListBox + its ScrolledWindow must not paint the default opaque
+// `list` / view background: any scroll slack below the last card would
+// otherwise read as a dark band wedged between the rules and the
+// footer. Keep them transparent so the slack reads as the panel
+// surface — same clean ending the DNS menu's plain card column has.
+.ufw-menu-widget scrolledwindow,
+.ufw-rule-list {
+  background-color: transparent;
+}
+
 // ListBox of `(rule label, trash button)` pairs. Tonal raised
 // rows (no outline ring — surfaces over borders) with a calm
 // hover state-layer; list-item shape via --radius-sm.

@@ -183,7 +183,11 @@ impl Component for UfwMenuWidgetModel {
 
             // ── Scrollable rule list ────────────────────────────
             gtk::ScrolledWindow {
-                set_min_content_height: 180,
+                // No fixed floor — let the list size to its rows
+                // (propagate_natural_height) so a short rule set ends
+                // right after the last card instead of reserving a tall
+                // empty block. Scrolls once it passes the max.
+                set_min_content_height: 0,
                 set_max_content_height: 320,
                 set_hscrollbar_policy: gtk::PolicyType::Never,
                 set_propagate_natural_height: true,
@@ -202,7 +206,9 @@ impl Component for UfwMenuWidgetModel {
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
                 set_spacing: 6,
-                set_margin_top: 4,
+                // Breathing room so the footer reads as its own region
+                // sitting on the panel, separate from the rule list.
+                set_margin_top: 16,
                 set_homogeneous: true,
 
                 gtk::Button {

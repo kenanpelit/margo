@@ -170,7 +170,7 @@ impl Component for PodmanMenuWidgetModel {
                 set_transition_duration: 200,
 
                 add_titled[Some("containers"), "Containers"] = &gtk::ScrolledWindow {
-                    set_min_content_height: 240,
+                    set_min_content_height: 0,
                     set_max_content_height: 420,
                     set_hscrollbar_policy: gtk::PolicyType::Never,
                     set_propagate_natural_height: true,
@@ -182,7 +182,7 @@ impl Component for PodmanMenuWidgetModel {
                     },
                 },
                 add_titled[Some("images"), "Images"] = &gtk::ScrolledWindow {
-                    set_min_content_height: 240,
+                    set_min_content_height: 0,
                     set_max_content_height: 420,
                     set_hscrollbar_policy: gtk::PolicyType::Never,
                     set_propagate_natural_height: true,
@@ -194,7 +194,7 @@ impl Component for PodmanMenuWidgetModel {
                     },
                 },
                 add_titled[Some("pods"), "Pods"] = &gtk::ScrolledWindow {
-                    set_min_content_height: 240,
+                    set_min_content_height: 0,
                     set_max_content_height: 420,
                     set_hscrollbar_policy: gtk::PolicyType::Never,
                     set_propagate_natural_height: true,

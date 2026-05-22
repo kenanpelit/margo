@@ -63,6 +63,14 @@
 }
 
 // ── Row list ────────────────────────────────────────────────
+// Keep the ListBox + its ScrolledWindow transparent so scroll slack
+// below the last row reads as the panel surface rather than a dark
+// band between the list and the tab/footer chrome.
+.podman-menu-widget scrolledwindow,
+.podman-row-list {
+  background-color: transparent;
+}
+
 .podman-row-list row {
   padding: 2px 4px;
   border-radius: var(--radius-sm);
