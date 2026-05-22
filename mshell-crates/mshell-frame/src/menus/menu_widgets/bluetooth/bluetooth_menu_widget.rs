@@ -47,8 +47,12 @@ impl Component for BluetoothMenuWidgetModel {
 
     view! {
         #[root]
+        // Transparent root so the §12 header sits on the panel surface,
+        // not on the tile card — mirrors the audio-dashboard structure.
+        // The `.bluetooth-menu-widget` tile chrome (--surface-container
+        // card) moves to the inner box wrapping the revealer row, so the
+        // header no longer picks up the button-row's card colour.
         gtk::Box {
-            add_css_class: "bluetooth-menu-widget",
             set_orientation: gtk::Orientation::Vertical,
             set_spacing: 12,
 
@@ -71,7 +75,12 @@ impl Component for BluetoothMenuWidgetModel {
                 },
             },
 
-            model.revealer_row.widget().clone() {}
+            gtk::Box {
+                add_css_class: "bluetooth-menu-widget",
+                set_orientation: gtk::Orientation::Vertical,
+
+                model.revealer_row.widget().clone() {}
+            }
         }
     }
 
