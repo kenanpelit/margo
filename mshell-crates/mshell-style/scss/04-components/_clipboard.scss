@@ -4,7 +4,9 @@
 // Display-size title: SemiBold (600, not Bold). This is the one menu
 // that carries a big title — compact menus use a section-label.
 .clipboard-title {
-  font-size: var(--font-xl);
+  // Bespoke header display size — 24px sits between --font-lg (18) and
+  // --font-xl (26); §1 allows a literal px for a one-off display size.
+  font-size: 24px;
   font-weight: 600;
   color: var(--on-surface);
 }
@@ -100,8 +102,14 @@
   }
 }
 
+// The relative-time line ("8m ago") is metadata, not content — drop it
+// to the dimmest --outline tier so it matches the keyboard-hint strip
+// and clearly recedes behind the entry's copy text (which sits at
+// --on-surface). On this palette --on-surface-variant collapses into
+// --on-surface, so without this the timestamp read identical to the
+// copy block.
 .clipboard-item-title {
-  color: var(--on-surface-variant);
+  color: var(--outline);
 }
 
 .clipboard-item-image {
@@ -116,6 +124,18 @@
 
 .clipboard-trash-button {
   background-color: transparent;
+
+  // Dim --outline at rest (matching the timestamp + hint strip) so the
+  // delete affordance recedes, brightening on hover — same idiom as
+  // the pin star below.
+  image {
+    color: var(--outline);
+    transition: color 150ms ease-in-out;
+  }
+
+  &:hover image {
+    color: var(--on-surface);
+  }
 }
 
 // Pin / favourite toggle. Unpinned reads as a dim outline-variant
