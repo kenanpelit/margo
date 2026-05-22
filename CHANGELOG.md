@@ -7,6 +7,64 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.7.6] – 2026-05-22
+
+### Added
+
+- **mshelldash** — a standalone tabbed dashboard
+  (Overview · Media · Weather · Wallpaper · System), rebuilt on margo's
+  DESIGN.md language and coexisting with the classic dashboard. The
+  Overview tab is a live mosaic (clock hero + a `/proc`-sampled system
+  glance); the other tabs reuse the existing menu-widget components so
+  they stay in sync. Open it with `mshellctl menu mshelldash [tab]` to
+  land straight on a named view.
+- **CPU dashboard enrichment** — current frequency, CPU model / core /
+  thread identity, a history sparkline, a user vs. system load split,
+  and memory detail; the bar pill gained per-metric glyphs (a new
+  processor-chip and RAM-module symbolic icon ship in MargoMaterial,
+  plus the thermometer), recoloured by the calm/warn/danger ladder.
+- **Weather** — a standalone bar pill + menu; the standalone menu is the
+  full all-in-one Current / Hourly / Daily surface, today's high / low
+  rides on a right-click toggle in the pill, a dedicated Weather page in
+  Settings, and clearer city / district querying.
+- **Twilight** — the menu now surfaces each preset's actual values
+  (colour temperature + time), not just its name.
+- **Notifications** — configurable popup-toast width, a read / unread
+  bell dot in the bar (unread → error dot, seen history → muted dot),
+  and toggleable history grouping.
+- **Bar** — a unified, configurable pill hover strength; the keep-awake
+  pill gained a 24 h preset; the bluetooth pill shows the connected
+  device name.
+- **Dashboard** — wallpaper + screenshot quick-action buttons.
+- **mlock** — consolidated as margo's single lock screen: always-visible
+  matugen accent (card border + avatar ring), media keys and a
+  keyboard-layout indicator on the lock surface, and a bare
+  `mshellctl lock`.
+
+### Changed
+
+- **Sweeping DESIGN.md conformance pass** across the shell: the Settings
+  window was rebuilt on shared chrome; dashboard / clipboard / launcher /
+  theme-picker / wallpaper widgets were aligned to *surfaces over
+  borders*, the `--font-*` size scale, matugen tokens, and one canonical
+  hover; a single radius rule (scale for widgets, config for window
+  chrome); and scattered `px` / `em` font sizes were tokenized.
+- **DESIGN.md** itself was extended to codify the scrollable-list /
+  footer ("dark band"), label-toggling-button, and read/unread-marker
+  rules so they don't regress.
+
+### Fixed
+
+- Settings panel corners are now clipped via `set_overflow` (GTK4
+  ignores CSS `overflow` on a `GtkBox`).
+- Dropped the dark background band below the UFW / Podman rule lists.
+- DNS preset Apply / Active buttons keep one width across both states.
+- Audio-dashboard / Bluetooth revealer rows are centred and slimmer.
+- Reaped keybind-spawned child processes (no more zombie pile-up) and
+  stopped zombie `mlock` procs from wedging `lock_session`.
+- Weather menu is registered in Settings → Menus; Valent pill icon
+  states; assorted clipboard spacing fixes.
+
 ## [0.7.5] – 2026-05-21
 
 ### Changed
@@ -2673,5 +2731,6 @@ sway, tinywl, and wlroots — see `LICENSE.*`.
   (end-to-end nested-mode smoke under Xvfb), `docs.yml`
   (Pages deployment).
 
-[Unreleased]: https://github.com/kenanpelit/margo/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/kenanpelit/margo/compare/v0.7.6...HEAD
+[0.7.6]: https://github.com/kenanpelit/margo/releases/tag/v0.7.6
 [0.1.0]: https://github.com/kenanpelit/margo/releases/tag/v0.1.0
