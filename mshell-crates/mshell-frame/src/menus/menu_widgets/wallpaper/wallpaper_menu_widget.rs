@@ -157,17 +157,28 @@ impl Component for WallpaperMenuWidgetModel {
                 set_margin_all: 24,
                 set_spacing: 16,
 
+                // ── §12 panel header ──
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Vertical,
+                    add_css_class: "panel-header",
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 12,
 
-                    set_hexpand: false,
-                    set_halign: gtk::Align::Start,
-
-                    gtk::Label {
-                        add_css_class: "label-xl-bold",
-                        set_label: "Wallpaper",
-                        set_xalign: 0.0,
+                    gtk::Image {
+                        add_css_class: "panel-header-icon",
+                        set_valign: gtk::Align::Center,
+                        set_icon_name: Some("wallpaper-symbolic"),
                     },
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        set_halign: gtk::Align::Start,
+
+                        gtk::Label {
+                            add_css_class: "panel-title",
+                            set_label: "Wallpaper",
+                            set_xalign: 0.0,
+                        },
 
                     gtk::Label {
                         add_css_class: "label-small",
@@ -178,6 +189,7 @@ impl Component for WallpaperMenuWidgetModel {
                         set_xalign: 0.0,
                         set_wrap: true,
                         set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                    },
                     },
                 },
 

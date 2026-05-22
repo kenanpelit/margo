@@ -70,17 +70,24 @@ impl Component for ThemePickerMenuWidgetModel {
             add_css_class: "theme-picker-menu-widget",
             set_orientation: gtk::Orientation::Vertical,
 
+            // ── §12 panel header ──
             gtk::Box {
+                add_css_class: "panel-header",
                 set_orientation: gtk::Orientation::Horizontal,
-                // Snap to the 4/8/12/16/24/32 spacing scale (DESIGN.md §1):
-                // 26 / 20 were off-grid.
                 set_margin_all: 24,
-                set_spacing: 16,
+                set_spacing: 12,
+
+                gtk::Image {
+                    add_css_class: "panel-header-icon",
+                    set_valign: gtk::Align::Center,
+                    set_icon_name: Some("palette-symbolic"),
+                },
 
                 gtk::Label {
-                    add_css_class: "label-xl-bold",
+                    add_css_class: "panel-title",
                     set_label: "Color Scheme",
                     set_halign: gtk::Align::Start,
+                    set_hexpand: true,
                 },
 
                 #[name = "theme_filter_dropdown"]

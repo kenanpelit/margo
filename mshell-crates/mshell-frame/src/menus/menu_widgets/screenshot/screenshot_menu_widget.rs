@@ -59,10 +59,24 @@ impl Component for ScreenshotMenuWidgetModel {
             set_hexpand: false,
             set_orientation: gtk::Orientation::Vertical,
 
-            gtk::Label {
-                add_css_class: "label-large-bold",
-                set_label: "Screenshot",
+            // ── §12 panel header ──
+            gtk::Box {
+                add_css_class: "panel-header",
+                set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 12,
                 set_margin_bottom: 8,
+                gtk::Image {
+                    add_css_class: "panel-header-icon",
+                    set_valign: gtk::Align::Center,
+                    set_icon_name: Some("camera-photo-symbolic"),
+                },
+                gtk::Label {
+                    add_css_class: "panel-title",
+                    set_label: "Screenshot",
+                    set_halign: gtk::Align::Start,
+                    set_hexpand: true,
+                    set_valign: gtk::Align::Center,
+                },
             },
 
             model.delay_row.widget().clone() {},
