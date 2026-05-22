@@ -27,6 +27,7 @@ pub(crate) mod podman;
 pub(crate) mod power;
 pub(crate) mod ufw;
 pub(crate) mod overview_intel;
+pub(crate) mod panel_header;
 pub(crate) mod quick_action;
 pub(crate) mod screen_record;
 pub(crate) mod screenshare;

@@ -32,10 +32,9 @@ tile-merge seams, or the standalone clock menu (`mshellctl menu clock`).
 - **Header mechanism:** a new reusable `MenuWidget::PanelHeader`
   config widget (chosen over render-time injection or mutating the
   Clock widget). Any future panel can drop it in.
-- **Footer dedup:** drop `QuickActionWidget::Settings` from the footer
-  strip — the header ⚙ now covers it. Footer keeps AirplaneMode,
-  Nightlight, ColorPicker, Wallpaper, Screenshot, Logout, Lock,
-  Reboot, Shutdown.
+- **Footer:** unchanged — `QuickActionWidget::Settings` stays in the
+  footer strip (user decision). The header ⚙ and the footer Settings
+  intentionally coexist.
 
 ## 3. Components / architecture
 
@@ -71,8 +70,8 @@ default sets `title: "Dashboard"`.
    (+ `mod.rs`, + `menu_widgets/mod.rs` entry).
 4. `mshell-config/.../schema/config.rs` — dashboard default tree:
    replace the leading `MenuWidget::Clock` with
-   `MenuWidget::PanelHeader(PanelHeaderConfig { title: "Dashboard" })`;
-   drop `QuickActionWidget::Settings` from the footer list.
+   `MenuWidget::PanelHeader(PanelHeaderConfig { title: "Dashboard" })`.
+   (Footer QuickActions list unchanged — Settings stays.)
 5. SCSS — `_clipboard.scss` `.clipboard-action-btn` generalised to a
    shared `.panel-action-btn` (or a new shared rule) + a
    `.panel-header` / `.panel-title` rule (24px SemiBold), date metadata
@@ -91,11 +90,18 @@ default sets `title: "Dashboard"`.
 
 ### 3.3 Per-tile audit (§12/§1)
 
-Each dashboard tile is checked against the panel-archetype rules. Known
-work from the scan:
-- **`_power.scss` hardcoded hex** (`#8ec07c`, `#1e2326`) → replace with
-  tokens (`--primary`/`--on-primary` or the appropriate semantic
-  token). This is the one hard §1 violation found.
+Each dashboard tile is checked against the panel-archetype rules.
+Finding after the audit: the actual dashboard tiles
+(`_overview_intel`, `_connectivity`, `_compact_audio`,
+`_system_status`, `_media_player`, `_weather`, `_calendar`) are already
+§-compliant — no hardcoded hex (only §2-sanctioned `var(--error,
+#ef4444)` fallbacks), and every `--primary` use is live/active (§3) or
+severity (§2), not decoration.
+
+- **`_power.scss` is OUT OF SCOPE.** Its hardcoded `#8ec07c`/`#1e2326`
+  belong to `MenuWidget::Power` (the standalone power-profile menu /
+  bar pill), which the dashboard does **not** render — the dashboard
+  uses `SystemStatus` for power. Left untouched.
 - **Metadata tiers:** verify each tile's secondary/metadata text reads
   at the right tier — captions/labels at `--on-surface-variant`, the
   dimmest metadata (timestamps, hints, units where they're incidental)
@@ -111,8 +117,9 @@ work from the scan:
 ## 4. What stays the same
 
 Two-column layout (§7 homogeneous + per-column fill), the tile set and
-order, the tile-merge seams, the QuickActions footer (minus Settings),
-the 860px width, `MenuWidget::Clock` and the standalone clock menu.
+order, the tile-merge seams, the QuickActions footer (unchanged —
+Settings included), the 860px width, `MenuWidget::Clock` and the
+standalone clock menu.
 
 ## 5. Verification
 

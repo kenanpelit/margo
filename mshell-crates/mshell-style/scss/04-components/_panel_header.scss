@@ -1,0 +1,63 @@
+// ── §12 panel header (DESIGN.md §12 "Header region") ────────────
+// Reusable header for the panel archetype: a leading glyph, a SemiBold
+// display title, a dim live date, and a circular settings gear. Used
+// by the dashboard (MenuWidget::PanelHeader) in place of the old Clock
+// hero. Transparent on purpose — the header is NOT a tile, so it sits
+// outside the .quick-settings-menu card-chrome list.
+.panel-header {
+  padding: 0 var(--padding-sm);
+}
+
+// Display-size title — bespoke 24px SemiBold, matching the clipboard
+// panel title (§12). 24 has no --font token; §1 allows a literal px
+// for a one-off display size.
+.panel-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--on-surface);
+}
+
+// Leading glyph — symbolic, at the dim variant tier so the title stays
+// the focal point (§0.6 one icon family).
+.panel-header-icon {
+  color: var(--on-surface-variant);
+  -gtk-icon-size: var(--icon-md);
+}
+
+// Live date — metadata, so the dimmest --outline tier (the same tier
+// the clipboard timestamps + hint strip use, §12). Recedes behind the
+// title.
+.panel-header-meta {
+  font-size: var(--font-sm);
+  color: var(--outline);
+  font-variant-numeric: tabular-nums;
+}
+
+// Circular icon action button (settings gear): perfect circle, resting
+// transparent, hover = the canonical 14% primary state-layer (§4/§5).
+// Mirrors the clipboard panel's .clipboard-action-btn.
+.panel-action-btn {
+  all: unset;
+  min-width: 40px;
+  min-height: 40px;
+  border-radius: var(--radius-pill);
+  background-color: transparent;
+  transition: background-color var(--motion-fast) var(--ease-standard);
+
+  image {
+    color: var(--on-surface-variant);
+    -gtk-icon-size: var(--icon-md);
+  }
+
+  &:hover {
+    background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
+
+    image {
+      color: var(--on-surface);
+    }
+  }
+
+  &:active {
+    background-color: unquote("color-mix(in srgb, var(--primary) 22%, transparent)");
+  }
+}

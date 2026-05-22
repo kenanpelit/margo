@@ -64,6 +64,11 @@ pub enum MenuWidget {
     Screenshots,
     ScreenRecording,
     Spacer(SpacerConfig),
+    /// Reusable §12 panel header — leading icon + a SemiBold display
+    /// title + a live date + a circular settings gear. Sits at the
+    /// head of a panel (the dashboard uses it in place of the Clock
+    /// hero); any future panel can reuse it.
+    PanelHeader(PanelHeaderConfig),
     /// Combined system-health tile — active power profile, battery
     /// %, and CPU package temperature in one compact card. Lives
     /// in the dashboard's right column where each of the three
@@ -143,6 +148,7 @@ impl MenuWidget {
             MenuWidget::Screenshots => "Screenshots",
             MenuWidget::ScreenRecording => "Screen Recording",
             MenuWidget::Spacer(_) => "Spacer",
+            MenuWidget::PanelHeader(_) => "Panel Header",
             MenuWidget::SystemStatus => "System Status",
             MenuWidget::SystemUpdate => "System Updates",
             MenuWidget::Valent => "Valent Connect",
@@ -201,6 +207,7 @@ impl MenuWidget {
             MenuWidget::Screenshots,
             MenuWidget::ScreenRecording,
             MenuWidget::Spacer(SpacerConfig { size: 16 }),
+            MenuWidget::PanelHeader(PanelHeaderConfig::default()),
             MenuWidget::SystemStatus,
             MenuWidget::SystemUpdate,
             MenuWidget::Valent,
@@ -279,6 +286,27 @@ impl QuickActionWidget {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, JsonSchema)]
 pub struct SpacerConfig {
     pub size: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, JsonSchema)]
+pub struct PanelHeaderConfig {
+    /// Display-size panel title (e.g. "Dashboard"), shown SemiBold at
+    /// the head of the panel beside a live date + a settings gear
+    /// (DESIGN.md §12 header). A field so the header is reusable.
+    #[serde(default = "default_panel_title")]
+    pub title: String,
+}
+
+fn default_panel_title() -> String {
+    "Dashboard".to_string()
+}
+
+impl Default for PanelHeaderConfig {
+    fn default() -> Self {
+        Self {
+            title: default_panel_title(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, JsonSchema)]

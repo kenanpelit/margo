@@ -3,7 +3,8 @@ use crate::schema::clipboard::Clipboard;
 use crate::schema::content_fit::ContentFit;
 use crate::schema::location_query::{LocationQueryConfig, OrdF64};
 use crate::schema::menu_widgets::{
-    ContainerConfig, MenuWidget, QuickActionWidget, QuickActionsConfig, SpacerConfig,
+    ContainerConfig, MenuWidget, PanelHeaderConfig, QuickActionWidget, QuickActionsConfig,
+    SpacerConfig,
 };
 use crate::schema::position::{NotificationPosition, Orientation, Position};
 use crate::schema::temperature::TemperatureUnitConfig;
@@ -697,8 +698,15 @@ impl Default for Menus {
                 // surface as the bottom anchor.
                 position: Position::Top,
                 widgets: vec![
-                    // ── Hero band ──
-                    MenuWidget::Clock,
+                    // ── §12 panel header ──
+                    // Replaces the old Clock hero: the big time was
+                    // redundant with the bar clock, so the dashboard
+                    // leads with a title + dim date + settings gear
+                    // (DESIGN.md §12). The decorative primary underline
+                    // the Clock hero carried goes away with it.
+                    MenuWidget::PanelHeader(PanelHeaderConfig {
+                        title: "Dashboard".to_string(),
+                    }),
                     MenuWidget::Spacer(SpacerConfig { size: 8 }),
                     // ── 2-col body ──
                     MenuWidget::Container(ContainerConfig {

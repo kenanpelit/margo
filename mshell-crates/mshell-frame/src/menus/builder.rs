@@ -61,6 +61,7 @@ use crate::menus::menu_widgets::ufw::ufw_menu_widget::{
     UfwMenuWidgetInit, UfwMenuWidgetModel,
 };
 use crate::menus::menu_widgets::overview_intel::{OverviewIntelInit, OverviewIntelModel};
+use crate::menus::menu_widgets::panel_header::{PanelHeaderInit, PanelHeaderModel};
 use crate::menus::menu_widgets::quick_action::quick_actions::{
     QuickActionsInit, QuickActionsModel, QuickActionsOutput,
 };
@@ -314,6 +315,13 @@ pub fn build_widget(
                 .launch(SpacerInit {
                     config: config.clone(),
                     orientation,
+                })
+                .detach(),
+        ),
+        MenuWidget::PanelHeader(config) => Box::new(
+            PanelHeaderModel::builder()
+                .launch(PanelHeaderInit {
+                    title: config.title.clone(),
                 })
                 .detach(),
         ),
