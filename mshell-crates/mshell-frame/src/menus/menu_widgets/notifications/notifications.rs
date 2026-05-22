@@ -58,16 +58,19 @@ impl Component for NotificationsModel {
             set_orientation: gtk::Orientation::Vertical,
             set_spacing: 12,
 
+            // ── §12 panel header ──
             gtk::Box {
+                add_css_class: "panel-header",
                 set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 12,
 
                 gtk::Button {
-                    add_css_class: "ok-button-surface",
+                    add_css_class: "panel-action-btn",
                     set_valign: gtk::Align::Center,
+                    set_tooltip_text: Some("Do Not Disturb"),
                     connect_clicked[sender] => move |_| {
                         sender.input(NotificationsInput::DndClicked);
                     },
-                    set_margin_end: 4,
 
                     gtk::Image {
                         #[watch]
@@ -80,7 +83,7 @@ impl Component for NotificationsModel {
                 },
 
                 gtk::Label {
-                    add_css_class: "label-medium-bold",
+                    add_css_class: "panel-title",
                     set_halign: gtk::Align::Start,
                     set_label: "Notification History",
                     set_hexpand: true,

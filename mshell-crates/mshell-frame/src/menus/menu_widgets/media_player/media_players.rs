@@ -67,11 +67,20 @@ impl Component for MediaPlayersModel {
             #[watch]
             set_visible: model.players_visible,
 
+            // ── §12 panel header ──
             gtk::Box {
+                add_css_class: "panel-header",
                 set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 12,
+
+                gtk::Image {
+                    add_css_class: "panel-header-icon",
+                    set_valign: gtk::Align::Center,
+                    set_icon_name: Some("media-play-symbolic"),
+                },
 
                 gtk::Label {
-                    add_css_class: "label-small-bold-variant",
+                    add_css_class: "panel-title",
                     #[watch]
                     set_label: model.active_player_name.as_str(),
                     set_hexpand: true,

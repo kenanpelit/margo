@@ -79,12 +79,14 @@ impl Component for TwilightMenuWidgetModel {
             set_orientation: gtk::Orientation::Vertical,
             set_spacing: 12,
 
-            // Header: icon + title/status + on-off toggle.
+            // ── §12 panel header ──
             gtk::Box {
+                add_css_class: "panel-header",
                 set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 8,
+                set_spacing: 12,
                 gtk::Image {
-                    add_css_class: "twilight-header-icon",
+                    add_css_class: "panel-header-icon",
+                    set_valign: gtk::Align::Center,
                     #[watch]
                     set_icon_name: Some(model.status.icon()),
                 },
@@ -92,7 +94,7 @@ impl Component for TwilightMenuWidgetModel {
                     set_orientation: gtk::Orientation::Vertical,
                     set_hexpand: true,
                     gtk::Label {
-                        add_css_class: "label-medium-bold",
+                        add_css_class: "panel-title",
                         set_halign: gtk::Align::Start,
                         set_label: "Twilight",
                     },

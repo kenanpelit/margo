@@ -82,9 +82,32 @@ impl Component for WeatherModel {
 
     view! {
         #[root]
-        gtk::Stack {
-            add_css_class: "weather-menu-widget",
-            set_transition_type: gtk::StackTransitionType::Crossfade,
+        gtk::Box {
+            set_orientation: gtk::Orientation::Vertical,
+            set_spacing: 10,
+
+            // ── §12 panel header ──
+            gtk::Box {
+                add_css_class: "panel-header",
+                set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 12,
+                gtk::Image {
+                    add_css_class: "panel-header-icon",
+                    set_valign: gtk::Align::Center,
+                    set_icon_name: Some("weather-clear-day-symbolic"),
+                },
+                gtk::Label {
+                    add_css_class: "panel-title",
+                    set_label: "Weather",
+                    set_halign: gtk::Align::Start,
+                    set_hexpand: true,
+                    set_valign: gtk::Align::Center,
+                },
+            },
+
+            gtk::Stack {
+                add_css_class: "weather-menu-widget",
+                set_transition_type: gtk::StackTransitionType::Crossfade,
             set_transition_duration: 250,
             set_vhomogeneous: false,
             #[watch]
@@ -215,6 +238,7 @@ impl Component for WeatherModel {
                     set_visible: model.all_in_one,
                 },
             },
+        }
         }
     }
 

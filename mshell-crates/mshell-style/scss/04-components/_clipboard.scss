@@ -4,9 +4,9 @@
 // Display-size title: SemiBold (600, not Bold). This is the one menu
 // that carries a big title — compact menus use a section-label.
 .clipboard-title {
-  // Bespoke header display size — 24px sits between --font-lg (18) and
-  // --font-xl (26); §1 allows a literal px for a one-off display size.
-  font-size: 24px;
+  // Header title — --font-md (16) SemiBold, in step with the shared
+  // .panel-title (was a bespoke 24px; pulled down to stay quiet).
+  font-size: var(--font-md);
   font-weight: 600;
   color: var(--on-surface);
 }

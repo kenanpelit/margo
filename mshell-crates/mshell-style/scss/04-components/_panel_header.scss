@@ -8,11 +8,11 @@
   padding: 0 var(--padding-sm);
 }
 
-// Display-size title — bespoke 24px SemiBold, matching the clipboard
-// panel title (§12). 24 has no --font token; §1 allows a literal px
-// for a one-off display size.
+// Header title — --font-md (16) SemiBold: a touch above body weight,
+// not a display banner. (Was a bespoke 24px; pulled down so panel
+// headers stay quiet across the narrow menus too.)
 .panel-title {
-  font-size: 24px;
+  font-size: var(--font-md);
   font-weight: 600;
   color: var(--on-surface);
 }

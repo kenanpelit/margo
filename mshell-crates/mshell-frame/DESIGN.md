@@ -493,11 +493,11 @@ A panel opens with a real header, not just a section label:
  leading   SemiBold title (hexpand)            circular actions
 ```
 
-- **Title**: SemiBold (`font-weight: 600`), `--on-surface`, a bespoke
-  **24px** display size — bigger than body, but `--font-xxl` (32) reads
-  oversized in a panel header. This (and the clock hero) are the only
-  literal-px display sizes §1 permits; a panel title is the one place a
-  menu goes display-size at all (compact menus use a `…-section-label`).
+- **Title**: SemiBold (`font-weight: 600`), `--on-surface`, **`--font-md`
+  (16)** — a touch above body weight, *not* a display banner. A bigger
+  size (`--font-lg`/`xl`/`xxl`) reads oversized once the header lands on
+  the narrow menus (UFW, Bluetooth, …), so the title stays calm and the
+  leading icon + tonal weight carry the "this is a header" cue.
 - **Leading icon**: symbolic, outline family, same stroke as the rest
   (§0.6) — never a filled glyph.
 - **Action buttons** (trailing): icon-only, **perfect circle**
@@ -611,7 +611,7 @@ big "anchor" put it last (§7 `fill`); keep quiet tiles compact above;
 always-on metrics use escalating severity wording (§7).
 
 **New panel (browse + filter a surface):** §12 — `--surface` panel at
-`--radius-lg` + `--padding-xl`; header with a SemiBold 24px title +
+`--radius-lg` + `--padding-xl`; header with a SemiBold `--font-md` title +
 circular action buttons; segmented control (active =
 `--secondary-container`, `--outline-variant` capsule hairline); pill
 search (`--radius-pill`); lightweight `--surface-container` /
