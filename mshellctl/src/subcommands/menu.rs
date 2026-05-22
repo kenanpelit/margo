@@ -109,9 +109,13 @@ pub enum MenuCommands {
     /// Toggle the combined dashboard menu (clock + weather +
     /// quick settings, all in one panel)
     Dashboard,
-    /// Toggle the tabbed mshelldash surface
-    /// (Overview · Media · Weather · Wallpaper · System)
-    Mshelldash,
+    /// Toggle the tabbed mshelldash surface. Optionally open straight
+    /// to a tab: overview · media · weather · wallpaper · system.
+    Mshelldash {
+        /// Target tab to open (omit to just toggle the current tab).
+        #[arg(value_name = "TAB")]
+        tab: Option<String>,
+    },
     /// Close all open menus
     CloseAll,
 }
@@ -240,8 +244,8 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         MenuCommands::Dashboard => {
             bus_command("Dashboard").await?;
         }
-        MenuCommands::Mshelldash => {
-            bus_command("Mshelldash").await?;
+        MenuCommands::Mshelldash { tab } => {
+            bus_command_with_arg("Mshelldash", &tab.unwrap_or_default()).await?;
         }
         MenuCommands::CloseAll => {
             bus_command("CloseAllMenus").await?;

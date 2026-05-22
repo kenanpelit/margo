@@ -57,6 +57,10 @@ impl std::fmt::Debug for MShellDashModel {
 #[derive(Debug)]
 pub(crate) enum MShellDashInput {
     SelectTab(usize),
+    /// Jump to a tab by its stack name (e.g. "system"); no-op if the
+    /// name is empty or unknown. Used when the dash is opened with an
+    /// explicit target tab via IPC.
+    SelectTabName(String),
 }
 
 #[derive(Debug)]
@@ -179,14 +183,18 @@ impl Component for MShellDashModel {
         _sender: ComponentSender<Self>,
         _root: &Self::Root,
     ) {
-        match message {
-            MShellDashInput::SelectTab(i) => {
-                self.active = i;
-                for (j, b) in self.tab_buttons.iter().enumerate() {
-                    b.set_css_classes(&tab_classes(self.active, j));
-                }
-                widgets.stack.set_visible_child_name(TABS[i].0);
+        let target = match message {
+            MShellDashInput::SelectTab(i) => Some(i),
+            MShellDashInput::SelectTabName(name) => {
+                TABS.iter().position(|(n, _, _)| *n == name)
             }
+        };
+        if let Some(i) = target {
+            self.active = i;
+            for (j, b) in self.tab_buttons.iter().enumerate() {
+                b.set_css_classes(&tab_classes(self.active, j));
+            }
+            widgets.stack.set_visible_child_name(TABS[i].0);
         }
     }
 }

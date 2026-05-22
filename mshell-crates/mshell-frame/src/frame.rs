@@ -16,7 +16,9 @@ use crate::frame_draw_widget::FrameDrawWidget;
 use crate::frame_spacer::{FrameSpacerInit, FrameSpacerInput, FrameSpacerModel};
 use crate::menus::menu::MenuInput::ForwardHyprlandScreenshareReply;
 use crate::menus::menu::{MenuInit, MenuInput, MenuModel, MenuOutput, MenuType};
-use crate::menus::menu_widgets::mshelldash::mshelldash::{MShellDashInit, MShellDashModel};
+use crate::menus::menu_widgets::mshelldash::mshelldash::{
+    MShellDashInit, MShellDashInput, MShellDashModel,
+};
 
 const CLOCK_MENU: &str = "clock";
 const CLIPBOARD_MENU: &str = "clipboard";
@@ -178,8 +180,9 @@ pub enum FrameInput {
     /// doesn't linger on a monitor the user is no longer viewing.
     CloseSettingsMenu,
     ToggleDashboardMenu,
-    /// Open / close the standalone tabbed mshelldash surface.
-    ToggleMShellDashMenu,
+    /// Open / close the standalone tabbed mshelldash surface. The
+    /// `String` is an optional target tab name ("" = leave current).
+    ToggleMShellDashMenu(String),
     /// Open / close the Margo layout switcher menu (in-frame
     /// replacement for the legacy bar popover).
     ToggleMargoLayoutMenu,
@@ -1147,7 +1150,10 @@ impl Component for Frame {
                 self.toggle_menu(DASHBOARD_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
-            FrameInput::ToggleMShellDashMenu => {
+            FrameInput::ToggleMShellDashMenu(tab) => {
+                if !tab.is_empty() {
+                    self.mshelldash_menu.emit(MShellDashInput::SelectTabName(tab));
+                }
                 self.toggle_menu(MSHELLDASH_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
