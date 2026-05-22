@@ -128,6 +128,42 @@
   color: var(--on-surface);
 }
 
+// CPU identity line (model · cores/threads), above the hero.
+.cpu-dashboard-model {
+  font-size: var(--font-xs);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--on-surface-variant);
+}
+
+// User vs System split readout under the hero.
+.cpu-dashboard-split {
+  font-size: var(--font-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface-variant);
+}
+
+// History sparkline. The DrawingArea reads its `color` at paint time
+// for the line/fill, so pin it to the matugen accent here.
+.cpu-dashboard-sparkline {
+  color: var(--primary);
+}
+
+// "used / total" memory + swap readout (secondary tier).
+.cpu-dashboard-mem-detail {
+  font-family: monospace;
+  font-size: var(--font-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface-variant);
+}
+
+// Uptime footer.
+.cpu-dashboard-uptime {
+  font-size: var(--font-xs);
+  color: var(--on-surface-variant);
+  opacity: 0.85;
+}
+
 // ProgressBar tinting for per-core + RAM bars. GTK4 paints
 // `progressbar > trough > progress` — we restyle both layers
 // so the bar reads as a clean inset capsule even when filled
