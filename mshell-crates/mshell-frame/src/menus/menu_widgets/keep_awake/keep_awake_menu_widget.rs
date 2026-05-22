@@ -1,6 +1,7 @@
 //! Keep Awake menu widget — the panel content for
 //! `MenuType::KeepAwake`. Ports the noctalia `keep-awake-plus` panel:
-//! a status line, a duration grid (30m / 1h / 2h / 4h / 8h / ∞), and
+//! a status line, a duration grid (15m / 30m / 1h / 2h / 4h / 8h /
+//! 24h / ∞), and
 //! quick-extend + turn-off once a session is running. The timed
 //! inhibit lives in [`crate::keep_awake::KeepAwakeSession`].
 
@@ -19,6 +20,7 @@ const PRESETS: &[(u64, &str)] = &[
     (120, "2h"),
     (240, "4h"),
     (480, "8h"),
+    (1440, "24h"),
 ];
 /// The `+Xm` quick-extend step.
 const EXTEND_MINUTES: u64 = 30;
