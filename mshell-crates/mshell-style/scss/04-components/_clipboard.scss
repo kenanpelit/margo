@@ -1,10 +1,12 @@
 @use "../03-primitives/buttons";
 
 .clipboard-item {
-  @include buttons.button-base('--surface', '--on-surface');
-  @include buttons.state-layers('--surface', '--on-surface');
-  border: var(--outline) solid var(--border-width);
-  transition: border-color 150ms ease-in-out;
+  // Surfaces over borders (DESIGN.md §0.1): the entry lifts via its
+  // tonal tier (--surface-container-high over the menu's --surface),
+  // not a resting --outline ring — same card language as the dns / ufw
+  // rule rows. (Was a 2px --outline frame on every item.)
+  @include buttons.button-base('--surface-container-high', '--on-surface');
+  @include buttons.state-layers('--surface-container-high', '--on-surface');
   // button-base pads every direct child (`> * { padding: --padding-md }`)
   // — meant for a button's icon/label. Here the children are the `#id`
   // title and the preview box, so that rule stacked 8px under the id +
@@ -17,10 +19,10 @@
   }
 }
 
-// Keyboard-/click-selected row gets a matugen-accent border so the
-// active entry is unmistakable as you move with Ctrl+n / Ctrl+k.
-// Suppress the ListBox's default selection background so only the
-// border reads.
+// The keyboard-/click-selected row gets a single matugen-accent ring so
+// the active entry is unmistakable as you move with Ctrl+n / Ctrl+k.
+// Suppress the ListBox's default selection background so only the accent
+// reads. One inset ring — not a border + box-shadow double frame.
 .clipboard-list {
   background: transparent;
 
@@ -31,8 +33,7 @@
       background: transparent;
 
       .clipboard-item {
-        border-color: var(--primary);
-        box-shadow: 0 0 0 1px var(--primary);
+        box-shadow: inset 0 0 0 2px var(--primary);
       }
     }
   }
@@ -43,10 +44,9 @@
 }
 
 .clipboard-item-image {
+  // Rounded clip only — no --outline ring (§0.1). The card's tonal
+  // surface already separates the thumbnail from its background.
   border-radius: var(--radius-xs);
-  border-width: var(--border-width);
-  border-style: solid;
-  border-color: var(--outline);
 }
 
 .clipboard-copy-button {
