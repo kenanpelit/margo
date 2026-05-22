@@ -213,6 +213,7 @@ impl Component for TwilightMenuWidgetModel {
 
             gtk::Button {
                 add_css_class: "ok-button-surface",
+                add_css_class: "ok-button-cell",
                 set_label: "Resume schedule",
                 set_tooltip_text: Some("Drop any preview and follow the schedule again"),
                 connect_clicked[sender] => move |_| {
