@@ -86,6 +86,14 @@ impl Component for SettingsWindowModel {
             set_orientation: gtk::Orientation::Horizontal,
             set_width_request: model.panel_width,
             set_height_request: model.panel_height,
+            // GTK4 ignores CSS `overflow: hidden` on a plain GtkBox — the
+            // clip is a *widget* property, not a style property. Without
+            // this the opaque sidebar / stack backgrounds paint square
+            // corners over the frame's rounded notch, so the panel's
+            // bottom corners read as "broken". Set the clip in code so the
+            // CSS `.settings-panel { border-radius }` actually rounds all
+            // four corners.
+            set_overflow: gtk::Overflow::Hidden,
 
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
