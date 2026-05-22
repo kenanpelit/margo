@@ -1,5 +1,50 @@
 @use "../03-primitives/buttons";
 
+// ── Panel header (DESIGN.md §12) ────────────────────────────────
+// Display-size title: SemiBold (600, not Bold). This is the one menu
+// that carries a big title — compact menus use a section-label.
+.clipboard-title {
+  font-size: var(--font-xxl);
+  font-weight: 600;
+  color: var(--on-surface);
+}
+
+// Leading clipboard glyph — symbolic, same family / stroke as the rest
+// (§0.6), at the dim variant tier so the title stays the focal point.
+.clipboard-header-icon {
+  color: var(--on-surface-variant);
+  -gtk-icon-size: var(--icon-md);
+}
+
+// Circular icon action buttons (clear-all / settings): perfect circle,
+// resting transparent, hover = the canonical 14% primary state-layer
+// (§4/§5). Never a naked floating icon, never raised button chrome.
+.clipboard-action-btn {
+  all: unset;
+  min-width: 40px;
+  min-height: 40px;
+  border-radius: var(--radius-pill);
+  background-color: transparent;
+  transition: background-color var(--motion-fast) var(--ease-standard);
+
+  image {
+    color: var(--on-surface-variant);
+    -gtk-icon-size: var(--icon-md);
+  }
+
+  &:hover {
+    background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
+
+    image {
+      color: var(--on-surface);
+    }
+  }
+
+  &:active {
+    background-color: unquote("color-mix(in srgb, var(--primary) 22%, transparent)");
+  }
+}
+
 .clipboard-item {
   // Phase 2 lightweight content row (DESIGN.md §12): a panel row sits
   // ONE tonal tier above the panel surface (--surface-container over
@@ -132,6 +177,14 @@
 // the §3 live-state icon tint.
 .clipboard-tabs {
   background-color: var(--surface-container-low);
+  // The track tone (--surface-container-low) collapses into --surface
+  // on palettes where the two tiers coincide (the Margo baseline does
+  // exactly this — both #282A36 — so the capsule wouldn't read on its
+  // own). Per §1/§12 that's the sanctioned case for a hairline: an
+  // --outline-variant pill ring draws the unified capsule regardless
+  // of palette, and the 4px inset keeps the active segment's
+  // --secondary-container fill clear of the ring so it still pops.
+  border: var(--border-width) solid var(--outline-variant);
   border-radius: var(--radius-pill);
   padding: var(--padding-sm);
 

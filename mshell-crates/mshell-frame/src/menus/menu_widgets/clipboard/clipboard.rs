@@ -138,6 +138,9 @@ pub(crate) struct ClipboardModel {
 pub(crate) enum ClipboardInput {
     Refresh,
     DeleteAllClicked,
+    /// The header gear — open Settings on the Widgets page (where the
+    /// clipboard's own settings live) and close this panel.
+    OpenSettings,
     /// Jump to a specific type tab (number keys 1–5 / clicks).
     SetTab(ClipTab),
     /// Tab key — cycle to the next type tab.
@@ -185,26 +188,45 @@ impl Component for ClipboardModel {
             set_orientation: gtk::Orientation::Vertical,
             set_spacing: 12,
 
+            // Panel header (DESIGN.md §12): leading clipboard glyph +
+            // a display-size SemiBold title, with circular icon action
+            // buttons (clear-all / settings) trailing — not a text
+            // "Clear all" button.
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 12,
+
+                gtk::Image {
+                    add_css_class: "clipboard-header-icon",
+                    set_valign: gtk::Align::Center,
+                    set_icon_name: Some("edit-paste-symbolic"),
+                },
 
                 gtk::Label {
-                    add_css_class: "label-medium-bold",
+                    add_css_class: "clipboard-title",
                     set_halign: gtk::Align::Start,
+                    set_valign: gtk::Align::Center,
                     set_label: "Clipboard History",
                     set_hexpand: true,
                 },
 
                 gtk::Button {
-                    add_css_class: "ok-button-surface",
+                    add_css_class: "clipboard-action-btn",
                     set_valign: gtk::Align::Center,
+                    set_icon_name: "trash-symbolic",
+                    set_tooltip_text: Some("Clear all"),
                     connect_clicked[sender] => move |_| {
                         sender.input(ClipboardInput::DeleteAllClicked);
                     },
+                },
 
-                    gtk::Label {
-                        add_css_class: "label-small",
-                        set_label: "Clear all",
+                gtk::Button {
+                    add_css_class: "clipboard-action-btn",
+                    set_valign: gtk::Align::Center,
+                    set_icon_name: "settings-symbolic",
+                    set_tooltip_text: Some("Clipboard settings"),
+                    connect_clicked[sender] => move |_| {
+                        sender.input(ClipboardInput::OpenSettings);
                     },
                 },
             },
@@ -541,6 +563,13 @@ impl Component for ClipboardModel {
             ClipboardInput::DeleteAllClicked => {
                 clipboard_service().clear_history();
                 mshell_launcher::notify::toast("Clipboard cleared", "All entries removed");
+                let _ = sender.output(ClipboardOutput::CloseMenu);
+            }
+            ClipboardInput::OpenSettings => {
+                // "widgets" is the only addressable section that hosts
+                // the clipboard page (it's the Widgets group's anchor);
+                // ActivateSection only resolves top-level names.
+                mshell_settings::open_settings_at_section("widgets");
                 let _ = sender.output(ClipboardOutput::CloseMenu);
             }
             ClipboardInput::EnterSearch => {
