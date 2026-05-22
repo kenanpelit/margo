@@ -16,7 +16,7 @@ use crate::menus::menu_widgets::audio_in::audio_in_menu_widget::{
 use crate::menus::menu_widgets::audio_out::audio_out_menu_widget::{
     AudioOutMenuWidgetInit, AudioOutMenuWidgetModel,
 };
-use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 
 pub(crate) struct AudioDashboardMenuWidgetModel {
@@ -51,6 +51,25 @@ impl Component for AudioDashboardMenuWidgetModel {
             add_css_class: "audio-dashboard-menu-widget",
             set_orientation: gtk::Orientation::Vertical,
             set_spacing: 10,
+
+            // ── §12 panel header ────────────────────────────────
+            gtk::Box {
+                add_css_class: "panel-header",
+                set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 12,
+                gtk::Image {
+                    add_css_class: "panel-header-icon",
+                    set_icon_name: Some("audio-volume-high-symbolic"),
+                    set_valign: gtk::Align::Center,
+                },
+                gtk::Label {
+                    add_css_class: "panel-title",
+                    set_label: "Audio",
+                    set_halign: gtk::Align::Start,
+                    set_hexpand: true,
+                    set_valign: gtk::Align::Center,
+                },
+            },
 
             model.audio_out.widget().clone() {},
             model.audio_in.widget().clone() {},

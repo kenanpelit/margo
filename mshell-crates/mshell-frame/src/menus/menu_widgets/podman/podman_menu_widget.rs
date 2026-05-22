@@ -116,18 +116,20 @@ impl Component for PodmanMenuWidgetModel {
             set_orientation: gtk::Orientation::Vertical,
             set_spacing: 10,
 
-            // ── Header ──────────────────────────────────────────
+            // ── §12 panel header ────────────────────────────────
             gtk::Box {
+                add_css_class: "panel-header",
                 set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 8,
+                set_spacing: 12,
 
                 gtk::Image {
-                    set_icon_name: Some("package-symbolic"),
-                    set_pixel_size: 24,
+                    add_css_class: "panel-header-icon",
+                    set_icon_name: Some("cube-symbolic"),
+                    set_valign: gtk::Align::Center,
                 },
 
                 gtk::Label {
-                    add_css_class: "label-large-bold",
+                    add_css_class: "panel-title",
                     set_label: "Podman",
                     set_hexpand: true,
                     set_xalign: 0.0,
@@ -140,8 +142,10 @@ impl Component for PodmanMenuWidgetModel {
                 },
 
                 gtk::Button {
-                    set_css_classes: &["ok-button-surface", "ok-button-cell"],
-                    set_label: "Refresh",
+                    add_css_class: "panel-action-btn",
+                    set_icon_name: "view-refresh-symbolic",
+                    set_tooltip_text: Some("Refresh"),
+                    set_valign: gtk::Align::Center,
                     connect_clicked[sender] => move |_| {
                         sender.input(PodmanMenuWidgetInput::RefreshNow);
                     },

@@ -136,12 +136,14 @@ impl Component for DnsMenuWidgetModel {
                 set_spacing: 6,
 
                 gtk::Box {
+                    add_css_class: "panel-header",
                     set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 10,
+                    set_spacing: 12,
 
                     gtk::Image {
-                        set_icon_name: Some("vpn-symbolic"),
-                        set_pixel_size: 28,
+                        add_css_class: "panel-header-icon",
+                        set_icon_name: Some("network-vpn-symbolic"),
+                        set_valign: gtk::Align::Center,
                     },
 
                     gtk::Box {
@@ -149,7 +151,7 @@ impl Component for DnsMenuWidgetModel {
                         set_hexpand: true,
 
                         gtk::Label {
-                            add_css_class: "label-large-bold",
+                            add_css_class: "panel-title",
                             set_label: "DNS / VPN",
                             set_xalign: 0.0,
                         },

@@ -153,6 +153,25 @@ impl Component for CpuDashboardMenuWidgetModel {
             set_spacing: 14,
             set_margin_all: 16,
 
+            // ── §12 panel header ────────────────────────────────
+            gtk::Box {
+                add_css_class: "panel-header",
+                set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 12,
+                gtk::Image {
+                    add_css_class: "panel-header-icon",
+                    set_icon_name: Some("cpu-symbolic"),
+                    set_valign: gtk::Align::Center,
+                },
+                gtk::Label {
+                    add_css_class: "panel-title",
+                    set_label: "CPU",
+                    set_halign: gtk::Align::Start,
+                    set_hexpand: true,
+                    set_valign: gtk::Align::Center,
+                },
+            },
+
             // CPU identity — model + core/thread count.
             gtk::Label {
                 add_css_class: "cpu-dashboard-model",

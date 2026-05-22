@@ -69,11 +69,12 @@ impl Component for ValentMenuWidgetModel {
                 set_spacing: 8,
 
                 gtk::Image {
-                    add_css_class: "valent-header-icon",
+                    add_css_class: "panel-header-icon",
                     set_icon_name: Some("phone-symbolic"),
+                    set_valign: gtk::Align::Center,
                 },
                 gtk::Label {
-                    add_css_class: "label-medium-bold",
+                    add_css_class: "panel-title",
                     set_halign: gtk::Align::Start,
                     set_hexpand: true,
                     set_label: "Valent Connect",

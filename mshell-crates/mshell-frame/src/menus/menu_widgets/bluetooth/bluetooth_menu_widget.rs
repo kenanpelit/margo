@@ -12,7 +12,7 @@ use mshell_utils::bluetooth::{
     set_bluetooth_icon, set_bluetooth_label, spawn_bluetooth_devices_watcher,
     spawn_bluetooth_enabled_watcher,
 };
-use relm4::gtk::prelude::WidgetExt;
+use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 
 pub(crate) struct BluetoothMenuWidgetModel {
@@ -49,6 +49,27 @@ impl Component for BluetoothMenuWidgetModel {
         #[root]
         gtk::Box {
             add_css_class: "bluetooth-menu-widget",
+            set_orientation: gtk::Orientation::Vertical,
+            set_spacing: 12,
+
+            // ── §12 panel header ────────────────────────────────
+            gtk::Box {
+                add_css_class: "panel-header",
+                set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 12,
+                gtk::Image {
+                    add_css_class: "panel-header-icon",
+                    set_icon_name: Some("bluetooth-active-symbolic"),
+                    set_valign: gtk::Align::Center,
+                },
+                gtk::Label {
+                    add_css_class: "panel-title",
+                    set_label: "Bluetooth",
+                    set_halign: gtk::Align::Start,
+                    set_hexpand: true,
+                    set_valign: gtk::Align::Center,
+                },
+            },
 
             model.revealer_row.widget().clone() {}
         }
