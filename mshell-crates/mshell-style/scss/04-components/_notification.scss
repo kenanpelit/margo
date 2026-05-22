@@ -80,3 +80,31 @@
     background-color: unquote("color-mix(in srgb, var(--primary) 22%, var(--secondary-container, var(--surface-container-highest)))");
   }
 }
+// ── Bar bell read/unread corner dot ─────────────────────────────
+// Overlaid on the top-right of the bell glyph in the bar. Three
+// states distinguish unread / read-history / empty (the empty state
+// hides the dot from the Rust side).
+.notif-dot {
+  border-radius: 9999px;
+  min-width: 7px;
+  min-height: 7px;
+  margin-top: 1px;
+  margin-right: 1px;
+  transition: background-color var(--motion-fast) var(--ease-standard);
+}
+
+// Unread: a bright error-tinted dot that demands attention.
+.notif-dot.unread {
+  background-color: var(--error);
+}
+
+// Read history present but acknowledged: a smaller, dim neutral dot —
+// "there's history here" without the urgency of unread.
+.notif-dot.read {
+  min-width: 5px;
+  min-height: 5px;
+  margin-top: 2px;
+  margin-right: 2px;
+  background-color: var(--on-surface-variant);
+  opacity: 0.55;
+}

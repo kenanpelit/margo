@@ -85,3 +85,11 @@
 .dns-preset-row image {
   -gtk-icon-size: 18px;
 }
+
+// Trailing Apply / Active toggle. Pin a fixed min-width so the button
+// keeps the same footprint in both states ("Apply" vs the wider
+// "Active") — otherwise every preset row's button reflows to a
+// different width and the right edge looks ragged.
+.dns-preset-apply {
+  min-width: 76px;
+}

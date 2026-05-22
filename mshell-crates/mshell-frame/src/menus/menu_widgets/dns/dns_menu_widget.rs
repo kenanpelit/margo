@@ -383,7 +383,10 @@ fn make_preset_row(label: &str, ips: &str, icon: &str) -> (gtk::Box, gtk::Button
     row.append(&texts);
 
     let apply = gtk::Button::with_label("Apply");
-    apply.add_css_class("ok-button-surface");
+    // `dns-preset-apply` pins a fixed min-width so the button doesn't
+    // resize when its label toggles between "Apply" (5) and the wider
+    // "Active" (6) — every preset row's button then lines up.
+    apply.set_css_classes(&["ok-button-surface", "dns-preset-apply"]);
     apply.set_valign(gtk::Align::Center);
     row.append(&apply);
     (row, apply)
