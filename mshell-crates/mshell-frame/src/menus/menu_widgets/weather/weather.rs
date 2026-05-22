@@ -85,6 +85,12 @@ impl Component for WeatherModel {
         gtk::Box {
             set_orientation: gtk::Orientation::Vertical,
             set_spacing: 10,
+            // Fill the column slot in both axes: the dashboard makes
+            // Weather the left column's anchor (last child + fill), so
+            // the card must stretch to the shared bottom edge — wrapping
+            // the Stack in this Box dropped that expansion (§7).
+            set_hexpand: true,
+            set_vexpand: true,
 
             // ── §12 panel header ──
             gtk::Box {
@@ -107,6 +113,10 @@ impl Component for WeatherModel {
 
             gtk::Stack {
                 add_css_class: "weather-menu-widget",
+                // Stretch to fill the (now vexpanded) wrapper Box so the
+                // weather card reaches the column's bottom edge.
+                set_hexpand: true,
+                set_vexpand: true,
                 set_transition_type: gtk::StackTransitionType::Crossfade,
             set_transition_duration: 250,
             set_vhomogeneous: false,
