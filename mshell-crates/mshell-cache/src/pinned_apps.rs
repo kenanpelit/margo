@@ -2,7 +2,7 @@ use reactive_graph::prelude::{ReadUntracked, Update};
 use reactive_stores::{ArcStore, Patch, Store};
 use relm4::gtk::glib;
 use std::fs;
-use std::io::{BufRead, BufReader, Write};
+use std::io::Write;
 use std::path::PathBuf;
 use std::sync::LazyLock;
 
@@ -66,12 +66,14 @@ fn pinned_apps_path() -> PathBuf {
 
 fn load_pinned_apps() -> Vec<PinnedApp> {
     let path = pinned_apps_path();
-    match fs::File::open(&path) {
-        Ok(file) => BufReader::new(file)
+    // Read the whole (tiny) file at once: simpler than a line
+    // iterator and sidesteps the `lines().filter_map(Result::ok)`
+    // loop-forever hazard clippy flags.
+    match fs::read_to_string(&path) {
+        Ok(contents) => contents
             .lines()
-            .filter_map(|l| l.ok())
             .filter(|l| !l.trim().is_empty())
-            .filter_map(|l| PinnedApp::from_line(&l))
+            .filter_map(PinnedApp::from_line)
             .collect(),
         Err(_) => Vec::new(),
     }

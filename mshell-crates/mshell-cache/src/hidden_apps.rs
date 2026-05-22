@@ -2,7 +2,7 @@ use reactive_graph::prelude::{ReadUntracked, Update};
 use reactive_stores::{ArcStore, Store};
 use relm4::gtk::glib;
 use std::fs;
-use std::io::{BufRead, BufReader, Write};
+use std::io::Write;
 use std::path::PathBuf;
 use std::sync::LazyLock;
 
@@ -63,10 +63,12 @@ fn hidden_apps_path() -> PathBuf {
 
 fn load_hidden_apps() -> Vec<String> {
     let path = hidden_apps_path();
-    match fs::File::open(&path) {
-        Ok(file) => BufReader::new(file)
+    // Read the whole (tiny) file at once: simpler than a line
+    // iterator and sidesteps the `lines().filter_map(Result::ok)`
+    // loop-forever hazard clippy flags.
+    match fs::read_to_string(&path) {
+        Ok(contents) => contents
             .lines()
-            .filter_map(|l| l.ok())
             .map(|l| l.trim().to_string())
             .filter(|l| !l.is_empty())
             .collect(),
