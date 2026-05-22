@@ -123,23 +123,43 @@ impl Component for SystemUpdateModel {
     ) -> ComponentParts<Self> {
         let refresh_notify = std::sync::Arc::new(Notify::new());
 
+        // Restore the last probe from disk so a restart *inside* the
+        // configured interval shows the cached count immediately and
+        // does NOT re-probe (which would re-trigger the AUR helper's
+        // sudo) until the interval is actually due. A stale cache
+        // (older than the interval) is still shown, but a fresh probe
+        // is scheduled right after launch.
+        let interval_secs = configured_interval().as_secs();
+        let (initial_report, first_delay) = match system_update::load_cache() {
+            Some((ts, report)) => {
+                let age = system_update::now_secs().saturating_sub(ts);
+                if age < interval_secs {
+                    let remaining = (interval_secs - age).max(STARTUP_DELAY.as_secs());
+                    (Some(report), Duration::from_secs(remaining))
+                } else {
+                    (Some(report), STARTUP_DELAY)
+                }
+            }
+            None => (None, STARTUP_DELAY),
+        };
+
         let notify_for_task = refresh_notify.clone();
         sender.command(move |out, shutdown| {
             let notify = notify_for_task;
             async move {
                 let shutdown_fut = shutdown.wait();
                 tokio::pin!(shutdown_fut);
-                let mut first = true;
+                let mut next_delay = first_delay;
                 loop {
-                    let delay = if first { STARTUP_DELAY } else { configured_interval() };
-                    first = false;
                     tokio::select! {
                         () = &mut shutdown_fut => break,
-                        _ = tokio::time::sleep(delay) => {}
+                        _ = tokio::time::sleep(next_delay) => {}
                         _ = notify.notified() => {}
                     }
                     let report = system_update::probe(ProbeConfig::from_config()).await;
+                    system_update::save_cache(&report);
                     let _ = out.send(SystemUpdateCommandOutput::Refreshed(report));
+                    next_delay = configured_interval();
                 }
             }
         });
@@ -161,7 +181,7 @@ impl Component for SystemUpdateModel {
         });
 
         let model = SystemUpdateModel {
-            report: None,
+            report: initial_report,
             _orientation: params.orientation,
             refresh_notify,
             _effects: effects,

@@ -717,12 +717,14 @@ impl Component for SettingsWindowModel {
             Notifications,
             Session,
             Clipboard,
+            SystemUpdate,
         }
 
         impl WidgetEntry {
             fn label(&self) -> &'static str {
                 match self {
                     Self::Clipboard => "Clipboard",
+                    Self::SystemUpdate => "System Updates",
                     Self::Menu { label, .. } | Self::Pill { label, .. } => label,
                     Self::Notifications => "Notifications",
                     Self::Session => "Session",
@@ -751,7 +753,9 @@ impl Component for SettingsWindowModel {
             WidgetEntry::Menu { kind: MenuKind::Bluetooth, stack_name: "bluetooth", label: "Bluetooth", icon: "bluetooth-active-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::CpuDashboard, stack_name: "cpu_dashboard", label: "CPU Dashboard", icon: "computer-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::AudioDashboard, stack_name: "audio_dashboard", label: "Audio Dashboard", icon: "audio-volume-high-symbolic" },
-            WidgetEntry::Menu { kind: MenuKind::SystemUpdate, stack_name: "system_update", label: "System Updates", icon: "software-update-available-symbolic" },
+            // System Updates owns a richer page (menu size + check
+            // interval + per-source toggles), so it's a dedicated entry.
+            WidgetEntry::SystemUpdate,
             WidgetEntry::Menu { kind: MenuKind::Valent, stack_name: "valent", label: "Valent Connect", icon: "phone-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::Weather, stack_name: "weather", label: "Weather", icon: "weather-few-clouds-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::KeepAwake, stack_name: "keep_awake", label: "Keep Awake", icon: "eye-symbolic" },
@@ -858,6 +862,23 @@ impl Component for SettingsWindowModel {
                         .launch(crate::clipboard_settings::ClipboardSettingsInit {})
                         .detach();
                     widgets_sub_stack.add_named(ctrl.widget(), Some("clipboard"));
+                    Box::leak(Box::new(ctrl));
+                }
+                WidgetEntry::SystemUpdate => {
+                    let btn = make_sub_btn(
+                        "System Updates",
+                        "software-update-available-symbolic",
+                        "system_update",
+                        group_anchor.as_ref(),
+                    );
+                    if group_anchor.is_none() {
+                        group_anchor = Some(btn.clone());
+                    }
+                    widgets_sub_sidebar_box.append(&btn);
+                    let ctrl = crate::system_update_settings::SystemUpdateSettingsModel::builder()
+                        .launch(crate::system_update_settings::SystemUpdateSettingsInit {})
+                        .detach();
+                    widgets_sub_stack.add_named(ctrl.widget(), Some("system_update"));
                     Box::leak(Box::new(ctrl));
                 }
             }

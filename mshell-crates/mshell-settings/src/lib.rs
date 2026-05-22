@@ -28,6 +28,7 @@ mod menu_settings;
 mod notification_settings;
 mod session_settings;
 pub mod settings;
+mod system_update_settings;
 mod theme_settings;
 mod wallpaper_settings;
 mod widget_menu_settings;

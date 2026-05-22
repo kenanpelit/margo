@@ -12,10 +12,11 @@ use mshell_config::schema::config::{
     BarWidgetsStoreFields, BarsStoreFields, ConfigStoreFields, SystemUpdateBarWidgetStoreFields,
 };
 use reactive_graph::traits::GetUntracked;
+use serde::{Deserialize, Serialize};
 use tracing::warn;
 
 /// Where a pending update comes from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum Source {
     Repo,
     Aur,
@@ -42,7 +43,7 @@ impl Source {
 }
 
 /// One pending package update.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct UpdateEntry {
     pub(crate) source: Source,
     pub(crate) name: String,
@@ -53,7 +54,7 @@ pub(crate) struct UpdateEntry {
 }
 
 /// Result of a probe across all enabled sources.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct UpdateReport {
     pub(crate) entries: Vec<UpdateEntry>,
     /// `Some` when a probe failed outright — surfaced in the pill
@@ -74,6 +75,56 @@ impl UpdateReport {
 
     pub(crate) fn is_empty(&self) -> bool {
         self.entries.is_empty()
+    }
+}
+
+// ── Disk cache (so a restart inside the interval doesn't re-probe) ─
+
+#[derive(Serialize, Deserialize)]
+struct UpdateCache {
+    /// Unix seconds of the last successful probe.
+    checked_at: u64,
+    report: UpdateReport,
+}
+
+/// `~/.cache/mshell/system_update.json` (honours `$XDG_CACHE_HOME`).
+fn cache_path() -> std::path::PathBuf {
+    let base = std::env::var_os("XDG_CACHE_HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".cache")
+        });
+    base.join("mshell").join("system_update.json")
+}
+
+/// Seconds since the Unix epoch (0 on a clock error).
+pub(crate) fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// The cached report + the Unix-seconds timestamp of when it was taken,
+/// if a cache file exists and parses.
+pub(crate) fn load_cache() -> Option<(u64, UpdateReport)> {
+    let raw = std::fs::read_to_string(cache_path()).ok()?;
+    let c: UpdateCache = serde_json::from_str(&raw).ok()?;
+    Some((c.checked_at, c.report))
+}
+
+/// Persist the report stamped with the current time (best-effort).
+pub(crate) fn save_cache(report: &UpdateReport) {
+    let path = cache_path();
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let cache = UpdateCache {
+        checked_at: now_secs(),
+        report: report.clone(),
+    };
+    if let Ok(json) = serde_json::to_string(&cache) {
+        let _ = std::fs::write(&path, json);
     }
 }
 
