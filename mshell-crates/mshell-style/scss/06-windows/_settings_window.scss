@@ -1,9 +1,17 @@
-.settings-window {
+// The live root of the embedded settings surface is `.settings-panel`
+// (mshell-settings settings.rs), NOT `.settings-window` — settings no
+// longer launches as its own gtk::Window, it lives inside the frame's
+// menu stack. The old `.settings-window` selector was dead, so the
+// rounding/clip below never applied and the bottom corners read as
+// square ("broken").
+//
+// The panel is a horizontal Box of [sidebar | content-stack], and the
+// sidebar / stack / page all paint an opaque `--surface` background
+// edge-to-edge with no radius of their own. Round the panel to the
+// window-chrome radius and clip its children to that rect so all four
+// corners match — same idiom dialog/osd/polkit windows use.
+.settings-panel {
   border-radius: var(--radius-window);
   background-color: var(--surface);
-  // Clip children to the rounded rect — without this the sidebar /
-  // content backgrounds paint past the corner and the bottom corners
-  // read as square ("broken"). Same idiom the menus use to keep their
-  // corners crisp.
   overflow: hidden;
 }
