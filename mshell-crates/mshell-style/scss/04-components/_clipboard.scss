@@ -108,7 +108,13 @@
 // --on-surface). On this palette --on-surface-variant collapses into
 // --on-surface, so without this the timestamp read identical to the
 // copy block.
-.clipboard-item-title {
+//
+// MUST be `.clipboard-item .clipboard-item-title` (0,2,0): `.clipboard-item`
+// runs `button-base`, which emits `.clipboard-item label { color:
+// --on-surface }` (0,1,1). A bare `.clipboard-item-title` (0,1,0) loses to
+// that and the override silently no-ops — the bug that left the timestamp
+// the same colour as the copy text.
+.clipboard-item .clipboard-item-title {
   color: var(--outline);
 }
 
