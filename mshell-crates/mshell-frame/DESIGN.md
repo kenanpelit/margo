@@ -493,9 +493,11 @@ A panel opens with a real header, not just a section label:
  leading   SemiBold title (hexpand)            circular actions
 ```
 
-- **Title**: SemiBold (`font-weight: 600`), `--on-surface`,
-  `--font-xxl` (32) — the one place a menu carries a display-size
-  title (compact menus use a `…-section-label` instead, §1).
+- **Title**: SemiBold (`font-weight: 600`), `--on-surface`, a bespoke
+  **24px** display size — bigger than body, but `--font-xxl` (32) reads
+  oversized in a panel header. This (and the clock hero) are the only
+  literal-px display sizes §1 permits; a panel title is the one place a
+  menu goes display-size at all (compact menus use a `…-section-label`).
 - **Leading icon**: symbolic, outline family, same stroke as the rest
   (§0.6) — never a filled glyph.
 - **Action buttons** (trailing): icon-only, **perfect circle**
@@ -508,8 +510,14 @@ A single unified capsule that switches between list categories
 (clipboard: All · Text · Images · Files · ★) — it must read as **one
 track**, not N separate buttons.
 
-- **Track**: `--radius-pill` (999) capsule, `--surface-container-low`,
-  `--padding-sm` (4) inset around the segments.
+- **Track**: `--radius-pill` (999) capsule with a `--surface-container-low`
+  fill and `--padding-sm` (4) inset around the segments. That fill
+  collapses into `--surface` on palettes where the two tiers coincide
+  (the Margo baseline does — both `#282A36`), so the capsule also carries
+  a `--outline-variant` hairline (`--border-width`) to read as one unit
+  on any palette. This is the §1-sanctioned "border when adjacent tiers
+  are too close" case. The 4px inset keeps the active fill clear of the
+  ring.
 - **Active segment**: `--secondary-container` fill +
   `--on-secondary-container` text, inner radius `--radius-sm` (12).
   This is the soft-toggle tier §1 already sanctions — a calm filled
@@ -521,9 +529,9 @@ track**, not N separate buttons.
 - **No font-weight bump between states** — a weight change reflows the
   segment widths and makes the strip twitch on switch. Carry state on
   fill + colour only.
-- Border: omit it — track-vs-fill tonal separation is enough; add
-  `--outline-variant` only if the runtime palette collapses the two
-  (§1).
+- Border: the capsule's `--outline-variant` hairline (above) is the
+  *only* resting outline a panel carries — the segments themselves never
+  get borders; inactive vs. active is fill + colour alone.
 
 ### Panel search (pill query surface)
 A panel's search reads as a calm query surface, not a utility input.
@@ -553,8 +561,13 @@ a full card:
 - Hover: the canonical 14% primary state-layer (tonal lift, never a
   bright swap). **Selected** = inset 2px `--primary` ring (the
   keyboard cursor), never a background flood.
-- Typography (§1): content title medium-weight `--on-surface`;
-  timestamp / metadata smaller and dimmer (`--on-surface-variant`).
+- Typography (§1): the entry's copy text is the content, medium-weight
+  `--on-surface`. Metadata around it — the relative-time line, the
+  per-row trash / pin affordances — drops to the dim `--outline` tier
+  (the same tier as the keyboard-hint strip), **not**
+  `--on-surface-variant` (which collapses into `--on-surface` on this
+  palette and would read identical to the copy text). Metadata recedes;
+  only content and the selection ring carry weight.
 - **Density still wins.** Clipboard is **medium** density (§1) — many
   rows must stay on screen. Do *not* inflate rows to a fixed 64–72px;
   a panel's roominess lives in its header / search / padding, not in
@@ -587,8 +600,10 @@ big "anchor" put it last (§7 `fill`); keep quiet tiles compact above;
 always-on metrics use escalating severity wording (§7).
 
 **New panel (browse + filter a surface):** §12 — `--surface` panel at
-`--radius-lg` + `--padding-xl`; header with a SemiBold `--font-xxl`
-title + circular action buttons; segmented control (active =
-`--secondary-container`); pill search (`--radius-pill`); lightweight
-`--surface-container` / `--radius-md` rows. Still a layer-shell menu
-(§5); tokens only (§1); keep list density medium — don't balloon rows.
+`--radius-lg` + `--padding-xl`; header with a SemiBold 24px title +
+circular action buttons; segmented control (active =
+`--secondary-container`, `--outline-variant` capsule hairline); pill
+search (`--radius-pill`); lightweight `--surface-container` /
+`--radius-md` rows with metadata at the dim `--outline` tier. Still a
+layer-shell menu (§5); tokens only (§1); keep list density medium —
+don't balloon rows.
