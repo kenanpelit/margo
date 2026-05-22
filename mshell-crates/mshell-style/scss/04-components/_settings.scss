@@ -158,7 +158,12 @@
 // page rooted visually so the user always knows which area they
 // landed in after a sidebar click.
 .settings-hero {
-    margin-bottom: 24px;
+    // The page Box already adds 16px child-spacing below the hero, and
+    // the first section caption carries its own 24px top margin, so a
+    // big hero margin here stacked into a ~64px void before the first
+    // control group. Trim to 16 (see also the adjacency reset below) for
+    // one clean, consistent hero→content gap on every page.
+    margin-bottom: 16px;
     padding: 4px 0;
 
     .settings-hero-icon {
@@ -289,6 +294,13 @@
         &:first-child {
             margin-top: 0;
         }
+    }
+
+    // First caption directly after the hero: the hero's own margin plus
+    // the page's child-spacing already separate it, so drop the 24px
+    // section top-margin to avoid a doubled hero→section gap.
+    .settings-hero + .label-large-bold {
+        margin-top: 0;
     }
 
     // Row title — was a medium bold label; now the primary text
