@@ -43,7 +43,7 @@
 }
 
 .clipboard-item-image {
-  border-radius: var(--radius-widget);
+  border-radius: var(--radius-xs);
   border-width: var(--border-width);
   border-style: solid;
   border-color: var(--outline);
@@ -101,7 +101,7 @@
   .clipboard-tab {
     all: unset;
     padding: 4px 14px;
-    border-radius: var(--radius-widget);
+    border-radius: var(--radius-sm);
     color: var(--on-surface-variant);
     transition: background-color 150ms, color 150ms;
 

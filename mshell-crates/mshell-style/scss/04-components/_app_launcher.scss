@@ -85,7 +85,7 @@
 // handles the visual; we just give it a fixed shape so it sits
 // flush with the search entry).
 .app-launcher-search-row > button {
-  border-radius: var(--radius-widget);
+  border-radius: var(--radius-sm);
   padding: 6px 10px;
   margin-left: 4px;
 }

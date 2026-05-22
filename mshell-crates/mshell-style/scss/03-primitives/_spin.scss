@@ -3,7 +3,7 @@
 spinbutton {
   background: var(--surface);
   border: var(--border-width) solid var(--outline);
-  border-radius: var(--radius-widget);
+  border-radius: var(--radius-sm);
 
   &:focus-within {
     outline-color: transparent;

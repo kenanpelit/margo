@@ -2,7 +2,11 @@
   all: unset;
   background-color: var(#{$bg});
   color: var(#{$fg});
-  border-radius: var(--radius-widget);
+  // Buttons use --radius-sm (the M3 scale's button step). The
+  // config-driven --radius-widget is reserved for bar pills + the
+  // window frame (DESIGN.md §1); bar pills re-apply it via the
+  // higher-specificity .ok-bar-widget rule, so they're unaffected.
+  border-radius: var(--radius-sm);
   // Calm motion: the hover / press state-layer fades in instead of
   // snapping, matching every other surface (DESIGN.md §Motion).
   transition: background-color var(--motion-fast) var(--ease-standard);

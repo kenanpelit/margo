@@ -93,21 +93,48 @@ runtime matugen separates them, so a border that looks needed in the
 first-paint baseline is often redundant once themed; verify before
 adding `--outline-variant`).
 
-### Shape scale (`01-tokens/_sizing.scss`)
-Material-3 corner language — pick by component class, don't reuse
-`--radius-widget` everywhere:
+### Shape scale (`01-tokens/_sizing.scss`) — THE radius rule
+
+There are **two corner systems and they don't overlap.** Don't mix them.
+
+**1. Widget interiors → the fixed Material-3 scale.** Everything you see
+*inside* a menu / dashboard / popup — buttons, rows, cards, tiles,
+entries, the menu surface itself — picks one of these by component
+kind. These are fixed (not config-driven); they are the design
+language and never change at runtime:
 
 | Token | px | Use |
 |---|---|---|
-| `--radius-xs` | 8 | small chips, inline badges |
-| `--radius-sm` | 12 | buttons, list items |
-| `--radius-md` | 16 | cards, tiles |
-| `--radius-lg` | 24 | launcher / menu surfaces |
+| `--radius-xs` | 8 | nested image/thumb inside a card, inline badge |
+| `--radius-sm` | 12 | **buttons, list rows, entries, spins, dropdowns, calendar cells** |
+| `--radius-md` | 16 | cards, tiles, hero panels, generic surfaces |
+| `--radius-lg` | 24 | launcher / large menu surfaces |
 | `--radius-xl` | 28 | search field |
-| `--radius-pill` | 999 | fully-rounded category chips |
+| `--radius-pill` | 999 | toggles/switches, progress bars, category chips |
 
-(`--radius-widget` / `--radius-window` remain config-driven for the
-frame; the scale above is the fixed design language.)
+`button-base` is `--radius-sm`, so **every `.ok-button-*` is 12 by
+default** — don't re-declare a button radius per component.
+
+**Nesting (concentric corners).** Two boxes are only stepped down a
+notch when one is *physically inside* the other with padding (e.g. a
+thumbnail in a card: card `--radius-md`, image `--radius-xs`/`sm`).
+**Siblings stacked in a column share the same radius** — a hero card
+and the button rows below it are siblings, so they match (see
+`_power.scss`). Don't invent a step where there's no nesting.
+
+**2. Frame / bar chrome → config-driven `--radius-widget` /
+`--radius-window`.** These are the *only* runtime-tunable corners
+(Settings → Theme → Sizing). They apply **exclusively** to the
+window frame (`--radius-window`) and the bar pills
+(`--radius-widget`, re-applied by the high-specificity `.ok-bar-widget`
+rule). They must **never** appear inside a menu/widget — if you reach
+for `--radius-widget` in a `04-components/*` or `03-primitives/*` rule
+that isn't a bar pill, you've picked the wrong system; use the scale.
+
+**Not a radius at all:** `general.screen_corner_radius` ("Corner
+radius (px)" in Settings → General) only sizes the *screen-edge*
+rounded-corner overlay mask (and only when `show_screen_corners` is
+on). It has zero effect on any widget, button, or menu.
 
 ### Sizing / padding / icons
 - Padding scale: `--padding-sm` 4, `--padding-md` 8, `--padding-lg` 16,

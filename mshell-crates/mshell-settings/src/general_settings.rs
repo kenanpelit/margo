@@ -238,7 +238,7 @@ impl Component for GeneralSettingsModel {
                         gtk::Label {
                             add_css_class: "label-small",
                             set_halign: gtk::Align::Start,
-                            set_label: "How wide a quarter-circle each corner mask carves out. Should match your frame border-radius (24 px default) so the bar's curve and the screen mask's curve line up — otherwise the two arcs meet at a visible step. Takes effect on the next `mctl reload` or monitor hotplug.",
+                            set_label: "Radius (px) of the black overlay mask that rounds the physical SCREEN corners — only when 'Rounded screen corners' above is on. This does NOT change widget, button, card or menu corners (those follow the fixed design scale, not a setting). Applies after restarting mshell (systemctl --user restart mshell) or reconnecting the monitor.",
                             set_hexpand: true,
                             set_xalign: 0.0,
                             set_wrap: true,

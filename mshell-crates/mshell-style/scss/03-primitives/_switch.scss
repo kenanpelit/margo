@@ -3,7 +3,7 @@ switch {
   padding: 4px;
   background-color: var(--surface);
   border: 1px solid var(--outline);
-  border-radius: var(--radius-widget);
+  border-radius: var(--radius-pill);
 
   &:checked {
     background-color: var(--primary);
@@ -12,7 +12,7 @@ switch {
 
   slider {
     all: unset;
-    border-radius: var(--radius-widget);
+    border-radius: var(--radius-pill);
     background-color: var(--outline);
   }
   &:checked {
