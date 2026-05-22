@@ -175,7 +175,7 @@ impl Component for NotesMenuWidgetModel {
                     set_spacing: 6,
 
                     gtk::Button {
-                        set_css_classes: &["ok-button-surface", "notes-add"],
+                        set_css_classes: &["ok-button-surface", "ok-button-cell", "notes-add"],
                         set_label: " + Add note",
                         set_halign: gtk::Align::Start,
                         connect_clicked[sender] => move |_| {

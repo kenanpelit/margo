@@ -248,14 +248,14 @@ impl Component for NetworkMenuWidgetModel {
                 },
 
                 gtk::Button {
-                    set_css_classes: &["ok-button-surface"],
+                    set_css_classes: &["ok-button-surface", "ok-button-cell"],
                     set_label: "Rescan",
                     connect_clicked[sender] => move |_| {
                         sender.input(NetworkMenuWidgetInput::Rescan);
                     },
                 },
                 gtk::Button {
-                    set_css_classes: &["ok-button-surface"],
+                    set_css_classes: &["ok-button-surface", "ok-button-cell"],
                     set_label: "Disconnect",
                     connect_clicked[sender] => move |_| {
                         sender.input(NetworkMenuWidgetInput::Disconnect);

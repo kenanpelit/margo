@@ -122,14 +122,14 @@ impl Component for IpMenuWidgetModel {
 
                 #[local_ref]
                 copy_button_widget -> gtk::Button {
-                    set_css_classes: &["ok-button-surface"],
+                    set_css_classes: &["ok-button-surface", "ok-button-cell"],
                     set_label: "Copy IP",
                     connect_clicked[sender] => move |_| {
                         sender.input(IpMenuWidgetInput::CopyIp);
                     },
                 },
                 gtk::Button {
-                    set_css_classes: &["ok-button-surface"],
+                    set_css_classes: &["ok-button-surface", "ok-button-cell"],
                     set_label: "Refresh",
                     connect_clicked[sender] => move |_| {
                         sender.input(IpMenuWidgetInput::RefreshNow);
@@ -137,7 +137,7 @@ impl Component for IpMenuWidgetModel {
                 },
                 #[local_ref]
                 open_button_widget -> gtk::Button {
-                    set_css_classes: &["ok-button-surface"],
+                    set_css_classes: &["ok-button-surface", "ok-button-cell"],
                     set_label: "Open in browser",
                     set_hexpand: true,
                     set_halign: gtk::Align::End,

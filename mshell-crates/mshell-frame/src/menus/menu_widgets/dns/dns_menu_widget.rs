@@ -216,7 +216,7 @@ impl Component for DnsMenuWidgetModel {
                 set_margin_top: 4,
 
                 gtk::Button {
-                    set_css_classes: &["ok-button-surface"],
+                    set_css_classes: &["ok-button-surface", "ok-button-cell"],
                     set_label: "Refresh",
                     connect_clicked[sender] => move |_| {
                         sender.input(DnsMenuWidgetInput::RefreshNow);
@@ -356,7 +356,7 @@ fn make_action_button(label: &str, icon: &str) -> gtk::Button {
     inner.append(&l);
     gtk::Button::builder()
         .child(&inner)
-        .css_classes(vec!["ok-button-surface", "dns-action"])
+        .css_classes(vec!["ok-button-surface", "ok-button-cell", "dns-action"])
         .hexpand(true)
         .build()
 }

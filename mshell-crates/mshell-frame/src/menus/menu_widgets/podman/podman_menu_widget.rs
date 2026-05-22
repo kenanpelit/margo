@@ -140,7 +140,7 @@ impl Component for PodmanMenuWidgetModel {
                 },
 
                 gtk::Button {
-                    set_css_classes: &["ok-button-surface"],
+                    set_css_classes: &["ok-button-surface", "ok-button-cell"],
                     set_label: "Refresh",
                     connect_clicked[sender] => move |_| {
                         sender.input(PodmanMenuWidgetInput::RefreshNow);
