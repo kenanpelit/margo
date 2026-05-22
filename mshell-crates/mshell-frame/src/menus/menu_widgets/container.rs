@@ -74,6 +74,8 @@ impl SimpleComponent for ContainerModel {
                     gtk::Orientation::Vertical
                 },
                 &params.menu_sender,
+                // Container previews keep the compact (paged) weather.
+                false,
             );
             widget_controllers.push(controller);
         }

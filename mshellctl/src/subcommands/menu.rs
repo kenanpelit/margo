@@ -81,6 +81,8 @@ pub enum MenuCommands {
     KeepAwake,
     /// Toggle the Twilight menu (toggle + temperature + mode + presets)
     Twilight,
+    /// Toggle the Weather menu (current + hourly + daily, all in one)
+    Weather,
     /// Toggle the keybind cheatsheet menu (searchable shortcut list)
     Keybinds,
     /// Toggle the SSH Sessions menu (searchable ~/.ssh/config host list)
@@ -181,6 +183,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::Twilight => {
             bus_command("Twilight").await?;
+        }
+        MenuCommands::Weather => {
+            bus_command("Weather").await?;
         }
         MenuCommands::Keybinds => {
             bus_command("Keybinds").await?;

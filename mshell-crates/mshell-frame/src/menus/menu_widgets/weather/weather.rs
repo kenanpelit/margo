@@ -24,6 +24,11 @@ pub(crate) struct WeatherModel {
     hourly_controller: Option<Controller<HourlyModel>>,
     daily_controller: Option<Controller<DailyModel>>,
     location: String,
+    /// `true` for the standalone weather menu (bar pill) — Current,
+    /// Hourly and Daily stack vertically, all visible at once. `false`
+    /// for the dashboard embed — the original compact paged view behind
+    /// prev/next buttons, so the dashboard layout stays unchanged.
+    all_in_one: bool,
     current_page: WeatherPage,
     previous_button_sensitive: bool,
     next_button_sensitive: bool,
@@ -58,7 +63,10 @@ pub(crate) enum WeatherInput {
 #[derive(Debug)]
 pub(crate) enum WeatherOutput {}
 
-pub(crate) struct WeatherInit {}
+pub(crate) struct WeatherInit {
+    /// See [`WeatherModel::all_in_one`].
+    pub all_in_one: bool,
+}
 
 #[derive(Debug)]
 pub(crate) enum WeatherCommandOutput {
@@ -128,6 +136,7 @@ impl Component for WeatherModel {
 
             add_named[Some("loaded")] = &gtk::Box {
                 set_orientation: gtk::Orientation::Vertical,
+                set_spacing: 10,
 
                 gtk::Box {
                     set_orientation: gtk::Orientation::Horizontal,
@@ -140,10 +149,14 @@ impl Component for WeatherModel {
                         set_xalign: 0.0
                     },
 
+                    // Paging controls — hidden in the all-in-one
+                    // (standalone) variant where every section is shown.
                     gtk::Button {
                         add_css_class: "ok-button-surface",
                         set_hexpand: false,
                         set_vexpand: false,
+                        #[watch]
+                        set_visible: !model.all_in_one,
                         #[watch]
                         set_sensitive: model.previous_button_sensitive,
                         connect_clicked[sender] => move |_| {
@@ -164,6 +177,8 @@ impl Component for WeatherModel {
                         set_hexpand: false,
                         set_vexpand: false,
                         #[watch]
+                        set_visible: !model.all_in_one,
+                        #[watch]
                         set_sensitive: model.next_button_sensitive,
                         connect_clicked[sender] => move |_| {
                             sender.input(WeatherInput::NextClicked);
@@ -179,19 +194,32 @@ impl Component for WeatherModel {
                     },
                 },
 
+                // Dashboard (paged) variant: one page at a time.
                 #[name = "stack"]
                 gtk::Stack {
                     set_transition_type: gtk::StackTransitionType::SlideLeftRight,
                     set_transition_duration: 200,
                     set_hexpand: true,
                     set_vexpand: false,
-                }
+                    #[watch]
+                    set_visible: !model.all_in_one,
+                },
+
+                // Standalone variant: Current + Hourly + Daily stacked.
+                #[name = "sections"]
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 10,
+                    set_hexpand: true,
+                    #[watch]
+                    set_visible: model.all_in_one,
+                },
             },
         }
     }
 
     fn init(
-        _params: Self::Init,
+        params: Self::Init,
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
@@ -202,6 +230,7 @@ impl Component for WeatherModel {
             hourly_controller: None,
             daily_controller: None,
             location: "".to_string(),
+            all_in_one: params.all_in_one,
             current_page: WeatherPage::Current,
             previous_button_sensitive: false,
             next_button_sensitive: false,
@@ -243,7 +272,9 @@ impl Component for WeatherModel {
             }
         }
 
-        self.update_page_state(&widgets.stack);
+        if !self.all_in_one {
+            self.update_page_state(&widgets.stack);
+        }
         self.update_view(widgets, sender);
     }
 
@@ -284,23 +315,11 @@ impl Component for WeatherModel {
                                     })
                                     .detach();
 
-                                widgets.stack.add_titled(
-                                    current_controller.widget(),
-                                    Some(PAGE_CURRENT),
-                                    "Current",
-                                );
-
                                 let hourly_controller = HourlyModel::builder()
                                     .launch(HourlyInit {
                                         hourly: weather.hourly.clone(),
                                     })
                                     .detach();
-
-                                widgets.stack.add_titled(
-                                    hourly_controller.widget(),
-                                    Some(PAGE_HOURLY),
-                                    "Hourly",
-                                );
 
                                 let daily_controller = DailyModel::builder()
                                     .launch(DailyInit {
@@ -308,17 +327,37 @@ impl Component for WeatherModel {
                                     })
                                     .detach();
 
-                                widgets.stack.add_titled(
-                                    daily_controller.widget(),
-                                    Some(PAGE_DAILY),
-                                    "Daily",
-                                );
+                                if self.all_in_one {
+                                    // Standalone: stack every section.
+                                    widgets.sections.append(current_controller.widget());
+                                    widgets.sections.append(hourly_controller.widget());
+                                    widgets.sections.append(daily_controller.widget());
+                                } else {
+                                    // Dashboard: page behind prev/next.
+                                    widgets.stack.add_titled(
+                                        current_controller.widget(),
+                                        Some(PAGE_CURRENT),
+                                        "Current",
+                                    );
+                                    widgets.stack.add_titled(
+                                        hourly_controller.widget(),
+                                        Some(PAGE_HOURLY),
+                                        "Hourly",
+                                    );
+                                    widgets.stack.add_titled(
+                                        daily_controller.widget(),
+                                        Some(PAGE_DAILY),
+                                        "Daily",
+                                    );
+                                }
 
                                 self.current_weather_controller = Some(current_controller);
                                 self.hourly_controller = Some(hourly_controller);
                                 self.daily_controller = Some(daily_controller);
 
-                                self.update_page_state(&widgets.stack);
+                                if !self.all_in_one {
+                                    self.update_page_state(&widgets.stack);
+                                }
                             }
 
                             if weather.location.city.is_empty().not() {

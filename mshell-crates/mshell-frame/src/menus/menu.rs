@@ -108,6 +108,10 @@ pub(crate) struct MenuModel {
     /// because `vscrollbar_policy` is Automatic.
     maximum_height: i32,
     css_class: String,
+    /// `true` only for the standalone weather menu (`MenuType::Weather`);
+    /// passed to `build_widget` so weather stacks all sections there and
+    /// stays paged everywhere else (notably the dashboard).
+    weather_all_in_one: bool,
     _effects: EffectScope,
 }
 
@@ -891,6 +895,7 @@ impl Component for MenuModel {
             minimum_width: 410,
             maximum_height: 0,
             css_class,
+            weather_all_in_one: matches!(params.menu_type, MenuType::Weather),
             _effects: effects,
         };
 
@@ -1017,8 +1022,16 @@ impl Component for MenuModel {
                     clear_box(&widgets.widget_container);
                     self.widget_controllers.clear();
                     for item in &menu_widgets {
-                        let controller =
-                            build_widget(item, gtk::Orientation::Vertical, &sender);
+                        // The standalone weather menu stacks all sections;
+                        // every other host (the dashboard) keeps the
+                        // compact paged weather view.
+                        let weather_all_in_one = self.weather_all_in_one;
+                        let controller = build_widget(
+                            item,
+                            gtk::Orientation::Vertical,
+                            &sender,
+                            weather_all_in_one,
+                        );
                         widgets.widget_container.append(&controller.root_widget());
                         self.widget_controllers.push(controller);
                     }

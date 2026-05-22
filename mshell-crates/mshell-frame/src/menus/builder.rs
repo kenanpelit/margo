@@ -108,6 +108,10 @@ pub fn build_widget(
     menu_widget: &MenuWidget,
     orientation: gtk::Orientation,
     sender: &ComponentSender<MenuModel>,
+    // Only consulted by `MenuWidget::Weather`: true for the standalone
+    // weather menu (all sections stacked), false for the dashboard embed
+    // (the original compact paged view).
+    weather_all_in_one: bool,
 ) -> Box<dyn GenericWidgetController> {
     match menu_widget {
         MenuWidget::AppLauncher => Box::new(
@@ -327,7 +331,13 @@ pub fn build_widget(
                 })
                 .detach(),
         ),
-        MenuWidget::Weather => Box::new(WeatherModel::builder().launch(WeatherInit {}).detach()),
+        MenuWidget::Weather => Box::new(
+            WeatherModel::builder()
+                .launch(WeatherInit {
+                    all_in_one: weather_all_in_one,
+                })
+                .detach(),
+        ),
         MenuWidget::SystemStatus => Box::new(
             SystemStatusModel::builder()
                 .launch(SystemStatusInit {})
