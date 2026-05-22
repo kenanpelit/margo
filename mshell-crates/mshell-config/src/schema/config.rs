@@ -267,8 +267,12 @@ pub struct Sizing {
 impl Default for Sizing {
     fn default() -> Self {
         Self {
-            radius_widget: 8,
-            radius_window: 8,
+            // 12 px is the house default for both the widget (bar pill /
+            // frame chrome) and window (menu / dialog / settings panel)
+            // corner radius — softer than the old 8 px, and the value the
+            // Settings → Theme → Sizing "Reset to defaults" button restores.
+            radius_widget: 12,
+            radius_window: 12,
             border_width: 2,
             bar_hover_strength: 14,
             settings_font_scale: 1.0,

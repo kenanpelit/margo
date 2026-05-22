@@ -2,7 +2,7 @@ use crate::theme_settings::theme_card::{ThemeCardInput, ThemeCardModel, ThemeCar
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
-    ConfigStoreFields, IconsStoreFields, MatugenStoreFields, SizingStoreFields,
+    ConfigStoreFields, IconsStoreFields, MatugenStoreFields, Sizing, SizingStoreFields,
     ThemeAttributesStoreFields, ThemeStoreFields,
 };
 use mshell_config::schema::themes::{
@@ -12,7 +12,9 @@ use mshell_config::schema::wallpaper::{ContrastFilterStrength, ThemeFilterStreng
 use mshell_style::user_css::style_utils::list_available_styles;
 use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk::glib;
-use relm4::gtk::prelude::{BoxExt, CastNone, ListModelExt, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::{
+    BoxExt, ButtonExt, CastNone, ListModelExt, OrientableExt, WidgetExt,
+};
 use relm4::prelude::FactoryVecDeque;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::path::PathBuf;
@@ -63,6 +65,7 @@ pub(crate) enum ThemeSettingsInput {
     RadiusWidgetSelected(i32),
     RadiusWindowSelected(i32),
     BorderWidthSelected(i32),
+    ResetSizing,
 
     ShellIconEffect(String),
     AppIconEffect(String),
@@ -393,7 +396,7 @@ impl Component for ThemeSettingsModel {
 
                 gtk::Label {
                     add_css_class: "label-large-bold",
-                    set_label: "Sizing",
+                    set_label: "Shape & sizing",
                     set_halign: gtk::Align::Start,
                 },
 
@@ -407,14 +410,14 @@ impl Component for ThemeSettingsModel {
                         gtk::Label {
                             add_css_class: "label-medium-bold",
                             set_halign: gtk::Align::Start,
-                            set_label: "Widget Radius",
+                            set_label: "Widget corner radius (px)",
                             set_hexpand: true,
                         },
 
                         gtk::Label {
                             add_css_class: "label-small",
                             set_halign: gtk::Align::Start,
-                            set_label: "Corner radius of widgets. Sent to Matugen as mshell.sizing.radius_widget",
+                            set_label: "Rounds the bar pills and the screen-frame chrome (token --radius-widget). Live — every bar widget updates as you change it. Default 12.",
                             set_hexpand: true,
                             set_xalign: 0.0,
                             set_wrap: true,
@@ -445,14 +448,14 @@ impl Component for ThemeSettingsModel {
                         gtk::Label {
                             add_css_class: "label-medium-bold",
                             set_halign: gtk::Align::Start,
-                            set_label: "Window Radius",
+                            set_label: "Window corner radius (px)",
                             set_hexpand: true,
                         },
 
                         gtk::Label {
                             add_css_class: "label-small",
                             set_halign: gtk::Align::Start,
-                            set_label: "Corner radius of windows. Sent to Matugen as mshell.sizing.radius_window",
+                            set_label: "Rounds menus, dialogs, OSDs and the Settings panel itself (token --radius-window). Live. Default 12.",
                             set_hexpand: true,
                             set_xalign: 0.0,
                             set_wrap: true,
@@ -483,14 +486,14 @@ impl Component for ThemeSettingsModel {
                         gtk::Label {
                             add_css_class: "label-medium-bold",
                             set_halign: gtk::Align::Start,
-                            set_label: "Border Width",
+                            set_label: "Border width (px)",
                             set_hexpand: true,
                         },
 
                         gtk::Label {
                             add_css_class: "label-small",
                             set_halign: gtk::Align::Start,
-                            set_label: "Width of the borders. Sent to Matugen as mshell.sizing.border_width",
+                            set_label: "Thickness of window and popover borders (token --border-width). Default 2.",
                             set_hexpand: true,
                             set_xalign: 0.0,
                             set_wrap: true,
@@ -508,6 +511,42 @@ impl Component for ThemeSettingsModel {
                         connect_value_changed[sender] => move |s| {
                             sender.input(ThemeSettingsInput::BorderWidthSelected(s.value() as i32));
                         } @border_width_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Reset to defaults",
+                            set_hexpand: true,
+                        },
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Restore the house defaults: widget & window radius 12 px, border width 2 px, bar hover 14 %, Settings font scale 1.0.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::Button {
+                        add_css_class: "ok-button-surface",
+                        set_valign: gtk::Align::Center,
+                        set_label: "Reset to defaults",
+                        connect_clicked[sender] => move |_| {
+                            sender.input(ThemeSettingsInput::ResetSizing);
+                        },
                     },
                 },
 
@@ -1228,6 +1267,22 @@ impl Component for ThemeSettingsModel {
             ThemeSettingsInput::BorderWidthSelected(width) => {
                 config_manager().update_config(|config| {
                     config.theme.attributes.sizing.border_width = width;
+                })
+            }
+            ThemeSettingsInput::ResetSizing => {
+                // Restore every sizing knob to the house default in one
+                // write. The radius / border spinners on this page refresh
+                // via their reactive *Effect inputs; the bar-hover and
+                // Settings-font-scale controls live on other pages and
+                // pick the change up through the same reactive store.
+                let defaults = Sizing::default();
+                config_manager().update_config(move |config| {
+                    config.theme.attributes.sizing.radius_widget = defaults.radius_widget;
+                    config.theme.attributes.sizing.radius_window = defaults.radius_window;
+                    config.theme.attributes.sizing.border_width = defaults.border_width;
+                    config.theme.attributes.sizing.bar_hover_strength = defaults.bar_hover_strength;
+                    config.theme.attributes.sizing.settings_font_scale =
+                        defaults.settings_font_scale;
                 })
             }
 
