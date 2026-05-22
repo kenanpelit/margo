@@ -1,4 +1,9 @@
 .settings-window {
   border-radius: var(--radius-window);
   background-color: var(--surface);
+  // Clip children to the rounded rect — without this the sidebar /
+  // content backgrounds paint past the corner and the bottom corners
+  // read as square ("broken"). Same idiom the menus use to keep their
+  // corners crisp.
+  overflow: hidden;
 }
