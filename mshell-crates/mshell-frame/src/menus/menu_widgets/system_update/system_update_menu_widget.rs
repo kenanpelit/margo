@@ -29,6 +29,11 @@ pub(crate) enum SystemUpdateMenuWidgetInput {
     /// Enable / disable a source (repo / AUR / Flatpak). Persists
     /// to config, then re-probes.
     ToggleSource(Source, bool),
+    /// The panel was revealed (`true`) / hidden (`false`). On reveal
+    /// we re-probe — that's the *only* automatic probe, so the AUR
+    /// helper (and its sudo) runs when the user opens the panel, not
+    /// on every shell start.
+    ParentRevealChanged(bool),
 }
 
 #[derive(Debug)]
@@ -190,14 +195,18 @@ impl Component for SystemUpdateMenuWidgetModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
+        // Show the cached report (written by the bar pill's interval
+        // poll) and do NOT probe here. init() runs when the menu
+        // content is built — which is at startup, once per monitor — so
+        // probing here fired the AUR helper (and its sudo) on every
+        // shell restart. The probe now happens only when the panel is
+        // actually opened (ParentRevealChanged) or via the toggles.
         let model = SystemUpdateMenuWidgetModel {
-            report: None,
-            refreshing: true,
+            report: system_update::load_cache().map(|(_, report)| report),
+            refreshing: false,
             sources: ProbeConfig::from_config(),
         };
         let widgets = view_output!();
-        // First probe on open.
-        sender.input(SystemUpdateMenuWidgetInput::Refresh);
         ComponentParts { model, widgets }
     }
 
@@ -215,6 +224,13 @@ impl Component for SystemUpdateMenuWidgetModel {
                     let report = system_update::probe(ProbeConfig::from_config()).await;
                     SystemUpdateMenuWidgetCommandOutput::Loaded(report)
                 });
+            }
+            SystemUpdateMenuWidgetInput::ParentRevealChanged(visible) => {
+                // Probe only when the panel actually opens (not on
+                // build/startup). Hidden → nothing.
+                if visible {
+                    sender.input(SystemUpdateMenuWidgetInput::Refresh);
+                }
             }
             SystemUpdateMenuWidgetInput::Update => {
                 relm4::spawn(async {

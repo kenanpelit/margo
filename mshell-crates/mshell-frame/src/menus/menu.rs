@@ -10,6 +10,9 @@ use crate::menus::menu_widgets::bluetooth::bluetooth_menu_widget::{
     BluetoothMenuWidgetInput, BluetoothMenuWidgetModel,
 };
 use crate::menus::menu_widgets::clipboard::clipboard::{ClipboardInput, ClipboardModel};
+use crate::menus::menu_widgets::system_update::system_update_menu_widget::{
+    SystemUpdateMenuWidgetInput, SystemUpdateMenuWidgetModel,
+};
 use crate::menus::menu_widgets::network_toggle::network_menu_widget::{
     NetworkToggleMenuWidgetInput, NetworkToggleMenuWidgetModel,
 };
@@ -998,6 +1001,14 @@ impl Component for MenuModel {
                         controller
                             .sender()
                             .send(ClipboardInput::ParentRevealChanged(visible))
+                            .ok();
+                    }
+                    if let Some(controller) =
+                        controller.downcast_ref::<Controller<SystemUpdateMenuWidgetModel>>()
+                    {
+                        controller
+                            .sender()
+                            .send(SystemUpdateMenuWidgetInput::ParentRevealChanged(visible))
                             .ok();
                     }
                 }
