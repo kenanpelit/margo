@@ -120,12 +120,16 @@ impl Component for CpuDashboardModel {
                 },
 
                 // Single cluster carries the severity class so we
-                // tint label + icon together while the outer pill
-                // chrome (`ok-button-surface`) stays exactly like
-                // podman / network / dns.
+                // tint every metric's icon + label together while the
+                // outer pill chrome (`ok-button-surface`) stays exactly
+                // like podman / network / dns. Each metric is its own
+                // tight icon+value group; the per-metric glyphs
+                // (chip / thermometer / memory stick) replace the old
+                // generic computer icon and the "·" text separators —
+                // the icons are the separators now.
                 gtk::Box {
                     set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 6,
+                    set_spacing: 9,
                     set_halign: gtk::Align::Center,
                     set_valign: gtk::Align::Center,
                     #[watch]
@@ -134,36 +138,47 @@ impl Component for CpuDashboardModel {
                         severity_class(model.cpu_percent, model.temp_celsius),
                     ],
 
-                    gtk::Image {
-                        set_icon_name: Some("computer-symbolic"),
-                        add_css_class: "cpu-dashboard-bar-icon",
-                    },
-                    gtk::Label {
-                        add_css_class: "cpu-dashboard-bar-label",
-                        #[watch]
-                        set_label: &format!("{}%", model.cpu_percent),
-                    },
-                    gtk::Label {
-                        add_css_class: "cpu-dashboard-bar-sep",
-                        set_label: "·",
-                    },
-                    gtk::Label {
-                        add_css_class: "cpu-dashboard-bar-label",
-                        #[watch]
-                        set_label: &format!("{}°C", model.temp_celsius),
-                    },
-                    // RAM slot — hidden by default. Wrap separator
-                    // + label in one Box so they show/hide as a
-                    // unit (don't want a dangling ` · ` glyph).
+                    // CPU load
                     gtk::Box {
                         set_orientation: gtk::Orientation::Horizontal,
-                        set_spacing: 6,
+                        set_spacing: 4,
+                        gtk::Image {
+                            set_icon_name: Some("cpu-symbolic"),
+                            add_css_class: "cpu-dashboard-bar-icon",
+                        },
+                        gtk::Label {
+                            add_css_class: "cpu-dashboard-bar-label",
+                            #[watch]
+                            set_label: &format!("{}%", model.cpu_percent),
+                        },
+                    },
+
+                    // Package temperature
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 4,
+                        gtk::Image {
+                            set_icon_name: Some("temperature-symbolic"),
+                            add_css_class: "cpu-dashboard-bar-icon",
+                        },
+                        gtk::Label {
+                            add_css_class: "cpu-dashboard-bar-label",
+                            #[watch]
+                            set_label: &format!("{}°C", model.temp_celsius),
+                        },
+                    },
+
+                    // RAM — hidden by default (right-click opt-in). The
+                    // whole icon+value group shows/hides as a unit.
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 4,
                         #[watch]
                         set_visible: model.show_ram_in_bar,
 
-                        gtk::Label {
-                            add_css_class: "cpu-dashboard-bar-sep",
-                            set_label: "·",
+                        gtk::Image {
+                            set_icon_name: Some("memory-symbolic"),
+                            add_css_class: "cpu-dashboard-bar-icon",
                         },
                         gtk::Label {
                             add_css_class: "cpu-dashboard-bar-label",

@@ -44,9 +44,13 @@
   font-variant-numeric: tabular-nums;
 }
 
-.cpu-dashboard-bar-sep {
-  font-size: var(--font-bar);
-  opacity: 0.4;
+// Per-metric glyphs (chip / thermometer / memory). Sized a touch
+// under the label so the icon reads as a marker, not a second value,
+// and dimmed slightly so the number stays the focal point. The
+// severity ladder (.warn / .danger image) above still recolours them.
+.cpu-dashboard-bar-icon {
+  -gtk-icon-size: 14px;
+  opacity: 0.85;
 }
 
 // ── Popover surface ────────────────────────────────────────────
