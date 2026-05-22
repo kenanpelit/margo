@@ -62,7 +62,7 @@ where
                 set_orientation: Orientation::Horizontal,
 
                 gtk::Button {
-                    set_css_classes: &["ok-button-surface", "ok-button-medium", "ok-button-no-disabled"],
+                    set_css_classes: &["ok-button-surface", "ok-button-medium", "ok-button-no-disabled", "revealer-row-chip"],
                     set_hexpand: false,
                     set_vexpand: false,
                     set_margin_end: 10,
@@ -85,7 +85,7 @@ where
                 model.content.widget().clone() {},
 
                 gtk::Button {
-                    set_css_classes: &["ok-button-surface", "ok-button-medium-thin"],
+                    set_css_classes: &["ok-button-surface", "ok-button-medium-thin", "revealer-row-chip"],
                     set_hexpand: false,
                     set_vexpand: false,
                     connect_clicked[sender] => move |_| {
@@ -111,7 +111,13 @@ where
 
             #[name = "revealer"]
             gtk::Revealer {
-                set_margin_top: 10,
+                // The top gap lives on the *child* (inside the revealer),
+                // not on the revealer itself: a margin on the revealer
+                // stays in the layout even when collapsed (height 0), which
+                // pushed every row ~10px above its card's vertical centre
+                // and left a dead band at the bottom. Inside the revealer
+                // the margin collapses with the child, so a closed row is
+                // perfectly centred and an open one still gets its spacing.
                 set_transition_duration: 200,
                 set_transition_type: gtk::RevealerTransitionType::SlideDown,
                 #[watch]
@@ -119,6 +125,7 @@ where
 
                 #[name = "revealer_row_content"]
                 gtk::Box {
+                    set_margin_top: 10,
                     #[watch]
                     set_css_classes: if model.revealed {
                             &["revealer-row-content", "revealed"]

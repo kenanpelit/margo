@@ -1,3 +1,18 @@
+// Slim chips for the bar-style revealer rows (audio dashboard,
+// bluetooth). The shared ok-button-medium is a 48×48 touch target —
+// right for the quick-action grid, but it made each revealer row a
+// chunky ~72px strip. Pin a compact 32px square here only (quick-action
+// buttons don't carry `.revealer-row-chip`, so they keep their 48px).
+// Compound selector beats the bare size class on specificity.
+.ok-button-medium.revealer-row-chip {
+  min-width: 32px;
+  min-height: 32px;
+}
+.ok-button-medium-thin.revealer-row-chip {
+  min-width: 28px;
+  min-height: 32px;
+}
+
 .revealer-row-action-button-inner {
   transition: transform var(--motion-medium) var(--ease-standard);
 }
