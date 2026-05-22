@@ -504,6 +504,15 @@ A panel opens with a real header, not just a section label:
   (`--radius-pill`, equal padding, ≥40×40 — §9 target), resting
   transparent, hover = the canonical 14% primary state-layer (§4/§5).
   Never a naked floating icon, never raised button chrome.
+- **Reuse the widget, don't rebuild it.** This header ships as the
+  reusable `MenuWidget::PanelHeader { title }` config widget
+  (`menu_widgets/panel_header.rs`, `.panel-header` /
+  `.panel-action-btn`): leading glyph + title + a live date as dim
+  `--outline` metadata + the ⚙ gear. Drop it at the top of any panel's
+  widget list (the dashboard does — in place of its old Clock hero).
+  The gear calls `open_settings()` with **no** CloseMenu emit — the
+  frame's `toggle_menu` already hides the panel, so a CloseMenu after
+  would slam Settings shut.
 
 ### Segmented control
 A single unified capsule that switches between list categories
@@ -582,7 +591,9 @@ shows up only on the live / selected / active element, never as
 decoration.
 
 **Reference implementation:** the clipboard menu
-(`menu_widgets/clipboard/`, `04-components/_clipboard.scss`).
+(`menu_widgets/clipboard/`, `04-components/_clipboard.scss`) and the
+dashboard, whose header is the reusable `MenuWidget::PanelHeader`
+(`menu_widgets/panel_header.rs`, `04-components/_panel_header.scss`).
 
 ---
 
