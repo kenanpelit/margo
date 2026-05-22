@@ -88,6 +88,7 @@ impl Component for NotificationsModel {
 
                 gtk::Button {
                     add_css_class: "ok-button-surface",
+                    add_css_class: "ok-button-cell",
                     set_valign: gtk::Align::Center,
                     connect_clicked[sender] => move |_| {
                         sender.input(NotificationsInput::ClearAllClicked);

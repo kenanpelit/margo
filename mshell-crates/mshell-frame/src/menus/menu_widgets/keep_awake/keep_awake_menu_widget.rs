@@ -103,6 +103,7 @@ impl Component for KeepAwakeMenuWidgetModel {
                 #[local_ref]
                 extend_button_widget -> gtk::Button {
                     add_css_class: "ok-button-surface",
+                    add_css_class: "ok-button-cell",
                     set_label: "+30m",
                     set_tooltip_text: Some("Extend the running session"),
                     connect_clicked[sender] => move |_| {
@@ -112,6 +113,7 @@ impl Component for KeepAwakeMenuWidgetModel {
                 #[local_ref]
                 off_button_widget -> gtk::Button {
                     add_css_class: "ok-button-surface",
+                    add_css_class: "ok-button-cell",
                     set_label: "Turn off",
                     connect_clicked[sender] => move |_| {
                         sender.input(KeepAwakeMenuWidgetInput::Off);

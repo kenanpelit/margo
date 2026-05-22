@@ -112,6 +112,7 @@ impl Component for WeatherModel {
 
                 gtk::Button {
                     add_css_class: "ok-button-surface",
+                    add_css_class: "ok-button-cell",
                     set_hexpand: false,
                     set_halign: gtk::Align::Center,
                     connect_clicked[sender] => move |_| {
