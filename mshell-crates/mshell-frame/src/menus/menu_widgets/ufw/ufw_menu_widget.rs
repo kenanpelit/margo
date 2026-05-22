@@ -196,20 +196,24 @@ impl Component for UfwMenuWidgetModel {
             },
 
             // ── Footer actions ──────────────────────────────────
+            // Power-widget button language: equal-width surface
+            // buttons (.ok-button-cell), --radius-sm + primary hover
+            // from .ok-button-surface.
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
                 set_spacing: 6,
                 set_margin_top: 4,
+                set_homogeneous: true,
 
                 gtk::Button {
-                    set_css_classes: &["ok-button-surface"],
+                    set_css_classes: &["ok-button-surface", "ok-button-cell"],
                     set_label: "Refresh",
                     connect_clicked[sender] => move |_| {
                         sender.input(UfwMenuWidgetInput::RefreshNow);
                     },
                 },
                 gtk::Button {
-                    set_css_classes: &["ok-button-surface"],
+                    set_css_classes: &["ok-button-surface", "ok-button-cell"],
                     set_label: "ufw(8)",
                     connect_clicked => |_| {
                         tokio::spawn(async {

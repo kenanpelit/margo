@@ -104,6 +104,16 @@ button.ok-button-error {
   }
 }
 
+// Uniform widget action / control button — the text buttons that sit
+// in a row inside a menu (UFW footer, power controls, …). Pair with
+// .ok-button-surface for the fill + primary state-layer + --radius-sm
+// (button-base); this just pins the shared cell padding so every such
+// button is the same size. Mirrors .power-control-button — use this
+// instead of re-declaring per widget so the button rows stay uniform.
+.ok-button-cell {
+  padding: 10px 4px;
+}
+
 .ok-button-medium-thin {
   min-width: 36px;
   min-height: 48px;
