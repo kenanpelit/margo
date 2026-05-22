@@ -12,7 +12,7 @@ use mshell_services::weather_service;
 use mshell_utils::weather::{get_temperature_string, get_weather_icon_name, spawn_weather_watcher};
 use reactive_graph::traits::{Get, GetUntracked};
 use relm4::gtk::Orientation;
-use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, GestureSingleExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use wayle_weather::{TemperatureUnit, WeatherStatus};
 
@@ -23,6 +23,16 @@ const FALLBACK_ICON: &str = "weather-few-clouds-symbolic";
 pub(crate) struct WeatherModel {
     icon: String,
     temp: String,
+    /// Today's forecast high / low, pre-formatted as `↑24°` / `↓15°`
+    /// (compact — the unit letter is already implied by `temp`). Empty
+    /// while loading or if the daily forecast is unavailable.
+    high: String,
+    low: String,
+    /// Whether the bar pill also surfaces today's high / low. Off by
+    /// default — the pill reads icon + temp only (the classic compact
+    /// form); right-click flips this on. Ephemeral (in-memory only),
+    /// matching the CPU pill's RAM% toggle (DESIGN.md §4.3).
+    show_hilo: bool,
     tooltip: String,
     _orientation: Orientation,
     _effects: EffectScope,
@@ -32,6 +42,8 @@ pub(crate) struct WeatherModel {
 pub(crate) enum WeatherInput {
     /// Left click → frame opens the weather menu.
     Clicked,
+    /// Right click → toggle today's high / low in the bar cluster.
+    ToggleHilo,
     /// Weather data or the temperature unit changed → re-render.
     Refresh,
 }
@@ -67,6 +79,7 @@ impl Component for WeatherModel {
             #[watch]
             set_tooltip_text: Some(model.tooltip.as_str()),
 
+            #[name = "button"]
             gtk::Button {
                 set_css_classes: &["ok-button-flat", "ok-bar-widget"],
                 connect_clicked[sender] => move |_| {
@@ -89,6 +102,30 @@ impl Component for WeatherModel {
                         set_label: model.temp.as_str(),
                         #[watch]
                         set_visible: !model.temp.is_empty(),
+                    },
+
+                    // Today's high / low — a quieter secondary tier next
+                    // to the current temp. Off by default (the pill stays
+                    // the compact icon + temp); right-click opts in. Shown
+                    // / hidden as a unit so a missing forecast never
+                    // leaves a dangling arrow.
+                    gtk::Box {
+                        set_orientation: Orientation::Horizontal,
+                        set_spacing: 4,
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        set_visible: model.show_hilo && !model.high.is_empty(),
+
+                        gtk::Label {
+                            add_css_class: "weather-bar-hilo",
+                            #[watch]
+                            set_label: model.high.as_str(),
+                        },
+                        gtk::Label {
+                            add_css_class: "weather-bar-hilo",
+                            #[watch]
+                            set_label: model.low.as_str(),
+                        },
                     },
                 },
             },
@@ -113,6 +150,9 @@ impl Component for WeatherModel {
         let mut model = WeatherModel {
             icon: FALLBACK_ICON.to_string(),
             temp: String::new(),
+            high: String::new(),
+            low: String::new(),
+            show_hilo: false,
             tooltip: "Weather".to_string(),
             _orientation: params.orientation,
             _effects: effects,
@@ -120,6 +160,17 @@ impl Component for WeatherModel {
         model.refresh();
 
         let widgets = view_output!();
+
+        // Right-click toggles today's high / low in the bar cluster
+        // (DESIGN.md §4.3 ephemeral right-click detail, like the CPU
+        // pill's RAM%). Left-click still opens the menu.
+        let gesture = gtk::GestureClick::new();
+        gesture.set_button(gtk::gdk::BUTTON_SECONDARY);
+        let sender_clone = sender.clone();
+        gesture.connect_pressed(move |_, _, _, _| {
+            sender_clone.input(WeatherInput::ToggleHilo);
+        });
+        widgets.button.add_controller(gesture);
 
         ComponentParts { model, widgets }
     }
@@ -129,6 +180,7 @@ impl Component for WeatherModel {
             WeatherInput::Clicked => {
                 let _ = sender.output(WeatherOutput::Clicked);
             }
+            WeatherInput::ToggleHilo => self.show_hilo = !self.show_hilo,
             WeatherInput::Refresh => self.refresh(),
         }
     }
@@ -165,6 +217,16 @@ impl WeatherModel {
                             .to_string();
                     self.temp = get_temperature_string(&weather.current.temperature, &unit);
 
+                    // Today's high / low from the first daily forecast,
+                    // compact (rounded, no unit letter): `↑24°` / `↓15°`.
+                    if let Some(today) = weather.daily.first() {
+                        self.high = format!("↑{}", temp_compact(&today.temp_high, &unit));
+                        self.low = format!("↓{}", temp_compact(&today.temp_low, &unit));
+                    } else {
+                        self.high.clear();
+                        self.low.clear();
+                    }
+
                     let place = if !weather.location.city.is_empty() {
                         match &weather.location.region {
                             Some(region) => format!("{}, {}", weather.location.city, region),
@@ -173,7 +235,13 @@ impl WeatherModel {
                     } else {
                         format!("{}, {}", weather.location.lat, weather.location.lon)
                     };
-                    self.tooltip = format!("{place} · {}", self.temp);
+                    let summary = if self.high.is_empty() {
+                        format!("{place} · {}", self.temp)
+                    } else {
+                        format!("{place} · {} · {} {}", self.temp, self.high, self.low)
+                    };
+                    self.tooltip =
+                        format!("{summary}\nClick: open  ·  Right-click: high / low");
                     return;
                 }
                 self.fallback("Weather");
@@ -186,6 +254,19 @@ impl WeatherModel {
     fn fallback(&mut self, tooltip: &str) {
         self.icon = FALLBACK_ICON.to_string();
         self.temp = String::new();
+        self.high = String::new();
+        self.low = String::new();
         self.tooltip = tooltip.to_string();
     }
+}
+
+/// Compact temperature for the bar's high / low chips: the rounded value
+/// + degree glyph only (no unit letter — `temp` already carries it), e.g.
+/// `24°`. Honours the configured metric / imperial unit.
+fn temp_compact(t: &wayle_weather::Temperature, unit: &TemperatureUnit) -> String {
+    let v = match unit {
+        TemperatureUnit::Metric => t.celsius(),
+        TemperatureUnit::Imperial => t.fahrenheit(),
+    };
+    format!("{}°", v.round() as i32)
 }

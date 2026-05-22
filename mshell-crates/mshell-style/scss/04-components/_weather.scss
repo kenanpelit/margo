@@ -23,3 +23,19 @@
   border-radius: var(--radius-md);
   padding: 8px;
 }
+// ── Bar pill ────────────────────────────────────────────────────
+// Current temperature is the focal value (inherits the bar text
+// colour). Today's high / low ride alongside as a quieter secondary
+// tier — hierarchy via colour, not size (DESIGN.md §1.6): same
+// --font-bar size, dropped to --on-surface-variant so they read as
+// metadata next to the headline temp.
+.weather-bar-label {
+  font-size: var(--font-bar);
+  font-variant-numeric: tabular-nums;
+}
+
+.weather-bar-hilo {
+  font-size: var(--font-bar);
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface-variant);
+}
