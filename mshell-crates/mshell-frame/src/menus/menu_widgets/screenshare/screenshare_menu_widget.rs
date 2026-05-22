@@ -59,9 +59,23 @@ impl Component for ScreenshareMenuWidgetModel {
             set_orientation: gtk::Orientation::Vertical,
             set_spacing: 12,
 
-            gtk::Label {
-                add_css_class: "label-xl-bold-variant",
-                set_label: "Choose what to share",
+            // ── §12 panel header ──
+            gtk::Box {
+                add_css_class: "panel-header",
+                set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 12,
+                gtk::Image {
+                    add_css_class: "panel-header-icon",
+                    set_valign: gtk::Align::Center,
+                    set_icon_name: Some("camera-video-symbolic"),
+                },
+                gtk::Label {
+                    add_css_class: "panel-title",
+                    set_label: "Choose what to share",
+                    set_halign: gtk::Align::Start,
+                    set_hexpand: true,
+                    set_valign: gtk::Align::Center,
+                },
             },
 
             gtk::Box {

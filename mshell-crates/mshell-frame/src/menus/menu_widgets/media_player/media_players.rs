@@ -84,7 +84,12 @@ impl Component for MediaPlayersModel {
                     #[watch]
                     set_label: model.active_player_name.as_str(),
                     set_hexpand: true,
-                    set_xalign: 0.0
+                    set_xalign: 0.0,
+                    // Truncate long player names so the title doesn't
+                    // demand width and push the dashboard's right column
+                    // past its homogeneous slot (was breaking the
+                    // equal-column rule, §7).
+                    set_ellipsize: gtk::pango::EllipsizeMode::End,
                 },
 
                 gtk::Button {
