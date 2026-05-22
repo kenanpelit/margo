@@ -53,7 +53,9 @@
   // Material search field: pill-ish (radius-xl) filled tonal surface.
   border-radius: var(--radius-xl);
   padding: 10px 16px;
-  font-size: 1.05em;
+  // Primary input → body+ tier on the --font-* scale (§1.6), not an
+  // em-relative size.
+  font-size: var(--font-md);
   border: 2px solid transparent;
   transition: background-color var(--motion-medium) var(--ease-standard),
               box-shadow var(--motion-medium) var(--ease-standard);
@@ -76,7 +78,7 @@
   border-radius: var(--radius-pill);
   padding: 2px 9px;
   font-family: monospace;
-  font-size: 0.85em;
+  font-size: var(--font-xs);
   font-weight: 600;
   min-height: 0;
   margin: 0 4px;
@@ -109,7 +111,8 @@
   // surface-container pill so the strip reads calm.
   background-color: transparent;
   color: var(--on-surface-variant);
-  font-size: 0.82em;
+  // Recessive filter chip → smallest scale tier (§1.6), token not em.
+  font-size: var(--font-2xs);
   // Keep weight FIXED across hover / selected so the pill's
   // natural width never changes. Pre-fix used `font-weight: 600`
   // for the selected state, which made e.g. "Compositor" measure
@@ -279,7 +282,8 @@
   opacity: 0.55;
   font-family: monospace;
   font-feature-settings: "tnum";
-  font-size: 0.78em;
+  // Metadata / quick-key hint → dimmest, smallest scale tier (§1.6).
+  font-size: var(--font-2xs);
   font-weight: 600;
   min-width: 16px;
   padding: 0 4px;
@@ -291,7 +295,7 @@
 // flips to on-primary when the row is the selection (see above).
 .app-launcher-pin-marker {
   color: var(--primary);
-  font-size: 0.9em;
+  font-size: var(--font-xs);
   opacity: 0.95;
   padding: 0 4px;
 }
@@ -352,7 +356,9 @@
   // the Settings spinner.
   padding: 1px 5px 1px 1px;
   font-family: monospace;
-  font-size: 0.72em;
+  // Keycap = dimmest/smallest tier on the scale (§1.6); FlowBox wraps,
+  // so the token value is safe for the tuned footer width.
+  font-size: var(--font-2xs);
   font-weight: 700;
 }
 
@@ -361,7 +367,7 @@
 // quiet band rather than competing with the result list.
 .app-launcher-bind-label {
   color: var(--outline);
-  font-size: 0.78em;
+  font-size: var(--font-2xs);
   // Compromise padding between original (8 px → ~720 floor) and
   // aggressive (4 px → ~590). 5 px keeps the label visually
   // separated from the next chip while preserving most of the
