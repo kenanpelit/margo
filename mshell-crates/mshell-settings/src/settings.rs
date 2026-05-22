@@ -106,15 +106,22 @@ impl Component for SettingsWindowModel {
                     set_spacing: 4,
                     set_hexpand: false,
 
+                    // ── §12 panel header ──
                     gtk::Box {
+                        add_css_class: "panel-header",
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 12,
+                        set_margin_start: 8,
+                        set_margin_end: 8,
+                        set_margin_top: 8,
+                        set_margin_bottom: 8,
+                        gtk::Image {
+                            add_css_class: "panel-header-icon",
+                            set_valign: gtk::Align::Center,
+                            set_icon_name: Some("settings-symbolic"),
+                        },
                         gtk::Label {
-                            add_css_class: "label-large-bold",
-                            set_margin_start: 8,
-                            set_margin_bottom: 8,
-                            set_margin_end: 8,
-                            set_margin_top: 8,
+                            add_css_class: "panel-title",
                             set_label: "Settings",
                             set_halign: gtk::Align::Start,
                             set_hexpand: true,
