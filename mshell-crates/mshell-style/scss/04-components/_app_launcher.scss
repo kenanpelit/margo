@@ -72,7 +72,8 @@
 .app-launcher-exact-mode {
   background-color: var(--surface-container);
   color: var(--on-surface-variant);
-  border-radius: 999px;
+  // Pill chip — use the shape-scale token, not a literal 999.
+  border-radius: var(--radius-pill);
   padding: 2px 9px;
   font-family: monospace;
   font-size: 0.85em;

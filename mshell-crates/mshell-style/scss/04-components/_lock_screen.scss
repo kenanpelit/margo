@@ -21,7 +21,8 @@
   padding: 0 16px;
   background-color: var(--surface);
   border: var(--border-width) solid var(--outline);
-  border-radius: 90px;
+  // Capsule entry — pill token, not a fixed 90px.
+  border-radius: var(--radius-pill);
 }
 
 .lockscreen-label {

@@ -28,7 +28,7 @@ popover label.title {
     all: unset;
     margin: 4px;
     color: var(--primary);
-    font-size: 20px;
+    font-size: var(--font-lg);
     opacity: 1;
 }
 

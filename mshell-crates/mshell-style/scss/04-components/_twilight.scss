@@ -81,7 +81,7 @@
   transition: background-color var(--motion-fast) var(--ease-standard);
 
   &:hover {
-    background-color: color-mix(in srgb, var(--primary) 16%, var(--surface-container));
+    background-color: color-mix(in srgb, var(--primary) 14%, var(--surface-container));
   }
 
   // The preset whose schedule slot is live right now (schedule mode):
