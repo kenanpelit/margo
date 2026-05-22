@@ -17,6 +17,14 @@ pub struct ClipboardEntry {
     pub pinned: bool,
 }
 
+/// Coarse content category used by the clipboard menu's type tabs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ClipCategory {
+    Text,
+    Image,
+    File,
+}
+
 impl ClipboardEntry {
     pub fn content_hash(data: &[u8]) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -26,6 +34,17 @@ impl ClipboardEntry {
 
     pub fn is_text(&self) -> bool {
         self.mime_type.starts_with("text/")
+    }
+
+    /// Coarse content category for the menu's type tabs.
+    pub fn category(&self) -> ClipCategory {
+        if self.mime_type.starts_with("text/") {
+            ClipCategory::Text
+        } else if self.mime_type.starts_with("image/") {
+            ClipCategory::Image
+        } else {
+            ClipCategory::File
+        }
     }
 
     /// Lower-cased haystack for substring search. Text entries match

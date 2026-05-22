@@ -96,12 +96,15 @@
   margin-bottom: 4px;
 }
 
-// ── Clipboard tabs (All / Favorites) ───────────────────────────
+// ── Clipboard type tabs (All · Text · Images · Files · ★) ───────
 .clipboard-tabs {
   .clipboard-tab {
     all: unset;
-    padding: 4px 14px;
+    // Compact padding + smaller type so five tabs + counts fit the
+    // panel width without wrapping.
+    padding: 3px 9px;
     border-radius: var(--radius-sm);
+    font-size: var(--font-2xs);
     color: var(--on-surface-variant);
     transition: background-color 150ms, color 150ms;
 
@@ -109,10 +112,12 @@
       background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
     }
 
+    // Active tab reads via the primary tint + colour only — NO
+    // font-weight bump, so the tab's width (and the strip's layout)
+    // stays put when switching tabs.
     &.active {
       background-color: unquote("color-mix(in srgb, var(--primary) 16%, transparent)");
       color: var(--primary);
-      font-weight: 600;
     }
   }
 }

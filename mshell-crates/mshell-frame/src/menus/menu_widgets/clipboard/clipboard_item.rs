@@ -96,7 +96,7 @@ impl Component for ClipboardItemModel {
 
                     gtk::Label {
                         add_css_class: "clipboard-item-title",
-                        set_label: format!("#{}", model.entry.id).as_str(),
+                        set_label: relative_time(&model.entry).as_str(),
                         set_hexpand: true,
                         set_halign: gtk::Align::Start,
                     },
@@ -196,6 +196,30 @@ impl Component for ClipboardItemModel {
             }
         }
         self.update_view(widgets, sender);
+    }
+}
+
+/// Relative "captured at" label for an entry's title line — "just
+/// now", "5m ago", "3h ago", "yesterday", "4d ago". Computed from the
+/// entry's unix timestamp vs. the wall clock, so it needs no `time`
+/// crate import here.
+fn relative_time(entry: &ClipboardEntry) -> String {
+    let then = entry.timestamp.unix_timestamp();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(then);
+    let diff = (now - then).max(0);
+    if diff < 45 {
+        "just now".to_string()
+    } else if diff < 3600 {
+        format!("{}m ago", (diff / 60).max(1))
+    } else if diff < 86_400 {
+        format!("{}h ago", diff / 3600)
+    } else if diff < 172_800 {
+        "yesterday".to_string()
+    } else {
+        format!("{}d ago", diff / 86_400)
     }
 }
 

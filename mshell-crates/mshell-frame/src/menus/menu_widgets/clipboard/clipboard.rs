@@ -1,5 +1,5 @@
 use crate::menus::menu_widgets::clipboard::clipboard_item::ClipboardItemModel;
-use mshell_clipboard::{ClipboardEntry, ClipboardHistory, clipboard_service};
+use mshell_clipboard::{ClipCategory, ClipboardEntry, ClipboardHistory, clipboard_service};
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 use std::cell::Cell;
@@ -27,6 +27,75 @@ fn set_search_active(active: bool) {
     SEARCH_ACTIVE.with(|c| c.set(active));
 }
 
+/// Clipboard menu type tabs. `All` shows the full history; the three
+/// type tabs filter by content category; `Favorites` shows pinned
+/// entries of any type. Number keys 1–5 jump; Tab cycles.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ClipTab {
+    All,
+    Text,
+    Images,
+    Files,
+    Favorites,
+}
+
+impl ClipTab {
+    const ALL: [ClipTab; 5] = [
+        ClipTab::All,
+        ClipTab::Text,
+        ClipTab::Images,
+        ClipTab::Files,
+        ClipTab::Favorites,
+    ];
+
+    /// Index into [`Self::ALL`] — also the 1-based number-key slot.
+    fn index(self) -> usize {
+        Self::ALL.iter().position(|t| *t == self).unwrap_or(0)
+    }
+
+    /// Next tab, wrapping — drives the Tab key.
+    fn next(self) -> ClipTab {
+        Self::ALL[(self.index() + 1) % Self::ALL.len()]
+    }
+
+    /// Short label without the count (the count is appended live).
+    fn base_label(self) -> &'static str {
+        match self {
+            ClipTab::All => "All",
+            ClipTab::Text => "Text",
+            ClipTab::Images => "Images",
+            ClipTab::Files => "Files",
+            ClipTab::Favorites => "★",
+        }
+    }
+
+    /// Does this entry belong in this tab?
+    fn matches(self, e: &ClipboardEntry) -> bool {
+        match self {
+            ClipTab::All => true,
+            ClipTab::Text => e.category() == ClipCategory::Text,
+            ClipTab::Images => e.category() == ClipCategory::Image,
+            ClipTab::Files => e.category() == ClipCategory::File,
+            ClipTab::Favorites => e.pinned,
+        }
+    }
+}
+
+/// CSS classes for a tab button — `active` when it's the selected tab.
+fn tab_classes(active: bool) -> &'static [&'static str] {
+    if active {
+        &["clipboard-tab", "active"]
+    } else {
+        &["clipboard-tab"]
+    }
+}
+
+/// Tab button label: base name + live count, e.g. `Text 12`. The ★
+/// favorites tab keeps just its glyph + count.
+fn tab_label(tab: ClipTab, counts: &[usize; 5]) -> String {
+    format!("{} {}", tab.base_label(), counts[tab.index()])
+}
+
 pub(crate) struct ClipboardModel {
     list_box: gtk::ListBox,
     /// Row item controllers, kept alive (their widgets live in the
@@ -37,8 +106,11 @@ pub(crate) struct ClipboardModel {
     items: Vec<ClipboardEntry>,
     history: ClipboardHistory,
     delete_button_visible: bool,
-    /// Active tab: false = All (unpinned), true = Favorites (pinned).
-    show_pinned_only: bool,
+    /// Active type tab.
+    active_tab: ClipTab,
+    /// Per-tab entry counts (index-aligned with `ClipTab::ALL`),
+    /// recomputed from the full history on every rebuild.
+    tab_counts: [usize; 5],
     /// Current `/` filter query (lower-cased substring match). The
     /// open/closed state lives in the [`SEARCH_ACTIVE`] thread-local
     /// so the frame's Esc handler can read it.
@@ -49,10 +121,10 @@ pub(crate) struct ClipboardModel {
 pub(crate) enum ClipboardInput {
     Refresh,
     DeleteAllClicked,
-    /// Switch tab. `true` = Favorites (pinned), `false` = All.
-    SetPinnedFilter(bool),
-    /// Tab key — flip between All and Favorites.
-    ToggleTab,
+    /// Jump to a specific type tab (number keys 1–5 / clicks).
+    SetTab(ClipTab),
+    /// Tab key — cycle to the next type tab.
+    CycleTab,
     SelectNext,
     SelectPrev,
     CopySelected,
@@ -120,8 +192,8 @@ impl Component for ClipboardModel {
                 },
             },
 
-            // Tab strip — All (unpinned) vs Favorites (pinned). Tab
-            // key toggles; the active tab is highlighted.
+            // Type tabs — All · Text · Images · Files · ★ (favorites),
+            // each with a live count. Number keys 1–5 jump; Tab cycles.
             gtk::Box {
                 add_css_class: "clipboard-tabs",
                 set_orientation: gtk::Orientation::Horizontal,
@@ -130,26 +202,47 @@ impl Component for ClipboardModel {
 
                 gtk::Button {
                     #[watch]
-                    set_css_classes: if model.show_pinned_only {
-                        &["clipboard-tab"]
-                    } else {
-                        &["clipboard-tab", "active"]
-                    },
-                    set_label: "All",
+                    set_css_classes: tab_classes(model.active_tab == ClipTab::All),
+                    #[watch]
+                    set_label: &tab_label(ClipTab::All, &model.tab_counts),
                     connect_clicked[sender] => move |_| {
-                        sender.input(ClipboardInput::SetPinnedFilter(false));
+                        sender.input(ClipboardInput::SetTab(ClipTab::All));
                     },
                 },
                 gtk::Button {
                     #[watch]
-                    set_css_classes: if model.show_pinned_only {
-                        &["clipboard-tab", "active"]
-                    } else {
-                        &["clipboard-tab"]
-                    },
-                    set_label: "★ Favorites",
+                    set_css_classes: tab_classes(model.active_tab == ClipTab::Text),
+                    #[watch]
+                    set_label: &tab_label(ClipTab::Text, &model.tab_counts),
                     connect_clicked[sender] => move |_| {
-                        sender.input(ClipboardInput::SetPinnedFilter(true));
+                        sender.input(ClipboardInput::SetTab(ClipTab::Text));
+                    },
+                },
+                gtk::Button {
+                    #[watch]
+                    set_css_classes: tab_classes(model.active_tab == ClipTab::Images),
+                    #[watch]
+                    set_label: &tab_label(ClipTab::Images, &model.tab_counts),
+                    connect_clicked[sender] => move |_| {
+                        sender.input(ClipboardInput::SetTab(ClipTab::Images));
+                    },
+                },
+                gtk::Button {
+                    #[watch]
+                    set_css_classes: tab_classes(model.active_tab == ClipTab::Files),
+                    #[watch]
+                    set_label: &tab_label(ClipTab::Files, &model.tab_counts),
+                    connect_clicked[sender] => move |_| {
+                        sender.input(ClipboardInput::SetTab(ClipTab::Files));
+                    },
+                },
+                gtk::Button {
+                    #[watch]
+                    set_css_classes: tab_classes(model.active_tab == ClipTab::Favorites),
+                    #[watch]
+                    set_label: &tab_label(ClipTab::Favorites, &model.tab_counts),
+                    connect_clicked[sender] => move |_| {
+                        sender.input(ClipboardInput::SetTab(ClipTab::Favorites));
                     },
                 },
             },
@@ -180,7 +273,7 @@ impl Component for ClipboardModel {
                 add_css_class: "label-small",
                 add_css_class: "clipboard-hint",
                 set_halign: gtk::Align::Start,
-                set_label: "/: search · Tab: switch · Ctrl+n/k: move · Enter: copy · Ctrl+p: pin · Delete: remove",
+                set_label: "/: search · 1-5/Tab: tabs · Ctrl+n/k: move · Enter: copy · Ctrl+p: pin · Delete: remove",
                 set_xalign: 0.0,
             },
 
@@ -188,7 +281,11 @@ impl Component for ClipboardModel {
                 add_css_class: "label-medium",
                 #[watch]
                 set_visible: !model.delete_button_visible,
-                set_label: if model.show_pinned_only { "No favorites yet" } else { "Empty" },
+                #[watch]
+                set_label: match model.active_tab {
+                    ClipTab::Favorites => "No favorites yet",
+                    _ => "Empty",
+                },
             },
 
             gtk::ScrolledWindow {
@@ -283,7 +380,21 @@ impl Component for ClipboardModel {
                     }
                 }
                 gtk::gdk::Key::Tab | gtk::gdk::Key::ISO_Left_Tab => {
-                    key_sender.input(ClipboardInput::ToggleTab);
+                    key_sender.input(ClipboardInput::CycleTab);
+                    gtk::glib::Propagation::Stop
+                }
+                // Number keys 1–5 jump straight to a tab — but only in
+                // normal mode (while searching they're literal digits).
+                gtk::gdk::Key::_1 | gtk::gdk::Key::_2 | gtk::gdk::Key::_3
+                | gtk::gdk::Key::_4 | gtk::gdk::Key::_5
+                    if !searching && !ctrl =>
+                {
+                    let idx = (keyval.to_unicode().and_then(|c| c.to_digit(10)).unwrap_or(1)
+                        as usize)
+                        .saturating_sub(1);
+                    if let Some(tab) = ClipTab::ALL.get(idx) {
+                        key_sender.input(ClipboardInput::SetTab(*tab));
+                    }
                     gtk::glib::Propagation::Stop
                 }
                 gtk::gdk::Key::n if ctrl => {
@@ -334,7 +445,8 @@ impl Component for ClipboardModel {
             items: Vec::new(),
             history,
             delete_button_visible: false,
-            show_pinned_only: false,
+            active_tab: ClipTab::All,
+            tab_counts: [0; 5],
             search_query: String::new(),
         };
 
@@ -356,19 +468,30 @@ impl Component for ClipboardModel {
     ) {
         match message {
             ClipboardInput::Refresh => self.rebuild_rows(),
-            ClipboardInput::SetPinnedFilter(pinned_only) => {
-                self.show_pinned_only = pinned_only;
+            ClipboardInput::SetTab(tab) => {
+                self.active_tab = tab;
                 self.rebuild_rows();
             }
-            ClipboardInput::ToggleTab => {
-                self.show_pinned_only = !self.show_pinned_only;
+            ClipboardInput::CycleTab => {
+                self.active_tab = self.active_tab.next();
                 self.rebuild_rows();
             }
             ClipboardInput::SelectNext => self.move_selection(1),
             ClipboardInput::SelectPrev => self.move_selection(-1),
             ClipboardInput::CopySelected => {
                 if let Some(id) = self.selected_id() {
+                    let kind = self
+                        .items
+                        .iter()
+                        .find(|e| e.id == id)
+                        .map(|e| e.category());
                     clipboard_service().copy_entry(id);
+                    let body = match kind {
+                        Some(ClipCategory::Image) => "Image copied to clipboard",
+                        Some(ClipCategory::File) => "File copied to clipboard",
+                        _ => "Text copied to clipboard",
+                    };
+                    mshell_launcher::notify::toast("Copied", body);
                     let _ = sender.output(ClipboardOutput::CloseMenu);
                 }
             }
@@ -380,13 +503,24 @@ impl Component for ClipboardModel {
             }
             ClipboardInput::PinSelected => {
                 if let Some(id) = self.selected_id() {
+                    let was_pinned = self
+                        .items
+                        .iter()
+                        .find(|e| e.id == id)
+                        .map(|e| e.pinned)
+                        .unwrap_or(false);
                     clipboard_service().toggle_pin(id);
-                    // broadcast → Refresh; the entry hops between
-                    // the All and Favorites tabs accordingly.
+                    if was_pinned {
+                        mshell_launcher::notify::toast("Unpinned", "Removed from favorites");
+                    } else {
+                        mshell_launcher::notify::toast("Pinned", "Added to favorites");
+                    }
+                    // broadcast → Refresh; the entry hops between tabs.
                 }
             }
             ClipboardInput::DeleteAllClicked => {
                 clipboard_service().clear_history();
+                mshell_launcher::notify::toast("Clipboard cleared", "All entries removed");
                 let _ = sender.output(ClipboardOutput::CloseMenu);
             }
             ClipboardInput::EnterSearch => {
@@ -444,17 +578,27 @@ impl Component for ClipboardModel {
 impl ClipboardModel {
     /// Rebuild the ListBox rows from the (filtered) history.
     fn rebuild_rows(&mut self) {
-        // All = the full rolling history in recency order (pinned
-        // entries appear in their natural position, marked with a
-        // star). Favorites = pinned only. The `/` filter narrows
-        // whichever tab is active by a case-insensitive substring of
-        // the entry's full content.
+        // The active type tab selects which entries show; the `/`
+        // filter then narrows them by a case-insensitive substring of
+        // the entry's full content. Per-tab counts come from the full
+        // history (search-independent), so the tab strip always shows
+        // how much each category holds.
+        let all = self.history.entries();
+        let mut counts = [0usize; ClipTab::ALL.len()];
+        for e in &all {
+            for (i, tab) in ClipTab::ALL.iter().enumerate() {
+                if tab.matches(e) {
+                    counts[i] += 1;
+                }
+            }
+        }
+        self.tab_counts = counts;
+
         let query = self.search_query.to_lowercase();
-        let items: Vec<ClipboardEntry> = self
-            .history
-            .entries()
+        let active_tab = self.active_tab;
+        let items: Vec<ClipboardEntry> = all
             .into_iter()
-            .filter(|e| !self.show_pinned_only || e.pinned)
+            .filter(|e| active_tab.matches(e))
             .filter(|e| query.is_empty() || e.search_haystack().contains(&query))
             .collect();
 
