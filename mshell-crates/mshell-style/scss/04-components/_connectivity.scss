@@ -5,8 +5,8 @@
 // dashboard wants a single-line "what am I connected to" read.
 
 .connectivity-menu-widget {
-  padding-top: 4px;
-  padding-bottom: 4px;
+  padding-top: 6px;
+  padding-bottom: 6px;
 }
 
 .connectivity-cell {
@@ -22,7 +22,7 @@
 }
 
 .connectivity-label {
-  font-size: var(--font-xs);
+  font-size: var(--font-sm);
   font-weight: 500;
   color: var(--on-surface);
   letter-spacing: -0.01em;
