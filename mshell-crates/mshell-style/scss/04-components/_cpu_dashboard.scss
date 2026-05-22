@@ -121,13 +121,6 @@
   color: var(--on-surface);
 }
 
-.cpu-dashboard-loadavg {
-  font-family: monospace;
-  font-size: var(--font-sm);
-  font-variant-numeric: tabular-nums;
-  color: var(--on-surface);
-}
-
 // CPU identity line (model · cores/threads), above the hero.
 .cpu-dashboard-model {
   font-size: var(--font-xs);
@@ -149,19 +142,28 @@
   color: var(--primary);
 }
 
-// "used / total" memory + swap readout (secondary tier).
-.cpu-dashboard-mem-detail {
+// Memory/swap row caption (RAM / Swap) — secondary tier label.
+.cpu-dashboard-stat-caption {
+  font-size: var(--font-xs);
+  font-weight: 500;
+  color: var(--on-surface-variant);
+}
+
+// "used / total" detail readout (secondary, tabular mono).
+.cpu-dashboard-stat-detail {
   font-family: monospace;
   font-size: var(--font-xs);
   font-variant-numeric: tabular-nums;
   color: var(--on-surface-variant);
 }
 
-// Uptime footer.
-.cpu-dashboard-uptime {
-  font-size: var(--font-xs);
-  color: var(--on-surface-variant);
-  opacity: 0.85;
+// Bright value: memory/swap percent + the load-avg / uptime footer
+// columns. --font-sm keeps the footer at the dashboard legibility floor.
+.cpu-dashboard-stat-value {
+  font-size: var(--font-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface);
 }
 
 // ProgressBar tinting for per-core + RAM bars. GTK4 paints

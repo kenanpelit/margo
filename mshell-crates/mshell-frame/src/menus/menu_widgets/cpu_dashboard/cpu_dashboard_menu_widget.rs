@@ -258,7 +258,9 @@ impl Component for CpuDashboardMenuWidgetModel {
                 set_spacing: 4,
             },
 
-            // Memory.
+            // Memory + swap — symmetric labelled bar rows: caption,
+            // bar, "used / total", percent. Same row shape so RAM and
+            // Swap read as one consistent group.
             gtk::Label {
                 add_css_class: "cpu-dashboard-section-label",
                 set_label: "MEMORY",
@@ -266,7 +268,13 @@ impl Component for CpuDashboardMenuWidgetModel {
             },
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 8,
+                set_spacing: 10,
+                gtk::Label {
+                    add_css_class: "cpu-dashboard-stat-caption",
+                    set_label: "RAM",
+                    set_width_chars: 4,
+                    set_xalign: 0.0,
+                },
                 gtk::ProgressBar {
                     set_hexpand: true,
                     set_valign: gtk::Align::Center,
@@ -281,7 +289,7 @@ impl Component for CpuDashboardMenuWidgetModel {
                     ],
                 },
                 gtk::Label {
-                    add_css_class: "cpu-dashboard-mem-detail",
+                    add_css_class: "cpu-dashboard-stat-detail",
                     #[watch]
                     set_label: &format!(
                         "{} / {}",
@@ -289,22 +297,22 @@ impl Component for CpuDashboardMenuWidgetModel {
                     ),
                 },
                 gtk::Label {
-                    add_css_class: "cpu-dashboard-bar-value",
+                    add_css_class: "cpu-dashboard-stat-value",
                     #[watch]
                     set_label: &format!("{}%", model.ram_percent),
                     set_width_chars: 4,
+                    set_xalign: 1.0,
                 },
             },
-            // Swap row — only shown when swap is configured.
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 8,
+                set_spacing: 10,
                 #[watch]
                 set_visible: model.swap_total_kb > 0,
                 gtk::Label {
-                    add_css_class: "cpu-dashboard-core-label",
-                    set_label: "swap",
-                    set_width_chars: 5,
+                    add_css_class: "cpu-dashboard-stat-caption",
+                    set_label: "Swap",
+                    set_width_chars: 4,
                     set_xalign: 0.0,
                 },
                 gtk::ProgressBar {
@@ -316,37 +324,65 @@ impl Component for CpuDashboardMenuWidgetModel {
                     add_css_class: "calm",
                 },
                 gtk::Label {
-                    add_css_class: "cpu-dashboard-mem-detail",
+                    add_css_class: "cpu-dashboard-stat-detail",
                     #[watch]
                     set_label: &format!(
                         "{} / {}",
                         fmt_gb(model.swap_used_kb), fmt_gb(model.swap_total_kb),
                     ),
                 },
+                gtk::Label {
+                    add_css_class: "cpu-dashboard-stat-value",
+                    #[watch]
+                    set_label: &format!("{}%", swap_pct(model.swap_used_kb, model.swap_total_kb)),
+                    set_width_chars: 4,
+                    set_xalign: 1.0,
+                },
             },
 
-            // Load averages + uptime.
-            gtk::Label {
-                add_css_class: "cpu-dashboard-section-label",
-                set_label: "LOAD AVERAGE (1m · 5m · 15m)",
-                set_halign: gtk::Align::Start,
-            },
-            gtk::Label {
-                add_css_class: "cpu-dashboard-loadavg",
-                #[watch]
-                set_label: &format!(
-                    "{:.2}    {:.2}    {:.2}",
-                    model.load_1m, model.load_5m, model.load_15m,
-                ),
-                set_halign: gtk::Align::Start,
-            },
-            gtk::Label {
-                add_css_class: "cpu-dashboard-uptime",
-                #[watch]
-                set_label: &format!("Uptime · {}", model.uptime),
-                #[watch]
-                set_visible: !model.uptime.is_empty(),
-                set_halign: gtk::Align::Start,
+            // Load average + uptime — two labelled stat columns
+            // (caption above value), the same caption→value rhythm the
+            // hero uses, so the footer doesn't read as raw text.
+            gtk::Box {
+                set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 16,
+                set_homogeneous: true,
+                set_margin_top: 4,
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 3,
+                    gtk::Label {
+                        add_css_class: "cpu-dashboard-section-label",
+                        set_label: "LOAD AVG · 1 / 5 / 15M",
+                        set_halign: gtk::Align::Start,
+                    },
+                    gtk::Label {
+                        add_css_class: "cpu-dashboard-stat-value",
+                        #[watch]
+                        set_label: &format!(
+                            "{:.2} · {:.2} · {:.2}",
+                            model.load_1m, model.load_5m, model.load_15m,
+                        ),
+                        set_halign: gtk::Align::Start,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 3,
+                    gtk::Label {
+                        add_css_class: "cpu-dashboard-section-label",
+                        set_label: "UPTIME",
+                        set_halign: gtk::Align::Start,
+                    },
+                    gtk::Label {
+                        add_css_class: "cpu-dashboard-stat-value",
+                        #[watch]
+                        set_label: &model.uptime,
+                        set_halign: gtk::Align::Start,
+                    },
+                },
             },
         }
     }
@@ -602,6 +638,10 @@ fn ram_pct(used_kb: u64, total_kb: u64) -> u32 {
     } else {
         ((used_kb * 100) / total_kb) as u32
     }
+}
+
+fn swap_pct(used_kb: u64, total_kb: u64) -> u32 {
+    ram_pct(used_kb, total_kb)
 }
 
 /// Read the aggregate `cpu` line of `/proc/stat` and return
