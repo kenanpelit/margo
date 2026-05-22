@@ -204,8 +204,10 @@ impl Component for TwilightMenuWidgetModel {
                     add_css_class: "twilight-preset-grid",
                     set_selection_mode: gtk::SelectionMode::None,
                     set_homogeneous: true,
-                    set_min_children_per_line: 3,
-                    set_max_children_per_line: 4,
+                    // Two-line value tiles need more width than the old
+                    // name-only pills, so cap at 3 per line.
+                    set_min_children_per_line: 2,
+                    set_max_children_per_line: 3,
                     set_row_spacing: 6,
                     set_column_spacing: 6,
                 },
@@ -395,17 +397,48 @@ fn parse_hhmm(s: &str) -> Option<u32> {
     Some(h.trim().parse::<u32>().ok()? * 60 + m.trim().parse::<u32>().ok()?)
 }
 
-/// One preset chip — previews the preset's temperature/gamma on click.
-/// Returns the grid child plus the inner button (kept so the active
-/// slot can be tinted later).
+/// One preset chip — a two-line tile that surfaces the preset's actual
+/// values (name on top, `<temp> K · <time>` below) instead of hiding
+/// them in a tooltip, and previews the preset's temperature/gamma on
+/// click. Returns the grid child plus the inner button (kept so the
+/// active slot can be tinted later).
 fn preset_chip(
     p: &twilight::Preset,
     sender: &ComponentSender<TwilightMenuWidgetModel>,
 ) -> (gtk::FlowBoxChild, gtk::Button) {
-    let btn = gtk::Button::with_label(&p.name);
+    let btn = gtk::Button::new();
     btn.add_css_class("twilight-preset-chip");
     btn.set_hexpand(true);
-    btn.set_tooltip_text(Some(&format!("{} K · {}%", p.temp_k, p.gamma_pct)));
+
+    let inner = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    inner.set_halign(gtk::Align::Center);
+
+    let name = gtk::Label::new(Some(&p.name));
+    name.add_css_class("twilight-preset-name");
+    inner.append(&name);
+
+    // The value line: temperature always, plus the schedule time when
+    // the preset carries one (schedule presets do). This is what the
+    // user reads to pick a slot — no longer tooltip-only.
+    let value_text = match p.time.as_deref() {
+        Some(t) if !t.is_empty() => format!("{} K · {}", p.temp_k, t),
+        _ => format!("{} K", p.temp_k),
+    };
+    let value = gtk::Label::new(Some(&value_text));
+    value.add_css_class("twilight-preset-value");
+    inner.append(&value);
+
+    btn.set_child(Some(&inner));
+    btn.set_tooltip_text(Some(&format!(
+        "{} K · {}% gamma{}",
+        p.temp_k,
+        p.gamma_pct,
+        p.time
+            .as_deref()
+            .filter(|t| !t.is_empty())
+            .map(|t| format!(" · {t}"))
+            .unwrap_or_default(),
+    )));
     {
         let sender = sender.clone();
         let (temp, gamma) = (p.temp_k, p.gamma_pct);

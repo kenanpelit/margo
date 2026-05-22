@@ -24,9 +24,10 @@
   color: var(--primary);
 }
 
-// Section label above the temperature slider (DESIGN.md §1 fonts).
+// Section label above the temperature slider / preset grid. 12px
+// floor so the category captions stay legible (DESIGN.md §1 fonts).
 .twilight-section-label {
-  font-size: var(--font-2xs);
+  font-size: var(--font-xs);
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -71,12 +72,14 @@
   }
 }
 
-// Schedule preset chips — pill-shaped surface tiles, primary on hover
-// (same idiom as the keep-awake duration grid).
+// Schedule preset tiles — two-line surface cards (name + value) so the
+// preset's temperature and schedule time read at a glance, not just on
+// hover. Card shape from the M3 scale (--radius-sm), primary state-layer
+// on hover (DESIGN.md §7). The old pill was name-only; a value tile
+// needs the rounded-rect, not a capsule.
 .twilight-preset-chip {
-  min-width: 64px;
-  padding: 6px 0;
-  border-radius: var(--radius-pill);
+  padding: 8px 6px;
+  border-radius: var(--radius-sm);
   background-color: var(--surface-container);
   transition: background-color var(--motion-fast) var(--ease-standard);
 
@@ -88,12 +91,27 @@
   // filled primary, matching the selected mode button (DESIGN.md §3).
   &.active {
     background-color: var(--primary);
-    color: var(--on-primary);
-    label {
-      color: var(--on-primary);
-    }
     &:hover {
       background-color: var(--primary);
     }
+    .twilight-preset-name,
+    .twilight-preset-value {
+      color: var(--on-primary);
+    }
   }
+}
+
+// Preset name — the headline of the tile.
+.twilight-preset-name {
+  font-size: var(--font-sm);
+  font-weight: 600;
+  color: var(--on-surface);
+}
+
+// Preset value — "<temp> K · <time>", the actual schedule data.
+.twilight-preset-value {
+  font-size: var(--font-xs);
+  color: var(--on-surface-variant);
+  font-variant-numeric: tabular-nums;
+  margin-top: 1px;
 }
