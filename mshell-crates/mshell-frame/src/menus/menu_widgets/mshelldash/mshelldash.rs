@@ -20,6 +20,7 @@ use crate::menus::menu_widgets::cpu_dashboard::cpu_dashboard_menu_widget::{
 use crate::menus::menu_widgets::media_player::media_players::{
     MediaPlayersInit, MediaPlayersModel,
 };
+use crate::menus::menu_widgets::mshelldash::overview::{OverviewInit, OverviewModel};
 use crate::menus::menu_widgets::wallpaper::wallpaper_menu_widget::{
     WallpaperMenuWidgetInit, WallpaperMenuWidgetModel,
 };
@@ -40,6 +41,7 @@ pub(crate) struct MShellDashModel {
     active: usize,
     tab_buttons: Vec<gtk::Button>,
     // Child pages — kept alive for the lifetime of the dash.
+    _overview: Controller<OverviewModel>,
     _media: Controller<MediaPlayersModel>,
     _weather: Controller<WeatherModel>,
     _wallpaper: Controller<WallpaperMenuWidgetModel>,
@@ -104,6 +106,9 @@ impl Component for MShellDashModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
+        let overview = OverviewModel::builder()
+            .launch(OverviewInit {})
+            .detach();
         let media = MediaPlayersModel::builder()
             .launch(MediaPlayersInit {})
             .detach();
@@ -124,6 +129,7 @@ impl Component for MShellDashModel {
         let mut model = MShellDashModel {
             active: 0,
             tab_buttons: Vec::new(),
+            _overview: overview,
             _media: media,
             _weather: weather,
             _wallpaper: wallpaper,
@@ -132,17 +138,9 @@ impl Component for MShellDashModel {
 
         let widgets = view_output!();
 
-        // Overview page — placeholder for now; the mosaic lands in a
-        // later wave.
-        let overview = gtk::Box::new(gtk::Orientation::Vertical, 8);
-        overview.set_hexpand(true);
-        overview.set_halign(gtk::Align::Center);
-        overview.set_valign(gtk::Align::Center);
-        let ph = gtk::Label::new(Some("Overview"));
-        ph.add_css_class("label-large-bold");
-        overview.append(&ph);
-        widgets.stack.add_named(&overview, Some("overview"));
-
+        widgets
+            .stack
+            .add_named(model._overview.widget(), Some("overview"));
         widgets.stack.add_named(model._media.widget(), Some("media"));
         widgets.stack.add_named(model._weather.widget(), Some("weather"));
         widgets

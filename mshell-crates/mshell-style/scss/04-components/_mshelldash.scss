@@ -60,3 +60,86 @@
   // stack just needs breathing room above the tab bar.
   margin-top: 12px;
 }
+
+// ── Overview tab ───────────────────────────────────────────────
+.mshelldash-overview {
+  // Sized so the at-a-glance mosaic doesn't feel cramped beside the
+  // wider reused tabs.
+  min-width: 416px;
+}
+
+// Clock hero — a bespoke display block (DESIGN.md §Type lets the hero
+// break the scale). Flat on the panel surface, no card chrome.
+.mshelldash-hero-time {
+  font-size: 46px;
+  font-weight: 300;
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface);
+}
+
+.mshelldash-hero-date {
+  font-size: var(--font-lg);
+  font-weight: 500;
+  color: var(--on-surface);
+}
+
+.mshelldash-hero-greeting {
+  font-size: var(--font-sm);
+  color: var(--on-surface-variant);
+}
+
+// Generic Overview card — a plain surface-container tile (no ring).
+.mshelldash-card {
+  background-color: var(--surface-container);
+  border-radius: var(--radius-md);
+  padding: 16px;
+}
+
+.mshelldash-section-label {
+  font-size: var(--font-xs);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
+}
+
+.mshelldash-stat-caption {
+  font-size: var(--font-sm);
+  font-weight: 500;
+  color: var(--on-surface);
+}
+
+.mshelldash-stat-detail {
+  font-family: monospace;
+  font-size: var(--font-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface-variant);
+}
+
+.mshelldash-stat-value {
+  font-size: var(--font-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface);
+}
+
+// Gauge bar — same inset-capsule treatment as the CPU dashboard, with
+// the calm-accent → warn-primary → danger-error severity ladder.
+.mshelldash-bar {
+  min-height: 6px;
+
+  trough {
+    min-height: 6px;
+    background-color: var(--surface-container-high);
+    border-radius: var(--radius-pill);
+    border: none;
+  }
+  progress {
+    min-height: 6px;
+    border-radius: var(--radius-pill);
+    background-color: var(--primary);
+    border: none;
+    transition: background-color var(--motion-medium) var(--ease-standard);
+  }
+  &.danger progress { background-color: var(--error); }
+}
