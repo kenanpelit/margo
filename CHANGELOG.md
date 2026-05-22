@@ -7,6 +7,54 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.7.7] – 2026-05-23
+
+### Added
+
+- **DESIGN.md §12 — the "panel archetype"** — a binding spec for
+  spacious, app-like menu surfaces: panel surface metrics, a reusable
+  header (leading glyph + SemiBold title + circular actions), a
+  segmented control, a pill query field, and lightweight content rows.
+- **Reusable `MenuWidget::PanelHeader`** — `[icon] title` + a live date
+  + a settings gear. The dashboard leads with it in place of the old
+  Clock hero, and it's the shared implementation behind every menu's
+  header.
+- **Clipboard panel (Phase 2)** — segmented type tabs
+  (All · Text · Images · Files · ★) with live counts, relative
+  timestamps, a pill search field, copy/pin toasts, and a panel-density
+  setting (comfortable / compact).
+- **System Updates — its own Settings page** — menu size/position plus a
+  "check every N hours" interval and per-source toggles
+  (repo / AUR / Flatpak).
+- **New MargoMaterial symbolic icons** — refresh, copy, open-in-new,
+  and a cube glyph.
+
+### Changed
+
+- **§12 panel header rolled out everywhere** — clipboard, dashboard, and
+  every menu (UFW, DNS, Podman, Notes, Power, Valent, Network,
+  Bluetooth, Audio, CPU, Public IP, Keep Awake, Notifications, Margo
+  Layout, Twilight, Media Player, Weather, Screenshot, Wallpaper, Theme
+  Picker, SSH Sessions, Keybinds, Session, Screen Record, Screen Share,
+  System Updates) plus the Settings window sidebar, all sharing the
+  `.panel-header` / `.panel-title` / `.panel-action-btn` chrome. Header
+  titles settled at a calm `--font-md` (16) SemiBold.
+- **System Updates no longer re-probes on every restart** — the last
+  result is cached to disk and the check runs once per configured
+  interval (deduplicated across monitors); the panel re-probes only when
+  opened. This stops the AUR helper — and its `sudo` — firing on each
+  shell start.
+
+### Fixed
+
+- **Dashboard columns** — left and right columns end at the same bottom
+  edge again (the Weather anchor stretches to fill its column).
+- **Clipboard** — Tab cycles past an empty type tab instead of sticking;
+  timestamps and the per-row trash sit at the dim hint tier; the search
+  reads as a proper pill query surface.
+- **Bluetooth** — the §12 header sits on the panel surface, not the
+  tile-card colour.
+
 ## [0.7.6] – 2026-05-22
 
 ### Added
@@ -2731,6 +2779,7 @@ sway, tinywl, and wlroots — see `LICENSE.*`.
   (end-to-end nested-mode smoke under Xvfb), `docs.yml`
   (Pages deployment).
 
-[Unreleased]: https://github.com/kenanpelit/margo/compare/v0.7.6...HEAD
+[Unreleased]: https://github.com/kenanpelit/margo/compare/v0.7.7...HEAD
+[0.7.7]: https://github.com/kenanpelit/margo/compare/v0.7.6...v0.7.7
 [0.7.6]: https://github.com/kenanpelit/margo/releases/tag/v0.7.6
 [0.1.0]: https://github.com/kenanpelit/margo/releases/tag/v0.1.0
