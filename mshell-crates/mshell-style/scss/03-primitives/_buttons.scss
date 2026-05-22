@@ -112,6 +112,11 @@ button.ok-button-error {
 // instead of re-declaring per widget so the button rows stay uniform.
 .ok-button-cell {
   padding: 10px 4px;
+  // Uniform minimum footprint so a short-label button ("Refresh")
+  // doesn't shrink to a sliver next to a longer one ("Open in
+  // browser") — every action button reads as the same family. Wider
+  // labels grow past this; hexpand'd buttons still fill their slot.
+  min-width: 84px;
 }
 
 .ok-button-medium-thin {
