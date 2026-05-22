@@ -109,7 +109,7 @@ language and never change at runtime:
 | `--radius-sm` | 12 | **buttons, list rows, entries, spins, dropdowns, calendar cells** |
 | `--radius-md` | 16 | cards, tiles, hero panels, generic surfaces |
 | `--radius-lg` | 24 | launcher / large menu surfaces |
-| `--radius-xl` | 28 | search field |
+| `--radius-xl` | 28 | search field (compact menus / launcher; a *panel* search is a pill — §12) |
 | `--radius-pill` | 999 | toggles/switches, progress bars, category chips |
 
 `button-base` is `--radius-sm`, so **every `.ok-button-*` is 12 by
@@ -460,6 +460,119 @@ PascalCase on the bus: `mshellctl menu cpu-dashboard` →
 
 ---
 
+## 12. Panel archetype (spacious surfaces)
+
+Most menus are *compact* status surfaces (§5). A **panel** is the
+roomier sibling — a self-contained, app-like surface you scan and
+search rather than glance at: clipboard history, and any future
+"browse + filter a list" surface. It is still a layer-shell menu
+anchored to the bar (§5 holds — never a free-floating popover);
+"panel" is its *visual* self-containment (own header, generous
+padding, soft elevation), not a detached window.
+
+Everything in §0–§11 still applies — same tokens, same spacing /
+radius / motion scales (§1), same severity (§2), same active-tint rule
+(§3). This section only adds the patterns a panel layers on top.
+
+### Panel surface
+- Background: `--surface` — the panel reads as one calm tonal sheet.
+  Never pure black, never a hardcoded hex (§1).
+- Outer radius: `--radius-lg` (24), the large-menu corner (§1).
+- Outer padding: `--padding-xl` (24) on the content box.
+- Elevation: one soft, wide, low-opacity shadow ("hovering surface").
+  Never a hard drop shadow, glow, or neumorphism (§0, §14).
+- Depth *inside* the panel is tonal, not bordered (§0.1 / §1):
+  `--surface` (panel) → `--surface-container` (rows) →
+  `--surface-container-high` (hover / selected).
+
+### Header region
+A panel opens with a real header, not just a section label:
+
+```
+[icon]  Clipboard History                    ( ⌫ )  ( ⚙ )
+ leading   SemiBold title (hexpand)            circular actions
+```
+
+- **Title**: SemiBold (`font-weight: 600`), `--on-surface`,
+  `--font-xxl` (32) — the one place a menu carries a display-size
+  title (compact menus use a `…-section-label` instead, §1).
+- **Leading icon**: symbolic, outline family, same stroke as the rest
+  (§0.6) — never a filled glyph.
+- **Action buttons** (trailing): icon-only, **perfect circle**
+  (`--radius-pill`, equal padding, ≥40×40 — §9 target), resting
+  transparent, hover = the canonical 14% primary state-layer (§4/§5).
+  Never a naked floating icon, never raised button chrome.
+
+### Segmented control
+A single unified capsule that switches between list categories
+(clipboard: All · Text · Images · Files · ★) — it must read as **one
+track**, not N separate buttons.
+
+- **Track**: `--radius-pill` (999) capsule, `--surface-container-low`,
+  `--padding-sm` (4) inset around the segments.
+- **Active segment**: `--secondary-container` fill +
+  `--on-secondary-container` text, inner radius `--radius-sm` (12).
+  This is the soft-toggle tier §1 already sanctions — a calm filled
+  selection, **not** a `--primary` flood (controlled saturation, no
+  neon) and **not** the §3 live-state icon tint (that's for
+  "connected / on"; a segmented choice is a *selection*).
+- **Inactive segments**: transparent, `--on-surface-variant` text;
+  hover = 14% primary wash.
+- **No font-weight bump between states** — a weight change reflows the
+  segment widths and makes the strip twitch on switch. Carry state on
+  fill + colour only.
+- Border: omit it — track-vs-fill tonal separation is enough; add
+  `--outline-variant` only if the runtime palette collapses the two
+  (§1).
+
+### Panel search (pill query surface)
+A panel's search reads as a calm query surface, not a utility input.
+
+- Shape: **`--radius-pill`** (999) — *panel-scoped*. Compact menu /
+  launcher search keeps `--radius-xl` (28) per §1; the pill is the
+  panel archetype's larger, more inviting field.
+- Height: ~52px (`min-height`) with `--padding-lg` (16) horizontal
+  inner padding — tune the control's padding, don't chase a magic
+  height (§1 density).
+- Background: `--surface-container` (one calm tier above the panel
+  `--surface`), no resting border.
+- Focus: the ring appears **on focus only** — inset 2px `--primary`,
+  faded in over `--motion-medium`. Idle reads borderless.
+- Leading search icon + placeholder share the dim `--on-surface-variant`
+  tier (§1) — present but low-emphasis, never unreadably faint.
+
+### Content rows (lightweight cards, not full cards)
+Panel list rows are **content surfaces**, between a plain list-row and
+a full card:
+
+- Tier: `--surface-container` — one step above the panel `--surface`,
+  *not* the `--surface-container-high` "raised card" tier (reserved
+  for hover / selected lift).
+- Radius: `--radius-md` (16) — content cards take the card corner, not
+  the `--radius-sm` list-row corner.
+- Hover: the canonical 14% primary state-layer (tonal lift, never a
+  bright swap). **Selected** = inset 2px `--primary` ring (the
+  keyboard cursor), never a background flood.
+- Typography (§1): content title medium-weight `--on-surface`;
+  timestamp / metadata smaller and dimmer (`--on-surface-variant`).
+- **Density still wins.** Clipboard is **medium** density (§1) — many
+  rows must stay on screen. Do *not* inflate rows to a fixed 64–72px;
+  a panel's roominess lives in its header / search / padding, not in
+  ballooned list items. 64–72px is the comfortable ceiling for a
+  *sparse* panel, never a clipboard target.
+
+### Emotional tone
+A panel should feel **composed, intentional, fast, readable,
+cohesive** — never playful, flashy, "riced", toy-like, or
+gamer-themed. (This is §0 + §14 restated for the archetype.) Accent
+shows up only on the live / selected / active element, never as
+decoration.
+
+**Reference implementation:** the clipboard menu
+(`menu_widgets/clipboard/`, `04-components/_clipboard.scss`).
+
+---
+
 ## Quick checklists
 
 **New bar pill (opens a menu):** §4 pill shape → §6 all 11 wiring
@@ -472,3 +585,10 @@ the ListBox + scroller transparent and size-to-content (no dark band).
 **New dashboard tile:** drop into a column's widget list; if it's the
 big "anchor" put it last (§7 `fill`); keep quiet tiles compact above;
 always-on metrics use escalating severity wording (§7).
+
+**New panel (browse + filter a surface):** §12 — `--surface` panel at
+`--radius-lg` + `--padding-xl`; header with a SemiBold `--font-xxl`
+title + circular action buttons; segmented control (active =
+`--secondary-container`); pill search (`--radius-pill`); lightweight
+`--surface-container` / `--radius-md` rows. Still a layer-shell menu
+(§5); tokens only (§1); keep list density medium — don't balloon rows.

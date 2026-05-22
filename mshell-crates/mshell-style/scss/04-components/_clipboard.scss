@@ -1,12 +1,16 @@
 @use "../03-primitives/buttons";
 
 .clipboard-item {
-  // Surfaces over borders (DESIGN.md §0.1): the entry lifts via its
-  // tonal tier (--surface-container-high over the menu's --surface),
-  // not a resting --outline ring — same card language as the dns / ufw
-  // rule rows. (Was a 2px --outline frame on every item.)
-  @include buttons.button-base('--surface-container-high', '--on-surface');
-  @include buttons.state-layers('--surface-container-high', '--on-surface');
+  // Phase 2 lightweight content row (DESIGN.md §12): a panel row sits
+  // ONE tonal tier above the panel surface (--surface-container over
+  // the menu's --surface), not the --surface-container-high "raised
+  // card" tier — that one's reserved for the hover / selected lift.
+  // Depth is the tonal step, never a resting --outline ring (§0.1).
+  @include buttons.button-base('--surface-container', '--on-surface');
+  @include buttons.state-layers('--surface-container', '--on-surface');
+  // Content card → the card corner --radius-md (16, §12), not the
+  // --radius-sm list-row corner button-base hands out by default.
+  border-radius: var(--radius-md);
   // button-base pads every direct child (`> * { padding: --padding-md }`)
   // — meant for a button's icon/label. Here the children are the `#id`
   // title and the preview box, so that rule stacked 8px under the id +
@@ -100,36 +104,60 @@
   color: var(--outline);
 }
 
-// Vim-style `/` filter field. Uses the shared .ok-entry primitive
-// for the input chrome; this just gives it breathing room above the
-// result list when revealed.
+// Phase 2 panel search (DESIGN.md §12): a calm pill "query surface",
+// not a bare utility input. The shared .ok-entry primitive zeroes the
+// default entry chrome (transparent, no radius); here we give it the
+// panel's pill shape + a quiet tonal fill, with the focus ring as the
+// ONLY border — idle reads borderless.
 .clipboard-search {
-  margin-top: 4px;
-  margin-bottom: 4px;
+  margin: var(--padding-sm) 0;
+  background-color: var(--surface-container);
+  border-radius: var(--radius-pill);
+  // Tune the control's padding to a calm ~52px query surface (§1:
+  // tune row/control padding, don't chase a magic height).
+  min-height: 52px;
+  padding: 0 var(--padding-lg);
+  transition: box-shadow var(--motion-medium) var(--ease-standard);
+
+  &:focus-within {
+    box-shadow: inset 0 0 0 2px var(--primary);
+  }
 }
 
-// ── Clipboard type tabs (All · Text · Images · Files · ★) ───────
+// ── Segmented control: All · Text · Images · Files · ★ ──────────
+// Phase 2 (DESIGN.md §12): one unified capsule track, not five loose
+// buttons. The track is a subtle low tonal surface; the active
+// segment lifts to --secondary-container (the soft-toggle tier §1
+// sanctions) — a calm filled selection, not a --primary flood and not
+// the §3 live-state icon tint.
 .clipboard-tabs {
+  background-color: var(--surface-container-low);
+  border-radius: var(--radius-pill);
+  padding: var(--padding-sm);
+
   .clipboard-tab {
     all: unset;
-    // Compact padding + smaller type so five tabs + counts fit the
+    // Snug padding + --font-2xs so five segments + live counts fit the
     // panel width without wrapping.
     padding: 3px 9px;
+    // Inner active segment (§12: 12–16) → --radius-sm inside the pill
+    // track.
     border-radius: var(--radius-sm);
     font-size: var(--font-2xs);
     color: var(--on-surface-variant);
-    transition: background-color 150ms, color 150ms;
+    transition: background-color var(--motion-fast) var(--ease-standard),
+                color var(--motion-fast) var(--ease-standard);
 
     &:hover {
       background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
     }
 
-    // Active tab reads via the primary tint + colour only — NO
-    // font-weight bump, so the tab's width (and the strip's layout)
-    // stays put when switching tabs.
+    // Active segment reads via the secondary-container fill + its on-
+    // colour only — NO font-weight bump, so segment widths (and the
+    // strip's layout) stay put when switching tabs.
     &.active {
-      background-color: unquote("color-mix(in srgb, var(--primary) 16%, transparent)");
-      color: var(--primary);
+      background-color: var(--secondary-container);
+      color: var(--on-secondary-container);
     }
   }
 }
