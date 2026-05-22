@@ -18,6 +18,7 @@ use reactive_graph::traits::{Get, GetUntracked};
 use relm4::gtk::Orientation;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, GestureSingleExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tokio::sync::Notify;
 
@@ -28,6 +29,15 @@ const STARTUP_DELAY: Duration = Duration::from_secs(10);
 /// Defensive floor on the configured interval so we never hammer the
 /// repo mirrors.
 const MIN_INTERVAL: Duration = Duration::from_secs(60);
+
+/// Shared across every per-output SystemUpdate instance in this
+/// process: unix-secs of the last probe (0 = none). A multi-monitor
+/// setup has one pill (and one poll task) per output; this makes them
+/// probe once per interval *total* instead of once per monitor — which
+/// is what was firing the AUR helper (and its sudo) several times on
+/// every start. Seeded from the on-disk cache so the dedup also spans
+/// restarts.
+static LAST_PROBE_SECS: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) struct SystemUpdateModel {
     /// `None` until the first probe completes (rendered as
@@ -130,7 +140,13 @@ impl Component for SystemUpdateModel {
         // (older than the interval) is still shown, but a fresh probe
         // is scheduled right after launch.
         let interval_secs = configured_interval().as_secs();
-        let (initial_report, first_delay) = match system_update::load_cache() {
+        let cached = system_update::load_cache();
+        if let Some((ts, _)) = &cached {
+            // Seed the shared guard so every monitor's task agrees on
+            // when the last probe happened, across this restart.
+            LAST_PROBE_SECS.fetch_max(*ts, Ordering::Relaxed);
+        }
+        let (initial_report, first_delay) = match cached {
             Some((ts, report)) => {
                 let age = system_update::now_secs().saturating_sub(ts);
                 if age < interval_secs {
@@ -151,11 +167,41 @@ impl Component for SystemUpdateModel {
                 tokio::pin!(shutdown_fut);
                 let mut next_delay = first_delay;
                 loop {
+                    let manual;
                     tokio::select! {
                         () = &mut shutdown_fut => break,
-                        _ = tokio::time::sleep(next_delay) => {}
-                        _ = notify.notified() => {}
+                        _ = tokio::time::sleep(next_delay) => { manual = false; }
+                        _ = notify.notified() => { manual = true; }
                     }
+
+                    let interval = configured_interval().as_secs();
+                    let now = system_update::now_secs();
+
+                    // Timed wake: probe only if the interval has truly
+                    // elapsed since the last probe (shared across every
+                    // monitor's task + restored from the cache). The CAS
+                    // makes the claim single-flight, so a multi-monitor
+                    // setup runs ONE probe per interval, not one each.
+                    // A manual (right-click) refresh always probes.
+                    if !manual {
+                        let last = LAST_PROBE_SECS.load(Ordering::Relaxed);
+                        if last != 0 && now.saturating_sub(last) < interval {
+                            let due = (last + interval).saturating_sub(now);
+                            next_delay = Duration::from_secs(due.max(MIN_INTERVAL.as_secs()));
+                            continue;
+                        }
+                        if LAST_PROBE_SECS
+                            .compare_exchange(last, now, Ordering::Relaxed, Ordering::Relaxed)
+                            .is_err()
+                        {
+                            // Another monitor's task claimed this round.
+                            next_delay = configured_interval();
+                            continue;
+                        }
+                    } else {
+                        LAST_PROBE_SECS.store(now, Ordering::Relaxed);
+                    }
+
                     let report = system_update::probe(ProbeConfig::from_config()).await;
                     system_update::save_cache(&report);
                     let _ = out.send(SystemUpdateCommandOutput::Refreshed(report));
