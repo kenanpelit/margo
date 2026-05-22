@@ -566,11 +566,14 @@ impl Component for ClipboardModel {
                 let _ = sender.output(ClipboardOutput::CloseMenu);
             }
             ClipboardInput::OpenSettings => {
-                // "widgets" is the only addressable section that hosts
-                // the clipboard page (it's the Widgets group's anchor);
-                // ActivateSection only resolves top-level names.
+                // Opening Settings runs the frame's toggle_menu, which
+                // resets every other menu's reveal flag — so this panel
+                // hides on its own. Do NOT also emit CloseMenu: that
+                // posts a CloseMenus *after*, slamming the just-opened
+                // Settings shut. "widgets" is the section that hosts the
+                // clipboard page (ActivateSection only resolves
+                // top-level names).
                 mshell_settings::open_settings_at_section("widgets");
-                let _ = sender.output(ClipboardOutput::CloseMenu);
             }
             ClipboardInput::EnterSearch => {
                 set_search_active(true);
