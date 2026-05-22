@@ -859,6 +859,7 @@ pub struct Valent {
 /// One `>start` script's autostart configuration.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
 #[serde(default)]
+#[derive(Default)]
 pub struct ScriptAutostart {
     /// Script short name (e.g. `start-brave-ai`).
     pub name: String,
@@ -868,15 +869,6 @@ pub struct ScriptAutostart {
     pub delay_secs: u32,
 }
 
-impl Default for ScriptAutostart {
-    fn default() -> Self {
-        Self {
-            name: String::new(),
-            enabled: false,
-            delay_secs: 0,
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
 #[serde(default)]

@@ -767,8 +767,8 @@ fn write_xkb_to_margo_conf(layout: &str, variant: &str) -> Result<()> {
                 continue;
             }
         }
-        if let Some(rest) = trimmed.strip_prefix("xkb_rules_variant") {
-            if rest.trim_start().starts_with('=') {
+        if let Some(rest) = trimmed.strip_prefix("xkb_rules_variant")
+            && rest.trim_start().starts_with('=') {
                 if variant.is_empty() {
                     // Drop the line — empty variant means "use
                     // system default", so a stale value would be
@@ -780,7 +780,6 @@ fn write_xkb_to_margo_conf(layout: &str, variant: &str) -> Result<()> {
                 saw_variant = true;
                 continue;
             }
-        }
         out.push_str(line);
         out.push('\n');
     }

@@ -443,7 +443,7 @@ impl Component for NotificationSettingsModel {
         {
             let entry = entry.clone();
             let sender = sender_clone.clone();
-            let submit = submit.clone();
+            let submit = submit;
             widgets.blocklist_add.connect_clicked(move |_| submit(&entry, &sender));
         }
         {
