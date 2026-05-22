@@ -36,7 +36,7 @@
   background-color: var(--surface-container);
 
   .system-update-source label {
-    font-size: 11px;
+    font-size: var(--font-2xs);
     font-weight: 600;
     letter-spacing: 0.03em;
     color: var(--on-surface-variant);
@@ -50,7 +50,7 @@
 // Source group header (Repo / AUR / Flatpak) — matches the
 // dashboard section-label treatment so headings read uniformly.
 .system-update-section-label {
-  font-size: 11px;
+  font-size: var(--font-2xs);
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -85,7 +85,7 @@
 
 .system-update-version {
   font-family: monospace;
-  font-size: 11px;
+  font-size: var(--font-2xs);
   font-variant-numeric: tabular-nums;
   color: var(--on-surface-variant);
 }

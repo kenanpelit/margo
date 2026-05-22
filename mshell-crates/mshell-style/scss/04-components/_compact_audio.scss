@@ -20,14 +20,14 @@
 // "Volume" / "Mic" are row labels → secondary tier, dim against
 // the bright tabular value (DESIGN.md §Typography hierarchy).
 .compact-audio-caption {
-  font-size: 12px;
+  font-size: var(--font-xs);
   font-weight: 500;
   color: var(--on-surface-variant);
   min-width: 56px;
 }
 
 .compact-audio-value {
-  font-size: 12px;
+  font-size: var(--font-xs);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--on-surface);

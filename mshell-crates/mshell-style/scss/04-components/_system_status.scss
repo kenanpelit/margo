@@ -38,14 +38,14 @@
 // against the bright SemiBold value. Hierarchy via weight +
 // opacity, not size soup (DESIGN.md §Typography).
 .system-status-caption {
-  font-size: 12px;
+  font-size: var(--font-xs);
   font-weight: 500;
   color: var(--on-surface-variant);
   letter-spacing: 0;
 }
 
 .system-status-value {
-  font-size: 13px;
+  font-size: var(--font-xs);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--on-surface);

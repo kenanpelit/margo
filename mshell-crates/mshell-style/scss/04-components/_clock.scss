@@ -44,7 +44,7 @@
 // previous two-line weekday + date stack. Smaller-tracking
 // uppercase reads as a quiet date stamp next to the big time.
 .qs-clock-hero-meta {
-  font-size: 11px;
+  font-size: var(--font-2xs);
   font-weight: 600;
   letter-spacing: 0.05em;
   color: var(--on-surface-variant);
@@ -247,7 +247,7 @@
 }
 
 .calendar-hero-month {
-  font-size: 16px;
+  font-size: var(--font-md);
   font-weight: 600;
   color: var(--on-primary);
   // Dropped uppercase + tracking — same rationale as the QS
@@ -255,7 +255,7 @@
 }
 
 .calendar-hero-weekday {
-  font-size: 12px;
+  font-size: var(--font-xs);
   color: var(--on-primary);
   opacity: 0.75;
   margin-top: 2px;
@@ -323,7 +323,7 @@
       color: var(--on-surface-variant);
       opacity: 0.6;
       font-weight: 600;
-      font-size: 11px;
+      font-size: var(--font-2xs);
       letter-spacing: 0.05em;
       text-transform: uppercase;
     }

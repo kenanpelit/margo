@@ -31,7 +31,7 @@
 }
 
 .audio-dashboard-section-label {
-  font-size: 11px;
+  font-size: var(--font-2xs);
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -45,7 +45,7 @@
 }
 
 .audio-dashboard-value {
-  font-size: 13px;
+  font-size: var(--font-xs);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--on-surface);
@@ -92,7 +92,7 @@
   all: unset;
   padding: 6px 10px;
   border-radius: var(--radius-sm);
-  font-size: 12px;
+  font-size: var(--font-xs);
   color: var(--on-surface);
   @include state-layer();
 }

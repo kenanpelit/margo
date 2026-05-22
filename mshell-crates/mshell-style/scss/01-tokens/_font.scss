@@ -1,4 +1,9 @@
 :root {
+  // Caption end of the scale — used by the dense menu/dashboard
+  // secondary labels, values and chips. Below --font-sm so widgets
+  // stop hardcoding 11/12 px.
+  --font-2xs: 11px;
+  --font-xs: 12px;
   --font-sm: 14px;
   --font-md: 16px;
   --font-lg: 18px;

@@ -34,7 +34,7 @@
 // Slightly heavier weight than body text so it reads as the
 // hero's headline without needing a separate caption row.
 .media-player-track {
-  font-size: 14px;
+  font-size: var(--font-sm);
   font-weight: 600;
   color: var(--on-surface);
   letter-spacing: -0.01em;

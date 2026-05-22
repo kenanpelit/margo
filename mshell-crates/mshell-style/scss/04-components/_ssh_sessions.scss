@@ -25,7 +25,7 @@
 
 // Active-session count chip in the header.
 .ssh-sessions-count {
-  font-size: 11px;
+  font-size: var(--font-2xs);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   padding: 2px 8px;
@@ -79,7 +79,7 @@
 }
 
 .ssh-host-sub {
-  font-size: 11px;
+  font-size: var(--font-2xs);
   color: var(--on-surface-variant);
   font-variant-numeric: tabular-nums;
 }

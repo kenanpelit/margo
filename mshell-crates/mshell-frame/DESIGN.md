@@ -174,9 +174,15 @@ minimal; the bar/menu must never bounce or feel playful.
   reduced opacity); **metadata** (counts, hints, keycaps) is the
   dimmest tier (`--outline`). Titles and subtitles should read as
   clearly different ranks, not two near-equal lines.
+- **Size scale — use the token, never a raw `px`.** `--font-2xs` 11 /
+  `--font-xs` 12 / `--font-sm` 14 / `--font-md` 16 / `--font-lg` 18 /
+  `--font-xl` 26 / `--font-xxl` 32 / `--font-xxxl` 48. Caption/value/chip
+  text in dense menus lives at `--font-2xs`/`--font-xs`; body at
+  `--font-sm`/`md`. Bespoke hero display sizes (e.g. the clock hero) are
+  the only place a literal px is acceptable.
 - Bar pill text: **`--font-bar`** (single knob for every status pill —
   always use it for bar labels so they stay in step).
-- Section labels in menus: `11px`, `font-weight: 600`,
+- Section labels in menus: `var(--font-2xs)`, `font-weight: 600`,
   `letter-spacing: 0.05em`, `text-transform: uppercase`,
   `color: var(--on-surface-variant)`. Class: `…-section-label`.
 - Numeric readouts: `font-variant-numeric: tabular-nums` so digits
