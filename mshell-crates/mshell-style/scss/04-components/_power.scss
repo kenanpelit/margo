@@ -21,7 +21,10 @@
 // ── Hero card ────────────────────────────────────────────
 .power-hero {
   padding: 12px;
-  border-radius: var(--radius-md);
+  // Flat radius language: the battery hero and the button rows below
+  // are siblings (not nested), so they share one corner — --radius-sm,
+  // matching the profile / control buttons. No 16-vs-12 mismatch.
+  border-radius: var(--radius-sm);
   background-color: var(--surface-container-high);
 }
 
@@ -43,7 +46,9 @@
 // Plain surface buttons; `.selected` (from `ok-button-surface`)
 // carries the active-state tint for Lock Auto / Idle Toggle.
 .power-control-button {
-  padding: 8px 4px;
+  // Same padding as .power-profile-button so every button in the
+  // power widget is the same size (uniform grid), and same radius.
+  padding: 10px 4px;
   border-radius: var(--radius-sm);
   transition: background-color var(--motion-fast) var(--ease-standard);
 }
