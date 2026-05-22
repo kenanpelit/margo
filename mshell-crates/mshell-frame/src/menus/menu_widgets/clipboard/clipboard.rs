@@ -683,6 +683,13 @@ impl ClipboardModel {
             if self.list_box.is_mapped() && !search_is_active() {
                 row.grab_focus();
             }
+        } else if self.list_box.is_mapped() && !search_is_active() {
+            // Empty tab (e.g. Files with nothing saved): keep focus on
+            // the list itself. Otherwise no descendant of the menu root
+            // holds focus, the Capture-phase key controller stops
+            // receiving keys, and Tab gets stuck on the empty tab
+            // instead of cycling to the next one.
+            self.list_box.grab_focus();
         }
     }
 
