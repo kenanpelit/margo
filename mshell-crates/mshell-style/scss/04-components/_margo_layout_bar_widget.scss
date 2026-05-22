@@ -1,10 +1,17 @@
 @use "../02-functions/index" as *;
 // The menubutton's inner button doesn't carry the .ok-button-flat
-// class the bar-pill hover selectors target, so give it the shared
-// canonical state-layer directly — the layout pill then hovers
-// exactly like every other bar pill (DESIGN.md §4 / §7).
+// class the bar-pill hover selectors target, so wash it directly.
+// Use the SAME `--bar-hover-strength` knob (not the mixin's fixed
+// 14 %) so the layout pill tracks the user's Settings → Bar hover
+// setting in lockstep with every other bar pill (DESIGN.md §4 / §7).
 menubutton.ok-bar-widget > button {
     border: none;
     border-radius: var(--radius-widget);
-    @include state-layer();
+    transition: background-color var(--motion-fast) var(--ease-standard);
+}
+menubutton.ok-bar-widget > button:hover {
+    background-color: unquote("color-mix(in srgb, var(--primary) var(--bar-hover-strength), transparent)");
+}
+menubutton.ok-bar-widget > button:active {
+    background-color: unquote("color-mix(in srgb, var(--primary) 22%, transparent)");
 }

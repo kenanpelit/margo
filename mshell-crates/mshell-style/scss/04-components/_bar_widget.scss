@@ -88,3 +88,29 @@
     background-color: unquote("color-mix(in srgb, var(--primary) 22%, transparent)");
     border-radius: var(--radius-widget);
 }
+
+// ── One wash per pill (uniform hover across the whole bar) ───────
+// Two pill structures coexist:
+//   • icon-only pills (clock / dashboard / keep-awake / notifications)
+//     put `ok-button-surface ok-bar-widget` on the *Button*, wrapped in
+//     a plain name-only Box → only the button washes.
+//   • most others wrap their click-target Button in an
+//     `ok-button-surface ok-bar-widget` *Box* → the box washes.
+// The hover/active rules above match BOTH a surface `.ok-bar-widget`
+// and a nested `> button`, so the wrapped pills painted the wash twice
+// (box + button ≈ 26 %) and read visibly darker than the icon-only
+// ones. Force any *nested* click target back to transparent so the
+// single wash always lives on the outermost bar element — every pill
+// then hovers at exactly the same strength and the same
+// `--radius-widget` shape. Placed last so it wins the source-order tie
+// against the equal-specificity wash rules above.
+.ok-bar-widget > button.ok-button-flat:hover,
+.ok-bar-widget > button.ok-button-surface:hover,
+.ok-bar-widget > button.ok-button-flat:active,
+.ok-bar-widget > button.ok-button-surface:active,
+.ok-bar-widget .ok-bar-widget.ok-button-flat:hover,
+.ok-bar-widget .ok-bar-widget.ok-button-surface:hover,
+.ok-bar-widget .ok-bar-widget.ok-button-flat:active,
+.ok-bar-widget .ok-bar-widget.ok-button-surface:active {
+    background-color: transparent;
+}
