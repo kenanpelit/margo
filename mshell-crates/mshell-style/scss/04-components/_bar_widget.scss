@@ -75,7 +75,7 @@
 .ok-bar-widget.ok-button-flat:hover,
 .ok-bar-widget > button.ok-button-flat:hover,
 .ok-bar-widget > button.ok-button-surface:hover {
-    background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
+    background-color: unquote("color-mix(in srgb, var(--primary) var(--bar-hover-strength), transparent)");
     border-radius: var(--radius-widget);
 }
 

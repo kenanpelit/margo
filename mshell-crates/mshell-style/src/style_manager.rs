@@ -295,6 +295,7 @@ impl Component for StyleManagerModel {
                         --radius-widget: {}px;
                         --radius-window: {}px;
                         --border-width: {}px;
+                        --bar-hover-strength: {}%;
                         --font-scale-settings: {};
                     }}"#,
                     if attributes.font.primary.is_empty() {
@@ -316,6 +317,7 @@ impl Component for StyleManagerModel {
                     attributes.sizing.radius_widget,
                     attributes.sizing.radius_window,
                     attributes.sizing.border_width,
+                    attributes.sizing.bar_hover_strength.clamp(0, 60),
                     // Clamp to a sane range so a stray config
                     // edit can't shrink the panel to 0 or blow
                     // it past the screen. CSS unitless number,

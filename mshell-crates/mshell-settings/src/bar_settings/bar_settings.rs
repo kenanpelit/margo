@@ -7,6 +7,7 @@ use mshell_config::config_manager::config_manager;
 use mshell_config::schema::bar_widgets::BarWidget;
 use mshell_config::schema::config::{
     BarsStoreFields, ConfigStoreFields, FrameStoreFields, HorizontalBarStoreFields,
+    SizingStoreFields, ThemeAttributesStoreFields, ThemeStoreFields,
 };
 use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::factory::{DynamicIndex, FactoryVecDeque};
@@ -34,6 +35,8 @@ pub(crate) struct BarSettingsModel {
     bottom_min_height: i32,
     top_reveal_by_default: bool,
     bottom_reveal_by_default: bool,
+    /// Hover tint strength (%) shared by every bar pill.
+    bar_hover_strength: i32,
     /// Debounce handles for the two `min_height` spin buttons.
     ///
     /// Each click of the SpinButton's up / down arrow fires
@@ -73,6 +76,8 @@ pub(crate) enum BarSettingsInput {
     CommitBottomMinHeight,
     TopRevealByDefaultChanged(bool),
     BottomRevealByDefaultChanged(bool),
+    BarHoverStrengthChanged(i32),
+    BarHoverStrengthEffect(i32),
 
     TopStartEffect(Vec<BarWidget>),
     TopCenterEffect(Vec<BarWidget>),
@@ -227,6 +232,42 @@ impl Component for BarSettingsModel {
                         set_valign: gtk::Align::Start,
                         #[watch]
                         set_sensitive: model.has_unselected_monitors(),
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Hover strength (%)",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Tint opacity of every bar pill's hover — one value for all widgets so they highlight identically.",
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::SpinButton {
+                        set_valign: gtk::Align::Center,
+                        set_range: (0.0, 60.0),
+                        set_increments: (1.0, 5.0),
+                        #[watch]
+                        #[block_signal(bar_hover_handler)]
+                        set_value: model.bar_hover_strength as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(BarSettingsInput::BarHoverStrengthChanged(s.value() as i32));
+                        } @bar_hover_handler,
                     },
                 },
 
@@ -444,6 +485,18 @@ impl Component for BarSettingsModel {
 
         let sender_clone = sender.clone();
         effects.push(move |_| {
+            let value = config_manager()
+                .config()
+                .theme()
+                .attributes()
+                .sizing()
+                .bar_hover_strength()
+                .get();
+            sender_clone.input(BarSettingsInput::BarHoverStrengthEffect(value));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
             let config = config_manager().config();
             let value = config.bars().top_bar().left_widgets().get();
             sender_clone.input(BarSettingsInput::TopStartEffect(value));
@@ -620,6 +673,13 @@ impl Component for BarSettingsModel {
                 .bottom_bar()
                 .reveal_by_default()
                 .get_untracked(),
+            bar_hover_strength: config_manager()
+                .config()
+                .theme()
+                .attributes()
+                .sizing()
+                .bar_hover_strength()
+                .get_untracked(),
             top_min_height_debounce: None,
             bottom_min_height_debounce: None,
             _effects: effects,
@@ -743,6 +803,15 @@ impl Component for BarSettingsModel {
                 config_manager().update_config(|config| {
                     config.bars.bottom_bar.reveal_by_default = reveal;
                 });
+            }
+            BarSettingsInput::BarHoverStrengthChanged(v) => {
+                self.bar_hover_strength = v;
+                config_manager().update_config(move |config| {
+                    config.theme.attributes.sizing.bar_hover_strength = v;
+                });
+            }
+            BarSettingsInput::BarHoverStrengthEffect(v) => {
+                self.bar_hover_strength = v;
             }
             BarSettingsInput::TopStartEffect(widgets) => {
                 self.top_bar_start_controller

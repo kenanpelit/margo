@@ -251,6 +251,11 @@ pub struct Sizing {
     pub radius_widget: i32,
     pub radius_window: i32,
     pub border_width: i32,
+    /// Hover tint strength (%) shared by every bar pill — the matugen
+    /// `--primary` mixed over the bar at this opacity. One value drives
+    /// all bar widgets so their hovers read identically (Settings →
+    /// Bar). Sane range ~0–40.
+    pub bar_hover_strength: i32,
     /// Multiplier applied to every font-size inside the Settings
     /// panel. `1.0` keeps the +1pt-bumped defaults; bigger values
     /// scale further (useful on hi-DPI displays where 15-16 px
@@ -265,6 +270,7 @@ impl Default for Sizing {
             radius_widget: 8,
             radius_window: 8,
             border_width: 2,
+            bar_hover_strength: 14,
             settings_font_scale: 1.0,
         }
     }

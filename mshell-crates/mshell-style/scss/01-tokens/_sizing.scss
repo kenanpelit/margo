@@ -17,6 +17,10 @@
 
   //overridden by style manager
   --border-width: 2px;
+  // Bar pill hover tint strength (matugen --primary at this opacity).
+  // One source for every bar widget's hover. Overridden by style
+  // manager from config (Settings → Bar).
+  --bar-hover-strength: 14%;
 
   --padding-sm: 4px;
   --padding-md: 8px;

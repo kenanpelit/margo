@@ -70,7 +70,7 @@
 // Same 14 % primary wash every bar pill and menu row uses, so the
 // workspace tags hover with one shared identity (DESIGN.md §7).
 .margo-tag:not(.tag-active):hover {
-  background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
+  background-color: unquote("color-mix(in srgb, var(--primary) var(--bar-hover-strength), transparent)");
 }
 
 // ── active: filled accent capsule ───────────────────────────
