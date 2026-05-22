@@ -153,8 +153,9 @@ impl Component for WallpaperMenuWidgetModel {
 
             gtk::Box {
                 set_orientation: gtk::Orientation::Vertical,
-                set_margin_all: 26,
-                set_spacing: 20,
+                // Snap to the 4/8/12/16/24/32 spacing scale (DESIGN.md §1).
+                set_margin_all: 24,
+                set_spacing: 16,
 
                 gtk::Box {
                     set_orientation: gtk::Orientation::Vertical,
@@ -183,7 +184,7 @@ impl Component for WallpaperMenuWidgetModel {
                 gtk::Box {
                     set_orientation: gtk::Orientation::Horizontal,
                     set_hexpand: true,
-                    set_spacing: 20,
+                    set_spacing: 16,
 
                     gtk::Button {
                         set_css_classes: &["ok-button-primary"],
@@ -246,11 +247,11 @@ impl Component for WallpaperMenuWidgetModel {
                         set_hexpand: false,
                         set_width_request: 200,
                         set_halign: gtk::Align::Start,
-                        set_spacing: 20,
+                        set_spacing: 16,
 
                         gtk::Box {
                             set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 20,
+                            set_spacing: 16,
 
                             gtk::Label {
                                 add_css_class: "label-medium-bold",
@@ -273,7 +274,7 @@ impl Component for WallpaperMenuWidgetModel {
 
                         gtk::Box {
                             set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 20,
+                            set_spacing: 16,
 
                             gtk::Label {
                                 add_css_class: "label-medium-bold",
@@ -302,7 +303,7 @@ impl Component for WallpaperMenuWidgetModel {
                         set_hexpand: false,
                         set_width_request: 200,
                         set_halign: gtk::Align::Start,
-                        set_spacing: 20,
+                        set_spacing: 16,
 
                         #[name = "matugen_type_dropdown"]
                         gtk::DropDown {
@@ -363,7 +364,7 @@ impl Component for WallpaperMenuWidgetModel {
 
                         gtk::Box {
                             set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 20,
+                            set_spacing: 16,
 
                             gtk::Label {
                                 add_css_class: "label-medium-bold",

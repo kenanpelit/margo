@@ -38,7 +38,8 @@
 }
 
 .wallpaper-empty-message {
-    padding: 0 20px 0 20px;
+    // On the 4/8/12/16/24/32 spacing scale (DESIGN.md §1); was 20.
+    padding: 0 24px 0 24px;
 }
 
 .wallpaper-shadow {

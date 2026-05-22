@@ -33,6 +33,8 @@ impl SimpleComponent for WallpaperModel {
             set_vexpand: model.orientation == Orientation::Horizontal,
             set_halign: gtk::Align::Center,
             set_valign: gtk::Align::Center,
+            // §4.5: pill tooltip = summary + interaction hint.
+            set_tooltip_text: Some("Wallpaper  ·  Click: open the picker"),
 
             gtk::Button {
                 set_css_classes: &["ok-button-surface", "ok-bar-widget"],

@@ -72,8 +72,10 @@ impl Component for ThemePickerMenuWidgetModel {
 
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
-                set_margin_all: 26,
-                set_spacing: 20,
+                // Snap to the 4/8/12/16/24/32 spacing scale (DESIGN.md §1):
+                // 26 / 20 were off-grid.
+                set_margin_all: 24,
+                set_spacing: 16,
 
                 gtk::Label {
                     add_css_class: "label-xl-bold",

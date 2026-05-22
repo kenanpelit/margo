@@ -1,8 +1,18 @@
+// Theme preview tile — shares the selectable-media-tile treatment with
+// `.wallpaper-thumbnail`: one shared --primary hover identity
+// (DESIGN.md §7), a soft --outline-variant frame at rest rather than a
+// heavy ring (§0.1 surfaces over borders), eased on the motion tokens.
+// (The active theme is flagged by the check overlay in theme_card.rs,
+// so the frame stays purely a hover/affordance cue.)
 .theme-card {
   border-radius: var(--radius-md);
-  border: 2px solid var(--outline);
+  border: 2px solid var(--outline-variant);
+  transition:
+    border var(--motion-medium) var(--ease-standard),
+    transform var(--motion-medium) var(--ease-standard);
 
   &:hover {
-    border: 2px solid var(--on-surface);
+    border: 2px solid var(--primary);
+    transform: scale(1.02);
   }
 }
