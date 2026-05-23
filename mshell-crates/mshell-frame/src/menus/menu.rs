@@ -1132,6 +1132,14 @@ impl Component for MenuModel {
                 );
                 widgets.widget_container.append(&controller.root_widget());
                 self.widget_controllers.push(controller);
+                // The screenshare menu builds its one widget eagerly here
+                // (not from the config-driven `widget_kinds`), so mark it
+                // built: otherwise the lazy first-reveal `build_content`
+                // would clear+rebuild from the empty `widget_kinds` and
+                // destroy this widget — taking the pending portal reply
+                // Sender with it (→ the picker returns empty → screen-share
+                // "user cancelled"). See `RevealChanged`.
+                self.built = true;
             }
             MenuInput::ForwardHyprlandScreenshareReply(reply, payload) => {
                 if let Some(first_controller) = self.widget_controllers.first()
