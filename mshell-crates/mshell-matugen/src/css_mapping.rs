@@ -128,12 +128,14 @@ pub fn to_margo_colors(theme: &MatugenTheme) -> String {
         scratch = margo(col!(c.tertiary), "ff"),
         global = margo(col!(c.secondary), "ff"),
         overlay = margo(col!(c.primary_container), "ff"),
-        // Window glow: a soft AMBIENT halo, not a neon outline. Use the
-        // muted `primary_container` (desaturated purple, distinct from the
-        // bright `primary` border) at a low alpha (~15%) so — paired with
-        // a wide blur in config.conf — it reads as the surface emitting
-        // ambient light rather than a hard phosphor ring. (Was the dark
-        // `shadow` role at 0x99, a heavy drop shadow.)
-        shadow = margo(col!(c.primary_container), "26"),
+        // Window glow: a SUBTLE ambient lift, not a frame. Muted
+        // `primary_container` (desaturated, distinct from the bright
+        // `primary` border) at ~8% alpha — low enough that the glow stays
+        // below the content in the visual hierarchy (Material/GNOME feel
+        // the halo at ~5–10% of the surface). Paired with a moderate,
+        // tight blur in config.conf so it hugs the window instead of
+        // sprawling. (Was 0x26/~15%, which competed with the content; the
+        // even older default was the dark `shadow` role at 0x99.)
+        shadow = margo(col!(c.primary_container), "14"),
     )
 }
