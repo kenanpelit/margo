@@ -14,6 +14,7 @@ use mshell_config::schema::config::{
     ThemeAttributesStoreFields, ThemeStoreFields, WallpaperStoreFields,
 };
 use mshell_config::schema::themes::{MatugenMode, Themes};
+use mshell_utils::session::{SessionAction, run_session_action};
 use reactive_graph::prelude::GetUntracked;
 use relm4::gtk::prelude::{
     BoxExt, ButtonExt, EditableExt, EntryExt, FileExt, OrientableExt, WidgetExt,
@@ -57,6 +58,18 @@ const LAYOUTS: &[(&str, &str)] = &[
     ("ar", "العربية"),
 ];
 
+/// Curated `xkb_rules_options` (single-pick; the field accepts more via
+/// `mctl config edit`). `(option code, display name)`, "none" first.
+const XKB_OPTIONS: &[(&str, &str)] = &[
+    ("", "None"),
+    ("ctrl:nocaps", "Caps Lock → Ctrl"),
+    ("ctrl:swapcaps", "Swap Caps Lock ↔ Ctrl"),
+    ("caps:escape", "Caps Lock → Escape"),
+    ("altwin:swap_alt_win", "Swap Alt ↔ Super"),
+    ("compose:ralt", "Right Alt → Compose"),
+    ("grp:alt_shift_toggle", "Toggle layout: Alt+Shift"),
+];
+
 fn theme_names() -> Vec<&'static str> {
     THEMES.iter().map(|(_, n)| *n).collect()
 }
@@ -65,6 +78,9 @@ fn font_names() -> Vec<&'static str> {
 }
 fn layout_names() -> Vec<&'static str> {
     LAYOUTS.iter().map(|(_, n)| *n).collect()
+}
+fn option_names() -> Vec<&'static str> {
+    XKB_OPTIONS.iter().map(|(_, n)| *n).collect()
 }
 
 pub(crate) struct WizardMenuWidgetModel {
@@ -75,7 +91,11 @@ pub(crate) struct WizardMenuWidgetModel {
     clock_24h: bool,
     xkb_layout: String,
     xkb_variant: String,
+    xkb_options: String,
     wallpaper_dir: String,
+    /// Set once the final step has written + reloaded. Flips the last
+    /// page into its "applied — reboot?" state.
+    applied: bool,
 }
 
 #[derive(Debug)]
@@ -89,8 +109,10 @@ pub(crate) enum WizardMenuWidgetInput {
     Clock24hToggled(bool),
     XkbLayoutChanged(String),
     XkbVariantChanged(String),
+    XkbOptionsChanged(String),
     BrowseWallpaper,
     WallpaperPicked(String),
+    Reboot,
 }
 
 #[derive(Debug)]
@@ -257,6 +279,22 @@ impl SimpleComponent for WizardMenuWidgetModel {
                             },
                         },
                     },
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 16,
+                        gtk::Label { add_css_class: "label-medium", set_label: "Options", set_halign: gtk::Align::Start, set_hexpand: true },
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&gtk::StringList::new(&option_names())),
+                            #[watch]
+                            set_selected: XKB_OPTIONS.iter().position(|(c, _)| *c == model.xkb_options).unwrap_or(0) as u32,
+                            connect_selected_notify[sender] => move |dd| {
+                                if let Some((c, _)) = XKB_OPTIONS.get(dd.selected() as usize) {
+                                    sender.input(WizardMenuWidgetInput::XkbOptionsChanged((*c).to_string()));
+                                }
+                            },
+                        },
+                    },
                 },
 
                 // ── 3 Wallpaper ───────────────────────────────
@@ -282,10 +320,20 @@ impl SimpleComponent for WizardMenuWidgetModel {
                 add_named[Some("4")] = &gtk::Box {
                     set_orientation: gtk::Orientation::Vertical,
                     set_spacing: 8,
-                    gtk::Label { add_css_class: "label-large-bold", set_label: "Ready", set_halign: gtk::Align::Start },
+                    gtk::Label {
+                        add_css_class: "label-large-bold",
+                        #[watch]
+                        set_label: if model.applied { "All set" } else { "Ready" },
+                        set_halign: gtk::Align::Start,
+                    },
                     gtk::Label {
                         add_css_class: "label-small",
-                        set_label: "Finish applies your choices to the active profile and the compositor.",
+                        #[watch]
+                        set_label: if model.applied {
+                            "Applied live — your keyboard layout is already active. Reboot only if you want a fully clean start."
+                        } else {
+                            "Finish applies your choices to the active profile and the compositor. The keyboard layout takes effect immediately."
+                        },
                         set_halign: gtk::Align::Start, set_xalign: 0.0, set_wrap: true,
                     },
                 },
@@ -297,18 +345,35 @@ impl SimpleComponent for WizardMenuWidgetModel {
                 set_halign: gtk::Align::End,
                 gtk::Button {
                     set_label: "Cancel",
+                    #[watch]
+                    set_visible: !model.applied,
                     connect_clicked[sender] => move |_| sender.input(WizardMenuWidgetInput::Cancel),
                 },
                 gtk::Button {
                     set_label: "Back",
                     #[watch]
+                    set_visible: !model.applied,
+                    #[watch]
                     set_sensitive: model.page > 0,
                     connect_clicked[sender] => move |_| sender.input(WizardMenuWidgetInput::Back),
                 },
                 gtk::Button {
+                    set_css_classes: &["label-medium", "session-reboot"],
+                    set_label: "Reboot now",
+                    #[watch]
+                    set_visible: model.applied,
+                    connect_clicked[sender] => move |_| sender.input(WizardMenuWidgetInput::Reboot),
+                },
+                gtk::Button {
                     set_css_classes: &["label-medium", "ok-button-primary"],
                     #[watch]
-                    set_label: if model.page + 1 == PAGES { "Apply & finish" } else { "Next" },
+                    set_label: if model.applied {
+                        "Close"
+                    } else if model.page + 1 == PAGES {
+                        "Apply & finish"
+                    } else {
+                        "Next"
+                    },
                     connect_clicked[sender] => move |_| sender.input(WizardMenuWidgetInput::Next),
                 },
             },
@@ -331,24 +396,39 @@ impl SimpleComponent for WizardMenuWidgetModel {
         match message {
             WizardMenuWidgetInput::Next => {
                 if self.page + 1 == PAGES {
-                    self.apply();
-                    let _ = sender.output(WizardMenuWidgetOutput::CloseMenu);
-                    self.page = 0;
+                    if self.applied {
+                        // Last page already applied → the primary button
+                        // is now "Close". Reset for a clean re-open.
+                        let _ = sender.output(WizardMenuWidgetOutput::CloseMenu);
+                        self.page = 0;
+                        self.applied = false;
+                    } else {
+                        // Apply (writes + live `mctl config reload`) and
+                        // stay open so the reboot offer can show.
+                        self.apply();
+                        self.applied = true;
+                    }
                 } else {
                     self.page += 1;
                 }
             }
-            WizardMenuWidgetInput::Back => self.page = self.page.saturating_sub(1),
+            WizardMenuWidgetInput::Back => {
+                self.applied = false;
+                self.page = self.page.saturating_sub(1);
+            }
             WizardMenuWidgetInput::Cancel => {
                 let _ = sender.output(WizardMenuWidgetOutput::CloseMenu);
                 self.page = 0;
+                self.applied = false;
             }
+            WizardMenuWidgetInput::Reboot => run_session_action(SessionAction::Reboot),
             WizardMenuWidgetInput::ModeChanged(m) => self.mode = m,
             WizardMenuWidgetInput::ThemeChanged(t) => self.theme_scheme = t,
             WizardMenuWidgetInput::FontScaleChanged(v) => self.font_scale = v,
             WizardMenuWidgetInput::Clock24hToggled(v) => self.clock_24h = v,
             WizardMenuWidgetInput::XkbLayoutChanged(s) => self.xkb_layout = s,
             WizardMenuWidgetInput::XkbVariantChanged(s) => self.xkb_variant = s.trim().to_string(),
+            WizardMenuWidgetInput::XkbOptionsChanged(s) => self.xkb_options = s,
             WizardMenuWidgetInput::WallpaperPicked(p) => self.wallpaper_dir = p,
             WizardMenuWidgetInput::BrowseWallpaper => {
                 let s = sender.clone();
@@ -386,9 +466,26 @@ impl WizardMenuWidgetModel {
             c.general.clock_format_24_h = clock;
             c.wallpaper.wallpaper_dir = dir;
         });
-        if let Err(e) = write_xkb_to_margo_conf(&self.xkb_layout, &self.xkb_variant) {
-            tracing::warn!(error = %e, "wizard: failed to write xkb to margo config");
+        match write_xkb_to_margo_conf(&self.xkb_layout, &self.xkb_variant, &self.xkb_options) {
+            // Re-apply the compositor config live so the new keymap takes
+            // effect immediately — margo's `reload_config` calls
+            // `set_xkb_config`, so no logout/reboot is needed.
+            Ok(()) => reload_margo_config(),
+            Err(e) => tracing::warn!(error = %e, "wizard: failed to write xkb to margo config"),
         }
+    }
+}
+
+/// Fire `mctl config reload` (detached). margo applies the new
+/// `xkb_rules_*` to the live keyboard, so the layout/options change
+/// without restarting the session.
+fn reload_margo_config() {
+    match std::process::Command::new("mctl")
+        .args(["config", "reload"])
+        .spawn()
+    {
+        Ok(_) => {}
+        Err(e) => tracing::warn!(error = %e, "wizard: `mctl config reload` failed to spawn"),
     }
 }
 
@@ -413,12 +510,45 @@ fn read_live() -> WizardMenuWidgetModel {
             .get_untracked(),
         xkb_layout: detect_default_xkb_layout(),
         xkb_variant: String::new(),
-        wallpaper_dir: config_manager()
-            .config()
-            .wallpaper()
-            .wallpaper_dir()
-            .get_untracked(),
+        xkb_options: String::new(),
+        wallpaper_dir: {
+            // First launch leaves this empty in the schema default; fall
+            // back to a real directory so rotation has something to show
+            // even if the user skips the Browse step.
+            let cfg = config_manager()
+                .config()
+                .wallpaper()
+                .wallpaper_dir()
+                .get_untracked();
+            if cfg.trim().is_empty() {
+                default_wallpaper_dir()
+            } else {
+                cfg
+            }
+        },
+        applied: false,
     }
+}
+
+/// Sensible wallpaper-source fallback for first launch, when no profile
+/// has set one yet. First existing of the usual spots; `~/Pictures` as a
+/// last resort so the field is never blank.
+fn default_wallpaper_dir() -> String {
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Some(h) = &home {
+        candidates.push(h.join("Pictures/Wallpapers"));
+        candidates.push(h.join("Pictures/wallpapers"));
+        candidates.push(h.join("Pictures"));
+    }
+    candidates.push(PathBuf::from("/usr/share/backgrounds"));
+    for c in &candidates {
+        if c.is_dir() {
+            return c.to_string_lossy().into_owned();
+        }
+    }
+    home.map(|h| h.join("Pictures").to_string_lossy().into_owned())
+        .unwrap_or_else(|| "/usr/share/backgrounds".to_string())
 }
 
 fn detect_default_xkb_layout() -> String {
@@ -444,18 +574,20 @@ fn margo_conf_path() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("/tmp/margo-config.conf"))
 }
 
-/// Patch `xkb_rules_layout` / `xkb_rules_variant` in the compositor config
-/// in place, preserving everything else. Empty variant drops the variant
-/// line. (Ported from the old standalone wizard.)
-fn write_xkb_to_margo_conf(layout: &str, variant: &str) -> std::io::Result<()> {
+/// Patch `xkb_rules_layout` / `xkb_rules_variant` / `xkb_rules_options` in
+/// the compositor config in place, preserving everything else. Empty
+/// variant / options drop their respective lines. (Ported from the old
+/// standalone wizard, extended for options.)
+fn write_xkb_to_margo_conf(layout: &str, variant: &str, options: &str) -> std::io::Result<()> {
     let path = margo_conf_path();
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
     let existing = std::fs::read_to_string(&path).unwrap_or_default();
-    let mut out = String::with_capacity(existing.len() + 64);
+    let mut out = String::with_capacity(existing.len() + 96);
     let mut saw_layout = false;
     let mut saw_variant = false;
+    let mut saw_options = false;
     for line in existing.lines() {
         let t = line.trim_start();
         if let Some(rest) = t.strip_prefix("xkb_rules_layout")
@@ -474,6 +606,15 @@ fn write_xkb_to_margo_conf(layout: &str, variant: &str) -> std::io::Result<()> {
             }
             continue;
         }
+        if let Some(rest) = t.strip_prefix("xkb_rules_options")
+            && rest.trim_start().starts_with('=')
+        {
+            saw_options = true;
+            if !options.is_empty() {
+                out.push_str(&format!("xkb_rules_options = {options}\n"));
+            }
+            continue;
+        }
         out.push_str(line);
         out.push('\n');
     }
@@ -485,6 +626,9 @@ fn write_xkb_to_margo_conf(layout: &str, variant: &str) -> std::io::Result<()> {
     }
     if !saw_variant && !variant.is_empty() {
         out.push_str(&format!("xkb_rules_variant = {variant}\n"));
+    }
+    if !saw_options && !options.is_empty() {
+        out.push_str(&format!("xkb_rules_options = {options}\n"));
     }
     std::fs::write(&path, out)
 }
