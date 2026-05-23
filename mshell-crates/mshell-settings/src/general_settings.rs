@@ -47,8 +47,6 @@ pub(crate) enum GeneralSettingsInput {
     ActiveProfileEffect(Option<String>),
     AvailableProfilesEffect(Vec<String>),
     NewProfileClicked,
-    /// Launch the standalone `mwizard` setup wizard (re-run mode).
-    RunSetupWizardClicked,
     ActiveProfileSelected(Option<String>),
     NewProfileNameChosen(String),
     DialogCanceled,
@@ -213,40 +211,6 @@ impl Component for GeneralSettingsModel {
                         set_hexpand: false,
                         connect_clicked[sender] => move |_| {
                             sender.input(GeneralSettingsInput::DeleteProfileClicked);
-                        },
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-                    set_margin_top: 4,
-
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_hexpand: true,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Setup",
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Quick setup — theme, size, clock, wallpaper, profile — on the in-shell Setup page (no separate window).",
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
-
-                    gtk::Button {
-                        set_css_classes: &["label-medium", "ok-button-primary"],
-                        set_label: "Open Setup",
-                        set_valign: gtk::Align::Center,
-                        set_hexpand: false,
-                        connect_clicked[sender] => move |_| {
-                            sender.input(GeneralSettingsInput::RunSetupWizardClicked);
                         },
                     },
                 },
@@ -619,13 +583,6 @@ impl Component for GeneralSettingsModel {
                     })
                     .unwrap_or(0);
                 widgets.profile_dropdown.set_selected(idx);
-            }
-            GeneralSettingsInput::RunSetupWizardClicked => {
-                // In-shell setup lives on the Settings → Setup page (a
-                // layer-shell surface that actually takes input), not a
-                // separate floating window. Jump there instead of spawning
-                // the external wizard.
-                crate::open_settings_at_section("setup");
             }
             GeneralSettingsInput::NewProfileClicked => {
                 let dialog = TextEntryDialogModel::builder()
