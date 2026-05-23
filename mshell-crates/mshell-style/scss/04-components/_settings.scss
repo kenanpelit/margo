@@ -384,6 +384,13 @@
     color: var(--on-primary-container);
 }
 
+// Scaled monitor-arrangement map (cairo-drawn) — a recessed tonal tile so
+// the drawn rectangles read against the row.
+.layout-map {
+    border-radius: var(--radius-xs);
+    background-color: var(--surface-container);
+}
+
 // Settings → Launcher: one editable script row (name + edit + trash).
 .launcher-script-row {
     padding: 2px 6px;

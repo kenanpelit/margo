@@ -17,7 +17,9 @@
 //! invoke the same commands from the terminal and the panel
 //! stays in sync after a Refresh.
 
-use relm4::gtk::prelude::{BoxExt, ButtonExt, EditableExt, EntryExt, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::{
+    BoxExt, ButtonExt, DrawingAreaExtManual, EditableExt, EntryExt, OrientableExt, WidgetExt,
+};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use serde_json::Value;
 use std::process::Stdio;
@@ -37,8 +39,13 @@ pub(crate) struct LayoutEntry {
 pub(crate) struct OutputEntry {
     pub connector: String,
     pub label: Option<String>,
+    pub x: i32,
+    pub y: i32,
     pub width: i32,
     pub height: i32,
+    /// `mlayout`'s per-output tint (hex `#rrggbb`), used to colour the
+    /// rectangle in the mini-map so monitors are told apart at a glance.
+    pub color: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -396,6 +403,18 @@ fn rebuild_layout_rows(
         active_marker.set_width_chars(2);
         row.append(&active_marker);
 
+        // Scaled mini-map of the arrangement — see the monitor layout at
+        // a glance instead of reading a list of rectangles.
+        let map = gtk::DrawingArea::new();
+        map.add_css_class("layout-map");
+        map.set_size_request(208, 116);
+        map.set_valign(gtk::Align::Center);
+        let outs = layout.outputs.clone();
+        map.set_draw_func(move |area, cr, w, h| {
+            draw_layout_map(cr, w as f64, h as f64, &outs, area.color());
+        });
+        row.append(&map);
+
         let info_col = gtk::Box::new(gtk::Orientation::Vertical, 2);
         info_col.set_hexpand(true);
         let name = gtk::Label::new(Some(&layout.name));
@@ -413,20 +432,11 @@ fn rebuild_layout_rows(
         info_col.append(&sub);
 
         if !layout.outputs.is_empty() {
-            let outs = layout
-                .outputs
-                .iter()
-                .map(|o| {
-                    let label = o.label.as_deref().unwrap_or(&o.connector);
-                    format!("{} ({}×{})", label, o.width, o.height)
-                })
-                .collect::<Vec<_>>()
-                .join(" · ");
-            let out_lbl = gtk::Label::new(Some(&outs));
+            let n = layout.outputs.len();
+            let summary = format!("{n} monitor{}", if n == 1 { "" } else { "s" });
+            let out_lbl = gtk::Label::new(Some(&summary));
             out_lbl.add_css_class("label-small");
             out_lbl.set_halign(gtk::Align::Start);
-            out_lbl.set_wrap(true);
-            out_lbl.set_xalign(0.0);
             info_col.append(&out_lbl);
         }
         row.append(&info_col);
@@ -571,14 +581,134 @@ fn parse_output_entry(v: &Value) -> Option<OutputEntry> {
         .get("label")
         .and_then(Value::as_str)
         .map(str::to_string);
+    let x = v.get("x").and_then(Value::as_i64).unwrap_or(0) as i32;
+    let y = v.get("y").and_then(Value::as_i64).unwrap_or(0) as i32;
     let width = v.get("width").and_then(Value::as_i64).unwrap_or(0) as i32;
     let height = v.get("height").and_then(Value::as_i64).unwrap_or(0) as i32;
+    let color = v
+        .get("color")
+        .and_then(Value::as_str)
+        .map(str::to_string);
     Some(OutputEntry {
         connector,
         label,
+        x,
+        y,
         width,
         height,
+        color,
     })
+}
+
+/// Draw a scaled top-down map of `outputs` into `cr` (size `area_w ×
+/// area_h`). Rectangles keep the real aspect + relative positions; each
+/// is tinted with its mlayout colour so monitors are distinguishable,
+/// labelled with the connector + resolution in the widget's foreground.
+fn draw_layout_map(
+    cr: &gtk::cairo::Context,
+    area_w: f64,
+    area_h: f64,
+    outputs: &[OutputEntry],
+    fg: gtk::gdk::RGBA,
+) {
+    if outputs.is_empty() {
+        return;
+    }
+    let min_x = outputs.iter().map(|o| o.x).min().unwrap_or(0) as f64;
+    let min_y = outputs.iter().map(|o| o.y).min().unwrap_or(0) as f64;
+    let max_x = outputs.iter().map(|o| o.x + o.width.max(1)).max().unwrap_or(1) as f64;
+    let max_y = outputs.iter().map(|o| o.y + o.height.max(1)).max().unwrap_or(1) as f64;
+    let span_w = (max_x - min_x).max(1.0);
+    let span_h = (max_y - min_y).max(1.0);
+    let pad = 6.0;
+    let scale = ((area_w - pad * 2.0) / span_w).min((area_h - pad * 2.0) / span_h);
+    let off_x = (area_w - span_w * scale) / 2.0;
+    let off_y = (area_h - span_h * scale) / 2.0;
+
+    for (i, o) in outputs.iter().enumerate() {
+        let rx = off_x + (o.x as f64 - min_x) * scale;
+        let ry = off_y + (o.y as f64 - min_y) * scale;
+        let rw = (o.width.max(1) as f64) * scale;
+        let rh = (o.height.max(1) as f64) * scale;
+        let (r, g, b) = parse_hex_rgb(o.color.as_deref()).unwrap_or_else(|| default_swatch(i));
+
+        rounded_rect(cr, rx + 1.0, ry + 1.0, (rw - 2.0).max(1.0), (rh - 2.0).max(1.0), 3.0);
+        cr.set_source_rgba(r, g, b, 0.28);
+        let _ = cr.fill_preserve();
+        cr.set_source_rgba(r, g, b, 0.95);
+        cr.set_line_width(1.5);
+        let _ = cr.stroke();
+
+        cr.set_source_rgba(
+            fg.red() as f64,
+            fg.green() as f64,
+            fg.blue() as f64,
+            fg.alpha() as f64,
+        );
+        if rh > 22.0 {
+            let name = o.label.clone().unwrap_or_else(|| o.connector.clone());
+            cr.select_font_face(
+                "sans-serif",
+                gtk::cairo::FontSlant::Normal,
+                gtk::cairo::FontWeight::Bold,
+            );
+            cr.set_font_size(10.0);
+            if let Ok(ext) = cr.text_extents(&name)
+                && ext.width() < rw - 4.0
+            {
+                cr.move_to(rx + (rw - ext.width()) / 2.0, ry + rh / 2.0 - 1.0);
+                let _ = cr.show_text(&name);
+            }
+            let res = format!("{}×{}", o.width, o.height);
+            cr.select_font_face(
+                "sans-serif",
+                gtk::cairo::FontSlant::Normal,
+                gtk::cairo::FontWeight::Normal,
+            );
+            cr.set_font_size(8.5);
+            if let Ok(ext) = cr.text_extents(&res)
+                && ext.width() < rw - 4.0
+            {
+                cr.move_to(rx + (rw - ext.width()) / 2.0, ry + rh / 2.0 + 10.0);
+                let _ = cr.show_text(&res);
+            }
+        }
+    }
+}
+
+fn rounded_rect(cr: &gtk::cairo::Context, x: f64, y: f64, w: f64, h: f64, r: f64) {
+    let r = r.min(w / 2.0).min(h / 2.0).max(0.0);
+    let pi = std::f64::consts::PI;
+    cr.new_sub_path();
+    cr.arc(x + w - r, y + r, r, -pi / 2.0, 0.0);
+    cr.arc(x + w - r, y + h - r, r, 0.0, pi / 2.0);
+    cr.arc(x + r, y + h - r, r, pi / 2.0, pi);
+    cr.arc(x + r, y + r, r, pi, 1.5 * pi);
+    cr.close_path();
+}
+
+fn parse_hex_rgb(s: Option<&str>) -> Option<(f64, f64, f64)> {
+    let s = s?.trim().trim_start_matches('#');
+    if s.len() < 6 {
+        return None;
+    }
+    let r = u8::from_str_radix(&s[0..2], 16).ok()?;
+    let g = u8::from_str_radix(&s[2..4], 16).ok()?;
+    let b = u8::from_str_radix(&s[4..6], 16).ok()?;
+    Some((r as f64 / 255.0, g as f64 / 255.0, b as f64 / 255.0))
+}
+
+/// Distinct fallback swatches when an output carries no mlayout colour.
+fn default_swatch(i: usize) -> (f64, f64, f64) {
+    const SWATCHES: [(f64, f64, f64); 6] = [
+        (0.45, 0.62, 0.95),
+        (0.52, 0.80, 0.55),
+        (0.93, 0.69, 0.36),
+        (0.86, 0.51, 0.78),
+        (0.40, 0.78, 0.82),
+        (0.90, 0.55, 0.50),
+    ];
+    SWATCHES[i % SWATCHES.len()]
 }
 
 /// Slug validation mirrors what `mlayout new` accepts: ascii
