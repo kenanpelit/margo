@@ -24,8 +24,8 @@ use relm4::gtk::{gio, glib};
 use relm4::{ComponentParts, ComponentSender, SimpleComponent, gtk};
 use std::path::PathBuf;
 
-// Welcome, Theme, Keyboard, Touchpad, Wallpaper, Bar, Review.
-const PAGES: usize = 7;
+// Welcome, Theme, Keyboard, Touchpad, Network, Wallpaper, Bar, Review.
+const PAGES: usize = 8;
 
 /// Curated theme presets (full catalogue lives in Settings → Theme).
 const THEMES: &[(Themes, &str)] = &[
@@ -97,6 +97,12 @@ pub(crate) struct WizardMenuWidgetModel {
     tap_to_click: bool,
     natural_scroll: bool,
     disable_while_typing: bool,
+    /// Scanned SSIDs (Wi-Fi step). Empty until the first list load.
+    wifi_networks: Vec<String>,
+    wifi_selected: usize,
+    wifi_password: String,
+    /// Free-text status line under the Connect button.
+    wifi_status: String,
     wallpaper_dir: String,
     /// `false` = main bar on top (default), `true` = on the bottom.
     bar_at_bottom: bool,
@@ -120,6 +126,12 @@ pub(crate) enum WizardMenuWidgetInput {
     TapToClickToggled(bool),
     NaturalScrollToggled(bool),
     DisableWhileTypingToggled(bool),
+    ScanWifi,
+    WifiListLoaded(Vec<String>),
+    WifiSelected(usize),
+    WifiPasswordChanged(String),
+    ConnectWifi,
+    WifiStatus(String),
     BrowseWallpaper,
     WallpaperPicked(String),
     BarPositionChanged(bool),
@@ -359,8 +371,73 @@ impl SimpleComponent for WizardMenuWidgetModel {
                     },
                 },
 
-                // ── 4 Wallpaper ───────────────────────────────
+                // ── 4 Network ─────────────────────────────────
                 add_named[Some("4")] = &gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 12,
+                    gtk::Label { add_css_class: "label-large-bold", set_label: "Wi-Fi", set_halign: gtk::Align::Start },
+                    gtk::Label {
+                        add_css_class: "label-small",
+                        set_label: "Optional — pick a network and connect now, or skip and do it later from the bar.",
+                        set_halign: gtk::Align::Start, set_xalign: 0.0, set_wrap: true,
+                    },
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal, set_spacing: 8,
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            #[watch]
+                            set_model: Some(&gtk::StringList::new(
+                                &if model.wifi_networks.is_empty() {
+                                    vec!["Scan for networks…"]
+                                } else {
+                                    model.wifi_networks.iter().map(|s| s.as_str()).collect::<Vec<_>>()
+                                },
+                            )),
+                            #[watch]
+                            set_sensitive: !model.wifi_networks.is_empty(),
+                            #[watch]
+                            set_selected: model.wifi_selected as u32,
+                            connect_selected_notify[sender] => move |dd| {
+                                sender.input(WizardMenuWidgetInput::WifiSelected(dd.selected() as usize));
+                            },
+                        },
+                        gtk::Button {
+                            set_css_classes: &["label-medium"],
+                            set_label: "Scan",
+                            set_valign: gtk::Align::Center,
+                            connect_clicked[sender] => move |_| sender.input(WizardMenuWidgetInput::ScanWifi),
+                        },
+                    },
+                    gtk::Entry {
+                        set_placeholder_text: Some("Password (leave blank if open / saved)"),
+                        set_visibility: false,
+                        #[watch]
+                        set_sensitive: !model.wifi_networks.is_empty(),
+                        connect_changed[sender] => move |e| {
+                            sender.input(WizardMenuWidgetInput::WifiPasswordChanged(e.text().to_string()));
+                        },
+                    },
+                    gtk::Button {
+                        set_css_classes: &["label-medium", "ok-button-primary"],
+                        set_label: "Connect",
+                        set_halign: gtk::Align::Start,
+                        #[watch]
+                        set_sensitive: !model.wifi_networks.is_empty(),
+                        connect_clicked[sender] => move |_| sender.input(WizardMenuWidgetInput::ConnectWifi),
+                    },
+                    gtk::Label {
+                        add_css_class: "label-small",
+                        #[watch]
+                        set_label: &model.wifi_status,
+                        #[watch]
+                        set_visible: !model.wifi_status.is_empty(),
+                        set_halign: gtk::Align::Start, set_xalign: 0.0, set_wrap: true,
+                    },
+                },
+
+                // ── 5 Wallpaper ───────────────────────────────
+                add_named[Some("5")] = &gtk::Box {
                     set_orientation: gtk::Orientation::Vertical,
                     set_spacing: 12,
                     gtk::Label { add_css_class: "label-large-bold", set_label: "Wallpaper", set_halign: gtk::Align::Start },
@@ -378,8 +455,8 @@ impl SimpleComponent for WizardMenuWidgetModel {
                     },
                 },
 
-                // ── 5 Bar ─────────────────────────────────────
-                add_named[Some("5")] = &gtk::Box {
+                // ── 6 Bar ─────────────────────────────────────
+                add_named[Some("6")] = &gtk::Box {
                     set_orientation: gtk::Orientation::Vertical,
                     set_spacing: 12,
                     gtk::Label { add_css_class: "label-large-bold", set_label: "Bar", set_halign: gtk::Align::Start },
@@ -403,8 +480,8 @@ impl SimpleComponent for WizardMenuWidgetModel {
                     },
                 },
 
-                // ── 6 Review ──────────────────────────────────
-                add_named[Some("6")] = &gtk::Box {
+                // ── 7 Review ──────────────────────────────────
+                add_named[Some("7")] = &gtk::Box {
                     set_orientation: gtk::Orientation::Vertical,
                     set_spacing: 8,
                     gtk::Label {
@@ -471,7 +548,10 @@ impl SimpleComponent for WizardMenuWidgetModel {
         let model = read_live();
         let widgets = view_output!();
         let _ = root;
-        let _ = &sender;
+        // Warm the Wi-Fi list from NetworkManager's last scan (no rescan)
+        // so the dropdown is populated by the time the user reaches the
+        // Network step. The Scan button forces a fresh rescan.
+        spawn_wifi_list(sender.input_sender().clone());
         ComponentParts { model, widgets }
     }
 
@@ -515,6 +595,34 @@ impl SimpleComponent for WizardMenuWidgetModel {
             WizardMenuWidgetInput::TapToClickToggled(v) => self.tap_to_click = v,
             WizardMenuWidgetInput::NaturalScrollToggled(v) => self.natural_scroll = v,
             WizardMenuWidgetInput::DisableWhileTypingToggled(v) => self.disable_while_typing = v,
+            WizardMenuWidgetInput::ScanWifi => {
+                self.wifi_status = "Scanning…".to_string();
+                spawn_wifi_scan(sender.input_sender().clone());
+            }
+            WizardMenuWidgetInput::WifiListLoaded(list) => {
+                self.wifi_selected = self.wifi_selected.min(list.len().saturating_sub(1));
+                if self.wifi_status == "Scanning…" {
+                    self.wifi_status = if list.is_empty() {
+                        "No networks found.".to_string()
+                    } else {
+                        String::new()
+                    };
+                }
+                self.wifi_networks = list;
+            }
+            WizardMenuWidgetInput::WifiSelected(idx) => self.wifi_selected = idx,
+            WizardMenuWidgetInput::WifiPasswordChanged(s) => self.wifi_password = s,
+            WizardMenuWidgetInput::ConnectWifi => {
+                if let Some(ssid) = self.wifi_networks.get(self.wifi_selected).cloned() {
+                    self.wifi_status = format!("Connecting to {ssid}…");
+                    spawn_wifi_connect(
+                        sender.input_sender().clone(),
+                        ssid,
+                        self.wifi_password.clone(),
+                    );
+                }
+            }
+            WizardMenuWidgetInput::WifiStatus(s) => self.wifi_status = s,
             WizardMenuWidgetInput::BarPositionChanged(bottom) => self.bar_at_bottom = bottom,
             WizardMenuWidgetInput::WallpaperPicked(p) => self.wallpaper_dir = p,
             WizardMenuWidgetInput::BrowseWallpaper => {
@@ -633,14 +741,92 @@ impl WizardMenuWidgetModel {
         let dwt = on(self.disable_while_typing);
         let wall = &self.wallpaper_dir;
         let bar = if self.bar_at_bottom { "Bottom" } else { "Top" };
+        let wifi = if !self.wifi_status.is_empty() {
+            self.wifi_status.clone()
+        } else {
+            "not configured here".to_string()
+        };
         format!(
             "Theme: {theme} · {mode} · {font} · {clock}-clock\n\
              Keyboard: {layout} / {variant} / {options}\n\
              Touchpad: tap {tap} · natural-scroll {nat} · dwt {dwt}\n\
+             Wi-Fi: {wifi}\n\
              Wallpaper: {wall}\n\
              Bar: {bar}"
         )
     }
+}
+
+/// Parse SSIDs from NetworkManager's current scan (terse, one per line,
+/// de-duplicated, blanks dropped).
+async fn wifi_list() -> Vec<String> {
+    let Ok(out) = tokio::process::Command::new("nmcli")
+        .args(["-t", "-f", "SSID", "device", "wifi", "list"])
+        .output()
+        .await
+    else {
+        return Vec::new();
+    };
+    let text = String::from_utf8_lossy(&out.stdout);
+    let mut seen: Vec<String> = Vec::new();
+    for line in text.lines() {
+        let ssid = line.trim();
+        if ssid.is_empty() || seen.iter().any(|s| s == ssid) {
+            continue;
+        }
+        seen.push(ssid.to_string());
+    }
+    seen
+}
+
+/// Read the cached scan (no rescan) and feed it back to the component.
+fn spawn_wifi_list(sender: relm4::Sender<WizardMenuWidgetInput>) {
+    tokio::spawn(async move {
+        let _ = sender.send(WizardMenuWidgetInput::WifiListLoaded(wifi_list().await));
+    });
+}
+
+/// Force a rescan, wait briefly for results, then reload the list.
+fn spawn_wifi_scan(sender: relm4::Sender<WizardMenuWidgetInput>) {
+    tokio::spawn(async move {
+        let _ = tokio::process::Command::new("nmcli")
+            .args(["device", "wifi", "rescan"])
+            .status()
+            .await;
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        let _ = sender.send(WizardMenuWidgetInput::WifiListLoaded(wifi_list().await));
+    });
+}
+
+/// `nmcli device wifi connect <ssid> [password <pw>]`, reporting the
+/// outcome back as a status line.
+fn spawn_wifi_connect(
+    sender: relm4::Sender<WizardMenuWidgetInput>,
+    ssid: String,
+    password: String,
+) {
+    tokio::spawn(async move {
+        let mut args = vec![
+            "device".to_string(),
+            "wifi".to_string(),
+            "connect".to_string(),
+            ssid.clone(),
+        ];
+        if !password.is_empty() {
+            args.push("password".to_string());
+            args.push(password);
+        }
+        let ok = matches!(
+            tokio::process::Command::new("nmcli").args(&args).status().await,
+            Ok(s) if s.success()
+        );
+        let msg = if ok {
+            format!("✓ Connected to {ssid}")
+        } else {
+            format!("✗ Couldn't connect to {ssid} — check the password")
+        };
+        let _ = sender.send(WizardMenuWidgetInput::WifiStatus(msg));
+    });
 }
 
 /// Fire `mctl config reload` (detached). margo applies the new
@@ -684,6 +870,10 @@ fn read_live() -> WizardMenuWidgetModel {
         tap_to_click: read_margo_conf_bool("tap_to_click", true),
         natural_scroll: read_margo_conf_bool("trackpad_natural_scrolling", false),
         disable_while_typing: read_margo_conf_bool("disable_while_typing", true),
+        wifi_networks: Vec::new(),
+        wifi_selected: 0,
+        wifi_password: String::new(),
+        wifi_status: String::new(),
         bar_at_bottom: {
             // Bottom is "primary" only if the top bar is empty. The field
             // accessors consume `self`, so take a fresh handle per slot.
@@ -815,7 +1005,7 @@ fn read_margo_conf_bool(key: &str, default: bool) -> bool {
         if let Some(rest) = t.strip_prefix(key)
             && let Some(after_eq) = rest.trim_start().strip_prefix('=')
         {
-            let token = after_eq.trim().split_whitespace().next().unwrap_or("");
+            let token = after_eq.split_whitespace().next().unwrap_or("");
             val = matches!(token, "1" | "true" | "yes" | "on");
         }
     }
