@@ -6,7 +6,8 @@
 //! The widget pulls from data sources mshell already wires:
 //!   - notification_service().notifications — pending count
 //!   - battery_service().device — % + state
-//!   - hwmon temp1_input — package CPU temperature
+//!   - system_update cache — pending package-update count (read-only;
+//!     CPU temperature lives on the SystemStatus tile, not duplicated here)
 //!   - local OffsetDateTime — today's weekday + month-day
 //!
 //! Each piece of intel surfaces as a single line in a vertical
@@ -30,7 +31,6 @@ use mshell_utils::battery::spawn_battery_watcher;
 use mshell_utils::notifications::spawn_notifications_watcher;
 use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
-use std::path::PathBuf;
 use std::time::Duration;
 
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
@@ -40,16 +40,15 @@ const POLL_INTERVAL: Duration = Duration::from_secs(5);
 // genuinely worth a look.
 const BATTERY_LOW_PERCENT: i32 = 25;
 const BATTERY_CRITICAL_PERCENT: i32 = 10;
-const TEMP_WARN_CELSIUS: i32 = 80;
-const TEMP_DANGER_CELSIUS: i32 = 90;
 
 pub(crate) struct OverviewIntelModel {
     notification_count: usize,
     battery_percent: i32,
     battery_charging: bool,
     has_battery: bool,
-    temp_celsius: i32,
-    temp_sensor_path: Option<PathBuf>,
+    /// Pending package updates (cached count from the system-update
+    /// probe; this widget never triggers a fresh probe).
+    update_count: usize,
     _effects: EffectScope,
 }
 
@@ -148,32 +147,30 @@ impl Component for OverviewIntelModel {
                 },
             },
 
-            // ── Temperature line ────────────────────────────────
+            // ── Updates line ────────────────────────────────────
             //
-            // Always visible when a sensor exists (user asked for
-            // CPU temp to be a permanent readout, not just a hot
-            // alert). Severity colour + wording escalate as it
-            // climbs: calm "CPU NN°C" → warn/danger "CPU running
-            // hot (NN°C)".
+            // Pending package updates — an actionable "do something"
+            // signal that nothing else in this column surfaces. (CPU
+            // temperature used to live here, but the SystemStatus tile
+            // below already shows it permanently, so this slot now
+            // carries the update count instead of duplicating temp.)
+            // Alert-style: shown only when updates are pending; the
+            // cached count is read, never a fresh probe.
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
                 set_spacing: 8,
                 set_halign: gtk::Align::Start,
                 #[watch]
-                set_visible: model.temp_sensor_path.is_some(),
+                set_visible: model.update_count > 0,
 
                 gtk::Label {
                     add_css_class: "overview-intel-dot",
                     set_label: "●",
                 },
                 gtk::Label {
+                    set_css_classes: &["overview-intel-line", "warn"],
                     #[watch]
-                    set_css_classes: &[
-                        "overview-intel-line",
-                        temp_severity(model.temp_celsius),
-                    ],
-                    #[watch]
-                    set_label: &temp_line(model.temp_celsius),
+                    set_label: &updates_line(model.update_count),
                     set_halign: gtk::Align::Start,
                 },
             },
@@ -204,9 +201,9 @@ impl Component for OverviewIntelModel {
         });
         spawn_battery_watcher(&sender, || OverviewIntelCommandOutput::BatteryChanged);
 
-        // 5 s tick for temperature + date refresh (date crosses
-        // midnight; temp is the only thing we don't subscribe to
-        // reactively).
+        // 5 s tick for the cached update count + date refresh (date
+        // crosses midnight; the update count isn't a reactive store, so
+        // we re-read its cache on the tick).
         let sender_clone = sender.clone();
         relm4::gtk::glib::timeout_add_local(POLL_INTERVAL, move || {
             if sender_clone
@@ -224,20 +221,14 @@ impl Component for OverviewIntelModel {
         let battery_percent = battery.percentage.get().round().clamp(0.0, 100.0) as i32;
         let battery_charging = current_battery_charging();
         let notification_count = notification_service().notifications.get().len();
-        let temp_sensor_path = find_cpu_temp_sensor();
-        let temp_celsius = temp_sensor_path
-            .as_ref()
-            .and_then(read_temp_millideg)
-            .map(|t| t / 1000)
-            .unwrap_or(0);
+        let update_count = read_update_count();
 
         let model = OverviewIntelModel {
             notification_count,
             battery_percent,
             battery_charging,
             has_battery,
-            temp_celsius,
-            temp_sensor_path,
+            update_count,
             _effects: EffectScope::new(),
         };
 
@@ -277,11 +268,7 @@ impl Component for OverviewIntelModel {
                 self.notification_count = notification_service().notifications.get().len();
             }
             OverviewIntelInput::Tick => {
-                if let Some(p) = &self.temp_sensor_path
-                    && let Some(t) = read_temp_millideg(p)
-                {
-                    self.temp_celsius = t / 1000;
-                }
+                self.update_count = read_update_count();
             }
         }
     }
@@ -309,22 +296,20 @@ fn battery_severity(percent: i32, charging: bool) -> &'static str {
     }
 }
 
-fn temp_line(celsius: i32) -> String {
-    if celsius >= TEMP_WARN_CELSIUS {
-        format!("CPU running hot ({celsius}°C)")
-    } else {
-        format!("CPU temperature {celsius}°C")
+fn updates_line(count: usize) -> String {
+    match count {
+        1 => "1 update available".to_string(),
+        n => format!("{n} updates available"),
     }
 }
 
-fn temp_severity(celsius: i32) -> &'static str {
-    if celsius >= TEMP_DANGER_CELSIUS {
-        "danger"
-    } else if celsius >= TEMP_WARN_CELSIUS {
-        "warn"
-    } else {
-        "calm"
-    }
+/// Pending package-update count from the system-update cache. Read-only —
+/// the bar widget / update menu own the actual probe schedule, so this
+/// never fires `checkupdates` / the AUR helper.
+fn read_update_count() -> usize {
+    crate::system_update::load_cache()
+        .map(|(_checked_at, report)| report.total())
+        .unwrap_or(0)
 }
 
 fn has_any_alert(model: &OverviewIntelModel) -> bool {
@@ -332,12 +317,10 @@ fn has_any_alert(model: &OverviewIntelModel) -> bool {
         || (model.has_battery
             && !model.battery_charging
             && model.battery_percent <= BATTERY_LOW_PERCENT)
-        || (model.temp_sensor_path.is_some() && model.temp_celsius >= TEMP_WARN_CELSIUS)
+        || model.update_count > 0
 }
 
 fn quiet_summary(model: &OverviewIntelModel) -> String {
-    // Temp lives on its own always-visible line now, so it's
-    // intentionally omitted here to avoid showing the °C twice.
     let mut parts: Vec<String> = vec!["Quiet — nothing urgent".to_string()];
     if model.has_battery {
         let charge_word = if model.battery_charging { "charging" } else { "battery" };
@@ -361,34 +344,3 @@ fn current_battery_charging() -> bool {
         .unwrap_or(state == DeviceState::Charging || state == DeviceState::FullyCharged)
 }
 
-// ── Temperature reading (same as system_status.rs) ─────────────
-
-fn find_cpu_temp_sensor() -> Option<PathBuf> {
-    let hwmon_dir = std::fs::read_dir("/sys/class/hwmon").ok()?;
-    let mut k10temp: Option<PathBuf> = None;
-    let mut coretemp: Option<PathBuf> = None;
-    let mut acpitz: Option<PathBuf> = None;
-    let mut other: Option<PathBuf> = None;
-    for entry in hwmon_dir.flatten() {
-        let p = entry.path();
-        let Ok(name) = std::fs::read_to_string(p.join("name")) else {
-            continue;
-        };
-        let name = name.trim();
-        let temp_path = p.join("temp1_input");
-        if !temp_path.exists() {
-            continue;
-        }
-        match name {
-            "k10temp" => k10temp.get_or_insert(temp_path),
-            "coretemp" => coretemp.get_or_insert(temp_path),
-            "acpitz" => acpitz.get_or_insert(temp_path),
-            _ => other.get_or_insert(temp_path),
-        };
-    }
-    k10temp.or(coretemp).or(acpitz).or(other)
-}
-
-fn read_temp_millideg(p: &PathBuf) -> Option<i32> {
-    std::fs::read_to_string(p).ok()?.trim().parse().ok()
-}
