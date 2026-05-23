@@ -26,37 +26,13 @@ pub fn parse_config_with_defaults(path: Option<&Path>) -> Result<Config> {
     Ok(cfg)
 }
 
-/// Defaults that shouldn't depend on the user's config because they're
-/// part of the margo suite itself: float + focus the setup wizard, and
-/// run it once at compositor startup. `mwizard` exits immediately once a
-/// shell profile exists, so the exec-once is a no-op after first launch.
-/// Idempotent — skips entries that already match (so a user who added
-/// them by hand won't get duplicates).
-pub fn apply_first_party_defaults(cfg: &mut Config) {
-    const WIZARD_ID: &str = r"^com\.margo\.mwizard$";
-
-    if !cfg
-        .window_rules
-        .iter()
-        .any(|r| r.id.as_deref() == Some(WIZARD_ID))
-    {
-        cfg.window_rules.insert(
-            0,
-            WindowRule {
-                id: Some(WIZARD_ID.to_string()),
-                is_floating: Some(true),
-                open_focused: Some(true),
-                width: 760,
-                height: 620,
-                ..WindowRule::default()
-            },
-        );
-    }
-
-    if !cfg.exec_once.iter().any(|c| c.trim() == "mwizard") {
-        cfg.exec_once.push("mwizard".to_string());
-    }
-}
+/// Defaults that are part of the margo suite itself rather than the
+/// user's file. Currently none: the setup wizard used to be floated +
+/// `exec-once`'d here, but it is now an in-shell layer-shell menu
+/// (mshell auto-opens it on first launch, or `mshellctl wizard`), so the
+/// compositor no longer launches any wizard window. Kept as the hook for
+/// future first-party defaults.
+pub fn apply_first_party_defaults(_cfg: &mut Config) {}
 
 // ── Path resolution ──────────────────────────────────────────────────────────
 

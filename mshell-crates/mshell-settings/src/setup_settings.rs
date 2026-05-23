@@ -1,4 +1,4 @@
-//! Settings → Setup — an in-panel companion to the standalone `mwizard`.
+//! Settings → Setup — an in-panel companion to the in-shell wizard menu.
 //!
 //! Consolidates the wizard's most-common knobs (profile, theme preset,
 //! colour mode, font size, clock, wallpaper) into one page so the user

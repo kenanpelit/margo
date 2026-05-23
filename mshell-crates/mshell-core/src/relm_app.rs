@@ -278,6 +278,17 @@ impl Component for Shell {
             }
         });
 
+        // First launch — no shell profile saved yet. Open the setup
+        // wizard menu once the frames exist (a short delay lets
+        // `sync_monitors` build them first). This is the same in-shell
+        // layer-shell menu as `mshellctl wizard`; the compositor no
+        // longer launches any floating wizard window.
+        if mshell_config::config_utils::list_available_profiles().is_empty() {
+            relm4::gtk::glib::timeout_add_local_once(std::time::Duration::from_secs(2), || {
+                mshell_settings::open_wizard();
+            });
+        }
+
         let model = Shell {
             window_groups,
             _lock_screen_manager: lock_screen_manager,

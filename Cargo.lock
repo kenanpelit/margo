@@ -4001,14 +4001,8 @@ version = "0.7.9"
 dependencies = [
  "anyhow",
  "clap",
- "dirs",
- "gtk4",
- "mshell-config",
- "mshell-style",
- "relm4",
- "serde_yaml",
- "tracing",
- "tracing-subscriber",
+ "tokio",
+ "zbus",
 ]
 
 [[package]]
