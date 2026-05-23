@@ -17,7 +17,7 @@ use log::{error, info};
 
 use crate::auth::AuthUserInfo;
 use crate::config::Config;
-use crate::post_login::wait_with_log::LemursChild;
+use crate::post_login::wait_with_log::SessionChild;
 
 const XSTART_CHECK_INTERVAL_MILLIS: u64 = 100;
 
@@ -71,7 +71,7 @@ fn handle_sigusr1(_: i32) {
     }
 }
 
-pub fn setup_x(user_info: &AuthUserInfo, config: &Config) -> Result<LemursChild, XSetupError> {
+pub fn setup_x(user_info: &AuthUserInfo, config: &Config) -> Result<SessionChild, XSetupError> {
     use std::os::unix::process::CommandExt;
 
     info!("Start setup of X server");
@@ -143,7 +143,7 @@ pub fn setup_x(user_info: &AuthUserInfo, config: &Config) -> Result<LemursChild,
         &config.x11.xserver_path
     ));
 
-    let mut child = LemursChild::spawn(child, log_path).map_err(|err| {
+    let mut child = SessionChild::spawn(child, log_path).map_err(|err| {
         error!("Failed to start X server. Reason: {}", err);
         XSetupError::XServerStart
     })?;

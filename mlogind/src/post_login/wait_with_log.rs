@@ -61,7 +61,7 @@ impl<W: io::Write> LimitSizeWriter<W> {
 ///
 /// This makes handling spawning, killing and waiting a lot easier to combine with the
 /// output log files.
-pub enum LemursChild {
+pub enum SessionChild {
     NoLog(Child),
     Log(LimitedOutputChild),
 }
@@ -71,7 +71,7 @@ pub struct LimitedOutputChild {
     log_thread: Option<(Waker, JoinHandle<io::Result<()>>)>,
 }
 
-impl LemursChild {
+impl SessionChild {
     pub fn spawn(mut command: Command, log_path: Option<&Path>) -> io::Result<Self> {
         Ok(match log_path {
             None => Self::NoLog(

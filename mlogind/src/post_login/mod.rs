@@ -13,7 +13,7 @@ use crate::post_login::x::setup_x;
 
 use nix::unistd::{Gid, Uid};
 
-use self::wait_with_log::LemursChild;
+use self::wait_with_log::SessionChild;
 use self::x::XSetupError;
 
 pub(crate) mod env_variables;
@@ -97,10 +97,10 @@ fn lower_command_permissions_to_user(
 
 pub enum SpawnedEnvironment {
     X11 {
-        server: LemursChild,
-        client: LemursChild,
+        server: SessionChild,
+        client: SessionChild,
     },
-    Wayland(LemursChild),
+    Wayland(SessionChild),
     Tty(Child),
 }
 
@@ -182,7 +182,7 @@ impl PostLoginEnvironment {
 
                 client.arg(format!("{} {}", &config.x11.xsetup_path, xinitrc_path));
 
-                let client = match LemursChild::spawn(client, log_path) {
+                let client = match SessionChild::spawn(client, log_path) {
                     Ok(child) => child,
                     Err(err) => {
                         error!("Failed to start X11 environment. Reason '{}'", err);
@@ -197,7 +197,7 @@ impl PostLoginEnvironment {
 
                 client.arg(script_path);
 
-                let child = match LemursChild::spawn(client, log_path) {
+                let child = match SessionChild::spawn(client, log_path) {
                     Ok(child) => child,
                     Err(err) => {
                         error!("Failed to start Wayland Compositor. Reason '{err}'");
@@ -364,7 +364,7 @@ pub fn get_envs(config: &Config) -> Vec<(String, PostLoginEnvironment)> {
                             }
                         }
 
-                        info!("Added environment '{file_name}' from lemurs x11 scripts");
+                        info!("Added environment '{file_name}' from mlogind x11 scripts");
                         envs.push((
                             file_name,
                             PostLoginEnvironment::X {
@@ -413,7 +413,7 @@ pub fn get_envs(config: &Config) -> Vec<(String, PostLoginEnvironment)> {
                             }
                         }
 
-                        info!("Added environment '{file_name}' from lemurs wayland scripts");
+                        info!("Added environment '{file_name}' from mlogind wayland scripts");
                         envs.push((
                             file_name,
                             PostLoginEnvironment::Wayland {

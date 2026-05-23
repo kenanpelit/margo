@@ -35,9 +35,9 @@ use self::{
     },
 };
 
-const DEFAULT_VARIABLES_PATH: &str = "/etc/lemurs/variables.toml";
-const DEFAULT_CONFIG_PATH: &str = "/etc/lemurs/config.toml";
-const PREVIEW_LOG_PATH: &str = "lemurs.log";
+const DEFAULT_VARIABLES_PATH: &str = "/etc/mlogind/variables.toml";
+const DEFAULT_CONFIG_PATH: &str = "/etc/mlogind/config.toml";
+const PREVIEW_LOG_PATH: &str = "mlogind.log";
 
 fn merge_in_configuration(config: &mut Config, cli: &Cli) {
     let load_variables_path = cli
@@ -197,7 +197,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         } else {
             &config.main_log_path
         });
-        info!("Main lemurs logger is running");
+        info!("Main mlogind logger is running");
     } else {
         config.do_log = false;
     }
@@ -205,18 +205,18 @@ fn main() -> Result<(), Box<dyn Error>> {
     if !cli.preview {
         if std::env::var("XDG_SESSION_TYPE").is_ok() {
             eprintln!(
-                "Lemurs cannot be ran without `--preview` within an existing session. Namely, `XDG_SESSION_TYPE` is set."
+                "mlogind cannot be ran without `--preview` within an existing session. Namely, `XDG_SESSION_TYPE` is set."
             );
             error!(
-                "Lemurs cannot be started when within an existing session. Namely, `XDG_SESSION_TYPE` is set."
+                "mlogind cannot be started when within an existing session. Namely, `XDG_SESSION_TYPE` is set."
             );
             std::process::exit(1);
         }
 
         let uid = uzers::get_current_uid();
         if uzers::get_current_uid() != 0 {
-            eprintln!("Lemurs needs to be ran as root. Found user id '{uid}'");
-            error!("Lemurs not ran as root. Found user id '{uid}'");
+            eprintln!("mlogind needs to be ran as root. Found user id '{uid}'");
+            error!("mlogind not ran as root. Found user id '{uid}'");
             std::process::exit(1);
         }
 
@@ -241,7 +241,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     login_form.run(&mut terminal)?;
     tui_disable(terminal)?;
 
-    info!("Lemurs is booting down");
+    info!("mlogind is booting down");
 
     Ok(())
 }
@@ -339,7 +339,7 @@ fn start_session(
     let mut status: libc::c_int = 0;
     unsafe { libc::waitpid(child_pid, &mut status, 0) };
 
-    info!("Session child exited. Returning to Lemurs...");
+    info!("Session child exited. Returning to mlogind...");
 
     if let Some(pre_return_hook) = hooks.pre_return {
         pre_return_hook();

@@ -1,8 +1,8 @@
-# Lemurs configuration file.
-# Contains all the customization options of lemurs.
+# mlogind configuration file.
+# Contains all the customization options of mlogind.
 #
 # Note: that as of now you need to have all options in the selected
-# configuration file. Otherwise Lemurs will not work.
+# configuration file. Otherwise mlogind will not work.
 #
 # Colors:
 # ---------
@@ -38,25 +38,25 @@
 # ---------
 #
 
-# The tty which contains lemurs. This has to be mirrored in the lemurs.service
+# The tty which contains mlogind. This has to be mirrored in the mlogind.service
 tty = 2
 
-# Where to log the main lemurs control flow.
-main_log_path = "/var/log/lemurs.log"
+# Where to log the main mlogind control flow.
+main_log_path = "/var/log/mlogind.log"
 
 # Where to log to for the client. The Client is the Desktop Environment or
 # Window Manager for Xorg, the Compositor for Wayland and the Shell for TTY.
-client_log_path = "/var/log/lemurs.client.log"
+client_log_path = "/var/log/mlogind.client.log"
 
 # At which point to point the cache. If you want to disable the cache globally
 # you can use `/dev/null`.
-cache_path = "/var/cache/lemurs"
+cache_path = "/var/cache/mlogind"
 
 # Disable all logging. This is overwritten by the `--no-log` flag.
 do_log = true
 
 # The PAM service that should be used to login
-pam_service = "lemurs"
+pam_service = "mlogind"
 
 # Path to system shell that gets used to execute linux commands. In almost all
 # cases, this should refer to a bash shell.
@@ -72,7 +72,7 @@ initial_path = "/usr/local/sbin:/usr/local/bin:/usr/bin"
 # - 'long'. This produces the `--login` flag and is suited for bash and zsh.
 shell_login_flag = "short"
 
-# Focus behaviour of fields when Lemurs is initially started
+# Focus behaviour of fields when mlogind is initially started
 #
 # Possible values:
 # - default: Initially focus on first non-cached value
@@ -321,7 +321,7 @@ max_width = 48
 
 [x11]
 # Where to log to for the XServer.
-xserver_log_path = "/var/log/lemurs.xorg.log"
+xserver_log_path = "/var/log/mlogind.xorg.log"
 
 # The value of the `DISPLAY` environment variable for X11 sessions
 x11_display = ":1"
@@ -337,11 +337,11 @@ xserver_path = "/usr/bin/X"
 xauth_path = "/usr/bin/xauth"
 
 # Path to the directory where the startup scripts for the X11 sessions are found
-scripts_path = "/etc/lemurs/wms"
+scripts_path = "/etc/mlogind/wms"
 
 # Path to the xsetup script that is needed for the environment setup of the
 # window manager.
-xsetup_path = "/etc/lemurs/xsetup.sh"
+xsetup_path = "/etc/mlogind/xsetup.sh"
 
 # The directory to use for desktop entries X11 sessions.
 xsessions_path = "/usr/share/xsessions"
@@ -349,7 +349,7 @@ xsessions_path = "/usr/share/xsessions"
 [wayland]
 # Path to the directory where the startup scripts for the Wayland sessions are
 # found
-scripts_path = "/etc/lemurs/wayland"
+scripts_path = "/etc/mlogind/wayland"
 
 # The directory to use for desktop entries wayland sessions.
 wayland_sessions_path = "/usr/share/wayland-sessions"

@@ -5,11 +5,11 @@ use std::path::PathBuf;
 
 pub fn usage() {
     print!(
-        r###"Lemurs {}
+        r###"mlogind {}
 {}
 A TUI Display/Login Manager
 
-USAGE: lemurs [OPTIONS] [SUBCOMMAND]
+USAGE: mlogind [OPTIONS] [SUBCOMMAND]
 
 OPTIONS:
     -c, --config <FILE>       A file to replace the default configuration

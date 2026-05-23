@@ -5,7 +5,7 @@ use crate::config::Config;
 
 const USERNAME_LENGTH_LIMIT: usize = 32;
 
-// Saved in the /var/cache/lemurs file as
+// Saved in the /var/cache/mlogind file as
 // ```
 // ENVIRONMENT\n
 // USERNAME

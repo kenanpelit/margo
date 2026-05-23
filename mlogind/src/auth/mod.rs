@@ -46,10 +46,6 @@ pub fn try_validate<'a>(
     info!("Login attempt for '{username}'");
 
     validate_credentials(username, password, pam_service).inspect_err(|err| {
-        info!(
-            "Authentication failed for '{}'. Reason: {}",
-            username,
-            err.to_string()
-        );
+        info!("Authentication failed for '{}'. Reason: {}", username, err);
     })
 }

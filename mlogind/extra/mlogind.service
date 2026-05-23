@@ -1,10 +1,10 @@
 [Unit]
-Description=Lemurs
+Description=mlogind
 After=systemd-user-sessions.service plymouth-quit-wait.service
 After=getty@tty2.service
 
 [Service]
-ExecStart=/usr/bin/lemurs
+ExecStart=/usr/bin/mlogind
 StandardInput=tty
 TTYPath=/dev/tty2
 TTYReset=yes
