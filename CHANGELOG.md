@@ -7,6 +7,65 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.8.0] – 2026-05-24
+
+### Added
+
+- **In-shell setup wizard** — the guided first-run flow is now a real
+  layer-shell menu (never a floating window), opening contiguous with the
+  bar like every other menu. Eight steps: Welcome, Theme (mode / preset /
+  font scale / clock), Keyboard (xkb layout / variant / `xkb_rules_options`
+  such as `ctrl:nocaps`), Touchpad (tap-to-click, natural scroll,
+  disable-while-typing), Wi-Fi (scan + connect via `nmcli`), Wallpaper
+  (with a sensible directory fallback so rotation always has a source),
+  Bar (top / bottom), and a Review summary. Apply writes everything live
+  and runs `mctl config reload`, so the keyboard layout/options take effect
+  immediately — no logout — with an optional reboot offer. The base profile
+  can be fresh defaults or a snapshot of the running config ("active").
+  Reachable from Settings → Setup, the bar's **Setup** pill,
+  `mshellctl wizard` (and the `mwizard` shim), and automatically on first
+  launch when no profile is saved.
+- **Microphone-mute key with an OSD** — `XF86AudioMicMute` /
+  `mshellctl audio mic-mute` toggles the default audio source and pops the
+  same bottom-centre pill as the volume keys (the input-side twin of the
+  volume OSD, with the muted-mic glyph).
+- **Settings overhaul** — an account section (`~/.face` avatar + user
+  identity + picker), a sidebar search box that jumps to any section or
+  widget page, widget gears that deep-link straight to their own page, an
+  embedded **Setup** page, keyboard focus from first open, and a window
+  size proportional to the screen resolution.
+- **Settings → Fonts** — a monospace family slot, a global UI font scale
+  and a separate bar-pill font scale, each with a live preview.
+- **Settings → Display** — a GNOME-style drag-to-arrange monitor editor
+  with visual mini-maps, backed by a new `mlayout outputs --json` live
+  state (and hex colours in `mlayout list --json`).
+- **Dashboard** — the Overview tile shows the pending-update count (its own
+  throttled, always-visible probe) in place of the duplicated CPU
+  temperature.
+- **OSD** — the volume / brightness OSDs show the numeric level and are
+  slimmer.
+
+### Changed
+
+- **Window glow is now a soft ambient halo** that sits *below* the content
+  in the visual hierarchy — desaturated, low-opacity, roughly 5–10 % of the
+  surface — instead of the previous neon-outline look.
+
+### Fixed
+
+- **The wizard's Wi-Fi dropdown spun the GTK main loop at ~100 % CPU.** A
+  `#[watch] set_model` rebuilt the `StringList` every view pass, whose
+  `selected-notify` fed back into the update cycle; it self-triggered at
+  startup and starved every other reactive update (the margo-tags pill
+  stopped tracking the active tag and window occupancy). The dropdown model
+  is now held and mutated in place, so CPU returns to idle.
+- The wizard menu now builds **lazily on first reveal** (its `nmcli` scan
+  included), so it no longer adds startup cost on sessions that never open
+  it.
+- Wizard buttons use the canonical `ok-button-*` component classes per
+  DESIGN.md — one accent region (`ok-button-primary`) per step, neutral
+  actions on `ok-button-surface`.
+
 ## [0.7.9] – 2026-05-23
 
 ### Added
@@ -2855,7 +2914,9 @@ sway, tinywl, and wlroots — see `LICENSE.*`.
   (end-to-end nested-mode smoke under Xvfb), `docs.yml`
   (Pages deployment).
 
-[Unreleased]: https://github.com/kenanpelit/margo/compare/v0.7.8...HEAD
+[Unreleased]: https://github.com/kenanpelit/margo/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/kenanpelit/margo/compare/v0.7.9...v0.8.0
+[0.7.9]: https://github.com/kenanpelit/margo/compare/v0.7.8...v0.7.9
 [0.7.8]: https://github.com/kenanpelit/margo/compare/v0.7.7...v0.7.8
 [0.7.7]: https://github.com/kenanpelit/margo/compare/v0.7.6...v0.7.7
 [0.7.6]: https://github.com/kenanpelit/margo/releases/tag/v0.7.6
