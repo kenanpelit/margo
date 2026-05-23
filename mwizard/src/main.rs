@@ -28,7 +28,9 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use gtk4::prelude::*;
-use mshell_config::paths::default_config_path;
+use mshell_config::paths::{
+    DEFAULT_PROFILE_NAME, active_profile_cache_path, default_config_path, profile_path,
+};
 use mshell_config::schema::config::Config;
 use mshell_config::schema::themes::MatugenMode;
 use relm4::{ComponentParts, ComponentSender, RelmApp, RelmWidgetExt, SimpleComponent, gtk};
@@ -217,10 +219,26 @@ fn detect_default_xkb_layout() -> String {
     }
 }
 
+/// Which profile the wizard writes — and whether it starts from a fresh
+/// `Config::default()` or a snapshot of the currently-running setup.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProfileBase {
+    /// Fresh defaults → `profiles/default.yaml`.
+    Defaults,
+    /// Snapshot the live config → `profiles/active.yaml`, then make it
+    /// the active profile.
+    Active,
+}
+
 struct WizardModel {
     page: Page,
     choices: Choices,
     apply_status: ApplyStatus,
+    /// Selected starting point (Welcome page).
+    base: ProfileBase,
+    /// Whether a current profile exists to snapshot — gates the "Active"
+    /// option (nothing to keep on a true first run).
+    has_current: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -235,6 +253,7 @@ enum WizardInput {
     Next,
     Back,
     Cancel,
+    BaseChanged(ProfileBase),
     MatugenModeChanged(MatugenMode),
     Clock24hChanged(bool),
     XkbLayoutChanged(String),
@@ -293,16 +312,50 @@ impl SimpleComponent for WizardModel {
                             set_halign: gtk::Align::Start,
                         },
                         gtk::Label {
-                            set_label: "This wizard will set up your shell profile with a handful of sensible defaults. You can change everything later in Settings or by editing the YAML profile under ~/.config/margo/mshell/profiles/.",
+                            set_label: "This wizard will set up your shell profile. You can change everything later in Settings or by editing the YAML profile under ~/.config/margo/mshell/profiles/.",
                             set_halign: gtk::Align::Start,
                             set_xalign: 0.0,
                             set_wrap: true,
                             set_max_width_chars: 60,
                         },
+
                         gtk::Label {
-                            set_label: "Click Next to begin.",
+                            add_css_class: "label-large-bold",
+                            set_label: "Start from",
                             set_halign: gtk::Align::Start,
                             set_margin_top: 12,
+                        },
+
+                        #[name = "base_defaults"]
+                        gtk::CheckButton {
+                            set_label: Some("Fresh defaults — write the \"default\" profile"),
+                            set_active: true,
+                            connect_toggled[sender] => move |b| {
+                                if b.is_active() {
+                                    sender.input(WizardInput::BaseChanged(ProfileBase::Defaults));
+                                }
+                            },
+                        },
+                        gtk::CheckButton {
+                            set_label: Some("Keep my current setup — snapshot it as the \"active\" profile"),
+                            set_group: Some(&base_defaults),
+                            // Nothing to snapshot on a true first run.
+                            #[watch]
+                            set_sensitive: model.has_current,
+                            connect_toggled[sender] => move |b| {
+                                if b.is_active() {
+                                    sender.input(WizardInput::BaseChanged(ProfileBase::Active));
+                                }
+                            },
+                        },
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_label: "\"active\" carries your live configuration forward as a named, editable profile — handy for tweaking from a known-good base instead of starting over.",
+                            set_halign: gtk::Align::Start,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_max_width_chars: 60,
                         },
                     },
 
@@ -542,7 +595,11 @@ impl SimpleComponent for WizardModel {
                                     format!(" (variant: {})", model.choices.xkb_variant)
                                 },
                                 model.choices.wallpaper_dir.display(),
-                                default_config_path().display(),
+                                match model.base {
+                                    ProfileBase::Active => profile_path("active"),
+                                    ProfileBase::Defaults => default_config_path(),
+                                }
+                                .display(),
                                 margo_conf_path().display(),
                             ),
                             add_css_class: "monospace",
@@ -621,6 +678,10 @@ impl SimpleComponent for WizardModel {
             page: Page::Welcome,
             choices: Choices::defaults(),
             apply_status: ApplyStatus::Pending,
+            base: ProfileBase::Defaults,
+            // A current profile to snapshot exists if the default profile
+            // file is on disk (the common --force re-run case).
+            has_current: default_config_path().exists(),
         };
         let widgets = view_output!();
         let _ = sender;
@@ -635,7 +696,7 @@ impl SimpleComponent for WizardModel {
                         relm4::main_application().quit();
                         return;
                     }
-                    self.apply_status = match apply_choices(&self.choices) {
+                    self.apply_status = match apply_choices(&self.choices, self.base) {
                         Ok(path) => ApplyStatus::Ok(path),
                         Err(err) => ApplyStatus::Err(err.to_string()),
                     };
@@ -650,6 +711,9 @@ impl SimpleComponent for WizardModel {
             }
             WizardInput::Cancel => {
                 relm4::main_application().quit();
+            }
+            WizardInput::BaseChanged(base) => {
+                self.base = base;
             }
             WizardInput::MatugenModeChanged(mode) => {
                 self.choices.matugen_mode = mode;
@@ -704,6 +768,38 @@ fn margo_conf_path() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("/tmp/margo-config.conf"))
 }
 
+/// The currently-active profile name from the shell's cache (a plain
+/// string), falling back to the built-in default.
+fn read_active_profile_name() -> String {
+    std::fs::read_to_string(active_profile_cache_path())
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| DEFAULT_PROFILE_NAME.to_string())
+}
+
+/// Load the currently-running shell config (the active profile's YAML),
+/// falling back to a fresh default if it's missing or unreadable.
+fn load_current_config() -> Config {
+    let path = profile_path(&read_active_profile_name());
+    std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|y| serde_yaml::from_str::<Config>(&y).ok())
+        .unwrap_or_default()
+}
+
+/// Point the shell at `name` by writing the active-profile cache (matches
+/// the shell's own format: the bare profile name).
+fn set_active_profile(name: &str) {
+    let p = active_profile_cache_path();
+    if let Some(parent) = p.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Err(e) = std::fs::write(&p, name) {
+        tracing::warn!(error = %e, "failed to write active-profile cache");
+    }
+}
+
 /// Fold the user's wizard choices into:
 /// 1. a freshly-defaulted shell-side `Config` (serialised to
 ///    `default.yaml`), and
@@ -714,14 +810,27 @@ fn margo_conf_path() -> PathBuf {
 /// Returns the profile path so the Done page can show it; the
 /// margo.conf path is logged but not surfaced as the "success"
 /// path since it's a secondary side-effect.
-fn apply_choices(choices: &Choices) -> Result<PathBuf> {
+fn apply_choices(choices: &Choices, base: ProfileBase) -> Result<PathBuf> {
     // ── shell profile ─────────────────────────────────────────
-    let mut cfg = Config::default();
+    // Defaults start from a fresh Config and write the "default" profile;
+    // "active" snapshots the currently-running config and writes the
+    // "active" profile (then makes it the active one).
+    let (mut cfg, profile_name, target) = match base {
+        ProfileBase::Defaults => (
+            Config::default(),
+            DEFAULT_PROFILE_NAME.to_string(),
+            default_config_path(),
+        ),
+        ProfileBase::Active => (
+            load_current_config(),
+            "active".to_string(),
+            profile_path("active"),
+        ),
+    };
     cfg.general.clock_format_24_h = choices.clock_24h;
     cfg.theme.matugen.mode = choices.matugen_mode;
     cfg.wallpaper.wallpaper_dir = choices.wallpaper_dir.display().to_string();
 
-    let target = default_config_path();
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent).with_context(|| {
             format!("create profile dir {}", parent.display())
@@ -731,7 +840,11 @@ fn apply_choices(choices: &Choices) -> Result<PathBuf> {
         .context("serialize Config to YAML")?;
     std::fs::write(&target, yaml)
         .with_context(|| format!("write profile {}", target.display()))?;
-    tracing::info!(path = %target.display(), "wrote profile");
+    tracing::info!(path = %target.display(), profile = %profile_name, "wrote profile");
+
+    // Make the written profile the active one so the shell loads it
+    // (the cache is just the profile name as a plain string).
+    set_active_profile(&profile_name);
 
     // ── compositor xkb lines ──────────────────────────────────
     write_xkb_to_margo_conf(&choices.xkb_layout, &choices.xkb_variant)
