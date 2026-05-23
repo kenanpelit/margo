@@ -106,6 +106,8 @@ pub(crate) enum ShellInput {
     ToggleMediaPlayerMenu(Option<String>),
     ToggleSessionMenu(Option<String>),
     ToggleSettingsMenu(Option<String>),
+    /// Toggle the in-shell setup wizard menu on the active monitor.
+    ToggleWizardMenu(Option<String>),
     /// Jump to a specific Settings sidebar section. Routes
     /// through the per-frame settings widget after ensuring it's
     /// visible — same monitor-resolution dance as
@@ -260,6 +262,19 @@ impl Component for Shell {
                 // resolves immediately even on a fresh session.
                 let monitor = margo_service().active_monitor_name().await;
                 toggle_app_sender.emit(ShellInput::ToggleSettingsMenu(monitor));
+            }
+        });
+
+        // Wizard-menu toggle — same !Send bridge as the settings toggle.
+        let (wizard_tx, mut wizard_rx) = tokio::sync::mpsc::unbounded_channel::<()>();
+        mshell_settings::set_wizard_backend(move || {
+            let _ = wizard_tx.send(());
+        });
+        let wizard_app_sender = sender.input_sender().clone();
+        relm4::gtk::glib::spawn_future_local(async move {
+            while wizard_rx.recv().await.is_some() {
+                let monitor = margo_service().active_monitor_name().await;
+                wizard_app_sender.emit(ShellInput::ToggleWizardMenu(monitor));
             }
         });
 
@@ -586,6 +601,11 @@ impl Component for Shell {
                 }
                 if let Some(frame) = target {
                     frame.emit(FrameInput::ToggleSettingsMenu);
+                }
+            }
+            ShellInput::ToggleWizardMenu(monitor_name) => {
+                if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
+                    frame.emit(FrameInput::ToggleWizardMenu);
                 }
             }
             ShellInput::OpenSettingsAtSection(monitor_name, section) => {

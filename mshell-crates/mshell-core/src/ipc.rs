@@ -2,7 +2,7 @@ use crate::relm_app::{Shell, ShellInput};
 use mshell_cache::wallpaper::set_wallpaper;
 use mshell_services::{audio_service, brightness_service, margo_service, notification_service};
 use mshell_session::session_lock::{lock_session, session_locked};
-use mshell_settings::{close_settings, open_settings};
+use mshell_settings::{close_settings, open_settings, open_wizard};
 use mshell_utils::session::SessionAction;
 use mshell_sounds::play_audio_volume_change;
 use relm4::gtk::glib;
@@ -236,6 +236,9 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 IPCCommand::OpenSettings => {
                     open_settings();
                 }
+                IPCCommand::OpenWizard => {
+                    open_wizard();
+                }
                 IPCCommand::CloseSettings => {
                     close_settings();
                 }
@@ -351,6 +354,7 @@ enum IPCCommand {
     /// info) instead of the bare slurp overlay when mshell is up.
     SelectRegion(tokio::sync::oneshot::Sender<String>),
     OpenSettings,
+    OpenWizard,
     CloseSettings,
     Inspect,
     BarToggleTop,
@@ -567,6 +571,9 @@ impl IPCService {
     }
     async fn open_settings(&self) {
         let _ = self.tx.send(IPCCommand::OpenSettings);
+    }
+    async fn open_wizard(&self) {
+        let _ = self.tx.send(IPCCommand::OpenWizard);
     }
     async fn close_settings(&self) {
         let _ = self.tx.send(IPCCommand::CloseSettings);

@@ -132,6 +132,40 @@ impl Component for SetupSettingsModel {
                     },
                 },
 
+                // Guided 5-step setup — opens as an in-shell menu (a
+                // layer-shell surface like every other menu), not a window.
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 12,
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Guided setup",
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Walk the five steps — theme, fonts, keyboard, wallpaper — in a menu.",
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+                    gtk::Button {
+                        set_css_classes: &["label-medium", "ok-button-primary"],
+                        set_label: "Run setup wizard",
+                        set_valign: gtk::Align::Center,
+                        connect_clicked => move |_| {
+                            crate::open_wizard();
+                        },
+                    },
+                },
+
+                gtk::Separator {},
+
                 // ── Profile ─────────────────────────────────────
                 gtk::Label {
                     add_css_class: "label-large-bold",

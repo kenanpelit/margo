@@ -32,6 +32,9 @@ use crate::menus::menu_widgets::screenshare::screenshare_menu_widget::{
 use crate::menus::menu_widgets::session::session_menu_widget::{
     SessionMenuWidgetInput, SessionMenuWidgetModel,
 };
+use crate::menus::menu_widgets::wizard::wizard_menu_widget::{
+    WizardMenuWidgetInit, WizardMenuWidgetModel, WizardMenuWidgetOutput,
+};
 use crate::menus::menu_widgets::wallpaper::wallpaper_menu_widget::{
     WallpaperMenuWidgetInput, WallpaperMenuWidgetModel,
 };
@@ -57,6 +60,7 @@ pub(crate) enum MenuType {
     AppLauncher,
     Wallpaper,
     HyprlandScreenshare,
+    Wizard,
     Ufw,
     Dns,
     Podman,
@@ -143,6 +147,7 @@ pub(crate) enum MenuInput {
     SetMaximumHeight(i32),
     AddHyprlandScreenshareWidget,
     ForwardHyprlandScreenshareReply(tokio::sync::oneshot::Sender<String>, String),
+    AddWizardWidget,
     /// Forward a category-tab pick to the embedded
     /// AppLauncherModel when this menu hosts one. Used by
     /// `mshellctl menu app-launcher --tab <name>` to open the
@@ -383,6 +388,10 @@ impl Component for MenuModel {
             MenuType::HyprlandScreenshare => {
                 css_class = "hyprland-screenshare-menu".to_string();
                 sender.input(MenuInput::AddHyprlandScreenshareWidget);
+            }
+            MenuType::Wizard => {
+                css_class = "wizard-menu".to_string();
+                sender.input(MenuInput::AddWizardWidget);
             }
             MenuType::Ufw => {
                 css_class = "ufw-menu".to_string();
@@ -1139,6 +1148,20 @@ impl Component for MenuModel {
                 // destroy this widget — taking the pending portal reply
                 // Sender with it (→ the picker returns empty → screen-share
                 // "user cancelled"). See `RevealChanged`.
+                self.built = true;
+            }
+            MenuInput::AddWizardWidget => {
+                let controller = Box::new(
+                    WizardMenuWidgetModel::builder()
+                        .launch(WizardMenuWidgetInit {})
+                        .forward(sender.output_sender(), |msg| match msg {
+                            WizardMenuWidgetOutput::CloseMenu => MenuOutput::CloseMenu,
+                        }),
+                );
+                widgets.widget_container.append(&controller.root_widget());
+                self.widget_controllers.push(controller);
+                // Eagerly built (not from config widget_kinds) — mark built
+                // so the lazy first-reveal rebuild doesn't wipe it.
                 self.built = true;
             }
             MenuInput::ForwardHyprlandScreenshareReply(reply, payload) => {

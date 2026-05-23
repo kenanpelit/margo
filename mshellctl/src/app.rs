@@ -60,6 +60,8 @@ pub enum Commands {
         #[command(subcommand)]
         command: SettingsCommands,
     },
+    /// Open the in-shell setup wizard (a layer-shell menu)
+    Wizard,
     /// Commands for cycling the wallpaper
     Wallpaper {
         #[command(subcommand)]

@@ -76,6 +76,30 @@ pub fn close_settings() {
     open_settings();
 }
 
+/// Wizard-menu toggle backend — same bridge pattern as the settings
+/// toggle. The frame registers a thunk that flips the in-shell setup
+/// wizard menu (a layer-shell surface, never a window).
+type WizardBackend = Box<dyn Fn() + Send + Sync + 'static>;
+static WIZARD_BACKEND: OnceLock<WizardBackend> = OnceLock::new();
+
+/// Register the wizard-toggle backend. Called once at startup. Idempotent.
+pub fn set_wizard_backend<F>(f: F)
+where
+    F: Fn() + Send + Sync + 'static,
+{
+    let _ = WIZARD_BACKEND.set(Box::new(f));
+}
+
+/// Open (toggle) the in-shell setup wizard menu. Called by the Setup-page
+/// button and the `mshellctl wizard` IPC.
+pub fn open_wizard() {
+    if let Some(toggle) = WIZARD_BACKEND.get() {
+        toggle();
+    } else {
+        tracing::warn!("wizard: toggle backend not registered yet");
+    }
+}
+
 /// Section-navigation backend: a thunk the frame registers so
 /// external callers can jump to a specific Settings sidebar
 /// section without owning a `Sender<SettingsWindowInput>`. The

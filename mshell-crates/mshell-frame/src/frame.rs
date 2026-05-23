@@ -27,6 +27,7 @@ const SCREENSHOT_MENU: &str = "screenshot";
 const NOTIFICATION_MENU: &str = "notification";
 const WALLPAPER_MENU: &str = "wallpaper";
 const SCREENSHARE_MENU: &str = "screenshare";
+const WIZARD_MENU: &str = "wizard";
 const NUFW_MENU: &str = "ufw";
 const BLUETOOTH_MENU: &str = "bluetooth";
 const CPU_DASHBOARD_MENU: &str = "cpu_dashboard";
@@ -88,6 +89,7 @@ pub struct Frame {
     app_launcher_menu: Controller<MenuModel>,
     wallpaper_menu: Controller<MenuModel>,
     screenshare_menu: Controller<MenuModel>,
+    wizard_menu: Controller<MenuModel>,
     ufw_menu: Controller<MenuModel>,
     bluetooth_menu: Controller<MenuModel>,
     cpu_dashboard_menu: Controller<MenuModel>,
@@ -168,6 +170,7 @@ pub enum FrameInput {
     ToggleMediaPlayerMenu,
     ToggleSessionMenu,
     ToggleSettingsMenu,
+    ToggleWizardMenu,
     /// Open Settings and jump to a specific sidebar section.
     /// Used by the launcher's Settings provider via the shell
     /// router. If Settings is already visible, just switches the
@@ -695,6 +698,7 @@ impl Component for Frame {
         let app_launcher_menu = Self::build_menu(&sender, MenuType::AppLauncher);
         let wallpaper_menu = Self::build_menu(&sender, MenuType::Wallpaper);
         let screenshare_menu = Self::build_menu(&sender, MenuType::HyprlandScreenshare);
+        let wizard_menu = Self::build_menu(&sender, MenuType::Wizard);
         let ufw_menu = Self::build_menu(&sender, MenuType::Ufw);
         let bluetooth_menu = Self::build_menu(&sender, MenuType::Bluetooth);
         let cpu_dashboard_menu = Self::build_menu(&sender, MenuType::CpuDashboard);
@@ -901,6 +905,7 @@ impl Component for Frame {
             app_launcher_menu,
             wallpaper_menu,
             screenshare_menu,
+            wizard_menu,
             ufw_menu,
             bluetooth_menu,
             cpu_dashboard_menu,
@@ -1121,6 +1126,13 @@ impl Component for Frame {
             }
             FrameInput::ToggleSettingsMenu => {
                 self.toggle_menu(SETTINGS_MENU, widgets);
+                self.sync_keyboard_mode(root);
+            }
+            FrameInput::ToggleWizardMenu => {
+                // In-shell setup wizard — a layer-shell menu, toggled like
+                // every other menu (keyboard mode synced so its controls
+                // take input).
+                self.toggle_menu(WIZARD_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
             FrameInput::OpenSettingsAtSection(section) => {
@@ -2094,6 +2106,15 @@ impl Frame {
             widgets,
             &settings_menu_widget,
             SETTINGS_MENU,
+            &settings_menu_position,
+        );
+        // The wizard shares the settings slot/position (both center
+        // panels, mutually exclusive via toggle_menu by name).
+        let wizard_menu_widget: Widget = self.wizard_menu.widget().clone().upcast();
+        Self::add_to_stack(
+            widgets,
+            &wizard_menu_widget,
+            WIZARD_MENU,
             &settings_menu_position,
         );
         Self::add_to_stack(
