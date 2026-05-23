@@ -16,6 +16,9 @@ use relm4::gtk::prelude::{
     BoxExt, ButtonExt, MonitorExt, OrientableExt, ToggleButtonExt, WidgetExt,
 };
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
 
 pub struct SettingsWindowModel {
     general_settings_controller: Controller<GeneralSettingsModel>,
@@ -37,6 +40,12 @@ pub struct SettingsWindowModel {
     panel_width: i32,
     /// Panel height — `monitor_h * 3 / 4` if monitor known, else 600.
     panel_height: i32,
+    /// Widgets-group sub-sidebar buttons, keyed by their sub-stack name
+    /// (`clipboard` / `network` / `notifications` / …). Lets a deep link
+    /// like `widgets/clipboard` activate the right sub-page, not just the
+    /// top-level Widgets section. Shared `Rc` because the buttons are
+    /// built after the model in `init`; the build loop fills the same map.
+    subsection_buttons: Rc<RefCell<HashMap<String, gtk::ToggleButton>>>,
 }
 
 #[derive(Debug)]
@@ -458,6 +467,11 @@ impl Component for SettingsWindowModel {
             .launch(SessionSettingsInit {})
             .detach();
 
+        // Built before the model so the model can hold a clone; the
+        // Widgets sub-sidebar build loop (further down) fills the same map.
+        let subsection_buttons: Rc<RefCell<HashMap<String, gtk::ToggleButton>>> =
+            Rc::new(RefCell::new(HashMap::new()));
+
         let model = SettingsWindowModel {
             general_settings_controller,
             weather_settings_controller,
@@ -473,6 +487,7 @@ impl Component for SettingsWindowModel {
             session_settings_controller,
             panel_width,
             panel_height,
+            subsection_buttons: subsection_buttons.clone(),
         };
 
         let widgets = view_output!();
@@ -708,6 +723,11 @@ impl Component for SettingsWindowModel {
                     sub_stack.set_visible_child_name(stack_name);
                 }
             });
+            // Index by sub-stack name so `widgets/<name>` deep links can
+            // activate this exact page.
+            subsection_buttons
+                .borrow_mut()
+                .insert(stack_name.to_string(), btn.clone());
             btn
         };
 
@@ -939,7 +959,14 @@ impl Component for SettingsWindowModel {
                 // (every other sidebar button auto-deactivates).
                 // Unknown section names fall through to a no-op
                 // so a stale request can't panic the UI.
-                let button: Option<&relm4::gtk::ToggleButton> = match name.as_str() {
+                // Accept a plain section ("widgets") or a deep link into
+                // the Widgets group's sub-sidebar ("widgets/clipboard") so
+                // a widget's own settings gear lands on its exact page.
+                let (section, sub) = match name.split_once('/') {
+                    Some((s, t)) => (s, Some(t)),
+                    None => (name.as_str(), None),
+                };
+                let button: Option<&relm4::gtk::ToggleButton> = match section {
                     "general" => Some(&widgets.general_btn),
                     "bar" => Some(&widgets.bar_btn),
                     "display" => Some(&widgets.display_btn),
@@ -957,6 +984,16 @@ impl Component for SettingsWindowModel {
                 };
                 if let Some(btn) = button {
                     btn.set_active(true);
+                }
+                // Then flip the Widgets sub-sidebar to the requested page
+                // (its toggle cascades the sub-stack). Cloned out so the
+                // RefCell borrow isn't held across `set_active`.
+                if let Some(sub) = sub {
+                    let sub_btn = self.subsection_buttons.borrow().get(sub).cloned();
+                    match sub_btn {
+                        Some(b) => b.set_active(true),
+                        None => tracing::warn!(%sub, "settings: unknown widgets sub-page"),
+                    }
                 }
             }
         }

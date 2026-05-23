@@ -570,10 +570,9 @@ impl Component for ClipboardModel {
                 // resets every other menu's reveal flag — so this panel
                 // hides on its own. Do NOT also emit CloseMenu: that
                 // posts a CloseMenus *after*, slamming the just-opened
-                // Settings shut. "widgets" is the section that hosts the
-                // clipboard page (ActivateSection only resolves
-                // top-level names).
-                mshell_settings::open_settings_at_section("widgets");
+                // Settings shut. Deep-link straight to the Clipboard page
+                // inside the Widgets group (`widgets/<sub-page>`).
+                mshell_settings::open_settings_at_section("widgets/clipboard");
             }
             ClipboardInput::EnterSearch => {
                 set_search_active(true);
