@@ -1,0 +1,19 @@
+# uwsm env file for margo sessions.
+#
+# Installed by the package to /etc/xdg/uwsm/env-margo. uwsm searches the
+# XDG config hierarchy (XDG_CONFIG_DIRS, normally /etc/xdg) for
+# `uwsm/env-${compositor}` and sources it when starting a margo session,
+# then exports the result into the systemd user activation environment —
+# so anything launched via `uwsm app` (keybinds, autostarts) inherits it.
+#
+# Why this exists: uwsm rebuilds the session environment from a POSIX
+# login shell, which reads /etc/profile.d but NOT the interactive
+# zsh/bash rc files where users (and systemd's user manager, by default)
+# put the standard XDG user-binary dirs. Without restoring them, a
+# keybind like `uwsm app -- some-user-tool` fails to resolve a binary
+# that `which` finds fine in a terminal.
+#
+# Only the standard XDG/FHS user bin dirs are added here. Personal extras
+# (language toolchains, plugin managers, …) belong in the per-user
+# ~/.config/uwsm/env, which uwsm sources at higher priority.
+export PATH="${HOME}/.local/bin:${HOME}/bin:${PATH}"

@@ -278,6 +278,15 @@ package() {
   install -Dm644 "margo-uwsm.desktop.pkg" \
     "$pkgdir/usr/share/wayland-sessions/margo-uwsm.desktop"
 
+  # uwsm session env: restore the standard XDG user-binary dirs that
+  # uwsm's POSIX-login-shell env rebuild drops. uwsm searches the XDG
+  # config hierarchy (XDG_CONFIG_DIRS → /etc/xdg) for env-${compositor}
+  # and exports it into the activation environment, so `uwsm app`
+  # launches (keybinds, autostarts) can resolve ~/.local/bin tools.
+  # Per-user overrides still go in ~/.config/uwsm/env (higher priority).
+  install -Dm644 "contrib/sessions/uwsm-env-margo" \
+    "$pkgdir/etc/xdg/uwsm/env-margo"
+
   # ── Icon ───────────────────────────────────────────────────────
   if [[ -f "docs/assets/margo-icon.svg" ]]; then
     install -Dm644 "docs/assets/margo-icon.svg" \
