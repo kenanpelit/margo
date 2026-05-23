@@ -7,6 +7,52 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.7.8] – 2026-05-23
+
+### Added
+
+- **uwsm session, shipped by the package** — `margo-uwsm.desktop` plus the
+  `margo-uwsm-session` / `margo-session` wrappers now install to
+  `/usr/share/wayland-sessions` and `/usr/bin`, and `/etc/xdg/uwsm/env-margo`
+  restores the standard XDG user-bin dirs (`~/.local/bin`, `~/bin`) onto the
+  session `PATH` (uwsm rebuilds it from a POSIX login shell and would
+  otherwise drop them). uwsm moves from optional to the default way to run
+  margo; `uwsm` is now a runtime dependency.
+- **Tracy profiling support** — building with `--features profile-with-tracy`
+  now starts a Tracy client and marks frames, so the existing `span!`
+  instrumentation actually records and a Tracy GUI can attach.
+
+### Changed
+
+- **Menus build lazily** — the menu pollers (network / IP / DNS / UFW /
+  podman) and the entire menu content widget tree are now constructed on a
+  menu's first reveal instead of eagerly at shell startup. A menu the user
+  never opens does zero work: no GTK trees, no background polling, no
+  `sudo` / subprocess probes.
+- **`state.json` writes coalesced** — a burst of compositor state changes
+  (one layout switch touches focus + windows + tags) now serializes the
+  snapshot once per event-loop iteration instead of on every change.
+- **One gtk-rs generation** — cairo/pango pinned to gtk4 0.10's 0.21 stack,
+  dropping a duplicate 0.22 gtk-rs build (glib / gio / cairo / pango /
+  pangocairo + proc-macros) for faster compiles.
+- **Workspace is clippy-clean** — zero warnings, with a documented lint
+  policy; the substantive lints were fixed rather than silenced.
+
+### Fixed
+
+- **Integrated polkit agent now works** — mshell-polkit registers for the
+  logind *Display* session instead of the unset `$XDG_SESSION_ID` it sees
+  under the systemd user manager, so it actually receives authentication
+  requests; and the password dialog wraps to fit its window.
+- **Twilight toggle reflects state** — `state.json` is refreshed on every
+  `mctl twilight` change, so the night-light button no longer looks stuck
+  "on" after toggling.
+- **Network / IP / DNS / UFW / podman menus populate on open** — those
+  menus now receive the reveal signal that drives their first fetch.
+- **Client misbehavior can't crash the session** — the layer-shell and
+  screencopy handlers degrade to a logged no-op instead of panicking the
+  whole compositor on a map failure or a destroy/copy race.
+
 ## [0.7.7] – 2026-05-23
 
 ### Added
@@ -2779,7 +2825,8 @@ sway, tinywl, and wlroots — see `LICENSE.*`.
   (end-to-end nested-mode smoke under Xvfb), `docs.yml`
   (Pages deployment).
 
-[Unreleased]: https://github.com/kenanpelit/margo/compare/v0.7.7...HEAD
+[Unreleased]: https://github.com/kenanpelit/margo/compare/v0.7.8...HEAD
+[0.7.8]: https://github.com/kenanpelit/margo/compare/v0.7.7...v0.7.8
 [0.7.7]: https://github.com/kenanpelit/margo/compare/v0.7.6...v0.7.7
 [0.7.6]: https://github.com/kenanpelit/margo/releases/tag/v0.7.6
 [0.1.0]: https://github.com/kenanpelit/margo/releases/tag/v0.1.0
