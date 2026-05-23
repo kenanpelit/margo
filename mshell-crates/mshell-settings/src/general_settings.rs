@@ -47,6 +47,8 @@ pub(crate) enum GeneralSettingsInput {
     ActiveProfileEffect(Option<String>),
     AvailableProfilesEffect(Vec<String>),
     NewProfileClicked,
+    /// Launch the standalone `mwizard` setup wizard (re-run mode).
+    RunSetupWizardClicked,
     ActiveProfileSelected(Option<String>),
     NewProfileNameChosen(String),
     DialogCanceled,
@@ -211,6 +213,40 @@ impl Component for GeneralSettingsModel {
                         set_hexpand: false,
                         connect_clicked[sender] => move |_| {
                             sender.input(GeneralSettingsInput::DeleteProfileClicked);
+                        },
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+                    set_margin_top: 4,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Setup wizard",
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Re-open the first-launch wizard to walk through theme, keyboard, wallpaper and more — it writes into the selected profile.",
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::Button {
+                        set_css_classes: &["label-medium", "ok-button-primary"],
+                        set_label: "Run setup wizard…",
+                        set_valign: gtk::Align::Center,
+                        set_hexpand: false,
+                        connect_clicked[sender] => move |_| {
+                            sender.input(GeneralSettingsInput::RunSetupWizardClicked);
                         },
                     },
                 },
@@ -583,6 +619,14 @@ impl Component for GeneralSettingsModel {
                     })
                     .unwrap_or(0);
                 widgets.profile_dropdown.set_selected(idx);
+            }
+            GeneralSettingsInput::RunSetupWizardClicked => {
+                // Fire-and-forget the standalone wizard in re-run mode.
+                // It writes the selected profile; the reactive config
+                // store picks up the change when it saves.
+                if let Err(e) = std::process::Command::new("mwizard").arg("--force").spawn() {
+                    tracing::warn!(error = %e, "settings: failed to launch mwizard");
+                }
             }
             GeneralSettingsInput::NewProfileClicked => {
                 let dialog = TextEntryDialogModel::builder()
