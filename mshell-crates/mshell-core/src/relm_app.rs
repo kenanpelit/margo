@@ -579,11 +579,10 @@ impl Component for Shell {
                 let target = resolve_frame(&self.window_groups, &monitor_name);
                 let target_ptr = target.map(|f| f as *const _);
                 for group in self.window_groups.values() {
-                    if let Some(frame) = group.frame.as_ref() {
-                        if Some(frame as *const _) != target_ptr {
+                    if let Some(frame) = group.frame.as_ref()
+                        && Some(frame as *const _) != target_ptr {
                             frame.emit(FrameInput::CloseSettingsMenu);
                         }
-                    }
                 }
                 if let Some(frame) = target {
                     frame.emit(FrameInput::ToggleSettingsMenu);
@@ -596,11 +595,10 @@ impl Component for Shell {
                 let target = resolve_frame(&self.window_groups, &monitor_name);
                 let target_ptr = target.map(|f| f as *const _);
                 for group in self.window_groups.values() {
-                    if let Some(frame) = group.frame.as_ref() {
-                        if Some(frame as *const _) != target_ptr {
+                    if let Some(frame) = group.frame.as_ref()
+                        && Some(frame as *const _) != target_ptr {
                             frame.emit(FrameInput::CloseSettingsMenu);
                         }
-                    }
                 }
                 if let Some(frame) = target {
                     frame.emit(FrameInput::OpenSettingsAtSection(section));

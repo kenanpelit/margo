@@ -24,3 +24,6 @@ wayle-audio.workspace = true
 wayle-battery.workspace = true
 wayle-brightness.workspace = true
 wayle-network.workspace = true
+
+[lints]
+workspace = true

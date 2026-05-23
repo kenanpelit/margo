@@ -17,3 +17,6 @@ gtk4.workspace = true
 gtk4-layer-shell.workspace = true
 image.workspace = true
 mshell-screenshot.workspace = true
+
+[lints]
+workspace = true

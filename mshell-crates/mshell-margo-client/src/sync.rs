@@ -457,14 +457,13 @@ fn apply(service: &MargoService, state: &StateJson) {
         .iter()
         .find(|m| m.focused.get())
         .map(|m| m.active_workspace.get().id);
-    if new_focused_tag != prev_focused_tag {
-        if let Some(id) = new_focused_tag {
+    if new_focused_tag != prev_focused_tag
+        && let Some(id) = new_focused_tag {
             emitted.push(MargoEvent::WorkspaceV2 {
                 id,
                 name: id.to_string(),
             });
         }
-    }
 
     // ── Clients ──────────────────────────────────────────────────────
     let current_clients = service.clients.get();
@@ -522,11 +521,10 @@ fn apply(service: &MargoService, state: &StateJson) {
         .iter()
         .find(|c| c.focus_history_id.get() == 0)
         .map(|c| c.address.get());
-    if prev_focused != new_focused {
-        if let Some(addr) = new_focused {
+    if prev_focused != new_focused
+        && let Some(addr) = new_focused {
             emitted.push(MargoEvent::ActiveWindowV2 { address: addr });
         }
-    }
     // Globally focused client — `state.json`'s `focused_idx`
     // indexes into `state.clients`, and `next_clients` is built in
     // that same order, so `next_clients[focused_idx]` is the one

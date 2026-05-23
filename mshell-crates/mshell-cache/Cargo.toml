@@ -15,3 +15,5 @@ reactive_graph.workspace = true
 reactive_stores.workspace = true
 relm4.workspace = true
 tracing.workspace = true
+[lints]
+workspace = true

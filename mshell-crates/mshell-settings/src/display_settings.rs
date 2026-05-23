@@ -1075,20 +1075,18 @@ impl Component for DisplaySettingsModel {
                 dirty = Some(("twilight_longitude", format!("{v:.4}")));
             }
             DisplaySettingsInput::SunriseChanged(s) => {
-                if let Some(secs) = parse_hhmm(&s) {
-                    if self.state.sunrise_sec != secs {
+                if let Some(secs) = parse_hhmm(&s)
+                    && self.state.sunrise_sec != secs {
                         self.state.sunrise_sec = secs;
                         dirty = Some(("twilight_sunrise", s));
                     }
-                }
             }
             DisplaySettingsInput::SunsetChanged(s) => {
-                if let Some(secs) = parse_hhmm(&s) {
-                    if self.state.sunset_sec != secs {
+                if let Some(secs) = parse_hhmm(&s)
+                    && self.state.sunset_sec != secs {
                         self.state.sunset_sec = secs;
                         dirty = Some(("twilight_sunset", s));
                     }
-                }
             }
             DisplaySettingsInput::StaticTempChanged(v) => {
                 if self.state.static_temp == v {
@@ -1123,12 +1121,11 @@ impl Component for DisplaySettingsModel {
                 // the user hasn't switched to Schedule yet the seed
                 // hasn't run — create it so the file manager has
                 // somewhere to land instead of failing.
-                if !dir.exists() {
-                    if let Err(e) = std::fs::create_dir_all(dir.join("presets")) {
+                if !dir.exists()
+                    && let Err(e) = std::fs::create_dir_all(dir.join("presets")) {
                         warn!(path = %dir.display(), error = %e, "twilight: cannot create preset dir");
                         return;
                     }
-                }
                 let dir_str = dir.display().to_string();
                 relm4::spawn(async move {
                     match tokio::process::Command::new("xdg-open")

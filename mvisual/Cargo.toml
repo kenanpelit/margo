@@ -13,3 +13,6 @@ path = "src/main.rs"
 [dependencies]
 margo-layouts = { path = "../margo-layouts" }
 gtk4 = { workspace = true }
+
+[lints]
+workspace = true

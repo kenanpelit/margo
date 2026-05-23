@@ -16,3 +16,6 @@ clap.workspace = true
 mshell-cli-style.workspace = true
 mshell-core.workspace = true
 mshell-logging.workspace = true
+
+[lints]
+workspace = true

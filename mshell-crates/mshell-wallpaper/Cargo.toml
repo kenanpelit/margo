@@ -19,3 +19,6 @@ reactive_graph.workspace = true
 relm4.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+
+[lints]
+workspace = true

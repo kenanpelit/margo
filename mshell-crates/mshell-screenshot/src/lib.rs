@@ -18,7 +18,7 @@ use gtk4::glib;
 use image::ImageEncoder;
 use selectors::area_selector::RegionSelection;
 use selectors::{monitor_selector, window_selector};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 #[derive(Debug, Clone)]
@@ -362,10 +362,10 @@ fn finish_with_editor(image: image::RgbaImage) -> Result<ScreenshotResult> {
     }
 }
 
-fn annotated_sibling(path: &PathBuf) -> PathBuf {
+fn annotated_sibling(path: &Path) -> PathBuf {
     let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("shot");
     let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("png");
-    let mut out = path.clone();
+    let mut out = path.to_path_buf();
     out.set_file_name(format!("{stem}-edit.{ext}"));
     out
 }

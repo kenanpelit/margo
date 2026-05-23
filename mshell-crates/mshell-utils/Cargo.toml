@@ -33,3 +33,6 @@ wayle-notification.workspace = true
 wayle-power-profiles.workspace = true
 wayle-weather.workspace = true
 
+
+[lints]
+workspace = true

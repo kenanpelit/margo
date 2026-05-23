@@ -127,11 +127,10 @@ fn default_path() -> PathBuf {
     if let Some(d) = dirs::cache_dir() {
         return d.join("margo").join("launcher_usage.json");
     }
-    if let Ok(d) = std::env::var("XDG_RUNTIME_DIR") {
-        if !d.is_empty() {
+    if let Ok(d) = std::env::var("XDG_RUNTIME_DIR")
+        && !d.is_empty() {
             return PathBuf::from(d).join("margo_launcher_usage.json");
         }
-    }
     PathBuf::from("/tmp/margo_launcher_usage.json")
 }
 

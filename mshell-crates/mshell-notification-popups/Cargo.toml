@@ -20,3 +20,6 @@ reactive_graph.workspace = true
 relm4.workspace = true
 tracing.workspace = true
 wayle-notification.workspace = true
+
+[lints]
+workspace = true

@@ -19,3 +19,5 @@ tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
 wayle-notification.workspace = true
+[lints]
+workspace = true

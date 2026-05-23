@@ -18,3 +18,5 @@ mshell-cli-style.workspace = true
 serde.workspace = true
 tokio.workspace = true
 zbus.workspace = true
+[lints]
+workspace = true

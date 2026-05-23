@@ -53,7 +53,28 @@ version = "0.7.7"
 edition = "2024"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/kenanpelit/margo"
-rust-version = "1.85"
+rust-version = "1.91"
+
+# Clippy lints we accept project-wide (advisory in CI). Allowed
+# deliberately rather than churning intentional code:
+#  - too_many_arguments / type_complexity: relm4 + reactive_stores
+#    signatures and builder fns are intentionally wide / richly typed.
+#  - enum_variant_names: Settings input enums use a uniform `Set*` /
+#    `*Changed` naming on purpose so the message surface reads consistently.
+#  - module_inception: `mod foo` inside `foo.rs` is the house file layout.
+#  - result_large_err / large_enum_variant: the large payloads are config
+#    / theme values on cold paths (load, theme switch) — boxing them buys
+#    nothing measurable and only adds indirection.
+#  - doc_*: the aligned doc-comment list style is intentional.
+[workspace.lints.clippy]
+too_many_arguments = "allow"
+type_complexity = "allow"
+enum_variant_names = "allow"
+module_inception = "allow"
+result_large_err = "allow"
+large_enum_variant = "allow"
+doc_overindented_list_items = "allow"
+doc_lazy_continuation = "allow"
 
 [workspace.dependencies]
 # Core (shared by every crate)

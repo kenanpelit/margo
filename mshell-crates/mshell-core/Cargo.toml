@@ -38,3 +38,5 @@ wayle-audio.workspace = true
 wayle-brightness.workspace = true
 wayle-weather.workspace = true
 zbus.workspace = true
+[lints]
+workspace = true

@@ -143,13 +143,10 @@ impl Provider for TagsProvider {
                     id: format!("tags:{n}"),
                     name: format!("{glyph}Tag {n}"),
                     description: descr,
-                    icon: if active {
-                        "view-grid-symbolic".into()
-                    } else if occupied {
-                        "view-grid-symbolic".into()
-                    } else {
-                        "view-grid-symbolic".into()
-                    },
+                    // Same glyph regardless of state — the active /
+                    // occupied / empty distinction is carried by the
+                    // description + score, not the icon.
+                    icon: "view-grid-symbolic".into(),
                     icon_is_path: false,
                     // Ordered 1..9; score puts tag 1 at top.
                     score: 200.0 - idx as f64,

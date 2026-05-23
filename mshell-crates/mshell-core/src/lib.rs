@@ -59,11 +59,10 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                     None
                 }
             });
-            if let Some(msg) = msg {
-                if msg.starts_with("Child name '") && msg.contains("not found in GtkStack") {
+            if let Some(msg) = msg
+                && msg.starts_with("Child name '") && msg.contains("not found in GtkStack") {
                     return glib::LogWriterOutput::Handled;
                 }
-            }
         }
         glib::log_writer_default(level, fields)
     });

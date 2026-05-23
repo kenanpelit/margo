@@ -32,3 +32,6 @@ serde_json = "1"
 # Used for sealing the password buffer so it never lingers in memory
 # after auth.
 zeroize = "1.8"
+
+[lints]
+workspace = true

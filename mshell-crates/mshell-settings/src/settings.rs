@@ -505,11 +505,10 @@ impl Component for SettingsWindowModel {
                 let mut buttons: Vec<gtk::ToggleButton> = Vec::new();
                 let mut child = sidebar.first_child();
                 while let Some(c) = child {
-                    if let Ok(btn) = c.clone().downcast::<gtk::ToggleButton>() {
-                        if btn.has_css_class("sidebar-button") {
+                    if let Ok(btn) = c.clone().downcast::<gtk::ToggleButton>()
+                        && btn.has_css_class("sidebar-button") {
                             buttons.push(btn);
                         }
-                    }
                     child = c.next_sibling();
                 }
                 if buttons.is_empty() {
@@ -535,12 +534,11 @@ impl Component for SettingsWindowModel {
                 if let Some(sidebar) = sidebar_weak2.upgrade() {
                     let mut child = sidebar.first_child();
                     while let Some(c) = child {
-                        if let Ok(btn) = c.clone().downcast::<gtk::ToggleButton>() {
-                            if btn.has_css_class("sidebar-button") {
+                        if let Ok(btn) = c.clone().downcast::<gtk::ToggleButton>()
+                            && btn.has_css_class("sidebar-button") {
                                 btn.grab_focus();
                                 break;
                             }
-                        }
                         child = c.next_sibling();
                     }
                 }
