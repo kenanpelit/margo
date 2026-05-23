@@ -124,6 +124,11 @@ pub(crate) struct MenuModel {
     /// passed to `build_widget` so weather stacks all sections there and
     /// stays paged everywhere else (notably the dashboard).
     weather_all_in_one: bool,
+    /// `false` until the content widget tree has been built. Building is
+    /// deferred to the first reveal (the menu's `map`), so menus the user
+    /// never opens never construct their GTK trees — otherwise ~30 menus
+    /// per monitor build their full content at shell startup.
+    built: bool,
     _effects: EffectScope,
 }
 
@@ -908,6 +913,7 @@ impl Component for MenuModel {
             maximum_height: 0,
             css_class,
             weather_all_in_one: matches!(params.menu_type, MenuType::Weather),
+            built: false,
             _effects: effects,
         };
 
@@ -926,6 +932,21 @@ impl Component for MenuModel {
             widgets.widget_container.set_margin_all(8);
         }
 
+        // Lazy content build. The menu lives inside a Revealer→Stack, so
+        // GTK maps its root only when the menu is actually shown — `map`
+        // / `unmap` therefore mark open/close for *every* menu, regardless
+        // of whether the frame's per-name RevealChanged dispatch covers
+        // it. The first `map` builds the content (deferred from init);
+        // both also drive the inner widgets' reveal state.
+        let map_sender = sender.clone();
+        widgets.scrolled_window.connect_map(move |_| {
+            map_sender.input(MenuInput::RevealChanged(true));
+        });
+        let unmap_sender = sender.clone();
+        widgets.scrolled_window.connect_unmap(move |_| {
+            unmap_sender.input(MenuInput::RevealChanged(false));
+        });
+
         ComponentParts { model, widgets }
     }
 
@@ -938,6 +959,12 @@ impl Component for MenuModel {
     ) {
         match message {
             MenuInput::RevealChanged(visible) => {
+                // Build the content tree on first reveal (deferred from
+                // init) — most menus are never opened, so this skips ~30
+                // GTK tree builds per monitor at startup.
+                if visible && !self.built {
+                    self.build_content(&widgets.widget_container, &sender);
+                }
                 // Let widgets that care know they are being revealed
                 for controller in &self.widget_controllers {
                     if let Some(controller) =
@@ -1079,23 +1106,14 @@ impl Component for MenuModel {
                 // layer re-notifies with an identical widget list —
                 // see the `widget_kinds` field comment.
                 if self.widget_kinds != menu_widgets {
-                    clear_box(&widgets.widget_container);
-                    self.widget_controllers.clear();
-                    for item in &menu_widgets {
-                        // The standalone weather menu stacks all sections;
-                        // every other host (the dashboard) keeps the
-                        // compact paged weather view.
-                        let weather_all_in_one = self.weather_all_in_one;
-                        let controller = build_widget(
-                            item,
-                            gtk::Orientation::Vertical,
-                            &sender,
-                            weather_all_in_one,
-                        );
-                        widgets.widget_container.append(&controller.root_widget());
-                        self.widget_controllers.push(controller);
-                    }
                     self.widget_kinds = menu_widgets;
+                    // Only build now if the content is already live (a
+                    // config hot-reload while the menu is open). Otherwise
+                    // the build is deferred to the first reveal — see
+                    // `RevealChanged` and the `map` hook in `init`.
+                    if self.built {
+                        self.build_content(&widgets.widget_container, &sender);
+                    }
                 }
             }
             MenuInput::SetMinimumWidth(width) => {
@@ -1148,6 +1166,30 @@ impl Component for MenuModel {
             }
         }
         self.update_view(widgets, sender);
+    }
+}
+
+impl MenuModel {
+    /// (Re)build the content widget tree from `widget_kinds` into the
+    /// container. Called on the first reveal (lazy startup deferral) and
+    /// on config hot-reload while the menu is already open.
+    fn build_content(&mut self, container: &gtk::Box, sender: &ComponentSender<Self>) {
+        clear_box(container);
+        self.widget_controllers.clear();
+        let weather_all_in_one = self.weather_all_in_one;
+        // Move the kinds out so the build loop isn't holding an immutable
+        // borrow of `self` while it pushes into `widget_controllers`.
+        let kinds = std::mem::take(&mut self.widget_kinds);
+        for item in &kinds {
+            // The standalone weather menu stacks all sections; every other
+            // host (the dashboard) keeps the compact paged weather view.
+            let controller =
+                build_widget(item, gtk::Orientation::Vertical, sender, weather_all_in_one);
+            container.append(&controller.root_widget());
+            self.widget_controllers.push(controller);
+        }
+        self.widget_kinds = kinds;
+        self.built = true;
     }
 }
 
