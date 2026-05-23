@@ -396,11 +396,18 @@ impl Component for SettingsWindowModel {
         let (panel_width, panel_height) = match params.monitor.as_ref() {
             Some(monitor) => {
                 let geom = monitor.geometry();
-                let scaled_h = (geom.height() * 3 / 4).max(600);
-                let scaled_w = (scaled_h * 4 / 3).max(780);
-                (scaled_w, scaled_h)
+                // A settings panel wants a comfortable, fixed-ish reading
+                // size — NOT a 1:1 scale with the display. The old rule
+                // (width = height * 4/3) ballooned to ~2160px wide on a 4K
+                // monitor. Take a modest fraction of the monitor and clamp
+                // to a calm range: roomy on 1080p, never sprawling on
+                // 4K / ultrawide. The cap (1080 x 900) is the largest the
+                // sidebar + content actually need to read well.
+                let w = (geom.width() as f64 * 0.52).round() as i32;
+                let h = (geom.height() as f64 * 0.78).round() as i32;
+                (w.clamp(820, 1080), h.clamp(600, 900))
             }
-            None => (780, 600),
+            None => (820, 640),
         };
 
         let general_settings_controller = GeneralSettingsModel::builder()
@@ -525,23 +532,43 @@ impl Component for SettingsWindowModel {
                 glib::Propagation::Stop
             });
             widgets.sidebar_box.add_controller(key_controller);
-            // Land focus on the first sidebar button shortly after
-            // the panel becomes mappable — gives Tab a starting
-            // point inside the sidebar instead of bouncing through
-            // page content first.
+            // Land focus on the active sidebar button every time the
+            // panel is shown — not just once at build. The menu lives in
+            // a Revealer + Stack, so its root maps on each reveal; grabbing
+            // focus here means Tab / arrow keys work from the very first
+            // open without a click. (The prior one-shot idle ran once at
+            // startup while the panel was still hidden, so the focus was
+            // lost and Tab did nothing until you clicked in.) Focus the
+            // *active* button so a deep-linked section keeps its place,
+            // falling back to the first. Deferred to idle so focus lands
+            // after the map / realize settles.
             let sidebar_weak2 = widgets.sidebar_box.downgrade();
-            glib::idle_add_local_once(move || {
-                if let Some(sidebar) = sidebar_weak2.upgrade() {
+            root.connect_map(move |_| {
+                let sidebar_weak2 = sidebar_weak2.clone();
+                glib::idle_add_local_once(move || {
+                    let Some(sidebar) = sidebar_weak2.upgrade() else {
+                        return;
+                    };
                     let mut child = sidebar.first_child();
+                    let mut first: Option<gtk::ToggleButton> = None;
                     while let Some(c) = child {
                         if let Ok(btn) = c.clone().downcast::<gtk::ToggleButton>()
-                            && btn.has_css_class("sidebar-button") {
-                                btn.grab_focus();
-                                break;
+                            && btn.has_css_class("sidebar-button")
+                        {
+                            if first.is_none() {
+                                first = Some(btn.clone());
                             }
+                            if btn.is_active() {
+                                btn.grab_focus();
+                                return;
+                            }
+                        }
                         child = c.next_sibling();
                     }
-                }
+                    if let Some(btn) = first {
+                        btn.grab_focus();
+                    }
+                });
             });
         }
 
