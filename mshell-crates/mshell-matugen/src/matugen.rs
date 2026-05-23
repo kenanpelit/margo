@@ -1,4 +1,4 @@
-use crate::css_mapping::{to_css, to_margo_colors};
+use crate::css_mapping::{to_css, to_margo_colors, to_mlogind_variables};
 use crate::json_struct::{MatugenTheme, MatugenThemeCustomOnly};
 use mshell_config::schema::config::Matugen;
 use relm4::gtk::glib;
@@ -321,6 +321,7 @@ fn read_json_from_child(mut child: std::process::Child) -> MatugenResult {
     let css = match serde_json::from_str::<MatugenTheme>(&json_buf) {
         Ok(theme) => {
             write_margo_colors(&theme);
+            write_mlogind_variables(&theme);
             Ok(to_css(&theme))
         }
         Err(e) => Err(e.into()),
@@ -374,5 +375,28 @@ fn write_margo_colors(theme: &MatugenTheme) {
     {
         Ok(_) => info!("matugen: wrote margo colors.conf + triggered reload"),
         Err(e) => debug!(error = %e, "matugen: mctl reload spawn failed"),
+    }
+}
+
+/// Mirror the palette into `~/.config/margo/mlogind-variables.toml` so the
+/// TUI login manager can match the wallpaper. mlogind runs pre-login as
+/// root and can't read this user file directly, so `mlogind sync-theme`
+/// (run privileged) is what copies it into `/etc/mlogind/variables.toml`.
+/// Best-effort + idempotent, exactly like [`write_margo_colors`].
+fn write_mlogind_variables(theme: &MatugenTheme) {
+    let Some(home) = std::env::var_os("HOME") else {
+        return;
+    };
+    let margo_dir = PathBuf::from(home).join(".config/margo");
+    if !margo_dir.join("config.conf").exists() {
+        return;
+    }
+    let body = to_mlogind_variables(theme);
+    let path = margo_dir.join("mlogind-variables.toml");
+    if std::fs::read_to_string(&path).ok().as_deref() == Some(body.as_str()) {
+        return;
+    }
+    if let Err(e) = std::fs::write(&path, &body) {
+        debug!(error = %e, "matugen: failed to write mlogind-variables.toml");
     }
 }

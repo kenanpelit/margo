@@ -1,6 +1,9 @@
 use std::fs::File;
 use std::io;
-use std::{error::Error, path::Path};
+use std::{
+    error::Error,
+    path::{Path, PathBuf},
+};
 
 use crossterm::{
     execute,
@@ -38,6 +41,47 @@ use self::{
 const DEFAULT_VARIABLES_PATH: &str = "/etc/mlogind/variables.toml";
 const DEFAULT_CONFIG_PATH: &str = "/etc/mlogind/config.toml";
 const PREVIEW_LOG_PATH: &str = "mlogind.log";
+
+/// `mlogind sync-theme`: copy the active margo matugen palette
+/// (`~/.config/margo/mlogind-variables.toml`, written by mshell-matugen on
+/// every theme change) into `/etc/mlogind/variables.toml`, so the
+/// pre-login greeter matches the user's wallpaper. Run privileged; under
+/// sudo the *invoking* user is resolved via `SUDO_USER`.
+fn sync_theme() -> Result<(), Box<dyn Error>> {
+    use uzers::os::unix::UserExt;
+
+    let home: PathBuf = match std::env::var_os("SUDO_USER") {
+        Some(name) => uzers::get_user_by_name(&name)
+            .map(|u| u.home_dir().to_path_buf())
+            .ok_or_else(|| format!("unknown SUDO_USER '{}'", name.to_string_lossy()))?,
+        None => std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .ok_or("neither SUDO_USER nor HOME is set; pass the palette explicitly")?,
+    };
+
+    let src = home.join(".config/margo/mlogind-variables.toml");
+    let dst = Path::new(DEFAULT_VARIABLES_PATH);
+
+    let body = std::fs::read_to_string(&src).map_err(|e| {
+        format!(
+            "cannot read {} ({e}) — apply a margo matugen theme first",
+            src.display()
+        )
+    })?;
+
+    if let Some(parent) = dst.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(dst, &body).map_err(|e| {
+        format!(
+            "cannot write {} ({e}) — run privileged, e.g. `sudo mlogind sync-theme`",
+            dst.display()
+        )
+    })?;
+
+    println!("mlogind: synced palette {} → {}", src.display(), dst.display());
+    Ok(())
+}
 
 fn merge_in_configuration(config: &mut Config, cli: &Cli) {
     let load_variables_path = cli
@@ -184,6 +228,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
             Commands::Version => {
                 println!("{}", env!("CARGO_PKG_VERSION"));
+            }
+            Commands::SyncTheme => {
+                sync_theme()?;
             }
         }
 

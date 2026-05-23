@@ -27,7 +27,11 @@ OPTIONS:
 SUBCOMMANDS:
     cache
     envs
-    help     Print this message or the help of the given subcommand(s)
+    sync-theme   Copy the active margo matugen palette
+                 (~/.config/margo/mlogind-variables.toml) into
+                 /etc/mlogind/variables.toml so the greeter matches the
+                 wallpaper. Run privileged (e.g. `sudo mlogind sync-theme`).
+    help         Print this message or the help of the given subcommand(s)
 "###,
         env!("CARGO_PKG_VERSION"),
         env!("CARGO_PKG_AUTHORS")
@@ -51,6 +55,7 @@ pub enum Commands {
     Cache,
     Help,
     ShowConfig,
+    SyncTheme,
     Version,
 }
 
@@ -98,6 +103,7 @@ impl Cli {
             match (i, arg.trim()) {
                 (0, "envs") => cli.command = Some(Commands::Envs),
                 (0, "cache") => cli.command = Some(Commands::Cache),
+                (0, "sync-theme") => cli.command = Some(Commands::SyncTheme),
                 (0, "help") | (_, "--help") | (_, "-h") => cli.command = Some(Commands::Help),
                 (_, "--version") | (_, "-V") => cli.command = Some(Commands::Version),
                 (_, "--show-config") => cli.command = Some(Commands::ShowConfig),
