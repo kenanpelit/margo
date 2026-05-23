@@ -538,6 +538,11 @@ pub struct MargoState {
     pub display_handle: DisplayHandle,
     pub loop_handle: LoopHandle<'static, MargoState>,
     pub loop_signal: LoopSignal,
+    /// `state.json` write is dirty (a change happened since the last
+    /// flush). Coalesces a burst of per-change writes into one serialize
+    /// per event-loop iteration — see `write_state_file` /
+    /// `flush_state_file_if_dirty`.
+    pub state_dirty: std::cell::Cell<bool>,
     pub clock: Clock<Monotonic>,
     pub should_quit: bool,
     /// Set whenever something dirties the scene. Drained by the udev/winit
@@ -979,6 +984,7 @@ impl MargoState {
             display_handle: dh,
             loop_handle,
             loop_signal,
+            state_dirty: std::cell::Cell::new(false),
             clock: Clock::new(),
             should_quit: false,
             repaint_requested: true,

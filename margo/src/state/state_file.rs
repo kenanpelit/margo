@@ -12,19 +12,31 @@ use super::{state_file_path, MargoState};
 use crate::MAX_TAGS;
 
 impl MargoState {
-    /// Serialise the current state — outputs, clients, layouts —
-    /// to `$XDG_RUNTIME_DIR/margo/state.json` (atomic rename).
-    /// Read by `mctl clients` / `mctl outputs` / the improved
-    /// `mctl status` so they can list richer info than what fits
-    /// in the wire-level dwl-ipc-v2 events.
-    ///
-    /// Best-effort: failures are logged at debug level, never
-    /// surfaced to the user — the file is a side-channel for
-    /// tooling, not a hard correctness requirement.
+    /// Mark `state.json` as needing a rewrite. The write is **coalesced**:
+    /// the actual serialize happens once per event-loop iteration in
+    /// `flush_state_file_if_dirty`, so a burst of changes (one layout
+    /// switch touches focus + windows + tags, each of which calls this)
+    /// serializes the snapshot once instead of N times. The file is a
+    /// tooling side-channel (`mctl clients/outputs/status` + the shell);
+    /// a sub-iteration delay is irrelevant.
     pub fn write_state_file(&self) {
+        self.state_dirty.set(true);
+    }
+
+    /// Serialise the current state — outputs, clients, layouts — to
+    /// `$XDG_RUNTIME_DIR/margo/state.json` (atomic rename) iff a change was
+    /// marked since the last flush. Driven from the compositor's
+    /// event-loop callback, once per iteration.
+    ///
+    /// Best-effort: failures are logged at debug level, never surfaced —
+    /// the file is tooling-only, not a hard correctness requirement.
+    pub fn flush_state_file_if_dirty(&self) {
+        if !self.state_dirty.replace(false) {
+            return;
+        }
         let path = state_file_path();
         if let Err(err) = self.write_state_file_inner(&path) {
-            tracing::debug!(path = %path.display(), error = ?err, "write_state_file failed");
+            tracing::debug!(path = %path.display(), error = ?err, "state.json write failed");
         }
     }
 

@@ -879,6 +879,10 @@ fn main() -> Result<()> {
         if let Err(e) = state.display_handle.flush_clients() {
             error!("flush_clients: {e}");
         }
+        // Coalesced state.json write: a burst of state changes within one
+        // dispatch marks the file dirty repeatedly but serializes it once
+        // here, instead of re-serializing on every individual change.
+        state.flush_state_file_if_dirty();
         // Animation tick — split borrow across fields
         let now = utils::now_ms();
         let animations_changed = {
