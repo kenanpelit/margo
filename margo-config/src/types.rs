@@ -1062,10 +1062,14 @@ impl Default for Config {
             shadows: false,
             shadow_only_floating: true,
             layer_shadows: false,
-            shadows_size: 10,
-            shadows_blur: 15.0,
+            // Wide + soft by default: a low-opacity matugen glow (set via
+            // colors.conf) over a big blur reads as ambient elevation, not
+            // a hard outline. See the `shadows_*` notes in
+            // config.example.conf.
+            shadows_size: 24,
+            shadows_blur: 30.0,
             shadows_position_x: 0,
-            shadows_position_y: 0,
+            shadows_position_y: 4,
 
             repeat_rate: 25,
             repeat_delay: 600,
