@@ -228,12 +228,12 @@ impl Component for GeneralSettingsModel {
                         gtk::Label {
                             add_css_class: "label-medium-bold",
                             set_halign: gtk::Align::Start,
-                            set_label: "Setup wizard",
+                            set_label: "Setup",
                         },
                         gtk::Label {
                             add_css_class: "label-small",
                             set_halign: gtk::Align::Start,
-                            set_label: "Re-open the first-launch wizard to walk through theme, keyboard, wallpaper and more — it writes into the selected profile.",
+                            set_label: "Quick setup — theme, size, clock, wallpaper, profile — on the in-shell Setup page (no separate window).",
                             set_xalign: 0.0,
                             set_wrap: true,
                             set_natural_wrap_mode: gtk::NaturalWrapMode::None,
@@ -242,7 +242,7 @@ impl Component for GeneralSettingsModel {
 
                     gtk::Button {
                         set_css_classes: &["label-medium", "ok-button-primary"],
-                        set_label: "Run setup wizard…",
+                        set_label: "Open Setup",
                         set_valign: gtk::Align::Center,
                         set_hexpand: false,
                         connect_clicked[sender] => move |_| {
@@ -621,15 +621,11 @@ impl Component for GeneralSettingsModel {
                 widgets.profile_dropdown.set_selected(idx);
             }
             GeneralSettingsInput::RunSetupWizardClicked => {
-                // Close the Settings panel first — it's a layer-shell
-                // overlay grabbing the keyboard, so a wizard window opened
-                // under it can't be interacted with. Then fire-and-forget
-                // the standalone wizard (re-run mode); it writes the
-                // selected profile and the reactive store picks it up.
-                crate::close_settings();
-                if let Err(e) = std::process::Command::new("mwizard").arg("--force").spawn() {
-                    tracing::warn!(error = %e, "settings: failed to launch mwizard");
-                }
+                // In-shell setup lives on the Settings → Setup page (a
+                // layer-shell surface that actually takes input), not a
+                // separate floating window. Jump there instead of spawning
+                // the external wizard.
+                crate::open_settings_at_section("setup");
             }
             GeneralSettingsInput::NewProfileClicked => {
                 let dialog = TextEntryDialogModel::builder()

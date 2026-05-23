@@ -58,7 +58,6 @@ pub(crate) struct SetupSettingsModel {
 #[derive(Debug)]
 pub(crate) enum SetupSettingsInput {
     ProfileSelected(Option<String>),
-    RunWizard,
     /// Snapshot the live config into the `active` profile and select it.
     SaveAsActive,
     ThemeSelected(Themes),
@@ -157,16 +156,6 @@ impl Component for SetupSettingsModel {
                                 .and_downcast::<gtk::StringObject>()
                                 .map(|s| s.string().to_string());
                             sender.input(SetupSettingsInput::ProfileSelected(selected));
-                        },
-                    },
-
-                    gtk::Button {
-                        set_css_classes: &["label-medium", "ok-button-primary"],
-                        set_label: "Run full wizard…",
-                        set_valign: gtk::Align::Center,
-                        set_tooltip_text: Some("Open the standalone wizard — also covers keyboard layout and monitors."),
-                        connect_clicked[sender] => move |_| {
-                            sender.input(SetupSettingsInput::RunWizard);
                         },
                     },
                 },
@@ -471,18 +460,6 @@ impl Component for SetupSettingsModel {
                 // stores update, so the dropdown refreshes and selects it.
                 if let Err(e) = config_manager().snapshot_active_as("active") {
                     tracing::warn!(error = ?e, "setup: failed to snapshot 'active' profile");
-                }
-            }
-            SetupSettingsInput::RunWizard => {
-                // Close the Settings panel first. It's a layer-shell
-                // overlay with an exclusive keyboard grab, so a separate
-                // wizard window launched while it's open ends up *under*
-                // it and can't be clicked or typed into. With the panel
-                // dismissed, the floating + open_focused wizard becomes
-                // the top interactive surface.
-                crate::close_settings();
-                if let Err(e) = std::process::Command::new("mwizard").arg("--force").spawn() {
-                    tracing::warn!(error = %e, "setup: failed to launch mwizard");
                 }
             }
             SetupSettingsInput::ThemeSelected(theme) => {
