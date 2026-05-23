@@ -77,6 +77,14 @@ impl Component for PolkitPromptModel {
                             add_css_class: "label-large-bold",
                             set_halign: gtk::Align::Start,
                             set_wrap: true,
+                            // Without a char cap a wrapping label reports its
+                            // full single-line text as natural width, which
+                            // drags the layer-shell window wider than the
+                            // screen (the polkit message contains a long
+                            // `/usr/bin/…` path). Cap it so the window keeps
+                            // its 600px size and the text wraps + grows down.
+                            set_max_width_chars: 50,
+                            set_wrap_mode: gtk::pango::WrapMode::WordChar,
                             #[watch]
                             set_label: &model.message,
                         },
@@ -85,6 +93,8 @@ impl Component for PolkitPromptModel {
                             add_css_class: "label-medium",
                             set_halign: gtk::Align::Start,
                             set_wrap: true,
+                            set_max_width_chars: 50,
+                            set_wrap_mode: gtk::pango::WrapMode::WordChar,
                             #[watch]
                             set_visible: !model.info_text.is_empty(),
                             #[watch]
@@ -100,6 +110,8 @@ impl Component for PolkitPromptModel {
                                 add_css_class: "label-medium-error",
                                 set_halign: gtk::Align::Start,
                                 set_wrap: true,
+                                set_max_width_chars: 50,
+                                set_wrap_mode: gtk::pango::WrapMode::WordChar,
                                 #[watch]
                                 set_label: &model.error_text,
                             },
