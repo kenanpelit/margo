@@ -8,6 +8,7 @@ use crate::launcher_settings::{LauncherSettingsInit, LauncherSettingsModel};
 use crate::menu_settings::menu_settings::{MenuSettingsInit, MenuSettingsModel};
 use crate::notification_settings::{NotificationSettingsInit, NotificationSettingsModel};
 use crate::session_settings::{SessionSettingsInit, SessionSettingsModel};
+use crate::setup_settings::{SetupSettingsInit, SetupSettingsModel};
 use crate::theme_settings::theme_settings::{ThemeSettingsInit, ThemeSettingsModel};
 use crate::wallpaper_settings::{WallpaperSettingsInit, WallpaperSettingsModel};
 use crate::bar_pill_settings::{BarPillKind, BarPillSettingsInit, BarPillSettingsModel};
@@ -22,6 +23,7 @@ use std::rc::Rc;
 
 pub struct SettingsWindowModel {
     general_settings_controller: Controller<GeneralSettingsModel>,
+    setup_settings_controller: Controller<SetupSettingsModel>,
     weather_settings_controller: Controller<WeatherSettingsModel>,
     wallpaper_settings_controller: Controller<WallpaperSettingsModel>,
     theme_settings_controller: Controller<ThemeSettingsModel>,
@@ -182,6 +184,27 @@ impl Component for SettingsWindowModel {
                             gtk::Label {
                                 add_css_class: "label-medium",
                                 set_label: "General",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
+                    #[name = "setup_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("setup"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("emblem-system-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Setup",
                                 set_halign: gtk::Align::Start,
                                 set_hexpand: true,
                             },
@@ -444,6 +467,10 @@ impl Component for SettingsWindowModel {
             .launch(GeneralSettingsInit {})
             .detach();
 
+        let setup_settings_controller = SetupSettingsModel::builder()
+            .launch(SetupSettingsInit {})
+            .detach();
+
         let weather_settings_controller = WeatherSettingsModel::builder()
             .launch(WeatherSettingsInit {})
             .detach();
@@ -498,6 +525,7 @@ impl Component for SettingsWindowModel {
         let search_index: Rc<RefCell<Vec<(String, String)>>> = Rc::new(RefCell::new(
             [
                 ("general", "general"),
+                ("setup", "setup"),
                 ("bar", "bar"),
                 ("display", "display"),
                 ("fonts", "fonts"),
@@ -515,6 +543,7 @@ impl Component for SettingsWindowModel {
 
         let model = SettingsWindowModel {
             general_settings_controller,
+            setup_settings_controller,
             weather_settings_controller,
             wallpaper_settings_controller,
             theme_settings_controller,
@@ -640,6 +669,12 @@ impl Component for SettingsWindowModel {
             model.general_settings_controller.widget(),
             Some("general"),
             "General",
+        );
+
+        widgets.stack.add_titled(
+            model.setup_settings_controller.widget(),
+            Some("setup"),
+            "Setup",
         );
 
         widgets.stack.add_titled(
@@ -1019,6 +1054,7 @@ impl Component for SettingsWindowModel {
                 };
                 let button: Option<&relm4::gtk::ToggleButton> = match section {
                     "general" => Some(&widgets.general_btn),
+                    "setup" => Some(&widgets.setup_btn),
                     "bar" => Some(&widgets.bar_btn),
                     "display" => Some(&widgets.display_btn),
                     "fonts" => Some(&widgets.fonts_btn),

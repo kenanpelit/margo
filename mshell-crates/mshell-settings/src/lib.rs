@@ -27,6 +27,7 @@ mod layout_settings;
 mod menu_settings;
 mod notification_settings;
 mod session_settings;
+mod setup_settings;
 pub mod settings;
 mod system_update_settings;
 mod theme_settings;
@@ -79,7 +80,7 @@ pub fn close_settings() {
 /// external callers can jump to a specific Settings sidebar
 /// section without owning a `Sender<SettingsWindowInput>`. The
 /// backend's argument is the stack-child name
-/// (`general`/`bar`/`display`/`fonts`/`idle`/`menus`/`theme`/
+/// (`general`/`setup`/`bar`/`display`/`fonts`/`idle`/`menus`/`theme`/
 /// `wallpaper`/`widgets`) — anything else is silently ignored
 /// inside the settings widget.
 type SectionBackend = Box<dyn Fn(&str) + Send + Sync + 'static>;
