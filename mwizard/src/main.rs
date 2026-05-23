@@ -32,7 +32,7 @@ use mshell_config::paths::{
     DEFAULT_PROFILE_NAME, active_profile_cache_path, default_config_path, profile_path,
 };
 use mshell_config::schema::config::Config;
-use mshell_config::schema::themes::MatugenMode;
+use mshell_config::schema::themes::{MatugenMode, Themes};
 use relm4::{ComponentParts, ComponentSender, RelmApp, RelmWidgetExt, SimpleComponent, gtk};
 use std::path::PathBuf;
 
@@ -160,6 +160,28 @@ const COMMON_LAYOUTS: &[(&str, &str)] = &[
     ("kr", "한국어"),
 ];
 
+/// Curated theme presets surfaced in the wizard (the full catalogue —
+/// 50+ entries — lives in Settings → Theme). `Wallpaper` is the
+/// matugen-from-wallpaper Material You mode; the rest are fixed palettes.
+const WIZARD_THEMES: &[(Themes, &str)] = &[
+    (Themes::Wallpaper, "Wallpaper (Material You)"),
+    (Themes::Default, "Default"),
+    (Themes::Margo, "Margo"),
+    (Themes::Dracula, "Dracula"),
+    (Themes::CatppuccinMocha, "Catppuccin Mocha"),
+    (Themes::GruvboxDarkMedium, "Gruvbox Dark"),
+    (Themes::KanagawaWave, "Kanagawa Wave"),
+    (Themes::Cyberpunk, "Cyberpunk"),
+];
+
+/// Global UI font-scale presets (multiplies every `--font-*` token).
+const WIZARD_FONT_SCALES: &[(f64, &str)] = &[
+    (0.9, "Compact (90%)"),
+    (1.0, "Default (100%)"),
+    (1.1, "Large (110%)"),
+    (1.25, "Larger (125%)"),
+];
+
 /// Wizard-side mirror of every knob the pages can toggle. Folded
 /// into a fresh `Config::default()` on Apply — keeping the user's
 /// choices in a tiny intermediate struct lets the pages emit
@@ -174,6 +196,10 @@ struct Choices {
     /// Optional xkb variant (e.g. `"dvorak"`, `"f"`). Empty
     /// string skips writing the line entirely.
     xkb_variant: String,
+    /// Theme preset (`theme.theme`).
+    theme_scheme: Themes,
+    /// Global UI font scale (`theme.attributes.sizing.font_scale`).
+    font_scale: f64,
     wallpaper_dir: PathBuf,
 }
 
@@ -184,6 +210,8 @@ impl Choices {
             clock_24h: true,
             xkb_layout: detect_default_xkb_layout(),
             xkb_variant: String::new(),
+            theme_scheme: Themes::Wallpaper,
+            font_scale: 1.0,
             wallpaper_dir: dirs::picture_dir()
                 .map(|p| p.join("wallpapers"))
                 .unwrap_or_else(|| {
@@ -255,6 +283,8 @@ enum WizardInput {
     Cancel,
     BaseChanged(ProfileBase),
     MatugenModeChanged(MatugenMode),
+    ThemeSchemeChanged(Themes),
+    FontScaleChanged(f64),
     Clock24hChanged(bool),
     XkbLayoutChanged(String),
     XkbVariantChanged(String),
@@ -400,6 +430,58 @@ impl SimpleComponent for WizardModel {
                             set_orientation: gtk::Orientation::Horizontal,
                             set_spacing: 16,
                             gtk::Label {
+                                set_label: "Theme:",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                            #[name = "theme_dropdown"]
+                            gtk::DropDown {
+                                set_model: Some(&gtk::StringList::new(
+                                    &WIZARD_THEMES.iter().map(|(_, n)| *n).collect::<Vec<_>>(),
+                                )),
+                                #[watch]
+                                set_selected: WIZARD_THEMES
+                                    .iter()
+                                    .position(|(t, _)| *t == model.choices.theme_scheme)
+                                    .unwrap_or(0) as u32,
+                                connect_selected_notify[sender] => move |dd| {
+                                    if let Some((theme, _)) = WIZARD_THEMES.get(dd.selected() as usize) {
+                                        sender.input(WizardInput::ThemeSchemeChanged(*theme));
+                                    }
+                                },
+                            },
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 16,
+                            gtk::Label {
+                                set_label: "Font size:",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                            #[name = "font_scale_dropdown"]
+                            gtk::DropDown {
+                                set_model: Some(&gtk::StringList::new(
+                                    &WIZARD_FONT_SCALES.iter().map(|(_, n)| *n).collect::<Vec<_>>(),
+                                )),
+                                #[watch]
+                                set_selected: WIZARD_FONT_SCALES
+                                    .iter()
+                                    .position(|(s, _)| (*s - model.choices.font_scale).abs() < 0.001)
+                                    .unwrap_or(1) as u32,
+                                connect_selected_notify[sender] => move |dd| {
+                                    if let Some((scale, _)) = WIZARD_FONT_SCALES.get(dd.selected() as usize) {
+                                        sender.input(WizardInput::FontScaleChanged(*scale));
+                                    }
+                                },
+                            },
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 16,
+                            gtk::Label {
                                 set_label: "Clock format:",
                                 set_halign: gtk::Align::Start,
                                 set_hexpand: true,
@@ -417,7 +499,7 @@ impl SimpleComponent for WizardModel {
 
                         gtk::Label {
                             add_css_class: "label-small",
-                            set_label: "Both knobs are live — Settings → Theme will let you tweak the matugen palette, accent tints, and font sizes once mshell is running.",
+                            set_label: "All live — Settings → Theme / Fonts will let you fine-tune the matugen palette, accent tints, and sizes once mshell is running.",
                             set_halign: gtk::Align::Start,
                             set_xalign: 0.0,
                             set_wrap: true,
@@ -585,8 +667,14 @@ impl SimpleComponent for WizardModel {
                         gtk::Label {
                             #[watch]
                             set_label: &format!(
-                                "Color mode:      {:?}\nClock format:    {}\nXkb layout:      {}{}\nWallpaper dir:   {}\nProfile target:  {}\nMargo config:    {}",
+                                "Theme:           {}\nColor mode:      {:?}\nFont size:       {:.0}%\nClock format:    {}\nXkb layout:      {}{}\nWallpaper dir:   {}\nProfile target:  {}\nMargo config:    {}",
+                                WIZARD_THEMES
+                                    .iter()
+                                    .find(|(t, _)| *t == model.choices.theme_scheme)
+                                    .map(|(_, n)| *n)
+                                    .unwrap_or("custom"),
                                 model.choices.matugen_mode,
+                                model.choices.font_scale * 100.0,
                                 if model.choices.clock_24h { "24-hour" } else { "12-hour" },
                                 model.choices.xkb_layout,
                                 if model.choices.xkb_variant.is_empty() {
@@ -718,6 +806,12 @@ impl SimpleComponent for WizardModel {
             WizardInput::MatugenModeChanged(mode) => {
                 self.choices.matugen_mode = mode;
             }
+            WizardInput::ThemeSchemeChanged(theme) => {
+                self.choices.theme_scheme = theme;
+            }
+            WizardInput::FontScaleChanged(scale) => {
+                self.choices.font_scale = scale;
+            }
             WizardInput::Clock24hChanged(v) => {
                 self.choices.clock_24h = v;
             }
@@ -829,6 +923,8 @@ fn apply_choices(choices: &Choices, base: ProfileBase) -> Result<PathBuf> {
     };
     cfg.general.clock_format_24_h = choices.clock_24h;
     cfg.theme.matugen.mode = choices.matugen_mode;
+    cfg.theme.theme = choices.theme_scheme;
+    cfg.theme.attributes.sizing.font_scale = choices.font_scale;
     cfg.wallpaper.wallpaper_dir = choices.wallpaper_dir.display().to_string();
 
     if let Some(parent) = target.parent() {
