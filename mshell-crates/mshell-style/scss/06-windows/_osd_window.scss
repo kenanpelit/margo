@@ -1,6 +1,11 @@
 .osd-window {
-  border: solid var(--border-width) var(--outline);
-  border-radius: var(--radius-window);
-  background-color: var(--surface);
-  padding: 20px;
+  // Floating overlay capsule (DESIGN.md §0.1 surfaces-over-borders): a
+  // raised tonal surface + soft elevation shadow lifts the OSD off
+  // arbitrary content (video, a bright page) — the same idiom as the
+  // corner toast — instead of a hard outline box. Slim: pill corners +
+  // snug vertical padding so it reads as a thin bar, not a chunky panel.
+  border-radius: var(--radius-pill);
+  background-color: var(--surface-container-high);
+  padding: var(--padding-md) var(--padding-lg);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
 }

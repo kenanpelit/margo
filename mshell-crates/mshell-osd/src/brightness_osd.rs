@@ -11,6 +11,7 @@ pub struct BrightnessOsdModel {
     hide_token: WatcherToken,
     icon_name: String,
     slider_value: f64,
+    value_label: String,
     shown_count: u16,
 }
 
@@ -52,8 +53,8 @@ impl Component for BrightnessOsdModel {
 
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
-                set_width_request: 320,
-                set_spacing: 20,
+                set_width_request: 280,
+                set_spacing: 12,
 
                 gtk::Image {
                     add_css_class: "osd-icon",
@@ -69,6 +70,17 @@ impl Component for BrightnessOsdModel {
                     set_range: (0.0, 1.0),
                     #[watch]
                     set_value: model.slider_value,
+                },
+
+                // Numeric level — the value the user is dialling. Fixed
+                // width + tabular figures so the bar doesn't reflow as the
+                // digits change (DESIGN.md §13.7 state continuity).
+                gtk::Label {
+                    add_css_class: "osd-value",
+                    set_width_chars: 4,
+                    set_xalign: 1.0,
+                    #[watch]
+                    set_label: &model.value_label,
                 }
             }
         }
@@ -92,6 +104,7 @@ impl Component for BrightnessOsdModel {
             hide_token: WatcherToken::new(),
             icon_name: "brightness-medium-symbolic".to_string(),
             slider_value: 0.0,
+            value_label: "0%".to_string(),
             shown_count: 0,
         };
 
@@ -117,6 +130,7 @@ impl Component for BrightnessOsdModel {
 
                         self.icon_name = get_brightness_icon(brightness.value()).to_string();
                         self.slider_value = brightness.fraction();
+                        self.value_label = format!("{}%", brightness.value().round() as i32);
 
                         let token = self.hide_token.reset();
                         sender.command(|out, shutdown| {

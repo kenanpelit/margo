@@ -1,4 +1,22 @@
 .osd-icon {
   color: var(--on-surface);
-  -gtk-icon-size: 48px;
+  // Slimmed from 48 → --icon-md (24): the oversized glyph was what made
+  // the OSD feel chunky. At 24 it balances the 6px bar + value readout.
+  -gtk-icon-size: var(--icon-md);
+}
+
+// Numeric level on the volume / brightness OSD — the value the user is
+// dialling. --on-surface (it's the point of the OSD, not metadata) and
+// tabular figures so the readout's width is stable as digits change.
+.osd-value {
+  color: var(--on-surface);
+  font-size: var(--font-md);
+  font-variant-numeric: tabular-nums;
+}
+
+// Slim the shared progress primitive inside the OSD capsule — the global
+// trough is 8px; the OSD reads cleaner at 6px, in step with the thinner
+// icon (the media player scopes its own slimmer trough the same way).
+.osd-window .ok-progress-bar trough {
+  min-height: 6px;
 }
