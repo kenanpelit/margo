@@ -56,7 +56,10 @@
 }
 
 .media-player-bar-cover {
-  border-radius: 4px;
+  // On the shape scale (DESIGN.md §1) — the smallest token (--radius-xs,
+  // 8px), proportionally below the menu cover's --radius-md; no arbitrary
+  // off-scale literal.
+  border-radius: var(--radius-xs);
   background-color: var(--surface-container-high);
 }
 
