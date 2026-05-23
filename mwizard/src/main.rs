@@ -72,7 +72,13 @@ fn main() {
         return;
     }
 
-    let app = RelmApp::new("com.margo.mwizard");
+    // `--force` (and any other CLI flag) is for clap above — GtkApplication
+    // must NOT also try to parse it, or GLib aborts with
+    // "Unknown option --force" before the window ever opens (this is also
+    // why the Settings "Run setup wizard" button appeared to do nothing:
+    // it spawned `mwizard --force`, which died instantly). Hand GTK an
+    // empty argv so it only sees the program itself.
+    let app = RelmApp::new("com.margo.mwizard").with_args(Vec::new());
     // Theme the wizard with the shell's own compiled stylesheet so it
     // looks like part of margo, not a stock GTK dialog. compiled_css()
     // ships a full default palette (DESIGN.md tokens + matugen-baseline
