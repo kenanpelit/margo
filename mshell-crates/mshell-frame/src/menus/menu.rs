@@ -133,6 +133,11 @@ pub(crate) struct MenuModel {
     /// never opens never construct their GTK trees — otherwise ~30 menus
     /// per monitor build their full content at shell startup.
     built: bool,
+    /// `true` only for the wizard menu, whose dedicated widget is built
+    /// lazily on first reveal (via `AddWizardWidget`) instead of from the
+    /// config-driven `widget_kinds`. Screenshare can't do this (it must
+    /// exist before the portal reply lands), so it stays eager.
+    lazy_wizard: bool,
     _effects: EffectScope,
 }
 
@@ -391,7 +396,10 @@ impl Component for MenuModel {
             }
             MenuType::Wizard => {
                 css_class = "wizard-menu".to_string();
-                sender.input(MenuInput::AddWizardWidget);
+                // Built lazily on first reveal (see `lazy_wizard` +
+                // RevealChanged) — no eager AddWizardWidget here, so the
+                // 8-page Stack + its startup nmcli scan only happen when
+                // the user actually opens the wizard.
             }
             MenuType::Ufw => {
                 css_class = "ufw-menu".to_string();
@@ -923,6 +931,7 @@ impl Component for MenuModel {
             css_class,
             weather_all_in_one: matches!(params.menu_type, MenuType::Weather),
             built: false,
+            lazy_wizard: matches!(params.menu_type, MenuType::Wizard),
             _effects: effects,
         };
 
@@ -972,7 +981,13 @@ impl Component for MenuModel {
                 // init) — most menus are never opened, so this skips ~30
                 // GTK tree builds per monitor at startup.
                 if visible && !self.built {
-                    self.build_content(&widgets.widget_container, &sender);
+                    if self.lazy_wizard {
+                        // Dedicated widget, not config-driven: build it
+                        // (sets `built`) instead of the widget_kinds path.
+                        sender.input(MenuInput::AddWizardWidget);
+                    } else {
+                        self.build_content(&widgets.widget_container, &sender);
+                    }
                 }
                 // Let widgets that care know they are being revealed
                 for controller in &self.widget_controllers {
