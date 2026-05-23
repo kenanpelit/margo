@@ -29,11 +29,12 @@
 use crate::bars::bar_widgets::podman::{PodmanSummary, fetch_podman_summary};
 use relm4::gtk::prelude::{BoxExt, ButtonExt, ListBoxRowExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tracing::warn;
 
 const REFRESH_INTERVAL: Duration = Duration::from_secs(60);
-const STARTUP_DELAY: Duration = Duration::from_millis(250);
 const POST_ACTION_DELAY: Duration = Duration::from_millis(500);
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -75,6 +76,11 @@ pub(crate) struct PodmanMenuWidgetModel {
     images_list: gtk::ListBox,
     pods_list: gtk::ListBox,
     error_banner: gtk::Label,
+    /// `true` once the poll loop has been spawned (on first reveal).
+    poll_started: bool,
+    /// Shared with the poll loop; gates the `podman` probe so it only
+    /// runs while the panel is visible.
+    visible: Arc<AtomicBool>,
 }
 
 impl std::fmt::Debug for PodmanMenuWidgetModel {
@@ -90,6 +96,10 @@ pub(crate) enum PodmanMenuWidgetInput {
     RefreshNow,
     /// `podman <subcmd…>` — runs the command then triggers a refresh.
     RunPodman(Vec<String>),
+    /// Sent by the host menu on show/hide. The `podman ps`/`images`/`pods`
+    /// poll is started lazily on first reveal, so a menu the user never
+    /// opens spawns no podman subprocesses.
+    ParentRevealChanged(bool),
 }
 
 #[derive(Debug)]
@@ -224,24 +234,9 @@ impl Component for PodmanMenuWidgetModel {
         let pods_list_widget = gtk::ListBox::new();
         let error_banner_widget = gtk::Label::new(None);
 
-        sender.command(|out, shutdown| {
-            async move {
-                let shutdown_fut = shutdown.wait();
-                tokio::pin!(shutdown_fut);
-                let mut first = true;
-                loop {
-                    let delay = if first { STARTUP_DELAY } else { REFRESH_INTERVAL };
-                    first = false;
-                    tokio::select! {
-                        () = &mut shutdown_fut => break,
-                        _ = tokio::time::sleep(delay) => {}
-                    }
-                    let s = fetch_panel_state().await;
-                    let _ = out.send(PodmanMenuWidgetCommandOutput::Refreshed(s));
-                }
-            }
-        });
-
+        // The poll loop is started lazily on first reveal — see
+        // `ParentRevealChanged` — so a menu the user never opens spawns
+        // no `podman` subprocesses.
         let model = PodmanMenuWidgetModel {
             state: PodmanPanelState::default(),
             header_counter: header_counter_widget.clone(),
@@ -249,6 +244,8 @@ impl Component for PodmanMenuWidgetModel {
             images_list: images_list_widget.clone(),
             pods_list: pods_list_widget.clone(),
             error_banner: error_banner_widget.clone(),
+            poll_started: false,
+            visible: Arc::new(AtomicBool::new(false)),
         };
 
         let widgets = view_output!();
@@ -286,6 +283,16 @@ impl Component for PodmanMenuWidgetModel {
                     let _ = out.send(PodmanMenuWidgetCommandOutput::Refreshed(s));
                 });
             }
+            PodmanMenuWidgetInput::ParentRevealChanged(visible) => {
+                self.visible.store(visible, Ordering::Relaxed);
+                if visible {
+                    if !self.poll_started {
+                        self.poll_started = true;
+                        start_polling(&sender, self.visible.clone());
+                    }
+                    sender.input(PodmanMenuWidgetInput::RefreshNow);
+                }
+            }
         }
     }
 
@@ -305,6 +312,26 @@ impl Component for PodmanMenuWidgetModel {
             }
         }
     }
+}
+
+/// Spawn the perpetual poll loop. Started lazily on first reveal; the
+/// `podman` probe is gated on `visible`, so while the panel is hidden
+/// the loop only does a cheap timer wake — no subprocess spawn.
+fn start_polling(sender: &ComponentSender<PodmanMenuWidgetModel>, visible: Arc<AtomicBool>) {
+    sender.command(move |out, shutdown| async move {
+        let shutdown_fut = shutdown.wait();
+        tokio::pin!(shutdown_fut);
+        loop {
+            tokio::select! {
+                () = &mut shutdown_fut => break,
+                _ = tokio::time::sleep(REFRESH_INTERVAL) => {}
+            }
+            if visible.load(Ordering::Relaxed) {
+                let s = fetch_panel_state().await;
+                let _ = out.send(PodmanMenuWidgetCommandOutput::Refreshed(s));
+            }
+        }
+    });
 }
 
 fn sync_view(model: &PodmanMenuWidgetModel, sender: &ComponentSender<PodmanMenuWidgetModel>) {

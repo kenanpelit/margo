@@ -10,6 +10,15 @@ use crate::menus::menu_widgets::bluetooth::bluetooth_menu_widget::{
     BluetoothMenuWidgetInput, BluetoothMenuWidgetModel,
 };
 use crate::menus::menu_widgets::clipboard::clipboard::{ClipboardInput, ClipboardModel};
+use crate::menus::menu_widgets::dns::dns_menu_widget::{DnsMenuWidgetInput, DnsMenuWidgetModel};
+use crate::menus::menu_widgets::ip::ip_menu_widget::{IpMenuWidgetInput, IpMenuWidgetModel};
+use crate::menus::menu_widgets::network::network_menu_widget::{
+    NetworkMenuWidgetInput, NetworkMenuWidgetModel,
+};
+use crate::menus::menu_widgets::podman::podman_menu_widget::{
+    PodmanMenuWidgetInput, PodmanMenuWidgetModel,
+};
+use crate::menus::menu_widgets::ufw::ufw_menu_widget::{UfwMenuWidgetInput, UfwMenuWidgetModel};
 use crate::menus::menu_widgets::system_update::system_update_menu_widget::{
     SystemUpdateMenuWidgetInput, SystemUpdateMenuWidgetModel,
 };
@@ -1009,6 +1018,46 @@ impl Component for MenuModel {
                         controller
                             .sender()
                             .send(SystemUpdateMenuWidgetInput::ParentRevealChanged(visible))
+                            .ok();
+                    }
+                    if let Some(controller) =
+                        controller.downcast_ref::<Controller<IpMenuWidgetModel>>()
+                    {
+                        controller
+                            .sender()
+                            .send(IpMenuWidgetInput::ParentRevealChanged(visible))
+                            .ok();
+                    }
+                    if let Some(controller) =
+                        controller.downcast_ref::<Controller<DnsMenuWidgetModel>>()
+                    {
+                        controller
+                            .sender()
+                            .send(DnsMenuWidgetInput::ParentRevealChanged(visible))
+                            .ok();
+                    }
+                    if let Some(controller) =
+                        controller.downcast_ref::<Controller<UfwMenuWidgetModel>>()
+                    {
+                        controller
+                            .sender()
+                            .send(UfwMenuWidgetInput::ParentRevealChanged(visible))
+                            .ok();
+                    }
+                    if let Some(controller) =
+                        controller.downcast_ref::<Controller<PodmanMenuWidgetModel>>()
+                    {
+                        controller
+                            .sender()
+                            .send(PodmanMenuWidgetInput::ParentRevealChanged(visible))
+                            .ok();
+                    }
+                    if let Some(controller) =
+                        controller.downcast_ref::<Controller<NetworkMenuWidgetModel>>()
+                    {
+                        controller
+                            .sender()
+                            .send(NetworkMenuWidgetInput::ParentRevealChanged(visible))
                             .ok();
                     }
                 }

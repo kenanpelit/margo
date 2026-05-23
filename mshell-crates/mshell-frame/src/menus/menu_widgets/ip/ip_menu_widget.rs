@@ -13,11 +13,12 @@
 use crate::bars::bar_widgets::ip::{FetchState, IpInfo, IpSnapshot, fetch_snapshot};
 use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tracing::warn;
 
 const REFRESH_INTERVAL: Duration = Duration::from_secs(300);
-const STARTUP_DELAY: Duration = Duration::from_millis(250);
 
 pub(crate) struct IpMenuWidgetModel {
     snapshot: IpSnapshot,
@@ -29,6 +30,11 @@ pub(crate) struct IpMenuWidgetModel {
     detail_values: Vec<(&'static str, gtk::Label)>,
     copy_button: gtk::Button,
     open_button: gtk::Button,
+    /// `true` once the refresh loop has been spawned (on first reveal).
+    poll_started: bool,
+    /// Shared with the refresh loop; gates the network fetch so it only
+    /// runs while the panel is actually visible.
+    visible: Arc<AtomicBool>,
 }
 
 impl std::fmt::Debug for IpMenuWidgetModel {
@@ -44,6 +50,10 @@ pub(crate) enum IpMenuWidgetInput {
     RefreshNow,
     CopyIp,
     OpenInBrowser,
+    /// Sent by the host menu when it is shown/hidden. The perpetual
+    /// refresh loop is started lazily on first reveal, so a menu the
+    /// user never opens performs no public-IP network requests.
+    ParentRevealChanged(bool),
 }
 
 #[derive(Debug)]
@@ -179,24 +189,9 @@ impl Component for IpMenuWidgetModel {
             detail_values.push((caption, value));
         }
 
-        sender.command(|out, shutdown| {
-            async move {
-                let shutdown_fut = shutdown.wait();
-                tokio::pin!(shutdown_fut);
-                let mut first = true;
-                loop {
-                    let delay = if first { STARTUP_DELAY } else { REFRESH_INTERVAL };
-                    first = false;
-                    tokio::select! {
-                        () = &mut shutdown_fut => break,
-                        _ = tokio::time::sleep(delay) => {}
-                    }
-                    let snap = fetch_snapshot().await;
-                    let _ = out.send(IpMenuWidgetCommandOutput::Refreshed(snap));
-                }
-            }
-        });
-
+        // The refresh loop is *not* started here — it spawns lazily on
+        // first reveal (see `ParentRevealChanged`), so a menu the user
+        // never opens issues zero public-IP network requests.
         let model = IpMenuWidgetModel {
             snapshot: IpSnapshot::default(),
             ip_label: ip_label_widget.clone(),
@@ -204,6 +199,8 @@ impl Component for IpMenuWidgetModel {
             detail_values,
             copy_button: copy_button_widget.clone(),
             open_button: open_button_widget.clone(),
+            poll_started: false,
+            visible: Arc::new(AtomicBool::new(false)),
         };
 
         let widgets = view_output!();
@@ -224,6 +221,18 @@ impl Component for IpMenuWidgetModel {
                     let snap = fetch_snapshot().await;
                     let _ = out.send(IpMenuWidgetCommandOutput::Refreshed(snap));
                 });
+            }
+            IpMenuWidgetInput::ParentRevealChanged(visible) => {
+                self.visible.store(visible, Ordering::Relaxed);
+                if visible {
+                    if !self.poll_started {
+                        self.poll_started = true;
+                        start_polling(&sender, self.visible.clone());
+                    }
+                    // Fresh data the moment the panel opens, without
+                    // waiting for the next interval tick.
+                    sender.input(IpMenuWidgetInput::RefreshNow);
+                }
             }
             IpMenuWidgetInput::CopyIp => {
                 if let Some(ip) = self.snapshot.info.as_ref().map(|i| i.ip.clone())
@@ -280,6 +289,26 @@ impl Component for IpMenuWidgetModel {
             }
         }
     }
+}
+
+/// Spawn the perpetual refresh loop. Started lazily on first reveal.
+/// The fetch is gated on `visible`, so while the panel is hidden the
+/// loop only does a cheap timer wake — no network request.
+fn start_polling(sender: &ComponentSender<IpMenuWidgetModel>, visible: Arc<AtomicBool>) {
+    sender.command(move |out, shutdown| async move {
+        let shutdown_fut = shutdown.wait();
+        tokio::pin!(shutdown_fut);
+        loop {
+            tokio::select! {
+                () = &mut shutdown_fut => break,
+                _ = tokio::time::sleep(REFRESH_INTERVAL) => {}
+            }
+            if visible.load(Ordering::Relaxed) {
+                let snap = fetch_snapshot().await;
+                let _ = out.send(IpMenuWidgetCommandOutput::Refreshed(snap));
+            }
+        }
+    });
 }
 
 fn make_detail_row(caption: &str) -> (gtk::Box, gtk::Label) {

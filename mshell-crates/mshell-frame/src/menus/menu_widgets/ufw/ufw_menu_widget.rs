@@ -23,11 +23,12 @@ use relm4::gtk::prelude::{
     BoxExt, ButtonExt, ListBoxRowExt, ObjectExt, OrientableExt, WidgetExt,
 };
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tracing::warn;
 
 const REFRESH_INTERVAL: Duration = Duration::from_secs(120);
-const STARTUP_DELAY: Duration = Duration::from_millis(250);
 const POST_ACTION_DELAY: Duration = Duration::from_millis(500);
 
 pub(crate) struct UfwMenuWidgetModel {
@@ -40,6 +41,11 @@ pub(crate) struct UfwMenuWidgetModel {
     policy_routed: gtk::Label,
     logging_label: gtk::Label,
     rule_list: gtk::ListBox,
+    /// `true` once the status poll loop has been spawned (first reveal).
+    poll_started: bool,
+    /// Shared with the poll loop; gates the probe so it only runs while
+    /// the panel is visible.
+    visible: Arc<AtomicBool>,
 }
 
 impl std::fmt::Debug for UfwMenuWidgetModel {
@@ -55,6 +61,11 @@ pub(crate) enum UfwMenuWidgetInput {
     ToggleEnable(bool),
     DeleteRule(String),
     RefreshNow,
+    /// Sent by the host menu on show/hide. The unprivileged status poll
+    /// is started lazily on first reveal, so a menu the user never opens
+    /// runs no `systemctl is-active` probes. (The privileged pkexec
+    /// probe stays behind the explicit Refresh button — never auto-fired.)
+    ParentRevealChanged(bool),
 }
 
 #[derive(Debug)]
@@ -265,27 +276,10 @@ impl Component for UfwMenuWidgetModel {
             glib::Propagation::Stop
         });
 
-        // Periodic ufw poll. Tied to the menu widget lifetime so a
-        // config reload (which rebuilds menu widgets) gets a fresh
-        // task; the old one shuts down via the shutdown channel.
-        sender.command(|out, shutdown| {
-            async move {
-                let shutdown_fut = shutdown.wait();
-                tokio::pin!(shutdown_fut);
-                let mut first = true;
-                loop {
-                    let delay = if first { STARTUP_DELAY } else { REFRESH_INTERVAL };
-                    first = false;
-                    tokio::select! {
-                        () = &mut shutdown_fut => break,
-                        _ = tokio::time::sleep(delay) => {}
-                    }
-                    let s = fetch_ufw_summary().await;
-                    let _ = out.send(UfwMenuWidgetCommandOutput::Refreshed(s));
-                }
-            }
-        });
-
+        // The status poll is started lazily on first reveal — see
+        // `ParentRevealChanged` — so a menu the user never opens runs no
+        // ufw probes. (Config reload rebuilds the widget, which resets
+        // `poll_started`; the old task shuts down via its channel.)
         let model = UfwMenuWidgetModel {
             summary: UfwSummary::default(),
             status_label: status_label_widget.clone(),
@@ -296,6 +290,8 @@ impl Component for UfwMenuWidgetModel {
             policy_routed: policy_routed_widget.clone(),
             logging_label: logging_label_widget.clone(),
             rule_list: rule_list_widget.clone(),
+            poll_started: false,
+            visible: Arc::new(AtomicBool::new(false)),
         };
 
         let widgets = view_output!();
@@ -335,6 +331,22 @@ impl Component for UfwMenuWidgetModel {
                     let _ = out.send(UfwMenuWidgetCommandOutput::Refreshed(s));
                 });
             }
+            UfwMenuWidgetInput::ParentRevealChanged(visible) => {
+                self.visible.store(visible, Ordering::Relaxed);
+                if visible {
+                    if !self.poll_started {
+                        self.poll_started = true;
+                        start_polling(&sender, self.visible.clone());
+                    }
+                    // Immediate *unprivileged* refresh on open — we never
+                    // auto-trigger the pkexec prompt; that stays behind
+                    // the explicit Refresh button.
+                    sender.command(|out, _shutdown| async move {
+                        let s = fetch_ufw_summary().await;
+                        let _ = out.send(UfwMenuWidgetCommandOutput::Refreshed(s));
+                    });
+                }
+            }
         }
     }
 
@@ -352,6 +364,26 @@ impl Component for UfwMenuWidgetModel {
             }
         }
     }
+}
+
+/// Spawn the perpetual unprivileged status poll. Started lazily on
+/// first reveal; the probe is gated on `visible`, so while the panel is
+/// hidden the loop only does a cheap timer wake.
+fn start_polling(sender: &ComponentSender<UfwMenuWidgetModel>, visible: Arc<AtomicBool>) {
+    sender.command(move |out, shutdown| async move {
+        let shutdown_fut = shutdown.wait();
+        tokio::pin!(shutdown_fut);
+        loop {
+            tokio::select! {
+                () = &mut shutdown_fut => break,
+                _ = tokio::time::sleep(REFRESH_INTERVAL) => {}
+            }
+            if visible.load(Ordering::Relaxed) {
+                let s = fetch_ufw_summary().await;
+                let _ = out.send(UfwMenuWidgetCommandOutput::Refreshed(s));
+            }
+        }
+    });
 }
 
 fn sync_view(model: &UfwMenuWidgetModel, sender: &ComponentSender<UfwMenuWidgetModel>) {

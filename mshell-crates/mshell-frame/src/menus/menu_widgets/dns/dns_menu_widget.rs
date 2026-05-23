@@ -38,11 +38,12 @@
 use crate::bars::bar_widgets::dns::{DnsState, Mode, probe_dns_state};
 use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tracing::warn;
 
 const REFRESH_INTERVAL: Duration = Duration::from_secs(30);
-const STARTUP_DELAY: Duration = Duration::from_millis(250);
 const POST_ACTION_DELAY: Duration = Duration::from_millis(750);
 
 /// Static preset list — matches the upstream plugin's `presets:`
@@ -88,6 +89,11 @@ pub(crate) struct DnsMenuWidgetModel {
     /// Preset apply buttons keyed by preset id — text + class
     /// toggle between "Apply" / "Active".
     preset_apply_buttons: Vec<(String, gtk::Button)>,
+    /// `true` once the poll loop has been spawned (on first reveal).
+    poll_started: bool,
+    /// Shared with the poll loop; gates the probes so they only run
+    /// while the panel is visible.
+    visible: Arc<AtomicBool>,
 }
 
 impl std::fmt::Debug for DnsMenuWidgetModel {
@@ -102,6 +108,10 @@ impl std::fmt::Debug for DnsMenuWidgetModel {
 pub(crate) enum DnsMenuWidgetInput {
     RunAction(String),
     RefreshNow,
+    /// Sent by the host menu on show/hide. The poll loop (which probes
+    /// `sudo -n`, mullvad, resolvectl) is started lazily on first
+    /// reveal, so a menu the user never opens runs no DNS probes.
+    ParentRevealChanged(bool),
 }
 
 #[derive(Debug)]
@@ -268,25 +278,9 @@ impl Component for DnsMenuWidgetModel {
             presets_box.append(&row);
         }
 
-        // Periodic poll bound to widget lifetime.
-        sender.command(|out, shutdown| {
-            async move {
-                let shutdown_fut = shutdown.wait();
-                tokio::pin!(shutdown_fut);
-                let mut first = true;
-                loop {
-                    let delay = if first { STARTUP_DELAY } else { REFRESH_INTERVAL };
-                    first = false;
-                    tokio::select! {
-                        () = &mut shutdown_fut => break,
-                        _ = tokio::time::sleep(delay) => {}
-                    }
-                    let s = probe_dns_state().await;
-                    let _ = out.send(DnsMenuWidgetCommandOutput::Refreshed(s));
-                }
-            }
-        });
-
+        // The poll loop is started lazily on first reveal — see
+        // `ParentRevealChanged` — so a menu the user never opens runs
+        // no DNS / sudo probes.
         let model = DnsMenuWidgetModel {
             state: DnsState::default(),
             badge: badge_widget.clone(),
@@ -295,6 +289,8 @@ impl Component for DnsMenuWidgetModel {
             dns_line: dns_line_widget.clone(),
             action_buttons: action_buttons.clone(),
             preset_apply_buttons: preset_apply_buttons.clone(),
+            poll_started: false,
+            visible: Arc::new(AtomicBool::new(false)),
         };
 
         // Attach the action buttons we built to the actions_box
@@ -325,6 +321,16 @@ impl Component for DnsMenuWidgetModel {
                     let _ = out.send(DnsMenuWidgetCommandOutput::Refreshed(s));
                 });
             }
+            DnsMenuWidgetInput::ParentRevealChanged(visible) => {
+                self.visible.store(visible, Ordering::Relaxed);
+                if visible {
+                    if !self.poll_started {
+                        self.poll_started = true;
+                        start_polling(&sender, self.visible.clone());
+                    }
+                    sender.input(DnsMenuWidgetInput::RefreshNow);
+                }
+            }
         }
     }
 
@@ -344,6 +350,26 @@ impl Component for DnsMenuWidgetModel {
             }
         }
     }
+}
+
+/// Spawn the perpetual poll loop. Started lazily on first reveal; the
+/// probe is gated on `visible`, so while the panel is hidden the loop
+/// only does a cheap timer wake — no DNS / sudo / mullvad probe.
+fn start_polling(sender: &ComponentSender<DnsMenuWidgetModel>, visible: Arc<AtomicBool>) {
+    sender.command(move |out, shutdown| async move {
+        let shutdown_fut = shutdown.wait();
+        tokio::pin!(shutdown_fut);
+        loop {
+            tokio::select! {
+                () = &mut shutdown_fut => break,
+                _ = tokio::time::sleep(REFRESH_INTERVAL) => {}
+            }
+            if visible.load(Ordering::Relaxed) {
+                let s = probe_dns_state().await;
+                let _ = out.send(DnsMenuWidgetCommandOutput::Refreshed(s));
+            }
+        }
+    });
 }
 
 fn make_action_button(label: &str, icon: &str) -> gtk::Button {

@@ -39,6 +39,8 @@ use relm4::gtk::prelude::{
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tracing::warn;
 
@@ -70,6 +72,11 @@ pub(crate) struct NetworkMenuWidgetModel {
     tx_peak_label: gtk::Label,
     rx_hist: Rc<RefCell<Vec<f64>>>,
     tx_hist: Rc<RefCell<Vec<f64>>>,
+    /// `true` once the throughput sampler has been spawned (first reveal).
+    poll_started: bool,
+    /// Shared with the sampler; gates the `/proc/net/dev` read so it
+    /// only samples while the panel is visible.
+    visible: Arc<AtomicBool>,
 }
 
 impl std::fmt::Debug for NetworkMenuWidgetModel {
@@ -86,6 +93,12 @@ pub(crate) enum NetworkMenuWidgetInput {
     Rescan,
     Connect(String),
     Disconnect,
+    /// Sent by the host menu on show/hide. The 2 s `/proc/net/dev`
+    /// throughput sampler is started lazily on first reveal and skips
+    /// its read while hidden, so a menu the user never opens does no
+    /// per-second traffic sampling. (The D-Bus state watchers stay
+    /// live — they are event-driven, not polled.)
+    ParentRevealChanged(bool),
 }
 
 #[derive(Debug)]
@@ -338,28 +351,9 @@ impl Component for NetworkMenuWidgetModel {
                 .set_draw_func(move |a, cr, w, ht| draw_graph(a, cr, w, ht, &h.borrow()));
         }
 
-        // `/proc/net/dev` throughput sampler — its own poll loop,
-        // independent of the D-Bus state watchers.
-        sender.command(|out, shutdown| async move {
-            let shutdown_fut = shutdown.wait();
-            tokio::pin!(shutdown_fut);
-            let mut prev = read_net_totals().await;
-            loop {
-                tokio::select! {
-                    () = &mut shutdown_fut => break,
-                    _ = tokio::time::sleep(SPEED_INTERVAL) => {}
-                }
-                let cur = read_net_totals().await;
-                let secs = SPEED_INTERVAL.as_secs().max(1);
-                let down = cur.0.saturating_sub(prev.0) / secs;
-                let up = cur.1.saturating_sub(prev.1) / secs;
-                prev = cur;
-                let _ = out.send(NetworkMenuWidgetCommandOutput::SpeedTick(SpeedSample {
-                    down_bps: down,
-                    up_bps: up,
-                }));
-            }
-        });
+        // The `/proc/net/dev` throughput sampler is started lazily on
+        // first reveal — see `ParentRevealChanged` — so a menu the user
+        // never opens does no per-second traffic sampling.
 
         let toggle_sender = sender.clone();
         let wifi_switch_signal = wifi_switch_widget.connect_state_set(move |_, want_on| {
@@ -394,6 +388,8 @@ impl Component for NetworkMenuWidgetModel {
             tx_peak_label: tx_peak_label_widget.clone(),
             rx_hist,
             tx_hist,
+            poll_started: false,
+            visible: Arc::new(AtomicBool::new(false)),
         };
         arm_wifi_watchers(&sender, &mut model.wifi_watcher_token);
         arm_wired_watcher(&sender, &mut model.wired_watcher_token);
@@ -439,6 +435,13 @@ impl Component for NetworkMenuWidgetModel {
                         vec!["connection".into(), "down".into(), name],
                         sender.clone(),
                     );
+                }
+            }
+            NetworkMenuWidgetInput::ParentRevealChanged(visible) => {
+                self.visible.store(visible, Ordering::Relaxed);
+                if visible && !self.poll_started {
+                    self.poll_started = true;
+                    start_speed_sampler(&sender, self.visible.clone());
                 }
             }
         }
@@ -490,6 +493,42 @@ impl Component for NetworkMenuWidgetModel {
 /// connectivity / ssid / strength plus the scanned-AP list.
 /// The top-level `spawn_network_watcher` only re-fires on
 /// hot-plug, so this picks up everything in between.
+/// Spawn the `/proc/net/dev` throughput sampler. Started lazily on
+/// first reveal; while the panel is hidden it drops its baseline and
+/// skips the read, so re-revealing warms up cleanly over one interval
+/// instead of emitting a bogus accumulated-bytes spike.
+fn start_speed_sampler(sender: &ComponentSender<NetworkMenuWidgetModel>, visible: Arc<AtomicBool>) {
+    sender.command(move |out, shutdown| async move {
+        let shutdown_fut = shutdown.wait();
+        tokio::pin!(shutdown_fut);
+        let mut prev: Option<(u64, u64)> = None;
+        loop {
+            tokio::select! {
+                () = &mut shutdown_fut => break,
+                _ = tokio::time::sleep(SPEED_INTERVAL) => {}
+            }
+            if !visible.load(Ordering::Relaxed) {
+                // Drop the baseline so the first sample after the next
+                // reveal measures a fresh 2 s window, not the whole
+                // hidden period.
+                prev = None;
+                continue;
+            }
+            let cur = read_net_totals().await;
+            if let Some(p) = prev {
+                let secs = SPEED_INTERVAL.as_secs().max(1);
+                let down = cur.0.saturating_sub(p.0) / secs;
+                let up = cur.1.saturating_sub(p.1) / secs;
+                let _ = out.send(NetworkMenuWidgetCommandOutput::SpeedTick(SpeedSample {
+                    down_bps: down,
+                    up_bps: up,
+                }));
+            }
+            prev = Some(cur);
+        }
+    });
+}
+
 fn arm_wifi_watchers(
     sender: &ComponentSender<NetworkMenuWidgetModel>,
     token: &mut WatcherToken,
