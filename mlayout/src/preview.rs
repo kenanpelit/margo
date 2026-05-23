@@ -148,6 +148,23 @@ const PALETTE_FG: [u8; 18] = [
     255, 255, 255,
 ];
 
+/// The same 18-colour palette as RGB hex (Tailwind 500 family), for GUI
+/// consumers like the Settings layout map. Index matches `PALETTE_BG` and
+/// the `#@ color` directive.
+pub const PALETTE_HEX: [&str; 18] = [
+    "#6b7280", "#ef4444", "#f97316", "#f59e0b", "#eab308", "#84cc16", "#22c55e", "#10b981",
+    "#14b8a6", "#06b6d4", "#0ea5e9", "#3b82f6", "#6366f1", "#8b5cf6", "#a855f7", "#d946ef",
+    "#ec4899", "#f43f5e",
+];
+
+/// Resolve a `#@ color` index to a hex string. `None` hashes `label` the
+/// same way the ASCII preview does, so an unset output still gets a
+/// stable hue that matches what `mlayout preview` shows.
+pub fn color_hex(index: Option<u8>, label: &str) -> &'static str {
+    let idx = index.unwrap_or_else(|| auto_colour(label)) as usize;
+    PALETTE_HEX[idx % PALETTE_HEX.len()]
+}
+
 /// Render the layout as a fixed-height ASCII grid, returning the
 /// rendered string. The grid is laid out so the longest dimension
 /// fits in `cols` columns; rectangles are aspect-correct (column

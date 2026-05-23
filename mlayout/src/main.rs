@@ -156,6 +156,13 @@ enum Cmd {
     /// active layout is set.
     Current,
 
+    /// Print the LIVE monitor configuration as JSON — one object per
+    /// connected output with connector, label, colour, position, size,
+    /// scale, transform and refresh. Read-only (never writes a file or
+    /// reloads); drives the Settings drag-to-arrange editor, which reads
+    /// the current state here and applies edits via `wlr-randr`.
+    Outputs,
+
     /// Switch to layout `<name>` (matched against the file slug,
     /// the `#@ name` directive, or any `#@ shortcut`). Re-runs
     /// `mctl reload` after the swap so margo picks up the change
@@ -256,6 +263,7 @@ fn run() -> Result<()> {
 
     match cli.command {
         Cmd::List { preview, json } => cmd_list(&config_dir, &layouts, preview, json),
+        Cmd::Outputs => cmd_outputs(),
         Cmd::Current => cmd_current(&config_dir, &layouts),
         Cmd::Set { name, no_reload } => cmd_set(&config_dir, &layouts, &name, no_reload),
         Cmd::Next { no_reload } => cmd_cycle(&config_dir, &layouts, 1, no_reload),
@@ -808,7 +816,13 @@ fn cmd_list(
                     "outputs": l.outputs.iter().map(|o| serde_json::json!({
                         "connector": o.connector,
                         "label": o.label,
-                        "color": o.color,
+                        // Resolve the palette index to a hex string so GUI
+                        // consumers (the Settings layout map) get a ready
+                        // colour without re-deriving the palette.
+                        "color": preview::color_hex(
+                            o.color,
+                            o.label.as_deref().unwrap_or(&o.connector),
+                        ),
                         "x": o.x,
                         "y": o.y,
                         "width": o.width,
@@ -883,6 +897,42 @@ fn cmd_current(config_dir: &Path, layouts: &[Layout]) -> Result<()> {
             layout.shortcuts.join(", ")
         );
     }
+    Ok(())
+}
+
+/// `mlayout outputs` — emit the live monitor configuration as JSON.
+/// Mirrors the per-output shape of `list --json` (plus scale / transform
+/// / refresh) so the Settings editor can seed itself from the current
+/// arrangement and apply drags back via `wlr-randr`.
+fn cmd_outputs() -> Result<()> {
+    let outputs = capture::capture_via_wlr_randr()?;
+    let arr: Vec<_> = outputs
+        .iter()
+        .map(|o| {
+            let label = capture::auto_label_for_connector(&o.connector)
+                .map(str::to_string)
+                .unwrap_or_else(|| o.connector.clone());
+            serde_json::json!({
+                "connector": o.connector,
+                "label": label,
+                "color": preview::color_hex(
+                    capture::auto_color_for_connector(&o.connector),
+                    &o.connector,
+                ),
+                "x": o.x,
+                "y": o.y,
+                "width": o.width,
+                "height": o.height,
+                "scale": o.scale,
+                "transform": o.transform,
+                "refresh": o.refresh,
+            })
+        })
+        .collect();
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&serde_json::json!({ "outputs": arr }))?
+    );
     Ok(())
 }
 
