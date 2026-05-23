@@ -244,6 +244,10 @@ pub struct Font {
     pub primary: String,
     pub secondary: String,
     pub tertiary: String,
+    /// Monospace family — drives `--font-family-monospace` (clipboard
+    /// previews, the 2FA code chip, other tabular/code-ish bits). Empty
+    /// = the CSS `monospace` generic.
+    pub monospace: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Store, Patch, JsonSchema)]
@@ -263,6 +267,15 @@ pub struct Sizing {
     /// reads small), smaller values shrink. Range is enforced
     /// loosely — values outside `0.5..=2.0` will warp the layout.
     pub settings_font_scale: f64,
+    /// Global UI font scale — multiplies every `--font-*` token across
+    /// the whole shell (bar + menus + dashboard), unlike
+    /// `settings_font_scale` which only touches the Settings panel.
+    /// `1.0` = unscaled; clamped to `0.5..=2.0`.
+    pub font_scale: f64,
+    /// Bar-pill font scale — multiplies `--font-bar` (clock / battery /
+    /// media / network labels) on top of the global `font_scale`.
+    /// `1.0` = unscaled; clamped to `0.5..=2.0`.
+    pub bar_font_scale: f64,
 }
 
 impl Default for Sizing {
@@ -277,6 +290,8 @@ impl Default for Sizing {
             border_width: 2,
             bar_hover_strength: 14,
             settings_font_scale: 1.0,
+            font_scale: 1.0,
+            bar_font_scale: 1.0,
         }
     }
 }

@@ -58,6 +58,9 @@
   // Content card → the card corner --radius-md (16, §12), not the
   // --radius-sm list-row corner button-base hands out by default.
   border-radius: var(--radius-md);
+  // Clipboard entries are arbitrary text — code, paths, tokens — which
+  // align and read best in the configured monospace family.
+  font-family: var(--font-family-monospace);
   // button-base pads every direct child (`> * { padding: --padding-md }`)
   // — meant for a button's icon/label. Here the children are the `#id`
   // title and the preview box, so that rule stacked 8px under the id +

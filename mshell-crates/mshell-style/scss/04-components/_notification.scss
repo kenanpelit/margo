@@ -71,6 +71,8 @@
   background-color: var(--secondary-container, var(--surface-container-highest));
   color: var(--on-secondary-container, var(--on-surface));
   font-variant-numeric: tabular-nums;
+  // A detected code reads cleanest in the configured monospace family.
+  font-family: var(--font-family-monospace);
   transition: background-color var(--motion-fast) var(--ease-standard);
 
   image {

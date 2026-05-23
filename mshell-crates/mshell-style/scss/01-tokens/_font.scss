@@ -1,22 +1,31 @@
 :root {
+  // Global UI font scale — the style manager overrides this from
+  // theme.attributes.sizing.font_scale. Every size token below multiplies
+  // it, so one knob scales the whole shell's typography (hi-DPI). 1 = the
+  // designed sizes.
+  --font-scale: 1;
+  // Bar-pill font scale, set from sizing.bar_font_scale.
+  --font-bar-scale: 1;
+
   // Caption end of the scale — used by the dense menu/dashboard
   // secondary labels, values and chips. Below --font-sm so widgets
-  // stop hardcoding 11/12 px.
-  --font-2xs: 11px;
-  --font-xs: 12px;
-  --font-sm: 14px;
-  --font-md: 16px;
-  --font-lg: 18px;
-  --font-xl: 26px;
-  --font-xxl: 32px;
-  --font-xxxl: 48px;
+  // stop hardcoding 11/12 px. All multiply --font-scale.
+  --font-2xs: calc(11px * var(--font-scale));
+  --font-xs: calc(12px * var(--font-scale));
+  --font-sm: calc(14px * var(--font-scale));
+  --font-md: calc(16px * var(--font-scale));
+  --font-lg: calc(18px * var(--font-scale));
+  --font-xl: calc(26px * var(--font-scale));
+  --font-xxl: calc(32px * var(--font-scale));
+  --font-xxxl: calc(48px * var(--font-scale));
 
   // Bar pill labels (clock / battery / media / active-window /
   // network speed). Single knob so all status pills stay in step
   // and match noctalia's bar-pill font size (~13–14 px). Bumped
   // from the previous 0.82em pill scale because that lands at
-  // ~10.9 px and Maple Mono NF loses hinting that small.
-  --font-bar: 1em;
+  // ~10.9 px and Maple Mono NF loses hinting that small. The
+  // --font-bar-scale knob lets the bar pills size independently.
+  --font-bar: calc(1em * var(--font-bar-scale));
 
   //overridden by style manager
   --font-family-primary: inherit;
@@ -24,6 +33,8 @@
   --font-family-secondary: inherit;
   //overridden by style manager
   --font-family-tertiary: inherit;
+  //overridden by style manager
+  --font-family-monospace: monospace;
 }
 
 * {

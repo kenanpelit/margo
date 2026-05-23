@@ -291,12 +291,15 @@ impl Component for StyleManagerModel {
                         --font-family-primary: {};
                         --font-family-secondary: {};
                         --font-family-tertiary: {};
+                        --font-family-monospace: {};
                         --window-opacity: {};
                         --radius-widget: {}px;
                         --radius-window: {}px;
                         --border-width: {}px;
                         --bar-hover-strength: {}%;
                         --font-scale-settings: {};
+                        --font-scale: {};
+                        --font-bar-scale: {};
                     }}"#,
                     if attributes.font.primary.is_empty() {
                         "inherit"
@@ -313,6 +316,11 @@ impl Component for StyleManagerModel {
                     } else {
                         &attributes.font.tertiary
                     },
+                    if attributes.font.monospace.is_empty() {
+                        "monospace"
+                    } else {
+                        &attributes.font.monospace
+                    },
                     attributes.window_opacity.get(),
                     attributes.sizing.radius_widget,
                     attributes.sizing.radius_window,
@@ -324,6 +332,11 @@ impl Component for StyleManagerModel {
                     // multiplied against px values in
                     // _settings.scss.
                     attributes.sizing.settings_font_scale.clamp(0.5, 2.0),
+                    // Global UI font scale + bar-pill font scale — same
+                    // sane clamp, multiplied against the px font tokens
+                    // / --font-bar in _font.scss.
+                    attributes.sizing.font_scale.clamp(0.5, 2.0),
+                    attributes.sizing.bar_font_scale.clamp(0.5, 2.0),
                 ));
 
                 sender.input(ReloadTheme(
