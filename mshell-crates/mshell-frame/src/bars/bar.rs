@@ -19,6 +19,7 @@ use crate::bars::bar_widgets::margo_tags::{
     MargoTagsInit, MargoTagsModel,
 };
 use crate::bars::bar_widgets::lock::{LockInit, LockModel, LockOutput};
+use crate::bars::bar_widgets::setup::{SetupInit, SetupModel, SetupOutput};
 use crate::bars::bar_widgets::logout::{LogoutInit, LogoutModel};
 use crate::bars::bar_widgets::dns::{DnsInit, DnsModel};
 use crate::bars::bar_widgets::ip::{IpInit, IpModel};
@@ -561,6 +562,13 @@ impl BarModel {
                     .launch(LockInit { orientation })
                     .forward(sender.output_sender(), |msg| match msg {
                         LockOutput::CloseMenu => BarOutput::CloseMenu,
+                    }),
+            ),
+            BarWidget::Setup => Box::new(
+                SetupModel::builder()
+                    .launch(SetupInit { orientation })
+                    .forward(sender.output_sender(), |msg| match msg {
+                        SetupOutput::CloseMenu => BarOutput::CloseMenu,
                     }),
             ),
             BarWidget::Logout => Box::new(

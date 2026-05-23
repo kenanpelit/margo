@@ -53,6 +53,9 @@ pub enum BarWidget {
     ColorPicker,
     Lock,
     Logout,
+    /// Opens the Settings panel straight to the Setup page (the in-shell
+    /// setup wizard) — a layer-shell surface, not a separate window.
+    Setup,
     MediaPlayer,
     Dns,
     Ip,
@@ -112,6 +115,7 @@ impl BarWidget {
             BarWidget::ColorPicker => "ColorPicker",
             BarWidget::Lock => "Lock",
             BarWidget::Logout => "Logout",
+            BarWidget::Setup => "Setup",
             BarWidget::MediaPlayer => "Media Player",
             BarWidget::Dns => "DNS / VPN",
             BarWidget::Ip => "Public IP",
@@ -160,6 +164,7 @@ impl BarWidget {
             BarWidget::ColorPicker,
             BarWidget::Lock,
             BarWidget::Logout,
+            BarWidget::Setup,
             BarWidget::MediaPlayer,
             BarWidget::Dns,
             BarWidget::Ip,

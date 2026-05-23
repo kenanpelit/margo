@@ -19,6 +19,7 @@ pub(crate) mod margo_tag;
 pub(crate) mod margo_tags;
 pub(crate) mod lock;
 pub(crate) mod logout;
+pub(crate) mod setup;
 pub(crate) mod media_player;
 pub(crate) mod dns;
 pub(crate) mod network;
