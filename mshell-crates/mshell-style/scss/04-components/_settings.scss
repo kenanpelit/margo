@@ -202,6 +202,16 @@
     }
 }
 
+// ── Font preview line (Settings → Fonts) ──────────────────────
+// A sample rendered in the chosen typeface, in a quiet recessed tile so
+// it reads as a specimen, not body copy.
+.font-preview {
+    color: var(--on-surface);
+    background-color: var(--surface-container);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+}
+
 // ── Sidebar search box ─────────────────────────────────────────
 // A calm pill query surface (DESIGN.md §12): quiet tonal fill at rest,
 // the focus ring as the only border.

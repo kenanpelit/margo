@@ -155,6 +155,16 @@ impl Component for FontsSettingsModel {
                     },
                 },
 
+                gtk::Label {
+                    add_css_class: "font-preview",
+                    set_halign: gtk::Align::Start,
+                    set_xalign: 0.0,
+                    set_wrap: true,
+                    set_margin_top: 2,
+                    #[watch]
+                    set_markup: &font_preview_markup(&model.active_primary_font),
+                },
+
                 gtk::Separator {},
 
                 // ── Secondary ───────────────────────────────────
@@ -207,6 +217,16 @@ impl Component for FontsSettingsModel {
                     },
                 },
 
+                gtk::Label {
+                    add_css_class: "font-preview",
+                    set_halign: gtk::Align::Start,
+                    set_xalign: 0.0,
+                    set_wrap: true,
+                    set_margin_top: 2,
+                    #[watch]
+                    set_markup: &font_preview_markup(&model.active_secondary_font),
+                },
+
                 gtk::Separator {},
 
                 // ── Tertiary ────────────────────────────────────
@@ -257,6 +277,16 @@ impl Component for FontsSettingsModel {
                             sender.input(FontsSettingsInput::TertiaryFontSelected(selected));
                         } @tertiary_font_handler,
                     },
+                },
+
+                gtk::Label {
+                    add_css_class: "font-preview",
+                    set_halign: gtk::Align::Start,
+                    set_xalign: 0.0,
+                    set_wrap: true,
+                    set_margin_top: 2,
+                    #[watch]
+                    set_markup: &font_preview_markup(&model.active_tertiary_font),
                 },
             },
         }
@@ -354,6 +384,20 @@ impl Component for FontsSettingsModel {
             FontsSettingsInput::SecondaryFontEffect(font) => self.active_secondary_font = font,
             FontsSettingsInput::TertiaryFontEffect(font) => self.active_tertiary_font = font,
         }
+    }
+}
+
+/// Pango markup that renders a sample line in `family` so the user sees
+/// the typeface, not just its name. Empty family → the inherited default.
+fn font_preview_markup(family: &str) -> String {
+    let sample = "The quick brown fox jumps over the lazy dog · 0123456789";
+    if family.is_empty() {
+        format!("<span size=\"large\">{sample}</span>")
+    } else {
+        format!(
+            "<span face=\"{}\" size=\"large\">{sample}</span>",
+            gtk::glib::markup_escape_text(family)
+        )
     }
 }
 
