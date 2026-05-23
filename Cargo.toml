@@ -106,7 +106,11 @@ gtk4 = { version = "0.10", features = ["v4_20"] }
 gtk4-layer-shell = "0.7"
 gtk4-session-lock = { version = "0.3", features = ["v1_2"] }
 relm4 = "0.10"
-cairo-rs = "0.22"
+# Match gtk4 0.10's gtk-rs generation (cairo/pango 0.21). Declaring 0.22
+# here pulled a SECOND full gtk-rs stack (glib/gio/cairo/pango/pangocairo
+# + their proc-macros, all at 0.22) alongside gtk4's 0.21 — pure build-time
+# bloat, and a latent cairo-version mismatch across the gtk4 boundary.
+cairo-rs = "0.21"
 any_spawner = { version = "0.3", features = ["glib", "async-executor"] }
 reactive_graph = { version = "0.2", features = ["effects"] }
 reactive_stores = "0.4"

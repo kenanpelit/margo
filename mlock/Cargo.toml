@@ -23,9 +23,11 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 # Software rendering — cairo/pango. nlock proved this stack works well
 # under ext-session-lock; we adopt it instead of wiring iced for a
 # fundamentally different render path.
-cairo-rs = { version = "0.22", features = ["png"] }
-pango = "0.22"
-pangocairo = "0.22"
+# 0.21 to match gtk4 0.10's gtk-rs generation — keeps the whole workspace
+# on one glib/gio/cairo/pango stack instead of compiling a second 0.22 set.
+cairo-rs = { version = "0.21", features = ["png"] }
+pango = "0.21"
+pangocairo = "0.21"
 # Wallpaper backdrop — decode/blur happens once at lock-time.
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 serde_json = "1"
