@@ -621,9 +621,12 @@ impl Component for GeneralSettingsModel {
                 widgets.profile_dropdown.set_selected(idx);
             }
             GeneralSettingsInput::RunSetupWizardClicked => {
-                // Fire-and-forget the standalone wizard in re-run mode.
-                // It writes the selected profile; the reactive config
-                // store picks up the change when it saves.
+                // Close the Settings panel first — it's a layer-shell
+                // overlay grabbing the keyboard, so a wizard window opened
+                // under it can't be interacted with. Then fire-and-forget
+                // the standalone wizard (re-run mode); it writes the
+                // selected profile and the reactive store picks it up.
+                crate::close_settings();
                 if let Err(e) = std::process::Command::new("mwizard").arg("--force").spawn() {
                     tracing::warn!(error = %e, "settings: failed to launch mwizard");
                 }

@@ -432,6 +432,13 @@ impl Component for SetupSettingsModel {
                 config_manager().set_active_profile(name);
             }
             SetupSettingsInput::RunWizard => {
+                // Close the Settings panel first. It's a layer-shell
+                // overlay with an exclusive keyboard grab, so a separate
+                // wizard window launched while it's open ends up *under*
+                // it and can't be clicked or typed into. With the panel
+                // dismissed, the floating + open_focused wizard becomes
+                // the top interactive surface.
+                crate::close_settings();
                 if let Err(e) = std::process::Command::new("mwizard").arg("--force").spawn() {
                     tracing::warn!(error = %e, "setup: failed to launch mwizard");
                 }
