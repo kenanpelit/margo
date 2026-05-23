@@ -242,7 +242,7 @@ fn main() -> Result<()> {
 
     let args = Args::parse();
 
-    let config = margo_config::parse_config(args.config.as_deref()).unwrap_or_else(|e| {
+    let config = margo_config::parse_config_with_defaults(args.config.as_deref()).unwrap_or_else(|e| {
         error!("config error: {e}, using defaults");
         margo_config::Config::default()
     });

@@ -1124,19 +1124,7 @@ impl Default for Config {
 
             xkb_rules: XkbRules::default(),
 
-            // First-party windows margo should always handle a certain
-            // way, baked in so they work without any user config. The
-            // setup wizard (`mwizard`) is a plain xdg-toplevel, so without
-            // this margo would tile it to the side unfocused; float +
-            // focus it as a centered pop-up.
-            window_rules: vec![WindowRule {
-                id: Some(r"^com\.margo\.mwizard$".to_string()),
-                is_floating: Some(true),
-                open_focused: Some(true),
-                width: 760,
-                height: 620,
-                ..WindowRule::default()
-            }],
+            window_rules: vec![],
             monitor_rules: vec![],
             tag_rules: vec![],
             layer_rules: vec![],

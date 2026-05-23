@@ -88,7 +88,7 @@ use smithay::{
     xwayland::{X11Surface, X11Wm},
 };
 
-use margo_config::{parse_config, Config, WindowRule};
+use margo_config::{parse_config_with_defaults, Config, WindowRule};
 
 /// Filesystem path of the runtime state file consumed by mctl's
 /// rich subcommands (`clients`, `outputs`, the prettier
@@ -1571,7 +1571,7 @@ impl MargoState {
             }
         }
 
-        let new_config = parse_config(self.config_path.as_deref())
+        let new_config = parse_config_with_defaults(self.config_path.as_deref())
             .with_context(|| "reload margo config")?;
 
         // Successful reload — clear any stale diagnostics + overlay

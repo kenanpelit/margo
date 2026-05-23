@@ -17,6 +17,47 @@ pub fn parse_config(path: Option<&Path>) -> Result<Config> {
     Ok(cfg)
 }
 
+/// Like [`parse_config`] but also applies margo's built-in first-party
+/// defaults. The compositor uses this; plain [`parse_config`] stays free
+/// of them so tooling / tests see a faithful view of the user's file.
+pub fn parse_config_with_defaults(path: Option<&Path>) -> Result<Config> {
+    let mut cfg = parse_config(path)?;
+    apply_first_party_defaults(&mut cfg);
+    Ok(cfg)
+}
+
+/// Defaults that shouldn't depend on the user's config because they're
+/// part of the margo suite itself: float + focus the setup wizard, and
+/// run it once at compositor startup. `mwizard` exits immediately once a
+/// shell profile exists, so the exec-once is a no-op after first launch.
+/// Idempotent — skips entries that already match (so a user who added
+/// them by hand won't get duplicates).
+pub fn apply_first_party_defaults(cfg: &mut Config) {
+    const WIZARD_ID: &str = r"^com\.margo\.mwizard$";
+
+    if !cfg
+        .window_rules
+        .iter()
+        .any(|r| r.id.as_deref() == Some(WIZARD_ID))
+    {
+        cfg.window_rules.insert(
+            0,
+            WindowRule {
+                id: Some(WIZARD_ID.to_string()),
+                is_floating: Some(true),
+                open_focused: Some(true),
+                width: 760,
+                height: 620,
+                ..WindowRule::default()
+            },
+        );
+    }
+
+    if !cfg.exec_once.iter().any(|c| c.trim() == "mwizard") {
+        cfg.exec_once.push("mwizard".to_string());
+    }
+}
+
 // ── Path resolution ──────────────────────────────────────────────────────────
 
 fn resolve_config_path(explicit: Option<&Path>) -> Result<PathBuf> {
