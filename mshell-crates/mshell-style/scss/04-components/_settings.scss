@@ -391,6 +391,26 @@
     background-color: var(--surface-container);
 }
 
+// Drag-to-arrange canvas + its monitor tiles (the GNOME-style editor).
+.layout-editor {
+    border-radius: var(--radius-md);
+    background-color: var(--surface-container);
+    border: var(--border-width) solid var(--outline-variant);
+}
+
+.layout-tile {
+    border-radius: var(--radius-sm);
+    background-color: var(--surface-container-highest);
+    border: var(--border-width) solid var(--outline);
+    color: var(--on-surface);
+    padding: 2px;
+    transition: background-color var(--motion-fast) var(--ease-standard);
+
+    &:hover {
+        background-color: unquote("color-mix(in srgb, var(--primary) 18%, var(--surface-container-highest))");
+    }
+}
+
 // Settings → Launcher: one editable script row (name + edit + trash).
 .launcher-script-row {
     padding: 2px 6px;

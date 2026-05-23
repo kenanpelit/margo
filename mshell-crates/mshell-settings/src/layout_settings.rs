@@ -18,7 +18,8 @@
 //! stays in sync after a Refresh.
 
 use relm4::gtk::prelude::{
-    BoxExt, ButtonExt, DrawingAreaExtManual, EditableExt, EntryExt, OrientableExt, WidgetExt,
+    BoxExt, ButtonExt, DrawingAreaExtManual, EditableExt, EntryExt, FixedExt, GestureDragExt,
+    OrientableExt, WidgetExt,
 };
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use serde_json::Value;
@@ -48,6 +49,20 @@ pub(crate) struct OutputEntry {
     pub color: Option<String>,
 }
 
+/// One draggable monitor in the arrange editor. Coordinates are the
+/// real compositor pixel space (what wlr-randr `--pos` expects); the
+/// canvas scales them down for display.
+#[derive(Debug, Clone)]
+pub(crate) struct EditorOut {
+    pub connector: String,
+    pub label: String,
+    pub color: Option<String>,
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct LayoutSettingsModel {
     layouts: Vec<LayoutEntry>,
@@ -57,6 +72,12 @@ pub(crate) struct LayoutSettingsModel {
     /// next successful command clears it.
     last_error: Option<String>,
     new_slug_buf: String,
+    /// Live monitors for the drag-to-arrange editor (from
+    /// `mlayout outputs`). Mutated as the user drags tiles.
+    editor: Vec<EditorOut>,
+    /// True while the dragged arrangement differs from what's applied,
+    /// so the Apply button can light up / dim.
+    editor_dirty: bool,
 }
 
 #[derive(Debug)]
@@ -79,6 +100,14 @@ pub(crate) enum LayoutSettingsInput {
     CommandResult(Result<String, String>),
     /// Result of a fresh `mlayout list --json` parse.
     ListLoaded(LayoutCatalogue),
+    /// Live outputs parsed from `mlayout outputs` — seeds the editor.
+    OutputsLoaded(Vec<EditorOut>),
+    /// A tile was dropped at real coords `(x, y)` — snap + re-layout.
+    OutputMoved(String, i32, i32),
+    /// Apply the dragged arrangement to the live session via wlr-randr.
+    ApplyArrangement,
+    /// Re-read live outputs, discarding un-applied drags.
+    ResetArrangement,
 }
 
 #[derive(Debug, Default)]
@@ -146,6 +175,54 @@ impl Component for LayoutSettingsModel {
                         },
                     },
                 },
+
+                // ── Drag-to-arrange editor ─────────────────────
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Arrange monitors",
+                    set_halign: gtk::Align::Start,
+                },
+                gtk::Label {
+                    add_css_class: "label-small",
+                    set_label: "Drag a screen to reposition it — edges snap to neighbours. Apply sets the live arrangement (via wlr-randr); save it as a named layout below to keep it.",
+                    set_halign: gtk::Align::Start,
+                    set_xalign: 0.0,
+                    set_wrap: true,
+                    set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                },
+
+                #[name = "editor_canvas"]
+                gtk::Fixed {
+                    add_css_class: "layout-editor",
+                    set_size_request: (470, 250),
+                    set_halign: gtk::Align::Center,
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 8,
+                    set_halign: gtk::Align::Center,
+
+                    gtk::Button {
+                        set_css_classes: &["label-medium", "ok-button-primary"],
+                        set_label: "Apply arrangement",
+                        #[watch]
+                        set_sensitive: model.editor_dirty,
+                        set_tooltip_text: Some("Set the live monitor positions to match the editor."),
+                        connect_clicked[sender] => move |_| {
+                            sender.input(LayoutSettingsInput::ApplyArrangement);
+                        },
+                    },
+                    gtk::Button {
+                        set_label: "Reset",
+                        set_tooltip_text: Some("Discard un-applied drags and re-read the live arrangement."),
+                        connect_clicked[sender] => move |_| {
+                            sender.input(LayoutSettingsInput::ResetArrangement);
+                        },
+                    },
+                },
+
+                gtk::Separator {},
 
                 gtk::Label {
                     add_css_class: "label-large-bold",
@@ -297,6 +374,7 @@ impl Component for LayoutSettingsModel {
         let model = LayoutSettingsModel::default();
         let widgets = view_output!();
         sender.input(LayoutSettingsInput::Refresh);
+        spawn_outputs(sender.clone());
         ComponentParts { model, widgets }
     }
 
@@ -368,15 +446,36 @@ impl Component for LayoutSettingsModel {
                     Ok(_) => self.last_error = None,
                     Err(e) => self.last_error = Some(e),
                 }
-                // Either way: re-fetch the list so the active
-                // marker + any new files are reflected.
+                // Re-fetch both the catalogue (active marker + new files)
+                // and the live outputs (so the editor reflects reality).
                 spawn_list(sender.clone());
+                spawn_outputs(sender.clone());
             }
             LayoutSettingsInput::ListLoaded(cat) => {
                 self.active_slug = cat.active;
                 self.config_dir = cat.config_dir;
                 self.layouts = cat.layouts;
                 rebuild_layout_rows(&widgets.layouts_list, &self.layouts, sender.clone());
+            }
+            LayoutSettingsInput::OutputsLoaded(outs) => {
+                self.editor = outs;
+                self.editor_dirty = false;
+                rebuild_editor_canvas(&widgets.editor_canvas, &self.editor, sender.clone());
+            }
+            LayoutSettingsInput::OutputMoved(connector, x, y) => {
+                if let Some(o) = self.editor.iter_mut().find(|o| o.connector == connector) {
+                    o.x = x;
+                    o.y = y;
+                }
+                snap_arrangement(&mut self.editor, &connector);
+                self.editor_dirty = true;
+                rebuild_editor_canvas(&widgets.editor_canvas, &self.editor, sender.clone());
+            }
+            LayoutSettingsInput::ApplyArrangement => {
+                spawn_apply_geometry(self.editor.clone(), sender.clone());
+            }
+            LayoutSettingsInput::ResetArrangement => {
+                spawn_outputs(sender.clone());
             }
         }
 
@@ -508,6 +607,217 @@ fn spawn_cmd(sender: ComponentSender<LayoutSettingsModel>, args: Vec<String>) {
         };
         sender.input(LayoutSettingsInput::CommandResult(outcome));
     });
+}
+
+/// Read the live monitor configuration via `mlayout outputs` and seed
+/// the drag editor.
+fn spawn_outputs(sender: ComponentSender<LayoutSettingsModel>) {
+    relm4::spawn(async move {
+        let out = tokio::process::Command::new("mlayout")
+            .arg("outputs")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .await;
+        let outs = match out {
+            Ok(o) if o.status.success() => {
+                parse_outputs(&String::from_utf8_lossy(&o.stdout)).unwrap_or_default()
+            }
+            Ok(o) => {
+                warn!(status = ?o.status, "mlayout outputs: non-zero exit");
+                Vec::new()
+            }
+            Err(e) => {
+                warn!(error = %e, "mlayout outputs: spawn failed");
+                Vec::new()
+            }
+        };
+        sender.input(LayoutSettingsInput::OutputsLoaded(outs));
+    });
+}
+
+fn parse_outputs(body: &str) -> Option<Vec<EditorOut>> {
+    let v: Value = serde_json::from_str(body).ok()?;
+    let arr = v.get("outputs")?.as_array()?;
+    Some(
+        arr.iter()
+            .filter_map(|o| {
+                Some(EditorOut {
+                    connector: o.get("connector")?.as_str()?.to_string(),
+                    label: o
+                        .get("label")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string(),
+                    color: o.get("color").and_then(Value::as_str).map(str::to_string),
+                    x: o.get("x").and_then(Value::as_i64).unwrap_or(0) as i32,
+                    y: o.get("y").and_then(Value::as_i64).unwrap_or(0) as i32,
+                    width: o.get("width").and_then(Value::as_i64).unwrap_or(0) as i32,
+                    height: o.get("height").and_then(Value::as_i64).unwrap_or(0) as i32,
+                })
+            })
+            .collect(),
+    )
+}
+
+/// Snap the just-moved output's edges to its neighbours so monitors butt
+/// up cleanly instead of leaving gaps/overlaps. Considers, for each other
+/// output, left/right alignment, top/bottom alignment, and side-by-side
+/// adjacency; the nearest candidate within `SNAP` (real px) wins per axis.
+fn snap_arrangement(outs: &mut [EditorOut], moved: &str) {
+    const SNAP: i32 = 150;
+    let Some(mi) = outs.iter().position(|o| o.connector == moved) else {
+        return;
+    };
+    let m = outs[mi].clone();
+    let mut best_x = m.x;
+    let mut best_dx = SNAP + 1;
+    let mut best_y = m.y;
+    let mut best_dy = SNAP + 1;
+    for (i, o) in outs.iter().enumerate() {
+        if i == mi {
+            continue;
+        }
+        // X: align-left, align-right-edge, place-right-of, place-left-of.
+        for cand in [o.x, o.x + o.width - m.width, o.x + o.width, o.x - m.width] {
+            let d = (m.x - cand).abs();
+            if d < best_dx {
+                best_dx = d;
+                best_x = cand;
+            }
+        }
+        for cand in [o.y, o.y + o.height - m.height, o.y + o.height, o.y - m.height] {
+            let d = (m.y - cand).abs();
+            if d < best_dy {
+                best_dy = d;
+                best_y = cand;
+            }
+        }
+    }
+    if best_dx <= SNAP {
+        outs[mi].x = best_x;
+    }
+    if best_dy <= SNAP {
+        outs[mi].y = best_y;
+    }
+}
+
+/// Apply the editor arrangement to the live session via `wlr-randr`
+/// (positions only). Normalises so the top-left output sits at (0,0)
+/// before applying — margo expects a non-negative origin.
+fn spawn_apply_geometry(mut outs: Vec<EditorOut>, sender: ComponentSender<LayoutSettingsModel>) {
+    if outs.is_empty() {
+        return;
+    }
+    let min_x = outs.iter().map(|o| o.x).min().unwrap_or(0);
+    let min_y = outs.iter().map(|o| o.y).min().unwrap_or(0);
+    for o in &mut outs {
+        o.x -= min_x;
+        o.y -= min_y;
+    }
+    relm4::spawn(async move {
+        let mut cmd = tokio::process::Command::new("wlr-randr");
+        for o in &outs {
+            cmd.arg("--output")
+                .arg(&o.connector)
+                .arg("--pos")
+                .arg(format!("{},{}", o.x, o.y));
+        }
+        let res = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output().await;
+        let outcome = match res {
+            Ok(o) if o.status.success() => Ok("apply arrangement".to_string()),
+            Ok(o) => {
+                let err = String::from_utf8_lossy(&o.stderr).trim().to_string();
+                Err(if err.is_empty() {
+                    format!("wlr-randr: exit {}", o.status)
+                } else {
+                    format!("wlr-randr: {err}")
+                })
+            }
+            Err(e) => Err(format!("wlr-randr spawn failed: {e}")),
+        };
+        sender.input(LayoutSettingsInput::CommandResult(outcome));
+    });
+}
+
+/// (Re)build the draggable monitor tiles in the editor `Fixed`, scaled to
+/// fit the canvas. Each tile carries a `GestureDrag` that moves it live
+/// and, on release, reports the new real coordinates for snapping.
+fn rebuild_editor_canvas(
+    fixed: &gtk::Fixed,
+    outs: &[EditorOut],
+    sender: ComponentSender<LayoutSettingsModel>,
+) {
+    while let Some(child) = fixed.first_child() {
+        fixed.remove(&child);
+    }
+    if outs.is_empty() {
+        return;
+    }
+    let (cw, ch, pad) = (470.0_f64, 250.0_f64, 12.0_f64);
+    let min_x = outs.iter().map(|o| o.x).min().unwrap_or(0) as f64;
+    let min_y = outs.iter().map(|o| o.y).min().unwrap_or(0) as f64;
+    let max_x = outs.iter().map(|o| o.x + o.width.max(1)).max().unwrap_or(1) as f64;
+    let max_y = outs.iter().map(|o| o.y + o.height.max(1)).max().unwrap_or(1) as f64;
+    let span_w = (max_x - min_x).max(1.0);
+    let span_h = (max_y - min_y).max(1.0);
+    let s = ((cw - 2.0 * pad) / span_w).min((ch - 2.0 * pad) / span_h);
+    let off_x = (cw - span_w * s) / 2.0;
+    let off_y = (ch - span_h * s) / 2.0;
+
+    for o in outs {
+        let cx = off_x + (o.x as f64 - min_x) * s;
+        let cy = off_y + (o.y as f64 - min_y) * s;
+        let tw = (o.width as f64 * s).max(28.0);
+        let th = (o.height as f64 * s).max(20.0);
+        let tile = build_tile(o, tw, th);
+        fixed.put(&tile, cx, cy);
+
+        let drag = gtk::GestureDrag::new();
+        let f_up = fixed.clone();
+        let t_up = tile.clone();
+        drag.connect_drag_update(move |_, ox, oy| {
+            f_up.move_(&t_up, cx + ox, cy + oy);
+        });
+        let conn = o.connector.clone();
+        let s_end = sender.clone();
+        drag.connect_drag_end(move |_, ox, oy| {
+            let rx = (min_x + (cx + ox - off_x) / s).round() as i32;
+            let ry = (min_y + (cy + oy - off_y) / s).round() as i32;
+            s_end.input(LayoutSettingsInput::OutputMoved(conn.clone(), rx, ry));
+        });
+        tile.add_controller(drag);
+    }
+}
+
+fn build_tile(o: &EditorOut, tw: f64, th: f64) -> gtk::Box {
+    let tile = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    tile.add_css_class("layout-tile");
+    tile.set_size_request(tw as i32, th as i32);
+    tile.set_cursor_from_name(Some("grab"));
+
+    let dot = o.color.as_deref().unwrap_or("#888888");
+    let name = if o.label.is_empty() {
+        o.connector.clone()
+    } else {
+        o.label.clone()
+    };
+    let label = gtk::Label::new(None);
+    label.set_use_markup(true);
+    label.set_justify(gtk::Justification::Center);
+    label.set_halign(gtk::Align::Center);
+    label.set_valign(gtk::Align::Center);
+    label.set_hexpand(true);
+    label.set_vexpand(true);
+    label.set_markup(&format!(
+        "<span foreground=\"{}\">●</span> {}\n<span size=\"x-small\">{}×{}</span>",
+        dot,
+        gtk::glib::markup_escape_text(&name),
+        o.width,
+        o.height,
+    ));
+    tile.append(&label);
+    tile
 }
 
 fn parse_catalogue(body: &str) -> Result<LayoutCatalogue, String> {
