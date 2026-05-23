@@ -7,6 +7,36 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.7.9] – 2026-05-23
+
+### Added
+
+- **DESIGN.md §13–§14 — the interaction-philosophy layer** — eight binding
+  subsections (cognitive load, the one-accent attention hierarchy, spatial
+  logic, the responsiveness motion budget, surface ownership, density, state
+  continuity, accessibility) plus a "visual restraint & identity" section.
+  Codifies *why* the shell feels calm, not just which tokens to use.
+
+### Changed
+
+- **The whole shell now draws from the design tokens** — the last surfaces
+  carrying hardcoded values were swept onto the token scales: the standalone
+  **mlock** lock screen is themed from the full matugen palette (background /
+  text / accent / danger) instead of a fixed scheme; the media-player bar
+  cover, notification, clipboard, power and session widgets had their stray
+  radius / motion / colour literals replaced with `--radius-*`, `--motion-*`
+  and matugen colour vars. No off-scale radii, raw-millisecond transitions,
+  or gruvbox hex left in the SCSS.
+
+### Fixed
+
+- **Browser screen-sharing works again (Meet window/screen pick)** — a
+  regression from the lazy-menu refactor destroyed the screenshare picker's
+  pending portal reply on the menu's first reveal, so the chooser never
+  appeared and the browser saw an instant "cancel". The screenshare menu is
+  now marked built when its widget is installed, so the lazy first-reveal
+  rebuild can't wipe it.
+
 ## [0.7.8] – 2026-05-23
 
 ### Added
