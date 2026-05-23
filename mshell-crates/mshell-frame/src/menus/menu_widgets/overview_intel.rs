@@ -6,8 +6,10 @@
 //! The widget pulls from data sources mshell already wires:
 //!   - notification_service().notifications — pending count
 //!   - battery_service().device — % + state
-//!   - system_update cache — pending package-update count (read-only;
-//!     CPU temperature lives on the SystemStatus tile, not duplicated here)
+//!   - pending package updates — the shared system-update cache when
+//!     fresh, else a cheap repo-only `checkupdates` probe this widget
+//!     runs itself (CPU temperature lives on the SystemStatus tile, so
+//!     it's not duplicated here)
 //!   - local OffsetDateTime — today's weekday + month-day
 //!
 //! Each piece of intel surfaces as a single line in a vertical
@@ -29,8 +31,10 @@ use mshell_common::scoped_effects::EffectScope;
 use mshell_services::{battery_service, notification_service};
 use mshell_utils::battery::spawn_battery_watcher;
 use mshell_utils::notifications::spawn_notifications_watcher;
+use crate::system_update::{self, ProbeConfig};
 use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
@@ -41,14 +45,29 @@ const POLL_INTERVAL: Duration = Duration::from_secs(5);
 const BATTERY_LOW_PERCENT: i32 = 25;
 const BATTERY_CRITICAL_PERCENT: i32 = 10;
 
+// Pending-update sourcing. Prefer a fresh shared cache (the full
+// repo+AUR+flatpak report the System Update widget writes) when it's
+// younger than this; otherwise run our own cheap repo-only probe
+// (`checkupdates` — no sudo, no AUR helper) so the count still shows
+// even when that widget isn't on the bar.
+const CACHE_FRESH_SECS: u64 = 1800;
+const OWN_PROBE_THROTTLE_SECS: u64 = 900;
+/// Last time *this widget* ran its own repo probe (Unix secs), shared
+/// across monitor instances so they don't all probe at once.
+static LAST_OWN_PROBE: AtomicU64 = AtomicU64::new(0);
+
 pub(crate) struct OverviewIntelModel {
     notification_count: usize,
     battery_percent: i32,
     battery_charging: bool,
     has_battery: bool,
-    /// Pending package updates (cached count from the system-update
-    /// probe; this widget never triggers a fresh probe).
+    /// Pending package updates (full count from the shared cache when
+    /// fresh, else our own repo-only count).
     update_count: usize,
+    /// True once we've established a count at least once — gates the
+    /// always-visible updates line so it doesn't flash "up to date"
+    /// before the first probe lands.
+    updates_known: bool,
     _effects: EffectScope,
 }
 
@@ -56,6 +75,8 @@ pub(crate) struct OverviewIntelModel {
 pub(crate) enum OverviewIntelInput {
     Refresh,
     Tick,
+    /// A pending-update count came back (cache or our own probe).
+    UpdateCountProbed(usize),
 }
 
 #[derive(Debug)]
@@ -149,26 +170,30 @@ impl Component for OverviewIntelModel {
 
             // ── Updates line ────────────────────────────────────
             //
-            // Pending package updates — an actionable "do something"
-            // signal that nothing else in this column surfaces. (CPU
-            // temperature used to live here, but the SystemStatus tile
-            // below already shows it permanently, so this slot now
-            // carries the update count instead of duplicating temp.)
-            // Alert-style: shown only when updates are pending; the
-            // cached count is read, never a fresh probe.
+            // Pending package updates — replaces the old CPU-temp line
+            // (SystemStatus already shows temperature). A permanent
+            // readout once a count is known: warn "N updates available"
+            // when pending, calm "System is up to date" at zero — so the
+            // count is always visible, not just on a hot/alert state.
+            // Sourced from the shared cache (full count) when fresh, else
+            // a cheap repo-only probe this widget runs itself.
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
                 set_spacing: 8,
                 set_halign: gtk::Align::Start,
                 #[watch]
-                set_visible: model.update_count > 0,
+                set_visible: model.updates_known,
 
                 gtk::Label {
                     add_css_class: "overview-intel-dot",
                     set_label: "●",
                 },
                 gtk::Label {
-                    set_css_classes: &["overview-intel-line", "warn"],
+                    #[watch]
+                    set_css_classes: &[
+                        "overview-intel-line",
+                        if model.update_count > 0 { "warn" } else { "calm" },
+                    ],
                     #[watch]
                     set_label: &updates_line(model.update_count),
                     set_halign: gtk::Align::Start,
@@ -177,13 +202,15 @@ impl Component for OverviewIntelModel {
 
             // ── Quiet fallback ─────────────────────────────────
             //
-            // Shown only when every alert above is hidden — keeps
-            // the card from collapsing to an empty rectangle on
-            // a quiet system.
+            // Shown only when every alert is hidden AND we don't yet have
+            // an updates readout — keeps the card from collapsing to an
+            // empty rectangle on a quiet system before the first probe.
+            // Once `updates_known`, the always-visible "up to date" line
+            // is the calm-state indicator, so this would be redundant.
             gtk::Label {
                 add_css_class: "overview-intel-quiet",
                 #[watch]
-                set_visible: !has_any_alert(&model),
+                set_visible: !has_any_alert(&model) && !model.updates_known,
                 #[watch]
                 set_label: &quiet_summary(&model),
                 set_halign: gtk::Align::Start,
@@ -221,18 +248,22 @@ impl Component for OverviewIntelModel {
         let battery_percent = battery.percentage.get().round().clamp(0.0, 100.0) as i32;
         let battery_charging = current_battery_charging();
         let notification_count = notification_service().notifications.get().len();
-        let update_count = read_update_count();
 
         let model = OverviewIntelModel {
             notification_count,
             battery_percent,
             battery_charging,
             has_battery,
-            update_count,
+            update_count: 0,
+            updates_known: false,
             _effects: EffectScope::new(),
         };
 
         let widgets = view_output!();
+
+        // Establish the update count — from the shared cache if fresh,
+        // else a cheap repo-only probe.
+        refresh_updates(&sender);
 
         let _ = root;
         ComponentParts { model, widgets }
@@ -255,7 +286,7 @@ impl Component for OverviewIntelModel {
     fn update(
         &mut self,
         message: Self::Input,
-        _sender: ComponentSender<Self>,
+        sender: ComponentSender<Self>,
         _root: &Self::Root,
     ) {
         match message {
@@ -268,7 +299,11 @@ impl Component for OverviewIntelModel {
                 self.notification_count = notification_service().notifications.get().len();
             }
             OverviewIntelInput::Tick => {
-                self.update_count = read_update_count();
+                refresh_updates(&sender);
+            }
+            OverviewIntelInput::UpdateCountProbed(count) => {
+                self.update_count = count;
+                self.updates_known = true;
             }
         }
     }
@@ -298,18 +333,46 @@ fn battery_severity(percent: i32, charging: bool) -> &'static str {
 
 fn updates_line(count: usize) -> String {
     match count {
+        0 => "System is up to date".to_string(),
         1 => "1 update available".to_string(),
         n => format!("{n} updates available"),
     }
 }
 
-/// Pending package-update count from the system-update cache. Read-only —
-/// the bar widget / update menu own the actual probe schedule, so this
-/// never fires `checkupdates` / the AUR helper.
-fn read_update_count() -> usize {
-    crate::system_update::load_cache()
-        .map(|(_checked_at, report)| report.total())
-        .unwrap_or(0)
+/// Refresh the pending-update count and feed it back as
+/// `UpdateCountProbed`. Prefers the shared cache (the full
+/// repo+AUR+flatpak report the System Update widget writes) when it's
+/// fresh; otherwise runs our own repo-only probe — `checkupdates`, which
+/// needs no sudo and never touches the AUR helper — globally throttled so
+/// the per-monitor instances don't all probe at once. This keeps the
+/// count alive even when the System Update bar widget isn't present (the
+/// reason the line previously stayed empty).
+fn refresh_updates(sender: &ComponentSender<OverviewIntelModel>) {
+    if let Some((checked_at, report)) = system_update::load_cache()
+        && system_update::now_secs().saturating_sub(checked_at) < CACHE_FRESH_SECS
+    {
+        sender.input(OverviewIntelInput::UpdateCountProbed(report.total()));
+        return;
+    }
+
+    let now = system_update::now_secs();
+    let last = LAST_OWN_PROBE.load(Ordering::Relaxed);
+    if now.saturating_sub(last) < OWN_PROBE_THROTTLE_SECS {
+        // Someone probed recently — keep the last known count.
+        return;
+    }
+    LAST_OWN_PROBE.store(now, Ordering::Relaxed);
+
+    let sender = sender.clone();
+    relm4::spawn(async move {
+        let report = system_update::probe(ProbeConfig {
+            repo: true,
+            aur: false,
+            flatpak: false,
+        })
+        .await;
+        sender.input(OverviewIntelInput::UpdateCountProbed(report.total()));
+    });
 }
 
 fn has_any_alert(model: &OverviewIntelModel) -> bool {
