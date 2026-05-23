@@ -210,6 +210,13 @@ fn main() -> Result<()> {
         )
         .init();
 
+    // Tracy profiler. Built with `--features profile-with-tracy`, this
+    // starts the client so the sprinkled `span!`s record and a Tracy GUI
+    // (or `tracy-capture`) can connect over TCP; held for the whole
+    // process lifetime. Without the feature it is compiled out entirely.
+    #[cfg(feature = "profile-with-tracy")]
+    let _tracy_client = tracy_client::Client::start();
+
     // Wrap the default panic hook so an unwind in the compositor (or
     // anything in a calloop dispatch closure) reaches the journal with
     // file:line + message + a backtrace. Without this the user just

@@ -334,6 +334,10 @@ fn render_output(
     reason: &'static str,
 ) {
     let _span = tracy_client::span!("render_output");
+    // Delineate frames for Tracy's frame/FPS view — one mark per render
+    // cycle. Compiled out without `profile-with-tracy`.
+    #[cfg(feature = "profile-with-tracy")]
+    tracy_client::frame_mark();
 
     // Soft-disabled output: skip entirely.
     if let Some(mon) = state.monitors.iter().find(|m| m.output == od.output) {
