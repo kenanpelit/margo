@@ -59,6 +59,8 @@ pub(crate) struct SetupSettingsModel {
 pub(crate) enum SetupSettingsInput {
     ProfileSelected(Option<String>),
     RunWizard,
+    /// Snapshot the live config into the `active` profile and select it.
+    SaveAsActive,
     ThemeSelected(Themes),
     ModeSelected(MatugenMode),
     FontScaleSelected(f64),
@@ -165,6 +167,38 @@ impl Component for SetupSettingsModel {
                         set_tooltip_text: Some("Open the standalone wizard — also covers keyboard layout and monitors."),
                         connect_clicked[sender] => move |_| {
                             sender.input(SetupSettingsInput::RunWizard);
+                        },
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 12,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium",
+                            set_label: "Keep current setup",
+                            set_halign: gtk::Align::Start,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_label: "Snapshot the live configuration into a named \"active\" profile and switch to it — carry your current setup forward as an editable base, no wizard needed.",
+                            set_halign: gtk::Align::Start,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::Button {
+                        set_css_classes: &["label-medium", "ok-button-primary"],
+                        set_label: "Save as \"active\"",
+                        set_valign: gtk::Align::Center,
+                        connect_clicked[sender] => move |_| {
+                            sender.input(SetupSettingsInput::SaveAsActive);
                         },
                     },
                 },
@@ -430,6 +464,14 @@ impl Component for SetupSettingsModel {
         match message {
             SetupSettingsInput::ProfileSelected(name) => {
                 config_manager().set_active_profile(name);
+            }
+            SetupSettingsInput::SaveAsActive => {
+                // Snapshot the live config into the "active" profile +
+                // switch to it. The reactive available_profiles / active
+                // stores update, so the dropdown refreshes and selects it.
+                if let Err(e) = config_manager().snapshot_active_as("active") {
+                    tracing::warn!(error = ?e, "setup: failed to snapshot 'active' profile");
+                }
             }
             SetupSettingsInput::RunWizard => {
                 // Close the Settings panel first. It's a layer-shell

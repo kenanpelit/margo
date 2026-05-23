@@ -85,6 +85,22 @@ impl ConfigManager {
         Ok(())
     }
 
+    /// Snapshot the CURRENT effective config into profile `name` and make
+    /// it active. Unlike [`create_profile`](Self::create_profile) (which
+    /// seeds a fresh `Config::default()`), this captures the live
+    /// configuration — the "keep my current setup as a named profile"
+    /// path. Overwrites `name` if it already exists (re-snapshot).
+    pub fn snapshot_active_as(&self, name: &str) -> Result<(), ProfileCreateError> {
+        let path = profile_path(name);
+        let current = self.config.read_untracked().clone();
+        if let Err(e) = persist_config_layer(&current, &path) {
+            return Err(ProfileCreateError::Io(e));
+        }
+        self.available_profiles.patch(list_available_profiles());
+        self.set_active_profile(Some(name.to_string()));
+        Ok(())
+    }
+
     pub fn delete_profile(&self, name: &str) -> Result<(), ProfileDeleteError> {
         let path = profile_path(name);
         if !path.exists() {
