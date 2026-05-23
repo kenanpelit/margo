@@ -4004,6 +4004,7 @@ dependencies = [
  "dirs",
  "gtk4",
  "mshell-config",
+ "mshell-style",
  "relm4",
  "serde_yaml",
  "tracing",
