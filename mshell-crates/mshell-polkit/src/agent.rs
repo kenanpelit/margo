@@ -177,7 +177,13 @@ pub async fn register_polkit_agent(
         .await?;
 
     // Register with the polkit authority
-    let session_id = std::env::var("XDG_SESSION_ID").unwrap_or_default();
+    let session_id = resolve_session_id(&connection).await;
+    if session_id.is_empty() {
+        anyhow::bail!(
+            "could not determine a logind session to register the polkit agent for"
+        );
+    }
+    info!("[polkit] registering agent for session-id={session_id}");
 
     // Call org.freedesktop.PolicyKit1.Authority.RegisterAuthenticationAgent
     connection
@@ -204,4 +210,59 @@ pub async fn register_polkit_agent(
 
     info!("[polkit] agent registered at {AGENT_OBJECT_PATH}");
     Ok(connection)
+}
+
+/// Resolve the logind session id this agent should register for.
+///
+/// A direct login exports `XDG_SESSION_ID`, so honour it when present.
+/// But mshell is started by the systemd **user manager**, where that
+/// variable is unset and the process belongs to no login session
+/// (`GetSessionByPID` returns "no session"). In that case we ask logind
+/// for this user's primary graphical **Display** session — which is
+/// where the GUI auth requests actually originate. Registering for that
+/// session is exactly what polkit-gnome does via libpolkit's
+/// process→session resolution; without it the agent would register for
+/// an empty session id and never receive a single auth request.
+async fn resolve_session_id(connection: &Connection) -> String {
+    if let Ok(id) = std::env::var("XDG_SESSION_ID")
+        && !id.is_empty()
+    {
+        return id;
+    }
+
+    let proxy = match zbus::Proxy::new(
+        connection,
+        "org.freedesktop.login1",
+        "/org/freedesktop/login1/user/self",
+        "org.freedesktop.login1.User",
+    )
+    .await
+    {
+        Ok(p) => p,
+        Err(e) => {
+            error!("[polkit] cannot reach logind to resolve session: {e}");
+            return String::new();
+        }
+    };
+
+    // `Display` is `(so)` — (session-id, object-path).
+    match proxy.get_property::<OwnedValue>("Display").await {
+        Ok(display) => match &*display {
+            zbus::zvariant::Value::Structure(s) => match s.fields().first() {
+                Some(zbus::zvariant::Value::Str(id)) => id.as_str().to_string(),
+                _ => {
+                    error!("[polkit] unexpected logind Display property shape");
+                    String::new()
+                }
+            },
+            _ => {
+                error!("[polkit] logind Display property is not a struct");
+                String::new()
+            }
+        },
+        Err(e) => {
+            error!("[polkit] cannot read logind Display session: {e}");
+            String::new()
+        }
+    }
 }
