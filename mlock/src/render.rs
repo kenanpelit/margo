@@ -15,20 +15,43 @@ use chrono::{Local, Timelike};
 
 use crate::seat::SeatState;
 
-// Palette over the dimmed wallpaper.
-const TEXT: (f64, f64, f64) = (0.96, 0.97, 0.98);
-const MUTED: (f64, f64, f64) = (0.78, 0.80, 0.86);
-const FAIL: (f64, f64, f64) = (0.95, 0.45, 0.43);
-const WARN: (f64, f64, f64) = (0.98, 0.78, 0.45);
-
-const FALLBACK_BG: (f64, f64, f64) = (0.05, 0.05, 0.10);
 const DIM_ALPHA: f64 = 0.55;
 
-// Frosted card.
+// Palette over the dimmed wallpaper. Read once from the shell's matugen
+// output so the locker is tonally coherent with the rest of the desktop
+// (DESIGN.md §0 calm / §1 "never hardcode colours") instead of a fixed
+// scheme. Falls back to a calm neutral set when matugen hasn't run.
+#[derive(Clone, Copy)]
+pub struct Palette {
+    pub bg: (f64, f64, f64),     // surface — solid fallback behind wallpaper
+    pub text: (f64, f64, f64),   // on-surface — dominant clock + headings
+    pub muted: (f64, f64, f64),  // on-surface-variant — secondary text recedes
+    pub accent: (f64, f64, f64), // primary — the single accent (input focus)
+    pub danger: (f64, f64, f64), // error — failed auth
+}
+
+impl Palette {
+    const FALLBACK: Self = Self {
+        bg: (0.05, 0.05, 0.10),
+        text: (0.96, 0.97, 0.98),
+        muted: (0.78, 0.80, 0.86),
+        accent: (0.96, 0.97, 0.98),
+        danger: (0.95, 0.45, 0.43),
+    };
+}
+
+/// The shell palette, loaded once per process (not per frame) and cached.
+fn palette() -> &'static Palette {
+    static PALETTE: std::sync::OnceLock<Palette> = std::sync::OnceLock::new();
+    PALETTE.get_or_init(|| read_palette().unwrap_or(Palette::FALLBACK))
+}
+
+// Frosted card. Radius + padding on the shape / spacing scale (DESIGN.md
+// §1: --radius-md 16; §0.8 rhythm 48 / 24).
 const CARD_ALPHA: f64 = 0.18;
-const CARD_RADIUS: f64 = 18.0;
+const CARD_RADIUS: f64 = 16.0;
 const CARD_PADDING_X: f64 = 48.0;
-const CARD_PADDING_Y: f64 = 28.0;
+const CARD_PADDING_Y: f64 = 24.0;
 
 // Avatar.
 const AVATAR_SIZE: f64 = 96.0;
@@ -43,13 +66,15 @@ const FONT_STATUS_PT: i32 = 14;
 const FONT_CAPS_PT: i32 = 12;
 
 // Stack gaps.
-const GAP_AVATAR_GREETING: f64 = 20.0;
-const GAP_GREETING_CLOCK: f64 = 36.0;
+// All on the §0.8 spacing scale (4/8/12/16/24/32/48) so the centred stack
+// keeps a single rhythm.
+const GAP_AVATAR_GREETING: f64 = 24.0;
+const GAP_GREETING_CLOCK: f64 = 32.0;
 const GAP_CLOCK_DATE: f64 = 8.0;
-const GAP_DATE_CARD: f64 = 52.0;
+const GAP_DATE_CARD: f64 = 48.0;
 const GAP_INSIDE_CARD: f64 = 0.0; // dots only — no user label any more
-const GAP_CARD_CAPS: f64 = 14.0;
-const GAP_CAPS_STATUS: f64 = 10.0;
+const GAP_CARD_CAPS: f64 = 16.0;
+const GAP_CAPS_STATUS: f64 = 12.0;
 
 // Dots.
 const DOT_RADIUS: f64 = 6.0;
@@ -64,31 +89,49 @@ const SHAKE_DURATION_MS: u64 = 400;
 const SHAKE_AMPLITUDE: f64 = 10.0;
 const SHAKE_FREQ_HZ: f64 = 14.0;
 
-/// Matugen accent (`primary_color.base`) read from the shell's palette
-/// at `$XDG_CACHE_HOME/margo/mshell-colors.toml`, so the locker's input
-/// accent tracks the wallpaper theme. Falls back to the neutral text
-/// colour when the file is absent (fresh install / no matugen run yet).
-/// Hand-parsed to keep a TOML dependency out of the locker.
+/// Matugen accent (`primary_color.base`). Kept for callers that only need
+/// the accent (state.rs); the full palette lives in `palette()`.
 pub fn matugen_accent() -> (f64, f64, f64) {
-    read_accent().unwrap_or(TEXT)
+    palette().accent
 }
 
-fn read_accent() -> Option<(f64, f64, f64)> {
-    let base = std::env::var_os("XDG_CACHE_HOME")
+/// Parse the whole shell palette from `$XDG_CACHE_HOME/margo/
+/// mshell-colors.toml` (matugen output) so the locker tracks the wallpaper
+/// theme. Hand-parsed to keep a TOML dependency out of the locker; any
+/// missing key falls back to the neutral default for that role.
+fn read_palette() -> Option<Palette> {
+    let dir = std::env::var_os("XDG_CACHE_HOME")
         .map(std::path::PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".cache")))?;
-    let text = std::fs::read_to_string(base.join("margo").join("mshell-colors.toml")).ok()?;
-    for line in text.lines() {
-        let Some(rest) = line.trim_start().strip_prefix("primary_color") else {
-            continue;
-        };
-        // rest looks like: `    = { base = "#ffb2be", strong = … }`
-        let after_base = rest.split("base").nth(1)?;
-        let hash = after_base.find('#')?;
-        let hex: String = after_base[hash + 1..].chars().take(6).collect();
-        return parse_hex6(&hex);
-    }
-    None
+    let toml = std::fs::read_to_string(dir.join("margo").join("mshell-colors.toml")).ok()?;
+    let fb = Palette::FALLBACK;
+    let bg = field_base(&toml, "background_color").unwrap_or(fb.bg);
+    let text = field_bare(&toml, "text_color").unwrap_or(fb.text);
+    let accent = field_base(&toml, "primary_color").unwrap_or(fb.accent);
+    let danger = field_bare(&toml, "danger_color").unwrap_or(fb.danger);
+    // Secondary text tier: on-surface pulled ~⅓ toward the surface so
+    // metadata recedes without a second hue (DESIGN.md §1 fonts).
+    let muted = mix(text, bg, 0.34);
+    Some(Palette { bg, text, muted, accent, danger })
+}
+
+/// `<key> … base = "#rrggbb"` — matugen inline table (background/primary).
+fn field_base(toml: &str, key: &str) -> Option<(f64, f64, f64)> {
+    let line = toml.lines().find(|l| l.trim_start().starts_with(key))?;
+    let after = line.split("base").nth(1)?;
+    let h = after.find('#')?;
+    parse_hex6(&after[h + 1..].chars().take(6).collect::<String>())
+}
+
+/// `<key> = "#rrggbb"` — bare matugen string (text/danger/…).
+fn field_bare(toml: &str, key: &str) -> Option<(f64, f64, f64)> {
+    let line = toml.lines().find(|l| l.trim_start().starts_with(key))?;
+    let h = line.find('#')?;
+    parse_hex6(&line[h + 1..].chars().take(6).collect::<String>())
+}
+
+fn mix(a: (f64, f64, f64), b: (f64, f64, f64), t: f64) -> (f64, f64, f64) {
+    (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t, a.2 + (b.2 - a.2) * t)
 }
 
 fn parse_hex6(hex: &str) -> Option<(f64, f64, f64)> {
@@ -122,12 +165,13 @@ pub fn draw_lock_frame(
         )?
     };
     let cr = cairo::Context::new(&surface)?;
+    let pal = palette();
 
     // 1. Wallpaper or solid fallback.
     if let Some(wp) = wallpaper {
         paint_wallpaper_cover(&cr, wp, width, height)?;
     } else {
-        cr.set_source_rgb(FALLBACK_BG.0, FALLBACK_BG.1, FALLBACK_BG.2);
+        cr.set_source_rgb(pal.bg.0, pal.bg.1, pal.bg.2);
         cr.paint().ok();
     }
 
@@ -193,19 +237,19 @@ pub fn draw_lock_frame(
     }
 
     // 6. Greeting.
-    cr.set_source_rgb(MUTED.0, MUTED.1, MUTED.2);
+    cr.set_source_rgb(pal.muted.0, pal.muted.1, pal.muted.2);
     cr.move_to(cx - greeting_w as f64 / 2.0, y);
     pangocairo::functions::show_layout(&cr, &greeting_layout);
     y += greeting_h as f64 + GAP_GREETING_CLOCK;
 
     // 7. Clock.
-    cr.set_source_rgb(TEXT.0, TEXT.1, TEXT.2);
+    cr.set_source_rgb(pal.text.0, pal.text.1, pal.text.2);
     cr.move_to(cx - clock_w as f64 / 2.0, y);
     pangocairo::functions::show_layout(&cr, &clock_layout);
     y += clock_h as f64 + GAP_CLOCK_DATE;
 
     // 8. Date.
-    cr.set_source_rgb(MUTED.0, MUTED.1, MUTED.2);
+    cr.set_source_rgb(pal.muted.0, pal.muted.1, pal.muted.2);
     cr.move_to(cx - date_w as f64 / 2.0, y);
     pangocairo::functions::show_layout(&cr, &date_layout);
     y += date_h as f64 + GAP_DATE_CARD;
@@ -259,13 +303,13 @@ pub fn draw_lock_frame(
             ch as f64 + pad_y * 2.0,
             10.0,
         );
-        cr.set_source_rgba(WARN.0, WARN.1, WARN.2, 0.22);
+        cr.set_source_rgba(pal.accent.0, pal.accent.1, pal.accent.2, 0.22);
         cr.fill_preserve().ok();
-        cr.set_source_rgba(WARN.0, WARN.1, WARN.2, 0.65);
+        cr.set_source_rgba(pal.accent.0, pal.accent.1, pal.accent.2, 0.65);
         cr.set_line_width(1.0);
         cr.stroke().ok();
 
-        cr.set_source_rgb(WARN.0, WARN.1, WARN.2);
+        cr.set_source_rgb(pal.accent.0, pal.accent.1, pal.accent.2);
         cr.move_to(chip_x, y + pad_y / 2.0);
         pangocairo::functions::show_layout(&cr, &chip);
         y += caps_chip_h;
@@ -283,9 +327,9 @@ pub fn draw_lock_frame(
     let layout_status = layout(&cr, &status_text, FONT_STATUS_PT, false);
     let (sw, sh) = layout_status.pixel_size();
     if seat.fail_message.is_some() {
-        cr.set_source_rgb(FAIL.0, FAIL.1, FAIL.2);
+        cr.set_source_rgb(pal.danger.0, pal.danger.1, pal.danger.2);
     } else {
-        cr.set_source_rgba(MUTED.0, MUTED.1, MUTED.2, 0.7);
+        cr.set_source_rgba(pal.muted.0, pal.muted.1, pal.muted.2, 0.7);
     }
     cr.move_to(cx - sw as f64 / 2.0, y);
     pangocairo::functions::show_layout(&cr, &layout_status);
@@ -296,14 +340,14 @@ pub fn draw_lock_frame(
         let msg = format!("Press the F-key again to confirm: {}", action.label());
         let layout_confirm = layout(&cr, &msg, FONT_STATUS_PT, true);
         let (cw, _) = layout_confirm.pixel_size();
-        cr.set_source_rgb(FAIL.0, FAIL.1, FAIL.2);
+        cr.set_source_rgb(pal.danger.0, pal.danger.1, pal.danger.2);
         cr.move_to(cx - cw as f64 / 2.0, y);
         pangocairo::functions::show_layout(&cr, &layout_confirm);
     } else {
         let hint = "F1 Shut down   ·   F2 Restart   ·   F3 Suspend";
         let layout_hint = layout(&cr, hint, FONT_CAPS_PT, false);
         let (hw, _) = layout_hint.pixel_size();
-        cr.set_source_rgba(MUTED.0, MUTED.1, MUTED.2, 0.55);
+        cr.set_source_rgba(pal.muted.0, pal.muted.1, pal.muted.2, 0.55);
         cr.move_to(cx - hw as f64 / 2.0, y);
         pangocairo::functions::show_layout(&cr, &layout_hint);
     }
@@ -318,7 +362,7 @@ pub fn draw_lock_frame(
     //     perturbs the centred stack's height maths.
     if let Some(name) = seat.layout_name() {
         let lay = layout(&cr, &name.to_uppercase(), FONT_CAPS_PT, true);
-        cr.set_source_rgba(MUTED.0, MUTED.1, MUTED.2, 0.8);
+        cr.set_source_rgba(pal.muted.0, pal.muted.1, pal.muted.2, 0.8);
         cr.move_to(32.0, 24.0);
         pangocairo::functions::show_layout(&cr, &lay);
     }
@@ -349,10 +393,11 @@ fn draw_battery(
     layout.set_font_description(Some(&desc));
     layout.set_text(&text);
     let (w, _) = layout.pixel_size();
+    let pal = palette();
     let color = if bat.percent <= 15 && !bat.charging {
-        FAIL
+        pal.danger
     } else {
-        MUTED
+        pal.muted
     };
     cr.set_source_rgba(color.0, color.1, color.2, 0.92);
     cr.move_to(right_x - w as f64, top_y);
@@ -426,9 +471,13 @@ fn draw_card_with_shadow(cr: &cairo::Context, x: f64, y: f64, w: f64, h: f64, ac
         cr.fill().ok();
     }
 
-    // Card surface.
+    // Card surface — a frosted panel one tonal step above the dimmed
+    // wallpaper. Tinted toward the theme's on-surface (text) tone instead
+    // of a fixed white, so the panel inherits the matugen palette's
+    // warmth/coolness (DESIGN.md §0.1 surfaces-over-borders, §14 identity).
     rounded_rect(cr, x, y, w, h, CARD_RADIUS);
-    cr.set_source_rgba(1.0, 1.0, 1.0, CARD_ALPHA);
+    let frost = palette().text;
+    cr.set_source_rgba(frost.0, frost.1, frost.2, CARD_ALPHA);
     cr.fill_preserve().ok();
     // Accent border — always visible, so the matugen theme reads on
     // the lock screen even before the user starts typing.
