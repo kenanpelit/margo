@@ -215,9 +215,9 @@ pub(crate) async fn fetch_podman_summary() -> PodmanSummary {
             .count();
     }
 
-    if let Some(pods_raw) = run_capture("podman", &["pod", "ps", "--format", "json"]).await {
-        if let Ok(pods) = serde_json::from_str::<serde_json::Value>(&pods_raw) {
-            if let Some(arr) = pods.as_array() {
+    if let Some(pods_raw) = run_capture("podman", &["pod", "ps", "--format", "json"]).await
+        && let Ok(pods) = serde_json::from_str::<serde_json::Value>(&pods_raw)
+            && let Some(arr) = pods.as_array() {
                 s.total_pods = arr.len();
                 s.running_pods = arr
                     .iter()
@@ -226,16 +226,12 @@ pub(crate) async fn fetch_podman_summary() -> PodmanSummary {
                     })
                     .count();
             }
-        }
-    }
 
-    if let Some(images_raw) = run_capture("podman", &["images", "--format", "json"]).await {
-        if let Ok(images) = serde_json::from_str::<serde_json::Value>(&images_raw) {
-            if let Some(arr) = images.as_array() {
+    if let Some(images_raw) = run_capture("podman", &["images", "--format", "json"]).await
+        && let Ok(images) = serde_json::from_str::<serde_json::Value>(&images_raw)
+            && let Some(arr) = images.as_array() {
                 s.image_count = arr.len();
             }
-        }
-    }
 
     s
 }

@@ -280,8 +280,8 @@ fn apply_visual(widgets: &PowerModelWidgets, root: &gtk::Box, s: &PowerState) {
         format!("Power: {err}")
     } else {
         let mut lines = vec![format!("Profile: {}", profile.label())];
-        if s.battery_available {
-            if let Some(pct) = s.battery_percent {
+        if s.battery_available
+            && let Some(pct) = s.battery_percent {
                 lines.push(format!(
                     "Battery: {}% ({})",
                     pct,
@@ -292,7 +292,6 @@ fn apply_visual(widgets: &PowerModelWidgets, root: &gtk::Box, s: &PowerState) {
                     }
                 ));
             }
-        }
         lines.push(format!(
             "Power source: {}",
             match s.power_source.as_str() {

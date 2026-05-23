@@ -18,6 +18,12 @@
 //! tiles: warn (primary tint) for moderate signals, danger (error
 //! red) for the actionable ones.
 
+// relm4's `view!` binds `model` by value in these property closures,
+// so the `&model` passed to the `has_any_alert` / `quiet_summary`
+// helpers is required — clippy's needless_borrow fires as a false
+// positive here (dropping the `&` fails to compile).
+#![allow(clippy::needless_borrow)]
+
 use mshell_common::scoped_effects::EffectScope;
 use mshell_services::{battery_service, notification_service};
 use mshell_utils::battery::spawn_battery_watcher;

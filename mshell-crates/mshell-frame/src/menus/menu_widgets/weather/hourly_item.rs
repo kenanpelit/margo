@@ -105,13 +105,11 @@ impl Component for HourlyItemModel {
         let config = base_config.clone();
         let format_24_h = config.general().clock_format_24_h().get_untracked();
 
-        let time_label: String;
-
-        if format_24_h {
-            time_label = params.hourly.time.format("%H").to_string();
+        let time_label = if format_24_h {
+            params.hourly.time.format("%H").to_string()
         } else {
-            time_label = params.hourly.time.format("%I %p").to_string();
-        }
+            params.hourly.time.format("%I %p").to_string()
+        };
 
         let model = HourlyItemModel {
             hourly: params.hourly,
@@ -139,15 +137,11 @@ impl Component for HourlyItemModel {
                 self.temperature_unit = temperature_unit;
             }
             HourlyItemInput::ChangeFormat(format_24_h) => {
-                let time_label: String;
-
-                if format_24_h {
-                    time_label = self.hourly.time.format("%H").to_string();
+                self.time_label = if format_24_h {
+                    self.hourly.time.format("%H").to_string()
                 } else {
-                    time_label = self.hourly.time.format("%I %p").to_string();
-                }
-
-                self.time_label = time_label;
+                    self.hourly.time.format("%I %p").to_string()
+                };
             }
         }
 

@@ -374,8 +374,8 @@ pub(crate) async fn probe_dns_state() -> DnsState {
         }
     }
 
-    if state.display_dns.is_empty() {
-        if let Ok(raw) = tokio::fs::read_to_string("/etc/resolv.conf").await {
+    if state.display_dns.is_empty()
+        && let Ok(raw) = tokio::fs::read_to_string("/etc/resolv.conf").await {
             let parsed: Vec<&str> = raw
                 .lines()
                 .filter_map(|l| {
@@ -388,7 +388,6 @@ pub(crate) async fn probe_dns_state() -> DnsState {
                 .collect();
             state.display_dns = parsed.join(" ");
         }
-    }
 
     if state.display_dns.is_empty() && !state.vpn && !state.blocky && !state.blocked {
         state.error = Some("no DNS probes available".to_string());

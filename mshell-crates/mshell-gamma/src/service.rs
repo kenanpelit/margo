@@ -95,10 +95,9 @@ fn run_wayland_thread(mut rx: watch::Receiver<GammaState>) -> Result<()> {
     let mut current_temp = start_temp;
 
     loop {
-        // Wait for a state change.
-        match rt.block_on(rx.changed()) {
-            Err(_) => break, // sender dropped — shut down
-            Ok(()) => {}
+        // Wait for a state change; the sender dropping shuts us down.
+        if rt.block_on(rx.changed()).is_err() {
+            break;
         }
 
         // Transition loop: step current_temp toward target, 16ms per step.

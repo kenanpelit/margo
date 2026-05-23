@@ -200,14 +200,13 @@ impl Component for ValentMenuWidgetModel {
                     .build();
                 let sender = sender.clone();
                 dialog.open(gtk::Window::NONE, gtk::gio::Cancellable::NONE, move |res| {
-                    if let Ok(file) = res {
-                        if let Some(path) = file.path() {
+                    if let Ok(file) = res
+                        && let Some(path) = file.path() {
                             sender.input(ValentMenuWidgetInput::Share(
                                 id.clone(),
                                 path.to_string_lossy().into_owned(),
                             ));
                         }
-                    }
                 });
             }
             ValentMenuWidgetInput::Share(id, path) => {

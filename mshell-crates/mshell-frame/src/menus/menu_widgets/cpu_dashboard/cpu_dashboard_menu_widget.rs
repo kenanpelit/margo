@@ -692,12 +692,11 @@ fn read_cpu_freq_ghz() -> Option<f32> {
     let mut sum = 0.0f32;
     let mut n = 0u32;
     for line in s.lines() {
-        if let Some(rest) = line.strip_prefix("cpu MHz") {
-            if let Some(v) = rest.split(':').nth(1).and_then(|x| x.trim().parse::<f32>().ok()) {
+        if let Some(rest) = line.strip_prefix("cpu MHz")
+            && let Some(v) = rest.split(':').nth(1).and_then(|x| x.trim().parse::<f32>().ok()) {
                 sum += v;
                 n += 1;
             }
-        }
     }
     if n == 0 {
         return None;

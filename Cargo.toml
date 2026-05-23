@@ -75,6 +75,9 @@ result_large_err = "allow"
 large_enum_variant = "allow"
 doc_overindented_list_items = "allow"
 doc_lazy_continuation = "allow"
+# An explicit `if divisor == 0 { fallback } else { n / divisor }` reads
+# clearer at the use sites (pct math) than `n.checked_div(d)`.
+manual_checked_ops = "allow"
 
 [workspace.dependencies]
 # Core (shared by every crate)

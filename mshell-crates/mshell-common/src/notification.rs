@@ -168,8 +168,6 @@ impl Component for NotificationModel {
             .clock_format_24_h()
             .get_untracked();
 
-        let time: String;
-
         let timestamp = params.notification.timestamp.get();
 
         let local_offset = UtcOffset::current_local_offset().unwrap_or(UtcOffset::UTC);
@@ -180,11 +178,11 @@ impl Component for NotificationModel {
             .unwrap()
             .to_offset(local_offset);
 
-        if format_24_h {
-            time = odt.format(&TIME_FORMAT_24).unwrap();
+        let time = if format_24_h {
+            odt.format(&TIME_FORMAT_24).unwrap()
         } else {
-            time = odt.format(&TIME_FORMAT_12).unwrap();
-        }
+            odt.format(&TIME_FORMAT_12).unwrap()
+        };
 
         // Per-notification button visibility (read once; applies to
         // notifications created after a config change).

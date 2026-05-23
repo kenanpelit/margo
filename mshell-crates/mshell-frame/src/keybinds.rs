@@ -50,11 +50,10 @@ fn config_path() -> PathBuf {
 
 fn expand(path: &str, base_dir: &Path) -> PathBuf {
     let p = path.trim().trim_matches('"');
-    if let Some(rest) = p.strip_prefix("~/") {
-        if let Some(home) = std::env::var_os("HOME") {
+    if let Some(rest) = p.strip_prefix("~/")
+        && let Some(home) = std::env::var_os("HOME") {
             return PathBuf::from(home).join(rest);
         }
-    }
     let pb = PathBuf::from(p);
     if pb.is_absolute() {
         pb
@@ -76,12 +75,11 @@ fn read_all_lines(path: &Path, visited: &mut HashSet<PathBuf>, out: &mut Vec<Str
     let base_dir = path.parent().map(|p| p.to_path_buf()).unwrap_or_default();
     for line in text.lines() {
         let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix("source") {
-            if let Some(val) = rest.trim_start().strip_prefix('=') {
+        if let Some(rest) = trimmed.strip_prefix("source")
+            && let Some(val) = rest.trim_start().strip_prefix('=') {
                 read_all_lines(&expand(val, &base_dir), visited, out);
                 continue;
             }
-        }
         out.push(line.to_string());
     }
 }
@@ -145,12 +143,11 @@ fn parse_bind(line: &str) -> Option<(&'static str, Keybind)> {
 
 /// Pull a trailing `#"quoted"` or ` # plain` comment off a bind body.
 fn split_comment(body: &str) -> (&str, Option<String>) {
-    if let Some(start) = body.rfind("#\"") {
-        if let Some(end) = body[start + 2..].find('"') {
+    if let Some(start) = body.rfind("#\"")
+        && let Some(end) = body[start + 2..].find('"') {
             let desc = body[start + 2..start + 2 + end].trim().to_string();
             return (body[..start].trim_end(), Some(desc));
         }
-    }
     // Plain ` # comment` (hash preceded by whitespace).
     let bytes = body.as_bytes();
     for (i, &b) in bytes.iter().enumerate() {

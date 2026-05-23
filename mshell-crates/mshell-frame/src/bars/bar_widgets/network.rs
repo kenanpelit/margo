@@ -513,7 +513,9 @@ pub(crate) fn read_network_state() -> NetworkState {
                 secured: !matches!(ap.security.get(), SecurityType::None),
             });
         }
-        state.networks.sort_by(|a, b| b.signal.cmp(&a.signal));
+        state
+            .networks
+            .sort_by_key(|n| std::cmp::Reverse(n.signal));
     }
 
     state

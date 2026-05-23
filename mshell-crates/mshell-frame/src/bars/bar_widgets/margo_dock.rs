@@ -250,7 +250,6 @@ impl Component for MargoDockModel {
                     {
                         let sender = ctrl.sender().clone();
                         let theme = theme.clone();
-                        let color_theme = color_theme;
 
                         let _ = sender.send(MargoDockItemInput::ThemeChanged(
                             theme,

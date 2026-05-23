@@ -302,13 +302,11 @@ impl Component for LockScreenModel {
 
         let now = OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc());
 
-        let time: String;
-
-        if format_24_h {
-            time = now.format(&TIME_FORMAT_24).unwrap();
+        let time = if format_24_h {
+            now.format(&TIME_FORMAT_24).unwrap()
         } else {
-            time = now.format(&TIME_FORMAT_12).unwrap();
-        }
+            now.format(&TIME_FORMAT_12).unwrap()
+        };
 
         let day = now.format(&DAY_FORMAT).unwrap();
 
@@ -447,13 +445,11 @@ impl Component for LockScreenModel {
             LockScreenInput::UpdateTime => {
                 let now = OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc());
 
-                let time: String;
-
-                if self.format_24_h {
-                    time = now.format(&TIME_FORMAT_24).unwrap();
+                let time = if self.format_24_h {
+                    now.format(&TIME_FORMAT_24).unwrap()
                 } else {
-                    time = now.format(&TIME_FORMAT_12).unwrap();
-                }
+                    now.format(&TIME_FORMAT_12).unwrap()
+                };
 
                 let day = now.format(&DAY_FORMAT).unwrap();
 

@@ -554,12 +554,11 @@ async fn toggle_auto_lock() {
             }
         }
         Ok(false) => {
-            if let Some(parent) = path.parent() {
-                if let Err(e) = tokio::fs::create_dir_all(parent).await {
+            if let Some(parent) = path.parent()
+                && let Err(e) = tokio::fs::create_dir_all(parent).await {
                     warn!(error = %e, "power: failed to create auto-profile lock dir");
                     return;
                 }
-            }
             if let Err(e) = tokio::fs::write(&path, b"").await {
                 warn!(error = %e, "power: failed to set auto-profile lock");
             }

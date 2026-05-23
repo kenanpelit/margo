@@ -615,21 +615,18 @@ async fn fetch_panel_state() -> PodmanPanelState {
         return state;
     }
 
-    if let Some(json) = run_capture("podman", &["ps", "--all", "--format", "json"]).await {
-        if let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(&json) {
+    if let Some(json) = run_capture("podman", &["ps", "--all", "--format", "json"]).await
+        && let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(&json) {
             state.containers = arr.iter().map(parse_container_row).collect();
         }
-    }
-    if let Some(json) = run_capture("podman", &["images", "--format", "json"]).await {
-        if let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(&json) {
+    if let Some(json) = run_capture("podman", &["images", "--format", "json"]).await
+        && let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(&json) {
             state.images = arr.iter().map(parse_image_row).collect();
         }
-    }
-    if let Some(json) = run_capture("podman", &["pod", "ps", "--format", "json"]).await {
-        if let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(&json) {
+    if let Some(json) = run_capture("podman", &["pod", "ps", "--format", "json"]).await
+        && let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(&json) {
             state.pods = arr.iter().map(parse_pod_row).collect();
         }
-    }
 
     state
 }

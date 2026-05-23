@@ -230,12 +230,12 @@ impl Component for ThemePickerMenuWidgetModel {
                 for theme in Themes::all() {
                     let is_dark = static_theme(theme, None).map(|t| t.is_dark_mode);
 
-                    let matches = match (self.active_theme_filter, is_dark) {
-                        (ThemeFilter::All, _) => true,
-                        (ThemeFilter::Light, Some(false)) => true,
-                        (ThemeFilter::Dark, Some(true)) => true,
-                        _ => false,
-                    };
+                    let matches = matches!(
+                        (self.active_theme_filter, is_dark),
+                        (ThemeFilter::All, _)
+                            | (ThemeFilter::Light, Some(false))
+                            | (ThemeFilter::Dark, Some(true))
+                    );
 
                     if matches {
                         guard.push_back(*theme);

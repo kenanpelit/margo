@@ -154,11 +154,10 @@ pub(crate) async fn active_targets() -> Vec<String> {
             .rev()
             .find(|p| !p.starts_with('-'))
             .map(|s| s.to_string());
-        if let Some(target) = target {
-            if !seen.contains(&target) {
+        if let Some(target) = target
+            && !seen.contains(&target) {
                 seen.push(target);
             }
-        }
     }
     seen
 }
@@ -172,13 +171,12 @@ fn target_matches(target: &str, host: &SshHost) -> bool {
     if target == host.name || target == host.hostname {
         return true;
     }
-    if !host.user.is_empty() {
-        if target == format!("{}@{}", host.user, host.hostname)
-            || target == format!("{}@{}", host.user, host.name)
+    if !host.user.is_empty()
+        && (target == format!("{}@{}", host.user, host.hostname)
+            || target == format!("{}@{}", host.user, host.name))
         {
             return true;
         }
-    }
     false
 }
 

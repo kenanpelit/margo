@@ -180,16 +180,14 @@ pub(crate) async fn probe(cfg: ProbeConfig) -> UpdateReport {
             Err(e) => report.error = Some(e),
         }
     }
-    if cfg.aur {
-        if let Ok(mut entries) = probe_aur().await {
+    if cfg.aur
+        && let Ok(mut entries) = probe_aur().await {
             report.entries.append(&mut entries);
         }
-    }
-    if cfg.flatpak {
-        if let Ok(mut entries) = probe_flatpak().await {
+    if cfg.flatpak
+        && let Ok(mut entries) = probe_flatpak().await {
             report.entries.append(&mut entries);
         }
-    }
 
     report
 }

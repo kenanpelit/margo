@@ -71,11 +71,10 @@ impl ValentReport {
         if self.devices.is_empty() {
             return None;
         }
-        if !preferred_id.is_empty() {
-            if let Some(d) = self.devices.iter().find(|d| d.id == preferred_id) {
+        if !preferred_id.is_empty()
+            && let Some(d) = self.devices.iter().find(|d| d.id == preferred_id) {
                 return Some(d);
             }
-        }
         self.devices
             .iter()
             .find(|d| d.reachable)
@@ -149,7 +148,7 @@ pub(crate) async fn probe() -> ValentReport {
         }
     }
 
-    devices.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    devices.sort_by_key(|a| a.name.to_lowercase());
 
     ValentReport { daemon_available: true, devices }
 }
@@ -226,11 +225,10 @@ async fn fetch_battery(dev: &mut Device) {
     let Ok(out) = describe(&path, "battery.state").await else {
         return;
     };
-    if let Some(c) = PCT_RE.captures(&out) {
-        if let Ok(pct) = c[1].parse::<f64>() {
+    if let Some(c) = PCT_RE.captures(&out)
+        && let Ok(pct) = c[1].parse::<f64>() {
             dev.battery_charge = Some(pct.round() as i32);
         }
-    }
     if let Some(c) = CHG_RE.captures(&out) {
         dev.battery_charging = &c[1] == "true";
     }

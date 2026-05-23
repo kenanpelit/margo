@@ -226,8 +226,8 @@ impl Component for IpMenuWidgetModel {
                 });
             }
             IpMenuWidgetInput::CopyIp => {
-                if let Some(ip) = self.snapshot.info.as_ref().map(|i| i.ip.clone()) {
-                    if !ip.is_empty() {
+                if let Some(ip) = self.snapshot.info.as_ref().map(|i| i.ip.clone())
+                    && !ip.is_empty() {
                         // `wl-copy` is in the package depends; pipe
                         // the IP to it. Detached — we don't care
                         // about the exit status, the clipboard set
@@ -248,7 +248,6 @@ impl Component for IpMenuWidgetModel {
                             }
                         });
                     }
-                }
             }
             IpMenuWidgetInput::OpenInBrowser => {
                 let url = match self.snapshot.info.as_ref() {

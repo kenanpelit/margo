@@ -459,8 +459,7 @@ fn apply_tooltip(model: &AudioDashboardModel, widgets: &AudioDashboardModelWidge
     let tooltip = format!(
         "{out_line}\n{in_line}\n\nClick: open mixer\nRight-click: cycle display mode"
     );
-    widgets
+    if let Some(p) = widgets
         .button
-        .parent()
-        .map(|p| p.set_tooltip_text(Some(&tooltip)));
+        .parent() { p.set_tooltip_text(Some(&tooltip)) }
 }
