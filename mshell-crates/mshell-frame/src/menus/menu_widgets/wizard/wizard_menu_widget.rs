@@ -18,7 +18,7 @@ use mshell_config::schema::themes::{MatugenMode, Themes};
 use mshell_utils::session::{SessionAction, run_session_action};
 use reactive_graph::prelude::GetUntracked;
 use relm4::gtk::prelude::{
-    BoxExt, ButtonExt, EditableExt, EntryExt, FileExt, OrientableExt, WidgetExt,
+    BoxExt, ButtonExt, EditableExt, EntryExt, FileExt, ListModelExt, OrientableExt, WidgetExt,
 };
 use relm4::gtk::{gio, glib};
 use relm4::{ComponentParts, ComponentSender, SimpleComponent, gtk};
@@ -99,6 +99,11 @@ pub(crate) struct WizardMenuWidgetModel {
     disable_while_typing: bool,
     /// Scanned SSIDs (Wi-Fi step). Empty until the first list load.
     wifi_networks: Vec<String>,
+    /// Display model for the SSID dropdown. Held + mutated in place so
+    /// the dropdown's model is never rebuilt on every view pass — a
+    /// `#[watch] set_model` there fed `selected-notify` back into the
+    /// update cycle and spun the main loop at 100% CPU.
+    wifi_model: gtk::StringList,
     wifi_selected: usize,
     wifi_password: String,
     /// Free-text status line under the Connect button.
@@ -386,14 +391,9 @@ impl SimpleComponent for WizardMenuWidgetModel {
                         gtk::DropDown {
                             set_valign: gtk::Align::Center,
                             set_hexpand: true,
-                            #[watch]
-                            set_model: Some(&gtk::StringList::new(
-                                &if model.wifi_networks.is_empty() {
-                                    vec!["Scan for networks…"]
-                                } else {
-                                    model.wifi_networks.iter().map(|s| s.as_str()).collect::<Vec<_>>()
-                                },
-                            )),
+                            // Model set ONCE; contents are spliced in
+                            // place on WifiListLoaded. Never `#[watch]` it.
+                            set_model: Some(&model.wifi_model),
                             #[watch]
                             set_sensitive: !model.wifi_networks.is_empty(),
                             #[watch]
@@ -610,6 +610,15 @@ impl SimpleComponent for WizardMenuWidgetModel {
                         String::new()
                     };
                 }
+                // Mutate the existing model in place (placeholder when
+                // empty) — never swap in a fresh StringList here.
+                let items: Vec<&str> = if list.is_empty() {
+                    vec!["Scan for networks…"]
+                } else {
+                    list.iter().map(|s| s.as_str()).collect()
+                };
+                self.wifi_model
+                    .splice(0, self.wifi_model.n_items(), &items);
                 self.wifi_networks = list;
             }
             WizardMenuWidgetInput::WifiSelected(idx) => self.wifi_selected = idx,
@@ -873,6 +882,7 @@ fn read_live() -> WizardMenuWidgetModel {
         natural_scroll: read_margo_conf_bool("trackpad_natural_scrolling", false),
         disable_while_typing: read_margo_conf_bool("disable_while_typing", true),
         wifi_networks: Vec::new(),
+        wifi_model: gtk::StringList::new(&["Scan for networks…"]),
         wifi_selected: 0,
         wifi_password: String::new(),
         wifi_status: String::new(),
