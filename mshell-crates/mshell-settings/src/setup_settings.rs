@@ -466,8 +466,16 @@ impl Component for SetupSettingsModel {
 
             SetupSettingsInput::ActiveProfileEffect(p) => self.active_profile = p,
             SetupSettingsInput::AvailableProfilesEffect(list) => {
-                let refs: Vec<&str> = list.iter().map(String::as_str).collect();
-                self.available_profiles = gtk::StringList::new(&refs);
+                // Mutate the existing StringList in place — the DropDown
+                // holds a reference to THIS object, so replacing it (as we
+                // did before) left the dropdown bound to the original empty
+                // list and nothing ever showed.
+                while self.available_profiles.n_items() > 0 {
+                    self.available_profiles.remove(0);
+                }
+                for p in &list {
+                    self.available_profiles.append(p);
+                }
             }
             SetupSettingsInput::ThemeEffect(t) => self.theme_scheme = t,
             SetupSettingsInput::ModeEffect(m) => self.matugen_mode = m,
