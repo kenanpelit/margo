@@ -7,6 +7,7 @@ members = [
     "mctl",
     "mlayout",
     "mlock",
+    "mlogind",
     "mpicker",
     "mscreenshot",
     "mvisual",
