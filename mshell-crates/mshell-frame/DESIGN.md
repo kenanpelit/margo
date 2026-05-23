@@ -50,6 +50,12 @@ Guiding rules (these set the *intent*; §1–§11 are the binding details):
 The launcher is the heart of the desktop: it must open instantly, feel
 lightweight, stay visually calm, and keep search primary.
 
+These rules set the *visual* intent; §1–§12 are the binding detail. The
+**behavioural** intent — how Margo should feel in use (cognitive load,
+attention, spatial memory, responsiveness, restraint) — lives in §13–§14
+and is **equally binding**: design for *mental efficiency*, not for the
+screenshot.
+
 ---
 
 ## 1. Design tokens (never hardcode — always use the CSS variable)
@@ -597,6 +603,192 @@ dashboard, whose header is the reusable `MenuWidget::PanelHeader`
 
 ---
 
+## 13. Interaction philosophy (how the system should *feel*)
+
+§0–§12 define how Margo *looks*; this section defines how it should
+*behave in the user's mind*. Tokens and components are the "how"; this is
+the "why" — and it is **binding intent**, checkable in review. When a
+component rule and a principle here conflict, the component rule is the
+one that's wrong.
+
+Margo's benchmark is not "more components". It is the quiet competence of
+GNOME HIG + Material 3, whose real strength is not how they look but that
+**they do not tax the user's attention.** Margo is designed to be *used*,
+for hours, not admired for a screenshot.
+
+**Precedence (resolve tensions in this order):**
+
+1. **Clarity of feedback** — the user must always know what just happened.
+2. **Calm** — never raise visual intensity to win attention.
+3. **Continuity** — preserve the user's place and orientation.
+4. **Polish** — refinement comes last; it never costs the three above.
+
+A "smoother" animation that delays feedback (1) or breaks calm (2) is a
+regression, not an improvement.
+
+### 13.1 Cognitive load
+
+Margo prioritises sustained focus and low mental overhead: minimise the
+interpretation an interface demands. The user should rarely have to ask
+*where do I look? · what changed? · which element is active? · is this
+interactive? · why is this moving? · why is this highlighted?*
+
+1. Prefer **recognition over interpretation** — reuse known shapes (§5
+   revealer-row, §12 panel); don't invent a per-surface idiom.
+2. Prefer **consistency over novelty**.
+3. Prefer **calm over density**.
+4. Prefer **structure over decoration**.
+5. Prefer **predictable interaction over clever interaction**.
+6. **Visual emphasis is a finite budget.** Every accent, animation, and
+   highlight must justify itself or be removed.
+
+### 13.2 Attention hierarchy
+
+Attention is directed on purpose. Every surface must make plain what
+matters most, what is secondary, what is contextual, and what can be
+ignored.
+
+- **One dominant focus region per surface** — no two regions compete.
+- **One accent region at a time.** Accent (`--primary` /
+  `--secondary-container`) marks only the live / selected / active element
+  (§3); it never decorates space and never appears twice on one surface.
+  Any escalation beyond that single accent goes through the severity
+  ladder (§2) — wording + a glyph — not more colour.
+- **Motion reinforces hierarchy, never competes with it.**
+- Secondary metadata recedes to the dim `--outline` tier (§1 Fonts).
+- Decoration disappears before content does: when space is tight, drop
+  ornament first, data last.
+
+> If everything is emphasised, nothing is.
+
+### 13.3 Spatial logic
+
+Surfaces must be spatially predictable so the user builds spatial memory.
+
+- Similar surfaces open from similar places; a menu inherits its slide
+  direction from its anchor pill (§5).
+- Expanded content stays visually connected to its trigger — the
+  revealer-row (§5) is the canonical example.
+- **Surfaces never teleport**; large layout shifts are avoided.
+- Context stays anchored *during* interaction: opening a menu must not
+  reflow the bar, and a dashboard column must not jump when one tile
+  updates (the left/right columns stay height-matched — §7).
+
+The interface should feel physically coherent.
+
+### 13.4 Responsiveness
+
+Perceived responsiveness beats decorative smoothness. A fast interface
+feels lighter than an impressive one.
+
+- **Feedback begins within one frame.** A hover/click registers
+  immediately; never gate the *first* response on an animation or on data
+  arriving.
+- **Menus appear at once** — the surface and its layout paint together.
+  Lazily built content (content is built on first reveal) must never leave
+  a menu visibly empty or reflowing: paint the frame, then fill it.
+- **Motion is a budget**, bound to the §1 Motion tokens:
+
+  | Interaction | Token | Budget |
+  |---|---|---|
+  | hover / state layer | `--motion-fast` | ≤ 120 ms |
+  | selection / focus | `--motion-medium` | ≤ 200 ms |
+  | surface reveal / expand | `--motion-slow` | ≤ 320 ms |
+
+  The more frequent the interaction, the *shorter* the duration — never
+  lengthen a hover for drama.
+- **Heavy work never blocks input.** Polling, decoding, and IPC run off
+  the interaction path (the menu pollers' lazy/visible gating is the
+  pattern: a closed menu does nothing).
+
+### 13.5 Surface ownership
+
+Each surface type owns exactly one interaction role; they must not compete
+for it.
+
+| Surface | Owns | Interaction |
+|---|---|---|
+| **Bar pill** (§4) | glanceable status, immediate state | minimal — a click toggles its menu |
+| **Menu** (§5) | quick, transient controls | short-lived focus; closes on outside-click |
+| **Panel** (§12) | browsing + filtering | extended; search + lists |
+| **Dashboard** (§7) | ambient overview | persistent; multi-widget coordination |
+
+When a surface starts doing another's job — a pill growing panel-grade
+controls, a menu becoming a dashboard — split it instead.
+
+### 13.6 Density (deepening §1)
+
+Density optimises **scanning speed**, not information count.
+
+- Compact ≠ cramped; spacious ≠ oversized.
+- Density emerges from the **4/8/12/16/24 rhythm** (§0.8), not arbitrary
+  padding.
+- Frequently scanned surfaces (launcher, clipboard) prioritise alignment
+  consistency; browsing surfaces (panels) prioritise breathing room.
+- **Long-lived surfaces** (dashboard, clipboard history) must stay
+  visually sustainable after hours of continuous use — no shimmer, no
+  per-update churn, no fatigue.
+
+### 13.7 State continuity
+
+State changes preserve orientation; continuity reduces fatigue.
+
+- Preserve context across interactions — **filters, selections, scroll
+  position, and the active tab survive a refresh.**
+- Avoid unnecessary resets: a data update repaints the *values that
+  changed*, not the whole surface. (This is why the compositor→shell
+  mirror is set-if-changed and `state.json` writes are coalesced — the
+  shell sees stable updates, not thrash.)
+- Layout changes feel progressive, never abrupt. The user never loses
+  their place without cause.
+
+### 13.8 Accessibility (deepening §0.9)
+
+Accessibility is part of interaction quality, not an optional compliance
+layer — accessible systems are more usable for *everyone*.
+
+- **Never rely on colour alone.** Pair an accent with a glyph, label, or
+  position (the severity ladder §2 already does this).
+- **Focus is always visible**; keyboard navigation is mandatory — dense
+  layouts included.
+- Motion stays comfortable over long sessions; a **reduced-motion**
+  preference collapses motion to opacity-only cross-fades while keeping
+  every state legible — drop the *animation*, never the *information* it
+  carried.
+- The UI stays understandable under reduced attention: a glance suffices.
+
+## 14. Visual restraint & Margo identity
+
+(This is the tone §12's "Emotional tone" refers back to.)
+
+### 14.1 Visual restraint
+
+Margo avoids unnecessary visual intensity. The interface should feel
+**composed and intentional**, not expressive or decorative. Restraint is
+what keeps a desktop usable for years — and Margo's defence against the
+slow entropy of rice culture.
+
+**Avoid:** excessive saturation · glow · oversized headers · ornamental
+animation · gratuitous borders · multiple accent regions · floating
+decorative elements · exaggerated shadows · decorative gradients · visual
+gimmicks.
+
+**Prefer:** tonal layering (§1) · spacing rhythm · typographic hierarchy ·
+subtle motion · predictable alignment · restrained colour.
+
+> Restraint creates longevity.
+
+### 14.2 Margo identity
+
+Margo is not built to impress at first glance. It is built to get *better
+over time, through prolonged use.* It should feel **calm · reliable ·
+focused · lightweight · intentional · efficient · spatially coherent.**
+
+Margo favours sustained usability over novelty. **The desktop supports
+work; it never competes with it.**
+
+---
+
 ## Quick checklists
 
 **New bar pill (opens a menu):** §4 pill shape → §6 all 11 wiring
@@ -618,3 +810,10 @@ search (`--radius-pill`); lightweight `--surface-container` /
 `--radius-md` rows with metadata at the dim `--outline` tier. Still a
 layer-shell menu (§5); tokens only (§1); keep list density medium —
 don't balloon rows.
+
+**Philosophy self-check (every new surface):** §13 — at a glance, can the
+user answer *where to look · what changed · what's active · what's
+interactive*? Exactly **one** accent region (§13.2)? Feedback within a
+frame and motion inside the §13.4 budget (§1 tokens)? Does it own a single
+role (§13.5) and keep the user's place across updates (§13.7)? If a "cool"
+idea fails any of these it is noise — cut it (§14).
