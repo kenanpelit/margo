@@ -50,7 +50,17 @@ impl WlrLayerShellHandler for MargoState {
         let wl_surface_clone = desktop_layer.wl_surface().clone();
         {
             let mut map = layer_map_for_output(&smithay_output);
-            map.map_layer(&desktop_layer).unwrap();
+            // A client controls the layer surface, so never let a map
+            // failure (e.g. an already-mapped surface) take down the whole
+            // session — log and drop this surface instead of panicking.
+            if let Err(err) = map.map_layer(&desktop_layer) {
+                tracing::warn!(
+                    namespace = %namespace,
+                    error = ?err,
+                    "layer_shell: map_layer failed; ignoring surface"
+                );
+                return;
+            }
             map.arrange();
         }
         // Push `preferred_buffer_scale` + `wp_fractional_scale_v1`

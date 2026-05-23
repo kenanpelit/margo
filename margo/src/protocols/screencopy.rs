@@ -315,7 +315,12 @@ where
         }
 
         let st = state.screencopy_state();
-        let queue = st.queues.get_mut(manager).unwrap();
+        // The queue is created when the manager binds, so this is normally
+        // present — but a destroy/copy race shouldn't crash the compositor.
+        let Some(queue) = st.queues.get_mut(manager) else {
+            tracing::warn!("screencopy: no queue for manager; dropping frame");
+            return;
+        };
         queue.pending_frames.insert(frame);
     }
 
