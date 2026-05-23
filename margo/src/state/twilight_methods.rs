@@ -34,6 +34,14 @@ impl MargoState {
     /// idempotent (it reads live config + override state).
     pub fn force_tick_twilight(&mut self) {
         let next = self.tick_twilight();
+        // Persist the new twilight state to state.json. Every explicit
+        // user action (`mctl twilight toggle/reset/set/preview/test`,
+        // reload_config) comes through here, but the steady-state
+        // calloop timer calls `tick_twilight` directly — so this writes
+        // on the `enabled`/config changes that consumers (the shell's
+        // night-light button polls `mctl twilight status`) must see,
+        // without spamming a file write on every 50 ms transition tick.
+        self.write_state_file();
         let timer = smithay::reexports::calloop::timer::Timer::from_duration(next);
         let _ = self.loop_handle.insert_source(
             timer,
