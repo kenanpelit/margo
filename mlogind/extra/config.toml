@@ -90,10 +90,10 @@ show_background = false
 
 [background.style]
 # Allow to set the default background color for the login shell
-color = "black"
+color = "$background"
 # Settings for the background block's borders
 show_border = true
-border_color = "white"
+border_color = "$foreground"
 
 [power_controls]
 # The margin between hints
@@ -109,7 +109,7 @@ entries = []
 #hint = "Reboot to OS"
 #
 ## The color and modifiers of the hint in the top-left corner
-#hint_color = "dark gray"
+#hint_color = "$dim"
 #hint_modifiers = ""
 #
 ## The key used to reboot. Possibilities are F1 to F12.
@@ -127,7 +127,7 @@ entries = []
 hint = "Shutdown"
 
 # The color and modifiers of the hint in the top-left corner
-hint_color = "dark gray"
+hint_color = "$dim"
 hint_modifiers = ""
 
 # The key used to shutdown. Possibilities are F1 to F12.
@@ -141,7 +141,7 @@ cmd = "systemctl poweroff -l"
 hint = "Reboot"
 
 # The color and modifiers of the hint in the top-left corner
-hint_color = "dark gray"
+hint_color = "$dim"
 hint_modifiers = ""
 
 # The key used to reboot. Possibilities are F1 to F12.
@@ -183,7 +183,7 @@ switcher_visibility = "visible"
 toggle_hint = "Switcher %key%"
 
 # The color and modifiers of the hint in the top-left corner
-toggle_hint_color = "dark gray"
+toggle_hint_color = "$dim"
 toggle_hint_modifiers = ""
 
 
@@ -198,11 +198,11 @@ remember = true
 show_movers = true
 
 # Mover's color and modifiers whilst the selector is unfocused
-mover_color = "dark gray"
+mover_color = "$dim"
 mover_modifiers = ""
 
 # Mover's color and modifiers whilst the selector is focused
-mover_color_focused = "orange"
+mover_color_focused = "$accent"
 mover_modifiers_focused = "bold"
 
 # The characters used to display the movers. Suggestions are:
@@ -221,22 +221,22 @@ mover_margin = 1
 show_neighbours = true
 
 # Neighbours' color and modifiers whilst the selector is unfocused
-neighbour_color = "dark gray"
+neighbour_color = "$dim"
 neighbour_modifiers = ""
 
 # Neighbours' color and modifiers whilst the selector is focused
-neighbour_color_focused = "gray"
+neighbour_color_focused = "$neutral"
 neighbour_modifiers_focused = ""
 
 # Margin between neighbours and selected
 neighbour_margin = 1
 
 # Selected's color and modifiers whilst the selector is unfocused
-selected_color = "gray"
+selected_color = "$neutral"
 selected_modifiers = "underlined"
 
 # Selected's color and modifiers whilst the selector is focused
-selected_color_focused = "white"
+selected_color_focused = "$foreground"
 selected_modifiers_focused = "bold"
 
 # The length of the name of the desktop environment which is displayed.
@@ -247,12 +247,12 @@ no_envs_text = "No environments..."
 
 # The color and modifiers of the 'no desktop environments available text'
 # whilst the selector is unfocused
-no_envs_color = "white"
+no_envs_color = "$foreground"
 no_envs_modifiers = ""
 
 # The color and modifiers of the 'no desktop environments available text'
 # whilst the selector is focused
-no_envs_color_focused = "red"
+no_envs_color_focused = "$error"
 no_envs_modifiers_focused = ""
 
 [username_field]
@@ -267,19 +267,19 @@ show_title = true
 title = "Login"
 
 # The title's color and modifiers whilst the username field is unfocused
-title_color = "white"
-content_color = "white"
+title_color = "$foreground"
+content_color = "$foreground"
 
 # The title's color and modifiers whilst the username field is focused
-title_color_focused = "orange"
-content_color_focused = "orange"
+title_color_focused = "$accent"
+content_color_focused = "$accent"
 
 # Enables showing the borders
 show_border = true
 # The borders' color and modifiers whilst the username field is unfocused
-border_color = "white"
+border_color = "$foreground"
 # The borders' color and modifiers whilst the username field is focused
-border_color_focused = "orange"
+border_color_focused = "$accent"
 
 # Constrain the width of the username field
 use_max_width = true
@@ -300,19 +300,19 @@ show_title = true
 title = "Password"
 
 # The title's color and modifiers whilst the password field is unfocused
-title_color = "white"
-content_color = "white"
+title_color = "$foreground"
+content_color = "$foreground"
 
 # The title's color and modifiers whilst the password field is focused
-title_color_focused = "orange"
-content_color_focused = "orange"
+title_color_focused = "$accent"
+content_color_focused = "$accent"
 
 # Enables showing the borders
 show_border = true
 # The borders' color and modifiers whilst the password field is unfocused
-border_color = "white"
+border_color = "$foreground"
 # The borders' color and modifiers whilst the password field is focused
-border_color_focused = "orange"
+border_color_focused = "$accent"
 
 # Constrain the width of the password field
 use_max_width = true

@@ -1,0 +1,14 @@
+# mlogind colour variables — referenced as `$name` from config.toml.
+#
+# These are margo's baseline (Dracula) palette. To make the login screen
+# track the active wallpaper, a theme sync (margo's matugen → this file)
+# overwrites these with the live palette; until then these are the
+# defaults. Any `$name` token inside a config.toml string is substituted
+# with the value here before the colour is parsed.
+
+accent = "#BD93F9"      # --primary  (focus / selection / active)
+background = "#282A36"   # --surface
+foreground = "#CDD6F4"   # --on-surface (primary text / borders)
+neutral = "#44475A"      # --surface-variant (unfocused selection)
+dim = "#6272A4"          # dim hints / metadata
+error = "#FF5555"        # --error
