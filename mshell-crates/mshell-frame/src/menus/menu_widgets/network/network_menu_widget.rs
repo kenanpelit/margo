@@ -501,7 +501,13 @@ fn start_speed_sampler(sender: &ComponentSender<NetworkMenuWidgetModel>, visible
     sender.command(move |out, shutdown| async move {
         let shutdown_fut = shutdown.wait();
         tokio::pin!(shutdown_fut);
-        let mut prev: Option<(u64, u64)> = None;
+        // Read the baseline immediately (we only start when revealed) so
+        // the first delta lands after one interval, not two.
+        let mut prev: Option<(u64, u64)> = if visible.load(Ordering::Relaxed) {
+            Some(read_net_totals().await)
+        } else {
+            None
+        };
         loop {
             tokio::select! {
                 () = &mut shutdown_fut => break,

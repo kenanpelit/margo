@@ -1221,6 +1221,33 @@ impl Component for Frame {
                     .send(MenuInput::RevealChanged(false))
                     .unwrap_or_default();
 
+                // Idle the lazy-poll menus too, so closing the menu
+                // stops their refresh loop's I/O until next reveal.
+                self.ip_menu
+                    .sender()
+                    .send(MenuInput::RevealChanged(false))
+                    .unwrap_or_default();
+
+                self.dns_menu
+                    .sender()
+                    .send(MenuInput::RevealChanged(false))
+                    .unwrap_or_default();
+
+                self.ufw_menu
+                    .sender()
+                    .send(MenuInput::RevealChanged(false))
+                    .unwrap_or_default();
+
+                self.podman_menu
+                    .sender()
+                    .send(MenuInput::RevealChanged(false))
+                    .unwrap_or_default();
+
+                self.network_menu
+                    .sender()
+                    .send(MenuInput::RevealChanged(false))
+                    .unwrap_or_default();
+
                 self.sync_keyboard_mode(root);
             }
             FrameInput::BarToggleTop => {
@@ -1560,6 +1587,38 @@ impl Frame {
             .sender()
             .send(MenuInput::RevealChanged(
                 name == SESSION_MENU && now_visible,
+            ))
+            .unwrap_or_default();
+
+        // These menus poll lazily on reveal (network/IP/DNS/UFW/podman
+        // do no background work until first opened), so they must be
+        // told when they become visible — otherwise they never fetch.
+        self.ip_menu
+            .sender()
+            .send(MenuInput::RevealChanged(name == NIP_MENU && now_visible))
+            .unwrap_or_default();
+
+        self.dns_menu
+            .sender()
+            .send(MenuInput::RevealChanged(name == NDNS_MENU && now_visible))
+            .unwrap_or_default();
+
+        self.ufw_menu
+            .sender()
+            .send(MenuInput::RevealChanged(name == NUFW_MENU && now_visible))
+            .unwrap_or_default();
+
+        self.podman_menu
+            .sender()
+            .send(MenuInput::RevealChanged(
+                name == NPODMAN_MENU && now_visible,
+            ))
+            .unwrap_or_default();
+
+        self.network_menu
+            .sender()
+            .send(MenuInput::RevealChanged(
+                name == NNETWORK_MENU && now_visible,
             ))
             .unwrap_or_default();
     }
