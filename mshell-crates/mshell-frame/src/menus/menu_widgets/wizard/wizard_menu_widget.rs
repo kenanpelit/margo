@@ -10,8 +10,9 @@
 
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
-    ConfigStoreFields, GeneralStoreFields, MatugenStoreFields, SizingStoreFields,
-    ThemeAttributesStoreFields, ThemeStoreFields, WallpaperStoreFields,
+    BarsStoreFields, ConfigStoreFields, GeneralStoreFields, HorizontalBarStoreFields,
+    MatugenStoreFields, SizingStoreFields, ThemeAttributesStoreFields, ThemeStoreFields,
+    WallpaperStoreFields,
 };
 use mshell_config::schema::themes::{MatugenMode, Themes};
 use mshell_utils::session::{SessionAction, run_session_action};
@@ -23,7 +24,8 @@ use relm4::gtk::{gio, glib};
 use relm4::{ComponentParts, ComponentSender, SimpleComponent, gtk};
 use std::path::PathBuf;
 
-const PAGES: usize = 5;
+// Welcome, Theme, Keyboard, Touchpad, Wallpaper, Bar, Review.
+const PAGES: usize = 7;
 
 /// Curated theme presets (full catalogue lives in Settings → Theme).
 const THEMES: &[(Themes, &str)] = &[
@@ -92,7 +94,12 @@ pub(crate) struct WizardMenuWidgetModel {
     xkb_layout: String,
     xkb_variant: String,
     xkb_options: String,
+    tap_to_click: bool,
+    natural_scroll: bool,
+    disable_while_typing: bool,
     wallpaper_dir: String,
+    /// `false` = main bar on top (default), `true` = on the bottom.
+    bar_at_bottom: bool,
     /// Set once the final step has written + reloaded. Flips the last
     /// page into its "applied — reboot?" state.
     applied: bool,
@@ -110,8 +117,12 @@ pub(crate) enum WizardMenuWidgetInput {
     XkbLayoutChanged(String),
     XkbVariantChanged(String),
     XkbOptionsChanged(String),
+    TapToClickToggled(bool),
+    NaturalScrollToggled(bool),
+    DisableWhileTypingToggled(bool),
     BrowseWallpaper,
     WallpaperPicked(String),
+    BarPositionChanged(bool),
     Reboot,
 }
 
@@ -297,8 +308,59 @@ impl SimpleComponent for WizardMenuWidgetModel {
                     },
                 },
 
-                // ── 3 Wallpaper ───────────────────────────────
+                // ── 3 Touchpad ────────────────────────────────
                 add_named[Some("3")] = &gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 12,
+                    gtk::Label { add_css_class: "label-large-bold", set_label: "Touchpad & mouse", set_halign: gtk::Align::Start },
+                    gtk::Label {
+                        add_css_class: "label-small",
+                        set_label: "Pointer behaviour the compositor applies on startup.",
+                        set_halign: gtk::Align::Start, set_xalign: 0.0, set_wrap: true,
+                    },
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal, set_spacing: 16,
+                        gtk::Label { add_css_class: "label-medium", set_label: "Tap to click", set_halign: gtk::Align::Start, set_hexpand: true },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            set_active: model.tap_to_click,
+                            connect_state_set[sender] => move |_, v| {
+                                sender.input(WizardMenuWidgetInput::TapToClickToggled(v));
+                                glib::Propagation::Proceed
+                            },
+                        },
+                    },
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal, set_spacing: 16,
+                        gtk::Label { add_css_class: "label-medium", set_label: "Natural scrolling", set_halign: gtk::Align::Start, set_hexpand: true },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            set_active: model.natural_scroll,
+                            connect_state_set[sender] => move |_, v| {
+                                sender.input(WizardMenuWidgetInput::NaturalScrollToggled(v));
+                                glib::Propagation::Proceed
+                            },
+                        },
+                    },
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal, set_spacing: 16,
+                        gtk::Label { add_css_class: "label-medium", set_label: "Disable while typing", set_halign: gtk::Align::Start, set_hexpand: true },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            set_active: model.disable_while_typing,
+                            connect_state_set[sender] => move |_, v| {
+                                sender.input(WizardMenuWidgetInput::DisableWhileTypingToggled(v));
+                                glib::Propagation::Proceed
+                            },
+                        },
+                    },
+                },
+
+                // ── 4 Wallpaper ───────────────────────────────
+                add_named[Some("4")] = &gtk::Box {
                     set_orientation: gtk::Orientation::Vertical,
                     set_spacing: 12,
                     gtk::Label { add_css_class: "label-large-bold", set_label: "Wallpaper", set_halign: gtk::Align::Start },
@@ -316,24 +378,45 @@ impl SimpleComponent for WizardMenuWidgetModel {
                     },
                 },
 
-                // ── 4 Done ────────────────────────────────────
-                add_named[Some("4")] = &gtk::Box {
+                // ── 5 Bar ─────────────────────────────────────
+                add_named[Some("5")] = &gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 12,
+                    gtk::Label { add_css_class: "label-large-bold", set_label: "Bar", set_halign: gtk::Align::Start },
+                    gtk::Label {
+                        add_css_class: "label-small",
+                        set_label: "Where the main bar sits. Your widgets move with it; fine-tune slots later in Settings → Bar.",
+                        set_halign: gtk::Align::Start, set_xalign: 0.0, set_wrap: true,
+                    },
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal, set_spacing: 16,
+                        gtk::Label { add_css_class: "label-medium", set_label: "Position", set_halign: gtk::Align::Start, set_hexpand: true },
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&gtk::StringList::new(&["Top", "Bottom"])),
+                            #[watch]
+                            set_selected: u32::from(model.bar_at_bottom),
+                            connect_selected_notify[sender] => move |dd| {
+                                sender.input(WizardMenuWidgetInput::BarPositionChanged(dd.selected() == 1));
+                            },
+                        },
+                    },
+                },
+
+                // ── 6 Review ──────────────────────────────────
+                add_named[Some("6")] = &gtk::Box {
                     set_orientation: gtk::Orientation::Vertical,
                     set_spacing: 8,
                     gtk::Label {
                         add_css_class: "label-large-bold",
                         #[watch]
-                        set_label: if model.applied { "All set" } else { "Ready" },
+                        set_label: if model.applied { "All set" } else { "Review" },
                         set_halign: gtk::Align::Start,
                     },
                     gtk::Label {
                         add_css_class: "label-small",
                         #[watch]
-                        set_label: if model.applied {
-                            "Applied live — your keyboard layout is already active. Reboot only if you want a fully clean start."
-                        } else {
-                            "Finish applies your choices to the active profile and the compositor. The keyboard layout takes effect immediately."
-                        },
+                        set_label: &model.review_text(),
                         set_halign: gtk::Align::Start, set_xalign: 0.0, set_wrap: true,
                     },
                 },
@@ -429,6 +512,10 @@ impl SimpleComponent for WizardMenuWidgetModel {
             WizardMenuWidgetInput::XkbLayoutChanged(s) => self.xkb_layout = s,
             WizardMenuWidgetInput::XkbVariantChanged(s) => self.xkb_variant = s.trim().to_string(),
             WizardMenuWidgetInput::XkbOptionsChanged(s) => self.xkb_options = s,
+            WizardMenuWidgetInput::TapToClickToggled(v) => self.tap_to_click = v,
+            WizardMenuWidgetInput::NaturalScrollToggled(v) => self.natural_scroll = v,
+            WizardMenuWidgetInput::DisableWhileTypingToggled(v) => self.disable_while_typing = v,
+            WizardMenuWidgetInput::BarPositionChanged(bottom) => self.bar_at_bottom = bottom,
             WizardMenuWidgetInput::WallpaperPicked(p) => self.wallpaper_dir = p,
             WizardMenuWidgetInput::BrowseWallpaper => {
                 let s = sender.clone();
@@ -452,27 +539,107 @@ impl SimpleComponent for WizardMenuWidgetModel {
 
 impl WizardMenuWidgetModel {
     fn apply(&self) {
-        let (mode, theme, scale, clock, dir) = (
-            self.mode,
-            self.theme_scheme,
-            self.font_scale,
-            self.clock_24h,
-            self.wallpaper_dir.clone(),
-        );
+        let mode = self.mode;
+        let theme = self.theme_scheme;
+        let scale = self.font_scale;
+        let clock = self.clock_24h;
+        let dir = self.wallpaper_dir.clone();
+        let want_bottom = self.bar_at_bottom;
         config_manager().update_config(move |c| {
             c.theme.matugen.mode = mode;
             c.theme.theme = theme;
             c.theme.attributes.sizing.font_scale = scale;
             c.general.clock_format_24_h = clock;
             c.wallpaper.wallpaper_dir = dir;
+
+            // Bar position: relocate the populated bar to the chosen edge,
+            // preserving the user's widget arrangement; reveal whichever
+            // bar ends up populated and hide the empty one.
+            let top_empty = c.bars.top_bar.left_widgets.is_empty()
+                && c.bars.top_bar.center_widgets.is_empty()
+                && c.bars.top_bar.right_widgets.is_empty();
+            let currently_bottom = top_empty;
+            if want_bottom != currently_bottom {
+                std::mem::swap(&mut c.bars.top_bar, &mut c.bars.bottom_bar);
+            }
+            let top_now_empty = c.bars.top_bar.left_widgets.is_empty()
+                && c.bars.top_bar.center_widgets.is_empty()
+                && c.bars.top_bar.right_widgets.is_empty();
+            c.bars.top_bar.reveal_by_default = !top_now_empty;
+            c.bars.bottom_bar.reveal_by_default = top_now_empty;
         });
-        match write_xkb_to_margo_conf(&self.xkb_layout, &self.xkb_variant, &self.xkb_options) {
-            // Re-apply the compositor config live so the new keymap takes
-            // effect immediately — margo's `reload_config` calls
-            // `set_xkb_config`, so no logout/reboot is needed.
+
+        let bit = |on: bool| if on { "1" } else { "0" }.to_string();
+        let opt = |s: &str| (!s.is_empty()).then(|| s.to_string());
+        let updates = [
+            ("xkb_rules_layout", Some(self.xkb_layout.clone())),
+            ("xkb_rules_variant", opt(&self.xkb_variant)),
+            ("xkb_rules_options", opt(&self.xkb_options)),
+            ("tap_to_click", Some(bit(self.tap_to_click))),
+            ("trackpad_natural_scrolling", Some(bit(self.natural_scroll))),
+            ("mouse_natural_scrolling", Some(bit(self.natural_scroll))),
+            ("disable_while_typing", Some(bit(self.disable_while_typing))),
+        ];
+        match patch_margo_conf(&updates) {
+            // Re-apply the compositor config live so the new keymap + input
+            // settings take effect immediately — margo's `reload_config`
+            // calls `set_xkb_config`, so no logout/reboot is needed.
             Ok(()) => reload_margo_config(),
-            Err(e) => tracing::warn!(error = %e, "wizard: failed to write xkb to margo config"),
+            Err(e) => tracing::warn!(error = %e, "wizard: failed to write compositor config"),
         }
+    }
+
+    /// Multi-line summary shown on the Review step (and the "applied"
+    /// confirmation once finished).
+    fn review_text(&self) -> String {
+        if self.applied {
+            return "Applied live — your keyboard layout and input settings are \
+                    already active. Reboot only if you want a fully clean start."
+                .to_string();
+        }
+        let on = |b: bool| if b { "on" } else { "off" };
+        let theme = THEMES
+            .iter()
+            .find(|(t, _)| *t == self.theme_scheme)
+            .map(|(_, n)| *n)
+            .unwrap_or("—");
+        let font = FONT_SCALES
+            .iter()
+            .find(|(v, _)| (*v - self.font_scale).abs() < 0.001)
+            .map(|(_, n)| *n)
+            .unwrap_or("—");
+        let layout = LAYOUTS
+            .iter()
+            .find(|(c, _)| *c == self.xkb_layout)
+            .map(|(_, n)| *n)
+            .unwrap_or(self.xkb_layout.as_str());
+        let options = XKB_OPTIONS
+            .iter()
+            .find(|(c, _)| *c == self.xkb_options)
+            .map(|(_, n)| *n)
+            .unwrap_or("None");
+        let mode = match self.mode {
+            MatugenMode::Dark => "Dark",
+            MatugenMode::Light => "Light",
+        };
+        let clock = if self.clock_24h { "24h" } else { "12h" };
+        let variant = if self.xkb_variant.is_empty() {
+            "—"
+        } else {
+            self.xkb_variant.as_str()
+        };
+        let tap = on(self.tap_to_click);
+        let nat = on(self.natural_scroll);
+        let dwt = on(self.disable_while_typing);
+        let wall = &self.wallpaper_dir;
+        let bar = if self.bar_at_bottom { "Bottom" } else { "Top" };
+        format!(
+            "Theme: {theme} · {mode} · {font} · {clock}-clock\n\
+             Keyboard: {layout} / {variant} / {options}\n\
+             Touchpad: tap {tap} · natural-scroll {nat} · dwt {dwt}\n\
+             Wallpaper: {wall}\n\
+             Bar: {bar}"
+        )
     }
 }
 
@@ -511,6 +678,20 @@ fn read_live() -> WizardMenuWidgetModel {
         xkb_layout: detect_default_xkb_layout(),
         xkb_variant: String::new(),
         xkb_options: String::new(),
+        // Touchpad/mouse live in the compositor config, not the shell
+        // store — read them back so a re-run reflects reality. Defaults
+        // match config.example.conf.
+        tap_to_click: read_margo_conf_bool("tap_to_click", true),
+        natural_scroll: read_margo_conf_bool("trackpad_natural_scrolling", false),
+        disable_while_typing: read_margo_conf_bool("disable_while_typing", true),
+        bar_at_bottom: {
+            // Bottom is "primary" only if the top bar is empty. The field
+            // accessors consume `self`, so take a fresh handle per slot.
+            let top = || config_manager().config().bars().top_bar();
+            top().left_widgets().get_untracked().is_empty()
+                && top().center_widgets().get_untracked().is_empty()
+                && top().right_widgets().get_untracked().is_empty()
+        },
         wallpaper_dir: {
             // First launch leaves this empty in the schema default; fall
             // back to a real directory so rotation has something to show
@@ -574,61 +755,69 @@ fn margo_conf_path() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("/tmp/margo-config.conf"))
 }
 
-/// Patch `xkb_rules_layout` / `xkb_rules_variant` / `xkb_rules_options` in
-/// the compositor config in place, preserving everything else. Empty
-/// variant / options drop their respective lines. (Ported from the old
-/// standalone wizard, extended for options.)
-fn write_xkb_to_margo_conf(layout: &str, variant: &str, options: &str) -> std::io::Result<()> {
+/// Patch `key = value` lines in the compositor config in place, keeping
+/// everything else. A `None` value drops the key's line; keys not already
+/// present are appended. Used for the wizard's xkb + touchpad settings.
+fn patch_margo_conf(updates: &[(&str, Option<String>)]) -> std::io::Result<()> {
     let path = margo_conf_path();
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
     let existing = std::fs::read_to_string(&path).unwrap_or_default();
-    let mut out = String::with_capacity(existing.len() + 96);
-    let mut saw_layout = false;
-    let mut saw_variant = false;
-    let mut saw_options = false;
+    let mut out = String::with_capacity(existing.len() + 128);
+    let mut seen = vec![false; updates.len()];
     for line in existing.lines() {
         let t = line.trim_start();
-        if let Some(rest) = t.strip_prefix("xkb_rules_layout")
-            && rest.trim_start().starts_with('=')
-        {
-            out.push_str(&format!("xkb_rules_layout = {layout}\n"));
-            saw_layout = true;
-            continue;
-        }
-        if let Some(rest) = t.strip_prefix("xkb_rules_variant")
-            && rest.trim_start().starts_with('=')
-        {
-            saw_variant = true;
-            if !variant.is_empty() {
-                out.push_str(&format!("xkb_rules_variant = {variant}\n"));
+        let mut handled = false;
+        for (i, (key, val)) in updates.iter().enumerate() {
+            // `strip_prefix` + a `=` after optional whitespace guards
+            // against prefix collisions (`xkb_rules_layout` won't eat a
+            // hypothetical `xkb_rules_layout_x` line).
+            if let Some(rest) = t.strip_prefix(key)
+                && rest.trim_start().starts_with('=')
+            {
+                seen[i] = true;
+                if let Some(v) = val {
+                    out.push_str(&format!("{key} = {v}\n"));
+                }
+                handled = true;
+                break;
             }
-            continue;
         }
-        if let Some(rest) = t.strip_prefix("xkb_rules_options")
-            && rest.trim_start().starts_with('=')
-        {
-            saw_options = true;
-            if !options.is_empty() {
-                out.push_str(&format!("xkb_rules_options = {options}\n"));
-            }
-            continue;
-        }
-        out.push_str(line);
-        out.push('\n');
-    }
-    if !saw_layout {
-        if !out.is_empty() && !out.ends_with('\n') {
+        if !handled {
+            out.push_str(line);
             out.push('\n');
         }
-        out.push_str(&format!("xkb_rules_layout = {layout}\n"));
     }
-    if !saw_variant && !variant.is_empty() {
-        out.push_str(&format!("xkb_rules_variant = {variant}\n"));
-    }
-    if !saw_options && !options.is_empty() {
-        out.push_str(&format!("xkb_rules_options = {options}\n"));
+    for (i, (key, val)) in updates.iter().enumerate() {
+        if !seen[i]
+            && let Some(v) = val
+        {
+            if !out.is_empty() && !out.ends_with('\n') {
+                out.push('\n');
+            }
+            out.push_str(&format!("{key} = {v}\n"));
+        }
     }
     std::fs::write(&path, out)
+}
+
+/// Read a `key = value` bool out of the compositor config (last wins),
+/// matching margo's parser truthiness. Falls back to `default` when the
+/// file or key is missing.
+fn read_margo_conf_bool(key: &str, default: bool) -> bool {
+    let Ok(text) = std::fs::read_to_string(margo_conf_path()) else {
+        return default;
+    };
+    let mut val = default;
+    for line in text.lines() {
+        let t = line.trim_start();
+        if let Some(rest) = t.strip_prefix(key)
+            && let Some(after_eq) = rest.trim_start().strip_prefix('=')
+        {
+            let token = after_eq.trim().split_whitespace().next().unwrap_or("");
+            val = matches!(token, "1" | "true" | "yes" | "on");
+        }
+    }
+    val
 }
