@@ -202,6 +202,19 @@
     }
 }
 
+// ── Sidebar search box ─────────────────────────────────────────
+// A calm pill query surface (DESIGN.md §12): quiet tonal fill at rest,
+// the focus ring as the only border.
+.settings-search {
+    background-color: var(--surface-container);
+    border-radius: var(--radius-pill);
+    transition: box-shadow var(--motion-medium) var(--ease-standard);
+
+    &:focus-within {
+        box-shadow: inset 0 0 0 2px var(--primary);
+    }
+}
+
 // ── Section caption (small uppercase header above a card) ──────
 //
 // Apple's pattern: a single small-caps line just above each

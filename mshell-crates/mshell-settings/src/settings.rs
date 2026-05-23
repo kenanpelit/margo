@@ -13,7 +13,7 @@ use crate::wallpaper_settings::{WallpaperSettingsInit, WallpaperSettingsModel};
 use crate::bar_pill_settings::{BarPillKind, BarPillSettingsInit, BarPillSettingsModel};
 use crate::widget_menu_settings::{MenuKind, WidgetMenuSettingsInit, WidgetMenuSettingsModel};
 use relm4::gtk::prelude::{
-    BoxExt, ButtonExt, MonitorExt, OrientableExt, ToggleButtonExt, WidgetExt,
+    BoxExt, ButtonExt, EditableExt, MonitorExt, OrientableExt, ToggleButtonExt, WidgetExt,
 };
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 use std::cell::RefCell;
@@ -46,6 +46,10 @@ pub struct SettingsWindowModel {
     /// top-level Widgets section. Shared `Rc` because the buttons are
     /// built after the model in `init`; the build loop fills the same map.
     subsection_buttons: Rc<RefCell<HashMap<String, gtk::ToggleButton>>>,
+    /// Search targets: `(lowercased label, route)` for every section and
+    /// widgets sub-page. `route` is what `ActivateSection` understands
+    /// (`theme`, `widgets/clipboard`, …). Filled like `subsection_buttons`.
+    search_index: Rc<RefCell<Vec<(String, String)>>>,
 }
 
 #[derive(Debug)]
@@ -60,6 +64,9 @@ pub enum SettingsWindowInput {
     /// (via `mshell_settings::open_settings_at_section`) and the
     /// future `mshellctl settings open --section` IPC.
     ActivateSection(String),
+    /// The sidebar search box was submitted (Enter). Jumps to the first
+    /// section / widget page whose label contains the query.
+    SearchSubmitted(String),
 }
 
 #[derive(Debug)]
@@ -135,6 +142,20 @@ impl Component for SettingsWindowModel {
                             set_halign: gtk::Align::Start,
                             set_hexpand: true,
                         },
+                    },
+
+                    // Search box — find any section or widget page by name
+                    // (DESIGN.md §12). Focused on open so you can type
+                    // straight away; Tab / Down descend into the list.
+                    #[name = "search_entry"]
+                    gtk::SearchEntry {
+                        add_css_class: "settings-search",
+                        set_placeholder_text: Some("Search settings…"),
+                        set_margin_start: 8,
+                        set_margin_end: 8,
+                        set_margin_bottom: 4,
+                        // `connect_activate` is wired in `init` (this view
+                        // doesn't inject `sender` into its closures).
                     },
 
                     gtk::Separator {},
@@ -393,7 +414,7 @@ impl Component for SettingsWindowModel {
     fn init(
         params: Self::Init,
         root: Self::Root,
-        _sender: ComponentSender<Self>,
+        sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         // Scale the panel to the host monitor so a 4K screen
         // gets a bigger panel than a 1080p one. Height covers
@@ -472,6 +493,26 @@ impl Component for SettingsWindowModel {
         let subsection_buttons: Rc<RefCell<HashMap<String, gtk::ToggleButton>>> =
             Rc::new(RefCell::new(HashMap::new()));
 
+        // Search targets — top-level sections seeded here, widgets
+        // sub-pages appended as their buttons are built (`make_sub_btn`).
+        let search_index: Rc<RefCell<Vec<(String, String)>>> = Rc::new(RefCell::new(
+            [
+                ("general", "general"),
+                ("bar", "bar"),
+                ("display", "display"),
+                ("fonts", "fonts"),
+                ("idle", "idle"),
+                ("launcher", "launcher"),
+                ("menus", "menus"),
+                ("theme", "theme"),
+                ("wallpaper", "wallpaper"),
+                ("widgets", "widgets"),
+            ]
+            .iter()
+            .map(|(label, route)| (label.to_string(), route.to_string()))
+            .collect(),
+        ));
+
         let model = SettingsWindowModel {
             general_settings_controller,
             weather_settings_controller,
@@ -488,6 +529,7 @@ impl Component for SettingsWindowModel {
             panel_width,
             panel_height,
             subsection_buttons: subsection_buttons.clone(),
+            search_index: search_index.clone(),
         };
 
         let widgets = view_output!();
@@ -507,6 +549,7 @@ impl Component for SettingsWindowModel {
             use gtk::prelude::*;
 
             let sidebar_weak = widgets.sidebar_box.downgrade();
+            let search_weak_kc = widgets.search_entry.downgrade();
             let key_controller = gtk::EventControllerKey::new();
             key_controller.set_propagation_phase(gtk::PropagationPhase::Capture);
             key_controller.connect_key_pressed(move |_, keyval, _, modifiers| {
@@ -536,6 +579,22 @@ impl Component for SettingsWindowModel {
                 if buttons.is_empty() {
                     return glib::Propagation::Proceed;
                 }
+                // From the search box: Down / Tab descends into the list
+                // (landing on the active section so arrows continue from
+                // there); typing and Up stay with the entry.
+                let in_search = search_weak_kc
+                    .upgrade()
+                    .map(|e| e.has_focus())
+                    .unwrap_or(false);
+                if in_search {
+                    if dir == 1 {
+                        let target =
+                            buttons.iter().find(|b| b.is_active()).unwrap_or(&buttons[0]);
+                        target.grab_focus();
+                        return glib::Propagation::Stop;
+                    }
+                    return glib::Propagation::Proceed;
+                }
                 let current = buttons
                     .iter()
                     .position(|b| b.has_focus() || b.is_active())
@@ -547,41 +606,29 @@ impl Component for SettingsWindowModel {
                 glib::Propagation::Stop
             });
             widgets.sidebar_box.add_controller(key_controller);
-            // Land focus on the active sidebar button every time the
-            // panel is shown — not just once at build. The menu lives in
-            // a Revealer + Stack, so its root maps on each reveal; grabbing
-            // focus here means Tab / arrow keys work from the very first
-            // open without a click. (The prior one-shot idle ran once at
-            // startup while the panel was still hidden, so the focus was
-            // lost and Tab did nothing until you clicked in.) Focus the
-            // *active* button so a deep-linked section keeps its place,
-            // falling back to the first. Deferred to idle so focus lands
-            // after the map / realize settles.
-            let sidebar_weak2 = widgets.sidebar_box.downgrade();
+            // Submit search on Enter — wired here because this view does
+            // not inject `sender` into its closures.
+            {
+                let sender = sender.clone();
+                widgets.search_entry.connect_activate(move |e| {
+                    sender.input(SettingsWindowInput::SearchSubmitted(e.text().to_string()));
+                });
+            }
+
+            // Focus the search box every time the panel is shown — not
+            // just once at build. The menu lives in a Revealer + Stack, so
+            // its root maps on each reveal; focusing here means you can
+            // type to search immediately, and Tab / Down descend into the
+            // sidebar list — both work from the very first open without a
+            // click. (The prior one-shot idle ran once at startup while the
+            // panel was hidden, so its focus was lost.) Deferred to idle so
+            // focus lands after the map / realize settles.
+            let search_weak2 = widgets.search_entry.downgrade();
             root.connect_map(move |_| {
-                let sidebar_weak2 = sidebar_weak2.clone();
+                let search_weak2 = search_weak2.clone();
                 glib::idle_add_local_once(move || {
-                    let Some(sidebar) = sidebar_weak2.upgrade() else {
-                        return;
-                    };
-                    let mut child = sidebar.first_child();
-                    let mut first: Option<gtk::ToggleButton> = None;
-                    while let Some(c) = child {
-                        if let Ok(btn) = c.clone().downcast::<gtk::ToggleButton>()
-                            && btn.has_css_class("sidebar-button")
-                        {
-                            if first.is_none() {
-                                first = Some(btn.clone());
-                            }
-                            if btn.is_active() {
-                                btn.grab_focus();
-                                return;
-                            }
-                        }
-                        child = c.next_sibling();
-                    }
-                    if let Some(btn) = first {
-                        btn.grab_focus();
+                    if let Some(entry) = search_weak2.upgrade() {
+                        entry.grab_focus();
                     }
                 });
             });
@@ -728,6 +775,10 @@ impl Component for SettingsWindowModel {
             subsection_buttons
                 .borrow_mut()
                 .insert(stack_name.to_string(), btn.clone());
+            // And make the page findable from the sidebar search box.
+            search_index
+                .borrow_mut()
+                .push((label.to_lowercase(), format!("widgets/{stack_name}")));
             btn
         };
 
@@ -993,6 +1044,23 @@ impl Component for SettingsWindowModel {
                     match sub_btn {
                         Some(b) => b.set_active(true),
                         None => tracing::warn!(%sub, "settings: unknown widgets sub-page"),
+                    }
+                }
+            }
+            SettingsWindowInput::SearchSubmitted(query) => {
+                let q = query.trim().to_lowercase();
+                if !q.is_empty() {
+                    // First label that contains the query wins; jump there
+                    // via the normal section router and clear the box.
+                    let route = self
+                        .search_index
+                        .borrow()
+                        .iter()
+                        .find(|(label, _)| label.contains(&q))
+                        .map(|(_, route)| route.clone());
+                    if let Some(route) = route {
+                        widgets.search_entry.set_text("");
+                        sender.input(SettingsWindowInput::ActivateSection(route));
                     }
                 }
             }
