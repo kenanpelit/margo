@@ -188,6 +188,20 @@
     }
 }
 
+// ── Account avatar (General page) ──────────────────────────────
+// Circular clip for the ~/.face preview. A tonal fill shows through
+// behind the fallback person glyph (and as a thin ring if the photo
+// isn't square); the pill radius + widget-side overflow:hidden do the
+// round clip.
+.settings-avatar {
+    border-radius: var(--radius-pill);
+    background-color: var(--surface-container-high);
+
+    image {
+        color: var(--on-surface-variant);
+    }
+}
+
 // ── Section caption (small uppercase header above a card) ──────
 //
 // Apple's pattern: a single small-caps line just above each

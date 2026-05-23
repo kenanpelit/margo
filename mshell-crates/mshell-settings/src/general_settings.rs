@@ -8,11 +8,18 @@ use mshell_config::schema::config::{
     ThemeStoreFields,
 };
 use reactive_graph::prelude::{Get, GetUntracked};
-use relm4::gtk::glib;
-use relm4::gtk::prelude::{BoxExt, ButtonExt, CastNone, ListModelExt, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::{
+    BoxExt, ButtonExt, Cast, CastNone, FileExt, ListModelExt, OrientableExt, WidgetExt,
+};
+use relm4::gtk::{gio, glib};
 use relm4::{Component, ComponentParts, ComponentSender, Controller, gtk};
+use std::path::PathBuf;
 
 pub(crate) struct GeneralSettingsModel {
+    /// GECOS full name (or capitalised username) shown in the account row.
+    full_name: String,
+    /// `username@hostname` shown under the full name.
+    user_host: String,
     active_profile: Option<String>,
     available_profiles: gtk::StringList,
     new_profile_dialog: Option<Controller<TextEntryDialogModel>>,
@@ -31,6 +38,10 @@ pub(crate) struct GeneralSettingsModel {
 
 #[derive(Debug)]
 pub(crate) enum GeneralSettingsInput {
+    /// Open a file picker; the chosen image is copied to `~/.face`.
+    ChangePictureClicked,
+    /// `~/.face` changed on disk — reload the avatar preview.
+    FaceChanged,
     TimeFormat24HToggled(bool),
     TimeFormat24HEffect(bool),
     ActiveProfileEffect(Option<String>),
@@ -108,6 +119,53 @@ impl Component for GeneralSettingsModel {
                         },
                     },
                 },
+
+                // ── User / account ─────────────────────────────
+                // Avatar (from ~/.face) + identity, with a picker to
+                // change the picture. Sits above the config-profile row.
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 16,
+                    set_halign: gtk::Align::Start,
+
+                    #[name = "avatar_container"]
+                    gtk::Box {
+                        add_css_class: "settings-avatar",
+                        // GtkBox ignores CSS overflow; the circular clip is
+                        // a widget property (see the panel-corner note).
+                        set_overflow: gtk::Overflow::Hidden,
+                        set_size_request: (72, 72),
+                        set_valign: gtk::Align::Center,
+                    },
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_valign: gtk::Align::Center,
+                        set_spacing: 2,
+                        gtk::Label {
+                            add_css_class: "label-large-bold",
+                            set_label: model.full_name.as_str(),
+                            set_halign: gtk::Align::Start,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_label: model.user_host.as_str(),
+                            set_halign: gtk::Align::Start,
+                        },
+                        gtk::Button {
+                            set_css_classes: &["label-medium", "ok-button-primary"],
+                            set_label: "Change Picture…",
+                            set_halign: gtk::Align::Start,
+                            set_hexpand: false,
+                            set_margin_top: 6,
+                            connect_clicked[sender] => move |_| {
+                                sender.input(GeneralSettingsInput::ChangePictureClicked);
+                            },
+                        },
+                    },
+                },
+
+                gtk::Separator {},
 
                 gtk::Label {
                     add_css_class: "label-large-bold",
@@ -407,7 +465,10 @@ impl Component for GeneralSettingsModel {
             sender_clone.input(GeneralSettingsInput::SettingsFontScaleEffect(v));
         });
 
+        let (full_name, user_host) = user_identity();
         let model = GeneralSettingsModel {
+            full_name,
+            user_host,
             active_profile: None,
             available_profiles: gtk::StringList::new(&[]),
             new_profile_dialog: None,
@@ -439,6 +500,10 @@ impl Component for GeneralSettingsModel {
 
         let widgets = view_output!();
 
+        // Avatar built imperatively so we can swap a Picture (~/.face) for
+        // a fallback glyph without a static-view branch.
+        refresh_avatar(&widgets.avatar_container);
+
         ComponentParts { model, widgets }
     }
 
@@ -450,6 +515,45 @@ impl Component for GeneralSettingsModel {
         _root: &Self::Root,
     ) {
         match message {
+            GeneralSettingsInput::ChangePictureClicked => {
+                let sender = sender.clone();
+                let dialog = gtk::FileDialog::builder()
+                    .title("Choose Profile Picture")
+                    .modal(true)
+                    .build();
+                // Default to common image files.
+                let filter = gtk::FileFilter::new();
+                for mime in [
+                    "image/png",
+                    "image/jpeg",
+                    "image/webp",
+                    "image/gif",
+                    "image/bmp",
+                    "image/svg+xml",
+                ] {
+                    filter.add_mime_type(mime);
+                }
+                filter.set_name(Some("Images"));
+                dialog.set_default_filter(Some(&filter));
+                dialog.open(gtk::Window::NONE, gio::Cancellable::NONE, move |result| {
+                    if let Ok(file) = result
+                        && let Some(path) = file.path()
+                    {
+                        // Copy the chosen image to ~/.face (the de-facto
+                        // avatar location; gdk-pixbuf reads it by content,
+                        // so the lack of extension is fine).
+                        match std::fs::copy(&path, face_path()) {
+                            Ok(_) => sender.input(GeneralSettingsInput::FaceChanged),
+                            Err(e) => {
+                                tracing::warn!(error = %e, "settings: failed to write ~/.face");
+                            }
+                        }
+                    }
+                });
+            }
+            GeneralSettingsInput::FaceChanged => {
+                refresh_avatar(&widgets.avatar_container);
+            }
             GeneralSettingsInput::ActiveProfileSelected(selected_profile) => {
                 config_manager().set_active_profile(selected_profile);
             }
@@ -563,4 +667,77 @@ impl Component for GeneralSettingsModel {
 
         self.update_view(widgets, sender);
     }
+}
+
+fn home_dir() -> PathBuf {
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/"))
+}
+
+/// The de-facto user avatar path, `~/.face`.
+fn face_path() -> PathBuf {
+    home_dir().join(".face")
+}
+
+/// `(display name, "user@host")`. The display name is the GECOS full name
+/// from `/etc/passwd`, falling back to a capitalised username.
+fn user_identity() -> (String, String) {
+    let user = std::env::var("USER")
+        .or_else(|_| std::env::var("LOGNAME"))
+        .unwrap_or_else(|_| "user".to_string());
+
+    let host = std::fs::read_to_string("/proc/sys/kernel/hostname")
+        .or_else(|_| std::fs::read_to_string("/etc/hostname"))
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "localhost".to_string());
+
+    // GECOS full name: passwd line is `name:passwd:uid:gid:gecos:dir:shell`
+    // — after the matched name, gecos is the 4th remaining field. Take the
+    // part before the first comma (the rest is office/phone metadata).
+    let full = std::fs::read_to_string("/etc/passwd")
+        .ok()
+        .and_then(|passwd| {
+            passwd
+                .lines()
+                .find(|line| line.split(':').next() == Some(user.as_str()))
+                .and_then(|line| line.split(':').nth(4))
+                .map(|gecos| gecos.split(',').next().unwrap_or("").trim().to_string())
+        })
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| {
+            let mut c = user.chars();
+            match c.next() {
+                Some(ch) => ch.to_uppercase().chain(c).collect(),
+                None => user.clone(),
+            }
+        });
+
+    (full, format!("{user}@{host}"))
+}
+
+/// (Re)build the circular avatar inside its clipping container: a Picture
+/// of `~/.face` (cover-cropped to fill the circle) when present, else a
+/// neutral person glyph.
+fn refresh_avatar(container: &gtk::Box) {
+    while let Some(child) = container.first_child() {
+        container.remove(&child);
+    }
+    let face = face_path();
+    let child: gtk::Widget = if face.is_file() {
+        let pic = gtk::Picture::for_filename(&face);
+        pic.set_content_fit(gtk::ContentFit::Cover);
+        pic.set_hexpand(true);
+        pic.set_vexpand(true);
+        pic.upcast()
+    } else {
+        let img = gtk::Image::from_icon_name("avatar-default-symbolic");
+        img.set_pixel_size(40);
+        img.set_hexpand(true);
+        img.set_vexpand(true);
+        img.upcast()
+    };
+    container.append(&child);
 }
