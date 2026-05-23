@@ -52,6 +52,7 @@ depends=(
   cairo           # `mlock` software renderer
   pango           # `mlock` + mshell text shaping
   dbus            # screencast / portal D-Bus shims
+  uwsm            # the installed wayland-session entry launches margo via uwsm
   # ── Portals (gnome-free) ────────────────────────────────────────
   # Frontend daemon reads our margo.portal + margo-portals.conf and
   # activates margo-portal for ScreenCast/Screenshot; the gtk backend
@@ -92,7 +93,6 @@ makedepends=(
 )
 optdepends=(
   # Sessions & XDG plumbing
-  "uwsm: systemd-driven session entry (graphical-session.target)"
   "xdg-desktop-portal-wlr: alternative wlroots-native screencast backend (not used by default; margo-portal serves ScreenCast/Screenshot natively)"
   # Toolkit Wayland backends (for non-GTK apps under margo)
   "qt5-wayland: Qt5 native Wayland backend"
@@ -249,11 +249,34 @@ package() {
     install -Dm755 "$CARGO_TARGET_DIR/release/$bin" "$pkgdir/usr/bin/$bin"
   done
 
-  # ── Wayland session entry ──────────────────────────────────────
-  # Display managers (gdm, sddm, ly, greetd-tuigreet) pick this
-  # up from the canonical wayland-sessions location.
+  # ── Wayland session entries ────────────────────────────────────
+  # Display managers (gdm, sddm, ly, greetd-tuigreet) pick these up
+  # from the canonical wayland-sessions location.
+  #
+  # We ship two: the plain entry (Exec=margo, no supervisor) as a
+  # bare fallback, and the uwsm-managed entry — the recommended way
+  # to run margo. The uwsm entry runs the compositor inside a
+  # transient systemd scope (clean teardown at logout, proper
+  # graphical-session.target wiring) and degrades to a direct exec
+  # when uwsm is not on PATH.
   install -Dm644 "margo.desktop" \
     "$pkgdir/usr/share/wayland-sessions/margo.desktop"
+
+  # uwsm session entry + the two wrapper scripts it chains through:
+  #   margo-uwsm-session  → uwsm start … -- margo-session
+  #   margo-session       → start-margo (watchdog) → margo
+  # Both resolve each other (and start-margo / margo) via PATH, so
+  # /usr/bin is enough. The contrib .desktop's Exec= uses the
+  # manual-install /usr/local/bin path; rewrite it to the packaged
+  # /usr/bin location.
+  install -Dm755 "contrib/sessions/margo-uwsm-session" \
+    "$pkgdir/usr/bin/margo-uwsm-session"
+  install -Dm755 "contrib/sessions/margo-session" \
+    "$pkgdir/usr/bin/margo-session"
+  sed 's|/usr/local/bin/|/usr/bin/|' "contrib/sessions/margo-uwsm.desktop" \
+    > "margo-uwsm.desktop.pkg"
+  install -Dm644 "margo-uwsm.desktop.pkg" \
+    "$pkgdir/usr/share/wayland-sessions/margo-uwsm.desktop"
 
   # ── Icon ───────────────────────────────────────────────────────
   if [[ -f "docs/assets/margo-icon.svg" ]]; then
@@ -334,12 +357,13 @@ package() {
   install -Dm644 "assets/margo-portal.service" \
     "$pkgdir/usr/lib/systemd/user/margo-portal.service"
 
-  # ── Session integration examples ───────────────────────────────
-  # Wayland session entry, uwsm wrapper, plain launcher, and a
-  # systemd drop-in. Shipped under /usr/share/doc as starters —
-  # the package does not place them into /usr/share/wayland-
-  # sessions or /usr/local/bin itself so distro packagers can
-  # vendor their own integration without a file conflict.
+  # ── Session integration reference ──────────────────────────────
+  # The uwsm .desktop + wrapper scripts above are installed live (to
+  # wayland-sessions and /usr/bin). The full set is also dropped
+  # under /usr/share/doc as reference — including the README and the
+  # optional `wayland-wm@margo-session.service.d/10-session-lifecycle
+  # .conf` drop-in, which is left for the user to opt into (it sets
+  # MARGO_LOG + the session-target fan-out and is environment-specific).
   if [[ -d "contrib/sessions" ]]; then
     install -d "$pkgdir/usr/share/doc/$pkgname/sessions"
     cp -a contrib/sessions/. "$pkgdir/usr/share/doc/$pkgname/sessions/"
