@@ -17,10 +17,12 @@
   border-radius: var(--radius-sm);
 }
 
-// Destructive actions — tint the icon so they stand apart from
-// the benign Lock / Logout / Suspend tiles.
+// Destructive actions — tint the icon so they stand apart from the
+// benign Lock / Logout / Suspend tiles. Two severity tiers (DESIGN.md
+// §2): reboot is the warn tier (--primary), shutdown the danger tier
+// (--error). Both are tokens, never literals, so they track the palette.
 .session-button.session-reboot image {
-  color: #d79921;
+  color: var(--primary);
 }
 .session-button.session-shutdown image {
   color: var(--error);

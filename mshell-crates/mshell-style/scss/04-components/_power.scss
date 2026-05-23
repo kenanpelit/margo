@@ -2,10 +2,12 @@
 //
 // Three colour states drive both the bar-pill icon tint and the
 // active-profile button highlight:
-//   performance → red    (var(--error))
-//   balanced    → neutral (default surface tones)
-//   power-saver → green  (a fixed leaf-green; matugen has no
-//                         "success" token, so a literal is used)
+//   performance → red      (var(--error), the danger tier)
+//   balanced    → accent   (var(--primary) when selected; neutral idle)
+//   power-saver → tertiary (var(--tertiary) — matugen's themed third
+//                           accent, used categorically since the palette
+//                           has no dedicated "success" token; never a
+//                           hardcoded literal, so it tracks the wallpaper)
 
 .power-menu-widget { padding: 0; }
 
@@ -14,7 +16,7 @@
   color: var(--error);
 }
 .power-bar-widget.profile-saver image {
-  color: #8ec07c;
+  color: var(--tertiary);
 }
 // balanced / unknown keep the default on-surface tone.
 
@@ -76,10 +78,10 @@
   color: var(--on-primary);
 }
 .power-profile-button.selected.profile-saver {
-  background-color: #8ec07c;
-  color: #1e2326;
+  background-color: var(--tertiary);
+  color: var(--on-tertiary);
 }
 .power-profile-button.selected.profile-saver image,
 .power-profile-button.selected.profile-saver label {
-  color: #1e2326;
+  color: var(--on-tertiary);
 }
