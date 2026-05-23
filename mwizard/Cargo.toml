@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 mshell-config = { workspace = true }
+mshell-style = { workspace = true }
 gtk4.workspace = true
 relm4.workspace = true
 serde_yaml.workspace = true

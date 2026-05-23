@@ -71,6 +71,12 @@ fn main() {
     }
 
     let app = RelmApp::new("com.margo.mwizard");
+    // Theme the wizard with the shell's own compiled stylesheet so it
+    // looks like part of margo, not a stock GTK dialog. compiled_css()
+    // ships a full default palette (DESIGN.md tokens + matugen-baseline
+    // colours), so the DESIGN.md component classes render correctly even
+    // on a true first run before matugen has produced a palette.
+    relm4::set_global_css(mshell_style::compiled_css());
     app.run::<WizardModel>(WizardInit {});
 }
 
@@ -258,7 +264,7 @@ impl SimpleComponent for WizardModel {
 
                 // Step indicator
                 gtk::Label {
-                    add_css_class: "title-3",
+                    add_css_class: "label-small",
                     #[watch]
                     set_label: &format!(
                         "Step {} of {}",
@@ -282,7 +288,7 @@ impl SimpleComponent for WizardModel {
                         set_valign: gtk::Align::Center,
 
                         gtk::Label {
-                            add_css_class: "title-1",
+                            add_css_class: "settings-hero-title",
                             set_label: "Welcome to margo",
                             set_halign: gtk::Align::Start,
                         },
@@ -305,7 +311,7 @@ impl SimpleComponent for WizardModel {
                         set_spacing: 16,
 
                         gtk::Label {
-                            add_css_class: "title-2",
+                            add_css_class: "label-large-bold",
                             set_label: "Theme",
                             set_halign: gtk::Align::Start,
                         },
@@ -357,7 +363,7 @@ impl SimpleComponent for WizardModel {
                         },
 
                         gtk::Label {
-                            add_css_class: "dim-label",
+                            add_css_class: "label-small",
                             set_label: "Both knobs are live — Settings → Theme will let you tweak the matugen palette, accent tints, and font sizes once mshell is running.",
                             set_halign: gtk::Align::Start,
                             set_xalign: 0.0,
@@ -372,7 +378,7 @@ impl SimpleComponent for WizardModel {
                         set_spacing: 16,
 
                         gtk::Label {
-                            add_css_class: "title-2",
+                            add_css_class: "label-large-bold",
                             set_label: "Keyboard layout",
                             set_halign: gtk::Align::Start,
                         },
@@ -459,7 +465,7 @@ impl SimpleComponent for WizardModel {
                         },
 
                         gtk::Label {
-                            add_css_class: "dim-label",
+                            add_css_class: "label-small",
                             set_label: "Pre-filled from your $LANG when it maps to a known layout. Empty variant skips the line entirely so the system default applies.",
                             set_halign: gtk::Align::Start,
                             set_xalign: 0.0,
@@ -473,7 +479,7 @@ impl SimpleComponent for WizardModel {
                         set_spacing: 16,
 
                         gtk::Label {
-                            add_css_class: "title-2",
+                            add_css_class: "label-large-bold",
                             set_label: "Wallpaper",
                             set_halign: gtk::Align::Start,
                         },
@@ -504,7 +510,7 @@ impl SimpleComponent for WizardModel {
                         },
 
                         gtk::Label {
-                            add_css_class: "dim-label",
+                            add_css_class: "label-small",
                             set_label: "If the directory doesn't exist yet, mshell will treat the field as a no-op and won't rotate. You can fix it later by dropping images into the folder or pointing Settings → Wallpaper somewhere else.",
                             set_halign: gtk::Align::Start,
                             set_xalign: 0.0,
@@ -518,7 +524,7 @@ impl SimpleComponent for WizardModel {
                         set_spacing: 12,
 
                         gtk::Label {
-                            add_css_class: "title-2",
+                            add_css_class: "label-large-bold",
                             set_label: "Ready to apply",
                             set_halign: gtk::Align::Start,
                         },
@@ -586,7 +592,7 @@ impl SimpleComponent for WizardModel {
                     },
 
                     gtk::Button {
-                        add_css_class: "suggested-action",
+                        add_css_class: "ok-button-primary",
                         #[watch]
                         set_label: if model.page == Page::Done {
                             if matches!(model.apply_status, ApplyStatus::Ok(_)) {
