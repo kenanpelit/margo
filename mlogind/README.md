@@ -54,3 +54,27 @@ mlogind --preview
 ```
 
 See `extra/config.toml` for the full set of customization options.
+
+## Launching margo
+
+margo already installs `/usr/share/wayland-sessions/margo.desktop`, so
+mlogind lists **margo** out of the box and can launch it. For a supervised
+launch — respawn-on-crash, signal forwarding, and `PR_SET_PDEATHSIG` (no
+orphaned compositor) — install `extra/sessions/margo.desktop` over it; that
+entry runs `start-margo` instead of the bare `margo` binary:
+
+```bash
+sudo install -m644 extra/sessions/margo.desktop /usr/share/wayland-sessions/margo.desktop
+```
+
+## Theme sync
+
+mlogind reads its colours from `$`-variables in
+`/etc/mlogind/variables.toml`. To match the active wallpaper, margo's
+matugen writes the live palette to
+`~/.config/margo/mlogind-variables.toml` on every theme change; push it to
+the greeter with:
+
+```bash
+sudo mlogind sync-theme   # copies your palette → /etc/mlogind/variables.toml
+```

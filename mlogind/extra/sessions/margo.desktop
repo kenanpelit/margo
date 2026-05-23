@@ -1,0 +1,14 @@
+[Desktop Entry]
+Name=margo
+Comment=margo Wayland compositor (supervised via start-margo)
+# start-margo supervises the compositor: respawn-on-crash, signal
+# forwarding, and PR_SET_PDEATHSIG so no margo is orphaned if the launcher
+# dies. Preferred over a bare `Exec=margo` when launched from a login
+# manager. Install to /usr/share/wayland-sessions/margo.desktop (replacing
+# the bare entry) so mlogind lists a single, supervised "margo" session.
+Exec=start-margo
+TryExec=start-margo
+Type=Application
+DesktopNames=margo
+X-GDM-SessionType=wayland
+X-Session-Type=wayland
