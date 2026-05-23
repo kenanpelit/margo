@@ -9,6 +9,8 @@ pub enum AudioCommands {
     VolumeDown,
     /// Toggle mute
     Mute,
+    /// Toggle microphone (default source) mute
+    MicMute,
 }
 
 pub async fn execute(command: AudioCommands) -> anyhow::Result<()> {
@@ -21,6 +23,9 @@ pub async fn execute(command: AudioCommands) -> anyhow::Result<()> {
         }
         AudioCommands::Mute => {
             bus_command("Mute").await?;
+        }
+        AudioCommands::MicMute => {
+            bus_command("MicMute").await?;
         }
     }
     Ok(())

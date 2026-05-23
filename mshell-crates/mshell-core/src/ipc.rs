@@ -168,6 +168,16 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                     }
                     play_audio_volume_change();
                 }
+                IPCCommand::MicMute => {
+                    // Toggle the default *source* (microphone). The mic
+                    // OSD watches `default_input.muted` and pops the
+                    // bottom-centre pill on the change — no explicit
+                    // show needed here, same as the volume path.
+                    if let Some(input) = audio_service().default_input.get() {
+                        let _ = input.set_mute(!input.muted.get()).await;
+                    }
+                    play_audio_volume_change();
+                }
                 IPCCommand::BrightnessUp => {
                     if let Some(brightness_service) = brightness_service()
                         && let Some(primary) = brightness_service.primary.get()
@@ -340,6 +350,7 @@ enum IPCCommand {
     VolumeUp,
     VolumeDown,
     Mute,
+    MicMute,
     BrightnessUp,
     BrightnessDown,
     SetWallpaper(PathBuf),
@@ -523,6 +534,9 @@ impl IPCService {
     }
     async fn mute(&self) {
         let _ = self.tx.send(IPCCommand::Mute);
+    }
+    async fn mic_mute(&self) {
+        let _ = self.tx.send(IPCCommand::MicMute);
     }
     async fn brightness_up(&self) {
         let _ = self.tx.send(IPCCommand::BrightnessUp);

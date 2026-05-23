@@ -18,6 +18,7 @@ use mshell_notification_popups::popup_notifications::{
 };
 use mshell_services::notification_service;
 use mshell_osd::brightness_osd::{BrightnessOsdInit, BrightnessOsdModel};
+use mshell_osd::mic_osd::{MicOsdInit, MicOsdModel};
 use mshell_osd::network_osd::{NetworkOsdInit, NetworkOsdModel};
 use mshell_osd::sound_alerts::SoundAlertsModel;
 use mshell_osd::volume_osd::{VolumeOsdInit, VolumeOsdModel};
@@ -38,6 +39,7 @@ pub(crate) struct WindowGroup {
     pub _wallpaper: Option<Controller<WallpaperModel>>,
     pub _popup_notifications: Option<Controller<PopupNotificationsModel>>,
     pub _volume_osd: Option<Controller<VolumeOsdModel>>,
+    pub _mic_osd: Option<Controller<MicOsdModel>>,
     pub _brightness_osd: Option<Controller<BrightnessOsdModel>>,
     /// Network-state OSD — flashes on connect / disconnect.
     /// Gated by `general.network_osd_enabled`; the controller
@@ -371,6 +373,14 @@ impl Component for Shell {
                         .detach(),
                 );
 
+                let mic_osd = Some(
+                    MicOsdModel::builder()
+                        .launch(MicOsdInit {
+                            monitor: monitor.clone(),
+                        })
+                        .detach(),
+                );
+
                 let brightness_osd = Some(
                     BrightnessOsdModel::builder()
                         .launch(BrightnessOsdInit {
@@ -414,6 +424,7 @@ impl Component for Shell {
                     _wallpaper: wallpaper,
                     _popup_notifications: popup_notifications,
                     _volume_osd: volume_osd,
+                    _mic_osd: mic_osd,
                     _brightness_osd: brightness_osd,
                     _network_osd: network_osd,
                     _screen_corners: screen_corners,
@@ -434,6 +445,9 @@ impl Component for Shell {
                     }
                     if let Some(vol) = &group._volume_osd {
                         vol.widget().close();
+                    }
+                    if let Some(mic) = &group._mic_osd {
+                        mic.widget().close();
                     }
                     if let Some(bright) = &group._brightness_osd {
                         bright.widget().close();
