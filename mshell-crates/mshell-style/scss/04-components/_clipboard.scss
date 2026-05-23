@@ -136,7 +136,7 @@
   // the pin star below.
   image {
     color: var(--outline);
-    transition: color 150ms ease-in-out;
+    transition: color var(--motion-fast) var(--ease-standard);
   }
 
   &:hover image {
@@ -152,7 +152,7 @@
 
   image {
     color: var(--outline);
-    transition: color 150ms ease-in-out;
+    transition: color var(--motion-fast) var(--ease-standard);
   }
 
   &:hover image {

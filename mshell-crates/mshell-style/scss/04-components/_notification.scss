@@ -85,7 +85,7 @@
 // states distinguish unread / read-history / empty (the empty state
 // hides the dot from the Rust side).
 .notif-dot {
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   min-width: 7px;
   min-height: 7px;
   margin-top: 1px;

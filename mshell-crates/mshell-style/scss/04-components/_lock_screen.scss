@@ -32,7 +32,7 @@
 .lockscreen-content {
   opacity: 0;
   background-color: var(--surface);
-  transition: opacity 300ms ease;
+  transition: opacity var(--motion-slow) var(--ease-standard);
 }
 
 .lockscreen-content.revealed {
@@ -42,7 +42,7 @@
 .lockscreen-fingerprint-icon {
   -gtk-icon-size: 72px;
   color: var(--on-surface);
-  transition: color 150ms ease;
+  transition: color var(--motion-fast) var(--ease-standard);
 }
 
 .lockscreen-fingerprint-icon.fail {
