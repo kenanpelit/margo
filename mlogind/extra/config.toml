@@ -239,8 +239,11 @@ selected_modifiers = "underlined"
 selected_color_focused = "$foreground"
 selected_modifiers_focused = "bold"
 
-# The length of the name of the desktop environment which is displayed.
-max_display_length = 8
+# Width (in characters) of each session name slot in the switcher. Names
+# shorter than this are centre-padded; longer ones are truncated with an
+# ellipsis. Keep it ≥ your longest session name (e.g. "Margo (UWSM)" = 12)
+# so entries aren't cut off.
+max_display_length = 24
 
 # The text used when no desktop environments are available
 no_envs_text = "No environments..."

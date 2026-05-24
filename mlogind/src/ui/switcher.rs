@@ -157,22 +157,33 @@ impl<T> SwitcherWidget<T> {
         self.selector.go_next();
     }
 
-    fn cutoff_wm_title_with_padding<'a>(&self, title: &'a str) -> (String, &'a str, String) {
-        if title.len() >= usize::from(self.config.max_display_length) {
-            return (
-                String::new(),
-                &title[..usize::from(self.config.max_display_length)],
-                String::new(),
-            );
-        };
+    fn cutoff_wm_title_with_padding(&self, title: &str) -> (String, String, String) {
+        // Count + slice by chars, never bytes: `&title[..n]` panics when the
+        // cut lands mid-codepoint (e.g. "Türkçe", "Українська"), and byte
+        // length over-counts multi-byte names so the centre-padding is wrong.
+        let max = usize::from(self.config.max_display_length);
+        let char_count = title.chars().count();
 
-        let length_difference = usize::from(self.config.max_display_length) - title.len();
+        if char_count >= max {
+            // Too long → truncate, keeping one cell for an ellipsis so the
+            // cut reads as intentional and the slot stays `max` wide.
+            let truncated = if max == 0 {
+                String::new()
+            } else {
+                let mut s: String = title.chars().take(max - 1).collect();
+                s.push('…');
+                s
+            };
+            return (String::new(), truncated, String::new());
+        }
+
+        let length_difference = max - char_count;
         let padding = " ".repeat(length_difference / 2);
         if length_difference % 2 == 0 {
-            (padding.clone(), title, padding)
+            (padding.clone(), title.to_string(), padding)
         } else {
             let right_padding = " ".repeat(1 + length_difference / 2);
-            (padding, title, right_padding)
+            (padding, title.to_string(), right_padding)
         }
     }
 
@@ -265,7 +276,7 @@ impl<T> SwitcherWidget<T> {
         };
 
         items.push(Span::raw(left_padding));
-        items.push(Span::styled(title.to_string(), style));
+        items.push(Span::styled(title, style));
         items.push(Span::raw(right_padding));
     }
 
