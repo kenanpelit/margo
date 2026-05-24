@@ -26,6 +26,7 @@ mod weather_settings;
 mod idle_settings;
 mod launcher_settings;
 mod layout_settings;
+mod lock_settings;
 mod menu_settings;
 mod notification_settings;
 mod session_settings;

@@ -20,7 +20,8 @@ pub(crate) enum BarPillKind {
     ActiveWindow,
     DarkMode,
     ColorPicker,
-    Lock,
+    // Lock has its own rich page (lock-screen background) — see
+    // `lock_settings.rs` — so it's not a generic bar-pill info page.
     Logout,
     MargoTags,
     Privacy,
@@ -37,7 +38,6 @@ impl BarPillKind {
             Self::ActiveWindow => "Active Window",
             Self::DarkMode => "Dark Mode Toggle",
             Self::ColorPicker => "ColorPicker",
-            Self::Lock => "Lock",
             Self::Logout => "Logout",
             Self::MargoTags => "Margo Tags",
             Self::Privacy => "Privacy",
@@ -62,7 +62,6 @@ impl BarPillKind {
             Self::ColorPicker => {
                 "Picks a colour from the screen and copies hex/rgb to the clipboard. Click to start picking."
             }
-            Self::Lock => "Locks the session immediately (no confirmation).",
             Self::Logout => "Logs out of the session. Confirms with a dialog.",
             Self::MargoTags => {
                 "1–9 tag pills with focus / occupied / urgent states. Click to switch tags, scroll to cycle."
