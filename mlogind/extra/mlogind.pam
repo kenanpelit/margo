@@ -1,4 +1,19 @@
 #%PAM-1.0
+
+# Fingerprint login (optional, opt-in).
+#
+# mlogind authenticates through the PAM stack, and its conversation
+# ignores PAM_TEXT_INFO prompts (it never feeds the password to a
+# non-password prompt) — so pam_fprintd reads the finger straight from the
+# sensor. To enable fingerprint, enroll first (`fprintd-enroll`) and
+# uncomment the line below: `sufficient` tries the finger and, on failure,
+# falls through to the password from the `login` stack.
+#
+# Caveat: with the current synchronous auth the TUI blocks while waiting
+# for the finger (no async "swipe now" prompt yet — that, plus reusing
+# mshell-auth's fprintd client for a live prompt, is a tracked follow-up).
+#auth        sufficient pam_fprintd.so
+
 auth        include    login
 account     include    login
 session     include    login

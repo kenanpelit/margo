@@ -78,3 +78,15 @@ the greeter with:
 ```bash
 sudo mlogind sync-theme   # copies your palette → /etc/mlogind/variables.toml
 ```
+
+## Fingerprint
+
+Fingerprint login is handled at the PAM level, not in mlogind: its
+conversation ignores `PAM_TEXT_INFO` prompts, so `pam_fprintd` reads the
+finger from the sensor directly. Enroll (`fprintd-enroll`), then uncomment
+the `pam_fprintd.so` line in `extra/mlogind.pam` (installed to
+`/etc/pam.d/mlogind`) — it tries the finger and falls back to the password.
+
+A live async "swipe now" prompt (reusing margo's `mshell-auth` fprintd
+client) is a planned follow-up; today the synchronous auth simply blocks
+until the finger or the password is given.
