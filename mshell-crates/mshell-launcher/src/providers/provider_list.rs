@@ -136,6 +136,12 @@ const ENTRIES: &[Entry] = &[
         icon: "network-server-symbolic",
     },
     Entry {
+        prefix: "pass <query>",
+        example: "pass github",
+        description: "GNU pass — Enter copies, Ctrl+Enter types the password",
+        icon: "dialog-password-symbolic",
+    },
+    Entry {
         prefix: "tag [N]",
         example: "tag 3",
         description: "Switch the focused output to tag N (1-9)",

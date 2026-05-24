@@ -33,6 +33,7 @@ pub struct Config {
     pub launcher: Launcher,
     pub valent: Valent,
     pub dock: Dock,
+    pub pass: Pass,
 }
 
 /// Idle manager — staged actions as the session sits idle. Each
@@ -893,6 +894,18 @@ impl Default for Dock {
             show_running: true,
         }
     }
+}
+
+/// GNU pass (password-store) launcher provider. Surfaced under
+/// Settings → Launcher → Storage paths.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize, Store, Patch, JsonSchema,
+)]
+#[serde(default)]
+pub struct Pass {
+    /// Password-store directory. Empty = follow `$PASSWORD_STORE_DIR`,
+    /// else `~/.password-store` (pass's own resolution order).
+    pub store_path: String,
 }
 
 /// One `>start` script's autostart configuration.

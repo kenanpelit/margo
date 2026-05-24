@@ -54,11 +54,14 @@ use mshell_common::dynamic_box::generic_widget_controller::{
 };
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{ConfigStoreFields, IconsStoreFields, ThemeStoreFields};
+use mshell_config::schema::config::{
+    ConfigStoreFields, IconsStoreFields, PassStoreFields, ThemeStoreFields,
+};
 use mshell_launcher::providers::{
     ArchLinuxPkgsProvider, BluetoothProvider, CalculatorProvider, CommandProvider, EmojiProvider,
-    MctlProvider, PlayerctlProvider, ProviderListProvider, ScriptsProvider, SessionProvider,
-    SettingsProvider, SshProvider, SymbolsProvider, WebsearchProvider, WireplumberProvider,
+    MctlProvider, PassProvider, PlayerctlProvider, ProviderListProvider, ScriptsProvider,
+    SessionProvider, SettingsProvider, SshProvider, SymbolsProvider, WebsearchProvider,
+    WireplumberProvider,
 };
 use mshell_launcher::{DisplayItem, FrecencyStore, LauncherItem, LauncherRuntime};
 use reactive_graph::traits::*;
@@ -361,6 +364,26 @@ impl Component for AppLauncherModel {
         runtime.register(Box::new(WireplumberProvider::new()));
         runtime.register(Box::new(BluetoothProvider::new()));
         runtime.register(Box::new(SshProvider::new()));
+        // pass: store path follows Settings → Launcher (else
+        // $PASSWORD_STORE_DIR / ~/.password-store). Resolver re-reads on
+        // each open, so the setting applies without a shell restart.
+        runtime.register(Box::new(PassProvider::with_resolver(Box::new(|| {
+            let configured = config_manager()
+                .config()
+                .pass()
+                .store_path()
+                .get_untracked();
+            let trimmed = configured.trim();
+            if trimmed.is_empty() {
+                mshell_launcher::providers::pass::default_store_dir()
+            } else if let Some(rest) = trimmed.strip_prefix("~/") {
+                std::env::var_os("HOME")
+                    .map(|h| std::path::PathBuf::from(h).join(rest))
+                    .unwrap_or_else(|| std::path::PathBuf::from(trimmed))
+            } else {
+                std::path::PathBuf::from(trimmed)
+            }
+        }))));
         runtime.register(Box::new(CommandProvider::new()));
 
         let sender_for_rows = sender.clone();

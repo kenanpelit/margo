@@ -10,7 +10,9 @@
 //! the rest of Settings already uses (idle / theme / wallpaper).
 
 use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{ConfigStoreFields, LauncherStoreFields, ScriptAutostart};
+use mshell_config::schema::config::{
+    ConfigStoreFields, LauncherStoreFields, PassStoreFields, ScriptAutostart,
+};
 use mshell_launcher::providers::ScriptsProvider;
 use mshell_launcher::{frecency, history};
 use reactive_graph::traits::GetUntracked;
@@ -47,6 +49,9 @@ pub(crate) enum LauncherSettingsInput {
     SetAutostart(String, bool),
     /// Set how many seconds after startup a script runs (by name).
     SetDelay(String, u32),
+    /// Set the GNU pass store directory (`config.pass.store_path`).
+    /// Empty falls back to $PASSWORD_STORE_DIR / ~/.password-store.
+    SetPassStorePath(String),
 }
 
 #[derive(Debug)]
@@ -232,6 +237,30 @@ impl Component for LauncherSettingsModel {
                     },
                 },
 
+                // GNU pass store ───────────────────────────────
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Password store (pass)",
+                    set_halign: gtk::Align::Start,
+                    set_margin_top: 12,
+                },
+                gtk::Label {
+                    add_css_class: "label-small",
+                    set_label: "Directory the `pass` launcher provider scans (type `pass …` in the launcher). Blank = $PASSWORD_STORE_DIR, else ~/.password-store. Applies on the next launcher open.",
+                    set_halign: gtk::Align::Start,
+                    set_xalign: 0.0,
+                    set_wrap: true,
+                    set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                },
+                #[name = "pass_store_entry"]
+                gtk::Entry {
+                    set_placeholder_text: Some("e.g. ~/.pass   (blank = $PASSWORD_STORE_DIR)"),
+                    set_hexpand: true,
+                    connect_changed[sender] => move |e| {
+                        sender.input(LauncherSettingsInput::SetPassStorePath(e.text().to_string()));
+                    },
+                },
+
                 // Paths (debug) ────────────────────────────────
                 gtk::Label {
                     add_css_class: "label-large-bold",
@@ -269,6 +298,9 @@ impl Component for LauncherSettingsModel {
         let widgets = view_output!();
 
         rebuild_scripts_box(&widgets.scripts_box, &model.scripts, &sender);
+        widgets.pass_store_entry.set_text(
+            &config_manager().config().pass().store_path().get_untracked(),
+        );
 
         let _ = root;
         ComponentParts { model, widgets }
@@ -333,6 +365,12 @@ impl Component for LauncherSettingsModel {
             }
             LauncherSettingsInput::SetDelay(name, secs) => {
                 upsert_autostart(&name, |e| e.delay_secs = secs);
+            }
+            LauncherSettingsInput::SetPassStorePath(path) => {
+                let path = path.trim().to_string();
+                config_manager().update_config(move |config| {
+                    config.pass.store_path = path;
+                });
             }
         }
         self.update_view(widgets, sender);
