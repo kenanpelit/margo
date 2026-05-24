@@ -7,6 +7,56 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.8.1] – 2026-05-24
+
+### Added
+
+- **mlogind — margo's TTY login manager** (forked from lemurs). A
+  matugen-themed ratatui greeter that launches the margo session
+  supervised through `start-margo`, syncs its colours from the active
+  wallpaper palette (11 theme variables, active session visually
+  distinct), and offers F3 Suspend alongside the usual power controls.
+  Optional fingerprint login via PAM (`pam_fprintd`). Packaged like a
+  display manager — binary plus config / PAM / systemd unit installed to
+  `/etc`. The bare-VT greeter now matches `--preview` by reprogramming the
+  console palette (no truecolor on a raw Linux VT). Documented in the
+  README and project site, installable from the AUR (`margo-git`).
+- **`pass` launcher provider** — a password-store browser in the
+  launcher, with a configurable store path (Settings → Launcher). Copy and
+  type both honour `PASSWORD_STORE_DIR`.
+- **Configurable lock-screen background** — mlock can now use the desktop
+  wallpaper (default), a flat solid colour, or a fixed custom image, set
+  from Settings → Session and read from `~/.config/margo/mlock.conf`.
+- **Settings → Gestures** — a dedicated section for touchpad and swipe
+  gesture settings.
+- **Dock settings page** (under Widgets) — configurable icon size, plus
+  the groundwork for click-to-focus.
+- **Notification history-menu size controls** — width and height are now
+  adjustable in Settings.
+
+### Changed
+
+- **mlock UI refreshed** — modern vector icons (replacing emoji) and
+  power-action chips.
+- The Settings sidebar is now sorted alphabetically, with General kept
+  first.
+
+### Fixed
+
+- **Clipboard performance** — the history menu is virtualized
+  (`GtkListView`, the copyq pattern), rebuilds and the active-search are
+  gated on reveal + debounced, and image thumbnails are `Arc`-shared so
+  preview clones are O(1). Menu width and height once again track the
+  configured values (both had regressed to a fixed size).
+- **`pass` copy/type** honoured the wrong store, so nothing was copied
+  despite the "Copied" toast — they now set `PASSWORD_STORE_DIR`
+  explicitly (mshell runs as a systemd user service and doesn't inherit
+  shell-rc env).
+- Notification history rebuilds and the SSH-sessions active poll are now
+  gated on reveal (no idle CPU when the menus are closed).
+- The cellular icon recognizes 5G network-type variants (valent).
+- The session display name is capitalized (margo → **Margo**).
+
 ## [0.8.0] – 2026-05-24
 
 ### Added
