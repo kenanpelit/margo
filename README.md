@@ -23,7 +23,6 @@
   <p><em>Margo is a deeply personal Linux desktop environment built by a single
   human amplified by AI — an experiment in whether one person can design,
   implement, and maintain a complete modern desktop stack alone.</em></p>
-  <p><strong>— Kenan Pelit</strong></p>
 </blockquote>
 
 ---
