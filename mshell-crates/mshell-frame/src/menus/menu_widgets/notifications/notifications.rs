@@ -18,6 +18,14 @@ pub(crate) struct NotificationsModel {
     notif_controllers: Vec<Controller<NotificationModel>>,
     empty_label_visible: bool,
     dnd: bool,
+    /// Whether this menu is currently revealed. Every monitor hosts a
+    /// notifications menu, so an un-gated rebuild-on-notification was N
+    /// full list rebuilds per incoming toast — and toasts arrive while
+    /// the menu is closed. We rebuild once, on the next reveal, if dirty.
+    revealed: bool,
+    /// A notification (or grouping) change landed while hidden — rebuild
+    /// on next reveal.
+    dirty: bool,
     /// Re-runs `rebuild_list` when the `group_notifications` toggle
     /// changes, so the Settings switch applies to an open menu live.
     _effects: EffectScope,
@@ -29,6 +37,11 @@ pub(crate) enum NotificationsInput {
     DndClicked,
     /// The `group_notifications` config toggle flipped — rebuild the list.
     GroupingChanged,
+    /// The frame's notifications menu was revealed (`true`) or hidden
+    /// (`false`). Rebuilds happen only while revealed; a notification
+    /// arriving while hidden just flips `dirty` and the list is rebuilt
+    /// once, on the next reveal.
+    ParentRevealChanged(bool),
 }
 
 #[derive(Debug)]
@@ -151,6 +164,8 @@ impl Component for NotificationsModel {
             notif_controllers: Vec::new(),
             empty_label_visible: true,
             dnd: false,
+            revealed: false,
+            dirty: false,
             _effects: effects,
         };
 
@@ -180,9 +195,21 @@ impl Component for NotificationsModel {
                 service.set_dnd(!dnd);
             }
             NotificationsInput::GroupingChanged => {
-                let notifications = notification_service().notifications.get();
-                self.empty_label_visible = notifications.is_empty();
-                self.rebuild_list(&widgets.list, &notifications, &sender);
+                // Only the visible menu rebuilds; a hidden one defers.
+                if self.revealed {
+                    self.refresh(&widgets.list, &sender);
+                } else {
+                    self.dirty = true;
+                }
+            }
+            NotificationsInput::ParentRevealChanged(revealed) => {
+                self.revealed = revealed;
+                if revealed {
+                    // Rebuild on open to reflect current history, clearing
+                    // any deferral accumulated while hidden.
+                    self.dirty = false;
+                    self.refresh(&widgets.list, &sender);
+                }
             }
         }
 
@@ -198,9 +225,14 @@ impl Component for NotificationsModel {
     ) {
         match message {
             NotificationsCommandOutput::NotificationsChanged => {
-                let notifications = notification_service().notifications.get();
-                self.empty_label_visible = notifications.is_empty();
-                self.rebuild_list(&widgets.list, &notifications, &sender);
+                // The hot path: a notification arrived/cleared. Rebuild
+                // only the visible menu; hidden ones defer to next reveal
+                // so a single toast doesn't rebuild every monitor's panel.
+                if self.revealed {
+                    self.refresh(&widgets.list, &sender);
+                } else {
+                    self.dirty = true;
+                }
             }
             NotificationsCommandOutput::DndChanged => {
                 let service = notification_service();
@@ -213,6 +245,15 @@ impl Component for NotificationsModel {
 }
 
 impl NotificationsModel {
+    /// Pull current history from the service, refresh the empty-state
+    /// flag, and rebuild the list. The single rebuild entry point for
+    /// the visible menu (notification change, grouping toggle, reveal).
+    fn refresh(&mut self, list: &gtk::Box, sender: &ComponentSender<Self>) {
+        let notifications = notification_service().notifications.get();
+        self.empty_label_visible = notifications.is_empty();
+        self.rebuild_list(list, &notifications, sender);
+    }
+
     /// Rebuild the history list, grouping notifications by app name.
     /// A single notification from an app renders directly; two or more
     /// collapse into an expandable group header ("App (N)"). New
