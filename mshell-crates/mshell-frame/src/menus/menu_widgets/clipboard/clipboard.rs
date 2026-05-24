@@ -132,6 +132,19 @@ pub(crate) struct ClipboardModel {
     /// open/closed state lives in the [`SEARCH_ACTIVE`] thread-local
     /// so the frame's Esc handler can read it.
     search_query: String,
+    /// Whether this menu is currently revealed. Clipboard events that
+    /// arrive while hidden only flip `dirty` instead of rebuilding the
+    /// (potentially 100-row) list — every monitor hosts a clipboard
+    /// menu, so an un-gated rebuild-on-copy was N full rebuilds per
+    /// copy. We rebuild once, on the next reveal, if `dirty`.
+    revealed: bool,
+    /// A clipboard event landed while hidden — rebuild on next reveal.
+    dirty: bool,
+    /// Monotonic generation for the `/` filter debounce. Each keystroke
+    /// bumps it and schedules an `ApplySearch(gen)`; only the firing
+    /// whose gen still matches rebuilds, so fast typing coalesces into
+    /// a single rebuild instead of one per character.
+    search_gen: u64,
 }
 
 #[derive(Debug)]
@@ -160,8 +173,11 @@ pub(crate) enum ClipboardInput {
     EnterSearch,
     /// Esc while searching — clear the filter and return to the list.
     ExitSearch,
-    /// The filter text changed — re-filter the list live.
+    /// The filter text changed — re-filter the list live (debounced).
     SearchChanged(String),
+    /// Debounce fire for the `/` filter — rebuilds only if `gen` is
+    /// still the latest keystroke's generation.
+    ApplySearch(u64),
 }
 
 #[derive(Debug)]
@@ -487,6 +503,9 @@ impl Component for ClipboardModel {
             active_tab: ClipTab::All,
             tab_counts: [0; 5],
             search_query: String::new(),
+            revealed: false,
+            dirty: false,
+            search_gen: 0,
         };
 
         let widgets = view_output!();
@@ -509,7 +528,17 @@ impl Component for ClipboardModel {
         root: &Self::Root,
     ) {
         match message {
-            ClipboardInput::Refresh => self.rebuild_rows(),
+            ClipboardInput::Refresh => {
+                // Live clipboard event. Rebuild only if we're the
+                // visible menu; otherwise defer to the next reveal so a
+                // copy doesn't trigger a full row rebuild on every
+                // monitor's hidden clipboard panel.
+                if self.revealed {
+                    self.rebuild_rows();
+                } else {
+                    self.dirty = true;
+                }
+            }
             ClipboardInput::SetTab(tab) => {
                 self.active_tab = tab;
                 self.rebuild_rows();
@@ -594,11 +623,29 @@ impl Component for ClipboardModel {
                 self.rebuild_rows();
             }
             ClipboardInput::SearchChanged(text) => {
+                // Store the query now (cheap) but defer the row rebuild
+                // ~70 ms so a fast typist doesn't rebuild the list on
+                // every keystroke. The gen check drops all but the last.
                 self.search_query = text;
-                self.rebuild_rows();
+                self.search_gen = self.search_gen.wrapping_add(1);
+                let generation = self.search_gen;
+                let debounce_sender = sender.clone();
+                gtk::glib::timeout_add_local_once(
+                    std::time::Duration::from_millis(70),
+                    move || {
+                        debounce_sender.input(ClipboardInput::ApplySearch(generation));
+                    },
+                );
+            }
+            ClipboardInput::ApplySearch(generation) => {
+                if generation == self.search_gen {
+                    self.rebuild_rows();
+                }
             }
             ClipboardInput::ParentRevealChanged(revealed) => {
+                self.revealed = revealed;
                 if revealed {
+                    self.dirty = false;
                     // Pick up a Settings density change without a restart.
                     apply_density(root);
                     // Open fresh: any stale filter from a previous
