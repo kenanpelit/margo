@@ -302,7 +302,16 @@ mod tests {
     use super::*;
 
     fn temp_store() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("dcli-pass-test-{}", std::process::id()));
+        // Unique per call: cargo runs tests as parallel threads of one
+        // process, so keying the dir on `process::id()` alone made the
+        // two store-scanning tests share a path and race each other's
+        // remove_dir_all/create_dir_all (ENOENT mid-create). A monotonic
+        // counter gives every call its own directory.
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static COUNTER: AtomicU32 = AtomicU32::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir()
+            .join(format!("dcli-pass-test-{}-{n}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("web")).unwrap();
         std::fs::create_dir_all(dir.join(".git")).unwrap();
