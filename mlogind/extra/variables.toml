@@ -1,14 +1,25 @@
 # mlogind colour variables — referenced as `$name` from config.toml.
 #
-# These are margo's baseline (Dracula) palette. To make the login screen
-# track the active wallpaper, a theme sync (margo's matugen → this file)
-# overwrites these with the live palette; until then these are the
-# defaults. Any `$name` token inside a config.toml string is substituted
-# with the value here before the colour is parsed.
+# margo's matugen palette mapped to the greeter's roles. `mlogind sync-theme`
+# repaints these from the active wallpaper (margo writes them to
+# ~/.config/margo/mlogind-variables.toml on every theme change); until then
+# these defaults are margo's baseline (Dracula) palette.
 
-accent = "#BD93F9"      # --primary  (focus / selection / active)
-background = "#282A36"   # --surface
-foreground = "#CDD6F4"   # --on-surface (primary text / borders)
-neutral = "#44475A"      # --surface-variant (unfocused selection)
-dim = "#6272A4"          # dim hints / metadata
-error = "#FF5555"        # --error
+# Surfaces / structure
+bg           = "#282A36"   # window background  (--surface)
+panel_border = "#44475A"   # panel/background border  (--surface-variant)
+field_border = "#6272A4"   # username/password field border
+
+# Text
+text         = "#CDD6F4"   # primary text  (--on-surface)
+subtext      = "#6272A4"   # secondary text / unfocused neighbours
+muted        = "#6272A4"   # hints / movers  (--on-surface-variant)
+
+# Accent / state
+accent       = "#BD93F9"   # focus / active  (--primary)
+accent_soft  = "#BD93F9"   # softer accent for selected text
+danger       = "#FF5555"   # error / no-sessions  (--error)
+
+# Field titles (plain text, not colours)
+login_title    = "User"
+password_title = "Password"
