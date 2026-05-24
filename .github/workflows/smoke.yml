@@ -20,8 +20,6 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  # Run JS actions on Node 24 (GitHub's opt-in until actions ship node24).
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   winit:
@@ -65,7 +63,7 @@ jobs:
 
       - name: Upload smoke logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: smoke-logs
           path: /tmp/margo-smoke-*/
