@@ -1,5 +1,5 @@
 use ratatui::backend::Backend;
-use ratatui::layout::Rect;
+use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
@@ -83,23 +83,27 @@ impl StatusMessage {
         matches!(self, Self::Error(_))
     }
 
-    pub fn render<B: Backend>(status: Option<Self>, frame: &mut Frame<B>, area: Rect) {
+    /// Centred, themed status line. Errors use the palette's danger colour,
+    /// info messages the muted colour — matching the rest of the greeter
+    /// instead of fixed red/yellow.
+    pub fn render<B: Backend>(
+        status: Option<Self>,
+        frame: &mut Frame<B>,
+        area: Rect,
+        danger: Color,
+        info: Color,
+    ) {
         if let Some(status_message) = status {
             let text: Box<str> = status_message.clone().into();
-            let widget = Paragraph::new(text.as_ref()).style(Style::default().fg(
-                if status_message.is_error() {
-                    Color::Red
-                } else {
-                    Color::Yellow
-                },
-            ));
+            let color = if status_message.is_error() { danger } else { info };
+            let widget = Paragraph::new(text.as_ref())
+                .alignment(Alignment::Center)
+                .style(Style::default().fg(color));
 
             frame.render_widget(widget, area);
         } else {
             // Clear the area
-
-            let widget = Paragraph::new("");
-            frame.render_widget(widget, area);
+            frame.render_widget(Paragraph::new(""), area);
         }
     }
 }

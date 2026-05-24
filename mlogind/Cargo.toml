@@ -20,6 +20,8 @@ readme = "README.md"
 ratatui = "0.21.0"
 crossterm = "0.26"
 unicode-width = "0.1"
+# Live clock on the greeter (matches mlock's centred clock).
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 mio = { version = "0.8.8", features = ["os-poll", "os-ext"] }
 

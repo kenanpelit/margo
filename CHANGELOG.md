@@ -7,6 +7,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Changed
+
+- **mlogind greeter redesigned to match the mlock lock screen.** The login
+  TUI now mirrors mlock's centred stack: a time-aware greeting, a big block
+  clock (live, ticking every second), the full date, a single rounded
+  accent-bordered card holding the session / username / password rows, a
+  centred status line, and a quiet centred row of power-control chips — with
+  a top-right battery readout on laptops. Colours come from the same
+  matugen palette as before (accent for the card, muted for secondary
+  text), so the greeter is now visually of a piece with the locker.
+
 ## [0.8.1] – 2026-05-24
 
 ### Added

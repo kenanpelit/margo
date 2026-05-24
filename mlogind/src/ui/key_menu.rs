@@ -54,6 +54,10 @@ impl KeyMenuWidget {
         style
     }
 
+    /// Render the power controls as a single centred row of quiet "chips"
+    /// at the bottom of the stack — mlock keeps these muted (accent is
+    /// reserved for the card), so each chip is just `key hint` in the
+    /// configured (muted) colour, the key underlined, with a gap between.
     pub fn render(&self, frame: &mut Frame<impl ratatui::backend::Backend>, area: Rect) {
         let mut items = Vec::new();
 
@@ -64,36 +68,35 @@ impl KeyMenuWidget {
             .iter()
             .chain(self.power_config.entries.0.iter())
         {
+            if !items.is_empty() {
+                // Separator between chips.
+                items.push(Span::raw("   "));
+            }
             items.push(Span::styled(
                 power_control.key.as_str(),
                 power_control.style().add_modifier(Modifier::UNDERLINED),
             ));
             items.push(Span::raw(" "));
-            items.push(Span::styled(
-                power_control.hint.as_str(),
-                power_control.style(),
-            ));
-
-            // Add margin
-            items.push(Span::raw(" ".repeat(self.power_config.hint_margin.into())));
+            items.push(Span::styled(power_control.hint.as_str(), power_control.style()));
         }
 
-        let left_widget = Paragraph::new(Line::from(items));
-        frame.render_widget(left_widget, area);
-
-        // Since we only allow Fn keys, this should always match if it's set... because of this, an
-        // invalid key is effectively the same as "hidden"
+        // The session-switcher toggle hint (when bound to an F-key) reads as
+        // one more chip on the same centred row.
         if let SwitcherVisibility::Keybind(KeyCode::F(n)) = self.switcher_config.switcher_visibility
         {
-            let right_widget = Paragraph::new(
+            if !items.is_empty() {
+                items.push(Span::raw("   "));
+            }
+            items.push(Span::styled(
                 self.switcher_config
                     .toggle_hint
                     .replace("%key%", &format!("F{n}")),
-            )
-            .alignment(Alignment::Right)
-            .style(self.switcher_toggle_style());
-            frame.render_widget(right_widget, area);
+                self.switcher_toggle_style(),
+            ));
         }
+
+        let widget = Paragraph::new(Line::from(items)).alignment(Alignment::Center);
+        frame.render_widget(widget, area);
     }
 
     pub(crate) fn key_press(&self, key_code: KeyCode) -> Option<super::ErrorStatusMessage> {

@@ -18,10 +18,18 @@ use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen,
 };
 use ratatui::backend::CrosstermBackend;
+use ratatui::layout::Alignment;
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
 use ratatui::{backend::Backend, Frame, Terminal};
+
+use chrono::{Local, Timelike};
+
+use crate::config::get_color;
 
 mod background;
 mod chunks;
+mod clock;
 mod input_field;
 mod key_menu;
 mod status_message;
@@ -297,9 +305,17 @@ impl LoginForm {
                         .collect(),
                     config.environment_switcher.clone(),
                 ))),
+                // The fields now live inside the rounded card, so they drop
+                // their own border + title (the card draws the chrome; the
+                // label is rendered to the left of each row).
                 username: Arc::new(Mutex::new(InputFieldWidget::new(
                     InputFieldDisplayType::Echo,
-                    config.username_field.style.clone(),
+                    {
+                        let mut s = config.username_field.style.clone();
+                        s.show_border = false;
+                        s.show_title = false;
+                        s
+                    },
                     String::default(),
                 ))),
                 password: Arc::new(Mutex::new(InputFieldWidget::new(
@@ -309,7 +325,12 @@ impl LoginForm {
                             .content_replacement_character
                             .to_string(),
                     ),
-                    config.password_field.style.clone(),
+                    {
+                        let mut s = config.password_field.style.clone();
+                        s.show_border = false;
+                        s.show_title = false;
+                        s
+                    },
                     String::default(),
                 ))),
             },
@@ -352,12 +373,14 @@ impl LoginForm {
         let environment = self.widgets.environment.clone();
         let username = self.widgets.username.clone();
         let password = self.widgets.password.clone();
+        let theme = Theme::from_config(&self.config);
 
         let draw_action = terminal.draw(|f| {
             let layout = Chunks::new(f);
             login_form_render(
                 f,
                 layout,
+                theme,
                 background.clone(),
                 key_menu.clone(),
                 environment.clone(),
@@ -377,6 +400,22 @@ impl LoginForm {
         let event_status_message = status_message.clone();
 
         let (req_send_channel, req_recv_channel) = channel();
+
+        // Keep the clock live: tick a redraw every second. Gated by
+        // `tui_enabled` in the draw loop so we never paint over a session
+        // during the login hand-off. The send fails (and the thread exits)
+        // once the receiver is dropped at shutdown.
+        let tui_enabled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+        {
+            let tick_sender = req_send_channel.clone();
+            std::thread::spawn(move || loop {
+                std::thread::sleep(Duration::from_secs(1));
+                if tick_sender.send(UIThreadRequest::Redraw).is_err() {
+                    break;
+                }
+            });
+        }
+
         std::thread::spawn(move || {
             let mut switcher_hidden = self
                 .widgets
@@ -551,13 +590,18 @@ impl LoginForm {
         //
         // This blocks until we actually call StopDrawing
         while let Ok(request) = req_recv_channel.recv() {
+            use std::sync::atomic::Ordering;
             match request {
+                // Skip the 1 s clock ticks (and any stray redraws) while the
+                // TUI is handed off to a starting session.
+                UIThreadRequest::Redraw if !tui_enabled.load(Ordering::Relaxed) => {}
                 UIThreadRequest::Redraw => {
                     let draw_action = terminal.draw(|f| {
                         let layout = Chunks::new(f);
                         login_form_render(
                             f,
                             layout,
+                            theme,
                             background.clone(),
                             key_menu.clone(),
                             environment.clone(),
@@ -573,6 +617,7 @@ impl LoginForm {
                     }
                 }
                 UIThreadRequest::DisableTui => {
+                    tui_enabled.store(false, Ordering::Relaxed);
                     disable_raw_mode()?;
                     execute!(
                         terminal.backend_mut(),
@@ -587,6 +632,7 @@ impl LoginForm {
                     let mut stdout = io::stdout();
                     execute!(stdout, EnterAlternateScreen)?;
                     terminal.clear()?;
+                    tui_enabled.store(true, Ordering::Relaxed);
                 }
                 _ => break,
             }
@@ -596,10 +642,59 @@ impl LoginForm {
     }
 }
 
+/// The greeter's semantic colours, pulled from the (matugen-driven) config
+/// so the new decorative elements track the wallpaper theme exactly like
+/// the input widgets do. The field colours map straight to margo's palette
+/// variables: `border_color_focused → $accent`, `content_color → $text`,
+/// `title_color → $subtext/muted`, `no_envs_color_focused → $danger`.
+#[derive(Clone, Copy)]
+struct Theme {
+    accent: Color,
+    text: Color,
+    muted: Color,
+    danger: Color,
+}
+
+impl Theme {
+    fn from_config(config: &Config) -> Self {
+        Self {
+            accent: get_color(&config.username_field.style.border_color_focused),
+            text: get_color(&config.username_field.style.content_color),
+            muted: get_color(&config.username_field.style.title_color),
+            danger: get_color(&config.environment_switcher.no_envs_color_focused),
+        }
+    }
+}
+
+fn greeting_for(hour: u32) -> &'static str {
+    match hour {
+        5..=11 => "Good morning",
+        12..=16 => "Good afternoon",
+        17..=20 => "Good evening",
+        _ => "Good night",
+    }
+}
+
+/// First battery's charge, if the machine has one (laptops). Shown top-right
+/// like mlock's battery glyph.
+fn battery_percent() -> Option<u8> {
+    for entry in std::fs::read_dir("/sys/class/power_supply").ok()?.flatten() {
+        if entry.file_name().to_string_lossy().starts_with("BAT") {
+            if let Ok(s) = std::fs::read_to_string(entry.path().join("capacity")) {
+                if let Ok(n) = s.trim().parse::<u8>() {
+                    return Some(n);
+                }
+            }
+        }
+    }
+    None
+}
+
 #[allow(clippy::too_many_arguments)]
 fn login_form_render<B: Backend>(
     frame: &mut Frame<B>,
     chunks: Chunks,
+    theme: Theme,
     background: BackgroundWidget,
     key_menu: KeyMenuWidget,
     environment: Arc<Mutex<SwitcherWidget<PostLoginEnvironment>>>,
@@ -609,18 +704,85 @@ fn login_form_render<B: Backend>(
     status_message: Option<StatusMessage>,
 ) {
     background.render(frame);
-    key_menu.render(frame, chunks.key_menu);
-    environment
-        .lock()
-        .unwrap_or_else(|err| {
+
+    let now = Local::now();
+    let muted = Style::default().fg(theme.muted);
+    let label_style = |focused: bool| {
+        Style::default().fg(if focused { theme.accent } else { theme.muted })
+    };
+
+    // Battery (top-right, laptops only).
+    if let Some(pct) = battery_percent() {
+        frame.render_widget(
+            Paragraph::new(format!("{pct}%"))
+                .alignment(Alignment::Right)
+                .style(muted),
+            chunks.battery,
+        );
+    }
+
+    // Greeting.
+    frame.render_widget(
+        Paragraph::new(greeting_for(now.hour()))
+            .alignment(Alignment::Center)
+            .style(muted),
+        chunks.greeting,
+    );
+
+    // Big block clock (mlock's centrepiece). The 5 equal-width rows centre
+    // as a block; `text` colour keeps accent reserved for focus.
+    frame.render_widget(
+        Paragraph::new(clock::big_time(&now.format("%H:%M").to_string()).join("\n"))
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
+        chunks.clock,
+    );
+
+    // Date.
+    frame.render_widget(
+        Paragraph::new(now.format("%A, %-d %B %Y").to_string())
+            .alignment(Alignment::Center)
+            .style(muted),
+        chunks.date,
+    );
+
+    // The rounded accent card around the credentials — always accent, so the
+    // theme reads even before the user types (mlock draws its border the same
+    // way).
+    frame.render_widget(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(theme.accent)),
+        chunks.card,
+    );
+
+    // Session row — only when the switcher is shown. The focused row's label
+    // lights up in accent (the field is borderless now, so the label is the
+    // focus cue alongside the cursor).
+    {
+        let env = environment.lock().unwrap_or_else(|err| {
             error!("Failed to lock post-login environment. Reason: {}", err);
             std::process::exit(1);
-        })
-        .render(
+        });
+        if !env.hidden() {
+            frame.render_widget(
+                Paragraph::new("Session")
+                    .style(label_style(matches!(input_mode, InputMode::Switcher))),
+                chunks.label_session,
+            );
+        }
+        env.render(
             frame,
             chunks.switcher,
             matches!(input_mode, InputMode::Switcher),
         );
+    }
+
+    frame.render_widget(
+        Paragraph::new("User").style(label_style(matches!(input_mode, InputMode::Username))),
+        chunks.label_username,
+    );
     username
         .lock()
         .unwrap_or_else(|err| {
@@ -632,6 +794,11 @@ fn login_form_render<B: Backend>(
             chunks.username_field,
             matches!(input_mode, InputMode::Username),
         );
+
+    frame.render_widget(
+        Paragraph::new("Password").style(label_style(matches!(input_mode, InputMode::Password))),
+        chunks.label_password,
+    );
     password
         .lock()
         .unwrap_or_else(|err| {
@@ -644,6 +811,7 @@ fn login_form_render<B: Backend>(
             matches!(input_mode, InputMode::Password),
         );
 
-    // Display Status Message
-    StatusMessage::render(status_message, frame, chunks.status_message);
+    // Status line (centred, themed) + the power-control chip row.
+    StatusMessage::render(status_message, frame, chunks.status_message, theme.danger, theme.muted);
+    key_menu.render(frame, chunks.key_menu);
 }
