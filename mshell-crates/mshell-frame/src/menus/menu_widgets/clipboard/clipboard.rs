@@ -401,6 +401,11 @@ impl Component for ClipboardModel {
                 set_halign: gtk::Align::Start,
                 set_label: "/: search · 1-5/Tab: tabs · Ctrl+n/k: move · Enter: copy · Ctrl+p: pin · Delete: remove",
                 set_xalign: 0.0,
+                // Wrap (don't impose the full one-line width as a minimum):
+                // this long hint was the panel's real width floor, so the
+                // configured `minimum_width` couldn't shrink it below ~550px.
+                set_wrap: true,
+                set_wrap_mode: gtk::pango::WrapMode::WordChar,
             },
 
             gtk::Label {
