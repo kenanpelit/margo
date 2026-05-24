@@ -267,6 +267,8 @@ impl Component for MargoDockItemModel {
                 .get(),
         );
 
+        widgets.root.set_tooltip_text(Some(&model.tooltip_text()));
+
         model.check_selected(&sender);
 
         ComponentParts { model, widgets }
@@ -307,13 +309,17 @@ impl Component for MargoDockItemModel {
                     if let Some(idx) = current_idx {
                         let next_idx = (idx + 1) % matching.len();
                         let client_to_focus = matching[next_idx];
-                        let client_address = client_to_focus.address.get();
+                        // margo is tag-based and has no focus-by-address
+                        // dispatch; the IPC bridge only understands the
+                        // `workspace = N` shape (→ `view <mask>`). So jump
+                        // to the window's tag — that's what actually
+                        // switches the view (the bare `window = address`
+                        // form was silently dropped by the translator,
+                        // which is why clicks did nothing).
+                        let tag = client_to_focus.workspace.get().id;
 
                         tokio::spawn(async move {
-                            let command = format!(
-                                "hl.dsp.focus({{ window = \"address:0x{}\" }})",
-                                client_address
-                            );
+                            let command = format!("hl.dsp.focus({{ workspace = \"{tag}\" }})");
                             if let Err(e) = hyprland.dispatch(&command).await {
                                 error!(error = %e, "Failed to focus client");
                             }
@@ -339,12 +345,12 @@ impl Component for MargoDockItemModel {
                         clients_on_workspace[0]
                     };
 
-                    let client_address = client_to_focus.address.get();
+                    // View the window's tag — the only switch margo's IPC
+                    // bridge can do for a specific window (no focus-by-
+                    // address dispatch exists; see the cycle branch above).
+                    let tag = client_to_focus.workspace.get().id;
 
-                    let command = format!(
-                        "hl.dsp.focus({{ window = \"address:0x{}\" }})",
-                        client_address
-                    );
+                    let command = format!("hl.dsp.focus({{ workspace = \"{tag}\" }})");
                     if let Err(e) = hyprland.dispatch(&command).await {
                         error!(error = %e, "Failed to focus client");
                     }
@@ -462,6 +468,7 @@ impl Component for MargoDockItemModel {
             }
             MargoDockItemInput::ClientCountChanged(count) => {
                 self.client_count = count;
+                widgets.root.set_tooltip_text(Some(&self.tooltip_text()));
             }
             MargoDockItemInput::Selected(address) => {
                 self.is_selected = true;
@@ -487,6 +494,32 @@ impl Component for MargoDockItemModel {
 }
 
 impl MargoDockItemModel {
+    /// Hover text: the app name plus one bullet per open window title, so
+    /// several windows behind one icon (a common dock complaint) are
+    /// distinguishable without opening the right-click menu. Falls back to
+    /// just the app/class name when nothing is running (pinned-only).
+    fn tooltip_text(&self) -> String {
+        let app_name = self
+            .app_info
+            .as_ref()
+            .map(|a| a.name().to_string())
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| self.class.clone());
+        let clients = margo_service().clients.get();
+        let titles: Vec<String> = clients
+            .iter()
+            .filter(|c| c.class.get() == self.class)
+            .map(|c| c.title.get().to_string())
+            .filter(|t| !t.trim().is_empty())
+            .collect();
+        if titles.is_empty() {
+            app_name
+        } else {
+            let lines: Vec<String> = titles.iter().map(|t| format!("• {t}")).collect();
+            format!("{app_name}\n{}", lines.join("\n"))
+        }
+    }
+
     fn check_selected(&self, sender: &ComponentSender<Self>) {
         let class = self.class.clone();
         let sender = sender.clone();
