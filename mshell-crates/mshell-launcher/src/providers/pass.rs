@@ -136,21 +136,37 @@ fn shell_quote(s: &str) -> String {
 
 /// Spawn `pass -c <entry>` (decrypt + copy + auto-clear). Detached; gpg
 /// pinentry, if needed, is handled by the agent.
-fn copy_password(entry: &str) {
-    if let Err(err) = Command::new("pass").arg("-c").arg(entry).spawn() {
+///
+/// `PASSWORD_STORE_DIR` is forced to the store the provider scanned —
+/// mshell runs as a systemd user service and usually does NOT inherit
+/// the shell's `$PASSWORD_STORE_DIR`, so a bare `pass -c` would look in
+/// `~/.password-store`, not find the entry, and silently copy nothing.
+fn copy_password(store_dir: &Path, entry: &str) {
+    if let Err(err) = Command::new("pass")
+        .env("PASSWORD_STORE_DIR", store_dir)
+        .arg("-c")
+        .arg(entry)
+        .spawn()
+    {
         tracing::warn!(?err, entry, "pass: copy spawn failed");
     }
 }
 
 /// Type the password into the focused surface via wtype, never touching
 /// the clipboard. The short sleep lets the launcher close and keyboard
-/// focus return to the target window first.
-fn type_password(entry: &str) {
+/// focus return to the target window first. `PASSWORD_STORE_DIR` is
+/// forced for the same reason as `copy_password`.
+fn type_password(store_dir: &Path, entry: &str) {
     let cmd = format!(
         "sleep 0.25; pass show {} 2>/dev/null | head -n1 | tr -d '\\n' | wtype -",
         shell_quote(entry)
     );
-    if let Err(err) = Command::new("sh").arg("-c").arg(cmd).spawn() {
+    if let Err(err) = Command::new("sh")
+        .env("PASSWORD_STORE_DIR", store_dir)
+        .arg("-c")
+        .arg(cmd)
+        .spawn()
+    {
         tracing::warn!(?err, entry, "pass: type spawn failed");
     }
 }
@@ -214,6 +230,7 @@ impl Provider for PassProvider {
             }];
         }
 
+        let store_dir = self.store_dir.borrow().clone();
         entries
             .iter()
             .filter(|e| {
@@ -227,6 +244,7 @@ impl Provider for PassProvider {
             .map(|(idx, e)| {
                 let entry = e.clone();
                 let entry_for_toast = e.clone();
+                let store = store_dir.clone();
                 LauncherItem {
                     id: format!("pass:entry:{e}"),
                     name: e.clone(),
@@ -237,7 +255,7 @@ impl Provider for PassProvider {
                     provider_name: "Pass".into(),
                     usage_key: Some(format!("pass:{e}")),
                     on_activate: Rc::new(move || {
-                        copy_password(&entry);
+                        copy_password(&store, &entry);
                         toast("Pass", format!("Copied {entry_for_toast} (clears in 45s)"));
                     }),
                 }
@@ -252,8 +270,9 @@ impl Provider for PassProvider {
             return None;
         }
         let entry_for_toast = entry.clone();
+        let store = self.store_dir.borrow().clone();
         Some(Rc::new(move || {
-            type_password(&entry);
+            type_password(&store, &entry);
             toast("Pass", format!("Typing {entry_for_toast}"));
         }))
     }
