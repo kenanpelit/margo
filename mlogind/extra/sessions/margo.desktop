@@ -1,5 +1,5 @@
 [Desktop Entry]
-Name=margo
+Name=Margo
 Comment=margo Wayland compositor (supervised via start-margo)
 # start-margo supervises the compositor: respawn-on-crash, signal
 # forwarding, and PR_SET_PDEATHSIG so no margo is orphaned if the launcher
