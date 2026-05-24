@@ -1,6 +1,7 @@
 use crate::bar_settings::bar_settings::{BarSettingsInit, BarSettingsModel};
 use crate::display_settings::{DisplaySettingsInit, DisplaySettingsModel};
 use crate::fonts_settings::{FontsSettingsInit, FontsSettingsModel};
+use crate::gestures_settings::{GesturesSettingsInit, GesturesSettingsModel};
 use crate::general_settings::{GeneralSettingsInit, GeneralSettingsModel};
 use crate::weather_settings::{WeatherSettingsInit, WeatherSettingsModel};
 use crate::idle_settings::{IdleSettingsInit, IdleSettingsModel};
@@ -28,6 +29,7 @@ pub struct SettingsWindowModel {
     wallpaper_settings_controller: Controller<WallpaperSettingsModel>,
     theme_settings_controller: Controller<ThemeSettingsModel>,
     fonts_settings_controller: Controller<FontsSettingsModel>,
+    gestures_settings_controller: Controller<GesturesSettingsModel>,
     display_settings_controller: Controller<DisplaySettingsModel>,
     bar_settings_controller: Controller<BarSettingsModel>,
     menu_settings_controller: Controller<MenuSettingsModel>,
@@ -247,6 +249,27 @@ impl Component for SettingsWindowModel {
                             gtk::Label {
                                 add_css_class: "label-medium",
                                 set_label: "Fonts",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
+                    #[name = "gestures_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("gestures"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("input-touchpad-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Gestures",
                                 set_halign: gtk::Align::Start,
                                 set_hexpand: true,
                             },
@@ -487,6 +510,10 @@ impl Component for SettingsWindowModel {
             .launch(FontsSettingsInit {})
             .detach();
 
+        let gestures_settings_controller = GesturesSettingsModel::builder()
+            .launch(GesturesSettingsInit {})
+            .detach();
+
         let display_settings_controller = DisplaySettingsModel::builder()
             .launch(DisplaySettingsInit {})
             .detach();
@@ -529,6 +556,7 @@ impl Component for SettingsWindowModel {
                 ("bar", "bar"),
                 ("display", "display"),
                 ("fonts", "fonts"),
+                ("gestures", "gestures"),
                 ("idle", "idle"),
                 ("launcher", "launcher"),
                 ("menus", "menus"),
@@ -548,6 +576,7 @@ impl Component for SettingsWindowModel {
             wallpaper_settings_controller,
             theme_settings_controller,
             fonts_settings_controller,
+            gestures_settings_controller,
             display_settings_controller,
             bar_settings_controller,
             menu_settings_controller,
@@ -693,6 +722,12 @@ impl Component for SettingsWindowModel {
             model.fonts_settings_controller.widget(),
             Some("fonts"),
             "Fonts",
+        );
+
+        widgets.stack.add_titled(
+            model.gestures_settings_controller.widget(),
+            Some("gestures"),
+            "Gestures",
         );
 
         widgets.stack.add_titled(
@@ -1058,6 +1093,7 @@ impl Component for SettingsWindowModel {
                     "bar" => Some(&widgets.bar_btn),
                     "display" => Some(&widgets.display_btn),
                     "fonts" => Some(&widgets.fonts_btn),
+                    "gestures" => Some(&widgets.gestures_btn),
                     "idle" => Some(&widgets.idle_btn),
                     "launcher" => Some(&widgets.launcher_btn),
                     "menus" => Some(&widgets.menus_btn),
