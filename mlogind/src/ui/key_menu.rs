@@ -64,43 +64,57 @@ impl KeyMenuWidget {
         area: Rect,
         accent: Color,
     ) {
-        let mut items = Vec::new();
         let bracket = Style::default().fg(accent);
         let key_style = Style::default()
             .fg(accent)
             .add_modifier(Modifier::BOLD | Modifier::UNDERLINED);
 
-        for power_control in self
+        let entries: Vec<&PowerControl> = self
             .power_config
             .base_entries
             .0
             .iter()
             .chain(self.power_config.entries.0.iter())
-        {
+            .collect();
+
+        // Full chip = "[F1] Shutdown" (3 + key + hint), 4-space separators.
+        // If that overflows the row, drop the hints to "[F1] [F2] [F3]" so
+        // the F-keys can never be clipped off a narrow terminal.
+        let full_w: usize = entries
+            .iter()
+            .map(|e| 3 + e.key.len() + e.hint.len())
+            .sum::<usize>()
+            + 4 * entries.len().saturating_sub(1);
+        let compact = full_w > usize::from(area.width);
+
+        let mut items = Vec::new();
+        for power_control in &entries {
             if !items.is_empty() {
-                // Separator between chips.
-                items.push(Span::raw("    "));
+                items.push(Span::raw(if compact { "  " } else { "    " }));
             }
-            // [F1] Shutdown
             items.push(Span::styled("[", bracket));
             items.push(Span::styled(power_control.key.as_str(), key_style));
-            items.push(Span::styled("] ", bracket));
-            items.push(Span::styled(power_control.hint.as_str(), power_control.style()));
+            items.push(Span::styled("]", bracket));
+            if !compact {
+                items.push(Span::raw(" "));
+                items.push(Span::styled(power_control.hint.as_str(), power_control.style()));
+            }
         }
 
         // The session-switcher toggle hint (when bound to an F-key) reads as
-        // one more chip on the same centred row.
-        if let SwitcherVisibility::Keybind(KeyCode::F(n)) = self.switcher_config.switcher_visibility
-        {
-            if !items.is_empty() {
-                items.push(Span::raw("   "));
+        // one more chip on the row — only in the full form.
+        if !compact {
+            if let SwitcherVisibility::Keybind(KeyCode::F(n)) =
+                self.switcher_config.switcher_visibility
+            {
+                items.push(Span::raw("    "));
+                items.push(Span::styled(
+                    self.switcher_config
+                        .toggle_hint
+                        .replace("%key%", &format!("F{n}")),
+                    self.switcher_toggle_style(),
+                ));
             }
-            items.push(Span::styled(
-                self.switcher_config
-                    .toggle_hint
-                    .replace("%key%", &format!("F{n}")),
-                self.switcher_toggle_style(),
-            ));
         }
 
         let widget = Paragraph::new(Line::from(items)).alignment(Alignment::Center);

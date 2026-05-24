@@ -1,14 +1,7 @@
 use crossterm::event::KeyCode;
 use log::warn;
-use ratatui::{
-    layout::{Alignment, Rect},
-    style::Style,
-    terminal::Frame,
-    text::{Line, Span, Text},
-    widgets::{Block, Paragraph},
-};
 
-use crate::config::{get_color, get_modifiers, SwitcherConfig, SwitcherVisibility};
+use crate::config::{SwitcherConfig, SwitcherVisibility};
 
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct SwitcherItem<T> {
@@ -22,7 +15,12 @@ struct Switcher<T> {
     items: Vec<SwitcherItem<T>>,
 }
 
-/// A widget used to select a specific window manager
+/// A widget used to select a specific window manager / session.
+///
+/// The selection logic (a small carousel) lives here; the *rendering* of the
+/// chosen session is done by the greeter itself (`ui/mod.rs`), drawn inline
+/// in the credential card so it stays readable and never clips at any
+/// terminal width — see `current_title` / `has_prev` / `has_next`.
 #[derive(Clone)]
 pub struct SwitcherWidget<T> {
     selector: Switcher<T>,
@@ -96,24 +94,16 @@ impl<T> Switcher<T> {
         }
     }
 
-    fn next(&self) -> Option<&SwitcherItem<T>> {
-        self.selected.and_then(|index| {
-            debug_assert!(self.len() > 0);
-            match self.next_index(index) {
-                Some(next_index) => self.items.get(next_index),
-                None => None,
-            }
-        })
+    fn has_next(&self) -> bool {
+        self.selected
+            .and_then(|index| self.next_index(index))
+            .is_some()
     }
 
-    fn prev(&self) -> Option<&SwitcherItem<T>> {
-        self.selected.and_then(|index| {
-            debug_assert!(self.len() > 0);
-            match self.prev_index(index) {
-                Some(prev_index) => self.items.get(prev_index),
-                None => None,
-            }
-        })
+    fn has_prev(&self) -> bool {
+        self.selected
+            .and_then(|index| self.prev_index(index))
+            .is_some()
     }
 
     pub fn current(&self) -> Option<&SwitcherItem<T>> {
@@ -139,16 +129,6 @@ impl<T> SwitcherWidget<T> {
         self.selector.try_select(title)
     }
 
-    fn do_show_neighbours(&self, area_width: usize) -> bool {
-        self.config.show_neighbours
-            && usize::from(self.config.max_display_length) * 3
-                + self.config.left_mover.len()
-                + self.config.right_mover.len()
-                + usize::from(self.config.mover_margin) * 2
-                + usize::from(self.config.neighbour_margin) * 2
-                <= area_width
-    }
-
     fn left(&mut self) {
         self.selector.go_prev();
     }
@@ -157,238 +137,27 @@ impl<T> SwitcherWidget<T> {
         self.selector.go_next();
     }
 
-    fn cutoff_wm_title_with_padding(&self, title: &str) -> (String, String, String) {
-        // Count + slice by chars, never bytes: `&title[..n]` panics when the
-        // cut lands mid-codepoint (e.g. "Türkçe", "Українська"), and byte
-        // length over-counts multi-byte names so the centre-padding is wrong.
-        let max = usize::from(self.config.max_display_length);
-        let char_count = title.chars().count();
-
-        if char_count >= max {
-            // Too long → truncate, keeping one cell for an ellipsis so the
-            // cut reads as intentional and the slot stays `max` wide.
-            let truncated = if max == 0 {
-                String::new()
-            } else {
-                let mut s: String = title.chars().take(max - 1).collect();
-                s.push('…');
-                s
-            };
-            return (String::new(), truncated, String::new());
-        }
-
-        let length_difference = max - char_count;
-        let padding = " ".repeat(length_difference / 2);
-        if length_difference % 2 == 0 {
-            (padding.clone(), title.to_string(), padding)
-        } else {
-            let right_padding = " ".repeat(1 + length_difference / 2);
-            (padding, title.to_string(), right_padding)
-        }
-    }
-
-    fn empty_style(&self, is_focused: bool) -> Style {
-        let mut style = Style::default().fg(if is_focused {
-            get_color(&self.config.no_envs_color_focused)
-        } else {
-            get_color(&self.config.no_envs_color)
-        });
-
-        for modifier in get_modifiers(if is_focused {
-            &self.config.no_envs_modifiers_focused
-        } else {
-            &self.config.no_envs_modifiers
-        }) {
-            style = style.add_modifier(modifier);
-        }
-
-        style
-    }
-
-    fn arrow_style(&self, is_focused: bool) -> Style {
-        let mut style = Style::default().fg(if is_focused {
-            get_color(&self.config.mover_color_focused)
-        } else {
-            get_color(&self.config.mover_color)
-        });
-
-        for modifier in get_modifiers(if is_focused {
-            &self.config.mover_modifiers_focused
-        } else {
-            &self.config.mover_modifiers
-        }) {
-            style = style.add_modifier(modifier);
-        }
-
-        style
-    }
-
-    fn neighbour_wm_style(&self, is_focused: bool) -> Style {
-        let mut style = Style::default().fg(if is_focused {
-            get_color(&self.config.neighbour_color_focused)
-        } else {
-            get_color(&self.config.neighbour_color)
-        });
-
-        for modifier in get_modifiers(if is_focused {
-            &self.config.neighbour_modifiers_focused
-        } else {
-            &self.config.neighbour_modifiers
-        }) {
-            style = style.add_modifier(modifier);
-        }
-
-        style
-    }
-
-    fn current_wm_style(&self, is_focused: bool) -> Style {
-        let mut style = Style::default().fg(get_color(if is_focused {
-            &self.config.selected_color_focused
-        } else {
-            &self.config.selected_color
-        }));
-
-        for modifier in get_modifiers(if is_focused {
-            &self.config.selected_modifiers_focused
-        } else {
-            &self.config.selected_modifiers
-        }) {
-            style = style.add_modifier(modifier);
-        }
-
-        style
-    }
-
-    fn add_wm_title(
-        &self,
-        items: &mut Vec<Span>,
-        item: &SwitcherItem<T>,
-        is_focused: bool,
-        is_current: bool,
-    ) {
-        // TODO: Maybe if the strings empty, there should be no span generated
-        let (left_padding, title, right_padding) = self.cutoff_wm_title_with_padding(&item.title);
-
-        let style = if is_current {
-            self.current_wm_style(is_focused)
-        } else {
-            self.neighbour_wm_style(is_focused)
-        };
-
-        items.push(Span::raw(left_padding));
-        items.push(Span::styled(title, style));
-        items.push(Span::raw(right_padding));
-    }
-
     pub fn hidden(&self) -> bool {
         self.hidden
     }
 
-    pub fn render(
-        &self,
-        frame: &mut Frame<impl ratatui::backend::Backend>,
-        area: Rect,
-        is_focused: bool,
-    ) {
-        let Self {
-            selector,
-            config,
-            hidden,
-        } = &self;
+    /// Title of the currently selected session, if any.
+    pub fn current_title(&self) -> Option<&str> {
+        self.selector.current().map(|item| item.title.as_str())
+    }
 
-        if *hidden {
-            let text = Text::default();
-            let widget = Paragraph::new(text)
-                .block(Block::default())
-                .alignment(Alignment::Center);
+    /// Whether there is a session before / after the current one — drives the
+    /// `‹ ›` arrows the greeter draws around the session name.
+    pub fn has_prev(&self) -> bool {
+        self.selector.has_prev()
+    }
+    pub fn has_next(&self) -> bool {
+        self.selector.has_next()
+    }
 
-            frame.render_widget(widget, area);
-            return;
-        }
-
-        let mut spans = Vec::with_capacity(
-            // Left + Right +
-            // LeftPad + RightPad +
-            // LeftWM(3) + RightWM(3) +
-            // LeftWMPad + RightWMPad +
-            // MiddleWM(3) = 15
-            15,
-        );
-        if let Some(current) = selector.current() {
-            let do_show_neighbours = self.do_show_neighbours(area.width.into());
-
-            // Showing left item
-            if let Some(prev) = selector.prev() {
-                if config.show_movers {
-                    spans.push(Span::styled(
-                        &config.left_mover,
-                        self.arrow_style(is_focused),
-                    )); // Left Arrow
-                    spans.push(Span::raw(" ".repeat(config.mover_margin.into())));
-                    // LeftPad
-                }
-
-                if do_show_neighbours {
-                    self.add_wm_title(&mut spans, prev, is_focused, false); // LeftWM
-                    spans.push(Span::raw(" ".repeat(config.neighbour_margin.into())));
-                    // LeftWMPad
-                }
-            } else {
-                spans.push(Span::raw(" ".repeat(
-                    if config.show_movers {
-                        config.left_mover.len() + usize::from(self.config.mover_margin)
-                    } else {
-                        0
-                    } + if do_show_neighbours {
-                        usize::from(config.max_display_length + config.neighbour_margin)
-                    } else {
-                        0
-                    },
-                )));
-            }
-
-            self.add_wm_title(&mut spans, current, is_focused, true); // CurrentWM
-
-            // Showing next item
-            if let Some(next) = selector.next() {
-                if do_show_neighbours {
-                    spans.push(Span::raw(" ".repeat(config.neighbour_margin.into()))); // RightWMPad
-                    self.add_wm_title(&mut spans, next, is_focused, false); // RightWM
-                }
-
-                if config.show_movers {
-                    spans.push(Span::raw(" ".repeat(config.mover_margin.into()))); // RightPad
-                    spans.push(Span::styled(
-                        &self.config.right_mover,
-                        self.arrow_style(is_focused),
-                    )); // Right Arrow
-                }
-            } else {
-                spans.push(Span::raw(" ".repeat(
-                    if config.show_movers {
-                        config.right_mover.len() + usize::from(config.mover_margin)
-                    } else {
-                        0
-                    } + if do_show_neighbours {
-                        usize::from(config.max_display_length + config.neighbour_margin)
-                    } else {
-                        0
-                    },
-                )));
-            }
-        } else {
-            spans.push(Span::styled(
-                &config.no_envs_text,
-                self.empty_style(is_focused),
-            ));
-        }
-
-        let text = Text::from(Line::from(spans));
-        let widget = Paragraph::new(text)
-            .block(Block::default())
-            .alignment(Alignment::Center);
-
-        frame.render_widget(widget, area);
+    /// The configured "no sessions found" placeholder text.
+    pub fn no_envs_text(&self) -> &str {
+        &self.config.no_envs_text
     }
 
     pub(crate) fn key_press(&mut self, key_code: KeyCode) -> Option<super::ErrorStatusMessage> {

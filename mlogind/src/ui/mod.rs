@@ -675,6 +675,19 @@ fn greeting_for(hour: u32) -> &'static str {
     }
 }
 
+/// Truncate `s` to `max` columns, adding an ellipsis when it has to cut.
+fn fit(s: &str, max: usize) -> String {
+    if max == 0 {
+        return String::new();
+    }
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    let mut out: String = s.chars().take(max.saturating_sub(1)).collect();
+    out.push('…');
+    out
+}
+
 #[allow(clippy::too_many_arguments)]
 fn login_form_render<B: Backend>(
     frame: &mut Frame<B>,
@@ -741,17 +754,29 @@ fn login_form_render<B: Backend>(
             std::process::exit(1);
         });
         if !env.hidden() {
+            let focused = matches!(input_mode, InputMode::Switcher);
             frame.render_widget(
-                Paragraph::new("Session")
-                    .style(label_style(matches!(input_mode, InputMode::Switcher))),
+                Paragraph::new("Session").style(label_style(focused)),
                 chunks.label_session,
             );
+            // Render the session inline (no fixed-width carousel that clips at
+            // narrow widths): the name sits next to the label with ‹ › arrows
+            // when there's more than one, truncated to the available width.
+            let avail = chunks.switcher.width as usize;
+            let (text, color) = match env.current_title() {
+                Some(title) => {
+                    let left = if env.has_prev() { "‹ " } else { "" };
+                    let right = if env.has_next() { " ›" } else { "" };
+                    let fg = if focused { theme.accent } else { theme.text };
+                    (fit(&format!("{left}{title}{right}"), avail), fg)
+                }
+                None => (fit(env.no_envs_text(), avail), theme.danger),
+            };
+            frame.render_widget(
+                Paragraph::new(text).style(Style::default().fg(color)),
+                chunks.switcher,
+            );
         }
-        env.render(
-            frame,
-            chunks.switcher,
-            matches!(input_mode, InputMode::Switcher),
-        );
     }
 
     frame.render_widget(
@@ -798,10 +823,22 @@ mod render_tests {
     use ratatui::backend::TestBackend;
 
     /// Render one greeter frame to an in-memory buffer and return it as text,
-    /// so the layout can be inspected/asserted without a real TTY.
+    /// so the layout can be inspected/asserted without a real TTY. Two known
+    /// sessions are injected so the session row is exercised independently of
+    /// whatever the build host happens to have installed.
     fn render(w: u16, h: u16) -> String {
         crate::console_palette::init(true); // pass-through colours, no VT escapes
         let form = LoginForm::new(Config::default(), true);
+        {
+            let mut env = form.widgets.environment.lock().unwrap();
+            *env = SwitcherWidget::new(
+                vec![
+                    SwitcherItem::new("Margo (UWSM)", PostLoginEnvironment::Shell),
+                    SwitcherItem::new("Hyprland", PostLoginEnvironment::Shell),
+                ],
+                form.config.environment_switcher.clone(),
+            );
+        }
         let theme = Theme::from_config(&form.config);
         let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
         term.draw(|f| {
@@ -831,16 +868,32 @@ mod render_tests {
         s
     }
 
-    /// The essentials must survive even on a short VT (fewer rows than a
-    /// terminal-emulator preview): the power keys, the credential labels.
+    /// Across a wide range of terminal sizes (the bare VT can be much shorter
+    /// *or* narrower than a terminal-emulator preview) the essentials must
+    /// always be on screen: both F-keys, the credential labels, and the
+    /// selected session name. This reproduced the "F-keys clipped / session
+    /// vanishes at some resolutions" bug.
     #[test]
-    fn essentials_survive_short_terminals() {
-        for (w, h) in [(80, 24), (80, 20), (80, 18), (100, 16)] {
+    fn essentials_survive_every_size() {
+        for (w, h) in [
+            (80, 24),
+            (100, 30),
+            (120, 40),
+            (80, 20),
+            (80, 18),
+            (60, 16),
+            (45, 22),
+            (40, 12),
+            (30, 24),
+            (24, 20),
+        ] {
             let out = render(w, h);
             eprintln!("\n===== {w}x{h} =====\n{out}");
-            assert!(out.contains("F1"), "F1 missing at {w}x{h}");
-            assert!(out.contains("F2"), "F2 missing at {w}x{h}");
-            assert!(out.contains("Password"), "Password label missing at {w}x{h}");
+            assert!(out.contains("F1"), "F1 missing at {w}x{h}\n{out}");
+            assert!(out.contains("F2"), "F2 missing at {w}x{h}\n{out}");
+            assert!(out.contains("F3"), "F3 missing at {w}x{h}\n{out}");
+            assert!(out.contains("Password"), "Password label missing at {w}x{h}\n{out}");
+            assert!(out.contains("Margo"), "session name missing at {w}x{h}\n{out}");
         }
     }
 }

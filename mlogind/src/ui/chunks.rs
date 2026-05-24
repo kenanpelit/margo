@@ -84,25 +84,35 @@ impl Chunks {
 
         // Chips pinned one row up from the bottom (so they sit *inside* a
         // full-screen background border when one is configured; harmless
-        // padding when not). Top row left free for symmetry.
+        // padding when not), with a blank row above them.
         let chips_y = fh.saturating_sub(2);
         let body_top = 1u16;
-        // Content lives above the chips, with a blank row between.
-        let body_bottom = chips_y.saturating_sub(1);
-        let body_h = body_bottom.saturating_sub(body_top);
+        // Rows available for the centred content stack, above the gap row.
+        let avail = chips_y.saturating_sub(2);
 
-        // Always keep the clock + card; add the status / date / greeting
-        // only when there's vertical room (decorations drop first on a short
-        // VT). Each line below "costs" itself + one gap row.
-        let core = CLOCK_H + 1 + CARD_H; // clock, gap, card = 13
-        let show_status = core + 2 <= body_h;
-        let show_date = core + 2 + 2 <= body_h;
-        let show_greeting = core + 2 + 2 + 2 <= body_h;
-
-        let used = core
-            + if show_status { 2 } else { 0 }
-            + if show_date { 2 } else { 0 }
-            + if show_greeting { 2 } else { 0 };
+        // The card is mandatory; everything else is added only while it fits,
+        // most-important-first, so a short VT drops decorations rather than
+        // pushing the card or chips off-screen. Each extra line costs itself
+        // + a gap row; date/greeting only join once the clock is in.
+        // One blank row separates each section.
+        const GAP: u16 = 1;
+        let mut used = CARD_H;
+        let show_clock = used + CLOCK_H + GAP <= avail;
+        if show_clock {
+            used += CLOCK_H + GAP;
+        }
+        let show_status = used + 2 <= avail;
+        if show_status {
+            used += 2;
+        }
+        let show_date = show_clock && used + 2 <= avail;
+        if show_date {
+            used += 2;
+        }
+        let show_greeting = show_clock && used + 2 <= avail;
+        if show_greeting {
+            used += 2;
+        }
 
         let cx = centered_x(fw, content_w);
         let card_x = centered_x(fw, card_w);
@@ -113,7 +123,7 @@ impl Chunks {
             height: 1,
         };
 
-        let mut y = body_top + body_h.saturating_sub(used) / 2;
+        let mut y = body_top + avail.saturating_sub(used) / 2;
 
         let greeting = if show_greeting {
             let r = line(y);
@@ -123,13 +133,13 @@ impl Chunks {
             ZERO
         };
 
-        let clock = Rect {
-            x: cx,
-            y,
-            width: content_w,
-            height: CLOCK_H,
+        let clock = if show_clock {
+            let r = Rect { x: cx, y, width: content_w, height: CLOCK_H };
+            y += CLOCK_H + 1;
+            r
+        } else {
+            ZERO
         };
-        y += CLOCK_H + 1;
 
         let date = if show_date {
             let r = line(y);
@@ -145,9 +155,13 @@ impl Chunks {
             width: card_w,
             height: CARD_H,
         };
-        y += CARD_H + 1;
+        y += CARD_H;
 
-        let status_message = if show_status { line(y) } else { ZERO };
+        let status_message = if show_status {
+            line(y + 1)
+        } else {
+            ZERO
+        };
 
         // Card inner: skip the border (1) + one pad row, then 3 content rows.
         let inner_x = card.x + 2;
@@ -160,12 +174,9 @@ impl Chunks {
                 Rect { x: value_x, y: ry, width: value_w, height: 1 },
             )
         };
-        let (label_session, mut switcher) = row(card.y + 2);
-        // The switcher centres its carousel within its area; a full-width
-        // value area floats the session name far from its label, so keep it
-        // compact (just wide enough for the name slot + movers) so it reads
-        // as "Session ‹ Name ›" right next to the label.
-        switcher.width = switcher.width.min(32);
+        // The session value is drawn inline by the greeter (truncated to fit),
+        // so it just takes the full value area like the input rows.
+        let (label_session, switcher) = row(card.y + 2);
         let (label_username, username_field) = row(card.y + 3);
         let (label_password, password_field) = row(card.y + 4);
 

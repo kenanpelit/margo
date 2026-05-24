@@ -16,13 +16,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   centred status line, and a centred row of power-control chips. Colours
   come from the same matugen palette as before (accent for the card, muted
   for secondary text), so the greeter is now visually of a piece with the
-  locker. The layout is **height-adaptive**: the power chips are pinned to
-  the bottom and the clock + card always render, with the greeting / date /
-  status dropping out (in that order) on a short console — so the F-keys can
-  no longer be clipped off the bottom of a bare VT (which has fewer rows
-  than a terminal-emulator `--preview`). The credential card is wider (room
-  for full session names + a comfortable password field) and the power keys
-  read as bracketed accent chips (`[F1] Shutdown`).
+  locker. The layout is **fully responsive** to the terminal size — the bare
+  VT can be much shorter *or* narrower than a terminal-emulator `--preview`:
+  the power chips are pinned to the bottom and the clock + card always
+  render, with the greeting / date / status dropping out (in that order) on
+  a short console, and the chips collapse from `[F1] Shutdown` to a compact
+  `[F1] [F2] [F3]` when the row is too narrow — so the F-keys can never be
+  clipped off-screen. The selected **session is drawn inline** next to its
+  label (`Session  Margo (UWSM) ›`, with `‹ ›` arrows and graceful
+  truncation) instead of a fixed-width carousel that vanished at some
+  widths. The credential card is wider (room for full session names + a
+  comfortable password field) and the power keys read as bracketed accent
+  chips.
 
 ## [0.8.1] – 2026-05-24
 
