@@ -10,12 +10,15 @@ use std::process;
 use toml::Value;
 
 pub fn get_color(color: &str) -> Color {
-    if let Some(color) = str_to_color(color) {
+    let resolved = if let Some(color) = str_to_color(color) {
         color
     } else {
         error!("Did not recognize the color '{}'", color);
         Color::White
-    }
+    };
+    // On the bare Linux VT this swaps truecolor for a reprogrammed palette
+    // slot so login matches `--preview`; in preview it's a pass-through.
+    crate::console_palette::map_color(resolved)
 }
 
 fn str_to_color(color: &str) -> Option<Color> {

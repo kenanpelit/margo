@@ -17,6 +17,7 @@ mod auth;
 mod chvt;
 mod cli;
 mod config;
+mod console_palette;
 mod info_caching;
 mod post_login;
 mod ui;
@@ -282,6 +283,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     initialize_panic_handler();
 
+    // Decide how colours render: preview → truecolor in the emulator; real VT
+    // → reprogram the console palette so it matches preview (see console_palette).
+    console_palette::init(cli.preview);
+
     // Start application
     let mut terminal = tui_enable()?;
     let login_form = ui::LoginForm::new(config, cli.preview);
@@ -306,6 +311,8 @@ pub fn tui_enable() -> io::Result<Terminal<CrosstermBackend<io::Stdout>>> {
 }
 
 pub fn tui_disable(mut terminal: Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<()> {
+    // Hand the console back its default palette (no-op in preview).
+    console_palette::reset();
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
