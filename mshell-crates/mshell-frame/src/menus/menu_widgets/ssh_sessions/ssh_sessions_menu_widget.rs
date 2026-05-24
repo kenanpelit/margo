@@ -11,6 +11,8 @@ use relm4::gtk::prelude::{
     BoxExt, ButtonExt, EditableExt, EntryExt, OrientableExt, WidgetExt,
 };
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 /// Re-poll cadence for active sessions while the panel is open.
@@ -24,11 +26,22 @@ pub(crate) struct SshSessionsMenuWidgetModel {
     active: Vec<String>,
     filter: String,
     content: gtk::Box,
+    /// `true` once the active-session poll loop has been spawned (on
+    /// first reveal), so a menu the user never opens runs no `pgrep`.
+    poll_started: bool,
+    /// Shared with the poll loop; gates the `pgrep` probe so it only
+    /// runs while the panel is visible (it polled every 10 s on every
+    /// monitor, forever, regardless of visibility — despite the
+    /// "while the panel is open" comment).
+    visible: Arc<AtomicBool>,
 }
 
 #[derive(Debug)]
 pub(crate) enum SshSessionsMenuWidgetInput {
     Search(String),
+    /// Sent by the host menu on show/hide. Starts the active-session
+    /// poll lazily on first reveal and gates the probe on visibility.
+    ParentRevealChanged(bool),
 }
 
 #[derive(Debug)]
@@ -108,33 +121,17 @@ impl Component for SshSessionsMenuWidgetModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        // Poll active sessions while the panel is open.
-        sender.command(|out, shutdown| async move {
-            let shutdown_fut = shutdown.wait();
-            tokio::pin!(shutdown_fut);
-            let mut first = true;
-            loop {
-                let delay = if first {
-                    Duration::from_millis(50)
-                } else {
-                    POLL
-                };
-                first = false;
-                tokio::select! {
-                    () = &mut shutdown_fut => break,
-                    _ = tokio::time::sleep(delay) => {}
-                }
-                let active = ssh::active_targets().await;
-                let _ = out.send(SshSessionsMenuWidgetCommandOutput::Active(active));
-            }
-        });
-
+        // The active-session poll loop is started lazily on first reveal
+        // (see `ParentRevealChanged`), not here — so a menu the user never
+        // opens forks no `pgrep`.
         let content = gtk::Box::new(gtk::Orientation::Vertical, 2);
         let model = SshSessionsMenuWidgetModel {
             hosts: ssh::load_hosts(),
             active: Vec::new(),
             filter: String::new(),
             content: content.clone(),
+            poll_started: false,
+            visible: Arc::new(AtomicBool::new(false)),
         };
         let widgets = view_output!();
 
@@ -158,6 +155,13 @@ impl Component for SshSessionsMenuWidgetModel {
                 self.filter = term;
                 rebuild(&self.content, &self.hosts, &self.active, &self.filter, &sender);
             }
+            SshSessionsMenuWidgetInput::ParentRevealChanged(visible) => {
+                self.visible.store(visible, Ordering::Relaxed);
+                if visible && !self.poll_started {
+                    self.poll_started = true;
+                    start_polling(&sender, self.visible.clone());
+                }
+            }
         }
     }
 
@@ -176,6 +180,35 @@ impl Component for SshSessionsMenuWidgetModel {
             }
         }
     }
+}
+
+/// Spawn the active-session poll loop (lazily, on first reveal). The
+/// `pgrep` probe is gated on `visible`, so while the panel is hidden the
+/// loop just sleeps — no per-monitor subprocess every 10 s for a menu
+/// nobody is looking at.
+fn start_polling(sender: &ComponentSender<SshSessionsMenuWidgetModel>, visible: Arc<AtomicBool>) {
+    sender.command(move |out, shutdown| async move {
+        let shutdown_fut = shutdown.wait();
+        tokio::pin!(shutdown_fut);
+        let mut first = true;
+        loop {
+            let delay = if first {
+                Duration::from_millis(50)
+            } else {
+                POLL
+            };
+            first = false;
+            tokio::select! {
+                () = &mut shutdown_fut => break,
+                _ = tokio::time::sleep(delay) => {}
+            }
+            if !visible.load(Ordering::Relaxed) {
+                continue;
+            }
+            let active = ssh::active_targets().await;
+            let _ = out.send(SshSessionsMenuWidgetCommandOutput::Active(active));
+        }
+    });
 }
 
 fn active_summary(active: &[String]) -> String {
