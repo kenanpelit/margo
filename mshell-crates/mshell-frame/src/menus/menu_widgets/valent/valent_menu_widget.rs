@@ -588,13 +588,38 @@ fn battery_icon(charge: Option<i32>, charging: bool) -> &'static str {
 }
 
 fn network_type_icon(t: &str) -> &'static str {
-    match t {
-        "5G" => "network-cellular-5g-symbolic",
-        "LTE" | "4G" => "network-cellular-4g-symbolic",
-        "HSPA" | "UMTS" | "3G" | "CDMA" | "CDMA2000" => "network-cellular-3g-symbolic",
-        "EDGE" | "GPRS" | "GSM" | "2G" | "iDEN" => "network-cellular-2g-symbolic",
-        "" => "network-cellular-offline-symbolic",
-        _ => "network-cellular-symbolic",
+    // KDE Connect passes Android's network-type string through verbatim,
+    // and it varies by ROM / Android version — 5G can arrive as "5G",
+    // "5G NR", "NR", "NRNSA", "NR_NSA", "5G+", in any case. Match on the
+    // key token (case-insensitively) rather than an exact string, so a
+    // 5G phone doesn't fall through to the 4G / generic branch. Order
+    // matters: most-recent generation first.
+    let t = t.trim().to_ascii_uppercase();
+    if t.is_empty() {
+        "network-cellular-offline-symbolic"
+    } else if t.contains("5G") || t.contains("NR") {
+        "network-cellular-5g-symbolic"
+    } else if t.contains("LTE") || t.contains("4G") {
+        "network-cellular-4g-symbolic"
+    } else if t.contains("3G")
+        || t.contains("HSPA")
+        || t.contains("HSDPA")
+        || t.contains("HSUPA")
+        || t.contains("UMTS")
+        || t.contains("WCDMA")
+        || t.contains("EVDO")
+        || t.contains("CDMA")
+    {
+        "network-cellular-3g-symbolic"
+    } else if t.contains("2G")
+        || t.contains("EDGE")
+        || t.contains("GPRS")
+        || t.contains("GSM")
+        || t.contains("IDEN")
+    {
+        "network-cellular-2g-symbolic"
+    } else {
+        "network-cellular-symbolic"
     }
 }
 
