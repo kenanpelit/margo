@@ -429,6 +429,15 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
             }
         }
         "killclient" => state.kill_focused(),
+        // Focus a specific window by its `state.json` client index, jumping
+        // to its tag first if hidden. Lets the shell dock focus the exact
+        // window a user clicks (margo is tag-based and otherwise has no
+        // focus-by-window dispatch). arg.v = the decimal client index.
+        "focuswindow" | "activatewindow" | "focusclient" => {
+            if let Some(idx) = arg.v.as_deref().and_then(|s| s.trim().parse::<usize>().ok()) {
+                state.activate_window_idx(idx);
+            }
+        }
         "focusstack" | "focusdir" => state.focus_stack(direction_arg(arg)),
         "exchange_client" | "smartmovewin" => state.exchange_stack(direction_arg(arg)),
         "view" => state.view_tag(tag_arg(arg)),

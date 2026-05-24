@@ -201,6 +201,20 @@ impl Address {
     pub fn into_inner(self) -> String {
         self.0
     }
+
+    /// The margo client index this synthesized address encodes — the low
+    /// 32 bits of the `{:04x}{:08x}` form built by [`sync::client_address`]
+    /// (`monitor_idx` + `idx`). Lets a consumer focus the exact window via
+    /// `mctl dispatch focuswindow <idx>` (the same `idx` margo publishes in
+    /// `state.json`).
+    pub fn margo_idx(&self) -> Option<usize> {
+        if self.0.len() < 8 {
+            return None;
+        }
+        u32::from_str_radix(&self.0[self.0.len() - 8..], 16)
+            .ok()
+            .map(|n| n as usize)
+    }
 }
 
 impl fmt::Display for Address {

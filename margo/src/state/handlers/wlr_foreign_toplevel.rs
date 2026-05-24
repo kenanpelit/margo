@@ -26,9 +26,19 @@ impl MargoState {
     /// tag if it isn't currently visible, then focus + raise. Shared by
     /// `xdg-activation` and wlr foreign-toplevel `activate`.
     pub(crate) fn activate_window_surface(&mut self, surface: &WlSurface) {
-        let Some(idx) = self.client_idx_for_surface(surface) else {
+        if let Some(idx) = self.client_idx_for_surface(surface) {
+            self.activate_window_idx(idx);
+        }
+    }
+
+    /// Same as [`Self::activate_window_surface`] but addressed by client
+    /// index (the `idx` published in `state.json`). Used by the
+    /// `focuswindow` IPC dispatch so the dock can focus the exact window
+    /// a user clicks, not just jump to its tag.
+    pub(crate) fn activate_window_idx(&mut self, idx: usize) {
+        if idx >= self.clients.len() {
             return;
-        };
+        }
 
         let mask = self.clients[idx].tags;
         let mon_idx = self.clients[idx].monitor;

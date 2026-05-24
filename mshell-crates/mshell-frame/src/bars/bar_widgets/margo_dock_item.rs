@@ -313,17 +313,9 @@ impl Component for MargoDockItemModel {
                     if let Some(idx) = current_idx {
                         let next_idx = (idx + 1) % matching.len();
                         let client_to_focus = matching[next_idx];
-                        // margo is tag-based and has no focus-by-address
-                        // dispatch; the IPC bridge only understands the
-                        // `workspace = N` shape (→ `view <mask>`). So jump
-                        // to the window's tag — that's what actually
-                        // switches the view (the bare `window = address`
-                        // form was silently dropped by the translator,
-                        // which is why clicks did nothing).
-                        let tag = client_to_focus.workspace.get().id;
+                        let command = focus_command(client_to_focus);
 
                         tokio::spawn(async move {
-                            let command = format!("hl.dsp.focus({{ workspace = \"{tag}\" }})");
                             if let Err(e) = hyprland.dispatch(&command).await {
                                 error!(error = %e, "Failed to focus client");
                             }
@@ -349,12 +341,7 @@ impl Component for MargoDockItemModel {
                         clients_on_workspace[0]
                     };
 
-                    // View the window's tag — the only switch margo's IPC
-                    // bridge can do for a specific window (no focus-by-
-                    // address dispatch exists; see the cycle branch above).
-                    let tag = client_to_focus.workspace.get().id;
-
-                    let command = format!("hl.dsp.focus({{ workspace = \"{tag}\" }})");
+                    let command = focus_command(client_to_focus);
                     if let Err(e) = hyprland.dispatch(&command).await {
                         error!(error = %e, "Failed to focus client");
                     }
@@ -606,6 +593,20 @@ impl MargoDockItemModel {
         });
         action_group.add_action(&action);
         menu.append(Some("Unpin"), Some("main.unpin"));
+    }
+}
+
+/// The dispatch command to bring `client` to the foreground. Prefers the
+/// exact-window `focuswindow <idx>` verb (margo focuses it + jumps to its
+/// tag); falls back to viewing the window's tag if the synthesized address
+/// can't yield a client index.
+fn focus_command(client: &Client) -> String {
+    match client.address.get().margo_idx() {
+        Some(idx) => format!("dispatch focuswindow {idx}"),
+        None => format!(
+            "hl.dsp.focus({{ workspace = \"{}\" }})",
+            client.workspace.get().id
+        ),
     }
 }
 
