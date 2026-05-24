@@ -432,10 +432,12 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
         // Focus a specific window by its `state.json` client index, jumping
         // to its tag first if hidden. Lets the shell dock focus the exact
         // window a user clicks (margo is tag-based and otherwise has no
-        // focus-by-window dispatch). arg.v = the decimal client index.
+        // focus-by-window dispatch). The index arrives as the first dispatch
+        // arg → `arg.i` (the dwl-ipc bridge maps arg1→i, not v); reading
+        // `arg.v` here is why the first cut silently did nothing.
         "focuswindow" | "activatewindow" | "focusclient" => {
-            if let Some(idx) = arg.v.as_deref().and_then(|s| s.trim().parse::<usize>().ok()) {
-                state.activate_window_idx(idx);
+            if arg.i >= 0 {
+                state.activate_window_idx(arg.i as usize);
             }
         }
         "focusstack" | "focusdir" => state.focus_stack(direction_arg(arg)),
