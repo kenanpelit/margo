@@ -2,7 +2,7 @@ use std::process::{Command, Output};
 
 use crossterm::event::KeyCode;
 use ratatui::layout::{Alignment, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
@@ -54,12 +54,21 @@ impl KeyMenuWidget {
         style
     }
 
-    /// Render the power controls as a single centred row of quiet "chips"
-    /// at the bottom of the stack — mlock keeps these muted (accent is
-    /// reserved for the card), so each chip is just `key hint` in the
-    /// configured (muted) colour, the key underlined, with a gap between.
-    pub fn render(&self, frame: &mut Frame<impl ratatui::backend::Backend>, area: Rect) {
+    /// Render the power controls as a single centred row of chips at the
+    /// bottom of the stack. The key is bracketed + accent-coloured so it's
+    /// unmistakable (the user reported the bare keys reading as invisible on
+    /// the VT); the hint stays in its configured (muted) colour.
+    pub fn render(
+        &self,
+        frame: &mut Frame<impl ratatui::backend::Backend>,
+        area: Rect,
+        accent: Color,
+    ) {
         let mut items = Vec::new();
+        let bracket = Style::default().fg(accent);
+        let key_style = Style::default()
+            .fg(accent)
+            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED);
 
         for power_control in self
             .power_config
@@ -70,13 +79,12 @@ impl KeyMenuWidget {
         {
             if !items.is_empty() {
                 // Separator between chips.
-                items.push(Span::raw("   "));
+                items.push(Span::raw("    "));
             }
-            items.push(Span::styled(
-                power_control.key.as_str(),
-                power_control.style().add_modifier(Modifier::UNDERLINED),
-            ));
-            items.push(Span::raw(" "));
+            // [F1] Shutdown
+            items.push(Span::styled("[", bracket));
+            items.push(Span::styled(power_control.key.as_str(), key_style));
+            items.push(Span::styled("] ", bracket));
             items.push(Span::styled(power_control.hint.as_str(), power_control.style()));
         }
 

@@ -1,29 +1,32 @@
-//! Centred greeter layout — mlock's vertical stack, in terminal cells.
+//! Centred, height-adaptive greeter layout — mlock's vertical stack in
+//! terminal cells.
 //!
-//! Top → bottom, vertically centred as one block:
-//!   • battery (absolute top-right, laptops only)
-//!   • greeting line ("Good evening")
-//!   • big block clock (5 rows)
-//!   • date line
-//!   • a rounded card holding session / username / password rows
-//!   • status line
-//!   • a centred row of power-control chips
+//! The previous version used a fixed-height centred block; on a short VT
+//! (the bare console often has fewer rows than a terminal-emulator
+//! `--preview`) the bottom of the block — the power-control chips — was
+//! clipped away, so the F-keys vanished on the real login while preview
+//! looked fine. This version instead:
+//!   • **pins the power chips to the bottom row** (always visible),
+//!   • **keeps the clock + credential card no matter what**, and
+//!   • **drops the optional greeting / date / status lines** (in that
+//!     order) when the terminal is too short to fit them.
 //!
-//! Everything is measured up-front so the block stays centred no matter the
-//! terminal size; on a very short terminal it falls back to top-aligned.
+//! Top → bottom: greeting · big clock · date · rounded credential card
+//! (session / user / password) · status · power-control chips.
 
 use ratatui::{backend::Backend, layout::Rect, Frame};
 
 /// Cells reserved on the left of each card row for its label ("Password").
-const LABEL_W: u16 = 11;
-/// Card width target; clamped to the terminal.
-const CARD_W: u16 = 56;
+const LABEL_W: u16 = 12;
+/// Card width target; clamped to the terminal. Wide so session names and
+/// the password have room to breathe.
+const CARD_W_MAX: u16 = 72;
+const CARD_W_MIN: u16 = 40;
 /// Card height: 1 border + 1 pad + 3 rows + 1 pad + 1 border.
 const CARD_H: u16 = 7;
 const CLOCK_H: u16 = 5;
 
 pub struct Chunks {
-    pub battery: Rect,
     pub greeting: Rect,
     pub clock: Rect,
     pub date: Rect,
@@ -36,7 +39,7 @@ pub struct Chunks {
     pub username_field: Rect,
     pub password_field: Rect,
     pub status_message: Rect,
-    /// Centred power-control chip row.
+    /// Centred power-control chip row, pinned near the bottom.
     pub key_menu: Rect,
 }
 
@@ -61,25 +64,45 @@ fn clamp(r: Rect, bounds: Rect) -> Rect {
     }
 }
 
+const ZERO: Rect = Rect {
+    x: 0,
+    y: 0,
+    width: 0,
+    height: 0,
+};
+
 impl Chunks {
     pub fn new<B: Backend>(frame: &Frame<B>) -> Self {
         let size = frame.size();
         let (fw, fh) = (size.width, size.height);
 
-        let card_w = CARD_W.min(fw.saturating_sub(2));
-        // content width spans the widest element (the clock can be ~21).
+        let card_w = fw
+            .saturating_sub(6)
+            .clamp(CARD_W_MIN, CARD_W_MAX)
+            .min(fw);
         let content_w = card_w.max(24).min(fw);
 
-        // Heights with a single blank-row rhythm between sections.
-        // greeting(1) gap(1) clock(5) gap(1) date(1) gap(1) card(7)
-        // gap(1) status(1) gap(1) chips(1) = 21
-        let total: u16 = 1 + 1 + CLOCK_H + 1 + 1 + 1 + CARD_H + 1 + 1 + 1 + 1;
-        // Leave the top row free for the battery; top-align if too short.
-        let mut y = if fh > total + 1 {
-            (fh - total) / 2
-        } else {
-            1
-        };
+        // Chips pinned one row up from the bottom (so they sit *inside* a
+        // full-screen background border when one is configured; harmless
+        // padding when not). Top row left free for symmetry.
+        let chips_y = fh.saturating_sub(2);
+        let body_top = 1u16;
+        // Content lives above the chips, with a blank row between.
+        let body_bottom = chips_y.saturating_sub(1);
+        let body_h = body_bottom.saturating_sub(body_top);
+
+        // Always keep the clock + card; add the status / date / greeting
+        // only when there's vertical room (decorations drop first on a short
+        // VT). Each line below "costs" itself + one gap row.
+        let core = CLOCK_H + 1 + CARD_H; // clock, gap, card = 13
+        let show_status = core + 2 <= body_h;
+        let show_date = core + 2 + 2 <= body_h;
+        let show_greeting = core + 2 + 2 + 2 <= body_h;
+
+        let used = core
+            + if show_status { 2 } else { 0 }
+            + if show_date { 2 } else { 0 }
+            + if show_greeting { 2 } else { 0 };
 
         let cx = centered_x(fw, content_w);
         let card_x = centered_x(fw, card_w);
@@ -90,15 +113,16 @@ impl Chunks {
             height: 1,
         };
 
-        let battery = Rect {
-            x: fw.saturating_sub(13),
-            y: 0,
-            width: 12,
-            height: 1,
+        let mut y = body_top + body_h.saturating_sub(used) / 2;
+
+        let greeting = if show_greeting {
+            let r = line(y);
+            y += 2;
+            r
+        } else {
+            ZERO
         };
 
-        let greeting = line(y);
-        y += 2; // greeting + gap
         let clock = Rect {
             x: cx,
             y,
@@ -106,8 +130,14 @@ impl Chunks {
             height: CLOCK_H,
         };
         y += CLOCK_H + 1;
-        let date = line(y);
-        y += 2; // date + gap
+
+        let date = if show_date {
+            let r = line(y);
+            y += 2;
+            r
+        } else {
+            ZERO
+        };
 
         let card = Rect {
             x: card_x,
@@ -115,9 +145,13 @@ impl Chunks {
             width: card_w,
             height: CARD_H,
         };
+        y += CARD_H + 1;
+
+        let status_message = if show_status { line(y) } else { ZERO };
+
         // Card inner: skip the border (1) + one pad row, then 3 content rows.
-        let inner_x = card_x + 2;
-        let inner_w = card_w.saturating_sub(4);
+        let inner_x = card.x + 2;
+        let inner_w = card.width.saturating_sub(4);
         let value_x = inner_x + LABEL_W;
         let value_w = inner_w.saturating_sub(LABEL_W);
         let row = |ry: u16| {
@@ -126,22 +160,23 @@ impl Chunks {
                 Rect { x: value_x, y: ry, width: value_w, height: 1 },
             )
         };
-        let (label_session, switcher) = row(card.y + 2);
+        let (label_session, mut switcher) = row(card.y + 2);
+        // The switcher centres its carousel within its area; a full-width
+        // value area floats the session name far from its label, so keep it
+        // compact (just wide enough for the name slot + movers) so it reads
+        // as "Session ‹ Name ›" right next to the label.
+        switcher.width = switcher.width.min(32);
         let (label_username, username_field) = row(card.y + 3);
         let (label_password, password_field) = row(card.y + 4);
 
-        y += CARD_H + 1;
-        let status_message = line(y);
-        y += 2; // status + gap
         let key_menu = Rect {
             x: 0,
-            y,
+            y: chips_y,
             width: fw,
             height: 1,
         };
 
         Self {
-            battery: clamp(battery, size),
             greeting: clamp(greeting, size),
             clock: clamp(clock, size),
             date: clamp(date, size),

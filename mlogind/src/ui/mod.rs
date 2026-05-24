@@ -675,21 +675,6 @@ fn greeting_for(hour: u32) -> &'static str {
     }
 }
 
-/// First battery's charge, if the machine has one (laptops). Shown top-right
-/// like mlock's battery glyph.
-fn battery_percent() -> Option<u8> {
-    for entry in std::fs::read_dir("/sys/class/power_supply").ok()?.flatten() {
-        if entry.file_name().to_string_lossy().starts_with("BAT") {
-            if let Ok(s) = std::fs::read_to_string(entry.path().join("capacity")) {
-                if let Ok(n) = s.trim().parse::<u8>() {
-                    return Some(n);
-                }
-            }
-        }
-    }
-    None
-}
-
 #[allow(clippy::too_many_arguments)]
 fn login_form_render<B: Backend>(
     frame: &mut Frame<B>,
@@ -710,16 +695,6 @@ fn login_form_render<B: Backend>(
     let label_style = |focused: bool| {
         Style::default().fg(if focused { theme.accent } else { theme.muted })
     };
-
-    // Battery (top-right, laptops only).
-    if let Some(pct) = battery_percent() {
-        frame.render_widget(
-            Paragraph::new(format!("{pct}%"))
-                .alignment(Alignment::Right)
-                .style(muted),
-            chunks.battery,
-        );
-    }
 
     // Greeting.
     frame.render_widget(
@@ -813,5 +788,59 @@ fn login_form_render<B: Backend>(
 
     // Status line (centred, themed) + the power-control chip row.
     StatusMessage::render(status_message, frame, chunks.status_message, theme.danger, theme.muted);
-    key_menu.render(frame, chunks.key_menu);
+    key_menu.render(frame, chunks.key_menu, theme.accent);
+}
+
+#[cfg(test)]
+mod render_tests {
+    use super::*;
+    use crate::config::Config;
+    use ratatui::backend::TestBackend;
+
+    /// Render one greeter frame to an in-memory buffer and return it as text,
+    /// so the layout can be inspected/asserted without a real TTY.
+    fn render(w: u16, h: u16) -> String {
+        crate::console_palette::init(true); // pass-through colours, no VT escapes
+        let form = LoginForm::new(Config::default(), true);
+        let theme = Theme::from_config(&form.config);
+        let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+        term.draw(|f| {
+            let chunks = Chunks::new(f);
+            login_form_render(
+                f,
+                chunks,
+                theme,
+                form.widgets.background.clone(),
+                form.widgets.key_menu.clone(),
+                form.widgets.environment.clone(),
+                form.widgets.username.clone(),
+                form.widgets.password.clone(),
+                InputMode::Password,
+                None,
+            );
+        })
+        .unwrap();
+        let buf = term.backend().buffer();
+        let mut s = String::new();
+        for y in 0..h {
+            for x in 0..w {
+                s.push_str(&buf.get(x, y).symbol);
+            }
+            s.push('\n');
+        }
+        s
+    }
+
+    /// The essentials must survive even on a short VT (fewer rows than a
+    /// terminal-emulator preview): the power keys, the credential labels.
+    #[test]
+    fn essentials_survive_short_terminals() {
+        for (w, h) in [(80, 24), (80, 20), (80, 18), (100, 16)] {
+            let out = render(w, h);
+            eprintln!("\n===== {w}x{h} =====\n{out}");
+            assert!(out.contains("F1"), "F1 missing at {w}x{h}");
+            assert!(out.contains("F2"), "F2 missing at {w}x{h}");
+            assert!(out.contains("Password"), "Password label missing at {w}x{h}");
+        }
+    }
 }
