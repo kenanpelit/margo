@@ -149,6 +149,20 @@ key = "F2"
 # The command that is executed when the key is pressed
 cmd = "systemctl reboot -l"
 
+# Suspend option
+[[power_controls.base_entries]]
+# The text in the top-left to display how to suspend.
+hint = "Suspend"
+
+# The color and modifiers of the hint in the top-left corner
+hint_color = "$dim"
+hint_modifiers = ""
+
+# The key used to suspend. Possibilities are F1 to F12.
+key = "F3"
+# The command that is executed when the key is pressed
+cmd = "systemctl suspend -l"
+
 # Setting for the selector of the desktop environment you are using.
 [environment_switcher]
 # Terms:
