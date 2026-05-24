@@ -190,27 +190,6 @@ impl Component for SettingsWindowModel {
                         },
                     },
 
-                    #[name = "setup_btn"]
-                    gtk::ToggleButton {
-                        add_css_class: "sidebar-button",
-                        set_group: Some(&general_btn),
-                        connect_toggled[stack] => move |b| {
-                            if b.is_active() { stack.set_visible_child_name("setup"); }
-                        },
-
-                        gtk::Box {
-                            set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 12,
-                            gtk::Image { set_icon_name: Some("emblem-system-symbolic") },
-                            gtk::Label {
-                                add_css_class: "label-medium",
-                                set_label: "Setup",
-                                set_halign: gtk::Align::Start,
-                                set_hexpand: true,
-                            },
-                        },
-                    },
-
                     #[name = "bar_btn"]
                     gtk::ToggleButton {
                         add_css_class: "sidebar-button",
@@ -268,27 +247,6 @@ impl Component for SettingsWindowModel {
                             gtk::Label {
                                 add_css_class: "label-medium",
                                 set_label: "Fonts",
-                                set_halign: gtk::Align::Start,
-                                set_hexpand: true,
-                            },
-                        },
-                    },
-
-                    #[name = "weather_btn"]
-                    gtk::ToggleButton {
-                        add_css_class: "sidebar-button",
-                        set_group: Some(&general_btn),
-                        connect_toggled[stack] => move |b| {
-                            if b.is_active() { stack.set_visible_child_name("weather"); }
-                        },
-
-                        gtk::Box {
-                            set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 12,
-                            gtk::Image { set_icon_name: Some("weather-few-clouds-symbolic") },
-                            gtk::Label {
-                                add_css_class: "label-medium",
-                                set_label: "Weather",
                                 set_halign: gtk::Align::Start,
                                 set_hexpand: true,
                             },
@@ -358,6 +316,27 @@ impl Component for SettingsWindowModel {
                         },
                     },
 
+                    #[name = "setup_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("setup"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("emblem-system-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Setup",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
                     #[name = "theme_btn"]
                     gtk::ToggleButton {
                         add_css_class: "sidebar-button",
@@ -394,6 +373,27 @@ impl Component for SettingsWindowModel {
                             gtk::Label {
                                 add_css_class: "label-medium",
                                 set_label: "Wallpaper",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
+                    #[name = "weather_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("weather"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("weather-few-clouds-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Weather",
                                 set_halign: gtk::Align::Start,
                                 set_hexpand: true,
                             },
