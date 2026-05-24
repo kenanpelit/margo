@@ -1,6 +1,8 @@
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{ConfigStoreFields, NotificationsStoreFields};
+use mshell_config::schema::config::{
+    ConfigStoreFields, MenuStoreFields, MenusStoreFields, NotificationsStoreFields,
+};
 use mshell_config::schema::position::NotificationPosition;
 use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk::prelude::{
@@ -15,6 +17,10 @@ pub(crate) struct NotificationSettingsModel {
     show_action_buttons: bool,
     group_notifications: bool,
     popup_width: i32,
+    /// History-menu surface size (config.menus.notification_menu) — the
+    /// panel that opens on the bar pill, distinct from the popup toasts.
+    menu_min_width: i32,
+    menu_max_height: i32,
     blocklist: Vec<String>,
     _effects: EffectScope,
 }
@@ -31,6 +37,10 @@ pub(crate) enum NotificationSettingsInput {
     GroupEffect(bool),
     PopupWidthChanged(i32),
     PopupWidthEffect(i32),
+    MenuMinWidthChanged(i32),
+    MenuMinWidthEffect(i32),
+    MenuMaxHeightChanged(i32),
+    MenuMaxHeightEffect(i32),
     BlocklistAdd(String),
     BlocklistRemove(String),
     BlocklistEffect(Vec<String>),
@@ -255,6 +265,90 @@ impl Component for NotificationSettingsModel {
                     },
                 },
 
+                // ── History menu size (the panel opened from the bar pill) ──
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "History menu",
+                    set_halign: gtk::Align::Start,
+                    set_margin_top: 12,
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Width",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Width (px) of the notification history menu — the panel that opens when you click the bar pill. Separate from the popup toast width above.",
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    #[name = "menu_width_spin"]
+                    gtk::SpinButton {
+                        set_valign: gtk::Align::Center,
+                        set_range: (280.0, 1200.0),
+                        set_increments: (10.0, 50.0),
+                        set_digits: 0,
+                        #[watch]
+                        #[block_signal(menu_width_handler)]
+                        set_value: model.menu_min_width as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(NotificationSettingsInput::MenuMinWidthChanged(s.value() as i32));
+                        } @menu_width_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Max height",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_label: "Maximum height (px) before the history scrolls. 0 = grow to fit (no cap).",
+                            set_halign: gtk::Align::Start,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    #[name = "menu_height_spin"]
+                    gtk::SpinButton {
+                        set_valign: gtk::Align::Center,
+                        set_range: (0.0, 2000.0),
+                        set_increments: (20.0, 100.0),
+                        set_digits: 0,
+                        #[watch]
+                        #[block_signal(menu_height_handler)]
+                        set_value: model.menu_max_height as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(NotificationSettingsInput::MenuMaxHeightChanged(s.value() as i32));
+                        } @menu_height_handler,
+                    },
+                },
+
                 gtk::Box {
                     set_orientation: gtk::Orientation::Horizontal,
                     set_spacing: 20,
@@ -394,6 +488,28 @@ impl Component for NotificationSettingsModel {
             sender_clone.input(NotificationSettingsInput::PopupWidthEffect(v));
         });
 
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let v = config_manager()
+                .config()
+                .menus()
+                .notification_menu()
+                .minimum_width()
+                .get();
+            sender_clone.input(NotificationSettingsInput::MenuMinWidthEffect(v));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let v = config_manager()
+                .config()
+                .menus()
+                .notification_menu()
+                .maximum_height()
+                .get();
+            sender_clone.input(NotificationSettingsInput::MenuMaxHeightEffect(v));
+        });
+
         let model = NotificationSettingsModel {
             position: config_manager()
                 .config()
@@ -419,6 +535,18 @@ impl Component for NotificationSettingsModel {
                 .config()
                 .notifications()
                 .popup_width()
+                .get_untracked(),
+            menu_min_width: config_manager()
+                .config()
+                .menus()
+                .notification_menu()
+                .minimum_width()
+                .get_untracked(),
+            menu_max_height: config_manager()
+                .config()
+                .menus()
+                .notification_menu()
+                .maximum_height()
                 .get_untracked(),
             blocklist: config_manager()
                 .config()
@@ -508,6 +636,26 @@ impl Component for NotificationSettingsModel {
             }
             NotificationSettingsInput::PopupWidthEffect(w) => {
                 self.popup_width = w;
+            }
+            NotificationSettingsInput::MenuMinWidthChanged(w) => {
+                let w = w.max(1);
+                self.menu_min_width = w;
+                config_manager().update_config(move |config| {
+                    config.menus.notification_menu.minimum_width = w;
+                });
+            }
+            NotificationSettingsInput::MenuMinWidthEffect(w) => {
+                self.menu_min_width = w;
+            }
+            NotificationSettingsInput::MenuMaxHeightChanged(h) => {
+                let h = h.max(0);
+                self.menu_max_height = h;
+                config_manager().update_config(move |config| {
+                    config.menus.notification_menu.maximum_height = h;
+                });
+            }
+            NotificationSettingsInput::MenuMaxHeightEffect(h) => {
+                self.menu_max_height = h;
             }
             NotificationSettingsInput::BlocklistAdd(name) => {
                 let exists = self
