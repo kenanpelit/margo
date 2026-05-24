@@ -19,6 +19,15 @@
 
 ---
 
+<blockquote align="center">
+  <p><em>Margo is a deeply personal Linux desktop environment built by a single
+  human amplified by AI — an experiment in whether one person can design,
+  implement, and maintain a complete modern desktop stack alone.</em></p>
+  <p><strong>— Kenan Pelit</strong></p>
+</blockquote>
+
+---
+
 **margo** is a Wayland compositor in the dwl/mango tradition — a Rust + [Smithay] port of [mango] with tags instead of workspaces, a deep tiling layout catalogue, and a complete first-party stack for everyday use: a GTK4 desktop shell (`mshell`) with bar / menus / notifications / OSD / settings UI, a control CLI (`mctl`), a screen locker (`mlock`), a TUI login manager (`mlogind`), monitor profiles (`mlayout`), and a screenshot helper (`mscreenshot`). The whole stack ships from one workspace and one release. The compositor speaks `dwl-ipc-v2` so third-party shells like [noctalia] also work — but you don't need one.
 
 [Smithay]: https://github.com/Smithay/smithay

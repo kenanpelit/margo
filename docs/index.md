@@ -23,6 +23,13 @@ hide:
   <a href="https://github.com/kenanpelit/margo/actions"><img src="https://github.com/kenanpelit/margo/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 </p>
 
+<blockquote align="center">
+  <p><em>Margo is a deeply personal Linux desktop environment built by a single
+  human amplified by AI — an experiment in whether one person can design,
+  implement, and maintain a complete modern desktop stack alone.</em></p>
+  <p><strong>— Kenan Pelit</strong></p>
+</blockquote>
+
 **margo** is a Wayland compositor in the dwl/dwm tradition — Rust + [Smithay],
 tags instead of workspaces, a 14-layout tiling catalogue. But margo ships
 something the others don't: **[mshell](#the-shell-mshell)**, a complete GTK4
