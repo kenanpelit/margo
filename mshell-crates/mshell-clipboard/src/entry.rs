@@ -1,4 +1,5 @@
 use std::hash::{Hash, Hasher};
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
@@ -65,7 +66,9 @@ impl ClipboardEntry {
 pub enum EntryPreview {
     Text(String),
     Image {
-        rgba: Vec<u8>,
+        /// `Arc` so cloning a preview (e.g. into a menu row model) is a
+        /// refcount bump, not a copy of the whole thumbnail buffer.
+        rgba: Arc<[u8]>,
         width: u32,
         height: u32,
     },

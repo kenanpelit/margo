@@ -16,7 +16,7 @@ pub fn generate_thumbnail(data: &[u8]) -> Option<EntryPreview> {
     let (width, height) = rgba.dimensions();
 
     Some(EntryPreview::Image {
-        rgba: rgba.into_raw(),
+        rgba: rgba.into_raw().into(),
         width,
         height,
     })
