@@ -1,6 +1,6 @@
 # Companion tools
 
-Margo ships four binaries that share its workspace:
+Margo ships several binaries that share its workspace:
 
 | Binary | Role |
 |---|---|
@@ -8,6 +8,7 @@ Margo ships four binaries that share its workspace:
 | **`mctl`** | IPC + dispatch (Swiss-army CLI) |
 | **`mlayout`** | named monitor profiles |
 | **`mscreenshot`** | screen / region / window capture |
+| **`mlogind`** | TUI login / display manager (matugen-themed) |
 
 Run any of them with `--help` for the full command surface.
 
@@ -98,6 +99,20 @@ Editor preference: `swappy` if installed, else `satty`, else skip the editor pas
 ### In-compositor region selector
 
 When bound via `bind = NONE,Print,screenshot-region-ui`, margo dims the screen, lets you drag a rect (Enter to confirm, Esc to cancel) and spawns `mscreenshot <mode>` with `MARGO_REGION_GEOM="X,Y WxH"` set so `slurp` is skipped. Cursor stays visible while in selection mode (W2.1).
+
+## `mlogind`
+
+A first-party **TUI login / display manager**, forked from [lemurs](https://github.com/coastalwhite/lemurs) (MIT/Apache-2.0). It runs as a systemd service on a bare VT — no compositor needed to log in — draws a `ratatui` greeter (user + session switcher + password), authenticates through PAM, sets up the environment + utmpx, and launches the chosen X11 / Wayland session (margo included). margo appears as a session out of the box (`/usr/share/wayland-sessions/margo.desktop`).
+
+```bash
+mlogind --preview        # draw the greeter in the current session (no login, no root)
+sudo mlogind sync-theme   # repaint /etc/mlogind/variables.toml from the active wallpaper
+```
+
+- **Theming.** Colours are `$`-variables resolved from `/etc/mlogind/variables.toml`, mapped from the margo **matugen** palette — the active session stands out in the accent colour. `mlogind sync-theme` copies the live wallpaper palette (margo writes it to `~/.config/margo/mlogind-variables.toml` on every theme change) into the greeter, so the login screen tracks the desktop.
+- **Power controls.** `F1` Shutdown · `F2` Reboot · `F3` Suspend.
+- **Fingerprint (opt-in).** Handled at the PAM level — uncomment `pam_fprintd.so` in `/etc/pam.d/mlogind` after `fprintd-enroll`.
+- **Packaging.** Config + PAM + the systemd unit install to `/etc/mlogind/`, `/etc/pam.d/mlogind`, and `/usr/lib/systemd/system/mlogind.service`, but the package never enables it — switching login managers is a deliberate `systemctl disable --now <old-dm> && systemctl enable mlogind`. Defaults to `tty2`; for another VT add a drop-in under `/etc/systemd/system/mlogind.service.d/`.
 
 ## Shell completions
 

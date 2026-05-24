@@ -69,7 +69,7 @@ piece and themed as one piece.
 
 The honest pitch: niri's scrollable tiling and Hyprland's ecosystem are great.
 margo's bet is **one integrated, modern, Rust stack** — compositor + shell +
-portals — that looks polished and works out of the box.
+login (`mlogind`) + portals — that looks polished and works out of the box.
 
 ---
 

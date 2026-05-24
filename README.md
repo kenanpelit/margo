@@ -19,7 +19,7 @@
 
 ---
 
-**margo** is a Wayland compositor in the dwl/mango tradition — a Rust + [Smithay] port of [mango] with tags instead of workspaces, a deep tiling layout catalogue, and a complete first-party stack for everyday use: a GTK4 desktop shell (`mshell`) with bar / menus / notifications / OSD / settings UI, a control CLI (`mctl`), a screen locker (`mlock`), monitor profiles (`mlayout`), and a screenshot helper (`mscreenshot`). The whole stack ships from one workspace and one release. The compositor speaks `dwl-ipc-v2` so third-party shells like [noctalia] also work — but you don't need one.
+**margo** is a Wayland compositor in the dwl/mango tradition — a Rust + [Smithay] port of [mango] with tags instead of workspaces, a deep tiling layout catalogue, and a complete first-party stack for everyday use: a GTK4 desktop shell (`mshell`) with bar / menus / notifications / OSD / settings UI, a control CLI (`mctl`), a screen locker (`mlock`), a TUI login manager (`mlogind`), monitor profiles (`mlayout`), and a screenshot helper (`mscreenshot`). The whole stack ships from one workspace and one release. The compositor speaks `dwl-ipc-v2` so third-party shells like [noctalia] also work — but you don't need one.
 
 [Smithay]: https://github.com/Smithay/smithay
 [mango]: https://github.com/mangowm/mango
@@ -63,6 +63,8 @@ itself from your wallpaper with Material You.
 | **`mlock`**       | Screen locker — `ext-session-lock-v1`, cairo + pango, PAM auth, wallpaper backdrop, avatar, F1/F2/F3 power keys                                                                                                                   |
 | **`mlayout`**     | Named monitor profiles — `mlayout suggest` writes presets for the detected setup, `mlayout set <name>` flips between them                                                                                                         |
 | **`mscreenshot`** | Screen / region / window capture — wraps `grim` + `slurp` + `wl-copy` + optional editor (`swappy` / `satty`); `--delay N` countdown, `--output NAME` monitor pin, notification action buttons                                     |
+| **`mlogind`**     | TUI login / display manager (fork of lemurs) — bare-TTY greeter on a VT, PAM auth + X/Wayland session launch, themed from the margo matugen palette; `mlogind sync-theme` tracks the wallpaper                                    |
+| **`mwizard`**     | First-launch setup wizard — opens the in-shell layer-shell wizard menu (theme / keyboard / touchpad / Wi-Fi / wallpaper / bar), thin shim over `mshellctl wizard`                                                                 |
 | **`mvisual`**     | Visual debugger for the renderer                                                                                                                                                                                                  |
 
 Every directory in the workspace maps 1:1 to a binary it produces. Library-only crates (`margo-config`, `margo-layouts`, `mshellshare`, and the `mshell-crates/*` family) keep their descriptive prefix.
@@ -107,6 +109,10 @@ Ready-to-copy session glue (a Wayland-session `.desktop`, a uwsm wrapper, the `m
 ## Lock highlights
 
 - **`mlock`** uses `ext-session-lock-v1`, so the compositor cooperates: locked sessions stay locked across mlock crashes, and only `margo`'s `force_unlock` keybind can break out. Renders a blurred wallpaper, large clock, time-of-day greeting, avatar (`~/.face` or AccountsService), frosted password card with shake-on-fail and an attempt counter. Authenticates the session owner via PAM. Battery indicator and `F1/F2/F3` power keys with a two-press confirmation banner.
+
+## Login manager (`mlogind`)
+
+- **`mlogind`** is a first-party **TUI login / display manager**, forked from [lemurs](https://github.com/coastalwhite/lemurs) (MIT/Apache-2.0) and brought under the workspace. It runs as a systemd service on a bare VT — no compositor needed to log in — drawing a `ratatui` greeter (user field + session switcher + password), authenticating through PAM, and launching the chosen X11 / Wayland session (margo included). Themed from the margo **matugen** palette via `$`-variables in `/etc/mlogind/variables.toml`; `sudo mlogind sync-theme` repaints it from the active wallpaper so the greeter matches the desktop. Power controls (`F1` Shutdown / `F2` Reboot / `F3` Suspend) and opt-in fingerprint login (`pam_fprintd`). The package ships its config + PAM + systemd unit to `/etc` (inert until you `systemctl enable mlogind`); it never auto-replaces your current display manager.
 
 ## Shell (`mshell`)
 
@@ -176,7 +182,7 @@ path is recorded in `/usr/local/share/margo/install-manifest.txt`, so
 
 ```bash
 cargo build --release --workspace
-for bin in margo start-margo mctl mshell mshellctl mlock mlayout mscreenshot mvisual; do
+for bin in margo start-margo mctl mshell mshellctl mlock mlayout mscreenshot mvisual mlogind mwizard mpicker; do
   sudo install -Dm755 target/release/$bin /usr/bin/$bin
 done
 sudo install -Dm644 margo.desktop /usr/share/wayland-sessions/margo.desktop
