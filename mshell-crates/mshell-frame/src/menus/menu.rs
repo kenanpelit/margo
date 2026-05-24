@@ -289,13 +289,13 @@ impl Component for MenuModel {
                     let minimum_width = config.menus().clipboard_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
                 });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let maximum_height = config.menus().clipboard_menu().maximum_height().get();
-                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                });
+                // NOTE: unlike other menus, the clipboard does NOT cap its
+                // *outer* scroller at `maximum_height`. The clipboard
+                // widget applies that cap to its own inner history
+                // scroller instead (see clipboard.rs), so the header +
+                // tabs stay fixed while only the list scrolls — and the
+                // bounded inner viewport lets the ListView virtualize.
+                // Capping both would double-scroll (chrome scrolls away).
             }
             MenuType::Notifications => {
                 css_class = "notifications-menu".to_string();

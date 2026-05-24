@@ -3,7 +3,7 @@ use mshell_clipboard::{
 };
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::clipboard::{ClipboardDensity, ClipboardStoreFields};
-use mshell_config::schema::config::ConfigStoreFields;
+use mshell_config::schema::config::{ConfigStoreFields, MenuStoreFields, MenusStoreFields};
 use reactive_graph::traits::GetUntracked;
 use relm4::gtk::prelude::*;
 use relm4::gtk::{gdk, gio, glib};
@@ -117,6 +117,20 @@ fn apply_density(root: &gtk::Box) {
     }
 }
 
+/// Configured clipboard-menu max height (px), from
+/// Settings → Clipboard ("Max height", `menus.clipboard_menu.maximum_height`).
+/// 0 = no cap. We apply it to the *inner list* scroller (not the whole
+/// menu) so the header + tabs stay fixed and only the history scrolls —
+/// and so the bounded viewport lets the ListView virtualize when capped.
+fn configured_list_max_height() -> i32 {
+    config_manager()
+        .config()
+        .menus()
+        .clipboard_menu()
+        .maximum_height()
+        .get_untracked()
+}
+
 /// Lightweight per-row data placed in the [`gio::ListStore`] (wrapped
 /// in a [`glib::BoxedAnyObject`]). Deliberately **excludes** the
 /// entry's raw `data` payload — a row never needs it — so the list
@@ -198,6 +212,9 @@ pub(crate) struct ClipboardModel {
     /// bumps it and schedules an `ApplySearch(gen)`; only the firing
     /// whose gen still matches re-filters, so fast typing coalesces.
     search_gen: u64,
+    /// Configured max height (px) for the history scroller, re-read from
+    /// Settings → Clipboard on each reveal. 0 = grow to fit (no cap).
+    list_max_height: i32,
 }
 
 #[derive(Debug)]
@@ -400,14 +417,22 @@ impl Component for ClipboardModel {
             gtk::ScrolledWindow {
                 set_vscrollbar_policy: gtk::PolicyType::Automatic,
                 set_hscrollbar_policy: gtk::PolicyType::Never,
-                // NOT propagate_natural_height: that asks the ListView
-                // for the natural height of *every* row, which would
-                // materialize the whole list and defeat virtualization.
-                // A bounded min-height + vexpand fills the menu (up to
-                // its configured maximum_height) and scrolls instead.
-                set_propagate_natural_height: false,
-                set_min_content_height: 320,
-                set_vexpand: true,
+                // Grow to fit the history, capped at the configured
+                // "Max height" (Settings → Clipboard). The cap lives on
+                // THIS inner scroller — not the whole menu — so the
+                // header + tabs stay fixed and only the list scrolls;
+                // and a bounded viewport is exactly what lets the
+                // ListView virtualize (only the visible rows are built).
+                // 0 = no cap (grow to fit). `propagate_natural_height`
+                // gives the menu its height from the (extrapolated) list
+                // size without realizing every row.
+                set_propagate_natural_height: true,
+                #[watch]
+                set_max_content_height: if model.list_max_height > 0 {
+                    model.list_max_height
+                } else {
+                    -1
+                },
 
                 #[local_ref]
                 list_view -> gtk::ListView {
@@ -702,6 +727,7 @@ impl Component for ClipboardModel {
             revealed: false,
             dirty: false,
             search_gen: 0,
+            list_max_height: configured_list_max_height(),
         };
 
         let widgets = view_output!();
@@ -830,8 +856,9 @@ impl Component for ClipboardModel {
             ClipboardInput::ParentRevealChanged(revealed) => {
                 self.revealed = revealed;
                 if revealed {
-                    // Pick up a Settings density change without a restart.
+                    // Pick up Settings changes without a restart.
                     apply_density(root);
+                    self.list_max_height = configured_list_max_height();
                     // Open fresh: any stale filter from a previous
                     // session is cleared so the full history shows.
                     set_search_active(false);
