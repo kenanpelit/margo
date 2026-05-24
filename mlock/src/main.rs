@@ -24,6 +24,7 @@
 
 mod auth;
 mod battery;
+mod icons;
 mod power;
 mod render;
 mod seat;

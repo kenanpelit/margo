@@ -13,6 +13,7 @@ use anyhow::Result;
 use cairo::{Format, ImageSurface};
 use chrono::{Local, Timelike};
 
+use crate::icons;
 use crate::seat::SeatState;
 
 const DIM_ALPHA: f64 = 0.55;
@@ -287,19 +288,22 @@ pub fn draw_lock_frame(
 
     y += card_h;
 
-    // 11. Caps Lock chip.
+    // 11. Caps Lock chip — drawn caps glyph + label.
     if caps_visible {
         y += GAP_CARD_CAPS;
-        let chip = layout(&cr, "⇪ CAPS LOCK", FONT_CAPS_PT, true);
+        let chip = layout(&cr, "CAPS LOCK", FONT_CAPS_PT, true);
         let (cw, ch) = chip.pixel_size();
-        let chip_x = cx - cw as f64 / 2.0;
+        let icon_w = ch as f64 * 1.05;
+        let icon_gap = 8.0;
         let pad_x = 14.0;
         let pad_y = 6.0;
+        let content_w = icon_w + icon_gap + cw as f64;
+        let chip_x = cx - content_w / 2.0;
         rounded_rect(
             &cr,
             chip_x - pad_x,
             y - pad_y / 2.0,
-            cw as f64 + pad_x * 2.0,
+            content_w + pad_x * 2.0,
             ch as f64 + pad_y * 2.0,
             10.0,
         );
@@ -309,30 +313,51 @@ pub fn draw_lock_frame(
         cr.set_line_width(1.0);
         cr.stroke().ok();
 
+        icons::caps(
+            &cr,
+            chip_x + icon_w / 2.0,
+            y + ch as f64 / 2.0,
+            icon_w,
+            pal.accent,
+            0.95,
+        );
         cr.set_source_rgb(pal.accent.0, pal.accent.1, pal.accent.2);
-        cr.move_to(chip_x, y + pad_y / 2.0);
+        cr.move_to(chip_x + icon_w + icon_gap, y + pad_y / 2.0);
         pangocairo::functions::show_layout(&cr, &chip);
         y += caps_chip_h;
     }
 
-    // 12. Status line (fail / hint).
+    // 12. Status line (fail / hint). The empty-password hint leads with a
+    //     drawn padlock instead of an emoji.
     y += GAP_CAPS_STATUS;
+    let is_lock_hint = seat.fail_message.is_none() && visible_dots == 0;
     let status_text = seat.fail_message.clone().unwrap_or_else(|| {
         if visible_dots > 0 {
             "Press Enter to unlock".to_string()
         } else {
-            "🔒  Type your password".to_string()
+            "Type your password".to_string()
         }
     });
     let layout_status = layout(&cr, &status_text, FONT_STATUS_PT, false);
     let (sw, sh) = layout_status.pixel_size();
-    if seat.fail_message.is_some() {
-        cr.set_source_rgb(pal.danger.0, pal.danger.1, pal.danger.2);
-    } else {
+    if is_lock_hint {
+        let icon_w = sh as f64 * 0.95;
+        let icon_gap = 8.0;
+        let total = icon_w + icon_gap + sw as f64;
+        let x0 = cx - total / 2.0;
+        icons::lock(&cr, x0 + icon_w / 2.0, y + sh as f64 / 2.0, icon_w, pal.muted, 0.7);
         cr.set_source_rgba(pal.muted.0, pal.muted.1, pal.muted.2, 0.7);
+        cr.move_to(x0 + icon_w + icon_gap, y);
+        pangocairo::functions::show_layout(&cr, &layout_status);
+    } else {
+        if seat.fail_message.is_some() {
+            cr.set_source_rgb(pal.danger.0, pal.danger.1, pal.danger.2);
+        } else {
+            cr.set_source_rgba(pal.muted.0, pal.muted.1, pal.muted.2, 0.7);
+        }
+        cr.move_to(cx - sw as f64 / 2.0, y);
+        pangocairo::functions::show_layout(&cr, &layout_status);
     }
-    cr.move_to(cx - sw as f64 / 2.0, y);
-    pangocairo::functions::show_layout(&cr, &layout_status);
     y += sh as f64 + 12.0;
 
     // 13. Power-confirm banner OR F-key hint row.
@@ -344,12 +369,45 @@ pub fn draw_lock_frame(
         cr.move_to(cx - cw as f64 / 2.0, y);
         pangocairo::functions::show_layout(&cr, &layout_confirm);
     } else {
-        let hint = "F1 Shut down   ·   F2 Restart   ·   F3 Suspend";
-        let layout_hint = layout(&cr, hint, FONT_CAPS_PT, false);
-        let (hw, _) = layout_hint.pixel_size();
-        cr.set_source_rgba(pal.muted.0, pal.muted.1, pal.muted.2, 0.55);
-        cr.move_to(cx - hw as f64 / 2.0, y);
-        pangocairo::functions::show_layout(&cr, &layout_hint);
+        // Power-action chips: a drawn icon + key + label, laid out in a
+        // centred row, instead of one dim line of plain text.
+        type IconFn = fn(&cairo::Context, f64, f64, f64, (f64, f64, f64), f64);
+        let chips: [(IconFn, &str); 3] = [
+            (icons::power, "F1  Shut down"),
+            (icons::restart, "F2  Restart"),
+            (icons::moon, "F3  Suspend"),
+        ];
+        let icon_w = FONT_CAPS_PT as f64 * 1.15;
+        let icon_gap = 7.0;
+        let pad_x = 12.0;
+        let pad_y = 6.0;
+        let chip_gap = 10.0;
+
+        let measured: Vec<(pango::Layout, f64, f64)> = chips
+            .iter()
+            .map(|(_, label)| {
+                let l = layout(&cr, label, FONT_CAPS_PT, false);
+                let (lw, lh) = l.pixel_size();
+                (l, icon_w + icon_gap + lw as f64, lh as f64)
+            })
+            .collect();
+        let total_w: f64 = measured.iter().map(|m| m.1 + pad_x * 2.0).sum::<f64>()
+            + chip_gap * (chips.len() as f64 - 1.0);
+        let chip_h = measured.iter().map(|m| m.2).fold(0.0_f64, f64::max) + pad_y * 2.0;
+
+        let mut x = cx - total_w / 2.0;
+        for ((icon_fn, _), m) in chips.iter().zip(measured.iter()) {
+            let chip_w = m.1 + pad_x * 2.0;
+            let icy = y + chip_h / 2.0;
+            rounded_rect(&cr, x, y, chip_w, chip_h, 10.0);
+            cr.set_source_rgba(pal.muted.0, pal.muted.1, pal.muted.2, 0.10);
+            cr.fill().ok();
+            icon_fn(&cr, x + pad_x + icon_w / 2.0, icy, icon_w, pal.muted, 0.85);
+            cr.set_source_rgba(pal.muted.0, pal.muted.1, pal.muted.2, 0.78);
+            cr.move_to(x + pad_x + icon_w + icon_gap, icy - m.2 / 2.0);
+            pangocairo::functions::show_layout(&cr, &m.0);
+            x += chip_w + chip_gap;
+        }
     }
 
     // 14. Top-right battery indicator (laptops only).
@@ -377,14 +435,14 @@ fn draw_battery(
     top_y: f64,
     bat: crate::battery::BatteryInfo,
 ) {
-    let icon = if bat.charging {
-        "⚡"
-    } else if bat.percent <= 15 {
-        "🪫"
+    let pal = palette();
+    let color = if bat.percent <= 15 && !bat.charging {
+        pal.danger
     } else {
-        "🔋"
+        pal.muted
     };
-    let text = format!("{icon} {}%", bat.percent);
+
+    let text = format!("{}%", bat.percent);
     let layout = pangocairo::functions::create_layout(cr);
     let mut desc = pango::FontDescription::new();
     desc.set_family(FONT_FAMILY);
@@ -392,15 +450,29 @@ fn draw_battery(
     desc.set_weight(pango::Weight::Medium);
     layout.set_font_description(Some(&desc));
     layout.set_text(&text);
-    let (w, _) = layout.pixel_size();
-    let pal = palette();
-    let color = if bat.percent <= 15 && !bat.charging {
-        pal.danger
-    } else {
-        pal.muted
-    };
+    let (tw, th) = layout.pixel_size();
+
+    // Drawn battery glyph + percent, right-aligned to `right_x`.
+    let icon_w = 24.0;
+    let gap = 8.0;
+    let x0 = right_x - (icon_w + gap + tw as f64);
+    let icy = top_y + th as f64 / 2.0;
+
+    icons::battery(
+        cr,
+        x0 + icon_w / 2.0,
+        icy,
+        icon_w,
+        bat.percent as f64 / 100.0,
+        color,
+        0.92,
+    );
+    if bat.charging {
+        icons::bolt(cr, x0 + icon_w * 0.42, icy, icon_w * 0.46, pal.accent, 1.0);
+    }
+
     cr.set_source_rgba(color.0, color.1, color.2, 0.92);
-    cr.move_to(right_x - w as f64, top_y);
+    cr.move_to(x0 + icon_w + gap, top_y);
     pangocairo::functions::show_layout(cr, &layout);
 }
 
