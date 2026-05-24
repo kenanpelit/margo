@@ -24,6 +24,8 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # Run JS actions on Node 24 (GitHub's opt-in until actions ship node24).
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   check:
@@ -53,7 +55,7 @@ jobs:
           rustup default stable
           rustup component add clippy
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
