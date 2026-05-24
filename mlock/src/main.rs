@@ -23,6 +23,7 @@
 #![allow(clippy::too_many_arguments)]
 
 mod auth;
+mod background;
 mod battery;
 mod icons;
 mod power;

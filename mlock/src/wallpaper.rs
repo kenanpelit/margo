@@ -60,9 +60,42 @@ pub fn load_avatar(user: &str) -> Option<image::RgbaImage> {
     None
 }
 
+/// Resolve the lock background per `~/.config/margo/mlock.conf`:
+/// a solid colour, a specific image, or (default) the desktop wallpaper.
+/// `None` only when a wallpaper/image source is wanted but unavailable —
+/// render.rs then paints the palette's solid backdrop.
+pub fn load_background() -> Option<image::RgbaImage> {
+    use crate::background::BgMode;
+    let bg = crate::background::read();
+    match bg.mode {
+        BgMode::Color => Some(solid_image(bg.color)),
+        // Custom image, falling back to the desktop wallpaper if the
+        // configured path is missing/unreadable.
+        BgMode::Image => bg
+            .image
+            .as_deref()
+            .and_then(load_blurred_path)
+            .or_else(load_blurred),
+        BgMode::Wallpaper => load_blurred(),
+    }
+}
+
+/// A small solid-colour image. Painted cover-scaled like a wallpaper, so
+/// it fills any output and flows through the same dim + vignette — no
+/// special case in the renderer.
+fn solid_image(color: (f64, f64, f64)) -> image::RgbaImage {
+    let to_u8 = |c: f64| (c.clamp(0.0, 1.0) * 255.0).round() as u8;
+    let px = image::Rgba([to_u8(color.0), to_u8(color.1), to_u8(color.2), 255]);
+    image::RgbaImage::from_pixel(16, 16, px)
+}
+
 pub fn load_blurred() -> Option<image::RgbaImage> {
-    let path = resolve_path()?;
-    let img = image::open(&path).ok()?;
+    load_blurred_path(&resolve_path()?)
+}
+
+/// Decode + downscale + blur an image file for use as the backdrop.
+pub fn load_blurred_path(path: &Path) -> Option<image::RgbaImage> {
+    let img = image::open(path).ok()?;
 
     // Resize before blur — image::blur is O(w·h·σ), 1920 long-edge
     // keeps it under ~150 ms for a 4K wallpaper.

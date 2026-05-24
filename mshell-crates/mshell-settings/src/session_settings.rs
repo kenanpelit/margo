@@ -14,8 +14,9 @@
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, SessionStoreFields};
 use reactive_graph::prelude::GetUntracked;
-use relm4::gtk::prelude::{BoxExt, EditableExt, EntryExt, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub(crate) struct SessionSettingsModel {
@@ -24,6 +25,12 @@ pub(crate) struct SessionSettingsModel {
     suspend_command: String,
     reboot_command: String,
     shutdown_command: String,
+    /// Lock-screen background (mlock.conf, not the YAML config): mode
+    /// index 0=wallpaper / 1=color / 2=image, plus the colour + image.
+    bg_mode: u32,
+    bg_color: String,
+    bg_image: String,
+    bg_mode_model: gtk::StringList,
 }
 
 #[derive(Debug)]
@@ -33,6 +40,9 @@ pub(crate) enum SessionSettingsInput {
     SuspendChanged(String),
     RebootChanged(String),
     ShutdownChanged(String),
+    BgModeChanged(u32),
+    BgColorChanged(String),
+    BgImageChanged(String),
 }
 
 #[derive(Debug)]
@@ -254,6 +264,82 @@ impl Component for SessionSettingsModel {
                         },
                     },
                 },
+
+                // ── Lock screen background ──────────────────────
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Lock screen background",
+                    set_halign: gtk::Align::Start,
+                    set_margin_top: 12,
+                },
+                gtk::Label {
+                    add_css_class: "label-small",
+                    set_label: "Backdrop behind the lock screen (mlock). The colour / image fields apply only in their matching mode.",
+                    set_halign: gtk::Align::Start,
+                    set_xalign: 0.0,
+                    set_wrap: true,
+                    set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+                    gtk::Label {
+                        add_css_class: "label-medium-bold",
+                        set_halign: gtk::Align::Start,
+                        set_hexpand: true,
+                        set_label: "Mode",
+                    },
+                    #[name = "bg_mode_dd"]
+                    gtk::DropDown {
+                        set_valign: gtk::Align::Center,
+                        set_width_request: 240,
+                        set_model: Some(&model.bg_mode_model),
+                        connect_selected_notify[sender] => move |d| {
+                            sender.input(SessionSettingsInput::BgModeChanged(d.selected()));
+                        },
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+                    gtk::Label {
+                        add_css_class: "label-medium-bold",
+                        set_halign: gtk::Align::Start,
+                        set_hexpand: true,
+                        set_label: "Solid colour",
+                    },
+                    gtk::Entry {
+                        set_valign: gtk::Align::Center,
+                        set_width_request: 240,
+                        set_placeholder_text: Some("#1e1e2e"),
+                        set_text: &model.bg_color,
+                        connect_changed[sender] => move |e| {
+                            sender.input(SessionSettingsInput::BgColorChanged(e.text().to_string()));
+                        },
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+                    gtk::Label {
+                        add_css_class: "label-medium-bold",
+                        set_halign: gtk::Align::Start,
+                        set_hexpand: true,
+                        set_label: "Custom image",
+                    },
+                    gtk::Entry {
+                        set_valign: gtk::Align::Center,
+                        set_width_request: 240,
+                        set_placeholder_text: Some("~/Pictures/lock.jpg"),
+                        set_text: &model.bg_image,
+                        connect_changed[sender] => move |e| {
+                            sender.input(SessionSettingsInput::BgImageChanged(e.text().to_string()));
+                        },
+                    },
+                },
             }
         }
     }
@@ -265,6 +351,7 @@ impl Component for SessionSettingsModel {
     ) -> ComponentParts<Self> {
         // The `SessionStoreFields` accessors consume `self`, so the
         // `config().session()` chain has to be re-walked per field.
+        let (bg_mode, bg_color, bg_image) = read_mlock_conf();
         let model = SessionSettingsModel {
             lock_command: config_manager()
                 .config()
@@ -291,9 +378,14 @@ impl Component for SessionSettingsModel {
                 .session()
                 .shutdown_command()
                 .get_untracked(),
+            bg_mode,
+            bg_color,
+            bg_image,
+            bg_mode_model: gtk::StringList::new(&["Wallpaper", "Solid colour", "Custom image"]),
         };
 
         let widgets = view_output!();
+        widgets.bg_mode_dd.set_selected(model.bg_mode);
 
         ComponentParts { model, widgets }
     }
@@ -320,6 +412,92 @@ impl Component for SessionSettingsModel {
             SessionSettingsInput::ShutdownChanged(v) => {
                 config_manager().update_config(|c| c.session.shutdown_command = v);
             }
+            SessionSettingsInput::BgModeChanged(m) => {
+                self.bg_mode = m;
+                self.write_bg();
+            }
+            SessionSettingsInput::BgColorChanged(c) => {
+                self.bg_color = c;
+                self.write_bg();
+            }
+            SessionSettingsInput::BgImageChanged(i) => {
+                self.bg_image = i;
+                self.write_bg();
+            }
         }
     }
+}
+
+impl SessionSettingsModel {
+    fn write_bg(&self) {
+        write_mlock_conf(self.bg_mode, &self.bg_color, &self.bg_image);
+    }
+}
+
+/// `~/.config/margo/mlock.conf` — the locker's own background config
+/// (mlock can't read the shell's YAML, so this is a small key=value file
+/// it hand-parses; see `mlock/src/background.rs`).
+fn mlock_conf_path() -> PathBuf {
+    let base = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
+        .unwrap_or_else(|| PathBuf::from("/tmp"));
+    base.join("margo").join("mlock.conf")
+}
+
+/// Read (mode index, colour, image) from mlock.conf. Missing file → the
+/// Wallpaper default (0, empty, empty).
+fn read_mlock_conf() -> (u32, String, String) {
+    let (mut mode, mut color, mut image) = (0u32, String::new(), String::new());
+    if let Ok(text) = std::fs::read_to_string(mlock_conf_path()) {
+        for line in text.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            if let Some((k, v)) = line.split_once('=') {
+                let (k, v) = (k.trim(), v.trim());
+                match k {
+                    "background" => mode = matches_mode(v),
+                    "background_color" => color = v.to_string(),
+                    "background_image" => image = v.to_string(),
+                    _ => {}
+                }
+            }
+        }
+    }
+    (mode, color, image)
+}
+
+fn matches_mode(v: &str) -> u32 {
+    match v {
+        "color" => 1,
+        "image" => 2,
+        _ => 0,
+    }
+}
+
+fn write_mlock_conf(mode: u32, color: &str, image: &str) {
+    let mode_str = match mode {
+        1 => "color",
+        2 => "image",
+        _ => "wallpaper",
+    };
+    let color = match color.trim() {
+        "" => "#1e1e2e",
+        c => c,
+    };
+    let body = format!(
+        "# Lock-screen background — written by Settings \u{2192} Session.\n\
+         background = {mode_str}\n\
+         background_color = {color}\n\
+         background_image = {}\n",
+        image.trim(),
+    );
+    let path = mlock_conf_path();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(&path, body);
 }

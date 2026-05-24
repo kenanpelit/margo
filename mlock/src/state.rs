@@ -77,9 +77,10 @@ impl MlockState {
         let user = crate::auth::current_user()
             .unwrap_or_else(|| std::env::var("USER").unwrap_or_else(|_| "user".to_string()));
 
-        // Load + blur the wallpaper once. Cheap fail mode — `None`
-        // means render.rs draws the solid dark fallback instead.
-        let wallpaper = crate::wallpaper::load_blurred();
+        // Resolve the configured background once (wallpaper / solid
+        // colour / custom image — ~/.config/margo/mlock.conf). `None`
+        // means render.rs draws the solid palette fallback instead.
+        let wallpaper = crate::wallpaper::load_background();
         if wallpaper.is_some() {
             info!("wallpaper backdrop loaded");
         } else {
