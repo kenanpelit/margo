@@ -884,6 +884,7 @@ impl Component for SettingsWindowModel {
             Session,
             Clipboard,
             SystemUpdate,
+            Dock,
         }
 
         impl WidgetEntry {
@@ -891,6 +892,7 @@ impl Component for SettingsWindowModel {
                 match self {
                     Self::Clipboard => "Clipboard",
                     Self::SystemUpdate => "System Updates",
+                    Self::Dock => "Margo Dock",
                     Self::Menu { label, .. } | Self::Pill { label, .. } => label,
                     Self::Notifications => "Notifications",
                     Self::Session => "Session",
@@ -935,7 +937,7 @@ impl Component for SettingsWindowModel {
             WidgetEntry::Pill { kind: BarPillKind::ColorPicker, stack_name: "pill_color_picker", label: "ColorPicker", icon: "color-select-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::Lock, stack_name: "pill_lock", label: "Lock", icon: "system-lock-screen-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::Logout, stack_name: "pill_logout", label: "Logout", icon: "system-log-out-symbolic" },
-            WidgetEntry::Pill { kind: BarPillKind::MargoDock, stack_name: "pill_margo_dock", label: "Margo Dock", icon: "view-grid-symbolic" },
+            WidgetEntry::Dock,
             WidgetEntry::Pill { kind: BarPillKind::MargoTags, stack_name: "pill_margo_tags", label: "Margo Tags", icon: "square-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::Privacy, stack_name: "pill_privacy", label: "Privacy", icon: "microphone-sensitivity-high-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::Reboot, stack_name: "pill_reboot", label: "Reboot", icon: "system-reboot-symbolic" },
@@ -1045,6 +1047,23 @@ impl Component for SettingsWindowModel {
                         .launch(crate::system_update_settings::SystemUpdateSettingsInit {})
                         .detach();
                     widgets_sub_stack.add_named(ctrl.widget(), Some("system_update"));
+                    Box::leak(Box::new(ctrl));
+                }
+                WidgetEntry::Dock => {
+                    let btn = make_sub_btn(
+                        "Margo Dock",
+                        "view-grid-symbolic",
+                        "dock",
+                        group_anchor.as_ref(),
+                    );
+                    if group_anchor.is_none() {
+                        group_anchor = Some(btn.clone());
+                    }
+                    widgets_sub_sidebar_box.append(&btn);
+                    let ctrl = crate::dock_settings::DockSettingsModel::builder()
+                        .launch(crate::dock_settings::DockSettingsInit {})
+                        .detach();
+                    widgets_sub_stack.add_named(ctrl.widget(), Some("dock"));
                     Box::leak(Box::new(ctrl));
                 }
             }

@@ -16,7 +16,9 @@ use mshell_common::dynamic_box::generic_widget_controller::GenericWidgetControll
 use mshell_common::scoped_effects::EffectScope;
 use mshell_common::watch;
 use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{ConfigStoreFields, IconsStoreFields, ThemeStoreFields};
+use mshell_config::schema::config::{
+    ConfigStoreFields, DockStoreFields, IconsStoreFields, ThemeStoreFields,
+};
 use mshell_services::margo_service;
 use reactive_graph::traits::*;
 use relm4::gtk::{Orientation, RevealerTransitionType};
@@ -46,6 +48,9 @@ pub(crate) struct MargoDockModel {
 pub(crate) enum MargoDockInput {
     ThemeChanged,
     OnReordered(Vec<String>),
+    /// `dock` config changed (icon size / tooltips / show-running):
+    /// re-apply to live items and rebuild rows for the show-running flag.
+    DockConfigChanged,
 }
 
 #[derive(Debug)]
@@ -191,6 +196,14 @@ impl Component for MargoDockModel {
             sender_clone.input(MargoDockInput::ThemeChanged);
         });
 
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let _ = config_manager().config().dock().icon_size().get();
+            let _ = config_manager().config().dock().show_tooltips().get();
+            let _ = config_manager().config().dock().show_running().get();
+            sender_clone.input(MargoDockInput::DockConfigChanged);
+        });
+
         let model = MargoDockModel {
             dynamic_box: dynamic,
             orientation: params.orientation,
@@ -206,6 +219,24 @@ impl Component for MargoDockModel {
 
     fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
+            MargoDockInput::DockConfigChanged => {
+                // Re-apply icon size / tooltip to every live item …
+                self.dynamic_box.model().for_each_entry(|_, entry| {
+                    if let Some(ctrl) = entry
+                        .controller
+                        .as_ref()
+                        .downcast_ref::<Controller<MargoDockItemModel>>()
+                    {
+                        let _ = ctrl.sender().send(MargoDockItemInput::RefreshConfig);
+                    }
+                });
+                // … and rebuild rows so the show-running flag adds/removes
+                // the unpinned entries.
+                let clients = margo_service().clients.get();
+                let _ = _sender
+                    .command_sender()
+                    .send(MargoDockCommandOutput::ClientsChanged(clients));
+            }
             MargoDockInput::ThemeChanged => {
                 let theme = config_manager()
                     .config()
@@ -326,17 +357,25 @@ impl Component for MargoDockModel {
                     })
                     .collect();
 
-                // Then append running apps that aren't pinned.
-                let unpinned_rows = sorted_clients
-                    .iter()
-                    .map(|client| client.class.get().to_string())
-                    .filter(|class| seen.insert(class.clone()))
-                    .map(|class| DockItem {
-                        client_count: *counts.get(&class).unwrap_or(&0),
-                        class,
-                        pinned: false,
-                    });
-                rows.extend(unpinned_rows);
+                // Then append running apps that aren't pinned — unless the
+                // dock is configured pinned-only (`show_running = false`).
+                if config_manager()
+                    .config()
+                    .dock()
+                    .show_running()
+                    .get_untracked()
+                {
+                    let unpinned_rows = sorted_clients
+                        .iter()
+                        .map(|client| client.class.get().to_string())
+                        .filter(|class| seen.insert(class.clone()))
+                        .map(|class| DockItem {
+                            client_count: *counts.get(&class).unwrap_or(&0),
+                            class,
+                            pinned: false,
+                        });
+                    rows.extend(unpinned_rows);
+                }
 
                 // Sort rows according to remembered drag-and-drop order.
                 if !self.ordered_keys.is_empty() {

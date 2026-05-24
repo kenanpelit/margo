@@ -1,7 +1,9 @@
 use crate::bars::bar::BarType;
 use mshell_cache::pinned_apps::{PinnedApp, pin_app, unpin_app};
 use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{ConfigStoreFields, IconsStoreFields, ThemeStoreFields};
+use mshell_config::schema::config::{
+    ConfigStoreFields, DockStoreFields, IconsStoreFields, ThemeStoreFields,
+};
 use mshell_config::schema::themes::Themes;
 use mshell_services::margo_service;
 use mshell_utils::app_icon::app_icon::set_icon;
@@ -43,6 +45,8 @@ pub(crate) enum MargoDockItemInput {
     Selected(Address),
     Unselected,
     PinnedChanged(bool),
+    /// Dock config (icon size / tooltip toggle) changed — re-apply.
+    RefreshConfig,
 }
 
 #[derive(Debug)]
@@ -267,7 +271,7 @@ impl Component for MargoDockItemModel {
                 .get(),
         );
 
-        widgets.root.set_tooltip_text(Some(&model.tooltip_text()));
+        model.apply_dock_config(&widgets.image, &widgets.root);
 
         model.check_selected(&sender);
 
@@ -468,7 +472,7 @@ impl Component for MargoDockItemModel {
             }
             MargoDockItemInput::ClientCountChanged(count) => {
                 self.client_count = count;
-                widgets.root.set_tooltip_text(Some(&self.tooltip_text()));
+                self.apply_dock_config(&widgets.image, &widgets.root);
             }
             MargoDockItemInput::Selected(address) => {
                 self.is_selected = true;
@@ -480,6 +484,9 @@ impl Component for MargoDockItemModel {
             }
             MargoDockItemInput::PinnedChanged(pinned) => {
                 self.pinned = pinned;
+            }
+            MargoDockItemInput::RefreshConfig => {
+                self.apply_dock_config(&widgets.image, &widgets.root);
             }
         }
 
@@ -517,6 +524,29 @@ impl MargoDockItemModel {
         } else {
             let lines: Vec<String> = titles.iter().map(|t| format!("• {t}")).collect();
             format!("{app_name}\n{}", lines.join("\n"))
+        }
+    }
+
+    /// Apply the `dock` config to this item's widgets: icon pixel size
+    /// (overrides the CSS `-gtk-icon-size`) and the tooltip (suppressed
+    /// when tooltips are turned off). Called on build, on window-count
+    /// change, and when the dock settings change live.
+    fn apply_dock_config(&self, image: &gtk::Image, root: &gtk::Box) {
+        let size = config_manager()
+            .config()
+            .dock()
+            .icon_size()
+            .get_untracked();
+        image.set_pixel_size(size as i32);
+        let show_tooltips = config_manager()
+            .config()
+            .dock()
+            .show_tooltips()
+            .get_untracked();
+        if show_tooltips {
+            root.set_tooltip_text(Some(&self.tooltip_text()));
+        } else {
+            root.set_tooltip_text(None);
         }
     }
 

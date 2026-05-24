@@ -22,7 +22,6 @@ pub(crate) enum BarPillKind {
     ColorPicker,
     Lock,
     Logout,
-    MargoDock,
     MargoTags,
     Privacy,
     Reboot,
@@ -40,7 +39,6 @@ impl BarPillKind {
             Self::ColorPicker => "ColorPicker",
             Self::Lock => "Lock",
             Self::Logout => "Logout",
-            Self::MargoDock => "Margo Dock",
             Self::MargoTags => "Margo Tags",
             Self::Privacy => "Privacy",
             Self::Reboot => "Reboot",
@@ -66,9 +64,6 @@ impl BarPillKind {
             }
             Self::Lock => "Locks the session immediately (no confirmation).",
             Self::Logout => "Logs out of the session. Confirms with a dialog.",
-            Self::MargoDock => {
-                "Pinned-app dock surfaced through margo's foreign-toplevel list. Click to launch / focus a window."
-            }
             Self::MargoTags => {
                 "1–9 tag pills with focus / occupied / urgent states. Click to switch tags, scroll to cycle."
             }

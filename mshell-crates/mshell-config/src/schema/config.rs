@@ -32,6 +32,7 @@ pub struct Config {
     pub clipboard: Clipboard,
     pub launcher: Launcher,
     pub valent: Valent,
+    pub dock: Dock,
 }
 
 /// Idle manager — staged actions as the session sits idle. Each
@@ -869,6 +870,29 @@ pub struct Launcher {
 #[serde(default)]
 pub struct Valent {
     pub main_device_id: String,
+}
+
+/// Margo dock (the running/pinned app strip). Tunables surfaced under
+/// Settings → Widgets → Margo Dock.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[serde(default)]
+pub struct Dock {
+    /// App-icon pixel size.
+    pub icon_size: u32,
+    /// Hover tooltip listing the app + its open window titles.
+    pub show_tooltips: bool,
+    /// Include running apps that aren't pinned (off = pinned-only dock).
+    pub show_running: bool,
+}
+
+impl Default for Dock {
+    fn default() -> Self {
+        Self {
+            icon_size: 32,
+            show_tooltips: true,
+            show_running: true,
+        }
+    }
 }
 
 /// One `>start` script's autostart configuration.

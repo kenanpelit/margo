@@ -18,6 +18,7 @@ mod bar_pill_settings;
 mod bar_settings;
 mod clipboard_settings;
 mod display_settings;
+mod dock_settings;
 mod fonts_settings;
 mod general_settings;
 mod gestures_settings;
