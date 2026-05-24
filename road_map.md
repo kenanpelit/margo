@@ -1,12 +1,12 @@
 # Margo Road Map
 
-> **Last updated:** 2026-05-21 — Phase 1 closed at **v0.1.6**; Phase 2 (Quality & growth) open. Wayland protocol parity sweep (§15.10): 14/17 Tier items + 5 bonus shipped (P2/P5/P7 hand-rolled niri ports landed 2026-05-21 → ~57 globals, past mango). The last 3 (P11/P12/P13) are blocked by smithay capability / margo architecture, not effort. Side-by-side audit lives in `docs/protocol-comparison.md`.
+> **Last updated:** 2026-05-24 — Phase 1 closed at **v0.1.6**; Phase 2 (Quality & growth) effectively closed (its engineering bars are met; only the community/ecosystem levers remain). Now at **v0.8.0**, well past the old v0.3.0 milestone: the **desktop shell (mshell)** matured into a full bar/menu/OSD/Settings stack, the first-launch **setup wizard** shipped as an in-shell layer-shell menu, and a first-party **TUI login manager (`mlogind`, fork of lemurs)** landed — see §15.11. Wayland protocol parity (§15.10): **14/17 Tier items + 5 bonus** (P2/P5/P7 hand-rolled niri ports → ~57 globals, past mango); the last 3 (P11/P12/P13) are blocked by smithay capability / margo architecture, not effort. Packaged on the **AUR** (`margo-git`). Side-by-side audit in `docs/protocol-comparison.md`.
 > **Branch:** `main` (single-branch — Rust port complete; the C tree remains as legacy reference under `src/`)
-> **Status:** Daily-driver Wayland compositor at niri-class feature parity. Phase 1 (catch-and-surpass-niri sweep) closed; Phase 2 (quality, polish, growth) open.
+> **Status:** Daily-driver Wayland compositor + first-party desktop (shell, login, lock, portals) at niri-class parity and beyond. Phase 1 (catch-and-surpass-niri) closed; Phase 2 (quality, polish, growth) engineering goals met — what's open is upstream-blocked, hardware-gated, on-demand features, or community growth (§15).
 
 Margo is a Rust + Smithay Wayland compositor with a dwm/dwl-style tag workflow, 14 layout algorithms, niri-grade animations + spring physics, on-demand redraw, runtime DRM mode change, an embedded Rhai scripting engine with mid-event-loop hooks, full `wp_color_management_v1` HDR scaffolding (Phase 1 shipped, Phase 2/3/4 staged for upstream activation), a built-in xdp-gnome screencast backend, and a GTK4 design tool (`mvisual`) that previews the full 14-layout catalogue × per-tag pinning matrix.
 
-This document is the **source of truth** for what's shipped, what's queued, and what's worth a second pass. **§1–§13** preserve per-capability detail (archaeology); **§14** ledgers Phase 1 cross-cuttingly; **§15** opens Phase 2 with five work streams.
+This document is the **source of truth** for what's shipped, what's queued, and what's worth a second pass. **§1–§13** preserve per-capability detail (archaeology); **§14** ledgers Phase 1 cross-cuttingly; **§15** runs Phase 2's five work streams (engineering goals now met — §15.8) and opens **Phase 3 (polish + ecosystem)** at **§15.11**, where the desktop layer — shell (`mshell`), setup wizard, and the first-party `mlogind` login manager — is ledgered.
 
 ---
 
@@ -23,9 +23,11 @@ This document is the **source of truth** for what's shipped, what's queued, and 
 | Long-term goals (P5/P6) | spatial canvas ✓, adaptive layout ✓, drop shadow ✓, scripting Phase 3 ✓, HDR Phase 1 ✓ | ✅ 5/5 |
 | Built-in screencast portal (P7) | 5 Mutter D-Bus shims, PipeWire pipeline, frame pacing, damage, cursor (embedded + metadata), full-decoration casts, HiDPI, windows_changed signal | ✅ 9/9 phases |
 | Catch-and-surpass-niri sweep (W1–W4) | snapshot tests, clippy gate, CONTRIBUTING, screenshot region UI, EGL graceful fallback, AccessKit, xwayland-satellite, cargo features, tracy, HDR Phase 3 metadata, mctl run, plugin packaging, dwl-ipc state extension, layout-cycle notify, per-tag wallpaper, mctl migrate, mvisual design tool, HDR Phase 4 ICC LUT, **udev backend split** | ✅ 19/22 (5 deferred / upstream-blocked) |
+| Desktop shell (mshell) | GTK4+relm4 bar/menu stack: top+bottom bars, 30-plus widgets, dashboard, quick-settings, launcher (15 providers), notifications, OSD, settings window, twilight, **first-launch setup wizard** (theme/keyboard/touchpad/Wi-Fi/wallpaper/bar), matugen→border sync | ✅ mature (v0.8.0) |
+| Login manager (mlogind) | first-party **TUI greeter** forked from lemurs: own PAM login + session launch, matugen-themed (11-var margo palette as package default), F1/F2/F3 power controls, opt-in fingerprint, /etc packaging, AUR-installed as the active DM — see §15.11 | ✅ shipped |
 | **Phase 1 (catch-and-surpass)** — closed at v0.1.6 | full ledger in §14 | ✅ |
-| **Phase 2 (quality & growth)** — open | 5 streams: code quality, tests, bugs, features, external triggers (§15) | 🔵 active |
-| Wayland protocol parity (P1–P17) | Tier 1: 3/5 (P1, P3, P4). Tier 2: 4/6 (P6, P8, P9, P10). Tier 3: 4/6 (P14, P15, P16, P17). Bonus: 5 smithay-natives (xwayland-keyboard-grab, toplevel-icon, system-bell, pointer-warp, toplevel-tag). Remaining: 6 hand-rolled (P2, P5, P7, P11, P12, P13). Side-by-side audit in `docs/protocol-comparison.md`. | ✅ 11/17 + 5 bonus |
+| **Phase 2 (quality & growth)** — engineering goals met (v0.8.0) | 5 streams: code quality, tests, bugs, features, external triggers (§15). Open items are upstream-blocked / hardware-gated / community growth — see §15.8 | 🟢 effectively closed |
+| Wayland protocol parity (P1–P17) | Tier 1: 5/5 (P1–P5). Tier 2: 5/6 (P6, P7, P8, P9, P10). Tier 3: 4/6 (P14, P15, P16, P17). Bonus: 5 smithay-natives (xwayland-keyboard-grab, toplevel-icon, system-bell, pointer-warp, toplevel-tag). Remaining 3: P11/P12/P13 (architecture- / hardware- / upstream-blocked). Side-by-side audit in `docs/protocol-comparison.md`. | ✅ 14/17 + 5 bonus |
 
 ---
 
@@ -374,14 +376,21 @@ pixman software fallback (qemu user request), W2.3 tablet input
 
 ---
 
-## 15. Phase 2 — Quality & growth (open)
+## 15. Phase 2 — Quality & growth (engineering goals met) → Phase 3
 
 Phase 1's mandate was breadth: ship enough capability to stand next to
-niri and Hyprland. **Phase 2's mandate is depth.** Harden what shipped,
+niri and Hyprland. **Phase 2's mandate was depth.** Harden what shipped,
 close the test-coverage gap (22 → 200+ snapshots), fix UX papercuts,
 grow capability along axes Phase 1 left thin, and lower the bus
-factor. Five work streams below; §16 (do-over wishlist) feeds §15.1,
-§17 (smoke test) is the Phase 2 dogfood checklist.
+factor. Those engineering bars are now **met** (§15.8): 207 snapshots,
+state.rs under 3k, structured logging done, twilight + overview +
+config-validation shipped. What stayed open is either gated on
+something margo can't unblock (§15.5/§15.10) or a community lever
+(§15.8). The work since has been **desktop-layer** — shell, setup
+wizard, and the `mlogind` login manager — ledgered as **Phase 3
+(polish + ecosystem)** in **§15.11**. Five Phase 2 work streams below;
+§16 (do-over wishlist) feeds §15.1, §17 (smoke test) is the dogfood
+checklist.
 
 ### 15.1 Code quality — refactor & polish
 
@@ -401,12 +410,13 @@ factor. Five work streams below; §16 (do-over wishlist) feeds §15.1,
 
 ### 15.2 Test coverage — closing the niri gap
 
-niri ships 5280 textual `insta` snapshots; margo ships 22. The gap
-isn't ambition, it's surface: niri tests every layout / column /
-window / floating combination through snapshots while margo locks
-fewer scenarios. Phase 2 target: **22 → 200+ snapshots by v0.3.0**
-with emphasis on testable surface area, not snapshot count for its
-own sake.
+niri ships 5280 textual `insta` snapshots; margo opened Phase 2 at 22.
+The gap isn't ambition, it's surface: niri tests every layout / column
+/ window / floating combination through snapshots while margo locks
+fewer scenarios. The Phase 2 target — **22 → 200+** with emphasis on
+testable surface area, not snapshot count for its own sake — **was met
+(207 workspace-wide, §15.8)**; closing more of the niri gap is ongoing
+Phase 3 (§15.11) work, not a release blocker.
 
 | # | Item | Why | Target |
 |---|---|---|---|
@@ -551,8 +561,10 @@ Three editing paths now exist:
 | File write helpers (probably lift from `mctl twilight preset`) | shared helper crate, or duplicate | ~50 |
 
 **Trigger.** Painful enough to hand-tune sliders that the user
-asks for a UI; or first-launch wizard (#106) lands and wants to
-let new users build a schedule visually.
+asks for a UI. (The first-launch wizard, #106, **shipped** — see
+§15.11 — and already sets a twilight on/off + mode default; a
+visual schedule builder inside it is the natural next step if a
+user asks to draw the curve rather than type numbers.)
 
 ### 15.5 Awaiting external trigger
 
@@ -661,7 +673,8 @@ matches mango-ext exactly:
 - [x] **Twilight (built-in blue-light filter) shipped** — three modes (geo / manual / static), inline NOAA solar math (no `sunrise` / `chrono` deps), mired-space temperature interpolation + Tanner-Helland blackbody LUT, adaptive 60 s ↔ 250 ms tick, fed straight into the existing `pending_gamma` → `GAMMA_LUT` plumbing. 14 config keys + `TwilightMode` enum, `mctl twilight {status,preview,test,set,reset}` live control surface, 21 unit tests. Opt-in via `twilight = 1`.
 - [x] **Config validation with niri-style diagnostics shipped** — `margo-config::validator` module emits structured diagnostics (file, line, column, severity, code, snippet); `mctl check-config` renders them niri-style; `mctl reload` refuses to apply when errors are present (compositor stays on previous good config); `mctl config-errors` queries the running compositor (Hyprland `hyprctl configerrors` analogue); on-screen red-bordered overlay banner pinned to the active output for 10 s on a rejected reload; warnings surface through a distinct notify-send branch so they're not silently ignored. The validator's allowlist auto-tracks the parser's `OPTION_KEYS` slice, so adding a new option Just Works.
 - [x] **v0.2.0 shipped** — first minor bump past the 0.1.x sweep. Headlines: built-in twilight, niri-style config validation with fail-soft reload, overview cinematic polish, mctl docs sweep. Workspace test 123 → 146. Pure feature release, no breaking changes.
-- [ ] Phase 2 closing release: **v0.3.0** — snapshot test count ≥ 200, state.rs <3k LOC, cold-path logging migration complete, ≥2 community contributors. Semver minor (still pre-1.0; no breaking-change policy yet).
+- [x] **Shipped through v0.8.0** — the v0.3.0 closing-release milestone is **retired**: all of its *engineering* bars landed (snapshot count ≥ 200 → **207**, state.rs **<3k** → 2944, cold-path logging migration **complete**) and the project kept shipping minor bumps well past it. The 0.3–0.8 wave is desktop-facing: the **mshell** bar/menu/Settings stack matured, the **first-launch setup wizard** shipped as an in-shell layer-shell menu (#106, see §15.4.2), matugen palette extraction recolours both shell and compositor borders, the **mic-mute OSD** + power-profile/DNS/UFW/Podman/notes widgets landed, and the first-party **`mlogind` TUI login manager** (§15.11) replaced the third-party greeter. Packaged on the **AUR** (`margo-git`) installing compositor + shell + login + portals.
+- [ ] **Phase 2's only open bars are community/ecosystem** — ≥2 community contributors with merged PRs (currently 1) and the plugin marketplace with ≥3 community plugins. These are growth levers, not engineering work; they gate a *community* milestone, not a code one. The next semver decision (a 1.0 with a breaking-change policy vs. continued 0.x) is a Phase 3 question (§15.11).
 
 ### 15.9 Phase 2 explicitly out-of-scope
 
@@ -805,6 +818,93 @@ a *prerequisite*, not just a coding session:
    backend-access change to the State/BackendData split). Lowest value
    (VR / leased connectors), so lowest priority.
 
+### 15.11 Desktop shell & login manager (mshell / mlogind) — Phase 3
+
+§15.1–§15.10 are compositor-centric. The 0.3 → 0.8 wave shifted the
+center of gravity to the **desktop layer** the compositor sits under,
+and that layer is now first-party end-to-end: **login (`mlogind`) →
+compositor (`margo`) → shell (`mshell`) → lock (`mlock`) → portals
+(`margo-portal`)**, all themed from one Material You palette. This
+section ledgers what shipped there and frames the open work as
+**Phase 3 (polish + ecosystem)**.
+
+#### Shipped in the 0.3 → 0.8 shell wave
+
+- **mshell maturity.** Top + bottom bars, 30-plus bar widgets, app
+  launcher (15 providers), dashboard, quick-settings, notifications,
+  OSD, and a GTK Settings window — all recoloured from the wallpaper
+  palette and the compositor's window borders kept in sync via
+  `mshell-matugen` → `colors.conf` → `mctl reload`.
+- **First-launch setup wizard (#106).** Ships as an in-shell
+  layer-shell menu (not a separate binary): Welcome → Theme →
+  Keyboard (xkb layout / variant / `xkb_rules_options` e.g.
+  `ctrl:nocaps`) → Touchpad → Wi-Fi (`nmcli` scan + connect) →
+  Wallpaper (with a sensible fallback when no dir is picked) → Bar
+  position → Review. Apply writes live, runs `mctl config reload`,
+  and offers a reboot when keyboard rules changed. Buttons follow
+  `mshell-frame/DESIGN.md`.
+- **A relm4 footgun caught + documented.** A `#[watch] set_model` on a
+  `DropDown` combined with `connect_selected_notify` is an infinite
+  main-loop feedback spin (100% CPU, starves every other reactive
+  update). Fix: hold the `gtk::StringList` in the model, set
+  `set_model` once, and `.splice()` in place. This regressed the bar
+  once; the pattern is now load-bearing knowledge.
+
+#### `mlogind` — first-party TUI login manager (shipped)
+
+Forked from [lemurs](https://github.com/coastalwhite/lemurs)
+(MIT/Apache-2.0, Gijs Burghoorn) into the workspace, then improved.
+Replaces the third-party greeter as the active display-manager.
+
+- **Bare-TTY systemd greeter** with its own PAM login
+  (authenticate + `open_session` + privilege drop + utmpx) and X /
+  Wayland session launch. Knows the **margo session** via
+  `start-margo`.
+- **matugen-themed, margo palette as the package default.** The
+  11-variable margo palette (`bg`, `panel_border`, `field_border`,
+  `text`, `subtext`, `muted`, `accent`, `accent_soft`, `danger`,
+  `login_title`, `password_title`) is baked into the default config;
+  `mshell-matugen::to_mlogind_variables` emits the same 11 names so
+  `mlogind sync-theme` recolours the greeter from the live wallpaper
+  palette. Active session in the switcher is now visually distinct
+  from its neighbours.
+- **Power controls** F1 Shutdown / F2 Reboot / **F3 Suspend**, and a
+  char-safe session-name truncation (no UTF-8 slice panic, no more
+  `Margo (U…` cutoffs).
+- **Opt-in fingerprint** at the PAM layer (`pam_fprintd.so`,
+  commented in `extra/mlogind.pam`) — mlogind does *login* auth,
+  distinct from mlock/mshell-auth's *unlock* auth; they are not
+  interchangeable.
+- **Packaged like a DM.** The AUR `margo-git` (authoritative) and the
+  repo `PKGBUILD` install config / variables / PAM / systemd unit to
+  `/etc/mlogind/`, `/etc/pam.d/mlogind`, and
+  `/usr/lib/systemd/system/mlogind.service` (with `backup=()`), plus
+  an `fprintd` optdepend and the lemurs MIT/Apache attribution.
+  Enabling it as the DM is left to the user (no auto-`systemctl
+  enable`).
+
+#### Phase 3 — polish + ecosystem (open)
+
+The engineering goals of Phase 2 are met (§15.8). Phase 3 is the
+desktop-layer follow-through plus the two community levers that
+Phase 2 left open:
+
+| Item | What | Cost |
+|---|---|---|
+| **mlogind async fingerprint UI** | A "swipe now" prompt driven by the same fprintd client `mshell-auth` already speaks, so the sensor state shows in the TUI instead of the PAM conversation swallowing it. | mid (~150 LOC + async PAM bridge) |
+| **mlogind edition-2024 + dep dedupe** | Migrate the fork to edition 2024 (workspace baseline) and dedupe deps it pulled in from lemurs that the workspace already carries (ratatui/crossterm versions, PAM crate). | low/mid, mechanical |
+| **Visual twilight schedule builder** | The §15.4.2 GUI editor, now that the wizard exists to host a "draw your curve" entry point. | ~400–500 LOC, mshell only |
+| **≥2 community contributors** (carried from §15.8) | Primary growth lever; the plugin marketplace (F4) is the low-stakes drive-by entry point. | community |
+| **Plugin marketplace + ≥3 community plugins** (carried) | Gives Rhai plugin authors a place to publish. | medium |
+| **Wider packaging** | AUR ships; Fedora COPR + the existing Nix flake widen dogfood reach beyond single-user Arch. | per-distro |
+
+Compositor-side Phase 3 candidates are the still-open §15 items, all
+gated rather than back-loaded: **P12** Wayland DPMS (hardware-iterate
+the DRM re-enable path), **P11** DRM-lease (backend-access change),
+**P13** tearing-control + **HDR Phase 2/3/4 runtime** (all blocked on
+a smithay `DrmCompositor` API), and **W2.2b** pixman software-renderer
+fallback / **W2.3** tablet input (both hardware-driven).
+
 ---
 
 ## 16. What could be redone better (do-over wishlist)
@@ -890,10 +990,11 @@ plugin ABI) nor mango-ext (single-TU C, zero tests) competes in.
   contributors with merged PRs" as the primary growth lever; secondary
   lever is the plugin marketplace (F4) which gives drive-by contributors
   a low-stakes entry point.
-- **Public dogfood reach** — niri ships in distros' default repos;
-  margo lives in a single-user Arch PKGBUILD. Packaging push (Nix flake
-  exists; Arch AUR + Fedora COPR are next) is implicit Phase 2 work,
-  not on the W-ledger.
+- **Public dogfood reach** — niri ships in distros' default repos.
+  Margo now ships on the **AUR** (`margo-git`, full stack: compositor +
+  shell + login + portals) alongside the Nix flake; Fedora COPR is the
+  next packaging target (Phase 3 §15.11). Still narrower reach than a
+  default-repo compositor, but past the single-user-PKGBUILD stage.
 
 **Phase 1 closes here.** Phase 2 (§15) is the deeper work: harden, test,
 polish, grow.
