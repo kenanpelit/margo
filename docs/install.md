@@ -18,9 +18,20 @@ example configs and layouts, and shell completions.
 
 ## Arch / CachyOS
 
-Uses the repo `PKGBUILD` with `makepkg` (a `-git` package built from the
-pushed GitHub HEAD), then installs it with `pacman` — the same flow as
-`makepkg -si`. Build dependencies are resolved by `makepkg`.
+**From the AUR (recommended).** [`margo-git`](https://aur.archlinux.org/packages/margo-git)
+builds the full stack (compositor + shell + helpers) from GitHub HEAD; any
+AUR helper resolves the build dependencies:
+
+```bash
+paru -S margo-git        # or: yay -S margo-git
+```
+
+It's a VCS (`-git`) package — re-running the same command rebuilds against
+the latest `main`. Uninstall with `pacman -Rns margo-git`.
+
+**From the repo.** `./install.sh` runs the bundled `PKGBUILD` through
+`makepkg` + `pacman` — the same flow as `makepkg -si`, handy when working
+on the tree locally. Build dependencies are resolved by `makepkg`.
 
 ```bash
 ./install.sh            # makepkg build + pacman install
