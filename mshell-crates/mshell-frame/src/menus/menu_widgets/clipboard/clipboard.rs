@@ -416,7 +416,22 @@ impl Component for ClipboardModel {
 
             gtk::ScrolledWindow {
                 set_vscrollbar_policy: gtk::PolicyType::Automatic,
-                set_hscrollbar_policy: gtk::PolicyType::Never,
+                // `External`, not `Never`, on the horizontal axis: a
+                // `Never` hscrollbar makes the scroller demand its
+                // child's *minimum* width, and a GtkListView reports the
+                // widest row's width there — which propagated up to the
+                // menu's outer scroller and stopped the configured
+                // `minimum_width` from shrinking the panel (height worked
+                // because it's capped on this inner scroller; width is
+                // pinned on the outer one). `External` shows no scrollbar
+                // yet lets this scroller shrink horizontally, and since
+                // the ListView is itself scrollable its rows are still
+                // laid out at the viewport width (they ellipsize, never
+                // clip). `min_content_width: 0` lets it shrink freely so
+                // the outer `width_request = minimum_width` governs.
+                set_hscrollbar_policy: gtk::PolicyType::External,
+                set_min_content_width: 0,
+                set_propagate_natural_width: false,
                 // Grow to fit the history, capped at the configured
                 // "Max height" (Settings → Clipboard). The cap lives on
                 // THIS inner scroller — not the whole menu — so the
