@@ -140,6 +140,14 @@ margo session needs **no `xdg-desktop-portal-gnome`** at all:
 
 ## Install
 
+Arch / CachyOS — straight from the AUR:
+
+```bash
+paru -S margo-git        # or: yay -S margo-git
+```
+
+Any distro — the bundled installer:
+
 ```bash
 git clone https://github.com/kenanpelit/margo
 cd margo
