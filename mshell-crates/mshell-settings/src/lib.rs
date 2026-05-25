@@ -22,6 +22,7 @@ mod clipboard_settings;
 mod date_time_settings;
 mod region_settings;
 mod row;
+mod screen_settings;
 mod display_settings;
 mod dock_settings;
 mod fonts_settings;

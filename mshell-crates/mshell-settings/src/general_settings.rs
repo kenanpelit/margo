@@ -3,10 +3,7 @@ use mshell_common::text_entry_dialog::{
     TextEntryDialogInit, TextEntryDialogModel, TextEntryDialogOutput,
 };
 use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{
-    ConfigStoreFields, GeneralStoreFields, SizingStoreFields, ThemeAttributesStoreFields,
-    ThemeStoreFields,
-};
+use mshell_config::schema::config::{ConfigStoreFields, GeneralStoreFields};
 use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk::prelude::{
     BoxExt, ButtonExt, Cast, CastNone, FileExt, ListModelExt, OrientableExt, WidgetExt,
@@ -23,16 +20,7 @@ pub(crate) struct GeneralSettingsModel {
     active_profile: Option<String>,
     available_profiles: gtk::StringList,
     new_profile_dialog: Option<Controller<TextEntryDialogModel>>,
-    time_format_24_h: bool,
-    show_screen_corners: bool,
-    screen_corner_radius: i32,
     network_osd_enabled: bool,
-    /// Settings-panel font-size multiplier. Persisted to
-    /// `theme.attributes.sizing.settings_font_scale`. Drives the
-    /// `--font-scale-settings` CSS variable that every `.settings-*`
-    /// `font-size` declaration in `_settings.scss` multiplies
-    /// against.
-    settings_font_scale: f64,
     _effects: EffectScope,
 }
 
@@ -42,8 +30,6 @@ pub(crate) enum GeneralSettingsInput {
     ChangePictureClicked,
     /// `~/.face` changed on disk — reload the avatar preview.
     FaceChanged,
-    TimeFormat24HToggled(bool),
-    TimeFormat24HEffect(bool),
     ActiveProfileEffect(Option<String>),
     AvailableProfilesEffect(Vec<String>),
     NewProfileClicked,
@@ -51,14 +37,8 @@ pub(crate) enum GeneralSettingsInput {
     NewProfileNameChosen(String),
     DialogCanceled,
     DeleteProfileClicked,
-    ShowScreenCornersToggled(bool),
-    ShowScreenCornersEffect(bool),
-    ScreenCornerRadiusChanged(i32),
-    ScreenCornerRadiusEffect(i32),
     NetworkOsdEnabledToggled(bool),
     NetworkOsdEnabledEffect(bool),
-    SettingsFontScaleChanged(f64),
-    SettingsFontScaleEffect(f64),
 }
 
 #[derive(Debug)]
@@ -112,7 +92,7 @@ impl Component for GeneralSettingsModel {
                         },
                         gtk::Label {
                             add_css_class: "settings-hero-subtitle",
-                            set_label: "App-wide preferences — profile, scaling, accent, behaviour.",
+                            set_label: "App-wide preferences — your account, config profile, and shell behaviour.",
                             set_halign: gtk::Align::Start,
                             set_xalign: 0.0,
                             set_wrap: true,
@@ -217,145 +197,6 @@ impl Component for GeneralSettingsModel {
 
                 gtk::Separator {},
 
-                gtk::Label {
-                    add_css_class: "label-large-bold",
-                    set_label: "Clock",
-                    set_halign: gtk::Align::Start,
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-
-                    gtk::Label {
-                        add_css_class: "label-small",
-                        set_halign: gtk::Align::Start,
-                        set_label: "24 hour time format",
-                        set_hexpand: true,
-                    },
-
-                    gtk::Switch {
-                        #[watch]
-                        #[block_signal(time_format_handler)]
-                        set_active: model.time_format_24_h,
-                        connect_state_set[sender] => move |_, enabled| {
-                            sender.input(GeneralSettingsInput::TimeFormat24HToggled(enabled));
-                            glib::Propagation::Proceed
-                        } @time_format_handler,
-                    }
-                },
-
-                // ── Screen corners ─────────────────────────────
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Rounded screen corners",
-                            set_hexpand: true,
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Mask each monitor's four corners so the screen reads as having rounded edges. Click-through. Off by default — the bar already paints its own rounded corners at the CSS frame-border-radius (24 px). Enable only when you also want the area *outside* the bar curved (e.g. bezel-less monitor), and set the radius below to match the frame border-radius so the two arcs line up.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
-
-                    gtk::Switch {
-                        set_valign: gtk::Align::Center,
-                        #[watch]
-                        #[block_signal(screen_corners_handler)]
-                        set_active: model.show_screen_corners,
-                        connect_state_set[sender] => move |_, v| {
-                            sender.input(GeneralSettingsInput::ShowScreenCornersToggled(v));
-                            glib::Propagation::Proceed
-                        } @screen_corners_handler,
-                    },
-                },
-
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Corner radius (px)",
-                            set_hexpand: true,
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Radius (px) of the black overlay mask that rounds the physical SCREEN corners — only when 'Rounded screen corners' above is on. This does NOT change widget, button, card or menu corners (those follow the fixed design scale, not a setting). Applies after restarting mshell (systemctl --user restart mshell) or reconnecting the monitor.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
-
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (0.0, 64.0),
-                        set_increments: (1.0, 4.0),
-                        set_digits: 0,
-                        #[watch]
-                        #[block_signal(corner_radius_handler)]
-                        set_value: model.screen_corner_radius as f64,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(GeneralSettingsInput::ScreenCornerRadiusChanged(s.value() as i32));
-                        } @corner_radius_handler,
-                    },
-                },
-
-                // ── Settings font scale ────────────────────────
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 20,
-
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        gtk::Label {
-                            add_css_class: "label-medium-bold",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Settings font scale",
-                            set_hexpand: true,
-                        },
-                        gtk::Label {
-                            add_css_class: "label-small",
-                            set_halign: gtk::Align::Start,
-                            set_label: "Multiplier applied to every font-size inside the Settings panel. 1.0 keeps the +1pt-bumped defaults (~15.5 px); set 1.1 for ~17 px on hi-DPI displays, 0.9 to shrink for tight screens. Persists to `theme.attributes.sizing.settings_font_scale`.",
-                            set_hexpand: true,
-                            set_xalign: 0.0,
-                            set_wrap: true,
-                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                        },
-                    },
-
-                    gtk::SpinButton {
-                        set_valign: gtk::Align::Center,
-                        set_range: (0.5, 2.0),
-                        set_increments: (0.05, 0.1),
-                        set_digits: 2,
-                        #[watch]
-                        #[block_signal(settings_font_scale_handler)]
-                        set_value: model.settings_font_scale,
-                        connect_value_changed[sender] => move |s| {
-                            sender.input(GeneralSettingsInput::SettingsFontScaleChanged(s.value()));
-                        } @settings_font_scale_handler,
-                    },
-                },
-
                 // ── Network OSD ────────────────────────────────
                 gtk::Box {
                     set_orientation: gtk::Orientation::Horizontal,
@@ -418,51 +259,12 @@ impl Component for GeneralSettingsModel {
 
         let sender_clone = sender.clone();
         effects.push(move |_| {
-            let config = config_manager().config();
-            let format = config.general().clock_format_24_h().get();
-            sender_clone.input(GeneralSettingsInput::TimeFormat24HEffect(format));
-        });
-
-        let sender_clone = sender.clone();
-        effects.push(move |_| {
-            let v = config_manager()
-                .config()
-                .general()
-                .show_screen_corners()
-                .get();
-            sender_clone.input(GeneralSettingsInput::ShowScreenCornersEffect(v));
-        });
-
-        let sender_clone = sender.clone();
-        effects.push(move |_| {
-            let v = config_manager()
-                .config()
-                .general()
-                .screen_corner_radius()
-                .get();
-            sender_clone.input(GeneralSettingsInput::ScreenCornerRadiusEffect(v as i32));
-        });
-
-        let sender_clone = sender.clone();
-        effects.push(move |_| {
             let v = config_manager()
                 .config()
                 .general()
                 .network_osd_enabled()
                 .get();
             sender_clone.input(GeneralSettingsInput::NetworkOsdEnabledEffect(v));
-        });
-
-        let sender_clone = sender.clone();
-        effects.push(move |_| {
-            let v = config_manager()
-                .config()
-                .theme()
-                .attributes()
-                .sizing()
-                .settings_font_scale()
-                .get();
-            sender_clone.input(GeneralSettingsInput::SettingsFontScaleEffect(v));
         });
 
         let (full_name, user_host) = user_identity();
@@ -472,28 +274,10 @@ impl Component for GeneralSettingsModel {
             active_profile: None,
             available_profiles: gtk::StringList::new(&[]),
             new_profile_dialog: None,
-            time_format_24_h: false,
-            show_screen_corners: config_manager()
-                .config()
-                .general()
-                .show_screen_corners()
-                .get_untracked(),
-            screen_corner_radius: config_manager()
-                .config()
-                .general()
-                .screen_corner_radius()
-                .get_untracked() as i32,
             network_osd_enabled: config_manager()
                 .config()
                 .general()
                 .network_osd_enabled()
-                .get_untracked(),
-            settings_font_scale: config_manager()
-                .config()
-                .theme()
-                .attributes()
-                .sizing()
-                .settings_font_scale()
                 .get_untracked(),
             _effects: effects,
         };
@@ -616,32 +400,6 @@ impl Component for GeneralSettingsModel {
                     let _ = config_manager().delete_profile(active.as_str());
                 }
             }
-            GeneralSettingsInput::TimeFormat24HToggled(format) => {
-                let config_manager = config_manager();
-                config_manager.update_config(|config| {
-                    config.general.clock_format_24_h = format;
-                });
-            }
-            GeneralSettingsInput::TimeFormat24HEffect(format) => {
-                self.time_format_24_h = format;
-            }
-            GeneralSettingsInput::ShowScreenCornersToggled(v) => {
-                config_manager().update_config(|c| {
-                    c.general.show_screen_corners = v;
-                });
-            }
-            GeneralSettingsInput::ShowScreenCornersEffect(v) => {
-                self.show_screen_corners = v;
-            }
-            GeneralSettingsInput::ScreenCornerRadiusChanged(r) => {
-                let clamped = r.clamp(0, 64) as u32;
-                config_manager().update_config(|c| {
-                    c.general.screen_corner_radius = clamped;
-                });
-            }
-            GeneralSettingsInput::ScreenCornerRadiusEffect(r) => {
-                self.screen_corner_radius = r;
-            }
             GeneralSettingsInput::NetworkOsdEnabledToggled(v) => {
                 config_manager().update_config(|c| {
                     c.general.network_osd_enabled = v;
@@ -649,19 +407,6 @@ impl Component for GeneralSettingsModel {
             }
             GeneralSettingsInput::NetworkOsdEnabledEffect(v) => {
                 self.network_osd_enabled = v;
-            }
-            GeneralSettingsInput::SettingsFontScaleChanged(v) => {
-                // Snap to the SpinButton's 2-digit display so the
-                // reactive effect doesn't fire a fresh write on
-                // every fractional tick from the GTK control.
-                let snapped = (v * 100.0).round() / 100.0;
-                let clamped = snapped.clamp(0.5, 2.0);
-                config_manager().update_config(|c| {
-                    c.theme.attributes.sizing.settings_font_scale = clamped;
-                });
-            }
-            GeneralSettingsInput::SettingsFontScaleEffect(v) => {
-                self.settings_font_scale = v;
             }
         }
 

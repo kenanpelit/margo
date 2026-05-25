@@ -27,6 +27,7 @@ pub(crate) struct FontsSettingsModel {
     active_monospace_font: String,
     font_scale: f64,
     bar_font_scale: f64,
+    settings_font_scale: f64,
     _effects: EffectScope,
 }
 
@@ -46,6 +47,8 @@ pub(crate) enum FontsSettingsInput {
     FontScaleEffect(f64),
     BarFontScaleChanged(f64),
     BarFontScaleEffect(f64),
+    SettingsFontScaleChanged(f64),
+    SettingsFontScaleEffect(f64),
 }
 
 #[derive(Debug)]
@@ -388,7 +391,7 @@ impl Component for FontsSettingsModel {
                         gtk::Label {
                             add_css_class: "label-small",
                             set_halign: gtk::Align::Start,
-                            set_label: "Multiplier on every font across the shell — bar, menus, dashboard. 1.0 = the designed sizes; raise it on hi-DPI displays. (The Settings panel keeps its own scale in General.)",
+                            set_label: "Multiplier on every font across the shell — bar, menus, dashboard. 1.0 = the designed sizes; raise it on hi-DPI displays. (The Settings panel has its own scale below.)",
                             set_hexpand: true,
                             set_xalign: 0.0,
                             set_wrap: true,
@@ -446,6 +449,45 @@ impl Component for FontsSettingsModel {
                         connect_value_changed[sender] => move |s| {
                             sender.input(FontsSettingsInput::BarFontScaleChanged(s.value()));
                         } @bar_font_scale_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Settings panel font scale",
+                            set_hexpand: true,
+                        },
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Multiplier applied to every font-size inside the Settings panel only (this window). 1.0 keeps the +1pt-bumped defaults (~15.5 px); 1.1 for ~17 px on hi-DPI, 0.9 to shrink for tight screens.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::SpinButton {
+                        set_valign: gtk::Align::Center,
+                        set_range: (0.5, 2.0),
+                        set_increments: (0.05, 0.1),
+                        set_digits: 2,
+                        #[watch]
+                        #[block_signal(settings_font_scale_handler)]
+                        set_value: model.settings_font_scale,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(FontsSettingsInput::SettingsFontScaleChanged(s.value()));
+                        } @settings_font_scale_handler,
                     },
                 },
             },
@@ -516,6 +558,18 @@ impl Component for FontsSettingsModel {
             sender_clone.input(FontsSettingsInput::BarFontScaleEffect(v));
         });
 
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let v = config_manager()
+                .config()
+                .theme()
+                .attributes()
+                .sizing()
+                .settings_font_scale()
+                .get();
+            sender_clone.input(FontsSettingsInput::SettingsFontScaleEffect(v));
+        });
+
         let model = FontsSettingsModel {
             available_fonts,
             active_primary_font: config_manager()
@@ -559,6 +613,13 @@ impl Component for FontsSettingsModel {
                 .attributes()
                 .sizing()
                 .bar_font_scale()
+                .get_untracked(),
+            settings_font_scale: config_manager()
+                .config()
+                .theme()
+                .attributes()
+                .sizing()
+                .settings_font_scale()
                 .get_untracked(),
             _effects: effects,
         };
@@ -620,6 +681,13 @@ impl Component for FontsSettingsModel {
                 });
             }
             FontsSettingsInput::BarFontScaleEffect(v) => self.bar_font_scale = v,
+            FontsSettingsInput::SettingsFontScaleChanged(v) => {
+                let snapped = ((v * 100.0).round() / 100.0).clamp(0.5, 2.0);
+                config_manager().update_config(|c| {
+                    c.theme.attributes.sizing.settings_font_scale = snapped;
+                });
+            }
+            FontsSettingsInput::SettingsFontScaleEffect(v) => self.settings_font_scale = v,
         }
     }
 }
