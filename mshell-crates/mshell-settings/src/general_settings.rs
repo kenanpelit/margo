@@ -6,9 +6,9 @@ use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, GeneralStoreFields};
 use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk::prelude::{
-    BoxExt, ButtonExt, Cast, CastNone, FileExt, ListModelExt, OrientableExt, WidgetExt,
+    BoxExt, ButtonExt, CastNone, FileExt, ListModelExt, OrientableExt, WidgetExt,
 };
-use relm4::gtk::{gio, glib};
+use relm4::gtk::{gdk, gdk_pixbuf, gio, glib};
 use relm4::{Component, ComponentParts, ComponentSender, Controller, gtk};
 use std::path::PathBuf;
 
@@ -463,26 +463,56 @@ fn user_identity() -> (String, String) {
     (full, format!("{user}@{host}"))
 }
 
-/// (Re)build the circular avatar inside its clipping container: a Picture
-/// of `~/.face` (cover-cropped to fill the circle) when present, else a
-/// neutral person glyph.
+/// Logical size of the avatar (matches the container's `size_request`).
+const AVATAR_PX: i32 = 72;
+
+/// (Re)build the avatar inside its 72×72 clipping container. `~/.face` is
+/// centre-cropped to a square and rendered through a `GtkImage` at a fixed
+/// pixel size — `GtkImage` reports `pixel_size` as its natural size, so a
+/// large source photo can't leak its intrinsic size up through the box and
+/// balloon the avatar (which a plain `GtkPicture` does). Falls back to a
+/// neutral person glyph when there's no face image.
 fn refresh_avatar(container: &gtk::Box) {
     while let Some(child) = container.first_child() {
         container.remove(&child);
     }
     let face = face_path();
-    let child: gtk::Widget = if face.is_file() {
-        let pic = gtk::Picture::for_filename(&face);
-        pic.set_content_fit(gtk::ContentFit::Cover);
-        pic.set_hexpand(true);
-        pic.set_vexpand(true);
-        pic.upcast()
-    } else {
-        let img = gtk::Image::from_icon_name("avatar-default-symbolic");
-        img.set_pixel_size(40);
-        img.set_hexpand(true);
-        img.set_vexpand(true);
-        img.upcast()
+    let img = match face.is_file().then(|| square_avatar_texture(&face)).flatten() {
+        Some(tex) => {
+            let img = gtk::Image::from_paintable(Some(&tex));
+            img.set_pixel_size(AVATAR_PX);
+            img
+        }
+        None => {
+            let img = gtk::Image::from_icon_name("avatar-default-symbolic");
+            img.set_pixel_size(40);
+            img
+        }
     };
-    container.append(&child);
+    img.set_halign(gtk::Align::Center);
+    img.set_valign(gtk::Align::Center);
+    container.append(&img);
+}
+
+/// Load `~/.face`, centre-crop to a square, and scale to 2× the avatar size
+/// for crispness on hi-DPI. `None` if the file isn't a decodable image.
+fn square_avatar_texture(path: &std::path::Path) -> Option<gdk::MemoryTexture> {
+    let pixbuf = gdk_pixbuf::Pixbuf::from_file(path).ok()?;
+    let (w, h) = (pixbuf.width(), pixbuf.height());
+    let side = w.min(h);
+    if side <= 0 {
+        return None;
+    }
+    let square = pixbuf.new_subpixbuf((w - side) / 2, (h - side) / 2, side, side);
+    let target = AVATAR_PX * 2;
+    let scaled = square.scale_simple(target, target, gdk_pixbuf::InterpType::Bilinear)?;
+    // Guarantee 4 channels so the stride / format line up with R8G8B8A8.
+    let rgba = scaled.add_alpha(false, 0, 0, 0).ok()?;
+    Some(gdk::MemoryTexture::new(
+        rgba.width(),
+        rgba.height(),
+        gdk::MemoryFormat::R8g8b8a8,
+        &rgba.read_pixel_bytes(),
+        rgba.rowstride() as usize,
+    ))
 }
