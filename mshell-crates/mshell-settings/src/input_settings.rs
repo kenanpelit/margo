@@ -78,6 +78,11 @@ fn apply(key: &str, value: String) {
         tracing::warn!(error = %e, key, "input: failed to write compositor config");
         return;
     }
+    reload();
+}
+
+/// Spawn `mctl config reload`, reaping the child asynchronously.
+fn reload() {
     match std::process::Command::new("mctl")
         .args(["config", "reload"])
         .spawn()
@@ -93,6 +98,80 @@ fn apply(key: &str, value: String) {
 
 fn bit(on: bool) -> String {
     if on { "1" } else { "0" }.to_string()
+}
+
+/// Motion names for the gesture builder dropdown; the chosen index maps to
+/// this list and the name is written verbatim into the `gesturebind` line.
+const MOTIONS: [&str; 8] = [
+    "up", "down", "left", "right", "up-right", "up-left", "down-left", "down-right",
+];
+const FINGER_OPTS: [&str; 2] = ["3", "4"];
+
+/// Every `gesturebind = <rest>` value in config.conf (the part after `=`),
+/// in file order — these are richer than a single key=value so we round-trip
+/// the raw text rather than the typed `GestureBinding`.
+fn read_gesturebinds() -> Vec<String> {
+    let Ok(text) = std::fs::read_to_string(conf_path()) else {
+        return Vec::new();
+    };
+    text.lines()
+        .filter_map(|l| {
+            let rest = l.trim_start().strip_prefix("gesturebind")?;
+            Some(rest.trim_start().strip_prefix('=')?.trim().to_string())
+        })
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+/// Replace every `gesturebind = …` line in config.conf with the given set
+/// (other lines untouched), then reload the compositor live.
+fn write_gesturebinds(binds: &[String]) {
+    let path = conf_path();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let existing = std::fs::read_to_string(&path).unwrap_or_default();
+    let mut out = String::with_capacity(existing.len() + 64);
+    for line in existing.lines() {
+        let is_bind = line
+            .trim_start()
+            .strip_prefix("gesturebind")
+            .map(|r| r.trim_start().starts_with('='))
+            .unwrap_or(false);
+        if !is_bind {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    for b in binds {
+        out.push_str(&format!("gesturebind = {b}\n"));
+    }
+    if let Err(e) = std::fs::write(&path, out) {
+        tracing::warn!(error = %e, "input: failed to write gesturebinds");
+        return;
+    }
+    reload();
+}
+
+/// "none, up, 3, focusstack, +1" → "3-finger up · focusstack +1".
+fn prettify_bind(raw: &str) -> String {
+    let f: Vec<&str> = raw.split(',').map(|s| s.trim()).collect();
+    if f.len() < 4 {
+        return raw.to_string();
+    }
+    let (motion, fingers, action) = (f[1], f[2], f[3]);
+    let arg = f.get(4..).map(|a| a.join(", ")).unwrap_or_default();
+    let arg = if arg.is_empty() {
+        String::new()
+    } else {
+        format!(" {arg}")
+    };
+    let mods = if f[0].is_empty() || f[0].eq_ignore_ascii_case("none") {
+        String::new()
+    } else {
+        format!("{} + ", f[0])
+    };
+    format!("{mods}{fingers}-finger {motion} · {action}{arg}")
 }
 
 fn click_idx(m: margo_config::ClickMethod) -> u32 {
@@ -147,11 +226,21 @@ pub(crate) struct InputSettingsModel {
     accel_speed: f64,
     // Swipe
     swipe_threshold: i32,
+    // Gesture bindings (richer, multi-field — round-tripped as raw lines).
+    binds: Vec<String>,
+    binds_box: gtk::Box,
+    b_modifiers: String,
+    b_motion: u32,
+    b_fingers: u32,
+    b_action: String,
+    b_arg: String,
     // Dropdown models
     click_model: gtk::StringList,
     scroll_model: gtk::StringList,
     accel_model: gtk::StringList,
     sendevents_model: gtk::StringList,
+    motion_model: gtk::StringList,
+    fingers_model: gtk::StringList,
 }
 
 #[derive(Debug)]
@@ -177,6 +266,13 @@ pub(crate) enum InputSettingsInput {
     SetAccelProfile(u32),
     SetAccelSpeed(f64),
     SetSwipeThreshold(i32),
+    SetBModifiers(String),
+    SetBMotion(u32),
+    SetBFingers(u32),
+    SetBAction(String),
+    SetBArg(String),
+    AddBind,
+    RemoveBind(usize),
 }
 
 #[derive(Debug)]
@@ -616,13 +712,121 @@ impl Component for InputSettingsModel {
                     },
                 },
 
+                // ════════ Gesture bindings ════════
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Gesture bindings",
+                    set_halign: gtk::Align::Start,
+                    set_margin_top: 12,
+                },
                 gtk::Label {
                     add_css_class: "label-small",
                     set_halign: gtk::Align::Start,
                     set_xalign: 0.0,
                     set_wrap: true,
+                    set_label: "Map a multi-finger swipe to a compositor action (gesturebind). Applied live.",
+                },
+
+                #[local_ref]
+                binds_box -> gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 6,
+                },
+
+                gtk::Label {
+                    add_css_class: "label-medium-bold",
+                    set_label: "Add a binding",
+                    set_halign: gtk::Align::Start,
                     set_margin_top: 8,
-                    set_label: "Swipe → action mappings (gesturebind) and niche keys (button_map, accel curve points) live in ~/.config/margo/config.conf.",
+                },
+
+                #[template]
+                Row {
+                    #[template_child] title { set_label: "Direction" },
+                    #[template_child] desc { set_label: "Swipe direction." },
+                    #[name = "motion_dd"]
+                    gtk::DropDown {
+                        set_valign: gtk::Align::Center,
+                        set_width_request: 200,
+                        set_model: Some(&model.motion_model),
+                        #[block_signal(motion_handler)]
+                        set_selected: model.b_motion,
+                        connect_selected_notify[sender] => move |d| {
+                            sender.input(InputSettingsInput::SetBMotion(d.selected()));
+                        } @motion_handler,
+                    },
+                },
+
+                #[template]
+                Row {
+                    #[template_child] title { set_label: "Fingers" },
+                    #[template_child] desc { set_label: "Number of fingers on the swipe." },
+                    #[name = "fingers_dd"]
+                    gtk::DropDown {
+                        set_valign: gtk::Align::Center,
+                        set_width_request: 200,
+                        set_model: Some(&model.fingers_model),
+                        #[block_signal(fingers_handler)]
+                        set_selected: model.b_fingers,
+                        connect_selected_notify[sender] => move |d| {
+                            sender.input(InputSettingsInput::SetBFingers(d.selected()));
+                        } @fingers_handler,
+                    },
+                },
+
+                #[template]
+                Row {
+                    #[template_child] title { set_label: "Action" },
+                    #[template_child] desc { set_label: "Dispatch name, e.g. focusstack, spawn, view, togglefloating." },
+                    #[name = "action_entry"]
+                    gtk::Entry {
+                        set_valign: gtk::Align::Center,
+                        set_width_request: 200,
+                        set_placeholder_text: Some("focusstack"),
+                        connect_changed[sender] => move |e| {
+                            sender.input(InputSettingsInput::SetBAction(e.text().to_string()));
+                        },
+                    },
+                },
+
+                #[template]
+                Row {
+                    #[template_child] title { set_label: "Argument" },
+                    #[template_child] desc { set_label: "Optional argument for the action (e.g. +1, or a command for spawn)." },
+                    #[name = "arg_entry"]
+                    gtk::Entry {
+                        set_valign: gtk::Align::Center,
+                        set_width_request: 200,
+                        set_placeholder_text: Some("(optional)"),
+                        connect_changed[sender] => move |e| {
+                            sender.input(InputSettingsInput::SetBArg(e.text().to_string()));
+                        },
+                    },
+                },
+
+                #[template]
+                Row {
+                    #[template_child] title { set_label: "Modifiers" },
+                    #[template_child] desc { set_label: "Held key(s); usually none (e.g. super)." },
+                    #[name = "modifiers_entry"]
+                    gtk::Entry {
+                        set_valign: gtk::Align::Center,
+                        set_width_request: 200,
+                        set_text: "none",
+                        connect_changed[sender] => move |e| {
+                            sender.input(InputSettingsInput::SetBModifiers(e.text().to_string()));
+                        },
+                    },
+                },
+
+                gtk::Button {
+                    add_css_class: "ok-button-surface",
+                    add_css_class: "ok-button-cell",
+                    set_label: "Add gesture binding",
+                    set_margin_top: 4,
+                    connect_clicked[sender] => move |_| {
+                        sender.input(InputSettingsInput::AddBind);
+                    },
                 },
             }
         }
@@ -634,6 +838,11 @@ impl Component for InputSettingsModel {
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let cfg = read_config();
+        // The gesture-binding list is rebuilt imperatively, so its container
+        // is created here and shared into the model (the view binds it via
+        // `#[local_ref]`).
+        let binds_box = gtk::Box::new(gtk::Orientation::Vertical, 6);
+        let binds = read_gesturebinds();
         let model = InputSettingsModel {
             xkb_layout: cfg.xkb_rules.layout.clone(),
             xkb_variant: cfg.xkb_rules.variant.clone(),
@@ -656,6 +865,13 @@ impl Component for InputSettingsModel {
             accel_profile: accel_idx(cfg.mouse_accel_profile),
             accel_speed: cfg.mouse_accel_speed,
             swipe_threshold: cfg.swipe_min_threshold as i32,
+            binds,
+            binds_box: binds_box.clone(),
+            b_modifiers: "none".to_string(),
+            b_motion: 0,
+            b_fingers: 0,
+            b_action: String::new(),
+            b_arg: String::new(),
             click_model: gtk::StringList::new(&["None", "Button areas", "Clickfinger"]),
             scroll_model: gtk::StringList::new(&["Disabled", "Two-finger", "Edge", "On-button"]),
             accel_model: gtk::StringList::new(&["None", "Flat", "Adaptive"]),
@@ -664,13 +880,16 @@ impl Component for InputSettingsModel {
                 "Disabled",
                 "Disabled on external mouse",
             ]),
+            motion_model: gtk::StringList::new(&MOTIONS),
+            fingers_model: gtk::StringList::new(&FINGER_OPTS),
         };
         let widgets = view_output!();
         let _ = root;
+        rebuild_binds(&model.binds_box, &model.binds, &sender);
         ComponentParts { model, widgets }
     }
 
-    fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             InputSettingsInput::SetLayout(v) => {
                 self.xkb_layout = v.trim().to_string();
@@ -760,7 +979,77 @@ impl Component for InputSettingsModel {
                 self.swipe_threshold = v;
                 apply("swipe_min_threshold", v.to_string());
             }
+            InputSettingsInput::SetBModifiers(s) => self.b_modifiers = s,
+            InputSettingsInput::SetBMotion(v) => self.b_motion = v,
+            InputSettingsInput::SetBFingers(v) => self.b_fingers = v,
+            InputSettingsInput::SetBAction(s) => self.b_action = s.trim().to_string(),
+            InputSettingsInput::SetBArg(s) => self.b_arg = s.trim().to_string(),
+            InputSettingsInput::AddBind => {
+                let action = self.b_action.trim().to_string();
+                if action.is_empty() {
+                    return; // an action is required
+                }
+                let motion = MOTIONS.get(self.b_motion as usize).copied().unwrap_or("up");
+                let fingers = FINGER_OPTS.get(self.b_fingers as usize).copied().unwrap_or("3");
+                let mods = match self.b_modifiers.trim() {
+                    "" => "none",
+                    m => m,
+                };
+                let mut line = format!("{mods}, {motion}, {fingers}, {action}");
+                let arg = self.b_arg.trim();
+                if !arg.is_empty() {
+                    line.push_str(&format!(", {arg}"));
+                }
+                self.binds.push(line);
+                write_gesturebinds(&self.binds);
+                rebuild_binds(&self.binds_box, &self.binds, &sender);
+            }
+            InputSettingsInput::RemoveBind(i) => {
+                if i < self.binds.len() {
+                    self.binds.remove(i);
+                    write_gesturebinds(&self.binds);
+                    rebuild_binds(&self.binds_box, &self.binds, &sender);
+                }
+            }
         }
+    }
+}
+
+/// Rebuild the gesture-binding rows in `binds_box` from `binds`. Run on init
+/// and after every add/remove so each Remove button captures the right
+/// current index.
+fn rebuild_binds(
+    binds_box: &gtk::Box,
+    binds: &[String],
+    sender: &ComponentSender<InputSettingsModel>,
+) {
+    while let Some(child) = binds_box.first_child() {
+        binds_box.remove(&child);
+    }
+    if binds.is_empty() {
+        let empty = gtk::Label::new(Some("No gesture bindings yet."));
+        empty.add_css_class("label-small");
+        empty.set_halign(gtk::Align::Start);
+        empty.set_xalign(0.0);
+        binds_box.append(&empty);
+        return;
+    }
+    for (i, bind) in binds.iter().enumerate() {
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        let label = gtk::Label::new(Some(&prettify_bind(bind)));
+        label.add_css_class("label-medium");
+        label.set_halign(gtk::Align::Start);
+        label.set_xalign(0.0);
+        label.set_hexpand(true);
+        label.set_wrap(true);
+        row.append(&label);
+        let remove = gtk::Button::with_label("Remove");
+        remove.add_css_class("ok-button-surface");
+        remove.set_valign(gtk::Align::Center);
+        let s = sender.clone();
+        remove.connect_clicked(move |_| s.input(InputSettingsInput::RemoveBind(i)));
+        row.append(&remove);
+        binds_box.append(&row);
     }
 }
 

@@ -15,8 +15,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   tap-to-click / tap-and-drag / drag-lock, natural scroll, disable-while-
   typing, left-handed, middle-button emulation, click + scroll method,
   scroll button, send-events mode. Mouse: natural scroll, acceleration
-  profile + speed. Plus swipe sensitivity. Everything writes the compositor
-  `config.conf` and applies live via `mctl config reload`.
+  profile + speed. Plus swipe sensitivity, and a **gesture-binding editor**
+  — list / add / remove `gesturebind` swipe→action mappings (direction,
+  fingers, action, argument, modifiers) right from the UI. Everything writes
+  the compositor `config.conf` and applies live via `mctl config reload`.
 
 ### Changed
 
