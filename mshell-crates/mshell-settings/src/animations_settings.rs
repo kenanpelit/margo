@@ -4,7 +4,7 @@
 //! the Input page these live in margo's `config.conf` (not the shell YAML):
 //! the master toggles apply live on change, and a preset — a coherent set of
 //! per-domain durations / bezier curves / clocks / types — is applied as a
-//! batch when you pick it and hit **Apply**, then `mctl config reload` makes
+//! batch when you pick it and hit **Apply**, then `mctl reload` makes
 //! it take effect without a logout.
 
 use crate::row::Row;
@@ -68,7 +68,7 @@ fn patch_conf(updates: &[(&str, String)]) -> std::io::Result<()> {
 
 /// Reload the compositor live, reaping the child asynchronously.
 fn reload() {
-    match std::process::Command::new("mctl").args(["config", "reload"]).spawn() {
+    match std::process::Command::new("mctl").args(["reload"]).spawn() {
         Ok(mut child) => {
             std::thread::spawn(move || {
                 let _ = child.wait();

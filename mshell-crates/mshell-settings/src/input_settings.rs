@@ -3,7 +3,7 @@
 //! Keyboard, touchpad and mouse tunables. Unlike most settings pages these
 //! live in the **compositor** config (margo's `config.conf`), not the shell
 //! YAML — so reads parse the `.conf` via `margo-config` and writes patch the
-//! `key = value` line in place, then fire `mctl config reload` so the change
+//! `key = value` line in place, then fire `mctl reload` so the change
 //! applies live without a logout (margo's `reload_config` re-applies xkb +
 //! libinput settings on the fly).
 //!
@@ -82,18 +82,15 @@ fn apply(key: &str, value: String) {
     reload();
 }
 
-/// Spawn `mctl config reload`, reaping the child asynchronously.
+/// Spawn `mctl reload`, reaping the child asynchronously.
 fn reload() {
-    match std::process::Command::new("mctl")
-        .args(["config", "reload"])
-        .spawn()
-    {
+    match std::process::Command::new("mctl").args(["reload"]).spawn() {
         Ok(mut child) => {
             std::thread::spawn(move || {
                 let _ = child.wait();
             });
         }
-        Err(e) => tracing::warn!(error = %e, "input: `mctl config reload` failed to spawn"),
+        Err(e) => tracing::warn!(error = %e, "input: `mctl reload` failed to spawn"),
     }
 }
 

@@ -8,7 +8,7 @@
 //! original) and leave a single `source = binds.conf` behind. From then on
 //! every add / edit / delete is a clean full rewrite of `binds.conf`, grouped
 //! by category — no fragile in-place patching, zero risk to the rest of the
-//! config. `mctl config reload` applies the change live.
+//! config. `mctl reload` applies the change live.
 //!
 //! The list is searchable (filter-func, never rebuilt per keystroke); a row
 //! opens an inline editor with modifier chips, a press-to-capture key field,
@@ -490,13 +490,13 @@ fn persist(binds: &[Bind]) {
 }
 
 fn reload() {
-    match std::process::Command::new("mctl").args(["config", "reload"]).spawn() {
+    match std::process::Command::new("mctl").args(["reload"]).spawn() {
         Ok(mut child) => {
             std::thread::spawn(move || {
                 let _ = child.wait();
             });
         }
-        Err(e) => tracing::warn!(error = %e, "keybinds: `mctl config reload` failed to spawn"),
+        Err(e) => tracing::warn!(error = %e, "keybinds: `mctl reload` failed to spawn"),
     }
 }
 
