@@ -742,13 +742,15 @@ fn login_form_render<B: Backend>(
         chunks.date,
     );
 
-    // The rounded accent card around the credentials — always accent, so the
-    // theme reads even before the user types (mlock draws its border the same
-    // way).
+    // The accent card around the credentials — always accent, so the theme
+    // reads even before the user types. Square corners (Plain): the bare VT's
+    // console font has ┌┐└┘ but not the rounded ╭╮╰╯ glyphs, which would show
+    // as broken / unjoined corners on a real TTY (mlock can do rounded because
+    // it's a graphical Wayland surface; a TUI greeter can't).
     frame.render_widget(
         Block::default()
             .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
+            .border_type(BorderType::Plain)
             .border_style(Style::default().fg(theme.accent)),
         chunks.card,
     );

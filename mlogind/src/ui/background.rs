@@ -27,9 +27,13 @@ impl BackgroundWidget {
         let block = if self.config.style.show_border {
             block
                 .borders(Borders::ALL)
-                // Rounded corners to match the credential card (the square
-                // ┌┐└┘ default clashed with the card's ╭╮╰╯).
-                .border_type(BorderType::Rounded)
+                // Square corners (┌┐└┘) on purpose: mlogind runs on a bare VT
+                // whose console font has the straight box-drawing glyphs but
+                // NOT the rounded ones (╭╮╰╯, U+256D–U+2570) — those render as
+                // gaps / replacement marks on a real TTY (fine only in a
+                // terminal-emulator `--preview`). Keep Plain so the border
+                // actually joins at the corners.
+                .border_type(BorderType::Plain)
                 .border_style(self.border_style())
         } else {
             block
