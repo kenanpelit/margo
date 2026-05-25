@@ -9,6 +9,9 @@ use relm4::gtk::glib;
 use relm4::{ComponentSender, gtk};
 use std::path::PathBuf;
 use tokio::sync::mpsc;
+use std::sync::Arc;
+use wayle_audio::core::device::input::InputDevice;
+use wayle_audio::core::device::output::OutputDevice;
 use wayle_audio::volume::types::Volume;
 use wayle_brightness::Percentage;
 use zbus::connection;
@@ -229,23 +232,25 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                     play_audio_volume_change();
                 }
                 IPCCommand::SwitchOutput(target) => {
-                    let svc = audio_service();
-                    let devs = svc.output_devices.get();
+                    let devs = usable_outputs();
                     let names: Vec<(String, String)> =
                         devs.iter().map(|d| (d.name.get(), d.description.get())).collect();
-                    let cur = svc.default_output.get().map(|d| d.name.get());
-                    if let Some(i) = pick_device(&names, cur.as_deref(), &target) {
-                        let _ = devs[i].set_as_default().await;
+                    let cur = audio_service().default_output.get().map(|d| d.name.get());
+                    if let Some(i) = pick_device(&names, cur.as_deref(), &target)
+                        && devs[i].set_as_default().await.is_ok()
+                    {
+                        notify_audio("Audio output", &devs[i].description.get());
                     }
                 }
                 IPCCommand::SwitchInput(target) => {
-                    let svc = audio_service();
-                    let devs = svc.input_devices.get();
+                    let devs = usable_inputs();
                     let names: Vec<(String, String)> =
                         devs.iter().map(|d| (d.name.get(), d.description.get())).collect();
-                    let cur = svc.default_input.get().map(|d| d.name.get());
-                    if let Some(i) = pick_device(&names, cur.as_deref(), &target) {
-                        let _ = devs[i].set_as_default().await;
+                    let cur = audio_service().default_input.get().map(|d| d.name.get());
+                    if let Some(i) = pick_device(&names, cur.as_deref(), &target)
+                        && devs[i].set_as_default().await.is_ok()
+                    {
+                        notify_audio("Audio input", &devs[i].description.get());
                     }
                 }
                 IPCCommand::BrightnessUp => {
@@ -462,10 +467,60 @@ enum IPCCommand {
     BarHideAll(bool),
 }
 
+/// A sink whose active port is actually connected — drops e.g. an HDMI /
+/// DisplayPort output with nothing plugged in (its active port reports
+/// `available = false`), so cycling never lands on a dead sink. Devices with
+/// no port concept (virtual sinks) are kept.
+fn output_connected(d: &OutputDevice) -> bool {
+    match d.active_port.get() {
+        None => true,
+        Some(active) => d
+            .ports
+            .get()
+            .iter()
+            .find(|p| p.name == active)
+            .map(|p| p.available)
+            .unwrap_or(true),
+    }
+}
+
+/// Real, switchable output sinks (skips unplugged HDMI/DP ports).
+fn usable_outputs() -> Vec<Arc<OutputDevice>> {
+    audio_service().output_devices.get().into_iter().filter(|d| output_connected(d)).collect()
+}
+
+/// Real capture sources — drops PulseAudio monitor sources (the loopback
+/// "Monitor of <sink>" entries), which aren't microphones.
+fn usable_inputs() -> Vec<Arc<InputDevice>> {
+    audio_service().input_devices.get().into_iter().filter(|d| !d.is_monitor.get()).collect()
+}
+
+/// Fire-and-forget desktop notification (replaces the previous one via the
+/// synchronous hint so rapid switches don't stack), mirroring osc-soundctl.
+fn notify_audio(summary: &str, body: &str) {
+    let summary = summary.to_string();
+    let body = body.to_string();
+    relm4::spawn(async move {
+        let _ = tokio::process::Command::new("notify-send")
+            .args([
+                "-a",
+                "mshell",
+                "-i",
+                "audio-volume-high-symbolic",
+                "-h",
+                "string:x-canonical-private-synchronous:mshell-audio",
+                &summary,
+                &body,
+            ])
+            .status()
+            .await;
+    });
+}
+
 /// Resolve a switch target against a device list. `names` is `(node_name,
 /// description)` per device, `current` the default's node name. Accepts
-/// `next` / `prev`, a numeric index, or a case-insensitive fragment matched
-/// against the description first then the node name.
+/// `next` / `prev` / `switch`, a numeric index, or a case-insensitive
+/// fragment matched against the description first then the node name.
 fn pick_device(names: &[(String, String)], current: Option<&str>, target: &str) -> Option<usize> {
     if names.is_empty() {
         return None;
@@ -473,7 +528,7 @@ fn pick_device(names: &[(String, String)], current: Option<&str>, target: &str) 
     let cur = current.and_then(|c| names.iter().position(|(n, _)| n == c));
     let t = target.trim();
     match t.to_ascii_lowercase().as_str() {
-        "next" => return Some(cur.map(|c| (c + 1) % names.len()).unwrap_or(0)),
+        "next" | "switch" => return Some(cur.map(|c| (c + 1) % names.len()).unwrap_or(0)),
         "prev" | "previous" => {
             return Some(cur.map(|c| (c + names.len() - 1) % names.len()).unwrap_or(0));
         }
@@ -525,16 +580,12 @@ fn audio_snapshot() -> AudioSnapshot {
             name,
         }
     };
-    let outputs = svc
-        .output_devices
-        .get()
+    let outputs = usable_outputs()
         .iter()
         .enumerate()
         .map(|(i, d)| snap(i, d.name.get(), d.description.get(), d.volume.get().average(), d.muted.get(), &def_out))
         .collect();
-    let inputs = svc
-        .input_devices
-        .get()
+    let inputs = usable_inputs()
         .iter()
         .enumerate()
         .map(|(i, d)| snap(i, d.name.get(), d.description.get(), d.volume.get().average(), d.muted.get(), &def_in))

@@ -34,6 +34,10 @@ pub enum AudioCommands {
     Output { target: String },
     /// Switch the default input — next | prev | INDEX | NAME fragment
     Input { target: String },
+    /// Cycle the default output to the next device (alias for `output next`)
+    Switch,
+    /// Cycle the default input to the next device (alias for `input next`)
+    SwitchMic,
     /// Increase the microphone volume by 5 percent
     MicUp,
     /// Decrease the microphone volume by 5 percent
@@ -82,6 +86,12 @@ pub async fn execute(command: AudioCommands) -> anyhow::Result<()> {
         }
         AudioCommands::Input { target } => {
             bus_command_with_arg("AudioInputSwitch", &target).await?;
+        }
+        AudioCommands::Switch => {
+            bus_command_with_arg("AudioOutputSwitch", &"next".to_string()).await?;
+        }
+        AudioCommands::SwitchMic => {
+            bus_command_with_arg("AudioInputSwitch", &"next".to_string()).await?;
         }
         AudioCommands::MicUp => {
             bus_command("AudioMicUp").await?;
