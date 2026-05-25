@@ -1,6 +1,6 @@
 use ratatui::{
     style::Style,
-    widgets::{Block, Borders},
+    widgets::{Block, BorderType, Borders},
     Frame,
 };
 
@@ -27,6 +27,9 @@ impl BackgroundWidget {
         let block = if self.config.style.show_border {
             block
                 .borders(Borders::ALL)
+                // Rounded corners to match the credential card (the square
+                // ┌┐└┘ default clashed with the card's ╭╮╰╯).
+                .border_type(BorderType::Rounded)
                 .border_style(self.border_style())
         } else {
             block
