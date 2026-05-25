@@ -484,15 +484,25 @@ fn output_connected(d: &OutputDevice) -> bool {
     }
 }
 
-/// Real, switchable output sinks (skips unplugged HDMI/DP ports).
+/// Real, switchable output sinks (skips unplugged HDMI/DP ports). Sorted by
+/// the stable PipeWire device index so `list`, `status` and `next`/`prev` all
+/// see the SAME order — `input_devices.get()` / `output_devices.get()` don't
+/// guarantee a stable order between calls, which made cycling skip a device
+/// and the switch notification name the wrong one.
 fn usable_outputs() -> Vec<Arc<OutputDevice>> {
-    audio_service().output_devices.get().into_iter().filter(|d| output_connected(d)).collect()
+    let mut v: Vec<_> =
+        audio_service().output_devices.get().into_iter().filter(|d| output_connected(d)).collect();
+    v.sort_by_key(|d| d.key.index);
+    v
 }
 
 /// Real capture sources — drops PulseAudio monitor sources (the loopback
-/// "Monitor of <sink>" entries), which aren't microphones.
+/// "Monitor of <sink>" entries), which aren't microphones. Same stable sort.
 fn usable_inputs() -> Vec<Arc<InputDevice>> {
-    audio_service().input_devices.get().into_iter().filter(|d| !d.is_monitor.get()).collect()
+    let mut v: Vec<_> =
+        audio_service().input_devices.get().into_iter().filter(|d| !d.is_monitor.get()).collect();
+    v.sort_by_key(|d| d.key.index);
+    v
 }
 
 /// Fire-and-forget desktop notification (replaces the previous one via the
