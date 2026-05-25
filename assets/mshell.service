@@ -1,0 +1,26 @@
+[Unit]
+Description=mshell — margo's desktop shell (bar, menus, notifications, OSD)
+Documentation=https://github.com/kenanpelit/margo
+PartOf=graphical-session.target
+After=graphical-session.target dbus.service
+
+# Guards. Without these the graphical-session.target.wants drop-in (which the
+# package installs to auto-start mshell) would also fire under GNOME/KDE/etc.
+#   * WAYLAND_DISPLAY — margo pushes it into the systemd user environment on
+#     startup, so this is only set once a Wayland compositor is live.
+#   * XDG_SESSION_DESKTOP=margo — keeps mshell to a margo session only.
+#   * the binary must actually be installed.
+ConditionEnvironment=WAYLAND_DISPLAY
+ConditionEnvironment=XDG_SESSION_DESKTOP=margo
+ConditionPathExists=/usr/bin/mshell
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/mshell
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=5
+Slice=session.slice
+
+[Install]
+WantedBy=graphical-session.target

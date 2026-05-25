@@ -7,6 +7,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- **mshell now starts automatically on a margo session (packaged).** The
+  package ships a `mshell.service` systemd **user** unit and auto-enables it
+  via a `graphical-session.target.wants` drop-in, so a fresh install brings
+  up the bar / menus on login with no manual `systemctl --user enable` —
+  and `systemctl --user status mshell` works out of the box. The unit is
+  guarded (`ConditionEnvironment=XDG_SESSION_DESKTOP=margo` + `WAYLAND_DISPLAY`)
+  so it never starts under another desktop, and a user's own
+  `~/.config/systemd/user/mshell.service` still overrides it.
+
 ### Fixed
 
 - **Setup wizard — theme / colour mode / font size now apply live.** The
