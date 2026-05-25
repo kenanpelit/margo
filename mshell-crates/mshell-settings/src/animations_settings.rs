@@ -92,7 +92,7 @@ struct Preset {
 const PRESETS: &[Preset] = &[
     Preset {
         name: "Smooth",
-        desc: "Balanced, niri-flavoured motion — a spring glide for moves, gentle zoom-in, soft fade-out. The refined default.",
+        desc: "Balanced, niri-flavoured motion — a spring glide for moves, gentle zoom-in, snappy fade-out. The refined default.",
         keys: &[
             ("animations", "1"),
             ("layer_animations", "1"),
@@ -107,7 +107,8 @@ const PRESETS: &[Preset] = &[
             ("fadein_begin_opacity", "0.72"),
             ("animation_duration_move", "220"),
             ("animation_duration_open", "180"),
-            ("animation_duration_close", "160"),
+            // Close a touch faster than open — dismissing should feel instant.
+            ("animation_duration_close", "130"),
             ("animation_duration_tag", "280"),
             ("animation_duration_focus", "120"),
             ("animation_clock_move", "spring"),
