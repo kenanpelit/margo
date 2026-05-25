@@ -27,6 +27,7 @@ mod dock_settings;
 mod fonts_settings;
 mod general_settings;
 mod input_settings;
+mod keybinds_settings;
 mod weather_settings;
 mod idle_settings;
 mod launcher_settings;

@@ -8,6 +8,7 @@ use crate::users_settings::{UsersSettingsInit, UsersSettingsModel};
 use crate::display_settings::{DisplaySettingsInit, DisplaySettingsModel};
 use crate::fonts_settings::{FontsSettingsInit, FontsSettingsModel};
 use crate::input_settings::{InputSettingsInit, InputSettingsModel};
+use crate::keybinds_settings::{KeybindsSettingsInit, KeybindsSettingsModel};
 use crate::general_settings::{GeneralSettingsInit, GeneralSettingsModel};
 use crate::weather_settings::{WeatherSettingsInit, WeatherSettingsModel};
 use crate::idle_settings::{IdleSettingsInit, IdleSettingsModel};
@@ -42,6 +43,7 @@ pub struct SettingsWindowModel {
     sound_settings_controller: Controller<SoundSettingsModel>,
     users_settings_controller: Controller<UsersSettingsModel>,
     input_settings_controller: Controller<InputSettingsModel>,
+    keybinds_settings_controller: Controller<KeybindsSettingsModel>,
     display_settings_controller: Controller<DisplaySettingsModel>,
     bar_settings_controller: Controller<BarSettingsModel>,
     menu_settings_controller: Controller<MenuSettingsModel>,
@@ -372,6 +374,27 @@ impl Component for SettingsWindowModel {
                         },
                     },
 
+                    #[name = "keybinds_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("keybinds"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("preferences-desktop-keyboard-shortcuts-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Keybinds",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
                     #[name = "launcher_btn"]
                     gtk::ToggleButton {
                         add_css_class: "sidebar-button",
@@ -672,6 +695,10 @@ impl Component for SettingsWindowModel {
             .launch(UsersSettingsInit {})
             .detach();
 
+        let keybinds_settings_controller = KeybindsSettingsModel::builder()
+            .launch(KeybindsSettingsInit {})
+            .detach();
+
         let input_settings_controller = InputSettingsModel::builder()
             .launch(InputSettingsInit {})
             .detach();
@@ -726,6 +753,7 @@ impl Component for SettingsWindowModel {
                 ("sound", "sound"),
                 ("users", "users"),
                 ("input", "input"),
+                ("keybinds", "keybinds"),
                 ("launcher", "launcher"),
                 ("menus", "menus"),
                 ("theme", "theme"),
@@ -751,6 +779,7 @@ impl Component for SettingsWindowModel {
             sound_settings_controller,
             users_settings_controller,
             input_settings_controller,
+            keybinds_settings_controller,
             display_settings_controller,
             bar_settings_controller,
             menu_settings_controller,
@@ -938,6 +967,12 @@ impl Component for SettingsWindowModel {
             model.input_settings_controller.widget(),
             Some("input"),
             "Input",
+        );
+
+        widgets.stack.add_titled(
+            model.keybinds_settings_controller.widget(),
+            Some("keybinds"),
+            "Keybinds",
         );
 
         widgets.stack.add_titled(
@@ -1350,6 +1385,7 @@ impl Component for SettingsWindowModel {
                     "sound" => Some(&widgets.sound_btn),
                     "users" => Some(&widgets.users_btn),
                     "input" => Some(&widgets.input_btn),
+                    "keybinds" => Some(&widgets.keybinds_btn),
                     "idle" => Some(&widgets.idle_btn),
                     "launcher" => Some(&widgets.launcher_btn),
                     "menus" => Some(&widgets.menus_btn),
