@@ -7,8 +7,27 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.8.2] – 2026-05-25
+
 ### Added
 
+- **Settings → Keybinds** — a full editor for margo's keyboard shortcuts:
+  read every existing bind, add new ones, edit and delete. The editor owns a
+  dedicated `binds.conf`; on the first edit it migrates every inline `bind*`
+  line out of `config.conf` into `binds.conf` (grouped by category), leaves a
+  single `source = binds.conf` behind, and backs the original up to
+  `config.conf.bak`. From then on each change is a clean full rewrite + live
+  reload. The UI is a searchable list (modifier/key chips + humanised action)
+  with an inline editor: modifier chips, a **press-to-capture** key field, a
+  searchable action picker over the dispatch verbs with a contextual argument
+  hint, and an optional description.
+- **Settings → Animations** — five curated motion presets (Smooth, Snappy,
+  Bouncy, Cinematic, Glide), each a full coherent set of per-domain
+  durations / bezier curves / clocks / open-close types. Pick a card, hit
+  Apply, and the whole set is written to `config.conf` and reloaded live.
+  Master on/off + layer-animation switches apply on the spot. **Smooth** is
+  the recommended daily-driver (spring glide for moves, gentle zoom-in,
+  snappy fade-out).
 - **Settings → About / Date & Time / Region & Language** — three new
   system pages closing the gap with a conventional desktop settings app.
   *About* shows read-only system info (OS, kernel, host, CPU / GPU / memory,
@@ -25,33 +44,6 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   Dashboard. The page stays live (default-device, device-list, and
   per-device volume/mute watchers) without feeding programmatic refreshes
   back into a write loop.
-- **mshell now starts automatically on a margo session (packaged).** The
-  package ships a `mshell.service` systemd **user** unit and auto-enables it
-  via a `graphical-session.target.wants` drop-in, so a fresh install brings
-  up the bar / menus on login with no manual `systemctl --user enable` —
-  and `systemctl --user status mshell` works out of the box. The unit is
-  guarded (`ConditionEnvironment=XDG_SESSION_DESKTOP=margo` + `WAYLAND_DISPLAY`)
-  so it never starts under another desktop, and a user's own
-  `~/.config/systemd/user/mshell.service` still overrides it.
-
-### Fixed
-
-- **Setup wizard — theme / colour mode / font size now apply live.** The
-  appearance picks on the wizard's Theme step only took effect at the final
-  "Apply & finish", so selecting a theme mid-wizard looked like it did
-  nothing. They now apply on selection (via `config_manager`, the same path
-  as Settings → Theme).
-
-### Added
-
-- **Bundled shell profiles + a starting-profile picker in the setup wizard.**
-  margo now ships two example mshell profiles — **Default** (clean, minimal)
-  and **Nova** (the full-featured showcase) — installed to
-  `/usr/share/margo/mshell/profiles/` and baked into the binary. The setup
-  wizard's Welcome step now offers them with descriptions; picking one seeds
-  it into `~/.config/margo/mshell/profiles/` (only if absent — it never
-  overwrites a profile you've customised) and activates it live. Both
-  profiles are documented inline in English.
 - **Settings → Input** — a full keyboard / touchpad / mouse page (replacing
   the narrower Gestures page). Keyboard: xkb layout / variant / options
   (e.g. `ctrl:nocaps`), repeat rate + delay, Num Lock on start. Touchpad:
@@ -61,10 +53,31 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   profile + speed. Plus swipe sensitivity, and a **gesture-binding editor**
   — list / add / remove `gesturebind` swipe→action mappings (direction,
   fingers, action, argument, modifiers) right from the UI. Everything writes
-  the compositor `config.conf` and applies live via `mctl config reload`.
+  the compositor `config.conf` and applies live.
+- **Bundled shell profiles + a starting-profile picker in the setup wizard.**
+  margo now ships two example mshell profiles — **Default** (clean, minimal)
+  and **Nova** (the full-featured showcase) — installed to
+  `/usr/share/margo/mshell/profiles/` and baked into the binary. The setup
+  wizard's Welcome step now offers them with descriptions; picking one seeds
+  it into `~/.config/margo/mshell/profiles/` (only if absent — it never
+  overwrites a profile you've customised) and activates it live. Both
+  profiles are documented inline in English.
+- **mshell now starts automatically on a margo session (packaged).** The
+  package ships a `mshell.service` systemd **user** unit and auto-enables it
+  via a `graphical-session.target.wants` drop-in, so a fresh install brings
+  up the bar / menus on login with no manual `systemctl --user enable` —
+  and `systemctl --user status mshell` works out of the box. The unit is
+  guarded (`ConditionEnvironment=XDG_SESSION_DESKTOP=margo` + `WAYLAND_DISPLAY`)
+  so it never starts under another desktop, and a user's own
+  `~/.config/systemd/user/mshell.service` still overrides it.
 
 ### Changed
 
+- **Settings → General decluttered.** With dedicated pages now in place,
+  General keeps only the account, config profile, and shell behaviour
+  (Network OSD). The duplicate Clock toggle was dropped (Date & Time owns
+  it), the Settings-panel font scale moved to **Fonts**, and rounded screen
+  corners + radius moved to a new **Screen** sub-tab under Display.
 - **Twilight menu — source-mode selector now uses power-profile-style
   tiles.** The Auto / Manual / Static / Schedule buttons gained icons and
   the same vertical icon-over-label tile look as the Power menu's profile
@@ -89,6 +102,26 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   widths. The credential card is wider (room for full session names + a
   comfortable password field) and the power keys read as bracketed accent
   chips.
+
+### Fixed
+
+- **Settings pages used the wrong live-reload command.** The Input,
+  Animations and Keybinds pages spawned `mctl config reload`, which mctl
+  rejects ("unrecognized subcommand 'config'") — so the file was rewritten
+  correctly but the compositor never reloaded and edits looked like no-ops.
+  The reload action is `mctl reload`; fixed all three.
+- **General avatar pinned to a fixed 72×72.** A `~/.face` photo shown via a
+  `GtkPicture` leaked the image's intrinsic size up through the box and
+  ballooned the avatar; it's now centre-cropped to a square and drawn through
+  a `GtkImage` at a fixed pixel size, so it stays 72×72 at any source
+  resolution.
+- **Setup wizard — theme / colour mode / font size now apply live.** The
+  appearance picks on the wizard's Theme step only took effect at the final
+  "Apply & finish", so selecting a theme mid-wizard looked like it did
+  nothing. They now apply on selection (via `config_manager`, the same path
+  as Settings → Theme).
+- **Lock-screen background control moved to the Lock page.** It had been
+  misfiled under Session; it now lives with the rest of the lock settings.
 
 ## [0.8.1] – 2026-05-24
 
