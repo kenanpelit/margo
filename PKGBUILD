@@ -352,6 +352,18 @@ package() {
       "$pkgdir/usr/share/doc/$pkgname/layouts/$(basename "$layout")"
   done
 
+  # ── mshell starter profiles (Default / Nova) ───────────────────
+  # Shipped to a stable runtime path so the setup wizard can offer
+  # them on first run and copy the chosen one into the user's
+  # `~/.config/margo/mshell/profiles/`. "default" is a clean minimal
+  # base; "Nova" is the full-featured showcase.
+  local profile
+  for profile in mshell/examples/profiles/*.yaml; do
+    [[ -f "$profile" ]] || continue
+    install -Dm644 "$profile" \
+      "$pkgdir/usr/share/margo/mshell/profiles/$(basename "$profile")"
+  done
+
   # ── Default wallpaper (mlock fallback) ─────────────────────────
   # `mlock` resolves the lock-screen wallpaper from state.json
   # first, then `~/.local/share/margo/wallpapers/default.jpg`,

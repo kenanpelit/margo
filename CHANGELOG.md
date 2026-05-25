@@ -17,6 +17,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- **Bundled shell profiles + a starting-profile picker in the setup wizard.**
+  margo now ships two example mshell profiles — **Default** (clean, minimal)
+  and **Nova** (the full-featured showcase) — installed to
+  `/usr/share/margo/mshell/profiles/` and baked into the binary. The setup
+  wizard's Welcome step now offers them with descriptions; picking one seeds
+  it into `~/.config/margo/mshell/profiles/` (only if absent — it never
+  overwrites a profile you've customised) and activates it live. Both
+  profiles are documented inline in English.
 - **Settings → Input** — a full keyboard / touchpad / mouse page (replacing
   the narrower Gestures page). Keyboard: xkb layout / variant / options
   (e.g. `ctrl:nocaps`), repeat rate + delay, Num Lock on start. Touchpad:

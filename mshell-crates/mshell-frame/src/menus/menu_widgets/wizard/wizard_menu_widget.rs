@@ -87,6 +87,9 @@ fn option_names() -> Vec<&'static str> {
 
 pub(crate) struct WizardMenuWidgetModel {
     page: usize,
+    /// Chosen starter profile ("default" or "Nova"); seeded + activated live
+    /// when picked on the Welcome step.
+    base_profile: String,
     mode: MatugenMode,
     theme_scheme: Themes,
     font_scale: f64,
@@ -121,6 +124,7 @@ pub(crate) enum WizardMenuWidgetInput {
     Next,
     Back,
     Cancel,
+    BaseProfileSelected(&'static str),
     ModeChanged(MatugenMode),
     ThemeChanged(Themes),
     FontScaleChanged(f64),
@@ -196,6 +200,78 @@ impl SimpleComponent for WizardMenuWidgetModel {
                         set_halign: gtk::Align::Start,
                         set_xalign: 0.0,
                         set_wrap: true,
+                    },
+
+                    gtk::Label {
+                        add_css_class: "label-medium-bold",
+                        set_label: "Starting profile",
+                        set_halign: gtk::Align::Start,
+                        set_margin_top: 10,
+                    },
+                    gtk::Label {
+                        add_css_class: "label-small",
+                        set_label: "Pick a base to build on — applied right away. Re-running the wizard never overwrites a profile you've customised.",
+                        set_halign: gtk::Align::Start,
+                        set_xalign: 0.0,
+                        set_wrap: true,
+                    },
+
+                    gtk::Button {
+                        #[watch]
+                        set_css_classes: if model.base_profile == "Nova" {
+                            &["ok-button-surface", "selected"]
+                        } else {
+                            &["ok-button-surface"]
+                        },
+                        connect_clicked[sender] => move |_| {
+                            sender.input(WizardMenuWidgetInput::BaseProfileSelected("Nova"));
+                        },
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_spacing: 2,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_label: "Nova — the full experience",
+                                set_halign: gtk::Align::Start,
+                                set_xalign: 0.0,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_label: "Rich top bar, every menu wired up, Material-You theming, dock + twilight. Recommended.",
+                                set_halign: gtk::Align::Start,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                            },
+                        },
+                    },
+
+                    gtk::Button {
+                        #[watch]
+                        set_css_classes: if model.base_profile == "default" {
+                            &["ok-button-surface", "selected"]
+                        } else {
+                            &["ok-button-surface"]
+                        },
+                        connect_clicked[sender] => move |_| {
+                            sender.input(WizardMenuWidgetInput::BaseProfileSelected("default"));
+                        },
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_spacing: 2,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_label: "Default — clean & minimal",
+                                set_halign: gtk::Align::Start,
+                                set_xalign: 0.0,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_label: "A single top bar with the essentials and built-in defaults — a bare canvas to build on.",
+                                set_halign: gtk::Align::Start,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                            },
+                        },
                     },
                 },
 
@@ -587,6 +663,14 @@ impl SimpleComponent for WizardMenuWidgetModel {
                 self.applied = false;
             }
             WizardMenuWidgetInput::Reboot => run_session_action(SessionAction::Reboot),
+            WizardMenuWidgetInput::BaseProfileSelected(name) => {
+                self.base_profile = name.to_string();
+                // Seed the bundled starter profile if the user has none of
+                // that name yet (never clobbers a customised one), then make
+                // it active live so the choice is visible immediately.
+                mshell_config::config_utils::seed_bundled_profile(name);
+                config_manager().set_active_profile(Some(name.to_string()));
+            }
             // Appearance picks apply LIVE (like Settings → Theme), not only at
             // "Apply & finish" — otherwise selecting a theme / mode / font in
             // the wizard showed no change until the very end, which read as
@@ -874,6 +958,12 @@ fn read_live() -> WizardMenuWidgetModel {
     // consume `self`, so read each from a fresh handle.
     WizardMenuWidgetModel {
         page: 0,
+        // Pre-select whichever bundled profile is already active, else the
+        // recommended "Nova".
+        base_profile: match config_manager().active_profile().get_untracked().as_deref() {
+            Some("default") => "default".to_string(),
+            _ => "Nova".to_string(),
+        },
         mode: config_manager().config().theme().matugen().mode().get_untracked(),
         theme_scheme: config_manager().config().theme().theme().get_untracked(),
         font_scale: config_manager()

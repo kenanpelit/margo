@@ -149,3 +149,63 @@ pub(crate) fn persist_config_layer<T: Serialize>(
 
     Ok(())
 }
+
+// Starter profiles baked into the binary (also installed to
+// /usr/share/margo/mshell/profiles/ for reference). The setup wizard seeds
+// the chosen one into the user's profiles dir on first run — baking them in
+// means it works whether or not the package data is present (e.g. a dev
+// `cargo install` of just the binary).
+const BUNDLED_DEFAULT: &str = include_str!("../../../mshell/examples/profiles/default.yaml");
+const BUNDLED_NOVA: &str = include_str!("../../../mshell/examples/profiles/Nova.yaml");
+
+/// Baked YAML for a bundled starter profile, if the name is one we ship.
+pub fn bundled_profile_yaml(name: &str) -> Option<&'static str> {
+    match name {
+        "default" => Some(BUNDLED_DEFAULT),
+        "Nova" => Some(BUNDLED_NOVA),
+        _ => None,
+    }
+}
+
+/// Write a bundled starter profile into the user's profiles dir, but only if
+/// no profile of that name exists yet — so re-running the wizard never
+/// clobbers a profile the user has customised. Returns whether a file for
+/// `name` exists afterwards (freshly seeded or already there).
+pub fn seed_bundled_profile(name: &str) -> bool {
+    let Some(yaml) = bundled_profile_yaml(name) else {
+        return false;
+    };
+    let path = profile_path(name);
+    if path.exists() {
+        return true; // keep the user's existing profile untouched
+    }
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    fs::write(&path, yaml).is_ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    /// The profile examples shipped with the package (Default / Nova) must
+    /// merge cleanly over the compiled-in defaults and extract to a full
+    /// `Config` — a broken example would ship a broken first-run experience.
+    #[test]
+    fn shipped_profiles_parse() {
+        let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../mshell/examples/profiles");
+        for name in ["default.yaml", "Nova.yaml"] {
+            let path = base.join(name);
+            let cfg = Figment::from(Serialized::defaults(Config::default()))
+                .merge(Yaml::file(&path))
+                .extract::<Config>();
+            assert!(
+                cfg.is_ok(),
+                "shipped profile {name} failed to parse: {:?}",
+                cfg.err()
+            );
+        }
+    }
+}

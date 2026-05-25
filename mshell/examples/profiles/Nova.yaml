@@ -1,0 +1,417 @@
+# ╭───────────────────────────────────────────────────────────────────────╮
+# │ Nova — the full-featured margo shell profile                            │
+# │                                                                         │
+# │ The curated "everything on" experience: a rich top bar, every menu      │
+# │ wired up, Material-You theming, twilight, dock, and sensible idle /     │
+# │ clipboard / session defaults. This is the showcase config — pick it in  │
+# │ the setup wizard, then tune anything from Settings.                     │
+# │                                                                         │
+# │ Edits made through Settings are re-serialised by the shell, so these    │
+# │ comments only live in the shipped copy — they document the schema, not  │
+# │ your saved state. Machine-specific bits (wallpaper folder, weather      │
+# │ location, autostart) are intentionally left blank/neutral here.         │
+# ╰───────────────────────────────────────────────────────────────────────╯
+
+# ── General ─────────────────────────────────────────────────────────────
+# Clock format, weather location, units. Set your weather location from
+# Settings → Weather (left at neutral coordinates here).
+general:
+  clock_format_24_h: true
+  weather_location_query:
+    type: Coordinates
+    lat: 0.0
+    lon: 0.0
+  temperature_unit: Metric
+  show_screen_corners: false
+  screen_corner_radius: 24
+  network_osd_enabled: false
+
+# ── Theme ───────────────────────────────────────────────────────────────
+# Material-You (matugen) dark theme on the bundled MargoMaterial icon set.
+# Fonts default to Maple Mono NF; install it or change them in Settings.
+theme:
+  icons:
+    shell_icon_theme: MargoMaterial
+    app_icon_theme: MargoMaterial
+    apply_theme_filter: false
+    filter_strength: 1.0
+    monochrome_strength: 0.0
+    contrast_strength: 1.0
+  theme: Default
+  matugen:
+    preference: Darkness
+    scheme_type: TonalSpot
+    mode: Dark
+    contrast: 0.0
+  css_file: ''
+  attributes:
+    font:
+      primary: Maple Mono NF
+      secondary: Maple Mono NF
+      tertiary: Maple Mono NF
+      monospace: ''
+    sizing:
+      radius_widget: 12
+      radius_window: 12
+      border_width: 2
+      bar_hover_strength: 14
+      settings_font_scale: 1.05
+      font_scale: 1.0
+      bar_font_scale: 1.0
+    window_opacity: 1.0
+
+# ── Bars ────────────────────────────────────────────────────────────────
+# A populated top bar (the bottom bar is empty/hidden). Widget order is
+# left → center → right; reorder or move widgets from Settings → Bar.
+bars:
+  frame:
+    enable_frame: true
+    monitor_filter: []
+  widgets:
+    system_update:
+      check_interval_minutes: 180
+      check_repo: true
+      check_aur: true
+      check_flatpak: false
+  top_bar:
+    minimum_height: 40
+    reveal_by_default: true
+    left_widgets:
+    - Twilight
+    - MargoTags
+    - MargoLayoutSwitcher
+    - ActiveWindow
+    - MediaPlayer
+    center_widgets:
+    - Weather
+    - Dashboard
+    - Notifications
+    - KeepAwake
+    right_widgets:
+    - Network
+    - CpuDashboard
+    - RecordingIndicator
+    - Clipboard
+    - Valent
+    - AudioDashboard
+    - Bluetooth
+    - VpnIndicator
+    - Notes
+    - Podman
+    - Dns
+    - Ufw
+    - Power
+    - Tray
+  bottom_bar:
+    minimum_height: 0
+    reveal_by_default: false
+    left_widgets: []
+    center_widgets: []
+    right_widgets: []
+
+# ── Menus ───────────────────────────────────────────────────────────────
+# Each bar widget opens a menu surface; position + size are tuned per menu.
+menus:
+  clock_menu:
+    position: Top
+    widgets:
+    - Calendar
+    - !Spacer
+      size: 20
+    - Weather
+    minimum_width: 410
+    maximum_height: 0
+  clipboard_menu:
+    position: TopRight
+    widgets:
+    - Clipboard
+    minimum_width: 520
+    maximum_height: 1080
+  notification_menu:
+    position: TopRight
+    widgets:
+    - Notifications
+    minimum_width: 520
+    maximum_height: 1200
+  screenshot_menu:
+    position: Top
+    widgets:
+    - Screenshots
+    - Divider
+    - ScreenRecording
+    minimum_width: 410
+    maximum_height: 0
+  app_launcher_menu:
+    position: Top
+    widgets:
+    - AppLauncher
+    minimum_width: 800
+    maximum_height: 1080
+  wallpaper_menu:
+    position: Top
+    widgets:
+    - ThemePicker
+    - Wallpaper
+    minimum_width: 1200
+    maximum_height: 0
+  screenshare_menu:
+    position: Top
+  ufw_menu:
+    position: TopRight
+    widgets:
+    - Ufw
+    minimum_width: 410
+    maximum_height: 0
+  dns_menu:
+    position: TopRight
+    widgets:
+    - Dns
+    minimum_width: 420
+    maximum_height: 0
+  podman_menu:
+    position: TopRight
+    widgets:
+    - Podman
+    minimum_width: 540
+    maximum_height: 0
+  notes_menu:
+    position: TopRight
+    widgets:
+    - Notes
+    minimum_width: 540
+    maximum_height: 0
+  ip_menu:
+    position: TopRight
+    widgets:
+    - Ip
+    minimum_width: 380
+    maximum_height: 0
+  network_menu:
+    position: TopRight
+    widgets:
+    - Network
+    minimum_width: 460
+    maximum_height: 0
+  power_menu:
+    position: TopRight
+    widgets:
+    - Power
+    minimum_width: 360
+    maximum_height: 0
+  bluetooth_menu:
+    position: TopRight
+    widgets:
+    - Bluetooth
+    minimum_width: 400
+    maximum_height: 0
+  cpu_dashboard_menu:
+    position: TopRight
+    widgets:
+    - CpuDashboard
+    minimum_width: 380
+    maximum_height: 0
+  audio_dashboard_menu:
+    position: TopRight
+    widgets:
+    - AudioDashboard
+    minimum_width: 400
+    maximum_height: 0
+  system_update_menu:
+    position: TopRight
+    widgets:
+    - SystemUpdate
+    minimum_width: 460
+    maximum_height: 620
+  valent_menu:
+    position: TopRight
+    widgets:
+    - Valent
+    minimum_width: 460
+    maximum_height: 620
+  keep_awake_menu:
+    position: Top
+    widgets:
+    - KeepAwake
+    minimum_width: 450
+    maximum_height: 0
+  weather_menu:
+    position: Top
+    widgets:
+    - Weather
+    minimum_width: 640
+    maximum_height: 640
+  twilight_menu:
+    position: TopLeft
+    widgets:
+    - Twilight
+    minimum_width: 360
+    maximum_height: 0
+  keybinds_menu:
+    position: Top
+    widgets:
+    - Keybinds
+    minimum_width: 820
+    maximum_height: 1440
+  ssh_menu:
+    position: TopRight
+    widgets:
+    - SshSessions
+    minimum_width: 460
+    maximum_height: 720
+  media_player_menu:
+    position: TopLeft
+    widgets:
+    - MediaPlayer
+    minimum_width: 460
+    maximum_height: 0
+  session_menu:
+    position: Top
+    widgets:
+    - Session
+    minimum_width: 420
+    maximum_height: 0
+  settings_menu:
+    position: Top
+    widgets: []
+    minimum_width: 780
+    maximum_height: 0
+  dashboard_menu:
+    position: Top
+    widgets:
+    - Clock
+    - !Spacer
+      size: 8
+    - !Container
+      widgets:
+      - !Container
+        widgets:
+        - CalendarGrid
+        - Weather
+        spacing: 10
+        orientation: Vertical
+        minimum_width: 400
+        homogeneous: false
+        fill: true
+      - !Container
+        widgets:
+        - OverviewIntel
+        - Connectivity
+        - CompactAudio
+        - SystemStatus
+        - MediaPlayer
+        spacing: 8
+        orientation: Vertical
+        minimum_width: 400
+        homogeneous: false
+        fill: true
+      spacing: 12
+      orientation: Horizontal
+      minimum_width: 0
+      homogeneous: true
+      fill: false
+    - !Spacer
+      size: 10
+    - !QuickActions
+      widgets:
+      - AirplaneMode
+      - Nightlight
+      - ColorPicker
+      - Wallpaper
+      - Screenshot
+      - Settings
+      - Logout
+      - Lock
+      - Reboot
+      - Shutdown
+    minimum_width: 860
+    maximum_height: 0
+  margo_layout_menu:
+    position: TopLeft
+    widgets:
+    - MargoLayout
+    minimum_width: 280
+    maximum_height: 0
+  left_menu_expansion_type: AlwaysExpanded
+  right_menu_expansion_type: AlwaysExpanded
+
+# ── Notifications ───────────────────────────────────────────────────────
+notifications:
+  notification_position: Right
+  blocklist: []
+  show_close_button: true
+  show_action_buttons: false
+  group_notifications: false
+  popup_width: 460
+
+# ── Wallpaper ───────────────────────────────────────────────────────────
+# Point `wallpaper_dir` at your wallpaper folder (or let the wizard set it).
+# Rotation is on by default once a folder is chosen.
+wallpaper:
+  wallpaper_dir: ''
+  content_fit: Cover
+  apply_theme_filter: false
+  theme_filter_strength: 1.0
+  rotation_enabled: true
+  rotation_interval_minutes: 5
+  rotation_mode: Sequential
+
+# ── Clock formats (tempo) ───────────────────────────────────────────────
+tempo:
+  clock_format: '%a %d %b %H:%M'
+  formats:
+  - '%H:%M'
+  - '%H:%M:%S'
+  - '%a %d %b %H:%M'
+  - '%d.%m.%Y %H:%M'
+
+# ── Idle behaviour ──────────────────────────────────────────────────────
+# Dim → lock → suspend timeouts (minutes).
+idle:
+  dim_enabled: true
+  dim_timeout_minutes: 20
+  lock_enabled: true
+  lock_timeout_minutes: 25
+  suspend_enabled: true
+  suspend_timeout_minutes: 30
+
+# ── Session commands ────────────────────────────────────────────────────
+# Override the power-menu actions; blank = the built-in default
+# (systemctl / the in-process lock). Non-empty values run via `sh -c`.
+session:
+  lock_command: ''
+  logout_command: ''
+  suspend_command: systemctl suspend -i
+  reboot_command: ''
+  shutdown_command: systemctl poweroff -i
+
+# ── Clipboard history ───────────────────────────────────────────────────
+clipboard:
+  max_entries: 1000
+  persist: All
+  clear_policy: Never
+  clear_after_hours: 24
+  skip_sensitive: false
+  image_history: true
+  density: Comfortable
+
+# ── Launcher ────────────────────────────────────────────────────────────
+# Autostart entries are per-machine, so the shipped profile leaves them
+# empty. Add your own from Settings → Launcher.
+launcher:
+  autostart_scripts: []
+
+# ── Valent (KDE Connect) ────────────────────────────────────────────────
+valent:
+  main_device_id: ''
+
+# ── Dock ────────────────────────────────────────────────────────────────
+dock:
+  icon_size: 24
+  show_tooltips: true
+  show_running: true
+
+# ── Pass (password-store launcher) ──────────────────────────────────────
+# Defaults to ~/.password-store when blank; set your store from
+# Settings → Launcher.
+pass:
+  store_path: ''
