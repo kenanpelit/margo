@@ -20,6 +20,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   (username, full name, administrator status from `wheel`/`sudo`, and
   `~/.face` / AccountsService avatars), parsed from `/etc/passwd` +
   `/etc/group`. The current user is listed first.
+- **Settings → Sound** — output + input device selection, volume, and mute,
+  backed by the same reactive `wayle_audio` service as the bar's Audio
+  Dashboard. The page stays live (default-device, device-list, and
+  per-device volume/mute watchers) without feeding programmatic refreshes
+  back into a write loop.
 - **mshell now starts automatically on a margo session (packaged).** The
   package ships a `mshell.service` systemd **user** unit and auto-enables it
   via a `graphical-session.target.wants` drop-in, so a fresh install brings

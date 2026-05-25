@@ -36,6 +36,7 @@ mod notification_settings;
 mod session_settings;
 mod setup_settings;
 pub mod settings;
+mod sound_settings;
 mod system_update_settings;
 mod users_settings;
 mod theme_settings;

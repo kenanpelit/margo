@@ -3978,12 +3978,15 @@ dependencies = [
  "mshell-config",
  "mshell-launcher",
  "mshell-matugen",
+ "mshell-services",
  "mshell-style",
+ "mshell-utils",
  "reactive_graph",
  "relm4",
  "serde_json",
  "tokio",
  "tracing",
+ "wayle-audio",
 ]
 
 [[package]]
