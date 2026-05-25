@@ -7,6 +7,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- **Settings → Input** — a full keyboard / touchpad / mouse page (replacing
+  the narrower Gestures page). Keyboard: xkb layout / variant / options
+  (e.g. `ctrl:nocaps`), repeat rate + delay, Num Lock on start. Touchpad:
+  tap-to-click / tap-and-drag / drag-lock, natural scroll, disable-while-
+  typing, left-handed, middle-button emulation, click + scroll method,
+  scroll button, send-events mode. Mouse: natural scroll, acceleration
+  profile + speed. Plus swipe sensitivity. Everything writes the compositor
+  `config.conf` and applies live via `mctl config reload`.
+
 ### Changed
 
 - **Twilight menu — source-mode selector now uses power-profile-style
