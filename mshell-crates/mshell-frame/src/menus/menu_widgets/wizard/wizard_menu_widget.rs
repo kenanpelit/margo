@@ -587,10 +587,26 @@ impl SimpleComponent for WizardMenuWidgetModel {
                 self.applied = false;
             }
             WizardMenuWidgetInput::Reboot => run_session_action(SessionAction::Reboot),
-            WizardMenuWidgetInput::ModeChanged(m) => self.mode = m,
-            WizardMenuWidgetInput::ThemeChanged(t) => self.theme_scheme = t,
-            WizardMenuWidgetInput::FontScaleChanged(v) => self.font_scale = v,
-            WizardMenuWidgetInput::Clock24hToggled(v) => self.clock_24h = v,
+            // Appearance picks apply LIVE (like Settings → Theme), not only at
+            // "Apply & finish" — otherwise selecting a theme / mode / font in
+            // the wizard showed no change until the very end, which read as
+            // "nothing applies".
+            WizardMenuWidgetInput::ModeChanged(m) => {
+                self.mode = m;
+                config_manager().update_config(move |c| c.theme.matugen.mode = m);
+            }
+            WizardMenuWidgetInput::ThemeChanged(t) => {
+                self.theme_scheme = t;
+                config_manager().update_config(move |c| c.theme.theme = t);
+            }
+            WizardMenuWidgetInput::FontScaleChanged(v) => {
+                self.font_scale = v;
+                config_manager().update_config(move |c| c.theme.attributes.sizing.font_scale = v);
+            }
+            WizardMenuWidgetInput::Clock24hToggled(v) => {
+                self.clock_24h = v;
+                config_manager().update_config(move |c| c.general.clock_format_24_h = v);
+            }
             WizardMenuWidgetInput::XkbLayoutChanged(s) => self.xkb_layout = s,
             WizardMenuWidgetInput::XkbVariantChanged(s) => self.xkb_variant = s.trim().to_string(),
             WizardMenuWidgetInput::XkbOptionsChanged(s) => self.xkb_options = s,

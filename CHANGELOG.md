@@ -7,6 +7,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Setup wizard — theme / colour mode / font size now apply live.** The
+  appearance picks on the wizard's Theme step only took effect at the final
+  "Apply & finish", so selecting a theme mid-wizard looked like it did
+  nothing. They now apply on selection (via `config_manager`, the same path
+  as Settings → Theme).
+
 ### Added
 
 - **Settings → Input** — a full keyboard / touchpad / mouse page (replacing
