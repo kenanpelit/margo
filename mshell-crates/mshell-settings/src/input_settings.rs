@@ -10,8 +10,9 @@
 //! Text fields (xkb layout / variant / options) apply on Enter to avoid a
 //! reload per keystroke; switches, dropdowns and spinners apply on change.
 
+use crate::row::Row;
 use relm4::gtk::prelude::*;
-use relm4::{Component, ComponentParts, ComponentSender, WidgetTemplate, gtk};
+use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::path::PathBuf;
 
 /// `~/.config/margo/config.conf` (XDG-aware), the same file the wizard
@@ -1053,32 +1054,3 @@ fn rebuild_binds(
     }
 }
 
-/// A settings row: a left-hand title + description, with the control widget
-/// appended on the right. Keeps the big view above readable.
-#[relm4::widget_template(pub)]
-impl WidgetTemplate for Row {
-    view! {
-        gtk::Box {
-            set_orientation: gtk::Orientation::Horizontal,
-            set_spacing: 20,
-            gtk::Box {
-                set_orientation: gtk::Orientation::Vertical,
-                set_hexpand: true,
-                #[name = "title"]
-                gtk::Label {
-                    add_css_class: "label-medium-bold",
-                    set_halign: gtk::Align::Start,
-                    set_hexpand: true,
-                },
-                #[name = "desc"]
-                gtk::Label {
-                    add_css_class: "label-small",
-                    set_halign: gtk::Align::Start,
-                    set_xalign: 0.0,
-                    set_wrap: true,
-                    set_natural_wrap_mode: gtk::NaturalWrapMode::None,
-                },
-            },
-        }
-    }
-}

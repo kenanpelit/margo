@@ -9,6 +9,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- **Settings → About / Date & Time / Region & Language** — three new
+  system pages closing the gap with a conventional desktop settings app.
+  *About* shows read-only system info (OS, kernel, host, CPU / GPU / memory,
+  desktop session, margo version, uptime). *Date & Time* wraps `timedatectl`
+  (automatic time / NTP, searchable timezone, 24-hour clock). *Region &
+  Language* wraps `localectl` (system `LANG`, searchable). The `timedatectl`
+  / `localectl` writes authenticate through margo's polkit agent.
 - **mshell now starts automatically on a margo session (packaged).** The
   package ships a `mshell.service` systemd **user** unit and auto-enables it
   via a `graphical-session.target.wants` drop-in, so a fresh install brings

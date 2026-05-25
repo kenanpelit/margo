@@ -14,9 +14,13 @@
 
 use std::sync::OnceLock;
 
+mod about_settings;
 mod bar_pill_settings;
 mod bar_settings;
 mod clipboard_settings;
+mod date_time_settings;
+mod region_settings;
+mod row;
 mod display_settings;
 mod dock_settings;
 mod fonts_settings;

@@ -1,4 +1,7 @@
+use crate::about_settings::{AboutSettingsInit, AboutSettingsModel};
 use crate::bar_settings::bar_settings::{BarSettingsInit, BarSettingsModel};
+use crate::date_time_settings::{DateTimeSettingsInit, DateTimeSettingsModel};
+use crate::region_settings::{RegionSettingsInit, RegionSettingsModel};
 use crate::display_settings::{DisplaySettingsInit, DisplaySettingsModel};
 use crate::fonts_settings::{FontsSettingsInit, FontsSettingsModel};
 use crate::input_settings::{InputSettingsInit, InputSettingsModel};
@@ -29,6 +32,9 @@ pub struct SettingsWindowModel {
     wallpaper_settings_controller: Controller<WallpaperSettingsModel>,
     theme_settings_controller: Controller<ThemeSettingsModel>,
     fonts_settings_controller: Controller<FontsSettingsModel>,
+    about_settings_controller: Controller<AboutSettingsModel>,
+    date_time_settings_controller: Controller<DateTimeSettingsModel>,
+    region_settings_controller: Controller<RegionSettingsModel>,
     input_settings_controller: Controller<InputSettingsModel>,
     display_settings_controller: Controller<DisplaySettingsModel>,
     bar_settings_controller: Controller<BarSettingsModel>,
@@ -192,6 +198,27 @@ impl Component for SettingsWindowModel {
                         },
                     },
 
+                    #[name = "about_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("about"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("help-about-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "About",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
                     #[name = "bar_btn"]
                     gtk::ToggleButton {
                         add_css_class: "sidebar-button",
@@ -207,6 +234,27 @@ impl Component for SettingsWindowModel {
                             gtk::Label {
                                 add_css_class: "label-medium",
                                 set_label: "Bar",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
+                    #[name = "date_time_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("date_time"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("preferences-system-time-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Date & Time",
                                 set_halign: gtk::Align::Start,
                                 set_hexpand: true,
                             },
@@ -333,6 +381,27 @@ impl Component for SettingsWindowModel {
                             gtk::Label {
                                 add_css_class: "label-medium",
                                 set_label: "Menus",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
+                    #[name = "region_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("region"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("preferences-desktop-locale-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Region & Language",
                                 set_halign: gtk::Align::Start,
                                 set_hexpand: true,
                             },
@@ -510,6 +579,18 @@ impl Component for SettingsWindowModel {
             .launch(FontsSettingsInit {})
             .detach();
 
+        let about_settings_controller = AboutSettingsModel::builder()
+            .launch(AboutSettingsInit {})
+            .detach();
+
+        let date_time_settings_controller = DateTimeSettingsModel::builder()
+            .launch(DateTimeSettingsInit {})
+            .detach();
+
+        let region_settings_controller = RegionSettingsModel::builder()
+            .launch(RegionSettingsInit {})
+            .detach();
+
         let input_settings_controller = InputSettingsModel::builder()
             .launch(InputSettingsInit {})
             .detach();
@@ -557,6 +638,9 @@ impl Component for SettingsWindowModel {
                 ("display", "display"),
                 ("fonts", "fonts"),
                 ("idle", "idle"),
+                ("about", "about"),
+                ("date_time", "date_time"),
+                ("region", "region"),
                 ("input", "input"),
                 ("launcher", "launcher"),
                 ("menus", "menus"),
@@ -576,6 +660,9 @@ impl Component for SettingsWindowModel {
             wallpaper_settings_controller,
             theme_settings_controller,
             fonts_settings_controller,
+            about_settings_controller,
+            date_time_settings_controller,
+            region_settings_controller,
             input_settings_controller,
             display_settings_controller,
             bar_settings_controller,
@@ -722,6 +809,24 @@ impl Component for SettingsWindowModel {
             model.fonts_settings_controller.widget(),
             Some("fonts"),
             "Fonts",
+        );
+
+        widgets.stack.add_titled(
+            model.about_settings_controller.widget(),
+            Some("about"),
+            "About",
+        );
+
+        widgets.stack.add_titled(
+            model.date_time_settings_controller.widget(),
+            Some("date_time"),
+            "Date & Time",
+        );
+
+        widgets.stack.add_titled(
+            model.region_settings_controller.widget(),
+            Some("region"),
+            "Region & Language",
         );
 
         widgets.stack.add_titled(
@@ -1133,6 +1238,9 @@ impl Component for SettingsWindowModel {
                     "bar" => Some(&widgets.bar_btn),
                     "display" => Some(&widgets.display_btn),
                     "fonts" => Some(&widgets.fonts_btn),
+                    "about" => Some(&widgets.about_btn),
+                    "date_time" => Some(&widgets.date_time_btn),
+                    "region" => Some(&widgets.region_btn),
                     "input" => Some(&widgets.input_btn),
                     "idle" => Some(&widgets.idle_btn),
                     "launcher" => Some(&widgets.launcher_btn),
