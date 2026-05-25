@@ -35,6 +35,10 @@ pub(crate) struct TwilightMenuWidgetModel {
     /// Chip buttons, parallel to `presets`, so the currently-scheduled
     /// one can be tinted active without rebuilding the grid.
     preset_buttons: Vec<gtk::Button>,
+    /// Source-mode tiles keyed by mode id (`geo`/`manual`/`static`/
+    /// `schedule`), so the active one gets `.selected` without a rebuild —
+    /// same pattern as the power-profile buttons.
+    mode_buttons: Vec<(&'static str, gtk::Button)>,
 }
 
 #[derive(Debug)]
@@ -122,45 +126,14 @@ impl Component for TwilightMenuWidgetModel {
                 },
             },
 
-            // Source-mode selector.
-            gtk::Box {
+            // Source-mode selector — power-profile-style icon tiles
+            // (built imperatively in `init`, kept in `mode_buttons`).
+            #[local_ref]
+            mode_box -> gtk::Box {
                 add_css_class: "twilight-mode-row",
                 set_orientation: gtk::Orientation::Horizontal,
                 set_spacing: 6,
                 set_homogeneous: true,
-
-                gtk::Button {
-                    #[watch]
-                    set_css_classes: &mode_classes(&model.status.mode, "geo"),
-                    set_label: "Auto",
-                    connect_clicked[sender] => move |_| {
-                        sender.input(TwilightMenuWidgetInput::SetMode("geo"));
-                    },
-                },
-                gtk::Button {
-                    #[watch]
-                    set_css_classes: &mode_classes(&model.status.mode, "manual"),
-                    set_label: "Manual",
-                    connect_clicked[sender] => move |_| {
-                        sender.input(TwilightMenuWidgetInput::SetMode("manual"));
-                    },
-                },
-                gtk::Button {
-                    #[watch]
-                    set_css_classes: &mode_classes(&model.status.mode, "static"),
-                    set_label: "Static",
-                    connect_clicked[sender] => move |_| {
-                        sender.input(TwilightMenuWidgetInput::SetMode("static"));
-                    },
-                },
-                gtk::Button {
-                    #[watch]
-                    set_css_classes: &mode_classes(&model.status.mode, "schedule"),
-                    set_label: "Schedule",
-                    connect_clicked[sender] => move |_| {
-                        sender.input(TwilightMenuWidgetInput::SetMode("schedule"));
-                    },
-                },
             },
 
             // Temperature slider — previews live (pins until Reset).
@@ -255,14 +228,34 @@ impl Component for TwilightMenuWidgetModel {
             }
         });
 
+        // Source-mode tiles (icon + label), built like the power-profile
+        // buttons so each carries an icon; `mode_box` is consumed by the
+        // `#[local_ref]` in the view.
+        let mode_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        let mut mode_buttons: Vec<(&'static str, gtk::Button)> = Vec::with_capacity(4);
+        for (mode, icon, label) in [
+            ("geo", "weather-sunset-symbolic", "Auto"),
+            ("manual", "document-edit-symbolic", "Manual"),
+            ("static", "nightlight-symbolic", "Static"),
+            ("schedule", "timer-symbolic", "Schedule"),
+        ] {
+            let btn = make_mode_button(icon, label);
+            let s = sender.clone();
+            btn.connect_clicked(move |_| s.input(TwilightMenuWidgetInput::SetMode(mode)));
+            mode_box.append(&btn);
+            mode_buttons.push((mode, btn));
+        }
+
         let mut model = TwilightMenuWidgetModel {
             status: TwilightStatus::default(),
             temp_debounce: None,
             settle_until: Instant::now(),
             presets: Vec::new(),
             preset_buttons: Vec::new(),
+            mode_buttons,
         };
         let widgets = view_output!();
+        model.sync_modes();
 
         // Fill the preset grid from disk; hide the section if empty.
         let presets = twilight::load_presets();
@@ -331,6 +324,7 @@ impl Component for TwilightMenuWidgetModel {
             }
         }
         self.refresh_active_chip();
+        self.sync_modes();
     }
 
     fn update_cmd(
@@ -362,6 +356,18 @@ impl TwilightMenuWidgetModel {
                 btn.add_css_class("active");
             } else {
                 btn.remove_css_class("active");
+            }
+        }
+    }
+
+    /// Flip `.selected` onto the active source-mode tile (the others stay
+    /// on the plain surface).
+    fn sync_modes(&self) {
+        for (mode, btn) in &self.mode_buttons {
+            if *mode == self.status.mode {
+                btn.set_css_classes(&["ok-button-surface", "twilight-mode-button", "selected"]);
+            } else {
+                btn.set_css_classes(&["ok-button-surface", "twilight-mode-button"]);
             }
         }
     }
@@ -454,13 +460,26 @@ fn preset_chip(
     (child, btn)
 }
 
-/// CSS classes for a mode button — `selected` when it's the active mode.
-fn mode_classes(active: &str, this: &str) -> Vec<&'static str> {
-    if active == this {
-        vec!["ok-button-surface", "twilight-mode-button", "selected"]
-    } else {
-        vec!["ok-button-surface", "twilight-mode-button"]
-    }
+/// A source-mode tile — a vertical icon + label button matching the
+/// power-profile buttons. The `.selected` state is applied later by
+/// [`TwilightMenuWidgetModel::sync_modes`].
+fn make_mode_button(icon: &str, label: &str) -> gtk::Button {
+    let inner = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(4)
+        .halign(gtk::Align::Center)
+        .build();
+    let img = gtk::Image::from_icon_name(icon);
+    img.set_pixel_size(22);
+    inner.append(&img);
+    let lbl = gtk::Label::new(Some(label));
+    lbl.add_css_class("label-small-bold");
+    inner.append(&lbl);
+    gtk::Button::builder()
+        .child(&inner)
+        .css_classes(vec!["ok-button-surface", "twilight-mode-button"])
+        .hexpand(true)
+        .build()
 }
 
 /// "4200 K · Night · Schedule" — non-empty parts joined with " · ".

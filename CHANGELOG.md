@@ -9,6 +9,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Changed
 
+- **Twilight menu — source-mode selector now uses power-profile-style
+  tiles.** The Auto / Manual / Static / Schedule buttons gained icons and
+  the same vertical icon-over-label tile look as the Power menu's profile
+  switcher (active mode filled primary), so the two quick-control panels
+  feel like one family instead of plain text segments.
 - **mlogind greeter redesigned to match the mlock lock screen.** The login
   TUI now mirrors mlock's centred stack: a time-aware greeting, a big block
   clock (live, ticking every second), the full date, a single rounded
