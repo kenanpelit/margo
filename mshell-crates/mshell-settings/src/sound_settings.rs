@@ -193,7 +193,7 @@ impl Component for SoundSettingsModel {
         let default_in = svc.default_input.get();
 
         // ── Output controls ──
-        let out_model = string_list(out_devices.iter().map(|d| d.name.get()));
+        let out_model = string_list(out_devices.iter().map(|d| label_or_name(d.description.get(), d.name.get())));
         let out_dd = gtk::DropDown::builder().model(&out_model).build();
         out_dd.set_width_request(240);
         out_dd.set_valign(gtk::Align::Center);
@@ -223,7 +223,7 @@ impl Component for SoundSettingsModel {
         });
 
         // ── Input controls ──
-        let in_model = string_list(in_devices.iter().map(|d| d.name.get()));
+        let in_model = string_list(in_devices.iter().map(|d| label_or_name(d.description.get(), d.name.get())));
         let in_dd = gtk::DropDown::builder().model(&in_model).build();
         in_dd.set_width_request(240);
         in_dd.set_valign(gtk::Align::Center);
@@ -381,7 +381,7 @@ impl Component for SoundSettingsModel {
             SoundSettingsCommandOutput::OutVolMuteChanged => self.sync_output(),
             SoundSettingsCommandOutput::OutDevicesChanged => {
                 self.out_devices = audio_service().output_devices.get();
-                splice(&self.out_model, self.out_devices.iter().map(|d| d.name.get()));
+                splice(&self.out_model, self.out_devices.iter().map(|d| label_or_name(d.description.get(), d.name.get())));
                 self.sync_output();
             }
             SoundSettingsCommandOutput::InDefaultChanged => {
@@ -396,7 +396,7 @@ impl Component for SoundSettingsModel {
             SoundSettingsCommandOutput::InVolMuteChanged => self.sync_input(),
             SoundSettingsCommandOutput::InDevicesChanged => {
                 self.in_devices = audio_service().input_devices.get();
-                splice(&self.in_model, self.in_devices.iter().map(|d| d.name.get()));
+                splice(&self.in_model, self.in_devices.iter().map(|d| label_or_name(d.description.get(), d.name.get())));
                 self.sync_input();
             }
         }
@@ -445,6 +445,13 @@ fn block<W: IsA<gtk::glib::Object>>(widget: &W, handler: &SignalHandlerId, f: im
     widget.block_signal(handler);
     f();
     widget.unblock_signal(handler);
+}
+
+/// Human-friendly device label: PipeWire's `description` ("Logitech Z205
+/// Analog Stereo") when set, falling back to the technical node `name`
+/// (`alsa_output.pci-…`) only if the description is empty.
+fn label_or_name(description: String, name: String) -> String {
+    if description.trim().is_empty() { name } else { description }
 }
 
 fn string_list(names: impl Iterator<Item = String>) -> gtk::StringList {
