@@ -618,6 +618,14 @@ impl LoginForm {
                 }
                 UIThreadRequest::DisableTui => {
                     tui_enabled.store(false, Ordering::Relaxed);
+                    // Restore the console's default (dark) palette before we
+                    // clear the screen for the session hand-off. We reprogram
+                    // VT palette slots to the matugen theme (a purple surface +
+                    // accent); leaving them set meant `Clear` painted the bare
+                    // console — every monitor — in that purple for the 1-2 s
+                    // until the compositor took over. Resetting first keeps the
+                    // hand-off dark; the next greeter draw reprograms it.
+                    crate::console_palette::reset();
                     disable_raw_mode()?;
                     execute!(
                         terminal.backend_mut(),
