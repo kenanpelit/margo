@@ -15,6 +15,7 @@
 use std::sync::OnceLock;
 
 mod about_settings;
+mod animations_settings;
 mod bar_pill_settings;
 mod bar_settings;
 mod clipboard_settings;

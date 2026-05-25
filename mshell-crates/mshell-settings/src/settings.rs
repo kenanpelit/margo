@@ -1,4 +1,5 @@
 use crate::about_settings::{AboutSettingsInit, AboutSettingsModel};
+use crate::animations_settings::{AnimationsSettingsInit, AnimationsSettingsModel};
 use crate::bar_settings::bar_settings::{BarSettingsInit, BarSettingsModel};
 use crate::date_time_settings::{DateTimeSettingsInit, DateTimeSettingsModel};
 use crate::region_settings::{RegionSettingsInit, RegionSettingsModel};
@@ -35,6 +36,7 @@ pub struct SettingsWindowModel {
     theme_settings_controller: Controller<ThemeSettingsModel>,
     fonts_settings_controller: Controller<FontsSettingsModel>,
     about_settings_controller: Controller<AboutSettingsModel>,
+    animations_settings_controller: Controller<AnimationsSettingsModel>,
     date_time_settings_controller: Controller<DateTimeSettingsModel>,
     region_settings_controller: Controller<RegionSettingsModel>,
     sound_settings_controller: Controller<SoundSettingsModel>,
@@ -217,6 +219,27 @@ impl Component for SettingsWindowModel {
                             gtk::Label {
                                 add_css_class: "label-medium",
                                 set_label: "About",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
+                    #[name = "animations_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("animations"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("preferences-desktop-screensaver-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Animations",
                                 set_halign: gtk::Align::Start,
                                 set_hexpand: true,
                             },
@@ -629,6 +652,10 @@ impl Component for SettingsWindowModel {
             .launch(AboutSettingsInit {})
             .detach();
 
+        let animations_settings_controller = AnimationsSettingsModel::builder()
+            .launch(AnimationsSettingsInit {})
+            .detach();
+
         let date_time_settings_controller = DateTimeSettingsModel::builder()
             .launch(DateTimeSettingsInit {})
             .detach();
@@ -693,6 +720,7 @@ impl Component for SettingsWindowModel {
                 ("fonts", "fonts"),
                 ("idle", "idle"),
                 ("about", "about"),
+                ("animations", "animations"),
                 ("date_time", "date_time"),
                 ("region", "region"),
                 ("sound", "sound"),
@@ -717,6 +745,7 @@ impl Component for SettingsWindowModel {
             theme_settings_controller,
             fonts_settings_controller,
             about_settings_controller,
+            animations_settings_controller,
             date_time_settings_controller,
             region_settings_controller,
             sound_settings_controller,
@@ -873,6 +902,12 @@ impl Component for SettingsWindowModel {
             model.about_settings_controller.widget(),
             Some("about"),
             "About",
+        );
+
+        widgets.stack.add_titled(
+            model.animations_settings_controller.widget(),
+            Some("animations"),
+            "Animations",
         );
 
         widgets.stack.add_titled(
@@ -1309,6 +1344,7 @@ impl Component for SettingsWindowModel {
                     "display" => Some(&widgets.display_btn),
                     "fonts" => Some(&widgets.fonts_btn),
                     "about" => Some(&widgets.about_btn),
+                    "animations" => Some(&widgets.animations_btn),
                     "date_time" => Some(&widgets.date_time_btn),
                     "region" => Some(&widgets.region_btn),
                     "sound" => Some(&widgets.sound_btn),
