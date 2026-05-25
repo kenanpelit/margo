@@ -3687,6 +3687,8 @@ dependencies = [
  "mshell-wallpaper",
  "reactive_graph",
  "relm4",
+ "serde",
+ "serde_json",
  "tokio",
  "tracing",
  "wayle-audio",
