@@ -53,11 +53,50 @@ are tracked as follow-ups.
 # Preview in an existing session (no root, no real login):
 mlogind --preview
 
-# Real use: install extra/mlogind.service + extra/mlogind.pam +
-# extra/config.toml, disable your current display manager, enable mlogind.
+# Real use as your login manager: see "Enabling mlogind" below.
 ```
 
 See `extra/config.toml` for the full set of customization options.
+
+## Enabling mlogind
+
+mlogind installs like any display manager but is **never auto-enabled** —
+switching your login manager is a deliberate step. On a packaged install the
+unit, config, and PAM stack are already in place
+(`/usr/lib/systemd/system/mlogind.service`, `/etc/mlogind/`,
+`/etc/pam.d/mlogind`); from a source build, install `extra/mlogind.service`,
+`extra/mlogind.pam`, and `extra/config.toml` to those paths first.
+
+```bash
+# 1. Try it in your current session first (no root, no real login):
+mlogind --preview                       # Esc to quit
+
+# 2. Disable your current DM (skip if you have none):
+sudo systemctl disable --now gdm        # …or sddm / lightdm
+
+# 3. Enable mlogind — its unit Alias=display-manager.service makes it the DM:
+sudo systemctl enable mlogind           # tty2 by default
+
+# 4. Reboot:
+sudo reboot
+```
+
+If step 3 reports that `display-manager.service` already exists, a stale DM
+symlink is lingering: `sudo systemctl enable --force mlogind` overrides it
+(or run step 2 first).
+
+**Keep your old DM installed** until a clean reboot confirms mlogind works.
+If login breaks, switch to another VT (`Ctrl+Alt+F3`), log in, and run
+`sudo systemctl disable mlogind` to fall back.
+
+A few knobs:
+
+* **Different VT** — the unit ships tty2; for another, drop a `[Service]`
+  `TTYPath=`/`StandardInput=tty` override under
+  `/etc/systemd/system/mlogind.service.d/`.
+* **Theme** — match the greeter to your wallpaper with `sudo mlogind
+  sync-theme` (see [Theme sync](#theme-sync)).
+* **Fingerprint** — see [Fingerprint](#fingerprint).
 
 ## Launching margo
 
