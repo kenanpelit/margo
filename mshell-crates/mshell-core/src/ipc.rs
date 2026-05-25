@@ -1,6 +1,8 @@
 use crate::relm_app::{Shell, ShellInput};
 use mshell_cache::wallpaper::set_wallpaper;
-use mshell_services::{audio_service, brightness_service, margo_service, notification_service};
+use mshell_services::{
+    audio_service, brightness_service, margo_service, media_service, notification_service,
+};
 use mshell_session::session_lock::{lock_session, session_locked};
 use mshell_settings::{close_settings, open_settings, open_wizard};
 use mshell_utils::session::SessionAction;
@@ -13,6 +15,8 @@ use std::sync::Arc;
 use wayle_audio::core::device::input::InputDevice;
 use wayle_audio::core::device::output::OutputDevice;
 use wayle_audio::volume::types::Volume;
+use wayle_media::core::player::Player;
+use wayle_media::types::PlaybackState;
 use wayle_brightness::Percentage;
 use zbus::connection;
 use zbus::interface;
@@ -253,6 +257,21 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                         notify_audio("Audio input", &devs[i].description.get());
                     }
                 }
+                IPCCommand::MediaToggle(target) => {
+                    if let Some(p) = pick_player(&target) {
+                        let _ = p.play_pause().await;
+                    }
+                }
+                IPCCommand::MediaNext(target) => {
+                    if let Some(p) = pick_player(&target) {
+                        let _ = p.next().await;
+                    }
+                }
+                IPCCommand::MediaPrev(target) => {
+                    if let Some(p) = pick_player(&target) {
+                        let _ = p.previous().await;
+                    }
+                }
                 IPCCommand::BrightnessUp => {
                     if let Some(brightness_service) = brightness_service()
                         && let Some(primary) = brightness_service.primary.get()
@@ -439,6 +458,11 @@ enum IPCCommand {
     SwitchOutput(String),
     /// Same for the default input.
     SwitchInput(String),
+    /// Media control. The `String` targets a player: empty = the active one,
+    /// else a case-insensitive identity fragment (`spotify`, `browser`, …).
+    MediaToggle(String),
+    MediaNext(String),
+    MediaPrev(String),
     Mute,
     MicMute,
     BrightnessUp,
@@ -660,6 +684,102 @@ fn render_audio_status(as_json: bool) -> String {
     format!("{}\n{}", line(out.as_ref(), "Output"), line(inp.as_ref(), "Input"))
 }
 
+// ── Media players (MPRIS, via the shell's MediaService) ─────────────────────
+fn playback_label(s: PlaybackState) -> &'static str {
+    match s {
+        PlaybackState::Playing => "Playing",
+        PlaybackState::Paused => "Paused",
+        PlaybackState::Stopped => "Stopped",
+    }
+}
+
+/// Resolve a media target to a player. Empty = the active player (else the
+/// first one); otherwise a case-insensitive match on the player identity,
+/// with a `browser` alias and `mpd`/`mpc` → "Music Player Daemon".
+fn pick_player(target: &str) -> Option<Arc<Player>> {
+    let svc = media_service();
+    let t = target.trim().to_lowercase();
+    if t.is_empty() {
+        return svc.active_player().or_else(|| svc.players().into_iter().next());
+    }
+    svc.players().into_iter().find(|p| {
+        let id = p.identity.get().to_lowercase();
+        id.contains(&t)
+            || (t == "browser"
+                && ["firefox", "chrome", "chromium", "brave", "edge", "vivaldi", "webcord", "zen", "librewolf"]
+                    .iter()
+                    .any(|b| id.contains(b)))
+            || ((t == "mpd" || t == "mpc") && id.contains("music player daemon"))
+    })
+}
+
+#[derive(serde::Serialize)]
+struct PlayerSnapshot {
+    identity: String,
+    state: String,
+    title: String,
+    artist: String,
+    active: bool,
+}
+
+fn media_snapshot() -> Vec<PlayerSnapshot> {
+    let svc = media_service();
+    let active = svc.active_player();
+    svc.players()
+        .into_iter()
+        .map(|p| PlayerSnapshot {
+            active: active.as_ref().map(|a| Arc::ptr_eq(a, &p)).unwrap_or(false),
+            identity: p.identity.get(),
+            state: playback_label(p.playback_state.get()).to_string(),
+            title: p.metadata.title.get(),
+            artist: p.metadata.artist.get(),
+        })
+        .collect()
+}
+
+/// `mshellctl media list` body.
+fn render_media_list(as_json: bool) -> String {
+    let snap = media_snapshot();
+    if as_json {
+        return serde_json::to_string_pretty(&snap).unwrap_or_else(|_| "[]".into());
+    }
+    if snap.is_empty() {
+        return "No media players".to_string();
+    }
+    snap.iter()
+        .map(|p| {
+            let icon = if p.state == "Playing" { "▶" } else { "⏸" };
+            let track = match (p.title.as_str(), p.artist.as_str()) {
+                ("", "") => String::new(),
+                (t, "") => format!("  — {t}"),
+                (t, a) => format!("  — {t} · {a}"),
+            };
+            let tag = if p.active { "  [active]" } else { "" };
+            format!("{icon} {} [{}]{track}{tag}", p.identity, p.state)
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// `mshellctl media status` body — the active player.
+fn render_media_status(as_json: bool) -> String {
+    let active = media_snapshot().into_iter().find(|p| p.active);
+    if as_json {
+        return serde_json::to_string_pretty(&active).unwrap_or_else(|_| "null".into());
+    }
+    match active {
+        None => "No active media player".to_string(),
+        Some(p) => {
+            let track = match (p.title.as_str(), p.artist.as_str()) {
+                ("", "") => String::new(),
+                (t, "") => format!(" — {t}"),
+                (t, a) => format!(" — {t} · {a}"),
+            };
+            format!("{} [{}]{track}", p.identity, p.state)
+        }
+    }
+}
+
 struct IPCService {
     tx: mpsc::UnboundedSender<IPCCommand>,
 }
@@ -782,6 +902,28 @@ impl IPCService {
     }
     async fn audio_input_switch(&self, target: String) {
         let _ = self.tx.send(IPCCommand::SwitchInput(target));
+    }
+    // ── Media (mshellctl media …) — empty target = the active player ───────
+    async fn media_toggle(&self, target: String) {
+        let _ = self.tx.send(IPCCommand::MediaToggle(target));
+    }
+    async fn media_next(&self, target: String) {
+        let _ = self.tx.send(IPCCommand::MediaNext(target));
+    }
+    async fn media_prev(&self, target: String) {
+        let _ = self.tx.send(IPCCommand::MediaPrev(target));
+    }
+    async fn media_list_text(&self) -> String {
+        render_media_list(false)
+    }
+    async fn media_list_json(&self) -> String {
+        render_media_list(true)
+    }
+    async fn media_status_text(&self) -> String {
+        render_media_status(false)
+    }
+    async fn media_status_json(&self) -> String {
+        render_media_status(true)
     }
     async fn system_update(&self) {
         let _ = self.tx.send(IPCCommand::SystemUpdate);

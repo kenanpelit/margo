@@ -38,6 +38,7 @@ tokio.workspace = true
 tracing.workspace = true
 wayle-audio.workspace = true
 wayle-brightness.workspace = true
+wayle-media.workspace = true
 wayle-weather.workspace = true
 zbus.workspace = true
 [lints]

@@ -5,6 +5,7 @@ use crate::subcommands::audio::AudioCommands;
 use crate::subcommands::bar::BarCommands;
 use crate::subcommands::brightness::BrightnessCommands;
 use crate::subcommands::lock::LockCommands;
+use crate::subcommands::media::MediaCommands;
 use crate::subcommands::menu::MenuCommands;
 use crate::subcommands::screenshot::ScreenshotCommands;
 use crate::subcommands::settings::SettingsCommands;
@@ -44,6 +45,11 @@ pub enum Commands {
     Audio {
         #[command(subcommand)]
         command: AudioCommands,
+    },
+    /// Commands for controlling media players (MPRIS)
+    Media {
+        #[command(subcommand)]
+        command: MediaCommands,
     },
     /// Commands for changing brightness
     Brightness {

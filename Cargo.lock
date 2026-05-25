@@ -3693,6 +3693,7 @@ dependencies = [
  "tracing",
  "wayle-audio",
  "wayle-brightness",
+ "wayle-media",
  "wayle-weather",
  "zbus",
 ]

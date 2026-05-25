@@ -16,6 +16,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Menu { command } => mshellctl::subcommands::menu::execute(command).await?,
         Commands::Bar { command } => mshellctl::subcommands::bar::execute(command).await?,
         Commands::Audio { command } => mshellctl::subcommands::audio::execute(command).await?,
+        Commands::Media { command } => mshellctl::subcommands::media::execute(command).await?,
         Commands::Brightness { command } => {
             mshellctl::subcommands::brightness::execute(command).await?
         }
