@@ -85,23 +85,25 @@ impl Chunks {
         // Chips pinned one row up from the bottom (so they sit *inside* a
         // full-screen background border when one is configured; harmless
         // padding when not), with a blank row above them.
-        let chips_y = fh.saturating_sub(2);
         let body_top = 1u16;
-        // Rows available for the centred content stack, above the gap row.
-        let avail = chips_y.saturating_sub(2);
+        // Usable rows: leave the top + bottom rows as a margin (a configured
+        // full-screen background border lives there).
+        let avail = fh.saturating_sub(2);
 
-        // The card is mandatory; everything else is added only while it fits,
-        // most-important-first, so a short VT drops decorations rather than
-        // pushing the card or chips off-screen. Each extra line costs itself
-        // + a gap row; date/greeting only join once the clock is in.
-        // One blank row separates each section.
+        // The card AND the power chips are mandatory and kept *together* — the
+        // chips sit just below the card, both inside one centred block — so
+        // wherever the card is visible the F-keys are too. (Pinning the chips
+        // to the very bottom row dropped them on a cropped / overscanned
+        // secondary monitor while the centred card still showed.) Everything
+        // else is added only while it fits, most-important-first, so a short
+        // console drops decorations rather than pushing anything off-screen.
         const GAP: u16 = 1;
-        let mut used = CARD_H;
+        let mut used = CARD_H + GAP + 1; // card + gap + chips row
         let show_clock = used + CLOCK_H + GAP <= avail;
         if show_clock {
             used += CLOCK_H + GAP;
         }
-        let show_status = used + 2 <= avail;
+        let show_status = used + 2 <= avail; // gap + status, between card & chips
         if show_status {
             used += 2;
         }
@@ -135,7 +137,7 @@ impl Chunks {
 
         let clock = if show_clock {
             let r = Rect { x: cx, y, width: content_w, height: CLOCK_H };
-            y += CLOCK_H + 1;
+            y += CLOCK_H + GAP;
             r
         } else {
             ZERO
@@ -157,8 +159,21 @@ impl Chunks {
         };
         y += CARD_H;
 
+        // Power chips sit directly below the card (one gap), so they stay
+        // with it on every monitor; the transient status line goes below
+        // them rather than wedging an always-reserved row in between.
+        y += GAP;
+        let key_menu = Rect {
+            x: 0,
+            y,
+            width: fw,
+            height: 1,
+        };
+        y += 1;
+
         let status_message = if show_status {
-            line(y + 1)
+            y += GAP;
+            line(y)
         } else {
             ZERO
         };
@@ -179,13 +194,6 @@ impl Chunks {
         let (label_session, switcher) = row(card.y + 2);
         let (label_username, username_field) = row(card.y + 3);
         let (label_password, password_field) = row(card.y + 4);
-
-        let key_menu = Rect {
-            x: 0,
-            y: chips_y,
-            width: fw,
-            height: 1,
-        };
 
         Self {
             greeting: clamp(greeting, size),
