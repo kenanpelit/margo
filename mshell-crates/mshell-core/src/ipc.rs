@@ -178,6 +178,76 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                     }
                     play_audio_volume_change();
                 }
+                IPCCommand::VolumeSet(frac) => {
+                    if let Some(output) = audio_service().default_output.get() {
+                        let v = frac.clamp(0.0, 1.5);
+                        let _ = output.set_volume(Volume::stereo(v, v)).await;
+                    }
+                    play_audio_volume_change();
+                }
+                IPCCommand::MuteSet(mode) => {
+                    if let Some(output) = audio_service().default_output.get() {
+                        let target = match mode {
+                            0 => false,
+                            1 => true,
+                            _ => !output.muted.get(),
+                        };
+                        let _ = output.set_mute(target).await;
+                    }
+                    play_audio_volume_change();
+                }
+                IPCCommand::MicUp => {
+                    if let Some(input) = audio_service().default_input.get() {
+                        let nv = 1.0_f64.min(input.volume.get().average() + 0.05);
+                        let _ = input.set_volume(Volume::stereo(nv, nv)).await;
+                    }
+                    play_audio_volume_change();
+                }
+                IPCCommand::MicDown => {
+                    if let Some(input) = audio_service().default_input.get() {
+                        let nv = 0.0_f64.max(input.volume.get().average() - 0.05);
+                        let _ = input.set_volume(Volume::stereo(nv, nv)).await;
+                    }
+                    play_audio_volume_change();
+                }
+                IPCCommand::MicVolumeSet(frac) => {
+                    if let Some(input) = audio_service().default_input.get() {
+                        let v = frac.clamp(0.0, 1.5);
+                        let _ = input.set_volume(Volume::stereo(v, v)).await;
+                    }
+                    play_audio_volume_change();
+                }
+                IPCCommand::MicMuteSet(mode) => {
+                    if let Some(input) = audio_service().default_input.get() {
+                        let target = match mode {
+                            0 => false,
+                            1 => true,
+                            _ => !input.muted.get(),
+                        };
+                        let _ = input.set_mute(target).await;
+                    }
+                    play_audio_volume_change();
+                }
+                IPCCommand::SwitchOutput(target) => {
+                    let svc = audio_service();
+                    let devs = svc.output_devices.get();
+                    let names: Vec<(String, String)> =
+                        devs.iter().map(|d| (d.name.get(), d.description.get())).collect();
+                    let cur = svc.default_output.get().map(|d| d.name.get());
+                    if let Some(i) = pick_device(&names, cur.as_deref(), &target) {
+                        let _ = devs[i].set_as_default().await;
+                    }
+                }
+                IPCCommand::SwitchInput(target) => {
+                    let svc = audio_service();
+                    let devs = svc.input_devices.get();
+                    let names: Vec<(String, String)> =
+                        devs.iter().map(|d| (d.name.get(), d.description.get())).collect();
+                    let cur = svc.default_input.get().map(|d| d.name.get());
+                    if let Some(i) = pick_device(&names, cur.as_deref(), &target) {
+                        let _ = devs[i].set_as_default().await;
+                    }
+                }
                 IPCCommand::BrightnessUp => {
                     if let Some(brightness_service) = brightness_service()
                         && let Some(primary) = brightness_service.primary.get()
@@ -349,6 +419,21 @@ enum IPCCommand {
     CloseAllMenus,
     VolumeUp,
     VolumeDown,
+    /// Set the default output volume to an absolute fraction (0.0–1.5).
+    VolumeSet(f64),
+    /// 0 = unmute, 1 = mute, anything else = toggle (default output).
+    MuteSet(i32),
+    MicUp,
+    MicDown,
+    /// Set the default input (mic) volume to an absolute fraction.
+    MicVolumeSet(f64),
+    /// 0 = unmute, 1 = mute, anything else = toggle (default input).
+    MicMuteSet(i32),
+    /// Make a different output the default: "next" | "prev" | an index | a
+    /// case-insensitive name / description fragment.
+    SwitchOutput(String),
+    /// Same for the default input.
+    SwitchInput(String),
     Mute,
     MicMute,
     BrightnessUp,
@@ -375,6 +460,143 @@ enum IPCCommand {
     BarToggleAll(bool),
     BarRevealAll(bool),
     BarHideAll(bool),
+}
+
+/// Resolve a switch target against a device list. `names` is `(node_name,
+/// description)` per device, `current` the default's node name. Accepts
+/// `next` / `prev`, a numeric index, or a case-insensitive fragment matched
+/// against the description first then the node name.
+fn pick_device(names: &[(String, String)], current: Option<&str>, target: &str) -> Option<usize> {
+    if names.is_empty() {
+        return None;
+    }
+    let cur = current.and_then(|c| names.iter().position(|(n, _)| n == c));
+    let t = target.trim();
+    match t.to_ascii_lowercase().as_str() {
+        "next" => return Some(cur.map(|c| (c + 1) % names.len()).unwrap_or(0)),
+        "prev" | "previous" => {
+            return Some(cur.map(|c| (c + names.len() - 1) % names.len()).unwrap_or(0));
+        }
+        _ => {}
+    }
+    if let Ok(i) = t.parse::<usize>()
+        && i < names.len()
+    {
+        return Some(i);
+    }
+    let tl = t.to_lowercase();
+    names
+        .iter()
+        .position(|(n, d)| d.to_lowercase().contains(&tl) || n.to_lowercase().contains(&tl))
+}
+
+#[derive(serde::Serialize)]
+struct DeviceSnapshot {
+    index: usize,
+    /// Technical PipeWire node name (`alsa_output.pci-…`).
+    name: String,
+    /// Friendly label ("Logitech Z205 Analog Stereo").
+    description: String,
+    volume_percent: u32,
+    muted: bool,
+    /// Whether this is the current default device.
+    active: bool,
+}
+
+#[derive(serde::Serialize)]
+struct AudioSnapshot {
+    outputs: Vec<DeviceSnapshot>,
+    inputs: Vec<DeviceSnapshot>,
+}
+
+/// Read the live audio service into a serialisable snapshot (sync `.get()`s,
+/// same direct-global pattern as `notification_count`).
+fn audio_snapshot() -> AudioSnapshot {
+    let svc = audio_service();
+    let def_out = svc.default_output.get().map(|d| d.name.get());
+    let def_in = svc.default_input.get().map(|d| d.name.get());
+    let snap = |i: usize, name: String, description: String, vol: f64, muted: bool, def: &Option<String>| {
+        DeviceSnapshot {
+            index: i,
+            active: def.as_deref() == Some(name.as_str()),
+            volume_percent: (vol * 100.0).round() as u32,
+            muted,
+            description,
+            name,
+        }
+    };
+    let outputs = svc
+        .output_devices
+        .get()
+        .iter()
+        .enumerate()
+        .map(|(i, d)| snap(i, d.name.get(), d.description.get(), d.volume.get().average(), d.muted.get(), &def_out))
+        .collect();
+    let inputs = svc
+        .input_devices
+        .get()
+        .iter()
+        .enumerate()
+        .map(|(i, d)| snap(i, d.name.get(), d.description.get(), d.volume.get().average(), d.muted.get(), &def_in))
+        .collect();
+    AudioSnapshot { outputs, inputs }
+}
+
+fn fmt_device_line(d: &DeviceSnapshot, icon: &str) -> String {
+    let mut tags = String::new();
+    if d.active {
+        tags.push_str("  [active]");
+    }
+    if d.muted {
+        tags.push_str("  [muted]");
+    }
+    format!("  {}: {} {:<42} {:>3}%{}", d.index, icon, d.description, d.volume_percent, tags)
+}
+
+/// `mshellctl audio list` body — human table or `--json`.
+fn render_audio_list(as_json: bool) -> String {
+    let snap = audio_snapshot();
+    if as_json {
+        return serde_json::to_string_pretty(&snap).unwrap_or_else(|_| "{}".into());
+    }
+    let mut out = String::from("Outputs:\n");
+    if snap.outputs.is_empty() {
+        out.push_str("  (none)\n");
+    }
+    for d in &snap.outputs {
+        out.push_str(&fmt_device_line(d, "🔊"));
+        out.push('\n');
+    }
+    out.push_str("\nInputs:\n");
+    if snap.inputs.is_empty() {
+        out.push_str("  (none)\n");
+    }
+    for d in &snap.inputs {
+        out.push_str(&fmt_device_line(d, "🎤"));
+        out.push('\n');
+    }
+    out.trim_end().to_string()
+}
+
+/// `mshellctl audio status` body — the current default out/in.
+fn render_audio_status(as_json: bool) -> String {
+    let snap = audio_snapshot();
+    let out = snap.outputs.into_iter().find(|d| d.active);
+    let inp = snap.inputs.into_iter().find(|d| d.active);
+    if as_json {
+        let v = serde_json::json!({ "output": out, "input": inp });
+        return serde_json::to_string_pretty(&v).unwrap_or_else(|_| "{}".into());
+    }
+    let line = |d: Option<&DeviceSnapshot>, label: &str| match d {
+        Some(d) => format!(
+            "{label}: {} — {}%{}",
+            d.description,
+            d.volume_percent,
+            if d.muted { " (muted)" } else { "" }
+        ),
+        None => format!("{label}: (none)"),
+    };
+    format!("{}\n{}", line(out.as_ref(), "Output"), line(inp.as_ref(), "Input"))
 }
 
 struct IPCService {
@@ -456,6 +678,49 @@ impl IPCService {
     }
     async fn audio_dashboard(&self) {
         let _ = self.tx.send(IPCCommand::AudioDashboard);
+    }
+    // ── Audio query / control (mshellctl audio …) ──────────────────────────
+    // Queries read the live service directly (sync, like notification_count);
+    // actions go through the command loop so the async PipeWire setters run on
+    // the service's own context and the bar / volume-OSD react to them.
+    async fn audio_list_text(&self) -> String {
+        render_audio_list(false)
+    }
+    async fn audio_list_json(&self) -> String {
+        render_audio_list(true)
+    }
+    async fn audio_status_text(&self) -> String {
+        render_audio_status(false)
+    }
+    async fn audio_status_json(&self) -> String {
+        render_audio_status(true)
+    }
+    /// Absolute output volume as a percent (0–150).
+    async fn audio_volume_set(&self, percent: f64) {
+        let _ = self.tx.send(IPCCommand::VolumeSet(percent / 100.0));
+    }
+    /// Output mute: 0 = off, 1 = on, else toggle.
+    async fn audio_mute_set(&self, mode: i32) {
+        let _ = self.tx.send(IPCCommand::MuteSet(mode));
+    }
+    async fn audio_mic_volume_set(&self, percent: f64) {
+        let _ = self.tx.send(IPCCommand::MicVolumeSet(percent / 100.0));
+    }
+    async fn audio_mic_mute_set(&self, mode: i32) {
+        let _ = self.tx.send(IPCCommand::MicMuteSet(mode));
+    }
+    async fn audio_mic_up(&self) {
+        let _ = self.tx.send(IPCCommand::MicUp);
+    }
+    async fn audio_mic_down(&self) {
+        let _ = self.tx.send(IPCCommand::MicDown);
+    }
+    /// Switch the default output: "next" | "prev" | index | name fragment.
+    async fn audio_output_switch(&self, target: String) {
+        let _ = self.tx.send(IPCCommand::SwitchOutput(target));
+    }
+    async fn audio_input_switch(&self, target: String) {
+        let _ = self.tx.send(IPCCommand::SwitchInput(target));
     }
     async fn system_update(&self) {
         let _ = self.tx.send(IPCCommand::SystemUpdate);
