@@ -2,6 +2,7 @@ use crate::about_settings::{AboutSettingsInit, AboutSettingsModel};
 use crate::bar_settings::bar_settings::{BarSettingsInit, BarSettingsModel};
 use crate::date_time_settings::{DateTimeSettingsInit, DateTimeSettingsModel};
 use crate::region_settings::{RegionSettingsInit, RegionSettingsModel};
+use crate::users_settings::{UsersSettingsInit, UsersSettingsModel};
 use crate::display_settings::{DisplaySettingsInit, DisplaySettingsModel};
 use crate::fonts_settings::{FontsSettingsInit, FontsSettingsModel};
 use crate::input_settings::{InputSettingsInit, InputSettingsModel};
@@ -35,6 +36,7 @@ pub struct SettingsWindowModel {
     about_settings_controller: Controller<AboutSettingsModel>,
     date_time_settings_controller: Controller<DateTimeSettingsModel>,
     region_settings_controller: Controller<RegionSettingsModel>,
+    users_settings_controller: Controller<UsersSettingsModel>,
     input_settings_controller: Controller<InputSettingsModel>,
     display_settings_controller: Controller<DisplaySettingsModel>,
     bar_settings_controller: Controller<BarSettingsModel>,
@@ -450,6 +452,27 @@ impl Component for SettingsWindowModel {
                         },
                     },
 
+                    #[name = "users_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("users"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("system-users-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Users",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
                     #[name = "wallpaper_btn"]
                     gtk::ToggleButton {
                         add_css_class: "sidebar-button",
@@ -591,6 +614,10 @@ impl Component for SettingsWindowModel {
             .launch(RegionSettingsInit {})
             .detach();
 
+        let users_settings_controller = UsersSettingsModel::builder()
+            .launch(UsersSettingsInit {})
+            .detach();
+
         let input_settings_controller = InputSettingsModel::builder()
             .launch(InputSettingsInit {})
             .detach();
@@ -641,6 +668,7 @@ impl Component for SettingsWindowModel {
                 ("about", "about"),
                 ("date_time", "date_time"),
                 ("region", "region"),
+                ("users", "users"),
                 ("input", "input"),
                 ("launcher", "launcher"),
                 ("menus", "menus"),
@@ -663,6 +691,7 @@ impl Component for SettingsWindowModel {
             about_settings_controller,
             date_time_settings_controller,
             region_settings_controller,
+            users_settings_controller,
             input_settings_controller,
             display_settings_controller,
             bar_settings_controller,
@@ -827,6 +856,12 @@ impl Component for SettingsWindowModel {
             model.region_settings_controller.widget(),
             Some("region"),
             "Region & Language",
+        );
+
+        widgets.stack.add_titled(
+            model.users_settings_controller.widget(),
+            Some("users"),
+            "Users",
         );
 
         widgets.stack.add_titled(
@@ -1241,6 +1276,7 @@ impl Component for SettingsWindowModel {
                     "about" => Some(&widgets.about_btn),
                     "date_time" => Some(&widgets.date_time_btn),
                     "region" => Some(&widgets.region_btn),
+                    "users" => Some(&widgets.users_btn),
                     "input" => Some(&widgets.input_btn),
                     "idle" => Some(&widgets.idle_btn),
                     "launcher" => Some(&widgets.launcher_btn),

@@ -16,6 +16,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   (automatic time / NTP, searchable timezone, 24-hour clock). *Region &
   Language* wraps `localectl` (system `LANG`, searchable). The `timedatectl`
   / `localectl` writes authenticate through margo's polkit agent.
+- **Settings → Users** — a read-only roster of the system's human accounts
+  (username, full name, administrator status from `wheel`/`sudo`, and
+  `~/.face` / AccountsService avatars), parsed from `/etc/passwd` +
+  `/etc/group`. The current user is listed first.
 - **mshell now starts automatically on a margo session (packaged).** The
   package ships a `mshell.service` systemd **user** unit and auto-enables it
   via a `graphical-session.target.wants` drop-in, so a fresh install brings
