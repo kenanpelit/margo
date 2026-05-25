@@ -62,6 +62,9 @@ pub fn handle_input<B: InputBackend>(state: &mut MargoState, event: InputEvent<B
         use smithay::input::pointer::CursorImageStatus;
         if matches!(state.cursor_status, CursorImageStatus::Hidden) {
             state.cursor_status = CursorImageStatus::default_named();
+            // Keep the cursor manager in sync so we don't keep drawing a
+            // previously-requested named shape (e.g. a stale `pointer` hand).
+            state.cursor_manager.set_named("default", &[]);
         }
         match event {
             InputEvent::Keyboard { event } => {

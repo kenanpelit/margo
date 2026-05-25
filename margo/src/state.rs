@@ -3320,6 +3320,13 @@ impl SeatHandler for MargoState {
         set_primary_focus(dh, seat, client);
     }
     fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {
+        // A named request (wp_cursor_shape_v1 / set_cursor → e.g. the `pointer`
+        // hand over a link) only changes anything if we point the cursor
+        // manager at that icon — the `Named` render path draws whatever it
+        // currently holds.
+        if let CursorImageStatus::Named(icon) = &image {
+            self.cursor_manager.set_named(icon.name(), icon.alt_names());
+        }
         self.cursor_status = image;
         self.request_repaint();
     }
