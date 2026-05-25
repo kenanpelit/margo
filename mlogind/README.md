@@ -1,5 +1,9 @@
 # mlogind
 
+<p align="center">
+  <img src="assets/cover.webp" alt="mlogind greeter — margo-themed bare-TTY login" width="760">
+</p>
+
 margo's standalone **TUI login / display manager** — a bare-TTY greeter
 that authenticates with PAM and launches your X11 / Wayland session
 (including margo). It runs on the console itself; no compositor needs to
