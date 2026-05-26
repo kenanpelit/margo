@@ -13,6 +13,7 @@ pub struct RevealerButtonIconLabelModel {
 #[derive(Debug)]
 pub enum RevealerButtonIconLabelInput {
     SetPrimaryIconName(String),
+    #[allow(dead_code)]
     SetSecondaryIconName(String),
 }
 
