@@ -767,18 +767,28 @@ fn pick_player(target: &str) -> Option<Arc<Player>> {
     if t.is_empty() {
         return svc.active_player().or_else(|| svc.players().into_iter().next());
     }
-    let matches = |id: &str| -> bool {
-        id.contains(&t)
+    // Match against the identity AND the D-Bus bus name. The bus name
+    // (e.g. `chromium.instance5078`) carries the engine name even when a
+    // Chromium/Firefox fork brands its MPRIS Identity differently — e.g.
+    // Helium reports identity "Helium" but registers as
+    // `org.mpris.MediaPlayer2.chromium.instance…`, so a `browser`/`chromium`
+    // fragment only hits via the bus name. osc-media keys on `playerctl -l`
+    // names for the same reason.
+    let matches = |p: &Arc<Player>| -> bool {
+        let bus = p.id.bus_name();
+        let bus = bus.strip_prefix("org.mpris.MediaPlayer2.").unwrap_or(bus);
+        let hay = format!("{} {}", p.identity.get(), bus).to_lowercase();
+        hay.contains(&t)
             || (t == "browser"
-                && ["firefox", "chrome", "chromium", "brave", "edge", "vivaldi", "webcord", "zen", "librewolf"]
+                && ["firefox", "chrome", "chromium", "brave", "edge", "vivaldi", "webcord", "zen", "librewolf", "helium"]
                     .iter()
-                    .any(|b| id.contains(b)))
-            || ((t == "mpd" || t == "mpc") && id.contains("music player daemon"))
+                    .any(|b| hay.contains(b)))
+            || ((t == "mpd" || t == "mpc") && hay.contains("music player daemon"))
     };
     let active = svc.active_player();
     svc.players()
         .into_iter()
-        .filter(|p| matches(&p.identity.get().to_lowercase()))
+        .filter(matches)
         .max_by_key(|p| {
             let state = match p.playback_state.get() {
                 PlaybackState::Playing => 2,
