@@ -3976,6 +3976,7 @@ dependencies = [
  "dirs",
  "fontconfig",
  "margo-config",
+ "mshell-cache",
  "mshell-clipboard",
  "mshell-common",
  "mshell-config",

@@ -1,3 +1,4 @@
+use mshell_cache::wallpaper::{fetch_daily_wallpaper, set_wallpaper};
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
@@ -6,9 +7,12 @@ use mshell_config::schema::config::{
 use mshell_config::schema::content_fit::ContentFit;
 use mshell_config::schema::wallpaper::ThemeFilterStrength;
 use reactive_graph::prelude::{Get, GetUntracked};
-use relm4::gtk::prelude::{BoxExt, ButtonExt, FileExt, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::{
+    BoxExt, ButtonExt, EditableExt, EntryExt, FileExt, OrientableExt, WidgetExt,
+};
 use relm4::gtk::{gio, glib};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub(crate) struct WallpaperSettingsModel {
@@ -19,6 +23,10 @@ pub(crate) struct WallpaperSettingsModel {
     rotation_enabled: bool,
     rotation_interval_minutes: u32,
     rotation_mode: WallpaperRotationMode,
+    daily_enabled: bool,
+    /// "bing" or "nasa".
+    daily_source: String,
+    daily_locale: String,
     _effects: EffectScope,
 }
 
@@ -31,6 +39,10 @@ pub(crate) enum WallpaperSettingsInput {
     RotationEnabledChanged(bool),
     RotationIntervalChanged(u32),
     RotationModeChanged(WallpaperRotationMode),
+    DailyEnabledChanged(bool),
+    DailySourceChanged(u32),
+    DailyLocaleChanged(String),
+    FetchNowClicked,
 
     WallpaperDirectoryEffect(String),
     ContentFitEffect(ContentFit),
@@ -39,6 +51,9 @@ pub(crate) enum WallpaperSettingsInput {
     RotationEnabledEffect(bool),
     RotationIntervalEffect(u32),
     RotationModeEffect(WallpaperRotationMode),
+    DailyEnabledEffect(bool),
+    DailySourceEffect(String),
+    DailyLocaleEffect(String),
 }
 
 #[derive(Debug)]
@@ -47,7 +62,10 @@ pub(crate) enum WallpaperSettingsOutput {}
 pub(crate) struct WallpaperSettingsInit {}
 
 #[derive(Debug)]
-pub(crate) enum WallpaperSettingsCommandOutput {}
+pub(crate) enum WallpaperSettingsCommandOutput {
+    /// A daily-wallpaper fetch finished (off-thread); apply / report on main.
+    DailyFetched(Result<PathBuf, String>),
+}
 
 #[relm4::component(pub)]
 impl Component for WallpaperSettingsModel {
@@ -372,6 +390,128 @@ impl Component for WallpaperSettingsModel {
                         } @rotation_mode_handler,
                     },
                 },
+
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Daily Wallpaper",
+                    set_halign: gtk::Align::Start,
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Fetch daily",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Download a fresh Bing or NASA image-of-the-day on login and periodically. Saved under ~/Pictures/Wallpapers; downloads older than 5 days are pruned.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        #[block_signal(daily_enabled_handler)]
+                        set_active: model.daily_enabled,
+                        connect_state_set[sender] => move |_, enabled| {
+                            sender.input(WallpaperSettingsInput::DailyEnabledChanged(enabled));
+                            glib::Propagation::Proceed
+                        } @daily_enabled_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Source",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Bing's daily photo or NASA's Astronomy Picture of the Day.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::DropDown {
+                        set_width_request: 150,
+                        set_valign: gtk::Align::Center,
+                        set_model: Some(&gtk::StringList::new(&["Bing", "NASA"])),
+                        #[watch]
+                        #[block_signal(daily_source_handler)]
+                        set_selected: if model.daily_source.eq_ignore_ascii_case("nasa") { 1 } else { 0 },
+                        connect_selected_notify[sender] => move |dd| {
+                            sender.input(WallpaperSettingsInput::DailySourceChanged(dd.selected()));
+                        } @daily_source_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Bing region",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Market locale for Bing (e.g. en-US, de-DE). Empty = en-US. Unused for NASA.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::Entry {
+                        set_valign: gtk::Align::Center,
+                        set_width_request: 150,
+                        set_placeholder_text: Some("en-US"),
+                        #[watch]
+                        #[block_signal(daily_locale_handler)]
+                        set_text: &model.daily_locale,
+                        connect_changed[sender] => move |e| {
+                            sender.input(WallpaperSettingsInput::DailyLocaleChanged(e.text().to_string()));
+                        } @daily_locale_handler,
+                    },
+                },
+
+                gtk::Button {
+                    add_css_class: "ok-button-primary",
+                    set_halign: gtk::Align::Start,
+                    set_label: "Fetch today's wallpaper now",
+                    connect_clicked[sender] => move |_| {
+                        sender.input(WallpaperSettingsInput::FetchNowClicked);
+                    },
+                },
             }
         }
     }
@@ -447,6 +587,24 @@ impl Component for WallpaperSettingsModel {
             sender_clone.input(WallpaperSettingsInput::RotationModeEffect(value));
         });
 
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let value = config_manager().config().wallpaper().daily_wallpaper_enabled().get();
+            sender_clone.input(WallpaperSettingsInput::DailyEnabledEffect(value));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let value = config_manager().config().wallpaper().daily_wallpaper_source().get();
+            sender_clone.input(WallpaperSettingsInput::DailySourceEffect(value));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let value = config_manager().config().wallpaper().daily_wallpaper_locale().get();
+            sender_clone.input(WallpaperSettingsInput::DailyLocaleEffect(value));
+        });
+
         let model = WallpaperSettingsModel {
             wallpaper_directory: "".to_string(),
             content_fit: config_manager()
@@ -479,6 +637,21 @@ impl Component for WallpaperSettingsModel {
                 .config()
                 .wallpaper()
                 .rotation_mode()
+                .get_untracked(),
+            daily_enabled: config_manager()
+                .config()
+                .wallpaper()
+                .daily_wallpaper_enabled()
+                .get_untracked(),
+            daily_source: config_manager()
+                .config()
+                .wallpaper()
+                .daily_wallpaper_source()
+                .get_untracked(),
+            daily_locale: config_manager()
+                .config()
+                .wallpaper()
+                .daily_wallpaper_locale()
                 .get_untracked(),
             _effects: effects,
         };
@@ -563,8 +736,66 @@ impl Component for WallpaperSettingsModel {
             WallpaperSettingsInput::RotationModeEffect(mode) => {
                 self.rotation_mode = mode;
             }
+            WallpaperSettingsInput::DailyEnabledChanged(enabled) => {
+                config_manager().update_config(|c| c.wallpaper.daily_wallpaper_enabled = enabled);
+            }
+            WallpaperSettingsInput::DailySourceChanged(idx) => {
+                let src = if idx == 1 { "nasa" } else { "bing" }.to_string();
+                config_manager().update_config(|c| c.wallpaper.daily_wallpaper_source = src.clone());
+            }
+            WallpaperSettingsInput::DailyLocaleChanged(locale) => {
+                config_manager().update_config(|c| c.wallpaper.daily_wallpaper_locale = locale.clone());
+            }
+            WallpaperSettingsInput::FetchNowClicked => {
+                let source = self.daily_source.clone();
+                let locale = self.daily_locale.clone();
+                // Download off the UI thread; apply on the main thread in update_cmd
+                // (set_wallpaper touches the reactive store).
+                sender.oneshot_command(async move {
+                    let result = tokio::task::spawn_blocking(move || {
+                        fetch_daily_wallpaper(&source, &locale)
+                    })
+                    .await
+                    .unwrap_or_else(|e| Err(format!("join error: {e}")));
+                    WallpaperSettingsCommandOutput::DailyFetched(result)
+                });
+            }
+            WallpaperSettingsInput::DailyEnabledEffect(v) => self.daily_enabled = v,
+            WallpaperSettingsInput::DailySourceEffect(s) => self.daily_source = s,
+            WallpaperSettingsInput::DailyLocaleEffect(l) => self.daily_locale = l,
         }
 
         self.update_view(widgets, sender);
     }
+
+    fn update_cmd(
+        &mut self,
+        message: Self::CommandOutput,
+        _sender: ComponentSender<Self>,
+        _root: &Self::Root,
+    ) {
+        let WallpaperSettingsCommandOutput::DailyFetched(result) = message;
+        match result {
+            Ok(path) => {
+                // On the main thread → safe to touch the reactive config store.
+                set_wallpaper(&path);
+                let name =
+                    path.file_name().and_then(|n| n.to_str()).unwrap_or("wallpaper").to_string();
+                notify("Daily wallpaper", &format!("Applied {name}"));
+            }
+            Err(e) => notify("Daily wallpaper failed", &e),
+        }
+    }
+}
+
+/// Fire-and-forget desktop toast (reaped via the async runtime).
+fn notify(summary: &str, body: &str) {
+    let summary = summary.to_string();
+    let body = body.to_string();
+    relm4::spawn(async move {
+        let _ = tokio::process::Command::new("notify-send")
+            .args(["-a", "mshell", "-i", "preferences-desktop-wallpaper-symbolic", &summary, &body])
+            .status()
+            .await;
+    });
 }

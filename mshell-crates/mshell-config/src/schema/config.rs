@@ -1030,6 +1030,12 @@ pub struct Wallpaper {
     pub rotation_interval_minutes: u32,
     /// Sequential vs random rotation order.
     pub rotation_mode: WallpaperRotationMode,
+    /// Auto-fetch a daily image-of-the-day (Bing / NASA) on login + periodically.
+    pub daily_wallpaper_enabled: bool,
+    /// Daily-wallpaper source: `"bing"` or `"nasa"`.
+    pub daily_wallpaper_source: String,
+    /// Bing market locale for the daily wallpaper (e.g. `en-US`); unused for NASA.
+    pub daily_wallpaper_locale: String,
 }
 
 impl Default for Wallpaper {
@@ -1042,6 +1048,9 @@ impl Default for Wallpaper {
             rotation_enabled: false,
             rotation_interval_minutes: 5,
             rotation_mode: WallpaperRotationMode::Sequential,
+            daily_wallpaper_enabled: false,
+            daily_wallpaper_source: "bing".to_string(),
+            daily_wallpaper_locale: "".to_string(),
         }
     }
 }

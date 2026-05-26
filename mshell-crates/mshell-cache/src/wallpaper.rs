@@ -143,6 +143,145 @@ pub fn set_wallpaper(path: &Path) {
     refilter();
 }
 
+// ── Daily wallpaper (Bing / NASA "image of the day") ─────────────────────────
+//
+// Port of the noctalia `daily-wallpaper` plugin: fetch today's Bing or NASA
+// image-of-the-day, cache it under ~/Pictures/Wallpapers, apply it, and prune
+// downloads older than 5 days. Synchronous (blocking `curl`) — call off the UI
+// thread.
+
+/// Downloaded dailies live here (matches the original plugin).
+fn daily_wallpaper_dir() -> PathBuf {
+    glib::home_dir().join("Pictures").join("Wallpapers")
+}
+
+fn curl_text(url: &str) -> Result<String, String> {
+    let out = std::process::Command::new("curl")
+        .args(["-fsSL", "--max-time", "20", url])
+        .output()
+        .map_err(|e| format!("curl spawn failed: {e}"))?;
+    if !out.status.success() {
+        return Err(format!("curl failed for {url}"));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+fn curl_download(url: &str, dest: &Path) -> bool {
+    matches!(
+        std::process::Command::new("curl")
+            .args(["-fsSL", "--max-time", "60", "-o"])
+            .arg(dest)
+            .arg(url)
+            .status(),
+        Ok(s) if s.success()
+    )
+}
+
+/// The substring between `start` and the first `end` following it.
+fn between<'a>(s: &'a str, start: &str, end: &str) -> Option<&'a str> {
+    let i = s.find(start)? + start.len();
+    let rest = &s[i..];
+    rest.find(end).map(|j| &rest[..j])
+}
+
+/// `(primary, fallback)` URLs for Bing's image of the day.
+fn bing_urls(locale: &str) -> Result<(String, String), String> {
+    let url =
+        format!("https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1&mkt={locale}");
+    let body = curl_text(&url)?;
+    let urlbase =
+        between(&body, "\"urlbase\":\"", "\"").ok_or_else(|| "Bing: urlbase not found".to_string())?;
+    Ok((
+        format!("https://www.bing.com{urlbase}_UHD.jpg"),
+        format!("https://www.bing.com{urlbase}_1920x1080.jpg"),
+    ))
+}
+
+/// First `content="…"` after `key` (for `og:image` / `twitter:image` metas).
+fn meta_content(body: &str, key: &str) -> Option<String> {
+    let i = body.find(key)?;
+    between(&body[i..], "content=\"", "\"").map(str::to_string)
+}
+
+/// `(primary, fallback)` URLs for NASA's image of the day (HTML-scraped).
+fn nasa_urls() -> Result<(String, String), String> {
+    let body = curl_text("https://www.nasa.gov/image-of-the-day/")?;
+    let primary = body
+        .find("hds-gallery-image")
+        .and_then(|i| between(&body[i..], "src=\"", "\""))
+        .unwrap_or("")
+        .to_string();
+    let fallback = meta_content(&body, "og:image")
+        .or_else(|| meta_content(&body, "twitter:image"))
+        .unwrap_or_default();
+    if primary.is_empty() && fallback.is_empty() {
+        return Err("NASA: no image URL found".to_string());
+    }
+    Ok((primary, fallback))
+}
+
+/// Ensure today's Bing/NASA image-of-the-day is downloaded and return its
+/// path (reusing the cached file if already present), pruning downloads older
+/// than 5 days. `source` is `"bing"` or `"nasa"`; `locale` is the Bing market
+/// (ignored for NASA). Blocking (curl) — call off the UI thread, then apply
+/// the returned path with [`set_wallpaper`] on the main thread (`set_wallpaper`
+/// touches the reactive config store and must not run on a worker thread).
+pub fn fetch_daily_wallpaper(source: &str, locale: &str) -> Result<PathBuf, String> {
+    let source = if source.eq_ignore_ascii_case("nasa") { "nasa" } else { "bing" };
+    let dir = daily_wallpaper_dir();
+    fs::create_dir_all(&dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
+
+    let date = glib::DateTime::now_local()
+        .ok()
+        .and_then(|d| d.format("%Y-%m-%d").ok())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "today".to_string());
+    let file = dir.join(format!("{source}-{date}.jpg"));
+
+    if file.is_file() {
+        prune_daily(&dir, source);
+        return Ok(file);
+    }
+
+    let loc = {
+        let l = locale.trim().to_lowercase().replace('_', "-");
+        if l.is_empty() { "en-us".to_string() } else { l }
+    };
+    let (primary, fallback) = if source == "nasa" { nasa_urls()? } else { bing_urls(&loc)? };
+
+    let ok = (!primary.is_empty() && curl_download(&primary, &file))
+        || (!fallback.is_empty() && curl_download(&fallback, &file));
+    if !ok {
+        let _ = fs::remove_file(&file); // drop any truncated partial
+        return Err(format!("{source}: download failed"));
+    }
+
+    prune_daily(&dir, source);
+    Ok(file)
+}
+
+/// Delete `<prefix>-*.jpg` in `dir` older than 5 days.
+fn prune_daily(dir: &Path, prefix: &str) {
+    let cutoff = std::time::SystemTime::now() - std::time::Duration::from_secs(5 * 24 * 60 * 60);
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    let needle = format!("{prefix}-");
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if !(name.starts_with(&needle) && name.ends_with(".jpg")) {
+            continue;
+        }
+        if let Ok(meta) = entry.metadata()
+            && let Ok(modified) = meta.modified()
+            && modified < cutoff
+        {
+            let _ = fs::remove_file(entry.path());
+        }
+    }
+}
+
 // ── Rotation / cycling ───────────────────────────────────────────────────────
 
 /// Which way to step through the wallpaper directory.
