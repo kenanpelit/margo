@@ -5,10 +5,22 @@
 // a single "what's happening" list. Visual language matches
 // the system-status card: monospace-like rhythm, dot bullets,
 // severity tinting via calm / warn / danger.
+//
+// Card contract (inlined — grass @use modules cannot share @extend
+// across file boundaries, so the same four declarations are repeated
+// verbatim in _mshelldash.scss; see Task 2 report for rationale).
 
+// ── Dash-card contract ─────────────────────────────────────────────
+// Secondary tile — surface-container (mid tier).
 .overview-intel-menu-widget {
-  padding-top: 6px;
-  padding-bottom: 6px;
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  background: var(--surface-container);
+  transition: background var(--motion-fast) var(--ease-standard),
+              box-shadow var(--motion-fast) var(--ease-standard);
+
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
 }
 
 .overview-intel-header {
@@ -17,14 +29,15 @@
   letter-spacing: 0.05em;
   color: var(--on-surface-variant);
   opacity: 0.85;
-  margin-bottom: 4px;
+  // Title/content split — DESIGN.md §card header margin.
+  margin-bottom: var(--space-3);
 }
 
 .overview-intel-dot {
   font-size: var(--font-xs);
   color: var(--on-surface-variant);
   opacity: 0.4;
-  margin-right: 2px;
+  margin-right: 2px; // hairline — intentionally not a space token
   transition: color var(--motion-fast) var(--ease-standard);
 }
 

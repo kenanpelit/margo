@@ -6,32 +6,38 @@
 // canonical `ok-button-surface` state-layer; the active tab promotes to
 // a primary-tinted pill via `.selected`. No outline rings (§0.1), all
 // type on the --font-* scale (§Type), matugen tokens only (§Color).
+//
+// Card contract (inlined — grass @use modules cannot share @extend
+// across file boundaries; the same declarations also appear in
+// _overview_intel.scss; see Task 2 report for rationale).
 
+// ── Dashboard surface ──────────────────────────────────────────────
+// Background = surface-container-low so cards stand off the panel.
 .mshelldash {
   border-radius: var(--radius-window);
-  background-color: var(--surface);
+  background-color: var(--surface-container-low);
   overflow: hidden;
-  padding: 12px;
+  padding: var(--space-3);
   // A floor width so narrow tabs (Overview) don't collapse the panel
   // while wide ones (Wallpaper grid) drive the natural size.
   min-width: 440px;
 }
 
-// ── Tab bar ────────────────────────────────────────────────────
+// ── Tab bar ────────────────────────────────────────────────────────
 .mshelldash-tabbar {
   // Sits in a subtle inset tray so the row of tabs reads as one unit
   // distinct from the content below (surface over border — a tonal
   // step, not a ring).
   background-color: var(--surface-container);
   border-radius: var(--radius-md);
-  padding: 4px;
+  padding: var(--space-1);
 }
 
 .mshelldash-tab {
   // `ok-button-surface` already paints the chrome + 14%/22% hover/press
   // state layer; we only tune geometry + the selected promotion here.
   border-radius: var(--radius-sm);
-  padding: 8px 6px;
+  padding: var(--space-2) var(--space-2); // 8px 6px → both snap to space-2
 
   label {
     font-size: var(--font-sm);
@@ -54,14 +60,14 @@
   }
 }
 
-// ── Page stack ─────────────────────────────────────────────────
+// ── Page stack ─────────────────────────────────────────────────────
 .mshelldash-stack {
   // The reused child widgets bring their own internal padding, so the
   // stack just needs breathing room above the tab bar.
-  margin-top: 12px;
+  margin-top: var(--space-3);
 }
 
-// ── Overview tab ───────────────────────────────────────────────
+// ── Overview tab ───────────────────────────────────────────────────
 .mshelldash-overview {
   // Sized so the at-a-glance mosaic doesn't feel cramped beside the
   // wider reused tabs.
@@ -70,6 +76,15 @@
 
 // Clock hero — a bespoke display block (DESIGN.md §Type lets the hero
 // break the scale). Flat on the panel surface, no card chrome.
+// ── PRIMARY tile: surface-container-high ──────────────────────────
+.mshelldash-hero {
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  background: var(--surface-container-high); // primary tier — clock hero
+  transition: background var(--motion-fast) var(--ease-standard),
+              box-shadow var(--motion-fast) var(--ease-standard);
+}
+
 .mshelldash-hero-time {
   font-size: 46px;
   font-weight: 300;
@@ -88,11 +103,14 @@
   color: var(--on-surface-variant);
 }
 
-// Generic Overview card — a plain surface-container tile (no ring).
+// ── SECONDARY tile: surface-container (default tier) ──────────────
+// Generic Overview card — system glance (CPU + memory gauges).
 .mshelldash-card {
-  background-color: var(--surface-container);
   border-radius: var(--radius-md);
-  padding: 16px;
+  padding: var(--space-4);
+  background: var(--surface-container); // secondary tier — system glance
+  transition: background var(--motion-fast) var(--ease-standard),
+              box-shadow var(--motion-fast) var(--ease-standard);
 }
 
 .mshelldash-section-label {
@@ -101,6 +119,8 @@
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--on-surface-variant);
+  // Title/content split — DESIGN.md §card header margin.
+  margin-bottom: var(--space-3);
 }
 
 .mshelldash-stat-caption {
