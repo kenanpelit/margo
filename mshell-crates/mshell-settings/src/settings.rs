@@ -4,6 +4,7 @@ use crate::bluetooth_settings::{BluetoothSettingsInit, BluetoothSettingsModel};
 use crate::default_apps_settings::{DefaultAppsSettingsInit, DefaultAppsSettingsModel};
 use crate::network_settings::{NetworkSettingsInit, NetworkSettingsModel};
 use crate::power_settings::{PowerSettingsInit, PowerSettingsModel};
+use crate::privacy_settings::{PrivacySettingsInit, PrivacySettingsModel};
 use crate::bar_settings::bar_settings::{BarSettingsInit, BarSettingsModel};
 use crate::date_time_settings::{DateTimeSettingsInit, DateTimeSettingsModel};
 use crate::region_settings::{RegionSettingsInit, RegionSettingsModel};
@@ -54,6 +55,7 @@ pub struct SettingsWindowModel {
     default_apps_settings_controller: Controller<DefaultAppsSettingsModel>,
     network_settings_controller: Controller<NetworkSettingsModel>,
     power_settings_controller: Controller<PowerSettingsModel>,
+    privacy_settings_controller: Controller<PrivacySettingsModel>,
     menu_settings_controller: Controller<MenuSettingsModel>,
     notification_settings_controller: Controller<NotificationSettingsModel>,
     idle_settings_controller: Controller<IdleSettingsModel>,
@@ -529,6 +531,27 @@ impl Component for SettingsWindowModel {
                         },
                     },
 
+                    #[name = "privacy_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("privacy"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("security-high-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Privacy",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
                     #[name = "region_btn"]
                     gtk::ToggleButton {
                         add_css_class: "sidebar-button",
@@ -819,6 +842,10 @@ impl Component for SettingsWindowModel {
             .launch(PowerSettingsInit {})
             .detach();
 
+        let privacy_settings_controller = PrivacySettingsModel::builder()
+            .launch(PrivacySettingsInit {})
+            .detach();
+
         let menu_settings_controller = MenuSettingsModel::builder()
             .launch(MenuSettingsInit {})
             .detach();
@@ -868,6 +895,7 @@ impl Component for SettingsWindowModel {
                 ("menus", "menus"),
                 ("network", "network"),
                 ("power", "power"),
+                ("privacy", "privacy"),
                 ("theme", "theme"),
                 ("wallpaper", "wallpaper"),
                 ("widgets", "widgets"),
@@ -898,6 +926,7 @@ impl Component for SettingsWindowModel {
             default_apps_settings_controller,
             network_settings_controller,
             power_settings_controller,
+            privacy_settings_controller,
             menu_settings_controller,
             notification_settings_controller,
             idle_settings_controller,
@@ -1125,6 +1154,12 @@ impl Component for SettingsWindowModel {
             model.power_settings_controller.widget(),
             Some("power"),
             "Power",
+        );
+
+        widgets.stack.add_titled(
+            model.privacy_settings_controller.widget(),
+            Some("privacy"),
+            "Privacy",
         );
 
         widgets.stack.add_titled(
@@ -1534,6 +1569,7 @@ impl Component for SettingsWindowModel {
                     "menus" => Some(&widgets.menus_btn),
                     "network" => Some(&widgets.network_btn),
                     "power" => Some(&widgets.power_btn),
+                    "privacy" => Some(&widgets.privacy_btn),
                     "theme" => Some(&widgets.theme_btn),
                     "wallpaper" => Some(&widgets.wallpaper_btn),
                     "widgets" => Some(&widgets.widgets_btn),

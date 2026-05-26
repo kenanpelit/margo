@@ -3975,6 +3975,7 @@ version = "0.8.3"
 dependencies = [
  "dirs",
  "fontconfig",
+ "futures",
  "margo-config",
  "mshell-cache",
  "mshell-clipboard",

@@ -10,6 +10,7 @@ license.workspace = true
 [dependencies]
 dirs.workspace = true
 fontconfig.workspace = true
+futures.workspace = true
 margo-config = { path = "../../margo-config" }
 mshell-cache.workspace = true
 mshell-clipboard.workspace = true
