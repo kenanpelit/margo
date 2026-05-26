@@ -30,6 +30,8 @@ use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk::glib;
 use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
+
+use crate::sys;
 use wayle_battery::types::DeviceState;
 use wayle_power_profiles::types::profile::PowerProfile;
 
@@ -99,6 +101,10 @@ pub(crate) struct PowerSettingsModel {
     low_battery_threshold: u32,
     // Low-battery toast state — resets when charging or above threshold
     warned: bool,
+    // Logind power-button / lid handlers
+    power_key_idx: u32,
+    lid_idx: u32,
+    lid_external_idx: u32,
     // EffectScope keeps config-watcher effects alive for the lifetime
     // of this component.
     _effects: EffectScope,
@@ -121,6 +127,12 @@ pub(crate) enum PowerSettingsInput {
     SuspendTimeoutEffect(u32),
     LowBatteryWarningEffect(bool),
     LowBatteryThresholdEffect(u32),
+    // Logind handlers loaded asynchronously
+    LogindLoaded(sys::logind::LogindHandlers),
+    // Logind handler selectors
+    SetPowerKey(u32),
+    SetLid(u32),
+    SetLidExternal(u32),
 }
 
 #[derive(Debug)]
@@ -480,6 +492,132 @@ impl Component for PowerSettingsModel {
                         } @low_battery_threshold_handler,
                     },
                 },
+
+                // ── Power Button & Lid ─────────────────────────────
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Power Button & Lid",
+                    set_halign: gtk::Align::Start,
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Power button",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Action when the power button is pressed.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    #[name = "power_key_dropdown"]
+                    gtk::DropDown {
+                        set_valign: gtk::Align::Center,
+                        set_model: Some(&gtk::StringList::new(&["Do nothing", "Power off", "Suspend", "Hibernate", "Lock"])),
+                        #[watch]
+                        #[block_signal(power_key_handler)]
+                        set_selected: model.power_key_idx,
+                        connect_selected_notify[sender] => move |dd| {
+                            sender.input(PowerSettingsInput::SetPowerKey(dd.selected()));
+                        } @power_key_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Lid close (on battery)",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Action when the laptop lid is closed while on battery.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    #[name = "lid_dropdown"]
+                    gtk::DropDown {
+                        set_valign: gtk::Align::Center,
+                        set_model: Some(&gtk::StringList::new(&["Do nothing", "Power off", "Suspend", "Hibernate", "Lock"])),
+                        #[watch]
+                        #[block_signal(lid_handler)]
+                        set_selected: model.lid_idx,
+                        connect_selected_notify[sender] => move |dd| {
+                            sender.input(PowerSettingsInput::SetLid(dd.selected()));
+                        } @lid_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Lid close (on AC)",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Action when the laptop lid is closed while plugged in.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    #[name = "lid_external_dropdown"]
+                    gtk::DropDown {
+                        set_valign: gtk::Align::Center,
+                        set_model: Some(&gtk::StringList::new(&["Do nothing", "Power off", "Suspend", "Hibernate", "Lock"])),
+                        #[watch]
+                        #[block_signal(lid_external_handler)]
+                        set_selected: model.lid_external_idx,
+                        connect_selected_notify[sender] => move |dd| {
+                            sender.input(PowerSettingsInput::SetLidExternal(dd.selected()));
+                        } @lid_external_handler,
+                    },
+                },
+
+                gtk::Label {
+                    add_css_class: "label-small",
+                    set_label: "Applies on next login.",
+                    set_halign: gtk::Align::Start,
+                    set_xalign: 0.0,
+                    set_wrap: true,
+                },
             }
         }
     }
@@ -511,6 +649,16 @@ impl Component for PowerSettingsModel {
         spawn_battery_online_watcher(&sender, || PowerSettingsCommandOutput::OnlineChanged);
         spawn_active_profile_watcher(&sender, None, || PowerSettingsCommandOutput::ProfileChanged);
 
+        // Load logind handlers asynchronously
+        {
+            let s = sender.clone();
+            glib::spawn_future_local(async move {
+                s.input(PowerSettingsInput::LogindLoaded(
+                    sys::logind::read_handlers().await,
+                ));
+            });
+        }
+
         let model = PowerSettingsModel {
             battery_available: read_battery_available(),
             battery_percent: read_battery_percent(),
@@ -538,6 +686,10 @@ impl Component for PowerSettingsModel {
                 .low_battery_threshold()
                 .get_untracked(),
             warned: false,
+            // Logind handlers — populated async via LogindLoaded; default until then
+            power_key_idx: idx_of("poweroff"),
+            lid_idx: idx_of("suspend"),
+            lid_external_idx: idx_of("suspend"),
             _effects: effects,
         };
 
@@ -630,10 +782,66 @@ impl Component for PowerSettingsModel {
             PowerSettingsInput::SuspendTimeoutEffect(v) => self.suspend_timeout = v,
             PowerSettingsInput::LowBatteryWarningEffect(v) => self.low_battery_warning = v,
             PowerSettingsInput::LowBatteryThresholdEffect(v) => self.low_battery_threshold = v,
+
+            // Logind handlers
+            PowerSettingsInput::LogindLoaded(h) => {
+                self.power_key_idx = idx_of(&h.power_key);
+                self.lid_idx = idx_of(&h.lid);
+                self.lid_external_idx = idx_of(&h.lid_external);
+            }
+
+            PowerSettingsInput::SetPowerKey(idx) => {
+                self.power_key_idx = idx;
+                let h = self.build_handlers();
+                glib::spawn_future_local(async move {
+                    if let Err(e) = sys::logind::write_dropin(&h).await {
+                        notify::toast("Power", &e);
+                    }
+                });
+            }
+
+            PowerSettingsInput::SetLid(idx) => {
+                self.lid_idx = idx;
+                let h = self.build_handlers();
+                glib::spawn_future_local(async move {
+                    if let Err(e) = sys::logind::write_dropin(&h).await {
+                        notify::toast("Power", &e);
+                    }
+                });
+            }
+
+            PowerSettingsInput::SetLidExternal(idx) => {
+                self.lid_external_idx = idx;
+                let h = self.build_handlers();
+                glib::spawn_future_local(async move {
+                    if let Err(e) = sys::logind::write_dropin(&h).await {
+                        notify::toast("Power", &e);
+                    }
+                });
+            }
         }
 
         apply_battery_visuals(widgets, self);
         self.update_view(widgets, sender);
+    }
+}
+
+// ── Logind helpers ────────────────────────────────────────────────────────────
+
+fn idx_of(s: &str) -> u32 {
+    sys::logind::ACTIONS
+        .iter()
+        .position(|a| *a == s)
+        .unwrap_or(0) as u32
+}
+
+impl PowerSettingsModel {
+    fn build_handlers(&self) -> sys::logind::LogindHandlers {
+        sys::logind::LogindHandlers {
+            power_key: sys::logind::ACTIONS[self.power_key_idx as usize].into(),
+            lid: sys::logind::ACTIONS[self.lid_idx as usize].into(),
+            lid_external: sys::logind::ACTIONS[self.lid_external_idx as usize].into(),
+        }
     }
 }
 
