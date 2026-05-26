@@ -1,11 +1,14 @@
 use mshell_common::WatcherToken;
+use mshell_config::config_manager::config_manager;
+use mshell_config::schema::config::{ConfigStoreFields, NetworkConfigStoreFields, ProxyMode};
 use mshell_services::network_service;
 use mshell_utils::network::{
     get_wifi_icon_for_strength, spawn_available_wifi_networks_watcher, spawn_network_watcher,
     spawn_wifi_watcher, spawn_wired_watcher,
 };
+use reactive_graph::prelude::GetUntracked;
 use relm4::gtk::glib;
-use relm4::gtk::prelude::{BoxExt, ButtonExt, FileExt, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, EditableExt, EntryExt, FileExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 use std::ops::Not;
 use std::sync::Arc;
@@ -33,6 +36,13 @@ pub(crate) struct NetworkSettingsModel {
     wired_watcher_token: WatcherToken,
     /// Embedded connection editor — lives in the internal stack.
     editor_controller: Controller<ConnectionEditorModel>,
+    // ── Proxy ──────────────────────────────────────────────────────────────
+    proxy_mode: ProxyMode,
+    proxy_http: String,
+    proxy_https: String,
+    proxy_socks: String,
+    proxy_ignore: String,
+    proxy_pac_url: String,
 }
 
 impl std::fmt::Debug for NetworkSettingsModel {
@@ -42,6 +52,7 @@ impl std::fmt::Debug for NetworkSettingsModel {
             .field("wifi_enabled", &self.wifi_enabled)
             .field("wired_available", &self.wired_available)
             .field("all_connections", &self.all_connections.len())
+            .field("proxy_mode", &self.proxy_mode)
             .finish()
     }
 }
@@ -67,6 +78,14 @@ pub(crate) enum NetworkSettingsInput {
     /// Re-read wayle state into model + rebuild lists.
     RefreshState,
     ConnectionsReloaded(Vec<ConnRow>),
+    // ── Proxy ──────────────────────────────────────────────────────────────
+    /// User changed the proxy mode dropdown (index into ProxyMode::from_index).
+    ProxyModeChanged(u32),
+    ProxyHttpChanged(String),
+    ProxyHttpsChanged(String),
+    ProxySocksChanged(String),
+    ProxyIgnoreChanged(String),
+    ProxyPacUrlChanged(String),
 }
 
 // ── Output / Init / CommandOutput ─────────────────────────────────────────────
@@ -336,6 +355,206 @@ impl Component for NetworkSettingsModel {
                         sender.input(NetworkSettingsInput::ImportVpnClicked);
                     },
                 },
+
+                // ── Proxy section ─────────────────────────────────────────
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Proxy",
+                    set_halign: gtk::Align::Start,
+                },
+
+                // Mode row
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Mode",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "None disables the proxy. Manual writes host:port env vars. Automatic stores a PAC URL for reference.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    #[name = "proxy_mode_dropdown"]
+                    gtk::DropDown {
+                        set_valign: gtk::Align::Center,
+                        set_model: Some(&gtk::StringList::new(&["None", "Manual", "Automatic (PAC)"])),
+                        #[watch]
+                        set_selected: model.proxy_mode.to_index(),
+                        connect_selected_notify[sender] => move |dd| {
+                            sender.input(NetworkSettingsInput::ProxyModeChanged(dd.selected()));
+                        },
+                    },
+                },
+
+                // Manual fields revealer
+                #[name = "proxy_manual_revealer"]
+                gtk::Revealer {
+                    set_transition_type: gtk::RevealerTransitionType::SlideDown,
+                    set_transition_duration: 150,
+                    #[watch]
+                    set_reveal_child: model.proxy_mode == ProxyMode::Manual,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_spacing: 10,
+
+                        // HTTP proxy
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 20,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "HTTP proxy (host:port)",
+                                set_hexpand: true,
+                            },
+                            #[name = "proxy_http_entry"]
+                            gtk::Entry {
+                                set_valign: gtk::Align::Center,
+                                add_css_class: "ok-entry-with-border",
+                                set_placeholder_text: Some("proxy.example.com:3128"),
+                                #[watch]
+                                set_text: &model.proxy_http,
+                                connect_changed[sender] => move |e| {
+                                    sender.input(NetworkSettingsInput::ProxyHttpChanged(
+                                        e.text().to_string(),
+                                    ));
+                                },
+                            },
+                        },
+
+                        // HTTPS proxy
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 20,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "HTTPS proxy (host:port)",
+                                set_hexpand: true,
+                            },
+                            #[name = "proxy_https_entry"]
+                            gtk::Entry {
+                                set_valign: gtk::Align::Center,
+                                add_css_class: "ok-entry-with-border",
+                                set_placeholder_text: Some("proxy.example.com:3128"),
+                                #[watch]
+                                set_text: &model.proxy_https,
+                                connect_changed[sender] => move |e| {
+                                    sender.input(NetworkSettingsInput::ProxyHttpsChanged(
+                                        e.text().to_string(),
+                                    ));
+                                },
+                            },
+                        },
+
+                        // SOCKS proxy
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 20,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "SOCKS5 proxy (host:port)",
+                                set_hexpand: true,
+                            },
+                            #[name = "proxy_socks_entry"]
+                            gtk::Entry {
+                                set_valign: gtk::Align::Center,
+                                add_css_class: "ok-entry-with-border",
+                                set_placeholder_text: Some("proxy.example.com:1080"),
+                                #[watch]
+                                set_text: &model.proxy_socks,
+                                connect_changed[sender] => move |e| {
+                                    sender.input(NetworkSettingsInput::ProxySocksChanged(
+                                        e.text().to_string(),
+                                    ));
+                                },
+                            },
+                        },
+
+                        // Ignore hosts
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 20,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Bypass (comma-separated)",
+                                set_hexpand: true,
+                            },
+                            #[name = "proxy_ignore_entry"]
+                            gtk::Entry {
+                                set_valign: gtk::Align::Center,
+                                add_css_class: "ok-entry-with-border",
+                                set_placeholder_text: Some("localhost,127.0.0.1,.internal"),
+                                #[watch]
+                                set_text: &model.proxy_ignore,
+                                connect_changed[sender] => move |e| {
+                                    sender.input(NetworkSettingsInput::ProxyIgnoreChanged(
+                                        e.text().to_string(),
+                                    ));
+                                },
+                            },
+                        },
+                    },
+                },
+
+                // PAC URL revealer (Automatic mode)
+                #[name = "proxy_pac_revealer"]
+                gtk::Revealer {
+                    set_transition_type: gtk::RevealerTransitionType::SlideDown,
+                    set_transition_duration: 150,
+                    #[watch]
+                    set_reveal_child: model.proxy_mode == ProxyMode::Automatic,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "PAC URL",
+                            set_hexpand: true,
+                        },
+                        #[name = "proxy_pac_entry"]
+                        gtk::Entry {
+                            set_valign: gtk::Align::Center,
+                            add_css_class: "ok-entry-with-border",
+                            set_placeholder_text: Some("http://wpad.example.com/proxy.pac"),
+                            #[watch]
+                            set_text: &model.proxy_pac_url,
+                            connect_changed[sender] => move |e| {
+                                sender.input(NetworkSettingsInput::ProxyPacUrlChanged(
+                                    e.text().to_string(),
+                                ));
+                            },
+                        },
+                    },
+                },
+
+                // Best-effort note
+                gtk::Label {
+                    add_css_class: "label-small",
+                    set_label: "Applies to apps launched after this — margo has no runtime proxy applier; existing apps keep their current proxy.",
+                    set_halign: gtk::Align::Start,
+                    set_xalign: 0.0,
+                    set_wrap: true,
+                    set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                },
             }
         },
 
@@ -370,6 +589,14 @@ impl Component for NetworkSettingsModel {
                 ConnectionEditorOutput::Closed => NetworkSettingsInput::EditorClosed,
             });
 
+        // ── Read initial proxy values from config ──────────────────────────
+        let proxy_mode = config_manager().config().network().proxy_mode().get_untracked();
+        let proxy_http = config_manager().config().network().proxy_http().get_untracked();
+        let proxy_https = config_manager().config().network().proxy_https().get_untracked();
+        let proxy_socks = config_manager().config().network().proxy_socks().get_untracked();
+        let proxy_ignore = config_manager().config().network().proxy_ignore().get_untracked();
+        let proxy_pac_url = config_manager().config().network().proxy_pac_url().get_untracked();
+
         let model = NetworkSettingsModel {
             wifi_available: wifi_opt.is_some(),
             wifi_enabled: wifi_opt.as_ref().map(|w| w.enabled.get()).unwrap_or(false),
@@ -385,6 +612,12 @@ impl Component for NetworkSettingsModel {
             wifi_watcher_token: WatcherToken::new(),
             wired_watcher_token: WatcherToken::new(),
             editor_controller,
+            proxy_mode,
+            proxy_http,
+            proxy_https,
+            proxy_socks,
+            proxy_ignore,
+            proxy_pac_url,
         };
 
         let widgets = view_output!();
@@ -686,6 +919,81 @@ impl Component for NetworkSettingsModel {
                 glib::spawn_future_local(async move {
                     reload_vpn_list(&sender_c).await;
                 });
+            }
+
+            // ── Proxy ─────────────────────────────────────────────────────
+            NetworkSettingsInput::ProxyModeChanged(idx) => {
+                let mode = ProxyMode::from_index(idx);
+                self.proxy_mode = mode;
+                config_manager().update_config(|c| c.network.proxy_mode = mode);
+                match mode {
+                    ProxyMode::None => {
+                        let _ = crate::net::proxy::clear();
+                    }
+                    ProxyMode::Manual => {
+                        let _ = crate::net::proxy::apply(
+                            &self.proxy_http,
+                            &self.proxy_https,
+                            &self.proxy_socks,
+                            &self.proxy_ignore,
+                        );
+                    }
+                    ProxyMode::Automatic => {
+                        // PAC URL is persisted; margo has no runtime PAC interpreter.
+                    }
+                }
+            }
+            NetworkSettingsInput::ProxyHttpChanged(v) => {
+                self.proxy_http = v.clone();
+                config_manager().update_config(|c| c.network.proxy_http = v);
+                if self.proxy_mode == ProxyMode::Manual {
+                    let _ = crate::net::proxy::apply(
+                        &self.proxy_http,
+                        &self.proxy_https,
+                        &self.proxy_socks,
+                        &self.proxy_ignore,
+                    );
+                }
+            }
+            NetworkSettingsInput::ProxyHttpsChanged(v) => {
+                self.proxy_https = v.clone();
+                config_manager().update_config(|c| c.network.proxy_https = v);
+                if self.proxy_mode == ProxyMode::Manual {
+                    let _ = crate::net::proxy::apply(
+                        &self.proxy_http,
+                        &self.proxy_https,
+                        &self.proxy_socks,
+                        &self.proxy_ignore,
+                    );
+                }
+            }
+            NetworkSettingsInput::ProxySocksChanged(v) => {
+                self.proxy_socks = v.clone();
+                config_manager().update_config(|c| c.network.proxy_socks = v);
+                if self.proxy_mode == ProxyMode::Manual {
+                    let _ = crate::net::proxy::apply(
+                        &self.proxy_http,
+                        &self.proxy_https,
+                        &self.proxy_socks,
+                        &self.proxy_ignore,
+                    );
+                }
+            }
+            NetworkSettingsInput::ProxyIgnoreChanged(v) => {
+                self.proxy_ignore = v.clone();
+                config_manager().update_config(|c| c.network.proxy_ignore = v);
+                if self.proxy_mode == ProxyMode::Manual {
+                    let _ = crate::net::proxy::apply(
+                        &self.proxy_http,
+                        &self.proxy_https,
+                        &self.proxy_socks,
+                        &self.proxy_ignore,
+                    );
+                }
+            }
+            NetworkSettingsInput::ProxyPacUrlChanged(v) => {
+                self.proxy_pac_url = v.clone();
+                config_manager().update_config(|c| c.network.proxy_pac_url = v);
             }
         }
 

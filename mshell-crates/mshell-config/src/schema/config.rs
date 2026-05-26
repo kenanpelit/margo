@@ -35,6 +35,7 @@ pub struct Config {
     pub dock: Dock,
     pub pass: Pass,
     pub alarm: AlarmConfig,
+    pub network: NetworkConfig,
 }
 
 /// One configured alarm. `repeat_mask` bit `i` (0 = Sunday … 6 = Saturday)
@@ -1265,6 +1266,97 @@ impl VerticalMenuExpansion {
             VerticalMenuExpansion::ExpandDown,
         ]
     }
+}
+
+/// Proxy mode for the network settings.
+///
+/// `None` disables the proxy (removes the environment.d file).
+/// `Manual` writes explicit `http_proxy` / `https_proxy` / `all_proxy` /
+/// `no_proxy` env vars to `~/.config/environment.d/99-margo-proxy.conf`.
+/// `Automatic` stores a PAC URL for reference; margo has no runtime PAC
+/// interpreter — apps launched after setting this mode need to support
+/// `auto_proxy`/`WPAD` on their own.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, Store, JsonSchema,
+)]
+pub enum ProxyMode {
+    /// No proxy — the environment.d file is removed.
+    #[default]
+    None,
+    /// Manual proxy — host:port strings are written as env vars.
+    Manual,
+    /// Automatic (PAC URL) — stored for reference only (not applied as env).
+    Automatic,
+}
+
+impl PatchField for ProxyMode {
+    fn patch_field(
+        &mut self,
+        new: Self,
+        path: &StorePath,
+        notify: &mut dyn FnMut(&StorePath),
+        _keys: Option<&KeyMap>,
+    ) {
+        if *self != new {
+            *self = new;
+            notify(path);
+        }
+    }
+}
+
+impl ProxyMode {
+    pub fn to_index(self) -> u32 {
+        match self {
+            ProxyMode::None => 0,
+            ProxyMode::Manual => 1,
+            ProxyMode::Automatic => 2,
+        }
+    }
+
+    pub fn from_index(idx: u32) -> Self {
+        match idx {
+            1 => ProxyMode::Manual,
+            2 => ProxyMode::Automatic,
+            _ => ProxyMode::None,
+        }
+    }
+
+    pub fn display_name(self) -> &'static str {
+        match self {
+            ProxyMode::None => "None",
+            ProxyMode::Manual => "Manual",
+            ProxyMode::Automatic => "Automatic (PAC)",
+        }
+    }
+
+    pub fn display_names() -> Vec<&'static str> {
+        vec!["None", "Manual", "Automatic (PAC)"]
+    }
+}
+
+/// Network-level settings — currently proxy only.
+///
+/// Proxy fields are written to
+/// `~/.config/environment.d/99-margo-proxy.conf` so apps launched in the
+/// next session (and the current session via `set_var`) inherit them.
+/// This is a best-effort applier: margo has no runtime system-wide proxy
+/// daemon; running apps keep their current proxy environment.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[serde(default)]
+#[derive(Default)]
+pub struct NetworkConfig {
+    /// Proxy mode selection.
+    pub proxy_mode: ProxyMode,
+    /// HTTP proxy in `host:port` form (no scheme prefix).
+    pub proxy_http: String,
+    /// HTTPS proxy in `host:port` form.
+    pub proxy_https: String,
+    /// SOCKS5 proxy in `host:port` form.
+    pub proxy_socks: String,
+    /// Comma-separated list of hosts/domains that bypass the proxy.
+    pub proxy_ignore: String,
+    /// PAC URL used when `proxy_mode == Automatic`.
+    pub proxy_pac_url: String,
 }
 
 #[cfg(test)]
