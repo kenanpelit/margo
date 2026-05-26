@@ -21,6 +21,7 @@ mod bar_settings;
 mod bluetooth_settings;
 mod clipboard_settings;
 mod date_time_settings;
+mod default_apps_settings;
 mod region_settings;
 mod row;
 mod screen_settings;

@@ -1,6 +1,7 @@
 use crate::about_settings::{AboutSettingsInit, AboutSettingsModel};
 use crate::animations_settings::{AnimationsSettingsInit, AnimationsSettingsModel};
 use crate::bluetooth_settings::{BluetoothSettingsInit, BluetoothSettingsModel};
+use crate::default_apps_settings::{DefaultAppsSettingsInit, DefaultAppsSettingsModel};
 use crate::network_settings::{NetworkSettingsInit, NetworkSettingsModel};
 use crate::power_settings::{PowerSettingsInit, PowerSettingsModel};
 use crate::bar_settings::bar_settings::{BarSettingsInit, BarSettingsModel};
@@ -50,6 +51,7 @@ pub struct SettingsWindowModel {
     display_settings_controller: Controller<DisplaySettingsModel>,
     bar_settings_controller: Controller<BarSettingsModel>,
     bluetooth_settings_controller: Controller<BluetoothSettingsModel>,
+    default_apps_settings_controller: Controller<DefaultAppsSettingsModel>,
     network_settings_controller: Controller<NetworkSettingsModel>,
     power_settings_controller: Controller<PowerSettingsModel>,
     menu_settings_controller: Controller<MenuSettingsModel>,
@@ -311,6 +313,27 @@ impl Component for SettingsWindowModel {
                             gtk::Label {
                                 add_css_class: "label-medium",
                                 set_label: "Date & Time",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
+                    #[name = "default_apps_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("default_apps"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("application-x-executable-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Default Apps",
                                 set_halign: gtk::Align::Start,
                                 set_hexpand: true,
                             },
@@ -784,6 +807,10 @@ impl Component for SettingsWindowModel {
             .launch(BluetoothSettingsInit {})
             .detach();
 
+        let default_apps_settings_controller = DefaultAppsSettingsModel::builder()
+            .launch(DefaultAppsSettingsInit {})
+            .detach();
+
         let network_settings_controller = NetworkSettingsModel::builder()
             .launch(NetworkSettingsInit {})
             .detach();
@@ -825,6 +852,7 @@ impl Component for SettingsWindowModel {
                 ("setup", "setup"),
                 ("bar", "bar"),
                 ("bluetooth", "bluetooth"),
+                ("default apps", "default_apps"),
                 ("display", "display"),
                 ("fonts", "fonts"),
                 ("idle", "idle"),
@@ -867,6 +895,7 @@ impl Component for SettingsWindowModel {
             display_settings_controller,
             bar_settings_controller,
             bluetooth_settings_controller,
+            default_apps_settings_controller,
             network_settings_controller,
             power_settings_controller,
             menu_settings_controller,
@@ -1078,6 +1107,12 @@ impl Component for SettingsWindowModel {
             model.bluetooth_settings_controller.widget(),
             Some("bluetooth"),
             "Bluetooth",
+        );
+
+        widgets.stack.add_titled(
+            model.default_apps_settings_controller.widget(),
+            Some("default_apps"),
+            "Default Apps",
         );
 
         widgets.stack.add_titled(
@@ -1483,6 +1518,7 @@ impl Component for SettingsWindowModel {
                     "setup" => Some(&widgets.setup_btn),
                     "bar" => Some(&widgets.bar_btn),
                     "bluetooth" => Some(&widgets.bluetooth_btn),
+                    "default_apps" => Some(&widgets.default_apps_btn),
                     "display" => Some(&widgets.display_btn),
                     "fonts" => Some(&widgets.fonts_btn),
                     "about" => Some(&widgets.about_btn),
