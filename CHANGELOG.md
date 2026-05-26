@@ -7,6 +7,48 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.8.3] – 2026-05-26
+
+### Added
+
+- **Alarm Clock** — alarm + stopwatch widget. A bar pill (alarm-bell glyph;
+  shows the running stopwatch time inline and pulses while ringing,
+  right-click to silence) opens a tabbed menu: an **Alarms** tab (reactive
+  list with per-alarm enable / time / repeat-day chips / delete, plus an add
+  row) and a **Stopwatch** tab (start / pause / reset). Alarms persist in the
+  shell profile and fire from a main-thread scheduler that plays a looping
+  tone and pops a Stop / Snooze notification; one-shot alarms auto-disable
+  after firing.
+- **Settings → Users** — GNOME-style account management replacing the old
+  read-only list. Per-account expandable cards: change picture, edit full
+  name, toggle Administrator, change password, and add / remove users. Every
+  privileged action runs through `pkexec` so the polkit agent prompts, with
+  guards against demoting or deleting the last administrator.
+- **Daily Wallpaper** (Settings → Wallpaper) — opt-in Bing or NASA
+  image-of-the-day, fetched on login and refreshed daily.
+- **Bundled default wallpaper** — a margo-branded `margo-hero.png` ships as
+  the default desktop wallpaper (shown when no wallpaper directory is set)
+  and is always the first tile in the Wallpaper menu.
+- **`mshellctl media`** — MPRIS player control: `toggle` / `next` / `prev` /
+  `status` / `list`, with an optional player-name fragment (`spotify`,
+  `browser`, …) and a now-playing toast on each action.
+- **`mshellctl audio`** — full CLI audio control: `list` / `status` / `set` /
+  `switch` for output + input devices.
+
+### Fixed
+
+- **Media targeting** — a player-name fragment (e.g. `browser`) now matches on
+  the D-Bus bus name + desktop entry, not just the MPRIS identity (so Chromium
+  forks like Helium match), and picks the *playing* player when a fragment
+  matches several.
+- **Audio device list** — stable ordering so `switch` cycles predictably, dead
+  / monitor sinks filtered out, and friendly device names in the Sound page.
+- **Cursor shapes** — margo now honours named cursor shapes
+  (pointer / text / grab / …).
+- **mlogind** — square (Plain) borders so corners join cleanly on a real TTY.
+- **Settings → Menus** — "Add widget" uses the same scrollable popover as the
+  Bar editor.
+
 ## [0.8.2] – 2026-05-25
 
 ### Added
@@ -3080,7 +3122,10 @@ sway, tinywl, and wlroots — see `LICENSE.*`.
   (end-to-end nested-mode smoke under Xvfb), `docs.yml`
   (Pages deployment).
 
-[Unreleased]: https://github.com/kenanpelit/margo/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/kenanpelit/margo/compare/v0.8.3...HEAD
+[0.8.3]: https://github.com/kenanpelit/margo/compare/v0.8.2...v0.8.3
+[0.8.2]: https://github.com/kenanpelit/margo/compare/v0.8.1...v0.8.2
+[0.8.1]: https://github.com/kenanpelit/margo/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/kenanpelit/margo/compare/v0.7.9...v0.8.0
 [0.7.9]: https://github.com/kenanpelit/margo/compare/v0.7.8...v0.7.9
 [0.7.8]: https://github.com/kenanpelit/margo/compare/v0.7.7...v0.7.8
