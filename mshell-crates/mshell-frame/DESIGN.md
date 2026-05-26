@@ -142,6 +142,18 @@ radius (px)" in Settings → General) only sizes the *screen-edge*
 rounded-corner overlay mask (and only when `show_screen_corners` is
 on). It has zero effect on any widget, button, or menu.
 
+### Spacing scale (`01-tokens/_sizing.scss`)
+Use `--space-N` for all padding and gaps — **never a raw `px` value.**
+
+| Token | px | Use |
+|---|---|---|
+| `--space-1` | 4 | tightest inset (badge padding, row gap) |
+| `--space-2` | 8 | compact padding (dense row, icon gap) |
+| `--space-3` | 12 | moderate gap / inset |
+| `--space-4` | 16 | default card padding (`≈ --padding-lg`) |
+| `--space-5` | 24 | generous padding (`≈ --padding-xl`) |
+| `--space-6` | 32 | section gap / outer margin |
+
 ### Sizing / padding / icons
 - Padding scale: `--padding-sm` 4, `--padding-md` 8, `--padding-lg` 16,
   `--padding-xl` 24. Spacing always snaps to **4 / 8 / 12 / 16 / 24 /
@@ -208,9 +220,12 @@ fn severity_class(value: u32) -> &'static str {
 }
 ```
 
-- **calm** → no override (inherits `--on-surface`).
-- **warn** → `var(--primary)`.
+- **calm** → no override (inherits `--on-surface-variant`).
+- **warn** → `var(--warning)` — amber; intentionally stable (not matugen-tinted) for instant recognition.
 - **danger** → `var(--error, #ef4444)`.
+- **positive** → `var(--success)` — green; same stability guarantee as `--warning`.
+
+`--warning` (#e0af68) and `--success` (#9ece6a) are declared in `_colors.scss` and are **wallpaper-independent** — matugen never re-declares these keys, so they survive every theme regeneration. This keeps status signals recognisable regardless of the current palette.
 
 Thresholds are tuned high so the UI reads calm at idle (e.g. CPU
 warn 70 / danger 90; temp warn 80 / danger 90; battery low 25 /

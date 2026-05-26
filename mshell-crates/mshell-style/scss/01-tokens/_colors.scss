@@ -16,10 +16,10 @@
   --surface-variant: #44475A;
   --on-surface-variant: #CDD6F4;
   --surface-container-highest: #6272A4;
-  --surface-container-high: #44475A;
-  --surface-container: #44475A;
-  --surface-container-low: #282A36;
-  --surface-container-lowest: #282A36;
+  --surface-container-high: #3e4257;
+  --surface-container: #34374a;
+  --surface-container-low: #2b2d39;
+  --surface-container-lowest: #232530;
   --inverse-surface: #CDD6F4;
   --inverse-on-surface: #282A36;
   --surface-tint: #BD93F9;
@@ -43,7 +43,12 @@
   --outline: #6272A4;
   --outline-variant: #44475A;
 
-  -gtk-icon-palette: warning var(--error), error var(--error), success var(--primary);
+  /* Semantic accents — stable, wallpaper-independent (matugen never
+     re-declares these keys, so they persist through theme regen). */
+  --warning: #e0af68;   /* amber — caution / warn tier */
+  --success: #9ece6a;   /* green — positive / success */
+
+  -gtk-icon-palette: warning var(--warning), error var(--error), success var(--success);
 
   --frame-bg: var(--surface);
   --frame-border: var(--outline);
