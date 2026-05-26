@@ -1,91 +1,166 @@
-// Corner toast. Surfaces over borders (DESIGN.md §0.1): a raised
-// tonal surface + soft elevation shadow separates the toast from
-// arbitrary wallpaper without a hard outline ring. Card shape
-// (--radius-md) and comfortable notification density (16px).
+@use "../02-functions/index" as *;
+
+// ── Notification history menu — audio-dashboard flat design language ─
+//
+// Visual language mirrors `.audio-dashboard-*` and `.clipboard-*`:
+//   * `.notification` cards sit on `--surface-container` with
+//     `--radius-md` corners and comfortable token-based padding.
+//   * Flat rows: `all: unset` + `@include state-layer()` hover wash.
+//   * `--on-surface` titles, `--on-surface-variant` metadata / icons.
+//   * `--primary` only as active/accent cue: unread dot, left accent
+//     strip, code-copy chip focus wash, action button highlight.
+//   * `--space-*` / `--font-*` tokens everywhere — no hardcoded
+//     colours or arbitrary px (hairlines / icon pixel-sizes / min-
+//     sizes remain integers where CSS custom-property math is noisy).
+//   * Motion: `--motion-fast` / `--ease-standard` on every transition.
+//
+// ENGINE PRESERVED: notifications.rs rebuild_list / grouping / mute /
+// DnD / action dispatch are untouched. Only widget classes + layout
+// chrome were changed (DnD already used panel-action-btn; Clear-all
+// migrated from ok-button-surface → panel-action-btn icon button).
+
+// ── Individual notification card ─────────────────────────────────────
+// Raised tonal surface (--surface-container-high) with card shape so
+// each notification reads as a discrete tile when stacked. The subtle
+// elevation shadow keeps the stack legible over any wallpaper or menu
+// background — same philosophy as the corner toast, just slightly
+// calmer (12 px blur vs. 16 px).
 .notification {
   background-color: var(--surface-container-high);
   border-radius: var(--radius-md);
-  padding: 16px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+  padding: var(--space-4);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.22);
+  transition: background-color var(--motion-fast) var(--ease-standard);
 }
 
-// Per-app icon in the header — sits left of the app name, dimmed
-// like the rest of the header metadata.
+// ── Per-app icon (header leading glyph) ──────────────────────────────
+// Symbolic size (16 px), dim variant tier so the app name / summary
+// stays the focal point. Matches .audio-dashboard-icon treatment.
 .notification-app-icon {
-  -gtk-icon-size: 16px;
+  -gtk-icon-size: var(--icon-sm);
   color: var(--on-surface-variant);
   opacity: 0.9;
+  transition: opacity var(--motion-fast) var(--ease-standard);
 }
 
-// Body image / album-art thumbnail. Card-shaped (--radius-sm) so a
-// square cover reads as a tile, not a raw rectangle.
+// ── Body image / album-art thumbnail ─────────────────────────────────
+// Card-shaped (--radius-sm) tile. Neutral fill while the image loads
+// so the space reads as intentional, not broken.
 .notification-image {
   border-radius: var(--radius-sm);
   background-color: var(--surface-container-highest);
 }
 
-// The body row carries the default action: show a pointer + a calm
-// primary state-layer on hover so it reads as "click to open"
-// (DESIGN.md §7), eased on the motion tokens.
+// ── Clickable body row (default action) ──────────────────────────────
+// Flat audio-dashboard row pattern: all:unset + state-layer wash.
+// The GestureDrag (tap → action, swipe → dismiss) is on this node;
+// the class only controls the hover state-layer and the pointer cursor.
+// Negative margin + matching padding absorbs the inner spacing so the
+// hit-area reaches the card edge while the focus ring stays inset.
 .notification-clickable {
   border-radius: var(--radius-sm);
-  margin: -4px;
-  padding: 4px;
-  transition: background-color var(--motion-fast) var(--ease-standard);
-
-  &:hover {
-    background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
-  }
+  margin: calc(var(--space-1) * -1);
+  padding: var(--space-1);
+  @include state-layer();
 }
 
-// Per-app group in the history panel — a collapsible Expander
-// titled "App (N)". The title reads as a quiet section label; the
-// arrow + title get the canonical hover wash.
+// ── Per-app collapsible group header ─────────────────────────────────
+// Matches .audio-dashboard-section-label semantics: uppercase, xs,
+// semibold, --on-surface-variant. The Expander arrow + title both get
+// the canonical hover wash so the hit-area reads as interactive.
 .notification-group {
   > title {
     border-radius: var(--radius-sm);
-    padding: 4px 6px;
-    color: var(--on-surface-variant);
+    padding: var(--space-1) var(--space-2);
+    font-size: var(--font-xs);
     font-weight: 600;
-    transition: background-color var(--motion-fast) var(--ease-standard);
-
-    &:hover {
-      background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
-    }
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--on-surface-variant);
+    @include state-layer();
   }
 }
 
-// Settings → muted-apps row (app name + remove button).
+// ── Muted-apps list row ───────────────────────────────────────────────
+// Flat row on a surface-container-high card: app name + remove button.
+// Token padding replaces the previous 4/10 px mix.
 .notification-mute-row {
-  padding: 4px 4px 4px 10px;
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
   border-radius: var(--radius-sm);
   background-color: var(--surface-container-high);
+  transition: background-color var(--motion-fast) var(--ease-standard);
 }
 
-// Detected 2FA / OTP code → one-click copy chip. Soft accent card so
-// it invites the click without shouting.
+// ── 2FA / OTP one-click copy chip ────────────────────────────────────
+// Soft secondary-container fill (same tier as the clipboard's active
+// tab segment) so the chip invites the click without shouting. Flat:
+// `all: unset` + the canonical state-layer hover wash. Monospace so
+// the code digits align cleanly.
 .notification-code-copy {
   all: unset;
-  padding: 6px 10px;
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
-  background-color: var(--secondary-container, var(--surface-container-highest));
-  color: var(--on-secondary-container, var(--on-surface));
+  background-color: var(--secondary-container);
+  color: var(--on-secondary-container);
+  font-size: var(--font-xs);
   font-variant-numeric: tabular-nums;
-  // A detected code reads cleanest in the configured monospace family.
   font-family: var(--font-family-monospace);
-  transition: background-color var(--motion-fast) var(--ease-standard);
+  @include state-layer(var(--secondary-container));
 
   image {
-    -gtk-icon-size: 14px;
-  }
-  &:hover {
-    background-color: unquote("color-mix(in srgb, var(--primary) 22%, var(--secondary-container, var(--surface-container-highest)))");
+    -gtk-icon-size: var(--icon-sm);
+    color: var(--on-secondary-container);
   }
 }
-// ── Bar bell read/unread corner dot ─────────────────────────────
-// Overlaid on the top-right of the bell glyph in the bar. Three
-// states distinguish unread / read-history / empty (the empty state
-// hides the dot from the Rust side).
+
+// ── Action buttons (per-notification explicit actions) ────────────────
+// The Rust factory appends these as ok-button-primary. Override inside
+// .notification to flatten them to the audio-dashboard language:
+// a --primary-container tint with --on-primary-container text so they
+// read as accent-tier actions without the harsh full-primary fill.
+// All state-layer motion comes from the @include below.
+.notification .ok-button-primary {
+  all: unset;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-xs);
+  font-weight: 500;
+  background-color: var(--primary-container);
+  color: var(--on-primary-container);
+  @include state-layer(var(--primary-container));
+
+  image {
+    -gtk-icon-size: var(--icon-sm);
+    color: var(--on-primary-container);
+  }
+}
+
+// ── Close button (header ✕) ───────────────────────────────────────────
+// The Rust factory adds ok-button-surface. Override inside .notification
+// to match the panel-action-btn flat pattern (same idiom the DnD button
+// and Clear-all button in the header use after this redesign).
+.notification .ok-button-surface {
+  all: unset;
+  min-width: 32px;
+  min-height: 32px;
+  border-radius: var(--radius-pill);
+  background-color: transparent;
+  @include state-layer();
+
+  image {
+    color: var(--on-surface-variant);
+    -gtk-icon-size: var(--icon-sm);
+    transition: color var(--motion-fast) var(--ease-standard);
+  }
+
+  &:hover image {
+    color: var(--on-surface);
+  }
+}
+
+// ── Bar bell read/unread corner dot ──────────────────────────────────
+// Overlaid on the top-right of the bell glyph in the bar. Three states:
+// unread (urgent), read (calm history), empty (hidden from Rust side).
 .notif-dot {
   border-radius: var(--radius-pill);
   min-width: 7px;
@@ -95,13 +170,16 @@
   transition: background-color var(--motion-fast) var(--ease-standard);
 }
 
-// Unread: a bright error-tinted dot that demands attention.
+// Unread: --primary accent (the single active/accent cue per DESIGN.md).
+// Previously used --error; --primary is calmer and consistent with
+// every other active-state indicator in the shell (clipboard selected
+// row, tab active segment, device-check icon).
 .notif-dot.unread {
-  background-color: var(--error);
+  background-color: var(--primary);
 }
 
-// Read history present but acknowledged: a smaller, dim neutral dot —
-// "there's history here" without the urgency of unread.
+// Read history present but acknowledged: dim neutral dot at the
+// on-surface-variant tier — "history exists" without urgency.
 .notif-dot.read {
   min-width: 5px;
   min-height: 5px;

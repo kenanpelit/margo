@@ -103,16 +103,15 @@ impl Component for NotificationsModel {
                 },
 
                 gtk::Button {
-                    add_css_class: "ok-button-surface",
-                    add_css_class: "ok-button-cell",
+                    add_css_class: "panel-action-btn",
                     set_valign: gtk::Align::Center,
+                    set_tooltip_text: Some("Clear all"),
                     connect_clicked[sender] => move |_| {
                         sender.input(NotificationsInput::ClearAllClicked);
                     },
 
-                    gtk::Label {
-                        add_css_class: "label-small",
-                        set_label: "Clear all",
+                    gtk::Image {
+                        set_icon_name: Some("edit-clear-all-symbolic"),
                     },
                 },
             },
