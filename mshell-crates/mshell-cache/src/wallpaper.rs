@@ -37,6 +37,25 @@ fn current_path_file() -> PathBuf {
     cache_dir().join("wallpaper_path")
 }
 
+/// Path to the bundled margo default wallpaper (`margo-hero.png`), if it's
+/// installed. Resolved in priority order: the user data-dir override, then the
+/// system data dirs (`/usr/share/margo/wallpapers/…`). `None` on an
+/// uninstalled dev tree where the asset hasn't been deployed.
+pub fn default_wallpaper_path() -> Option<PathBuf> {
+    const REL: &str = "margo/wallpapers/margo-hero.png";
+    let mut candidates = vec![glib::user_data_dir().join(REL)];
+    candidates.extend(glib::system_data_dirs().into_iter().map(|d| d.join(REL)));
+    candidates.into_iter().find(|p| p.exists())
+}
+
+/// Decode the bundled default wallpaper for the first-run / unconfigured
+/// display. Used only when no user wallpaper is cached.
+fn load_default_wallpaper() -> Option<WallpaperImage> {
+    let path = default_wallpaper_path()?;
+    info!("no wallpaper set — using bundled default {}", path.display());
+    decode_source(&path)
+}
+
 // ── In-memory wallpaper buffer ───────────────────────────────────────────────
 
 /// Shared RGBA image data ready for direct use with MemoryTexture.
@@ -65,8 +84,10 @@ static WALLPAPER: LazyLock<ArcStore<WallpaperState>> =
     LazyLock::new(|| ArcStore::new(WallpaperState { revision: 0 }));
 
 static WALLPAPER_INNER: LazyLock<std::sync::Mutex<WallpaperInner>> = LazyLock::new(|| {
-    // Load persisted image from disk if available
-    let image = load_from_disk();
+    // Load the persisted image from disk; when none is set (fresh profile /
+    // reset / never configured), fall back to the bundled margo default so the
+    // desktop is branded instead of blank.
+    let image = load_from_disk().or_else(load_default_wallpaper);
 
     // React to theme changes
     Effect::new(move |_| {
@@ -314,7 +335,9 @@ pub fn list_wallpapers() -> Vec<PathBuf> {
         .wallpaper_dir()
         .get_untracked();
     if dir.is_empty() {
-        return Vec::new();
+        // No directory configured — the bundled default is the only entry, so
+        // next/prev cycling and the menu still have something to land on.
+        return default_wallpaper_path().into_iter().collect();
     }
     let mut entries: Vec<PathBuf> = match fs::read_dir(&dir) {
         Ok(rd) => rd

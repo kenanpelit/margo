@@ -20,4 +20,6 @@ flake.nix
 # from screenshot-widget iterations, …). Add specific names
 # to .git/info/exclude if you want to keep one.
 *.png
+# …but the bundled default desktop wallpaper is a real asset.
+!assets/wallpapers/margo-hero.png
 

@@ -373,6 +373,15 @@ package() {
       "$pkgdir/usr/share/margo/wallpapers/default.jpg"
   fi
 
+  # ── Bundled default desktop wallpaper (margo brand) ────────────
+  # Shown by the shell when no wallpaper directory is configured
+  # yet (and offered as the first tile in the Wallpaper menu);
+  # resolved at runtime from /usr/share/margo/wallpapers/.
+  if [[ -f "assets/wallpapers/margo-hero.png" ]]; then
+    install -Dm644 "assets/wallpapers/margo-hero.png" \
+      "$pkgdir/usr/share/margo/wallpapers/margo-hero.png"
+  fi
+
   # ── XDG desktop-portal preferences ─────────────────────────────
   # xdg-desktop-portal reads `<desktop>-portals.conf` when
   # XDG_CURRENT_DESKTOP matches the file's stem. Path is

@@ -312,6 +312,12 @@ debian_install_files() {
   install_file 644 "${REPO_ROOT}/assets/wallpapers/default.jpg" \
     "/usr/share/margo/wallpapers/default.jpg"
 
+  # ── bundled default desktop wallpaper (margo brand) ──
+  # Shown when no wallpaper dir is configured + first tile in the
+  # Wallpaper menu; resolved from /usr/share/margo/wallpapers/.
+  install_file 644 "${REPO_ROOT}/assets/wallpapers/margo-hero.png" \
+    "/usr/share/margo/wallpapers/margo-hero.png"
+
   # ── xdg-desktop-portal: native margo backend (gnome-free) ──
   install_file 644 "${REPO_ROOT}/assets/margo-portals.conf" \
     "/usr/share/xdg-desktop-portal/margo-portals.conf"

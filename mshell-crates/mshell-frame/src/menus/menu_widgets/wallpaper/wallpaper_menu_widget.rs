@@ -1,6 +1,6 @@
 use crate::menus::menu_widgets::wallpaper::parallelogram::ParallelogramPaintable;
 use gtk4_layer_shell::{KeyboardMode, LayerShell};
-use mshell_cache::wallpaper::set_wallpaper;
+use mshell_cache::wallpaper::{default_wallpaper_path, set_wallpaper};
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
@@ -815,10 +815,10 @@ impl Component for WallpaperMenuWidgetModel {
                         self.dir_monitor = Some(monitor);
                     }
 
-                    sender.input(WallpaperMenuWidgetInput::FilesUpdated);
-                } else {
-                    self.list_store.remove_all();
                 }
+                // Always (re)build — even with no/invalid dir — so the bundled
+                // margo default still shows as the first tile.
+                sender.input(WallpaperMenuWidgetInput::FilesUpdated);
                 self.wallpaper_directory = wallpaper_dir;
             }
 
@@ -857,6 +857,14 @@ impl Component for WallpaperMenuWidgetModel {
 
             WallpaperMenuWidgetInput::FilesUpdated => {
                 self.list_store.remove_all();
+                // Bundled margo default first, so it's always reachable — even
+                // before a wallpaper directory is configured.
+                if let Some(def) = default_wallpaper_path()
+                    && !self.files.iter().any(|p| p == &def)
+                {
+                    self.list_store
+                        .append(&gtk::StringObject::new(&def.to_string_lossy()));
+                }
                 let mut sorted: Vec<_> = self.files.iter().collect();
                 sorted.sort();
                 for file_path in sorted {
