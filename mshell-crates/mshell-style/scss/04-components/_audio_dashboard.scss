@@ -27,6 +27,9 @@
 
 // ── Popover surface ────────────────────────────────────────────
 .audio-dashboard-menu {
+  background: var(--surface-container);
+  border-radius: var(--radius-md);
+  transition: background var(--motion-fast) var(--ease-standard);
   > contents { padding: 0; }
 }
 
@@ -36,7 +39,7 @@
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--on-surface-variant);
-  margin-top: 4px;
+  margin-top: var(--space-1);
 }
 
 .audio-dashboard-icon {
@@ -56,7 +59,7 @@
 // primary tint the bar pills use.
 .audio-dashboard-mute-button {
   all: unset;
-  padding: 4px 6px;
+  padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
   @include state-layer();
 }
@@ -85,12 +88,12 @@
 // Device picker list — flat rows that highlight on hover and
 // show a check icon on the currently-active device.
 .audio-dashboard-device-list {
-  margin-top: 4px;
+  margin-top: var(--space-1);
 }
 
 .audio-dashboard-device-row {
   all: unset;
-  padding: 6px 10px;
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   font-size: var(--font-xs);
   color: var(--on-surface);

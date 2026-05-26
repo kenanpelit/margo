@@ -19,9 +19,10 @@
 // tile this nests as a raised inner surface; standalone it still
 // groups the hourly/detail rows without a "debug UI" border.
 .weather-container {
-  background-color: var(--surface-container-high);
+  background: var(--surface-container-high);
   border-radius: var(--radius-md);
-  padding: 8px;
+  padding: var(--space-2);
+  transition: background var(--motion-fast) var(--ease-standard);
 }
 // ── Bar pill ────────────────────────────────────────────────────
 // Current temperature is the focal value (inherits the bar text
