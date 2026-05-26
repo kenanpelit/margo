@@ -44,6 +44,9 @@ pub(crate) struct PrivacySettingsModel {
     lock_timeout: u32,
     // File History
     remember_recent: bool,
+    // App Permissions (flatpak portal)
+    flatpak_available: bool,
+    perms: Vec<sys::permissions::PermEntry>,
     // EffectScope keeps config-watcher effects alive for the lifetime
     // of this component.
     _effects: EffectScope,
@@ -63,6 +66,14 @@ pub(crate) enum PrivacySettingsInput {
     RememberRecentEffect(bool),
     /// User clicked "Clear History".
     ClearRecent,
+    /// Flatpak CLI presence result.
+    PermsAvailability(bool),
+    /// Loaded portal permission entries.
+    PermsLoaded(Vec<sys::permissions::PermEntry>),
+    /// User clicked Revoke for (table, object, app).
+    RevokePerm(String, String, String),
+    /// Re-query flatpak permissions (after revoke or on re-map).
+    ReloadPerms,
 }
 
 #[derive(Debug)]
@@ -374,7 +385,19 @@ impl Component for PrivacySettingsModel {
                     set_wrap: true,
                 },
 
-                // App Permissions — Task 6
+                // ── App Permissions ───────────────────────────────
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "App Permissions",
+                    set_halign: gtk::Align::Start,
+                },
+
+                // Rebuilt dynamically in update_with_view
+                #[name = "perms_box"]
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 8,
+                },
             }
         }
     }
@@ -445,7 +468,8 @@ impl Component for PrivacySettingsModel {
             let active_unmap = active.clone();
             let sender_poll = sender.clone();
 
-            // On map: mark active, kick off the poll loop; re-purge if needed.
+            // On map: mark active, kick off the poll loop; re-purge if needed;
+            // also reload flatpak portal permissions.
             root.connect_map(move |_| {
                 // Best-effort re-purge recent files if the setting is off.
                 if !config_manager()
@@ -478,6 +502,20 @@ impl Component for PrivacySettingsModel {
                                 return;
                             }
                         }
+                    }
+                });
+
+                // Load flatpak portal permissions while this page is visible.
+                let s = sender_poll.clone();
+                glib::spawn_future_local(async move {
+                    if sys::permissions::available().await {
+                        s.input(PrivacySettingsInput::PermsAvailability(true));
+                        match sys::permissions::list().await {
+                            Ok(v) => s.input(PrivacySettingsInput::PermsLoaded(v)),
+                            Err(e) => notify::toast("Privacy", &e),
+                        }
+                    } else {
+                        s.input(PrivacySettingsInput::PermsAvailability(false));
                     }
                 });
             });
@@ -515,6 +553,8 @@ impl Component for PrivacySettingsModel {
             lock_enabled,
             lock_timeout,
             remember_recent,
+            flatpak_available: false,
+            perms: Vec::new(),
             _effects: effects,
         };
 
@@ -539,8 +579,9 @@ impl Component for PrivacySettingsModel {
         }
     }
 
-    fn update(
+    fn update_with_view(
         &mut self,
+        widgets: &mut Self::Widgets,
         message: Self::Input,
         sender: ComponentSender<Self>,
         _root: &Self::Root,
@@ -574,7 +615,49 @@ impl Component for PrivacySettingsModel {
                 let _ = gtk::RecentManager::default().purge_items();
                 notify::toast("Privacy", "Recent files cleared");
             }
+            PrivacySettingsInput::PermsAvailability(b) => {
+                self.flatpak_available = b;
+            }
+            PrivacySettingsInput::PermsLoaded(v) => {
+                self.perms = v
+                    .into_iter()
+                    .filter(|e| {
+                        matches!(
+                            e.table.as_str(),
+                            "devices" | "location" | "screencast" | "screenshot"
+                        )
+                    })
+                    .collect();
+            }
+            PrivacySettingsInput::RevokePerm(table, object, app) => {
+                let s = sender.clone();
+                glib::spawn_future_local(async move {
+                    match sys::permissions::revoke(&table, &object, &app).await {
+                        Ok(()) => s.input(PrivacySettingsInput::ReloadPerms),
+                        Err(e) => notify::toast("Privacy", &e),
+                    }
+                });
+            }
+            PrivacySettingsInput::ReloadPerms => {
+                let s = sender.clone();
+                glib::spawn_future_local(async move {
+                    if sys::permissions::available().await {
+                        s.input(PrivacySettingsInput::PermsAvailability(true));
+                        match sys::permissions::list().await {
+                            Ok(v) => s.input(PrivacySettingsInput::PermsLoaded(v)),
+                            Err(e) => notify::toast("Privacy", &e),
+                        }
+                    } else {
+                        s.input(PrivacySettingsInput::PermsAvailability(false));
+                    }
+                });
+            }
         }
+
+        // Rebuild the App Permissions box from current model state.
+        rebuild_perms_box(&widgets.perms_box, self.flatpak_available, &self.perms, &sender);
+
+        self.update_view(widgets, sender);
     }
 }
 
@@ -599,6 +682,94 @@ fn lock_summary(enabled: bool, timeout_minutes: u32) -> String {
         format!("Screen locks after {} minute{} idle", timeout_minutes, if timeout_minutes == 1 { "" } else { "s" })
     } else {
         "Automatic screen lock is off".to_string()
+    }
+}
+
+// ── App Permissions rebuild ───────────────────────────────────────────────────
+
+/// Rebuild the `perms_box` from the current model state.
+///
+/// Called on every `update_with_view` so the list stays in sync.
+/// Short lists (< 50 entries) make a full rebuild on each change affordable.
+fn rebuild_perms_box(
+    perms_box: &gtk::Box,
+    flatpak_available: bool,
+    perms: &[sys::permissions::PermEntry],
+    sender: &ComponentSender<PrivacySettingsModel>,
+) {
+    use relm4::gtk::prelude::*;
+
+    // Clear existing children.
+    while let Some(child) = perms_box.first_child() {
+        perms_box.remove(&child);
+    }
+
+    if !flatpak_available {
+        let label = gtk::Label::new(Some(
+            "flatpak is not installed — portal permissions unavailable",
+        ));
+        label.add_css_class("label-small");
+        label.set_halign(gtk::Align::Start);
+        label.set_xalign(0.0);
+        label.set_wrap(true);
+        perms_box.append(&label);
+        return;
+    }
+
+    if perms.is_empty() {
+        let label = gtk::Label::new(Some("No app permissions recorded."));
+        label.add_css_class("label-small");
+        label.set_halign(gtk::Align::Start);
+        perms_box.append(&label);
+        return;
+    }
+
+    for entry in perms {
+        // Row: horizontal box with text labels on the left, Revoke button on the right.
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        row.add_css_class("perm-row");
+
+        // Text column
+        let text_col = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        text_col.set_hexpand(true);
+        text_col.set_valign(gtk::Align::Center);
+
+        let app_label = gtk::Label::new(Some(&entry.app));
+        app_label.add_css_class("label-medium-bold");
+        app_label.set_halign(gtk::Align::Start);
+
+        let detail_label = gtk::Label::new(Some(&format!(
+            "{} · {} · {}",
+            entry.table, entry.object, entry.perms
+        )));
+        detail_label.add_css_class("label-small");
+        detail_label.set_halign(gtk::Align::Start);
+        detail_label.set_xalign(0.0);
+        detail_label.set_wrap(true);
+
+        text_col.append(&app_label);
+        text_col.append(&detail_label);
+        row.append(&text_col);
+
+        // Revoke button
+        let revoke_btn = gtk::Button::with_label("Revoke");
+        revoke_btn.add_css_class("destructive-action");
+        revoke_btn.set_valign(gtk::Align::Center);
+
+        let table = entry.table.clone();
+        let object = entry.object.clone();
+        let app = entry.app.clone();
+        let s = sender.clone();
+        revoke_btn.connect_clicked(move |_| {
+            s.input(PrivacySettingsInput::RevokePerm(
+                table.clone(),
+                object.clone(),
+                app.clone(),
+            ));
+        });
+
+        row.append(&revoke_btn);
+        perms_box.append(&row);
     }
 }
 
