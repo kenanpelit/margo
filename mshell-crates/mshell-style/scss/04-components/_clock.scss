@@ -298,23 +298,48 @@
       }
     }
 
-    // Day cells.
+    // Day cells — base geometry + smooth state transitions.
     > grid > label {
       padding: 6px 4px;
       min-width: 28px;
       color: var(--on-surface-variant);
       border-radius: var(--radius-pill);
+      // Ease background + ring changes so state switches don't
+      // hard-swap (DESIGN.md §Motion).
+      transition: background var(--motion-fast) var(--ease-standard),
+                  box-shadow   var(--motion-fast) var(--ease-standard);
 
-      // Today gets the primary accent ring.
-      &.today {
-        background-color: var(--primary);
-        color: var(--on-primary);
-        font-weight: 700;
+      // Hover — 14 % primary tint; lifts the cell without
+      // competing with the today fill.
+      &:hover {
+        background: color-mix(in srgb, var(--primary) 14%, transparent);
       }
 
-      // Other-month days fade out.
+      // Selected day (GTK :selected pseudo-state; set_day(today)
+      // keeps this pinned to today between rollovers).  Rendered
+      // as a 1 px primary inset ring so it composes cleanly with
+      // the today fill above and is readable even on hover.
+      &:selected {
+        background: transparent;
+        box-shadow: inset 0 0 0 1px var(--primary);
+      }
+
+      // Today — filled primary accent.  Declared AFTER :hover and
+      // :selected so the filled look wins the cascade; hover on
+      // today stays the solid primary fill (no jarring tint swap).
+      &.today {
+        background: var(--primary);
+        color: var(--on-primary);
+        font-weight: 700;
+        box-shadow: none;
+      }
+
+      // Inactive-month days — dimmed to a 55 % on-surface-variant
+      // tint instead of a blunt opacity: 0.35 so they read as
+      // "present but not this month" rather than "disabled".
       &.other-month {
-        opacity: 0.35;
+        color: color-mix(in srgb, var(--on-surface-variant) 55%, transparent);
+        opacity: 1;
       }
     }
 

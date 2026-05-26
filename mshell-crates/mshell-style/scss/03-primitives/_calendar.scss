@@ -1,3 +1,22 @@
+// ── gtk::Calendar global base ────────────────────────────────
+//
+// Fallback rules for any `calendar` widget that is NOT nested
+// inside `.calendar-grid-card`.  The dashboard calendar lives
+// inside `.calendar-grid-card` (see _clock.scss) and gets its
+// own higher-specificity overrides there.
+//
+// GTK4 Calendar CSS node tree:
+//   calendar
+//   ├── header
+//   │   ├── button (.previous, .next)
+//   │   └── label  (month-year)
+//   └── grid
+//       ├── label.day-name  (M T W T F S S)
+//       └── label           (day cells)
+//           ├── .today          — today's date  (GTK auto-applied)
+//           ├── .other-month    — days outside current month (GTK auto-applied)
+//           └── :selected       — currently selected day (GTK pseudo-state)
+
 calendar {
   background-color: var(--surface);
   border: 2px solid var(--outline);
@@ -17,13 +36,41 @@ calendar button {
   color: var(--on-surface);
 }
 
-calendar grid label {
-  background-color: var(--surface);
+// Base day cell — transition so state changes ease in rather than
+// hard-swapping (DESIGN.md §Motion).
+calendar > grid > label {
+  background-color: transparent;
   color: var(--on-surface);
+  border-radius: var(--radius-sm);
+  transition: background var(--motion-fast) var(--ease-standard),
+              box-shadow   var(--motion-fast) var(--ease-standard);
 }
 
-calendar grid label.today {
+// Hover — gentle primary tint (14 % opacity) so the cell lifts
+// without competing with the today / selected fills.
+calendar > grid > label:hover {
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+}
+
+// Selected day (GTK pseudo-state; today is always selected here
+// because we call set_day(today) — styles it as an outline ring
+// beneath the today fill so the two states compose cleanly).
+calendar > grid > label:selected {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+// Today — filled primary.  Declared AFTER :selected and :hover so
+// it wins the cascade and the today cell stays fully filled.
+calendar > grid > label.today {
   border-radius: var(--radius-sm);
-  background-color: var(--primary);
+  background: var(--primary);
   color: var(--on-primary);
+  font-weight: 700;
+  box-shadow: none;
+}
+
+// Inactive-month days fade to a dimmed on-surface-variant tint.
+calendar > grid > label.other-month {
+  color: color-mix(in srgb, var(--on-surface-variant) 55%, transparent);
 }
