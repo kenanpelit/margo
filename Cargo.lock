@@ -3991,8 +3991,10 @@ dependencies = [
  "tokio",
  "tracing",
  "wayle-audio",
+ "wayle-battery",
  "wayle-bluetooth",
  "wayle-network",
+ "wayle-power-profiles",
 ]
 
 [[package]]

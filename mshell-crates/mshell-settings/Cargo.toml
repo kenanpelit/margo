@@ -26,8 +26,10 @@ serde_json.workspace = true
 tokio = { workspace = true }
 tracing.workspace = true
 wayle-audio.workspace = true
+wayle-battery.workspace = true
 wayle-bluetooth.workspace = true
 wayle-network.workspace = true
+wayle-power-profiles.workspace = true
 
 [lints]
 workspace = true

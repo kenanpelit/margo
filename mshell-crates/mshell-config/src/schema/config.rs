@@ -36,6 +36,7 @@ pub struct Config {
     pub pass: Pass,
     pub alarm: AlarmConfig,
     pub network: NetworkConfig,
+    pub power: PowerConfig,
 }
 
 /// One configured alarm. `repeat_mask` bit `i` (0 = Sunday … 6 = Saturday)
@@ -1357,6 +1358,31 @@ pub struct NetworkConfig {
     pub proxy_ignore: String,
     /// PAC URL used when `proxy_mode == Automatic`.
     pub proxy_pac_url: String,
+}
+
+/// Power-management settings surfaced on the Settings → Power page.
+///
+/// `low_battery_warning` enables a desktop-notification toast when the
+/// battery falls at or below `low_battery_threshold` percent while on
+/// battery power. The threshold is a percent value (1–100); the default
+/// of 15 matches common platform defaults.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[serde(default)]
+pub struct PowerConfig {
+    /// Pop a toast notification when battery drops to or below
+    /// `low_battery_threshold` while on battery.
+    pub low_battery_warning: bool,
+    /// Percent threshold for the low-battery toast (1–100, default 15).
+    pub low_battery_threshold: u32,
+}
+
+impl Default for PowerConfig {
+    fn default() -> Self {
+        Self {
+            low_battery_warning: true,
+            low_battery_threshold: 15,
+        }
+    }
 }
 
 #[cfg(test)]

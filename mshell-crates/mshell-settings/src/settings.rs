@@ -2,6 +2,7 @@ use crate::about_settings::{AboutSettingsInit, AboutSettingsModel};
 use crate::animations_settings::{AnimationsSettingsInit, AnimationsSettingsModel};
 use crate::bluetooth_settings::{BluetoothSettingsInit, BluetoothSettingsModel};
 use crate::network_settings::{NetworkSettingsInit, NetworkSettingsModel};
+use crate::power_settings::{PowerSettingsInit, PowerSettingsModel};
 use crate::bar_settings::bar_settings::{BarSettingsInit, BarSettingsModel};
 use crate::date_time_settings::{DateTimeSettingsInit, DateTimeSettingsModel};
 use crate::region_settings::{RegionSettingsInit, RegionSettingsModel};
@@ -50,6 +51,7 @@ pub struct SettingsWindowModel {
     bar_settings_controller: Controller<BarSettingsModel>,
     bluetooth_settings_controller: Controller<BluetoothSettingsModel>,
     network_settings_controller: Controller<NetworkSettingsModel>,
+    power_settings_controller: Controller<PowerSettingsModel>,
     menu_settings_controller: Controller<MenuSettingsModel>,
     notification_settings_controller: Controller<NotificationSettingsModel>,
     idle_settings_controller: Controller<IdleSettingsModel>,
@@ -483,6 +485,27 @@ impl Component for SettingsWindowModel {
                         },
                     },
 
+                    #[name = "power_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("power"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("battery-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Power",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
                     #[name = "region_btn"]
                     gtk::ToggleButton {
                         add_css_class: "sidebar-button",
@@ -765,6 +788,10 @@ impl Component for SettingsWindowModel {
             .launch(NetworkSettingsInit {})
             .detach();
 
+        let power_settings_controller = PowerSettingsModel::builder()
+            .launch(PowerSettingsInit {})
+            .detach();
+
         let menu_settings_controller = MenuSettingsModel::builder()
             .launch(MenuSettingsInit {})
             .detach();
@@ -812,6 +839,7 @@ impl Component for SettingsWindowModel {
                 ("launcher", "launcher"),
                 ("menus", "menus"),
                 ("network", "network"),
+                ("power", "power"),
                 ("theme", "theme"),
                 ("wallpaper", "wallpaper"),
                 ("widgets", "widgets"),
@@ -840,6 +868,7 @@ impl Component for SettingsWindowModel {
             bar_settings_controller,
             bluetooth_settings_controller,
             network_settings_controller,
+            power_settings_controller,
             menu_settings_controller,
             notification_settings_controller,
             idle_settings_controller,
@@ -1055,6 +1084,12 @@ impl Component for SettingsWindowModel {
             model.network_settings_controller.widget(),
             Some("network"),
             "Network",
+        );
+
+        widgets.stack.add_titled(
+            model.power_settings_controller.widget(),
+            Some("power"),
+            "Power",
         );
 
         widgets.stack.add_titled(
@@ -1462,6 +1497,7 @@ impl Component for SettingsWindowModel {
                     "launcher" => Some(&widgets.launcher_btn),
                     "menus" => Some(&widgets.menus_btn),
                     "network" => Some(&widgets.network_btn),
+                    "power" => Some(&widgets.power_btn),
                     "theme" => Some(&widgets.theme_btn),
                     "wallpaper" => Some(&widgets.wallpaper_btn),
                     "widgets" => Some(&widgets.widgets_btn),
