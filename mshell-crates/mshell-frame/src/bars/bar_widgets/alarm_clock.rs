@@ -6,9 +6,9 @@
 //! fires while there's something to animate, so a quiet pill is free.
 
 use crate::stopwatch::{self, StopwatchState};
-use mshell_sounds::alarm_is_ringing;
+use mshell_sounds::{alarm_is_ringing, stop_alarm};
 use relm4::gtk::Orientation;
-use relm4::gtk::prelude::{BoxExt, ButtonExt, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, GestureSingleExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::time::Duration;
 
@@ -21,6 +21,8 @@ pub(crate) struct AlarmClockModel {
 #[derive(Debug)]
 pub(crate) enum AlarmClockInput {
     Clicked,
+    /// Right-click — silence the ringing alarm without opening the menu.
+    StopRinging,
 }
 
 #[derive(Debug)]
@@ -90,6 +92,15 @@ impl Component for AlarmClockModel {
         };
         let widgets = view_output!();
 
+        // Right-click → silence the ringing alarm (no menu).
+        let gesture = gtk::GestureClick::new();
+        gesture.set_button(gtk::gdk::BUTTON_SECONDARY);
+        let stop_sender = sender.clone();
+        gesture.connect_pressed(move |_, _, _, _| {
+            stop_sender.input(AlarmClockInput::StopRinging);
+        });
+        widgets.button_widget.add_controller(gesture);
+
         refresh(&model);
 
         // Heartbeat — only relayouts while the stopwatch runs or the
@@ -123,6 +134,12 @@ impl Component for AlarmClockModel {
             AlarmClockInput::Clicked => {
                 let _ = sender.output(AlarmClockOutput::Clicked);
             }
+            AlarmClockInput::StopRinging => {
+                if alarm_is_ringing() {
+                    stop_alarm();
+                }
+                refresh(self);
+            }
         }
     }
 
@@ -149,8 +166,12 @@ fn refresh(model: &AlarmClockModel) {
 
     if alarm_is_ringing() {
         model.button.add_css_class("ringing");
+        model
+            .button
+            .set_tooltip_text(Some("Ringing — right-click to stop"));
     } else {
         model.button.remove_css_class("ringing");
+        model.button.set_tooltip_text(Some("Alarm Clock"));
     }
 }
 
