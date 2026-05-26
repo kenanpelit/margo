@@ -1,0 +1,24 @@
+// Default Applications Settings page — bespoke classes only.
+//
+// Shared classes (.settings-page, .settings-hero*, .label-*) are already
+// styled in _settings.scss — not repeated here. All colours are matugen
+// CSS custom properties; no hardcoded hex values.
+
+// ── Application category row ──────────────────────────────────────
+//
+// One row per content-type category (Web Browser, Email, Music, …).
+// Shape matches the standard settings-list-row idiom used on the
+// network/bluetooth pages: surface-container-high card, --radius-sm
+// corners, primary state-layer on hover, eased on motion tokens.
+// The dropdown lives inside the row so horizontal padding is generous.
+
+.default-app-row {
+    padding: 12px 16px;
+    border-radius: var(--radius-sm);
+    background-color: var(--surface-container-high);
+    transition: background-color var(--motion-fast) var(--ease-standard);
+
+    &:hover {
+        background-color: unquote("color-mix(in srgb, var(--primary) 14%, var(--surface-container-high))");
+    }
+}
