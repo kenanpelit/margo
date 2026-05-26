@@ -3991,6 +3991,7 @@ dependencies = [
  "tokio",
  "tracing",
  "wayle-audio",
+ "wayle-bluetooth",
 ]
 
 [[package]]

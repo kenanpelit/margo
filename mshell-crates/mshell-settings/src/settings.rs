@@ -1,5 +1,6 @@
 use crate::about_settings::{AboutSettingsInit, AboutSettingsModel};
 use crate::animations_settings::{AnimationsSettingsInit, AnimationsSettingsModel};
+use crate::bluetooth_settings::{BluetoothSettingsInit, BluetoothSettingsModel};
 use crate::bar_settings::bar_settings::{BarSettingsInit, BarSettingsModel};
 use crate::date_time_settings::{DateTimeSettingsInit, DateTimeSettingsModel};
 use crate::region_settings::{RegionSettingsInit, RegionSettingsModel};
@@ -46,6 +47,7 @@ pub struct SettingsWindowModel {
     keybinds_settings_controller: Controller<KeybindsSettingsModel>,
     display_settings_controller: Controller<DisplaySettingsModel>,
     bar_settings_controller: Controller<BarSettingsModel>,
+    bluetooth_settings_controller: Controller<BluetoothSettingsModel>,
     menu_settings_controller: Controller<MenuSettingsModel>,
     notification_settings_controller: Controller<NotificationSettingsModel>,
     idle_settings_controller: Controller<IdleSettingsModel>,
@@ -263,6 +265,27 @@ impl Component for SettingsWindowModel {
                             gtk::Label {
                                 add_css_class: "label-medium",
                                 set_label: "Bar",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
+                    #[name = "bluetooth_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("bluetooth"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("bluetooth-active-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Bluetooth",
                                 set_halign: gtk::Align::Start,
                                 set_hexpand: true,
                             },
@@ -711,6 +734,10 @@ impl Component for SettingsWindowModel {
             .launch(BarSettingsInit {})
             .detach();
 
+        let bluetooth_settings_controller = BluetoothSettingsModel::builder()
+            .launch(BluetoothSettingsInit {})
+            .detach();
+
         let menu_settings_controller = MenuSettingsModel::builder()
             .launch(MenuSettingsInit {})
             .detach();
@@ -743,6 +770,7 @@ impl Component for SettingsWindowModel {
                 ("general", "general"),
                 ("setup", "setup"),
                 ("bar", "bar"),
+                ("bluetooth", "bluetooth"),
                 ("display", "display"),
                 ("fonts", "fonts"),
                 ("idle", "idle"),
@@ -782,6 +810,7 @@ impl Component for SettingsWindowModel {
             keybinds_settings_controller,
             display_settings_controller,
             bar_settings_controller,
+            bluetooth_settings_controller,
             menu_settings_controller,
             notification_settings_controller,
             idle_settings_controller,
@@ -985,6 +1014,12 @@ impl Component for SettingsWindowModel {
             model.display_settings_controller.widget(),
             Some("display"),
             "Display",
+        );
+
+        widgets.stack.add_titled(
+            model.bluetooth_settings_controller.widget(),
+            Some("bluetooth"),
+            "Bluetooth",
         );
 
         widgets.stack.add_titled(
@@ -1377,6 +1412,7 @@ impl Component for SettingsWindowModel {
                     "general" => Some(&widgets.general_btn),
                     "setup" => Some(&widgets.setup_btn),
                     "bar" => Some(&widgets.bar_btn),
+                    "bluetooth" => Some(&widgets.bluetooth_btn),
                     "display" => Some(&widgets.display_btn),
                     "fonts" => Some(&widgets.fonts_btn),
                     "about" => Some(&widgets.about_btn),

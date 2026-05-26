@@ -18,6 +18,7 @@ mod about_settings;
 mod animations_settings;
 mod bar_pill_settings;
 mod bar_settings;
+mod bluetooth_settings;
 mod clipboard_settings;
 mod date_time_settings;
 mod region_settings;
