@@ -1,7 +1,7 @@
 use crate::relm_app::{Shell, ShellInput};
 use mshell_cache::wallpaper::set_wallpaper;
 use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{ConfigStoreFields, WallpaperStoreFields};
+use mshell_config::schema::config::{AlarmConfigStoreFields, ConfigStoreFields, WallpaperStoreFields};
 use mshell_services::{
     audio_service, brightness_service, margo_service, media_service, notification_service,
     tokio_rt,
@@ -9,7 +9,7 @@ use mshell_services::{
 use mshell_session::session_lock::{lock_session, session_locked};
 use mshell_settings::{close_settings, open_settings, open_wizard};
 use mshell_utils::session::SessionAction;
-use mshell_sounds::play_audio_volume_change;
+use mshell_sounds::{play_alarm_loop, play_audio_volume_change, stop_alarm};
 use reactive_graph::prelude::GetUntracked;
 use relm4::gtk::glib;
 use relm4::{ComponentSender, gtk};
@@ -30,6 +30,7 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
     let (shell_tx, mut shell_rx) = mpsc::unbounded_channel();
 
     spawn_daily_wallpaper_task(shell_tx.clone());
+    spawn_alarm_scheduler();
     tokio::spawn(start_shell_service(shell_tx));
 
     let app_sender = sender.input_sender().clone();
@@ -889,6 +890,102 @@ fn run_daily_check(tx: &mpsc::UnboundedSender<IPCCommand>, last: &std::rc::Rc<st
             }
             Ok(Err(e)) => tracing::warn!(error = %e, "daily wallpaper: fetch failed"),
             Err(e) => tracing::warn!(error = %e, "daily wallpaper: task join failed"),
+        }
+    });
+}
+
+// ── Alarm scheduler (port of the DMS alarmClock plugin) ─────────────────────
+// A single main-thread glib timer ticks each second, reads the alarms from the
+// config (reactive reads are main-thread-only), and fires matching alarms once
+// per clock minute. The ring tone + the Stop/Snooze notification run on
+// workers; Snooze re-fire times go on a thread-safe queue the tick drains.
+static ALARM_SNOOZES: std::sync::Mutex<Vec<std::time::SystemTime>> =
+    std::sync::Mutex::new(Vec::new());
+
+fn spawn_alarm_scheduler() {
+    let last_minute = std::rc::Rc::new(std::cell::Cell::new(i64::MIN));
+    glib::timeout_add_seconds_local(1, move || {
+        run_alarm_tick(&last_minute);
+        glib::ControlFlow::Continue
+    });
+}
+
+fn run_alarm_tick(last_minute: &std::rc::Rc<std::cell::Cell<i64>>) {
+    let Some(now) = glib::DateTime::now_local().ok() else {
+        return;
+    };
+
+    // Due snooze re-fires (every tick, independent of the per-minute gate).
+    let sys_now = std::time::SystemTime::now();
+    let due = {
+        let mut q = ALARM_SNOOZES.lock().unwrap_or_else(|e| e.into_inner());
+        let due = q.iter().filter(|t| **t <= sys_now).count();
+        q.retain(|t| *t > sys_now);
+        due
+    };
+    if due > 0 {
+        fire_alarm("Snoozed alarm".to_string());
+    }
+
+    // Scheduled alarms — fire at most once per clock minute.
+    let minute_key = now.to_unix() / 60;
+    if minute_key == last_minute.get() {
+        return;
+    }
+    last_minute.set(minute_key);
+
+    let hour = now.hour() as u8;
+    let minute = now.minute() as u8;
+    let weekday = (now.day_of_week() % 7) as u8; // 0 = Sunday … 6 = Saturday
+
+    let alarms = config_manager().config().alarm().alarms().get_untracked();
+    for (i, alarm) in alarms.iter().enumerate() {
+        if !alarm.enabled || alarm.hour != hour || alarm.minutes != minute {
+            continue;
+        }
+        if alarm.repeat_mask != 0 && (alarm.repeat_mask & (1 << weekday)) == 0 {
+            continue; // repeating, but not on today's weekday
+        }
+        let label =
+            if alarm.name.trim().is_empty() { "Alarm".to_string() } else { alarm.name.clone() };
+        fire_alarm(label);
+        if alarm.repeat_mask == 0 {
+            // One-shot: disable after it fires.
+            config_manager().update_config(move |c| {
+                if let Some(a) = c.alarm.alarms.get_mut(i) {
+                    a.enabled = false;
+                }
+            });
+        }
+    }
+}
+
+/// Ring the tone + (optionally) pop a Stop/Snooze notification. The
+/// notification blocks a worker thread until the user acts; the tone stops on
+/// any outcome, and Snooze re-queues a fire `snooze_minutes` later.
+fn fire_alarm(label: String) {
+    play_alarm_loop();
+    if !config_manager().config().alarm().notifications().get_untracked() {
+        return;
+    }
+    let snooze_secs =
+        (config_manager().config().alarm().snooze_minutes().get_untracked().max(1) as u64) * 60;
+    let urgency = config_manager().config().alarm().urgency().get_untracked();
+    std::thread::spawn(move || {
+        let action = std::process::Command::new("notify-send")
+            .args([
+                "-a", "Alarm Clock", "-i", "alarm-symbolic", "-u", &urgency, "-A", "stop=Stop",
+                "-A", "snooze=Snooze", &label, "It's time.",
+            ])
+            .output()
+            .ok()
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .unwrap_or_default();
+        stop_alarm(); // stop on every outcome (Stop / Snooze / dismiss)
+        if action == "snooze"
+            && let Ok(mut q) = ALARM_SNOOZES.lock()
+        {
+            q.push(std::time::SystemTime::now() + std::time::Duration::from_secs(snooze_secs));
         }
     });
 }

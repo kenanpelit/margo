@@ -34,6 +34,50 @@ pub struct Config {
     pub valent: Valent,
     pub dock: Dock,
     pub pass: Pass,
+    pub alarm: AlarmConfig,
+}
+
+/// One configured alarm. `repeat_mask` bit `i` (0 = Sunday … 6 = Saturday)
+/// marks a repeating weekday; mask 0 = a one-shot alarm that disables itself
+/// after firing. Snooze state is runtime-only (not persisted).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[serde(default)]
+pub struct Alarm {
+    pub hour: u8,
+    pub minutes: u8,
+    pub name: String,
+    pub enabled: bool,
+    pub repeat_mask: u8,
+}
+
+impl Default for Alarm {
+    fn default() -> Self {
+        Self { hour: 7, minutes: 0, name: String::new(), enabled: false, repeat_mask: 0 }
+    }
+}
+
+/// Alarm-clock widget config: the alarm list plus ring behaviour.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[serde(default)]
+pub struct AlarmConfig {
+    pub alarms: Vec<Alarm>,
+    /// Minutes to snooze when the alarm notification's Snooze action is hit.
+    pub snooze_minutes: u32,
+    /// Pop a desktop notification (with Stop / Snooze actions) when ringing.
+    pub notifications: bool,
+    /// Notification urgency: `low` | `normal` | `critical`.
+    pub urgency: String,
+}
+
+impl Default for AlarmConfig {
+    fn default() -> Self {
+        Self {
+            alarms: Vec::new(),
+            snooze_minutes: 5,
+            notifications: true,
+            urgency: "normal".to_string(),
+        }
+    }
 }
 
 /// Idle manager — staged actions as the session sits idle. Each
