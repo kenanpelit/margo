@@ -1,3 +1,4 @@
+use crate::bars::bar_widgets::alarm_clock::{AlarmClockInit, AlarmClockModel};
 use crate::bars::bar_widgets::bluetooth::{BluetoothInit, BluetoothModel};
 use crate::bars::bar_widgets::clipboard::{ClipboardInit, ClipboardModel, ClipboardOutput};
 use crate::bars::bar_widgets::weather::{WeatherInit, WeatherModel, WeatherOutput};
@@ -127,6 +128,7 @@ pub(crate) enum BarOutput {
     KeepAwakeClicked,
     TwilightClicked,
     KeybindsClicked,
+    AlarmClockClicked,
     SshSessionsClicked,
     AudioDashboardClicked,
     DnsClicked,
@@ -515,6 +517,14 @@ impl BarModel {
                     .forward(sender.output_sender(), |msg| match msg {
                         crate::bars::bar_widgets::keybinds::KeybindsOutput::Clicked
                             => BarOutput::KeybindsClicked,
+                    }),
+            ),
+            BarWidget::AlarmClock => Box::new(
+                AlarmClockModel::builder()
+                    .launch(AlarmClockInit { orientation })
+                    .forward(sender.output_sender(), |msg| match msg {
+                        crate::bars::bar_widgets::alarm_clock::AlarmClockOutput::Clicked
+                            => BarOutput::AlarmClockClicked,
                     }),
             ),
             BarWidget::SshSessions => Box::new(

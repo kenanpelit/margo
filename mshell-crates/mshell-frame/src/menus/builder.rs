@@ -1,4 +1,7 @@
 use crate::menus::menu::{MenuModel, MenuOutput};
+use crate::menus::menu_widgets::alarm_clock::alarm_clock_menu_widget::{
+    AlarmClockMenuWidgetInit, AlarmClockMenuWidgetModel,
+};
 use crate::menus::menu_widgets::app_launcher::app_launcher::{
     AppLauncherInit, AppLauncherModel, AppLauncherOutput,
 };
@@ -115,6 +118,11 @@ pub fn build_widget(
     weather_all_in_one: bool,
 ) -> Box<dyn GenericWidgetController> {
     match menu_widget {
+        MenuWidget::AlarmClock => Box::new(
+            AlarmClockMenuWidgetModel::builder()
+                .launch(AlarmClockMenuWidgetInit {})
+                .detach(),
+        ),
         MenuWidget::AppLauncher => Box::new(
             AppLauncherModel::builder()
                 .launch(AppLauncherInit {})

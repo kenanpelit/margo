@@ -486,6 +486,8 @@ pub struct Menus {
     pub twilight_menu: Menu,
     #[serde(default = "default_keybinds_menu")]
     pub keybinds_menu: Menu,
+    #[serde(default = "default_alarmclock_menu")]
+    pub alarmclock_menu: Menu,
     #[serde(default = "default_ssh_menu")]
     pub ssh_menu: Menu,
     pub media_player_menu: Menu,
@@ -571,6 +573,18 @@ fn default_keybinds_menu() -> Menu {
         // shortcut list scrolls instead of overflowing the screen.
         minimum_width: 720,
         maximum_height: 720,
+    }
+}
+
+fn default_alarmclock_menu() -> Menu {
+    Menu {
+        position: Position::TopRight,
+        widgets: vec![MenuWidget::AlarmClock],
+        // Roomy enough for the alarm rows (time + repeat-day chips +
+        // delete) and the stopwatch hero; capped height so a long
+        // alarm list scrolls instead of overflowing the screen.
+        minimum_width: 420,
+        maximum_height: 640,
     }
 }
 
@@ -709,6 +723,7 @@ impl Default for Menus {
             weather_menu: default_weather_menu(),
             twilight_menu: default_twilight_menu(),
             keybinds_menu: default_keybinds_menu(),
+            alarmclock_menu: default_alarmclock_menu(),
             ssh_menu: default_ssh_menu(),
             media_player_menu: Menu {
                 position: Position::TopRight,

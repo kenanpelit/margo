@@ -5,6 +5,11 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, JsonSchema)]
 pub enum BarWidget {
     ActiveWindow,
+    /// Alarm clock pill — alarm-bell glyph that opens the Alarm Clock
+    /// menu (alarms list + add/edit + stopwatch). Shows the running
+    /// stopwatch time inline when one is going, and a ringing badge
+    /// while an alarm tone is sounding.
+    AlarmClock,
     /// Combined audio dashboard pill — surfaces both default
     /// output (sink) and default input (source) volumes in one
     /// cluster with right-click cycle (Both/OutputOnly/InputOnly).
@@ -97,6 +102,7 @@ impl BarWidget {
     pub fn display_name(&self) -> &'static str {
         match self {
             BarWidget::ActiveWindow => "Active Window",
+            BarWidget::AlarmClock => "Alarm Clock",
             BarWidget::AudioDashboard => "Audio Dashboard",
             BarWidget::Bluetooth => "Bluetooth",
             BarWidget::Clipboard => "Clipboard",
@@ -146,6 +152,7 @@ impl BarWidget {
     pub fn all() -> &'static [BarWidget] {
         &[
             BarWidget::ActiveWindow,
+            BarWidget::AlarmClock,
             BarWidget::AudioDashboard,
             BarWidget::Bluetooth,
             BarWidget::Clipboard,

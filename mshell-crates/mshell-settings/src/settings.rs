@@ -1176,6 +1176,7 @@ impl Component for SettingsWindowModel {
             WidgetEntry::Menu { kind: MenuKind::KeepAwake, stack_name: "keep_awake", label: "Keep Awake", icon: "eye-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::Twilight, stack_name: "twilight", label: "Twilight", icon: "weather-clear-night-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::Keybinds, stack_name: "keybinds", label: "Keyboard Shortcuts", icon: "input-keyboard-symbolic" },
+            WidgetEntry::Menu { kind: MenuKind::AlarmClock, stack_name: "alarmclock", label: "Alarm Clock", icon: "alarm-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::SshSessions, stack_name: "ssh_sessions", label: "SSH Sessions", icon: "utilities-terminal-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::MargoLayout, stack_name: "margo_layout", label: "Margo Layout Switcher", icon: "view-grid-symbolic" },
             // Bar-only pills (no menu surface — just info pages).

@@ -5,6 +5,11 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, JsonSchema)]
 pub enum MenuWidget {
+    /// Alarm Clock menu — tabbed Alarms + Stopwatch panel. The menu
+    /// content for the `alarm_clock` bar pill: an alarms list with
+    /// per-alarm enable / time / repeat-day chips / delete, an
+    /// add/edit row, and a stopwatch with start / pause / reset.
+    AlarmClock,
     AppLauncher,
     /// Audio Dashboard menu — output + input mute / slider /
     /// device-picker card stack. The menu content for the
@@ -117,6 +122,7 @@ impl PatchField for MenuWidget {
 impl MenuWidget {
     pub fn display_name(&self) -> &'static str {
         match self {
+            MenuWidget::AlarmClock => "Alarm Clock",
             MenuWidget::AppLauncher => "App Launcher",
             MenuWidget::AudioDashboard => "Audio Dashboard",
             MenuWidget::AudioInput => "Audio Input",
@@ -176,6 +182,7 @@ impl MenuWidget {
     /// Returns all widget types with default configs
     pub fn all_defaults() -> Vec<MenuWidget> {
         vec![
+            MenuWidget::AlarmClock,
             MenuWidget::AppLauncher,
             MenuWidget::AudioDashboard,
             MenuWidget::AudioInput,

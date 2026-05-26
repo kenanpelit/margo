@@ -8,6 +8,7 @@ mod frame_spacer;
 mod menus;
 pub mod screen_corners;
 mod ssh;
+mod stopwatch;
 mod system_update;
 mod twilight;
 mod valent;

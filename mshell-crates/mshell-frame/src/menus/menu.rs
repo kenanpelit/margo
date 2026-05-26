@@ -92,6 +92,8 @@ pub(crate) enum MenuType {
     /// `keybinds` bar pill's panel — searchable cheatsheet of every
     /// shortcut parsed live from margo's `config.conf`.
     Keybinds,
+    /// `alarm_clock` bar pill's panel — tabbed Alarms + Stopwatch.
+    AlarmClock,
     /// `ssh_sessions` bar pill's panel — searchable `~/.ssh/config`
     /// host list with active-session indicators.
     SshSessions,
@@ -777,6 +779,30 @@ impl Component for MenuModel {
                 effects.push(move |_| {
                     let config = config.clone();
                     let maximum_height = config.menus().keybinds_menu().maximum_height().get();
+                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
+                });
+            }
+            MenuType::AlarmClock => {
+                css_class = "alarm-clock-menu".to_string();
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let widgets = config.menus().alarmclock_menu().widgets().get();
+                    sender_clone.input(MenuInput::SetWidget(widgets));
+                });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let minimum_width = config.menus().alarmclock_menu().minimum_width().get();
+                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
+                });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let maximum_height = config.menus().alarmclock_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
                 });
             }

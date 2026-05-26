@@ -1,0 +1,126 @@
+// Alarm Clock — bar pill + tabbed Alarms / Stopwatch panel
+// (DMS alarmClock port). DESIGN.md: surface cards, radius tokens,
+// radius-pill chips, tabular numerals, matugen severity for the
+// ringing state (never hardcode colours).
+
+// ── Bar pill ──────────────────────────────────────────────
+// The inline stopwatch readout rides the default bar text colour so
+// it reads on the transparent pill; ringing tints the bell with the
+// error role (DESIGN.md danger severity) and pulses.
+.alarm-clock-bar-time {
+  font-size: var(--font-bar);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface);
+}
+.alarm-clock-bar-widget .ringing image {
+  color: var(--error);
+  animation: alarm-ring-pulse 1s var(--ease-standard) infinite;
+}
+
+@keyframes alarm-ring-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+// ── Panel ─────────────────────────────────────────────────
+.alarm-clock-menu-widget {
+  padding: 4px;
+}
+
+// "Ringing — Stop" banner: error-container surface, full-width.
+.alarm-ringing-banner {
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  background-color: var(--error-container);
+  color: var(--on-error-container);
+  animation: alarm-ring-pulse 1.4s var(--ease-standard) infinite;
+
+  image,
+  label {
+    color: var(--on-error-container);
+  }
+  &:hover {
+    background-color: color-mix(in srgb, var(--error) 24%, var(--error-container));
+  }
+}
+
+// Tab switcher spans the panel width.
+.alarm-clock-tabs {
+  margin-bottom: 4px;
+  > button {
+    min-width: 0;
+  }
+}
+
+// ── Alarm rows ────────────────────────────────────────────
+.alarm-row {
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  background-color: var(--surface-container);
+  transition: opacity var(--motion-fast) var(--ease-standard);
+
+  // Dim a disabled alarm so the enabled ones read first.
+  &.alarm-row-off {
+    opacity: 0.55;
+  }
+}
+
+.alarm-row-time {
+  font-size: 1.25rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface);
+}
+
+.alarm-row-delete {
+  background: transparent;
+  color: var(--on-surface-variant);
+  &:hover {
+    color: var(--error);
+  }
+}
+
+// ── Add row ───────────────────────────────────────────────
+.alarm-add-row {
+  padding: 8px 4px 4px;
+}
+
+.alarm-spin {
+  font-variant-numeric: tabular-nums;
+}
+
+// Repeat-day chips — pill toggles, primary when active.
+.alarm-day-toggle {
+  min-width: 30px;
+  padding: 4px 0;
+  border-radius: var(--radius-pill);
+  font-variant-numeric: tabular-nums;
+  background-color: var(--surface-container-high);
+  transition: background-color var(--motion-fast) var(--ease-standard);
+
+  &:hover {
+    background-color: color-mix(in srgb, var(--primary) 14%, var(--surface-container-high));
+  }
+  &:checked {
+    background-color: var(--primary);
+    color: var(--on-primary);
+  }
+}
+
+// ── Stopwatch ─────────────────────────────────────────────
+.alarm-stopwatch {
+  padding: 16px 8px;
+}
+
+.alarm-stopwatch-time {
+  font-size: 2.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface);
+}

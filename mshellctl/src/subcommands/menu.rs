@@ -85,6 +85,8 @@ pub enum MenuCommands {
     Weather,
     /// Toggle the keybind cheatsheet menu (searchable shortcut list)
     Keybinds,
+    /// Toggle the Alarm Clock menu (alarms list + add/edit + stopwatch)
+    AlarmClock,
     /// Toggle the SSH Sessions menu (searchable ~/.ssh/config host list)
     SshSessions,
     /// Toggle the DNS / VPN menu
@@ -196,6 +198,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::Keybinds => {
             bus_command("Keybinds").await?;
+        }
+        MenuCommands::AlarmClock => {
+            bus_command("AlarmClock").await?;
         }
         MenuCommands::SshSessions => {
             bus_command("SshSessions").await?;
