@@ -133,6 +133,11 @@ impl Component for CalendarModel {
                 add_css_class: "calendar-grid-card",
                 set_orientation: gtk::Orientation::Vertical,
                 set_hexpand: true,
+                // GTK4 does not clip children to a parent's border-radius
+                // without an explicit overflow — without this the nested
+                // GtkCalendar paints square over the card's rounded bottom
+                // corners. Clip to the card's radius-md.
+                set_overflow: gtk::Overflow::Hidden,
 
                 #[name = "calendar"]
                 gtk::Calendar {

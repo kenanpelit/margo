@@ -288,6 +288,12 @@
   calendar {
     background-color: transparent;
     color: var(--on-surface-variant);
+    // The card supplies the chrome (bg + radius-md). Neutralize the
+    // global `calendar` fallback (2px outline + radius-sm + 10px pad)
+    // so no inner ring fights the card's rounded corners.
+    border: none;
+    border-radius: 0;
+    padding: 0;
 
     // Month-year label + prev/next arrows row.
     > header {
