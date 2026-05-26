@@ -1,3 +1,4 @@
+@use "../02-functions/index" as *;
 
 // Bluetooth bar indicator — connected accent.
 //
@@ -29,10 +30,78 @@
 
 // Menu row label — `set_bluetooth_label` adds `.bt-connected` to
 // the revealer-row label when a device is live, so the connected
-// device's name in the open Bluetooth menu reads in the matugen
-// accent (matching the bar pill's connected icon tint).
+// device's name in the open Bluetooth menu (connectivity panel) and
+// bar reads in the matugen accent (matching the bar pill's connected
+// icon tint).  Kept: connectivity.rs + bar still apply this class.
 label.bt-connected {
   color: var(--primary);
   font-weight: 600;
   transition: color var(--motion-fast) var(--ease-standard);
+}
+
+// ── Bluetooth Dashboard menu surface ──────────────────────────────
+//
+// Visual language mirrors `.audio-dashboard-*`:
+//   flat sectioned layout, `--surface-container` card,
+//   primary-accent connected check, token-only colours.
+
+.bluetooth-dashboard-menu-widget {
+  // Container background comes from the popover surface rule
+  // (`bluetooth-dashboard-menu` on the GtkPopover); the inner box
+  // doesn't need a background of its own so it stays transparent.
+}
+
+.bluetooth-dashboard-section-label {
+  font-size: var(--font-xs);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
+  margin-top: var(--space-1);
+}
+
+.bluetooth-dashboard-device-list {
+  margin-top: var(--space-1);
+}
+
+// Flat, clickable device row — mirrors `.audio-dashboard-device-row`.
+.bluetooth-dashboard-device-row {
+  all: unset;
+  display: flex;           // relm4 gtk Box — CSS box model hint
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-xs);
+  color: var(--on-surface);
+  @include state-layer();
+}
+
+// Primary-accent check shown when connected.
+.bluetooth-dashboard-device-check {
+  -gtk-icon-size: 14px;
+  color: var(--primary);
+}
+
+// Device type icon.
+.bluetooth-dashboard-icon {
+  -gtk-icon-size: 16px;
+  color: var(--on-surface-variant);
+}
+
+// Battery / secondary value label.
+.bluetooth-dashboard-value {
+  font-size: var(--font-xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface);
+  letter-spacing: -0.01em;
+}
+
+// Compact inline Forget / Trust buttons inside a device row.
+.bluetooth-dashboard-action-button {
+  all: unset;
+  font-size: var(--font-xs);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--on-surface-variant);
+  @include state-layer();
 }
