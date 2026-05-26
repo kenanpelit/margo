@@ -767,22 +767,30 @@ fn pick_player(target: &str) -> Option<Arc<Player>> {
     if t.is_empty() {
         return svc.active_player().or_else(|| svc.players().into_iter().next());
     }
-    // Match against the identity AND the D-Bus bus name. The bus name
-    // (e.g. `chromium.instance5078`) carries the engine name even when a
-    // Chromium/Firefox fork brands its MPRIS Identity differently — e.g.
-    // Helium reports identity "Helium" but registers as
-    // `org.mpris.MediaPlayer2.chromium.instance…`, so a `browser`/`chromium`
-    // fragment only hits via the bus name. osc-media keys on `playerctl -l`
-    // names for the same reason.
+    // Match the fragment against the identity, the D-Bus bus name, AND the
+    // desktop entry. The bus name is the robust signal: a Chromium/Firefox
+    // fork inherits the engine's MPRIS service name even when it rebrands
+    // its Identity — e.g. Helium reports identity "Helium" but registers as
+    // `org.mpris.MediaPlayer2.chromium.instance…`. So the `chrome` / `chromium`
+    // / `firefox` tokens below catch essentially every mainstream browser and
+    // fork via the bus prefix; the rest are branded-identity fallbacks. (A
+    // browser that rebrands all three fields with no engine token won't hit
+    // the `browser` alias — use its explicit name, e.g. `media toggle helium`.)
+    // osc-media keys on `playerctl -l` bus names for the same reason.
     let matches = |p: &Arc<Player>| -> bool {
         let bus = p.id.bus_name();
         let bus = bus.strip_prefix("org.mpris.MediaPlayer2.").unwrap_or(bus);
-        let hay = format!("{} {}", p.identity.get(), bus).to_lowercase();
+        let desktop = p.desktop_entry.get().unwrap_or_default();
+        let hay = format!("{} {} {}", p.identity.get(), bus, desktop).to_lowercase();
         hay.contains(&t)
             || (t == "browser"
-                && ["firefox", "chrome", "chromium", "brave", "edge", "vivaldi", "webcord", "zen", "librewolf", "helium"]
-                    .iter()
-                    .any(|b| hay.contains(b)))
+                && [
+                    "firefox", "chrome", "chromium", "brave", "edge", "vivaldi", "opera",
+                    "webcord", "zen", "librewolf", "waterfox", "floorp", "helium", "thorium",
+                    "ungoogled", "palemoon", "midori", "epiphany", "falkon", "qutebrowser",
+                ]
+                .iter()
+                .any(|b| hay.contains(b)))
             || ((t == "mpd" || t == "mpc") && hay.contains("music player daemon"))
     };
     let active = svc.active_player();
