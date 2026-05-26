@@ -6,12 +6,15 @@ use mshell_utils::network::{
 };
 use relm4::gtk::glib;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, FileExt, OrientableExt, WidgetExt};
-use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 use std::ops::Not;
 use std::sync::Arc;
 use wayle_network::core::access_point::{AccessPoint, SecurityType, Ssid};
 use wayle_network::types::states::NetworkStatus;
 
+use crate::net::connection_editor::{
+    ConnectionEditorInput, ConnectionEditorModel, ConnectionEditorOutput,
+};
 use crate::net::nmcli::{self, ConnRow};
 
 // ── Model ─────────────────────────────────────────────────────────────────────
@@ -24,8 +27,12 @@ pub(crate) struct NetworkSettingsModel {
     wired_available: bool,
     wired_status: NetworkStatus,
     vpn_connections: Vec<ConnRow>,
+    /// All connections — kept for OpenEditor lookups (name + kind).
+    all_connections: Vec<ConnRow>,
     wifi_watcher_token: WatcherToken,
     wired_watcher_token: WatcherToken,
+    /// Embedded connection editor — lives in the internal stack.
+    editor_controller: Controller<ConnectionEditorModel>,
 }
 
 impl std::fmt::Debug for NetworkSettingsModel {
@@ -34,6 +41,7 @@ impl std::fmt::Debug for NetworkSettingsModel {
             .field("wifi_available", &self.wifi_available)
             .field("wifi_enabled", &self.wifi_enabled)
             .field("wired_available", &self.wired_available)
+            .field("all_connections", &self.all_connections.len())
             .finish()
     }
 }
@@ -47,9 +55,10 @@ pub(crate) enum NetworkSettingsInput {
     ConnectApWithPassword(String, String),
     /// Forget saved connections for an SSID (delete via wayle settings).
     ForgetConn(String),
-    /// Stub for Task 4 — connection editor.
-    #[allow(dead_code)]
+    /// Open the connection editor for the given UUID.
     OpenEditor(String),
+    /// Editor closed (Back or successful Apply) — switch back to the list.
+    EditorClosed,
     UpConn(String),
     DownConn(String),
     DeleteConn(String),
@@ -85,49 +94,65 @@ impl Component for NetworkSettingsModel {
     type Init = NetworkSettingsInit;
 
     view! {
+        // Root box wraps an internal stack so the connection editor can be
+        // embedded without opening a separate toplevel gtk::Window (which
+        // would fail inside a layer-shell surface).  "list" holds the existing
+        // network overview; "editor" holds the connection editor.
         #[root]
-        gtk::ScrolledWindow {
-            set_vscrollbar_policy: gtk::PolicyType::Automatic,
-            set_hscrollbar_policy: gtk::PolicyType::Never,
-            set_propagate_natural_height: false,
-            set_propagate_natural_width: false,
+        gtk::Box {
             set_hexpand: true,
             set_vexpand: true,
 
-            gtk::Box {
-                add_css_class: "settings-page",
-                set_orientation: gtk::Orientation::Vertical,
+            #[name = "page_stack"]
+            gtk::Stack {
                 set_hexpand: true,
-                set_spacing: 16,
+                set_vexpand: true,
+                set_transition_type: gtk::StackTransitionType::SlideLeftRight,
+                set_transition_duration: 150,
 
-                // ── Hero header ──────────────────────────────────────────
+                // ── List view ─────────────────────────────────────────────
+                add_named[Some("list")] = &gtk::ScrolledWindow {
+                set_vscrollbar_policy: gtk::PolicyType::Automatic,
+                set_hscrollbar_policy: gtk::PolicyType::Never,
+                set_propagate_natural_height: false,
+                set_propagate_natural_width: false,
+                set_hexpand: true,
+                set_vexpand: true,
+
                 gtk::Box {
-                    add_css_class: "settings-hero",
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_halign: gtk::Align::Start,
+                    add_css_class: "settings-page",
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_hexpand: true,
                     set_spacing: 16,
-                    gtk::Image {
-                        add_css_class: "settings-hero-icon",
-                        set_icon_name: Some("network-wireless-symbolic"),
-                        set_valign: gtk::Align::Center,
-                    },
+
+                    // ── Hero header ──────────────────────────────────────────
                     gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_valign: gtk::Align::Center,
-                        gtk::Label {
-                            add_css_class: "settings-hero-title",
-                            set_label: "Network",
-                            set_halign: gtk::Align::Start,
+                        add_css_class: "settings-hero",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_halign: gtk::Align::Start,
+                        set_spacing: 16,
+                        gtk::Image {
+                            add_css_class: "settings-hero-icon",
+                            set_icon_name: Some("network-wireless-symbolic"),
+                            set_valign: gtk::Align::Center,
                         },
-                        gtk::Label {
-                            add_css_class: "settings-hero-subtitle",
-                            set_label: "Manage Wi-Fi, wired connections, and VPN profiles.",
-                            set_halign: gtk::Align::Start,
-                            set_xalign: 0.0,
-                            set_wrap: true,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_valign: gtk::Align::Center,
+                            gtk::Label {
+                                add_css_class: "settings-hero-title",
+                                set_label: "Network",
+                                set_halign: gtk::Align::Start,
+                            },
+                            gtk::Label {
+                                add_css_class: "settings-hero-subtitle",
+                                set_label: "Manage Wi-Fi, wired connections, and VPN profiles.",
+                                set_halign: gtk::Align::Start,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                            },
                         },
                     },
-                },
 
                 // ── Wi-Fi section ─────────────────────────────────────────
                 gtk::Label {
@@ -312,6 +337,11 @@ impl Component for NetworkSettingsModel {
                     },
                 },
             }
+        },
+
+            // ── Editor view (embedded — no separate toplevel) ─────────
+            add_named[Some("editor")] = model.editor_controller.widget(),
+            }
         }
     }
 
@@ -332,6 +362,14 @@ impl Component for NetworkSettingsModel {
         let wifi_opt = network.wifi.get();
         let wired_opt = network.wired.get();
 
+        // Build the editor controller first — its widget is referenced in
+        // view_output!() via `model.editor_controller.widget()`.
+        let editor_controller = ConnectionEditorModel::builder()
+            .launch(())
+            .forward(sender.input_sender(), |output| match output {
+                ConnectionEditorOutput::Closed => NetworkSettingsInput::EditorClosed,
+            });
+
         let model = NetworkSettingsModel {
             wifi_available: wifi_opt.is_some(),
             wifi_enabled: wifi_opt.as_ref().map(|w| w.enabled.get()).unwrap_or(false),
@@ -343,8 +381,10 @@ impl Component for NetworkSettingsModel {
                 .map(|w| w.connectivity.get())
                 .unwrap_or(NetworkStatus::Disconnected),
             vpn_connections: Vec::new(),
+            all_connections: Vec::new(),
             wifi_watcher_token: WatcherToken::new(),
             wired_watcher_token: WatcherToken::new(),
+            editor_controller,
         };
 
         let widgets = view_output!();
@@ -607,15 +647,45 @@ impl Component for NetworkSettingsModel {
 
             // ── Connections reloaded ──────────────────────────────────────
             NetworkSettingsInput::ConnectionsReloaded(rows) => {
+                self.all_connections = rows.clone();
                 self.vpn_connections = rows
                     .into_iter()
                     .filter(|r| r.kind == "vpn" || r.kind == "wireguard")
                     .collect();
             }
 
-            // ── OpenEditor stub ───────────────────────────────────────────
-            NetworkSettingsInput::OpenEditor(_uuid) => {
-                // TODO(task4): open connection editor for the given UUID
+            // ── Open connection editor ────────────────────────────────────
+            NetworkSettingsInput::OpenEditor(uuid) => {
+                if uuid.is_empty() {
+                    mshell_launcher::notify::toast(
+                        "Network",
+                        "Cannot open editor: no connection UUID.",
+                    );
+                } else {
+                    // Look up the ConnRow so we can pass the display name + wifi flag.
+                    let (conn_name, is_wifi) = self
+                        .all_connections
+                        .iter()
+                        .find(|r| r.uuid == uuid)
+                        .map(|r| (r.name.clone(), r.kind == "802-11-wireless"))
+                        .unwrap_or_else(|| (uuid.clone(), false));
+
+                    self.editor_controller
+                        .sender()
+                        .send(ConnectionEditorInput::Load(uuid, conn_name, is_wifi))
+                        .ok();
+                    widgets.page_stack.set_visible_child_name("editor");
+                }
+            }
+
+            // ── Editor closed ─────────────────────────────────────────────
+            NetworkSettingsInput::EditorClosed => {
+                widgets.page_stack.set_visible_child_name("list");
+                // Reload connections list so any changes are reflected.
+                let sender_c = sender.clone();
+                glib::spawn_future_local(async move {
+                    reload_vpn_list(&sender_c).await;
+                });
             }
         }
 
