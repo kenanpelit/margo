@@ -37,6 +37,7 @@ mod layout_settings;
 mod lock_settings;
 mod menu_settings;
 mod net;
+mod network_settings;
 mod notification_settings;
 mod session_settings;
 mod setup_settings;

@@ -27,6 +27,7 @@ tokio = { workspace = true }
 tracing.workspace = true
 wayle-audio.workspace = true
 wayle-bluetooth.workspace = true
+wayle-network.workspace = true
 
 [lints]
 workspace = true

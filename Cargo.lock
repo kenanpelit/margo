@@ -3992,6 +3992,7 @@ dependencies = [
  "tracing",
  "wayle-audio",
  "wayle-bluetooth",
+ "wayle-network",
 ]
 
 [[package]]
