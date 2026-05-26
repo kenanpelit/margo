@@ -6,47 +6,72 @@
 // mirror of the active MPRIS player.
 
 .media-player-menu-widget {
-  // Border dropped — the parent card chrome already provides
-  // separation; doubling it up made the widget feel fenced-in
-  // inside the dashboard's card stack. Card shape = --radius-md.
   border-radius: var(--radius-md);
-  padding: 8px;
+  background-color: var(--surface-container-high);
+  padding: var(--space-2);
 }
 
-// ── Hero row: album cover + track / artist ──────────────────
+// ── Hero row: album cover + info column ─────────────────────
 .media-player-hero {
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
+  spacing: var(--space-3);
 }
 
 .media-player-cover {
-  border-radius: var(--radius-md);
-  margin-right: 16px;
-  // Placeholder fill behind album art — one tonal tier above the
-  // card it sits on.
-  background-color: var(--surface-container-high);
-  // Bumped to 96 to match the Rust set_pixel_size — cover is
-  // the visual anchor of the hero band.
-  min-width: 96px;
-  min-height: 96px;
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-container-highest);
+  // Fixed 64 px square — the cover is a visual anchor, not the
+  // dominant element; 64 keeps proportions balanced in the hero row.
+  min-width: 64px;
+  min-height: 64px;
 }
 
-// Inline `Title — Artist` label sits next to the 96 px cover.
-// Slightly heavier weight than body text so it reads as the
-// hero's headline without needing a separate caption row.
+// Info column holds title + artist + progress bar.
+.media-player-info {
+  spacing: var(--space-1);
+}
+
+// Track title — prominent, single line, no clip.
 .media-player-track {
-  font-size: var(--font-sm);
+  font-size: var(--font-md);
   font-weight: 600;
   color: var(--on-surface);
+  line-height: 1.25;
   letter-spacing: -0.01em;
 }
 
-// Slim the seek bar — the default ok-progress-bar is thicker
-// than the rest of the dashboard typography rhythm reads
-// cleanly with. 4 px trough keeps the value glyph visible but
-// stops dominating the row.
+// Artist — dimmed secondary line.
+.media-player-artist {
+  font-size: var(--font-sm);
+  font-weight: 400;
+  color: var(--on-surface-variant);
+  line-height: 1.25;
+}
+
+// Progress row: time labels + seek bar.
+.media-player-progress-row {
+  spacing: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.media-player-time {
+  font-size: var(--font-2xs);
+  color: var(--on-surface-variant);
+  font-variant-numeric: tabular-nums;
+}
+
+// Slim seek bar — 4 px trough stays proportional to the compact
+// info column; don't fight 03-primitives/_progress_bar.scss,
+// only set the height and ensure full-width fill.
 .media-player-menu-widget .ok-progress-bar {
   trough { min-height: 4px; border-radius: var(--radius-pill); }
   highlight { min-height: 4px; border-radius: var(--radius-pill); }
+}
+
+// ── Controls row ─────────────────────────────────────────────
+.media-player-controls {
+  spacing: var(--space-3);
+  margin-top: var(--space-1);
 }
 
 // ── Bar pill ────────────────────────────────────────────────
@@ -57,7 +82,7 @@
 
 .media-player-bar-cover {
   // On the shape scale (DESIGN.md §1) — the smallest token (--radius-xs,
-  // 8px), proportionally below the menu cover's --radius-md; no arbitrary
+  // 8px), proportionally below the menu cover's --radius-sm; no arbitrary
   // off-scale literal.
   border-radius: var(--radius-xs);
   background-color: var(--surface-container-high);

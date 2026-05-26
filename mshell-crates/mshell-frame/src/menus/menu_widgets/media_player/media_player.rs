@@ -3,7 +3,7 @@ use mshell_utils::media::spawn_media_player_watcher;
 use relm4::gtk::glib;
 use relm4::gtk::pango;
 use relm4::gtk::prelude::*;
-use relm4::{Component, ComponentParts, ComponentSender, RelmWidgetExt, gtk};
+use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -87,7 +87,7 @@ impl Component for MediaPlayerModel {
             set_orientation: gtk::Orientation::Vertical,
             set_hexpand: true,
 
-            // ── Hero: album cover + track / artist ──────────────
+            // ── Top row: album cover + info column ──────────────
             gtk::Box {
                 add_css_class: "media-player-hero",
                 set_orientation: gtk::Orientation::Horizontal,
@@ -96,24 +96,19 @@ impl Component for MediaPlayerModel {
                 #[name = "cover"]
                 gtk::Image {
                     add_css_class: "media-player-cover",
-                    // Bumped from 72 → 96 so the cover reads as
-                    // the visual anchor of the hero rather than
-                    // a thumbnail next to the metadata.
-                    set_pixel_size: 96,
+                    set_pixel_size: 64,
                     set_valign: gtk::Align::Center,
                 },
 
+                // Info column: title / artist / progress
                 gtk::Box {
+                    add_css_class: "media-player-info",
                     set_orientation: gtk::Orientation::Vertical,
                     set_hexpand: true,
                     set_valign: gtk::Align::Center,
-                    set_spacing: 4,
+                    set_spacing: 2,
 
-                    // Inline `Title — Artist` — single line so the
-                    // hero reads tight against the larger cover.
-                    // When the artist string is empty we just show
-                    // the title (handled in the update fn — both
-                    // fields combine into track_name).
+                    // Title — single line, ellipsised, left-aligned
                     #[name = "track_scroll_window"]
                     gtk::ScrolledWindow {
                         set_policy: (gtk::PolicyType::External, gtk::PolicyType::Never),
@@ -126,57 +121,70 @@ impl Component for MediaPlayerModel {
                             #[watch]
                             set_label: model.track_name.as_str(),
                             set_xalign: 0.0,
+                            set_single_line_mode: true,
                             set_wrap: false,
                             set_max_width_chars: -1,
-                            set_ellipsize: pango::EllipsizeMode::None,
+                            set_ellipsize: pango::EllipsizeMode::End,
                         },
                     },
 
-                    // Hidden but kept in the tree — the existing
-                    // scroll helper attaches to its hadjustment.
+                    // Artist — separate line, dimmed, single line, ellipsised
                     #[name = "artist_scroll_window"]
                     gtk::ScrolledWindow {
-                        set_visible: false,
                         set_policy: (gtk::PolicyType::External, gtk::PolicyType::Never),
+                        set_overflow: gtk::Overflow::Hidden,
+                        set_hexpand: true,
 
                         #[name = "artist"]
-                        gtk::Label {},
+                        gtk::Label {
+                            add_css_class: "media-player-artist",
+                            #[watch]
+                            set_label: model.artist_name.as_str(),
+                            set_xalign: 0.0,
+                            set_single_line_mode: true,
+                            set_wrap: false,
+                            set_max_width_chars: -1,
+                            set_ellipsize: pango::EllipsizeMode::End,
+                        },
+                    },
+
+                    // Progress row — time labels flanking the seek bar
+                    gtk::Box {
+                        add_css_class: "media-player-progress-row",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_hexpand: true,
+
+                        gtk::Label {
+                            add_css_class: "media-player-time",
+                            #[watch]
+                            set_label: model.current_track_time.as_str(),
+                        },
+
+                        #[name = "scale"]
+                        gtk::Scale {
+                            add_css_class: "ok-progress-bar",
+                            set_hexpand: true,
+                            set_can_focus: false,
+                            set_focus_on_click: false,
+                            set_range: (0.0, 1.0),
+                            #[watch]
+                            set_sensitive: model.can_seek,
+                        },
+
+                        gtk::Label {
+                            add_css_class: "media-player-time",
+                            #[watch]
+                            set_label: model.track_length.as_str(),
+                        },
                     },
                 },
             },
 
+            // ── Bottom row: centred playback controls ────────────
             gtk::Box {
+                add_css_class: "media-player-controls",
                 set_orientation: gtk::Orientation::Horizontal,
-
-                gtk::Label {
-                    add_css_class: "label-small",
-                    #[watch]
-                    set_label: model.current_track_time.as_str(),
-                },
-
-                #[name = "scale"]
-                gtk::Scale {
-                    add_css_class: "ok-progress-bar",
-                    set_hexpand: true,
-                    set_can_focus: false,
-                    set_focus_on_click: false,
-                    set_range: (0.0, 1.0),
-                    set_margin_start: 20,
-                    set_margin_end: 20,
-                    #[watch]
-                    set_sensitive: model.can_seek,
-                },
-
-                gtk::Label {
-                    add_css_class: "label-small",
-                    #[watch]
-                    set_label: model.track_length.as_str(),
-                },
-            },
-
-            gtk::Box {
-                set_orientation: gtk::Orientation::Horizontal,
-                set_align: gtk::Align::Center,
+                set_halign: gtk::Align::Center,
 
                 gtk::Button {
                     add_css_class: "ok-button-surface",
@@ -480,19 +488,15 @@ impl Component for MediaPlayerModel {
                 let title = self.player.metadata.title.get();
                 let artist = self.player.metadata.artist.get();
 
-                // Combine into one inline string — "Title — Artist"
-                // when both, just the title when artist is empty.
-                let combined = if artist.trim().is_empty() {
-                    title.clone()
-                } else {
-                    format!("{title}  —  {artist}")
-                };
-
-                if self.track_name != combined {
-                    self.track_name = combined;
+                // Title and artist are shown on separate lines.
+                if self.track_name != title {
+                    self.track_name = title;
                     widgets.track_scroll_window.hadjustment().set_value(0.0);
                 }
-                self.artist_name = artist;
+                if self.artist_name != artist {
+                    self.artist_name = artist;
+                    widgets.artist_scroll_window.hadjustment().set_value(0.0);
+                }
 
                 apply_cover(&widgets.cover, &self.player);
             }
