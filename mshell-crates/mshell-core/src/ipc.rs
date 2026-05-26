@@ -260,16 +260,19 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 IPCCommand::MediaToggle(target) => {
                     if let Some(p) = pick_player(&target) {
                         let _ = p.play_pause().await;
+                        notify_media(p);
                     }
                 }
                 IPCCommand::MediaNext(target) => {
                     if let Some(p) = pick_player(&target) {
                         let _ = p.next().await;
+                        notify_media(p);
                     }
                 }
                 IPCCommand::MediaPrev(target) => {
                     if let Some(p) = pick_player(&target) {
                         let _ = p.previous().await;
+                        notify_media(p);
                     }
                 }
                 IPCCommand::BrightnessUp => {
@@ -544,6 +547,51 @@ fn notify_audio(summary: &str, body: &str) {
                 "-h",
                 "string:x-canonical-private-synchronous:mshell-audio",
                 &summary,
+                &body,
+            ])
+            .status()
+            .await;
+    });
+}
+
+/// Toast the player + current track after a media action (osc-media style).
+/// Spawned with a short settle delay because MPRIS pushes the new track /
+/// playback state asynchronously after `next` / `play_pause` returns — reading
+/// immediately would name the *previous* track.
+fn notify_media(player: Arc<Player>) {
+    relm4::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(350)).await;
+        let glyph = match player.playback_state.get() {
+            PlaybackState::Playing => "▶",
+            PlaybackState::Paused => "⏸",
+            PlaybackState::Stopped => "⏹",
+        };
+        let title = player.metadata.title.get();
+        let artist = player.metadata.artist.get();
+        let body = match (title.trim(), artist.trim()) {
+            ("", "") => format!("{glyph} {}", playback_label(player.playback_state.get())),
+            (t, "") => format!("{glyph} {t}"),
+            (t, a) => format!("{glyph} {t} · {a}"),
+        };
+        // Album art from the MediaService's art cache when available, else a
+        // generic player glyph.
+        let icon = player
+            .metadata
+            .cover_art
+            .get()
+            .or_else(|| player.metadata.art_url.get())
+            .map(|p| p.trim_start_matches("file://").to_string())
+            .filter(|p| std::path::Path::new(p).is_file())
+            .unwrap_or_else(|| "multimedia-player-symbolic".to_string());
+        let _ = tokio::process::Command::new("notify-send")
+            .args([
+                "-a",
+                "mshell",
+                "-i",
+                &icon,
+                "-h",
+                "string:x-canonical-private-synchronous:mshell-media",
+                &player.identity.get(),
                 &body,
             ])
             .status()
