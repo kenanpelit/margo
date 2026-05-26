@@ -502,10 +502,15 @@ impl Component for WallpaperMenuWidgetModel {
                 }
             }
 
-            // Decode the thumbnail on the bounded worker pool —
-            // never a thread per item (see `decode_pool`).
-            let (tx, rx) =
-                std::sync::mpsc::channel::<(String, Option<(glib::Bytes, i32, i32, i32, bool)>)>();
+            // Decode the thumbnail on the bounded worker pool — never a
+            // thread per item (see `decode_pool`) — and hand the result
+            // back over a oneshot we *await* on the main loop (see the
+            // `spawn_future_local` below for why awaiting, not a blocking
+            // recv, is what keeps the first open responsive).
+            let (tx, rx) = tokio::sync::oneshot::channel::<(
+                String,
+                Option<(glib::Bytes, i32, i32, i32, bool)>,
+            )>();
 
             let thumbnail_height = params.thumbnail_height;
             let _ = decode_pool().send(Box::new(move || {
@@ -527,10 +532,15 @@ impl Component for WallpaperMenuWidgetModel {
                 let _ = tx.send((path_str, result));
             }));
 
-            // Poll the channel from the main loop
+            // Await the decode from the main loop. GTK can realize a few
+            // hundred tiles in one pass on first show; a blocking `recv`
+            // inside an idle callback would freeze the loop until every
+            // decode landed — that was the slow-first-open symptom.
+            // Awaiting yields back to the loop, so tiles stream in as
+            // each decode finishes and the surface stays responsive.
             let cache_insert = cache.clone();
-            glib::idle_add_local_once(move || {
-                let Ok((path_str, result)) = rx.recv() else {
+            glib::spawn_future_local(async move {
+                let Ok((path_str, result)) = rx.await else {
                     return;
                 };
 
