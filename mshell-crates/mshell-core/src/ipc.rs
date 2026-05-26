@@ -755,21 +755,39 @@ fn playback_label(s: PlaybackState) -> &'static str {
 /// Resolve a media target to a player. Empty = the active player (else the
 /// first one); otherwise a case-insensitive match on the player identity,
 /// with a `browser` alias and `mpd`/`mpc` → "Music Player Daemon".
+///
+/// When a fragment matches several players — e.g. `browser` with three
+/// Chromium instances — prefer the one that's actually **Playing** (then
+/// Paused, then Stopped), tie-breaking toward the active player. The MPRIS
+/// player list is built from a `HashMap`, so its order isn't stable; a plain
+/// "first match" would toggle an arbitrary (often silent) instance.
 fn pick_player(target: &str) -> Option<Arc<Player>> {
     let svc = media_service();
     let t = target.trim().to_lowercase();
     if t.is_empty() {
         return svc.active_player().or_else(|| svc.players().into_iter().next());
     }
-    svc.players().into_iter().find(|p| {
-        let id = p.identity.get().to_lowercase();
+    let matches = |id: &str| -> bool {
         id.contains(&t)
             || (t == "browser"
                 && ["firefox", "chrome", "chromium", "brave", "edge", "vivaldi", "webcord", "zen", "librewolf"]
                     .iter()
                     .any(|b| id.contains(b)))
             || ((t == "mpd" || t == "mpc") && id.contains("music player daemon"))
-    })
+    };
+    let active = svc.active_player();
+    svc.players()
+        .into_iter()
+        .filter(|p| matches(&p.identity.get().to_lowercase()))
+        .max_by_key(|p| {
+            let state = match p.playback_state.get() {
+                PlaybackState::Playing => 2,
+                PlaybackState::Paused => 1,
+                PlaybackState::Stopped => 0,
+            };
+            let is_active = active.as_ref().map(|a| Arc::ptr_eq(a, p)).unwrap_or(false);
+            (state, is_active)
+        })
 }
 
 #[derive(serde::Serialize)]
