@@ -27,12 +27,14 @@
 @use "audio_dashboard";
 @use "cpu_dashboard";
 @use "bluetooth_widget";
+@use "bluetooth_settings";
 @use "ufw";
 @use "dns";
 @use "podman";
 @use "notes";
 @use "ip";
 @use "network";
+@use "network_settings";
 @use "power";
 @use "idle";
 @use "session";

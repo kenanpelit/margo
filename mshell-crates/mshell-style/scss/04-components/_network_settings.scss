@@ -1,0 +1,52 @@
+// Network Settings page — bespoke classes only.
+//
+// Shared classes (.settings-page, .settings-hero*, .label-*, .ok-button-primary,
+// .ok-entry-with-border, .status-error) are already styled elsewhere — not
+// repeated here. All colours are matugen CSS custom properties; no hex values.
+
+// ── Radio-off banner ──────────────────────────────────────────────
+//
+// Shown when Wi-Fi is rfkill'd / disabled. Calm/warn/danger ladder
+// (DESIGN.md §2): radio-off = informational/muted, not an error.
+// Uses the same muted on-surface treatment as .bt-radio-off so the
+// two pages read consistently.
+
+.wifi-radio-off {
+    padding: 12px 16px;
+    border-radius: var(--radius-md);
+    background-color: var(--surface-container);
+    color: var(--on-surface-variant);
+    opacity: 0.75;
+}
+
+// ── Connection rows ───────────────────────────────────────────────
+//
+// .wifi-row, .wired-row, .vpn-row each represent one network
+// interface / access-point entry. Shape mirrors .network-list row
+// from _network.scss (the bar-menu Wi-Fi list) for cross-surface
+// consistency: surface-container-high card, --radius-sm, primary
+// state-layer on hover, eased.
+//
+// The bar-widget already marks the active/connected interface with
+// .network-bar-widget.online → primary icon tint. In the settings
+// page the connected row carries the same visual weight via a subtle
+// primary-container tint (active = "selected", not a hover).
+
+.wifi-row,
+.wired-row,
+.vpn-row {
+    padding: 12px 16px;
+    border-radius: var(--radius-sm);
+    background-color: var(--surface-container-high);
+    transition: background-color var(--motion-fast) var(--ease-standard);
+
+    &:hover {
+        background-color: unquote("color-mix(in srgb, var(--primary) 14%, var(--surface-container-high))");
+    }
+
+    // Connected/active state — soft accent card mirrors .layout-row-active.
+    &.connected {
+        background-color: var(--primary-container);
+        color: var(--on-primary-container);
+    }
+}
