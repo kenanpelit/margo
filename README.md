@@ -233,7 +233,7 @@ All user config lives in `~/.config/margo/`:
 └── mshell/            # mshell — shell config, themes, wallpapers
 ```
 
-A complete annotated `config.conf` ships at [`margo/src/config.example.conf`](margo/src/config.example.conf). Hot-reloadable — `mctl reload` (or `Super+Ctrl+R`) re-applies window rules, key binds, monitor topology, animation curves.
+Start with the **[Configuration guide](https://kenanpelit.github.io/margo/configuration/)**; every option is documented in the **[full key reference](https://kenanpelit.github.io/margo/config-reference/)**, and a complete annotated `config.conf` ships at [`margo/src/config.example.conf`](margo/src/config.example.conf). Hot-reloadable — `mctl reload` (or `Super+Ctrl+R`) re-applies window rules, key binds, monitor topology, animation curves.
 
 ```ini
 # config.conf — small excerpt
@@ -267,6 +267,8 @@ mctl check-config
 ```
 
 ## At a glance
+
+A quick taste — the full CLI surface is in **[Companion tools](https://kenanpelit.github.io/margo/companion-tools/)** (or `<tool> --help`).
 
 ```bash
 # Compositor inspection
@@ -323,7 +325,7 @@ on_tag_switch(|| {
 });
 ```
 
-Engine: [Rhai] (pure Rust, sandboxed by default). Reference: [`docs/scripting-design.md`](docs/scripting-design.md).
+Engine: [Rhai] (pure Rust, sandboxed by default). Guide: **[Scripting](https://kenanpelit.github.io/margo/scripting/)** — every hook + callable action; engine internals in [`docs/scripting-design.md`](docs/scripting-design.md).
 
 [Rhai]: https://rhai.rs
 
