@@ -136,6 +136,12 @@ impl Component for MediaPlayersModel {
                 set_transition_type: gtk::StackTransitionType::SlideLeftRight,
                 set_transition_duration: 200,
                 set_hexpand: true,
+                // Fill the media root's height. The dashboard's right column
+                // gives this widget vexpand+Fill (last child, `fill: true`);
+                // without the Stack also expanding, the player card sat at
+                // natural height with empty space below it — the card read as
+                // "too high" and the right column ended above the left.
+                set_vexpand: true,
             }
         }
     }
