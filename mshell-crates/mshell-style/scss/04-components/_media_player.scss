@@ -9,6 +9,7 @@
   border-radius: var(--radius-md);
   background-color: var(--surface-container-high);
   padding: var(--space-2);
+  transition: background-color var(--motion-fast) var(--ease-standard);
 }
 
 // ── Hero row: album cover + info column ─────────────────────
@@ -90,6 +91,10 @@
 
 // Paused → dim the whole pill so a glance tells playing from
 // paused without a separate state glyph.
-.media-player-bar-widget.paused {
-  opacity: 0.55;
+.media-player-bar-widget {
+  transition: opacity var(--motion-medium) var(--ease-standard);
+
+  &.paused {
+    opacity: 0.55;
+  }
 }
