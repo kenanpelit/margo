@@ -1,4 +1,5 @@
 use std::io::Cursor;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 const CAMERA_SHUTTER_SOUND: &[u8] = include_bytes!("../assets/camera-shutter.ogg");
@@ -6,6 +7,49 @@ const AUDIO_VOLUME_CHANGED_SOUND: &[u8] = include_bytes!("../assets/audio-volume
 const BATTERY_LOW_SOUND: &[u8] = include_bytes!("../assets/battery-low.ogg");
 const POWER_PLUG_SOUND: &[u8] = include_bytes!("../assets/power-plug.ogg");
 const POWER_UNPLUG_SOUND: &[u8] = include_bytes!("../assets/power-unplug.ogg");
+/// Alarm tone (converted from the DMS alarmClock plugin's `alarm.wav` to ogg
+/// so it decodes with rodio's vorbis feature).
+const ALARM_SOUND: &[u8] = include_bytes!("../assets/alarm.ogg");
+
+/// Whether the looping alarm tone is currently ringing. Drives both the loop
+/// thread and `alarm_is_ringing()`.
+static ALARM_PLAYING: AtomicBool = AtomicBool::new(false);
+
+/// Start the alarm tone, looping until [`stop_alarm`]. No-op if already ringing.
+pub fn play_alarm_loop() {
+    if ALARM_PLAYING.swap(true, Ordering::SeqCst) {
+        return; // already ringing
+    }
+    std::thread::spawn(|| {
+        let Ok(mut handle) = rodio::DeviceSinkBuilder::open_default_sink() else {
+            ALARM_PLAYING.store(false, Ordering::SeqCst);
+            return;
+        };
+        handle.log_on_drop(false);
+        // Replay the clip until stopped; poll the flag so Stop is responsive
+        // (≤120 ms) even mid-clip rather than waiting for the clip to end.
+        while ALARM_PLAYING.load(Ordering::SeqCst) {
+            let Ok(player) = rodio::play(handle.mixer(), Cursor::new(ALARM_SOUND)) else {
+                break;
+            };
+            while ALARM_PLAYING.load(Ordering::SeqCst) && !player.empty() {
+                std::thread::sleep(Duration::from_millis(120));
+            }
+            player.stop();
+        }
+        ALARM_PLAYING.store(false, Ordering::SeqCst);
+    });
+}
+
+/// Stop the looping alarm tone.
+pub fn stop_alarm() {
+    ALARM_PLAYING.store(false, Ordering::SeqCst);
+}
+
+/// Whether the alarm tone is currently ringing.
+pub fn alarm_is_ringing() -> bool {
+    ALARM_PLAYING.load(Ordering::SeqCst)
+}
 
 pub fn play_shutter() {
     std::thread::spawn(|| {
