@@ -324,7 +324,9 @@ impl Component for ClipboardModel {
                 add_css_class: "clipboard-tabs",
                 set_orientation: gtk::Orientation::Horizontal,
                 set_spacing: 4,
-                set_halign: gtk::Align::Start,
+                // Centre the tab pill in the panel regardless of width
+                // (was Start = left-aligned).
+                set_halign: gtk::Align::Center,
 
                 gtk::Button {
                     #[watch]

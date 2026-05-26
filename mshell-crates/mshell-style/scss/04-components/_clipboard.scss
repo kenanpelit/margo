@@ -111,7 +111,9 @@
 // --font-2xs). Matches audio-dashboard section-label dimness.
 .clipboard-hint {
   font-size: var(--font-2xs);
-  color: var(--on-surface-variant);
+  // Keyboard hints are reference, not content — dim them well into the
+  // background. --outline sits darker/quieter than --on-surface-variant.
+  color: var(--outline);
 }
 
 // ── History entry rows (virtualized factory rows) ─────────────────

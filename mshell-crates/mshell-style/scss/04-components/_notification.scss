@@ -20,16 +20,16 @@
 // migrated from ok-button-surface → panel-action-btn icon button).
 
 // ── Individual notification card ─────────────────────────────────────
-// Raised tonal surface (--surface-container-high) with card shape so
-// each notification reads as a discrete tile when stacked. The subtle
-// elevation shadow keeps the stack legible over any wallpaper or menu
-// background — same philosophy as the corner toast, just slightly
-// calmer (12 px blur vs. 16 px).
+// Raised tonal surface (--surface-container-high) so each notification
+// reads as a discrete tile when stacked — separation comes from the
+// tonal tier ALONE, never a per-card blurred box-shadow. The history
+// list is non-virtualized (a GtkBox of N cards), so a 12 px-blur shadow
+// on every card meant hundreds of blur passes on scroll/hover and a
+// sluggish menu. Flat (like the clipboard rows) keeps it responsive.
 .notification {
   background-color: var(--surface-container-high);
   border-radius: var(--radius-md);
   padding: var(--space-4);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.22);
   transition: background-color var(--motion-fast) var(--ease-standard);
 }
 
