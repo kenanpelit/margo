@@ -1,8 +1,7 @@
 use crate::menu_settings::menu_widget_row::{MenuWidgetRowModel, MenuWidgetRowOutput};
 use mshell_config::schema::menu_widgets::MenuWidget;
 use relm4::factory::{DynamicIndex, FactoryVecDeque};
-use relm4::gtk::gio;
-use relm4::gtk::prelude::{ActionMapExt, BoxExt, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, PopoverExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
 pub struct MenuWidgetListInit {
@@ -155,28 +154,43 @@ impl MenuWidgetListModel {
         let _ = sender.output(MenuWidgetListOutput::Changed(widgets));
     }
 
+    /// Build the "Add widget" popover — a height-capped, scrollable list of
+    /// the available menu widgets. Matches the Bar page's add-widget popover
+    /// (reusing its CSS) instead of a `gio::Menu`, which GTK renders as a
+    /// native menu that doesn't scroll — long catalogues ran off the panel.
     fn build_add_menu(button: &gtk::MenuButton, sender: &ComponentSender<Self>) {
-        let menu = gio::Menu::new();
-        let action_group = gio::SimpleActionGroup::new();
+        let popover = gtk::Popover::new();
+        popover.add_css_class("settings-bar-widget-add-popover");
+
+        let scrolled = gtk::ScrolledWindow::new();
+        scrolled.set_vscrollbar_policy(gtk::PolicyType::Automatic);
+        scrolled.set_hscrollbar_policy(gtk::PolicyType::Never);
+        scrolled.set_max_content_height(360);
+        scrolled.set_propagate_natural_height(true);
+        scrolled.set_propagate_natural_width(true);
+
+        let list = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        list.add_css_class("settings-bar-widget-add-list");
 
         for widget in MenuWidget::all_defaults() {
-            let action_name = widget.action_name();
-            let action = gio::SimpleAction::new(&action_name, None);
+            let btn = gtk::Button::with_label(widget.display_name());
+            btn.set_css_classes(&["settings-bar-widget-add-item"]);
+            btn.set_halign(gtk::Align::Fill);
+            btn.set_has_frame(false);
 
-            let sender = sender.input_sender().clone();
             let widget_clone = widget.clone();
-            action.connect_activate(move |_, _| {
-                sender.emit(MenuWidgetListInput::AddWidget(widget_clone.clone()));
+            let popover_clone = popover.clone();
+            let input = sender.input_sender().clone();
+            btn.connect_clicked(move |_| {
+                input.emit(MenuWidgetListInput::AddWidget(widget_clone.clone()));
+                popover_clone.popdown();
             });
 
-            action_group.add_action(&action);
-            menu.append(
-                Some(widget.display_name()),
-                Some(&format!("menuwidget.{action_name}")),
-            );
+            list.append(&btn);
         }
 
-        button.insert_action_group("menuwidget", Some(&action_group));
-        button.set_menu_model(Some(&menu));
+        scrolled.set_child(Some(&list));
+        popover.set_child(Some(&scrolled));
+        button.set_popover(Some(&popover));
     }
 }
