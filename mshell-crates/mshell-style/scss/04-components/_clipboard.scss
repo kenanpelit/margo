@@ -1,26 +1,35 @@
-@use "../03-primitives/buttons";
+@use "../02-functions/index" as *;
 
-// ── Panel header (DESIGN.md §12) ────────────────────────────────
-// Display-size title: SemiBold (600, not Bold). This is the one menu
-// that carries a big title — compact menus use a section-label.
-.clipboard-title {
-  // Header title — --font-md (16) SemiBold, in step with the shared
-  // .panel-title (was a bespoke 24px; pulled down to stay quiet).
-  font-size: var(--font-md);
-  font-weight: 600;
-  color: var(--on-surface);
-}
+// ── Clipboard menu — audio-dashboard flat design language ────────
+//
+// Visual language mirrors `.audio-dashboard-*` and the Bluetooth
+// Dashboard menu:
+//   * `--surface-container` popover background (on the GtkPopover)
+//   * flat rows — `all: unset` + `@include state-layer()` hover wash
+//   * `--on-surface` text, `--on-surface-variant` metadata / icons
+//   * `--primary` only as active/accent cue (selected row fill,
+//     pinned star, inset ring, tab active segment)
+//   * `--space-*` / `--font-*` tokens everywhere; no hardcoded colours
+//   * motion via `--motion-fast` / `--ease-standard`
 
-// Leading clipboard glyph — symbolic, same family / stroke as the rest
-// (§0.6), at the dim variant tier so the title stays the focal point.
+// ── Panel header ─────────────────────────────────────────────────
+// Leading clipboard glyph at the dim variant tier — title stays
+// the focal point (§0.6 one icon family).
 .clipboard-header-icon {
   color: var(--on-surface-variant);
   -gtk-icon-size: var(--icon-md);
 }
 
+// Display-size title: SemiBold, --font-md (same as .panel-title).
+.clipboard-title {
+  font-size: var(--font-md);
+  font-weight: 600;
+  color: var(--on-surface);
+}
+
 // Circular icon action buttons (clear-all / settings): perfect circle,
-// resting transparent, hover = the canonical 14% primary state-layer
-// (§4/§5). Never a naked floating icon, never raised button chrome.
+// resting transparent, hover = canonical 14% primary state-layer.
+// Mirrors .panel-action-btn and .audio-dashboard-mute-button.
 .clipboard-action-btn {
   all: unset;
   min-width: 40px;
@@ -47,48 +56,98 @@
   }
 }
 
-.clipboard-item {
-  // Phase 2 lightweight content row (DESIGN.md §12): a panel row sits
-  // ONE tonal tier above the panel surface (--surface-container over
-  // the menu's --surface), not the --surface-container-high "raised
-  // card" tier — that one's reserved for the hover / selected lift.
-  // Depth is the tonal step, never a resting --outline ring (§0.1).
-  @include buttons.button-base('--surface-container', '--on-surface');
-  @include buttons.state-layers('--surface-container', '--on-surface');
-  // Content card → the card corner --radius-md (16, §12), not the
-  // --radius-sm list-row corner button-base hands out by default.
-  border-radius: var(--radius-md);
-  // Clipboard entries are arbitrary text — code, paths, tokens — which
-  // align and read best in the configured monospace family.
-  font-family: var(--font-family-monospace);
-  // button-base pads every direct child (`> * { padding: --padding-md }`)
-  // — meant for a button's icon/label. Here the children are the `#id`
-  // title and the preview box, so that rule stacked 8px under the id +
-  // 8px over the preview = a ~20px "blank line". Pad the card itself
-  // instead and zero the per-child padding, so the id sits right above
-  // the preview (only the box's own 4px spacing remains).
-  padding: var(--padding-md);
-  > * {
-    padding: 0;
+// ── Segmented tab strip: All · Text · Images · Files · ★ ─────────
+// One unified capsule track; active segment lifts to
+// --secondary-container (the soft-toggle tier). Mirrors the existing
+// design with token-only values and audio-dashboard hover wash.
+.clipboard-tabs {
+  background-color: var(--surface-container-low);
+  border: var(--border-width) solid var(--outline-variant);
+  border-radius: var(--radius-pill);
+  padding: var(--space-1);
+
+  .clipboard-tab {
+    all: unset;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-2xs);
+    color: var(--on-surface-variant);
+    transition: background-color var(--motion-fast) var(--ease-standard),
+                color var(--motion-fast) var(--ease-standard);
+
+    &:hover {
+      background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
+    }
+
+    // Active segment: secondary-container fill (calm, not a --primary
+    // flood) + its on-colour. No font-weight bump so segment widths
+    // stay stable when switching tabs.
+    &.active {
+      background-color: var(--secondary-container);
+      color: var(--on-secondary-container);
+    }
   }
 }
 
-// Compact density (Settings → clipboard.density): tighter card padding
-// + row gap so more entries fit on screen. Comfortable is the default
-// (no class).
+// ── Search entry ──────────────────────────────────────────────────
+// Calm pill query surface. .ok-entry zeroes GTK chrome; this gives
+// it the panel pill shape + quiet tonal fill. Focus ring is the ONLY
+// visible border — idle reads borderless.
+.clipboard-search {
+  margin: var(--space-2) 0;
+  background-color: var(--surface-container);
+  border-radius: var(--radius-pill);
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  transition: box-shadow var(--motion-fast) var(--ease-standard);
+
+  &:focus-within {
+    box-shadow: inset 0 0 0 2px var(--primary);
+  }
+}
+
+// ── Keyboard-shortcut hint strip ──────────────────────────────────
+// Reference info, not a focal point — metadata tier (--on-surface-variant,
+// --font-2xs). Matches audio-dashboard section-label dimness.
+.clipboard-hint {
+  font-size: var(--font-2xs);
+  color: var(--on-surface-variant);
+}
+
+// ── History entry rows (virtualized factory rows) ─────────────────
+//
+// Flat audio-dashboard row pattern: `all: unset` + `@include state-layer()`.
+// The widget layout (overlay of content + actions) is built in Rust;
+// this styles what those classes look like.
+//
+// ENGINE PRESERVED: ListView / factory setup-bind-unbind, CustomFilter,
+// SingleSelection, tab_state, keyboard nav, search debounce, populate /
+// refilter, ClipRow model — all untouched. Only the visual layer changes.
+.clipboard-item {
+  all: unset;
+  display: flex;
+  padding: var(--space-3) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-xs);
+  font-family: var(--font-family-monospace);
+  color: var(--on-surface);
+  @include state-layer();
+}
+
+// Compact density (Settings → clipboard.density): tighter padding so
+// more entries fit on screen.
 .clipboard-menu-widget.compact {
   .clipboard-item {
-    padding: var(--padding-sm);
+    padding: var(--space-2) var(--space-3);
   }
   .clipboard-list row {
-    margin-bottom: 2px;
+    margin-bottom: 1px;
   }
 }
 
-// The keyboard-/click-selected row gets a single matugen-accent ring so
-// the active entry is unmistakable as you move with Ctrl+n / Ctrl+k.
-// Suppress the ListBox's default selection background so only the accent
-// reads. One inset ring — not a border + box-shadow double frame.
+// Selected / focused row: a --primary-container fill so the active
+// entry is unmistakable as you move with Ctrl+n / Ctrl+k. Suppress
+// GTK's default selection background so only the accent reads.
 .clipboard-list {
   background: transparent;
 
@@ -99,67 +158,51 @@
       background: transparent;
 
       .clipboard-item {
-        box-shadow: inset 0 0 0 2px var(--primary);
+        background-color: var(--primary-container);
+        color: var(--on-primary-container);
+
+        .clipboard-item-title {
+          // Timestamp inherits on-primary-container on selected rows
+          // so it still recedes relative to the preview text.
+          color: unquote("color-mix(in srgb, var(--on-primary-container) 70%, transparent)");
+        }
       }
     }
   }
 }
 
-// The relative-time line ("8m ago") is metadata, not content — drop it
-// to the dimmest --outline tier so it matches the keyboard-hint strip
-// and clearly recedes behind the entry's copy text (which sits at
-// --on-surface). On this palette --on-surface-variant collapses into
-// --on-surface, so without this the timestamp read identical to the
-// copy block.
-//
-// MUST be `.clipboard-item .clipboard-item-title` (0,2,0): `.clipboard-item`
-// runs `button-base`, which emits `.clipboard-item label { color:
-// --on-surface }` (0,1,1). A bare `.clipboard-item-title` (0,1,0) loses to
-// that and the override silently no-ops — the bug that left the timestamp
-// the same colour as the copy text.
+// ── Row timestamp (relative time: "8m ago") ───────────────────────
+// Metadata, not content — dim to --on-surface-variant so it recedes
+// behind the entry's copy text (which sits at --on-surface).
+// Must be `.clipboard-item .clipboard-item-title` (0,2,0) specificity
+// so it beats the inherited `color: var(--on-surface)` from the row.
 .clipboard-item .clipboard-item-title {
-  color: var(--outline);
+  font-size: var(--font-2xs);
+  color: var(--on-surface-variant);
+  transition: color var(--motion-fast) var(--ease-standard);
 }
 
+// ── Row preview: text / image thumbnail ──────────────────────────
 .clipboard-item-image {
-  // Rounded clip only — no --outline ring (§0.1). The card's tonal
-  // surface already separates the thumbnail from its background.
   border-radius: var(--radius-xs);
 }
 
-.clipboard-copy-button {
-  all: unset;
-}
-
-.clipboard-trash-button {
-  background-color: transparent;
-
-  // Dim --outline at rest (matching the timestamp + hint strip) so the
-  // delete affordance recedes, brightening on hover — same idiom as
-  // the pin star below.
-  image {
-    color: var(--outline);
-    transition: color var(--motion-fast) var(--ease-standard);
-  }
-
-  &:hover image {
-    color: var(--on-surface);
-  }
-}
-
-// Pin / favourite toggle. Unpinned reads as a dim outline-variant
-// star so it doesn't shout; pinned flips to a filled primary chip
-// so favourites are unmistakable at a glance.
+// ── Pin button — flat, flat, flat ────────────────────────────────
+// `ok-button-surface` is set by the Rust factory; override fully
+// here with higher-specificity rule so the flat pattern wins.
+// Unpinned: dim --on-surface-variant star at rest (recedes).
+// Pinned: --primary star on a --primary-container wash (unmistakable).
 .clipboard-pin-button {
+  all: unset;
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
   background-color: transparent;
+  @include state-layer();
 
   image {
-    color: var(--outline);
+    -gtk-icon-size: var(--icon-sm);
+    color: var(--on-surface-variant);
     transition: color var(--motion-fast) var(--ease-standard);
-  }
-
-  &:hover image {
-    color: var(--on-surface);
   }
 
   &.pinned {
@@ -171,75 +214,27 @@
   }
 }
 
-// Keyboard-shortcut hint strip under the tabs. Reference info, not
-// a focal point — drop it to the dim outline token so it recedes
-// and doesn't compete with the entries.
-.clipboard-hint {
-  color: var(--outline);
-}
+// ── Trash button — flat ───────────────────────────────────────────
+// Dim at rest, brightens on hover — same idiom as the pin star.
+.clipboard-trash-button {
+  all: unset;
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+  background-color: transparent;
+  @include state-layer();
 
-// Phase 2 panel search (DESIGN.md §12): a calm pill "query surface",
-// not a bare utility input. The shared .ok-entry primitive zeroes the
-// default entry chrome (transparent, no radius); here we give it the
-// panel's pill shape + a quiet tonal fill, with the focus ring as the
-// ONLY border — idle reads borderless.
-.clipboard-search {
-  margin: var(--padding-sm) 0;
-  background-color: var(--surface-container);
-  border-radius: var(--radius-pill);
-  // Tune the control's padding to a calm ~52px query surface (§1:
-  // tune row/control padding, don't chase a magic height).
-  min-height: 52px;
-  padding: 0 var(--padding-lg);
-  transition: box-shadow var(--motion-medium) var(--ease-standard);
-
-  &:focus-within {
-    box-shadow: inset 0 0 0 2px var(--primary);
-  }
-}
-
-// ── Segmented control: All · Text · Images · Files · ★ ──────────
-// Phase 2 (DESIGN.md §12): one unified capsule track, not five loose
-// buttons. The track is a subtle low tonal surface; the active
-// segment lifts to --secondary-container (the soft-toggle tier §1
-// sanctions) — a calm filled selection, not a --primary flood and not
-// the §3 live-state icon tint.
-.clipboard-tabs {
-  background-color: var(--surface-container-low);
-  // The track tone (--surface-container-low) collapses into --surface
-  // on palettes where the two tiers coincide (the Margo baseline does
-  // exactly this — both #282A36 — so the capsule wouldn't read on its
-  // own). Per §1/§12 that's the sanctioned case for a hairline: an
-  // --outline-variant pill ring draws the unified capsule regardless
-  // of palette, and the 4px inset keeps the active segment's
-  // --secondary-container fill clear of the ring so it still pops.
-  border: var(--border-width) solid var(--outline-variant);
-  border-radius: var(--radius-pill);
-  padding: var(--padding-sm);
-
-  .clipboard-tab {
-    all: unset;
-    // Snug padding + --font-2xs so five segments + live counts fit the
-    // panel width without wrapping.
-    padding: 3px 9px;
-    // Inner active segment (§12: 12–16) → --radius-sm inside the pill
-    // track.
-    border-radius: var(--radius-sm);
-    font-size: var(--font-2xs);
+  image {
+    -gtk-icon-size: var(--icon-sm);
     color: var(--on-surface-variant);
-    transition: background-color var(--motion-fast) var(--ease-standard),
-                color var(--motion-fast) var(--ease-standard);
-
-    &:hover {
-      background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
-    }
-
-    // Active segment reads via the secondary-container fill + its on-
-    // colour only — NO font-weight bump, so segment widths (and the
-    // strip's layout) stay put when switching tabs.
-    &.active {
-      background-color: var(--secondary-container);
-      color: var(--on-secondary-container);
-    }
+    transition: color var(--motion-fast) var(--ease-standard);
   }
+
+  &:hover image {
+    color: var(--on-surface);
+  }
+}
+
+// Copy button (historical class, kept for compat — no visual chrome).
+.clipboard-copy-button {
+  all: unset;
 }
