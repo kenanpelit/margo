@@ -13,14 +13,15 @@
 //!   // File History — Task 5
 //!   // App Permissions — Task 6
 
+use mshell_common::scoped_effects::EffectScope;
 use mshell_common::watch;
 use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{ConfigStoreFields, IdleStoreFields};
+use mshell_config::schema::config::{ConfigStoreFields, IdleStoreFields, PrivacyConfigStoreFields};
 use mshell_launcher::notify;
 use mshell_services::audio_service;
-use reactive_graph::prelude::GetUntracked;
+use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk::glib;
-use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, RecentManagerExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::time::Duration;
 
@@ -41,6 +42,11 @@ pub(crate) struct PrivacySettingsModel {
     // Screen lock summary
     lock_enabled: bool,
     lock_timeout: u32,
+    // File History
+    remember_recent: bool,
+    // EffectScope keeps config-watcher effects alive for the lifetime
+    // of this component.
+    _effects: EffectScope,
 }
 
 #[derive(Debug)]
@@ -51,6 +57,12 @@ pub(crate) enum PrivacySettingsInput {
     SetLocation(bool),
     // Mic watch result (driven via command channel).
     // Camera poll result (driven via command channel).
+    /// User toggled "Remember recently-used files".
+    SetRememberRecent(bool),
+    /// Config reactive effect — mirrors `privacy.remember_recent` into model.
+    RememberRecentEffect(bool),
+    /// User clicked "Clear History".
+    ClearRecent,
 }
 
 #[derive(Debug)]
@@ -299,7 +311,69 @@ impl Component for PrivacySettingsModel {
                     },
                 },
 
-                // File History — Task 5
+                // ── File History ──────────────────────────────────
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "File History",
+                    set_halign: gtk::Align::Start,
+                },
+
+                // Remember recently-used files row
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Remember recently-used files",
+                            set_hexpand: true,
+                        },
+                    },
+
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        #[block_signal(remember_handler)]
+                        set_active: model.remember_recent,
+                        connect_state_set[sender] => move |_, on| {
+                            sender.input(PrivacySettingsInput::SetRememberRecent(on));
+                            glib::Propagation::Proceed
+                        } @remember_handler,
+                    },
+                },
+
+                // Clear History button row
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                    },
+
+                    gtk::Button {
+                        add_css_class: "destructive-action",
+                        set_label: "Clear History",
+                        set_valign: gtk::Align::Center,
+                        connect_clicked[sender] => move |_| {
+                            sender.input(PrivacySettingsInput::ClearRecent);
+                        },
+                    },
+                },
+
+                gtk::Label {
+                    add_css_class: "label-small",
+                    set_label: "Cleared immediately. Apps may still record new entries unless they honour this setting.",
+                    set_halign: gtk::Align::Start,
+                    set_xalign: 0.0,
+                    set_wrap: true,
+                },
+
                 // App Permissions — Task 6
             }
         }
@@ -310,6 +384,16 @@ impl Component for PrivacySettingsModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
+        // ── Config reactive effects ──────────────────────────────────
+        let mut effects = EffectScope::new();
+        {
+            let s = sender.clone();
+            effects.push(move |_| {
+                let v = config_manager().config().privacy().remember_recent().get();
+                s.input(PrivacySettingsInput::RememberRecentEffect(v));
+            });
+        }
+
         // ── Geoclue status (async, fires GeoclueStatus) ────────────
         {
             let s = sender.clone();
@@ -361,8 +445,18 @@ impl Component for PrivacySettingsModel {
             let active_unmap = active.clone();
             let sender_poll = sender.clone();
 
-            // On map: mark active, kick off the poll loop
+            // On map: mark active, kick off the poll loop; re-purge if needed.
             root.connect_map(move |_| {
+                // Best-effort re-purge recent files if the setting is off.
+                if !config_manager()
+                    .config()
+                    .privacy()
+                    .remember_recent()
+                    .get_untracked()
+                {
+                    gtk::RecentManager::default().purge_items().ok();
+                }
+
                 active_map.store(true, Ordering::Relaxed);
                 let active_loop = active_map.clone();
                 let sender_loop = sender_poll.clone();
@@ -406,6 +500,13 @@ impl Component for PrivacySettingsModel {
             .lock_timeout_minutes()
             .get_untracked();
 
+        // Read remember_recent from config
+        let remember_recent = config_manager()
+            .config()
+            .privacy()
+            .remember_recent()
+            .get_untracked();
+
         let model = PrivacySettingsModel {
             location_installed: false,
             location_enabled: false,
@@ -413,6 +514,8 @@ impl Component for PrivacySettingsModel {
             camera_in_use: false,
             lock_enabled,
             lock_timeout,
+            remember_recent,
+            _effects: effects,
         };
 
         let widgets = view_output!();
@@ -457,6 +560,19 @@ impl Component for PrivacySettingsModel {
                     let (installed, enabled) = sys::geoclue::status().await;
                     s.input(PrivacySettingsInput::GeoclueStatus(installed, enabled));
                 });
+            }
+            PrivacySettingsInput::SetRememberRecent(v) => {
+                config_manager().update_config(|c| c.privacy.remember_recent = v);
+                if !v {
+                    gtk::RecentManager::default().purge_items().ok();
+                }
+            }
+            PrivacySettingsInput::RememberRecentEffect(v) => {
+                self.remember_recent = v;
+            }
+            PrivacySettingsInput::ClearRecent => {
+                let _ = gtk::RecentManager::default().purge_items();
+                notify::toast("Privacy", "Recent files cleared");
             }
         }
     }

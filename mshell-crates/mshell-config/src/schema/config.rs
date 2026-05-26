@@ -37,6 +37,7 @@ pub struct Config {
     pub alarm: AlarmConfig,
     pub network: NetworkConfig,
     pub power: PowerConfig,
+    pub privacy: PrivacyConfig,
 }
 
 /// One configured alarm. `repeat_mask` bit `i` (0 = Sunday … 6 = Saturday)
@@ -1382,6 +1383,26 @@ impl Default for PowerConfig {
             low_battery_warning: true,
             low_battery_threshold: 15,
         }
+    }
+}
+
+/// Privacy settings surfaced on the Settings → Privacy page.
+///
+/// `remember_recent` controls whether recently-used files are retained in the
+/// GTK `RecentManager` list. When `false` the list is cleared immediately on
+/// the page being shown and when the setting is toggled off. This is
+/// best-effort: individual apps may record their own recent-file lists
+/// independently of GtkRecentManager.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[serde(default)]
+pub struct PrivacyConfig {
+    /// Remember recently-used files in GtkRecentManager. Default `true`.
+    pub remember_recent: bool,
+}
+
+impl Default for PrivacyConfig {
+    fn default() -> Self {
+        Self { remember_recent: true }
     }
 }
 
