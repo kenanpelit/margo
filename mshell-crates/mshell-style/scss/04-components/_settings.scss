@@ -426,3 +426,9 @@
     padding: 2px 6px;
     border-radius: var(--radius-sm);
 }
+
+// Settings → Users: the inline status line turns error-coloured on a
+// failed / dismissed privileged action (matugen error role).
+.status-error {
+    color: var(--error);
+}
