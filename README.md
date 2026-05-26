@@ -6,12 +6,11 @@
 </p>
 
 <p align="center">
-  <em>A Wayland tiling compositor — Rust + Smithay, tag-based, with first-party lock screen, monitor profiles, screenshot helper and IPC.</em>
+  <em>A Wayland tiling compositor — Rust + Smithay, tag-based, with a complete first-party desktop: GTK4 shell, lock screen, login manager, monitor profiles and CLI tooling.</em>
 </p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg" alt="License"></a>
-  <a href="Cargo.toml"><img src="https://img.shields.io/badge/version-0.7.3-success" alt="Version"></a>
   <a href="Cargo.toml"><img src="https://img.shields.io/badge/rust-1.85%2B-orange?logo=rust" alt="Rust"></a>
   <a href="https://github.com/Smithay/smithay"><img src="https://img.shields.io/badge/built%20on-Smithay-blueviolet" alt="Smithay"></a>
   <a href="https://kenanpelit.github.io/margo/"><img src="https://img.shields.io/badge/docs-online-blue" alt="Docs"></a>
@@ -61,21 +60,26 @@ itself from your wallpaper with Material You.
 
 ## Binaries
 
-| Binary            | Role                                                                                                                                                                                                                              |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`margo`**       | Wayland compositor — DRM/KMS backend, tag workflow, layout engine                                                                                                                                                                 |
-| **`start-margo`** | Watchdog supervisor — restart-on-crash with a rolling budget, sd_notify integration, signal forwarding, `PR_SET_PDEATHSIG` parent-child invariant                                                                                 |
-| **`mctl`**        | Compositor IPC + control — `status / clients / outputs / focused / dispatch / tags / layout / reload / theme / twilight {status,preview,test,set,reset,toggle,preset} / migrate / actions / check-config / config-errors / rules` |
-| **`mshell`**      | First-party desktop shell — GTK4 + relm4 + gtk4-layer-shell, bar with configurable pill set, dashboard / clock / quick-settings / notifications menus, OSD, in-app Settings UI                                                    |
-| **`mshellctl`**   | Shell IPC — `menu / bar / audio / brightness / lock / settings / wallpaper / set-wallpaper / inspect / quit` (open/close menus, cycle wallpapers, toggle audio mute, drive the settings window, GTK inspector)                    |
-| **`mlock`**       | Screen locker — `ext-session-lock-v1`, cairo + pango, PAM auth, wallpaper backdrop, avatar, F1/F2/F3 power keys                                                                                                                   |
-| **`mlayout`**     | Named monitor profiles — `mlayout suggest` writes presets for the detected setup, `mlayout set <name>` flips between them                                                                                                         |
-| **`mscreenshot`** | Screen / region / window capture — wraps `grim` + `slurp` + `wl-copy` + optional editor (`swappy` / `satty`); `--delay N` countdown, `--output NAME` monitor pin, notification action buttons                                     |
-| **`mlogind`**     | TUI login / display manager (fork of lemurs) — bare-TTY greeter on a VT, PAM auth + X/Wayland session launch, themed from the margo matugen palette; `mlogind sync-theme` tracks the wallpaper                                    |
-| **`mwizard`**     | First-launch setup wizard — opens the in-shell layer-shell wizard menu (theme / keyboard / touchpad / Wi-Fi / wallpaper / bar), thin shim over `mshellctl wizard`                                                                 |
-| **`mvisual`**     | Visual debugger for the renderer                                                                                                                                                                                                  |
+Each binary lives in its own top-level directory — the name links to it.
 
-Every directory in the workspace maps 1:1 to a binary it produces. Library-only crates (`margo-config`, `margo-layouts`, `mshellshare`, and the `mshell-crates/*` family) keep their descriptive prefix.
+| Binary | Role |
+| --- | --- |
+| [`margo`](margo/) | Wayland compositor — DRM/KMS, tags, layout engine |
+| [`start-margo`](start-margo/) | Watchdog supervisor — restart-on-crash, sd_notify, signal forwarding |
+| [`mctl`](mctl/) | Compositor IPC + control CLI |
+| [`mshell`](mshell/) | GTK4 desktop shell — bar, menus, OSD, in-app Settings |
+| [`mshellctl`](mshellctl/) | Shell IPC CLI — menus, audio, wallpaper, lock |
+| [`mlock`](mlock/) | Screen locker — `ext-session-lock-v1` + PAM |
+| [`mlogind`](mlogind/) | TUI login / display manager — PAM, matugen-themed |
+| [`mlayout`](mlayout/) | Named monitor profiles |
+| [`mscreenshot`](mscreenshot/) | Screen / region / window capture |
+| [`mpicker`](mpicker/) | Native colour picker — frozen screencap + zoom lens |
+| [`mwizard`](mwizard/) | First-launch setup wizard launcher |
+| [`mvisual`](mvisual/) | Renderer visual debugger |
+| [`margo-portal`](margo-portal/) | xdg-desktop-portal screencast / screenshot backend |
+| [`mshellshare`](mshellshare/) | Portal screencast helper |
+
+Library-only crates (`margo-config`, `margo-layouts`, and the `mshell-crates/*` family) keep their descriptive prefix.
 
 ## Compositor highlights
 
@@ -148,7 +152,7 @@ cd margo
 ./install.sh --help
 ```
 
-It installs all twelve binaries (compositor + shell + helpers), the
+It installs every binary (compositor + shell + helpers), the
 `margo-portal` screencast/screenshot backend, the Wayland session entry,
 example configs and layouts, and shell completions.
 
@@ -311,10 +315,10 @@ on_window_open(|| {
     }
 });
 
-// Bump tag 9 wallpaper via the external shell
+// Cycle the wallpaper when you land on tag 9
 on_tag_switch(|| {
     if current_tag() == 9 {
-        spawn("osc-shell ipc call wallpaper next");
+        spawn("mshellctl wallpaper next");
     }
 });
 ```
@@ -343,5 +347,5 @@ GPL-3.0-or-later. See [`LICENSE`](LICENSE).
 
 <p align="center">
   <img src="docs/assets/margo-icon.svg" alt="margo" width="48"><br>
-  <sub>GPL-3.0-or-later · 0.6.1</sub>
+  <sub>GPL-3.0-or-later</sub>
 </p>
