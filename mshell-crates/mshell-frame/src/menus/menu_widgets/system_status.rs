@@ -45,7 +45,10 @@ const POLL_INTERVAL: Duration = Duration::from_secs(2);
 // Battery + temp thresholds — sized so the tile stays calm in the
 // common case and only colours when there's something to act on.
 const BATTERY_LOW_PERCENT: i32 = 20;
-const TEMP_WARN_CELSIUS: i32 = 80;
+/// Amber warning tier — matches cpu_dashboard_menu_widget's ladder.
+const TEMP_WARN_CELSIUS: i32 = 75;
+/// Red critical tier.
+const TEMP_CRITICAL_CELSIUS: i32 = 85;
 
 pub(crate) struct SystemStatusModel {
     has_battery: bool,
@@ -168,11 +171,10 @@ impl Component for SystemStatusModel {
                 set_visible: model.temp_sensor_path.is_some(),
                 set_orientation: gtk::Orientation::Horizontal,
                 set_spacing: 10,
-                #[watch]
-                set_css_classes: &[
-                    "system-status-row",
-                    if model.temp_celsius >= TEMP_WARN_CELSIUS { "warn" } else { "calm" },
-                ],
+                // Row stays class-calm; the value label carries the
+                // semantic temperature colour instead of borrowing the
+                // primary accent (DESIGN.md §Severity ladder).
+                add_css_class: "system-status-row",
 
                 gtk::Image {
                     add_css_class: "system-status-icon",
@@ -187,7 +189,17 @@ impl Component for SystemStatusModel {
                     set_hexpand: true,
                 },
                 gtk::Label {
-                    add_css_class: "system-status-value",
+                    #[watch]
+                    set_css_classes: &[
+                        "system-status-value",
+                        if model.temp_celsius >= TEMP_CRITICAL_CELSIUS {
+                            "metric-critical"
+                        } else if model.temp_celsius >= TEMP_WARN_CELSIUS {
+                            "metric-warning"
+                        } else {
+                            ""
+                        },
+                    ],
                     #[watch]
                     set_label: &format!("{}°C", model.temp_celsius),
                     set_halign: gtk::Align::End,

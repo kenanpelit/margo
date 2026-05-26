@@ -6,12 +6,12 @@
 // horizontal trio of metric blocks.
 
 .system-status-menu-widget {
-  padding-top: 6px;
-  padding-bottom: 6px;
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
 }
 
 .system-status-row {
-  padding: 4px 2px;
+  padding: var(--space-1) 2px;
 
   // Severity tinting on the value glyph + icon. Calm = inherit
   // surface text colour; warn = primary accent; danger = error.
@@ -21,9 +21,15 @@
   }
   &.danger .system-status-value,
   &.danger .system-status-icon {
-    color: var(--error, #ef4444);
+    color: var(--error);
   }
 }
+
+// Semantic temperature colour classes — applied directly to the
+// temperature value label so the accent colour is never borrowed
+// for thermal state (DESIGN.md §Severity ladder).
+.metric-warning { color: var(--warning); }
+.metric-critical { color: var(--error); }
 
 .system-status-icon {
   -gtk-icon-size: 16px;

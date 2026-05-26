@@ -42,6 +42,20 @@ const CPU_WARN_PERCENT: u32 = 70;
 const CPU_DANGER_PERCENT: u32 = 90;
 const TEMP_WARN_CELSIUS: i32 = 80;
 const TEMP_DANGER_CELSIUS: i32 = 90;
+/// Semantic temperature label: amber warning tier (--warning).
+const TEMP_LABEL_WARN_CELSIUS: i32 = 75;
+/// Semantic temperature label: red critical tier (--error).
+const TEMP_LABEL_CRITICAL_CELSIUS: i32 = 85;
+
+fn temp_label_class(temp: i32) -> &'static str {
+    if temp >= TEMP_LABEL_CRITICAL_CELSIUS {
+        "metric-critical"
+    } else if temp >= TEMP_LABEL_WARN_CELSIUS {
+        "metric-warning"
+    } else {
+        ""
+    }
+}
 
 fn severity_class(cpu: u32, temp: i32) -> &'static str {
     let cpu_state = if cpu >= CPU_DANGER_PERCENT {
@@ -235,7 +249,14 @@ impl Component for CpuDashboardMenuWidgetModel {
                     set_orientation: gtk::Orientation::Vertical,
                     set_spacing: 2,
                     gtk::Label {
-                        add_css_class: "cpu-dashboard-hero-value",
+                        // Semantic temperature colour: amber at ≥75 °C,
+                        // red at ≥85 °C. Replaces any accent borrowing
+                        // (DESIGN.md §Severity ladder).
+                        #[watch]
+                        set_css_classes: &[
+                            "cpu-dashboard-hero-value",
+                            temp_label_class(model.temp_celsius),
+                        ],
                         #[watch]
                         set_label: &format!("{}°C", model.temp_celsius),
                         set_halign: gtk::Align::Center,

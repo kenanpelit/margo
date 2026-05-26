@@ -70,7 +70,7 @@
   // Surfaces over borders (DESIGN.md §0.1): the calm hero is a plain
   // surface-container card — no outline ring. The inset ring returns
   // only as a *severity* cue in warn / danger below.
-  padding: 16px;
+  padding: var(--space-4);
   // Severity escalation (calm → warn → danger) eases across the
   // selection-speed motion window (DESIGN.md §Motion).
   transition: background-color var(--motion-medium) var(--ease-standard),
@@ -108,7 +108,7 @@
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--on-surface-variant);
-  margin-top: 4px;
+  margin-top: var(--space-1);
 }
 
 .cpu-dashboard-core-label {
