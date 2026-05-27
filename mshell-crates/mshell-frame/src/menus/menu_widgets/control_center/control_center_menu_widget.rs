@@ -1,6 +1,6 @@
 //! Control Center menu widget — the panel content for
-//! `MenuType::ControlCenter`. Embeds the header (Task 2); later tasks
-//! will fill the body with sliders, toggles, and tiles.
+//! `MenuType::ControlCenter`. Embeds the header (Task 2), sliders (Task 3),
+//! and tile grid (Task 4).
 
 use crate::menus::menu_widgets::control_center::header::{
     ControlCenterHeaderInit, ControlCenterHeaderInput, ControlCenterHeaderModel,
@@ -9,12 +9,16 @@ use crate::menus::menu_widgets::control_center::header::{
 use crate::menus::menu_widgets::control_center::sliders::{
     ControlCenterSlidersInit, ControlCenterSlidersModel,
 };
+use crate::menus::menu_widgets::control_center::tiles::{
+    ControlCenterTilesInit, ControlCenterTilesInput, ControlCenterTilesModel,
+};
 use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 
 pub(crate) struct ControlCenterMenuWidgetModel {
     header: Controller<ControlCenterHeaderModel>,
     sliders: relm4::Controller<ControlCenterSlidersModel>,
+    tiles: relm4::Controller<ControlCenterTilesModel>,
     /// Whether edit-mode is active (inert until Task 6).
     edit_mode: bool,
 }
@@ -86,9 +90,15 @@ impl Component for ControlCenterMenuWidgetModel {
             .launch(ControlCenterSlidersInit {})
             .detach();
 
+        // Build the tile grid component (Task 4).
+        let tiles = ControlCenterTilesModel::builder()
+            .launch(ControlCenterTilesInit {})
+            .detach();
+
         let model = ControlCenterMenuWidgetModel {
             header,
             sliders,
+            tiles,
             edit_mode: false,
         };
 
@@ -98,6 +108,8 @@ impl Component for ControlCenterMenuWidgetModel {
         widgets.root_box.prepend(model.header.widget());
         // Append the sliders row directly after the header.
         widgets.root_box.append(model.sliders.widget());
+        // Append the tile grid below the sliders.
+        widgets.root_box.append(model.tiles.widget());
 
         ComponentParts { model, widgets }
     }
@@ -122,6 +134,11 @@ impl Component for ControlCenterMenuWidgetModel {
                         .send(ControlCenterHeaderInput::RecomputeUptime)
                         .ok();
                 }
+                // Forward reveal state to the tile grid for lazy watcher start.
+                self.tiles
+                    .sender()
+                    .send(ControlCenterTilesInput::Reveal(revealed))
+                    .ok();
             }
             ControlCenterMenuWidgetInput::ToggleEdit => {
                 // Toggle the stored state; Task 6 will act on it.

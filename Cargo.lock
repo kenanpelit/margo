@@ -3706,6 +3706,7 @@ dependencies = [
  "chrono",
  "futures",
  "gtk4-layer-shell",
+ "libc",
  "mshell-cache",
  "mshell-clipboard",
  "mshell-common",
