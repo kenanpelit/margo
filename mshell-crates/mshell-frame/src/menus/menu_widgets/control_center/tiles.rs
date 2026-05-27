@@ -26,7 +26,7 @@ use crate::menus::menu_widgets::control_center::tile::{
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
-    ConfigStoreFields, MatugenStoreFields, ThemeStoreFields,
+    ConfigStoreFields, ControlCenterConfigStoreFields, MatugenStoreFields, ThemeStoreFields,
 };
 use mshell_config::schema::themes::MatugenMode;
 use mshell_idle::inhibitor::IdleInhibitor;
@@ -43,7 +43,7 @@ use mshell_utils::notifications::spawn_dnd_watcher;
 use mshell_utils::picker::spawn_color_picker;
 use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk;
-use relm4::gtk::prelude::{ButtonExt, GridExt, WidgetExt};
+use relm4::gtk::prelude::{ButtonExt, CheckButtonExt, GridExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender};
 use std::time::Duration;
 use tracing::warn;
@@ -78,6 +78,8 @@ pub(crate) struct ControlCenterTilesModel {
     mic_subtitle: String,
     // Lazy-start guard — watchers only start on first reveal
     watchers_started: bool,
+    // Edit mode — when true, all tiles visible + per-tile visibility toggles shown
+    edit_mode: bool,
     _effects: EffectScope,
 }
 
@@ -149,6 +151,28 @@ pub(crate) enum ControlCenterTilesInput {
 
     /// Re-read live subtitles for the expandable tiles.
     RefreshSubtitles,
+
+    /// Enter or exit edit mode (forwarded from the pencil-icon toggle).
+    SetEditMode(bool),
+
+    /// Edit-overlay checkbox toggled for a tile — write to config.
+    EditTileVisibility(TileId, bool),
+}
+
+/// Identifies a tile for the edit-overlay toggle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TileId {
+    Wifi,
+    Bluetooth,
+    AudioOut,
+    Mic,
+    Battery,
+    KeepAwake,
+    Dnd,
+    DarkMode,
+    NightLight,
+    ColorPicker,
+    Disk,
 }
 
 #[derive(Debug)]
@@ -188,6 +212,32 @@ pub(crate) struct ControlCenterTilesWidgets {
     tile_night_light: TileWidget,
     tile_disk: TileWidget,
     tile_battery: TileWidget,
+    // Edit-mode overlay wrappers (gtk::Overlay containing the tile button +
+    // a corner CheckButton). One per tile — wrapped after the tile buttons
+    // are attached to the grid.
+    overlay_wifi: gtk::Overlay,
+    overlay_bluetooth: gtk::Overlay,
+    overlay_audio_out: gtk::Overlay,
+    overlay_mic: gtk::Overlay,
+    overlay_battery: gtk::Overlay,
+    overlay_keep_awake: gtk::Overlay,
+    overlay_color_picker: gtk::Overlay,
+    overlay_dnd: gtk::Overlay,
+    overlay_dark_mode: gtk::Overlay,
+    overlay_night_light: gtk::Overlay,
+    overlay_disk: gtk::Overlay,
+    // The CheckButton references — needed to update their state in apply_visuals.
+    check_wifi: gtk::CheckButton,
+    check_bluetooth: gtk::CheckButton,
+    check_audio_out: gtk::CheckButton,
+    check_mic: gtk::CheckButton,
+    check_battery: gtk::CheckButton,
+    check_keep_awake: gtk::CheckButton,
+    check_color_picker: gtk::CheckButton,
+    check_dnd: gtk::CheckButton,
+    check_dark_mode: gtk::CheckButton,
+    check_night_light: gtk::CheckButton,
+    check_disk: gtk::CheckButton,
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -243,25 +293,6 @@ impl Component for ControlCenterTilesModel {
         tile_dnd.button.add_css_class("wide");
         // Battery tile is also expandable
         tile_battery.button.add_css_class("expandable");
-
-        // Attach tiles to the grid:
-        //   Row 0: [Wi-Fi (0,0)] [Bluetooth (1,0)]
-        //   Row 1: [Audio Out (0,1)] [Mic (1,1)]
-        //   Row 2: [Keep Awake (0,2)] [Color Picker (1,2)]
-        //   Row 3: [DND (0,3) span 2]
-        //   Row 4: [Dark Mode (0,4)] [Night Light (1,4)]
-        //   Row 5: [Disk (0,5)] [Battery (1,5)]
-        root.attach(&tile_wifi.button, 0, 0, 1, 1);
-        root.attach(&tile_bluetooth.button, 1, 0, 1, 1);
-        root.attach(&tile_audio_out.button, 0, 1, 1, 1);
-        root.attach(&tile_mic.button, 1, 1, 1, 1);
-        root.attach(&tile_keep_awake.button, 0, 2, 1, 1);
-        root.attach(&tile_color_picker.button, 1, 2, 1, 1);
-        root.attach(&tile_dnd.button, 0, 3, 2, 1);
-        root.attach(&tile_dark_mode.button, 0, 4, 1, 1);
-        root.attach(&tile_night_light.button, 1, 4, 1, 1);
-        root.attach(&tile_disk.button, 0, 5, 1, 1);
-        root.attach(&tile_battery.button, 1, 5, 1, 1);
 
         // Wire expandable tile clicks → outputs
         {
@@ -333,6 +364,52 @@ impl Component for ControlCenterTilesModel {
         }
         // Disk tile is info-only; no click handler needed.
 
+        // ── Edit-mode overlays ───────────────────────────────────────────────
+        // Wrap each tile button in a gtk::Overlay so a CheckButton can sit in
+        // the top-right corner during edit mode. The Overlay itself is what
+        // gets attached to the grid.
+        let (overlay_wifi, check_wifi) =
+            build_edit_overlay(&tile_wifi.button, &sender, TileId::Wifi);
+        let (overlay_bluetooth, check_bluetooth) =
+            build_edit_overlay(&tile_bluetooth.button, &sender, TileId::Bluetooth);
+        let (overlay_audio_out, check_audio_out) =
+            build_edit_overlay(&tile_audio_out.button, &sender, TileId::AudioOut);
+        let (overlay_mic, check_mic) =
+            build_edit_overlay(&tile_mic.button, &sender, TileId::Mic);
+        let (overlay_battery, check_battery) =
+            build_edit_overlay(&tile_battery.button, &sender, TileId::Battery);
+        let (overlay_keep_awake, check_keep_awake) =
+            build_edit_overlay(&tile_keep_awake.button, &sender, TileId::KeepAwake);
+        let (overlay_color_picker, check_color_picker) =
+            build_edit_overlay(&tile_color_picker.button, &sender, TileId::ColorPicker);
+        let (overlay_dnd, check_dnd) =
+            build_edit_overlay(&tile_dnd.button, &sender, TileId::Dnd);
+        let (overlay_dark_mode, check_dark_mode) =
+            build_edit_overlay(&tile_dark_mode.button, &sender, TileId::DarkMode);
+        let (overlay_night_light, check_night_light) =
+            build_edit_overlay(&tile_night_light.button, &sender, TileId::NightLight);
+        let (overlay_disk, check_disk) =
+            build_edit_overlay(&tile_disk.button, &sender, TileId::Disk);
+
+        // Attach overlay wrappers to the grid:
+        //   Row 0: [Wi-Fi (0,0)] [Bluetooth (1,0)]
+        //   Row 1: [Audio Out (0,1)] [Mic (1,1)]
+        //   Row 2: [Keep Awake (0,2)] [Color Picker (1,2)]
+        //   Row 3: [DND (0,3) span 2]
+        //   Row 4: [Dark Mode (0,4)] [Night Light (1,4)]
+        //   Row 5: [Disk (0,5)] [Battery (1,5)]
+        root.attach(&overlay_wifi, 0, 0, 1, 1);
+        root.attach(&overlay_bluetooth, 1, 0, 1, 1);
+        root.attach(&overlay_audio_out, 0, 1, 1, 1);
+        root.attach(&overlay_mic, 1, 1, 1, 1);
+        root.attach(&overlay_keep_awake, 0, 2, 1, 1);
+        root.attach(&overlay_color_picker, 1, 2, 1, 1);
+        root.attach(&overlay_dnd, 0, 3, 2, 1);
+        root.attach(&overlay_dark_mode, 0, 4, 1, 1);
+        root.attach(&overlay_night_light, 1, 4, 1, 1);
+        root.attach(&overlay_disk, 0, 5, 1, 1);
+        root.attach(&overlay_battery, 1, 5, 1, 1);
+
         // Reactive dark-mode effect (always active — cheap config-store watch)
         let mut effects = EffectScope::new();
         {
@@ -372,6 +449,7 @@ impl Component for ControlCenterTilesModel {
             audio_out_subtitle: read_audio_out_subtitle(),
             mic_subtitle: read_mic_subtitle(),
             watchers_started: false,
+            edit_mode: false,
             _effects: effects,
         };
 
@@ -387,6 +465,28 @@ impl Component for ControlCenterTilesModel {
             tile_night_light,
             tile_disk,
             tile_battery,
+            overlay_wifi,
+            overlay_bluetooth,
+            overlay_audio_out,
+            overlay_mic,
+            overlay_battery,
+            overlay_keep_awake,
+            overlay_color_picker,
+            overlay_dnd,
+            overlay_dark_mode,
+            overlay_night_light,
+            overlay_disk,
+            check_wifi,
+            check_bluetooth,
+            check_audio_out,
+            check_mic,
+            check_battery,
+            check_keep_awake,
+            check_color_picker,
+            check_dnd,
+            check_dark_mode,
+            check_night_light,
+            check_disk,
         };
 
         // Apply initial visual state
@@ -540,6 +640,26 @@ impl Component for ControlCenterTilesModel {
             ControlCenterTilesInput::DarkModeChanged(mode) => {
                 self.dark = mode;
             }
+
+            ControlCenterTilesInput::SetEditMode(on) => {
+                self.edit_mode = on;
+            }
+
+            ControlCenterTilesInput::EditTileVisibility(tile, visible) => {
+                config_manager().update_config(|c| match tile {
+                    TileId::Wifi => c.control_center.wifi = visible,
+                    TileId::Bluetooth => c.control_center.bluetooth = visible,
+                    TileId::AudioOut => c.control_center.audio_out = visible,
+                    TileId::Mic => c.control_center.mic = visible,
+                    TileId::Battery => c.control_center.battery = visible,
+                    TileId::KeepAwake => c.control_center.keep_awake = visible,
+                    TileId::Dnd => c.control_center.dnd = visible,
+                    TileId::DarkMode => c.control_center.dark_mode = visible,
+                    TileId::NightLight => c.control_center.night_light = visible,
+                    TileId::ColorPicker => c.control_center.color_picker = visible,
+                    TileId::Disk => c.control_center.disk = visible,
+                });
+            }
         }
 
         apply_visuals(self, widgets);
@@ -580,6 +700,95 @@ impl Component for ControlCenterTilesModel {
 // ── Visual updater ─────────────────────────────────────────────────────────────
 
 fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTilesWidgets) {
+    // Read per-tile config bools — each call creates a fresh Subfield, so
+    // we call config_manager() once per field rather than chaining off `cc`.
+    let cfg_wifi =
+        config_manager().config().control_center().wifi().get_untracked();
+    let cfg_bluetooth =
+        config_manager().config().control_center().bluetooth().get_untracked();
+    let cfg_audio_out =
+        config_manager().config().control_center().audio_out().get_untracked();
+    let cfg_mic =
+        config_manager().config().control_center().mic().get_untracked();
+    let cfg_battery =
+        config_manager().config().control_center().battery().get_untracked();
+    let cfg_keep_awake =
+        config_manager().config().control_center().keep_awake().get_untracked();
+    let cfg_dnd =
+        config_manager().config().control_center().dnd().get_untracked();
+    let cfg_dark_mode =
+        config_manager().config().control_center().dark_mode().get_untracked();
+    let cfg_night_light =
+        config_manager().config().control_center().night_light().get_untracked();
+    let cfg_color_picker =
+        config_manager().config().control_center().color_picker().get_untracked();
+    let cfg_disk =
+        config_manager().config().control_center().disk().get_untracked();
+
+    let edit = model.edit_mode;
+
+    // Helper: a tile's overlay is visible always; the tile button visibility
+    // depends on edit mode (all visible) vs normal mode (only enabled tiles).
+    // In edit mode, disabled tiles get the `.disabled` class for opacity dimming.
+    let update_tile_visibility = |overlay: &gtk::Overlay,
+                                   tile_btn: &gtk::Button,
+                                   check: &gtk::CheckButton,
+                                   enabled: bool| {
+        if edit {
+            // Show all tiles in edit mode
+            overlay.set_visible(true);
+            tile_btn.set_visible(true);
+            // Dim disabled tiles
+            if enabled {
+                tile_btn.remove_css_class("disabled");
+            } else {
+                tile_btn.add_css_class("disabled");
+            }
+            // Show edit checkbox, update its active state
+            check.set_visible(true);
+            check.set_active(enabled);
+        } else {
+            // Normal mode: hide disabled tiles, hide checkboxes
+            overlay.set_visible(enabled);
+            tile_btn.set_visible(true);
+            tile_btn.remove_css_class("disabled");
+            check.set_visible(false);
+        }
+    };
+
+    update_tile_visibility(&w.overlay_wifi, &w.tile_wifi.button, &w.check_wifi, cfg_wifi);
+    update_tile_visibility(&w.overlay_bluetooth, &w.tile_bluetooth.button, &w.check_bluetooth, cfg_bluetooth);
+    update_tile_visibility(&w.overlay_audio_out, &w.tile_audio_out.button, &w.check_audio_out, cfg_audio_out);
+    update_tile_visibility(&w.overlay_mic, &w.tile_mic.button, &w.check_mic, cfg_mic);
+    update_tile_visibility(&w.overlay_keep_awake, &w.tile_keep_awake.button, &w.check_keep_awake, cfg_keep_awake);
+    update_tile_visibility(&w.overlay_color_picker, &w.tile_color_picker.button, &w.check_color_picker, cfg_color_picker);
+    update_tile_visibility(&w.overlay_dnd, &w.tile_dnd.button, &w.check_dnd, cfg_dnd);
+    update_tile_visibility(&w.overlay_dark_mode, &w.tile_dark_mode.button, &w.check_dark_mode, cfg_dark_mode);
+    update_tile_visibility(&w.overlay_night_light, &w.tile_night_light.button, &w.check_night_light, cfg_night_light);
+    update_tile_visibility(&w.overlay_disk, &w.tile_disk.button, &w.check_disk, cfg_disk);
+
+    // Battery tile: additionally hidden when no battery present (normal mode)
+    let bat = &model.battery;
+    let battery_effective = cfg_battery && bat.present;
+    if edit {
+        // In edit mode, always show the battery overlay (battery tile exists)
+        // but dim it if disabled. If no battery present, still show but dim.
+        w.overlay_battery.set_visible(true);
+        w.tile_battery.button.set_visible(true);
+        if cfg_battery {
+            w.tile_battery.button.remove_css_class("disabled");
+        } else {
+            w.tile_battery.button.add_css_class("disabled");
+        }
+        w.check_battery.set_visible(true);
+        w.check_battery.set_active(cfg_battery);
+    } else {
+        w.overlay_battery.set_visible(battery_effective);
+        w.tile_battery.button.set_visible(true);
+        w.tile_battery.button.remove_css_class("disabled");
+        w.check_battery.set_visible(false);
+    }
+
     // Wi-Fi
     w.tile_wifi.set_subtitle(&model.wifi_subtitle);
 
@@ -634,9 +843,7 @@ fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTilesWidgets)
     // Disk
     w.tile_disk.set_subtitle(&model.disk.format());
 
-    // Battery
-    let bat = &model.battery;
-    w.tile_battery.set_visible(bat.present);
+    // Battery content update (when present)
     if bat.present {
         let on_ac = bat.on_ac
             || bat.state == DeviceState::Charging
@@ -662,6 +869,40 @@ fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTilesWidgets)
         };
         w.tile_battery.set_subtitle(&subtitle);
     }
+}
+
+// ── Edit-overlay builder ───────────────────────────────────────────────────────
+
+/// Wrap `tile_btn` in a `gtk::Overlay` and add a corner `gtk::CheckButton` for
+/// edit mode. The CheckButton is hidden by default; `apply_visuals` shows it
+/// when `edit_mode` is true. Returns `(overlay, check_button)`.
+fn build_edit_overlay(
+    tile_btn: &gtk::Button,
+    sender: &ComponentSender<ControlCenterTilesModel>,
+    tile_id: TileId,
+) -> (gtk::Overlay, gtk::CheckButton) {
+    let overlay = gtk::Overlay::new();
+    overlay.set_child(Some(tile_btn));
+
+    // Corner check button — positioned top-right via halign/valign
+    let check = gtk::CheckButton::new();
+    check.add_css_class("control-center-edit-check");
+    check.set_halign(gtk::Align::End);
+    check.set_valign(gtk::Align::Start);
+    check.set_visible(false); // hidden until edit mode activates
+    // Prevent clicks on the check from propagating to the tile button
+    check.set_can_focus(false);
+
+    overlay.add_overlay(&check);
+
+    // Wire toggled signal — use connect_toggled so we only fire on real changes
+    let s = sender.clone();
+    check.connect_toggled(move |cb| {
+        let active = cb.is_active();
+        s.input(ControlCenterTilesInput::EditTileVisibility(tile_id, active));
+    });
+
+    (overlay, check)
 }
 
 // ── Service helpers ────────────────────────────────────────────────────────────

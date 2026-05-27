@@ -357,6 +357,10 @@ impl Component for ControlCenterMenuWidgetModel {
 
             ControlCenterMenuWidgetInput::ToggleEdit => {
                 self.edit_mode = !self.edit_mode;
+                self.tiles
+                    .sender()
+                    .send(ControlCenterTilesInput::SetEditMode(self.edit_mode))
+                    .ok();
             }
 
             ControlCenterMenuWidgetInput::_HeaderActionHandled => {}

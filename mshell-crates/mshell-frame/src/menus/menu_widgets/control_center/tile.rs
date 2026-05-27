@@ -44,6 +44,7 @@ impl TileWidget {
     }
 
     /// Show or hide the whole tile.
+    #[allow(dead_code)]
     pub(crate) fn set_visible(&self, visible: bool) {
         self.button.set_visible(visible);
     }

@@ -176,6 +176,38 @@
   }
 }
 
+// ── Edit mode ─────────────────────────────────────────────────────────────────
+
+// Tile with `.disabled` — dimmed so the user sees it's hidden in normal mode.
+.control-center-tile.disabled {
+  opacity: 0.4;
+}
+
+// Corner CheckButton shown over each tile in edit mode.
+// Small, top-right corner, primary colour when checked.
+.control-center-edit-check {
+  margin: var(--space-1);
+  // Shrink the check to a compact pill — no label, just the indicator.
+  min-width: 0;
+  min-height: 0;
+
+  check {
+    min-width: 16px;
+    min-height: 16px;
+    border-radius: var(--radius-sm);
+    border: 2px solid var(--outline-variant);
+    background: var(--surface-container-high);
+    transition: background var(--motion-fast) var(--ease-standard),
+                border-color var(--motion-fast) var(--ease-standard);
+
+    &:checked {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: var(--on-primary);
+    }
+  }
+}
+
 // ── Detail sub-page ─────────────────────────────────────────────────────────────
 .control-center-detail {
   // Body spacing set to 12 in Rust; just ensure it fills width.

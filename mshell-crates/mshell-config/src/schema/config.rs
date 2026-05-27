@@ -39,6 +39,7 @@ pub struct Config {
     pub power: PowerConfig,
     pub privacy: PrivacyConfig,
     pub audio: AudioConfig,
+    pub control_center: ControlCenterConfig,
 }
 
 /// One configured alarm. `repeat_mask` bit `i` (0 = Sunday … 6 = Saturday)
@@ -1433,6 +1434,45 @@ pub struct AudioConfig {
     /// Hide HDMI / DisplayPort audio sinks from the output list and switcher.
     /// Matched by node name or description; default `false`.
     pub hide_hdmi_outputs: bool,
+}
+
+/// Control Center tile visibility — one bool per tile.
+///
+/// All tiles are shown by default (`true`). Set a tile to `false` via the
+/// Control Center's edit mode (the pencil icon in the header) to hide it
+/// from the normal grid view.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[serde(default)]
+pub struct ControlCenterConfig {
+    pub wifi: bool,
+    pub bluetooth: bool,
+    pub audio_out: bool,
+    pub mic: bool,
+    pub battery: bool,
+    pub keep_awake: bool,
+    pub dnd: bool,
+    pub dark_mode: bool,
+    pub night_light: bool,
+    pub color_picker: bool,
+    pub disk: bool,
+}
+
+impl Default for ControlCenterConfig {
+    fn default() -> Self {
+        Self {
+            wifi: true,
+            bluetooth: true,
+            audio_out: true,
+            mic: true,
+            battery: true,
+            keep_awake: true,
+            dnd: true,
+            dark_mode: true,
+            night_light: true,
+            color_picker: true,
+            disk: true,
+        }
+    }
 }
 
 #[cfg(test)]
