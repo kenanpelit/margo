@@ -47,6 +47,12 @@ use crate::menus::menu_widgets::twilight::twilight_menu_widget::{
 use crate::menus::menu_widgets::keep_awake::keep_awake_menu_widget::{
     KeepAwakeMenuWidgetInit, KeepAwakeMenuWidgetInput, KeepAwakeMenuWidgetModel,
 };
+use crate::menus::menu_widgets::ufw::ufw_menu_widget::{
+    UfwMenuWidgetInit, UfwMenuWidgetInput, UfwMenuWidgetModel,
+};
+use crate::menus::menu_widgets::podman::podman_menu_widget::{
+    PodmanMenuWidgetInit, PodmanMenuWidgetInput, PodmanMenuWidgetModel,
+};
 use crate::menus::menu_widgets::valent::valent_menu_widget::{
     ValentMenuWidgetInit, ValentMenuWidgetInput, ValentMenuWidgetModel,
 };
@@ -65,6 +71,8 @@ const PAGE_VPN: &str = "vpn";
 const PAGE_VALENT: &str = "valent";
 const PAGE_TWILIGHT: &str = "twilight";
 const PAGE_KEEP_AWAKE: &str = "keep_awake";
+const PAGE_UFW: &str = "ufw";
+const PAGE_PODMAN: &str = "podman";
 
 // ── Model ─────────────────────────────────────────────────────────────────────
 
@@ -86,6 +94,8 @@ pub(crate) struct ControlCenterMenuWidgetModel {
     valent_detail: Controller<ValentMenuWidgetModel>,
     twilight_detail: Controller<TwilightMenuWidgetModel>,
     keep_awake_detail: Controller<KeepAwakeMenuWidgetModel>,
+    ufw_detail: Controller<UfwMenuWidgetModel>,
+    podman_detail: Controller<PodmanMenuWidgetModel>,
     /// Whether edit-mode is active.
     edit_mode: bool,
     /// The GTK Stack widget — kept so `update` can switch pages.
@@ -210,6 +220,14 @@ impl Component for ControlCenterMenuWidgetModel {
             .launch(KeepAwakeMenuWidgetInit {})
             .detach();
 
+        let ufw_detail = UfwMenuWidgetModel::builder()
+            .launch(UfwMenuWidgetInit {})
+            .detach();
+
+        let podman_detail = PodmanMenuWidgetModel::builder()
+            .launch(PodmanMenuWidgetInit {})
+            .detach();
+
         // ── Build gtk::Stack ─────────────────────────────────────────────────
         let stack = gtk::Stack::new();
         stack.set_transition_type(gtk::StackTransitionType::SlideLeftRight);
@@ -259,6 +277,14 @@ impl Component for ControlCenterMenuWidgetModel {
             &build_detail_page("Keep Awake", sender.input_sender(), keep_awake_detail.widget()),
             Some(PAGE_KEEP_AWAKE),
         );
+        stack.add_named(
+            &build_detail_page("Firewall (UFW)", sender.input_sender(), ufw_detail.widget()),
+            Some(PAGE_UFW),
+        );
+        stack.add_named(
+            &build_detail_page("Podman", sender.input_sender(), podman_detail.widget()),
+            Some(PAGE_PODMAN),
+        );
 
         // Show main by default
         stack.set_visible_child_name(PAGE_MAIN);
@@ -276,6 +302,8 @@ impl Component for ControlCenterMenuWidgetModel {
             valent_detail,
             twilight_detail,
             keep_awake_detail,
+            ufw_detail,
+            podman_detail,
             edit_mode: false,
             stack: stack.clone(),
         };
@@ -352,6 +380,14 @@ impl Component for ControlCenterMenuWidgetModel {
                         .sender()
                         .send(KeepAwakeMenuWidgetInput::ParentRevealChanged(false))
                         .ok();
+                    self.ufw_detail
+                        .sender()
+                        .send(UfwMenuWidgetInput::ParentRevealChanged(false))
+                        .ok();
+                    self.podman_detail
+                        .sender()
+                        .send(PodmanMenuWidgetInput::ParentRevealChanged(false))
+                        .ok();
                 }
             }
 
@@ -415,6 +451,20 @@ impl Component for ControlCenterMenuWidgetModel {
                             .ok();
                         PAGE_KEEP_AWAKE
                     }
+                    DetailPage::Ufw => {
+                        self.ufw_detail
+                            .sender()
+                            .send(UfwMenuWidgetInput::ParentRevealChanged(true))
+                            .ok();
+                        PAGE_UFW
+                    }
+                    DetailPage::Podman => {
+                        self.podman_detail
+                            .sender()
+                            .send(PodmanMenuWidgetInput::ParentRevealChanged(true))
+                            .ok();
+                        PAGE_PODMAN
+                    }
                 };
                 self.stack.set_visible_child_name(page_name);
             }
@@ -463,6 +513,18 @@ impl Component for ControlCenterMenuWidgetModel {
                             self.keep_awake_detail
                                 .sender()
                                 .send(KeepAwakeMenuWidgetInput::ParentRevealChanged(false))
+                                .ok();
+                        }
+                        PAGE_UFW => {
+                            self.ufw_detail
+                                .sender()
+                                .send(UfwMenuWidgetInput::ParentRevealChanged(false))
+                                .ok();
+                        }
+                        PAGE_PODMAN => {
+                            self.podman_detail
+                                .sender()
+                                .send(PodmanMenuWidgetInput::ParentRevealChanged(false))
                                 .ok();
                         }
                         _ => {}

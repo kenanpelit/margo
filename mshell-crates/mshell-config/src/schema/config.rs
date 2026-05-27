@@ -1461,6 +1461,8 @@ pub struct ControlCenterConfig {
     pub airplane_mode: bool,
     pub vpn: bool,
     pub valent: bool,
+    pub ufw: bool,
+    pub podman: bool,
     /// Display order of tiles in the grid. Each entry is a tile-id string
     /// (e.g. `"wifi"`, `"bluetooth"`, …). Unknown ids are skipped; ids
     /// not listed here are appended at the end in canonical order.
@@ -1489,6 +1491,8 @@ fn default_cc_tile_order() -> Vec<String> {
         "night_light".to_string(),
         "color_picker".to_string(),
         "disk".to_string(),
+        "ufw".to_string(),
+        "podman".to_string(),
     ]
 }
 
@@ -1509,6 +1513,8 @@ impl Default for ControlCenterConfig {
             airplane_mode: true,
             vpn: true,
             valent: true,
+            ufw: true,
+            podman: true,
             tile_order: default_cc_tile_order(),
             wide_tiles: Vec::new(),
         }

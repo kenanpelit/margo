@@ -23,6 +23,7 @@ const ALL_TILE_IDS: &[&str] = &[
     "wifi", "bluetooth", "audio_out", "mic", "vpn", "valent",
     "battery", "keep_awake", "dnd", "airplane_mode",
     "dark_mode", "night_light", "color_picker", "disk",
+    "ufw", "podman",
 ];
 
 fn tile_display_name(id: &str) -> &'static str {
@@ -41,6 +42,8 @@ fn tile_display_name(id: &str) -> &'static str {
         "airplane_mode" => "Airplane Mode",
         "vpn" => "VPN",
         "valent" => "Valent",
+        "ufw" => "Firewall (UFW)",
+        "podman" => "Podman",
         _ => "Unknown",
     }
 }
@@ -63,6 +66,8 @@ fn tile_visible(id: &str) -> bool {
         "airplane_mode" => cc.airplane_mode().get_untracked(),
         "vpn" => cc.vpn().get_untracked(),
         "valent" => cc.valent().get_untracked(),
+        "ufw" => cc.ufw().get_untracked(),
+        "podman" => cc.podman().get_untracked(),
         _ => true,
     }
 }
@@ -110,6 +115,8 @@ fn set_tile_visible(id: &str, visible: bool) {
         "airplane_mode" => c.control_center.airplane_mode = visible,
         "vpn" => c.control_center.vpn = visible,
         "valent" => c.control_center.valent = visible,
+        "ufw" => c.control_center.ufw = visible,
+        "podman" => c.control_center.podman = visible,
         _ => {}
     });
 }
@@ -336,6 +343,8 @@ impl Component for CcTilesSettingsModel {
                 let _ = cm.config().control_center().airplane_mode().get();
                 let _ = cm.config().control_center().vpn().get();
                 let _ = cm.config().control_center().valent().get();
+                let _ = cm.config().control_center().ufw().get();
+                let _ = cm.config().control_center().podman().get();
                 let _ = cm.config().control_center().wide_tiles().get();
                 let order = effective_order(
                     &cm.config().control_center().tile_order().get(),

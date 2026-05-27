@@ -5,16 +5,19 @@
 //! at the end in canonical order so nothing silently disappears after an
 //! upgrade.
 //!
-//! Wi-Fi, Bluetooth, Audio Out, Mic, Battery, VPN, Valent, Twilight, and
-//! Keep Awake tiles are *expandable*: left-clicking them emits
-//! `ControlCenterTilesOutput::ExpandPage` so the parent
-//! `ControlCenterMenuWidgetModel` can switch the Stack to the matching
-//! detail sub-page. The Twilight tile shows the active profile (mode +
-//! temperature) as its subtitle.
+//! Wi-Fi, Bluetooth, Audio Out, Mic, Battery, VPN, Valent, Twilight,
+//! Keep Awake, Firewall (UFW), and Podman tiles are *expandable*:
+//! left-clicking them emits `ControlCenterTilesOutput::ExpandPage` so the
+//! parent `ControlCenterMenuWidgetModel` can switch the Stack to the
+//! matching detail sub-page. The Twilight tile shows the active profile
+//! (mode + temperature) as its subtitle; Podman shows the running
+//! machine name(s) (or a container summary); Firewall shows Active/Inactive.
 //!
-//! Bluetooth, Twilight, and Keep Awake additionally support a **secondary
-//! (right) click** that quick-toggles their state without leaving the
-//! grid (left-click opens the detail page; right-click flips on/off).
+//! Bluetooth, Twilight, Keep Awake, Firewall, and Podman additionally
+//! support a **secondary (right) click** that quick-toggles their state
+//! without leaving the grid (left-click opens the detail page; right-click
+//! flips on/off — UFW enable/disable via pkexec, Podman stops the running
+//! machine(s)).
 //!
 //! Dark Mode is a full labeled toggle tile.
 //! Do Not Disturb is `.wide` (spans 2 columns).
@@ -23,6 +26,8 @@
 //! All stateful tiles subscribe to their respective service watchers and
 //! start those watchers lazily on the first `Reveal(true)`.
 
+use crate::bars::bar_widgets::podman::fetch_podman_summary;
+use crate::bars::bar_widgets::ufw::{Status as UfwStatus, fetch_ufw_summary};
 use crate::menus::menu_widgets::control_center::tile::{
     TileWidget, build_expand_tile, build_tile,
 };
@@ -47,6 +52,8 @@ use mshell_utils::notifications::spawn_dnd_watcher;
 use mshell_utils::picker::spawn_color_picker;
 use mshell_utils::power_profile::get_power_profile_label;
 use reactive_graph::prelude::{Get, GetUntracked};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use relm4::gtk;
 use relm4::gtk::prelude::{
     ButtonExt, CheckButtonExt, GestureExt, GestureSingleExt, GridExt, WidgetExt,
@@ -57,6 +64,9 @@ use wayle_battery::types::DeviceState;
 use wayle_power_profiles::types::profile::PowerProfile;
 
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
+/// Slower cadence for the shell-out probes (UFW / Podman) which change
+/// rarely and cost a subprocess each.
+const SLOW_POLL_INTERVAL: Duration = Duration::from_secs(10);
 const STARTUP_DELAY: Duration = Duration::from_millis(200);
 
 // ── Model ─────────────────────────────────────────────────────────────────────
@@ -97,8 +107,18 @@ pub(crate) struct ControlCenterTilesModel {
     // Valent subtitle + connected state
     valent_subtitle: String,
     valent_connected: bool,
+    // UFW firewall subtitle + active (enabled) state
+    ufw_subtitle: String,
+    ufw_active: bool,
+    // Podman subtitle (active machine names / container summary) + active
+    podman_subtitle: String,
+    podman_active: bool,
     // Lazy-start guard — watchers only start on first reveal
     watchers_started: bool,
+    // Shared with the subprocess pollers (twilight / ufw / podman): they
+    // skip probing while the panel is hidden so a closed control center
+    // doesn't spawn `mctl` / `systemctl` / `podman` every few seconds.
+    revealed: Arc<AtomicBool>,
     // Edit mode — when true, all tiles visible + per-tile visibility toggles shown
     edit_mode: bool,
     // Current tile order — mirrors config; used to detect changes that need
@@ -160,6 +180,8 @@ pub(crate) enum DetailPage {
     Valent,
     Twilight,
     KeepAwake,
+    Ufw,
+    Podman,
 }
 
 // ── Messages ──────────────────────────────────────────────────────────────────
@@ -179,6 +201,10 @@ pub(crate) enum ControlCenterTilesInput {
     /// opens the detail page, right-click flips the state).
     ToggleTwilight,
     ToggleBluetooth,
+    /// Right-click on the Firewall tile → enable/disable UFW (pkexec).
+    ToggleUfw,
+    /// Right-click on the Podman tile → stop the running machine(s).
+    StopPodman,
 
     /// Reactive dark-mode update from EffectScope.
     DarkModeChanged(MatugenMode),
@@ -215,6 +241,8 @@ pub(crate) enum TileId {
     AirplaneMode,
     Vpn,
     Valent,
+    Ufw,
+    Podman,
 }
 
 impl TileId {
@@ -235,6 +263,8 @@ impl TileId {
             TileId::AirplaneMode => "airplane_mode",
             TileId::Vpn => "vpn",
             TileId::Valent => "valent",
+            TileId::Ufw => "ufw",
+            TileId::Podman => "podman",
         }
     }
 
@@ -255,6 +285,8 @@ impl TileId {
             "airplane_mode" => Some(TileId::AirplaneMode),
             "vpn" => Some(TileId::Vpn),
             "valent" => Some(TileId::Valent),
+            "ufw" => Some(TileId::Ufw),
+            "podman" => Some(TileId::Podman),
             _ => None,
         }
     }
@@ -276,6 +308,8 @@ impl TileId {
             TileId::NightLight,
             TileId::ColorPicker,
             TileId::Disk,
+            TileId::Ufw,
+            TileId::Podman,
         ]
     }
 
@@ -325,6 +359,10 @@ pub(crate) enum ControlCenterTilesCommandOutput {
     SubtitlesRefreshed,
     /// Async valent probe finished — (subtitle, is_connected).
     ValentStateRefreshed(String, bool),
+    /// Async UFW probe finished — (subtitle, is_active).
+    UfwRefreshed(String, bool),
+    /// Async Podman probe finished — (subtitle, is_active).
+    PodmanRefreshed(String, bool),
 }
 
 // ── Widgets struct (manual — we hold the tile handles) ────────────────────────
@@ -337,6 +375,8 @@ pub(crate) struct ControlCenterTilesWidgets {
     tile_mic: TileWidget,
     tile_vpn: TileWidget,
     tile_valent: TileWidget,
+    tile_ufw: TileWidget,
+    tile_podman: TileWidget,
     // Toggle / info tiles
     tile_keep_awake: TileWidget,
     // Held alive so the click handler isn't dropped; not updated by apply_visuals
@@ -366,6 +406,8 @@ pub(crate) struct ControlCenterTilesWidgets {
     overlay_airplane_mode: gtk::Overlay,
     overlay_vpn: gtk::Overlay,
     overlay_valent: gtk::Overlay,
+    overlay_ufw: gtk::Overlay,
+    overlay_podman: gtk::Overlay,
     // The CheckButton references — needed to update their state in apply_visuals.
     check_wifi: gtk::CheckButton,
     check_bluetooth: gtk::CheckButton,
@@ -381,6 +423,8 @@ pub(crate) struct ControlCenterTilesWidgets {
     check_airplane_mode: gtk::CheckButton,
     check_vpn: gtk::CheckButton,
     check_valent: gtk::CheckButton,
+    check_ufw: gtk::CheckButton,
+    check_podman: gtk::CheckButton,
 }
 
 impl ControlCenterTilesWidgets {
@@ -401,6 +445,8 @@ impl ControlCenterTilesWidgets {
             TileId::AirplaneMode => &self.overlay_airplane_mode,
             TileId::Vpn => &self.overlay_vpn,
             TileId::Valent => &self.overlay_valent,
+            TileId::Ufw => &self.overlay_ufw,
+            TileId::Podman => &self.overlay_podman,
         }
     }
 
@@ -482,6 +528,10 @@ impl Component for ControlCenterTilesModel {
         let tile_mic = build_expand_tile("audio-input-microphone-symbolic", "Mic", "…");
         let tile_vpn = build_expand_tile("network-vpn-symbolic", "VPN", "…");
         let tile_valent = build_expand_tile("phone-symbolic", "Valent", "…");
+        // Firewall + Podman: left-click opens the detail page, right-click
+        // quick-toggles (UFW enable/disable, stop running Podman machines).
+        let tile_ufw = build_expand_tile("shield-check-symbolic", "Firewall", "…");
+        let tile_podman = build_expand_tile("package-symbolic", "Podman", "…");
 
         // ── Toggle / info tiles (no chevron) ────────────────────────────────
         // Keep Awake is expandable (left-click → detail page); right-click
@@ -553,6 +603,26 @@ impl Component for ControlCenterTilesModel {
                     .ok();
             });
         }
+        {
+            let s = sender.clone();
+            tile_ufw.button.connect_clicked(move |_| {
+                s.output(ControlCenterTilesOutput::ExpandPage(DetailPage::Ufw))
+                    .ok();
+            });
+        }
+        wire_secondary_toggle(&tile_ufw.button, &sender, || {
+            ControlCenterTilesInput::ToggleUfw
+        });
+        {
+            let s = sender.clone();
+            tile_podman.button.connect_clicked(move |_| {
+                s.output(ControlCenterTilesOutput::ExpandPage(DetailPage::Podman))
+                    .ok();
+            });
+        }
+        wire_secondary_toggle(&tile_podman.button, &sender, || {
+            ControlCenterTilesInput::StopPodman
+        });
 
         // Wire toggle tile clicks
         // Keep Awake: left-click opens the detail page; right-click toggles.
@@ -636,6 +706,10 @@ impl Component for ControlCenterTilesModel {
             build_edit_overlay(&tile_vpn.button, &sender, TileId::Vpn);
         let (overlay_valent, check_valent) =
             build_edit_overlay(&tile_valent.button, &sender, TileId::Valent);
+        let (overlay_ufw, check_ufw) =
+            build_edit_overlay(&tile_ufw.button, &sender, TileId::Ufw);
+        let (overlay_podman, check_podman) =
+            build_edit_overlay(&tile_podman.button, &sender, TileId::Podman);
 
         // Wide tile CSS class is applied dynamically by rebuild_grid based on
         // the `wide_tiles` config — no hardcoded wide classes here.
@@ -681,6 +755,8 @@ impl Component for ControlCenterTilesModel {
                 let _ = cm.config().control_center().airplane_mode().get();
                 let _ = cm.config().control_center().vpn().get();
                 let _ = cm.config().control_center().valent().get();
+                let _ = cm.config().control_center().ufw().get();
+                let _ = cm.config().control_center().podman().get();
                 let order = cm.config().control_center().tile_order().get();
                 let wide = cm.config().control_center().wide_tiles().get();
                 s.input(ControlCenterTilesInput::RebuildGrid(order, wide));
@@ -741,6 +817,11 @@ impl Component for ControlCenterTilesModel {
             vpn_connected,
             valent_subtitle,
             valent_connected,
+            ufw_subtitle: String::from("…"),
+            ufw_active: false,
+            podman_subtitle: String::from("…"),
+            podman_active: false,
+            revealed: Arc::new(AtomicBool::new(false)),
             watchers_started: false,
             edit_mode: false,
             tile_order: initial_tile_order.clone(),
@@ -755,6 +836,8 @@ impl Component for ControlCenterTilesModel {
             tile_mic,
             tile_vpn,
             tile_valent,
+            tile_ufw,
+            tile_podman,
             tile_keep_awake,
             tile_color_picker,
             tile_dnd,
@@ -777,6 +860,8 @@ impl Component for ControlCenterTilesModel {
             overlay_airplane_mode,
             overlay_vpn,
             overlay_valent,
+            overlay_ufw,
+            overlay_podman,
             check_wifi,
             check_bluetooth,
             check_audio_out,
@@ -791,6 +876,8 @@ impl Component for ControlCenterTilesModel {
             check_airplane_mode,
             check_vpn,
             check_valent,
+            check_ufw,
+            check_podman,
         };
 
         // Attach all overlays to the grid in config order with correct spans.
@@ -811,6 +898,7 @@ impl Component for ControlCenterTilesModel {
     ) {
         match message {
             ControlCenterTilesInput::Reveal(true) => {
+                self.revealed.store(true, Ordering::Relaxed);
                 if !self.watchers_started {
                     self.watchers_started = true;
 
@@ -828,8 +916,9 @@ impl Component for ControlCenterTilesModel {
 
                     // Twilight poller — reads the full status so the tile can
                     // show the active profile (mode + temperature), not just
-                    // an on/off flag.
-                    sender.command(|out, shutdown| async move {
+                    // an on/off flag. Skips probing while the panel is hidden.
+                    let revealed = self.revealed.clone();
+                    sender.command(move |out, shutdown| async move {
                         use crate::twilight;
                         let shutdown_fut = shutdown.wait();
                         tokio::pin!(shutdown_fut);
@@ -841,6 +930,9 @@ impl Component for ControlCenterTilesModel {
                                 () = &mut shutdown_fut => break,
                                 _ = tokio::time::sleep(delay) => {}
                             }
+                            if !revealed.load(Ordering::Relaxed) {
+                                continue;
+                            }
                             if let Some(status) = twilight::probe().await {
                                 let subtitle = twilight_subtitle(&status);
                                 let _ = out.send(ControlCenterTilesCommandOutput::TwilightChanged(
@@ -848,6 +940,35 @@ impl Component for ControlCenterTilesModel {
                                     subtitle,
                                 ));
                             }
+                        }
+                    });
+
+                    // Firewall (UFW) + Podman poller — both shell out, so it
+                    // runs on the slow cadence and only while the panel is
+                    // visible (the `revealed` gate).
+                    let revealed = self.revealed.clone();
+                    sender.command(move |out, shutdown| async move {
+                        let shutdown_fut = shutdown.wait();
+                        tokio::pin!(shutdown_fut);
+                        let mut first = true;
+                        loop {
+                            let delay = if first { STARTUP_DELAY } else { SLOW_POLL_INTERVAL };
+                            first = false;
+                            tokio::select! {
+                                () = &mut shutdown_fut => break,
+                                _ = tokio::time::sleep(delay) => {}
+                            }
+                            if !revealed.load(Ordering::Relaxed) {
+                                continue;
+                            }
+                            let (ufw_sub, ufw_active) = read_ufw_tile_state().await;
+                            let _ = out.send(ControlCenterTilesCommandOutput::UfwRefreshed(
+                                ufw_sub, ufw_active,
+                            ));
+                            let (pod_sub, pod_active) = read_podman_tile_state().await;
+                            let _ = out.send(ControlCenterTilesCommandOutput::PodmanRefreshed(
+                                pod_sub, pod_active,
+                            ));
                         }
                     });
 
@@ -932,7 +1053,9 @@ impl Component for ControlCenterTilesModel {
                 (self.airplane_mode, self.airplane_available) = read_airplane_state();
             }
 
-            ControlCenterTilesInput::Reveal(false) => {}
+            ControlCenterTilesInput::Reveal(false) => {
+                self.revealed.store(false, Ordering::Relaxed);
+            }
 
             ControlCenterTilesInput::RefreshSubtitles => {
                 (self.wifi_subtitle, self.wifi_connected) = read_wifi_state();
@@ -1006,6 +1129,37 @@ impl Component for ControlCenterTilesModel {
                 });
             }
 
+            ControlCenterTilesInput::ToggleUfw => {
+                // Right-click quick toggle: enable/disable UFW via pkexec
+                // (polkit prompt), then re-probe the tile state.
+                let want_on = !self.ufw_active;
+                sender.command(move |out, _shutdown| async move {
+                    let cmd = if want_on { "enable" } else { "disable" };
+                    let _ = tokio::process::Command::new("pkexec")
+                        .args(["ufw", cmd])
+                        .status()
+                        .await;
+                    tokio::time::sleep(Duration::from_millis(300)).await;
+                    let (subtitle, active) = read_ufw_tile_state().await;
+                    let _ = out.send(ControlCenterTilesCommandOutput::UfwRefreshed(
+                        subtitle, active,
+                    ));
+                });
+            }
+
+            ControlCenterTilesInput::StopPodman => {
+                // Right-click quick action: stop any running machine(s),
+                // then re-probe the tile state.
+                sender.command(move |out, _shutdown| async move {
+                    stop_podman_machines().await;
+                    tokio::time::sleep(Duration::from_millis(300)).await;
+                    let (subtitle, active) = read_podman_tile_state().await;
+                    let _ = out.send(ControlCenterTilesCommandOutput::PodmanRefreshed(
+                        subtitle, active,
+                    ));
+                });
+            }
+
             ControlCenterTilesInput::DarkModeChanged(mode) => {
                 self.dark = mode;
             }
@@ -1030,6 +1184,8 @@ impl Component for ControlCenterTilesModel {
                     TileId::AirplaneMode => c.control_center.airplane_mode = visible,
                     TileId::Vpn => c.control_center.vpn = visible,
                     TileId::Valent => c.control_center.valent = visible,
+                    TileId::Ufw => c.control_center.ufw = visible,
+                    TileId::Podman => c.control_center.podman = visible,
                 });
                 // The RebuildGrid effect will fire automatically from the config
                 // store change. No explicit rebuild needed here.
@@ -1078,6 +1234,14 @@ impl Component for ControlCenterTilesModel {
                 self.valent_subtitle = subtitle;
                 self.valent_connected = connected;
             }
+            ControlCenterTilesCommandOutput::UfwRefreshed(subtitle, active) => {
+                self.ufw_subtitle = subtitle;
+                self.ufw_active = active;
+            }
+            ControlCenterTilesCommandOutput::PodmanRefreshed(subtitle, active) => {
+                self.podman_subtitle = subtitle;
+                self.podman_active = active;
+            }
         }
 
         apply_visuals(self, widgets);
@@ -1117,6 +1281,10 @@ fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTilesWidgets)
         config_manager().config().control_center().vpn().get_untracked();
     let cfg_valent =
         config_manager().config().control_center().valent().get_untracked();
+    let cfg_ufw =
+        config_manager().config().control_center().ufw().get_untracked();
+    let cfg_podman =
+        config_manager().config().control_center().podman().get_untracked();
 
     let edit = model.edit_mode;
 
@@ -1158,6 +1326,8 @@ fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTilesWidgets)
     update_tile_visibility(&w.overlay_airplane_mode, &w.tile_airplane_mode.button, &w.check_airplane_mode, cfg_airplane_mode);
     update_tile_visibility(&w.overlay_vpn, &w.tile_vpn.button, &w.check_vpn, cfg_vpn);
     update_tile_visibility(&w.overlay_valent, &w.tile_valent.button, &w.check_valent, cfg_valent);
+    update_tile_visibility(&w.overlay_ufw, &w.tile_ufw.button, &w.check_ufw, cfg_ufw);
+    update_tile_visibility(&w.overlay_podman, &w.tile_podman.button, &w.check_podman, cfg_podman);
 
     // Battery tile: additionally hidden when no battery present (normal mode)
     let bat = &model.battery;
@@ -1200,6 +1370,19 @@ fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTilesWidgets)
     // Valent — active when a device is reachable + paired
     w.tile_valent.set_subtitle(&model.valent_subtitle);
     w.tile_valent.set_active(model.valent_connected);
+
+    // Firewall (UFW) — active (accent) when enabled; icon reflects state.
+    w.tile_ufw.set_subtitle(&model.ufw_subtitle);
+    w.tile_ufw.set_active(model.ufw_active);
+    w.tile_ufw.set_icon(if model.ufw_active {
+        "shield-check-symbolic"
+    } else {
+        "firewall-symbolic"
+    });
+
+    // Podman — active (accent) when a machine is running / containers up.
+    w.tile_podman.set_subtitle(&model.podman_subtitle);
+    w.tile_podman.set_active(model.podman_active);
 
     // Keep Awake
     w.tile_keep_awake.set_active(model.keep_awake);
@@ -1412,6 +1595,94 @@ fn twilight_mode_label(mode: &str) -> &'static str {
         "static" => "Static",
         "schedule" => "Schedule",
         _ => "On",
+    }
+}
+
+// ── Firewall (UFW) helpers ──────────────────────────────────────────────────
+
+/// (subtitle, is_active). Active = UFW enabled. Unprivileged read via the
+/// shared bar-pill helper (`systemctl is-active ufw.service`).
+async fn read_ufw_tile_state() -> (String, bool) {
+    let summary = fetch_ufw_summary().await;
+    match summary.status {
+        Some(UfwStatus::Active) => ("Active".to_string(), true),
+        Some(UfwStatus::Inactive) => ("Inactive".to_string(), false),
+        _ => ("Unavailable".to_string(), false),
+    }
+}
+
+// ── Podman helpers ──────────────────────────────────────────────────────────
+
+struct PodmanMachine {
+    name: String,
+    running: bool,
+}
+
+/// Parse `podman machine list --format json`. `None` when podman is
+/// missing or machines aren't supported on this host.
+async fn podman_machines() -> Option<Vec<PodmanMachine>> {
+    let out = tokio::process::Command::new("podman")
+        .args(["machine", "list", "--format", "json"])
+        .output()
+        .await
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
+    let arr = v.as_array()?;
+    Some(
+        arr.iter()
+            .map(|m| PodmanMachine {
+                name: m
+                    .get("Name")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                running: m.get("Running").and_then(|x| x.as_bool()).unwrap_or(false),
+            })
+            .collect(),
+    )
+}
+
+/// (subtitle, is_active). Prefers podman machine state (the user asked for
+/// the active machine name); falls back to a running-container summary on
+/// hosts with no machines (native rootless podman).
+async fn read_podman_tile_state() -> (String, bool) {
+    if let Some(machines) = podman_machines().await {
+        let running: Vec<String> = machines
+            .iter()
+            .filter(|m| m.running)
+            .map(|m| m.name.clone())
+            .collect();
+        if !running.is_empty() {
+            return (running.join(", "), true);
+        }
+        if !machines.is_empty() {
+            return ("Stopped".to_string(), false);
+        }
+    }
+    // No machines configured → show container activity instead.
+    let s = fetch_podman_summary().await;
+    if s.error.is_some() {
+        return ("Unavailable".to_string(), false);
+    }
+    if s.running_containers > 0 {
+        (format!("{} running", s.running_containers), true)
+    } else {
+        ("Idle".to_string(), false)
+    }
+}
+
+/// Stop every running podman machine (`podman machine stop <name>`).
+async fn stop_podman_machines() {
+    if let Some(machines) = podman_machines().await {
+        for m in machines.iter().filter(|m| m.running) {
+            let _ = tokio::process::Command::new("podman")
+                .args(["machine", "stop", &m.name])
+                .status()
+                .await;
+        }
     }
 }
 
