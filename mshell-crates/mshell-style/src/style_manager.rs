@@ -72,6 +72,86 @@ fn write_cached_theme(css: &str) {
     }
 }
 
+/// Propagate margo's light/dark choice to GTK apps so they follow the
+/// shell: the GNOME `color-scheme` (libadwaita + the xdg-desktop-portal
+/// `org.freedesktop.appearance` slot read this) plus the GTK3/GTK4
+/// `gtk-application-prefer-dark-theme` flag. Idempotent — a process-global
+/// guard skips the work when the value is unchanged, so wallpaper rotation
+/// (auto-polarity) doesn't respawn `gsettings` every cycle.
+fn sync_gtk_appearance(dark: bool) {
+    use std::sync::atomic::{AtomicU8, Ordering};
+    static LAST: AtomicU8 = AtomicU8::new(0); // 0 = unknown, 1 = light, 2 = dark
+    let want = if dark { 2 } else { 1 };
+    if LAST.swap(want, Ordering::Relaxed) == want {
+        return;
+    }
+
+    // Off the GTK main thread — `gsettings` spawns a subprocess; we never
+    // want that (or the file writes) to hitch the UI on a theme toggle.
+    std::thread::spawn(move || {
+        // libadwaita / GNOME apps / portal appearance.
+        let scheme = if dark { "prefer-dark" } else { "prefer-light" };
+        if let Err(err) = std::process::Command::new("gsettings")
+            .args(["set", "org.gnome.desktop.interface", "color-scheme", scheme])
+            .status()
+        {
+            warn!(error = %err, "gtk dark sync: gsettings spawn failed");
+        }
+
+        // GTK3 + GTK4 settings.ini `gtk-application-prefer-dark-theme`.
+        let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
+            return;
+        };
+        for sub in ["gtk-3.0", "gtk-4.0"] {
+            let dir = home.join(".config").join(sub);
+            if std::fs::create_dir_all(&dir).is_err() {
+                continue;
+            }
+            write_prefer_dark_ini(&dir.join("settings.ini"), dark);
+        }
+    });
+}
+
+/// Set `gtk-application-prefer-dark-theme` under `[Settings]` in a GTK
+/// `settings.ini`, preserving any other keys the user has.
+fn write_prefer_dark_ini(path: &std::path::Path, dark: bool) {
+    const KEY: &str = "gtk-application-prefer-dark-theme";
+    let val = if dark { "1" } else { "0" };
+
+    let existing = std::fs::read_to_string(path).unwrap_or_default();
+    let mut lines: Vec<String> = existing.lines().map(String::from).collect();
+
+    let mut has_section = false;
+    let mut key_set = false;
+    for line in lines.iter_mut() {
+        let t = line.trim();
+        if t.eq_ignore_ascii_case("[settings]") {
+            has_section = true;
+        }
+        if t.split('=').next().map(str::trim) == Some(KEY) {
+            *line = format!("{KEY}={val}");
+            key_set = true;
+        }
+    }
+    if !has_section {
+        lines.insert(0, "[Settings]".to_string());
+    }
+    if !key_set {
+        let idx = lines
+            .iter()
+            .position(|l| l.trim().eq_ignore_ascii_case("[settings]"))
+            .map(|i| i + 1)
+            .unwrap_or(lines.len());
+        lines.insert(idx, format!("{KEY}={val}"));
+    }
+
+    let mut out = lines.join("\n");
+    out.push('\n');
+    if let Err(err) = std::fs::write(path, out) {
+        warn!(path = %path.display(), error = %err, "gtk dark sync: settings.ini write failed");
+    }
+}
+
 pub struct StyleManagerModel {
     user_css_provider: CssProvider,
     theme_css_provider: CssProvider,
@@ -247,11 +327,15 @@ impl Component for StyleManagerModel {
                 }
             }
             MatugenUpdate(matugen) => {
-                if config_manager().config().theme().theme().get_untracked() == Themes::Wallpaper {
-                    let source = source_path();
-                    if source.exists() {
-                        sender.input(SetMatugenCssWithWallpaper(matugen));
-                    }
+                let theme = config_manager().config().theme().theme().get_untracked();
+                if theme == Themes::Wallpaper && source_path().exists() {
+                    // The wallpaper apply path resolves the effective mode
+                    // (auto-polarity) and syncs GTK there.
+                    sender.input(SetMatugenCssWithWallpaper(matugen));
+                } else {
+                    // Static / Default / no-wallpaper: GTK follows the
+                    // explicit Mode (the Dark Mode toggle).
+                    sync_gtk_appearance(matugen.mode == MatugenMode::Dark);
                 }
             }
             SetMatugenCssWithStaticTheme(theme) => {
@@ -274,6 +358,9 @@ impl Component for StyleManagerModel {
                         MatugenMode::Dark
                     };
                 }
+                // Propagate the *effective* light/dark to GTK apps (covers
+                // both the manual Mode and the auto-polarity resolution).
+                sync_gtk_appearance(matugen.mode == MatugenMode::Dark);
                 let theme_overrides = MatugenThemeCustomOnly {
                     mshell: build_mshell_matugen(),
                 };
