@@ -146,3 +146,33 @@
 .bar.islands .ok-bar-widget > button.ok-button-surface:active {
     background-color: unquote("color-mix(in srgb, var(--primary) 22%, var(--surface-container))");
 }
+
+// ── Islands: uniform pill geometry + icon size ──────────────────────────
+// In strip mode the pills are transparent, so size differences hide; as
+// opaque islands they show. Normalize so every island reads the same.
+//
+// Uniform symbolic glyph size: this only hits images WITHOUT an explicit
+// `set_pixel_size` (GTK lets a set pixel-size override `-gtk-icon-size`),
+// so the intentionally-sized ones (media cover 20px, network badges 11px)
+// keep their size while the plain symbolic pills (shields / docs / etc.)
+// snap to one size.
+.bar.islands .ok-bar-widget image {
+    -gtk-icon-size: 16px;
+}
+
+// Uniform island height + a consistent gap so the row reads as an even
+// run of pills, vertically centred in the bar. MargoTags is wrapped as a
+// single island below, so it gets the same geometry.
+.bar.islands .ok-bar-widget,
+.bar.islands .margo-tags-bar-widget {
+    min-height: 26px;
+    margin: 0 2px;
+}
+
+// MargoTags doesn't carry `.ok-bar-widget`, so it stayed bare; give the
+// whole 1–9 strip one island surface to match its neighbours.
+.bar.islands .margo-tags-bar-widget {
+    background-color: var(--surface-container);
+    border-radius: var(--radius-widget);
+    padding: 0 6px;
+}
