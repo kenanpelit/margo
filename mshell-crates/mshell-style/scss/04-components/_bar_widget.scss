@@ -165,7 +165,7 @@
 // single island below, so it gets the same geometry.
 .bar.islands .ok-bar-widget,
 .bar.islands .margo-tags-bar-widget {
-    min-height: 26px;
+    min-height: 28px;
     margin: 0 2px;
 }
 
@@ -175,4 +175,26 @@
     background-color: var(--surface-container);
     border-radius: var(--radius-widget);
     padding: 0 6px;
+}
+
+// ── Uniform pill geometry (applies to hover wash AND islands surface) ────
+// Bar pills come in two internal structures: `.ok-bar-widget` on the click
+// Button (icon-only pills) or on a Box wrapping a Button (most others).
+// Left alone they end up different heights/sizes — the box-wrapped pills
+// pick up padding on BOTH the box (`> *` rule above) and the inner button,
+// so their hover wash / island surface reads larger and a different shape
+// than the icon-only pills. Force one geometry on every pill so the wash
+// is the same height + rounding everywhere; width still follows content.
+.bar .ok-bar-widget {
+    min-height: 28px;
+    min-width: 28px;
+    border-radius: var(--radius-widget);
+}
+
+// Kill the inner click button's own box so a wrapped pill matches an
+// icon-only one — the single padding level is the outer `> *` rule.
+.bar .ok-bar-widget > button {
+    padding: 0;
+    min-height: 0;
+    min-width: 0;
 }
