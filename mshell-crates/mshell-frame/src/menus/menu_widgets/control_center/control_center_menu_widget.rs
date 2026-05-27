@@ -6,11 +6,15 @@ use crate::menus::menu_widgets::control_center::header::{
     ControlCenterHeaderInit, ControlCenterHeaderInput, ControlCenterHeaderModel,
     ControlCenterHeaderOutput,
 };
+use crate::menus::menu_widgets::control_center::sliders::{
+    ControlCenterSlidersInit, ControlCenterSlidersModel,
+};
 use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 
 pub(crate) struct ControlCenterMenuWidgetModel {
     header: Controller<ControlCenterHeaderModel>,
+    sliders: relm4::Controller<ControlCenterSlidersModel>,
     /// Whether edit-mode is active (inert until Task 6).
     edit_mode: bool,
 }
@@ -77,8 +81,14 @@ impl Component for ControlCenterMenuWidgetModel {
                 }
             });
 
+        // Build the sliders component (volume + brightness).
+        let sliders = ControlCenterSlidersModel::builder()
+            .launch(ControlCenterSlidersInit {})
+            .detach();
+
         let model = ControlCenterMenuWidgetModel {
             header,
+            sliders,
             edit_mode: false,
         };
 
@@ -86,6 +96,8 @@ impl Component for ControlCenterMenuWidgetModel {
 
         // Prepend the header widget at the top of the root box.
         widgets.root_box.prepend(model.header.widget());
+        // Append the sliders row directly after the header.
+        widgets.root_box.append(model.sliders.widget());
 
         ComponentParts { model, widgets }
     }

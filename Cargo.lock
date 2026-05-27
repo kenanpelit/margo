@@ -3734,6 +3734,7 @@ dependencies = [
  "wayle-audio",
  "wayle-battery",
  "wayle-bluetooth",
+ "wayle-brightness",
  "wayle-media",
  "wayle-network",
  "wayle-notification",
