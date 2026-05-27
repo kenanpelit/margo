@@ -198,3 +198,13 @@
     min-height: 0;
     min-width: 0;
 }
+
+// ── Spacer / Separator (waybar-style blank + divider) ───────────────────
+// Render-only layout helpers placed between widgets. The spacer is a bare
+// gap (width from config); the separator is a thin vertical line, inset
+// vertically so it doesn't run the full bar height.
+.bar-separator {
+    background-color: var(--outline);
+    min-width: 1px;
+    margin: 6px 4px;
+}

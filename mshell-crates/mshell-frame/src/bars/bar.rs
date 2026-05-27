@@ -51,6 +51,7 @@ use crate::bars::bar_widgets::network_speed::{NetworkSpeedInit, NetworkSpeedMode
 use crate::bars::bar_widgets::vpn_indicator::{VpnIndicatorInit, VpnIndicatorModel};
 use crate::bars::bar_widgets::wallpaper::{WallpaperInit, WallpaperModel, WallpaperOutput};
 use mshell_common::dynamic_box::generic_widget_controller::GenericWidgetController;
+use mshell_common::dynamic_box::simple_widget_controller::SimpleWidgetController;
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::bar_widgets::BarWidget;
@@ -746,6 +747,19 @@ impl BarModel {
                     .launch(NetworkSpeedInit {})
                     .detach(),
             ),
+            BarWidget::Spacer(width) => {
+                // Render-only blank gap of the configured pixel width.
+                let b = gtk::Box::new(Orientation::Horizontal, 0);
+                b.add_css_class("bar-spacer");
+                b.set_size_request(*width as i32, -1);
+                Box::new(SimpleWidgetController::new(b.upcast()))
+            }
+            BarWidget::Separator => {
+                // Render-only thin vertical divider line.
+                let b = gtk::Box::new(Orientation::Horizontal, 0);
+                b.add_css_class("bar-separator");
+                Box::new(SimpleWidgetController::new(b.upcast()))
+            }
             BarWidget::Custom(name) => {
                 // Resolve the named definition from bars.widgets.custom_widgets;
                 // an unknown name falls back to an empty (inert) pill.

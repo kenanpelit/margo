@@ -71,6 +71,10 @@ pub enum BarWidget {
     NetworkSpeed,
     /// A user-defined pill; the `String` is the `custom_widgets` entry name.
     Custom(String),
+    /// Blank gap of the given pixel width, for spacing widgets apart.
+    Spacer(u32),
+    /// A thin vertical divider line between widgets.
+    Separator,
     Notes,
     Notifications,
     Podman,
@@ -135,6 +139,8 @@ impl BarWidget {
             BarWidget::Network => "Network Console",
             BarWidget::NetworkSpeed => "Network Speed",
             BarWidget::Custom(_) => "Custom Widget",
+            BarWidget::Spacer(_) => "Spacer",
+            BarWidget::Separator => "Separator",
             BarWidget::Notes => "Notes Hub",
             BarWidget::Notifications => "Notifications",
             BarWidget::Podman => "Podman",
@@ -187,6 +193,8 @@ impl BarWidget {
             BarWidget::Ip,
             BarWidget::Network,
             BarWidget::NetworkSpeed,
+            BarWidget::Spacer(8),
+            BarWidget::Separator,
             BarWidget::Notes,
             BarWidget::Notifications,
             BarWidget::Podman,
