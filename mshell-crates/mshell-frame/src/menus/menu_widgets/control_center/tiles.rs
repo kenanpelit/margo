@@ -1,10 +1,17 @@
 //! Control Center tile grid — 2-column grid of toggle/info tiles.
 //!
 //! Layout (col 0 / col 1):
+//!   [Wi-Fi      ]  [Bluetooth   ]
+//!   [Audio Out  ]  [Mic         ]
 //!   [Keep Awake ]  [Color Picker]
 //!   [Do Not Disturb    (wide)  ]
 //!   [Dark Mode  ]  [Night Light ]
 //!   [Disk       ]  [Battery     ]
+//!
+//! Wi-Fi, Bluetooth, Audio Out, Mic, and Battery tiles are *expandable*:
+//! clicking them emits `ControlCenterTilesOutput::ExpandPage` so the parent
+//! `ControlCenterMenuWidgetModel` can switch the Stack to the matching detail
+//! sub-page.
 //!
 //! Dark Mode and Night Light are `.small` (icon-only).
 //! Do Not Disturb is `.wide` (spans 2 columns).
@@ -23,7 +30,10 @@ use mshell_config::schema::config::{
 };
 use mshell_config::schema::themes::MatugenMode;
 use mshell_idle::inhibitor::IdleInhibitor;
-use mshell_services::{battery_service, line_power_service, notification_service};
+use mshell_services::{
+    audio_service, battery_service, bluetooth_service, line_power_service, network_service,
+    notification_service,
+};
 use mshell_utils::battery::{
     get_battery_icon, get_charging_battery_icon, spawn_battery_online_watcher,
     spawn_battery_watcher,
@@ -58,6 +68,14 @@ pub(crate) struct ControlCenterTilesModel {
     disk: DiskUsage,
     // Battery
     battery: BatterySnapshot,
+    // Wi-Fi subtitle
+    wifi_subtitle: String,
+    // Bluetooth subtitle
+    bt_subtitle: String,
+    // Audio out subtitle
+    audio_out_subtitle: String,
+    // Mic subtitle
+    mic_subtitle: String,
     // Lazy-start guard — watchers only start on first reveal
     watchers_started: bool,
     _effects: EffectScope,
@@ -102,6 +120,16 @@ impl Default for BatterySnapshot {
     }
 }
 
+/// Which detail sub-page to open (emitted to the parent menu widget).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DetailPage {
+    Wifi,
+    Bluetooth,
+    AudioOut,
+    Mic,
+    Battery,
+}
+
 // ── Messages ──────────────────────────────────────────────────────────────────
 
 #[derive(Debug)]
@@ -109,7 +137,7 @@ pub(crate) enum ControlCenterTilesInput {
     /// Menu revealed or hidden.
     Reveal(bool),
 
-    // Tile clicks
+    // Tile clicks — toggles
     ClickKeepAwake,
     ClickDnd,
     ClickDarkMode,
@@ -118,10 +146,16 @@ pub(crate) enum ControlCenterTilesInput {
 
     /// Reactive dark-mode update from EffectScope.
     DarkModeChanged(MatugenMode),
+
+    /// Re-read live subtitles for the expandable tiles.
+    RefreshSubtitles,
 }
 
 #[derive(Debug)]
-pub(crate) enum ControlCenterTilesOutput {}
+pub(crate) enum ControlCenterTilesOutput {
+    /// User clicked an expandable tile; switch to this detail page.
+    ExpandPage(DetailPage),
+}
 
 pub(crate) struct ControlCenterTilesInit {}
 
@@ -132,11 +166,18 @@ pub(crate) enum ControlCenterTilesCommandOutput {
     NightLightChanged(bool),
     BatteryChanged,
     DiskRefreshed(DiskUsage),
+    SubtitlesRefreshed,
 }
 
 // ── Widgets struct (manual — we hold the tile handles) ────────────────────────
 
 pub(crate) struct ControlCenterTilesWidgets {
+    // Expandable tiles
+    tile_wifi: TileWidget,
+    tile_bluetooth: TileWidget,
+    tile_audio_out: TileWidget,
+    tile_mic: TileWidget,
+    // Toggle / info tiles
     tile_keep_awake: TileWidget,
     // Held alive so the click handler isn't dropped; not updated by apply_visuals
     // (color picker has no state).
@@ -174,7 +215,18 @@ impl Component for ControlCenterTilesModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        // Build tiles
+        // ── Expandable tiles (top section) ──────────────────────────────────
+        let tile_wifi = build_tile("network-wireless-symbolic", "Wi-Fi", "…");
+        let tile_bluetooth = build_tile("bluetooth-active-symbolic", "Bluetooth", "…");
+        let tile_audio_out = build_tile("audio-speakers-symbolic", "Audio Out", "…");
+        let tile_mic = build_tile("audio-input-microphone-symbolic", "Mic", "…");
+
+        // Mark expandable tiles with a chevron-styled hint (`.expandable`)
+        for tw in [&tile_wifi, &tile_bluetooth, &tile_audio_out, &tile_mic] {
+            tw.button.add_css_class("expandable");
+        }
+
+        // ── Toggle / info tiles ─────────────────────────────────────────────
         let tile_keep_awake = build_tile("eye-symbolic", "Keep Awake", "Off");
         let tile_color_picker = build_tile("color-select-symbolic", "Color Picker", "Pick a colour");
         let tile_dnd = build_tile(
@@ -189,21 +241,66 @@ impl Component for ControlCenterTilesModel {
 
         // Mark the DND tile as wide
         tile_dnd.button.add_css_class("wide");
+        // Battery tile is also expandable
+        tile_battery.button.add_css_class("expandable");
 
         // Attach tiles to the grid:
-        //   Row 0: [Keep Awake (0,0)] [Color Picker (1,0)]
-        //   Row 1: [DND (0,1) span 2]
-        //   Row 2: [Dark Mode (0,2)] [Night Light (1,2)]
-        //   Row 3: [Disk (0,3)] [Battery (1,3)]
-        root.attach(&tile_keep_awake.button, 0, 0, 1, 1);
-        root.attach(&tile_color_picker.button, 1, 0, 1, 1);
-        root.attach(&tile_dnd.button, 0, 1, 2, 1);
-        root.attach(&tile_dark_mode.button, 0, 2, 1, 1);
-        root.attach(&tile_night_light.button, 1, 2, 1, 1);
-        root.attach(&tile_disk.button, 0, 3, 1, 1);
-        root.attach(&tile_battery.button, 1, 3, 1, 1);
+        //   Row 0: [Wi-Fi (0,0)] [Bluetooth (1,0)]
+        //   Row 1: [Audio Out (0,1)] [Mic (1,1)]
+        //   Row 2: [Keep Awake (0,2)] [Color Picker (1,2)]
+        //   Row 3: [DND (0,3) span 2]
+        //   Row 4: [Dark Mode (0,4)] [Night Light (1,4)]
+        //   Row 5: [Disk (0,5)] [Battery (1,5)]
+        root.attach(&tile_wifi.button, 0, 0, 1, 1);
+        root.attach(&tile_bluetooth.button, 1, 0, 1, 1);
+        root.attach(&tile_audio_out.button, 0, 1, 1, 1);
+        root.attach(&tile_mic.button, 1, 1, 1, 1);
+        root.attach(&tile_keep_awake.button, 0, 2, 1, 1);
+        root.attach(&tile_color_picker.button, 1, 2, 1, 1);
+        root.attach(&tile_dnd.button, 0, 3, 2, 1);
+        root.attach(&tile_dark_mode.button, 0, 4, 1, 1);
+        root.attach(&tile_night_light.button, 1, 4, 1, 1);
+        root.attach(&tile_disk.button, 0, 5, 1, 1);
+        root.attach(&tile_battery.button, 1, 5, 1, 1);
 
-        // Wire tile clicks
+        // Wire expandable tile clicks → outputs
+        {
+            let s = sender.clone();
+            tile_wifi.button.connect_clicked(move |_| {
+                s.output(ControlCenterTilesOutput::ExpandPage(DetailPage::Wifi))
+                    .ok();
+            });
+        }
+        {
+            let s = sender.clone();
+            tile_bluetooth.button.connect_clicked(move |_| {
+                s.output(ControlCenterTilesOutput::ExpandPage(DetailPage::Bluetooth))
+                    .ok();
+            });
+        }
+        {
+            let s = sender.clone();
+            tile_audio_out.button.connect_clicked(move |_| {
+                s.output(ControlCenterTilesOutput::ExpandPage(DetailPage::AudioOut))
+                    .ok();
+            });
+        }
+        {
+            let s = sender.clone();
+            tile_mic.button.connect_clicked(move |_| {
+                s.output(ControlCenterTilesOutput::ExpandPage(DetailPage::Mic))
+                    .ok();
+            });
+        }
+        {
+            let s = sender.clone();
+            tile_battery.button.connect_clicked(move |_| {
+                s.output(ControlCenterTilesOutput::ExpandPage(DetailPage::Battery))
+                    .ok();
+            });
+        }
+
+        // Wire toggle tile clicks
         {
             let s = sender.clone();
             tile_keep_awake
@@ -234,7 +331,7 @@ impl Component for ControlCenterTilesModel {
                 .button
                 .connect_clicked(move |_| s.input(ControlCenterTilesInput::ClickColorPicker));
         }
-        // Disk + Battery tiles are info-only; no click handler needed.
+        // Disk tile is info-only; no click handler needed.
 
         // Reactive dark-mode effect (always active — cheap config-store watch)
         let mut effects = EffectScope::new();
@@ -270,11 +367,19 @@ impl Component for ControlCenterTilesModel {
             night_light: false,
             disk,
             battery,
+            wifi_subtitle: read_wifi_subtitle(),
+            bt_subtitle: read_bt_subtitle(),
+            audio_out_subtitle: read_audio_out_subtitle(),
+            mic_subtitle: read_mic_subtitle(),
             watchers_started: false,
             _effects: effects,
         };
 
         let widgets = ControlCenterTilesWidgets {
+            tile_wifi,
+            tile_bluetooth,
+            tile_audio_out,
+            tile_mic,
             tile_keep_awake,
             tile_color_picker,
             tile_dnd,
@@ -352,6 +457,22 @@ impl Component for ControlCenterTilesModel {
                             let _ = out.send(ControlCenterTilesCommandOutput::DiskRefreshed(usage));
                         }
                     });
+
+                    // Subtitle poller for Wi-Fi / BT / audio tiles (every 5s)
+                    sender.command(|out, shutdown| async move {
+                        let shutdown_fut = shutdown.wait();
+                        tokio::pin!(shutdown_fut);
+                        let mut first = true;
+                        loop {
+                            let delay = if first { STARTUP_DELAY } else { POLL_INTERVAL };
+                            first = false;
+                            tokio::select! {
+                                () = &mut shutdown_fut => break,
+                                _ = tokio::time::sleep(delay) => {}
+                            }
+                            let _ = out.send(ControlCenterTilesCommandOutput::SubtitlesRefreshed);
+                        }
+                    });
                 }
 
                 // Re-snapshot fast values on each reveal
@@ -365,9 +486,20 @@ impl Component for ControlCenterTilesModel {
                     .get_untracked();
                 self.battery = read_battery();
                 self.disk = read_disk_usage();
+                self.wifi_subtitle = read_wifi_subtitle();
+                self.bt_subtitle = read_bt_subtitle();
+                self.audio_out_subtitle = read_audio_out_subtitle();
+                self.mic_subtitle = read_mic_subtitle();
             }
 
             ControlCenterTilesInput::Reveal(false) => {}
+
+            ControlCenterTilesInput::RefreshSubtitles => {
+                self.wifi_subtitle = read_wifi_subtitle();
+                self.bt_subtitle = read_bt_subtitle();
+                self.audio_out_subtitle = read_audio_out_subtitle();
+                self.mic_subtitle = read_mic_subtitle();
+            }
 
             ControlCenterTilesInput::ClickKeepAwake => {
                 tokio::spawn(async move {
@@ -417,7 +549,7 @@ impl Component for ControlCenterTilesModel {
         &mut self,
         widgets: &mut Self::Widgets,
         message: Self::CommandOutput,
-        _sender: ComponentSender<Self>,
+        sender: ComponentSender<Self>,
         _root: &Self::Root,
     ) {
         match message {
@@ -436,6 +568,9 @@ impl Component for ControlCenterTilesModel {
             ControlCenterTilesCommandOutput::DiskRefreshed(usage) => {
                 self.disk = usage;
             }
+            ControlCenterTilesCommandOutput::SubtitlesRefreshed => {
+                sender.input(ControlCenterTilesInput::RefreshSubtitles);
+            }
         }
 
         apply_visuals(self, widgets);
@@ -445,6 +580,18 @@ impl Component for ControlCenterTilesModel {
 // ── Visual updater ─────────────────────────────────────────────────────────────
 
 fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTilesWidgets) {
+    // Wi-Fi
+    w.tile_wifi.set_subtitle(&model.wifi_subtitle);
+
+    // Bluetooth
+    w.tile_bluetooth.set_subtitle(&model.bt_subtitle);
+
+    // Audio Out
+    w.tile_audio_out.set_subtitle(&model.audio_out_subtitle);
+
+    // Mic
+    w.tile_mic.set_subtitle(&model.mic_subtitle);
+
     // Keep Awake
     w.tile_keep_awake.set_active(model.keep_awake);
     w.tile_keep_awake
@@ -592,4 +739,53 @@ async fn run_twilight_toggle() {
         Ok(s) => warn!(?s, "mctl twilight toggle returned non-zero"),
         Err(e) => warn!(error = %e, "mctl twilight toggle spawn failed"),
     }
+}
+
+// ── Expandable-tile subtitle helpers ─────────────────────────────────────────
+
+fn read_wifi_subtitle() -> String {
+    let network = network_service();
+    if let Some(wifi) = network.wifi.get() {
+        if let Some(ssid) = wifi.ssid.get() {
+            return ssid;
+        }
+        if wifi.enabled.get() {
+            return "Not connected".to_string();
+        }
+        return "Off".to_string();
+    }
+    "Unavailable".to_string()
+}
+
+fn read_bt_subtitle() -> String {
+    let bt = bluetooth_service();
+    if !bt.available.get() {
+        return "Unavailable".to_string();
+    }
+    if !bt.enabled.get() {
+        return "Off".to_string();
+    }
+    let devices = bt.devices.get();
+    let connected: Vec<_> = devices.iter().filter(|d| d.connected.get()).collect();
+    match connected.len() {
+        0 => "On · no devices".to_string(),
+        1 => connected[0].alias.get(),
+        n => format!("{n} connected"),
+    }
+}
+
+fn read_audio_out_subtitle() -> String {
+    let audio = audio_service();
+    if let Some(dev) = audio.default_output.get() {
+        return dev.description.get();
+    }
+    "No device".to_string()
+}
+
+fn read_mic_subtitle() -> String {
+    let audio = audio_service();
+    if let Some(dev) = audio.default_input.get() {
+        return dev.description.get();
+    }
+    "No device".to_string()
 }

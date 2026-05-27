@@ -165,3 +165,49 @@
     color: var(--on-surface);
   }
 }
+
+// ── Expandable tile (shows a faint chevron hint) ───────────────────────────────
+.control-center-tile.expandable {
+  // Right-side "›" affordance via box-shadow tint on hover — the actual
+  // navigation happens on click. We keep the visual cue minimal so it
+  // doesn't compete with active-state chip colour.
+  &:hover {
+    // The state-layer mixin already handles background; no extra needed.
+  }
+}
+
+// ── Detail sub-page ─────────────────────────────────────────────────────────────
+.control-center-detail {
+  // Body spacing set to 12 in Rust; just ensure it fills width.
+  min-width: 0;
+}
+
+// Back-row: ← icon + title label
+.control-center-back-row {
+  // spacing set to 8 in Rust.
+}
+
+// Flat back-arrow button — same visual weight as the header panel-action-btn.
+.control-center-back-btn {
+  all: unset;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+  cursor: pointer;
+  color: var(--on-surface-variant);
+  @include state-layer(transparent);
+
+  image {
+    -gtk-icon-size: var(--icon-md);
+  }
+
+  &:hover {
+    color: var(--on-surface);
+  }
+}
+
+// Detail page title (e.g. "Wi-Fi", "Bluetooth")
+.control-center-detail-title {
+  font-size: var(--font-md);
+  font-weight: 600;
+  color: var(--on-surface);
+}
