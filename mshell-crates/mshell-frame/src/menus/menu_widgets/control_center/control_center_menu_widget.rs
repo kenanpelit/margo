@@ -26,7 +26,7 @@ use crate::menus::menu_widgets::control_center::header::{
     ControlCenterHeaderOutput,
 };
 use crate::menus::menu_widgets::control_center::sliders::{
-    ControlCenterSlidersInit, ControlCenterSlidersModel,
+    ControlCenterSlidersInit, ControlCenterSlidersModel, ControlCenterSlidersOutput,
 };
 use crate::menus::menu_widgets::control_center::tiles::{
     ControlCenterTilesInit, ControlCenterTilesInput, ControlCenterTilesModel,
@@ -172,7 +172,14 @@ impl Component for ControlCenterMenuWidgetModel {
         // ── Main-page components ─────────────────────────────────────────────
         let sliders = ControlCenterSlidersModel::builder()
             .launch(ControlCenterSlidersInit {})
-            .detach();
+            .forward(sender.input_sender(), |msg| match msg {
+                ControlCenterSlidersOutput::OpenAudioOut => {
+                    ControlCenterMenuWidgetInput::OpenDetailPage(DetailPage::AudioOut)
+                }
+                ControlCenterSlidersOutput::OpenMic => {
+                    ControlCenterMenuWidgetInput::OpenDetailPage(DetailPage::Mic)
+                }
+            });
 
         let tiles = ControlCenterTilesModel::builder()
             .launch(ControlCenterTilesInit {})

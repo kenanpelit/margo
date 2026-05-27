@@ -18,7 +18,7 @@ use mshell_utils::audio::{
 };
 use mshell_utils::brightness::{get_brightness_icon, spawn_brightness_watcher};
 use relm4::gtk::glib;
-use relm4::gtk::prelude::{BoxExt, OrientableExt, RangeExt, ScaleExt, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, RangeExt, ScaleExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::sync::Arc;
 use wayle_audio::core::device::input::InputDevice;
@@ -60,10 +60,18 @@ pub(crate) enum ControlCenterSlidersInput {
     SetInputVolume(f64),
     ToggleInputMute,
     SetBrightness(f64),
+    /// Chevron clicked — ask the parent to open the device picker.
+    OpenOutputDevices,
+    OpenInputDevices,
 }
 
 #[derive(Debug)]
-pub(crate) enum ControlCenterSlidersOutput {}
+pub(crate) enum ControlCenterSlidersOutput {
+    /// Open the output (speakers) device list detail page.
+    OpenAudioOut,
+    /// Open the input (microphone) device list detail page.
+    OpenMic,
+}
 
 pub(crate) struct ControlCenterSlidersInit {}
 
@@ -123,6 +131,17 @@ impl Component for ControlCenterSlidersModel {
                     set_width_chars: 4,
                     set_xalign: 1.0,
                 },
+
+                // Chevron → open the output device list.
+                gtk::Button {
+                    add_css_class: "control-center-slider-chevron",
+                    set_valign: gtk::Align::Center,
+                    set_icon_name: "go-next-symbolic",
+                    set_tooltip_text: Some("Choose output device"),
+                    connect_clicked[sender] => move |_| {
+                        sender.input(ControlCenterSlidersInput::OpenOutputDevices);
+                    },
+                },
             },
 
             // ── Mic row ───────────────────────────────────────────
@@ -156,6 +175,17 @@ impl Component for ControlCenterSlidersModel {
                     set_label: &format!("{}%", (model.input_percent * 100.0).round() as i32),
                     set_width_chars: 4,
                     set_xalign: 1.0,
+                },
+
+                // Chevron → open the input device list.
+                gtk::Button {
+                    add_css_class: "control-center-slider-chevron",
+                    set_valign: gtk::Align::Center,
+                    set_icon_name: "go-next-symbolic",
+                    set_tooltip_text: Some("Choose input device"),
+                    connect_clicked[sender] => move |_| {
+                        sender.input(ControlCenterSlidersInput::OpenInputDevices);
+                    },
                 },
             },
 
@@ -396,6 +426,12 @@ impl Component for ControlCenterSlidersModel {
                         let _ = d.set_mute(!currently_muted).await;
                     });
                 }
+            }
+            ControlCenterSlidersInput::OpenOutputDevices => {
+                let _ = sender.output(ControlCenterSlidersOutput::OpenAudioOut);
+            }
+            ControlCenterSlidersInput::OpenInputDevices => {
+                let _ = sender.output(ControlCenterSlidersOutput::OpenMic);
             }
             ControlCenterSlidersInput::SetBrightness(v) => {
                 if self.suppress_brightness_signal {

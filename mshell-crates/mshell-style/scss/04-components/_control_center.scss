@@ -47,6 +47,22 @@
   min-width: 20px; // prevent width jitter when icon changes
 }
 
+// Trailing `>` on the volume / mic rows — opens the device picker.
+// Flat icon button: dim glyph, rounded state-layer wash on hover.
+.control-center-slider-chevron {
+  all: unset;
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  @include state-layer();
+
+  image {
+    -gtk-icon-size: var(--icon-sm);
+    color: var(--on-surface-variant);
+  }
+}
+
 // Percentage label — tabular nums, right-aligned, dim.
 .control-center-slider-value {
   font-size: var(--font-xs);
