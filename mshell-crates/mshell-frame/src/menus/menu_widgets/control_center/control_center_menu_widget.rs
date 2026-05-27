@@ -44,6 +44,9 @@ use crate::menus::menu_widgets::power::power_menu_widget::{
 use crate::menus::menu_widgets::twilight::twilight_menu_widget::{
     TwilightMenuWidgetInit, TwilightMenuWidgetInput, TwilightMenuWidgetModel,
 };
+use crate::menus::menu_widgets::keep_awake::keep_awake_menu_widget::{
+    KeepAwakeMenuWidgetInit, KeepAwakeMenuWidgetInput, KeepAwakeMenuWidgetModel,
+};
 use crate::menus::menu_widgets::valent::valent_menu_widget::{
     ValentMenuWidgetInit, ValentMenuWidgetInput, ValentMenuWidgetModel,
 };
@@ -61,6 +64,7 @@ const PAGE_BATTERY: &str = "battery";
 const PAGE_VPN: &str = "vpn";
 const PAGE_VALENT: &str = "valent";
 const PAGE_TWILIGHT: &str = "twilight";
+const PAGE_KEEP_AWAKE: &str = "keep_awake";
 
 // ── Model ─────────────────────────────────────────────────────────────────────
 
@@ -81,6 +85,7 @@ pub(crate) struct ControlCenterMenuWidgetModel {
     vpn_detail: Controller<DnsMenuWidgetModel>,
     valent_detail: Controller<ValentMenuWidgetModel>,
     twilight_detail: Controller<TwilightMenuWidgetModel>,
+    keep_awake_detail: Controller<KeepAwakeMenuWidgetModel>,
     /// Whether edit-mode is active.
     edit_mode: bool,
     /// The GTK Stack widget — kept so `update` can switch pages.
@@ -201,6 +206,10 @@ impl Component for ControlCenterMenuWidgetModel {
             .launch(TwilightMenuWidgetInit {})
             .detach();
 
+        let keep_awake_detail = KeepAwakeMenuWidgetModel::builder()
+            .launch(KeepAwakeMenuWidgetInit {})
+            .detach();
+
         // ── Build gtk::Stack ─────────────────────────────────────────────────
         let stack = gtk::Stack::new();
         stack.set_transition_type(gtk::StackTransitionType::SlideLeftRight);
@@ -246,6 +255,10 @@ impl Component for ControlCenterMenuWidgetModel {
             &build_detail_page("Twilight", sender.input_sender(), twilight_detail.widget()),
             Some(PAGE_TWILIGHT),
         );
+        stack.add_named(
+            &build_detail_page("Keep Awake", sender.input_sender(), keep_awake_detail.widget()),
+            Some(PAGE_KEEP_AWAKE),
+        );
 
         // Show main by default
         stack.set_visible_child_name(PAGE_MAIN);
@@ -262,6 +275,7 @@ impl Component for ControlCenterMenuWidgetModel {
             vpn_detail,
             valent_detail,
             twilight_detail,
+            keep_awake_detail,
             edit_mode: false,
             stack: stack.clone(),
         };
@@ -334,6 +348,10 @@ impl Component for ControlCenterMenuWidgetModel {
                         .sender()
                         .send(TwilightMenuWidgetInput::ParentRevealChanged(false))
                         .ok();
+                    self.keep_awake_detail
+                        .sender()
+                        .send(KeepAwakeMenuWidgetInput::ParentRevealChanged(false))
+                        .ok();
                 }
             }
 
@@ -390,6 +408,13 @@ impl Component for ControlCenterMenuWidgetModel {
                             .ok();
                         PAGE_TWILIGHT
                     }
+                    DetailPage::KeepAwake => {
+                        self.keep_awake_detail
+                            .sender()
+                            .send(KeepAwakeMenuWidgetInput::ParentRevealChanged(true))
+                            .ok();
+                        PAGE_KEEP_AWAKE
+                    }
                 };
                 self.stack.set_visible_child_name(page_name);
             }
@@ -432,6 +457,12 @@ impl Component for ControlCenterMenuWidgetModel {
                             self.twilight_detail
                                 .sender()
                                 .send(TwilightMenuWidgetInput::ParentRevealChanged(false))
+                                .ok();
+                        }
+                        PAGE_KEEP_AWAKE => {
+                            self.keep_awake_detail
+                                .sender()
+                                .send(KeepAwakeMenuWidgetInput::ParentRevealChanged(false))
                                 .ok();
                         }
                         _ => {}

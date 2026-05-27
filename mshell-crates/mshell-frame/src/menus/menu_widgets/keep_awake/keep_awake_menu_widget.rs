@@ -9,6 +9,8 @@ use crate::keep_awake::{KeepAwakeSession, format_remaining};
 use mshell_idle::inhibitor::IdleInhibitor;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, FlowBoxChildExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 /// Preset durations (minutes, label). `None` minutes (the ∞ tile) is
@@ -29,10 +31,18 @@ pub(crate) struct KeepAwakeMenuWidgetModel {
     status_label: gtk::Label,
     extend_button: gtk::Button,
     off_button: gtk::Button,
+    /// The 1 s countdown heartbeat is started lazily on the first reveal
+    /// (this menu is built eagerly per-monitor and embedded as a Control
+    /// Center detail page) and paused while hidden.
+    tick_started: bool,
+    revealed: Arc<AtomicBool>,
 }
 
 #[derive(Debug)]
 pub(crate) enum KeepAwakeMenuWidgetInput {
+    /// Panel shown / hidden — starts the countdown heartbeat lazily on
+    /// first reveal and pauses it while hidden.
+    ParentRevealChanged(bool),
     /// Activate for N minutes (`None` = unlimited).
     Activate(Option<u64>),
     Extend,
@@ -140,6 +150,8 @@ impl Component for KeepAwakeMenuWidgetModel {
             status_label: status_label_widget.clone(),
             extend_button: extend_button_widget.clone(),
             off_button: off_button_widget.clone(),
+            tick_started: false,
+            revealed: Arc::new(AtomicBool::new(false)),
         };
         let widgets = view_output!();
 
@@ -151,18 +163,8 @@ impl Component for KeepAwakeMenuWidgetModel {
 
         sync(&model);
 
-        // 1 s heartbeat so the countdown ticks while the panel is open.
-        sender.command(|out, shutdown| async move {
-            let shutdown_fut = shutdown.wait();
-            tokio::pin!(shutdown_fut);
-            let mut tick = tokio::time::interval(Duration::from_secs(1));
-            loop {
-                tokio::select! {
-                    () = &mut shutdown_fut => break,
-                    _ = tick.tick() => { let _ = out.send(()); }
-                }
-            }
-        });
+        // The 1 s countdown heartbeat is started lazily on the first
+        // reveal (see `ensure_polling`).
 
         ComponentParts { model, widgets }
     }
@@ -174,6 +176,14 @@ impl Component for KeepAwakeMenuWidgetModel {
         _root: &Self::Root,
     ) {
         match message {
+            KeepAwakeMenuWidgetInput::ParentRevealChanged(revealed) => {
+                self.revealed.store(revealed, Ordering::Relaxed);
+                if revealed {
+                    self.ensure_polling(&sender);
+                    // Resync the countdown immediately on open.
+                    sync(self);
+                }
+            }
             KeepAwakeMenuWidgetInput::Activate(minutes) => {
                 KeepAwakeSession::global().activate(minutes);
                 let _ = sender.output(KeepAwakeMenuWidgetOutput::CloseMenu);
@@ -196,6 +206,35 @@ impl Component for KeepAwakeMenuWidgetModel {
         _root: &Self::Root,
     ) {
         sync(self);
+    }
+}
+
+impl KeepAwakeMenuWidgetModel {
+    /// Start the 1 s countdown heartbeat once (on first reveal). The loop
+    /// runs until the widget is dropped but only emits a tick while the
+    /// panel is revealed, so a closed (or off-screen, per-monitor) panel
+    /// doesn't refresh its countdown for nothing.
+    fn ensure_polling(&mut self, sender: &ComponentSender<Self>) {
+        if self.tick_started {
+            return;
+        }
+        self.tick_started = true;
+        let revealed = self.revealed.clone();
+        sender.command(move |out, shutdown| async move {
+            let shutdown_fut = shutdown.wait();
+            tokio::pin!(shutdown_fut);
+            let mut tick = tokio::time::interval(Duration::from_secs(1));
+            loop {
+                tokio::select! {
+                    () = &mut shutdown_fut => break,
+                    _ = tick.tick() => {
+                        if revealed.load(Ordering::Relaxed) {
+                            let _ = out.send(());
+                        }
+                    }
+                }
+            }
+        });
     }
 }
 

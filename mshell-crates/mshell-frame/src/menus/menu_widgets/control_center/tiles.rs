@@ -5,12 +5,16 @@
 //! at the end in canonical order so nothing silently disappears after an
 //! upgrade.
 //!
-//! Wi-Fi, Bluetooth, Audio Out, Mic, Battery, VPN, Valent, and Twilight
-//! tiles are *expandable*: clicking them emits
+//! Wi-Fi, Bluetooth, Audio Out, Mic, Battery, VPN, Valent, Twilight, and
+//! Keep Awake tiles are *expandable*: left-clicking them emits
 //! `ControlCenterTilesOutput::ExpandPage` so the parent
 //! `ControlCenterMenuWidgetModel` can switch the Stack to the matching
 //! detail sub-page. The Twilight tile shows the active profile (mode +
 //! temperature) as its subtitle.
+//!
+//! Bluetooth, Twilight, and Keep Awake additionally support a **secondary
+//! (right) click** that quick-toggles their state without leaving the
+//! grid (left-click opens the detail page; right-click flips on/off).
 //!
 //! Dark Mode is a full labeled toggle tile.
 //! Do Not Disturb is `.wide` (spans 2 columns).
@@ -44,7 +48,9 @@ use mshell_utils::picker::spawn_color_picker;
 use mshell_utils::power_profile::get_power_profile_label;
 use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk;
-use relm4::gtk::prelude::{ButtonExt, CheckButtonExt, GridExt, WidgetExt};
+use relm4::gtk::prelude::{
+    ButtonExt, CheckButtonExt, GestureExt, GestureSingleExt, GridExt, WidgetExt,
+};
 use relm4::{Component, ComponentParts, ComponentSender};
 use std::time::Duration;
 use wayle_battery::types::DeviceState;
@@ -153,6 +159,7 @@ pub(crate) enum DetailPage {
     Vpn,
     Valent,
     Twilight,
+    KeepAwake,
 }
 
 // ── Messages ──────────────────────────────────────────────────────────────────
@@ -168,6 +175,10 @@ pub(crate) enum ControlCenterTilesInput {
     ClickDarkMode,
     ClickColorPicker,
     ClickAirplaneMode,
+    /// Secondary-click quick toggles on the expandable tiles (left-click
+    /// opens the detail page, right-click flips the state).
+    ToggleTwilight,
+    ToggleBluetooth,
 
     /// Reactive dark-mode update from EffectScope.
     DarkModeChanged(MatugenMode),
@@ -473,7 +484,9 @@ impl Component for ControlCenterTilesModel {
         let tile_valent = build_expand_tile("phone-symbolic", "Valent", "…");
 
         // ── Toggle / info tiles (no chevron) ────────────────────────────────
-        let tile_keep_awake = build_tile("eye-symbolic", "Keep Awake", "Off");
+        // Keep Awake is expandable (left-click → detail page); right-click
+        // quick-toggles the inhibitor (wired below).
+        let tile_keep_awake = build_expand_tile("eye-symbolic", "Keep Awake", "Off");
         let tile_color_picker = build_tile("color-select-symbolic", "Color Picker", "Pick a colour");
         let tile_dnd = build_tile(
             "notification-symbolic",
@@ -542,12 +555,25 @@ impl Component for ControlCenterTilesModel {
         }
 
         // Wire toggle tile clicks
+        // Keep Awake: left-click opens the detail page; right-click toggles.
         {
             let s = sender.clone();
-            tile_keep_awake
-                .button
-                .connect_clicked(move |_| s.input(ControlCenterTilesInput::ClickKeepAwake));
+            tile_keep_awake.button.connect_clicked(move |_| {
+                s.output(ControlCenterTilesOutput::ExpandPage(DetailPage::KeepAwake))
+                    .ok();
+            });
         }
+        wire_secondary_toggle(&tile_keep_awake.button, &sender, || {
+            ControlCenterTilesInput::ClickKeepAwake
+        });
+        // Twilight + Bluetooth: left-click already expands (wired above);
+        // right-click quick-toggles the state.
+        wire_secondary_toggle(&tile_night_light.button, &sender, || {
+            ControlCenterTilesInput::ToggleTwilight
+        });
+        wire_secondary_toggle(&tile_bluetooth.button, &sender, || {
+            ControlCenterTilesInput::ToggleBluetooth
+        });
         {
             let s = sender.clone();
             tile_dnd
@@ -954,6 +980,32 @@ impl Component for ControlCenterTilesModel {
                 }
             }
 
+            ControlCenterTilesInput::ToggleTwilight => {
+                // Right-click quick toggle: flip the filter, then re-probe
+                // so the subtitle (active profile) updates promptly.
+                sender.command(|out, _shutdown| async move {
+                    if let Some((enabled, subtitle)) = toggle_twilight_and_probe().await {
+                        let _ = out.send(ControlCenterTilesCommandOutput::TwilightChanged(
+                            enabled, subtitle,
+                        ));
+                    }
+                });
+            }
+
+            ControlCenterTilesInput::ToggleBluetooth => {
+                // Right-click quick toggle: flip the adapter power. The 5s
+                // subtitle poller picks up the new state.
+                let bt = bluetooth_service();
+                let enabled = bt.enabled.get();
+                tokio::spawn(async move {
+                    if enabled {
+                        let _ = bt.disable().await;
+                    } else {
+                        let _ = bt.enable().await;
+                    }
+                });
+            }
+
             ControlCenterTilesInput::DarkModeChanged(mode) => {
                 self.dark = mode;
             }
@@ -1227,6 +1279,27 @@ fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTilesWidgets)
     }
 }
 
+// ── Secondary-click quick toggle ───────────────────────────────────────────────
+
+/// Wire a secondary (right) click on a tile button to a quick-toggle
+/// input. The button keeps its `connect_clicked` (left-click → open the
+/// detail page); the right-click flips the state without leaving the
+/// grid. The press is claimed so it doesn't bubble.
+fn wire_secondary_toggle(
+    button: &gtk::Button,
+    sender: &ComponentSender<ControlCenterTilesModel>,
+    make: impl Fn() -> ControlCenterTilesInput + 'static,
+) {
+    let gesture = gtk::GestureClick::new();
+    gesture.set_button(gtk::gdk::BUTTON_SECONDARY);
+    let sender = sender.clone();
+    gesture.connect_pressed(move |g, _, _, _| {
+        g.set_state(gtk::EventSequenceState::Claimed);
+        sender.input(make());
+    });
+    button.add_controller(gesture);
+}
+
 // ── Edit-overlay builder ───────────────────────────────────────────────────────
 
 fn build_edit_overlay(
@@ -1303,6 +1376,18 @@ fn bytes_to_gib(bytes: u64) -> f64 {
 }
 
 // ── Twilight helpers ───────────────────────────────────────────────────────
+
+/// Flip the twilight filter (right-click quick toggle), settle briefly,
+/// then re-probe so the caller can refresh the tile to the new state.
+async fn toggle_twilight_and_probe() -> Option<(bool, String)> {
+    let _ = tokio::process::Command::new("mctl")
+        .args(["twilight", "toggle"])
+        .status()
+        .await;
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    let status = crate::twilight::probe().await?;
+    Some((status.enabled, twilight_subtitle(&status)))
+}
 
 /// The tile subtitle = the active twilight profile. Off → "Off"; otherwise
 /// the source mode plus the current colour temperature (e.g.

@@ -27,6 +27,9 @@ use crate::menus::menu_widgets::network::network_menu_widget::{
 use crate::menus::menu_widgets::twilight::twilight_menu_widget::{
     TwilightMenuWidgetInput, TwilightMenuWidgetModel,
 };
+use crate::menus::menu_widgets::keep_awake::keep_awake_menu_widget::{
+    KeepAwakeMenuWidgetInput, KeepAwakeMenuWidgetModel,
+};
 use crate::menus::menu_widgets::podman::podman_menu_widget::{
     PodmanMenuWidgetInput, PodmanMenuWidgetModel,
 };
@@ -1210,6 +1213,14 @@ impl Component for MenuModel {
                         controller
                             .sender()
                             .send(TwilightMenuWidgetInput::ParentRevealChanged(visible))
+                            .ok();
+                    }
+                    if let Some(controller) =
+                        controller.downcast_ref::<Controller<KeepAwakeMenuWidgetModel>>()
+                    {
+                        controller
+                            .sender()
+                            .send(KeepAwakeMenuWidgetInput::ParentRevealChanged(visible))
                             .ok();
                     }
                 }
