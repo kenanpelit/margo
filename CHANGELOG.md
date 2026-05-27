@@ -7,6 +7,73 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.8.4] – 2026-05-27
+
+### Added
+
+- **Control Center** — a noctalia/GNOME-style quick-settings menu (bar pill
+  with a new `margo-symbolic` icon). A header (avatar + username + uptime +
+  lock / power / settings / edit actions), volume / mic / brightness sliders,
+  and a configurable tile grid. Tiles: Wi-Fi, Bluetooth, Audio Out, Mic, VPN,
+  Valent, Battery, Keep Awake, DND, Airplane Mode, Dark Mode, Twilight,
+  Color Picker, Disk, Firewall (UFW), Podman. Expandable tiles use
+  GNOME-style inline-expand (a sliding `gtk::Stack` with a back arrow) and
+  reuse the real detail components (Network, Bluetooth, Audio, Power, DNS,
+  Valent, Twilight, Keep Awake, UFW, Podman menus). **Left-click opens the
+  detail page, right-click quick-toggles** (Bluetooth / Twilight / Keep Awake
+  / UFW power via pkexec / stop Podman machine). The active power profile
+  shows on the Battery tile, the Twilight profile + temperature on Twilight,
+  and the running machine name on Podman. **Edit mode** + Settings → Widgets →
+  Control Center configure per-tile visibility, order, and wide (2-column)
+  tiles.
+- **Settings → Network + Bluetooth** — GNOME-parity pages. Network: Wi-Fi
+  scan / connect, wired status, VPN list + import, a per-connection editor
+  (General / IPv4 / IPv6 / Security via `nmcli`), and a manual proxy section
+  (config schema + `environment.d` applier). Bluetooth: adapter power, device
+  list, pair / connect / trust.
+- **Settings → Power + Default Apps + Privacy** — GNOME-parity pages. Power:
+  battery, power profiles, suspend, low-battery warning, and lid / power-button
+  behaviour via a logind drop-in (pkexec, applies next login). Default Apps:
+  per-category default handler via `gio::AppInfo`. Privacy: location toggle,
+  camera / mic indicator, lock summary, file-history remember + clear
+  (`GtkRecentManager`), and flatpak portal-permission list + revoke.
+- **Audio** — optional toggle to hide HDMI / DisplayPort outputs from the
+  output list + switcher (Settings + `mshellctl audio`).
+
+### Changed
+
+- **Dashboard design system** — a stabilization pass: a `--space-*` spacing
+  scale, semantic `--warning` / `--success` colours, a 3-tier surface
+  elevation model, and a shared card contract. The media widget was relaid out
+  (cover / title / artist / progress + centred controls), the calendar gained
+  a today / selected / hovered / inactive state model, and weather / clock /
+  audio / system / CPU widgets were brought to token + elevation conformance,
+  with consistent motion tokens for hover / focus / selection / reveal.
+- **Bluetooth, Clipboard, and Notification menus** — redesigned to the flat
+  audio-dashboard design language (engine preserved). Bluetooth shows flat
+  device rows with battery + a connected accent.
+- **Bundled Nova profile** — refreshed to mirror the current showcase
+  (new bar widgets + menus, Control Center, alarm / proxy / power / privacy /
+  audio sections), with machine-specific bits neutralized.
+
+### Performance
+
+- **Notification history** — virtualized the list (`GtkListView` + factory +
+  lightweight row model, mirroring the clipboard menu). A persisted history no
+  longer rebuilds N heavy widgets per open / per incoming toast, fixing the
+  lag that grew as notifications accumulated. Per-app grouping is preserved.
+- **Control Center pollers** — the shell-out probes (Twilight / UFW / Podman)
+  and the Keep-Awake countdown only run while the panel is revealed.
+
+### Fixed
+
+- **Wallpaper menu** — no longer freezes the GTK main loop on first open
+  (blocking receive → async oneshot).
+- **Bluetooth menu** — device battery now shows (watch each device's
+  battery / state property, not just the device list).
+- **Dashboard** — rounded the CalendarGrid card's bottom corners and made the
+  media player fill its column height.
+
 ## [0.8.3] – 2026-05-26
 
 ### Added
