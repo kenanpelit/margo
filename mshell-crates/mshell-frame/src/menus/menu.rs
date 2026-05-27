@@ -24,6 +24,9 @@ use crate::menus::menu_widgets::ip::ip_menu_widget::{IpMenuWidgetInput, IpMenuWi
 use crate::menus::menu_widgets::network::network_menu_widget::{
     NetworkMenuWidgetInput, NetworkMenuWidgetModel,
 };
+use crate::menus::menu_widgets::twilight::twilight_menu_widget::{
+    TwilightMenuWidgetInput, TwilightMenuWidgetModel,
+};
 use crate::menus::menu_widgets::podman::podman_menu_widget::{
     PodmanMenuWidgetInput, PodmanMenuWidgetModel,
 };
@@ -1200,6 +1203,14 @@ impl Component for MenuModel {
                         controller
                             .sender()
                             .send(NetworkMenuWidgetInput::ParentRevealChanged(visible))
+                            .ok();
+                    }
+                    if let Some(controller) =
+                        controller.downcast_ref::<Controller<TwilightMenuWidgetModel>>()
+                    {
+                        controller
+                            .sender()
+                            .send(TwilightMenuWidgetInput::ParentRevealChanged(visible))
                             .ok();
                     }
                 }

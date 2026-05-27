@@ -5,12 +5,14 @@
 //! at the end in canonical order so nothing silently disappears after an
 //! upgrade.
 //!
-//! Wi-Fi, Bluetooth, Audio Out, Mic, Battery, VPN, and Valent tiles are
-//! *expandable*: clicking them emits `ControlCenterTilesOutput::ExpandPage`
-//! so the parent `ControlCenterMenuWidgetModel` can switch the Stack to
-//! the matching detail sub-page.
+//! Wi-Fi, Bluetooth, Audio Out, Mic, Battery, VPN, Valent, and Twilight
+//! tiles are *expandable*: clicking them emits
+//! `ControlCenterTilesOutput::ExpandPage` so the parent
+//! `ControlCenterMenuWidgetModel` can switch the Stack to the matching
+//! detail sub-page. The Twilight tile shows the active profile (mode +
+//! temperature) as its subtitle.
 //!
-//! Dark Mode and Twilight are full labeled tiles (not small).
+//! Dark Mode is a full labeled toggle tile.
 //! Do Not Disturb is `.wide` (spans 2 columns).
 //! Battery tile is hidden when no battery is present.
 //!
@@ -45,13 +47,11 @@ use relm4::gtk;
 use relm4::gtk::prelude::{ButtonExt, CheckButtonExt, GridExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender};
 use std::time::Duration;
-use tracing::warn;
 use wayle_battery::types::DeviceState;
 use wayle_power_profiles::types::profile::PowerProfile;
 
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
 const STARTUP_DELAY: Duration = Duration::from_millis(200);
-const POST_TOGGLE_DELAY: Duration = Duration::from_millis(150);
 
 // ── Model ─────────────────────────────────────────────────────────────────────
 
@@ -62,8 +62,10 @@ pub(crate) struct ControlCenterTilesModel {
     dnd: bool,
     // Dark Mode
     dark: MatugenMode,
-    // Twilight (Night Light)
-    night_light: bool,
+    // Twilight — enabled flag (drives the active tint) + the live profile
+    // line shown as the tile subtitle (e.g. "Schedule · 3500K").
+    twilight_enabled: bool,
+    twilight_subtitle: String,
     // Airplane Mode
     airplane_mode: bool,
     airplane_available: bool,
@@ -150,6 +152,7 @@ pub(crate) enum DetailPage {
     Battery,
     Vpn,
     Valent,
+    Twilight,
 }
 
 // ── Messages ──────────────────────────────────────────────────────────────────
@@ -163,7 +166,6 @@ pub(crate) enum ControlCenterTilesInput {
     ClickKeepAwake,
     ClickDnd,
     ClickDarkMode,
-    ClickNightLight,
     ClickColorPicker,
     ClickAirplaneMode,
 
@@ -305,7 +307,8 @@ pub(crate) struct ControlCenterTilesInit {}
 pub(crate) enum ControlCenterTilesCommandOutput {
     KeepAwakeChanged,
     DndChanged,
-    NightLightChanged(bool),
+    /// Twilight poll result — (enabled, profile-line subtitle).
+    TwilightChanged(bool, String),
     BatteryChanged,
     DiskRefreshed(DiskUsage),
     SubtitlesRefreshed,
@@ -478,7 +481,10 @@ impl Component for ControlCenterTilesModel {
             "All notifications",
         );
         let tile_dark_mode = build_tile("weather-clear-night-symbolic", "Dark Mode", "Off");
-        let tile_night_light = build_tile("night-light-symbolic", "Twilight", "Off");
+        // Twilight is expandable → opens the full Twilight detail page (mode
+        // selector, temperature slider, presets). The tile itself shows the
+        // active profile; clicking it never toggles, it expands.
+        let tile_night_light = build_expand_tile("night-light-symbolic", "Twilight", "…");
         let tile_disk = build_tile("drive-harddisk-symbolic", "Disk", "");
         // Battery also has a detail sub-page → expandable with chevron
         let tile_battery = build_expand_tile("battery-level-50-symbolic", "Battery", "");
@@ -556,9 +562,10 @@ impl Component for ControlCenterTilesModel {
         }
         {
             let s = sender.clone();
-            tile_night_light
-                .button
-                .connect_clicked(move |_| s.input(ControlCenterTilesInput::ClickNightLight));
+            tile_night_light.button.connect_clicked(move |_| {
+                s.output(ControlCenterTilesOutput::ExpandPage(DetailPage::Twilight))
+                    .ok();
+            });
         }
         {
             let s = sender.clone();
@@ -691,7 +698,8 @@ impl Component for ControlCenterTilesModel {
             keep_awake,
             dnd,
             dark,
-            night_light: false,
+            twilight_enabled: false,
+            twilight_subtitle: String::from("…"),
             airplane_mode,
             airplane_available,
             disk,
@@ -792,8 +800,11 @@ impl Component for ControlCenterTilesModel {
                     spawn_battery_watcher(&sender, || ControlCenterTilesCommandOutput::BatteryChanged);
                     spawn_battery_online_watcher(&sender, || ControlCenterTilesCommandOutput::BatteryChanged);
 
-                    // Night Light poller
+                    // Twilight poller — reads the full status so the tile can
+                    // show the active profile (mode + temperature), not just
+                    // an on/off flag.
                     sender.command(|out, shutdown| async move {
+                        use crate::twilight;
                         let shutdown_fut = shutdown.wait();
                         tokio::pin!(shutdown_fut);
                         let mut first = true;
@@ -804,8 +815,12 @@ impl Component for ControlCenterTilesModel {
                                 () = &mut shutdown_fut => break,
                                 _ = tokio::time::sleep(delay) => {}
                             }
-                            if let Some(enabled) = probe_twilight_enabled().await {
-                                let _ = out.send(ControlCenterTilesCommandOutput::NightLightChanged(enabled));
+                            if let Some(status) = twilight::probe().await {
+                                let subtitle = twilight_subtitle(&status);
+                                let _ = out.send(ControlCenterTilesCommandOutput::TwilightChanged(
+                                    status.enabled,
+                                    subtitle,
+                                ));
                             }
                         }
                     });
@@ -925,16 +940,6 @@ impl Component for ControlCenterTilesModel {
                 });
             }
 
-            ControlCenterTilesInput::ClickNightLight => {
-                sender.command(|out, _shutdown| async move {
-                    run_twilight_toggle().await;
-                    tokio::time::sleep(POST_TOGGLE_DELAY).await;
-                    if let Some(enabled) = probe_twilight_enabled().await {
-                        let _ = out.send(ControlCenterTilesCommandOutput::NightLightChanged(enabled));
-                    }
-                });
-            }
-
             ControlCenterTilesInput::ClickColorPicker => {
                 spawn_color_picker(300);
             }
@@ -1003,8 +1008,9 @@ impl Component for ControlCenterTilesModel {
             ControlCenterTilesCommandOutput::DndChanged => {
                 self.dnd = notification_service().dnd.get();
             }
-            ControlCenterTilesCommandOutput::NightLightChanged(enabled) => {
-                self.night_light = enabled;
+            ControlCenterTilesCommandOutput::TwilightChanged(enabled, subtitle) => {
+                self.twilight_enabled = enabled;
+                self.twilight_subtitle = subtitle;
             }
             ControlCenterTilesCommandOutput::BatteryChanged => {
                 self.battery = read_battery();
@@ -1175,10 +1181,11 @@ fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTilesWidgets)
         MatugenMode::Light => "weather-clear-night-symbolic",
     });
 
-    // Twilight — full labeled tile
-    w.tile_night_light.set_active(model.night_light);
-    w.tile_night_light.set_subtitle(if model.night_light { "On" } else { "Off" });
-    w.tile_night_light.set_icon(if model.night_light {
+    // Twilight — expandable tile; subtitle shows the active profile
+    // (e.g. "Schedule · 3500K"), active tint when the filter is on.
+    w.tile_night_light.set_active(model.twilight_enabled);
+    w.tile_night_light.set_subtitle(&model.twilight_subtitle);
+    w.tile_night_light.set_icon(if model.twilight_enabled {
         "night-light-symbolic"
     } else {
         "night-light-disabled-symbolic"
@@ -1295,30 +1302,31 @@ fn bytes_to_gib(bytes: u64) -> f64 {
     bytes as f64 / (1024.0 * 1024.0 * 1024.0)
 }
 
-// ── Night Light helpers (mirrors night_light.rs) ──────────────────────────────
+// ── Twilight helpers ───────────────────────────────────────────────────────
 
-async fn probe_twilight_enabled() -> Option<bool> {
-    let out = tokio::process::Command::new("mctl")
-        .args(["twilight", "status", "--json"])
-        .output()
-        .await
-        .ok()?;
-    if !out.status.success() {
-        return None;
+/// The tile subtitle = the active twilight profile. Off → "Off"; otherwise
+/// the source mode plus the current colour temperature (e.g.
+/// "Schedule · 3500K"), falling back to just the mode when margo isn't
+/// reporting a live temperature yet.
+fn twilight_subtitle(s: &crate::twilight::TwilightStatus) -> String {
+    if !s.enabled {
+        return "Off".to_string();
     }
-    let v: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
-    v.get("enabled")?.as_bool()
+    let mode = twilight_mode_label(&s.mode);
+    match s.current_temp_k {
+        Some(k) => format!("{mode} · {k}K"),
+        None => mode.to_string(),
+    }
 }
 
-async fn run_twilight_toggle() {
-    match tokio::process::Command::new("mctl")
-        .args(["twilight", "toggle"])
-        .status()
-        .await
-    {
-        Ok(s) if s.success() => {}
-        Ok(s) => warn!(?s, "mctl twilight toggle returned non-zero"),
-        Err(e) => warn!(error = %e, "mctl twilight toggle spawn failed"),
+/// Source-mode id → human label (mirrors the Twilight menu's selector).
+fn twilight_mode_label(mode: &str) -> &'static str {
+    match mode {
+        "geo" => "Auto",
+        "manual" => "Manual",
+        "static" => "Static",
+        "schedule" => "Schedule",
+        _ => "On",
     }
 }
 

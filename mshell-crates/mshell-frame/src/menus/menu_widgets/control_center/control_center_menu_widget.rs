@@ -41,6 +41,9 @@ use crate::menus::menu_widgets::network::network_menu_widget::{
 use crate::menus::menu_widgets::power::power_menu_widget::{
     PowerMenuWidgetInit, PowerMenuWidgetModel,
 };
+use crate::menus::menu_widgets::twilight::twilight_menu_widget::{
+    TwilightMenuWidgetInit, TwilightMenuWidgetInput, TwilightMenuWidgetModel,
+};
 use crate::menus::menu_widgets::valent::valent_menu_widget::{
     ValentMenuWidgetInit, ValentMenuWidgetInput, ValentMenuWidgetModel,
 };
@@ -57,6 +60,7 @@ const PAGE_MIC: &str = "mic";
 const PAGE_BATTERY: &str = "battery";
 const PAGE_VPN: &str = "vpn";
 const PAGE_VALENT: &str = "valent";
+const PAGE_TWILIGHT: &str = "twilight";
 
 // ── Model ─────────────────────────────────────────────────────────────────────
 
@@ -76,6 +80,7 @@ pub(crate) struct ControlCenterMenuWidgetModel {
     battery_detail: Controller<PowerMenuWidgetModel>,
     vpn_detail: Controller<DnsMenuWidgetModel>,
     valent_detail: Controller<ValentMenuWidgetModel>,
+    twilight_detail: Controller<TwilightMenuWidgetModel>,
     /// Whether edit-mode is active.
     edit_mode: bool,
     /// The GTK Stack widget — kept so `update` can switch pages.
@@ -192,6 +197,10 @@ impl Component for ControlCenterMenuWidgetModel {
             .launch(ValentMenuWidgetInit {})
             .detach();
 
+        let twilight_detail = TwilightMenuWidgetModel::builder()
+            .launch(TwilightMenuWidgetInit {})
+            .detach();
+
         // ── Build gtk::Stack ─────────────────────────────────────────────────
         let stack = gtk::Stack::new();
         stack.set_transition_type(gtk::StackTransitionType::SlideLeftRight);
@@ -233,6 +242,10 @@ impl Component for ControlCenterMenuWidgetModel {
             &build_detail_page("Valent Connect", sender.input_sender(), valent_detail.widget()),
             Some(PAGE_VALENT),
         );
+        stack.add_named(
+            &build_detail_page("Twilight", sender.input_sender(), twilight_detail.widget()),
+            Some(PAGE_TWILIGHT),
+        );
 
         // Show main by default
         stack.set_visible_child_name(PAGE_MAIN);
@@ -248,6 +261,7 @@ impl Component for ControlCenterMenuWidgetModel {
             battery_detail,
             vpn_detail,
             valent_detail,
+            twilight_detail,
             edit_mode: false,
             stack: stack.clone(),
         };
@@ -316,6 +330,10 @@ impl Component for ControlCenterMenuWidgetModel {
                         .sender()
                         .send(DnsMenuWidgetInput::ParentRevealChanged(false))
                         .ok();
+                    self.twilight_detail
+                        .sender()
+                        .send(TwilightMenuWidgetInput::ParentRevealChanged(false))
+                        .ok();
                 }
             }
 
@@ -365,6 +383,13 @@ impl Component for ControlCenterMenuWidgetModel {
                             .ok();
                         PAGE_VALENT
                     }
+                    DetailPage::Twilight => {
+                        self.twilight_detail
+                            .sender()
+                            .send(TwilightMenuWidgetInput::ParentRevealChanged(true))
+                            .ok();
+                        PAGE_TWILIGHT
+                    }
                 };
                 self.stack.set_visible_child_name(page_name);
             }
@@ -401,6 +426,12 @@ impl Component for ControlCenterMenuWidgetModel {
                             self.vpn_detail
                                 .sender()
                                 .send(DnsMenuWidgetInput::ParentRevealChanged(false))
+                                .ok();
+                        }
+                        PAGE_TWILIGHT => {
+                            self.twilight_detail
+                                .sender()
+                                .send(TwilightMenuWidgetInput::ParentRevealChanged(false))
                                 .ok();
                         }
                         _ => {}

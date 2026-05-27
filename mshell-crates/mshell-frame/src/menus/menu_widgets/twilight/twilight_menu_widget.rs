@@ -13,6 +13,8 @@ use relm4::gtk::prelude::{
     BoxExt, ButtonExt, FlowBoxChildExt, OrientableExt, RangeExt, ScaleExt, WidgetExt,
 };
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 /// Poll cadence while the panel is open.
@@ -39,10 +41,21 @@ pub(crate) struct TwilightMenuWidgetModel {
     /// `schedule`), so the active one gets `.selected` without a rebuild —
     /// same pattern as the power-profile buttons.
     mode_buttons: Vec<(&'static str, gtk::Button)>,
+    /// The status poller is started lazily on the first reveal (this menu is
+    /// built eagerly per-monitor, and embedded inside the Control Center) so
+    /// `mctl twilight status` isn't spawned every 2s before it's ever opened.
+    poll_started: bool,
+    /// Shared with the poll loop: while `false` the loop skips the probe, so
+    /// closing the panel pauses the subprocess churn without tearing the loop
+    /// down. Flipped by `ParentRevealChanged`.
+    revealed: Arc<AtomicBool>,
 }
 
 #[derive(Debug)]
 pub(crate) enum TwilightMenuWidgetInput {
+    /// Panel shown / hidden — starts the poller lazily on first reveal and
+    /// pauses probing while hidden.
+    ParentRevealChanged(bool),
     /// Poll result.
     Refresh(TwilightStatus),
     /// Header toggle — flip the filter on/off.
@@ -205,28 +218,10 @@ impl Component for TwilightMenuWidgetModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        // Poll `mctl twilight status` while the panel is open so the
-        // readout + selected mode track the schedule and our actions.
-        sender.command(|out, shutdown| async move {
-            let shutdown_fut = shutdown.wait();
-            tokio::pin!(shutdown_fut);
-            let mut first = true;
-            loop {
-                let delay = if first {
-                    Duration::from_millis(50)
-                } else {
-                    POLL
-                };
-                first = false;
-                tokio::select! {
-                    () = &mut shutdown_fut => break,
-                    _ = tokio::time::sleep(delay) => {}
-                }
-                if let Some(s) = twilight::probe().await {
-                    let _ = out.send(TwilightMenuWidgetCommandOutput::Polled(s));
-                }
-            }
-        });
+        // The status poller is started lazily on the first reveal (see
+        // `ensure_polling`) — this menu is built eagerly per-monitor and is
+        // also embedded as a Control Center detail page, so we don't want to
+        // spawn `mctl twilight status` every 2s before it's ever opened.
 
         // Source-mode tiles (icon + label), built like the power-profile
         // buttons so each carries an icon; `mode_box` is consumed by the
@@ -253,6 +248,8 @@ impl Component for TwilightMenuWidgetModel {
             presets: Vec::new(),
             preset_buttons: Vec::new(),
             mode_buttons,
+            poll_started: false,
+            revealed: Arc::new(AtomicBool::new(false)),
         };
         let widgets = view_output!();
         model.sync_modes();
@@ -274,6 +271,15 @@ impl Component for TwilightMenuWidgetModel {
 
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
+            TwilightMenuWidgetInput::ParentRevealChanged(revealed) => {
+                self.revealed.store(revealed, Ordering::Relaxed);
+                if revealed {
+                    // First open: start the poll loop. The `first` 50 ms tick
+                    // gives a near-instant readout.
+                    self.ensure_polling(&sender);
+                }
+                return;
+            }
             TwilightMenuWidgetInput::Refresh(s) => {
                 self.status = s;
             }
@@ -346,6 +352,41 @@ impl Component for TwilightMenuWidgetModel {
 }
 
 impl TwilightMenuWidgetModel {
+    /// Start the `mctl twilight status` poll loop once (on first reveal).
+    /// The loop runs until the widget is dropped but skips the probe while
+    /// the panel is hidden (`revealed == false`), so it only spawns the
+    /// subprocess while the user is actually looking at it.
+    fn ensure_polling(&mut self, sender: &ComponentSender<Self>) {
+        if self.poll_started {
+            return;
+        }
+        self.poll_started = true;
+        let revealed = self.revealed.clone();
+        sender.command(move |out, shutdown| async move {
+            let shutdown_fut = shutdown.wait();
+            tokio::pin!(shutdown_fut);
+            let mut first = true;
+            loop {
+                let delay = if first {
+                    Duration::from_millis(50)
+                } else {
+                    POLL
+                };
+                first = false;
+                tokio::select! {
+                    () = &mut shutdown_fut => break,
+                    _ = tokio::time::sleep(delay) => {}
+                }
+                if !revealed.load(Ordering::Relaxed) {
+                    continue;
+                }
+                if let Some(s) = twilight::probe().await {
+                    let _ = out.send(TwilightMenuWidgetCommandOutput::Polled(s));
+                }
+            }
+        });
+    }
+
     /// Tint the chip whose schedule slot is live right now — but only
     /// in schedule mode (see [`active_preset_index`]); clears the
     /// highlight in every other mode.
