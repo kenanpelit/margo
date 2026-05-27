@@ -1,0 +1,167 @@
+@use "../02-functions/index" as *;
+// Control Center panel — header + sliders + tile grid.
+//
+// Visual language follows the audio-dashboard: dark rounded cards, slim
+// sliders, and a 2-column tile grid where the ICON-CHIP is the sole active
+// cue (fills with --primary-container / --on-primary-container when
+// `.active`; flat --surface-container-high otherwise). Card bodies stay calm
+// so the chips carry all the accent weight.
+
+// ── Panel root ─────────────────────────────────────────────────────────────────
+// Outer vertical box: `set_spacing: 16` in Rust + padding from this class.
+.control-center-menu-widget {
+  padding: var(--space-4);
+}
+
+// ── Header ─────────────────────────────────────────────────────────────────────
+// Horizontal row: avatar | username + uptime | → action buttons
+.control-center-header {
+  // gap set to 12 in Rust (set_spacing); nothing extra needed here.
+}
+
+// Avatar circle — 48×48, overflow:hidden set in Rust.
+// Provide only the border-radius and a faint ring so the face-image is
+// clipped neatly.
+.control-center-avatar {
+  border-radius: var(--radius-pill);
+  background-color: var(--surface-container-high);
+  // Hairline ring using box-shadow so it doesn't consume layout space.
+  box-shadow: 0 0 0 1px var(--outline-variant);
+}
+
+// ── Sliders ────────────────────────────────────────────────────────────────────
+// Outer vertical stack (volume row + brightness row).
+.control-center-sliders {
+  // spacing set to 8 in Rust; add a touch of side breathing room.
+}
+
+// Each slider row: [icon] [scale hexpand] [value label]
+.control-center-slider-row {
+  // spacing set to 10 in Rust; nothing extra.
+}
+
+// Icon in the slider row — dim variant, same tier as audio-dashboard icons.
+.control-center-slider-icon {
+  -gtk-icon-size: var(--icon-sm);
+  color: var(--on-surface-variant);
+  min-width: 20px; // prevent width jitter when icon changes
+}
+
+// Percentage label — tabular nums, right-aligned, dim.
+.control-center-slider-value {
+  font-size: var(--font-xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface-variant);
+  min-width: 36px;
+  letter-spacing: -0.01em;
+}
+
+// Slim GTK4 Scale — mirrors .audio-dashboard-slider (6px trough).
+.control-center-slider {
+  trough {
+    min-height: 6px;
+    border-radius: var(--radius-pill);
+    background-color: var(--surface-container-high);
+  }
+  highlight {
+    min-height: 6px;
+    border-radius: var(--radius-pill);
+    background-color: var(--primary);
+  }
+  slider {
+    min-width: 14px;
+    min-height: 14px;
+    border-radius: var(--radius-pill);
+    background-color: var(--primary);
+    margin: calc(var(--space-1) * -1);
+    // Shadow so the knob lifts off the track visually.
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  }
+}
+
+// ── Tile grid ─────────────────────────────────────────────────────────────────
+// `row_spacing` / `column_spacing` set to 8 in Rust; we add nothing.
+.control-center-grid {
+  // Intentionally empty — layout dimensions are fully controlled by Rust.
+}
+
+// ── Tile (normal + wide + small) ──────────────────────────────────────────────
+// Base: flat card button. `all: unset` strips GTK button chrome; we then
+// layer on our card surface, radius, padding, and the canonical state-layer.
+.control-center-tile {
+  all: unset;
+  background: var(--surface-container);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  cursor: pointer;
+  // State-layer over the resting surface colour so hover composites cleanly.
+  @include state-layer(var(--surface-container));
+
+  // Wide variant: the Rust grid-attaches this spanning 2 columns.
+  // CSS just ensures it fills horizontally.
+  &.wide {
+    // hexpand set in Rust; tile children already hexpand the label.
+  }
+
+  // Small variant: icon-chip only — no labels, centred layout, slightly
+  // smaller footprint. Minimum size so the grid column doesn't collapse.
+  &.small {
+    padding: var(--space-3);
+    min-height: 56px;
+    // The chip inside is already centred (halign/valign in Rust).
+  }
+}
+
+// ── Icon chip ─────────────────────────────────────────────────────────────────
+// The rounded coloured square that is the primary toggle cue.
+// Resting state: flat, dim.
+.control-center-tile-icon {
+  min-width: 40px;
+  min-height: 40px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-container-high);
+  // Centre the gtk::Image inside the chip box.
+  // (halign/valign are set in Rust; this covers the box background itself.)
+  transition: background var(--motion-fast) var(--ease-standard);
+
+  image {
+    color: var(--on-surface-variant);
+    -gtk-icon-size: var(--icon-md);
+    transition: color var(--motion-fast) var(--ease-standard);
+  }
+}
+
+// ── Tile labels ───────────────────────────────────────────────────────────────
+.control-center-tile-title {
+  font-size: var(--font-sm);
+  font-weight: 600;
+  color: var(--on-surface);
+  letter-spacing: 0.005em;
+}
+
+.control-center-tile-subtitle {
+  font-size: var(--font-xs);
+  color: var(--on-surface-variant);
+}
+
+// ── Active state (filled icon-chip) ───────────────────────────────────────────
+// When `.active` is set on the tile button the chip fills with
+// --primary-container and the icon switches to --on-primary-container.
+// The card body stays calm; the chip is the sole accent cue
+// (noctalia / quickshell reference pattern).
+.control-center-tile.active {
+  .control-center-tile-icon {
+    background: var(--primary-container);
+
+    image {
+      color: var(--on-primary-container);
+    }
+  }
+
+  // The title shifts to full --on-surface so it stands out slightly more
+  // alongside the filled chip; subtitle stays dim.
+  .control-center-tile-title {
+    color: var(--on-surface);
+  }
+}
