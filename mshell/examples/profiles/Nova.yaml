@@ -2,14 +2,15 @@
 # │ Nova — the full-featured margo shell profile                            │
 # │                                                                         │
 # │ The curated "everything on" experience: a rich top bar, every menu      │
-# │ wired up, Material-You theming, twilight, dock, and sensible idle /     │
-# │ clipboard / session defaults. This is the showcase config — pick it in  │
-# │ the setup wizard, then tune anything from Settings.                     │
+# │ wired up, Material-You theming, twilight, dock, control center, and     │
+# │ sensible idle / clipboard / session defaults. This is the showcase      │
+# │ config — pick it in the setup wizard, then tune anything from Settings. │
 # │                                                                         │
 # │ Edits made through Settings are re-serialised by the shell, so these    │
 # │ comments only live in the shipped copy — they document the schema, not  │
 # │ your saved state. Machine-specific bits (wallpaper folder, weather      │
-# │ location, autostart) are intentionally left blank/neutral here.         │
+# │ location, autostart, alarms, password-store, custom session commands)   │
+# │ are intentionally left blank/neutral here.                              │
 # ╰───────────────────────────────────────────────────────────────────────╯
 
 # ── General ─────────────────────────────────────────────────────────────
@@ -85,22 +86,24 @@ bars:
     center_widgets:
     - Weather
     - Dashboard
+    - AlarmClock
     - Notifications
     - KeepAwake
     right_widgets:
     - Network
     - CpuDashboard
     - RecordingIndicator
-    - Clipboard
     - Valent
     - AudioDashboard
     - Bluetooth
     - VpnIndicator
+    - Clipboard
     - Notes
     - Podman
     - Dns
     - Ufw
     - Power
+    - ControlCenter
     - Tray
   bottom_bar:
     minimum_height: 0
@@ -125,7 +128,7 @@ menus:
     position: TopRight
     widgets:
     - Clipboard
-    minimum_width: 520
+    minimum_width: 620
     maximum_height: 1080
   notification_menu:
     position: TopRight
@@ -166,6 +169,9 @@ menus:
     position: TopRight
     widgets:
     - Dns
+    - !Spacer
+      size: 16
+    - Ip
     minimum_width: 420
     maximum_height: 0
   podman_menu:
@@ -252,6 +258,18 @@ menus:
     - Keybinds
     minimum_width: 820
     maximum_height: 1440
+  alarmclock_menu:
+    position: Top
+    widgets:
+    - AlarmClock
+    minimum_width: 420
+    maximum_height: 640
+  control_center_menu:
+    position: TopRight
+    widgets:
+    - ControlCenter
+    minimum_width: 460
+    maximum_height: 800
   ssh_menu:
     position: TopRight
     widgets:
@@ -354,6 +372,9 @@ wallpaper:
   rotation_enabled: true
   rotation_interval_minutes: 5
   rotation_mode: Sequential
+  daily_wallpaper_enabled: false
+  daily_wallpaper_source: nasa
+  daily_wallpaper_locale: ''
 
 # ── Clock formats (tempo) ───────────────────────────────────────────────
 tempo:
@@ -415,3 +436,76 @@ dock:
 # Settings → Launcher.
 pass:
   store_path: ''
+
+# ── Alarm clock ─────────────────────────────────────────────────────────
+# Alarms are per-machine, so the shipped profile leaves them empty.
+alarm:
+  alarms: []
+  snooze_minutes: 5
+  notifications: true
+  urgency: normal
+
+# ── Network (proxy) ─────────────────────────────────────────────────────
+# Manual proxy is off by default; configure from Settings → Network.
+network:
+  proxy_mode: None
+  proxy_http: ''
+  proxy_https: ''
+  proxy_socks: ''
+  proxy_ignore: ''
+  proxy_pac_url: ''
+
+# ── Power ───────────────────────────────────────────────────────────────
+power:
+  low_battery_warning: true
+  low_battery_threshold: 15
+
+# ── Privacy ─────────────────────────────────────────────────────────────
+privacy:
+  remember_recent: true
+
+# ── Audio ───────────────────────────────────────────────────────────────
+# Hide HDMI / DisplayPort sinks from the output switcher by default.
+audio:
+  hide_hdmi_outputs: true
+
+# ── Control Center ──────────────────────────────────────────────────────
+# Quick-settings panel: per-tile visibility, display order, and which tiles
+# span two columns (wide). Reorder / toggle from Settings → Widgets →
+# Control Center.
+control_center:
+  wifi: true
+  bluetooth: true
+  audio_out: true
+  mic: true
+  battery: true
+  keep_awake: true
+  dnd: false
+  dark_mode: false
+  night_light: true
+  color_picker: false
+  disk: true
+  airplane_mode: true
+  vpn: true
+  valent: true
+  ufw: true
+  podman: true
+  tile_order:
+  - wifi
+  - bluetooth
+  - audio_out
+  - mic
+  - vpn
+  - valent
+  - battery
+  - airplane_mode
+  - night_light
+  - keep_awake
+  - ufw
+  - podman
+  - disk
+  - dnd
+  - dark_mode
+  - color_picker
+  wide_tiles:
+  - disk
