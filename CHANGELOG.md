@@ -7,6 +7,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.8.5] – 2026-05-27
+
+### Added
+
+- **Auto light/dark from wallpaper** (Settings → Theme → Wallpaper Matugen) —
+  an opt-in toggle that derives the Material You light/dark polarity from the
+  wallpaper's average luminance on each wallpaper change (bright → Light,
+  dark → Dark), overriding the manual Mode. Only affects the wallpaper-driven
+  theme. (Inspired by VibePanel's wallpaper-adaptive theming.)
+
 ## [0.8.4] – 2026-05-27
 
 ### Added
