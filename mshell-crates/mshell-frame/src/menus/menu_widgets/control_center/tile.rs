@@ -99,6 +99,7 @@ pub(crate) fn build_tile(icon_name: &str, title: &str, subtitle: &str) -> TileWi
 }
 
 /// Build a small tile (icon-chip only, no labels). Gets the `.small` CSS class.
+#[allow(dead_code)]
 pub(crate) fn build_small_tile(icon_name: &str) -> TileWidget {
     let button = gtk::Button::new();
     button.add_css_class("control-center-tile");

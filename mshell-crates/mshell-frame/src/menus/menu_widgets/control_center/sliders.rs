@@ -1,21 +1,27 @@
-//! Control Center sliders row — Volume + Brightness.
+//! Control Center sliders row — Volume + Mic + Brightness.
 //!
-//! Two horizontal rows stacked in a vertical box:
+//! Three horizontal rows stacked in a vertical box:
 //!
 //!   🔊 ──────━━━━━━────── 42%
+//!   🎤 ──────━━━━━━────── 60%
 //!   ☀  ──────━━━━━────── 65%
 //!
 //! The brightness row is hidden when no backlight device is present.
-//! Volume uses the 0.0–1.0 scale from compact_audio (mirrors that widget's
-//! math exactly).  Brightness uses 0.0–1.0 fraction of the Percentage.
+//! Volume and Mic use the 0.0–1.0 scale from compact_audio (mirrors
+//! that widget's math exactly).  Brightness uses 0.0–1.0 fraction
+//! of the Percentage.
 
 use mshell_services::{audio_service, brightness_service};
-use mshell_utils::audio::{get_audio_out_icon, spawn_default_output_watcher};
+use mshell_utils::audio::{
+    get_audio_in_icon, get_audio_out_icon, spawn_default_input_watcher,
+    spawn_default_output_watcher,
+};
 use mshell_utils::brightness::{get_brightness_icon, spawn_brightness_watcher};
 use relm4::gtk::glib;
 use relm4::gtk::prelude::{BoxExt, OrientableExt, RangeExt, ScaleExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::sync::Arc;
+use wayle_audio::core::device::input::InputDevice;
 use wayle_audio::core::device::output::OutputDevice;
 use wayle_audio::volume::types::Volume;
 use wayle_brightness::BacklightDevice;
@@ -24,11 +30,17 @@ use wayle_brightness::types::Percentage;
 // ── Model ─────────────────────────────────────────────────────────────────────
 
 pub(crate) struct ControlCenterSlidersModel {
-    // Volume state
+    // Volume (output) state
     output_device: Option<Arc<OutputDevice>>,
-    output_percent: f64, // 0.0–1.0  (mirrors compact_audio convention)
+    output_percent: f64, // 0.0–1.0
     output_icon: String,
     suppress_output_signal: bool,
+
+    // Mic (input) state
+    input_device: Option<Arc<InputDevice>>,
+    input_percent: f64, // 0.0–1.0
+    input_icon: String,
+    suppress_input_signal: bool,
 
     // Brightness state
     brightness_device: Option<Arc<BacklightDevice>>,
@@ -45,6 +57,8 @@ pub(crate) enum ControlCenterSlidersInput {
     Refresh,
     SetOutputVolume(f64),
     ToggleMute,
+    SetInputVolume(f64),
+    ToggleInputMute,
     SetBrightness(f64),
 }
 
@@ -56,6 +70,7 @@ pub(crate) struct ControlCenterSlidersInit {}
 #[derive(Debug)]
 pub(crate) enum ControlCenterSlidersCommandOutput {
     OutputChanged,
+    InputChanged,
     BrightnessChanged,
 }
 
@@ -110,6 +125,40 @@ impl Component for ControlCenterSlidersModel {
                 },
             },
 
+            // ── Mic row ───────────────────────────────────────────
+            gtk::Box {
+                add_css_class: "control-center-slider-row",
+                set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 10,
+
+                #[name = "mic_icon"]
+                gtk::Image {
+                    add_css_class: "control-center-slider-icon",
+                    #[watch]
+                    set_icon_name: Some(model.input_icon.as_str()),
+                },
+                // The mute-toggle GestureClick is attached to mic_icon in init().
+
+                #[name = "mic_scale"]
+                gtk::Scale {
+                    add_css_class: "control-center-slider",
+                    set_hexpand: true,
+                    set_range: (0.0, 1.0),
+                    set_draw_value: false,
+                    connect_value_changed[sender] => move |scale| {
+                        let v = scale.value();
+                        sender.input(ControlCenterSlidersInput::SetInputVolume(v));
+                    },
+                },
+                gtk::Label {
+                    add_css_class: "control-center-slider-value",
+                    #[watch]
+                    set_label: &format!("{}%", (model.input_percent * 100.0).round() as i32),
+                    set_width_chars: 4,
+                    set_xalign: 1.0,
+                },
+            },
+
             // ── Brightness row ────────────────────────────────────
             #[name = "brightness_row"]
             gtk::Box {
@@ -152,11 +201,16 @@ impl Component for ControlCenterSlidersModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        // Spawn watchers for default audio output and brightness.
+        // Spawn watchers for default audio output, input, and brightness.
         spawn_default_output_watcher(
             &sender,
             None,
             || ControlCenterSlidersCommandOutput::OutputChanged,
+        );
+        spawn_default_input_watcher(
+            &sender,
+            None,
+            || ControlCenterSlidersCommandOutput::InputChanged,
         );
         spawn_brightness_watcher(
             &sender,
@@ -174,6 +228,16 @@ impl Component for ControlCenterSlidersModel {
             .map(|d| get_audio_out_icon(d).to_string())
             .unwrap_or_else(|| "audio-volume-muted-symbolic".to_string());
 
+        let input_device = audio_service().default_input.get();
+        let input_percent = input_device
+            .as_ref()
+            .map(|d| d.volume.get().average())
+            .unwrap_or(0.0);
+        let input_icon = input_device
+            .as_ref()
+            .map(|d| get_audio_in_icon(d).to_string())
+            .unwrap_or_else(|| "audio-input-microphone-symbolic".to_string());
+
         let has_backlight = brightness_service().is_some();
         let brightness_device = brightness_service()
             .as_ref()
@@ -190,6 +254,10 @@ impl Component for ControlCenterSlidersModel {
             output_percent,
             output_icon,
             suppress_output_signal: false,
+            input_device,
+            input_percent,
+            input_icon,
+            suppress_input_signal: false,
             brightness_device,
             brightness_fraction,
             brightness_icon,
@@ -201,15 +269,24 @@ impl Component for ControlCenterSlidersModel {
 
         // Prime sliders without triggering change callbacks.
         widgets.vol_scale.set_value(model.output_percent);
+        widgets.mic_scale.set_value(model.input_percent);
         widgets.bright_scale.set_value(model.brightness_fraction);
 
         // Attach click gesture to volume icon for mute toggle.
-        let click = gtk::GestureClick::new();
+        let vol_click = gtk::GestureClick::new();
         let mute_sender = sender.clone();
-        click.connect_released(move |_, _, _, _| {
+        vol_click.connect_released(move |_, _, _, _| {
             mute_sender.input(ControlCenterSlidersInput::ToggleMute);
         });
-        widgets.vol_icon.add_controller(click);
+        widgets.vol_icon.add_controller(vol_click);
+
+        // Attach click gesture to mic icon for input mute toggle.
+        let mic_click = gtk::GestureClick::new();
+        let mic_mute_sender = sender.clone();
+        mic_click.connect_released(move |_, _, _, _| {
+            mic_mute_sender.input(ControlCenterSlidersInput::ToggleInputMute);
+        });
+        widgets.mic_icon.add_controller(mic_click);
 
         let _ = root;
         ComponentParts { model, widgets }
@@ -223,6 +300,9 @@ impl Component for ControlCenterSlidersModel {
     ) {
         match message {
             ControlCenterSlidersCommandOutput::OutputChanged => {
+                sender.input(ControlCenterSlidersInput::Refresh);
+            }
+            ControlCenterSlidersCommandOutput::InputChanged => {
                 sender.input(ControlCenterSlidersInput::Refresh);
             }
             ControlCenterSlidersCommandOutput::BrightnessChanged => {
@@ -240,7 +320,7 @@ impl Component for ControlCenterSlidersModel {
     ) {
         match message {
             ControlCenterSlidersInput::Refresh => {
-                // Refresh volume.
+                // Refresh output volume.
                 self.output_device = audio_service().default_output.get();
                 if let Some(d) = &self.output_device {
                     self.output_percent = d.volume.get().average();
@@ -248,6 +328,16 @@ impl Component for ControlCenterSlidersModel {
                     self.suppress_output_signal = true;
                     widgets.vol_scale.set_value(self.output_percent);
                     self.suppress_output_signal = false;
+                }
+
+                // Refresh input (mic) volume.
+                self.input_device = audio_service().default_input.get();
+                if let Some(d) = &self.input_device {
+                    self.input_percent = d.volume.get().average();
+                    self.input_icon = get_audio_in_icon(d).to_string();
+                    self.suppress_input_signal = true;
+                    widgets.mic_scale.set_value(self.input_percent);
+                    self.suppress_input_signal = false;
                 }
 
                 // Refresh brightness.
@@ -278,6 +368,28 @@ impl Component for ControlCenterSlidersModel {
             }
             ControlCenterSlidersInput::ToggleMute => {
                 if let Some(d) = &self.output_device {
+                    let d = d.clone();
+                    let currently_muted = d.muted.get();
+                    glib::spawn_future_local(async move {
+                        let _ = d.set_mute(!currently_muted).await;
+                    });
+                }
+            }
+            ControlCenterSlidersInput::SetInputVolume(v) => {
+                if self.suppress_input_signal {
+                    return;
+                }
+                // Optimistic update.
+                self.input_percent = v;
+                if let Some(d) = &self.input_device {
+                    let d = d.clone();
+                    glib::spawn_future_local(async move {
+                        let _ = d.set_volume(Volume::stereo(v, v)).await;
+                    });
+                }
+            }
+            ControlCenterSlidersInput::ToggleInputMute => {
+                if let Some(d) = &self.input_device {
                     let d = d.clone();
                     let currently_muted = d.muted.get();
                     glib::spawn_future_local(async move {

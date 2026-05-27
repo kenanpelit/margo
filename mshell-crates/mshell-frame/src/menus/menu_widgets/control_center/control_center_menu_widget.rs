@@ -1,16 +1,16 @@
 //! Control Center menu widget — the panel content for
 //! `MenuType::ControlCenter`.
 //!
-//! Task 5: GNOME-style inline expand. The body is now a `gtk::Stack`
-//! with a slide-left-right transition:
+//! The body is a `gtk::Stack` with a slide-left-right transition:
 //!   * `"main"` page — the existing sliders + tile grid.
-//!   * `"wifi"`, `"bluetooth"`, `"audio_out"`, `"mic"`, `"battery"` — detail
-//!     sub-pages, each with a back-arrow row + an embedded detail component.
+//!   * `"wifi"`, `"bluetooth"`, `"audio_out"`, `"mic"`, `"battery"`,
+//!     `"vpn"`, `"valent"` — detail sub-pages, each with a back-arrow
+//!     row + an embedded detail component.
 //!
 //! Clicking an expandable tile → stack slides to the detail page and
-//! the component's `Revealed` (or `ParentRevealChanged(true)`) input is
-//! emitted so it starts scanning/loading lazily. The back arrow slides
-//! back to `"main"` and emits the matching `Hidden`.
+//! the component's reveal input is emitted so it starts scanning/loading
+//! lazily. The back arrow slides back to `"main"` and emits the matching
+//! hidden input.
 
 use crate::menus::menu_widgets::audio_in::audio_in_revealed_content::{
     AudioInRevealedContentInit, AudioInRevealedContentInput, AudioInRevealedContentModel,
@@ -32,11 +32,17 @@ use crate::menus::menu_widgets::control_center::tiles::{
     ControlCenterTilesInit, ControlCenterTilesInput, ControlCenterTilesModel,
     ControlCenterTilesOutput, DetailPage,
 };
+use crate::menus::menu_widgets::dns::dns_menu_widget::{
+    DnsMenuWidgetInit, DnsMenuWidgetInput, DnsMenuWidgetModel,
+};
 use crate::menus::menu_widgets::network::network_menu_widget::{
     NetworkMenuWidgetInit, NetworkMenuWidgetInput, NetworkMenuWidgetModel,
 };
 use crate::menus::menu_widgets::power::power_menu_widget::{
     PowerMenuWidgetInit, PowerMenuWidgetModel,
+};
+use crate::menus::menu_widgets::valent::valent_menu_widget::{
+    ValentMenuWidgetInit, ValentMenuWidgetInput, ValentMenuWidgetModel,
 };
 use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
@@ -49,6 +55,8 @@ const PAGE_BLUETOOTH: &str = "bluetooth";
 const PAGE_AUDIO_OUT: &str = "audio_out";
 const PAGE_MIC: &str = "mic";
 const PAGE_BATTERY: &str = "battery";
+const PAGE_VPN: &str = "vpn";
+const PAGE_VALENT: &str = "valent";
 
 // ── Model ─────────────────────────────────────────────────────────────────────
 
@@ -66,7 +74,9 @@ pub(crate) struct ControlCenterMenuWidgetModel {
     /// Held for widget lifetime; power detail has no separate lazy-load signal.
     #[allow(dead_code)]
     battery_detail: Controller<PowerMenuWidgetModel>,
-    /// Whether edit-mode is active (inert until Task 6).
+    vpn_detail: Controller<DnsMenuWidgetModel>,
+    valent_detail: Controller<ValentMenuWidgetModel>,
+    /// Whether edit-mode is active.
     edit_mode: bool,
     /// The GTK Stack widget — kept so `update` can switch pages.
     stack: gtk::Stack,
@@ -77,7 +87,7 @@ pub(crate) struct ControlCenterMenuWidgetModel {
 #[derive(Debug)]
 pub(crate) enum ControlCenterMenuWidgetInput {
     ParentRevealChanged(bool),
-    /// Forwarded from header output; inert until Task 6.
+    /// Forwarded from header output.
     ToggleEdit,
     /// Header SessionPower icon → ask the frame to open the session menu.
     RequestSessionMenu,
@@ -173,6 +183,15 @@ impl Component for ControlCenterMenuWidgetModel {
             .launch(PowerMenuWidgetInit {})
             .detach();
 
+        // New detail pages: VPN (DNS menu) and Valent
+        let vpn_detail = DnsMenuWidgetModel::builder()
+            .launch(DnsMenuWidgetInit {})
+            .detach();
+
+        let valent_detail = ValentMenuWidgetModel::builder()
+            .launch(ValentMenuWidgetInit {})
+            .detach();
+
         // ── Build gtk::Stack ─────────────────────────────────────────────────
         let stack = gtk::Stack::new();
         stack.set_transition_type(gtk::StackTransitionType::SlideLeftRight);
@@ -206,6 +225,14 @@ impl Component for ControlCenterMenuWidgetModel {
             &build_detail_page("Battery & Power", sender.input_sender(), battery_detail.widget()),
             Some(PAGE_BATTERY),
         );
+        stack.add_named(
+            &build_detail_page("VPN / DNS", sender.input_sender(), vpn_detail.widget()),
+            Some(PAGE_VPN),
+        );
+        stack.add_named(
+            &build_detail_page("Valent Connect", sender.input_sender(), valent_detail.widget()),
+            Some(PAGE_VALENT),
+        );
 
         // Show main by default
         stack.set_visible_child_name(PAGE_MAIN);
@@ -219,6 +246,8 @@ impl Component for ControlCenterMenuWidgetModel {
             audio_out_detail,
             mic_detail,
             battery_detail,
+            vpn_detail,
+            valent_detail,
             edit_mode: false,
             stack: stack.clone(),
         };
@@ -283,6 +312,10 @@ impl Component for ControlCenterMenuWidgetModel {
                         .sender()
                         .send(AudioInRevealedContentInput::Hidden)
                         .ok();
+                    self.vpn_detail
+                        .sender()
+                        .send(DnsMenuWidgetInput::ParentRevealChanged(false))
+                        .ok();
                 }
             }
 
@@ -317,6 +350,21 @@ impl Component for ControlCenterMenuWidgetModel {
                         PAGE_MIC
                     }
                     DetailPage::Battery => PAGE_BATTERY,
+                    DetailPage::Vpn => {
+                        self.vpn_detail
+                            .sender()
+                            .send(DnsMenuWidgetInput::ParentRevealChanged(true))
+                            .ok();
+                        PAGE_VPN
+                    }
+                    DetailPage::Valent => {
+                        // Valent probes on init already; re-probe on every show.
+                        self.valent_detail
+                            .sender()
+                            .send(ValentMenuWidgetInput::Reprobe)
+                            .ok();
+                        PAGE_VALENT
+                    }
                 };
                 self.stack.set_visible_child_name(page_name);
             }
@@ -347,6 +395,12 @@ impl Component for ControlCenterMenuWidgetModel {
                             self.mic_detail
                                 .sender()
                                 .send(AudioInRevealedContentInput::Hidden)
+                                .ok();
+                        }
+                        PAGE_VPN => {
+                            self.vpn_detail
+                                .sender()
+                                .send(DnsMenuWidgetInput::ParentRevealChanged(false))
                                 .ok();
                         }
                         _ => {}

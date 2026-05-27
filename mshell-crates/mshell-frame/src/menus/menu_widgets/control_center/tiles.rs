@@ -5,15 +5,17 @@
 //!   [Audio Out  ]  [Mic         ]
 //!   [Keep Awake ]  [Color Picker]
 //!   [Do Not Disturb    (wide)  ]
-//!   [Dark Mode  ]  [Night Light ]
+//!   [Dark Mode  ]  [Twilight    ]
 //!   [Disk       ]  [Battery     ]
+//!   [Airplane Mode] [VPN        ]
+//!   [Valent     ]  [            ]  (single wide or col-0)
 //!
-//! Wi-Fi, Bluetooth, Audio Out, Mic, and Battery tiles are *expandable*:
-//! clicking them emits `ControlCenterTilesOutput::ExpandPage` so the parent
-//! `ControlCenterMenuWidgetModel` can switch the Stack to the matching detail
-//! sub-page.
+//! Wi-Fi, Bluetooth, Audio Out, Mic, Battery, VPN, and Valent tiles are
+//! *expandable*: clicking them emits `ControlCenterTilesOutput::ExpandPage`
+//! so the parent `ControlCenterMenuWidgetModel` can switch the Stack to
+//! the matching detail sub-page.
 //!
-//! Dark Mode and Night Light are `.small` (icon-only).
+//! Dark Mode and Twilight are now full labeled tiles (not small).
 //! Do Not Disturb is `.wide` (spans 2 columns).
 //! Battery tile is hidden when no battery is present.
 //!
@@ -21,7 +23,7 @@
 //! start those watchers lazily on the first `Reveal(true)`.
 
 use crate::menus::menu_widgets::control_center::tile::{
-    TileWidget, build_small_tile, build_tile,
+    TileWidget, build_tile,
 };
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
@@ -32,7 +34,7 @@ use mshell_config::schema::themes::MatugenMode;
 use mshell_idle::inhibitor::IdleInhibitor;
 use mshell_services::{
     audio_service, battery_service, bluetooth_service, line_power_service, network_service,
-    notification_service,
+    notification_service, power_profile_service,
 };
 use mshell_utils::battery::{
     get_battery_icon, get_charging_battery_icon, spawn_battery_online_watcher,
@@ -41,6 +43,7 @@ use mshell_utils::battery::{
 use mshell_utils::idle::spawn_idle_inhibitor_watcher;
 use mshell_utils::notifications::spawn_dnd_watcher;
 use mshell_utils::picker::spawn_color_picker;
+use mshell_utils::power_profile::get_power_profile_label;
 use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk;
 use relm4::gtk::prelude::{ButtonExt, CheckButtonExt, GridExt, WidgetExt};
@@ -48,6 +51,7 @@ use relm4::{Component, ComponentParts, ComponentSender};
 use std::time::Duration;
 use tracing::warn;
 use wayle_battery::types::DeviceState;
+use wayle_power_profiles::types::profile::PowerProfile;
 
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
 const STARTUP_DELAY: Duration = Duration::from_millis(200);
@@ -62,20 +66,33 @@ pub(crate) struct ControlCenterTilesModel {
     dnd: bool,
     // Dark Mode
     dark: MatugenMode,
-    // Night Light
+    // Twilight (Night Light)
     night_light: bool,
+    // Airplane Mode
+    airplane_mode: bool,
+    airplane_available: bool,
     // Disk
     disk: DiskUsage,
     // Battery
     battery: BatterySnapshot,
-    // Wi-Fi subtitle
+    // Power profile
+    power_profile: PowerProfile,
+    // Wi-Fi subtitle + connected state
     wifi_subtitle: String,
-    // Bluetooth subtitle
+    wifi_connected: bool,
+    // Bluetooth subtitle + connected state
     bt_subtitle: String,
+    bt_connected: bool,
     // Audio out subtitle
     audio_out_subtitle: String,
     // Mic subtitle
     mic_subtitle: String,
+    // VPN subtitle + connected state
+    vpn_subtitle: String,
+    vpn_connected: bool,
+    // Valent subtitle + connected state
+    valent_subtitle: String,
+    valent_connected: bool,
     // Lazy-start guard — watchers only start on first reveal
     watchers_started: bool,
     // Edit mode — when true, all tiles visible + per-tile visibility toggles shown
@@ -130,6 +147,8 @@ pub(crate) enum DetailPage {
     AudioOut,
     Mic,
     Battery,
+    Vpn,
+    Valent,
 }
 
 // ── Messages ──────────────────────────────────────────────────────────────────
@@ -145,6 +164,7 @@ pub(crate) enum ControlCenterTilesInput {
     ClickDarkMode,
     ClickNightLight,
     ClickColorPicker,
+    ClickAirplaneMode,
 
     /// Reactive dark-mode update from EffectScope.
     DarkModeChanged(MatugenMode),
@@ -173,6 +193,9 @@ pub(crate) enum TileId {
     NightLight,
     ColorPicker,
     Disk,
+    AirplaneMode,
+    Vpn,
+    Valent,
 }
 
 #[derive(Debug)]
@@ -191,6 +214,8 @@ pub(crate) enum ControlCenterTilesCommandOutput {
     BatteryChanged,
     DiskRefreshed(DiskUsage),
     SubtitlesRefreshed,
+    /// Async valent probe finished — (subtitle, is_connected).
+    ValentStateRefreshed(String, bool),
 }
 
 // ── Widgets struct (manual — we hold the tile handles) ────────────────────────
@@ -201,6 +226,8 @@ pub(crate) struct ControlCenterTilesWidgets {
     tile_bluetooth: TileWidget,
     tile_audio_out: TileWidget,
     tile_mic: TileWidget,
+    tile_vpn: TileWidget,
+    tile_valent: TileWidget,
     // Toggle / info tiles
     tile_keep_awake: TileWidget,
     // Held alive so the click handler isn't dropped; not updated by apply_visuals
@@ -212,6 +239,7 @@ pub(crate) struct ControlCenterTilesWidgets {
     tile_night_light: TileWidget,
     tile_disk: TileWidget,
     tile_battery: TileWidget,
+    tile_airplane_mode: TileWidget,
     // Edit-mode overlay wrappers (gtk::Overlay containing the tile button +
     // a corner CheckButton). One per tile — wrapped after the tile buttons
     // are attached to the grid.
@@ -226,6 +254,9 @@ pub(crate) struct ControlCenterTilesWidgets {
     overlay_dark_mode: gtk::Overlay,
     overlay_night_light: gtk::Overlay,
     overlay_disk: gtk::Overlay,
+    overlay_airplane_mode: gtk::Overlay,
+    overlay_vpn: gtk::Overlay,
+    overlay_valent: gtk::Overlay,
     // The CheckButton references — needed to update their state in apply_visuals.
     check_wifi: gtk::CheckButton,
     check_bluetooth: gtk::CheckButton,
@@ -238,6 +269,9 @@ pub(crate) struct ControlCenterTilesWidgets {
     check_dark_mode: gtk::CheckButton,
     check_night_light: gtk::CheckButton,
     check_disk: gtk::CheckButton,
+    check_airplane_mode: gtk::CheckButton,
+    check_vpn: gtk::CheckButton,
+    check_valent: gtk::CheckButton,
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -270,9 +304,11 @@ impl Component for ControlCenterTilesModel {
         let tile_bluetooth = build_tile("bluetooth-active-symbolic", "Bluetooth", "…");
         let tile_audio_out = build_tile("audio-speakers-symbolic", "Audio Out", "…");
         let tile_mic = build_tile("audio-input-microphone-symbolic", "Mic", "…");
+        let tile_vpn = build_tile("network-vpn-symbolic", "VPN", "…");
+        let tile_valent = build_tile("phone-symbolic", "Valent", "…");
 
         // Mark expandable tiles with a chevron-styled hint (`.expandable`)
-        for tw in [&tile_wifi, &tile_bluetooth, &tile_audio_out, &tile_mic] {
+        for tw in [&tile_wifi, &tile_bluetooth, &tile_audio_out, &tile_mic, &tile_vpn, &tile_valent] {
             tw.button.add_css_class("expandable");
         }
 
@@ -284,10 +320,11 @@ impl Component for ControlCenterTilesModel {
             "Do Not Disturb",
             "All notifications",
         );
-        let tile_dark_mode = build_small_tile("weather-clear-night-symbolic");
-        let tile_night_light = build_small_tile("nightlight-symbolic");
+        let tile_dark_mode = build_tile("weather-clear-night-symbolic", "Dark Mode", "Off");
+        let tile_night_light = build_tile("night-light-symbolic", "Twilight", "Off");
         let tile_disk = build_tile("drive-harddisk-symbolic", "Disk", "");
         let tile_battery = build_tile("battery-level-50-symbolic", "Battery", "");
+        let tile_airplane_mode = build_tile("airplane-mode-symbolic", "Airplane Mode", "Off");
 
         // Mark the DND tile as wide
         tile_dnd.button.add_css_class("wide");
@@ -330,6 +367,20 @@ impl Component for ControlCenterTilesModel {
                     .ok();
             });
         }
+        {
+            let s = sender.clone();
+            tile_vpn.button.connect_clicked(move |_| {
+                s.output(ControlCenterTilesOutput::ExpandPage(DetailPage::Vpn))
+                    .ok();
+            });
+        }
+        {
+            let s = sender.clone();
+            tile_valent.button.connect_clicked(move |_| {
+                s.output(ControlCenterTilesOutput::ExpandPage(DetailPage::Valent))
+                    .ok();
+            });
+        }
 
         // Wire toggle tile clicks
         {
@@ -362,12 +413,15 @@ impl Component for ControlCenterTilesModel {
                 .button
                 .connect_clicked(move |_| s.input(ControlCenterTilesInput::ClickColorPicker));
         }
+        {
+            let s = sender.clone();
+            tile_airplane_mode
+                .button
+                .connect_clicked(move |_| s.input(ControlCenterTilesInput::ClickAirplaneMode));
+        }
         // Disk tile is info-only; no click handler needed.
 
         // ── Edit-mode overlays ───────────────────────────────────────────────
-        // Wrap each tile button in a gtk::Overlay so a CheckButton can sit in
-        // the top-right corner during edit mode. The Overlay itself is what
-        // gets attached to the grid.
         let (overlay_wifi, check_wifi) =
             build_edit_overlay(&tile_wifi.button, &sender, TileId::Wifi);
         let (overlay_bluetooth, check_bluetooth) =
@@ -390,14 +444,22 @@ impl Component for ControlCenterTilesModel {
             build_edit_overlay(&tile_night_light.button, &sender, TileId::NightLight);
         let (overlay_disk, check_disk) =
             build_edit_overlay(&tile_disk.button, &sender, TileId::Disk);
+        let (overlay_airplane_mode, check_airplane_mode) =
+            build_edit_overlay(&tile_airplane_mode.button, &sender, TileId::AirplaneMode);
+        let (overlay_vpn, check_vpn) =
+            build_edit_overlay(&tile_vpn.button, &sender, TileId::Vpn);
+        let (overlay_valent, check_valent) =
+            build_edit_overlay(&tile_valent.button, &sender, TileId::Valent);
 
         // Attach overlay wrappers to the grid:
         //   Row 0: [Wi-Fi (0,0)] [Bluetooth (1,0)]
         //   Row 1: [Audio Out (0,1)] [Mic (1,1)]
         //   Row 2: [Keep Awake (0,2)] [Color Picker (1,2)]
         //   Row 3: [DND (0,3) span 2]
-        //   Row 4: [Dark Mode (0,4)] [Night Light (1,4)]
+        //   Row 4: [Dark Mode (0,4)] [Twilight (1,4)]
         //   Row 5: [Disk (0,5)] [Battery (1,5)]
+        //   Row 6: [Airplane Mode (0,6)] [VPN (1,6)]
+        //   Row 7: [Valent (0,7) span 2]
         root.attach(&overlay_wifi, 0, 0, 1, 1);
         root.attach(&overlay_bluetooth, 1, 0, 1, 1);
         root.attach(&overlay_audio_out, 0, 1, 1, 1);
@@ -409,6 +471,12 @@ impl Component for ControlCenterTilesModel {
         root.attach(&overlay_night_light, 1, 4, 1, 1);
         root.attach(&overlay_disk, 0, 5, 1, 1);
         root.attach(&overlay_battery, 1, 5, 1, 1);
+        root.attach(&overlay_airplane_mode, 0, 6, 1, 1);
+        root.attach(&overlay_vpn, 1, 6, 1, 1);
+        root.attach(&overlay_valent, 0, 7, 2, 1);
+
+        // Mark valent as wide (spans 2 cols)
+        tile_valent.button.add_css_class("wide");
 
         // Reactive dark-mode effect (always active — cheap config-store watch)
         let mut effects = EffectScope::new();
@@ -436,18 +504,35 @@ impl Component for ControlCenterTilesModel {
             .get_untracked();
         let disk = read_disk_usage();
         let battery = read_battery();
+        let power_profile = power_profile_service().power_profiles.active_profile.get();
+        let (wifi_subtitle, wifi_connected) = read_wifi_state();
+        let (bt_subtitle, bt_connected) = read_bt_state();
+        let (vpn_subtitle, vpn_connected) = read_vpn_state();
+        let (valent_subtitle, valent_connected) = (String::from("…"), false);
+
+        // Airplane mode initial state (wifi disabled = airplane on)
+        let (airplane_mode, airplane_available) = read_airplane_state();
 
         let model = ControlCenterTilesModel {
             keep_awake,
             dnd,
             dark,
             night_light: false,
+            airplane_mode,
+            airplane_available,
             disk,
             battery,
-            wifi_subtitle: read_wifi_subtitle(),
-            bt_subtitle: read_bt_subtitle(),
+            power_profile,
+            wifi_subtitle,
+            wifi_connected,
+            bt_subtitle,
+            bt_connected,
             audio_out_subtitle: read_audio_out_subtitle(),
             mic_subtitle: read_mic_subtitle(),
+            vpn_subtitle,
+            vpn_connected,
+            valent_subtitle,
+            valent_connected,
             watchers_started: false,
             edit_mode: false,
             _effects: effects,
@@ -458,6 +543,8 @@ impl Component for ControlCenterTilesModel {
             tile_bluetooth,
             tile_audio_out,
             tile_mic,
+            tile_vpn,
+            tile_valent,
             tile_keep_awake,
             tile_color_picker,
             tile_dnd,
@@ -465,6 +552,7 @@ impl Component for ControlCenterTilesModel {
             tile_night_light,
             tile_disk,
             tile_battery,
+            tile_airplane_mode,
             overlay_wifi,
             overlay_bluetooth,
             overlay_audio_out,
@@ -476,6 +564,9 @@ impl Component for ControlCenterTilesModel {
             overlay_dark_mode,
             overlay_night_light,
             overlay_disk,
+            overlay_airplane_mode,
+            overlay_vpn,
+            overlay_valent,
             check_wifi,
             check_bluetooth,
             check_audio_out,
@@ -487,6 +578,9 @@ impl Component for ControlCenterTilesModel {
             check_dark_mode,
             check_night_light,
             check_disk,
+            check_airplane_mode,
+            check_vpn,
+            check_valent,
         };
 
         // Apply initial visual state
@@ -558,7 +652,7 @@ impl Component for ControlCenterTilesModel {
                         }
                     });
 
-                    // Subtitle poller for Wi-Fi / BT / audio tiles (every 5s)
+                    // Subtitle poller for Wi-Fi / BT / VPN / audio tiles (every 5s)
                     sender.command(|out, shutdown| async move {
                         let shutdown_fut = shutdown.wait();
                         tokio::pin!(shutdown_fut);
@@ -573,6 +667,29 @@ impl Component for ControlCenterTilesModel {
                             let _ = out.send(ControlCenterTilesCommandOutput::SubtitlesRefreshed);
                         }
                     });
+
+                    // Valent state poller (every 15s — heavier async probe)
+                    sender.command(|out, shutdown| async move {
+                        use crate::valent;
+                        let shutdown_fut = shutdown.wait();
+                        tokio::pin!(shutdown_fut);
+                        let mut first = true;
+                        loop {
+                            let delay = if first {
+                                STARTUP_DELAY
+                            } else {
+                                Duration::from_secs(15)
+                            };
+                            first = false;
+                            tokio::select! {
+                                () = &mut shutdown_fut => break,
+                                _ = tokio::time::sleep(delay) => {}
+                            }
+                            let report = valent::probe().await;
+                            let (subtitle, connected) = valent_state_from_report(&report);
+                            let _ = out.send(ControlCenterTilesCommandOutput::ValentStateRefreshed(subtitle, connected));
+                        }
+                    });
                 }
 
                 // Re-snapshot fast values on each reveal
@@ -585,20 +702,26 @@ impl Component for ControlCenterTilesModel {
                     .mode()
                     .get_untracked();
                 self.battery = read_battery();
+                self.power_profile = power_profile_service().power_profiles.active_profile.get();
                 self.disk = read_disk_usage();
-                self.wifi_subtitle = read_wifi_subtitle();
-                self.bt_subtitle = read_bt_subtitle();
+                (self.wifi_subtitle, self.wifi_connected) = read_wifi_state();
+                (self.bt_subtitle, self.bt_connected) = read_bt_state();
                 self.audio_out_subtitle = read_audio_out_subtitle();
                 self.mic_subtitle = read_mic_subtitle();
+                (self.vpn_subtitle, self.vpn_connected) = read_vpn_state();
+                (self.airplane_mode, self.airplane_available) = read_airplane_state();
             }
 
             ControlCenterTilesInput::Reveal(false) => {}
 
             ControlCenterTilesInput::RefreshSubtitles => {
-                self.wifi_subtitle = read_wifi_subtitle();
-                self.bt_subtitle = read_bt_subtitle();
+                (self.wifi_subtitle, self.wifi_connected) = read_wifi_state();
+                (self.bt_subtitle, self.bt_connected) = read_bt_state();
                 self.audio_out_subtitle = read_audio_out_subtitle();
                 self.mic_subtitle = read_mic_subtitle();
+                (self.vpn_subtitle, self.vpn_connected) = read_vpn_state();
+                (self.airplane_mode, self.airplane_available) = read_airplane_state();
+                self.power_profile = power_profile_service().power_profiles.active_profile.get();
             }
 
             ControlCenterTilesInput::ClickKeepAwake => {
@@ -637,6 +760,16 @@ impl Component for ControlCenterTilesModel {
                 spawn_color_picker(300);
             }
 
+            ControlCenterTilesInput::ClickAirplaneMode => {
+                // Airplane mode = disable Wi-Fi (toggle wifi enabled state)
+                if let Some(wifi) = network_service().wifi.get() {
+                    let new_enabled = !wifi.enabled.get();
+                    tokio::spawn(async move {
+                        let _ = wifi.set_enabled(new_enabled).await;
+                    });
+                }
+            }
+
             ControlCenterTilesInput::DarkModeChanged(mode) => {
                 self.dark = mode;
             }
@@ -658,6 +791,9 @@ impl Component for ControlCenterTilesModel {
                     TileId::NightLight => c.control_center.night_light = visible,
                     TileId::ColorPicker => c.control_center.color_picker = visible,
                     TileId::Disk => c.control_center.disk = visible,
+                    TileId::AirplaneMode => c.control_center.airplane_mode = visible,
+                    TileId::Vpn => c.control_center.vpn = visible,
+                    TileId::Valent => c.control_center.valent = visible,
                 });
             }
         }
@@ -684,12 +820,17 @@ impl Component for ControlCenterTilesModel {
             }
             ControlCenterTilesCommandOutput::BatteryChanged => {
                 self.battery = read_battery();
+                self.power_profile = power_profile_service().power_profiles.active_profile.get();
             }
             ControlCenterTilesCommandOutput::DiskRefreshed(usage) => {
                 self.disk = usage;
             }
             ControlCenterTilesCommandOutput::SubtitlesRefreshed => {
                 sender.input(ControlCenterTilesInput::RefreshSubtitles);
+            }
+            ControlCenterTilesCommandOutput::ValentStateRefreshed(subtitle, connected) => {
+                self.valent_subtitle = subtitle;
+                self.valent_connected = connected;
             }
         }
 
@@ -724,6 +865,12 @@ fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTilesWidgets)
         config_manager().config().control_center().color_picker().get_untracked();
     let cfg_disk =
         config_manager().config().control_center().disk().get_untracked();
+    let cfg_airplane_mode =
+        config_manager().config().control_center().airplane_mode().get_untracked();
+    let cfg_vpn =
+        config_manager().config().control_center().vpn().get_untracked();
+    let cfg_valent =
+        config_manager().config().control_center().valent().get_untracked();
 
     let edit = model.edit_mode;
 
@@ -735,20 +882,16 @@ fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTilesWidgets)
                                    check: &gtk::CheckButton,
                                    enabled: bool| {
         if edit {
-            // Show all tiles in edit mode
             overlay.set_visible(true);
             tile_btn.set_visible(true);
-            // Dim disabled tiles
             if enabled {
                 tile_btn.remove_css_class("disabled");
             } else {
                 tile_btn.add_css_class("disabled");
             }
-            // Show edit checkbox, update its active state
             check.set_visible(true);
             check.set_active(enabled);
         } else {
-            // Normal mode: hide disabled tiles, hide checkboxes
             overlay.set_visible(enabled);
             tile_btn.set_visible(true);
             tile_btn.remove_css_class("disabled");
@@ -766,13 +909,14 @@ fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTilesWidgets)
     update_tile_visibility(&w.overlay_dark_mode, &w.tile_dark_mode.button, &w.check_dark_mode, cfg_dark_mode);
     update_tile_visibility(&w.overlay_night_light, &w.tile_night_light.button, &w.check_night_light, cfg_night_light);
     update_tile_visibility(&w.overlay_disk, &w.tile_disk.button, &w.check_disk, cfg_disk);
+    update_tile_visibility(&w.overlay_airplane_mode, &w.tile_airplane_mode.button, &w.check_airplane_mode, cfg_airplane_mode);
+    update_tile_visibility(&w.overlay_vpn, &w.tile_vpn.button, &w.check_vpn, cfg_vpn);
+    update_tile_visibility(&w.overlay_valent, &w.tile_valent.button, &w.check_valent, cfg_valent);
 
     // Battery tile: additionally hidden when no battery present (normal mode)
     let bat = &model.battery;
     let battery_effective = cfg_battery && bat.present;
     if edit {
-        // In edit mode, always show the battery overlay (battery tile exists)
-        // but dim it if disabled. If no battery present, still show but dim.
         w.overlay_battery.set_visible(true);
         w.tile_battery.button.set_visible(true);
         if cfg_battery {
@@ -789,17 +933,27 @@ fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTilesWidgets)
         w.check_battery.set_visible(false);
     }
 
-    // Wi-Fi
+    // Wi-Fi — active when connected to a network (has an SSID)
     w.tile_wifi.set_subtitle(&model.wifi_subtitle);
+    w.tile_wifi.set_active(model.wifi_connected);
 
-    // Bluetooth
+    // Bluetooth — active when a device is connected
     w.tile_bluetooth.set_subtitle(&model.bt_subtitle);
+    w.tile_bluetooth.set_active(model.bt_connected);
 
     // Audio Out
     w.tile_audio_out.set_subtitle(&model.audio_out_subtitle);
 
     // Mic
     w.tile_mic.set_subtitle(&model.mic_subtitle);
+
+    // VPN — active when VPN is connected
+    w.tile_vpn.set_subtitle(&model.vpn_subtitle);
+    w.tile_vpn.set_active(model.vpn_connected);
+
+    // Valent — active when a device is reachable + paired
+    w.tile_valent.set_subtitle(&model.valent_subtitle);
+    w.tile_valent.set_active(model.valent_connected);
 
     // Keep Awake
     w.tile_keep_awake.set_active(model.keep_awake);
@@ -824,26 +978,32 @@ fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTilesWidgets)
         "notification-symbolic"
     });
 
-    // Dark Mode
+    // Dark Mode — now a full labeled tile
     let is_dark = model.dark == MatugenMode::Dark;
     w.tile_dark_mode.set_active(is_dark);
+    w.tile_dark_mode.set_subtitle(if is_dark { "On" } else { "Off" });
     w.tile_dark_mode.set_icon(match model.dark {
         MatugenMode::Dark => "weather-clear-symbolic",
         MatugenMode::Light => "weather-clear-night-symbolic",
     });
 
-    // Night Light
+    // Twilight — full labeled tile
     w.tile_night_light.set_active(model.night_light);
+    w.tile_night_light.set_subtitle(if model.night_light { "On" } else { "Off" });
     w.tile_night_light.set_icon(if model.night_light {
-        "nightlight-symbolic"
+        "night-light-symbolic"
     } else {
-        "nightlight-disabled-symbolic"
+        "night-light-disabled-symbolic"
     });
+
+    // Airplane Mode
+    w.tile_airplane_mode.set_active(model.airplane_mode);
+    w.tile_airplane_mode.set_subtitle(if model.airplane_mode { "On" } else { "Off" });
 
     // Disk
     w.tile_disk.set_subtitle(&model.disk.format());
 
-    // Battery content update (when present)
+    // Battery content update (when present) — include active power profile
     if bat.present {
         let on_ac = bat.on_ac
             || bat.state == DeviceState::Charging
@@ -862,10 +1022,11 @@ fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTilesWidgets)
             DeviceState::PendingCharge | DeviceState::PendingDischarge => "Not charging",
             DeviceState::Unknown => "",
         };
+        let profile_label = get_power_profile_label(&model.power_profile);
         let subtitle = if status.is_empty() {
-            format!("{}%", bat.percent)
+            format!("{profile_label} · {}%", bat.percent)
         } else {
-            format!("{}% • {}", bat.percent, status)
+            format!("{profile_label} · {}% · {}", bat.percent, status)
         };
         w.tile_battery.set_subtitle(&subtitle);
     }
@@ -873,9 +1034,6 @@ fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTilesWidgets)
 
 // ── Edit-overlay builder ───────────────────────────────────────────────────────
 
-/// Wrap `tile_btn` in a `gtk::Overlay` and add a corner `gtk::CheckButton` for
-/// edit mode. The CheckButton is hidden by default; `apply_visuals` shows it
-/// when `edit_mode` is true. Returns `(overlay, check_button)`.
 fn build_edit_overlay(
     tile_btn: &gtk::Button,
     sender: &ComponentSender<ControlCenterTilesModel>,
@@ -884,18 +1042,15 @@ fn build_edit_overlay(
     let overlay = gtk::Overlay::new();
     overlay.set_child(Some(tile_btn));
 
-    // Corner check button — positioned top-right via halign/valign
     let check = gtk::CheckButton::new();
     check.add_css_class("control-center-edit-check");
     check.set_halign(gtk::Align::End);
     check.set_valign(gtk::Align::Start);
-    check.set_visible(false); // hidden until edit mode activates
-    // Prevent clicks on the check from propagating to the tile button
+    check.set_visible(false);
     check.set_can_focus(false);
 
     overlay.add_overlay(&check);
 
-    // Wire toggled signal — use connect_toggled so we only fire on real changes
     let s = sender.clone();
     check.connect_toggled(move |cb| {
         let active = cb.is_active();
@@ -927,23 +1082,20 @@ fn read_battery() -> BatterySnapshot {
     }
 }
 
-/// Read `/` filesystem usage via `libc::statvfs`. Returns zeros on failure.
 fn read_disk_usage() -> DiskUsage {
     use std::ffi::CString;
     use std::mem::MaybeUninit;
 
     let path = CString::new("/").unwrap();
     let mut stat: MaybeUninit<libc::statvfs64> = MaybeUninit::uninit();
-    // SAFETY: path is a valid C string; stat is written by the syscall.
     let rc = unsafe { libc::statvfs64(path.as_ptr(), stat.as_mut_ptr()) };
     if rc != 0 {
         return DiskUsage::default();
     }
-    // SAFETY: statvfs64 returned 0 → stat is fully initialised.
     let s = unsafe { stat.assume_init() };
     let block = s.f_frsize;
     let total = s.f_blocks * block;
-    let avail = s.f_bavail * block; // unprivileged available blocks
+    let avail = s.f_bavail * block;
     let used = total.saturating_sub(avail);
     DiskUsage {
         used_bytes: used,
@@ -982,36 +1134,38 @@ async fn run_twilight_toggle() {
     }
 }
 
-// ── Expandable-tile subtitle helpers ─────────────────────────────────────────
+// ── Expandable-tile subtitle / state helpers ─────────────────────────────────
 
-fn read_wifi_subtitle() -> String {
+/// Returns (subtitle, is_connected). Connected = has an SSID.
+fn read_wifi_state() -> (String, bool) {
     let network = network_service();
     if let Some(wifi) = network.wifi.get() {
         if let Some(ssid) = wifi.ssid.get() {
-            return ssid;
+            return (ssid, true);
         }
         if wifi.enabled.get() {
-            return "Not connected".to_string();
+            return ("Not connected".to_string(), false);
         }
-        return "Off".to_string();
+        return ("Off".to_string(), false);
     }
-    "Unavailable".to_string()
+    ("Unavailable".to_string(), false)
 }
 
-fn read_bt_subtitle() -> String {
+/// Returns (subtitle, is_connected). Connected = at least one device connected.
+fn read_bt_state() -> (String, bool) {
     let bt = bluetooth_service();
     if !bt.available.get() {
-        return "Unavailable".to_string();
+        return ("Unavailable".to_string(), false);
     }
     if !bt.enabled.get() {
-        return "Off".to_string();
+        return ("Off".to_string(), false);
     }
     let devices = bt.devices.get();
     let connected: Vec<_> = devices.iter().filter(|d| d.connected.get()).collect();
     match connected.len() {
-        0 => "On · no devices".to_string(),
-        1 => connected[0].alias.get(),
-        n => format!("{n} connected"),
+        0 => ("On · no devices".to_string(), false),
+        1 => (connected[0].alias.get(), true),
+        n => (format!("{n} connected"), true),
     }
 }
 
@@ -1029,4 +1183,76 @@ fn read_mic_subtitle() -> String {
         return dev.description.get();
     }
     "No device".to_string()
+}
+
+/// Returns (subtitle, is_connected). Connected = Mullvad VPN is up.
+/// Uses a lightweight synchronous mullvad status check.
+fn read_vpn_state() -> (String, bool) {
+    // Quick synchronous check: parse `mullvad status` output if mullvad is available.
+    // The async subtitle poller (SubtitlesRefreshed every 5s) calls back here, so
+    // the latency is acceptable.
+    let vpn = check_mullvad_connected_sync();
+    if vpn {
+        ("Connected".to_string(), true)
+    } else {
+        ("Off".to_string(), false)
+    }
+}
+
+/// Synchronous VPN state check: run `mullvad status` with a short timeout.
+/// Returns true if output contains "Connected".
+fn check_mullvad_connected_sync() -> bool {
+    use std::process::Command;
+    // Use std::process::Command in a thread so the tokio executor isn't blocked.
+    std::thread::spawn(|| {
+        Command::new("mullvad")
+            .arg("status")
+            .output()
+            .ok()
+            .and_then(|o| {
+                if o.status.success() {
+                    let s = String::from_utf8_lossy(&o.stdout);
+                    Some(s.contains("Connected"))
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(false)
+    })
+    .join()
+    .unwrap_or(false)
+}
+
+/// Compute (subtitle, is_connected) from a ValentReport.
+fn valent_state_from_report(report: &crate::valent::ValentReport) -> (String, bool) {
+    if !report.daemon_available {
+        return ("Unavailable".to_string(), false);
+    }
+    // Find a connected device: reachable + paired
+    let connected: Vec<_> = report.devices.iter()
+        .filter(|d| d.reachable && d.paired)
+        .collect();
+    match connected.len() {
+        0 => {
+            if report.devices.is_empty() {
+                ("No devices".to_string(), false)
+            } else {
+                ("Not reachable".to_string(), false)
+            }
+        }
+        1 => (connected[0].name.clone(), true),
+        n => (format!("{n} connected"), true),
+    }
+}
+
+fn read_airplane_state() -> (bool, bool) {
+    // Airplane mode = Wi-Fi is disabled. Returns (is_airplane_on, is_wifi_available).
+    let network = network_service();
+    if let Some(wifi) = network.wifi.get() {
+        let enabled = wifi.enabled.get();
+        // Airplane mode is "on" when Wi-Fi is disabled
+        (!enabled, true)
+    } else {
+        (false, false)
+    }
 }

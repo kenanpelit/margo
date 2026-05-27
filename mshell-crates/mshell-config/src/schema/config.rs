@@ -1455,6 +1455,9 @@ pub struct ControlCenterConfig {
     pub night_light: bool,
     pub color_picker: bool,
     pub disk: bool,
+    pub airplane_mode: bool,
+    pub vpn: bool,
+    pub valent: bool,
 }
 
 impl Default for ControlCenterConfig {
@@ -1471,6 +1474,9 @@ impl Default for ControlCenterConfig {
             night_light: true,
             color_picker: true,
             disk: true,
+            airplane_mode: true,
+            vpn: true,
+            valent: true,
         }
     }
 }
