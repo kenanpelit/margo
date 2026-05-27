@@ -2,6 +2,9 @@ use crate::menus::menu::{MenuModel, MenuOutput};
 use crate::menus::menu_widgets::alarm_clock::alarm_clock_menu_widget::{
     AlarmClockMenuWidgetInit, AlarmClockMenuWidgetModel,
 };
+use crate::menus::menu_widgets::control_center::control_center_menu_widget::{
+    ControlCenterMenuWidgetInit, ControlCenterMenuWidgetModel,
+};
 use crate::menus::menu_widgets::app_launcher::app_launcher::{
     AppLauncherInit, AppLauncherModel, AppLauncherOutput,
 };
@@ -121,6 +124,11 @@ pub fn build_widget(
         MenuWidget::AlarmClock => Box::new(
             AlarmClockMenuWidgetModel::builder()
                 .launch(AlarmClockMenuWidgetInit {})
+                .detach(),
+        ),
+        MenuWidget::ControlCenter => Box::new(
+            ControlCenterMenuWidgetModel::builder()
+                .launch(ControlCenterMenuWidgetInit {})
                 .detach(),
         ),
         MenuWidget::AppLauncher => Box::new(

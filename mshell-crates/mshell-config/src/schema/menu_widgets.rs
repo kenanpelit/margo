@@ -10,6 +10,10 @@ pub enum MenuWidget {
     /// per-alarm enable / time / repeat-day chips / delete, an
     /// add/edit row, and a stopwatch with start / pause / reset.
     AlarmClock,
+    /// Control Center menu — system preferences and quick-access
+    /// controls panel. The menu content for the `control_center`
+    /// bar pill.
+    ControlCenter,
     AppLauncher,
     /// Audio Dashboard menu — output + input mute / slider /
     /// device-picker card stack. The menu content for the
@@ -123,6 +127,7 @@ impl MenuWidget {
     pub fn display_name(&self) -> &'static str {
         match self {
             MenuWidget::AlarmClock => "Alarm Clock",
+            MenuWidget::ControlCenter => "Control Center",
             MenuWidget::AppLauncher => "App Launcher",
             MenuWidget::AudioDashboard => "Audio Dashboard",
             MenuWidget::AudioInput => "Audio Input",
@@ -183,6 +188,7 @@ impl MenuWidget {
     pub fn all_defaults() -> Vec<MenuWidget> {
         vec![
             MenuWidget::AlarmClock,
+            MenuWidget::ControlCenter,
             MenuWidget::AppLauncher,
             MenuWidget::AudioDashboard,
             MenuWidget::AudioInput,

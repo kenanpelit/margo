@@ -1,5 +1,8 @@
 use crate::menus::builder::build_widget;
 use crate::menus::menu_widgets::app_launcher::app_launcher::{AppLauncherInput, AppLauncherModel};
+use crate::menus::menu_widgets::control_center::control_center_menu_widget::{
+    ControlCenterMenuWidgetInput, ControlCenterMenuWidgetModel,
+};
 use crate::menus::menu_widgets::audio_in::audio_in_menu_widget::{
     AudioInMenuWidgetInput, AudioInMenuWidgetModel,
 };
@@ -94,6 +97,9 @@ pub(crate) enum MenuType {
     Keybinds,
     /// `alarm_clock` bar pill's panel — tabbed Alarms + Stopwatch.
     AlarmClock,
+    /// `control_center` bar pill's panel — system preferences and
+    /// quick-access controls.
+    ControlCenter,
     /// `ssh_sessions` bar pill's panel — searchable `~/.ssh/config`
     /// host list with active-session indicators.
     SshSessions,
@@ -806,6 +812,32 @@ impl Component for MenuModel {
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
                 });
             }
+            MenuType::ControlCenter => {
+                css_class = "control-center-menu".to_string();
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let widgets = config.menus().control_center_menu().widgets().get();
+                    sender_clone.input(MenuInput::SetWidget(widgets));
+                });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let minimum_width =
+                        config.menus().control_center_menu().minimum_width().get();
+                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
+                });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let maximum_height =
+                        config.menus().control_center_menu().maximum_height().get();
+                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
+                });
+            }
             MenuType::SshSessions => {
                 css_class = "ssh-sessions-menu".to_string();
                 let config = base_config.clone();
@@ -1109,6 +1141,14 @@ impl Component for MenuModel {
                         controller
                             .sender()
                             .send(SshSessionsMenuWidgetInput::ParentRevealChanged(visible))
+                            .ok();
+                    }
+                    if let Some(controller) =
+                        controller.downcast_ref::<Controller<ControlCenterMenuWidgetModel>>()
+                    {
+                        controller
+                            .sender()
+                            .send(ControlCenterMenuWidgetInput::ParentRevealChanged(visible))
                             .ok();
                     }
                     if let Some(controller) =

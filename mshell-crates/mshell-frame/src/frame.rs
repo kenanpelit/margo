@@ -39,6 +39,7 @@ const KEEP_AWAKE_MENU: &str = "keep_awake";
 const TWILIGHT_MENU: &str = "twilight";
 const KEYBINDS_MENU: &str = "keybinds";
 const ALARMCLOCK_MENU: &str = "alarmclock";
+const CONTROL_CENTER_MENU: &str = "control_center";
 const SSH_MENU: &str = "ssh_sessions";
 const NDNS_MENU: &str = "dns";
 const NPODMAN_MENU: &str = "podman";
@@ -102,6 +103,7 @@ pub struct Frame {
     twilight_menu: Controller<MenuModel>,
     keybinds_menu: Controller<MenuModel>,
     alarmclock_menu: Controller<MenuModel>,
+    control_center_menu: Controller<MenuModel>,
     ssh_menu: Controller<MenuModel>,
     dns_menu: Controller<MenuModel>,
     podman_menu: Controller<MenuModel>,
@@ -163,6 +165,7 @@ pub enum FrameInput {
     ToggleTwilightMenu,
     ToggleKeybindsMenu,
     ToggleAlarmClockMenu,
+    ToggleControlCenterMenu,
     ToggleSshSessionsMenu,
     ToggleDnsMenu,
     TogglePodmanMenu,
@@ -713,6 +716,7 @@ impl Component for Frame {
         let twilight_menu = Self::build_menu(&sender, MenuType::Twilight);
         let keybinds_menu = Self::build_menu(&sender, MenuType::Keybinds);
         let alarmclock_menu = Self::build_menu(&sender, MenuType::AlarmClock);
+        let control_center_menu = Self::build_menu(&sender, MenuType::ControlCenter);
         let ssh_menu = Self::build_menu(&sender, MenuType::SshSessions);
         let dns_menu = Self::build_menu(&sender, MenuType::Dns);
         let podman_menu = Self::build_menu(&sender, MenuType::Podman);
@@ -836,6 +840,8 @@ impl Component for Frame {
             let config = menu_config.clone();
             let _ = config.menus().alarmclock_menu().position().get();
             let config = menu_config.clone();
+            let _ = config.menus().control_center_menu().position().get();
+            let config = menu_config.clone();
             let _ = config.menus().ssh_menu().position().get();
             let config = menu_config.clone();
             let _ = config.menus().margo_layout_menu().position().get();
@@ -923,6 +929,7 @@ impl Component for Frame {
             twilight_menu,
             keybinds_menu,
             alarmclock_menu,
+            control_center_menu,
             ssh_menu,
             dns_menu,
             podman_menu,
@@ -1097,6 +1104,10 @@ impl Component for Frame {
             }
             FrameInput::ToggleAlarmClockMenu => {
                 self.toggle_menu(ALARMCLOCK_MENU, widgets);
+                self.sync_keyboard_mode(root);
+            }
+            FrameInput::ToggleControlCenterMenu => {
+                self.toggle_menu(CONTROL_CENTER_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
             FrameInput::ToggleSshSessionsMenu => {
@@ -1944,6 +1955,14 @@ impl Frame {
             .alarmclock_menu()
             .position()
             .get();
+        let control_center_menu_widget: Widget =
+            self.control_center_menu.widget().clone().upcast();
+        let control_center_menu_position = mshell_config::config_manager::config_manager()
+            .config()
+            .menus()
+            .control_center_menu()
+            .position()
+            .get();
         let ssh_menu_widget: Widget = self.ssh_menu.widget().clone().upcast();
         let ssh_menu_position = mshell_config::config_manager::config_manager()
             .config()
@@ -2076,6 +2095,12 @@ impl Frame {
             &alarmclock_menu_widget,
             ALARMCLOCK_MENU,
             &alarmclock_menu_position,
+        );
+        Self::add_to_stack(
+            widgets,
+            &control_center_menu_widget,
+            CONTROL_CENTER_MENU,
+            &control_center_menu_position,
         );
         Self::add_to_stack(
             widgets,
@@ -2228,6 +2253,7 @@ impl Frame {
                 BarOutput::TwilightClicked => FrameInput::ToggleTwilightMenu,
                 BarOutput::KeybindsClicked => FrameInput::ToggleKeybindsMenu,
                 BarOutput::AlarmClockClicked => FrameInput::ToggleAlarmClockMenu,
+                BarOutput::ControlCenterClicked => FrameInput::ToggleControlCenterMenu,
                 BarOutput::SshSessionsClicked => FrameInput::ToggleSshSessionsMenu,
                 BarOutput::DnsClicked => FrameInput::ToggleDnsMenu,
                 BarOutput::PodmanClicked => FrameInput::TogglePodmanMenu,

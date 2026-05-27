@@ -492,6 +492,8 @@ pub struct Menus {
     pub keybinds_menu: Menu,
     #[serde(default = "default_alarmclock_menu")]
     pub alarmclock_menu: Menu,
+    #[serde(default = "default_control_center_menu")]
+    pub control_center_menu: Menu,
     #[serde(default = "default_ssh_menu")]
     pub ssh_menu: Menu,
     pub media_player_menu: Menu,
@@ -589,6 +591,15 @@ fn default_alarmclock_menu() -> Menu {
         // alarm list scrolls instead of overflowing the screen.
         minimum_width: 420,
         maximum_height: 640,
+    }
+}
+
+fn default_control_center_menu() -> Menu {
+    Menu {
+        position: Position::TopRight,
+        widgets: vec![MenuWidget::ControlCenter],
+        minimum_width: 460,
+        maximum_height: 720,
     }
 }
 
@@ -728,6 +739,7 @@ impl Default for Menus {
             twilight_menu: default_twilight_menu(),
             keybinds_menu: default_keybinds_menu(),
             alarmclock_menu: default_alarmclock_menu(),
+            control_center_menu: default_control_center_menu(),
             ssh_menu: default_ssh_menu(),
             media_player_menu: Menu {
                 position: Position::TopRight,

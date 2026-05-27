@@ -87,6 +87,9 @@ pub enum MenuCommands {
     Keybinds,
     /// Toggle the Alarm Clock menu (alarms list + add/edit + stopwatch)
     AlarmClock,
+    /// Toggle the Control Center menu (system preferences + quick controls)
+    #[command(name = "control-center")]
+    ControlCenter,
     /// Toggle the SSH Sessions menu (searchable ~/.ssh/config host list)
     SshSessions,
     /// Toggle the DNS / VPN menu
@@ -201,6 +204,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::AlarmClock => {
             bus_command("AlarmClock").await?;
+        }
+        MenuCommands::ControlCenter => {
+            bus_command("ControlCenter").await?;
         }
         MenuCommands::SshSessions => {
             bus_command("SshSessions").await?;

@@ -10,6 +10,9 @@ pub enum BarWidget {
     /// stopwatch time inline when one is going, and a ringing badge
     /// while an alarm tone is sounding.
     AlarmClock,
+    /// Control Center pill — system-preferences glyph that opens the
+    /// Control Center menu.
+    ControlCenter,
     /// Combined audio dashboard pill — surfaces both default
     /// output (sink) and default input (source) volumes in one
     /// cluster with right-click cycle (Both/OutputOnly/InputOnly).
@@ -103,6 +106,7 @@ impl BarWidget {
         match self {
             BarWidget::ActiveWindow => "Active Window",
             BarWidget::AlarmClock => "Alarm Clock",
+            BarWidget::ControlCenter => "Control Center",
             BarWidget::AudioDashboard => "Audio Dashboard",
             BarWidget::Bluetooth => "Bluetooth",
             BarWidget::Clipboard => "Clipboard",
@@ -153,6 +157,7 @@ impl BarWidget {
         &[
             BarWidget::ActiveWindow,
             BarWidget::AlarmClock,
+            BarWidget::ControlCenter,
             BarWidget::AudioDashboard,
             BarWidget::Bluetooth,
             BarWidget::Clipboard,

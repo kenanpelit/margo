@@ -49,6 +49,7 @@ pub(crate) enum MenuKind {
     Twilight,
     Keybinds,
     AlarmClock,
+    ControlCenter,
     SshSessions,
     Ufw,
     Wallpaper,
@@ -81,6 +82,7 @@ impl MenuKind {
             Self::Twilight => "Twilight",
             Self::Keybinds => "Keyboard Shortcuts",
             Self::AlarmClock => "Alarm Clock",
+            Self::ControlCenter => "Control Center",
             Self::SshSessions => "SSH Sessions",
             Self::Ufw => "UFW Firewall",
             Self::Wallpaper => "Wallpaper",
@@ -111,6 +113,7 @@ impl MenuKind {
             MenuKind::Twilight,
             MenuKind::Keybinds,
             MenuKind::AlarmClock,
+            MenuKind::ControlCenter,
             MenuKind::SshSessions,
             MenuKind::Ufw,
             MenuKind::Dns,
@@ -153,6 +156,7 @@ impl MenuKind {
             Self::Twilight => m.twilight_menu().position().get_untracked(),
             Self::Keybinds => m.keybinds_menu().position().get_untracked(),
             Self::AlarmClock => m.alarmclock_menu().position().get_untracked(),
+            Self::ControlCenter => m.control_center_menu().position().get_untracked(),
             Self::SshSessions => m.ssh_menu().position().get_untracked(),
             Self::MargoLayout => m.margo_layout_menu().position().get_untracked(),
         }
@@ -186,6 +190,7 @@ impl MenuKind {
             Self::Twilight => m.twilight_menu().minimum_width().get_untracked(),
             Self::Keybinds => m.keybinds_menu().minimum_width().get_untracked(),
             Self::AlarmClock => m.alarmclock_menu().minimum_width().get_untracked(),
+            Self::ControlCenter => m.control_center_menu().minimum_width().get_untracked(),
             Self::SshSessions => m.ssh_menu().minimum_width().get_untracked(),
             Self::MargoLayout => m.margo_layout_menu().minimum_width().get_untracked(),
         }
@@ -219,6 +224,7 @@ impl MenuKind {
             Self::Twilight => m.twilight_menu().position().get(),
             Self::Keybinds => m.keybinds_menu().position().get(),
             Self::AlarmClock => m.alarmclock_menu().position().get(),
+            Self::ControlCenter => m.control_center_menu().position().get(),
             Self::SshSessions => m.ssh_menu().position().get(),
             Self::MargoLayout => m.margo_layout_menu().position().get(),
         }
@@ -252,6 +258,7 @@ impl MenuKind {
             Self::Twilight => m.twilight_menu().minimum_width().get(),
             Self::Keybinds => m.keybinds_menu().minimum_width().get(),
             Self::AlarmClock => m.alarmclock_menu().minimum_width().get(),
+            Self::ControlCenter => m.control_center_menu().minimum_width().get(),
             Self::SshSessions => m.ssh_menu().minimum_width().get(),
             Self::MargoLayout => m.margo_layout_menu().minimum_width().get(),
         }
@@ -284,6 +291,7 @@ impl MenuKind {
             Self::Twilight => c.menus.twilight_menu.position = p,
             Self::Keybinds => c.menus.keybinds_menu.position = p,
             Self::AlarmClock => c.menus.alarmclock_menu.position = p,
+            Self::ControlCenter => c.menus.control_center_menu.position = p,
             Self::SshSessions => c.menus.ssh_menu.position = p,
             Self::MargoLayout => c.menus.margo_layout_menu.position = p,
         });
@@ -316,6 +324,7 @@ impl MenuKind {
             Self::Twilight => c.menus.twilight_menu.minimum_width = w,
             Self::Keybinds => c.menus.keybinds_menu.minimum_width = w,
             Self::AlarmClock => c.menus.alarmclock_menu.minimum_width = w,
+            Self::ControlCenter => c.menus.control_center_menu.minimum_width = w,
             Self::SshSessions => c.menus.ssh_menu.minimum_width = w,
             Self::MargoLayout => c.menus.margo_layout_menu.minimum_width = w,
         });
@@ -349,6 +358,7 @@ impl MenuKind {
             Self::Twilight => m.twilight_menu().maximum_height().get_untracked(),
             Self::Keybinds => m.keybinds_menu().maximum_height().get_untracked(),
             Self::AlarmClock => m.alarmclock_menu().maximum_height().get_untracked(),
+            Self::ControlCenter => m.control_center_menu().maximum_height().get_untracked(),
             Self::SshSessions => m.ssh_menu().maximum_height().get_untracked(),
             Self::MargoLayout => m.margo_layout_menu().maximum_height().get_untracked(),
         }
@@ -382,6 +392,7 @@ impl MenuKind {
             Self::Twilight => m.twilight_menu().maximum_height().get(),
             Self::Keybinds => m.keybinds_menu().maximum_height().get(),
             Self::AlarmClock => m.alarmclock_menu().maximum_height().get(),
+            Self::ControlCenter => m.control_center_menu().maximum_height().get(),
             Self::SshSessions => m.ssh_menu().maximum_height().get(),
             Self::MargoLayout => m.margo_layout_menu().maximum_height().get(),
         }
@@ -414,6 +425,7 @@ impl MenuKind {
             Self::Twilight => c.menus.twilight_menu.maximum_height = h,
             Self::Keybinds => c.menus.keybinds_menu.maximum_height = h,
             Self::AlarmClock => c.menus.alarmclock_menu.maximum_height = h,
+            Self::ControlCenter => c.menus.control_center_menu.maximum_height = h,
             Self::SshSessions => c.menus.ssh_menu.maximum_height = h,
             Self::MargoLayout => c.menus.margo_layout_menu.maximum_height = h,
         });
@@ -449,6 +461,7 @@ impl MenuKind {
             Self::Twilight => m.twilight_menu().widgets().get_untracked(),
             Self::Keybinds => m.keybinds_menu().widgets().get_untracked(),
             Self::AlarmClock => m.alarmclock_menu().widgets().get_untracked(),
+            Self::ControlCenter => m.control_center_menu().widgets().get_untracked(),
             Self::SshSessions => m.ssh_menu().widgets().get_untracked(),
             Self::MargoLayout => m.margo_layout_menu().widgets().get_untracked(),
         }
@@ -485,6 +498,7 @@ impl MenuKind {
             Self::Twilight => m.twilight_menu().widgets().get(),
             Self::Keybinds => m.keybinds_menu().widgets().get(),
             Self::AlarmClock => m.alarmclock_menu().widgets().get(),
+            Self::ControlCenter => m.control_center_menu().widgets().get(),
             Self::SshSessions => m.ssh_menu().widgets().get(),
             Self::MargoLayout => m.margo_layout_menu().widgets().get(),
         }
@@ -522,6 +536,7 @@ impl MenuKind {
             Self::Twilight => c.menus.twilight_menu.widgets = widgets,
             Self::Keybinds => c.menus.keybinds_menu.widgets = widgets,
             Self::AlarmClock => c.menus.alarmclock_menu.widgets = widgets,
+            Self::ControlCenter => c.menus.control_center_menu.widgets = widgets,
             Self::SshSessions => c.menus.ssh_menu.widgets = widgets,
             Self::MargoLayout => c.menus.margo_layout_menu.widgets = widgets,
         });
