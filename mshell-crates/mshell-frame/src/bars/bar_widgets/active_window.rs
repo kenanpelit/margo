@@ -1,8 +1,9 @@
 //! Active-window bar pill.
 //!
 //! Render-only — shows the title of the globally focused window
-//! next to a window glyph, ellipsized so the pill keeps a sane
-//! width; the app class rides along in the tooltip.
+//! next to a window glyph. The title rides in a width-capped scroller
+//! that marquees long titles (scroll → dwell → snap back) instead of
+//! ellipsizing; the app class rides along in the tooltip.
 //!
 //! Focus is read from `margo_service().focused_client`, the
 //! authoritative focus signal (resolved from `state.json`'s
@@ -15,16 +16,36 @@ use futures::StreamExt;
 use mshell_common::{WatcherToken, watch_cancellable};
 use mshell_margo_client::Client;
 use mshell_services::margo_service;
-use relm4::gtk::pango;
-use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
+use relm4::gtk::glib;
+use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use std::cell::Cell;
+use std::rc::Rc;
 use std::sync::Arc;
+use std::time::Duration;
+
+/// Marquee tick cadence + per-tick step + end dwell (in ticks).
+const MARQUEE_INTERVAL: Duration = Duration::from_millis(30);
+const MARQUEE_STEP_PX: f64 = 2.0;
+const MARQUEE_PAUSE_TICKS: u32 = 50;
+
+/// One-directional title-marquee phases: dwell at the start, scroll to the
+/// end, dwell, snap back, repeat. (Mirrors the media-player track marquee.)
+#[derive(Clone, Copy)]
+enum ScrollState {
+    PauseStart(u32),
+    Scrolling,
+    PauseEnd(u32),
+}
 
 pub(crate) struct ActiveWindowModel {
     watcher_token: WatcherToken,
     has_window: bool,
     class: String,
     title: String,
+    /// Keeps the marquee timer alive for the widget's lifetime.
+    #[allow(dead_code)]
+    marquee_source: Option<glib::SourceId>,
 }
 
 #[derive(Debug)]
@@ -72,15 +93,28 @@ impl Component for ActiveWindowModel {
                     set_icon_name: Some("screenshot-window-symbolic"),
                 },
 
-                #[name = "label"]
-                gtk::Label {
-                    add_css_class: "active-window-bar-label",
-                    set_halign: gtk::Align::Center,
+                // The title rides in a capped scroller: short titles size to
+                // fit, long ones cap at `max_content_width` and the tick
+                // callback marquees the full text instead of ellipsizing.
+                #[name = "marquee_scroller"]
+                gtk::ScrolledWindow {
+                    add_css_class: "active-window-marquee",
+                    set_hscrollbar_policy: gtk::PolicyType::External,
+                    set_vscrollbar_policy: gtk::PolicyType::Never,
+                    set_propagate_natural_width: true,
+                    set_propagate_natural_height: true,
+                    set_min_content_width: 0,
+                    // ~20 chars at the bar font — the old ellipsize cap.
+                    set_max_content_width: 200,
                     set_valign: gtk::Align::Center,
-                    set_ellipsize: pango::EllipsizeMode::End,
-                    // Half the media pill's cap (40) — a glanceable
-                    // hint, kept from competing with the media pill.
-                    set_max_width_chars: 20,
+
+                    #[name = "label"]
+                    gtk::Label {
+                        add_css_class: "active-window-bar-label",
+                        set_halign: gtk::Align::Start,
+                        set_valign: gtk::Align::Center,
+                        set_single_line_mode: true,
+                    },
                 },
             }
         }
@@ -120,11 +154,13 @@ impl Component for ActiveWindowModel {
             has_window: false,
             class: String::new(),
             title: String::new(),
+            marquee_source: None,
         };
 
         subscribe_focused(&sender, &mut model.watcher_token);
 
         let widgets = view_output!();
+        model.marquee_source = Some(start_scroll(&widgets.marquee_scroller));
         read_focused(&mut model);
         apply_visual(&widgets, &model);
 
@@ -189,6 +225,10 @@ fn read_focused(model: &mut ActiveWindowModel) {
 }
 
 fn apply_visual(widgets: &ActiveWindowModelWidgets, model: &ActiveWindowModel) {
+    // The label is about to change — snap the marquee back to the start so
+    // the new title reads from its beginning rather than mid-scroll.
+    widgets.marquee_scroller.hadjustment().set_value(0.0);
+
     if !model.has_window {
         widgets.label.set_label("Desktop");
         widgets.root.set_tooltip_text(Some("No focused window"));
@@ -208,4 +248,46 @@ fn apply_visual(widgets: &ActiveWindowModelWidgets, model: &ActiveWindowModel) {
     } else {
         format!("{}  ·  {}", model.class.trim(), title)
     }));
+}
+
+/// Start the title marquee: a periodic timer that scrolls the capped
+/// scroller from start → end with a dwell at each end, then snaps back.
+/// Idle (a cheap early-return) while the title fits. Returns the source id
+/// so the model can keep it alive for the widget's lifetime.
+fn start_scroll(scrolled_window: &gtk::ScrolledWindow) -> glib::SourceId {
+    let state = Rc::new(Cell::new(ScrollState::PauseStart(0)));
+    let scroll = scrolled_window.clone();
+    glib::timeout_add_local(MARQUEE_INTERVAL, move || {
+        let adj = scroll.hadjustment();
+        let max = adj.upper() - adj.page_size();
+        if max <= 0.0 {
+            return glib::ControlFlow::Continue;
+        }
+        match state.get() {
+            ScrollState::PauseStart(n) => {
+                if n >= MARQUEE_PAUSE_TICKS {
+                    state.set(ScrollState::Scrolling);
+                } else {
+                    state.set(ScrollState::PauseStart(n + 1));
+                }
+            }
+            ScrollState::Scrolling => {
+                let current = adj.value();
+                if current >= max {
+                    state.set(ScrollState::PauseEnd(0));
+                } else {
+                    adj.set_value(current + MARQUEE_STEP_PX);
+                }
+            }
+            ScrollState::PauseEnd(n) => {
+                if n >= MARQUEE_PAUSE_TICKS {
+                    adj.set_value(0.0);
+                    state.set(ScrollState::PauseStart(0));
+                } else {
+                    state.set(ScrollState::PauseEnd(n + 1));
+                }
+            }
+        }
+        glib::ControlFlow::Continue
+    })
 }
