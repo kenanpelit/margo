@@ -25,6 +25,7 @@ pub(crate) mod setup;
 pub(crate) mod media_player;
 pub(crate) mod dns;
 pub(crate) mod network;
+pub(crate) mod network_speed;
 pub(crate) mod notes;
 pub(crate) mod ip;
 pub(crate) mod notifications;

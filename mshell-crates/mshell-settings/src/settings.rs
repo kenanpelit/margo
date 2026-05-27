@@ -1371,6 +1371,7 @@ impl Component for SettingsWindowModel {
             WidgetEntry::Pill { kind: BarPillKind::Shutdown, stack_name: "pill_shutdown", label: "Shutdown", icon: "system-shutdown-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::Tray, stack_name: "pill_tray", label: "System Tray", icon: "view-list-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::VpnIndicator, stack_name: "pill_vpn", label: "VPN Indicator", icon: "network-vpn-symbolic" },
+            WidgetEntry::Pill { kind: BarPillKind::NetworkSpeed, stack_name: "pill_network_speed", label: "Network Speed", icon: "network-transmit-receive-symbolic" },
             // Rich pages with their own controllers.
             WidgetEntry::Notifications,
             WidgetEntry::Session,
