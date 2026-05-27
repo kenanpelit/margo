@@ -4016,6 +4016,7 @@ dependencies = [
  "gtk4",
  "mshell-cache",
  "mshell-config",
+ "mshell-image",
  "mshell-matugen",
  "notify",
  "reactive_graph",

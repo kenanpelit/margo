@@ -9,7 +9,7 @@ use mshell_config::schema::config::{
     ConfigStoreFields, FontStoreFields, Matugen, SizingStoreFields, ThemeAttributes,
     ThemeAttributesStoreFields, ThemeStoreFields,
 };
-use mshell_config::schema::themes::Themes;
+use mshell_config::schema::themes::{MatugenMode, Themes};
 use mshell_matugen::json_struct::{Font, MatugenTheme, MatugenThemeCustomOnly, MShell, Sizing};
 use mshell_matugen::matugen::{apply_matugen_from_image_queued, apply_matugen_from_theme_queued};
 use mshell_matugen::static_theme_mapping::static_theme;
@@ -19,6 +19,10 @@ use relm4::gtk::{CssProvider, STYLE_PROVIDER_PRIORITY_USER, gdk};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::path::PathBuf;
 use tracing::{error, warn};
+
+/// Wallpaper average-luminance cutoff for auto light/dark polarity
+/// (`matugen.auto_polarity`): at or above → Light scheme, below → Dark.
+const AUTO_POLARITY_THRESHOLD: f64 = 0.5;
 
 /// Path to the cached matugen CSS — written on every successful
 /// matugen run, loaded synchronously at startup to eliminate the
@@ -256,7 +260,20 @@ impl Component for StyleManagerModel {
                     sender.input(MatugenComplete(result));
                 });
             }
-            SetMatugenCssWithWallpaper(matugen) => {
+            SetMatugenCssWithWallpaper(mut matugen) => {
+                // Auto polarity: derive Light/Dark from the wallpaper's
+                // average luminance (bright → Light, dark → Dark), overriding
+                // the configured `mode`. Decoded small, so cheap enough to do
+                // inline on a wallpaper change.
+                if matugen.auto_polarity
+                    && let Some(lum) = mshell_image::lut::average_luminance(&source_path())
+                {
+                    matugen.mode = if lum >= AUTO_POLARITY_THRESHOLD {
+                        MatugenMode::Light
+                    } else {
+                        MatugenMode::Dark
+                    };
+                }
                 let theme_overrides = MatugenThemeCustomOnly {
                     mshell: build_mshell_matugen(),
                 };

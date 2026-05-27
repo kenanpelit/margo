@@ -40,6 +40,7 @@ pub(crate) struct ThemeSettingsModel {
     active_matugen_type: MatugenType,
     matugen_modes: gtk::StringList,
     active_matugen_mode: MatugenMode,
+    auto_polarity: bool,
     matugen_contrast: f64,
     matugen_contrast_debounce: Option<glib::JoinHandle<()>>,
     window_opacity: f64,
@@ -58,6 +59,7 @@ pub(crate) enum ThemeSettingsInput {
     MatugenPreferenceSelected(MatugenPreference),
     MatugenTypeSelected(MatugenType),
     MatugenModeSelected(MatugenMode),
+    AutoPolarityChanged(bool),
     MatugenContrastSelected(f64),
     WindowOpacitySelected(f64),
     ThemeSelected(Themes),
@@ -78,6 +80,7 @@ pub(crate) enum ThemeSettingsInput {
     MatugenTypeEffect(MatugenType),
     MatugenPreferenceEffect(MatugenPreference),
     MatugenModeEffect(MatugenMode),
+    AutoPolarityEffect(bool),
     MatugenContrastEffect(f64),
     ThemeEffect(Themes),
     RadiusWidgetEffect(i32),
@@ -811,6 +814,43 @@ impl Component for ThemeSettingsModel {
                         gtk::Label {
                             add_css_class: "label-medium-bold",
                             set_halign: gtk::Align::Start,
+                            set_label: "Auto light/dark from wallpaper",
+                            set_hexpand: true,
+                        },
+
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Pick the Mode automatically from the wallpaper's brightness — a bright wallpaper goes Light, a dark one goes Dark. Overrides the Mode above while on.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        #[block_signal(auto_polarity_handler)]
+                        set_active: model.auto_polarity,
+                        connect_state_set[sender] => move |_, enabled| {
+                            sender.input(ThemeSettingsInput::AutoPolarityChanged(enabled));
+                            glib::Propagation::Proceed
+                        } @auto_polarity_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
                             set_label: "Contrast",
                             set_hexpand: true,
                         },
@@ -998,6 +1038,13 @@ impl Component for ThemeSettingsModel {
         let sender_clone = sender.clone();
         effects.push(move |_| {
             let config = config_manager().config();
+            let value = config.theme().matugen().auto_polarity().get();
+            sender_clone.input(ThemeSettingsInput::AutoPolarityEffect(value));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let config = config_manager().config();
             let value = config.theme().matugen().contrast().get();
             sender_clone.input(ThemeSettingsInput::MatugenContrastEffect(value.get()));
         });
@@ -1123,6 +1170,12 @@ impl Component for ThemeSettingsModel {
                 .matugen()
                 .mode()
                 .get_untracked(),
+            auto_polarity: config_manager()
+                .config()
+                .theme()
+                .matugen()
+                .auto_polarity()
+                .get_untracked(),
             matugen_contrast: config_manager()
                 .config()
                 .theme()
@@ -1217,6 +1270,11 @@ impl Component for ThemeSettingsModel {
             ThemeSettingsInput::MatugenModeSelected(mode) => {
                 config_manager().update_config(|config| {
                     config.theme.matugen.mode = mode;
+                });
+            }
+            ThemeSettingsInput::AutoPolarityChanged(enabled) => {
+                config_manager().update_config(|config| {
+                    config.theme.matugen.auto_polarity = enabled;
                 });
             }
             ThemeSettingsInput::MatugenContrastSelected(contrast) => {
@@ -1318,6 +1376,9 @@ impl Component for ThemeSettingsModel {
             }
             ThemeSettingsInput::MatugenModeEffect(matugen_mode) => {
                 self.active_matugen_mode = matugen_mode;
+            }
+            ThemeSettingsInput::AutoPolarityEffect(enabled) => {
+                self.auto_polarity = enabled;
             }
             ThemeSettingsInput::MatugenContrastEffect(matugen_contrast) => {
                 self.matugen_contrast = matugen_contrast;

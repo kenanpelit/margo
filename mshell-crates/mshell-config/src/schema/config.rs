@@ -360,6 +360,11 @@ pub struct Matugen {
     pub scheme_type: MatugenType,
     pub mode: MatugenMode,
     pub contrast: MatugenContrast,
+    /// When true, the light/dark polarity is auto-derived from the
+    /// wallpaper's average luminance (bright → Light, dark → Dark) on each
+    /// wallpaper change, overriding `mode`. Only applies to the
+    /// wallpaper-driven (`Themes::Wallpaper`) theme.
+    pub auto_polarity: bool,
 }
 
 impl Default for Matugen {
@@ -369,6 +374,7 @@ impl Default for Matugen {
             scheme_type: MatugenType::TonalSpot,
             mode: MatugenMode::Dark,
             contrast: MatugenContrast::new(0.0),
+            auto_polarity: false,
         }
     }
 }

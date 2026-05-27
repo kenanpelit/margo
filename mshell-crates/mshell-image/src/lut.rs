@@ -232,6 +232,38 @@ fn load_embedded_clut(bytes: &[u8]) -> ImageBuffer<Rgb<u8>, Vec<u8>> {
         .expect("embedded CLUT data is invalid")
 }
 
+/// Average Rec. 709 luma of an image, normalized to `0.0..=1.0`
+/// (0 = black, 1 = white). Used to auto-derive a light/dark Material You
+/// polarity from the wallpaper. The image is decoded at a small fixed size
+/// (a full average doesn't need the native resolution, and this avoids
+/// decoding a 4K wallpaper on the main thread). `None` on decode failure.
+pub fn average_luminance(path: &Path) -> Option<f64> {
+    let pixbuf = Pixbuf::from_file_at_scale(path, 64, 64, true).ok()?;
+    let width = pixbuf.width() as usize;
+    let height = pixbuf.height() as usize;
+    if width == 0 || height == 0 {
+        return None;
+    }
+    let n_channels = pixbuf.n_channels() as usize;
+    let rowstride = pixbuf.rowstride() as usize;
+    let pixels = unsafe { pixbuf.pixels() };
+
+    let mut sum = 0.0f64;
+    let mut count = 0u64;
+    for y in 0..height {
+        let row = y * rowstride;
+        for x in 0..width {
+            let i = row + x * n_channels;
+            let r = pixels[i] as f64;
+            let g = pixels[i + 1] as f64;
+            let b = pixels[i + 2] as f64;
+            sum += (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0;
+            count += 1;
+        }
+    }
+    (count > 0).then(|| sum / count as f64)
+}
+
 fn lerp_u8(a: u8, b: u8, t: f64) -> u8 {
     (a as f64 + (b as f64 - a as f64) * t).clamp(0.0, 255.0) as u8
 }
