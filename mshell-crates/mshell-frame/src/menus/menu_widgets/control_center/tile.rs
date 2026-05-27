@@ -1,23 +1,26 @@
 //! Reusable tile widget for the Control Center grid.
 //!
-//! A tile is a `gtk::Button` (so it's clickable) with a rounded icon-chip
-//! and an optional vertical label stack. Returns a `TileWidget` handle that
-//! the caller uses to update icon, subtitle, and active state imperatively.
+//! A tile is a `gtk::Button` (so it's clickable) with a flat icon box
+//! (no coloured chip — the WHOLE button fills with `--primary` when active,
+//! GNOME quick-settings style) and an optional vertical label stack.
+//! Returns a `TileWidget` handle that the caller uses to update icon,
+//! subtitle, and active state imperatively.
 //!
 //! Variants:
 //! - normal: icon + title + subtitle
-//! - `.wide` css class: spans both grid columns (attach at col 0, span 2)
-//! - `.small` css class: icon-chip only, no labels (Dark Mode / Night Light)
+//! - expandable: same layout + a trailing `>` chevron (`go-next-symbolic`)
+//! - `.small` css class: icon only, no labels
 
 use relm4::gtk;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, WidgetExt};
 
-/// Handle returned by `build_tile` / `build_small_tile`. The caller uses
-/// these references to update the tile's live state without a full relm4 component.
+/// Handle returned by `build_tile` / `build_expand_tile` / `build_small_tile`.
+/// The caller uses these references to update the tile's live state without a
+/// full relm4 component.
 pub(crate) struct TileWidget {
     /// The root button — attach to the grid.
     pub(crate) button: gtk::Button,
-    /// Icon widget inside the chip.
+    /// Icon widget inside the chip box.
     pub(crate) icon: gtk::Image,
     /// Subtitle label (hidden on small tiles).
     pub(crate) subtitle: gtk::Label,
@@ -50,15 +53,31 @@ impl TileWidget {
     }
 }
 
-/// Build a normal tile (icon + title + subtitle). Apply `.wide` externally
-/// if needed. Returns a `TileWidget` handle.
+/// Build a normal tile (icon + title + subtitle, no chevron).
+/// Returns a `TileWidget` handle.
 pub(crate) fn build_tile(icon_name: &str, title: &str, subtitle: &str) -> TileWidget {
+    build_tile_inner(icon_name, title, subtitle, false)
+}
+
+/// Build an expandable tile (icon + title + subtitle + trailing `>` chevron).
+/// Use for tiles that open a detail sub-page (Wi-Fi, Bluetooth, etc.).
+pub(crate) fn build_expand_tile(icon_name: &str, title: &str, subtitle: &str) -> TileWidget {
+    build_tile_inner(icon_name, title, subtitle, true)
+}
+
+/// Internal helper shared by `build_tile` and `build_expand_tile`.
+fn build_tile_inner(
+    icon_name: &str,
+    title: &str,
+    subtitle: &str,
+    expandable: bool,
+) -> TileWidget {
     let button = gtk::Button::new();
     button.add_css_class("control-center-tile");
 
     let outer = gtk::Box::new(gtk::Orientation::Horizontal, 10);
 
-    // Icon chip
+    // Icon box — flat, no background fill (the whole button carries colour).
     let chip = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     chip.add_css_class("control-center-tile-icon");
     chip.set_halign(gtk::Align::Center);
@@ -69,7 +88,7 @@ pub(crate) fn build_tile(icon_name: &str, title: &str, subtitle: &str) -> TileWi
     icon.set_valign(gtk::Align::Center);
     chip.append(&icon);
 
-    // Label stack
+    // Label stack — hexpand so the chevron is pushed to the trailing edge.
     let label_box = gtk::Box::new(gtk::Orientation::Vertical, 2);
     label_box.set_valign(gtk::Align::Center);
     label_box.set_hexpand(true);
@@ -89,6 +108,16 @@ pub(crate) fn build_tile(icon_name: &str, title: &str, subtitle: &str) -> TileWi
 
     outer.append(&chip);
     outer.append(&label_box);
+
+    // Trailing chevron — only on expandable tiles.
+    if expandable {
+        let chevron = gtk::Image::from_icon_name("go-next-symbolic");
+        chevron.add_css_class("control-center-tile-chevron");
+        chevron.set_halign(gtk::Align::End);
+        chevron.set_valign(gtk::Align::Center);
+        outer.append(&chevron);
+    }
+
     button.set_child(Some(&outer));
 
     TileWidget {
@@ -98,14 +127,14 @@ pub(crate) fn build_tile(icon_name: &str, title: &str, subtitle: &str) -> TileWi
     }
 }
 
-/// Build a small tile (icon-chip only, no labels). Gets the `.small` CSS class.
+/// Build a small tile (icon box only, no labels). Gets the `.small` CSS class.
 #[allow(dead_code)]
 pub(crate) fn build_small_tile(icon_name: &str) -> TileWidget {
     let button = gtk::Button::new();
     button.add_css_class("control-center-tile");
     button.add_css_class("small");
 
-    // Icon chip
+    // Icon box — flat.
     let chip = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     chip.add_css_class("control-center-tile-icon");
     chip.set_halign(gtk::Align::Center);

@@ -114,16 +114,14 @@
 }
 
 // ── Icon chip ─────────────────────────────────────────────────────────────────
-// The rounded coloured square that is the primary toggle cue.
-// Resting state: flat, dim.
+// A sized alignment box — no background fill.  The icon sits flat on the tile.
+// Background was removed so the WHOLE button carries the active colour (GNOME
+// quick-settings style) rather than a separate chip square.
 .control-center-tile-icon {
   min-width: 40px;
   min-height: 40px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-container-high);
   // Centre the gtk::Image inside the chip box.
-  // (halign/valign are set in Rust; this covers the box background itself.)
-  transition: background var(--motion-fast) var(--ease-standard);
+  // (halign/valign are set in Rust; no background here.)
 
   image {
     color: var(--on-surface-variant);
@@ -138,42 +136,53 @@
   font-weight: 600;
   color: var(--on-surface);
   letter-spacing: 0.005em;
+  transition: color var(--motion-fast) var(--ease-standard);
 }
 
 .control-center-tile-subtitle {
   font-size: var(--font-xs);
   color: var(--on-surface-variant);
+  transition: color var(--motion-fast) var(--ease-standard);
 }
 
-// ── Active state (filled icon-chip) ───────────────────────────────────────────
-// When `.active` is set on the tile button the chip fills with
-// --primary-container and the icon switches to --on-primary-container.
-// The card body stays calm; the chip is the sole accent cue
-// (noctalia / quickshell reference pattern).
-.control-center-tile.active {
-  .control-center-tile-icon {
-    background: var(--primary-container);
+// ── Active state (whole-button fill, GNOME style) ─────────────────────────────
+// When `.active` is set on the tile button the ENTIRE tile fills with
+// --primary.  Icon, title, and subtitle all switch to --on-primary so they
+// remain legible on the coloured background.
+.control-center-tile {
+  transition: background var(--motion-fast) var(--ease-standard);
 
-    image {
-      color: var(--on-primary-container);
+  &.active {
+    background: var(--primary);
+    // State-layer composites over the filled tile on hover/press.
+    @include state-layer(var(--primary));
+
+    .control-center-tile-icon image {
+      color: var(--on-primary);
+    }
+
+    .control-center-tile-title {
+      color: var(--on-primary);
+    }
+
+    .control-center-tile-subtitle {
+      color: var(--on-primary);
+      opacity: 0.8;
+    }
+
+    .control-center-tile-chevron {
+      color: var(--on-primary);
     }
   }
-
-  // The title shifts to full --on-surface so it stands out slightly more
-  // alongside the filled chip; subtitle stays dim.
-  .control-center-tile-title {
-    color: var(--on-surface);
-  }
 }
 
-// ── Expandable tile (shows a faint chevron hint) ───────────────────────────────
-.control-center-tile.expandable {
-  // Right-side "›" affordance via box-shadow tint on hover — the actual
-  // navigation happens on click. We keep the visual cue minimal so it
-  // doesn't compete with active-state chip colour.
-  &:hover {
-    // The state-layer mixin already handles background; no extra needed.
-  }
+// ── Chevron (expandable tiles only) ───────────────────────────────────────────
+// A "go-next-symbolic" image packed at the trailing end of the tile row.
+// Shown only on tiles that have a detail sub-page (Wi-Fi, Bluetooth, etc.).
+.control-center-tile-chevron {
+  color: var(--on-surface-variant);
+  -gtk-icon-size: var(--icon-sm);
+  transition: color var(--motion-fast) var(--ease-standard);
 }
 
 // ── Edit mode ─────────────────────────────────────────────────────────────────

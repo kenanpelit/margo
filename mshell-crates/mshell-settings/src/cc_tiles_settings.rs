@@ -67,6 +67,31 @@ fn tile_visible(id: &str) -> bool {
     }
 }
 
+/// Read whether a tile is currently in the `wide_tiles` config list.
+fn tile_is_wide(id: &str) -> bool {
+    config_manager()
+        .config()
+        .control_center()
+        .wide_tiles()
+        .get_untracked()
+        .iter()
+        .any(|s| s == id)
+}
+
+/// Add or remove a tile id from `wide_tiles` in the config.
+fn set_tile_wide(id: &str, wide: bool) {
+    let id = id.to_string();
+    config_manager().update_config(move |c| {
+        if wide {
+            if !c.control_center.wide_tiles.contains(&id) {
+                c.control_center.wide_tiles.push(id);
+            }
+        } else {
+            c.control_center.wide_tiles.retain(|s| s != &id);
+        }
+    });
+}
+
 /// Write a tile's visibility to the config.
 fn set_tile_visible(id: &str, visible: bool) {
     let id = id.to_string();
@@ -110,10 +135,11 @@ fn effective_order(tile_order: &[String]) -> Vec<String> {
 
 // ── Row widget ────────────────────────────────────────────────────────────────
 
-/// One row in the reorder list: name + switch + up/down buttons.
+/// One row in the reorder list: name + visibility switch + wide switch + up/down buttons.
 struct TileRow {
     container: gtk::Box,
     switch: gtk::Switch,
+    wide_switch: gtk::Switch,
 }
 
 fn build_tile_row(tile_id: &str, sender: &ComponentSender<CcTilesSettingsModel>) -> TileRow {
@@ -125,14 +151,33 @@ fn build_tile_row(tile_id: &str, sender: &ComponentSender<CcTilesSettingsModel>)
     name_label.set_halign(gtk::Align::Start);
     name_label.set_hexpand(true);
 
+    // Visibility switch
     let switch = gtk::Switch::new();
     switch.set_active(tile_visible(tile_id));
     switch.set_valign(gtk::Align::Center);
+    switch.set_tooltip_text(Some("Show tile"));
 
     {
         let id = tile_id.to_string();
         switch.connect_active_notify(move |sw| {
             set_tile_visible(&id, sw.is_active());
+        });
+    }
+
+    // Wide switch — label + switch pair
+    let wide_label = gtk::Label::new(Some("Wide"));
+    wide_label.add_css_class("label-small");
+    wide_label.set_valign(gtk::Align::Center);
+
+    let wide_switch = gtk::Switch::new();
+    wide_switch.set_active(tile_is_wide(tile_id));
+    wide_switch.set_valign(gtk::Align::Center);
+    wide_switch.set_tooltip_text(Some("Span 2 columns"));
+
+    {
+        let id = tile_id.to_string();
+        wide_switch.connect_active_notify(move |sw| {
+            set_tile_wide(&id, sw.is_active());
         });
     }
 
@@ -164,10 +209,12 @@ fn build_tile_row(tile_id: &str, sender: &ComponentSender<CcTilesSettingsModel>)
 
     container.append(&name_label);
     container.append(&switch);
+    container.append(&wide_label);
+    container.append(&wide_switch);
     container.append(&up_btn);
     container.append(&down_btn);
 
-    TileRow { container, switch }
+    TileRow { container, switch, wide_switch }
 }
 
 // ── Model ─────────────────────────────────────────────────────────────────────
@@ -289,6 +336,7 @@ impl Component for CcTilesSettingsModel {
                 let _ = cm.config().control_center().airplane_mode().get();
                 let _ = cm.config().control_center().vpn().get();
                 let _ = cm.config().control_center().valent().get();
+                let _ = cm.config().control_center().wide_tiles().get();
                 let order = effective_order(
                     &cm.config().control_center().tile_order().get(),
                 );
@@ -362,10 +410,11 @@ impl Component for CcTilesSettingsModel {
                     self.tile_order = new_order.clone();
                     rebuild_rows(widgets, &new_order, &sender);
                 } else {
-                    // Order is the same but visibility might have changed —
-                    // update switch states without rebuilding rows.
+                    // Order is the same but visibility or wide state might have
+                    // changed — update switch states without rebuilding rows.
                     for (row, id) in widgets.rows.iter().zip(self.tile_order.iter()) {
                         row.switch.set_active(tile_visible(id));
+                        row.wide_switch.set_active(tile_is_wide(id));
                     }
                 }
             }

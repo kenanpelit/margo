@@ -18,13 +18,14 @@
 //! start those watchers lazily on the first `Reveal(true)`.
 
 use crate::menus::menu_widgets::control_center::tile::{
-    TileWidget, build_tile,
+    TileWidget, build_expand_tile, build_tile,
 };
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
     ConfigStoreFields, ControlCenterConfigStoreFields, MatugenStoreFields, ThemeStoreFields,
 };
+use std::collections::HashSet;
 use mshell_config::schema::themes::MatugenMode;
 use mshell_idle::inhibitor::IdleInhibitor;
 use mshell_services::{
@@ -95,6 +96,8 @@ pub(crate) struct ControlCenterTilesModel {
     // Current tile order — mirrors config; used to detect changes that need
     // a grid rebuild.
     tile_order: Vec<String>,
+    // Current wide tiles — mirrors config; tiles in this set span 2 columns.
+    wide_tiles: HashSet<String>,
     _effects: EffectScope,
 }
 
@@ -176,10 +179,10 @@ pub(crate) enum ControlCenterTilesInput {
     /// Edit-overlay checkbox toggled for a tile — write to config.
     EditTileVisibility(TileId, bool),
 
-    /// Config-driven tile order changed — detach and reattach all grid
-    /// children in the new order. Also fires on visibility changes so
-    /// hidden gaps are eliminated in normal mode.
-    RebuildGrid(Vec<String>),
+    /// Config-driven tile order or wide_tiles changed — detach and reattach
+    /// all grid children in the new order / column spans. Also fires on
+    /// visibility changes so hidden gaps are eliminated in normal mode.
+    RebuildGrid(Vec<String>, Vec<String>),
 }
 
 /// Identifies a tile for the edit-overlay toggle.
@@ -263,10 +266,6 @@ impl TileId {
         ]
     }
 
-    /// True for tiles that span the full 2-column width.
-    pub(crate) fn is_wide(self) -> bool {
-        matches!(self, TileId::Dnd | TileId::Valent)
-    }
 }
 
 /// Compute the ordered sequence of `TileId`s from a `tile_order` config vec.
@@ -392,11 +391,16 @@ impl ControlCenterTilesWidgets {
     }
 
     /// Detach all tile overlays from `grid`, then reattach them in the order
-    /// described by `tile_order`. Wide tiles (dnd, valent) span 2 columns.
-    /// Each non-wide tile occupies one cell; we fill left-to-right, creating
-    /// a new row whenever the current column would overflow or a wide tile
-    /// needs a fresh row.
-    fn rebuild_grid(&self, grid: &gtk::Grid, tile_order: &[String]) {
+    /// described by `tile_order`. Tiles whose id is in `wide_tiles` span 2
+    /// columns. Each non-wide tile occupies one cell; we fill left-to-right,
+    /// creating a new row whenever the current column would overflow or a
+    /// wide tile needs a fresh row.
+    fn rebuild_grid(
+        &self,
+        grid: &gtk::Grid,
+        tile_order: &[String],
+        wide_tiles: &HashSet<String>,
+    ) {
         use relm4::gtk::prelude::GridExt;
 
         // Remove every tile overlay currently in the grid.
@@ -411,7 +415,8 @@ impl ControlCenterTilesWidgets {
         let mut row: i32 = 0;
         for id in ids {
             let overlay = self.overlay_for(id);
-            if id.is_wide() {
+            let is_wide = wide_tiles.contains(id.as_str());
+            if is_wide {
                 // Wide tiles always start at column 0 of a fresh row.
                 if col != 0 {
                     row += 1;
@@ -456,20 +461,15 @@ impl Component for ControlCenterTilesModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        // ── Expandable tiles (top section) ──────────────────────────────────
-        let tile_wifi = build_tile("network-wireless-symbolic", "Wi-Fi", "…");
-        let tile_bluetooth = build_tile("bluetooth-active-symbolic", "Bluetooth", "…");
-        let tile_audio_out = build_tile("audio-speakers-symbolic", "Audio Out", "…");
-        let tile_mic = build_tile("audio-input-microphone-symbolic", "Mic", "…");
-        let tile_vpn = build_tile("network-vpn-symbolic", "VPN", "…");
-        let tile_valent = build_tile("phone-symbolic", "Valent", "…");
+        // ── Expandable tiles (have detail sub-pages → built with chevron) ──
+        let tile_wifi = build_expand_tile("network-wireless-symbolic", "Wi-Fi", "…");
+        let tile_bluetooth = build_expand_tile("bluetooth-active-symbolic", "Bluetooth", "…");
+        let tile_audio_out = build_expand_tile("audio-speakers-symbolic", "Audio Out", "…");
+        let tile_mic = build_expand_tile("audio-input-microphone-symbolic", "Mic", "…");
+        let tile_vpn = build_expand_tile("network-vpn-symbolic", "VPN", "…");
+        let tile_valent = build_expand_tile("phone-symbolic", "Valent", "…");
 
-        // Mark expandable tiles with a chevron-styled hint (`.expandable`)
-        for tw in [&tile_wifi, &tile_bluetooth, &tile_audio_out, &tile_mic, &tile_vpn, &tile_valent] {
-            tw.button.add_css_class("expandable");
-        }
-
-        // ── Toggle / info tiles ─────────────────────────────────────────────
+        // ── Toggle / info tiles (no chevron) ────────────────────────────────
         let tile_keep_awake = build_tile("eye-symbolic", "Keep Awake", "Off");
         let tile_color_picker = build_tile("color-select-symbolic", "Color Picker", "Pick a colour");
         let tile_dnd = build_tile(
@@ -480,13 +480,9 @@ impl Component for ControlCenterTilesModel {
         let tile_dark_mode = build_tile("weather-clear-night-symbolic", "Dark Mode", "Off");
         let tile_night_light = build_tile("night-light-symbolic", "Twilight", "Off");
         let tile_disk = build_tile("drive-harddisk-symbolic", "Disk", "");
-        let tile_battery = build_tile("battery-level-50-symbolic", "Battery", "");
+        // Battery also has a detail sub-page → expandable with chevron
+        let tile_battery = build_expand_tile("battery-level-50-symbolic", "Battery", "");
         let tile_airplane_mode = build_tile("airplane-mode-symbolic", "Airplane Mode", "Off");
-
-        // Mark the DND tile as wide
-        tile_dnd.button.add_css_class("wide");
-        // Battery tile is also expandable
-        tile_battery.button.add_css_class("expandable");
 
         // Wire expandable tile clicks → outputs
         {
@@ -608,9 +604,8 @@ impl Component for ControlCenterTilesModel {
         let (overlay_valent, check_valent) =
             build_edit_overlay(&tile_valent.button, &sender, TileId::Valent);
 
-        // Mark valent as wide (spans 2 cols). DND is marked wide just above.
-        // Both need the CSS class before being attached to the grid.
-        tile_valent.button.add_css_class("wide");
+        // Wide tile CSS class is applied dynamically by rebuild_grid based on
+        // the `wide_tiles` config — no hardcoded wide classes here.
 
         // Reactive dark-mode effect (always active — cheap config-store watch)
         let mut effects = EffectScope::new();
@@ -627,16 +622,16 @@ impl Component for ControlCenterTilesModel {
             });
         }
 
-        // Reactive tile-order / visibility effect — fires whenever tile_order or
-        // any per-tile visibility bool changes in config. Sends `RebuildGrid` so
-        // the grid re-renders in the new order with hidden tiles removed from the
-        // layout in normal mode.
+        // Reactive tile-order / visibility / wide_tiles effect — fires whenever
+        // tile_order, wide_tiles, or any per-tile visibility bool changes in
+        // config. Sends `RebuildGrid` so the grid re-renders in the new order
+        // with correct spans and hidden tiles removed in normal mode.
         {
             let s = sender.clone();
             effects.push(move |_| {
-                // Touch every visibility bool + tile_order to subscribe to
-                // their changes. Each call creates a fresh Subfield so we
-                // call config_manager() once per field (matches the pattern
+                // Touch every visibility bool + tile_order + wide_tiles to
+                // subscribe to their changes. Each call creates a fresh Subfield
+                // so we call config_manager() once per field (matches the pattern
                 // used in apply_visuals).
                 let cm = config_manager();
                 let _ = cm.config().control_center().wifi().get();
@@ -654,7 +649,8 @@ impl Component for ControlCenterTilesModel {
                 let _ = cm.config().control_center().vpn().get();
                 let _ = cm.config().control_center().valent().get();
                 let order = cm.config().control_center().tile_order().get();
-                s.input(ControlCenterTilesInput::RebuildGrid(order));
+                let wide = cm.config().control_center().wide_tiles().get();
+                s.input(ControlCenterTilesInput::RebuildGrid(order, wide));
             });
         }
 
@@ -683,6 +679,13 @@ impl Component for ControlCenterTilesModel {
             .control_center()
             .tile_order()
             .get_untracked();
+        let initial_wide_tiles: HashSet<String> = config_manager()
+            .config()
+            .control_center()
+            .wide_tiles()
+            .get_untracked()
+            .into_iter()
+            .collect();
 
         let model = ControlCenterTilesModel {
             keep_awake,
@@ -707,6 +710,7 @@ impl Component for ControlCenterTilesModel {
             watchers_started: false,
             edit_mode: false,
             tile_order: initial_tile_order.clone(),
+            wide_tiles: initial_wide_tiles.clone(),
             _effects: effects,
         };
 
@@ -755,8 +759,8 @@ impl Component for ControlCenterTilesModel {
             check_valent,
         };
 
-        // Attach all overlays to the grid in config order.
-        widgets.rebuild_grid(&root, &initial_tile_order);
+        // Attach all overlays to the grid in config order with correct spans.
+        widgets.rebuild_grid(&root, &initial_tile_order, &initial_wide_tiles);
 
         // Apply initial visual state
         apply_visuals(&model, &widgets);
@@ -974,10 +978,11 @@ impl Component for ControlCenterTilesModel {
                 // store change. No explicit rebuild needed here.
             }
 
-            ControlCenterTilesInput::RebuildGrid(order) => {
-                // Always rebuild — order or visibility bools may have changed.
+            ControlCenterTilesInput::RebuildGrid(order, wide) => {
+                // Always rebuild — order, visibility, or wide_tiles may have changed.
                 self.tile_order = order.clone();
-                widgets.rebuild_grid(root, &order);
+                self.wide_tiles = wide.iter().cloned().collect();
+                widgets.rebuild_grid(root, &order, &self.wide_tiles);
             }
         }
 

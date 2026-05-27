@@ -1466,6 +1466,11 @@ pub struct ControlCenterConfig {
     /// not listed here are appended at the end in canonical order.
     #[serde(default = "default_cc_tile_order")]
     pub tile_order: Vec<String>,
+    /// Tile ids that should span 2 columns in the grid (GNOME-style wide).
+    /// Default is empty (all tiles are 1 column = uniform width). A tile
+    /// whose id appears here spans both columns and starts on a fresh row.
+    #[serde(default)]
+    pub wide_tiles: Vec<String>,
 }
 
 fn default_cc_tile_order() -> Vec<String> {
@@ -1505,6 +1510,7 @@ impl Default for ControlCenterConfig {
             vpn: true,
             valent: true,
             tile_order: default_cc_tile_order(),
+            wide_tiles: Vec::new(),
         }
     }
 }
