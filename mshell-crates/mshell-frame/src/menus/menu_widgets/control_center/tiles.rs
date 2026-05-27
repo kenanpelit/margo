@@ -1185,42 +1185,32 @@ fn read_mic_subtitle() -> String {
     "No device".to_string()
 }
 
-/// Returns (subtitle, is_connected). Connected = Mullvad VPN is up.
-/// Uses a lightweight synchronous mullvad status check.
+/// Returns (subtitle, is_connected). Connected = a VPN tunnel interface is up.
+/// Vendor-neutral: detects OpenVPN (`tun*`), WireGuard (`wg*`, incl. Mullvad's
+/// `wg*-mullvad`), NetworkManager VPNs, and PPP-based VPNs by scanning
+/// `/sys/class/net` — no VPN-specific CLI. Cheap (a directory read).
 fn read_vpn_state() -> (String, bool) {
-    // Quick synchronous check: parse `mullvad status` output if mullvad is available.
-    // The async subtitle poller (SubtitlesRefreshed every 5s) calls back here, so
-    // the latency is acceptable.
-    let vpn = check_mullvad_connected_sync();
-    if vpn {
-        ("Connected".to_string(), true)
-    } else {
-        ("Off".to_string(), false)
+    match vpn_interface() {
+        Some(iface) => (format!("Connected · {iface}"), true),
+        None => ("Off".to_string(), false),
     }
 }
 
-/// Synchronous VPN state check: run `mullvad status` with a short timeout.
-/// Returns true if output contains "Connected".
-fn check_mullvad_connected_sync() -> bool {
-    use std::process::Command;
-    // Use std::process::Command in a thread so the tokio executor isn't blocked.
-    std::thread::spawn(|| {
-        Command::new("mullvad")
-            .arg("status")
-            .output()
-            .ok()
-            .and_then(|o| {
-                if o.status.success() {
-                    let s = String::from_utf8_lossy(&o.stdout);
-                    Some(s.contains("Connected"))
-                } else {
-                    None
-                }
-            })
-            .unwrap_or(false)
-    })
-    .join()
-    .unwrap_or(false)
+/// Name of the first VPN tunnel interface present, if any.
+fn vpn_interface() -> Option<String> {
+    let mut names: Vec<String> = std::fs::read_dir("/sys/class/net")
+        .ok()?
+        .flatten()
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|n| {
+            n.starts_with("tun")
+                || n.starts_with("wg")
+                || n.starts_with("wireguard")
+                || n.starts_with("ppp")
+        })
+        .collect();
+    names.sort();
+    names.into_iter().next()
 }
 
 /// Compute (subtitle, is_connected) from a ValentReport.
