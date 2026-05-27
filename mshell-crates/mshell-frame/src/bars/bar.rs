@@ -97,6 +97,9 @@ pub(crate) struct BarModel {
     min_height: i32,
     min_width: i32,
     css_class: String,
+    /// "Islands" appearance (`bars.islands`): transparent bar + opaque
+    /// floating pills. Read once at build; toggling needs a restart.
+    islands: bool,
     revealed: bool,
     hovered: bool,
     _effects: EffectScope,
@@ -179,6 +182,7 @@ impl Component for BarModel {
                 set_reveal_child: model.revealed || model.hovered,
                 set_transition_type: transition_type,
 
+                #[name = "bar_center"]
                 gtk::CenterBox {
                     set_css_classes: &["bar", model.css_class.as_str()],
                     #[watch]
@@ -336,6 +340,8 @@ impl Component for BarModel {
             }
         }
 
+        let islands = config_manager().config().bars().islands().get_untracked();
+
         let model = BarModel {
             h_expand,
             v_expand,
@@ -350,12 +356,19 @@ impl Component for BarModel {
             min_width: 0,
             min_height: 0,
             css_class,
+            islands,
             revealed: reveal_by_default,
             hovered: false,
             _effects: effects,
         };
 
         let widgets = view_output!();
+
+        // Opt-in "islands" look: a marker class the SCSS keys off to make
+        // the bar transparent and the pills float as opaque surfaces.
+        if model.islands {
+            widgets.bar_center.add_css_class("islands");
+        }
 
         let _ = sender;
 

@@ -114,3 +114,35 @@
 .ok-bar-widget .ok-bar-widget.ok-button-surface:active {
     background-color: transparent;
 }
+
+// ── "Islands" mode (bars.islands) ───────────────────────────────────────
+// Opt-in inversion of the continuous-strip look: the bar goes transparent
+// and each pill floats as its own opaque rounded surface (the marker class
+// `.islands` is added to the bar root in islands mode). Higher specificity
+// than the base transparent-pill rules, so it wins.
+.bar.islands {
+    background-color: transparent;
+}
+
+.bar.islands .ok-bar-widget,
+.bar.islands .ok-bar-widget.ok-button-surface,
+.bar.islands .ok-bar-widget > button.ok-button-flat,
+.bar.islands .ok-bar-widget > button.ok-button-surface {
+    background-color: var(--surface-container);
+}
+
+// Hover / active wash composited over the island surface (so the pill keeps
+// its body instead of mixing toward transparent like the strip mode does).
+.bar.islands .ok-bar-widget.ok-button-surface:hover,
+.bar.islands .ok-bar-widget.ok-button-flat:hover,
+.bar.islands .ok-bar-widget > button.ok-button-flat:hover,
+.bar.islands .ok-bar-widget > button.ok-button-surface:hover {
+    background-color: unquote("color-mix(in srgb, var(--primary) var(--bar-hover-strength), var(--surface-container))");
+}
+
+.bar.islands .ok-bar-widget.ok-button-surface:active,
+.bar.islands .ok-bar-widget.ok-button-flat:active,
+.bar.islands .ok-bar-widget > button.ok-button-flat:active,
+.bar.islands .ok-bar-widget > button.ok-button-surface:active {
+    background-color: unquote("color-mix(in srgb, var(--primary) 22%, var(--surface-container))");
+}

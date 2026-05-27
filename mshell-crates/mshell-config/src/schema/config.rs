@@ -396,6 +396,11 @@ pub struct Bars {
     pub widgets: BarWidgets,
     pub top_bar: HorizontalBar,
     pub bottom_bar: HorizontalBar,
+    /// "Islands" appearance: a transparent bar where each pill floats as
+    /// its own opaque rounded surface (the inverse of the default
+    /// continuous-strip look). Opt-in; default off.
+    #[serde(default)]
+    pub islands: bool,
 }
 
 impl Default for Bars {
@@ -422,6 +427,7 @@ impl Default for Bars {
                 ],
             },
             bottom_bar: HorizontalBar::default(),
+            islands: false,
         }
     }
 }
