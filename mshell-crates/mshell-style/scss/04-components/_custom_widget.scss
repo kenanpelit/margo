@@ -1,0 +1,10 @@
+// Custom (user-defined) bar pill — icon/image + optional label. Matches
+// the other pills' label weight; tabular figures so `exec`-driven numeric
+// readouts (clocks, counters) don't jitter the pill width.
+.custom-bar-widget {
+  .custom-bar-label {
+    font-size: var(--font-bar);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+}

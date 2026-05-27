@@ -7,6 +7,7 @@ pub(crate) mod bluetooth;
 pub(crate) mod clipboard;
 pub(crate) mod clock;
 pub(crate) mod cpu_dashboard;
+pub(crate) mod custom;
 pub(crate) mod dashboard;
 pub(crate) mod dark_mode;
 pub(crate) mod color_picker;

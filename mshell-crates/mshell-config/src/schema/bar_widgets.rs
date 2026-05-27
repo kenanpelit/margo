@@ -69,6 +69,8 @@ pub enum BarWidget {
     Ip,
     Network,
     NetworkSpeed,
+    /// A user-defined pill; the `String` is the `custom_widgets` entry name.
+    Custom(String),
     Notes,
     Notifications,
     Podman,
@@ -132,6 +134,7 @@ impl BarWidget {
             BarWidget::Ip => "Public IP",
             BarWidget::Network => "Network Console",
             BarWidget::NetworkSpeed => "Network Speed",
+            BarWidget::Custom(_) => "Custom Widget",
             BarWidget::Notes => "Notes Hub",
             BarWidget::Notifications => "Notifications",
             BarWidget::Podman => "Podman",

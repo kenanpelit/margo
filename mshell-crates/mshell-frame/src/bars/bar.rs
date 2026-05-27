@@ -46,6 +46,7 @@ use crate::bars::bar_widgets::screenshot::{ScreenshotInit, ScreenshotModel, Scre
 use crate::bars::bar_widgets::shutdown::{ShutdownInit, ShutdownModel};
 use crate::bars::bar_widgets::system_tray::{SystemTrayInit, SystemTrayModel};
 use crate::bars::bar_widgets::system_update::{SystemUpdateInit, SystemUpdateModel};
+use crate::bars::bar_widgets::custom::{CustomWidgetInit, CustomWidgetModel};
 use crate::bars::bar_widgets::network_speed::{NetworkSpeedInit, NetworkSpeedModel};
 use crate::bars::bar_widgets::vpn_indicator::{VpnIndicatorInit, VpnIndicatorModel};
 use crate::bars::bar_widgets::wallpaper::{WallpaperInit, WallpaperModel, WallpaperOutput};
@@ -54,7 +55,7 @@ use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::bar_widgets::BarWidget;
 use mshell_config::schema::config::{
-    BarsStoreFields, ConfigStoreFields, HorizontalBarStoreFields,
+    BarWidgetsStoreFields, BarsStoreFields, ConfigStoreFields, HorizontalBarStoreFields,
 };
 use mshell_utils::clear_box::clear_box;
 use reactive_graph::traits::*;
@@ -732,6 +733,24 @@ impl BarModel {
                     .launch(NetworkSpeedInit {})
                     .detach(),
             ),
+            BarWidget::Custom(name) => {
+                // Resolve the named definition from bars.widgets.custom_widgets;
+                // an unknown name falls back to an empty (inert) pill.
+                let config = config_manager()
+                    .config()
+                    .bars()
+                    .widgets()
+                    .custom_widgets()
+                    .get_untracked()
+                    .into_iter()
+                    .find(|c| &c.name == name)
+                    .unwrap_or_default();
+                Box::new(
+                    CustomWidgetModel::builder()
+                        .launch(CustomWidgetInit { config })
+                        .detach(),
+                )
+            }
             BarWidget::Wallpaper => Box::new(
                 WallpaperModel::builder()
                     .launch(WallpaperInit { orientation })

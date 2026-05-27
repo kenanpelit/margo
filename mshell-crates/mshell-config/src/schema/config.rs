@@ -431,6 +431,41 @@ impl Default for Bars {
 #[derive(Default)]
 pub struct BarWidgets {
     pub system_update: SystemUpdateBarWidget,
+    /// User-defined pills, referenced from a bar slot via `!Custom <name>`.
+    pub custom_widgets: Vec<CustomWidgetConfig>,
+}
+
+/// A user-defined bar pill: an icon / image + optional label, with
+/// left / right click commands and an optional `exec` poller whose stdout
+/// fills the label via a `{output}` template. (See `bars.widgets.custom_widgets`.)
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[serde(default)]
+#[derive(Default)]
+pub struct CustomWidgetConfig {
+    /// Key referenced by a bar slot (`!Custom <name>`).
+    pub name: String,
+    /// Leading symbolic icon name (empty = none).
+    pub icon: String,
+    /// Leading image file path — takes precedence over `icon` (empty = none).
+    pub image: String,
+    /// Static label text (empty = none). Ignored when `exec` is set.
+    pub label: String,
+    /// Tooltip text (empty = none).
+    pub tooltip: String,
+    /// Command run on left click via `sh -c` (empty = no action).
+    pub on_click: String,
+    /// Command run on right click via `sh -c` (empty = no action).
+    pub on_click_right: String,
+    /// Command whose stdout becomes the label, via `sh -c`, refreshed every
+    /// `interval` seconds (empty = static label).
+    pub exec: String,
+    /// Label template; `{output}` is replaced with the trimmed `exec`
+    /// stdout. Empty = use the output verbatim.
+    pub template: String,
+    /// Refresh cadence for `exec`, in seconds. 0 = run once.
+    pub interval: u64,
+    /// Truncate the rendered label to this many characters (0 = no cap).
+    pub max_chars: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
