@@ -18,6 +18,7 @@ use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Con
 #[derive(Debug)]
 pub(crate) struct BarSettingsModel {
     enable_frame: bool,
+    islands: bool,
     chips: FactoryVecDeque<MonitorChipModel>,
     available_monitors: Vec<String>,
     selected_monitors: Vec<String>,
@@ -62,6 +63,8 @@ const MIN_HEIGHT_DEBOUNCE_MS: u64 = 350;
 pub(crate) enum BarSettingsInput {
     EnableFrameToggled(bool),
     EnableFrameChanged(bool),
+    IslandsToggled(bool),
+    IslandsChanged(bool),
     AddMonitor(String),
     RemoveMonitor(DynamicIndex),
     AvailableMonitorsChanged(Vec<String>),
@@ -175,6 +178,32 @@ impl Component for BarSettingsModel {
                             sender.input(BarSettingsInput::EnableFrameToggled(enabled));
                             glib::Propagation::Proceed
                         } @enable_frame_handler,
+                    }
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Label {
+                        add_css_class: "label-small",
+                        set_halign: gtk::Align::Start,
+                        set_label: "Islands: a transparent bar where each pill floats as its own rounded surface (instead of one continuous strip). Restart the shell to apply.",
+                        set_hexpand: true,
+                        set_xalign: 0.0,
+                        set_wrap: true,
+                        set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                    },
+
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        #[block_signal(islands_handler)]
+                        set_active: model.islands,
+                        connect_state_set[sender] => move |_, enabled| {
+                            sender.input(BarSettingsInput::IslandsToggled(enabled));
+                            glib::Propagation::Proceed
+                        } @islands_handler,
                     }
                 },
 
@@ -442,6 +471,13 @@ impl Component for BarSettingsModel {
         let sender_clone = sender.clone();
         effects.push(move |_| {
             let config = config_manager().config();
+            let islands = config.bars().islands().get();
+            sender_clone.input(BarSettingsInput::IslandsChanged(islands));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let config = config_manager().config();
             let monitors = config.bars().frame().monitor_filter().get();
             sender_clone.input(BarSettingsInput::SelectedMonitorsChanged(monitors));
         });
@@ -640,6 +676,7 @@ impl Component for BarSettingsModel {
 
         let model = BarSettingsModel {
             enable_frame: false,
+            islands: false,
             chips,
             available_monitors: Vec::new(),
             selected_monitors: Vec::new(),
@@ -708,6 +745,14 @@ impl Component for BarSettingsModel {
             }
             BarSettingsInput::EnableFrameChanged(enable) => {
                 self.enable_frame = enable;
+            }
+            BarSettingsInput::IslandsToggled(enabled) => {
+                config_manager().update_config(|config| {
+                    config.bars.islands = enabled;
+                });
+            }
+            BarSettingsInput::IslandsChanged(enabled) => {
+                self.islands = enabled;
             }
             BarSettingsInput::AddMonitor(name) => {
                 if !self.selected_monitors.contains(&name) {
