@@ -6,6 +6,21 @@ use tokio_util::sync::CancellationToken;
 use wayle_audio::core::device::input::InputDevice;
 use wayle_audio::core::device::output::OutputDevice;
 
+/// Returns `true` if this output sink looks like an HDMI or DisplayPort audio
+/// device. Detection is a case-insensitive substring match on the PipeWire
+/// node name and human-readable description. Used by the optional
+/// `audio.hide_hdmi_outputs` config toggle — must never be called unless the
+/// toggle is on, so a slightly broad match (any sink whose name/desc contains
+/// "hdmi", "displayport", or "display port") is acceptable.
+pub fn is_hdmi_output(d: &OutputDevice) -> bool {
+    let name = d.name.get().to_lowercase();
+    let desc = d.description.get().to_lowercase();
+    let hit = |s: &str| {
+        s.contains("hdmi") || s.contains("displayport") || s.contains("display port")
+    };
+    hit(&name) || hit(&desc)
+}
+
 pub fn get_audio_out_icon(device: &Arc<OutputDevice>) -> &'static str {
     if device.muted.get() {
         return "audio-volume-muted-symbolic";

@@ -9,8 +9,11 @@ use mshell_common::dynamic_box::dynamic_box::{
 use mshell_common::dynamic_box::generic_widget_controller::{
     GenericWidgetController, GenericWidgetControllerExtSafe,
 };
+use mshell_config::config_manager::config_manager;
+use mshell_config::schema::config::{AudioConfigStoreFields, ConfigStoreFields};
 use mshell_services::audio_service;
-use mshell_utils::audio::spawn_output_devices_watcher;
+use mshell_utils::audio::{is_hdmi_output, spawn_output_devices_watcher};
+use reactive_graph::prelude::GetUntracked;
 use relm4::gtk::RevealerTransitionType;
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 use std::sync::Arc;
@@ -114,7 +117,17 @@ impl Component for AudioOutRevealedContentModel {
         match message {
             AudioOutRevealedContentInput::UpdateDevices => {
                 let audio = audio_service();
-                let devices = audio.output_devices.get();
+                let hide_hdmi = config_manager()
+                    .config()
+                    .audio()
+                    .hide_hdmi_outputs()
+                    .get_untracked();
+                let devices: Vec<_> = audio
+                    .output_devices
+                    .get()
+                    .into_iter()
+                    .filter(|d| !(hide_hdmi && is_hdmi_output(d)))
+                    .collect();
                 self.devices_dynamic_box_controller
                     .emit(DynamicBoxInput::SetItems(devices))
             }

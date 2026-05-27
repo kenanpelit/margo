@@ -9,12 +9,17 @@
 
 use crate::row::Row;
 use mshell_common::WatcherToken;
+use mshell_common::scoped_effects::EffectScope;
+use mshell_config::config_manager::config_manager;
+use mshell_config::schema::config::{AudioConfigStoreFields, ConfigStoreFields};
 use mshell_services::audio_service;
 use mshell_utils::audio::{
     spawn_default_input_watcher, spawn_default_output_watcher,
     spawn_input_device_volume_mute_watcher, spawn_input_devices_watcher,
     spawn_output_device_volume_mute_watcher, spawn_output_devices_watcher,
 };
+use reactive_graph::prelude::{Get, GetUntracked};
+use relm4::gtk::glib;
 use relm4::gtk::glib::SignalHandlerId;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -40,11 +45,15 @@ pub(crate) struct SoundSettingsModel {
     in_scale_handler: SignalHandlerId,
     in_mute: gtk::Switch,
     in_mute_handler: SignalHandlerId,
+    /// Whether HDMI/DisplayPort outputs are hidden from the list + switcher.
+    hide_hdmi_outputs: bool,
     /// Cancels the per-device volume/mute watcher when the default switches.
     out_vol_token: WatcherToken,
     in_vol_token: WatcherToken,
     _out_devices_token: WatcherToken,
     _in_devices_token: WatcherToken,
+    /// Keeps config reactive effects alive for the lifetime of this component.
+    _effects: EffectScope,
 }
 
 impl std::fmt::Debug for SoundSettingsModel {
@@ -61,6 +70,10 @@ pub(crate) enum SoundSettingsInput {
     SetInputDevice(u32),
     SetInputVolume(f64),
     SetInputMute(bool),
+    /// User toggled "Hide HDMI / DisplayPort outputs".
+    SetHideHdmiOutputs(bool),
+    /// Config reactive effect — mirrors `audio.hide_hdmi_outputs` into model.
+    HideHdmiOutputsEffect(bool),
 }
 
 #[derive(Debug)]
@@ -151,6 +164,43 @@ impl Component for SoundSettingsModel {
                     #[template_child] title { set_label: "Mute" },
                     #[template_child] desc { set_label: "Silence the output." },
                     #[local_ref] out_mute_w -> gtk::Switch {},
+                },
+
+                // ── Output filter ────────────────────────────────
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Hide HDMI / DisplayPort outputs",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Hide HDMI/DisplayPort audio sinks from the output list and switcher.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        #[block_signal(hide_hdmi_handler)]
+                        set_active: model.hide_hdmi_outputs,
+                        connect_state_set[sender] => move |_, on| {
+                            sender.input(SoundSettingsInput::SetHideHdmiOutputs(on));
+                            glib::Propagation::Proceed
+                        } @hide_hdmi_handler,
+                    },
                 },
 
                 gtk::Label {
@@ -281,6 +331,26 @@ impl Component for SoundSettingsModel {
             });
         }
 
+        // ── Config reactive effect: keep hide_hdmi_outputs in sync ──
+        let mut effects = EffectScope::new();
+        {
+            let s = sender.clone();
+            effects.push(move |_| {
+                let v = config_manager()
+                    .config()
+                    .audio()
+                    .hide_hdmi_outputs()
+                    .get();
+                s.input(SoundSettingsInput::HideHdmiOutputsEffect(v));
+            });
+        }
+
+        let hide_hdmi_outputs = config_manager()
+            .config()
+            .audio()
+            .hide_hdmi_outputs()
+            .get_untracked();
+
         let model = SoundSettingsModel {
             out_devices,
             in_devices,
@@ -298,10 +368,12 @@ impl Component for SoundSettingsModel {
             in_scale_handler,
             in_mute: in_mute.clone(),
             in_mute_handler,
+            hide_hdmi_outputs,
             out_vol_token,
             in_vol_token,
             _out_devices_token: out_devices_token,
             _in_devices_token: in_devices_token,
+            _effects: effects,
         };
 
         let out_dd_w = &out_dd;
@@ -358,6 +430,12 @@ impl Component for SoundSettingsModel {
                         let _ = d.set_mute(m).await;
                     });
                 }
+            }
+            SoundSettingsInput::SetHideHdmiOutputs(v) => {
+                config_manager().update_config(|c| c.audio.hide_hdmi_outputs = v);
+            }
+            SoundSettingsInput::HideHdmiOutputsEffect(v) => {
+                self.hide_hdmi_outputs = v;
             }
         }
     }

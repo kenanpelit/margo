@@ -38,6 +38,7 @@ pub struct Config {
     pub network: NetworkConfig,
     pub power: PowerConfig,
     pub privacy: PrivacyConfig,
+    pub audio: AudioConfig,
 }
 
 /// One configured alarm. `repeat_mask` bit `i` (0 = Sunday … 6 = Saturday)
@@ -1404,6 +1405,22 @@ impl Default for PrivacyConfig {
     fn default() -> Self {
         Self { remember_recent: true }
     }
+}
+
+/// Audio settings. Currently controls the optional HDMI / DisplayPort output
+/// filter — when `hide_hdmi_outputs` is `true`, sinks whose node name or
+/// description contains "hdmi", "displayport", or "display port" are hidden
+/// from the output-device list, the output-switch cycle, and the audio
+/// dashboard menu's device picker. Default `false` so the behaviour is
+/// unchanged for users who haven't opted in.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize, Store, Patch, JsonSchema,
+)]
+#[serde(default)]
+pub struct AudioConfig {
+    /// Hide HDMI / DisplayPort audio sinks from the output list and switcher.
+    /// Matched by node name or description; default `false`.
+    pub hide_hdmi_outputs: bool,
 }
 
 #[cfg(test)]

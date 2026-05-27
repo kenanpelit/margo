@@ -1,7 +1,7 @@
 use crate::relm_app::{Shell, ShellInput};
 use mshell_cache::wallpaper::set_wallpaper;
 use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{AlarmConfigStoreFields, ConfigStoreFields, WallpaperStoreFields};
+use mshell_config::schema::config::{AlarmConfigStoreFields, AudioConfigStoreFields, ConfigStoreFields, WallpaperStoreFields};
 use mshell_services::{
     audio_service, brightness_service, margo_service, media_service, notification_service,
     tokio_rt,
@@ -527,9 +527,22 @@ fn output_connected(d: &OutputDevice) -> bool {
 /// see the SAME order — `input_devices.get()` / `output_devices.get()` don't
 /// guarantee a stable order between calls, which made cycling skip a device
 /// and the switch notification name the wrong one.
+///
+/// When the `audio.hide_hdmi_outputs` config toggle is on, sinks whose node
+/// name or description matches "hdmi"/"displayport" are also excluded.
 fn usable_outputs() -> Vec<Arc<OutputDevice>> {
-    let mut v: Vec<_> =
-        audio_service().output_devices.get().into_iter().filter(|d| output_connected(d)).collect();
+    let hide_hdmi = config_manager()
+        .config()
+        .audio()
+        .hide_hdmi_outputs()
+        .get_untracked();
+    let mut v: Vec<_> = audio_service()
+        .output_devices
+        .get()
+        .into_iter()
+        .filter(|d| output_connected(d))
+        .filter(|d| !(hide_hdmi && mshell_utils::audio::is_hdmi_output(d)))
+        .collect();
     v.sort_by_key(|d| d.key.index);
     v
 }
