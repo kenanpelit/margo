@@ -1436,11 +1436,14 @@ pub struct AudioConfig {
     pub hide_hdmi_outputs: bool,
 }
 
-/// Control Center tile visibility — one bool per tile.
+/// Control Center tile visibility and order.
 ///
 /// All tiles are shown by default (`true`). Set a tile to `false` via the
 /// Control Center's edit mode (the pencil icon in the header) to hide it
-/// from the normal grid view.
+/// from the normal grid view. `tile_order` controls the order tiles appear in
+/// the grid (first entry = top-left, reading left-to-right). Tiles not present
+/// in `tile_order` (e.g. added in a future release) append at the end so
+/// nothing silently disappears after an upgrade.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
 #[serde(default)]
 pub struct ControlCenterConfig {
@@ -1458,6 +1461,30 @@ pub struct ControlCenterConfig {
     pub airplane_mode: bool,
     pub vpn: bool,
     pub valent: bool,
+    /// Display order of tiles in the grid. Each entry is a tile-id string
+    /// (e.g. `"wifi"`, `"bluetooth"`, …). Unknown ids are skipped; ids
+    /// not listed here are appended at the end in canonical order.
+    #[serde(default = "default_cc_tile_order")]
+    pub tile_order: Vec<String>,
+}
+
+fn default_cc_tile_order() -> Vec<String> {
+    vec![
+        "wifi".to_string(),
+        "bluetooth".to_string(),
+        "audio_out".to_string(),
+        "mic".to_string(),
+        "vpn".to_string(),
+        "valent".to_string(),
+        "battery".to_string(),
+        "keep_awake".to_string(),
+        "dnd".to_string(),
+        "airplane_mode".to_string(),
+        "dark_mode".to_string(),
+        "night_light".to_string(),
+        "color_picker".to_string(),
+        "disk".to_string(),
+    ]
 }
 
 impl Default for ControlCenterConfig {
@@ -1477,6 +1504,7 @@ impl Default for ControlCenterConfig {
             airplane_mode: true,
             vpn: true,
             valent: true,
+            tile_order: default_cc_tile_order(),
         }
     }
 }

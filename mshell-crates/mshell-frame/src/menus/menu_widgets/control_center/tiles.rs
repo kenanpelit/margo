@@ -1,21 +1,16 @@
 //! Control Center tile grid — 2-column grid of toggle/info tiles.
 //!
-//! Layout (col 0 / col 1):
-//!   [Wi-Fi      ]  [Bluetooth   ]
-//!   [Audio Out  ]  [Mic         ]
-//!   [Keep Awake ]  [Color Picker]
-//!   [Do Not Disturb    (wide)  ]
-//!   [Dark Mode  ]  [Twilight    ]
-//!   [Disk       ]  [Battery     ]
-//!   [Airplane Mode] [VPN        ]
-//!   [Valent     ]  [            ]  (single wide or col-0)
+//! The grid order is driven by `ControlCenterConfig::tile_order`. Wide tiles
+//! (dnd, valent) span both columns. Tiles not present in `tile_order` append
+//! at the end in canonical order so nothing silently disappears after an
+//! upgrade.
 //!
 //! Wi-Fi, Bluetooth, Audio Out, Mic, Battery, VPN, and Valent tiles are
 //! *expandable*: clicking them emits `ControlCenterTilesOutput::ExpandPage`
 //! so the parent `ControlCenterMenuWidgetModel` can switch the Stack to
 //! the matching detail sub-page.
 //!
-//! Dark Mode and Twilight are now full labeled tiles (not small).
+//! Dark Mode and Twilight are full labeled tiles (not small).
 //! Do Not Disturb is `.wide` (spans 2 columns).
 //! Battery tile is hidden when no battery is present.
 //!
@@ -97,6 +92,9 @@ pub(crate) struct ControlCenterTilesModel {
     watchers_started: bool,
     // Edit mode — when true, all tiles visible + per-tile visibility toggles shown
     edit_mode: bool,
+    // Current tile order — mirrors config; used to detect changes that need
+    // a grid rebuild.
+    tile_order: Vec<String>,
     _effects: EffectScope,
 }
 
@@ -177,6 +175,11 @@ pub(crate) enum ControlCenterTilesInput {
 
     /// Edit-overlay checkbox toggled for a tile — write to config.
     EditTileVisibility(TileId, bool),
+
+    /// Config-driven tile order changed — detach and reattach all grid
+    /// children in the new order. Also fires on visibility changes so
+    /// hidden gaps are eliminated in normal mode.
+    RebuildGrid(Vec<String>),
 }
 
 /// Identifies a tile for the edit-overlay toggle.
@@ -196,6 +199,99 @@ pub(crate) enum TileId {
     AirplaneMode,
     Vpn,
     Valent,
+}
+
+impl TileId {
+    /// Canonical string id used in `tile_order` config.
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            TileId::Wifi => "wifi",
+            TileId::Bluetooth => "bluetooth",
+            TileId::AudioOut => "audio_out",
+            TileId::Mic => "mic",
+            TileId::Battery => "battery",
+            TileId::KeepAwake => "keep_awake",
+            TileId::Dnd => "dnd",
+            TileId::DarkMode => "dark_mode",
+            TileId::NightLight => "night_light",
+            TileId::ColorPicker => "color_picker",
+            TileId::Disk => "disk",
+            TileId::AirplaneMode => "airplane_mode",
+            TileId::Vpn => "vpn",
+            TileId::Valent => "valent",
+        }
+    }
+
+    /// Parse a tile-id string back to a `TileId`. Unknown strings → `None`.
+    pub(crate) fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "wifi" => Some(TileId::Wifi),
+            "bluetooth" => Some(TileId::Bluetooth),
+            "audio_out" => Some(TileId::AudioOut),
+            "mic" => Some(TileId::Mic),
+            "battery" => Some(TileId::Battery),
+            "keep_awake" => Some(TileId::KeepAwake),
+            "dnd" => Some(TileId::Dnd),
+            "dark_mode" => Some(TileId::DarkMode),
+            "night_light" => Some(TileId::NightLight),
+            "color_picker" => Some(TileId::ColorPicker),
+            "disk" => Some(TileId::Disk),
+            "airplane_mode" => Some(TileId::AirplaneMode),
+            "vpn" => Some(TileId::Vpn),
+            "valent" => Some(TileId::Valent),
+            _ => None,
+        }
+    }
+
+    /// All tile ids in canonical (default) order.
+    pub(crate) fn all() -> &'static [TileId] {
+        &[
+            TileId::Wifi,
+            TileId::Bluetooth,
+            TileId::AudioOut,
+            TileId::Mic,
+            TileId::Vpn,
+            TileId::Valent,
+            TileId::Battery,
+            TileId::KeepAwake,
+            TileId::Dnd,
+            TileId::AirplaneMode,
+            TileId::DarkMode,
+            TileId::NightLight,
+            TileId::ColorPicker,
+            TileId::Disk,
+        ]
+    }
+
+    /// True for tiles that span the full 2-column width.
+    pub(crate) fn is_wide(self) -> bool {
+        matches!(self, TileId::Dnd | TileId::Valent)
+    }
+}
+
+/// Compute the ordered sequence of `TileId`s from a `tile_order` config vec.
+/// - Ids listed in `tile_order` appear first (in that order); unknown ids are
+///   skipped.
+/// - Ids not present in `tile_order` are appended at the end in canonical
+///   order so a newly-added tile never silently vanishes.
+fn ordered_tile_ids(tile_order: &[String]) -> Vec<TileId> {
+    let mut seen = std::collections::HashSet::new();
+    let mut result = Vec::with_capacity(TileId::all().len());
+
+    for s in tile_order {
+        if let Some(id) = TileId::from_str(s)
+            && seen.insert(id.as_str())
+        {
+            result.push(id);
+        }
+    }
+    // Append any canonical ids not yet covered.
+    for &id in TileId::all() {
+        if seen.insert(id.as_str()) {
+            result.push(id);
+        }
+    }
+    result
 }
 
 #[derive(Debug)]
@@ -272,6 +368,67 @@ pub(crate) struct ControlCenterTilesWidgets {
     check_airplane_mode: gtk::CheckButton,
     check_vpn: gtk::CheckButton,
     check_valent: gtk::CheckButton,
+}
+
+impl ControlCenterTilesWidgets {
+    /// Return a reference to the overlay wrapper for a given `TileId`.
+    fn overlay_for(&self, id: TileId) -> &gtk::Overlay {
+        match id {
+            TileId::Wifi => &self.overlay_wifi,
+            TileId::Bluetooth => &self.overlay_bluetooth,
+            TileId::AudioOut => &self.overlay_audio_out,
+            TileId::Mic => &self.overlay_mic,
+            TileId::Battery => &self.overlay_battery,
+            TileId::KeepAwake => &self.overlay_keep_awake,
+            TileId::Dnd => &self.overlay_dnd,
+            TileId::DarkMode => &self.overlay_dark_mode,
+            TileId::NightLight => &self.overlay_night_light,
+            TileId::ColorPicker => &self.overlay_color_picker,
+            TileId::Disk => &self.overlay_disk,
+            TileId::AirplaneMode => &self.overlay_airplane_mode,
+            TileId::Vpn => &self.overlay_vpn,
+            TileId::Valent => &self.overlay_valent,
+        }
+    }
+
+    /// Detach all tile overlays from `grid`, then reattach them in the order
+    /// described by `tile_order`. Wide tiles (dnd, valent) span 2 columns.
+    /// Each non-wide tile occupies one cell; we fill left-to-right, creating
+    /// a new row whenever the current column would overflow or a wide tile
+    /// needs a fresh row.
+    fn rebuild_grid(&self, grid: &gtk::Grid, tile_order: &[String]) {
+        use relm4::gtk::prelude::GridExt;
+
+        // Remove every tile overlay currently in the grid.
+        for &id in TileId::all() {
+            let overlay = self.overlay_for(id);
+            grid.remove(overlay);
+        }
+
+        // Re-attach in config order, appending unknowns at the end.
+        let ids = ordered_tile_ids(tile_order);
+        let mut col: i32 = 0;
+        let mut row: i32 = 0;
+        for id in ids {
+            let overlay = self.overlay_for(id);
+            if id.is_wide() {
+                // Wide tiles always start at column 0 of a fresh row.
+                if col != 0 {
+                    row += 1;
+                }
+                grid.attach(overlay, 0, row, 2, 1);
+                row += 1;
+                col = 0;
+            } else {
+                grid.attach(overlay, col, row, 1, 1);
+                col += 1;
+                if col >= 2 {
+                    col = 0;
+                    row += 1;
+                }
+            }
+        }
+    }
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -451,31 +608,8 @@ impl Component for ControlCenterTilesModel {
         let (overlay_valent, check_valent) =
             build_edit_overlay(&tile_valent.button, &sender, TileId::Valent);
 
-        // Attach overlay wrappers to the grid:
-        //   Row 0: [Wi-Fi (0,0)] [Bluetooth (1,0)]
-        //   Row 1: [Audio Out (0,1)] [Mic (1,1)]
-        //   Row 2: [Keep Awake (0,2)] [Color Picker (1,2)]
-        //   Row 3: [DND (0,3) span 2]
-        //   Row 4: [Dark Mode (0,4)] [Twilight (1,4)]
-        //   Row 5: [Disk (0,5)] [Battery (1,5)]
-        //   Row 6: [Airplane Mode (0,6)] [VPN (1,6)]
-        //   Row 7: [Valent (0,7) span 2]
-        root.attach(&overlay_wifi, 0, 0, 1, 1);
-        root.attach(&overlay_bluetooth, 1, 0, 1, 1);
-        root.attach(&overlay_audio_out, 0, 1, 1, 1);
-        root.attach(&overlay_mic, 1, 1, 1, 1);
-        root.attach(&overlay_keep_awake, 0, 2, 1, 1);
-        root.attach(&overlay_color_picker, 1, 2, 1, 1);
-        root.attach(&overlay_dnd, 0, 3, 2, 1);
-        root.attach(&overlay_dark_mode, 0, 4, 1, 1);
-        root.attach(&overlay_night_light, 1, 4, 1, 1);
-        root.attach(&overlay_disk, 0, 5, 1, 1);
-        root.attach(&overlay_battery, 1, 5, 1, 1);
-        root.attach(&overlay_airplane_mode, 0, 6, 1, 1);
-        root.attach(&overlay_vpn, 1, 6, 1, 1);
-        root.attach(&overlay_valent, 0, 7, 2, 1);
-
-        // Mark valent as wide (spans 2 cols)
+        // Mark valent as wide (spans 2 cols). DND is marked wide just above.
+        // Both need the CSS class before being attached to the grid.
         tile_valent.button.add_css_class("wide");
 
         // Reactive dark-mode effect (always active — cheap config-store watch)
@@ -490,6 +624,37 @@ impl Component for ControlCenterTilesModel {
                     .mode()
                     .get();
                 s.input(ControlCenterTilesInput::DarkModeChanged(mode));
+            });
+        }
+
+        // Reactive tile-order / visibility effect — fires whenever tile_order or
+        // any per-tile visibility bool changes in config. Sends `RebuildGrid` so
+        // the grid re-renders in the new order with hidden tiles removed from the
+        // layout in normal mode.
+        {
+            let s = sender.clone();
+            effects.push(move |_| {
+                // Touch every visibility bool + tile_order to subscribe to
+                // their changes. Each call creates a fresh Subfield so we
+                // call config_manager() once per field (matches the pattern
+                // used in apply_visuals).
+                let cm = config_manager();
+                let _ = cm.config().control_center().wifi().get();
+                let _ = cm.config().control_center().bluetooth().get();
+                let _ = cm.config().control_center().audio_out().get();
+                let _ = cm.config().control_center().mic().get();
+                let _ = cm.config().control_center().battery().get();
+                let _ = cm.config().control_center().keep_awake().get();
+                let _ = cm.config().control_center().dnd().get();
+                let _ = cm.config().control_center().dark_mode().get();
+                let _ = cm.config().control_center().night_light().get();
+                let _ = cm.config().control_center().color_picker().get();
+                let _ = cm.config().control_center().disk().get();
+                let _ = cm.config().control_center().airplane_mode().get();
+                let _ = cm.config().control_center().vpn().get();
+                let _ = cm.config().control_center().valent().get();
+                let order = cm.config().control_center().tile_order().get();
+                s.input(ControlCenterTilesInput::RebuildGrid(order));
             });
         }
 
@@ -513,6 +678,12 @@ impl Component for ControlCenterTilesModel {
         // Airplane mode initial state (wifi disabled = airplane on)
         let (airplane_mode, airplane_available) = read_airplane_state();
 
+        let initial_tile_order = config_manager()
+            .config()
+            .control_center()
+            .tile_order()
+            .get_untracked();
+
         let model = ControlCenterTilesModel {
             keep_awake,
             dnd,
@@ -535,6 +706,7 @@ impl Component for ControlCenterTilesModel {
             valent_connected,
             watchers_started: false,
             edit_mode: false,
+            tile_order: initial_tile_order.clone(),
             _effects: effects,
         };
 
@@ -583,6 +755,9 @@ impl Component for ControlCenterTilesModel {
             check_valent,
         };
 
+        // Attach all overlays to the grid in config order.
+        widgets.rebuild_grid(&root, &initial_tile_order);
+
         // Apply initial visual state
         apply_visuals(&model, &widgets);
 
@@ -594,7 +769,7 @@ impl Component for ControlCenterTilesModel {
         widgets: &mut Self::Widgets,
         message: Self::Input,
         sender: ComponentSender<Self>,
-        _root: &Self::Root,
+        root: &Self::Root,
     ) {
         match message {
             ControlCenterTilesInput::Reveal(true) => {
@@ -795,6 +970,14 @@ impl Component for ControlCenterTilesModel {
                     TileId::Vpn => c.control_center.vpn = visible,
                     TileId::Valent => c.control_center.valent = visible,
                 });
+                // The RebuildGrid effect will fire automatically from the config
+                // store change. No explicit rebuild needed here.
+            }
+
+            ControlCenterTilesInput::RebuildGrid(order) => {
+                // Always rebuild — order or visibility bools may have changed.
+                self.tile_order = order.clone();
+                widgets.rebuild_grid(root, &order);
             }
         }
 

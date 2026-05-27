@@ -9,6 +9,7 @@
 //! per-menu pages are the "I just want to tweak THIS one"
 //! shortcut.
 
+use crate::cc_tiles_settings::{CcTilesSettingsInit, CcTilesSettingsModel};
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
@@ -18,7 +19,7 @@ use mshell_config::schema::config::{
 use mshell_config::schema::position::Position;
 use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
-use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 
 /// Which menu this settings page targets. The enum carries
 /// everything we need to read / write through `config_manager`
@@ -555,6 +556,9 @@ pub(crate) struct WidgetMenuSettingsModel {
     /// the cadence section unless `kind == SystemUpdate`.
     check_interval_minutes: u32,
     position_model: gtk::StringList,
+    /// ControlCenter-only: the tiles order/visibility sub-section.
+    /// `None` for every other menu kind.
+    _cc_tiles_controller: Option<Controller<CcTilesSettingsModel>>,
     _effects: EffectScope,
 }
 
@@ -594,6 +598,7 @@ impl Component for WidgetMenuSettingsModel {
             set_hexpand: true,
             set_vexpand: true,
 
+            #[name = "page_box"]
             gtk::Box {
                 add_css_class: "settings-page",
                 set_orientation: gtk::Orientation::Vertical,
@@ -851,6 +856,18 @@ impl Component for WidgetMenuSettingsModel {
             sender_clone.input(WidgetMenuSettingsInput::CheckIntervalEffect(v));
         });
 
+        // ControlCenter-only: build the Tiles sub-section and append it to
+        // the page box after the generic position/size controls.
+        let cc_tiles_controller = if kind == MenuKind::ControlCenter {
+            Some(
+                CcTilesSettingsModel::builder()
+                    .launch(CcTilesSettingsInit {})
+                    .detach(),
+            )
+        } else {
+            None
+        };
+
         let model = WidgetMenuSettingsModel {
             kind,
             position: kind.read_position(),
@@ -864,10 +881,16 @@ impl Component for WidgetMenuSettingsModel {
                 .check_interval_minutes()
                 .get_untracked(),
             position_model,
+            _cc_tiles_controller: cc_tiles_controller,
             _effects: effects,
         };
 
         let widgets = view_output!();
+
+        // Append the CC tiles section widget to the page box when present.
+        if let Some(ctrl) = &model._cc_tiles_controller {
+            widgets.page_box.append(ctrl.widget());
+        }
 
         ComponentParts { model, widgets }
     }
