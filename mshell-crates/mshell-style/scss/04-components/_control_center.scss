@@ -132,7 +132,8 @@
 
 // ── Tile labels ───────────────────────────────────────────────────────────────
 .control-center-tile-title {
-  font-size: var(--font-sm);
+  // +1px over --font-sm — the tile labels read a touch larger/clearer.
+  font-size: calc(var(--font-sm) + 1px);
   font-weight: 600;
   color: var(--on-surface);
   letter-spacing: 0.005em;
@@ -140,7 +141,7 @@
 }
 
 .control-center-tile-subtitle {
-  font-size: var(--font-xs);
+  font-size: calc(var(--font-xs) + 1px);
   color: var(--on-surface-variant);
   transition: color var(--motion-fast) var(--ease-standard);
 }

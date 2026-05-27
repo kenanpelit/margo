@@ -54,7 +54,7 @@ impl Component for ControlCenterModel {
                     set_halign: gtk::Align::Center,
                     set_valign: gtk::Align::Center,
                     gtk::Image {
-                        set_icon_name: Some("preferences-system-symbolic"),
+                        set_icon_name: Some("margo-symbolic"),
                     },
                 },
             }

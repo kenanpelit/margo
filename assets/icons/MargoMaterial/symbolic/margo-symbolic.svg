@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- margo mark: rounded square with two top slits → three tiled "teeth"
+     (the margo / dynamic-tiling glyph). Symbolic = single path, no fill,
+     so GTK recolours it to the current foreground. fill-rule:evenodd cuts
+     the two slits out of the body. -->
+<svg
+   viewBox="0 0 24 24"
+   version="1.1"
+   id="svg-margo"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs id="defs-margo" />
+  <path
+     fill-rule="evenodd"
+     d="M7,4 H17 A3,3 0 0 1 20,7 V17 A3,3 0 0 1 17,20 H7 A3,3 0 0 1 4,17 V7 A3,3 0 0 1 7,4 Z M8.3,3 H9.8 V13 H8.3 Z M14.2,3 H15.7 V13 H14.2 Z"
+     id="path-margo" />
+</svg>
