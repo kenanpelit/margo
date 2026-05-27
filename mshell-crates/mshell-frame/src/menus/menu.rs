@@ -178,6 +178,9 @@ pub(crate) enum MenuInput {
 #[derive(Debug)]
 pub(crate) enum MenuOutput {
     CloseMenu,
+    /// A menu widget (the control center power icon) asks the frame to open
+    /// the session / power menu.
+    ToggleSessionMenu,
 }
 
 pub(crate) struct MenuInit {

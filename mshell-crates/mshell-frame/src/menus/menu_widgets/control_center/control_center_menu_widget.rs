@@ -20,8 +20,16 @@ pub(crate) enum ControlCenterMenuWidgetInput {
     ParentRevealChanged(bool),
     /// Forwarded from header output; inert until Task 6.
     ToggleEdit,
-    /// Forwarded from header Lock/Settings/SessionPower outputs (no-op here).
+    /// Header SessionPower icon → ask the frame to open the session menu.
+    RequestSessionMenu,
+    /// Forwarded from header Lock/Settings outputs (handled in the header).
     _HeaderActionHandled,
+}
+
+#[derive(Debug)]
+pub(crate) enum ControlCenterMenuWidgetOutput {
+    /// Open the session / power menu (the header power icon).
+    ToggleSessionMenu,
 }
 
 pub(crate) struct ControlCenterMenuWidgetInit {}
@@ -30,7 +38,7 @@ pub(crate) struct ControlCenterMenuWidgetInit {}
 impl Component for ControlCenterMenuWidgetModel {
     type CommandOutput = ();
     type Input = ControlCenterMenuWidgetInput;
-    type Output = ();
+    type Output = ControlCenterMenuWidgetOutput;
     type Init = ControlCenterMenuWidgetInit;
 
     view! {
@@ -59,10 +67,7 @@ impl Component for ControlCenterMenuWidgetModel {
                     ControlCenterMenuWidgetInput::_HeaderActionHandled
                 }
                 ControlCenterHeaderOutput::SessionPower => {
-                    // Session power: the header emits this so higher layers
-                    // could open the session menu if wired. For now it is
-                    // deferred — Task 2 spec says to note concerns.
-                    ControlCenterMenuWidgetInput::_HeaderActionHandled
+                    ControlCenterMenuWidgetInput::RequestSessionMenu
                 }
                 ControlCenterHeaderOutput::Settings => {
                     ControlCenterMenuWidgetInput::_HeaderActionHandled
@@ -88,10 +93,15 @@ impl Component for ControlCenterMenuWidgetModel {
     fn update(
         &mut self,
         message: Self::Input,
-        _sender: ComponentSender<Self>,
+        sender: ComponentSender<Self>,
         _root: &Self::Root,
     ) {
         match message {
+            ControlCenterMenuWidgetInput::RequestSessionMenu => {
+                sender
+                    .output(ControlCenterMenuWidgetOutput::ToggleSessionMenu)
+                    .ok();
+            }
             ControlCenterMenuWidgetInput::ParentRevealChanged(revealed) => {
                 if revealed {
                     // Refresh uptime whenever the menu is opened.

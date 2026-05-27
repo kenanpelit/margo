@@ -2272,6 +2272,7 @@ impl Frame {
             .launch(MenuInit { menu_type })
             .forward(sender.input_sender(), |msg| match msg {
                 MenuOutput::CloseMenu => FrameInput::CloseMenus,
+                MenuOutput::ToggleSessionMenu => FrameInput::ToggleSessionMenu,
             })
     }
 }

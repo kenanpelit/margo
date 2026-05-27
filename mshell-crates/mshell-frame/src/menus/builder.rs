@@ -3,7 +3,7 @@ use crate::menus::menu_widgets::alarm_clock::alarm_clock_menu_widget::{
     AlarmClockMenuWidgetInit, AlarmClockMenuWidgetModel,
 };
 use crate::menus::menu_widgets::control_center::control_center_menu_widget::{
-    ControlCenterMenuWidgetInit, ControlCenterMenuWidgetModel,
+    ControlCenterMenuWidgetInit, ControlCenterMenuWidgetModel, ControlCenterMenuWidgetOutput,
 };
 use crate::menus::menu_widgets::app_launcher::app_launcher::{
     AppLauncherInit, AppLauncherModel, AppLauncherOutput,
@@ -129,7 +129,11 @@ pub fn build_widget(
         MenuWidget::ControlCenter => Box::new(
             ControlCenterMenuWidgetModel::builder()
                 .launch(ControlCenterMenuWidgetInit {})
-                .detach(),
+                .forward(sender.output_sender(), |msg| match msg {
+                    ControlCenterMenuWidgetOutput::ToggleSessionMenu => {
+                        MenuOutput::ToggleSessionMenu
+                    }
+                }),
         ),
         MenuWidget::AppLauncher => Box::new(
             AppLauncherModel::builder()
