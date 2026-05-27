@@ -1,15 +1,27 @@
 //! Control Center menu widget — the panel content for
-//! `MenuType::ControlCenter`. A minimal scaffold panel for Task 1;
-//! later tasks will fill the body with controls.
+//! `MenuType::ControlCenter`. Embeds the header (Task 2); later tasks
+//! will fill the body with sliders, toggles, and tiles.
 
+use crate::menus::menu_widgets::control_center::header::{
+    ControlCenterHeaderInit, ControlCenterHeaderInput, ControlCenterHeaderModel,
+    ControlCenterHeaderOutput,
+};
 use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
-use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 
-pub(crate) struct ControlCenterMenuWidgetModel {}
+pub(crate) struct ControlCenterMenuWidgetModel {
+    header: Controller<ControlCenterHeaderModel>,
+    /// Whether edit-mode is active (inert until Task 6).
+    edit_mode: bool,
+}
 
 #[derive(Debug)]
 pub(crate) enum ControlCenterMenuWidgetInput {
     ParentRevealChanged(bool),
+    /// Forwarded from header output; inert until Task 6.
+    ToggleEdit,
+    /// Forwarded from header Lock/Settings/SessionPower outputs (no-op here).
+    _HeaderActionHandled,
 }
 
 pub(crate) struct ControlCenterMenuWidgetInit {}
@@ -23,38 +35,53 @@ impl Component for ControlCenterMenuWidgetModel {
 
     view! {
         #[root]
+        #[name = "root_box"]
         gtk::Box {
             add_css_class: "control-center-menu-widget",
             set_orientation: gtk::Orientation::Vertical,
             set_spacing: 16,
-
-            // ── §12 panel header ──
-            gtk::Box {
-                add_css_class: "panel-header",
-                set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 12,
-                gtk::Image {
-                    add_css_class: "panel-header-icon",
-                    set_valign: gtk::Align::Center,
-                    set_icon_name: Some("preferences-system-symbolic"),
-                },
-                gtk::Label {
-                    add_css_class: "panel-title",
-                    set_label: "Control Center",
-                    set_hexpand: true,
-                    set_halign: gtk::Align::Start,
-                },
-            },
         }
     }
 
     fn init(
         _params: Self::Init,
         root: Self::Root,
-        _sender: ComponentSender<Self>,
+        sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let model = ControlCenterMenuWidgetModel {};
+        // Build the header component and forward its outputs.
+        let header = ControlCenterHeaderModel::builder()
+            .launch(ControlCenterHeaderInit {})
+            .forward(sender.input_sender(), |msg| match msg {
+                // Lock and Settings are already handled inside the header
+                // (lock_session() / open_settings() called directly). No
+                // further action needed at the menu-widget level.
+                ControlCenterHeaderOutput::Lock => {
+                    ControlCenterMenuWidgetInput::_HeaderActionHandled
+                }
+                ControlCenterHeaderOutput::SessionPower => {
+                    // Session power: the header emits this so higher layers
+                    // could open the session menu if wired. For now it is
+                    // deferred — Task 2 spec says to note concerns.
+                    ControlCenterMenuWidgetInput::_HeaderActionHandled
+                }
+                ControlCenterHeaderOutput::Settings => {
+                    ControlCenterMenuWidgetInput::_HeaderActionHandled
+                }
+                ControlCenterHeaderOutput::ToggleEdit => {
+                    ControlCenterMenuWidgetInput::ToggleEdit
+                }
+            });
+
+        let model = ControlCenterMenuWidgetModel {
+            header,
+            edit_mode: false,
+        };
+
         let widgets = view_output!();
+
+        // Prepend the header widget at the top of the root box.
+        widgets.root_box.prepend(model.header.widget());
+
         ComponentParts { model, widgets }
     }
 
@@ -65,8 +92,22 @@ impl Component for ControlCenterMenuWidgetModel {
         _root: &Self::Root,
     ) {
         match message {
-            ControlCenterMenuWidgetInput::ParentRevealChanged(_revealed) => {
-                // Future tasks will lazy-start pollers here when revealed.
+            ControlCenterMenuWidgetInput::ParentRevealChanged(revealed) => {
+                if revealed {
+                    // Refresh uptime whenever the menu is opened.
+                    self.header
+                        .sender()
+                        .send(ControlCenterHeaderInput::RecomputeUptime)
+                        .ok();
+                }
+            }
+            ControlCenterMenuWidgetInput::ToggleEdit => {
+                // Toggle the stored state; Task 6 will act on it.
+                self.edit_mode = !self.edit_mode;
+            }
+            ControlCenterMenuWidgetInput::_HeaderActionHandled => {
+                // Lock/Settings/SessionPower already handled in the header;
+                // nothing to do at this level.
             }
         }
     }
