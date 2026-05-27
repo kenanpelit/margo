@@ -12,9 +12,12 @@
 //! D-Bus).  Async actions are dispatched with `tokio::spawn`.
 //! Discovery starts/stops on `ParentRevealChanged(true/false)`.
 
+use mshell_common::WatcherToken;
 use mshell_services::bluetooth_service;
 use mshell_utils::bluetooth::{
-    get_bluetooth_device_icon, spawn_bluetooth_devices_watcher, spawn_bluetooth_enabled_watcher,
+    get_bluetooth_device_icon, spawn_bluetooth_device_battery_watcher,
+    spawn_bluetooth_device_watcher, spawn_bluetooth_devices_watcher,
+    spawn_bluetooth_enabled_watcher,
 };
 use relm4::gtk::glib;
 use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
@@ -27,6 +30,9 @@ pub(crate) struct BluetoothMenuWidgetModel {
     available: bool,
     enabled: bool,
     devices: Vec<Arc<Device>>,
+    /// Cancels the previous per-device battery/state watchers when the
+    /// device list changes.
+    device_watcher_token: WatcherToken,
 }
 
 #[derive(Debug)]
@@ -57,6 +63,8 @@ pub(crate) struct BluetoothMenuWidgetInit {}
 pub(crate) enum BluetoothMenuWidgetCommandOutput {
     BluetoothStateChanged,
     BluetoothDevicesChanged,
+    /// A device's battery / connected / paired / trusted property changed.
+    DeviceStateChanged,
 }
 
 #[relm4::component(pub(crate))]
@@ -170,13 +178,18 @@ impl Component for BluetoothMenuWidgetModel {
             BluetoothMenuWidgetCommandOutput::BluetoothDevicesChanged
         });
 
-        let model = BluetoothMenuWidgetModel {
+        let mut model = BluetoothMenuWidgetModel {
             available: bt.available.get(),
             enabled: bt.enabled.get(),
             devices: bt.devices.get(),
+            device_watcher_token: WatcherToken::new(),
         };
 
         let widgets = view_output!();
+
+        // Subscribe to each device's battery + state so the rows repaint when
+        // BlueZ fills the battery in (it arrives async after connect).
+        model.spawn_device_watchers(&sender);
 
         ComponentParts { model, widgets }
     }
@@ -194,6 +207,13 @@ impl Component for BluetoothMenuWidgetModel {
                 self.available = bt.available.get();
                 self.enabled = bt.enabled.get();
                 self.devices = bt.devices.get();
+                // Device set may have changed — re-subscribe per-device watchers.
+                self.spawn_device_watchers(&sender);
+                sender.input(BluetoothMenuWidgetInput::RefreshState);
+            }
+            // A device's battery/connected/etc. changed in place — repaint the
+            // rows (same Arcs, fresh property values via .get()).
+            BluetoothMenuWidgetCommandOutput::DeviceStateChanged => {
                 sender.input(BluetoothMenuWidgetInput::RefreshState);
             }
         }
@@ -291,6 +311,23 @@ impl Component for BluetoothMenuWidgetModel {
 }
 
 impl BluetoothMenuWidgetModel {
+    /// (Re)subscribe to every current device's battery + paired/connected/
+    /// trusted properties, cancelling the previous round. BlueZ populates a
+    /// device's battery asynchronously after it connects, so without these
+    /// per-device watchers the list (rebuilt only on device-LIST changes)
+    /// never repaints to show the battery %.
+    fn spawn_device_watchers(&mut self, sender: &ComponentSender<Self>) {
+        let token = self.device_watcher_token.reset();
+        for device in &self.devices {
+            spawn_bluetooth_device_battery_watcher(device, token.clone(), sender, || {
+                BluetoothMenuWidgetCommandOutput::DeviceStateChanged
+            });
+            spawn_bluetooth_device_watcher(device, token.clone(), sender, || {
+                BluetoothMenuWidgetCommandOutput::DeviceStateChanged
+            });
+        }
+    }
+
     fn find_device(&self, address: &str) -> Option<Arc<Device>> {
         self.devices
             .iter()
