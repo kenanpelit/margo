@@ -22,9 +22,9 @@ static TIME_FORMAT_12: once_cell::sync::Lazy<Vec<time::format_description::Forma
     });
 
 /// Pixel size for the body image / album-art thumbnail.
-const BODY_IMAGE_SIZE: i32 = 72;
+pub const BODY_IMAGE_SIZE: i32 = 72;
 /// Pixel size for the per-app icon in the header.
-const APP_ICON_SIZE: i32 = 16;
+pub const APP_ICON_SIZE: i32 = 16;
 
 #[derive(Debug, Clone)]
 pub struct NotificationModel {
@@ -383,10 +383,28 @@ impl Component for NotificationModel {
     }
 }
 
+/// Format a notification's timestamp as `HH:MM` (24-h) or `hh:mm am/pm`
+/// (12-h), in local time. Shared by the popup component and the
+/// virtualized history list so both render times identically.
+pub fn format_notification_time(notification: &Notification, format_24_h: bool) -> String {
+    let timestamp = notification.timestamp.get();
+    let local_offset = UtcOffset::current_local_offset().unwrap_or(UtcOffset::UTC);
+    let odt = OffsetDateTime::from_unix_timestamp(timestamp.timestamp())
+        .unwrap()
+        .replace_nanosecond(timestamp.timestamp_subsec_nanos())
+        .unwrap()
+        .to_offset(local_offset);
+    if format_24_h {
+        odt.format(&TIME_FORMAT_24).unwrap()
+    } else {
+        odt.format(&TIME_FORMAT_12).unwrap()
+    }
+}
+
 /// Set a label to notification-spec markup when the body parses as
 /// valid pango markup, else to the raw text. Apps frequently send
 /// unescaped `&`/`<`, which would otherwise be dropped by set_markup.
-fn apply_body_text(label: &gtk::Label, body: &str) {
+pub fn apply_body_text(label: &gtk::Label, body: &str) {
     if body.contains('<') && pango::parse_markup(body, '\u{0}').is_ok() {
         label.set_markup(body);
     } else {
@@ -395,7 +413,7 @@ fn apply_body_text(label: &gtk::Label, body: &str) {
 }
 
 /// Build a header/app image from either an icon name or a file path.
-fn build_image(icon: &str, pixel_size: i32) -> gtk::Image {
+pub fn build_image(icon: &str, pixel_size: i32) -> gtk::Image {
     let img = if icon.starts_with('/') || icon.starts_with("file://") {
         let path = icon.strip_prefix("file://").unwrap_or(icon);
         gtk::Image::from_file(path)
@@ -431,7 +449,7 @@ fn resolve_icon_name(name: &str) -> String {
 /// 4–8 digits, or a `123-456` / `123 456` grouped code. Returns the
 /// first match (digits only, separators stripped). Hand-rolled to
 /// avoid a regex dependency.
-fn detect_code(text: &str) -> Option<String> {
+pub fn detect_code(text: &str) -> Option<String> {
     let bytes = text.as_bytes();
     let n = bytes.len();
     let mut i = 0;

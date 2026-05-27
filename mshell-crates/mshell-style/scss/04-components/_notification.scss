@@ -64,21 +64,51 @@
   @include state-layer();
 }
 
+// ── Virtualized history list ─────────────────────────────────────────
+// The GtkListView is transparent; each `row` is just a spacing slot
+// (the .notification card / group header carries the visuals). Row
+// gap replaces the old Box `spacing: 10`.
+.notifications-list {
+  background: transparent;
+
+  > row {
+    padding: 0;
+    margin-bottom: var(--space-3);
+    background: transparent;
+  }
+
+  > row:last-child {
+    margin-bottom: 0;
+  }
+}
+
 // ── Per-app collapsible group header ─────────────────────────────────
 // Matches .audio-dashboard-section-label semantics: uppercase, xs,
-// semibold, --on-surface-variant. The Expander arrow + title both get
-// the canonical hover wash so the hit-area reads as interactive.
-.notification-group {
-  > title {
-    border-radius: var(--radius-sm);
-    padding: var(--space-1) var(--space-2);
+// semibold, --on-surface-variant. The whole row is the activatable
+// surface (click → toggle), so it gets the canonical hover wash.
+.notification-group-header {
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  @include state-layer();
+
+  .notification-group-chevron {
+    -gtk-icon-size: var(--icon-sm);
+    color: var(--on-surface-variant);
+  }
+
+  .notification-group-title {
     font-size: var(--font-xs);
     font-weight: 600;
     letter-spacing: 0.05em;
     text-transform: uppercase;
     color: var(--on-surface-variant);
-    @include state-layer();
   }
+}
+
+// Notifications nested inside an expanded group — indented so the
+// grouping reads at a glance.
+.notification-group-child {
+  margin-left: var(--space-3);
 }
 
 // ── Muted-apps list row ───────────────────────────────────────────────

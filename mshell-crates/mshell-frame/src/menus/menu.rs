@@ -330,13 +330,12 @@ impl Component for MenuModel {
                     let minimum_width = config.menus().notification_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
                 });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let maximum_height = config.menus().notification_menu().maximum_height().get();
-                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                });
+                // NOTE: like the clipboard, the notifications menu does NOT
+                // cap its *outer* scroller at `maximum_height`. The widget
+                // applies that cap to its own inner history scroller (see
+                // notifications.rs) so the header stays fixed while only the
+                // list scrolls — and the bounded inner viewport is what lets
+                // the ListView virtualize. Capping both would double-scroll.
             }
             MenuType::Screenshot => {
                 css_class = "screenshot-menu".to_string();
