@@ -510,8 +510,9 @@ impl Component for ControlCenterTilesModel {
         let grid = gtk::Grid::new();
         grid.add_css_class("control-center-grid");
         grid.set_column_homogeneous(true);
-        grid.set_row_spacing(8);
-        grid.set_column_spacing(8);
+        // Roomier inter-tile gaps for a GNOME-like, less cramped grid.
+        grid.set_row_spacing(12);
+        grid.set_column_spacing(12);
         grid.set_hexpand(true);
         grid
     }
