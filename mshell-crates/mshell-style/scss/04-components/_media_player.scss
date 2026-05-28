@@ -13,9 +13,10 @@
 }
 
 // ── Hero row: album cover + info column ─────────────────────
+// The cover↔info gap is GtkBox spacing (a widget property, not CSS) and
+// is set in media_player.rs (`set_spacing: 12` = --space-3).
 .media-player-hero {
   margin-bottom: var(--space-2);
-  spacing: var(--space-3);
 }
 
 .media-player-cover {

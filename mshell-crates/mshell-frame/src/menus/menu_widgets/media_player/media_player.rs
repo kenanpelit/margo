@@ -92,6 +92,11 @@ impl Component for MediaPlayerModel {
                 add_css_class: "media-player-hero",
                 set_orientation: gtk::Orientation::Horizontal,
                 set_hexpand: true,
+                // Gap between the album cover and the title/artist column.
+                // GtkBox spacing is a widget property, not CSS, so it has to
+                // be set here (--space-3 = 12px) — the cover and text read as
+                // glued together at 0.
+                set_spacing: 12,
 
                 #[name = "cover"]
                 gtk::Image {
