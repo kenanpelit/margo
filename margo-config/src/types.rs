@@ -177,6 +177,21 @@ pub enum OverviewCycleOrder {
     Mixed,
 }
 
+/// Which overview the generic `toggle_overview` action opens.
+///
+/// * `Grid` — the classic mango/dwl grid: every visible window
+///   flattened into one grid, alt+Tab-navigable. The historical
+///   default, so it stays the default here.
+/// * `Scroller` — the niri-style scroller overview: each tag shown as
+///   a scaled-down mini-desktop in a vertical strip, navigated by
+///   scroll / arrows / click.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum OverviewStyle {
+    #[default]
+    Grid,
+    Scroller,
+}
+
 // ── Key identifier ───────────────────────────────────────────────────────────
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum KeyType {
@@ -691,6 +706,17 @@ pub struct Config {
     /// [`OverviewCycleOrder`] for the three modes. Default `Mru`.
     pub overview_cycle_order: OverviewCycleOrder,
 
+    /// Which overview the generic `toggle_overview` action opens —
+    /// the classic `Grid` (default) or the niri-style `Scroller`.
+    pub overview_style: OverviewStyle,
+    /// Scroller overview zoom (cell size = output × zoom). Independent
+    /// of `overview_zoom` so the two overviews tune separately.
+    /// Clamped to `[0.1, 1.0]`. Default `0.5` (niri's default).
+    pub scroller_overview_zoom: f32,
+    /// Vertical gap between scroller-overview tag cells, in pre-zoom
+    /// logical pixels. Default `40`.
+    pub scroller_overview_gap: i32,
+
     // ── Twilight (blue-light filter) ───────────────────────────────
     /// Master switch. `false` disables every twilight code path —
     /// no timer, no gamma writes, no `pending_gamma` traffic. Off
@@ -1001,6 +1027,9 @@ impl Default for Config {
             overview_selected_border_multiplier: 1.6,
             overview_dim_alpha: 0.6,
             overview_cycle_order: OverviewCycleOrder::Mru,
+            overview_style: OverviewStyle::Grid,
+            scroller_overview_zoom: 0.5,
+            scroller_overview_gap: 40,
             twilight: false,
             twilight_mode: TwilightMode::Geo,
             twilight_day_temp: 6500,

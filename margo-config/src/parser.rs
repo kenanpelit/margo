@@ -335,6 +335,22 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
                 }
             }
         }
+        "overview_style" => {
+            cfg.overview_style = match val.trim().to_ascii_lowercase().as_str() {
+                "grid" => crate::types::OverviewStyle::Grid,
+                "scroller" => crate::types::OverviewStyle::Scroller,
+                other => {
+                    tracing::warn!(
+                        "config: unknown overview_style={other:?}; keeping default (grid)"
+                    );
+                    crate::types::OverviewStyle::Grid
+                }
+            }
+        }
+        "scroller_overview_zoom" => {
+            cfg.scroller_overview_zoom = parse_f32(val).clamp(0.1, 1.0)
+        }
+        "scroller_overview_gap" => cfg.scroller_overview_gap = parse_i32(val).max(0),
 
         // ── Twilight (blue-light filter) ───────────────────────────
         "twilight" => cfg.twilight = parse_bool(val),
@@ -1468,9 +1484,12 @@ pub const OPTION_KEYS: &[&str] = &[
     "overviewgappi",
     "overviewgappo",
     "overview_selected_border_multiplier",
+    "overview_style",
     "overview_transition_ms",
     "overview_zoom",
     "ov_tab_mode",
+    "scroller_overview_gap",
+    "scroller_overview_zoom",
     "repeat_delay",
     "repeat_rate",
     "rootcolor",

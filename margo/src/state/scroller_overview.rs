@@ -147,6 +147,17 @@ impl MargoState {
         }
     }
 
+    /// Toggle whichever overview the user picked as their preferred
+    /// style (`overview_style` config). This is what the generic
+    /// `toggle_overview` keybind dispatches to, so a single key opens
+    /// the grid or the scroller depending on the Settings choice.
+    pub fn toggle_overview_styled(&mut self) {
+        match self.config.overview_style {
+            margo_config::OverviewStyle::Scroller => self.toggle_scroller_overview(),
+            margo_config::OverviewStyle::Grid => self.toggle_overview(),
+        }
+    }
+
     /// Tags (1-based) to show as cells for `mon_idx`: every tag that
     /// has at least one mapped, non-minimized client, always including
     /// the currently-selected tag so the strip is never empty and the
@@ -246,8 +257,8 @@ impl MargoState {
             .as_ref()
             .map(|o| o.selected_tag)
             .unwrap_or(1);
-        let zoom = f64::from(self.config.overview_zoom.clamp(0.1, 1.0));
-        let gap = self.config.overview_gap_outer.max(16);
+        let zoom = f64::from(self.config.scroller_overview_zoom.clamp(0.1, 1.0));
+        let gap = self.config.scroller_overview_gap.max(0);
         let cells = overview_cells(area, &tags, zoom, gap, selected);
 
         let Some(cell) = cells.into_iter().find(|c| contains(c.rect, x, y)) else {

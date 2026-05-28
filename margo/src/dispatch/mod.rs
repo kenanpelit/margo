@@ -578,7 +578,11 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                 }
             }
         }
-        "toggle_overview" => state.toggle_overview(),
+        // Routes to the grid or scroller overview per `overview_style`
+        // (Settings → Overview). `toggle_grid_overview` /
+        // `toggle_scroller_overview` force a specific one.
+        "toggle_overview" => state.toggle_overview_styled(),
+        "toggle_grid_overview" => state.toggle_overview(),
         // Keyboard navigation while overview is open. The action
         // handlers are no-ops outside overview, but the keybinding
         // dispatcher still intercepts the keystroke — pick combos

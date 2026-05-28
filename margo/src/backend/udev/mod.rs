@@ -2218,8 +2218,8 @@ fn build_scroller_overview_elements(
         .as_ref()
         .map(|ov| ov.selected_tag)
         .unwrap_or(1);
-    let zoom = f64::from(state.config.overview_zoom.clamp(0.1, 1.0));
-    let gap = state.config.overview_gap_outer.max(16);
+    let zoom = f64::from(state.config.scroller_overview_zoom.clamp(0.1, 1.0));
+    let gap = state.config.scroller_overview_gap.max(0);
     let output_rect = crate::layout::Rect::new(
         output_geo.loc.x,
         output_geo.loc.y,

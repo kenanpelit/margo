@@ -5,6 +5,7 @@ use crate::default_apps_settings::{DefaultAppsSettingsInit, DefaultAppsSettingsM
 use crate::network_settings::{NetworkSettingsInit, NetworkSettingsModel};
 use crate::power_settings::{PowerSettingsInit, PowerSettingsModel};
 use crate::privacy_settings::{PrivacySettingsInit, PrivacySettingsModel};
+use crate::overview_settings::{OverviewSettingsInit, OverviewSettingsModel};
 use crate::bar_settings::bar_settings::{BarSettingsInit, BarSettingsModel};
 use crate::date_time_settings::{DateTimeSettingsInit, DateTimeSettingsModel};
 use crate::region_settings::{RegionSettingsInit, RegionSettingsModel};
@@ -43,6 +44,7 @@ pub struct SettingsWindowModel {
     fonts_settings_controller: Controller<FontsSettingsModel>,
     about_settings_controller: Controller<AboutSettingsModel>,
     animations_settings_controller: Controller<AnimationsSettingsModel>,
+    overview_settings_controller: Controller<OverviewSettingsModel>,
     date_time_settings_controller: Controller<DateTimeSettingsModel>,
     region_settings_controller: Controller<RegionSettingsModel>,
     sound_settings_controller: Controller<SoundSettingsModel>,
@@ -252,6 +254,27 @@ impl Component for SettingsWindowModel {
                             gtk::Label {
                                 add_css_class: "label-medium",
                                 set_label: "Animations",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
+                    #[name = "overview_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("overview"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("view-grid-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Overview",
                                 set_halign: gtk::Align::Start,
                                 set_hexpand: true,
                             },
@@ -794,6 +817,10 @@ impl Component for SettingsWindowModel {
             .launch(AnimationsSettingsInit {})
             .detach();
 
+        let overview_settings_controller = OverviewSettingsModel::builder()
+            .launch(OverviewSettingsInit {})
+            .detach();
+
         let date_time_settings_controller = DateTimeSettingsModel::builder()
             .launch(DateTimeSettingsInit {})
             .detach();
@@ -914,6 +941,7 @@ impl Component for SettingsWindowModel {
             fonts_settings_controller,
             about_settings_controller,
             animations_settings_controller,
+            overview_settings_controller,
             date_time_settings_controller,
             region_settings_controller,
             sound_settings_controller,
@@ -1082,6 +1110,12 @@ impl Component for SettingsWindowModel {
             model.animations_settings_controller.widget(),
             Some("animations"),
             "Animations",
+        );
+
+        widgets.stack.add_titled(
+            model.overview_settings_controller.widget(),
+            Some("overview"),
+            "Overview",
         );
 
         widgets.stack.add_titled(
