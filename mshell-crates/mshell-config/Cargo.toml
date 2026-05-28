@@ -10,6 +10,7 @@ license.workspace = true
 [dependencies]
 dirs.workspace = true
 figment.workspace = true
+mshell-plugins.workspace = true
 notify.workspace = true
 reactive_graph.workspace = true
 reactive_stores.workspace = true

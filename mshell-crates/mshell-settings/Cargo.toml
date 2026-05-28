@@ -18,6 +18,7 @@ mshell-common.workspace = true
 mshell-config.workspace = true
 mshell-launcher.workspace = true
 mshell-matugen.workspace = true
+mshell-plugins.workspace = true
 mshell-services.workspace = true
 mshell-style.workspace = true
 mshell-utils.workspace = true

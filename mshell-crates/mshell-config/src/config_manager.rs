@@ -132,6 +132,9 @@ impl ConfigManager {
         // Snapshot current effective config and apply the mutation.
         let mut updated = self.config.read_untracked().clone();
         f(&mut updated);
+        // Plugin widgets are a derived layer (re-added on load); never write
+        // them into the user's profile.
+        crate::plugin_bridge::strip_plugin_widgets(&mut updated);
 
         // Determine which file owns this layer.
         let active = self.active_profile.read_untracked();

@@ -69,7 +69,11 @@ pub(crate) fn load_effective_config(
         figment = figment.merge(Yaml::file(profile_path(name)));
     }
 
-    figment.extract::<Config>()
+    let mut config = figment.extract::<Config>()?;
+    // Plugin widgets are derived from the plugin manager's own files, not the
+    // profile — fold the enabled ones in on every load.
+    crate::plugin_bridge::resync_plugin_widgets(&mut config);
+    Ok(config)
 }
 
 pub(crate) fn watch_config_loop(

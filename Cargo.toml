@@ -185,6 +185,7 @@ mshell-margo-client = { path = "mshell-crates/mshell-margo-client" }
 mshell-matugen = { path = "mshell-crates/mshell-matugen" }
 mshell-notification-popups = { path = "mshell-crates/mshell-notification-popups" }
 mshell-osd = { path = "mshell-crates/mshell-osd" }
+mshell-plugins = { path = "mshell-crates/mshell-plugins" }
 mshell-polkit = { path = "mshell-crates/mshell-polkit" }
 mshell-screenshot = { path = "mshell-crates/mshell-screenshot" }
 mshell-services = { path = "mshell-crates/mshell-services" }

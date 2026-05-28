@@ -3647,6 +3647,7 @@ version = "0.8.8"
 dependencies = [
  "dirs",
  "figment",
+ "mshell-plugins",
  "notify",
  "reactive_graph",
  "reactive_stores",
@@ -3997,6 +3998,7 @@ dependencies = [
  "mshell-config",
  "mshell-launcher",
  "mshell-matugen",
+ "mshell-plugins",
  "mshell-services",
  "mshell-style",
  "mshell-utils",

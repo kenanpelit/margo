@@ -1340,6 +1340,7 @@ impl Component for SettingsWindowModel {
             SystemUpdate,
             Dock,
             SystemTray,
+            Plugins,
             Lock,
         }
 
@@ -1350,6 +1351,7 @@ impl Component for SettingsWindowModel {
                     Self::SystemUpdate => "System Updates",
                     Self::Dock => "Margo Dock",
                     Self::SystemTray => "System Tray",
+                    Self::Plugins => "Plugins",
                     Self::Lock => "Lock",
                     Self::Menu { label, .. } | Self::Pill { label, .. } => label,
                     Self::Notifications => "Notifications",
@@ -1408,6 +1410,8 @@ impl Component for SettingsWindowModel {
             // System Tray owns a dedicated page (default-expanded toggle),
             // so it's a dedicated entry rather than the generic pill info page.
             WidgetEntry::SystemTray,
+            // Plugins: the mplugins manager (sources / available / installed).
+            WidgetEntry::Plugins,
             WidgetEntry::Pill { kind: BarPillKind::VpnIndicator, stack_name: "pill_vpn", label: "VPN Indicator", icon: "network-vpn-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::NetworkSpeed, stack_name: "pill_network_speed", label: "Network Speed", icon: "network-transmit-receive-symbolic" },
             // Rich pages with their own controllers.
@@ -1546,6 +1550,23 @@ impl Component for SettingsWindowModel {
                         .launch(crate::system_tray_settings::SystemTraySettingsInit {})
                         .detach();
                     widgets_sub_stack.add_named(ctrl.widget(), Some("system_tray"));
+                    Box::leak(Box::new(ctrl));
+                }
+                WidgetEntry::Plugins => {
+                    let btn = make_sub_btn(
+                        "Plugins",
+                        "application-x-addon-symbolic",
+                        "plugins",
+                        group_anchor.as_ref(),
+                    );
+                    if group_anchor.is_none() {
+                        group_anchor = Some(btn.clone());
+                    }
+                    widgets_sub_sidebar_box.append(&btn);
+                    let ctrl = crate::plugins_settings::PluginsSettingsModel::builder()
+                        .launch(crate::plugins_settings::PluginsSettingsInit {})
+                        .detach();
+                    widgets_sub_stack.add_named(ctrl.widget(), Some("plugins"));
                     Box::leak(Box::new(ctrl));
                 }
                 WidgetEntry::Lock => {

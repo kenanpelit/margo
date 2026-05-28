@@ -41,6 +41,7 @@ mod net;
 mod network_settings;
 mod notification_settings;
 mod overview_settings;
+mod plugins_settings;
 mod power_settings;
 mod privacy_settings;
 mod session_settings;
