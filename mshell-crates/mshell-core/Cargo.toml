@@ -30,6 +30,7 @@ mshell-sounds.workspace = true
 mshell-style.workspace = true
 mshell-utils.workspace = true
 mshell-wallpaper.workspace = true
+futures.workspace = true
 reactive_graph.workspace = true
 relm4.workspace = true
 serde.workspace = true

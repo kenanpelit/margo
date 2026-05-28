@@ -3666,6 +3666,7 @@ dependencies = [
  "any_spawner",
  "anyhow",
  "dirs",
+ "futures",
  "gtk4-layer-shell",
  "mshell-cache",
  "mshell-clipboard",

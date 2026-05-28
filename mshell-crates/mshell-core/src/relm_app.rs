@@ -282,6 +282,11 @@ impl Component for Shell {
             }
         });
 
+        // Lock-before-sleep: hold a logind delay inhibitor and lock with
+        // mlock on any suspend/hibernate (lid, power menu, `systemctl
+        // suspend`, logind idle) before the system actually sleeps.
+        crate::sleep_lock::spawn();
+
         // First launch — no shell profile saved yet. Open the setup
         // wizard menu once the frames exist (a short delay lets
         // `sync_monitors` build them first). This is the same in-shell

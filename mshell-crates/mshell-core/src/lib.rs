@@ -1,6 +1,7 @@
 mod ipc;
 mod monitors;
 mod relm_app;
+mod sleep_lock;
 
 use crate::relm_app::{Shell, ShellInit};
 use any_spawner::Executor;
