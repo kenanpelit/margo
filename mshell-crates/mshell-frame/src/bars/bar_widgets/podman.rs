@@ -251,3 +251,19 @@ async fn run_capture(cmd: &str, args: &[&str]) -> Option<String> {
     }
     Some(String::from_utf8_lossy(&out.stdout).into_owned())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::is_running_state;
+
+    #[test]
+    fn running_match_is_case_insensitive() {
+        // Container `State` is lowercase "running"; pod `Status` may capitalize.
+        assert!(is_running_state("running"));
+        assert!(is_running_state("Running"));
+        assert!(is_running_state("RUNNING"));
+        assert!(!is_running_state("exited"));
+        assert!(!is_running_state("paused"));
+        assert!(!is_running_state(""));
+    }
+}
