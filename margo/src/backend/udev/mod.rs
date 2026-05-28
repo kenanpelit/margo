@@ -91,6 +91,10 @@ render_elements! {
     // and placed into its tag's cell (Relocate). See
     // `build_scroller_overview_elements`.
     ScaledSurface=smithay::backend::renderer::element::utils::RelocateRenderElement<smithay::backend::renderer::element::utils::RescaleRenderElement<WaylandSurfaceRenderElement<GlesRenderer>>>,
+    // Same as ScaledSurface but with a per-cell namespaced Id, for the
+    // wallpaper drawn into every overview cell (avoids damage-tracker
+    // Id collisions). See `crate::render::namespaced`.
+    NamespacedSurface=smithay::backend::renderer::element::utils::RelocateRenderElement<smithay::backend::renderer::element::utils::RescaleRenderElement<crate::render::namespaced::NamespacedElement<WaylandSurfaceRenderElement<GlesRenderer>>>>,
 }
 
 // ── Type aliases ──────────────────────────────────────────────────────────────
@@ -2238,6 +2242,15 @@ fn build_scroller_overview_elements(
     );
     let cells = crate::state::overview_cells(output_rect, &tags, zoom, gap, selected);
 
+    // The output's wallpaper (background + bottom layer-shell surfaces),
+    // drawn into every cell behind the windows — niri zooms these with
+    // each workspace. Collected once; each cell gets a namespaced copy.
+    let layer_map = layer_map_for_output(&od.output);
+    let bg_layers: Vec<&smithay::desktop::LayerSurface> = layer_map
+        .layers()
+        .filter(|s| matches!(s.layer(), WlrLayer::Background | WlrLayer::Bottom))
+        .collect();
+
     for cell in &cells {
         let cell_w = output_geo.size.w.max(1);
         let cell_scale = f64::from(cell.rect.width) / f64::from(cell_w);
@@ -2278,6 +2291,25 @@ fn build_scroller_overview_elements(
             }
         }
 
+        // Wallpaper behind the windows, namespaced per cell.
+        for layer in &bg_layers {
+            let Some(lgeo) = layer_map.layer_geometry(layer) else {
+                continue;
+            };
+            let loc_phys = lgeo.loc.to_physical_precise_round(scale);
+            let surf_elems = render_elements_from_surface_tree::<
+                GlesRenderer,
+                WaylandSurfaceRenderElement<GlesRenderer>,
+            >(renderer, layer.wl_surface(), loc_phys, output_scale, 1.0, Kind::Unspecified);
+            for e in surf_elems {
+                let ns = crate::render::namespaced::NamespacedElement::new(e, cell.tag);
+                let scaled =
+                    RescaleRenderElement::from_element(ns, Point::from((0, 0)), cell_scale);
+                let placed =
+                    RelocateRenderElement::from_element(scaled, cell_origin_phys, Relocate::Relative);
+                elements.push(MargoRenderElement::NamespacedSurface(placed));
+            }
+        }
     }
 
     // Backdrop at the very bottom (behind every cell).
@@ -2289,7 +2321,7 @@ fn build_scroller_overview_elements(
         smithay::backend::renderer::element::Id::new(),
         backdrop,
         CommitCounter::default(),
-        [0.02, 0.02, 0.03, 1.0],
+        BACKDROP_COLOR,
         Kind::Unspecified,
     )));
 
