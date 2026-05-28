@@ -431,7 +431,11 @@ fn rebuild_installed(
             cmd.add_css_class("dim-label");
             cmd.set_halign(gtk::Align::Start);
             cmd.set_xalign(0.0);
-            cmd.set_wrap(true);
+            // Commands can be long; keep the row compact with one ellipsized
+            // line and the full text on hover (still selectable for review).
+            cmd.set_ellipsize(gtk::pango::EllipsizeMode::End);
+            cmd.set_max_width_chars(48);
+            cmd.set_tooltip_text(Some(&cmds));
             cmd.set_selectable(true);
             col.append(&cmd);
         }
@@ -521,9 +525,12 @@ fn rebuild_available(
         list.append(&row);
     }
     if shown == 0 {
-        let empty = gtk::Label::new(Some(
-            "Nothing to show. Add a source and hit Refresh.",
-        ));
+        let msg = if model.available.is_empty() {
+            "Hit Refresh to fetch plugins from your sources."
+        } else {
+            "All available plugins are installed."
+        };
+        let empty = gtk::Label::new(Some(msg));
         empty.add_css_class("label-small");
         empty.add_css_class("dim-label");
         empty.set_halign(gtk::Align::Start);
