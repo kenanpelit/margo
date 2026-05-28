@@ -171,7 +171,7 @@ fn render_layout(cr: &cairo::Context, w: i32, h: i32, p: &LayoutParams, big: boo
 fn hsv_to_rgb(h: f64, s: f64, v: f64) -> (f64, f64, f64) {
     let h = h.fract().abs();
     let i = (h * 6.0).floor() as i32 % 6;
-    let f = h * 6.0 - h * 6.0_f64.floor();
+    let f = h * 6.0 - (h * 6.0).floor();
     let p = v * (1.0 - s);
     let q = v * (1.0 - f * s);
     let t = v * (1.0 - (1.0 - f) * s);

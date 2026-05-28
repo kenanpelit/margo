@@ -58,6 +58,6 @@ mod tests {
     #[test]
     fn always_five_rows() {
         assert_eq!(big_time("00:00").len(), 5);
-        assert_eq!(big_time("").iter().all(|r| r.is_empty()), true);
+        assert!(big_time("").iter().all(|r| r.is_empty()));
     }
 }

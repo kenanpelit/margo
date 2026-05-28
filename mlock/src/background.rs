@@ -77,10 +77,8 @@ pub fn read() -> BgConfig {
                     cfg.color = c;
                 }
             }
-            "background_image" => {
-                if !val.is_empty() {
-                    cfg.image = Some(expand_home(val));
-                }
+            "background_image" if !val.is_empty() => {
+                cfg.image = Some(expand_home(val));
             }
             _ => {}
         }
