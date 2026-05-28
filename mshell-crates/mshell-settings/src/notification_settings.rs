@@ -17,6 +17,7 @@ pub(crate) struct NotificationSettingsModel {
     show_action_buttons: bool,
     group_notifications: bool,
     popup_width: i32,
+    history_limit: u32,
     /// History-menu surface size (config.menus.notification_menu) — the
     /// panel that opens on the bar pill, distinct from the popup toasts.
     menu_min_width: i32,
@@ -37,6 +38,8 @@ pub(crate) enum NotificationSettingsInput {
     GroupEffect(bool),
     PopupWidthChanged(i32),
     PopupWidthEffect(i32),
+    HistoryLimitChanged(u32),
+    HistoryLimitEffect(u32),
     MenuMinWidthChanged(i32),
     MenuMinWidthEffect(i32),
     MenuMaxHeightChanged(i32),
@@ -359,6 +362,44 @@ impl Component for NotificationSettingsModel {
                         gtk::Label {
                             add_css_class: "label-medium-bold",
                             set_halign: gtk::Align::Start,
+                            set_label: "History limit",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_label: "Max number of recent notifications the history renders. A large persisted history slows the first open; lower this if it lags. 0 = unlimited.",
+                            set_halign: gtk::Align::Start,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    #[name = "history_limit_spin"]
+                    gtk::SpinButton {
+                        set_valign: gtk::Align::Center,
+                        set_range: (0.0, 250.0),
+                        set_increments: (10.0, 50.0),
+                        set_digits: 0,
+                        #[watch]
+                        #[block_signal(history_limit_handler)]
+                        set_value: model.history_limit as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(NotificationSettingsInput::HistoryLimitChanged(s.value() as u32));
+                        } @history_limit_handler,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
                             set_label: "Group by app",
                             set_hexpand: true,
                         },
@@ -492,6 +533,16 @@ impl Component for NotificationSettingsModel {
         effects.push(move |_| {
             let v = config_manager()
                 .config()
+                .notifications()
+                .history_limit()
+                .get();
+            sender_clone.input(NotificationSettingsInput::HistoryLimitEffect(v));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let v = config_manager()
+                .config()
                 .menus()
                 .notification_menu()
                 .minimum_width()
@@ -535,6 +586,11 @@ impl Component for NotificationSettingsModel {
                 .config()
                 .notifications()
                 .popup_width()
+                .get_untracked(),
+            history_limit: config_manager()
+                .config()
+                .notifications()
+                .history_limit()
                 .get_untracked(),
             menu_min_width: config_manager()
                 .config()
@@ -633,6 +689,15 @@ impl Component for NotificationSettingsModel {
                 config_manager().update_config(move |config| {
                     config.notifications.popup_width = w;
                 });
+            }
+            NotificationSettingsInput::HistoryLimitChanged(v) => {
+                self.history_limit = v;
+                config_manager().update_config(move |config| {
+                    config.notifications.history_limit = v;
+                });
+            }
+            NotificationSettingsInput::HistoryLimitEffect(v) => {
+                self.history_limit = v;
             }
             NotificationSettingsInput::PopupWidthEffect(w) => {
                 self.popup_width = w;

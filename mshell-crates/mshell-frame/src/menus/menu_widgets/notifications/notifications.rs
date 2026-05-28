@@ -125,6 +125,9 @@ pub(crate) struct NotificationsModel {
     /// A notification (or grouping/format) change landed while hidden —
     /// rebuild on next reveal.
     dirty: bool,
+    /// Whether the store has been built at least once. Lets a reveal skip
+    /// the (O(history)) rebuild when nothing changed since the last open.
+    built: bool,
     _effects: EffectScope,
 }
 
@@ -316,6 +319,7 @@ impl Component for NotificationsModel {
             list_max_height: 0,
             revealed: false,
             dirty: false,
+            built: false,
             _effects: effects,
         };
 
@@ -367,7 +371,10 @@ impl Component for NotificationsModel {
             }
             NotificationsInput::ParentRevealChanged(revealed) => {
                 self.revealed = revealed;
-                if revealed {
+                // Only rebuild on open if something changed since last time
+                // (or the very first open) — reopening an unchanged history
+                // shouldn't re-splice the whole list model.
+                if revealed && (self.dirty || !self.built) {
                     self.dirty = false;
                     self.refresh();
                 }
@@ -410,6 +417,7 @@ impl NotificationsModel {
         let notifications = notification_service().notifications.get();
         self.empty_label_visible = notifications.is_empty();
         self.rebuild_store(&notifications);
+        self.built = true;
     }
 
     /// Flatten the history into [`NotifRow`]s and splice them into the
@@ -426,6 +434,20 @@ impl NotificationsModel {
             .general()
             .clock_format_24_h()
             .get_untracked();
+
+        // Render only the most-recent `history_limit` entries (0 = all) so a
+        // 500-entry persisted history doesn't rebuild a 500-row model on
+        // every open. The slice is the top of the menu's natural order.
+        let limit = config_manager()
+            .config()
+            .notifications()
+            .history_limit()
+            .get_untracked() as usize;
+        let notifications: &[Arc<Notification>] = if limit > 0 && notifications.len() > limit {
+            &notifications[..limit]
+        } else {
+            notifications
+        };
 
         let mut rows: Vec<NotifRow> = Vec::with_capacity(notifications.len());
 

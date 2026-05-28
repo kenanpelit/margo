@@ -1072,6 +1072,15 @@ pub struct Notifications {
     /// `menus.notification_menu.minimum_width`); this is the
     /// transient toast surface anchored to a screen corner.
     pub popup_width: i32,
+    /// Max number of (most-recent) notifications the history menu renders.
+    /// Persisted history can grow into the hundreds; rendering all of them
+    /// rebuilds a large list model on every open. 0 = unlimited.
+    #[serde(default = "default_history_limit")]
+    pub history_limit: u32,
+}
+
+fn default_history_limit() -> u32 {
+    200
 }
 
 impl Default for Notifications {
@@ -1083,6 +1092,7 @@ impl Default for Notifications {
             show_action_buttons: false,
             group_notifications: true,
             popup_width: 460,
+            history_limit: default_history_limit(),
         }
     }
 }
