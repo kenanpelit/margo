@@ -1,11 +1,11 @@
 # Wayland Protocol Surface — margo vs niri vs Hyprland vs mango
 
-> **Last refreshed:** 2026-05-21
+> **Last refreshed:** 2026-05-28
 > **Sources walked (all at that day's `HEAD`):**
-> - **margo** — this repo (smithay `delegate_*!` macros + hand-rolled `GlobalDispatch`).
-> - **niri** `26.4.0` (`4294948`) — same smithay method.
-> - **Hyprland** `0.55.0` (`v0.55.0-55-g95d9ae2`) — `src/protocols/*.cpp` + `src/protocols/core/`.
-> - **mango** `0.13.1` (`0.13.1-19-gda1e1ca`) — wlroots `wlr_*_create()` call sites + `protocols/*.xml`.
+> - **margo** `0.8.8` (`6738494`) — this repo (smithay `delegate_*!` macros + hand-rolled `GlobalDispatch`).
+> - **niri** `26.04` (`v26.04-23-g9a6f310`) — same smithay method.
+> - **Hyprland** `0.55.0` (`v0.55.0-86-gebc1816`) — `src/protocols/*.cpp` + `src/protocols/core/`.
+> - **mango** `0.13.1` (`0.13.1-69-gd702cc2`) — wlroots `wlr_*_create()` call sites + `protocols/*.xml`.
 
 This document is the source-of-truth audit of which Wayland protocols
 each daily-driver compositor advertises. **mango** — the C/wlroots
@@ -31,22 +31,31 @@ numbers are comparable.
 
 | Compositor | Protocols (approx.) | Stack | Note |
 |---|---|---|---|
-| **Hyprland** `0.55.0` | **~67** | C++ (hand-rolled) | Widest surface — 61 protocol modules + 6 core, plus Hyprland-only extensions |
-| **margo** | **~57** | Rust / smithay | Modern surface; **passed niri and mango**; pursuing Hyprland |
+| **Hyprland** `0.55.0` | **~68** | C++ (hand-rolled) | Widest surface — 62 protocol modules + 6 core, plus Hyprland-only extensions |
+| **margo** `0.8.8` | **~57** | Rust / smithay | Modern surface; **ahead of niri and mango**; pursuing Hyprland |
 | **mango** `0.13.1` | **~53** | C / wlroots | Broad-but-legacy: wlroots hands it everything for free |
-| **niri** `26.4.0` | **~41** | Rust / smithay | Tightest surface; deliberately minimal |
+| **niri** `26.04` | **~41** | Rust / smithay | Tightest surface; deliberately minimal |
 
-The headline story shifted this refresh: **margo (~57) has overtaken its
-own C ancestor mango (~53)** after hand-rolling three protocols mango got
-from wlroots — `zwlr_foreign_toplevel_manager_v1` (write-side, P2),
-`ext_workspace_v1` (P5) and `zwlr_virtual_pointer_manager_v1` (P7). margo
-already led on the *modern* surface (HDR colour-management, content-type,
+**This refresh (2026-05-28) is a re-verification, not a re-shuffle.** All
+four were walked again at today's `HEAD`; the standings are unchanged.
+The only protocol movement in the week since the last audit is on the
+widest surface: **Hyprland added `hyprland_lock_notify`** (its own
+`LockNotify.cpp` / `CHyprlandLockNotification`), nudging it 61→62
+modules. margo, niri and mango advertise the exact same protocol sets as
+the 2026-05-21 audit — margo's headline work this cycle (the niri-style
+scroller overview, v0.8.8) is internal render/input and adds **no** new
+Wayland globals.
+
+The standing picture: **margo (~57) leads its own C ancestor mango
+(~53)** and niri (~41), having hand-rolled the three wlroots-freebies
+mango got for free — `zwlr_foreign_toplevel_manager_v1` (write-side, P2),
+`ext_workspace_v1` (P5), `zwlr_virtual_pointer_manager_v1` (P7) — on top
+of the *modern* surface (HDR colour-management, content-type,
 fifo/commit-timing, security-context, pointer-warp, xdg-dialog,
 system-bell, toplevel-icon, toplevel-tag, xwayland-keyboard-grab) that
-mango's wlroots base doesn't expose; closing the workspace / toplevel /
-virtual-pointer gap puts it ahead outright. The three protocols still
-unadvertised (`output_power`, `tearing_control`, `drm_lease`) are
-blocked, not just deferred — see "remaining three gaps" below.
+mango's wlroots base doesn't expose. The three margo still doesn't
+advertise (`output_power`, `tearing_control`, `drm_lease`) are blocked,
+not just deferred — see "remaining three gaps" below.
 
 ## Core baseline — present in all four
 
@@ -131,7 +140,7 @@ parallel. `virtual_pointer` feeds margo's normal input path.
 ## The remaining three gaps — blocked, not just deferred
 
 These three are **not** a matter of effort — each hits a concrete
-upstream or architectural wall (confirmed by source audit 2026-05-21):
+upstream or architectural wall (re-confirmed by source audit 2026-05-28):
 
 | Protocol | margo | niri | Hyprland | mango | Why margo can't ship it cleanly today |
 |---|---|---|---|---|---|
@@ -149,6 +158,7 @@ Tied to each project's own ecosystem; not counted as margo gaps.
 | Protocol | Who | What it does |
 |---|---|---|
 | `focus_grab` | Hyprland | Internal grab semantics |
+| `hyprland_lock_notify` | Hyprland | **New 0.55.0-86** — notifies clients when the session locks/unlocks (Hyprland-flavoured; not the standard `ext_lock_notify_v1`) |
 | `global_shortcuts` | Hyprland | xdg-desktop-portal global-shortcuts helper |
 | `toplevel_export` / `toplevel_mapping` | Hyprland | Hyprland-flavored toplevel export |
 | `hyprland_surface` | Hyprland | Rounding / opacity surface hints |
