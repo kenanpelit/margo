@@ -1128,30 +1128,45 @@ fn handle_pointer_axis<B: InputBackend, E: PointerAxisEvent<B>>(
     state: &mut MargoState,
     event: E,
 ) {
-    // Scroller overview: scroll pans the tag selection (no modifier),
-    // niri-style. A gesture arrives as a burst of events, so we feed a
-    // normalized v120 delta into an accumulator that steps once per
-    // notch — otherwise one flick races the selection across every tag
-    // ("titreme"). Consume the event so it never reaches clients.
+    // Scroller overview: scroll continuously pans the tag strip on the
+    // monitor under the pointer (niri-style), with momentum + snap handled
+    // in the physics tick. Convert the device delta to cell units: a wheel
+    // notch (v120 = 120) moves one cell; touchpad finger scroll (no v120)
+    // pans smoothly via a small gain. Consume the event so the scaled-down
+    // clients never receive it.
     if state.is_scroller_overview_open() {
-        // Prefer the high-res discrete wheel signal (v120, 120/notch);
-        // fall back to scaling the continuous amount (touchpad finger
-        // scroll, which has no v120) into comparable units.
         let v120 = event
             .amount_v120(Axis::Vertical)
             .filter(|v| *v != 0.0)
             .or_else(|| event.amount_v120(Axis::Horizontal).filter(|v| *v != 0.0));
-        let delta = if let Some(v120) = v120 {
-            v120
+        let discrete = v120.is_some();
+        let delta_cells = if let Some(v120) = v120 {
+            v120 / 120.0
         } else {
             let amt = event
                 .amount(Axis::Vertical)
                 .filter(|a| *a != 0.0)
                 .or_else(|| event.amount(Axis::Horizontal).filter(|a| *a != 0.0))
                 .unwrap_or(0.0);
-            amt * 10.0
+            amt * 0.006
         };
-        state.scroller_overview_scroll(delta);
+        if delta_cells != 0.0 {
+            // Target the monitor the pointer is over so two displays pan
+            // independently; fall back to the focused monitor.
+            let (px, py) = (state.input_pointer.x, state.input_pointer.y);
+            let mon = state
+                .monitors
+                .iter()
+                .position(|m| {
+                    let a = m.monitor_area;
+                    (px as i32) >= a.x
+                        && (px as i32) < a.x + a.width
+                        && (py as i32) >= a.y
+                        && (py as i32) < a.y + a.height
+                })
+                .unwrap_or_else(|| state.focused_monitor());
+            state.scroller_overview_scroll(mon, delta_cells, discrete, crate::utils::now_ms());
+        }
         return;
     }
 

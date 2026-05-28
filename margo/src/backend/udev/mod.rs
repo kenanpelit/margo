@@ -2217,13 +2217,15 @@ fn build_scroller_overview_elements(
     };
 
     let tags = state.scroller_overview_tags(mon_idx);
-    let selected = state
+    // This monitor's continuous scroll position (centred cell).
+    let pos = state
         .scroller_overview
         .as_ref()
-        .map(|ov| ov.selected_tag)
-        .unwrap_or(1);
+        .and_then(|ov| ov.mon.get(mon_idx))
+        .map(|m| m.pos)
+        .unwrap_or(0.0);
     // Interpolate the effective zoom from the open/close animation
-    // progress (niri's formula): progress 0 → zoom 1.0 (selected tag
+    // progress (niri's formula): progress 0 → zoom 1.0 (centred tag
     // full-screen), progress 1 → the configured zoom (full strip). The
     // gap grows with progress too, so cells start flush and fan out.
     let config_zoom = f64::from(state.config.scroller_overview_zoom.clamp(0.1, 1.0));
@@ -2240,7 +2242,7 @@ fn build_scroller_overview_elements(
         output_geo.size.w,
         output_geo.size.h,
     );
-    let cells = crate::state::overview_cells(output_rect, &tags, zoom, gap, selected);
+    let cells = crate::state::overview_cells(output_rect, &tags, zoom, gap, pos);
 
     // The output's wallpaper (background + bottom layer-shell surfaces),
     // drawn into every cell behind the windows — niri zooms these with
