@@ -27,3 +27,19 @@
 .session-button.session-shutdown image {
   color: var(--error);
 }
+
+// Keyboard focus = the active selection. As you step through the tiles
+// (number keys land focus, Tab / arrows walk it) the focused option fills
+// with the matugen --primary accent — the same treatment as
+// `.ok-button-surface.selected` — so the highlight tracks the wallpaper
+// palette. Declared after the per-action icon tints above: equal
+// specificity, so source order lets --on-primary win here and keep the
+// glyph + label legible on the accent fill (including reboot/shutdown).
+.session-button:focus {
+  background-color: var(--primary);
+
+  image,
+  label {
+    color: var(--on-primary);
+  }
+}
