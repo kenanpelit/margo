@@ -1799,3 +1799,121 @@ fn read_airplane_state() -> (bool, bool) {
         (false, false)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        TileId, ordered_tile_ids, twilight_mode_label, twilight_subtitle,
+        valent_state_from_report,
+    };
+    use crate::twilight::TwilightStatus;
+    use crate::valent::{Device, ValentReport};
+
+    fn device(name: &str, reachable: bool, paired: bool) -> Device {
+        Device {
+            name: name.to_string(),
+            reachable,
+            paired,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn twilight_mode_labels() {
+        assert_eq!(twilight_mode_label("geo"), "Auto");
+        assert_eq!(twilight_mode_label("manual"), "Manual");
+        assert_eq!(twilight_mode_label("static"), "Static");
+        assert_eq!(twilight_mode_label("schedule"), "Schedule");
+        assert_eq!(twilight_mode_label("???"), "On"); // fallback differs from twilight.rs
+    }
+
+    #[test]
+    fn twilight_subtitle_off_when_disabled() {
+        let s = TwilightStatus {
+            enabled: false,
+            ..Default::default()
+        };
+        assert_eq!(twilight_subtitle(&s), "Off");
+    }
+
+    #[test]
+    fn twilight_subtitle_mode_with_and_without_temp() {
+        let s = TwilightStatus {
+            enabled: true,
+            mode: "schedule".into(),
+            current_temp_k: Some(3500),
+            ..Default::default()
+        };
+        assert_eq!(twilight_subtitle(&s), "Schedule \u{b7} 3500K");
+
+        let s2 = TwilightStatus {
+            enabled: true,
+            mode: "geo".into(),
+            current_temp_k: None,
+            ..Default::default()
+        };
+        assert_eq!(twilight_subtitle(&s2), "Auto");
+    }
+
+    #[test]
+    fn ordered_tile_ids_listed_first_then_canonical_remainder() {
+        let order = vec!["bluetooth".to_string(), "wifi".to_string()];
+        let ids = ordered_tile_ids(&order);
+        assert_eq!(ids[0], TileId::Bluetooth);
+        assert_eq!(ids[1], TileId::Wifi);
+        // Every canonical id present exactly once — none lost, none duplicated.
+        assert_eq!(ids.len(), TileId::all().len());
+    }
+
+    #[test]
+    fn ordered_tile_ids_ignores_unknown_and_dedupes() {
+        let order = vec![
+            "wifi".to_string(),
+            "bogus".to_string(),
+            "wifi".to_string(),
+        ];
+        let ids = ordered_tile_ids(&order);
+        assert_eq!(ids[0], TileId::Wifi);
+        assert_eq!(ids.len(), TileId::all().len());
+        assert_eq!(ids.iter().filter(|&&i| i == TileId::Wifi).count(), 1);
+    }
+
+    #[test]
+    fn valent_state_daemon_unavailable() {
+        let r = ValentReport {
+            daemon_available: false,
+            ..Default::default()
+        };
+        assert_eq!(valent_state_from_report(&r), ("Unavailable".to_string(), false));
+    }
+
+    #[test]
+    fn valent_state_no_devices_vs_not_reachable() {
+        let r = ValentReport {
+            daemon_available: true,
+            devices: vec![],
+        };
+        assert_eq!(valent_state_from_report(&r), ("No devices".to_string(), false));
+
+        let r = ValentReport {
+            daemon_available: true,
+            devices: vec![device("Phone", false, true)],
+        };
+        assert_eq!(valent_state_from_report(&r), ("Not reachable".to_string(), false));
+    }
+
+    #[test]
+    fn valent_state_one_and_many_connected() {
+        let r = ValentReport {
+            daemon_available: true,
+            devices: vec![device("Phone", true, true)],
+        };
+        assert_eq!(valent_state_from_report(&r), ("Phone".to_string(), true));
+
+        let r = ValentReport {
+            daemon_available: true,
+            devices: vec![device("A", true, true), device("B", true, true)],
+        };
+        assert_eq!(valent_state_from_report(&r), ("2 connected".to_string(), true));
+    }
+}

@@ -493,3 +493,53 @@ pub fn detect_code(text: &str) -> Option<String> {
     }
     None
 }
+
+#[cfg(test)]
+mod detect_code_tests {
+    use super::detect_code;
+
+    #[test]
+    fn plain_codes_4_to_8_digits() {
+        assert_eq!(detect_code("Your code is 482913").as_deref(), Some("482913"));
+        assert_eq!(detect_code("OTP: 1234").as_deref(), Some("1234"));
+        assert_eq!(detect_code("PIN 12345678 now").as_deref(), Some("12345678"));
+    }
+
+    #[test]
+    fn grouped_3_3_form_strips_separator() {
+        assert_eq!(detect_code("Code 123 456").as_deref(), Some("123456"));
+        assert_eq!(detect_code("123-456").as_deref(), Some("123456"));
+        assert_eq!(detect_code("G-839201").as_deref(), Some("839201"));
+    }
+
+    #[test]
+    fn rejects_runs_outside_the_length_window() {
+        // 3 digits alone, not grouped → no.
+        assert_eq!(detect_code("Only 123 here"), None);
+        // 9+ digits → no.
+        assert_eq!(detect_code("id 123456789"), None);
+        // Two short groups that aren't a 3-3 code.
+        assert_eq!(detect_code("12 34 56"), None);
+    }
+
+    #[test]
+    fn requires_a_token_boundary() {
+        // Mid-word digits (preceded by a letter) are skipped.
+        assert_eq!(detect_code("abc1234"), None);
+        // ...but a clean boundary after punctuation works.
+        assert_eq!(detect_code("ref#4821").as_deref(), Some("4821"));
+        // Trailing letter disqualifies the plain run (e.g. a hex-ish token).
+        assert_eq!(detect_code("1234abc"), None);
+    }
+
+    #[test]
+    fn no_digits_is_none() {
+        assert_eq!(detect_code(""), None);
+        assert_eq!(detect_code("no code in here"), None);
+    }
+
+    #[test]
+    fn returns_first_match() {
+        assert_eq!(detect_code("first 4821 then 9999").as_deref(), Some("4821"));
+    }
+}

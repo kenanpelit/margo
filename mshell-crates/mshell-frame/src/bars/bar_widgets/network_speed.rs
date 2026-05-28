@@ -145,6 +145,12 @@ impl Component for NetworkSpeedModel {
 /// from `/proc/net/dev`. Returns `(rx_total, tx_total)`.
 fn read_net_totals() -> Option<(u64, u64)> {
     let content = std::fs::read_to_string("/proc/net/dev").ok()?;
+    Some(parse_net_dev(&content))
+}
+
+/// Parse `/proc/net/dev` contents into `(rx_total, tx_total)` across all
+/// non-loopback interfaces. Split out from the file read so it's testable.
+fn parse_net_dev(content: &str) -> (u64, u64) {
     let mut rx_total = 0u64;
     let mut tx_total = 0u64;
     // Skip the two header lines; each data line is "iface: rx ... tx ...".
@@ -166,7 +172,7 @@ fn read_net_totals() -> Option<(u64, u64)> {
             tx_total += tx;
         }
     }
-    Some((rx_total, tx_total))
+    (rx_total, tx_total)
 }
 
 /// Human-readable per-second rate: `B`, `K`, or `M` (binary units),
@@ -180,5 +186,41 @@ fn fmt_rate(bytes_per_sec: f64) -> String {
         format!("{:.0}K", bytes_per_sec / K)
     } else {
         format!("{:.0}B", bytes_per_sec)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{fmt_rate, parse_net_dev};
+
+    #[test]
+    fn fmt_rate_units() {
+        assert_eq!(fmt_rate(0.0), "0B");
+        assert_eq!(fmt_rate(512.0), "512B");
+        assert_eq!(fmt_rate(1024.0), "1K");
+        assert_eq!(fmt_rate(1536.0), "2K"); // rounds
+        assert_eq!(fmt_rate(1024.0 * 1024.0), "1.0M");
+        assert_eq!(fmt_rate(1024.0 * 1024.0 * 2.5), "2.5M");
+    }
+
+    #[test]
+    fn parse_net_dev_sums_non_loopback() {
+        let content = "\
+Inter-|   Receive                                                |  Transmit
+ face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets
+    lo: 1000       10    0    0    0     0          0         0   2000      20
+  eth0: 5000       50    0    0    0     0          0         0   7000      70
+  wlan0: 100        1    0    0    0     0          0         0    200       2
+";
+        // lo excluded; eth0 + wlan0 summed: rx = 5000+100, tx = 7000+200.
+        assert_eq!(parse_net_dev(content), (5100, 7200));
+    }
+
+    #[test]
+    fn parse_net_dev_handles_empty_and_garbage() {
+        assert_eq!(parse_net_dev(""), (0, 0));
+        assert_eq!(parse_net_dev("header1\nheader2\n"), (0, 0));
+        // Malformed lines are skipped, not panicked on.
+        assert_eq!(parse_net_dev("h1\nh2\nnonsense line\n"), (0, 0));
     }
 }

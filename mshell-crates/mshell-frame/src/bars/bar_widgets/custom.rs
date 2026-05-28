@@ -226,3 +226,28 @@ async fn run_capture(cmd: &str) -> Option<String> {
     }
     Some(String::from_utf8_lossy(&out.stdout).into_owned())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{render, truncate};
+
+    #[test]
+    fn render_uses_template_placeholder() {
+        assert_eq!(render("42", " {output}\u{b0}"), " 42\u{b0}");
+        assert_eq!(render("  hi  ", "[{output}]"), "[hi]");
+    }
+
+    #[test]
+    fn render_empty_template_is_trimmed_output() {
+        assert_eq!(render(" 1.2M ", ""), "1.2M");
+        assert_eq!(render("x", "   "), "x");
+    }
+
+    #[test]
+    fn truncate_caps_by_chars() {
+        assert_eq!(truncate("hello", 0), "hello"); // 0 = no cap
+        assert_eq!(truncate("hello", 3), "hel");
+        assert_eq!(truncate("hi", 5), "hi");
+        assert_eq!(truncate("h\u{e9}llo", 3), "h\u{e9}l"); // char-based, not byte
+    }
+}

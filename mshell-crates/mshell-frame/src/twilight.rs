@@ -187,3 +187,68 @@ pub(crate) fn run(args: Vec<String>) {
         }
     });
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{TwilightStatus, read_preset};
+
+    #[test]
+    fn icon_reflects_enabled() {
+        let on = TwilightStatus {
+            enabled: true,
+            ..Default::default()
+        };
+        let off = TwilightStatus {
+            enabled: false,
+            ..Default::default()
+        };
+        assert_eq!(on.icon(), "weather-clear-night-symbolic");
+        assert_eq!(off.icon(), "weather-clear-symbolic");
+    }
+
+    #[test]
+    fn phase_label_maps_known_phases() {
+        let label = |p: &str| {
+            TwilightStatus {
+                phase: p.to_string(),
+                ..Default::default()
+            }
+            .phase_label()
+        };
+        assert_eq!(label("day"), "Day");
+        assert_eq!(label("night"), "Night");
+        assert_eq!(label("transition_to_day"), "\u{2192} Day");
+        assert_eq!(label("transition_to_night"), "\u{2192} Night");
+        assert_eq!(label("idle"), "");
+        assert_eq!(label(""), "");
+    }
+
+    #[test]
+    fn read_preset_parses_and_clamps() {
+        let dir = std::env::temp_dir();
+        let path = dir.join(format!("margo-twilight-preset-{}.toml", std::process::id()));
+        // Out-of-range values must be clamped: temp→[1000,25000], gamma→[10,200].
+        std::fs::write(
+            &path,
+            "name = \"Evening\"\nstatic_temp = 99999\nstatic_gamma = 5\n",
+        )
+        .unwrap();
+        assert_eq!(read_preset(&path), Some((25000, 10)));
+
+        // In-range values pass through; quotes and whitespace tolerated.
+        std::fs::write(&path, "  static_temp = \"3500\"\n  static_gamma=80\n").unwrap();
+        assert_eq!(read_preset(&path), Some((3500, 80)));
+
+        // Missing one of the two required keys → None.
+        std::fs::write(&path, "static_temp = 4000\n").unwrap();
+        assert_eq!(read_preset(&path), None);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn read_preset_missing_file_is_none() {
+        let path = std::path::Path::new("/nonexistent/margo/twilight/preset.toml");
+        assert_eq!(read_preset(path), None);
+    }
+}
