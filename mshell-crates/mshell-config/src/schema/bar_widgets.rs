@@ -68,7 +68,6 @@ pub enum BarWidget {
     Dns,
     Ip,
     Network,
-    NetworkSpeed,
     /// A user-defined pill; the `String` is the `custom_widgets` entry name.
     Custom(String),
     /// Blank gap of the given pixel width, for spacing widgets apart.
@@ -137,7 +136,6 @@ impl BarWidget {
             BarWidget::Dns => "DNS / VPN",
             BarWidget::Ip => "Public IP",
             BarWidget::Network => "Network Console",
-            BarWidget::NetworkSpeed => "Network Speed",
             BarWidget::Custom(_) => "Custom Widget",
             BarWidget::Spacer(_) => "Spacer",
             BarWidget::Separator => "Separator",
@@ -192,7 +190,6 @@ impl BarWidget {
             BarWidget::Dns,
             BarWidget::Ip,
             BarWidget::Network,
-            BarWidget::NetworkSpeed,
             BarWidget::Spacer(8),
             BarWidget::Separator,
             BarWidget::Notes,

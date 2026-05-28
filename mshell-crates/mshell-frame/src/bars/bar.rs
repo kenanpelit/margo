@@ -47,7 +47,6 @@ use crate::bars::bar_widgets::shutdown::{ShutdownInit, ShutdownModel};
 use crate::bars::bar_widgets::system_tray::{SystemTrayInit, SystemTrayModel};
 use crate::bars::bar_widgets::system_update::{SystemUpdateInit, SystemUpdateModel};
 use crate::bars::bar_widgets::custom::{CustomWidgetInit, CustomWidgetModel};
-use crate::bars::bar_widgets::network_speed::{NetworkSpeedInit, NetworkSpeedModel};
 use crate::bars::bar_widgets::vpn_indicator::{VpnIndicatorInit, VpnIndicatorModel};
 use crate::bars::bar_widgets::wallpaper::{WallpaperInit, WallpaperModel, WallpaperOutput};
 use mshell_common::dynamic_box::generic_widget_controller::GenericWidgetController;
@@ -740,11 +739,6 @@ impl BarModel {
             BarWidget::VpnIndicator => Box::new(
                 VpnIndicatorModel::builder()
                     .launch(VpnIndicatorInit {})
-                    .detach(),
-            ),
-            BarWidget::NetworkSpeed => Box::new(
-                NetworkSpeedModel::builder()
-                    .launch(NetworkSpeedInit {})
                     .detach(),
             ),
             BarWidget::Spacer(width) => {
