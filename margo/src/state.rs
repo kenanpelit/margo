@@ -16,6 +16,7 @@ mod focus_target;
 mod overview;
 mod scratchpad;
 mod screencast;
+mod scroller_overview;
 mod state_file;
 mod theme;
 mod twilight_methods;
@@ -29,6 +30,7 @@ pub(crate) use self::data::{
     clamp_size, matches_layer_name, matches_rule_text, read_toplevel_identity, WindowRuleReason,
 };
 pub use self::focus_target::FocusTarget;
+pub use self::scroller_overview::ScrollerOverview;
 pub(crate) use self::theme::ThemeBaseline;
 
 use std::{cell::RefCell, path::PathBuf, rc::Rc};
@@ -693,6 +695,12 @@ pub struct MargoState {
     pub overview_cycle_pending: bool,
     pub overview_cycle_modifier_mask: margo_config::Modifiers,
 
+    /// niri-style scroller overview: a zoomed-out, scrollable strip of
+    /// per-tag mini-desktops. Entirely separate from the classic grid
+    /// overview above (`is_overview` / `overview_*`) — `None` when
+    /// closed. See [`ScrollerOverview`] and `state/scroller_overview.rs`.
+    pub scroller_overview: Option<ScrollerOverview>,
+
     /// Which hot corner the pointer is currently dwelling in (if any).
     /// `None` while pointer is anywhere else; set on entry, cleared on
     /// exit. Together with [`hot_corner_armed_at`] drives the dwell
@@ -1057,6 +1065,7 @@ impl MargoState {
                 crate::render::config_error_overlay::ConfigErrorOverlay::new(),
             overview_cycle_pending: false,
             overview_cycle_modifier_mask: margo_config::Modifiers::empty(),
+            scroller_overview: None,
             hot_corner_dwelling: None,
             twilight: crate::twilight::TwilightState::default(),
             twilight_timer_armed: false,

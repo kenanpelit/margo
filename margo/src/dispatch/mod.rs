@@ -588,6 +588,13 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
         "overview_focus_next" => state.overview_focus_next(),
         "overview_focus_prev" => state.overview_focus_prev(),
         "overview_activate" => state.overview_activate(),
+        // niri-style scroller overview — separate from the grid overview
+        // above. `toggle_scroller_overview` is the primary bindable
+        // trigger; open/close exist for one-shot binds (e.g. press to
+        // open, Esc to close).
+        "toggle_scroller_overview" => state.toggle_scroller_overview(),
+        "open_scroller_overview" => state.open_scroller_overview(),
+        "close_scroller_overview" => state.close_scroller_overview(),
         // Spatial-canvas pan (PaperWM-ish). Two integer args:
         // dx and dy logical-pixel deltas. Stored per-tag so each
         // tag remembers its viewport offset.
