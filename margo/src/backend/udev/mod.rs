@@ -90,10 +90,10 @@ render_elements! {
     // Scroller-overview thumbnail: a window surface scaled down (Rescale)
     // and placed into its tag's cell (Relocate). See
     // `build_scroller_overview_elements`.
-    ScaledSurface=smithay::backend::renderer::element::utils::RelocateRenderElement<smithay::backend::renderer::element::utils::RescaleRenderElement<WaylandSurfaceRenderElement<GlesRenderer>>>,
-    // Same as ScaledSurface but with a per-cell namespaced Id, for the
-    // wallpaper drawn into every overview cell (avoids damage-tracker
-    // Id collisions). See `crate::render::namespaced`.
+    // Scroller-overview cell content (windows + wallpaper), scaled into a
+    // cell and given a per-cell namespaced Id so a tag repeated by the
+    // wrap-around loop doesn't collide in the damage tracker. See
+    // `crate::render::namespaced`.
     NamespacedSurface=smithay::backend::renderer::element::utils::RelocateRenderElement<smithay::backend::renderer::element::utils::RescaleRenderElement<crate::render::namespaced::NamespacedElement<WaylandSurfaceRenderElement<GlesRenderer>>>>,
 }
 
@@ -2242,7 +2242,8 @@ fn build_scroller_overview_elements(
         output_geo.size.w,
         output_geo.size.h,
     );
-    let cells = crate::state::overview_cells(output_rect, &tags, zoom, gap, pos);
+    let loop_strip = state.config.scroller_overview_loop;
+    let cells = crate::state::overview_cells(output_rect, &tags, zoom, gap, pos, loop_strip);
 
     // The output's wallpaper (background + bottom layer-shell surfaces),
     // drawn into every cell behind the windows — niri zooms these with
@@ -2285,11 +2286,14 @@ fn build_scroller_overview_elements(
                 WaylandSurfaceRenderElement<GlesRenderer>,
             >(renderer, &surface, physical_location, output_scale, 1.0, Kind::Unspecified);
             for e in surf_elems {
+                // Namespace by cell key so a tag repeated by the wrap-around
+                // loop doesn't collide with its other copy in the tracker.
+                let ns = crate::render::namespaced::NamespacedElement::new(e, cell.key);
                 let scaled =
-                    RescaleRenderElement::from_element(e, Point::from((0, 0)), cell_scale);
+                    RescaleRenderElement::from_element(ns, Point::from((0, 0)), cell_scale);
                 let placed =
                     RelocateRenderElement::from_element(scaled, cell_origin_phys, Relocate::Relative);
-                elements.push(MargoRenderElement::ScaledSurface(placed));
+                elements.push(MargoRenderElement::NamespacedSurface(placed));
             }
         }
 
@@ -2304,7 +2308,7 @@ fn build_scroller_overview_elements(
                 WaylandSurfaceRenderElement<GlesRenderer>,
             >(renderer, layer.wl_surface(), loc_phys, output_scale, 1.0, Kind::Unspecified);
             for e in surf_elems {
-                let ns = crate::render::namespaced::NamespacedElement::new(e, cell.tag);
+                let ns = crate::render::namespaced::NamespacedElement::new(e, cell.key);
                 let scaled =
                     RescaleRenderElement::from_element(ns, Point::from((0, 0)), cell_scale);
                 let placed =

@@ -14,22 +14,30 @@
 use super::{FocusTarget, MargoState};
 use crate::layout::{MAX_TAGS, Rect};
 
-/// One tag cell in the overview strip: which tag it shows and where it
-/// renders (output-logical coordinates). The render path scales each
-/// tag's windows into `rect`.
+/// One tag cell in the overview strip: which tag it shows, where it
+/// renders (output-logical coords), and a `key` unique among the cells
+/// in this frame (its strip index) — used to namespace the cell's render
+/// elements so a tag repeated by the wrap-around loop never collides in
+/// the damage tracker.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OverviewCell {
     /// 1-based pertag tag index (1..=`MAX_TAGS`).
     pub tag: usize,
     pub rect: Rect,
+    /// Per-frame unique key (strip index) for render-element namespacing.
+    pub key: usize,
 }
 
 /// Lay `tags` out as a vertical strip of cells, each the `output`
 /// rectangle scaled by `zoom`, separated by `gap` (post-zoom logical
 /// px), horizontally centered, and offset so the fractional strip
-/// position `center_pos` (0 = first cell, 1.0 = second, 1.5 = halfway
-/// between the second and third, …) sits vertically centered in
-/// `output`. Returns one [`OverviewCell`] per input tag, in order.
+/// position `center_pos` (0 = first cell, 1.5 = halfway between the
+/// second and third, …) sits vertically centered in `output`.
+///
+/// When `loop_strip` is true the strip is cyclic: cells are emitted for
+/// a window of indices spanning the viewport, each mapped to
+/// `tags[i mod n]`, so scrolling past either end wraps seamlessly. Each
+/// cell's `key` is its position in the emitted list (unique per frame).
 ///
 /// Pure geometry — no compositor state — so it's unit-tested directly.
 pub fn overview_cells(
@@ -38,30 +46,46 @@ pub fn overview_cells(
     zoom: f64,
     gap: i32,
     center_pos: f64,
+    loop_strip: bool,
 ) -> Vec<OverviewCell> {
-    if tags.is_empty() {
+    let n = tags.len();
+    if n == 0 {
         return Vec::new();
     }
     let zoom = zoom.clamp(0.05, 1.0);
     let cell_w = (f64::from(output.width) * zoom).round() as i32;
     let cell_h = (f64::from(output.height) * zoom).round() as i32;
     let cell_x = output.x + (output.width - cell_w) / 2;
-    let stride = f64::from(cell_h + gap.max(0));
+    let stride = f64::from(cell_h + gap.max(0)).max(1.0);
 
-    // Offset (logical px, relative to output.y) so the cell at the
-    // fractional index `center_pos` is vertically centered:
-    //   y(center_pos) + cell_h/2 == output.height/2.
-    let offset_y = f64::from(output.height) / 2.0 - center_pos * stride - f64::from(cell_h) / 2.0;
+    // Cell at strip index `i` (i may be fractional in spirit): its top in
+    // logical px so that index == center_pos lands vertically centered.
+    let top = |i: f64| {
+        f64::from(output.height) / 2.0 - f64::from(cell_h) / 2.0 + (i - center_pos) * stride
+    };
+    let make = |i: i64, key: usize| {
+        let tag = tags[i.rem_euclid(n as i64) as usize];
+        let y = output.y + top(i as f64).round() as i32;
+        OverviewCell {
+            tag,
+            rect: Rect::new(cell_x, y, cell_w, cell_h),
+            key,
+        }
+    };
 
-    tags.iter()
+    if !loop_strip {
+        return (0..n).map(|i| make(i as i64, i)).collect();
+    }
+
+    // Cyclic: emit a window of indices around the centre that covers the
+    // viewport (plus a margin), so wrap-around shows no seam.
+    let radius = (f64::from(output.height) / stride).ceil() as i64 + 2;
+    let center_i = center_pos.round() as i64;
+    let lo = center_i - radius;
+    let hi = center_i + radius;
+    (lo..=hi)
         .enumerate()
-        .map(|(i, &tag)| {
-            let y = output.y + (offset_y + i as f64 * stride).round() as i32;
-            OverviewCell {
-                tag,
-                rect: Rect::new(cell_x, y, cell_w, cell_h),
-            }
-        })
+        .map(|(k, i)| make(i, k))
         .collect()
 }
 
@@ -169,9 +193,38 @@ impl MargoState {
         self.request_repaint();
     }
 
-    /// Close the scroller overview with a zoom-back-in animation. No-op
-    /// if not open. Cleared by `tick_scroller_overview` at `progress == 0`.
+    /// Close the scroller overview, committing each monitor to the tag it
+    /// scrolled to (the centered cell), then zoom back in onto it. No-op
+    /// if not open. The desktop is revealed on the chosen tag as the
+    /// overview clears (`tick_scroller_overview` clears it at progress 0).
     pub fn close_scroller_overview(&mut self) {
+        if self.scroller_overview.is_none() {
+            return;
+        }
+
+        // Commit every monitor to its centered tag (no-op where unchanged).
+        let focused = self.focused_monitor();
+        let mut flipped: Vec<usize> = Vec::new();
+        for mon_idx in 0..self.monitors.len() {
+            let tags = self.scroller_overview_tags(mon_idx);
+            if tags.is_empty() {
+                continue;
+            }
+            let idx = self.scroller_centered_index(mon_idx, tags.len());
+            let bit = 1u32 << (tags[idx] - 1);
+            let seltags = self.monitors[mon_idx].seltags;
+            if self.monitors[mon_idx].tagset[seltags] != bit {
+                self.monitors[mon_idx].tagset[seltags] = bit;
+                self.update_pertag_for_tagset(mon_idx, bit);
+                flipped.push(mon_idx);
+            }
+        }
+        if !flipped.is_empty() {
+            self.arrange_monitors(&flipped);
+            self.focus_first_visible_or_clear(focused);
+        }
+
+        // Start the zoom-back-in animation; the tick tears it down at 0.
         let now = crate::utils::now_ms();
         if let Some(ov) = self.scroller_overview.as_mut() {
             ov.opening = false;
@@ -187,6 +240,7 @@ impl MargoState {
     /// frames. Clears the overview when a close settles at 0.
     pub fn tick_scroller_overview(&mut self, now_ms: u32) -> bool {
         let dur = self.config.overview_transition_ms.max(1) as f64;
+        let looping = self.config.scroller_overview_loop;
         // Tag counts per monitor (for clamping), computed before the
         // mutable borrow of `scroller_overview`.
         let counts: Vec<usize> = (0..self.monitors.len())
@@ -219,7 +273,40 @@ impl MargoState {
                     if n == 0 {
                         continue;
                     }
-                    let max = (n - 1) as f64;
+                    let nf = n as f64;
+                    let max = nf - 1.0;
+                    let idle = now_ms.wrapping_sub(ms.last_scroll_ms) > SCROLL_IDLE_MS;
+
+                    if looping {
+                        // Cyclic: no rubber-band. Glide to the snap target
+                        // (then wrap into [0, n) — seamless since the strip
+                        // repeats), coast on momentum otherwise, snap when slow.
+                        if let Some(tgt) = ms.snap_target {
+                            ms.pos += (tgt - ms.pos) * (1.0 - (-SNAP_K * dt).exp());
+                            if (ms.pos - tgt).abs() < 0.004 {
+                                ms.pos = tgt.rem_euclid(nf);
+                                ms.snap_target = None;
+                            } else {
+                                animating = true;
+                            }
+                        } else if idle {
+                            if ms.velocity.abs() > V_STOP {
+                                ms.pos = (ms.pos + ms.velocity * dt).rem_euclid(nf);
+                                ms.velocity *= (-FRICTION * dt).exp();
+                                animating = true;
+                            } else {
+                                ms.velocity = 0.0;
+                                let near = ms.pos.round();
+                                if (ms.pos - near).abs() > 0.004 {
+                                    ms.snap_target = Some(near);
+                                    animating = true;
+                                }
+                            }
+                        } else {
+                            animating = true;
+                        }
+                        continue;
+                    }
 
                     // Out of range → rubber-band back to the nearest bound.
                     if ms.pos < 0.0 || ms.pos > max {
@@ -244,7 +331,7 @@ impl MargoState {
                         } else {
                             animating = true;
                         }
-                    } else if now_ms.wrapping_sub(ms.last_scroll_ms) > SCROLL_IDLE_MS {
+                    } else if idle {
                         // Idle after a scroll: coast on momentum, then snap.
                         if ms.velocity.abs() > V_STOP {
                             ms.pos = (ms.pos + ms.velocity * dt).clamp(0.0, max);
@@ -355,8 +442,9 @@ impl MargoState {
             .collect()
     }
 
-    /// 0-based strip index of the cell currently centered on `mon_idx`
-    /// (the nearest tag to the continuous scroll position).
+    /// 0-based tag index of the cell currently centered on `mon_idx`
+    /// (the nearest tag to the continuous scroll position). Wraps when
+    /// the loop option is on, else clamps to the strip ends.
     fn scroller_centered_index(&self, mon_idx: usize, n: usize) -> usize {
         if n == 0 {
             return 0;
@@ -367,7 +455,12 @@ impl MargoState {
             .and_then(|o| o.mon.get(mon_idx))
             .map(|m| m.pos)
             .unwrap_or(0.0);
-        (pos.round() as i64).clamp(0, n as i64 - 1) as usize
+        let r = pos.round() as i64;
+        if self.config.scroller_overview_loop {
+            r.rem_euclid(n as i64) as usize
+        } else {
+            r.clamp(0, n as i64 - 1) as usize
+        }
     }
 
     /// Step the focused monitor's selection by `dir` (+1 next / −1 prev)
@@ -381,6 +474,7 @@ impl MargoState {
         if n == 0 {
             return;
         }
+        let looping = self.config.scroller_overview_loop;
         let max = (n - 1) as f64;
         if let Some(ms) = self
             .scroller_overview
@@ -388,7 +482,8 @@ impl MargoState {
             .and_then(|ov| ov.mon.get_mut(mon))
         {
             let base = ms.snap_target.unwrap_or(ms.pos).round();
-            ms.snap_target = Some((base + f64::from(dir)).clamp(0.0, max));
+            let next = base + f64::from(dir);
+            ms.snap_target = Some(if looping { next } else { next.clamp(0.0, max) });
             ms.velocity = 0.0;
         }
         self.request_repaint();
@@ -406,6 +501,7 @@ impl MargoState {
         discrete: bool,
         now_ms: u32,
     ) {
+        let looping = self.config.scroller_overview_loop;
         let max = (self.scroller_overview_tags(mon_idx).len().max(1) - 1) as f64;
         if let Some(ms) = self
             .scroller_overview
@@ -414,8 +510,16 @@ impl MargoState {
         {
             if discrete {
                 // Wheel: step to a whole tag, glide there, no momentum.
-                ms.pos = (ms.pos + delta_cells).clamp(0.0, max);
-                ms.snap_target = Some(ms.pos.round().clamp(0.0, max));
+                // When looping, don't clamp — the tick wraps on settle.
+                ms.pos += delta_cells;
+                if !looping {
+                    ms.pos = ms.pos.clamp(0.0, max);
+                }
+                ms.snap_target = Some(if looping {
+                    ms.pos.round()
+                } else {
+                    ms.pos.round().clamp(0.0, max)
+                });
                 ms.velocity = 0.0;
             } else {
                 let dt = f64::from(now_ms.wrapping_sub(ms.last_scroll_ms).clamp(1, 100)) / 1000.0;
@@ -431,27 +535,11 @@ impl MargoState {
         self.request_repaint();
     }
 
-    /// Close the overview and switch the focused monitor to its centered
-    /// tag (Enter / alt+Tab release). No-op switch if already there.
+    /// Activate the centered tag (Enter / alt+Tab release): same as
+    /// closing — every monitor commits to the tag it scrolled to, with
+    /// the zoom-back-in animation.
     pub fn scroller_overview_activate(&mut self) {
-        if self.scroller_overview.is_none() {
-            return;
-        }
-        let mon = self.focused_monitor();
-        let tags = self.scroller_overview_tags(mon);
-        if tags.is_empty() {
-            self.close_scroller_overview();
-            return;
-        }
-        let idx = self.scroller_centered_index(mon, tags.len());
-        let tag = tags[idx];
-        self.scroller_overview = None;
-        self.request_repaint();
-        let bit = 1u32 << (tag - 1);
-        let already = self.monitors.get(mon).map(|m| m.current_tagset()) == Some(bit);
-        if !already {
-            self.view_tag(bit);
-        }
+        self.close_scroller_overview();
     }
 
     /// Handle a left click at global-logical (`x`, `y`): find the tag cell
@@ -487,7 +575,8 @@ impl MargoState {
             .unwrap_or(0.0);
         let zoom = f64::from(self.config.scroller_overview_zoom.clamp(0.1, 1.0));
         let gap = self.config.scroller_overview_gap.max(0);
-        let cells = overview_cells(area, &tags, zoom, gap, pos);
+        let loop_strip = self.config.scroller_overview_loop;
+        let cells = overview_cells(area, &tags, zoom, gap, pos, loop_strip);
 
         let Some(cell) = cells.into_iter().find(|c| contains(c.rect, x, y)) else {
             self.close_scroller_overview();
@@ -532,12 +621,12 @@ mod tests {
 
     #[test]
     fn empty_tags_yields_no_cells() {
-        assert!(overview_cells(OUT, &[], 0.5, 20, 0.0).is_empty());
+        assert!(overview_cells(OUT, &[], 0.5, 20, 0.0, false).is_empty());
     }
 
     #[test]
     fn cell_size_is_output_scaled_by_zoom() {
-        let cells = overview_cells(OUT, &[1, 2, 3], 0.5, 20, 0.0);
+        let cells = overview_cells(OUT, &[1, 2, 3], 0.5, 20, 0.0, false);
         assert_eq!(cells.len(), 3);
         for c in &cells {
             assert_eq!(c.rect.width, 960); // 1920 * 0.5
@@ -550,7 +639,7 @@ mod tests {
     #[test]
     fn centered_index_is_vertically_centered() {
         // center_pos 1.0 centers the second cell (index 1) on 540.
-        let cells = overview_cells(OUT, &[1, 2, 3], 0.5, 20, 1.0);
+        let cells = overview_cells(OUT, &[1, 2, 3], 0.5, 20, 1.0, false);
         let c = cells[1];
         let center = c.rect.y + c.rect.height / 2;
         assert_eq!(center, 540);
@@ -558,17 +647,16 @@ mod tests {
 
     #[test]
     fn fractional_pos_sits_between_cells() {
-        // center_pos 0.5 puts the midpoint between cell 0 and cell 1 on 540,
-        // so each is half a stride off center.
-        let cells = overview_cells(OUT, &[1, 2, 3], 0.5, 20, 0.5);
+        // center_pos 0.5 puts the midpoint between cell 0 and cell 1 on 540.
+        let cells = overview_cells(OUT, &[1, 2, 3], 0.5, 20, 0.5, false);
         let mid0 = cells[0].rect.y + cells[0].rect.height / 2;
         let mid1 = cells[1].rect.y + cells[1].rect.height / 2;
-        assert!((mid0 + mid1) / 2 == 540 || ((mid0 + mid1) / 2 - 540).abs() <= 1);
+        assert!(((mid0 + mid1) / 2 - 540).abs() <= 1);
     }
 
     #[test]
     fn cells_are_stacked_with_gap() {
-        let cells = overview_cells(OUT, &[1, 2, 3], 0.5, 20, 0.0);
+        let cells = overview_cells(OUT, &[1, 2, 3], 0.5, 20, 0.0, false);
         // Stride between successive cell tops = cell_h + gap = 540 + 20.
         assert_eq!(cells[1].rect.y - cells[0].rect.y, 560);
         assert_eq!(cells[2].rect.y - cells[1].rect.y, 560);
@@ -576,14 +664,31 @@ mod tests {
 
     #[test]
     fn tags_preserved_in_order() {
-        let cells = overview_cells(OUT, &[3, 5, 9], 0.4, 10, 1.0);
+        let cells = overview_cells(OUT, &[3, 5, 9], 0.4, 10, 1.0, false);
         assert_eq!(cells.iter().map(|c| c.tag).collect::<Vec<_>>(), vec![3, 5, 9]);
     }
 
     #[test]
     fn zoom_is_clamped() {
-        let cells = overview_cells(OUT, &[1], 5.0, 0, 0.0);
+        let cells = overview_cells(OUT, &[1], 5.0, 0, 0.0, false);
         assert!(cells[0].rect.width <= OUT.width);
         assert!(cells[0].rect.height <= OUT.height);
+    }
+
+    #[test]
+    fn loop_strip_repeats_tags_cyclically() {
+        // A 2-tag strip, looped: the emitted window covers the viewport and
+        // maps indices to tags[i mod n], so both tags recur and keys are
+        // unique per cell.
+        let cells = overview_cells(OUT, &[1, 2], 0.5, 20, 0.0, true);
+        assert!(cells.len() > 2, "looped strip fills the viewport");
+        // Tags alternate 1,2,1,2,…; keys are a 0..len run.
+        assert!(cells.iter().all(|c| c.tag == 1 || c.tag == 2));
+        let keys: Vec<usize> = cells.iter().map(|c| c.key).collect();
+        assert_eq!(keys, (0..cells.len()).collect::<Vec<_>>());
+        // Each adjacent pair differs by one stride (no seam/teleport).
+        for w in cells.windows(2) {
+            assert_eq!(w[1].rect.y - w[0].rect.y, 560);
+        }
     }
 }

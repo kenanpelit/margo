@@ -92,6 +92,7 @@ pub struct OverviewSettingsModel {
     style_is_scroller: bool,
     scroller_zoom: f32,
     scroller_gap: i32,
+    scroller_loop: bool,
     grid_zoom: f32,
     grid_gap_inner: i32,
     grid_gap_outer: i32,
@@ -108,6 +109,7 @@ pub enum OverviewSettingsInput {
     SetStyle(u32),
     SetScrollerZoom(f64),
     SetScrollerGap(i32),
+    SetScrollerLoop(bool),
     SetGridZoom(f64),
     SetGridGapInner(i32),
     SetGridGapOuter(i32),
@@ -232,6 +234,22 @@ impl Component for OverviewSettingsModel {
                     },
                 },
 
+                #[template]
+                Row {
+                    #[template_child] title { set_label: "Loop" },
+                    #[template_child] desc {
+                        set_label: "Wrap around: scrolling past the last tag continues to the first (and back), instead of stopping at the ends.",
+                    },
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        set_active: model.scroller_loop,
+                        connect_state_set[sender] => move |_, on| {
+                            sender.input(OverviewSettingsInput::SetScrollerLoop(on));
+                            gtk::glib::Propagation::Proceed
+                        },
+                    },
+                },
+
                 // ════════ Grid overview ════════
                 gtk::Label {
                     add_css_class: "label-large-bold",
@@ -349,6 +367,7 @@ impl Component for OverviewSettingsModel {
             ),
             scroller_zoom: cfg.scroller_overview_zoom,
             scroller_gap: cfg.scroller_overview_gap,
+            scroller_loop: cfg.scroller_overview_loop,
             grid_zoom: cfg.overview_zoom,
             grid_gap_inner: cfg.overview_gap_inner,
             grid_gap_outer: cfg.overview_gap_outer,
@@ -377,6 +396,9 @@ impl Component for OverviewSettingsModel {
             }
             OverviewSettingsInput::SetScrollerGap(v) => {
                 apply("scroller_overview_gap", v.to_string());
+            }
+            OverviewSettingsInput::SetScrollerLoop(on) => {
+                apply("scroller_overview_loop", if on { "1" } else { "0" }.to_string());
             }
             OverviewSettingsInput::SetGridZoom(v) => {
                 apply("overview_zoom", format!("{v:.2}"));

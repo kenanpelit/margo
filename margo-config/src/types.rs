@@ -716,6 +716,10 @@ pub struct Config {
     /// Vertical gap between scroller-overview tag cells, in pre-zoom
     /// logical pixels. Default `40`.
     pub scroller_overview_gap: i32,
+    /// Wrap the scroller overview around: scrolling past the last tag
+    /// continues seamlessly to the first (and vice versa) instead of
+    /// rubber-banding at the ends. Default `false`.
+    pub scroller_overview_loop: bool,
 
     // ── Twilight (blue-light filter) ───────────────────────────────
     /// Master switch. `false` disables every twilight code path —
@@ -1030,6 +1034,7 @@ impl Default for Config {
             overview_style: OverviewStyle::Grid,
             scroller_overview_zoom: 0.5,
             scroller_overview_gap: 40,
+            scroller_overview_loop: false,
             twilight: false,
             twilight_mode: TwilightMode::Geo,
             twilight_day_temp: 6500,
