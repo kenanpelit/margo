@@ -1339,6 +1339,7 @@ impl Component for SettingsWindowModel {
             Clipboard,
             SystemUpdate,
             Dock,
+            SystemTray,
             Lock,
         }
 
@@ -1348,6 +1349,7 @@ impl Component for SettingsWindowModel {
                     Self::Clipboard => "Clipboard",
                     Self::SystemUpdate => "System Updates",
                     Self::Dock => "Margo Dock",
+                    Self::SystemTray => "System Tray",
                     Self::Lock => "Lock",
                     Self::Menu { label, .. } | Self::Pill { label, .. } => label,
                     Self::Notifications => "Notifications",
@@ -1403,7 +1405,9 @@ impl Component for SettingsWindowModel {
             WidgetEntry::Pill { kind: BarPillKind::Reboot, stack_name: "pill_reboot", label: "Reboot", icon: "system-reboot-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::RecordingIndicator, stack_name: "pill_recording", label: "Recording Indicator", icon: "media-record-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::Shutdown, stack_name: "pill_shutdown", label: "Shutdown", icon: "system-shutdown-symbolic" },
-            WidgetEntry::Pill { kind: BarPillKind::Tray, stack_name: "pill_tray", label: "System Tray", icon: "view-list-symbolic" },
+            // System Tray owns a dedicated page (default-expanded toggle),
+            // so it's a dedicated entry rather than the generic pill info page.
+            WidgetEntry::SystemTray,
             WidgetEntry::Pill { kind: BarPillKind::VpnIndicator, stack_name: "pill_vpn", label: "VPN Indicator", icon: "network-vpn-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::NetworkSpeed, stack_name: "pill_network_speed", label: "Network Speed", icon: "network-transmit-receive-symbolic" },
             // Rich pages with their own controllers.
@@ -1525,6 +1529,23 @@ impl Component for SettingsWindowModel {
                         .launch(crate::dock_settings::DockSettingsInit {})
                         .detach();
                     widgets_sub_stack.add_named(ctrl.widget(), Some("dock"));
+                    Box::leak(Box::new(ctrl));
+                }
+                WidgetEntry::SystemTray => {
+                    let btn = make_sub_btn(
+                        "System Tray",
+                        "view-list-symbolic",
+                        "system_tray",
+                        group_anchor.as_ref(),
+                    );
+                    if group_anchor.is_none() {
+                        group_anchor = Some(btn.clone());
+                    }
+                    widgets_sub_sidebar_box.append(&btn);
+                    let ctrl = crate::system_tray_settings::SystemTraySettingsModel::builder()
+                        .launch(crate::system_tray_settings::SystemTraySettingsInit {})
+                        .detach();
+                    widgets_sub_stack.add_named(ctrl.widget(), Some("system_tray"));
                     Box::leak(Box::new(ctrl));
                 }
                 WidgetEntry::Lock => {

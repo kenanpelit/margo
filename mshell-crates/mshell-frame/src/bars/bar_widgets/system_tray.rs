@@ -3,8 +3,12 @@ use mshell_common::dynamic_box::dynamic_box::{
     DynamicBoxFactory, DynamicBoxInit, DynamicBoxInput, DynamicBoxModel,
 };
 use mshell_common::dynamic_box::generic_widget_controller::GenericWidgetController;
+use mshell_common::scoped_effects::EffectScope;
 use mshell_common::watch;
+use mshell_config::config_manager::config_manager;
+use mshell_config::schema::config::{ConfigStoreFields, SystemTrayStoreFields};
 use mshell_services::sys_tray_service;
+use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk::prelude::*;
 use relm4::gtk::{Orientation, RevealerTransitionType};
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
@@ -15,11 +19,16 @@ pub(crate) struct SystemTrayModel {
     dynamic_box: Controller<DynamicBoxModel<Arc<TrayItem>, String>>,
     revealed: bool,
     orientation: Orientation,
+    /// Keeps the config-watch effect alive for the widget's lifetime.
+    _effects: EffectScope,
 }
 
 #[derive(Debug)]
 pub(crate) enum SystemTrayInput {
     Clicked,
+    /// Reveal state pushed by the `system_tray.default_expanded` config
+    /// effect (Settings toggle) — previews the new default live.
+    SetRevealed(bool),
 }
 
 #[derive(Debug)]
@@ -92,6 +101,21 @@ impl Component for SystemTrayModel {
     ) -> ComponentParts<Self> {
         Self::spawn_system_tray_watcher(&sender);
 
+        // Initial reveal state follows `system_tray.default_expanded`. The
+        // effect re-applies it whenever the Settings toggle flips, so the
+        // change previews without a restart; the tray button still toggles
+        // `revealed` at runtime independently of this signal.
+        let mut effects = EffectScope::new();
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let expanded = config_manager()
+                .config()
+                .system_tray()
+                .default_expanded()
+                .get();
+            sender_clone.input(SystemTrayInput::SetRevealed(expanded));
+        });
+
         let factory = DynamicBoxFactory::<Arc<TrayItem>, String> {
             id: Box::new(|item| item.id.get()),
             create: Box::new(move |item| {
@@ -124,8 +148,13 @@ impl Component for SystemTrayModel {
 
         let model = SystemTrayModel {
             dynamic_box: dynamic,
-            revealed: false,
+            revealed: config_manager()
+                .config()
+                .system_tray()
+                .default_expanded()
+                .get_untracked(),
             orientation: params.orientation,
+            _effects: effects,
         };
 
         let widgets = view_output!();
@@ -147,6 +176,9 @@ impl Component for SystemTrayModel {
         match message {
             SystemTrayInput::Clicked => {
                 self.revealed = !self.revealed;
+            }
+            SystemTrayInput::SetRevealed(v) => {
+                self.revealed = v;
             }
         }
         self.update_view(widgets, sender);

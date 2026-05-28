@@ -29,7 +29,6 @@ pub(crate) enum BarPillKind {
     Reboot,
     RecordingIndicator,
     Shutdown,
-    Tray,
     VpnIndicator,
 }
 
@@ -46,7 +45,6 @@ impl BarPillKind {
             Self::Reboot => "Reboot",
             Self::RecordingIndicator => "Recording Indicator",
             Self::Shutdown => "Shutdown",
-            Self::Tray => "System Tray",
             Self::VpnIndicator => "VPN Indicator",
         }
     }
@@ -79,9 +77,6 @@ impl BarPillKind {
                 "Lights up while a screen-recording is in progress. Click stops the recording."
             }
             Self::Shutdown => "Powers off the system. Confirms with a dialog.",
-            Self::Tray => {
-                "Hosts StatusNotifierItem clients (Discord, Steam, syncthing, …). Each app paints its own icon."
-            }
             Self::VpnIndicator => {
                 "Visual cue when a VPN tunnel is up (NetworkManager / wg-quick / openvpn)."
             }

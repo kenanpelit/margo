@@ -33,6 +33,7 @@ pub struct Config {
     pub launcher: Launcher,
     pub valent: Valent,
     pub dock: Dock,
+    pub system_tray: SystemTray,
     pub pass: Pass,
     pub alarm: AlarmConfig,
     pub network: NetworkConfig,
@@ -1017,6 +1018,19 @@ impl Default for Dock {
             show_running: true,
         }
     }
+}
+
+/// System Tray bar widget (the StatusNotifierItem icon strip). Tunables
+/// surfaced under Settings → Widgets → System Tray.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize, Store, Patch, JsonSchema,
+)]
+#[serde(default)]
+pub struct SystemTray {
+    /// Start with the tray icons revealed (expanded) instead of collapsed
+    /// behind the tray button. The tray button still toggles them at runtime;
+    /// this only sets the state the widget comes up in.
+    pub default_expanded: bool,
 }
 
 /// GNU pass (password-store) launcher provider. Surfaced under
