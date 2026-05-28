@@ -2218,8 +2218,18 @@ fn build_scroller_overview_elements(
         .as_ref()
         .map(|ov| ov.selected_tag)
         .unwrap_or(1);
-    let zoom = f64::from(state.config.scroller_overview_zoom.clamp(0.1, 1.0));
-    let gap = state.config.scroller_overview_gap.max(0);
+    // Interpolate the effective zoom from the open/close animation
+    // progress (niri's formula): progress 0 → zoom 1.0 (selected tag
+    // full-screen), progress 1 → the configured zoom (full strip). The
+    // gap grows with progress too, so cells start flush and fan out.
+    let config_zoom = f64::from(state.config.scroller_overview_zoom.clamp(0.1, 1.0));
+    let progress = state
+        .scroller_overview
+        .as_ref()
+        .map(|o| o.progress)
+        .unwrap_or(1.0);
+    let zoom = 1.0 - progress * (1.0 - config_zoom);
+    let gap = (f64::from(state.config.scroller_overview_gap.max(0)) * progress) as i32;
     let output_rect = crate::layout::Rect::new(
         output_geo.loc.x,
         output_geo.loc.y,

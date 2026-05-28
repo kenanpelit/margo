@@ -68,30 +68,37 @@ pub fn overview_cells(
 /// the overview is open or animating closed; `None` otherwise.
 #[derive(Debug, Clone)]
 pub struct ScrollerOverview {
-    /// Animated open progress: `0.0` = closed (normal 1× view), `1.0` =
-    /// fully zoomed out. The render path interpolates the zoom factor
-    /// from this. P1 snaps it to `1.0` on open; P3 eases it.
+    /// Eased open progress: `0.0` = closed (normal 1× view, selected tag
+    /// full-screen), `1.0` = fully zoomed out to the strip. The render
+    /// interpolates the effective zoom from this; `tick_scroller_overview`
+    /// advances it.
     pub progress: f64,
-    /// Direction the animation is heading: `true` while opening / open,
-    /// `false` while closing. When closing reaches `progress == 0` the
-    /// whole `Option` is cleared (P3).
+    /// Animation direction: `true` while opening / open, `false` while
+    /// closing. A close clears the whole `Option` once `progress` hits 0.
     pub opening: bool,
-    /// Vertical scroll offset into the tag strip, in pre-zoom logical
-    /// pixels. `0.0` = first tag cell flush with the top of the strip.
-    pub scroll: f64,
-    /// Which tag (0-based) is highlighted for keyboard navigation and
+    /// `progress` value when the current animation leg started (so a
+    /// mid-flight reverse eases from where it is, not from 0/1).
+    anim_from: f64,
+    /// `now_ms` when the current animation leg started.
+    anim_started_ms: u32,
+    /// Which tag (1-based) is highlighted for keyboard navigation and
     /// activation. Seeded from the focused monitor's active tag.
     pub selected_tag: usize,
 }
 
+/// Smoothstep ease for the open/close zoom.
+fn ease(t: f64) -> f64 {
+    let t = t.clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
 impl ScrollerOverview {
-    fn new(selected_tag: usize) -> Self {
+    fn new(selected_tag: usize, now_ms: u32) -> Self {
         Self {
-            // P1: snap straight to fully-open. P3 replaces this with an
-            // eased ramp from 0.0.
-            progress: 1.0,
+            progress: 0.0,
             opening: true,
-            scroll: 0.0,
+            anim_from: 0.0,
+            anim_started_ms: now_ms,
             selected_tag,
         }
     }
@@ -125,18 +132,46 @@ impl MargoState {
             .map(|mon| mon.pertag.curtag.clamp(1, crate::layout::MAX_TAGS))
             .unwrap_or(1);
 
-        self.scroller_overview = Some(ScrollerOverview::new(selected_tag));
+        let now = crate::utils::now_ms();
+        self.scroller_overview = Some(ScrollerOverview::new(selected_tag, now));
         self.request_repaint();
     }
 
-    /// Close the scroller overview. No-op if not open. P1 closes
-    /// instantly; P3 animates the zoom back in before clearing.
+    /// Close the scroller overview with a zoom-back-in animation. No-op
+    /// if not open. The `Option` is cleared by `tick_scroller_overview`
+    /// once the close animation reaches `progress == 0`.
     pub fn close_scroller_overview(&mut self) {
-        if self.scroller_overview.is_none() {
-            return;
+        let now = crate::utils::now_ms();
+        if let Some(ov) = self.scroller_overview.as_mut() {
+            ov.opening = false;
+            ov.anim_from = ov.progress;
+            ov.anim_started_ms = now;
         }
-        self.scroller_overview = None;
         self.request_repaint();
+    }
+
+    /// Advance the open/close zoom animation. Returns `true` while still
+    /// animating (the caller keeps repainting). Clears the overview once
+    /// a close animation settles at 0. Called once per frame from the
+    /// main loop's animation tick.
+    pub fn tick_scroller_overview(&mut self, now_ms: u32) -> bool {
+        let dur = self.config.overview_transition_ms.max(1) as f64;
+        let Some(ov) = self.scroller_overview.as_mut() else {
+            return false;
+        };
+        let target = if ov.opening { 1.0 } else { 0.0 };
+        let elapsed = now_ms.wrapping_sub(ov.anim_started_ms) as f64;
+        let t = (elapsed / dur).clamp(0.0, 1.0);
+        ov.progress = ov.anim_from + (target - ov.anim_from) * ease(t);
+        if t >= 1.0 {
+            ov.progress = target;
+            if !ov.opening {
+                // Close animation finished — tear the overview down.
+                self.scroller_overview = None;
+            }
+            return false;
+        }
+        true
     }
 
     pub fn toggle_scroller_overview(&mut self) {

@@ -968,6 +968,13 @@ fn main() -> Result<()> {
             state.request_repaint();
         }
 
+        // Scroller-overview open/close zoom animation. Advances the
+        // eased progress and keeps repainting until it settles (a close
+        // also clears the overview here when it reaches 0).
+        if state.tick_scroller_overview(now) {
+            state.request_repaint();
+        }
+
         // Config-error overlay timeout. The banner is armed by
         // `MargoState::reload_config` with a 10 s deadline; once the
         // deadline passes we clear it here and request one final
