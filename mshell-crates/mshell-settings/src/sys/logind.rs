@@ -45,10 +45,16 @@ pub(crate) fn parse_handlers(fragments: &[String]) -> LogindHandlers {
 }
 
 /// The managed drop-in body margo writes to /etc/systemd/logind.conf.d/99-margo.conf.
+///
+/// `HandleLidSwitchDocked` is written to the same value as `HandleLidSwitch`
+/// so the lid action applies even when "docked" — i.e. when an external
+/// display is connected. logind defaults `Docked` to `ignore`, which is
+/// why a multi-monitor laptop wouldn't suspend on lid close even with
+/// `HandleLidSwitch=suspend`.
 pub(crate) fn render_dropin(h: &LogindHandlers) -> String {
     format!(
-        "# Managed by margo Settings — do not edit by hand.\n[Login]\nHandlePowerKey={}\nHandleLidSwitch={}\nHandleLidSwitchExternalPower={}\n",
-        h.power_key, h.lid, h.lid_external
+        "# Managed by margo Settings — do not edit by hand.\n[Login]\nHandlePowerKey={}\nHandleLidSwitch={}\nHandleLidSwitchExternalPower={}\nHandleLidSwitchDocked={}\n",
+        h.power_key, h.lid, h.lid_external, h.lid
     )
 }
 
@@ -137,5 +143,8 @@ mod tests {
         assert!(s.contains("HandlePowerKey=ignore"));
         assert!(s.contains("HandleLidSwitch=lock"));
         assert!(s.contains("HandleLidSwitchExternalPower=ignore"));
+        // Docked follows the base lid action so docked/multi-monitor
+        // laptops honour the lid setting too.
+        assert!(s.contains("HandleLidSwitchDocked=lock"));
     }
 }
