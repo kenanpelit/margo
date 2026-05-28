@@ -30,7 +30,7 @@ pub(crate) use self::data::{
     clamp_size, matches_layer_name, matches_rule_text, read_toplevel_identity, WindowRuleReason,
 };
 pub use self::focus_target::FocusTarget;
-pub use self::scroller_overview::ScrollerOverview;
+pub use self::scroller_overview::{overview_cells, ScrollerOverview};
 pub(crate) use self::theme::ThemeBaseline;
 
 use std::{cell::RefCell, path::PathBuf, rc::Rc};

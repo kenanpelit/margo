@@ -87,6 +87,10 @@ render_elements! {
     Resize=crate::render::resize_render::ResizeRenderElement,
     OpenClose=crate::render::open_close::OpenCloseRenderElement,
     Solid=smithay::backend::renderer::element::solid::SolidColorRenderElement,
+    // Scroller-overview thumbnail: a window surface scaled down (Rescale)
+    // and placed into its tag's cell (Relocate). See
+    // `build_scroller_overview_elements`.
+    ScaledSurface=smithay::backend::renderer::element::utils::RelocateRenderElement<smithay::backend::renderer::element::utils::RescaleRenderElement<WaylandSurfaceRenderElement<GlesRenderer>>>,
 }
 
 // ── Type aliases ──────────────────────────────────────────────────────────────
@@ -1949,6 +1953,14 @@ pub(super) fn build_render_elements_inner(
         return Vec::new();
     };
 
+    // Scroller overview takes over the whole output render when open:
+    // a dark backdrop with each tag's windows scaled into a vertical
+    // strip of cells. Replaces the normal window/layer compositing
+    // (lock screen above still wins). See P2 in `state/scroller_overview.rs`.
+    if state.scroller_overview.is_some() {
+        return build_scroller_overview_elements(renderer, od, state, output_geo, output_scale, include_cursor);
+    }
+
     let layer_map = layer_map_for_output(&od.output);
     // Exclusive fullscreen suppresses every layer-shell surface on the
     // affected output — the focused window literally covers the
@@ -2118,6 +2130,172 @@ pub(super) fn build_render_elements_inner(
         clipped_surface_program,
         &mut elements,
     );
+
+    elements
+}
+
+/// Build the render-element list for an output while the **scroller
+/// overview** is open: a dark backdrop with every tag's windows scaled
+/// down (live, via `RescaleRenderElement` — no window resize) into a
+/// vertical strip of per-tag cells, the selected tag's cell carrying an
+/// accent backing. Cursor stays on top. Replaces the normal
+/// window/layer compositing for this output (P2).
+fn build_scroller_overview_elements(
+    renderer: &mut GlesRenderer,
+    od: &OutputDevice,
+    state: &MargoState,
+    output_geo: Rectangle<i32, Logical>,
+    output_scale: f64,
+    include_cursor: bool,
+) -> Vec<MargoRenderElement> {
+    use smithay::backend::renderer::element::Kind;
+    use smithay::backend::renderer::element::solid::SolidColorRenderElement;
+    use smithay::backend::renderer::element::utils::{
+        Relocate, RelocateRenderElement, RescaleRenderElement,
+    };
+    use smithay::backend::renderer::utils::CommitCounter;
+    use smithay::utils::{Physical, Size};
+
+    let scale = Scale::from(output_scale);
+    let mut elements: Vec<MargoRenderElement> = Vec::new();
+
+    // Cursor on top (mirrors the normal path).
+    let ptr_global = Point::<f64, _>::from((state.input_pointer.x, state.input_pointer.y));
+    if include_cursor && output_geo.to_f64().contains(ptr_global) {
+        let ptr_pos = ptr_global - output_geo.loc.to_f64();
+        match &state.cursor_status {
+            CursorImageStatus::Surface(surface) => {
+                let hotspot = with_states(surface, |states| {
+                    states
+                        .data_map
+                        .get::<Mutex<CursorImageAttributes>>()
+                        .and_then(|attrs| attrs.lock().ok().map(|attrs| attrs.hotspot))
+                        .unwrap_or_default()
+                });
+                let ptr_i = (ptr_pos - hotspot.to_f64())
+                    .to_physical_precise_round::<f64, i32>(output_scale);
+                for e in render_elements_from_surface_tree(
+                    renderer, surface, ptr_i, output_scale, 1.0f32, Kind::Cursor,
+                ) {
+                    elements.push(MargoRenderElement::WaylandSurface(e));
+                }
+            }
+            CursorImageStatus::Hidden => {}
+            _ => {
+                if let Some(cursor_elem) =
+                    state.cursor_manager.render_element(renderer, ptr_pos, output_scale)
+                {
+                    elements.push(MargoRenderElement::Cursor(cursor_elem));
+                }
+            }
+        }
+    }
+
+    let Some(mon_idx) = state.monitors.iter().position(|m| m.output == od.output) else {
+        // No monitor for this output — just dim it.
+        let dst = Rectangle::<i32, Physical>::new(
+            Point::from((0, 0)),
+            Size::from((output_geo.size.w, output_geo.size.h)).to_physical_precise_round(scale),
+        );
+        elements.push(MargoRenderElement::Solid(SolidColorRenderElement::new(
+            smithay::backend::renderer::element::Id::new(),
+            dst,
+            CommitCounter::default(),
+            [0.02, 0.02, 0.03, 1.0],
+            Kind::Unspecified,
+        )));
+        return elements;
+    };
+
+    let tags = state.scroller_overview_tags(mon_idx);
+    let selected = state
+        .scroller_overview
+        .as_ref()
+        .map(|ov| ov.selected_tag)
+        .unwrap_or(1);
+    let zoom = f64::from(state.config.overview_zoom.clamp(0.1, 1.0));
+    let gap = state.config.overview_gap_outer.max(16);
+    let output_rect = crate::layout::Rect::new(
+        output_geo.loc.x,
+        output_geo.loc.y,
+        output_geo.size.w,
+        output_geo.size.h,
+    );
+    let cells = crate::state::overview_cells(output_rect, &tags, zoom, gap, selected);
+
+    for cell in &cells {
+        let cell_w = output_geo.size.w.max(1);
+        let cell_scale = f64::from(cell.rect.width) / f64::from(cell_w);
+        let cell_origin_phys: Point<i32, Physical> =
+            Point::from((cell.rect.x - output_geo.loc.x, cell.rect.y - output_geo.loc.y))
+                .to_physical_precise_round(scale);
+
+        // Each window of this tag, scaled into the cell.
+        for client in state.clients.iter().filter(|c| {
+            c.monitor == mon_idx
+                && (c.tags & (1 << (cell.tag - 1))) != 0
+                && !c.is_initial_map_pending
+                && !c.is_minimized
+                && !c.is_killing
+                && !c.is_in_scratchpad
+        }) {
+            let Some(surface) = client.window.wl_surface() else {
+                continue;
+            };
+            let geo_loc = client.window.geometry().loc;
+            let render_location =
+                Point::<i32, smithay::utils::Logical>::from((
+                    client.geom.x - geo_loc.x,
+                    client.geom.y - geo_loc.y,
+                ));
+            let physical_location =
+                (render_location - output_geo.loc).to_physical_precise_round(scale);
+            let surf_elems = render_elements_from_surface_tree::<
+                GlesRenderer,
+                WaylandSurfaceRenderElement<GlesRenderer>,
+            >(renderer, &surface, physical_location, output_scale, 1.0, Kind::Unspecified);
+            for e in surf_elems {
+                let scaled =
+                    RescaleRenderElement::from_element(e, Point::from((0, 0)), cell_scale);
+                let placed =
+                    RelocateRenderElement::from_element(scaled, cell_origin_phys, Relocate::Relative);
+                elements.push(MargoRenderElement::ScaledSurface(placed));
+            }
+        }
+
+        // Card backing behind the windows: a subtle dark card, or an
+        // accent backing for the selected tag. Pushed after the windows
+        // so it z-orders beneath them.
+        let card_dst = Rectangle::<i32, Physical>::new(
+            cell_origin_phys,
+            Size::from((cell.rect.width, cell.rect.height)).to_physical_precise_round(scale),
+        );
+        let card_color = if cell.tag == selected {
+            [0.18, 0.32, 0.55, 1.0]
+        } else {
+            [0.08, 0.08, 0.10, 1.0]
+        };
+        elements.push(MargoRenderElement::Solid(SolidColorRenderElement::new(
+            smithay::backend::renderer::element::Id::new(),
+            card_dst,
+            CommitCounter::default(),
+            card_color,
+            Kind::Unspecified,
+        )));
+    }
+
+    // Dark backdrop at the very bottom.
+    let backdrop = Rectangle::<i32, Physical>::new(
+        Point::from((0, 0)),
+        Size::from((output_geo.size.w, output_geo.size.h)).to_physical_precise_round(scale),
+    );
+    elements.push(MargoRenderElement::Solid(SolidColorRenderElement::new(
+        smithay::backend::renderer::element::Id::new(),
+        backdrop,
+        CommitCounter::default(),
+        [0.02, 0.02, 0.03, 1.0],
+        Kind::Unspecified,
+    )));
 
     elements
 }

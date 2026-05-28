@@ -11,6 +11,58 @@
 //! read this state.
 
 use super::MargoState;
+use crate::layout::{MAX_TAGS, Rect};
+
+/// One tag cell in the overview strip: which tag it shows and where it
+/// renders (output-logical coordinates, after centering on the
+/// selection). The render path scales each tag's windows into `rect`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OverviewCell {
+    /// 1-based pertag tag index (1..=`MAX_TAGS`).
+    pub tag: usize,
+    pub rect: Rect,
+}
+
+/// Lay `tags` out as a vertical strip of cells, each the `output`
+/// rectangle scaled by `zoom`, separated by `gap` (post-zoom logical
+/// px), horizontally centered, and offset so the cell for
+/// `selected_tag` sits vertically centered in `output`. Returns one
+/// [`OverviewCell`] per input tag, in order.
+///
+/// Pure geometry — no compositor state — so it's unit-tested directly.
+pub fn overview_cells(
+    output: Rect,
+    tags: &[usize],
+    zoom: f64,
+    gap: i32,
+    selected_tag: usize,
+) -> Vec<OverviewCell> {
+    if tags.is_empty() {
+        return Vec::new();
+    }
+    let zoom = zoom.clamp(0.05, 1.0);
+    let cell_w = ((f64::from(output.width)) * zoom).round() as i32;
+    let cell_h = ((f64::from(output.height)) * zoom).round() as i32;
+    let cell_x = output.x + (output.width - cell_w) / 2;
+    let stride = cell_h + gap.max(0);
+
+    // Strip position of the selected tag (fallback: first cell).
+    let sel_pos = tags
+        .iter()
+        .position(|&t| t == selected_tag)
+        .unwrap_or(0) as i32;
+    // Offset so the selected cell's vertical center lands on the output
+    // center: y(sel) + cell_h/2 == output.y + output.height/2.
+    let offset_y = output.height / 2 - sel_pos * stride - cell_h / 2;
+
+    tags.iter()
+        .enumerate()
+        .map(|(i, &tag)| OverviewCell {
+            tag,
+            rect: Rect::new(cell_x, output.y + offset_y + i as i32 * stride, cell_w, cell_h),
+        })
+        .collect()
+}
 
 /// Live state of an open scroller overview. Present (`Some`) only while
 /// the overview is open or animating closed; `None` otherwise.
@@ -63,14 +115,15 @@ impl MargoState {
             self.close_overview(None);
         }
 
-        // Seed the selection from the focused monitor's first active tag
-        // so keyboard nav starts where the user already is.
+        // Seed the selection from the focused monitor's active tag so
+        // keyboard nav starts where the user already is. `pertag.curtag`
+        // is the 1-based tag index (1..=9), matching our cell tags.
         let mon_idx = self.focused_monitor();
         let selected_tag = self
             .monitors
             .get(mon_idx)
-            .map(|mon| mon.current_tagset().trailing_zeros() as usize)
-            .unwrap_or(0);
+            .map(|mon| mon.pertag.curtag.clamp(1, crate::layout::MAX_TAGS))
+            .unwrap_or(1);
 
         self.scroller_overview = Some(ScrollerOverview::new(selected_tag));
         self.request_repaint();
@@ -92,5 +145,87 @@ impl MargoState {
         } else {
             self.open_scroller_overview();
         }
+    }
+
+    /// Tags (1-based) to show as cells for `mon_idx`: every tag that
+    /// has at least one mapped, non-minimized client, always including
+    /// the currently-selected tag so the strip is never empty and the
+    /// selection always has a cell to highlight. Ascending order.
+    pub fn scroller_overview_tags(&self, mon_idx: usize) -> Vec<usize> {
+        let selected = self
+            .scroller_overview
+            .as_ref()
+            .map(|ov| ov.selected_tag)
+            .unwrap_or(1);
+
+        (1..=MAX_TAGS)
+            .filter(|&tag| {
+                tag == selected
+                    || self.clients.iter().any(|c| {
+                        c.monitor == mon_idx
+                            && (c.tags & (1 << (tag - 1))) != 0
+                            && !c.is_initial_map_pending
+                            && !c.is_minimized
+                            && !c.is_killing
+                            && !c.is_in_scratchpad
+                    })
+            })
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Rect, overview_cells};
+
+    const OUT: Rect = Rect { x: 0, y: 0, width: 1920, height: 1080 };
+
+    #[test]
+    fn empty_tags_yields_no_cells() {
+        assert!(overview_cells(OUT, &[], 0.5, 20, 1).is_empty());
+    }
+
+    #[test]
+    fn cell_size_is_output_scaled_by_zoom() {
+        let cells = overview_cells(OUT, &[1, 2, 3], 0.5, 20, 1);
+        assert_eq!(cells.len(), 3);
+        for c in &cells {
+            assert_eq!(c.rect.width, 960); // 1920 * 0.5
+            assert_eq!(c.rect.height, 540); // 1080 * 0.5
+        }
+        // Horizontally centered: (1920 - 960) / 2 = 480.
+        assert_eq!(cells[0].rect.x, 480);
+    }
+
+    #[test]
+    fn selected_cell_is_vertically_centered() {
+        // Select the middle tag; its cell center should sit on the
+        // output's vertical center (540).
+        let cells = overview_cells(OUT, &[1, 2, 3], 0.5, 20, 2);
+        let sel = cells.iter().find(|c| c.tag == 2).unwrap();
+        let center = sel.rect.y + sel.rect.height / 2;
+        assert_eq!(center, 540);
+    }
+
+    #[test]
+    fn cells_are_stacked_with_gap() {
+        let cells = overview_cells(OUT, &[1, 2, 3], 0.5, 20, 1);
+        // Stride between successive cell tops = cell_h + gap = 540 + 20.
+        assert_eq!(cells[1].rect.y - cells[0].rect.y, 560);
+        assert_eq!(cells[2].rect.y - cells[1].rect.y, 560);
+    }
+
+    #[test]
+    fn tags_preserved_in_order() {
+        let cells = overview_cells(OUT, &[3, 5, 9], 0.4, 10, 5);
+        assert_eq!(cells.iter().map(|c| c.tag).collect::<Vec<_>>(), vec![3, 5, 9]);
+    }
+
+    #[test]
+    fn zoom_is_clamped() {
+        // Absurd zoom clamps to <= 1.0 so a cell never exceeds the output.
+        let cells = overview_cells(OUT, &[1], 5.0, 0, 1);
+        assert!(cells[0].rect.width <= OUT.width);
+        assert!(cells[0].rect.height <= OUT.height);
     }
 }
