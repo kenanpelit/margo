@@ -203,6 +203,46 @@ impl MargoState {
         }
     }
 
+    /// Style-aware cycle-forward (the generic `overview_focus_next`
+    /// keybind / alt+Tab). Drives whichever overview the user selected,
+    /// so only the chosen style is ever active — the other never opens.
+    /// Opens the scroller first if it's closed (single-tap open+step,
+    /// matching the grid path).
+    pub fn overview_focus_next_styled(&mut self) {
+        match self.config.overview_style {
+            margo_config::OverviewStyle::Scroller => {
+                if !self.is_scroller_overview_open() {
+                    self.open_scroller_overview();
+                }
+                self.scroller_overview_select(1);
+            }
+            margo_config::OverviewStyle::Grid => self.overview_focus_next(),
+        }
+    }
+
+    /// Style-aware cycle-backward (`overview_focus_prev`).
+    pub fn overview_focus_prev_styled(&mut self) {
+        match self.config.overview_style {
+            margo_config::OverviewStyle::Scroller => {
+                if !self.is_scroller_overview_open() {
+                    self.open_scroller_overview();
+                }
+                self.scroller_overview_select(-1);
+            }
+            margo_config::OverviewStyle::Grid => self.overview_focus_prev(),
+        }
+    }
+
+    /// Style-aware activate (`overview_activate`, e.g. the alt+Tab
+    /// release-to-commit). Commits whichever overview is actually open.
+    pub fn overview_activate_styled(&mut self) {
+        if self.is_scroller_overview_open() {
+            self.scroller_overview_activate();
+        } else if self.is_overview_open() {
+            self.overview_activate();
+        }
+    }
+
     /// Tags (1-based) to show as cells for `mon_idx`: every tag that
     /// has at least one mapped, non-minimized client, always including
     /// the currently-selected tag so the strip is never empty and the

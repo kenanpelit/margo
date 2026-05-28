@@ -589,9 +589,15 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
         // (alt+Tab, mod+J/K, ...) that don't collide with normal
         // text input. Binding bare Return would swallow Enter
         // everywhere, including terminals.
-        "overview_focus_next" => state.overview_focus_next(),
-        "overview_focus_prev" => state.overview_focus_prev(),
-        "overview_activate" => state.overview_activate(),
+        // Style-aware: drive whichever overview `overview_style` selects,
+        // so the grid and scroller are never both reachable. The
+        // grid-only variants stay available explicitly below.
+        "overview_focus_next" => state.overview_focus_next_styled(),
+        "overview_focus_prev" => state.overview_focus_prev_styled(),
+        "overview_activate" => state.overview_activate_styled(),
+        "grid_overview_focus_next" => state.overview_focus_next(),
+        "grid_overview_focus_prev" => state.overview_focus_prev(),
+        "grid_overview_activate" => state.overview_activate(),
         // niri-style scroller overview — separate from the grid overview
         // above. `toggle_scroller_overview` is the primary bindable
         // trigger; open/close exist for one-shot binds (e.g. press to

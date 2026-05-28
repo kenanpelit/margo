@@ -624,7 +624,7 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                 // any order still confirms the pick.
                 if key_state == KeyState::Released
                     && state.overview_cycle_pending
-                    && state.is_overview_open()
+                    && (state.is_overview_open() || state.is_scroller_overview_open())
                     && !state.overview_cycle_modifier_mask.is_empty()
                 {
                     let released_bit = handle
@@ -636,7 +636,7 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                             state.overview_cycle_modifier_mask.remove(bit);
                             if state.overview_cycle_modifier_mask.is_empty() {
                                 state.overview_cycle_pending = false;
-                                state.overview_activate();
+                                state.overview_activate_styled();
                                 return FilterResult::Intercept(());
                             }
                         }
