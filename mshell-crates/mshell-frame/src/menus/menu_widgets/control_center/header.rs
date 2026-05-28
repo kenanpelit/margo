@@ -3,7 +3,7 @@
 //! Layout (horizontal `control-center-header`):
 //!
 //! ```text
-//! [avatar]  username          ← hexpand spacer →  [🔒][⏻][⚙][✏]
+//! [avatar]  username          ← hexpand spacer →  [🔒][⏻][🎛][✏]
 //!           up 3h 5m
 //! ```
 
@@ -184,7 +184,7 @@ impl Component for ControlCenterHeaderModel {
                 gtk::Button {
                     add_css_class: "panel-action-btn",
                     set_valign: gtk::Align::Center,
-                    set_icon_name: "preferences-system-symbolic",
+                    set_icon_name: "tune-symbolic",
                     set_tooltip_text: Some("Settings"),
                     connect_clicked[sender] => move |_| {
                         sender.input(ControlCenterHeaderInput::SettingsClicked);

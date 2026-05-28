@@ -17,6 +17,20 @@
 // Horizontal row: avatar | username + uptime | → action buttons
 .control-center-header {
   // gap set to 12 in Rust (set_spacing); nothing extra needed here.
+
+  // Trailing action quartet (lock / power / settings / edit). The shared
+  // .panel-action-btn is sized for the dashboard gear (40×40, --icon-md);
+  // that reads as oversized for a row of four compact header actions. Pull
+  // them to a 32×32 / --icon-sm footprint so they sit as quiet trailing
+  // controls — more specific than _panel_header.scss so this wins.
+  .panel-action-btn {
+    min-width: 32px;
+    min-height: 32px;
+
+    image {
+      -gtk-icon-size: var(--icon-sm);
+    }
+  }
 }
 
 // Avatar circle — 48×48, overflow:hidden set in Rust.
