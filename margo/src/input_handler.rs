@@ -1128,23 +1128,30 @@ fn handle_pointer_axis<B: InputBackend, E: PointerAxisEvent<B>>(
     state: &mut MargoState,
     event: E,
 ) {
-    // Scroller overview: a scroll pans the tag selection (no modifier),
-    // niri-style. Consume the event so it never reaches clients.
+    // Scroller overview: scroll pans the tag selection (no modifier),
+    // niri-style. A gesture arrives as a burst of events, so we feed a
+    // normalized v120 delta into an accumulator that steps once per
+    // notch — otherwise one flick races the selection across every tag
+    // ("titreme"). Consume the event so it never reaches clients.
     if state.is_scroller_overview_open() {
-        let v = event
-            .amount(Axis::Vertical)
-            .or_else(|| event.amount_v120(Axis::Vertical).map(|x| x / 120.0))
-            .unwrap_or(0.0);
-        let h = event
-            .amount(Axis::Horizontal)
-            .or_else(|| event.amount_v120(Axis::Horizontal).map(|x| x / 120.0))
-            .unwrap_or(0.0);
-        let delta = if v.abs() >= h.abs() { v } else { h };
-        if delta > 0.0 {
-            state.scroller_overview_select(1);
-        } else if delta < 0.0 {
-            state.scroller_overview_select(-1);
-        }
+        // Prefer the high-res discrete wheel signal (v120, 120/notch);
+        // fall back to scaling the continuous amount (touchpad finger
+        // scroll, which has no v120) into comparable units.
+        let v120 = event
+            .amount_v120(Axis::Vertical)
+            .filter(|v| *v != 0.0)
+            .or_else(|| event.amount_v120(Axis::Horizontal).filter(|v| *v != 0.0));
+        let delta = if let Some(v120) = v120 {
+            v120
+        } else {
+            let amt = event
+                .amount(Axis::Vertical)
+                .filter(|a| *a != 0.0)
+                .or_else(|| event.amount(Axis::Horizontal).filter(|a| *a != 0.0))
+                .unwrap_or(0.0);
+            amt * 10.0
+        };
+        state.scroller_overview_scroll(delta);
         return;
     }
 

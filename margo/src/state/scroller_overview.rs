@@ -84,7 +84,16 @@ pub struct ScrollerOverview {
     /// Which tag (1-based) is highlighted for keyboard navigation and
     /// activation. Seeded from the focused monitor's active tag.
     pub selected_tag: usize,
+    /// Accumulated scroll (in v120 units) not yet consumed into a step.
+    /// Scroll events arrive as a burst per gesture; we step the
+    /// selection once per notch (120 units) so a flick doesn't race the
+    /// selection across every tag.
+    scroll_accum: f64,
 }
+
+/// One wheel notch in v120 units — the step threshold for scroll-driven
+/// selection.
+const SCROLL_NOTCH: f64 = 120.0;
 
 /// Smoothstep ease for the open/close zoom.
 fn ease(t: f64) -> f64 {
@@ -100,6 +109,7 @@ impl ScrollerOverview {
             anim_from: 0.0,
             anim_started_ms: now_ms,
             selected_tag,
+            scroll_accum: 0.0,
         }
     }
 }
@@ -243,6 +253,32 @@ impl MargoState {
             ov.selected_tag = tags[next];
         }
         self.request_repaint();
+    }
+
+    /// Feed a scroll delta (in v120 units) from the pointer axis handler.
+    /// Accumulates and steps the selection once per notch, so a single
+    /// flick / continuous touchpad scroll advances at a controlled rate
+    /// instead of racing across every tag. Positive = down = next tag.
+    pub fn scroller_overview_scroll(&mut self, delta_v120: f64) {
+        let steps = {
+            let Some(ov) = self.scroller_overview.as_mut() else {
+                return;
+            };
+            ov.scroll_accum += delta_v120;
+            let mut steps = 0i32;
+            while ov.scroll_accum >= SCROLL_NOTCH {
+                ov.scroll_accum -= SCROLL_NOTCH;
+                steps += 1;
+            }
+            while ov.scroll_accum <= -SCROLL_NOTCH {
+                ov.scroll_accum += SCROLL_NOTCH;
+                steps -= 1;
+            }
+            steps
+        };
+        if steps != 0 {
+            self.scroller_overview_select(steps);
+        }
     }
 
     /// Close the overview and switch the focused monitor to the selected
