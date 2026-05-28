@@ -597,12 +597,27 @@ impl MargoState {
                 && contains(c.geom, out_x, out_y)
         });
 
-        self.scroller_overview = None;
-        self.request_repaint();
-        let already = self.monitors.get(mon).map(|m| m.current_tagset()) == Some(bit);
-        if !already {
-            self.view_tag(bit);
+        // Center the clicked tag on its monitor, then run the same animated
+        // close as four-finger-down / Enter (`close_scroller_overview`):
+        // every monitor commits to its centered tag and the strip zooms
+        // back in onto it. The old path tore the overview down instantly and
+        // `view_tag`'d straight there — an abrupt super+N-style switch with
+        // no zoom.
+        if let Some(ci) = tags.iter().position(|&t| t == cell.tag) {
+            if let Some(ms) = self
+                .scroller_overview
+                .as_mut()
+                .and_then(|o| o.mon.get_mut(mon))
+            {
+                ms.pos = ci as f64;
+                ms.snap_target = Some(ci as f64);
+                ms.velocity = 0.0;
+            }
         }
+        self.close_scroller_overview();
+
+        // Prefer the specific window under the cursor over the default
+        // first-visible focus `close_scroller_overview` applies.
         if let Some(idx) = clicked {
             if mon < self.monitors.len() {
                 self.monitors[mon].selected = Some(idx);
