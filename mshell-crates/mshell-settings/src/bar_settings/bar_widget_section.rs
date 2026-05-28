@@ -171,7 +171,12 @@ impl WidgetSectionModel {
         let list = gtk::Box::new(gtk::Orientation::Vertical, 0);
         list.add_css_class("settings-bar-widget-add-list");
 
-        for widget in BarWidget::all() {
+        // List the catalogue alphabetically (by display name) so the
+        // add-widget popover is easy to scan, rather than enum order.
+        let mut widgets: Vec<BarWidget> = BarWidget::all().to_vec();
+        widgets.sort_by_key(|w| w.display_name().to_ascii_lowercase());
+
+        for widget in &widgets {
             let btn = gtk::Button::with_label(widget.display_name());
             btn.set_css_classes(&["settings-bar-widget-add-item"]);
             btn.set_halign(gtk::Align::Fill);
