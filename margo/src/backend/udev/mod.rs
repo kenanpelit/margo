@@ -2134,12 +2134,17 @@ pub(super) fn build_render_elements_inner(
     elements
 }
 
+/// Backdrop fill behind the overview — niri's default backdrop color
+/// (`#262626`). A neutral dark grey, not black, so windows read against
+/// it the way niri's overview does.
+const BACKDROP_COLOR: [f32; 4] = [0.15, 0.15, 0.15, 1.0];
+
 /// Build the render-element list for an output while the **scroller
-/// overview** is open: a dark backdrop with every tag's windows scaled
-/// down (live, via `RescaleRenderElement` — no window resize) into a
-/// vertical strip of per-tag cells, the selected tag's cell carrying an
-/// accent backing. Cursor stays on top. Replaces the normal
-/// window/layer compositing for this output (P2).
+/// overview** is open: a niri-style grey backdrop with every tag's
+/// windows scaled down live (via `RescaleRenderElement` — no window
+/// resize) into a vertical strip of per-tag cells, the selected tag
+/// centered. Cursor stays on top. Replaces the normal window/layer
+/// compositing for this output.
 fn build_scroller_overview_elements(
     renderer: &mut GlesRenderer,
     od: &OutputDevice,
@@ -2201,7 +2206,7 @@ fn build_scroller_overview_elements(
             smithay::backend::renderer::element::Id::new(),
             dst,
             CommitCounter::default(),
-            OVERVIEW_BACKDROP,
+            BACKDROP_COLOR,
             Kind::Unspecified,
         )));
         return elements;
@@ -2223,35 +2228,6 @@ fn build_scroller_overview_elements(
     );
     let cells = crate::state::overview_cells(output_rect, &tags, zoom, gap, selected);
 
-    // niri zooms the background + bottom layers (the wallpaper) along
-    // with each workspace, so every cell shows the wallpaper under its
-    // windows. Collect those layers once and replay them per cell.
-    let layer_map = layer_map_for_output(&od.output);
-    let wallpaper_layers: Vec<&smithay::desktop::LayerSurface> = layer_map
-        .layers()
-        .rev()
-        .filter(|s| matches!(s.layer(), WlrLayer::Background | WlrLayer::Bottom))
-        .collect();
-
-    // The bar (top + overlay layers) stays on top of the overview at
-    // full scale, unzoomed — exactly like niri ("put your bar on the
-    // top layer"). Pushed after the cursor so it sits below it but
-    // above the zoomed workspaces.
-    let upper_layers: Vec<&smithay::desktop::LayerSurface> = layer_map
-        .layers()
-        .rev()
-        .filter(|s| matches!(s.layer(), WlrLayer::Overlay | WlrLayer::Top))
-        .collect();
-    push_layer_elements(
-        renderer,
-        &layer_map,
-        &upper_layers,
-        output_scale,
-        1.0,
-        state,
-        &mut elements,
-    );
-
     for cell in &cells {
         let cell_w = output_geo.size.w.max(1);
         let cell_scale = f64::from(cell.rect.width) / f64::from(cell_w);
@@ -2259,8 +2235,7 @@ fn build_scroller_overview_elements(
             Point::from((cell.rect.x - output_geo.loc.x, cell.rect.y - output_geo.loc.y))
                 .to_physical_precise_round(scale);
 
-        // Window surfaces (top of the cell). Pushed before the wallpaper
-        // so they z-order above it.
+        // Each window of this tag, scaled into the cell.
         for client in state.clients.iter().filter(|c| {
             c.monitor == mon_idx
                 && (c.tags & (1 << (cell.tag - 1))) != 0
@@ -2273,59 +2248,29 @@ fn build_scroller_overview_elements(
                 continue;
             };
             let geo_loc = client.window.geometry().loc;
-            let render_location = Point::<i32, smithay::utils::Logical>::from((
-                client.geom.x - geo_loc.x,
-                client.geom.y - geo_loc.y,
-            ));
+            let render_location =
+                Point::<i32, smithay::utils::Logical>::from((
+                    client.geom.x - geo_loc.x,
+                    client.geom.y - geo_loc.y,
+                ));
             let physical_location =
                 (render_location - output_geo.loc).to_physical_precise_round(scale);
-            for e in render_elements_from_surface_tree::<
+            let surf_elems = render_elements_from_surface_tree::<
                 GlesRenderer,
                 WaylandSurfaceRenderElement<GlesRenderer>,
-            >(renderer, &surface, physical_location, output_scale, 1.0, Kind::Unspecified)
-            {
-                let scaled = RescaleRenderElement::from_element(e, Point::from((0, 0)), cell_scale);
-                let placed = RelocateRenderElement::from_element(
-                    scaled,
-                    cell_origin_phys,
-                    Relocate::Relative,
-                );
+            >(renderer, &surface, physical_location, output_scale, 1.0, Kind::Unspecified);
+            for e in surf_elems {
+                let scaled =
+                    RescaleRenderElement::from_element(e, Point::from((0, 0)), cell_scale);
+                let placed =
+                    RelocateRenderElement::from_element(scaled, cell_origin_phys, Relocate::Relative);
                 elements.push(MargoRenderElement::ScaledSurface(placed));
             }
         }
 
-        // Wallpaper (background + bottom layers) scaled into the cell,
-        // beneath the windows.
-        for surface in &wallpaper_layers {
-            let Some(geo) = layer_map.layer_geometry(surface) else {
-                continue;
-            };
-            let physical_location = geo.loc.to_physical_precise_round(scale);
-            for e in render_elements_from_surface_tree::<
-                GlesRenderer,
-                WaylandSurfaceRenderElement<GlesRenderer>,
-            >(
-                renderer,
-                surface.wl_surface(),
-                physical_location,
-                output_scale,
-                1.0,
-                Kind::Unspecified,
-            ) {
-                let scaled = RescaleRenderElement::from_element(e, Point::from((0, 0)), cell_scale);
-                let placed = RelocateRenderElement::from_element(
-                    scaled,
-                    cell_origin_phys,
-                    Relocate::Relative,
-                );
-                elements.push(MargoRenderElement::ScaledSurface(placed));
-            }
-        }
     }
 
-    // Solid backdrop fills the whole output beneath everything — the
-    // neutral grey that shows between/around the zoomed workspaces
-    // (niri's `overview.backdrop-color`, default 0.15 grey).
+    // Backdrop at the very bottom (behind every cell).
     let backdrop = Rectangle::<i32, Physical>::new(
         Point::from((0, 0)),
         Size::from((output_geo.size.w, output_geo.size.h)).to_physical_precise_round(scale),
@@ -2334,17 +2279,12 @@ fn build_scroller_overview_elements(
         smithay::backend::renderer::element::Id::new(),
         backdrop,
         CommitCounter::default(),
-        OVERVIEW_BACKDROP,
+        [0.02, 0.02, 0.03, 1.0],
         Kind::Unspecified,
     )));
 
     elements
 }
-
-/// Neutral grey shown between and around the zoomed workspaces in the
-/// scroller overview — matches niri's default `overview.backdrop-color`
-/// (`[0.15, 0.15, 0.15]`). Made a `[scroller-overview]` config knob in P5.
-const OVERVIEW_BACKDROP: [f32; 4] = [0.15, 0.15, 0.15, 1.0];
 
 /// Push render elements for windows in their close animation. Mirrors
 /// `push_client_elements` but operates on `state.closing_clients`
