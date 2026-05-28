@@ -2233,6 +2233,25 @@ fn build_scroller_overview_elements(
         .filter(|s| matches!(s.layer(), WlrLayer::Background | WlrLayer::Bottom))
         .collect();
 
+    // The bar (top + overlay layers) stays on top of the overview at
+    // full scale, unzoomed — exactly like niri ("put your bar on the
+    // top layer"). Pushed after the cursor so it sits below it but
+    // above the zoomed workspaces.
+    let upper_layers: Vec<&smithay::desktop::LayerSurface> = layer_map
+        .layers()
+        .rev()
+        .filter(|s| matches!(s.layer(), WlrLayer::Overlay | WlrLayer::Top))
+        .collect();
+    push_layer_elements(
+        renderer,
+        &layer_map,
+        &upper_layers,
+        output_scale,
+        1.0,
+        state,
+        &mut elements,
+    );
+
     for cell in &cells {
         let cell_w = output_geo.size.w.max(1);
         let cell_scale = f64::from(cell.rect.width) / f64::from(cell_w);
