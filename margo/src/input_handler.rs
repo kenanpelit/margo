@@ -571,6 +571,40 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                         crate::dispatch::dispatch_action(state, &action, &arg);
                         return FilterResult::Intercept(());
                     }
+
+                    // Scroller-overview modal keys. Runs only when no
+                    // keybind claimed the press, so user binds and the
+                    // toggle key still win: Esc closes, Up/Down move the
+                    // selection, Enter activates the selected tag.
+                    if state.is_scroller_overview_open() {
+                        const ESC: u32 = 0xff1b;
+                        const UP: u32 = 0xff52;
+                        const DOWN: u32 = 0xff54;
+                        const RETURN: u32 = 0xff0d;
+                        const KP_ENTER: u32 = 0xff8d;
+                        let handled = match keysym.raw() {
+                            ESC => {
+                                state.close_scroller_overview();
+                                true
+                            }
+                            UP => {
+                                state.scroller_overview_select(-1);
+                                true
+                            }
+                            DOWN => {
+                                state.scroller_overview_select(1);
+                                true
+                            }
+                            RETURN | KP_ENTER => {
+                                state.scroller_overview_activate();
+                                true
+                            }
+                            _ => false,
+                        };
+                        if handled {
+                            return FilterResult::Intercept(());
+                        }
+                    }
                 }
 
                 // Modifier-release auto-commit for alt+Tab cycle. We can't
@@ -981,6 +1015,17 @@ fn handle_pointer_button<B: InputBackend, E: PointerButtonEvent<B>>(
     let button = event.button_code();
     let pos = Point::from((state.input_pointer.x, state.input_pointer.y));
 
+    // Scroller overview: a left-press activates the tag cell / window
+    // under the cursor (switch + focus), a backdrop click closes. Every
+    // button event is consumed so none reaches the scaled-down clients.
+    if state.is_scroller_overview_open() {
+        const BTN_LEFT: u32 = 0x110;
+        if btn_state == ButtonState::Pressed && button == BTN_LEFT {
+            state.scroller_overview_click(pos.x, pos.y);
+        }
+        return;
+    }
+
     // Mousebind dispatch — `mousebind = MOD,btn_left,moveresize,curmove`
     // and friends. Match on press only; release passes through so any
     // grab we kicked off cleans up via its own button handler. If we
@@ -1083,6 +1128,26 @@ fn handle_pointer_axis<B: InputBackend, E: PointerAxisEvent<B>>(
     state: &mut MargoState,
     event: E,
 ) {
+    // Scroller overview: a scroll pans the tag selection (no modifier),
+    // niri-style. Consume the event so it never reaches clients.
+    if state.is_scroller_overview_open() {
+        let v = event
+            .amount(Axis::Vertical)
+            .or_else(|| event.amount_v120(Axis::Vertical).map(|x| x / 120.0))
+            .unwrap_or(0.0);
+        let h = event
+            .amount(Axis::Horizontal)
+            .or_else(|| event.amount_v120(Axis::Horizontal).map(|x| x / 120.0))
+            .unwrap_or(0.0);
+        let delta = if v.abs() >= h.abs() { v } else { h };
+        if delta > 0.0 {
+            state.scroller_overview_select(1);
+        } else if delta < 0.0 {
+            state.scroller_overview_select(-1);
+        }
+        return;
+    }
+
     // AxisFrame::source() and AxisFrame::value() both use smithay::backend::input types.
     let mut frame = AxisFrame::new(event.time_msec()).source(event.source());
 

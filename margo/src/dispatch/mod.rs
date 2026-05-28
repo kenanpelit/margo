@@ -595,6 +595,9 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
         "toggle_scroller_overview" => state.toggle_scroller_overview(),
         "open_scroller_overview" => state.open_scroller_overview(),
         "close_scroller_overview" => state.close_scroller_overview(),
+        "scroller_overview_focus_next" => state.scroller_overview_select(1),
+        "scroller_overview_focus_prev" => state.scroller_overview_select(-1),
+        "scroller_overview_activate" => state.scroller_overview_activate(),
         // Spatial-canvas pan (PaperWM-ish). Two integer args:
         // dx and dy logical-pixel deltas. Stored per-tag so each
         // tag remembers its viewport offset.

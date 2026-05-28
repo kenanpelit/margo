@@ -10,7 +10,7 @@
 //! transition (P3), and input (P4) live in their own call sites and
 //! read this state.
 
-use super::MargoState;
+use super::{FocusTarget, MargoState};
 use crate::layout::{MAX_TAGS, Rect};
 
 /// One tag cell in the overview strip: which tag it shows and where it
@@ -171,6 +171,118 @@ impl MargoState {
                     })
             })
             .collect()
+    }
+
+    /// Move the overview selection by `dir` (+1 next / −1 prev) through
+    /// the shown tags on the focused monitor, wrapping around. Drives
+    /// scroll-wheel and arrow-key navigation.
+    pub fn scroller_overview_select(&mut self, dir: i32) {
+        if self.scroller_overview.is_none() {
+            return;
+        }
+        let mon = self.focused_monitor();
+        let tags = self.scroller_overview_tags(mon);
+        if tags.is_empty() {
+            return;
+        }
+        let cur = self
+            .scroller_overview
+            .as_ref()
+            .map(|o| o.selected_tag)
+            .unwrap_or(1);
+        let pos = tags.iter().position(|&t| t == cur).unwrap_or(0) as i32;
+        let n = tags.len() as i32;
+        let next = (pos + dir).rem_euclid(n) as usize;
+        if let Some(ov) = self.scroller_overview.as_mut() {
+            ov.selected_tag = tags[next];
+        }
+        self.request_repaint();
+    }
+
+    /// Close the overview and switch the focused monitor to the selected
+    /// tag (Enter / commit). No-op switch if already on that tag.
+    pub fn scroller_overview_activate(&mut self) {
+        let Some(ov) = self.scroller_overview.take() else {
+            return;
+        };
+        self.request_repaint();
+        let tag = ov.selected_tag.clamp(1, MAX_TAGS);
+        let bit = 1u32 << (tag - 1);
+        let mon = self.focused_monitor();
+        let already = self.monitors.get(mon).map(|m| m.current_tagset()) == Some(bit);
+        if !already {
+            self.view_tag(bit);
+        }
+    }
+
+    /// Handle a left click at global-logical (`x`, `y`) while the
+    /// overview is open: find the tag cell under the cursor, switch to
+    /// that tag, and focus the specific window clicked (if any). A click
+    /// on the bare backdrop (no cell) closes without switching.
+    pub fn scroller_overview_click(&mut self, x: f64, y: f64) {
+        if self.scroller_overview.is_none() {
+            return;
+        }
+        let contains = |r: Rect, x: f64, y: f64| {
+            (x as i32) >= r.x
+                && (x as i32) < r.x + r.width
+                && (y as i32) >= r.y
+                && (y as i32) < r.y + r.height
+        };
+
+        // Monitor whose area contains the cursor (fallback: focused).
+        let mon = self
+            .monitors
+            .iter()
+            .position(|m| contains(m.monitor_area, x, y))
+            .unwrap_or_else(|| self.focused_monitor());
+        let Some(area) = self.monitors.get(mon).map(|m| m.monitor_area) else {
+            return;
+        };
+
+        let tags = self.scroller_overview_tags(mon);
+        let selected = self
+            .scroller_overview
+            .as_ref()
+            .map(|o| o.selected_tag)
+            .unwrap_or(1);
+        let zoom = f64::from(self.config.overview_zoom.clamp(0.1, 1.0));
+        let gap = self.config.overview_gap_outer.max(16);
+        let cells = overview_cells(area, &tags, zoom, gap, selected);
+
+        let Some(cell) = cells.into_iter().find(|c| contains(c.rect, x, y)) else {
+            // Click on the bare backdrop → close without switching.
+            self.close_scroller_overview();
+            return;
+        };
+
+        // Map the click back into output space to find the window under it.
+        let cell_scale = f64::from(cell.rect.width) / f64::from(area.width.max(1));
+        let out_x = f64::from(area.x) + (x - f64::from(cell.rect.x)) / cell_scale;
+        let out_y = f64::from(area.y) + (y - f64::from(cell.rect.y)) / cell_scale;
+        let bit = 1u32 << (cell.tag - 1);
+        let clicked = self.clients.iter().position(|c| {
+            c.monitor == mon
+                && (c.tags & bit) != 0
+                && !c.is_minimized
+                && !c.is_killing
+                && !c.is_in_scratchpad
+                && contains(c.geom, out_x, out_y)
+        });
+
+        self.scroller_overview = None;
+        self.request_repaint();
+        let already = self.monitors.get(mon).map(|m| m.current_tagset()) == Some(bit);
+        if !already {
+            self.view_tag(bit);
+        }
+        if let Some(idx) = clicked {
+            if mon < self.monitors.len() {
+                self.monitors[mon].selected = Some(idx);
+            }
+            let window = self.clients[idx].window.clone();
+            self.focus_surface(Some(FocusTarget::Window(window)));
+        }
     }
 }
 
