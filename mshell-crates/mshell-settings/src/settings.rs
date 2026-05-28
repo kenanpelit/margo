@@ -3,6 +3,7 @@ use crate::animations_settings::{AnimationsSettingsInit, AnimationsSettingsModel
 use crate::bluetooth_settings::{BluetoothSettingsInit, BluetoothSettingsModel};
 use crate::default_apps_settings::{DefaultAppsSettingsInit, DefaultAppsSettingsModel};
 use crate::network_settings::{NetworkSettingsInit, NetworkSettingsModel};
+use crate::plugins_settings::{PluginsSettingsInit, PluginsSettingsModel};
 use crate::power_settings::{PowerSettingsInit, PowerSettingsModel};
 use crate::privacy_settings::{PrivacySettingsInit, PrivacySettingsModel};
 use crate::overview_settings::{OverviewSettingsInit, OverviewSettingsModel};
@@ -63,6 +64,7 @@ pub struct SettingsWindowModel {
     idle_settings_controller: Controller<IdleSettingsModel>,
     launcher_settings_controller: Controller<LauncherSettingsModel>,
     session_settings_controller: Controller<SessionSettingsModel>,
+    plugins_settings_controller: Controller<PluginsSettingsModel>,
     /// Panel width — computed from the monitor's geometry in
     /// `init`. 4:3 aspect with height set to `monitor_h * 3 / 4`
     /// so the panel covers most of the screen vertically without
@@ -722,6 +724,27 @@ impl Component for SettingsWindowModel {
                         },
                     },
 
+                    #[name = "plugins_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("plugins"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("application-x-addon-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Plugins",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
                     #[name = "widgets_btn"]
                     gtk::ToggleButton {
                         add_css_class: "sidebar-button",
@@ -893,6 +916,10 @@ impl Component for SettingsWindowModel {
             .launch(SessionSettingsInit {})
             .detach();
 
+        let plugins_settings_controller = PluginsSettingsModel::builder()
+            .launch(PluginsSettingsInit {})
+            .detach();
+
         // Built before the model so the model can hold a clone; the
         // Widgets sub-sidebar build loop (further down) fills the same map.
         let subsection_buttons: Rc<RefCell<HashMap<String, gtk::ToggleButton>>> =
@@ -921,6 +948,7 @@ impl Component for SettingsWindowModel {
                 ("launcher", "launcher"),
                 ("menus", "menus"),
                 ("network", "network"),
+                ("plugins", "plugins"),
                 ("power", "power"),
                 ("privacy", "privacy"),
                 ("theme", "theme"),
@@ -960,6 +988,7 @@ impl Component for SettingsWindowModel {
             idle_settings_controller,
             launcher_settings_controller,
             session_settings_controller,
+            plugins_settings_controller,
             panel_width,
             panel_height,
             subsection_buttons: subsection_buttons.clone(),
@@ -1212,6 +1241,12 @@ impl Component for SettingsWindowModel {
             .stack
             .add_titled(model.bar_settings_controller.widget(), Some("bar"), "Bar");
 
+        widgets.stack.add_titled(
+            model.plugins_settings_controller.widget(),
+            Some("plugins"),
+            "Plugins",
+        );
+
         // `Menus` (the cross-cutting menu_settings page) used to
         // live inside the Widgets sub-sidebar. It's now its own
         // top-level entry so users can jump straight to it from
@@ -1340,7 +1375,6 @@ impl Component for SettingsWindowModel {
             SystemUpdate,
             Dock,
             SystemTray,
-            Plugins,
             Lock,
         }
 
@@ -1351,7 +1385,6 @@ impl Component for SettingsWindowModel {
                     Self::SystemUpdate => "System Updates",
                     Self::Dock => "Margo Dock",
                     Self::SystemTray => "System Tray",
-                    Self::Plugins => "Plugins",
                     Self::Lock => "Lock",
                     Self::Menu { label, .. } | Self::Pill { label, .. } => label,
                     Self::Notifications => "Notifications",
@@ -1410,8 +1443,6 @@ impl Component for SettingsWindowModel {
             // System Tray owns a dedicated page (default-expanded toggle),
             // so it's a dedicated entry rather than the generic pill info page.
             WidgetEntry::SystemTray,
-            // Plugins: the mplugins manager (sources / available / installed).
-            WidgetEntry::Plugins,
             WidgetEntry::Pill { kind: BarPillKind::VpnIndicator, stack_name: "pill_vpn", label: "VPN Indicator", icon: "network-vpn-symbolic" },
             // Rich pages with their own controllers.
             WidgetEntry::Notifications,
@@ -1549,23 +1580,6 @@ impl Component for SettingsWindowModel {
                         .launch(crate::system_tray_settings::SystemTraySettingsInit {})
                         .detach();
                     widgets_sub_stack.add_named(ctrl.widget(), Some("system_tray"));
-                    Box::leak(Box::new(ctrl));
-                }
-                WidgetEntry::Plugins => {
-                    let btn = make_sub_btn(
-                        "Plugins",
-                        "application-x-addon-symbolic",
-                        "plugins",
-                        group_anchor.as_ref(),
-                    );
-                    if group_anchor.is_none() {
-                        group_anchor = Some(btn.clone());
-                    }
-                    widgets_sub_sidebar_box.append(&btn);
-                    let ctrl = crate::plugins_settings::PluginsSettingsModel::builder()
-                        .launch(crate::plugins_settings::PluginsSettingsInit {})
-                        .detach();
-                    widgets_sub_stack.add_named(ctrl.widget(), Some("plugins"));
                     Box::leak(Box::new(ctrl));
                 }
                 WidgetEntry::Lock => {
