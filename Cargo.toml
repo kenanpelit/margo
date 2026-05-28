@@ -37,6 +37,7 @@ members = [
     "mshell-crates/mshell-matugen",
     "mshell-crates/mshell-notification-popups",
     "mshell-crates/mshell-osd",
+    "mshell-crates/mshell-plugins",
     "mshell-crates/mshell-polkit",
     "mshell-crates/mshell-screenshot",
     "mshell-crates/mshell-services",
@@ -87,6 +88,7 @@ bitflags = "2.0"
 clap = { version = "4.0", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+toml = "0.8"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror = "2.0"
