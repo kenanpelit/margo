@@ -134,7 +134,7 @@ fn render(inner: &Rc<RefCell<Inner>>, nodes: Vec<UiNode>) {
 
 /// Build one node, recursing into children referenced by id.
 fn build(node: &UiNode, by_id: &HashMap<&str, &UiNode>, inner: &Rc<RefCell<Inner>>) -> gtk::Widget {
-    match node.kind {
+    let widget: gtk::Widget = match node.kind {
         UiKind::VBox | UiKind::HBox => {
             let orient = if node.kind == UiKind::HBox {
                 gtk::Orientation::Horizontal
@@ -199,14 +199,10 @@ fn build(node: &UiNode, by_id: &HashMap<&str, &UiNode>, inner: &Rc<RefCell<Inner
             let scroller = gtk::ScrolledWindow::new();
             scroller.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
             scroller.set_vexpand(true);
-            // Kinetic scrolling steals drag gestures, so a click-drag scrolls
-            // instead of selecting text in the bubbles. Off → drag selects,
-            // and a selectable label's built-in Ctrl+C copies it.
+            // Kinetic scrolling steals the click-drag, so let it select text.
             scroller.set_kinetic_scrolling(false);
-            // Give the log a height floor: hosted inside the menu's
-            // `propagate_natural_height` ScrolledWindow, a `vexpand`-only inner
-            // scroll reports 0 natural height and collapses — so its messages
-            // never show. A min content height keeps it visible.
+            // Floor the height: inside the menu's `propagate_natural_height`
+            // scroll a `vexpand`-only child reports 0 and collapses.
             scroller.set_min_content_height(300);
             scroller.set_child(Some(&vbox));
             scroller.add_css_class("plugin-scroll");
@@ -220,9 +216,26 @@ fn build(node: &UiNode, by_id: &HashMap<&str, &UiNode>, inner: &Rc<RefCell<Inner
             label.set_wrap(true);
             label.set_selectable(true);
             label.add_css_class("plugin-markdown");
+            // Right-click copies the whole message — reliable in a layer-shell
+            // surface where drag-select can be flaky.
+            let gesture = gtk::GestureClick::new();
+            gesture.set_button(gtk::gdk::BUTTON_SECONDARY);
+            let lbl = label.clone();
+            gesture.connect_pressed(move |_, _, _, _| {
+                if let Some(display) = gtk::gdk::Display::default() {
+                    display.clipboard().set_text(&lbl.text());
+                }
+            });
+            label.add_controller(gesture);
             label.upcast()
         }
+    };
+    // Apply the plugin's design-language classes (plugin-hero, plugin-action,
+    // plugin-toggle, …) so the panel can match the native widgets.
+    for class in node.class.split_whitespace() {
+        widget.add_css_class(class);
     }
+    widget
 }
 
 /// Convert lightweight markdown to Pango markup for a `markdown` node. Handles

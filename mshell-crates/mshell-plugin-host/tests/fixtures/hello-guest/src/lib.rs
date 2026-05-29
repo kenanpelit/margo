@@ -22,27 +22,23 @@ thread_local! {
 
 struct HelloGuest;
 
+/// Build one node (class defaulted empty).
+fn node(id: &str, kind: NodeKind, text: impl Into<String>, children: &[&str]) -> Node {
+    Node {
+        id: id.into(),
+        kind,
+        text: text.into(),
+        children: children.iter().map(|s| (*s).into()).collect(),
+        class: String::new(),
+    }
+}
+
 /// A scrollable log holding one markdown bubble — the shape a chat panel uses.
 fn bubble(text: &str) -> Vec<Node> {
     vec![
-        Node {
-            id: "root".into(),
-            kind: NodeKind::Vbox,
-            text: String::new(),
-            children: vec!["log".into()],
-        },
-        Node {
-            id: "log".into(),
-            kind: NodeKind::Scroll,
-            text: String::new(),
-            children: vec!["msg".into()],
-        },
-        Node {
-            id: "msg".into(),
-            kind: NodeKind::Markdown,
-            text: format!("**ai:** {text}"),
-            children: vec![],
-        },
+        node("root", NodeKind::Vbox, "", &["log"]),
+        node("log", NodeKind::Scroll, "", &["msg"]),
+        node("msg", NodeKind::Markdown, format!("**ai:** {text}"), &[]),
     ]
 }
 
@@ -50,49 +46,23 @@ impl Guest for HelloGuest {
     fn view() -> Vec<Node> {
         host::log(2, "hello-guest: view");
         vec![
-            Node {
-                id: "root".into(),
-                kind: NodeKind::Vbox,
-                text: String::new(),
-                children: vec![
-                    "greeting".into(),
-                    "btn".into(),
-                    "caps".into(),
-                    "stream".into(),
-                ],
-            },
-            Node {
-                id: "greeting".into(),
-                kind: NodeKind::Label,
-                text: "Hello from WASM".into(),
-                children: vec![],
-            },
-            Node {
-                id: "btn".into(),
-                kind: NodeKind::Button,
-                text: "Click me".into(),
-                children: vec![],
-            },
-            Node {
-                id: "caps".into(),
-                kind: NodeKind::Button,
-                text: "Fetch".into(),
-                children: vec![],
-            },
-            Node {
-                id: "stream".into(),
-                kind: NodeKind::Button,
-                text: "Stream".into(),
-                children: vec![],
-            },
+            node(
+                "root",
+                NodeKind::Vbox,
+                "",
+                &["greeting", "btn", "caps", "stream"],
+            ),
+            node("greeting", NodeKind::Label, "Hello from WASM", &[]),
+            node("btn", NodeKind::Button, "Click me", &[]),
+            node("caps", NodeKind::Button, "Fetch", &[]),
+            node("stream", NodeKind::Button, "Stream", &[]),
         ]
     }
 
     fn update(ev: Event) -> Vec<Node> {
         host::log(2, &format!("hello-guest: update {}", ev.id));
 
-        // W4: host-originated stream events — append each chunk and re-render
-        // the accumulated bubble.
+        // W4: host-originated stream events — append each chunk and re-render.
         match ev.kind {
             EventKind::StreamChunk | EventKind::StreamEnd => {
                 ACC.with(|a| a.borrow_mut().push_str(&ev.value));
@@ -101,8 +71,7 @@ impl Guest for HelloGuest {
             _ => {}
         }
 
-        // W4: kick off a streamed request; the body arrives later via the
-        // stream events above.
+        // W4: kick off a streamed request; the body arrives via stream events.
         if ev.id == "stream" {
             ACC.with(|a| a.borrow_mut().clear());
             let url = host::get_setting("url");
@@ -132,18 +101,8 @@ impl Guest for HelloGuest {
         }
 
         vec![
-            Node {
-                id: "root".into(),
-                kind: NodeKind::Vbox,
-                text: String::new(),
-                children: vec!["greeting".into()],
-            },
-            Node {
-                id: "greeting".into(),
-                kind: NodeKind::Label,
-                text: format!("clicked {}", ev.id),
-                children: vec![],
-            },
+            node("root", NodeKind::Vbox, "", &["greeting"]),
+            node("greeting", NodeKind::Label, format!("clicked {}", ev.id), &[]),
         ]
     }
 }

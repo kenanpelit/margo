@@ -68,6 +68,7 @@ pub struct El {
     kind: NodeKind,
     text: String,
     children: Vec<El>,
+    class: String,
 }
 
 impl El {
@@ -77,6 +78,7 @@ impl El {
             kind,
             text: text.into(),
             children: Vec::new(),
+            class: String::new(),
         }
     }
 
@@ -86,6 +88,7 @@ impl El {
             kind,
             text: String::new(),
             children,
+            class: String::new(),
         }
     }
 
@@ -121,6 +124,7 @@ impl El {
             kind: NodeKind::Button,
             text: text.into(),
             children: Vec::new(),
+            class: String::new(),
         }
     }
 
@@ -132,12 +136,20 @@ impl El {
             kind: NodeKind::Entry,
             text: text.into(),
             children: Vec::new(),
+            class: String::new(),
         }
     }
 
     /// Pin this node's id (useful to keep a layout node stable across renders).
     pub fn with_id(mut self, id: impl Into<String>) -> El {
         self.id = Some(id.into());
+        self
+    }
+
+    /// Add space-separated CSS class(es) so this node picks up the design
+    /// language's styling (e.g. `plugin-hero`, `plugin-action`, `plugin-toggle`).
+    pub fn class(mut self, class: impl Into<String>) -> El {
+        self.class = class.into();
         self
     }
 }
@@ -166,6 +178,7 @@ fn flatten(el: El, forced_id: Option<String>, counter: &mut usize, out: &mut Vec
         kind: el.kind,
         text: el.text,
         children,
+        class: el.class,
     });
     id
 }

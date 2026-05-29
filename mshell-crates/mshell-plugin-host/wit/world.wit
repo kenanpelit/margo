@@ -32,6 +32,10 @@ interface types {
         text: string,
         /// Child node ids, in order (ignored for leaf kinds).
         children: list<string>,
+        /// Optional space-separated CSS classes the host adds to the rendered
+        /// widget, so a plugin can opt into the design language's styling
+        /// (e.g. `plugin-hero`, `plugin-action`, `plugin-toggle`). Empty = none.
+        class: string,
     }
 
     enum event-kind {

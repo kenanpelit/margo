@@ -129,3 +129,123 @@ button.plugins-update-btn {
     background-color: unquote("color-mix(in srgb, var(--error) 22%, transparent)");
   }
 }
+
+// ── WASM panel design-language roles ────────────────────────────────────────
+// A guest opts into native-looking styling by tagging nodes with these classes
+// (see mplugin-sdk `El::class`). They mirror the dns/vpn widget so ported
+// plugins (mullvad, …) match the rest of the shell instead of looking like raw
+// stacked buttons. All colour comes from matugen tokens (DESIGN.md).
+.plugin-panel-body {
+  padding: var(--space-1);
+}
+
+// Hero status card — the panel's headline state (like .dns-hero).
+.plugin-hero {
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-container-high);
+
+  // When active/connected, lift to the primary container so "on" reads at a
+  // glance (calm→active per the severity ladder).
+  &.plugin-hero-on {
+    background-color: var(--primary-container);
+    color: var(--on-primary-container);
+  }
+}
+
+// A row of primary actions (Connect / Reconnect) sitting under the hero.
+.plugin-action-row {
+  // Stretch the children so each action takes an equal share of the width.
+  > * {
+    -gtk-icon-size: 16px;
+  }
+}
+
+// Primary action button — filled accent (Connect).
+.plugin-action {
+  min-height: 40px; // §0.9 interactive target
+  border-radius: var(--radius-sm);
+  transition: background-color var(--motion-fast) var(--ease-standard);
+
+  &.plugin-action-primary {
+    background-color: var(--primary);
+    color: var(--on-primary);
+
+    label {
+      color: var(--on-primary);
+    }
+    &:hover {
+      background-color: unquote("color-mix(in srgb, var(--on-primary) 10%, var(--primary))");
+    }
+  }
+
+  // Destructive action — Disconnect, per the danger state.
+  &.plugin-action-danger {
+    background-color: var(--error);
+    color: var(--on-error);
+
+    label {
+      color: var(--on-error);
+    }
+    &:hover {
+      background-color: unquote("color-mix(in srgb, var(--on-error) 10%, var(--error))");
+    }
+  }
+}
+
+// A toggle row (Lockdown / Auto-connect) — calm by default, accent border-tint
+// + filled when on (matches the dns preset-row / quick-settings toggle feel).
+.plugin-toggle {
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-container-high);
+  transition: background-color var(--motion-fast) var(--ease-standard);
+
+  label {
+    color: var(--on-surface);
+  }
+  &:hover {
+    background-color: var(--surface-container-highest);
+  }
+
+  &.plugin-toggle-on {
+    background-color: var(--primary);
+
+    label {
+      color: var(--on-primary);
+    }
+    &:hover {
+      background-color: unquote("color-mix(in srgb, var(--on-primary) 10%, var(--primary))");
+    }
+  }
+}
+
+// Search/filter entry above a list.
+.plugin-search {
+  margin: var(--space-1) 0;
+  border-radius: var(--radius-sm);
+}
+
+// A scrolling list of selectable rows (country list, …).
+.plugin-list {
+  min-height: 200px;
+}
+
+// One selectable list row — calm card with the standard hover/press tints.
+.plugin-row {
+  min-height: 40px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  transition: background-color var(--motion-fast) var(--ease-standard);
+
+  label {
+    color: var(--on-surface);
+  }
+  &:hover {
+    background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
+  }
+  &:active {
+    background-color: unquote("color-mix(in srgb, var(--primary) 22%, transparent)");
+  }
+}

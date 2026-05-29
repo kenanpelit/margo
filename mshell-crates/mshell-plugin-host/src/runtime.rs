@@ -52,6 +52,8 @@ pub struct UiNode {
     pub kind: UiKind,
     pub text: String,
     pub children: Vec<String>,
+    /// Space-separated CSS classes to add to the rendered widget.
+    pub class: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -422,6 +424,7 @@ fn to_ui_node(n: Node) -> UiNode {
         },
         text: n.text,
         children: n.children,
+        class: n.class,
     }
 }
 
