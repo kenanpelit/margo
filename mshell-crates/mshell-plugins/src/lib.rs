@@ -10,6 +10,7 @@
 pub mod git;
 pub mod keys;
 pub mod manifest;
+pub mod secrets;
 pub mod state;
 
 pub use manifest::{
@@ -209,6 +210,52 @@ impl PluginStore {
             std::fs::remove_dir_all(dir)?;
         }
         Ok(())
+    }
+
+    /// One-shot: for every installed plugin, move any setting value that
+    /// lives in `plugins.toml` but is marked `type = "secret"` by the
+    /// manifest into the system keyring, and drop it from state. Returns
+    /// the number moved. Safe to call on every startup — idempotent once
+    /// state has caught up.
+    pub fn migrate_plaintext_secrets(&self) -> usize {
+        let mut state = self.load_state();
+        let mut moved = 0;
+        let mut dirty = false;
+        for plugin in self.installed() {
+            for setting in &plugin.manifest.settings {
+                if !setting.is_secret() {
+                    continue;
+                }
+                let Some(value) = state.setting(&plugin.key, &setting.key).cloned() else {
+                    continue;
+                };
+                if value.is_empty() {
+                    continue;
+                }
+                if let Err(e) = secrets::write(&plugin.key, &setting.key, &value) {
+                    tracing::warn!(
+                        plugin = %plugin.key,
+                        setting = %setting.key,
+                        "secret migration failed: {e}"
+                    );
+                    continue;
+                }
+                if let Some(m) = state.settings.get_mut(&plugin.key) {
+                    m.remove(&setting.key);
+                    if m.is_empty() {
+                        state.settings.remove(&plugin.key);
+                    }
+                }
+                moved += 1;
+                dirty = true;
+            }
+        }
+        if dirty {
+            if let Err(e) = self.save_state(&state) {
+                tracing::warn!("secret migration: save_state failed: {e}");
+            }
+        }
+        moved
     }
 
     /// Fetch every configured source's registry and reinstall each installed,

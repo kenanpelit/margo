@@ -68,6 +68,14 @@ pub struct Setting {
     pub description: String,
 }
 
+impl Setting {
+    /// `true` if this setting holds a secret (API key, token, …). Marked
+    /// settings live in the system keyring, never in `plugins.toml`.
+    pub fn is_secret(&self) -> bool {
+        self.kind == "secret"
+    }
+}
+
 /// Replace every `{{key}}` in `template` with its value from `values`.
 /// Unknown placeholders are left untouched.
 pub fn substitute(template: &str, values: &std::collections::BTreeMap<String, String>) -> String {

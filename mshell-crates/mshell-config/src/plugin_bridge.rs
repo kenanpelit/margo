@@ -40,17 +40,24 @@ pub fn resync_plugin_widgets(config: &mut Config) {
 }
 
 /// The effective setting values for a plugin: the user's stored value, or the
-/// manifest default, per declared setting — plus built-in placeholders.
+/// manifest default, per declared setting — plus built-in placeholders. For
+/// settings marked `type = "secret"` the value comes from the system keyring
+/// (Secret Service), never from `plugins.toml`.
 fn setting_values(plugin: &InstalledPlugin, state: &PluginsState) -> BTreeMap<String, String> {
     let mut values: BTreeMap<String, String> = plugin
         .manifest
         .settings
         .iter()
         .map(|s| {
-            let v = state
-                .setting(&plugin.key, &s.key)
-                .cloned()
-                .unwrap_or_else(|| s.default.clone());
+            let v = if s.is_secret() {
+                mshell_plugins::secrets::read(&plugin.key, &s.key)
+                    .unwrap_or_else(|| s.default.clone())
+            } else {
+                state
+                    .setting(&plugin.key, &s.key)
+                    .cloned()
+                    .unwrap_or_else(|| s.default.clone())
+            };
             (s.key.clone(), v)
         })
         .collect();

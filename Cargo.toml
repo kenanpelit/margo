@@ -142,6 +142,10 @@ rayon = "1"
 
 # Filesystem / config / IPC plumbing
 dirs = "6"
+# Cross-platform keyring — Linux backend is the Secret Service (gnome-keyring
+# / kde-wallet). Used by mshell-plugins to store `type = "secret"` settings
+# (API keys, tokens) outside plugins.toml.
+keyring = "3"
 figment = { version = "0.10", features = ["yaml"] }
 fontconfig = "0.10"
 futures = "0.3"

@@ -85,10 +85,11 @@ impl Guest for HelloGuest {
             return bubble("…");
         }
 
-        // W3: blocking request + notification, rendered as a bubble.
+        // W3: blocking request, rendered as a bubble. (Don't `host::notify`
+        // here — `cargo test` runs this guest and would spam real desktop
+        // toasts. The runtime wire-up for `notify` is exercised elsewhere.)
         if ev.id == "caps" {
             let url = host::get_setting("url");
-            host::notify("hello-guest", "fetching");
             let text = match host::http(&HttpRequest {
                 method: "GET".into(),
                 url,

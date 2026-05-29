@@ -417,6 +417,15 @@ impl Component for PluginsSettingsModel {
                 config_manager().reload_config();
             }
             PluginsSettingsInput::Uninstall(key) => {
+                // Drop any secrets the plugin had in the keyring so we don't
+                // leave dangling entries.
+                if let Some(plugin) = self.installed.iter().find(|p| p.key == key) {
+                    for setting in &plugin.manifest.settings {
+                        if setting.is_secret() {
+                            mshell_plugins::secrets::delete(&key, &setting.key);
+                        }
+                    }
+                }
                 let _ = self.store.uninstall(&key);
                 self.state.forget(&key);
                 if self.expanded_settings.as_deref() == Some(key.as_str()) {
@@ -435,8 +444,33 @@ impl Component for PluginsSettingsModel {
                 };
             }
             PluginsSettingsInput::SetSetting { plugin, key, value } => {
-                self.state.set_setting(&plugin, &key, &value);
-                let _ = self.store.save_state(&self.state);
+                // Secret settings (API keys, tokens) go to the system keyring
+                // and never touch plugins.toml; everything else lives in
+                // plugin state. `is_secret` is the manifest's call, not ours.
+                let is_secret = self
+                    .installed
+                    .iter()
+                    .find(|p| p.key == plugin)
+                    .and_then(|p| p.manifest.settings.iter().find(|s| s.key == key))
+                    .is_some_and(|s| s.is_secret());
+                if is_secret {
+                    if let Err(e) = mshell_plugins::secrets::write(&plugin, &key, &value) {
+                        self.status = format!("Saving secret failed: {e}");
+                    }
+                    // If a plaintext value was lingering from before the
+                    // migration, evict it now.
+                    if self.state.setting(&plugin, &key).is_some() {
+                        self.state.set_setting(&plugin, &key, "");
+                        self.state
+                            .settings
+                            .get_mut(&plugin)
+                            .map(|m| m.remove(&key));
+                        let _ = self.store.save_state(&self.state);
+                    }
+                } else {
+                    self.state.set_setting(&plugin, &key, &value);
+                    let _ = self.store.save_state(&self.state);
+                }
                 // Re-template the live widget if the plugin is enabled.
                 if self.state.is_enabled(&plugin) {
                     config_manager().reload_config();
@@ -745,10 +779,14 @@ fn build_settings_form(
         }
         row.append(&col);
 
-        let current = state
-            .setting(&p.key, &s.key)
-            .cloned()
-            .unwrap_or_else(|| s.default.clone());
+        let current = if s.is_secret() {
+            mshell_plugins::secrets::read(&p.key, &s.key).unwrap_or_default()
+        } else {
+            state
+                .setting(&p.key, &s.key)
+                .cloned()
+                .unwrap_or_else(|| s.default.clone())
+        };
         let plugin_key = p.key.clone();
         let setting_key = s.key.clone();
         let control = setting_control(&s.kind, &s.choices, &current, sender, plugin_key, setting_key);

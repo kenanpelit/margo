@@ -156,6 +156,15 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         });
     }
 
+    // One-shot security migration: any `type = "secret"` plugin setting that
+    // still lives in plaintext in plugins.toml (from before this feature
+    // shipped) gets moved into the system keyring. Idempotent — costs a
+    // toml read each boot once everything is already migrated.
+    let moved = mshell_plugins::PluginStore::new().migrate_plaintext_secrets();
+    if moved > 0 {
+        tracing::info!("migrated {moved} plaintext plugin secret(s) into the keyring");
+    }
+
     // Auto-update: if the user picked "On login" in Settings → Plugins, fetch
     // every source registry ~1 minute after login and reinstall any installed,
     // enabled plugin that has a newer version. Off the main thread; the result

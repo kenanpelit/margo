@@ -3349,6 +3349,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "keyring"
+version = "3.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eebcc3aff044e5944a8fbaf69eb277d11986064cba30c468730e8b9909fb551c"
+dependencies = [
+ "linux-keyutils",
+ "log",
+ "zeroize",
+]
+
+[[package]]
 name = "khronos_api"
 version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3588,6 +3599,16 @@ checksum = "3c8469b4a23b962c1396b9b451dda50ef5b283e8dd309d69033475fa9b334324"
 dependencies = [
  "libc",
  "pkg-config",
+]
+
+[[package]]
+name = "linux-keyutils"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "83270a18e9f90d0707c41e9f35efada77b64c0e6f3f1810e71c8368a864d5590"
+dependencies = [
+ "bitflags 2.11.1",
+ "libc",
 ]
 
 [[package]]
@@ -4121,6 +4142,7 @@ dependencies = [
  "mshell-style",
  "mshell-utils",
  "mshell-wallpaper",
+ "notify",
  "reactive_graph",
  "relm4",
  "serde",
@@ -4358,6 +4380,7 @@ name = "mshell-plugins"
 version = "0.8.8"
 dependencies = [
  "dirs 6.0.0",
+ "keyring",
  "serde",
  "thiserror 2.0.18",
  "toml 0.8.23",

@@ -31,6 +31,7 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
 
     spawn_daily_wallpaper_task(shell_tx.clone());
     spawn_alarm_scheduler();
+    spawn_plugin_watcher_task(shell_tx.clone());
     tokio::spawn(start_shell_service(shell_tx));
 
     let app_sender = sender.input_sender().clone();
@@ -902,6 +903,94 @@ fn render_media_status(as_json: bool) -> String {
             format!("{} [{}]{track}", p.identity, p.state)
         }
     }
+}
+
+/// File-watcher hot reload for the WASM plugin tier. Watches every installed
+/// plugin's directory; when its `plugin.wasm` changes (e.g. `cargo build`
+/// drops a new build), we send `PluginReload(key)` so the cached panel is
+/// evicted and the next open instantiates from disk — no mshell restart, no
+/// manual `mshellctl plugin reload`.
+fn spawn_plugin_watcher_task(tx: mpsc::UnboundedSender<IPCCommand>) {
+    tokio::task::spawn_blocking(move || {
+        use notify::{Config, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+        use std::collections::{HashMap, HashSet};
+        use std::path::PathBuf;
+        use std::sync::mpsc as sync_mpsc;
+        use std::time::{Duration, Instant};
+
+        let store = mshell_plugins::PluginStore::new();
+        let installed = store.installed();
+        if installed.is_empty() {
+            return;
+        }
+
+        let (notify_tx, notify_rx) = sync_mpsc::channel::<notify::Result<notify::Event>>();
+        let mut watcher = match RecommendedWatcher::new(
+            move |res| {
+                let _ = notify_tx.send(res);
+            },
+            Config::default(),
+        ) {
+            Ok(w) => w,
+            Err(e) => {
+                tracing::warn!("plugin watcher init failed: {e}");
+                return;
+            }
+        };
+
+        // Watch each installed plugin's directory; map paths back to their keys.
+        let mut by_dir: HashMap<PathBuf, String> = HashMap::new();
+        for p in installed {
+            if let Err(e) = watcher.watch(&p.dir, RecursiveMode::NonRecursive) {
+                tracing::warn!(plugin = %p.key, "watcher.watch failed: {e}");
+                continue;
+            }
+            by_dir.insert(p.dir, p.key);
+        }
+
+        // Debounce: editors / cargo write the wasm in multiple steps (tmp + rename).
+        // Collect events for 300 ms after the last one, then flush one reload per key.
+        let debounce = Duration::from_millis(300);
+        let mut pending: HashSet<String> = HashSet::new();
+        let mut last_event: Option<Instant> = None;
+
+        loop {
+            let wait = match last_event {
+                Some(t) => debounce.saturating_sub(t.elapsed()),
+                None => Duration::from_secs(60),
+            };
+            match notify_rx.recv_timeout(wait) {
+                Ok(Ok(ev)) => {
+                    if !matches!(ev.kind, EventKind::Modify(_) | EventKind::Create(_)) {
+                        continue;
+                    }
+                    for path in &ev.paths {
+                        if path.file_name().is_some_and(|n| n == "plugin.wasm") {
+                            if let Some(parent) = path.parent() {
+                                if let Some(key) = by_dir.get(parent) {
+                                    pending.insert(key.clone());
+                                    last_event = Some(Instant::now());
+                                }
+                            }
+                        }
+                    }
+                }
+                Ok(Err(e)) => tracing::debug!("plugin watcher event err: {e}"),
+                Err(sync_mpsc::RecvTimeoutError::Timeout) => {
+                    if let Some(t) = last_event {
+                        if t.elapsed() >= debounce {
+                            for key in pending.drain() {
+                                tracing::info!(plugin = %key, "hot-reload: plugin.wasm changed");
+                                let _ = tx.send(IPCCommand::PluginReload(key));
+                            }
+                            last_event = None;
+                        }
+                    }
+                }
+                Err(sync_mpsc::RecvTimeoutError::Disconnected) => break,
+            }
+        }
+    });
 }
 
 /// Daily-wallpaper auto-fetch (port of the noctalia `daily-wallpaper` plugin).
