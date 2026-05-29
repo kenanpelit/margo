@@ -1165,10 +1165,10 @@ impl Component for Frame {
                 name,
                 entry,
                 settings,
-                min_width,
-                max_height,
+                min_width: _,
+                max_height: _,
             } => {
-                self.apply_plugin_panel_size(min_width, max_height);
+                self.apply_plugin_panel_size(&name);
                 #[cfg(feature = "wasm-plugins")]
                 {
                     use std::collections::hash_map::Entry;
@@ -1207,11 +1207,10 @@ impl Component for Frame {
             FrameInput::TogglePluginMenu {
                 name,
                 rows,
-                min_width,
-                max_height,
+                min_width: _,
+                max_height: _,
             } => {
-                let _ = name;
-                self.apply_plugin_panel_size(min_width, max_height);
+                self.apply_plugin_panel_size(&name);
                 let content = Self::build_plugin_menu_content(&rows, &sender);
                 self.plugin_panel_menu
                     .sender()
@@ -2408,19 +2407,25 @@ impl Frame {
             })
     }
 
-    /// Apply a plugin's per-plugin panel size (min width / max height) to the
-    /// shared plugin-menu surface before showing it. 0 = leave as-is.
-    fn apply_plugin_panel_size(&self, min_width: i32, max_height: i32) {
-        if min_width > 0 {
+    /// Apply a plugin's per-plugin panel size to the shared plugin-menu surface
+    /// before showing it. Read **fresh** from the plugin store (keyed off the
+    /// widget name) so a size just changed in the gear takes effect — the bar
+    /// pill may still hold the value it was built with. 0 = leave as-is.
+    fn apply_plugin_panel_size(&self, widget_name: &str) {
+        let Some(key) = plugin_key_from_widget(widget_name) else {
+            return;
+        };
+        let layout = mshell_plugins::PluginStore::new().load_state().panel(&key);
+        if layout.min_width > 0 {
             self.plugin_panel_menu
                 .sender()
-                .send(MenuInput::SetMinimumWidth(min_width))
+                .send(MenuInput::SetMinimumWidth(layout.min_width))
                 .ok();
         }
-        if max_height > 0 {
+        if layout.max_height > 0 {
             self.plugin_panel_menu
                 .sender()
-                .send(MenuInput::SetMaximumHeight(max_height))
+                .send(MenuInput::SetMaximumHeight(layout.max_height))
                 .ok();
         }
     }
@@ -2461,6 +2466,16 @@ impl Frame {
         }
         list.upcast()
     }
+}
+
+/// The plugin's composite key from a derived widget name. Names look like
+/// `plugin:<composite-key>:<widget-key>` (the composite key may itself contain
+/// a `:` for custom sources), so take everything between the prefix and the
+/// last `:`.
+fn plugin_key_from_widget(name: &str) -> Option<String> {
+    let rest = name.strip_prefix("plugin:")?;
+    let (key, _widget) = rest.rsplit_once(':')?;
+    Some(key.to_string())
 }
 
 /// Fire-and-forget a plugin menu row's `sh -c` command (reaped to avoid
