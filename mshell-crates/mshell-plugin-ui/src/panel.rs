@@ -7,6 +7,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
 use std::rc::Rc;
+use std::time::Duration;
 
 /// The user's values for a plugin's declarative settings, handed to the guest
 /// via the `get-setting` capability (API keys, model choices, …).
@@ -22,6 +23,8 @@ pub struct PluginPanel {
 struct Inner {
     instance: PluginInstance,
     container: gtk::Box,
+    /// Whether a pump timeout is currently installed (so we don't stack them).
+    pumping: bool,
 }
 
 impl PluginPanel {
@@ -40,10 +43,12 @@ impl PluginPanel {
         let inner = Rc::new(RefCell::new(Inner {
             instance,
             container: container.clone(),
+            pumping: false,
         }));
 
         let nodes = inner.borrow_mut().instance.view()?;
         render(&inner, nodes);
+        ensure_pump(&inner);
 
         Ok(Self {
             root: container,
@@ -60,6 +65,7 @@ impl PluginPanel {
     pub fn refresh(&self) -> anyhow::Result<()> {
         let nodes = self.inner.borrow_mut().instance.view()?;
         render(&self.inner, nodes);
+        ensure_pump(&self.inner);
         Ok(())
     }
 }
@@ -71,6 +77,44 @@ fn dispatch(inner: &Rc<RefCell<Inner>>, event: UiEvent) {
         Ok(nodes) => render(inner, nodes),
         Err(e) => tracing::warn!("plugin update failed: {e}"),
     }
+    // The event may have kicked off an `http-start` stream — start draining it.
+    ensure_pump(inner);
+}
+
+/// If the guest has an `http-start` stream in flight and no pump is running,
+/// install a short glib timeout that drains response chunks into the guest's
+/// `update` and re-renders, until the stream completes.
+fn ensure_pump(inner: &Rc<RefCell<Inner>>) {
+    {
+        let mut guard = inner.borrow_mut();
+        if guard.pumping || !guard.instance.streams_active() {
+            return;
+        }
+        guard.pumping = true;
+    }
+    let inner = inner.clone();
+    gtk::glib::timeout_add_local(Duration::from_millis(30), move || {
+        let tree = match inner.borrow_mut().instance.pump() {
+            Ok(tree) => tree,
+            Err(e) => {
+                tracing::warn!("plugin pump failed: {e}");
+                None
+            }
+        };
+        if let Some(nodes) = tree {
+            render(&inner, nodes);
+        }
+        if inner.borrow().instance.streams_active() {
+            return gtk::glib::ControlFlow::Continue;
+        }
+        // Stream done — flush any terminal chunks, then stop the timer.
+        let tail = inner.borrow_mut().instance.pump().ok().flatten();
+        if let Some(nodes) = tail {
+            render(&inner, nodes);
+        }
+        inner.borrow_mut().pumping = false;
+        gtk::glib::ControlFlow::Break
+    });
 }
 
 /// Rebuild the container from a flat node list (rooted at id "root").
@@ -144,5 +188,86 @@ fn build(node: &UiNode, by_id: &HashMap<&str, &UiNode>, inner: &Rc<RefCell<Inner
             });
             entry.upcast()
         }
+        UiKind::Scroll => {
+            let vbox = gtk::Box::new(gtk::Orientation::Vertical, 6);
+            for child_id in &node.children {
+                if let Some(child) = by_id.get(child_id.as_str()) {
+                    vbox.append(&build(child, by_id, inner));
+                }
+            }
+            let scroller = gtk::ScrolledWindow::new();
+            scroller.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
+            scroller.set_vexpand(true);
+            scroller.set_child(Some(&vbox));
+            scroller.add_css_class("plugin-scroll");
+            scroller.upcast()
+        }
+        UiKind::Markdown => {
+            let label = gtk::Label::new(None);
+            label.set_markup(&markdown_to_pango(&node.text));
+            label.set_halign(gtk::Align::Start);
+            label.set_xalign(0.0);
+            label.set_wrap(true);
+            label.set_selectable(true);
+            label.add_css_class("plugin-markdown");
+            label.upcast()
+        }
+    }
+}
+
+/// Convert lightweight markdown to Pango markup for a `markdown` node. Handles
+/// `` `code` ``, `**bold**`, and `*italic*`; everything else is escaped and
+/// passed through. Unpaired markers are emitted literally (never panics).
+fn markdown_to_pango(src: &str) -> String {
+    let escaped = src
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;");
+    // Order matters: code first (so its contents aren't re-styled), then the
+    // two-char `**` before the one-char `*`.
+    let s = replace_paired(&escaped, "`", "<tt>", "</tt>");
+    let s = replace_paired(&s, "**", "<b>", "</b>");
+    replace_paired(&s, "*", "<i>", "</i>")
+}
+
+/// Wrap text between matched pairs of `marker` with `open`/`close`. An unpaired
+/// trailing marker is left as-is.
+fn replace_paired(s: &str, marker: &str, open: &str, close: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    loop {
+        let Some(i) = rest.find(marker) else {
+            out.push_str(rest);
+            break;
+        };
+        let after = &rest[i + marker.len()..];
+        let Some(j) = after.find(marker) else {
+            out.push_str(rest);
+            break;
+        };
+        out.push_str(&rest[..i]);
+        out.push_str(open);
+        out.push_str(&after[..j]);
+        out.push_str(close);
+        rest = &after[j + marker.len()..];
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::markdown_to_pango;
+
+    #[test]
+    fn renders_inline_styles() {
+        assert_eq!(markdown_to_pango("**b**"), "<b>b</b>");
+        assert_eq!(markdown_to_pango("*i*"), "<i>i</i>");
+        assert_eq!(markdown_to_pango("`c`"), "<tt>c</tt>");
+    }
+
+    #[test]
+    fn escapes_and_tolerates_unpaired() {
+        assert_eq!(markdown_to_pango("a < b & c"), "a &lt; b &amp; c");
+        assert_eq!(markdown_to_pango("lone * marker"), "lone * marker");
     }
 }

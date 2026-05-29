@@ -10,7 +10,11 @@
 
 use anyhow::Result;
 use std::collections::HashMap;
+use std::io::Read;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::mpsc::{Receiver, Sender};
+use std::sync::{mpsc, Arc};
 use wasmtime::component::{Component, Linker};
 use wasmtime::{Config, Engine, Store};
 use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiView};
@@ -34,6 +38,10 @@ pub enum UiKind {
     Label,
     Button,
     Entry,
+    /// Vertically-scrolling container for its children (e.g. a chat log).
+    Scroll,
+    /// Markdown-rendered label, styled as a message bubble.
+    Markdown,
 }
 
 /// One node of a guest-rendered UI. Children are referenced by id; the tree is
@@ -51,6 +59,10 @@ pub enum UiEventKind {
     Click,
     Input,
     Submit,
+    /// A chunk of an `http-start` response body (host-originated).
+    StreamChunk,
+    /// An `http-start` stream completed (host-originated).
+    StreamEnd,
 }
 
 /// An interaction routed back to the guest's `update`.
@@ -63,11 +75,30 @@ pub struct UiEvent {
 
 // ── Host ─────────────────────────────────────────────────────────────────────
 
+/// A piece of an in-flight `http-start` response, sent from the worker thread
+/// to the main loop's pump.
+struct StreamMsg {
+    /// The request id `http-start` returned.
+    req_id: String,
+    /// A body chunk (or an `error: …` message); empty on the terminal message.
+    chunk: String,
+    /// True for the final message of a stream.
+    done: bool,
+}
+
 struct HostState {
     plugin_id: String,
     /// Values the user set for this plugin (declarative `[[setting]]` tier),
     /// exposed to the guest via `get-setting`.
     settings: HashMap<String, String>,
+    /// Worker threads send response chunks here; `PluginInstance::pump` drains
+    /// the matching receiver on the UI thread.
+    stream_tx: Sender<StreamMsg>,
+    /// Count of in-flight `http-start` requests — the pump keeps running while
+    /// this is non-zero.
+    inflight: Arc<AtomicUsize>,
+    /// Monotonic source of `http-start` request ids.
+    next_req: AtomicU64,
     wasi: WasiCtx,
     table: ResourceTable,
 }
@@ -112,6 +143,80 @@ impl Host for HostState {
     fn http(&mut self, req: HttpRequest) -> Result<HttpResponse, String> {
         host_http(req)
     }
+
+    fn http_start(&mut self, req: HttpRequest) -> String {
+        let req_id = format!("r{}", self.next_req.fetch_add(1, Ordering::Relaxed));
+        let tx = self.stream_tx.clone();
+        let inflight = self.inflight.clone();
+        inflight.fetch_add(1, Ordering::SeqCst);
+        let id = req_id.clone();
+        // The blocking read runs off the UI thread; chunks flow back through the
+        // channel to `pump`. The id lets the guest correlate chunks to requests.
+        std::thread::spawn(move || {
+            host_http_stream(&id, req, &tx);
+            inflight.fetch_sub(1, Ordering::SeqCst);
+        });
+        req_id
+    }
+}
+
+/// Stream a response body to the pump as `StreamMsg` chunks, then a terminal
+/// `done` message. Runs on a worker thread.
+fn host_http_stream(req_id: &str, req: HttpRequest, tx: &Sender<StreamMsg>) {
+    let method = if req.method.is_empty() {
+        "GET"
+    } else {
+        req.method.as_str()
+    };
+    let mut request = ureq::request(method, &req.url);
+    for (name, value) in &req.headers {
+        request = request.set(name, value);
+    }
+    let result = if req.body.is_empty() {
+        request.call()
+    } else {
+        request.send_string(&req.body)
+    };
+    // Both 2xx and HTTP-error statuses carry a readable body; only a transport
+    // error has none.
+    let reader = match result {
+        Ok(resp) => resp.into_reader(),
+        Err(ureq::Error::Status(_, resp)) => resp.into_reader(),
+        Err(e) => {
+            let _ = tx.send(StreamMsg {
+                req_id: req_id.to_string(),
+                chunk: format!("error: {e}"),
+                done: true,
+            });
+            return;
+        }
+    };
+    let mut reader = reader;
+    let mut buf = [0u8; 4096];
+    loop {
+        match reader.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => {
+                let chunk = String::from_utf8_lossy(&buf[..n]).into_owned();
+                if tx
+                    .send(StreamMsg {
+                        req_id: req_id.to_string(),
+                        chunk,
+                        done: false,
+                    })
+                    .is_err()
+                {
+                    return; // pump (and its instance) is gone — stop.
+                }
+            }
+            Err(_) => break,
+        }
+    }
+    let _ = tx.send(StreamMsg {
+        req_id: req_id.to_string(),
+        chunk: String::new(),
+        done: true,
+    });
 }
 
 /// Blocking one-shot HTTP, run on the host's behalf (the guest never touches
@@ -180,17 +285,27 @@ impl PluginRuntime {
         // wasip2 guests link the WASI std interfaces; provide them.
         wasmtime_wasi::add_to_linker_sync(&mut linker)?;
         Plugin::add_to_linker(&mut linker, |s: &mut HostState| s)?;
+        let (stream_tx, stream_rx) = mpsc::channel::<StreamMsg>();
+        let inflight = Arc::new(AtomicUsize::new(0));
         let mut store = Store::new(
             &self.engine,
             HostState {
                 plugin_id: plugin_id.to_string(),
                 settings,
+                stream_tx,
+                inflight: inflight.clone(),
+                next_req: AtomicU64::new(0),
                 wasi: WasiCtxBuilder::new().build(),
                 table: ResourceTable::new(),
             },
         );
         let bindings = Plugin::instantiate(&mut store, &component, &linker)?;
-        Ok(PluginInstance { store, bindings })
+        Ok(PluginInstance {
+            store,
+            bindings,
+            stream_rx,
+            inflight,
+        })
     }
 }
 
@@ -199,6 +314,10 @@ impl PluginRuntime {
 pub struct PluginInstance {
     store: Store<HostState>,
     bindings: Plugin,
+    /// Response chunks from `http-start` worker threads.
+    stream_rx: Receiver<StreamMsg>,
+    /// In-flight `http-start` count, shared with the workers.
+    inflight: Arc<AtomicUsize>,
 }
 
 impl PluginInstance {
@@ -213,6 +332,38 @@ impl PluginInstance {
         let nodes = self.bindings.call_update(&mut self.store, &to_wit_event(event))?;
         Ok(nodes.into_iter().map(to_ui_node).collect())
     }
+
+    /// Whether any `http-start` request is still running. The renderer keeps
+    /// pumping while this is true.
+    pub fn streams_active(&self) -> bool {
+        self.inflight.load(Ordering::SeqCst) > 0
+    }
+
+    /// Drain all response chunks delivered since the last call, feeding each to
+    /// the guest's `update` as a `stream-chunk`/`stream-end` event. Returns the
+    /// **last** re-rendered tree (the guest accumulates state, so earlier trees
+    /// are superseded), or `None` if nothing was pending.
+    ///
+    /// Call this from the UI main loop (e.g. a short glib timeout) while
+    /// [`streams_active`](Self::streams_active) holds — and once more after it
+    /// clears, to flush the terminal chunks.
+    pub fn pump(&mut self) -> Result<Option<Vec<UiNode>>> {
+        let mut last = None;
+        while let Ok(msg) = self.stream_rx.try_recv() {
+            let kind = if msg.done {
+                UiEventKind::StreamEnd
+            } else {
+                UiEventKind::StreamChunk
+            };
+            let event = UiEvent {
+                id: msg.req_id,
+                kind,
+                value: msg.chunk,
+            };
+            last = Some(self.update(&event)?);
+        }
+        Ok(last)
+    }
 }
 
 // ── Conversions between the generated component types and the public types ───
@@ -226,6 +377,8 @@ fn to_ui_node(n: Node) -> UiNode {
             NodeKind::Label => UiKind::Label,
             NodeKind::Button => UiKind::Button,
             NodeKind::Entry => UiKind::Entry,
+            NodeKind::Scroll => UiKind::Scroll,
+            NodeKind::Markdown => UiKind::Markdown,
         },
         text: n.text,
         children: n.children,
@@ -239,6 +392,8 @@ fn to_wit_event(e: &UiEvent) -> Event {
             UiEventKind::Click => EventKind::Click,
             UiEventKind::Input => EventKind::Input,
             UiEventKind::Submit => EventKind::Submit,
+            UiEventKind::StreamChunk => EventKind::StreamChunk,
+            UiEventKind::StreamEnd => EventKind::StreamEnd,
         },
         value: e.value.clone(),
     }

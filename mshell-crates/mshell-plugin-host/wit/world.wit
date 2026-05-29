@@ -16,6 +16,11 @@ interface types {
         label,
         button,
         entry,
+        /// A vertically-scrolling container for its children — e.g. a chat log.
+        scroll,
+        /// A label whose text is lightweight markdown (bold/italic/`code`),
+        /// styled as a message bubble. `text` carries the markdown source.
+        markdown,
     }
 
     record node {
@@ -33,13 +38,19 @@ interface types {
         click,
         input,
         submit,
+        /// A chunk of an `http-start` response body. `id` is the request id
+        /// returned by `http-start`; `value` is the chunk's bytes (lossy utf-8).
+        stream-chunk,
+        /// An `http-start` stream finished. `id` is the request id; on failure
+        /// `value` carries an `error: …` message.
+        stream-end,
     }
 
     record event {
-        /// Id of the node that produced the event.
+        /// Id of the node — or, for stream events, the request — that produced it.
         id: string,
         kind: event-kind,
-        /// Entry text for input/submit; empty for click.
+        /// Entry text for input/submit; a body chunk for stream-chunk; else empty.
         value: string,
     }
 }
@@ -60,8 +71,15 @@ interface host {
 
     /// One outbound HTTP request → full response (non-streaming). The host —
     /// not the guest — performs the network I/O; this is the only egress the
-    /// guest gets. Streaming (token-by-token) responses arrive in W4.
+    /// guest gets. For token streams use `http-start` instead.
     http: func(req: http-request) -> result<http-response, string>;
+
+    /// Begin a request asynchronously and return immediately with a request
+    /// id. The response body is read off the UI thread and delivered back as
+    /// `stream-chunk` events (then one `stream-end`) to `update`, keyed by that
+    /// id — so a token stream never blocks the UI. The host drains pending
+    /// chunks from its main loop.
+    http-start: func(req: http-request) -> string;
 
     record http-request {
         /// "GET", "POST", … Defaults to GET if empty.

@@ -69,10 +69,15 @@ plugin.wasm (guest, sandboxed)            mshell (host, GTK)
   `instantiate` takes the resolved settings map. Runtime-verified end to end:
   the guest reads a `url` setting, fetches it, and renders the body — tested
   against a local one-shot HTTP server (no external network).
-- **W4 — Streaming + rich nodes (next):** streaming `http`, `entry`, scrollable
-  `list`, `markdown` (message bubbles) — enough for a chat panel.
-- **W5 — SDK + docs + real port:** `mplugin-sdk` crate, author guide, and port
-  `assistant-panel`'s actual chat panel as the proving ground.
+- **W4 — Streaming + rich nodes:** ✅ added `scroll` (a scrollable log) and
+  `markdown` (a message bubble; lightweight bold/italic/`code` → Pango) node
+  kinds, plus `http-start`: the host runs the request on a worker thread and
+  streams the body back as host-originated `stream-chunk`/`stream-end` events,
+  drained by `PluginInstance::pump` (driven from a glib timeout in the live
+  shell while `streams_active`). Runtime-verified end to end against a local
+  server, driving `pump` manually — the role the GTK timeout plays live.
+- **W5 — SDK + docs + real port (next):** `mplugin-sdk` crate, author guide, and
+  port `assistant-panel`'s actual chat panel as the proving ground.
 
 ## Risks / open decisions
 
