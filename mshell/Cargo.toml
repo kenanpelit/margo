@@ -17,5 +17,11 @@ mshell-cli-style.workspace = true
 mshell-core.workspace = true
 mshell-logging.workspace = true
 
+[features]
+default = []
+# Build with in-shell sandboxed WASM plugin panels (pulls wasmtime — heavy).
+# `cargo build --release -p mshell --features wasm-plugins`.
+wasm-plugins = ["mshell-core/wasm-plugins"]
+
 [lints]
 workspace = true

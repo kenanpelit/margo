@@ -10,4 +10,9 @@
 mod panel;
 
 #[cfg(feature = "wasm")]
-pub use panel::PluginPanel;
+pub use panel::{PluginPanel, PluginSettings};
+
+// Re-exported so a host (the shell frame) needs only this crate to build a
+// panel — the runtime is created once and passed to [`PluginPanel::new`].
+#[cfg(feature = "wasm")]
+pub use mshell_plugin_host::PluginRuntime;

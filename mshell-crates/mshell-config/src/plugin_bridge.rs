@@ -85,6 +85,20 @@ fn to_custom_widget(
         plugin.dir.join(&w.image).to_string_lossy().into_owned()
     };
     let sub = |s: &str| substitute(s, values);
+    // A widget that opens the plugin's WASM panel carries the absolute path to
+    // the compiled component + the resolved settings (for `get-setting`); the
+    // shell's custom pill opens an in-shell panel instead of running a command.
+    let (panel_entry, panel_settings) = if w.opens_panel && plugin.manifest.has_wasm_entry() {
+        let path = plugin
+            .dir
+            .join(&plugin.manifest.entry)
+            .to_string_lossy()
+            .into_owned();
+        let settings = serde_json::to_string(values).unwrap_or_default();
+        (path, settings)
+    } else {
+        (String::new(), String::new())
+    };
     CustomWidgetConfig {
         name: format!("{PLUGIN_PREFIX}{}:{}", plugin.key, w.key),
         icon: w.icon.clone(),
@@ -106,5 +120,7 @@ fn to_custom_widget(
                 exec: sub(&r.exec),
             })
             .collect(),
+        panel_entry,
+        panel_settings,
     }
 }

@@ -476,6 +476,13 @@ pub struct CustomWidgetConfig {
     /// Optional dropdown menu (popover of command rows). When non-empty, a
     /// left click opens this menu instead of running `on_click`.
     pub menu: Vec<CustomMenuRow>,
+    /// Absolute path to a plugin's compiled WASM panel. When non-empty, a left
+    /// click opens that sandboxed in-shell panel (requires a `wasm-plugins`
+    /// build). Set only on plugin-derived widgets; empty for user widgets.
+    pub panel_entry: String,
+    /// JSON object of the plugin's resolved settings, passed to the WASM
+    /// panel's `get-setting` capability. Only meaningful with `panel_entry`.
+    pub panel_settings: String,
 }
 
 /// One row of a custom widget's dropdown menu: an icon + label that runs a

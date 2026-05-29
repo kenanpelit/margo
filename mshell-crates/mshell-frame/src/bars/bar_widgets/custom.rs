@@ -106,9 +106,11 @@ impl Component for CustomWidgetModel {
             widgets.icon_box.append(&img);
         }
 
-        // Left click → open the declarative dropdown menu (a popover of
-        // command rows) when one is defined, otherwise run `on_click`.
-        if !config.menu.is_empty() {
+        // Left click priority: a WASM panel (in-shell sandboxed UI) > a
+        // declarative dropdown menu > the `on_click` command.
+        if !config.panel_entry.trim().is_empty() {
+            wire_panel(&widgets.root, &config);
+        } else if !config.menu.is_empty() {
             let popover = build_menu_popover(&config.menu);
             popover.set_parent(&widgets.root);
             widgets
@@ -183,6 +185,62 @@ impl Component for CustomWidgetModel {
         }
         self.update_view(widgets, sender);
     }
+}
+
+/// Wire a left-click on this pill to open the plugin's sandboxed WASM panel in
+/// a popover anchored to the pill. The panel is instantiated once and kept
+/// alive by the click closure; its own internal event loop drives streaming.
+#[cfg(feature = "wasm-plugins")]
+fn wire_panel(button: &gtk::Button, config: &CustomWidgetConfig) {
+    use mshell_plugin_ui::{PluginPanel, PluginRuntime};
+    use std::collections::HashMap;
+    use std::path::Path;
+
+    let settings: HashMap<String, String> =
+        serde_json::from_str(config.panel_settings.trim()).unwrap_or_default();
+
+    let runtime = match PluginRuntime::new() {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!("plugin panel: runtime init failed: {e}");
+            return;
+        }
+    };
+    let panel = match PluginPanel::new(
+        &runtime,
+        &config.name,
+        Path::new(config.panel_entry.trim()),
+        settings,
+    ) {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!("plugin panel `{}`: load failed: {e}", config.name);
+            return;
+        }
+    };
+
+    let popover = gtk::Popover::new();
+    popover.add_css_class("plugin-panel-popover");
+    let content = panel.widget().clone();
+    content.set_size_request(360, 480);
+    popover.set_child(Some(&content));
+    popover.set_parent(button);
+
+    // Move `panel` into the closure so the instance (and its event loop) lives
+    // as long as the pill does.
+    button.connect_clicked(move |_| {
+        let _keep = &panel;
+        popover.popup();
+    });
+}
+
+/// Without the `wasm-plugins` build, a panel pill can't run — hint at the
+/// rebuild and do nothing on click.
+#[cfg(not(feature = "wasm-plugins"))]
+fn wire_panel(button: &gtk::Button, _config: &CustomWidgetConfig) {
+    button.set_tooltip_text(Some(
+        "This plugin needs an mshell built with --features wasm-plugins",
+    ));
 }
 
 /// Build the click-dropdown popover from the widget's declarative menu rows.

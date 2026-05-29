@@ -61,3 +61,27 @@ button.plugins-update-btn {
     min-height: 32px;
   }
 }
+
+// ── WASM plugin panel (mplugins WASM tier) ──────────────────────────────────
+// An in-shell sandboxed plugin UI hosted in a popover anchored to its bar
+// pill. The renderer tags nodes with these classes (see mshell-plugin-ui).
+.plugin-panel-popover > contents {
+  padding: var(--space-2);
+  border-radius: var(--radius-lg);
+}
+
+.plugin-panel {
+  padding: var(--space-1);
+}
+
+.plugin-scroll {
+  // Let the message log grow and scroll within the panel's fixed height.
+  min-height: 0;
+}
+
+// A chat-style message bubble; lightweight markdown rendered to Pango markup.
+.plugin-markdown {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-container-high);
+}

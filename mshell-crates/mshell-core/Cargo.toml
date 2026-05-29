@@ -42,5 +42,11 @@ wayle-brightness.workspace = true
 wayle-media.workspace = true
 wayle-weather.workspace = true
 zbus.workspace = true
+
+[features]
+default = []
+# Forward in-shell WASM plugin panels to the frame.
+wasm-plugins = ["mshell-frame/wasm-plugins"]
+
 [lints]
 workspace = true
