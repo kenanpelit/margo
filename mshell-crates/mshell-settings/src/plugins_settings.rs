@@ -10,7 +10,9 @@
 //! blocking task and reports back to the GTK main loop via a oneshot.
 
 use mshell_config::config_manager::config_manager;
-use mshell_plugins::{InstalledPlugin, PluginStore, PluginsState, Registry, RegistryEntry, Source};
+use mshell_plugins::{
+    InstalledPlugin, PanelLayout, PluginStore, PluginsState, Registry, RegistryEntry, Source,
+};
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
@@ -48,6 +50,13 @@ pub(crate) enum PluginsSettingsInput {
         plugin: String,
         key: String,
         value: String,
+    },
+    /// Persist a plugin's panel size (its own preference, not the global Menus
+    /// page) and re-derive the live widget.
+    SetPanelSize {
+        plugin: String,
+        min_width: i32,
+        max_height: i32,
     },
     /// Re-read local state + installed list and repaint.
     ReloadLocal,
@@ -373,6 +382,21 @@ impl Component for PluginsSettingsModel {
                 // form mid-edit. The controls already hold the new value.
                 return;
             }
+            PluginsSettingsInput::SetPanelSize {
+                plugin,
+                min_width,
+                max_height,
+            } => {
+                let mut layout = self.state.panel(&plugin);
+                layout.min_width = min_width;
+                layout.max_height = max_height;
+                self.state.set_panel(&plugin, layout);
+                let _ = self.store.save_state(&self.state);
+                if self.state.is_enabled(&plugin) {
+                    config_manager().reload_config();
+                }
+                return;
+            }
             PluginsSettingsInput::ReloadLocal => {
                 self.state = self.store.load_state();
                 self.installed = self.store.installed();
@@ -542,8 +566,9 @@ fn rebuild_installed(
             row.append(&btn);
         }
 
-        // Settings gear — only when the plugin declares settings.
-        if !p.manifest.settings.is_empty() {
+        // Settings gear — when the plugin declares settings, or ships a
+        // panel/menu whose size lives here (under the plugin, not Menus).
+        if !p.manifest.settings.is_empty() || plugin_has_panel(&p.manifest) {
             let gear = gtk::Button::from_icon_name("emblem-system-symbolic");
             gear.add_css_class("panel-action-btn");
             gear.set_valign(gtk::Align::Center);
@@ -626,7 +651,83 @@ fn build_settings_form(
 
         form.append(&row);
     }
+
+    // A plugin that ships a panel/menu carries its own surface size here — its
+    // settings, not the global Menus page (keeps a plugin self-contained).
+    if plugin_has_panel(&p.manifest) {
+        form.append(&panel_size_section(&p.key, &state.panel(&p.key), sender));
+    }
     form
+}
+
+/// `true` if the plugin contributes an in-shell surface (a WASM panel or a
+/// declarative `[[widget.menu]]`) whose size is worth configuring.
+fn plugin_has_panel(m: &mshell_plugins::Manifest) -> bool {
+    m.has_wasm_entry() || m.widgets.iter().any(|w| w.opens_panel || !w.menu.is_empty())
+}
+
+/// The "Panel Size" controls (min width + max height) for a plugin's surface,
+/// pre-filled from its stored layout and emitting `SetPanelSize` on change.
+fn panel_size_section(
+    plugin: &str,
+    layout: &PanelLayout,
+    sender: &ComponentSender<PluginsSettingsModel>,
+) -> gtk::Box {
+    let section = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    section.add_css_class("plugins-setting-row");
+    let title = gtk::Label::new(Some("Panel Size"));
+    title.add_css_class("label-medium-bold");
+    title.set_halign(gtk::Align::Start);
+    section.append(&title);
+    section.append(&dim_line("Size of this plugin's in-shell surface."));
+
+    let min_spin = gtk::SpinButton::with_range(200.0, 1200.0, 10.0);
+    min_spin.set_value(layout.min_width.max(200) as f64);
+    let max_spin = gtk::SpinButton::with_range(0.0, 1400.0, 10.0);
+    max_spin.set_value(layout.max_height.max(0) as f64);
+
+    // Wire AFTER set_value so the initial fill doesn't emit. Each control sends
+    // both current values (SetPanelSize carries the pair).
+    {
+        let sender = sender.clone();
+        let plugin = plugin.to_string();
+        let max_w = max_spin.clone();
+        min_spin.connect_value_changed(move |w| {
+            sender.input(PluginsSettingsInput::SetPanelSize {
+                plugin: plugin.clone(),
+                min_width: w.value() as i32,
+                max_height: max_w.value() as i32,
+            });
+        });
+    }
+    {
+        let sender = sender.clone();
+        let plugin = plugin.to_string();
+        let min_w = min_spin.clone();
+        max_spin.connect_value_changed(move |w| {
+            sender.input(PluginsSettingsInput::SetPanelSize {
+                plugin: plugin.clone(),
+                min_width: min_w.value() as i32,
+                max_height: w.value() as i32,
+            });
+        });
+    }
+
+    section.append(&spin_row("Min width", &min_spin));
+    section.append(&spin_row("Max height (0 = no cap)", &max_spin));
+    section
+}
+
+/// A label + a trailing spin control, on one row.
+fn spin_row(label: &str, spin: &gtk::SpinButton) -> gtk::Box {
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+    let lbl = gtk::Label::new(Some(label));
+    lbl.set_halign(gtk::Align::Start);
+    lbl.set_hexpand(true);
+    row.append(&lbl);
+    spin.set_valign(gtk::Align::Center);
+    row.append(spin);
+    row
 }
 
 /// Build the right-hand control for one setting, wired to emit `SetSetting`.

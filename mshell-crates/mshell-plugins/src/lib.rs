@@ -16,7 +16,7 @@ pub use manifest::{
     Manifest, MenuRow, Registry, RegistryEntry, Setting, WidgetDef, is_newer, meets_min_mshell,
     substitute, validate,
 };
-pub use state::{PluginsState, Source};
+pub use state::{PanelLayout, PluginsState, Source};
 
 use std::path::{Path, PathBuf};
 

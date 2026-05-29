@@ -157,12 +157,16 @@ pub(crate) enum BarOutput {
         name: String,
         entry: String,
         settings: String,
+        min_width: i32,
+        max_height: i32,
     },
     /// A plugin pill with a declarative `[[widget.menu]]` was clicked — the
     /// frame opens its command rows in the first-class plugin menu.
     PluginMenuClicked {
         name: String,
         rows: Vec<CustomMenuRow>,
+        min_width: i32,
+        max_height: i32,
     },
     CloseMenu,
 }
@@ -789,14 +793,26 @@ impl BarModel {
                                 name,
                                 entry,
                                 settings,
+                                min_width,
+                                max_height,
                             } => BarOutput::PluginPanelClicked {
                                 name,
                                 entry,
                                 settings,
+                                min_width,
+                                max_height,
                             },
-                            CustomWidgetOutput::OpenMenu { name, rows } => {
-                                BarOutput::PluginMenuClicked { name, rows }
-                            }
+                            CustomWidgetOutput::OpenMenu {
+                                name,
+                                rows,
+                                min_width,
+                                max_height,
+                            } => BarOutput::PluginMenuClicked {
+                                name,
+                                rows,
+                                min_width,
+                                max_height,
+                            },
                         }),
                 )
             }

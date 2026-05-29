@@ -13,6 +13,38 @@ pub struct Source {
     pub url: String,
 }
 
+fn default_panel_position() -> String {
+    "top-right".to_string()
+}
+fn default_panel_min_width() -> i32 {
+    420
+}
+fn default_panel_max_height() -> i32 {
+    560
+}
+
+/// A plugin's in-shell panel/menu surface layout — a per-plugin preference
+/// (the plugin owns its own settings, so its panel size + position live with
+/// it, not in the global Menus settings). Position is a kebab string
+/// (`top` / `top-right` / `bottom-right` / …) the frame maps to its anchor.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(default)]
+pub struct PanelLayout {
+    pub position: String,
+    pub min_width: i32,
+    pub max_height: i32,
+}
+
+impl Default for PanelLayout {
+    fn default() -> Self {
+        Self {
+            position: default_panel_position(),
+            min_width: default_panel_min_width(),
+            max_height: default_panel_max_height(),
+        }
+    }
+}
+
 /// Persisted manager state.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize)]
 pub struct PluginsState {
@@ -25,6 +57,10 @@ pub struct PluginsState {
     /// Substituted into the plugin's commands via `{{setting-key}}`.
     #[serde(default)]
     pub settings: BTreeMap<String, BTreeMap<String, String>>,
+    /// Per-plugin panel/menu surface layout (size + position), edited in the
+    /// plugin's own settings (gear), not the global Menus page.
+    #[serde(default)]
+    pub panels: BTreeMap<String, PanelLayout>,
 }
 
 impl PluginsState {
@@ -63,10 +99,20 @@ impl PluginsState {
             .insert(key.to_string(), value.to_string());
     }
 
+    /// A plugin's panel layout — the user's stored value, or the default.
+    pub fn panel(&self, plugin: &str) -> PanelLayout {
+        self.panels.get(plugin).cloned().unwrap_or_default()
+    }
+
+    pub fn set_panel(&mut self, plugin: &str, layout: PanelLayout) {
+        self.panels.insert(plugin.to_string(), layout);
+    }
+
     /// Drop all state for a plugin (on uninstall).
     pub fn forget(&mut self, key: &str) {
         self.enabled.retain(|k| k != key);
         self.settings.remove(key);
+        self.panels.remove(key);
     }
 }
 

@@ -483,6 +483,11 @@ pub struct CustomWidgetConfig {
     /// JSON object of the plugin's resolved settings, passed to the WASM
     /// panel's `get-setting` capability. Only meaningful with `panel_entry`.
     pub panel_settings: String,
+    /// The plugin's panel/menu surface min width + max height (a per-plugin
+    /// preference edited in the plugin's own settings, applied to the shared
+    /// plugin-menu surface on open). 0 = use the surface default.
+    pub panel_min_width: i32,
+    pub panel_max_height: i32,
 }
 
 /// One row of a custom widget's dropdown menu: an icon + label that runs a

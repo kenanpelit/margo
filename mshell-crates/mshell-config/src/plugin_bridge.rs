@@ -10,7 +10,7 @@
 //! widget.
 
 use crate::schema::config::{Config, CustomMenuRow, CustomWidgetConfig};
-use mshell_plugins::{InstalledPlugin, PluginStore, PluginsState, WidgetDef, substitute};
+use mshell_plugins::{InstalledPlugin, PanelLayout, PluginStore, PluginsState, WidgetDef, substitute};
 use std::collections::BTreeMap;
 
 /// Prefix marking a custom widget as plugin-derived (not user-authored).
@@ -28,12 +28,13 @@ pub fn resync_plugin_widgets(config: &mut Config) {
             continue;
         }
         let values = setting_values(&plugin, &state);
+        let layout = state.panel(&plugin.key);
         for widget in &plugin.manifest.widgets {
             config
                 .bars
                 .widgets
                 .custom_widgets
-                .push(to_custom_widget(&plugin, widget, &values));
+                .push(to_custom_widget(&plugin, widget, &values, &layout));
         }
     }
 }
@@ -77,6 +78,7 @@ fn to_custom_widget(
     plugin: &InstalledPlugin,
     w: &WidgetDef,
     values: &BTreeMap<String, String>,
+    layout: &PanelLayout,
 ) -> CustomWidgetConfig {
     // Image paths in a manifest are relative to the plugin's folder.
     let image = if w.image.trim().is_empty() {
@@ -122,5 +124,7 @@ fn to_custom_widget(
             .collect(),
         panel_entry,
         panel_settings,
+        panel_min_width: layout.min_width,
+        panel_max_height: layout.max_height,
     }
 }

@@ -187,12 +187,16 @@ pub enum FrameInput {
         name: String,
         entry: String,
         settings: String,
+        min_width: i32,
+        max_height: i32,
     },
     /// Open a declarative plugin menu (its `[[widget.menu]]` command rows) in
     /// the first-class plugin menu — layer-shell, not a pill popover.
     TogglePluginMenu {
         name: String,
         rows: Vec<CustomMenuRow>,
+        min_width: i32,
+        max_height: i32,
     },
     ToggleIpMenu,
     ToggleNetworkMenu,
@@ -1161,7 +1165,10 @@ impl Component for Frame {
                 name,
                 entry,
                 settings,
+                min_width,
+                max_height,
             } => {
+                self.apply_plugin_panel_size(min_width, max_height);
                 #[cfg(feature = "wasm-plugins")]
                 {
                     use std::collections::hash_map::Entry;
@@ -1197,8 +1204,14 @@ impl Component for Frame {
                     let _ = (name, entry, settings);
                 }
             }
-            FrameInput::TogglePluginMenu { name, rows } => {
+            FrameInput::TogglePluginMenu {
+                name,
+                rows,
+                min_width,
+                max_height,
+            } => {
                 let _ = name;
+                self.apply_plugin_panel_size(min_width, max_height);
                 let content = Self::build_plugin_menu_content(&rows, &sender);
                 self.plugin_panel_menu
                     .sender()
@@ -2357,14 +2370,26 @@ impl Frame {
                     name,
                     entry,
                     settings,
+                    min_width,
+                    max_height,
                 } => FrameInput::ToggleWasmPluginPanel {
                     name,
                     entry,
                     settings,
+                    min_width,
+                    max_height,
                 },
-                BarOutput::PluginMenuClicked { name, rows } => {
-                    FrameInput::TogglePluginMenu { name, rows }
-                }
+                BarOutput::PluginMenuClicked {
+                    name,
+                    rows,
+                    min_width,
+                    max_height,
+                } => FrameInput::TogglePluginMenu {
+                    name,
+                    rows,
+                    min_width,
+                    max_height,
+                },
                 BarOutput::IpClicked => FrameInput::ToggleIpMenu,
                 BarOutput::NetworkClicked => FrameInput::ToggleNetworkMenu,
                 BarOutput::PowerClicked => FrameInput::TogglePowerMenu,
@@ -2381,6 +2406,23 @@ impl Frame {
                 MenuOutput::CloseMenu => FrameInput::CloseMenus,
                 MenuOutput::ToggleSessionMenu => FrameInput::ToggleSessionMenu,
             })
+    }
+
+    /// Apply a plugin's per-plugin panel size (min width / max height) to the
+    /// shared plugin-menu surface before showing it. 0 = leave as-is.
+    fn apply_plugin_panel_size(&self, min_width: i32, max_height: i32) {
+        if min_width > 0 {
+            self.plugin_panel_menu
+                .sender()
+                .send(MenuInput::SetMinimumWidth(min_width))
+                .ok();
+        }
+        if max_height > 0 {
+            self.plugin_panel_menu
+                .sender()
+                .send(MenuInput::SetMaximumHeight(max_height))
+                .ok();
+        }
     }
 
     /// Build the content widget for a declarative plugin menu: a vertical list

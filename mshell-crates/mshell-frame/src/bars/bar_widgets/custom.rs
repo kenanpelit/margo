@@ -34,6 +34,8 @@ pub(crate) enum CustomWidgetOutput {
         name: String,
         entry: String,
         settings: String,
+        min_width: i32,
+        max_height: i32,
     },
     /// A pill with a declarative `[[widget.menu]]` was clicked — ask the frame
     /// to open its command rows in the first-class plugin menu (layer-shell),
@@ -41,6 +43,8 @@ pub(crate) enum CustomWidgetOutput {
     OpenMenu {
         name: String,
         rows: Vec<CustomMenuRow>,
+        min_width: i32,
+        max_height: i32,
     },
 }
 
@@ -133,11 +137,15 @@ impl Component for CustomWidgetModel {
             // (via the frame), not a pill-anchored popover.
             let name = config.name.clone();
             let rows = config.menu.clone();
+            let min_width = config.panel_min_width;
+            let max_height = config.panel_max_height;
             let sender = sender.clone();
             widgets.root.connect_clicked(move |_| {
                 let _ = sender.output(CustomWidgetOutput::OpenMenu {
                     name: name.clone(),
                     rows: rows.clone(),
+                    min_width,
+                    max_height,
                 });
             });
         } else {
@@ -223,12 +231,16 @@ fn wire_panel(
     let name = config.name.clone();
     let entry = config.panel_entry.clone();
     let settings = config.panel_settings.clone();
+    let min_width = config.panel_min_width;
+    let max_height = config.panel_max_height;
     let sender = sender.clone();
     button.connect_clicked(move |_| {
         let _ = sender.output(CustomWidgetOutput::OpenPanel {
             name: name.clone(),
             entry: entry.clone(),
             settings: settings.clone(),
+            min_width,
+            max_height,
         });
     });
 }
