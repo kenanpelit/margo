@@ -1,0 +1,23 @@
+[package]
+name = "mshell-plugin-host"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "MShell WASM plugin host — sandboxed in-shell plugin UI (mplugins WASM tier)."
+repository.workspace = true
+license.workspace = true
+
+[features]
+# The WASM runtime is heavy (wasmtime + cranelift), so it's opt-in. With the
+# feature off this crate is an empty shell and pulls nothing — default mshell
+# builds stay lean.
+default = []
+wasm = ["dep:wasmtime"]
+
+[dependencies]
+anyhow.workspace = true
+tracing.workspace = true
+wasmtime = { workspace = true, optional = true }
+
+[lints]
+workspace = true

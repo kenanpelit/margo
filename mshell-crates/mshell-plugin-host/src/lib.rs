@@ -1,0 +1,16 @@
+//! mplugins WASM host — the sandboxed in-shell plugin tier.
+//!
+//! See `docs/mplugins-wasm-design.md` for the full architecture. This is
+//! **W1 — runtime foundation**: load a WebAssembly **component**, link a host
+//! capability (`log`), and invoke a guest export (`run`). The UI tree, more
+//! capabilities, and the event loop land in later milestones.
+//!
+//! The whole runtime is behind the `wasm` feature so default mshell builds
+//! don't pull wasmtime. With the feature off this crate is intentionally
+//! empty.
+
+#[cfg(feature = "wasm")]
+mod runtime;
+
+#[cfg(feature = "wasm")]
+pub use runtime::PluginRuntime;

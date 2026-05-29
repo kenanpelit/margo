@@ -1,0 +1,18 @@
+// mplugins WASM tier — host/guest contract (W1: minimal).
+//
+// W1 establishes the runtime boundary: the guest can call back into the host
+// (`log`) and the host can invoke a guest entry point (`run`). The UI model
+// (a declarative `Ui` tree), capabilities (`get-setting`, `http`, `notify`),
+// and the event/`update` loop arrive in later milestones (W2+) — kept out of
+// W1 so the runtime foundation lands first.
+
+package margo:plugin;
+
+world plugin {
+    /// Host capability: structured logging from the guest.
+    /// `level`: 0=trace 1=debug 2=info 3=warn 4=error.
+    import log: func(level: u32, message: string);
+
+    /// Guest entry point invoked by the host once instantiated.
+    export run: func();
+}
