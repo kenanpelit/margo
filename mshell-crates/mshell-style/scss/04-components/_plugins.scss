@@ -85,3 +85,18 @@ button.plugins-update-btn {
   border-radius: var(--radius-md);
   background-color: var(--surface-container-high);
 }
+
+// Declarative plugin menu (a `[[widget.menu]]`'s command rows) hosted in the
+// first-class plugin menu surface — a tidy list of activatable rows.
+.plugin-menu-list {
+  padding: var(--space-1);
+}
+
+.plugin-menu-row {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+
+  &:hover {
+    background-color: var(--surface-container-high);
+  }
+}

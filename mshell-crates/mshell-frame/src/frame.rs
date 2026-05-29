@@ -16,6 +16,7 @@ use crate::frame_draw_widget::FrameDrawWidget;
 use crate::frame_spacer::{FrameSpacerInit, FrameSpacerInput, FrameSpacerModel};
 use crate::menus::menu::MenuInput::ForwardHyprlandScreenshareReply;
 use crate::menus::menu::{MenuInit, MenuInput, MenuModel, MenuOutput, MenuType};
+use mshell_config::schema::config::CustomMenuRow;
 use crate::menus::menu_widgets::mshelldash::mshelldash::{
     MShellDashInit, MShellDashInput, MShellDashModel,
 };
@@ -186,6 +187,12 @@ pub enum FrameInput {
         name: String,
         entry: String,
         settings: String,
+    },
+    /// Open a declarative plugin menu (its `[[widget.menu]]` command rows) in
+    /// the first-class plugin menu — layer-shell, not a pill popover.
+    TogglePluginMenu {
+        name: String,
+        rows: Vec<CustomMenuRow>,
     },
     ToggleIpMenu,
     ToggleNetworkMenu,
@@ -1189,6 +1196,16 @@ impl Component for Frame {
                 {
                     let _ = (name, entry, settings);
                 }
+            }
+            FrameInput::TogglePluginMenu { name, rows } => {
+                let _ = name;
+                let content = Self::build_plugin_menu_content(&rows, &sender);
+                self.plugin_panel_menu
+                    .sender()
+                    .send(MenuInput::SetExternalContent(content))
+                    .ok();
+                self.toggle_menu(NPLUGIN_PANEL_MENU, widgets);
+                self.sync_keyboard_mode(root);
             }
             FrameInput::ToggleIpMenu => {
                 self.toggle_menu(NIP_MENU, widgets);
@@ -2345,6 +2362,9 @@ impl Frame {
                     entry,
                     settings,
                 },
+                BarOutput::PluginMenuClicked { name, rows } => {
+                    FrameInput::TogglePluginMenu { name, rows }
+                }
                 BarOutput::IpClicked => FrameInput::ToggleIpMenu,
                 BarOutput::NetworkClicked => FrameInput::ToggleNetworkMenu,
                 BarOutput::PowerClicked => FrameInput::TogglePowerMenu,
@@ -2362,6 +2382,59 @@ impl Frame {
                 MenuOutput::ToggleSessionMenu => FrameInput::ToggleSessionMenu,
             })
     }
+
+    /// Build the content widget for a declarative plugin menu: a vertical list
+    /// of command-row buttons (icon + label). Clicking a row runs its `exec`
+    /// and closes the menu. Hosted in the first-class plugin menu surface.
+    fn build_plugin_menu_content(rows: &[CustomMenuRow], sender: &ComponentSender<Self>) -> Widget {
+        let list = gtk::Box::new(gtk::Orientation::Vertical, 4);
+        list.add_css_class("plugin-menu-list");
+        for row in rows {
+            let label = row.label.trim();
+            if label.is_empty() && row.exec.trim().is_empty() {
+                continue;
+            }
+            let btn = gtk::Button::new();
+            btn.add_css_class("plugin-menu-row");
+            btn.set_has_frame(false);
+            let hb = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+            if !row.icon.trim().is_empty() {
+                let img = gtk::Image::from_icon_name(row.icon.trim());
+                img.set_pixel_size(16);
+                hb.append(&img);
+            }
+            let text = if label.is_empty() { row.exec.trim() } else { label };
+            let lbl = gtk::Label::new(Some(text));
+            lbl.set_halign(gtk::Align::Start);
+            lbl.set_hexpand(true);
+            hb.append(&lbl);
+            btn.set_child(Some(&hb));
+            let cmd = row.exec.clone();
+            let sender = sender.clone();
+            btn.connect_clicked(move |_| {
+                run_plugin_cmd(&cmd);
+                sender.input(FrameInput::CloseMenus);
+            });
+            list.append(&btn);
+        }
+        list.upcast()
+    }
+}
+
+/// Fire-and-forget a plugin menu row's `sh -c` command (reaped to avoid
+/// zombies).
+fn run_plugin_cmd(cmd: &str) {
+    let cmd = cmd.trim().to_string();
+    if cmd.is_empty() {
+        return;
+    }
+    relm4::spawn(async move {
+        let _ = tokio::process::Command::new("sh")
+            .arg("-c")
+            .arg(&cmd)
+            .status()
+            .await;
+    });
 }
 
 impl Drop for Frame {

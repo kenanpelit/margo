@@ -47,6 +47,7 @@ use crate::bars::bar_widgets::shutdown::{ShutdownInit, ShutdownModel};
 use crate::bars::bar_widgets::system_tray::{SystemTrayInit, SystemTrayModel};
 use crate::bars::bar_widgets::system_update::{SystemUpdateInit, SystemUpdateModel};
 use crate::bars::bar_widgets::custom::{CustomWidgetInit, CustomWidgetModel, CustomWidgetOutput};
+use mshell_config::schema::config::CustomMenuRow;
 use crate::bars::bar_widgets::vpn_indicator::{VpnIndicatorInit, VpnIndicatorModel};
 use crate::bars::bar_widgets::wallpaper::{WallpaperInit, WallpaperModel, WallpaperOutput};
 use mshell_common::dynamic_box::generic_widget_controller::GenericWidgetController;
@@ -156,6 +157,12 @@ pub(crate) enum BarOutput {
         name: String,
         entry: String,
         settings: String,
+    },
+    /// A plugin pill with a declarative `[[widget.menu]]` was clicked — the
+    /// frame opens its command rows in the first-class plugin menu.
+    PluginMenuClicked {
+        name: String,
+        rows: Vec<CustomMenuRow>,
     },
     CloseMenu,
 }
@@ -787,6 +794,9 @@ impl BarModel {
                                 entry,
                                 settings,
                             },
+                            CustomWidgetOutput::OpenMenu { name, rows } => {
+                                BarOutput::PluginMenuClicked { name, rows }
+                            }
                         }),
                 )
             }
