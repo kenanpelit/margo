@@ -36,6 +36,18 @@
   min-width: 120px;
 }
 
+// Available gallery card — the registry view's tile. Slightly bigger leading
+// icon than `.plugins-row` so a remote plugin reads as a discoverable thing,
+// not a settings entry.
+.plugins-gallery-card {
+  padding: var(--space-3) var(--space-4);
+
+  .plugins-row-icon {
+    -gtk-icon-size: var(--icon-lg);
+    color: var(--primary);
+  }
+}
+
 // Small version pill beside a plugin name.
 .plugins-version {
   font-size: var(--font-xs);

@@ -51,8 +51,8 @@ pub use crate::margo::plugin::types::{Event, EventKind, Node, NodeKind};
 /// outside its own memory goes through one of these.
 pub mod host {
     pub use crate::margo::plugin::host::{
-        clipboard_read, copy, get_setting, http, http_start, log, notify, read_file, run,
-        write_file, HttpRequest, HttpResponse, ProcessOutput,
+        clipboard_read, copy, get_setting, http, http_start, log, notify, process_start, read_file,
+        run, write_file, HttpRequest, HttpResponse, ProcessOutput,
     };
 }
 
@@ -163,6 +163,24 @@ impl El {
     /// A visual divider that respects the design language's spacing.
     pub fn separator() -> El {
         Self::leaf(NodeKind::Separator, "")
+    }
+
+    /// A grid of children flowing row-major; `columns` sets the column count.
+    pub fn grid(columns: u32, children: Vec<El>) -> El {
+        Self::container(NodeKind::Grid, children).prop("columns", columns.to_string())
+    }
+
+    /// A revealer wrapping one child with an animated show/hide. Pass `false`
+    /// to start hidden; flip to `true` (and re-render) to slide it in.
+    pub fn revealer(revealed: bool, child: El) -> El {
+        Self::container(NodeKind::Revealer, vec![child])
+            .prop("revealed", if revealed { "true" } else { "false" })
+    }
+
+    /// A stack switching between named children. `visible_id` is the id of
+    /// whichever child should be on top (see [`El::with_id`]).
+    pub fn stack(visible_id: impl Into<String>, children: Vec<El>) -> El {
+        Self::container(NodeKind::Stack, children).prop("visible-child", visible_id)
     }
 
     /// A button. `id` is echoed back on the click [`Event`].

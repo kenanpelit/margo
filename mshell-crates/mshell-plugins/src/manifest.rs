@@ -165,6 +165,13 @@ pub struct RegistryEntry {
     pub min_mshell: String,
     #[serde(default)]
     pub description: String,
+    /// Optional URL to a screenshot the gallery shows on the plugin's card.
+    /// Empty = the gallery falls back to a symbolic icon.
+    #[serde(default)]
+    pub preview: String,
+    /// Optional symbolic icon name the gallery uses when no preview is set.
+    #[serde(default)]
+    pub icon: String,
 }
 
 /// Validate a parsed manifest before it's trusted/installed.

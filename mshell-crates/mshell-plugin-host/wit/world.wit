@@ -35,6 +35,16 @@ interface types {
         progress,
         /// A visual divider that respects the design language's spacing.
         separator,
+        /// A two-dimensional grid (`gtk::Grid`). `properties["columns"]` sets
+        /// the column count; children flow row-major.
+        grid,
+        /// A `gtk::Revealer` holding one child. `properties["revealed"]`
+        /// toggles the animation; `properties["transition"]` picks the curve
+        /// (`slide-down`/`slide-up`/`crossfade`/…).
+        revealer,
+        /// A `gtk::Stack` switching between named children.
+        /// `properties["visible-child"]` is one of the children's ids.
+        stack,
     }
 
     record node {
@@ -129,6 +139,13 @@ interface host {
     /// not the guest — performs the network I/O; this is the only egress the
     /// guest gets. For token streams use `http-start` instead.
     http: func(req: http-request) -> result<http-response, string>;
+
+    /// Begin a subprocess asynchronously and return immediately with a request
+    /// id. The child's stdout is read off the UI thread and delivered as
+    /// `stream-chunk` events (then one `stream-end`) keyed by that id — same
+    /// shape as `http-start`, so a guest can tail `journalctl -f`, `tail -F`,
+    /// a long-running build, etc., without blocking the UI.
+    process-start: func(program: string, args: list<string>) -> string;
 
     /// Begin a request asynchronously and return immediately with a request
     /// id. The response body is read off the UI thread and delivered back as

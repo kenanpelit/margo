@@ -1008,11 +1008,20 @@ fn rebuild_available(
         }
         shown += 1;
         let e = &row_data.entry;
-        let (row, col) = card_row(FALLBACK_ICON);
+        let icon = if e.icon.trim().is_empty() {
+            FALLBACK_ICON
+        } else {
+            e.icon.as_str()
+        };
+        let (row, col) = card_row(icon);
+        row.add_css_class("plugins-gallery-card");
         let name = if e.name.is_empty() { &e.id } else { &e.name };
         col.append(&title_line(name, &e.version));
         if !e.description.is_empty() {
-            col.append(&dim_line(&e.description));
+            let desc = dim_line(&e.description);
+            desc.set_wrap(true);
+            desc.set_xalign(0.0);
+            col.append(&desc);
         }
         row.append(&col);
 

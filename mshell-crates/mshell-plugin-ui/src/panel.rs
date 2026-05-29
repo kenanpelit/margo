@@ -458,6 +458,67 @@ fn build(node: &UiNode, by_id: &HashMap<&str, &UiNode>, inner: &Rc<RefCell<Inner
             bar.upcast()
         }
         UiKind::Separator => gtk::Separator::new(gtk::Orientation::Horizontal).upcast(),
+        UiKind::Grid => {
+            let cols: i32 = node
+                .properties
+                .get("columns")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(2)
+                .max(1);
+            let grid = gtk::Grid::new();
+            grid.set_row_spacing(6);
+            grid.set_column_spacing(6);
+            for (i, child_id) in node.children.iter().enumerate() {
+                if let Some(child) = by_id.get(child_id.as_str()) {
+                    let row = (i as i32) / cols;
+                    let col = (i as i32) % cols;
+                    grid.attach(&build(child, by_id, inner), col, row, 1, 1);
+                }
+            }
+            grid.upcast()
+        }
+        UiKind::Revealer => {
+            let revealer = gtk::Revealer::new();
+            let revealed = node
+                .properties
+                .get("revealed")
+                .map(|s| s == "true")
+                .unwrap_or(true);
+            let transition = match node
+                .properties
+                .get("transition")
+                .map(String::as_str)
+                .unwrap_or("crossfade")
+            {
+                "slide-down" => gtk::RevealerTransitionType::SlideDown,
+                "slide-up" => gtk::RevealerTransitionType::SlideUp,
+                "slide-left" => gtk::RevealerTransitionType::SlideLeft,
+                "slide-right" => gtk::RevealerTransitionType::SlideRight,
+                "none" => gtk::RevealerTransitionType::None,
+                _ => gtk::RevealerTransitionType::Crossfade,
+            };
+            revealer.set_transition_type(transition);
+            revealer.set_reveal_child(revealed);
+            if let Some(child_id) = node.children.first() {
+                if let Some(child) = by_id.get(child_id.as_str()) {
+                    revealer.set_child(Some(&build(child, by_id, inner)));
+                }
+            }
+            revealer.upcast()
+        }
+        UiKind::Stack => {
+            let stack = gtk::Stack::new();
+            stack.set_transition_type(gtk::StackTransitionType::Crossfade);
+            for child_id in &node.children {
+                if let Some(child) = by_id.get(child_id.as_str()) {
+                    stack.add_named(&build(child, by_id, inner), Some(child_id));
+                }
+            }
+            if let Some(visible) = node.properties.get("visible-child") {
+                stack.set_visible_child_name(visible);
+            }
+            stack.upcast()
+        }
     };
     apply_node_properties(&widget, &node.properties);
     // Apply the plugin's design-language classes (plugin-hero, plugin-action,

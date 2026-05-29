@@ -52,6 +52,12 @@ pub enum UiKind {
     Progress,
     /// `gtk::Separator`.
     Separator,
+    /// `gtk::Grid`. `properties["columns"]` sets the column count.
+    Grid,
+    /// `gtk::Revealer` wrapping one child; `properties["revealed"]` toggles.
+    Revealer,
+    /// `gtk::Stack`; `properties["visible-child"]` is the active child id.
+    Stack,
 }
 
 /// One node of a guest-rendered UI. Children are referenced by id; the tree is
@@ -226,6 +232,20 @@ impl Host for HostState {
         Ok(())
     }
 
+    fn process_start(&mut self, program: String, args: Vec<String>) -> String {
+        let req_id = format!("p{}", self.next_req.fetch_add(1, Ordering::Relaxed));
+        let tx = self.stream_tx.clone();
+        let inflight = self.inflight.clone();
+        let plugin = self.plugin_id.clone();
+        inflight.fetch_add(1, Ordering::SeqCst);
+        let id = req_id.clone();
+        std::thread::spawn(move || {
+            host_process_stream(&id, &plugin, &program, &args, &tx);
+            inflight.fetch_sub(1, Ordering::SeqCst);
+        });
+        req_id
+    }
+
     fn http_start(&mut self, req: HttpRequest) -> String {
         let req_id = format!("r{}", self.next_req.fetch_add(1, Ordering::Relaxed));
         let tx = self.stream_tx.clone();
@@ -294,6 +314,72 @@ fn host_http_stream(req_id: &str, req: HttpRequest, tx: &Sender<StreamMsg>) {
             Err(_) => break,
         }
     }
+    let _ = tx.send(StreamMsg {
+        req_id: req_id.to_string(),
+        chunk: String::new(),
+        done: true,
+    });
+}
+
+/// Stream a subprocess's stdout to the pump as `StreamMsg` chunks, then a
+/// terminal `done` message. Runs on a worker thread; the child is dropped
+/// (and so SIGTERM'd on most systems) when this scope exits.
+fn host_process_stream(
+    req_id: &str,
+    plugin: &str,
+    program: &str,
+    args: &[String],
+    tx: &Sender<StreamMsg>,
+) {
+    use std::process::{Command, Stdio};
+    let mut child = match Command::new(program)
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!(plugin, "process-start `{program}` failed: {e}");
+            let _ = tx.send(StreamMsg {
+                req_id: req_id.to_string(),
+                chunk: format!("error: {e}"),
+                done: true,
+            });
+            return;
+        }
+    };
+    let Some(stdout) = child.stdout.take() else {
+        let _ = tx.send(StreamMsg {
+            req_id: req_id.to_string(),
+            chunk: String::new(),
+            done: true,
+        });
+        return;
+    };
+    let mut reader = stdout;
+    let mut buf = [0u8; 4096];
+    loop {
+        match reader.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => {
+                let chunk = String::from_utf8_lossy(&buf[..n]).into_owned();
+                if tx
+                    .send(StreamMsg {
+                        req_id: req_id.to_string(),
+                        chunk,
+                        done: false,
+                    })
+                    .is_err()
+                {
+                    let _ = child.kill();
+                    return; // pump (and its instance) is gone — stop.
+                }
+            }
+            Err(_) => break,
+        }
+    }
+    let _ = child.wait();
     let _ = tx.send(StreamMsg {
         req_id: req_id.to_string(),
         chunk: String::new(),
@@ -497,6 +583,9 @@ fn to_ui_node(n: Node) -> UiNode {
             NodeKind::Slider => UiKind::Slider,
             NodeKind::Progress => UiKind::Progress,
             NodeKind::Separator => UiKind::Separator,
+            NodeKind::Grid => UiKind::Grid,
+            NodeKind::Revealer => UiKind::Revealer,
+            NodeKind::Stack => UiKind::Stack,
         },
         text: n.text,
         children: n.children,
