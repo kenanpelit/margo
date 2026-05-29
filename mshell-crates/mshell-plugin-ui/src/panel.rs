@@ -142,6 +142,13 @@ fn ensure_pump(inner: &Rc<RefCell<Inner>>) {
     });
 }
 
+/// Put `text` on the system clipboard (no-op if there's no display).
+fn copy_to_clipboard(text: &str) {
+    if let Some(display) = gtk::gdk::Display::default() {
+        display.clipboard().set_text(text);
+    }
+}
+
 /// Text to copy when Ctrl+C is pressed in a panel: the active selection in
 /// any label if there is one, otherwise the whole conversation (every label's
 /// text, joined by blank lines). Walks the widget tree under `root`.
@@ -279,21 +286,36 @@ fn build(node: &UiNode, by_id: &HashMap<&str, &UiNode>, inner: &Rc<RefCell<Inner
             label.set_wrap(true);
             label.set_selectable(true);
             label.add_css_class("plugin-markdown");
-            // Right-click copies the whole message — reliable in a layer-shell
-            // surface where drag-select can be flaky. Capture phase + claim so
-            // the label's built-in selection context menu doesn't swallow it.
+            // Right-click also copies the whole message (belt-and-suspenders).
             let gesture = gtk::GestureClick::new();
             gesture.set_button(gtk::gdk::BUTTON_SECONDARY);
             gesture.set_propagation_phase(gtk::PropagationPhase::Capture);
             let lbl = label.clone();
             gesture.connect_pressed(move |g, _, _, _| {
-                if let Some(display) = gtk::gdk::Display::default() {
-                    display.clipboard().set_text(&lbl.text());
-                }
+                copy_to_clipboard(&lbl.text());
                 g.set_state(gtk::EventSequenceState::Claimed);
             });
             label.add_controller(gesture);
-            label.upcast()
+
+            // Hero/status markdown (e.g. mullvad's) stays plain; conversation
+            // bubbles get a corner "copy" button — the reliable, obvious way to
+            // copy a message in a layer-shell surface.
+            if node.class.split_whitespace().any(|c| c == "plugin-hero") {
+                label.upcast()
+            } else {
+                let copy = gtk::Button::from_icon_name("edit-copy-symbolic");
+                copy.add_css_class("plugin-bubble-copy");
+                copy.set_halign(gtk::Align::End);
+                copy.set_valign(gtk::Align::Start);
+                copy.set_tooltip_text(Some("Copy message"));
+                let lbl = label.clone();
+                copy.connect_clicked(move |_| copy_to_clipboard(&lbl.text()));
+
+                let overlay = gtk::Overlay::new();
+                overlay.set_child(Some(&label));
+                overlay.add_overlay(&copy);
+                overlay.upcast()
+            }
         }
     };
     // Apply the plugin's design-language classes (plugin-hero, plugin-action,

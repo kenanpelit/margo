@@ -86,6 +86,35 @@ button.plugins-update-btn {
   background-color: var(--surface-container-high);
 }
 
+// Per-bubble "copy" button pinned to the message's top-right corner. Calm and
+// faint by default; brightens on hover so it doesn't fight the message text.
+button.plugin-bubble-copy {
+  margin: var(--space-1);
+  padding: 2px;
+  min-width: 0;
+  min-height: 0;
+  border-radius: var(--radius-sm);
+  background-color: unquote("color-mix(in srgb, var(--surface-container-highest) 70%, transparent)");
+  opacity: 0.55;
+  transition:
+    opacity var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard);
+
+  image {
+    -gtk-icon-size: 14px;
+    color: var(--on-surface-variant);
+  }
+
+  &:hover {
+    opacity: 1;
+    background-color: var(--surface-container-highest);
+
+    image {
+      color: var(--primary);
+    }
+  }
+}
+
 // Declarative plugin menu (a `[[widget.menu]]`'s command rows) hosted in the
 // first-class plugin menu surface — follows the design language's row grammar
 // (radius-sm rows, ≥40px targets, calm hover/press tints, symbolic 16px icons).
