@@ -76,8 +76,17 @@ plugin.wasm (guest, sandboxed)            mshell (host, GTK)
   drained by `PluginInstance::pump` (driven from a glib timeout in the live
   shell while `streams_active`). Runtime-verified end to end against a local
   server, driving `pump` manually — the role the GTK timeout plays live.
-- **W5 — SDK + docs + real port (next):** `mplugin-sdk` crate, author guide, and
-  port `assistant-panel`'s actual chat panel as the proving ground.
+- **W5 — SDK + real port:** ✅ (SDK + proof) the **`mplugin-sdk`** crate gives
+  authors an ergonomic `El` tree builder (`vbox`/`scroll`/`markdown`/`button`/
+  `entry`/…) flattened to the wire format, the host capabilities, a `Component`
+  trait, and an `export_component!` macro. Proven by an SDK-built streaming
+  **chat** guest (`sdk-guest`): a host test loads it and runs a full turn —
+  submit a line → stream the reply into an "ai" bubble — against a local server.
+  To make the SDK's `export!` work across crates, the contract now exports an
+  **`interface guest`** (`view`/`update`) rather than bare world functions.
+  *Remaining:* port the real `assistant-panel` chat into margo-plugins as a
+  shipped `plugin.wasm` (+ manifest `entry`/`entryKind`), and **W2c** to show
+  the panel in the live shell.
 
 ## Risks / open decisions
 

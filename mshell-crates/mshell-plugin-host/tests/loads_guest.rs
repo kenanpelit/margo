@@ -20,6 +20,31 @@ fn fixture() -> PathBuf {
         .join("tests/fixtures/hello-guest/target/wasm32-wasip2/release/hello_guest.wasm")
 }
 
+fn sdk_fixture() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/sdk-guest/target/wasm32-wasip2/release/sdk_guest.wasm")
+}
+
+/// Serve one canned HTTP/1.1 response from a fresh local socket; returns the
+/// bound address. The body is sent then the connection closes.
+fn serve_once(body: &'static str) -> (String, std::thread::JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr").to_string();
+    let handle = std::thread::spawn(move || {
+        if let Ok((mut sock, _)) = listener.accept() {
+            let mut buf = [0u8; 1024];
+            let _ = sock.read(&mut buf);
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            let _ = sock.write_all(response.as_bytes());
+        }
+    });
+    (addr, handle)
+}
+
 #[test]
 fn loads_and_drives_guest() {
     let path = fixture();
@@ -196,6 +221,76 @@ fn streaming_http_delivers_chunks() {
         msg.text.contains("tok-a tok-b"),
         "expected the streamed body in the bubble, got: {:?}",
         msg.text
+    );
+
+    server.join().ok();
+}
+
+/// W5: the SDK-built chat guest (`mplugin-sdk` — `Component` + `El` builder +
+/// `export_component!`) loads and runs a full chat turn: submit a line, stream
+/// the reply into an "ai" bubble. Proves the authoring SDK end to end.
+#[test]
+fn sdk_chat_guest_runs_a_turn() {
+    let path = sdk_fixture();
+    if !path.exists() {
+        eprintln!("skip: sdk-guest fixture not built ({})", path.display());
+        return;
+    }
+
+    let (addr, server) = serve_once("hello from the model");
+
+    let rt = PluginRuntime::new().expect("runtime");
+    let mut settings = HashMap::new();
+    settings.insert("url".to_string(), format!("http://{addr}/"));
+    let mut inst = rt
+        .instantiate("chat", &path, settings)
+        .expect("instantiate");
+
+    // Initial UI: an entry to type into, inside the SDK-built tree.
+    let nodes = inst.view().expect("view");
+    assert!(
+        nodes.iter().any(|n| n.kind == UiKind::Entry && n.id == "input"),
+        "expected the chat entry"
+    );
+
+    // Submit a line → a "you" bubble appears and a streamed reply starts.
+    let after = inst
+        .update(&UiEvent {
+            id: "input".into(),
+            kind: UiEventKind::Submit,
+            value: "hi there".into(),
+        })
+        .expect("submit");
+    assert!(
+        after
+            .iter()
+            .any(|n| n.kind == UiKind::Markdown && n.text.contains("you:") && n.text.contains("hi there")),
+        "expected the user's line as a bubble"
+    );
+    assert!(inst.streams_active(), "a reply stream should be in flight");
+
+    // Drain the streamed reply.
+    let mut last = None;
+    for _ in 0..200 {
+        if let Some(tree) = inst.pump().expect("pump") {
+            last = Some(tree);
+        }
+        if !inst.streams_active() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    if let Some(tree) = inst.pump().expect("pump") {
+        last = Some(tree);
+    }
+
+    let tree = last.expect("at least one pumped render");
+    assert!(
+        tree.iter().any(|n| n.kind == UiKind::Markdown
+            && n.text.contains("ai:")
+            && n.text.contains("hello from the model")),
+        "expected the streamed reply in an ai bubble, got: {:?}",
+        tree.iter().map(|n| &n.text).collect::<Vec<_>>()
     );
 
     server.join().ok();

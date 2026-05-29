@@ -1,11 +1,13 @@
 // mplugins WASM tier — host/guest contract.
 //
-// W2 adds the UI model + event loop. The guest renders a UI as a *flat list*
-// of nodes (each node names its children by id) — the component model has no
-// recursive types, so the host reconstructs the tree from the list, rooted at
-// the node with id "root". `view` is the initial render; `update(event)`
-// re-renders after an interaction. Capabilities beyond `log` (settings, http,
-// notify) arrive in W3.
+// VENDORED COPY for the authoring SDK. Keep this byte-for-byte in sync with
+// mshell-crates/mshell-plugin-host/wit/world.wit (the canonical host copy) —
+// the SDK must generate against the exact contract the host links.
+//
+// The guest renders a UI as a *flat list* of nodes (each node names its
+// children by id) — the component model has no recursive types, so the host
+// reconstructs the tree from the list, rooted at the node with id "root".
+// `view` is the initial render; `update(event)` re-renders after an event.
 
 package margo:plugin;
 

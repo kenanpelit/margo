@@ -1,0 +1,16 @@
+# Authoring SDK for margo WASM plugins (mplugins WASM tier). Standalone —
+# authors build it for wasm32-wasip2, so it is NOT part of the margo host
+# workspace (see the root Cargo.toml `exclude`).
+[package]
+name = "mplugin-sdk"
+version = "0.1.0"
+edition = "2021"
+description = "Authoring SDK for margo WASM plugins — ergonomic UI builder over the mplugins host/guest WIT contract."
+license = "GPL-3.0-or-later"
+repository = "https://github.com/kenanpelit/margo"
+
+[dependencies]
+wit-bindgen = "0.57"
+
+# Standalone — not part of the margo host workspace.
+[workspace]

@@ -1,0 +1,21 @@
+# Test fixture: a streaming chat guest built with the authoring SDK
+# (mplugin-sdk). Proves the SDK's Component trait + export_component! macro +
+# El builder compile to wasm and drive the host. Standalone, built for
+# wasm32-wasip2; not part of the host workspace.
+[package]
+name = "sdk-guest"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+mplugin-sdk = { path = "../../../../../mplugin-sdk" }
+
+[profile.release]
+opt-level = "s"
+
+# Standalone — not part of the margo host workspace.
+[workspace]

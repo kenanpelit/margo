@@ -9,8 +9,9 @@ wit_bindgen::generate!({
     path: "../../../wit",
 });
 
+use crate::exports::margo::plugin::guest::Guest;
 use crate::margo::plugin::host::{self, HttpRequest};
-use crate::margo::plugin::types::{EventKind, NodeKind};
+use crate::margo::plugin::types::{Event, EventKind, Node, NodeKind};
 use std::cell::RefCell;
 
 // Streamed-response accumulator. wasm guests are single-threaded, so a plain

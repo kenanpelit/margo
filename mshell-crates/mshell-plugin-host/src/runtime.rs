@@ -24,10 +24,10 @@ wasmtime::component::bindgen!({
     world: "plugin",
 });
 
-// `Node` and `Event` are brought into scope by the world's `use types.{…}`;
-// the enums + the host capability trait + its records need importing explicitly.
+// The protocol types live in the `types` interface; the host capability trait
+// + its records in `host`.
 use margo::plugin::host::{Host, HttpRequest, HttpResponse};
-use margo::plugin::types::{EventKind, NodeKind};
+use margo::plugin::types::{Event, EventKind, Node, NodeKind};
 
 // ── Public, GTK-free UI types ────────────────────────────────────────────────
 
@@ -323,13 +323,19 @@ pub struct PluginInstance {
 impl PluginInstance {
     /// Initial render.
     pub fn view(&mut self) -> Result<Vec<UiNode>> {
-        let nodes = self.bindings.call_view(&mut self.store)?;
+        let nodes = self
+            .bindings
+            .margo_plugin_guest()
+            .call_view(&mut self.store)?;
         Ok(nodes.into_iter().map(to_ui_node).collect())
     }
 
     /// Re-render after an interaction.
     pub fn update(&mut self, event: &UiEvent) -> Result<Vec<UiNode>> {
-        let nodes = self.bindings.call_update(&mut self.store, &to_wit_event(event))?;
+        let nodes = self
+            .bindings
+            .margo_plugin_guest()
+            .call_update(&mut self.store, &to_wit_event(event))?;
         Ok(nodes.into_iter().map(to_ui_node).collect())
     }
 

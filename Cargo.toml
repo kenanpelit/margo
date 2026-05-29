@@ -50,9 +50,13 @@ members = [
     "mshell-crates/mshell-utils",
     "mshell-crates/mshell-wallpaper",
 ]
-# WASM plugin test fixture — built standalone for wasm32-wasip2, not part of
-# the host workspace build.
-exclude = ["mshell-crates/mshell-plugin-host/tests/fixtures/hello-guest"]
+# WASM plugin authoring SDK + test fixtures — built standalone for
+# wasm32-wasip2, not part of the host workspace build.
+exclude = [
+    "mplugin-sdk",
+    "mshell-crates/mshell-plugin-host/tests/fixtures/hello-guest",
+    "mshell-crates/mshell-plugin-host/tests/fixtures/sdk-guest",
+]
 resolver = "2"
 
 [workspace.package]
