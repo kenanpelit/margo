@@ -75,6 +75,23 @@ impl PluginPanel {
         render(&inner, nodes);
         ensure_pump(&inner);
 
+        // When the panel becomes visible (menu shown), focus the first entry
+        // so the user can start typing immediately — the assistant chat case
+        // is the obvious one, but every entry-bearing plugin wants this.
+        // Done only on `map` (not on every re-render) so a button click in the
+        // middle of a session doesn't yank focus back to the entry.
+        let focus_root = container.clone();
+        container.connect_map(move |_| {
+            let Some(entry) = find_first_entry(focus_root.upcast_ref()) else {
+                return;
+            };
+            // Defer until after GTK finishes mapping — focusing inside the
+            // map handler itself is too early for the focus chain to settle.
+            gtk::glib::idle_add_local_once(move || {
+                entry.grab_focus();
+            });
+        });
+
         Ok(Self {
             root: container,
             inner,
@@ -225,6 +242,21 @@ fn panel_copy_text(root: &gtk::Widget) -> String {
         .filter(|t| !t.trim().is_empty())
         .collect::<Vec<_>>()
         .join("\n\n")
+}
+
+/// Depth-first find the first [`gtk::Entry`] descendant of `widget`.
+fn find_first_entry(widget: &gtk::Widget) -> Option<gtk::Entry> {
+    if let Some(entry) = widget.downcast_ref::<gtk::Entry>() {
+        return Some(entry.clone());
+    }
+    let mut child = widget.first_child();
+    while let Some(c) = child {
+        if let Some(found) = find_first_entry(&c) {
+            return Some(found);
+        }
+        child = c.next_sibling();
+    }
+    None
 }
 
 /// Depth-first collect every [`gtk::Label`] descendant of `widget` (inclusive).
