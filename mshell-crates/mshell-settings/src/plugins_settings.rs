@@ -12,6 +12,7 @@
 use mshell_config::config_manager::config_manager;
 use mshell_plugins::{
     InstalledPlugin, PanelLayout, PluginStore, PluginsState, Registry, RegistryEntry, Source,
+    UpdateOutcome,
 };
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -61,6 +62,13 @@ pub(crate) enum PluginsSettingsInput {
     },
     /// Re-read local state + installed list and repaint.
     ReloadLocal,
+    /// Set the automatic-update policy (`"off"` / `"login"`).
+    SetAutoUpdate(String),
+    /// Check every source and update all installed plugins that have a newer
+    /// version (the manual "Update all now" button).
+    UpdateAll,
+    /// Result of an update pass (manual or, on startup, automatic).
+    UpdateAllDone(UpdateOutcome),
 }
 
 #[derive(Debug)]
@@ -118,6 +126,48 @@ impl Component for PluginsSettingsModel {
                             set_xalign: 0.0,
                             set_wrap: true,
                         },
+                    },
+                },
+
+                // ── Updates ──
+                gtk::Box {
+                    add_css_class: "plugins-updates-card",
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 12,
+                    gtk::Image {
+                        add_css_class: "plugins-updates-icon",
+                        set_icon_name: Some("software-update-available-symbolic"),
+                        set_valign: gtk::Align::Center,
+                    },
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_valign: gtk::Align::Center,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_label: "Automatic updates",
+                            set_halign: gtk::Align::Start,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            add_css_class: "dim-label",
+                            set_label: "Check your sources about a minute after login and install newer versions automatically.",
+                            set_halign: gtk::Align::Start,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                        },
+                    },
+                    #[name = "update_all_btn"]
+                    gtk::Button {
+                        set_css_classes: &["ok-button-surface"],
+                        set_label: "Update all now",
+                        set_valign: gtk::Align::Center,
+                        connect_clicked[sender] => move |_| sender.input(PluginsSettingsInput::UpdateAll),
+                    },
+                    #[name = "auto_update_dropdown"]
+                    gtk::DropDown {
+                        add_css_class: "plugins-autoupdate-dropdown",
+                        set_valign: gtk::Align::Center,
                     },
                 },
 
@@ -215,6 +265,18 @@ impl Component for PluginsSettingsModel {
             expanded_settings: None,
         };
         let widgets = view_output!();
+
+        // Auto-update policy dropdown: Off / On login. Index 1 == "login".
+        let dropdown = &widgets.auto_update_dropdown;
+        dropdown.set_model(Some(&gtk::StringList::new(&["Off", "On login"])));
+        dropdown.set_selected(if model.state.auto_update_on_login() { 1 } else { 0 });
+        {
+            let s = sender.clone();
+            dropdown.connect_selected_notify(move |d| {
+                let policy = if d.selected() == 1 { "login" } else { "off" };
+                s.input(PluginsSettingsInput::SetAutoUpdate(policy.to_string()));
+            });
+        }
 
         rebuild_sources(&widgets.sources_list, &model.state.sources, &sender);
         rebuild_installed(&widgets.installed_list, &model, &sender);
@@ -403,6 +465,46 @@ impl Component for PluginsSettingsModel {
             PluginsSettingsInput::ReloadLocal => {
                 self.state = self.store.load_state();
                 self.installed = self.store.installed();
+            }
+            PluginsSettingsInput::SetAutoUpdate(policy) => {
+                self.state.auto_update = policy;
+                let _ = self.store.save_state(&self.state);
+                return;
+            }
+            PluginsSettingsInput::UpdateAll => {
+                if !self.busy {
+                    self.busy = true;
+                    self.status = "Checking for updates…".to_string();
+                    let store = self.store.clone();
+                    let (tx, rx) = tokio::sync::oneshot::channel();
+                    tokio::spawn(async move {
+                        let outcome =
+                            tokio::task::spawn_blocking(move || store.run_update_pass())
+                                .await
+                                .unwrap_or_default();
+                        let _ = tx.send(outcome);
+                    });
+                    let s2 = sender.clone();
+                    relm4::gtk::glib::spawn_future_local(async move {
+                        if let Ok(outcome) = rx.await {
+                            s2.input(PluginsSettingsInput::UpdateAllDone(outcome));
+                        }
+                    });
+                }
+            }
+            PluginsSettingsInput::UpdateAllDone(outcome) => {
+                self.busy = false;
+                self.state = self.store.load_state();
+                self.installed = self.store.installed();
+                if !outcome.updated.is_empty() {
+                    // Re-derive the updated plugins' widgets into the live config.
+                    config_manager().reload_config();
+                    self.status = format!("Updated {} plugin(s).", outcome.updated.len());
+                } else if !outcome.errors.is_empty() {
+                    self.status = format!("Update check failed: {}", outcome.errors.join("; "));
+                } else {
+                    self.status = "Everything is up to date.".to_string();
+                }
             }
         }
 

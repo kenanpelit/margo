@@ -18,6 +18,24 @@
   }
 }
 
+// "Updates" card — auto-update control + Update-all button. A calm elevated
+// card (DESIGN.md surface ladder) with a leading update glyph.
+.plugins-updates-card {
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-container);
+
+  .plugins-updates-icon {
+    -gtk-icon-size: var(--icon-md);
+    color: var(--primary);
+  }
+}
+
+// Auto-update cadence dropdown — keep it compact next to the button.
+.plugins-autoupdate-dropdown {
+  min-width: 120px;
+}
+
 // Small version pill beside a plugin name.
 .plugins-version {
   font-size: var(--font-xs);

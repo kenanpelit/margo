@@ -210,6 +210,64 @@ impl PluginStore {
         }
         Ok(())
     }
+
+    /// Fetch every configured source's registry and reinstall each installed,
+    /// *enabled* plugin that has a newer version available. Blocking (git +
+    /// network) — run off the GTK main thread. Returns the composite keys that
+    /// were updated; the caller reloads config so the new versions take effect.
+    pub fn run_update_pass(&self) -> UpdateOutcome {
+        let state = self.load_state();
+        let installed = self.installed();
+        let mut out = UpdateOutcome::default();
+
+        // Fetch every source's registry once.
+        let registries: Vec<(String, Registry)> = state
+            .sources
+            .iter()
+            .filter_map(|src| match self.fetch_registry(&src.url) {
+                Ok(reg) => Some((src.url.clone(), reg)),
+                Err(e) => {
+                    out.errors.push(format!("{}: {e}", src.name));
+                    None
+                }
+            })
+            .collect();
+
+        for p in &installed {
+            if !state.is_enabled(&p.key) {
+                continue;
+            }
+            // The newest registry entry for this plugin that beats the installed
+            // version, across all sources.
+            let mut best: Option<(&str, &RegistryEntry)> = None;
+            for (url, reg) in &registries {
+                for entry in &reg.plugins {
+                    if self.key_for(&entry.id, url) == p.key
+                        && is_newer(&entry.version, &p.manifest.version)
+                        && best.map_or(true, |(_, b)| is_newer(&entry.version, &b.version))
+                    {
+                        best = Some((url.as_str(), entry));
+                    }
+                }
+            }
+            if let Some((url, entry)) = best {
+                match self.install(url, entry) {
+                    Ok(_) => out.updated.push(p.key.clone()),
+                    Err(e) => out.errors.push(format!("{}: {e}", p.key)),
+                }
+            }
+        }
+        out
+    }
+}
+
+/// Result of one [`PluginStore::run_update_pass`].
+#[derive(Debug, Default, Clone)]
+pub struct UpdateOutcome {
+    /// Composite keys that were updated to a newer version.
+    pub updated: Vec<String>,
+    /// Per-source / per-plugin error messages (non-fatal — the pass continues).
+    pub errors: Vec<String>,
 }
 
 /// Read + parse `<dir>/manifest.toml`.

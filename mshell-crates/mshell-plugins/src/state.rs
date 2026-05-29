@@ -45,6 +45,10 @@ impl Default for PanelLayout {
     }
 }
 
+fn default_auto_update() -> String {
+    "off".to_string()
+}
+
 /// Persisted manager state.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize)]
 pub struct PluginsState {
@@ -53,6 +57,10 @@ pub struct PluginsState {
     /// Composite keys of plugins the user has enabled.
     #[serde(default)]
     pub enabled: Vec<String>,
+    /// Automatic-update policy: `"off"` (default) or `"login"` (check the
+    /// configured sources ~1 minute after login and install newer versions).
+    #[serde(default = "default_auto_update")]
+    pub auto_update: String,
     /// Per-plugin setting values: `{ composite-key: { setting-key: value } }`.
     /// Substituted into the plugin's commands via `{{setting-key}}`.
     #[serde(default)]
@@ -76,6 +84,11 @@ impl PluginsState {
 
     pub fn is_enabled(&self, key: &str) -> bool {
         self.enabled.iter().any(|k| k == key)
+    }
+
+    /// Whether updates should be checked + applied automatically after login.
+    pub fn auto_update_on_login(&self) -> bool {
+        self.auto_update == "login"
     }
 
     pub fn set_enabled(&mut self, key: &str, on: bool) {

@@ -156,6 +156,49 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         });
     }
 
+    // Auto-update: if the user picked "On login" in Settings → Plugins, fetch
+    // every source registry ~1 minute after login and reinstall any installed,
+    // enabled plugin that has a newer version. Off the main thread; the result
+    // is applied on the main loop (reload_config + a desktop notification).
+    if mshell_plugins::PluginStore::new()
+        .load_state()
+        .auto_update_on_login()
+    {
+        tokio_rt().spawn(async {
+            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+            let outcome = tokio::task::spawn_blocking(|| {
+                mshell_plugins::PluginStore::new().run_update_pass()
+            })
+            .await
+            .unwrap_or_default();
+            relm4::gtk::glib::MainContext::default().invoke(move || {
+                let n = outcome.updated.len();
+                if n > 0 {
+                    mshell_config::config_manager::config_manager().reload_config();
+                    let body = format!(
+                        "Updated {n} plugin(s): {}",
+                        outcome.updated.join(", ")
+                    );
+                    let _ = std::process::Command::new("notify-send")
+                        .args([
+                            "-a",
+                            "Plugins",
+                            "-i",
+                            "software-update-available-symbolic",
+                            "Plugin updates installed",
+                            &body,
+                        ])
+                        .spawn();
+                } else if !outcome.errors.is_empty() {
+                    tracing::warn!(
+                        errors = ?outcome.errors,
+                        "auto-update: pass had errors"
+                    );
+                }
+            });
+        });
+    }
+
     // skip first run
     let initialized = Cell::new(false);
     Effect::new(move |_| {
