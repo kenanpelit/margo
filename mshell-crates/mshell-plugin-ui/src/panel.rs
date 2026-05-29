@@ -40,6 +40,31 @@ impl PluginPanel {
         let instance = runtime.instantiate(plugin_id, wasm_path, settings)?;
         let container = gtk::Box::new(gtk::Orientation::Vertical, 6);
         container.add_css_class("plugin-panel");
+
+        // Ctrl+C anywhere in the panel copies text — robustly, since drag-select
+        // + the focused-widget Ctrl+C path is unreliable in a layer-shell
+        // surface. Capture phase so it fires before a focused entry consumes it.
+        // If a label has an active selection, copy that; otherwise copy the
+        // whole conversation (every label/markdown line).
+        let key = gtk::EventControllerKey::new();
+        key.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let copy_root = container.clone();
+        key.connect_key_pressed(move |_, keyval, _, state| {
+            if state.contains(gtk::gdk::ModifierType::CONTROL_MASK)
+                && matches!(keyval, gtk::gdk::Key::c | gtk::gdk::Key::C)
+            {
+                let text = panel_copy_text(copy_root.upcast_ref());
+                if !text.is_empty() {
+                    if let Some(display) = gtk::gdk::Display::default() {
+                        display.clipboard().set_text(&text);
+                    }
+                    return gtk::glib::Propagation::Stop;
+                }
+            }
+            gtk::glib::Propagation::Proceed
+        });
+        container.add_controller(key);
+
         let inner = Rc::new(RefCell::new(Inner {
             instance,
             container: container.clone(),
@@ -115,6 +140,44 @@ fn ensure_pump(inner: &Rc<RefCell<Inner>>) {
         inner.borrow_mut().pumping = false;
         gtk::glib::ControlFlow::Break
     });
+}
+
+/// Text to copy when Ctrl+C is pressed in a panel: the active selection in
+/// any label if there is one, otherwise the whole conversation (every label's
+/// text, joined by blank lines). Walks the widget tree under `root`.
+fn panel_copy_text(root: &gtk::Widget) -> String {
+    let mut labels = Vec::new();
+    collect_labels(root, &mut labels);
+    // 1) Prefer an active selection (user selected one bubble + Ctrl+C).
+    for label in &labels {
+        if let Some((a, b)) = label.selection_bounds() {
+            let (a, b) = (a.min(b) as usize, a.max(b) as usize);
+            let full = label.text();
+            let sel: String = full.chars().skip(a).take(b - a).collect();
+            if !sel.trim().is_empty() {
+                return sel;
+            }
+        }
+    }
+    // 2) Fall back to the entire conversation.
+    labels
+        .iter()
+        .map(|l| l.text().to_string())
+        .filter(|t| !t.trim().is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+/// Depth-first collect every [`gtk::Label`] descendant of `widget` (inclusive).
+fn collect_labels(widget: &gtk::Widget, out: &mut Vec<gtk::Label>) {
+    if let Some(label) = widget.downcast_ref::<gtk::Label>() {
+        out.push(label.clone());
+    }
+    let mut child = widget.first_child();
+    while let Some(c) = child {
+        collect_labels(&c, out);
+        child = c.next_sibling();
+    }
 }
 
 /// Rebuild the container from a flat node list (rooted at id "root").
@@ -217,14 +280,17 @@ fn build(node: &UiNode, by_id: &HashMap<&str, &UiNode>, inner: &Rc<RefCell<Inner
             label.set_selectable(true);
             label.add_css_class("plugin-markdown");
             // Right-click copies the whole message — reliable in a layer-shell
-            // surface where drag-select can be flaky.
+            // surface where drag-select can be flaky. Capture phase + claim so
+            // the label's built-in selection context menu doesn't swallow it.
             let gesture = gtk::GestureClick::new();
             gesture.set_button(gtk::gdk::BUTTON_SECONDARY);
+            gesture.set_propagation_phase(gtk::PropagationPhase::Capture);
             let lbl = label.clone();
-            gesture.connect_pressed(move |_, _, _, _| {
+            gesture.connect_pressed(move |g, _, _, _| {
                 if let Some(display) = gtk::gdk::Display::default() {
                     display.clipboard().set_text(&lbl.text());
                 }
+                g.set_state(gtk::EventSequenceState::Claimed);
             });
             label.add_controller(gesture);
             label.upcast()
