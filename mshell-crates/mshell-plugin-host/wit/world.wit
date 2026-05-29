@@ -45,6 +45,12 @@ interface types {
         /// A `gtk::Stack` switching between named children.
         /// `properties["visible-child"]` is one of the children's ids.
         stack,
+        /// Future-proof escape hatch. Any new node kind we add *after* this
+        /// one rides on top of `extended` rather than growing the enum, so
+        /// pre-compiled plugins keep instantiating against new hosts. The
+        /// renderer dispatches on `properties["kind"]` (e.g. `"calendar"`,
+        /// `"tree-view"`, …); unknown kinds render as an empty box.
+        extended,
     }
 
     record node {
@@ -139,6 +145,42 @@ interface host {
     /// not the guest — performs the network I/O; this is the only egress the
     /// guest gets. For token streams use `http-start` instead.
     http: func(req: http-request) -> result<http-response, string>;
+
+    /// Currently-playing media (MPRIS), the way the shell's media widget sees
+    /// it. Empty strings everywhere when no player is active.
+    media-now-playing: func() -> media-info;
+
+    record media-info {
+        /// MPRIS player identifier, e.g. `"spotify"`. `""` when none.
+        player: string,
+        title: string,
+        artist: string,
+        album: string,
+        /// Cover art URL (`file://…` or `https://…`). `""` when none.
+        art-url: string,
+        /// `"playing"` | `"paused"` | `"stopped"` | `""`.
+        status: string,
+        position-ms: u64,
+        length-ms: u64,
+    }
+
+    /// System-level live state — battery, network, idle. Same trust level as
+    /// the rest of the host caps (read-only snapshot of values the shell
+    /// already exposes through wayle).
+    system-state: func() -> system-info;
+
+    record system-info {
+        /// Battery percentage 0–100, or 255 if no battery.
+        battery-pct: u8,
+        /// `"charging"` | `"discharging"` | `"full"` | `"unknown"`.
+        battery-status: string,
+        /// `"wifi"` | `"ethernet"` | `"none"`.
+        network-kind: string,
+        /// Wi-Fi SSID when `network-kind == "wifi"`; `""` otherwise.
+        network-ssid: string,
+        /// Milliseconds since the last user input. 0 if unavailable.
+        idle-ms: u64,
+    }
 
     /// Begin a subprocess asynchronously and return immediately with a request
     /// id. The child's stdout is read off the UI thread and delivered as

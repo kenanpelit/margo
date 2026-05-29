@@ -983,8 +983,11 @@ impl Component for Frame {
                 .position()
                 .get_untracked(),
             #[cfg(feature = "wasm-plugins")]
-            plugin_panel_runtime: mshell_plugin_ui::PluginRuntime::new()
-                .expect("plugin panel wasm runtime"),
+            plugin_panel_runtime: mshell_plugin_host::PluginRuntime::with_providers(
+                std::sync::Arc::new(crate::plugin_providers::WayleMediaProvider),
+                std::sync::Arc::new(crate::plugin_providers::WayleSystemProvider),
+            )
+            .expect("plugin panel wasm runtime"),
             #[cfg(feature = "wasm-plugins")]
             plugin_panels: std::collections::HashMap::new(),
             ip_menu,

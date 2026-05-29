@@ -6,6 +6,8 @@ pub mod frame;
 mod frame_draw_widget;
 mod frame_spacer;
 mod menus;
+#[cfg(feature = "wasm-plugins")]
+mod plugin_providers;
 pub mod screen_corners;
 mod ssh;
 mod stopwatch;

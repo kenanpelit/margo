@@ -51,8 +51,9 @@ pub use crate::margo::plugin::types::{Event, EventKind, Node, NodeKind};
 /// outside its own memory goes through one of these.
 pub mod host {
     pub use crate::margo::plugin::host::{
-        clipboard_read, copy, get_setting, http, http_start, log, notify, process_start, read_file,
-        run, write_file, HttpRequest, HttpResponse, ProcessOutput,
+        clipboard_read, copy, get_setting, http, http_start, log, media_now_playing, notify,
+        process_start, read_file, run, system_state, write_file, HttpRequest, HttpResponse,
+        MediaInfo, ProcessOutput, SystemInfo,
     };
 }
 
@@ -181,6 +182,14 @@ impl El {
     /// whichever child should be on top (see [`El::with_id`]).
     pub fn stack(visible_id: impl Into<String>, children: Vec<El>) -> El {
         Self::container(NodeKind::Stack, children).prop("visible-child", visible_id)
+    }
+
+    /// An extension node — the renderer dispatches on `properties["kind"]`.
+    /// Future node kinds ride on top of this instead of growing the WIT
+    /// enum, so a host that gains a new extension keeps loading older
+    /// pre-compiled plugins without a protocol break.
+    pub fn extended(kind: impl Into<String>, children: Vec<El>) -> El {
+        Self::container(NodeKind::Extended, children).prop("kind", kind)
     }
 
     /// A button. `id` is echoed back on the click [`Event`].

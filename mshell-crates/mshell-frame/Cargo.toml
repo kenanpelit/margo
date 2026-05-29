@@ -52,11 +52,17 @@ wayle-weather.workspace = true
 # WASM plugin panels (mplugins WASM tier). Heavy (wasmtime) — off by default;
 # enabled via the `wasm-plugins` feature so the standard shell stays lean.
 mshell-plugin-ui = { workspace = true, optional = true }
+mshell-plugin-host = { workspace = true, optional = true }
 
 [features]
 default = []
 # Render in-shell sandboxed WASM plugin panels from a bar pill.
-wasm-plugins = ["dep:mshell-plugin-ui", "mshell-plugin-ui/wasm"]
+wasm-plugins = [
+    "dep:mshell-plugin-ui",
+    "mshell-plugin-ui/wasm",
+    "dep:mshell-plugin-host",
+    "mshell-plugin-host/wasm",
+]
 
 [lints]
 workspace = true

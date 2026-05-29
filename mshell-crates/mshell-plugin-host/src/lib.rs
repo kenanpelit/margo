@@ -13,4 +13,7 @@
 mod runtime;
 
 #[cfg(feature = "wasm")]
-pub use runtime::{PluginInstance, PluginRuntime, UiEvent, UiEventKind, UiKind, UiNode};
+pub use runtime::{
+    MediaInfo, MediaInfoSource, PluginInstance, PluginRuntime, SystemInfo, SystemInfoSource,
+    UiEvent, UiEventKind, UiKind, UiNode,
+};

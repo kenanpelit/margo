@@ -26,7 +26,10 @@ wasmtime::component::bindgen!({
 
 // The protocol types live in the `types` interface; the host capability trait
 // + its records in `host`.
-use margo::plugin::host::{Host, HttpRequest, HttpResponse, ProcessOutput};
+use margo::plugin::host::{
+    Host, HttpRequest, HttpResponse, MediaInfo as WitMediaInfo, ProcessOutput,
+    SystemInfo as WitSystemInfo,
+};
 use margo::plugin::types::{Event, EventKind, Node, NodeKind};
 
 // ── Public, GTK-free UI types ────────────────────────────────────────────────
@@ -58,6 +61,11 @@ pub enum UiKind {
     Revealer,
     /// `gtk::Stack`; `properties["visible-child"]` is the active child id.
     Stack,
+    /// Generic escape hatch: `properties["kind"]` carries the actual
+    /// extension name. The renderer dispatches on that, so adding a new
+    /// extension never grows the enum (no more component-model type
+    /// mismatches against pre-compiled plugins).
+    Extended,
 }
 
 /// One node of a guest-rendered UI. Children are referenced by id; the tree is
@@ -93,6 +101,65 @@ pub struct UiEvent {
     pub value: String,
 }
 
+/// Snapshot of the currently-playing media (MPRIS), the way the shell sees it.
+/// Identical shape to the WIT record — kept GTK-free so the shell can swap in
+/// its own `MediaInfoSource` impl backed by `wayle-media`.
+#[derive(Debug, Clone, Default)]
+pub struct MediaInfo {
+    pub player: String,
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+    pub art_url: String,
+    pub status: String,
+    pub position_ms: u64,
+    pub length_ms: u64,
+}
+
+/// System-level live state — battery / network / idle.
+#[derive(Debug, Clone, Default)]
+pub struct SystemInfo {
+    pub battery_pct: u8,
+    pub battery_status: String,
+    pub network_kind: String,
+    pub network_ssid: String,
+    pub idle_ms: u64,
+}
+
+/// Pluggable source for `media-now-playing`. The shell implements this against
+/// the wayle media service; the default returns an empty snapshot so a guest
+/// running in isolation (e.g. host tests) doesn't have to mock anything.
+pub trait MediaInfoSource: Send + Sync {
+    fn snapshot(&self) -> MediaInfo;
+}
+
+/// Pluggable source for `system-state`. Same shape as [`MediaInfoSource`].
+pub trait SystemInfoSource: Send + Sync {
+    fn snapshot(&self) -> SystemInfo;
+}
+
+#[derive(Default)]
+struct EmptyMediaSource;
+impl MediaInfoSource for EmptyMediaSource {
+    fn snapshot(&self) -> MediaInfo {
+        MediaInfo::default()
+    }
+}
+
+#[derive(Default)]
+struct EmptySystemSource;
+impl SystemInfoSource for EmptySystemSource {
+    fn snapshot(&self) -> SystemInfo {
+        SystemInfo {
+            battery_pct: 255,
+            battery_status: "unknown".to_string(),
+            network_kind: "none".to_string(),
+            network_ssid: String::new(),
+            idle_ms: 0,
+        }
+    }
+}
+
 // ── Host ─────────────────────────────────────────────────────────────────────
 
 /// A piece of an in-flight `http-start` response, sent from the worker thread
@@ -122,6 +189,10 @@ struct HostState {
     inflight: Arc<AtomicUsize>,
     /// Monotonic source of `http-start` request ids.
     next_req: AtomicU64,
+    /// Live MPRIS state, fed by the shell's media service.
+    media: Arc<dyn MediaInfoSource>,
+    /// Live battery/network/idle state, fed by the shell.
+    system: Arc<dyn SystemInfoSource>,
     wasi: WasiCtx,
     table: ResourceTable,
 }
@@ -230,6 +301,31 @@ impl Host for HostState {
         std::fs::write(&tmp, &bytes).map_err(|e| e.to_string())?;
         std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
         Ok(())
+    }
+
+    fn media_now_playing(&mut self) -> WitMediaInfo {
+        let m = self.media.snapshot();
+        WitMediaInfo {
+            player: m.player,
+            title: m.title,
+            artist: m.artist,
+            album: m.album,
+            art_url: m.art_url,
+            status: m.status,
+            position_ms: m.position_ms,
+            length_ms: m.length_ms,
+        }
+    }
+
+    fn system_state(&mut self) -> WitSystemInfo {
+        let s = self.system.snapshot();
+        WitSystemInfo {
+            battery_pct: s.battery_pct,
+            battery_status: s.battery_status,
+            network_kind: s.network_kind,
+            network_ssid: s.network_ssid,
+            idle_ms: s.idle_ms,
+        }
     }
 
     fn process_start(&mut self, program: String, args: Vec<String>) -> String {
@@ -447,14 +543,30 @@ fn resolve_scoped(root: &Path, rel_path: &str) -> Result<PathBuf, String> {
 /// A wasmtime engine, reused across plugin instantiations.
 pub struct PluginRuntime {
     engine: Engine,
+    media: Arc<dyn MediaInfoSource>,
+    system: Arc<dyn SystemInfoSource>,
 }
 
 impl PluginRuntime {
+    /// New runtime with stub providers — `media-now-playing` / `system-state`
+    /// return empty snapshots. Useful in tests and isolated tooling.
     pub fn new() -> Result<Self> {
+        Self::with_providers(Arc::new(EmptyMediaSource), Arc::new(EmptySystemSource))
+    }
+
+    /// New runtime with caller-supplied live providers. The shell wires real
+    /// wayle-backed implementations; everyone else can pass the stubs from
+    /// [`Self::new`].
+    pub fn with_providers(
+        media: Arc<dyn MediaInfoSource>,
+        system: Arc<dyn SystemInfoSource>,
+    ) -> Result<Self> {
         let mut config = Config::new();
         config.wasm_component_model(true);
         Ok(Self {
             engine: Engine::new(&config)?,
+            media,
+            system,
         })
     }
 
@@ -488,6 +600,8 @@ impl PluginRuntime {
                 stream_tx,
                 inflight: inflight.clone(),
                 next_req: AtomicU64::new(0),
+                media: self.media.clone(),
+                system: self.system.clone(),
                 wasi: WasiCtxBuilder::new().build(),
                 table: ResourceTable::new(),
             },
@@ -586,6 +700,7 @@ fn to_ui_node(n: Node) -> UiNode {
             NodeKind::Grid => UiKind::Grid,
             NodeKind::Revealer => UiKind::Revealer,
             NodeKind::Stack => UiKind::Stack,
+            NodeKind::Extended => UiKind::Extended,
         },
         text: n.text,
         children: n.children,

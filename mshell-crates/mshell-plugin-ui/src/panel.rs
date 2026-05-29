@@ -376,6 +376,16 @@ fn build(node: &UiNode, by_id: &HashMap<&str, &UiNode>, inner: &Rc<RefCell<Inner
             if src.starts_with('/') || src.starts_with("./") || src.starts_with("../") {
                 let pic = gtk::Picture::for_filename(src);
                 pic.set_can_shrink(true);
+                // `properties["fit"]` chooses how the image fills its area —
+                // mirrors `gtk::ContentFit`. Defaults to `contain` (aspect-fit).
+                pic.set_content_fit(
+                    match node.properties.get("fit").map(String::as_str).unwrap_or("contain") {
+                        "fill" => gtk::ContentFit::Fill,
+                        "cover" => gtk::ContentFit::Cover,
+                        "scale-down" => gtk::ContentFit::ScaleDown,
+                        _ => gtk::ContentFit::Contain,
+                    },
+                );
                 pic.upcast()
             } else {
                 let img = gtk::Image::from_icon_name(src);
@@ -518,6 +528,26 @@ fn build(node: &UiNode, by_id: &HashMap<&str, &UiNode>, inner: &Rc<RefCell<Inner
                 stack.set_visible_child_name(visible);
             }
             stack.upcast()
+        }
+        UiKind::Extended => {
+            // The extension's actual identity lives in `properties["kind"]` —
+            // dispatch on that. Unknown extensions render as an empty vbox so
+            // a future host with new kinds doesn't crash older renderers; the
+            // pre-compiled plugin just sees a transparent placeholder.
+            let kind = node.properties.get("kind").map(String::as_str).unwrap_or("");
+            let inner_widget: gtk::Widget = match kind {
+                // Future extension kinds slot in here without ever growing the WIT enum.
+                _ => {
+                    let b = gtk::Box::new(gtk::Orientation::Vertical, 6);
+                    for child_id in &node.children {
+                        if let Some(child) = by_id.get(child_id.as_str()) {
+                            b.append(&build(child, by_id, inner));
+                        }
+                    }
+                    b.upcast()
+                }
+            };
+            inner_widget
         }
     };
     apply_node_properties(&widget, &node.properties);
