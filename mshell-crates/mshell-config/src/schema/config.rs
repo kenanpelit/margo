@@ -583,8 +583,24 @@ pub struct Menus {
     /// content is a single `MargoLayout` widget rendering a
     /// vertical list of compositor layouts.
     pub margo_layout_menu: Menu,
+    /// First-class surface for plugin-provided WASM panels (mplugins WASM
+    /// tier). One menu hosts whichever plugin panel is opened (by key), so an
+    /// installed plugin's panel is as position/size-configurable as any
+    /// built-in menu. Default-on-missing so older YAML parses.
+    #[serde(default = "default_plugin_panel_menu")]
+    pub plugin_panel_menu: Menu,
     pub left_menu_expansion_type: VerticalMenuExpansion,
     pub right_menu_expansion_type: VerticalMenuExpansion,
+}
+
+fn default_plugin_panel_menu() -> Menu {
+    Menu {
+        position: Position::TopRight,
+        // Content is the injected WASM panel, not config widgets.
+        widgets: vec![],
+        minimum_width: 420,
+        maximum_height: 560,
+    }
 }
 
 fn default_bluetooth_menu() -> Menu {
@@ -812,6 +828,7 @@ impl Default for Menus {
             alarmclock_menu: default_alarmclock_menu(),
             control_center_menu: default_control_center_menu(),
             ssh_menu: default_ssh_menu(),
+            plugin_panel_menu: default_plugin_panel_menu(),
             media_player_menu: Menu {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::MediaPlayer],

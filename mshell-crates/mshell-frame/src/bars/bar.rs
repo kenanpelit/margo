@@ -46,7 +46,7 @@ use crate::bars::bar_widgets::screenshot::{ScreenshotInit, ScreenshotModel, Scre
 use crate::bars::bar_widgets::shutdown::{ShutdownInit, ShutdownModel};
 use crate::bars::bar_widgets::system_tray::{SystemTrayInit, SystemTrayModel};
 use crate::bars::bar_widgets::system_update::{SystemUpdateInit, SystemUpdateModel};
-use crate::bars::bar_widgets::custom::{CustomWidgetInit, CustomWidgetModel};
+use crate::bars::bar_widgets::custom::{CustomWidgetInit, CustomWidgetModel, CustomWidgetOutput};
 use crate::bars::bar_widgets::vpn_indicator::{VpnIndicatorInit, VpnIndicatorModel};
 use crate::bars::bar_widgets::wallpaper::{WallpaperInit, WallpaperModel, WallpaperOutput};
 use mshell_common::dynamic_box::generic_widget_controller::GenericWidgetController;
@@ -149,6 +149,14 @@ pub(crate) enum BarOutput {
     /// toggles the in-stack MargoLayout menu (replaces the
     /// legacy in-popover layout chooser).
     MargoLayoutClicked,
+    /// A plugin's panel pill was clicked (mplugins WASM tier). Carries the
+    /// compiled panel path + resolved settings so the frame can host it in the
+    /// first-class plugin-panel menu.
+    PluginPanelClicked {
+        name: String,
+        entry: String,
+        settings: String,
+    },
     CloseMenu,
 }
 
@@ -769,7 +777,17 @@ impl BarModel {
                 Box::new(
                     CustomWidgetModel::builder()
                         .launch(CustomWidgetInit { config })
-                        .detach(),
+                        .forward(sender.output_sender(), |msg| match msg {
+                            CustomWidgetOutput::OpenPanel {
+                                name,
+                                entry,
+                                settings,
+                            } => BarOutput::PluginPanelClicked {
+                                name,
+                                entry,
+                                settings,
+                            },
+                        }),
                 )
             }
             BarWidget::Wallpaper => Box::new(

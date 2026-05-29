@@ -122,6 +122,11 @@ pub(crate) enum MenuType {
     /// with a regular menu surface that slides out from the
     /// bar like every other menu.
     MargoLayout,
+    /// First-class surface for a plugin-provided WASM panel (mplugins WASM
+    /// tier). Content is injected from the frame via
+    /// [`MenuInput::SetExternalContent`] (this crate stays GTK-only — the
+    /// wasm runtime lives in the frame behind `wasm-plugins`).
+    PluginPanel,
 }
 
 pub(crate) struct MenuModel {
@@ -170,6 +175,12 @@ pub(crate) enum MenuInput {
     SetWidget(Vec<MenuWidget>),
     SetMinimumWidth(i32),
     SetMaximumHeight(i32),
+    /// Replace the menu's content with a single externally-built widget — used
+    /// by the `PluginPanel` menu, whose content is a WASM plugin panel the
+    /// frame builds and hands over (keeping its own reference alive). Only the
+    /// frame's `wasm-plugins` path constructs this.
+    #[cfg_attr(not(feature = "wasm-plugins"), allow(dead_code))]
+    SetExternalContent(gtk::Widget),
     AddHyprlandScreenshareWidget,
     ForwardHyprlandScreenshareReply(tokio::sync::oneshot::Sender<String>, String),
     AddWizardWidget,
@@ -993,6 +1004,24 @@ impl Component for MenuModel {
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
                 });
             }
+            MenuType::PluginPanel => {
+                css_class = "plugin-panel-menu".to_string();
+                // No SetWidget — content is injected via SetExternalContent.
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let minimum_width = config.menus().plugin_panel_menu().minimum_width().get();
+                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
+                });
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let maximum_height = config.menus().plugin_panel_menu().maximum_height().get();
+                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
+                });
+            }
         }
 
         let model = MenuModel {
@@ -1257,6 +1286,13 @@ impl Component for MenuModel {
             }
             MenuInput::SetMaximumHeight(height) => {
                 self.maximum_height = height;
+            }
+            MenuInput::SetExternalContent(content) => {
+                clear_box(&widgets.widget_container);
+                widgets.widget_container.append(&content);
+                // Content is externally owned and now live — skip the
+                // config-driven lazy build on reveal.
+                self.built = true;
             }
             MenuInput::AddHyprlandScreenshareWidget => {
                 let controller = Box::new(

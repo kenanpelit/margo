@@ -24,7 +24,18 @@ pub(crate) struct CustomWidgetModel {
 pub(crate) enum CustomWidgetInput {}
 
 #[derive(Debug)]
-pub(crate) enum CustomWidgetOutput {}
+pub(crate) enum CustomWidgetOutput {
+    /// A panel pill (plugin with a WASM panel) was clicked — ask the frame to
+    /// open the first-class plugin-panel menu hosting it. Carries the compiled
+    /// component path + resolved settings (JSON). Only emitted on a
+    /// `wasm-plugins` build.
+    #[cfg_attr(not(feature = "wasm-plugins"), allow(dead_code))]
+    OpenPanel {
+        name: String,
+        entry: String,
+        settings: String,
+    },
+}
 
 pub(crate) struct CustomWidgetInit {
     pub config: CustomWidgetConfig,
@@ -109,7 +120,7 @@ impl Component for CustomWidgetModel {
         // Left click priority: a WASM panel (in-shell sandboxed UI) > a
         // declarative dropdown menu > the `on_click` command.
         if !config.panel_entry.trim().is_empty() {
-            wire_panel(&widgets.root, &config);
+            wire_panel(&widgets.root, &config, &sender);
         } else if !config.menu.is_empty() {
             let popover = build_menu_popover(&config.menu);
             popover.set_parent(&widgets.root);
@@ -187,50 +198,25 @@ impl Component for CustomWidgetModel {
     }
 }
 
-/// Wire a left-click on this pill to open the plugin's sandboxed WASM panel in
-/// a popover anchored to the pill. The panel is instantiated once and kept
-/// alive by the click closure; its own internal event loop drives streaming.
+/// On click, ask the frame to open the first-class plugin-panel menu hosting
+/// this plugin's WASM panel. The frame owns the wasm runtime + the panel, so
+/// the panel gets the same position/size config as any built-in menu.
 #[cfg(feature = "wasm-plugins")]
-fn wire_panel(button: &gtk::Button, config: &CustomWidgetConfig) {
-    use mshell_plugin_ui::{PluginPanel, PluginRuntime};
-    use std::collections::HashMap;
-    use std::path::Path;
-
-    let settings: HashMap<String, String> =
-        serde_json::from_str(config.panel_settings.trim()).unwrap_or_default();
-
-    let runtime = match PluginRuntime::new() {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::warn!("plugin panel: runtime init failed: {e}");
-            return;
-        }
-    };
-    let panel = match PluginPanel::new(
-        &runtime,
-        &config.name,
-        Path::new(config.panel_entry.trim()),
-        settings,
-    ) {
-        Ok(p) => p,
-        Err(e) => {
-            tracing::warn!("plugin panel `{}`: load failed: {e}", config.name);
-            return;
-        }
-    };
-
-    let popover = gtk::Popover::new();
-    popover.add_css_class("plugin-panel-popover");
-    let content = panel.widget().clone();
-    content.set_size_request(360, 480);
-    popover.set_child(Some(&content));
-    popover.set_parent(button);
-
-    // Move `panel` into the closure so the instance (and its event loop) lives
-    // as long as the pill does.
+fn wire_panel(
+    button: &gtk::Button,
+    config: &CustomWidgetConfig,
+    sender: &ComponentSender<CustomWidgetModel>,
+) {
+    let name = config.name.clone();
+    let entry = config.panel_entry.clone();
+    let settings = config.panel_settings.clone();
+    let sender = sender.clone();
     button.connect_clicked(move |_| {
-        let _keep = &panel;
-        popover.popup();
+        let _ = sender.output(CustomWidgetOutput::OpenPanel {
+            name: name.clone(),
+            entry: entry.clone(),
+            settings: settings.clone(),
+        });
     });
 }
 
@@ -238,7 +224,11 @@ fn wire_panel(button: &gtk::Button, config: &CustomWidgetConfig) {
 /// falls back to its `on_click` (e.g. a terminal chat) — or hints at the
 /// rebuild if the plugin offers no fallback command.
 #[cfg(not(feature = "wasm-plugins"))]
-fn wire_panel(button: &gtk::Button, config: &CustomWidgetConfig) {
+fn wire_panel(
+    button: &gtk::Button,
+    config: &CustomWidgetConfig,
+    _sender: &ComponentSender<CustomWidgetModel>,
+) {
     let cmd = config.on_click.clone();
     if cmd.trim().is_empty() {
         button.set_tooltip_text(Some(

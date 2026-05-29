@@ -44,6 +44,7 @@ const SSH_MENU: &str = "ssh_sessions";
 const NDNS_MENU: &str = "dns";
 const NPODMAN_MENU: &str = "podman";
 const NNOTES_MENU: &str = "notes";
+const NPLUGIN_PANEL_MENU: &str = "plugin-panel";
 const NIP_MENU: &str = "ip";
 const NNETWORK_MENU: &str = "network";
 const NPOWER_MENU: &str = "power";
@@ -108,6 +109,15 @@ pub struct Frame {
     dns_menu: Controller<MenuModel>,
     podman_menu: Controller<MenuModel>,
     notes_menu: Controller<MenuModel>,
+    /// First-class menu hosting whichever plugin WASM panel is opened.
+    plugin_panel_menu: Controller<MenuModel>,
+    /// WASM runtime + the live panel per plugin key, kept alive here so a
+    /// panel's event loop (and chat state) persists across opens. Only built
+    /// with the `wasm-plugins` feature.
+    #[cfg(feature = "wasm-plugins")]
+    plugin_panel_runtime: mshell_plugin_ui::PluginRuntime,
+    #[cfg(feature = "wasm-plugins")]
+    plugin_panels: std::collections::HashMap<String, mshell_plugin_ui::PluginPanel>,
     ip_menu: Controller<MenuModel>,
     network_menu: Controller<MenuModel>,
     power_menu: Controller<MenuModel>,
@@ -170,6 +180,13 @@ pub enum FrameInput {
     ToggleDnsMenu,
     TogglePodmanMenu,
     ToggleNotesMenu,
+    /// Open the first-class plugin-panel menu hosting a plugin's WASM panel,
+    /// carrying its compiled component path + resolved settings (JSON).
+    ToggleWasmPluginPanel {
+        name: String,
+        entry: String,
+        settings: String,
+    },
     ToggleIpMenu,
     ToggleNetworkMenu,
     TogglePowerMenu,
@@ -721,6 +738,7 @@ impl Component for Frame {
         let dns_menu = Self::build_menu(&sender, MenuType::Dns);
         let podman_menu = Self::build_menu(&sender, MenuType::Podman);
         let notes_menu = Self::build_menu(&sender, MenuType::Notes);
+        let plugin_panel_menu = Self::build_menu(&sender, MenuType::PluginPanel);
         let ip_menu = Self::build_menu(&sender, MenuType::Ip);
         let network_menu = Self::build_menu(&sender, MenuType::Network);
         let power_menu = Self::build_menu(&sender, MenuType::Power);
@@ -934,6 +952,12 @@ impl Component for Frame {
             dns_menu,
             podman_menu,
             notes_menu,
+            plugin_panel_menu,
+            #[cfg(feature = "wasm-plugins")]
+            plugin_panel_runtime: mshell_plugin_ui::PluginRuntime::new()
+                .expect("plugin panel wasm runtime"),
+            #[cfg(feature = "wasm-plugins")]
+            plugin_panels: std::collections::HashMap::new(),
             ip_menu,
             network_menu,
             power_menu,
@@ -1125,6 +1149,46 @@ impl Component for Frame {
             FrameInput::ToggleNotesMenu => {
                 self.toggle_menu(NNOTES_MENU, widgets);
                 self.sync_keyboard_mode(root);
+            }
+            FrameInput::ToggleWasmPluginPanel {
+                name,
+                entry,
+                settings,
+            } => {
+                #[cfg(feature = "wasm-plugins")]
+                {
+                    use std::collections::hash_map::Entry;
+                    // Build the panel once per plugin key; reuse it (and its
+                    // chat state) on later opens.
+                    if let Entry::Vacant(slot) = self.plugin_panels.entry(name.clone()) {
+                        let parsed: std::collections::HashMap<String, String> =
+                            serde_json::from_str(settings.trim()).unwrap_or_default();
+                        match mshell_plugin_ui::PluginPanel::new(
+                            &self.plugin_panel_runtime,
+                            &name,
+                            std::path::Path::new(entry.trim()),
+                            parsed,
+                        ) {
+                            Ok(panel) => {
+                                slot.insert(panel);
+                            }
+                            Err(e) => tracing::warn!("plugin panel `{name}`: load failed: {e}"),
+                        }
+                    }
+                    if let Some(panel) = self.plugin_panels.get(&name) {
+                        let content: Widget = panel.widget().clone().upcast();
+                        self.plugin_panel_menu
+                            .sender()
+                            .send(MenuInput::SetExternalContent(content))
+                            .ok();
+                    }
+                    self.toggle_menu(NPLUGIN_PANEL_MENU, widgets);
+                    self.sync_keyboard_mode(root);
+                }
+                #[cfg(not(feature = "wasm-plugins"))]
+                {
+                    let _ = (name, entry, settings);
+                }
             }
             FrameInput::ToggleIpMenu => {
                 self.toggle_menu(NIP_MENU, widgets);
@@ -1973,6 +2037,14 @@ impl Frame {
         let dns_menu_widget: Widget = self.dns_menu.widget().clone().upcast();
         let podman_menu_widget: Widget = self.podman_menu.widget().clone().upcast();
         let notes_menu_widget: Widget = self.notes_menu.widget().clone().upcast();
+        let plugin_panel_menu_widget: Widget =
+            self.plugin_panel_menu.widget().clone().upcast();
+        let plugin_panel_menu_position = mshell_config::config_manager::config_manager()
+            .config()
+            .menus()
+            .plugin_panel_menu()
+            .position()
+            .get();
         let ip_menu_widget: Widget = self.ip_menu.widget().clone().upcast();
         let network_menu_widget: Widget = self.network_menu.widget().clone().upcast();
         let power_menu_widget: Widget = self.power_menu.widget().clone().upcast();
@@ -2126,6 +2198,12 @@ impl Frame {
             NNOTES_MENU,
             &notes_menu_position,
         );
+        Self::add_to_stack(
+            widgets,
+            &plugin_panel_menu_widget,
+            NPLUGIN_PANEL_MENU,
+            &plugin_panel_menu_position,
+        );
         Self::add_to_stack(widgets, &ip_menu_widget, NIP_MENU, &ip_menu_position);
         Self::add_to_stack(
             widgets,
@@ -2258,6 +2336,15 @@ impl Frame {
                 BarOutput::DnsClicked => FrameInput::ToggleDnsMenu,
                 BarOutput::PodmanClicked => FrameInput::TogglePodmanMenu,
                 BarOutput::NotesClicked => FrameInput::ToggleNotesMenu,
+                BarOutput::PluginPanelClicked {
+                    name,
+                    entry,
+                    settings,
+                } => FrameInput::ToggleWasmPluginPanel {
+                    name,
+                    entry,
+                    settings,
+                },
                 BarOutput::IpClicked => FrameInput::ToggleIpMenu,
                 BarOutput::NetworkClicked => FrameInput::ToggleNetworkMenu,
                 BarOutput::PowerClicked => FrameInput::TogglePowerMenu,
