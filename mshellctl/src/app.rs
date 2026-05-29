@@ -7,6 +7,7 @@ use crate::subcommands::brightness::BrightnessCommands;
 use crate::subcommands::lock::LockCommands;
 use crate::subcommands::media::MediaCommands;
 use crate::subcommands::menu::MenuCommands;
+use crate::subcommands::plugin::PluginCommands;
 use crate::subcommands::screenshot::ScreenshotCommands;
 use crate::subcommands::settings::SettingsCommands;
 use crate::subcommands::wallpaper::WallpaperCommands;
@@ -72,6 +73,11 @@ pub enum Commands {
     Wallpaper {
         #[command(subcommand)]
         command: WallpaperCommands,
+    },
+    /// Commands for installed WASM plugins (reload from disk, …)
+    Plugin {
+        #[command(subcommand)]
+        command: PluginCommands,
     },
     /// Bridge commands for the mscreenshot CLI — currently the
     /// `select-region` helper that lets external tools reuse the

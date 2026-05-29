@@ -16,6 +16,7 @@ wasm = ["dep:wasmtime", "dep:wasmtime-wasi", "dep:ureq"]
 
 [dependencies]
 anyhow.workspace = true
+dirs.workspace = true
 tracing.workspace = true
 wasmtime = { workspace = true, optional = true }
 wasmtime-wasi = { workspace = true, optional = true }

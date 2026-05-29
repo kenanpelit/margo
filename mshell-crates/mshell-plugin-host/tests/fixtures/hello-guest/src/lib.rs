@@ -30,6 +30,7 @@ fn node(id: &str, kind: NodeKind, text: impl Into<String>, children: &[&str]) ->
         text: text.into(),
         children: children.iter().map(|s| (*s).into()).collect(),
         class: String::new(),
+        properties: Vec::new(),
     }
 }
 

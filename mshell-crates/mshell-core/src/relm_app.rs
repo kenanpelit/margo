@@ -107,6 +107,9 @@ pub(crate) enum ShellInput {
     /// Toggle an installed plugin's panel/menu by key (monitor, key). Generic
     /// — the frame resolves the key to the plugin's derived widget.
     TogglePluginMenu(Option<String>, String),
+    /// Force-reload an installed plugin's WASM panel — evict the cached
+    /// instance everywhere so the next open re-instantiates from disk.
+    ReloadPlugin(String),
     ToggleIpMenu(Option<String>),
     ToggleNetworkMenu(Option<String>),
     TogglePowerMenu(Option<String>),
@@ -605,6 +608,15 @@ impl Component for Shell {
             ShellInput::TogglePluginMenu(monitor_name, key) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
                     frame.emit(FrameInput::TogglePluginByKey(key));
+                }
+            }
+            ShellInput::ReloadPlugin(key) => {
+                // Each frame caches its own PluginPanel — broadcast so every
+                // monitor's panel drops the stale instance.
+                for group in self.window_groups.values() {
+                    if let Some(frame) = &group.frame {
+                        frame.emit(FrameInput::ReloadPlugin(key.clone()));
+                    }
                 }
             }
             ShellInput::ToggleIpMenu(monitor_name) => {

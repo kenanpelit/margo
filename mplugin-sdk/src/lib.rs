@@ -51,8 +51,8 @@ pub use crate::margo::plugin::types::{Event, EventKind, Node, NodeKind};
 /// outside its own memory goes through one of these.
 pub mod host {
     pub use crate::margo::plugin::host::{
-        copy, get_setting, http, http_start, log, notify, run, HttpRequest, HttpResponse,
-        ProcessOutput,
+        clipboard_read, copy, get_setting, http, http_start, log, notify, read_file, run,
+        write_file, HttpRequest, HttpResponse, ProcessOutput,
     };
 }
 
@@ -69,6 +69,7 @@ pub struct El {
     text: String,
     children: Vec<El>,
     class: String,
+    properties: Vec<(String, String)>,
 }
 
 impl El {
@@ -79,6 +80,7 @@ impl El {
             text: text.into(),
             children: Vec::new(),
             class: String::new(),
+            properties: Vec::new(),
         }
     }
 
@@ -89,6 +91,7 @@ impl El {
             text: String::new(),
             children,
             class: String::new(),
+            properties: Vec::new(),
         }
     }
 
@@ -117,6 +120,51 @@ impl El {
         Self::leaf(NodeKind::Markdown, text)
     }
 
+    /// An image — either a freedesktop icon name (e.g. `audio-volume-high-symbolic`)
+    /// or an absolute file path. The renderer picks the right widget.
+    pub fn image(src: impl Into<String>) -> El {
+        Self::leaf(NodeKind::Image, src)
+    }
+
+    /// A bool switch. `id` is echoed on toggle; `on` sets the initial state.
+    pub fn switch(id: impl Into<String>, on: bool) -> El {
+        El {
+            id: Some(id.into()),
+            kind: NodeKind::Switch,
+            text: String::new(),
+            children: Vec::new(),
+            class: String::new(),
+            properties: Vec::new(),
+        }
+        .prop("on", if on { "true" } else { "false" })
+    }
+
+    /// A numeric slider. `id` is echoed as `input` events whose `value` is the
+    /// new number; `min`/`max`/`value`/`step` configure the range.
+    pub fn slider(id: impl Into<String>, min: f64, max: f64, value: f64) -> El {
+        El {
+            id: Some(id.into()),
+            kind: NodeKind::Slider,
+            text: String::new(),
+            children: Vec::new(),
+            class: String::new(),
+            properties: Vec::new(),
+        }
+        .prop("min", min.to_string())
+        .prop("max", max.to_string())
+        .prop("value", value.to_string())
+    }
+
+    /// A determinate progress bar (`0.0` … `1.0`).
+    pub fn progress(fraction: f64) -> El {
+        Self::leaf(NodeKind::Progress, "").prop("fraction", fraction.to_string())
+    }
+
+    /// A visual divider that respects the design language's spacing.
+    pub fn separator() -> El {
+        Self::leaf(NodeKind::Separator, "")
+    }
+
     /// A button. `id` is echoed back on the click [`Event`].
     pub fn button(id: impl Into<String>, text: impl Into<String>) -> El {
         El {
@@ -125,6 +173,7 @@ impl El {
             text: text.into(),
             children: Vec::new(),
             class: String::new(),
+            properties: Vec::new(),
         }
     }
 
@@ -137,6 +186,7 @@ impl El {
             text: text.into(),
             children: Vec::new(),
             class: String::new(),
+            properties: Vec::new(),
         }
     }
 
@@ -151,6 +201,51 @@ impl El {
     pub fn class(mut self, class: impl Into<String>) -> El {
         self.class = class.into();
         self
+    }
+
+    /// Set one entry in the node's property bag. Layout (`padding`/`margin`/…),
+    /// per-kind state (`on`/`fraction`/`value`), and any future extension goes
+    /// through here — so adding a property never breaks pre-compiled plugins.
+    pub fn prop(mut self, key: impl Into<String>, value: impl Into<String>) -> El {
+        self.properties.push((key.into(), value.into()));
+        self
+    }
+
+    // ── Layout shortcuts (set typed values via `prop`) ──────────────────────
+
+    /// Padding around the node's content, in px.
+    pub fn padding(self, px: i32) -> El {
+        self.prop("padding", px.to_string())
+    }
+
+    /// Margin outside the node, in px.
+    pub fn margin(self, px: i32) -> El {
+        self.prop("margin", px.to_string())
+    }
+
+    /// Spacing between children (`vbox`/`hbox`/`scroll`), in px.
+    pub fn spacing(self, px: i32) -> El {
+        self.prop("spacing", px.to_string())
+    }
+
+    /// Horizontal alignment: `start | center | end | fill`.
+    pub fn halign(self, align: impl Into<String>) -> El {
+        self.prop("halign", align)
+    }
+
+    /// Vertical alignment: `start | center | end | fill`.
+    pub fn valign(self, align: impl Into<String>) -> El {
+        self.prop("valign", align)
+    }
+
+    /// Whether the node should expand horizontally to fill its parent.
+    pub fn hexpand(self, expand: bool) -> El {
+        self.prop("hexpand", if expand { "true" } else { "false" })
+    }
+
+    /// Whether the node should expand vertically to fill its parent.
+    pub fn vexpand(self, expand: bool) -> El {
+        self.prop("vexpand", if expand { "true" } else { "false" })
     }
 }
 
@@ -179,6 +274,7 @@ fn flatten(el: El, forced_id: Option<String>, counter: &mut usize, out: &mut Vec
         text: el.text,
         children,
         class: el.class,
+        properties: el.properties,
     });
     id
 }

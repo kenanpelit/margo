@@ -4111,6 +4111,7 @@ dependencies = [
  "mshell-lockscreen",
  "mshell-notification-popups",
  "mshell-osd",
+ "mshell-plugins",
  "mshell-polkit",
  "mshell-screenshot",
  "mshell-services",
@@ -4335,6 +4336,7 @@ name = "mshell-plugin-host"
 version = "0.8.8"
 dependencies = [
  "anyhow",
+ "dirs 6.0.0",
  "tracing",
  "ureq",
  "wasmtime",

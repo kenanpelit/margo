@@ -4,6 +4,7 @@ pub mod brightness;
 pub mod lock;
 pub mod media;
 pub mod menu;
+pub mod plugin;
 pub mod screenshot;
 pub mod settings;
 pub mod wallpaper;

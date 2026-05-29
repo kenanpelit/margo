@@ -21,6 +21,20 @@ interface types {
         /// A label whose text is lightweight markdown (bold/italic/`code`),
         /// styled as a message bubble. `text` carries the markdown source.
         markdown,
+        /// An image, loaded from a file path or a freedesktop icon name. The
+        /// source goes in `text`; symbolic icon names get matugen-tinted.
+        image,
+        /// A bool switch (`gtk::Switch`). Initial state via `properties["on"]`;
+        /// toggling echoes a `click` event whose `value` is "true" / "false".
+        switch,
+        /// A numeric slider (`gtk::Scale`). `properties` carries
+        /// `min`/`max`/`value`/`step`; dragging echoes an `input` event whose
+        /// `value` is the new number formatted as a string.
+        slider,
+        /// A determinate progress bar. `properties["fraction"]` is 0.0–1.0.
+        progress,
+        /// A visual divider that respects the design language's spacing.
+        separator,
     }
 
     record node {
@@ -28,7 +42,7 @@ interface types {
         /// use it to tag the events they emit.
         id: string,
         kind: node-kind,
-        /// Label/button caption, or an entry's current text.
+        /// Label/button caption, an entry's current text, an image's source, …
         text: string,
         /// Child node ids, in order (ignored for leaf kinds).
         children: list<string>,
@@ -36,6 +50,12 @@ interface types {
         /// widget, so a plugin can opt into the design language's styling
         /// (e.g. `plugin-hero`, `plugin-action`, `plugin-toggle`). Empty = none.
         class: string,
+        /// Extensible property bag — every per-node knob the renderer reads
+        /// (layout: `padding`/`margin`/`spacing`/`halign`/`valign`/`hexpand`/
+        /// `vexpand`/`width`/`height`; per-kind: `on`, `fraction`, `min`/
+        /// `max`/`value`/`step`, …) goes through this map so future
+        /// extensions don't break pre-compiled plugins.
+        properties: list<tuple<string, string>>,
     }
 
     enum event-kind {
@@ -75,6 +95,22 @@ interface host {
 
     /// Copy text to the system clipboard (Wayland `wl-copy`). Best-effort.
     copy: func(text: string);
+
+    /// Read the current Wayland clipboard text. Empty on any failure (no
+    /// clipboard, binary data, …). Pair with `copy` to round-trip.
+    clipboard-read: func() -> string;
+
+    /// Read a file from the plugin's own storage. `rel-path` is interpreted
+    /// against the plugin's data dir (`$XDG_DATA_HOME/mshell/plugins/<key>`)
+    /// — escaping it via `..` is rejected. Returns the file bytes or an
+    /// error message.
+    read-file: func(rel-path: string) -> result<list<u8>, string>;
+
+    /// Write a file to the plugin's data dir, creating it if necessary.
+    /// Same scoping rules as `read-file`. Atomic-ish: writes to a tmp file
+    /// and renames into place so a crash mid-write doesn't corrupt the
+    /// existing file.
+    write-file: func(rel-path: string, bytes: list<u8>) -> result<_, string>;
 
     /// Run a program with args (no shell) and return its output. Blocking, so
     /// only for fast commands (status / toggles / control CLIs). This is the

@@ -205,6 +205,11 @@ pub enum FrameInput {
     /// plugin <key>`). Generic — resolves the key to the plugin's derived
     /// widget, then dispatches to the panel or menu path. No per-plugin code.
     TogglePluginByKey(String),
+    /// Force-reload an installed plugin's WASM panel — evict the cached
+    /// instance so the next open re-instantiates from disk. Lets a plugin
+    /// author wire `cargo watch` to `mshellctl plugin reload <key>` for a
+    /// fast iteration loop without restarting mshell.
+    ReloadPlugin(String),
     ToggleIpMenu,
     ToggleNetworkMenu,
     TogglePowerMenu,
@@ -1276,6 +1281,30 @@ impl Component for Frame {
                         "menu plugin: no enabled plugin panel/menu for key `{key}`"
                     ),
                 }
+            }
+            FrameInput::ReloadPlugin(key) => {
+                #[cfg(feature = "wasm-plugins")]
+                {
+                    // Match any cached panel whose name encodes this key —
+                    // composite key, widget key, or the full `plugin:<comp>:<w>`.
+                    let names: Vec<String> = self
+                        .plugin_panels
+                        .keys()
+                        .filter(|name| {
+                            let Some(rest) = name.strip_prefix("plugin:") else {
+                                return false;
+                            };
+                            let (comp, w) = rest.rsplit_once(':').unwrap_or((rest, ""));
+                            rest == key || comp == key || w == key
+                        })
+                        .cloned()
+                        .collect();
+                    for name in names {
+                        self.plugin_panels.remove(&name);
+                    }
+                }
+                #[cfg(not(feature = "wasm-plugins"))]
+                let _ = key;
             }
             FrameInput::ToggleIpMenu => {
                 self.toggle_menu(NIP_MENU, widgets);

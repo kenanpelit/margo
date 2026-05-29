@@ -149,6 +149,58 @@ fn copy_to_clipboard(text: &str) {
     }
 }
 
+/// Apply the node's property bag (layout knobs the renderer reads — see
+/// `world.wit`) to a built widget. Unknown keys are ignored; per-kind keys
+/// like `on`/`fraction` are consumed by their own arms above and harmless
+/// here.
+fn apply_node_properties(widget: &gtk::Widget, props: &HashMap<String, String>) {
+    if let Some(px) = props.get("padding").and_then(|s| s.parse::<i32>().ok()) {
+        widget.set_margin_start(px);
+        widget.set_margin_end(px);
+        widget.set_margin_top(px);
+        widget.set_margin_bottom(px);
+    }
+    if let Some(px) = props.get("margin").and_then(|s| s.parse::<i32>().ok()) {
+        widget.set_margin_start(px);
+        widget.set_margin_end(px);
+        widget.set_margin_top(px);
+        widget.set_margin_bottom(px);
+    }
+    if let Some(align) = props.get("halign").and_then(|s| parse_align(s)) {
+        widget.set_halign(align);
+    }
+    if let Some(align) = props.get("valign").and_then(|s| parse_align(s)) {
+        widget.set_valign(align);
+    }
+    if let Some(on) = props.get("hexpand").map(|s| s == "true") {
+        widget.set_hexpand(on);
+    }
+    if let Some(on) = props.get("vexpand").map(|s| s == "true") {
+        widget.set_vexpand(on);
+    }
+    if let Some(px) = props.get("width").and_then(|s| s.parse::<i32>().ok()) {
+        widget.set_size_request(px, widget.height_request());
+    }
+    if let Some(px) = props.get("height").and_then(|s| s.parse::<i32>().ok()) {
+        widget.set_size_request(widget.width_request(), px);
+    }
+    if let Some(px) = props.get("spacing").and_then(|s| s.parse::<i32>().ok()) {
+        if let Some(b) = widget.downcast_ref::<gtk::Box>() {
+            b.set_spacing(px);
+        }
+    }
+}
+
+fn parse_align(s: &str) -> Option<gtk::Align> {
+    match s {
+        "start" => Some(gtk::Align::Start),
+        "center" => Some(gtk::Align::Center),
+        "end" => Some(gtk::Align::End),
+        "fill" => Some(gtk::Align::Fill),
+        _ => None,
+    }
+}
+
 /// Text to copy when Ctrl+C is pressed in a panel: the active selection in
 /// any label if there is one, otherwise the whole conversation (every label's
 /// text, joined by blank lines). Walks the widget tree under `root`.
@@ -317,7 +369,97 @@ fn build(node: &UiNode, by_id: &HashMap<&str, &UiNode>, inner: &Rc<RefCell<Inner
                 overlay.upcast()
             }
         }
+        UiKind::Image => {
+            let src = node.text.as_str();
+            // Filesystem paths render as a Picture; everything else (icon names
+            // like `audio-volume-high-symbolic`) goes through the icon theme.
+            if src.starts_with('/') || src.starts_with("./") || src.starts_with("../") {
+                let pic = gtk::Picture::for_filename(src);
+                pic.set_can_shrink(true);
+                pic.upcast()
+            } else {
+                let img = gtk::Image::from_icon_name(src);
+                img.add_css_class("plugin-image");
+                img.upcast()
+            }
+        }
+        UiKind::Switch => {
+            let sw = gtk::Switch::new();
+            let on = node
+                .properties
+                .get("on")
+                .map(|s| s == "true")
+                .unwrap_or(false);
+            sw.set_active(on);
+            sw.set_valign(gtk::Align::Center);
+            let inner = inner.clone();
+            let id = node.id.clone();
+            sw.connect_state_set(move |_, new_state| {
+                dispatch(
+                    &inner,
+                    UiEvent {
+                        id: id.clone(),
+                        kind: UiEventKind::Click,
+                        value: new_state.to_string(),
+                    },
+                );
+                gtk::glib::Propagation::Proceed
+            });
+            sw.upcast()
+        }
+        UiKind::Slider => {
+            let min: f64 = node
+                .properties
+                .get("min")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0.0);
+            let max: f64 = node
+                .properties
+                .get("max")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(100.0);
+            let step: f64 = node
+                .properties
+                .get("step")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(1.0);
+            let value: f64 = node
+                .properties
+                .get("value")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(min);
+            let scale = gtk::Scale::with_range(gtk::Orientation::Horizontal, min, max, step);
+            scale.set_value(value);
+            scale.set_hexpand(true);
+            scale.set_draw_value(false);
+            let inner = inner.clone();
+            let id = node.id.clone();
+            scale.connect_value_changed(move |s| {
+                dispatch(
+                    &inner,
+                    UiEvent {
+                        id: id.clone(),
+                        kind: UiEventKind::Input,
+                        value: format!("{:.4}", s.value()),
+                    },
+                );
+            });
+            scale.upcast()
+        }
+        UiKind::Progress => {
+            let bar = gtk::ProgressBar::new();
+            let f: f64 = node
+                .properties
+                .get("fraction")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0.0);
+            bar.set_fraction(f.clamp(0.0, 1.0));
+            bar.set_hexpand(true);
+            bar.upcast()
+        }
+        UiKind::Separator => gtk::Separator::new(gtk::Orientation::Horizontal).upcast(),
     };
+    apply_node_properties(&widget, &node.properties);
     // Apply the plugin's design-language classes (plugin-hero, plugin-action,
     // plugin-toggle, …) so the panel can match the native widgets. The special
     // `plugin-expand` class also sets `hexpand` (CSS can't), so siblings in a

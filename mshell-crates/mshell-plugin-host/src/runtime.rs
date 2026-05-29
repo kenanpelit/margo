@@ -11,7 +11,7 @@
 use anyhow::Result;
 use std::collections::HashMap;
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{mpsc, Arc};
@@ -42,6 +42,16 @@ pub enum UiKind {
     Scroll,
     /// Markdown-rendered label, styled as a message bubble.
     Markdown,
+    /// File path or freedesktop icon name → `gtk::Image` / `gtk::Picture`.
+    Image,
+    /// `gtk::Switch`. State in `properties["on"]`; toggle echoes a click.
+    Switch,
+    /// `gtk::Scale`. `min`/`max`/`value`/`step` in `properties`.
+    Slider,
+    /// `gtk::ProgressBar`. `properties["fraction"]` is 0.0–1.0.
+    Progress,
+    /// `gtk::Separator`.
+    Separator,
 }
 
 /// One node of a guest-rendered UI. Children are referenced by id; the tree is
@@ -54,6 +64,8 @@ pub struct UiNode {
     pub children: Vec<String>,
     /// Space-separated CSS classes to add to the rendered widget.
     pub class: String,
+    /// Extensible property bag (layout + per-kind knobs). See `world.wit`.
+    pub properties: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -93,6 +105,9 @@ struct HostState {
     /// Values the user set for this plugin (declarative `[[setting]]` tier),
     /// exposed to the guest via `get-setting`.
     settings: HashMap<String, String>,
+    /// Per-plugin data dir for `read-file`/`write-file`. Scoped so the guest
+    /// can't escape it via `..`. Created lazily on first write.
+    data_dir: PathBuf,
     /// Worker threads send response chunks here; `PluginInstance::pump` drains
     /// the matching receiver on the UI thread.
     stream_tx: Sender<StreamMsg>,
@@ -178,6 +193,37 @@ impl Host for HostState {
 
     fn http(&mut self, req: HttpRequest) -> Result<HttpResponse, String> {
         host_http(req)
+    }
+
+    fn clipboard_read(&mut self) -> String {
+        match std::process::Command::new("wl-paste").arg("-n").output() {
+            Ok(out) if out.status.success() => {
+                String::from_utf8_lossy(&out.stdout).into_owned()
+            }
+            Ok(_) => String::new(),
+            Err(e) => {
+                tracing::warn!(plugin = self.plugin_id, "clipboard-read failed: {e}");
+                String::new()
+            }
+        }
+    }
+
+    fn read_file(&mut self, rel_path: String) -> Result<Vec<u8>, String> {
+        let path = resolve_scoped(&self.data_dir, &rel_path)?;
+        std::fs::read(&path).map_err(|e| e.to_string())
+    }
+
+    fn write_file(&mut self, rel_path: String, bytes: Vec<u8>) -> Result<(), String> {
+        let path = resolve_scoped(&self.data_dir, &rel_path)?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        // Atomic-ish: write tmp + rename, so a crash mid-write doesn't corrupt
+        // the existing file.
+        let tmp = path.with_extension("mplugin-tmp");
+        std::fs::write(&tmp, &bytes).map_err(|e| e.to_string())?;
+        std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     fn http_start(&mut self, req: HttpRequest) -> String {
@@ -293,6 +339,25 @@ fn host_http(req: HttpRequest) -> Result<HttpResponse, String> {
 // requires its (empty) host trait.
 impl margo::plugin::types::Host for HostState {}
 
+/// Resolve `rel_path` against `root` and reject any traversal: rejects empty,
+/// absolute, or `..`-bearing paths. The returned path is always inside `root`.
+fn resolve_scoped(root: &Path, rel_path: &str) -> Result<PathBuf, String> {
+    if rel_path.is_empty() {
+        return Err("path is empty".to_string());
+    }
+    let candidate = Path::new(rel_path);
+    if candidate.is_absolute() {
+        return Err("absolute paths are not allowed".to_string());
+    }
+    for component in candidate.components() {
+        match component {
+            std::path::Component::Normal(_) => {}
+            _ => return Err(format!("disallowed path component in `{rel_path}`")),
+        }
+    }
+    Ok(root.join(candidate))
+}
+
 /// A wasmtime engine, reused across plugin instantiations.
 pub struct PluginRuntime {
     engine: Engine,
@@ -323,11 +388,17 @@ impl PluginRuntime {
         Plugin::add_to_linker(&mut linker, |s: &mut HostState| s)?;
         let (stream_tx, stream_rx) = mpsc::channel::<StreamMsg>();
         let inflight = Arc::new(AtomicUsize::new(0));
+        let data_dir = dirs::data_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("mshell")
+            .join("plugins")
+            .join(plugin_id);
         let mut store = Store::new(
             &self.engine,
             HostState {
                 plugin_id: plugin_id.to_string(),
                 settings,
+                data_dir,
                 stream_tx,
                 inflight: inflight.clone(),
                 next_req: AtomicU64::new(0),
@@ -421,10 +492,16 @@ fn to_ui_node(n: Node) -> UiNode {
             NodeKind::Entry => UiKind::Entry,
             NodeKind::Scroll => UiKind::Scroll,
             NodeKind::Markdown => UiKind::Markdown,
+            NodeKind::Image => UiKind::Image,
+            NodeKind::Switch => UiKind::Switch,
+            NodeKind::Slider => UiKind::Slider,
+            NodeKind::Progress => UiKind::Progress,
+            NodeKind::Separator => UiKind::Separator,
         },
         text: n.text,
         children: n.children,
         class: n.class,
+        properties: n.properties.into_iter().collect(),
     }
 }
 
