@@ -26,7 +26,7 @@ wasmtime::component::bindgen!({
 
 // The protocol types live in the `types` interface; the host capability trait
 // + its records in `host`.
-use margo::plugin::host::{Host, HttpRequest, HttpResponse};
+use margo::plugin::host::{Host, HttpRequest, HttpResponse, ProcessOutput};
 use margo::plugin::types::{Event, EventKind, Node, NodeKind};
 
 // ── Public, GTK-free UI types ────────────────────────────────────────────────
@@ -153,6 +153,24 @@ impl Host for HostState {
                 let _ = child.wait();
             }
             Err(e) => tracing::warn!(plugin = self.plugin_id, "copy failed: {e}"),
+        }
+    }
+
+    fn run(&mut self, program: String, args: Vec<String>) -> ProcessOutput {
+        match std::process::Command::new(&program).args(&args).output() {
+            Ok(out) => ProcessOutput {
+                stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
+                stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+                code: out.status.code().unwrap_or(-1),
+            },
+            Err(e) => {
+                tracing::warn!(plugin = self.plugin_id, "run `{program}` failed: {e}");
+                ProcessOutput {
+                    stdout: String::new(),
+                    stderr: e.to_string(),
+                    code: -1,
+                }
+            }
         }
     }
 

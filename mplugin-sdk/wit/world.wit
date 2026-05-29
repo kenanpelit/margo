@@ -74,6 +74,19 @@ interface host {
     /// Copy text to the system clipboard (Wayland `wl-copy`). Best-effort.
     copy: func(text: string);
 
+    /// Run a program with args (no shell) and return its output. Blocking, so
+    /// only for fast commands (status / toggles / control CLIs). This is the
+    /// same trust level as the declarative tier's shell commands — it lets a
+    /// WASM panel drive a system tool (e.g. `mullvad`).
+    run: func(program: string, args: list<string>) -> process-output;
+
+    record process-output {
+        stdout: string,
+        stderr: string,
+        /// Exit code, or -1 if the process couldn't be spawned/waited.
+        code: s32,
+    }
+
     /// One outbound HTTP request → full response (non-streaming). The host —
     /// not the guest — performs the network I/O; this is the only egress the
     /// guest gets. For token streams use `http-start` instead.
