@@ -112,6 +112,9 @@ pub struct Frame {
     notes_menu: Controller<MenuModel>,
     /// First-class menu hosting whichever plugin WASM panel is opened.
     plugin_panel_menu: Controller<MenuModel>,
+    /// Which screen edge the plugin-panel menu is currently anchored to, so a
+    /// per-plugin position change can re-anchor it (move it between stacks).
+    plugin_panel_position: Position,
     /// WASM runtime + the live panel per plugin key, kept alive here so a
     /// panel's event loop (and chat state) persists across opens. Only built
     /// with the `wasm-plugins` feature.
@@ -964,6 +967,12 @@ impl Component for Frame {
             podman_menu,
             notes_menu,
             plugin_panel_menu,
+            plugin_panel_position: mshell_config::config_manager::config_manager()
+                .config()
+                .menus()
+                .plugin_panel_menu()
+                .position()
+                .get_untracked(),
             #[cfg(feature = "wasm-plugins")]
             plugin_panel_runtime: mshell_plugin_ui::PluginRuntime::new()
                 .expect("plugin panel wasm runtime"),
@@ -1168,7 +1177,7 @@ impl Component for Frame {
                 min_width: _,
                 max_height: _,
             } => {
-                self.apply_plugin_panel_size(&name);
+                self.apply_plugin_layout(&name, widgets);
                 #[cfg(feature = "wasm-plugins")]
                 {
                     use std::collections::hash_map::Entry;
@@ -1210,7 +1219,7 @@ impl Component for Frame {
                 min_width: _,
                 max_height: _,
             } => {
-                self.apply_plugin_panel_size(&name);
+                self.apply_plugin_layout(&name, widgets);
                 let content = Self::build_plugin_menu_content(&rows, &sender);
                 self.plugin_panel_menu
                     .sender()
@@ -2407,11 +2416,12 @@ impl Frame {
             })
     }
 
-    /// Apply a plugin's per-plugin panel size to the shared plugin-menu surface
-    /// before showing it. Read **fresh** from the plugin store (keyed off the
-    /// widget name) so a size just changed in the gear takes effect — the bar
-    /// pill may still hold the value it was built with. 0 = leave as-is.
-    fn apply_plugin_panel_size(&self, widget_name: &str) {
+    /// Apply a plugin's per-plugin panel layout (size + position) to the shared
+    /// plugin-menu surface before showing it. Read **fresh** from the plugin
+    /// store (keyed off the widget name) so a change just made in the gear takes
+    /// effect — the bar pill may still hold the value it was built with. Size
+    /// 0 = leave as-is; position re-anchors the menu between stacks.
+    fn apply_plugin_layout(&mut self, widget_name: &str, widgets: &FrameWidgets) {
         let Some(key) = plugin_key_from_widget(widget_name) else {
             return;
         };
@@ -2427,6 +2437,28 @@ impl Frame {
                 .sender()
                 .send(MenuInput::SetMaximumHeight(layout.max_height))
                 .ok();
+        }
+        let new_pos = position_from_kebab(&layout.position);
+        if new_pos != self.plugin_panel_position {
+            let widget: Widget = self.plugin_panel_menu.widget().clone().upcast();
+            Self::remove_from_stack(widgets, &widget, &self.plugin_panel_position);
+            Self::add_to_stack(widgets, &widget, NPLUGIN_PANEL_MENU, &new_pos);
+            self.plugin_panel_position = new_pos;
+        }
+    }
+
+    /// Inverse of [`add_to_stack`](Self::add_to_stack): detach the menu from the
+    /// stack for `position` so it can be re-anchored elsewhere.
+    fn remove_from_stack(widgets: &FrameWidgets, widget: &Widget, position: &Position) {
+        match position {
+            Position::Top => widgets.top_stack.remove(widget),
+            Position::Bottom => widgets.bottom_stack.remove(widget),
+            Position::Left => widgets.left_stack.remove(widget),
+            Position::Right => widgets.right_stack.remove(widget),
+            Position::TopLeft => widgets.top_left_stack.remove(widget),
+            Position::TopRight => widgets.top_right_stack.remove(widget),
+            Position::BottomLeft => widgets.bottom_left_stack.remove(widget),
+            Position::BottomRight => widgets.bottom_right_stack.remove(widget),
         }
     }
 
@@ -2476,6 +2508,20 @@ fn plugin_key_from_widget(name: &str) -> Option<String> {
     let rest = name.strip_prefix("plugin:")?;
     let (key, _widget) = rest.rsplit_once(':')?;
     Some(key.to_string())
+}
+
+/// Map a stored kebab position string to a menu anchor (default top-right).
+fn position_from_kebab(s: &str) -> Position {
+    match s.trim() {
+        "left" => Position::Left,
+        "right" => Position::Right,
+        "top" => Position::Top,
+        "top-left" => Position::TopLeft,
+        "bottom" => Position::Bottom,
+        "bottom-left" => Position::BottomLeft,
+        "bottom-right" => Position::BottomRight,
+        _ => Position::TopRight,
+    }
 }
 
 /// Fire-and-forget a plugin menu row's `sh -c` command (reaped to avoid

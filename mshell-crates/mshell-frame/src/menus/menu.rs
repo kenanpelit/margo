@@ -163,6 +163,11 @@ pub(crate) struct MenuModel {
     /// config-driven `widget_kinds`. Screenshare can't do this (it must
     /// exist before the portal reply lands), so it stays eager.
     lazy_wizard: bool,
+    /// `true` for the plugin-panel menu: `maximum_height` then SETS a fixed
+    /// content height (min == max), not just a cap — so the gear's height
+    /// control actually resizes the surface instead of only clamping a tall
+    /// one. Other menus keep grow-to-fit.
+    fixed_height: bool,
     _effects: EffectScope,
 }
 
@@ -254,6 +259,14 @@ impl Component for MenuModel {
             // policy, see gtkscrolledwindow.c:1896).
             #[watch]
             set_max_content_height: if model.maximum_height > 0 {
+                model.maximum_height
+            } else {
+                -1
+            },
+            // For the plugin-panel menu, pin the content height so the gear's
+            // height control sets the surface size (not just a scroll cap).
+            #[watch]
+            set_min_content_height: if model.fixed_height && model.maximum_height > 0 {
                 model.maximum_height
             } else {
                 -1
@@ -1033,6 +1046,7 @@ impl Component for MenuModel {
             weather_all_in_one: matches!(params.menu_type, MenuType::Weather),
             built: false,
             lazy_wizard: matches!(params.menu_type, MenuType::Wizard),
+            fixed_height: matches!(params.menu_type, MenuType::PluginPanel),
             _effects: effects,
         };
 

@@ -51,10 +51,11 @@ pub(crate) enum PluginsSettingsInput {
         key: String,
         value: String,
     },
-    /// Persist a plugin's panel size (its own preference, not the global Menus
-    /// page) and re-derive the live widget.
+    /// Persist a plugin's panel layout (size + position — its own preference,
+    /// not the global Menus page) and re-derive the live widget.
     SetPanelSize {
         plugin: String,
+        position: String,
         min_width: i32,
         max_height: i32,
     },
@@ -384,10 +385,12 @@ impl Component for PluginsSettingsModel {
             }
             PluginsSettingsInput::SetPanelSize {
                 plugin,
+                position,
                 min_width,
                 max_height,
             } => {
                 let mut layout = self.state.panel(&plugin);
+                layout.position = position;
                 layout.min_width = min_width;
                 layout.max_height = max_height;
                 self.state.set_panel(&plugin, layout);
@@ -666,8 +669,20 @@ fn plugin_has_panel(m: &mshell_plugins::Manifest) -> bool {
     m.has_wasm_entry() || m.widgets.iter().any(|w| w.opens_panel || !w.menu.is_empty())
 }
 
-/// The "Panel Size" controls (min width + max height) for a plugin's surface,
-/// pre-filled from its stored layout and emitting `SetPanelSize` on change.
+/// Anchor choices for a plugin panel: `(stored kebab, display name)`.
+const PANEL_POSITIONS: [(&str, &str); 8] = [
+    ("top", "Top"),
+    ("top-right", "Top Right"),
+    ("top-left", "Top Left"),
+    ("right", "Right"),
+    ("left", "Left"),
+    ("bottom", "Bottom"),
+    ("bottom-right", "Bottom Right"),
+    ("bottom-left", "Bottom Left"),
+];
+
+/// The "Panel Size & Position" controls for a plugin's surface, pre-filled from
+/// its stored layout and emitting `SetPanelSize` (the full layout) on change.
 fn panel_size_section(
     plugin: &str,
     layout: &PanelLayout,
@@ -675,58 +690,76 @@ fn panel_size_section(
 ) -> gtk::Box {
     let section = gtk::Box::new(gtk::Orientation::Vertical, 6);
     section.add_css_class("plugins-setting-row");
-    let title = gtk::Label::new(Some("Panel Size"));
+    let title = gtk::Label::new(Some("Panel Size & Position"));
     title.add_css_class("label-medium-bold");
     title.set_halign(gtk::Align::Start);
     section.append(&title);
-    section.append(&dim_line("Size of this plugin's in-shell surface."));
+    section.append(&dim_line("Where + how big this plugin's in-shell surface opens."));
 
-    let min_spin = gtk::SpinButton::with_range(200.0, 1200.0, 10.0);
-    min_spin.set_value(layout.min_width.max(200) as f64);
-    let max_spin = gtk::SpinButton::with_range(0.0, 1400.0, 10.0);
+    let displays: Vec<&str> = PANEL_POSITIONS.iter().map(|(_, d)| *d).collect();
+    let pos_dd = gtk::DropDown::from_strings(&displays);
+    pos_dd.set_valign(gtk::Align::Center);
+    let cur = PANEL_POSITIONS
+        .iter()
+        .position(|(k, _)| *k == layout.position)
+        .unwrap_or(0);
+    pos_dd.set_selected(cur as u32);
+
+    let min_spin = gtk::SpinButton::with_range(100.0, 6000.0, 10.0);
+    min_spin.set_value(layout.min_width.max(100) as f64);
+    let max_spin = gtk::SpinButton::with_range(0.0, 6000.0, 10.0);
     max_spin.set_value(layout.max_height.max(0) as f64);
 
-    // Wire AFTER set_value so the initial fill doesn't emit. Each control sends
-    // both current values (SetPanelSize carries the pair).
-    {
+    // One emitter reads all three controls; each change sends the full layout.
+    // Wired AFTER the initial fills so they don't fire on build.
+    let emit: std::rc::Rc<dyn Fn()> = {
         let sender = sender.clone();
         let plugin = plugin.to_string();
-        let max_w = max_spin.clone();
-        min_spin.connect_value_changed(move |w| {
+        let pos_dd = pos_dd.clone();
+        let min_spin = min_spin.clone();
+        let max_spin = max_spin.clone();
+        std::rc::Rc::new(move || {
+            let idx = pos_dd.selected() as usize;
+            let position = PANEL_POSITIONS
+                .get(idx)
+                .map(|(k, _)| (*k).to_string())
+                .unwrap_or_else(|| "top-right".into());
             sender.input(PluginsSettingsInput::SetPanelSize {
                 plugin: plugin.clone(),
-                min_width: w.value() as i32,
-                max_height: max_w.value() as i32,
+                position,
+                min_width: min_spin.value() as i32,
+                max_height: max_spin.value() as i32,
             });
-        });
+        })
+    };
+    {
+        let e = emit.clone();
+        pos_dd.connect_selected_notify(move |_| e());
     }
     {
-        let sender = sender.clone();
-        let plugin = plugin.to_string();
-        let min_w = min_spin.clone();
-        max_spin.connect_value_changed(move |w| {
-            sender.input(PluginsSettingsInput::SetPanelSize {
-                plugin: plugin.clone(),
-                min_width: min_w.value() as i32,
-                max_height: w.value() as i32,
-            });
-        });
+        let e = emit.clone();
+        min_spin.connect_value_changed(move |_| e());
+    }
+    {
+        let e = emit.clone();
+        max_spin.connect_value_changed(move |_| e());
     }
 
-    section.append(&spin_row("Min width", &min_spin));
-    section.append(&spin_row("Max height (0 = no cap)", &max_spin));
+    section.append(&labeled_row("Position", &pos_dd));
+    section.append(&labeled_row("Min width", &min_spin));
+    section.append(&labeled_row("Max height (0 = no cap)", &max_spin));
     section
 }
 
-/// A label + a trailing spin control, on one row.
-fn spin_row(label: &str, spin: &gtk::SpinButton) -> gtk::Box {
+/// A label + a trailing control, on one row.
+fn labeled_row(label: &str, control: &impl IsA<gtk::Widget>) -> gtk::Box {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     let lbl = gtk::Label::new(Some(label));
     lbl.set_halign(gtk::Align::Start);
     lbl.set_hexpand(true);
     row.append(&lbl);
-    spin.set_valign(gtk::Align::Center);
-    row.append(spin);
+    control.set_valign(gtk::Align::Center);
+    row.append(control);
     row
 }
 
