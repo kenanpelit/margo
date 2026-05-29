@@ -13,7 +13,7 @@ pub mod manifest;
 pub mod state;
 
 pub use manifest::{
-    Manifest, MenuRow, Registry, RegistryEntry, WidgetDef, meets_min_mshell, validate,
+    Manifest, MenuRow, Registry, RegistryEntry, WidgetDef, is_newer, meets_min_mshell, validate,
 };
 pub use state::{PluginsState, Source};
 

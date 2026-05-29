@@ -133,6 +133,11 @@ pub fn meets_min_mshell(min: &str, current: &str) -> bool {
     parse_version(current) >= parse_version(min)
 }
 
+/// `true` if `candidate` is a strictly newer `x.y.z` version than `current`.
+pub fn is_newer(candidate: &str, current: &str) -> bool {
+    parse_version(candidate) > parse_version(current)
+}
+
 fn parse_version(v: &str) -> (u64, u64, u64) {
     let mut it = v
         .trim()

@@ -1,0 +1,49 @@
+// Settings → Plugins page. Sources / Available / Installed render as calm
+// elevated cards (DESIGN.md surface ladder) with a leading icon, a title +
+// version badge, and trailing controls.
+
+.plugins-row {
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-container);
+  transition: background-color var(--motion-fast) var(--ease-standard);
+
+  &:hover {
+    background-color: var(--surface-container-high);
+  }
+
+  .plugins-row-icon {
+    -gtk-icon-size: var(--icon-md);
+    color: var(--on-surface-variant);
+  }
+}
+
+// Small version pill beside a plugin name.
+.plugins-version {
+  font-size: var(--font-xs);
+  font-weight: 600;
+  color: var(--on-surface-variant);
+  background-color: var(--surface-container-highest);
+  border-radius: var(--radius-pill);
+  padding: 1px 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+// Accent the Update action so it reads apart from Install / uninstall.
+button.plugins-update-btn {
+  background-color: var(--primary);
+  color: var(--on-primary);
+
+  label,
+  image {
+    color: var(--on-primary);
+  }
+
+  &:hover {
+    background-color: unquote("color-mix(in srgb, var(--on-primary) 10%, var(--primary))");
+  }
+}
+
+.plugins-empty {
+  padding: var(--space-2) var(--space-1);
+}

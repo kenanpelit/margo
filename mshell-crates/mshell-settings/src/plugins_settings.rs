@@ -316,8 +316,13 @@ impl Component for PluginsSettingsModel {
                 self.busy = false;
                 match res {
                     Ok(key) => {
-                        self.status = format!("Installed {key}. Enable it below.");
                         self.installed = self.store.installed();
+                        // On an update of an already-enabled plugin, re-derive
+                        // its widgets so the new version takes effect live.
+                        if self.state.is_enabled(&key) {
+                            config_manager().reload_config();
+                        }
+                        self.status = format!("{key} installed.");
                     }
                     Err(e) => self.status = format!("Install failed: {e}"),
                 }
@@ -358,28 +363,95 @@ fn clear(container: &gtk::Box) {
     }
 }
 
+const FALLBACK_ICON: &str = "application-x-addon-symbolic";
+
+/// A card row: leading icon + a hexpanding text column. Caller appends
+/// trailing controls and the row to the list.
+fn card_row(icon: &str) -> (gtk::Box, gtk::Box) {
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+    row.add_css_class("plugins-row");
+    let img = gtk::Image::from_icon_name(icon);
+    img.add_css_class("plugins-row-icon");
+    img.set_valign(gtk::Align::Center);
+    row.append(&img);
+    let col = gtk::Box::new(gtk::Orientation::Vertical, 2);
+    col.set_hexpand(true);
+    col.set_valign(gtk::Align::Center);
+    (row, col)
+}
+
+/// Title line: bold name + a small version badge.
+fn title_line(name: &str, version: &str) -> gtk::Box {
+    let head = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let label = gtk::Label::new(Some(name));
+    label.add_css_class("label-medium-bold");
+    label.set_halign(gtk::Align::Start);
+    head.append(&label);
+    if !version.trim().is_empty() {
+        let badge = gtk::Label::new(Some(&format!("v{version}")));
+        badge.add_css_class("plugins-version");
+        badge.set_valign(gtk::Align::Center);
+        head.append(&badge);
+    }
+    head
+}
+
+fn dim_line(text: &str) -> gtk::Label {
+    let l = gtk::Label::new(Some(text));
+    l.add_css_class("label-small");
+    l.add_css_class("dim-label");
+    l.set_halign(gtk::Align::Start);
+    l.set_xalign(0.0);
+    l.set_wrap(true);
+    l.set_natural_wrap_mode(gtk::NaturalWrapMode::None);
+    l
+}
+
+fn empty_hint(list: &gtk::Box, text: &str) {
+    let l = gtk::Label::new(Some(text));
+    l.add_css_class("label-small");
+    l.add_css_class("dim-label");
+    l.add_css_class("plugins-empty");
+    l.set_halign(gtk::Align::Start);
+    list.append(&l);
+}
+
+/// The newer registry entry for an installed plugin, if any source offers one.
+fn update_for<'a>(
+    model: &'a PluginsSettingsModel,
+    p: &InstalledPlugin,
+) -> Option<&'a AvailableRow> {
+    model.available.iter().find(|a| {
+        model.store.key_for(&a.entry.id, &a.source_url) == p.key
+            && mshell_plugins::is_newer(&a.entry.version, &p.manifest.version)
+    })
+}
+
+fn installed_icon(p: &InstalledPlugin) -> String {
+    p.manifest
+        .widgets
+        .iter()
+        .map(|w| w.icon.trim())
+        .find(|i| !i.is_empty())
+        .unwrap_or(FALLBACK_ICON)
+        .to_string()
+}
+
 fn rebuild_sources(list: &gtk::Box, sources: &[Source], sender: &ComponentSender<PluginsSettingsModel>) {
     clear(list);
     for s in sources {
-        let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        row.add_css_class("settings-row");
-        let col = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        col.set_hexpand(true);
+        let (row, col) = card_row("network-server-symbolic");
         let name = gtk::Label::new(Some(&s.name));
         name.add_css_class("label-medium-bold");
         name.set_halign(gtk::Align::Start);
-        let url = gtk::Label::new(Some(&s.url));
-        url.add_css_class("label-small");
-        url.add_css_class("dim-label");
-        url.set_halign(gtk::Align::Start);
-        url.set_xalign(0.0);
+        let url = dim_line(&s.url);
+        url.set_wrap(false);
         url.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
         col.append(&name);
         col.append(&url);
         row.append(&col);
 
-        let is_official = s.url == mshell_plugins::OFFICIAL_SOURCE;
-        if !is_official {
+        if s.url != mshell_plugins::OFFICIAL_SOURCE {
             let btn = gtk::Button::from_icon_name("user-trash-symbolic");
             btn.add_css_class("panel-action-btn");
             btn.set_valign(gtk::Align::Center);
@@ -400,58 +472,47 @@ fn rebuild_installed(
 ) {
     clear(list);
     if model.installed.is_empty() {
-        let empty = gtk::Label::new(Some("No plugins installed yet."));
-        empty.add_css_class("label-small");
-        empty.add_css_class("dim-label");
-        empty.set_halign(gtk::Align::Start);
-        list.append(&empty);
+        empty_hint(list, "No plugins installed yet.");
         return;
     }
     for p in &model.installed {
-        let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        row.add_css_class("settings-row");
+        let (row, col) = card_row(&installed_icon(p));
+        let name = if p.manifest.name.is_empty() { &p.manifest.id } else { &p.manifest.name };
+        col.append(&title_line(name, &p.manifest.version));
 
-        let col = gtk::Box::new(gtk::Orientation::Vertical, 2);
-        col.set_hexpand(true);
-        let title = gtk::Label::new(Some(&format!(
-            "{}  ·  v{}",
-            if p.manifest.name.is_empty() { &p.manifest.id } else { &p.manifest.name },
-            p.manifest.version
-        )));
-        title.add_css_class("label-medium-bold");
-        title.set_halign(gtk::Align::Start);
-        col.append(&title);
-
-        // What the plugin is — the manifest description, like the Available list.
         if !p.manifest.description.trim().is_empty() {
-            let desc = gtk::Label::new(Some(p.manifest.description.trim()));
-            desc.add_css_class("label-small");
-            desc.add_css_class("dim-label");
-            desc.set_halign(gtk::Align::Start);
-            desc.set_xalign(0.0);
-            desc.set_wrap(true);
-            desc.set_natural_wrap_mode(gtk::NaturalWrapMode::None);
-            col.append(&desc);
+            col.append(&dim_line(p.manifest.description.trim()));
         }
 
-        // Trust gate: keep the row clean — a quiet hint that it runs commands,
-        // with the full command(s) in the tooltip for review before enabling.
+        // Trust gate: a quiet hint that it runs commands, full text in tooltip.
         let cmds = command_summary(p);
         if !cmds.is_empty() {
-            let hint = gtk::Label::new(Some("runs shell commands — hover to review"));
-            hint.add_css_class("label-small");
-            hint.add_css_class("dim-label");
-            hint.set_halign(gtk::Align::Start);
-            hint.set_xalign(0.0);
+            let hint = dim_line("runs shell commands — hover to review");
             hint.set_tooltip_text(Some(&cmds));
             col.append(&hint);
         }
         row.append(&col);
 
-        let enabled = model.state.is_enabled(&p.key);
+        // Update (when a source offers a newer version).
+        if let Some(av) = update_for(model, p) {
+            let btn = gtk::Button::with_label("Update");
+            btn.add_css_class("ok-button-surface");
+            btn.add_css_class("plugins-update-btn");
+            btn.set_valign(gtk::Align::Center);
+            btn.set_sensitive(!model.busy);
+            btn.set_tooltip_text(Some(&format!("Update to v{}", av.entry.version)));
+            let s2 = sender.clone();
+            let url = av.source_url.clone();
+            let entry = av.entry.clone();
+            btn.connect_clicked(move |_| {
+                s2.input(PluginsSettingsInput::Install(url.clone(), entry.clone()))
+            });
+            row.append(&btn);
+        }
+
         let sw = gtk::Switch::new();
         sw.set_valign(gtk::Align::Center);
-        sw.set_active(enabled);
+        sw.set_active(model.state.is_enabled(&p.key));
         sw.set_tooltip_text(Some("Enable / disable"));
         {
             let s2 = sender.clone();
@@ -488,31 +549,15 @@ fn rebuild_available(
     for row_data in &model.available {
         let key = model.store.key_for(&row_data.entry.id, &row_data.source_url);
         if installed_keys.contains(&key.as_str()) {
-            continue; // already installed
+            continue; // already installed (updates live in the Installed list)
         }
         shown += 1;
-        let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        row.add_css_class("settings-row");
-
-        let col = gtk::Box::new(gtk::Orientation::Vertical, 2);
-        col.set_hexpand(true);
         let e = &row_data.entry;
-        let title = gtk::Label::new(Some(&format!(
-            "{}  ·  v{}",
-            if e.name.is_empty() { &e.id } else { &e.name },
-            e.version
-        )));
-        title.add_css_class("label-medium-bold");
-        title.set_halign(gtk::Align::Start);
-        col.append(&title);
+        let (row, col) = card_row(FALLBACK_ICON);
+        let name = if e.name.is_empty() { &e.id } else { &e.name };
+        col.append(&title_line(name, &e.version));
         if !e.description.is_empty() {
-            let desc = gtk::Label::new(Some(&e.description));
-            desc.add_css_class("label-small");
-            desc.add_css_class("dim-label");
-            desc.set_halign(gtk::Align::Start);
-            desc.set_xalign(0.0);
-            desc.set_wrap(true);
-            col.append(&desc);
+            col.append(&dim_line(&e.description));
         }
         row.append(&col);
 
@@ -529,15 +574,10 @@ fn rebuild_available(
             });
             row.append(&btn);
         } else {
-            // Too new for this shell — show why instead of an Install button.
-            let note = gtk::Label::new(Some(&format!("needs mshell ≥ {}", e.min_mshell)));
-            note.add_css_class("label-small");
-            note.add_css_class("dim-label");
+            let note = dim_line(&format!("needs mshell ≥ {}", e.min_mshell));
+            note.set_wrap(false);
             note.set_valign(gtk::Align::Center);
-            note.set_tooltip_text(Some(&format!(
-                "You have mshell {}",
-                mshell_plugins::MSHELL_VERSION
-            )));
+            note.set_tooltip_text(Some(&format!("You have mshell {}", mshell_plugins::MSHELL_VERSION)));
             row.append(&note);
         }
         list.append(&row);
@@ -548,11 +588,7 @@ fn rebuild_available(
         } else {
             "All available plugins are installed."
         };
-        let empty = gtk::Label::new(Some(msg));
-        empty.add_css_class("label-small");
-        empty.add_css_class("dim-label");
-        empty.set_halign(gtk::Align::Start);
-        list.append(&empty);
+        empty_hint(list, msg);
     }
 }
 
