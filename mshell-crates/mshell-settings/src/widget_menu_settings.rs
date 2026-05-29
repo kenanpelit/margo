@@ -34,7 +34,6 @@ pub(crate) enum MenuKind {
     CpuDashboard,
     Dashboard,
     MargoLayout,
-    PluginPanel,
     MediaPlayer,
     Dns,
     Ip,
@@ -68,7 +67,6 @@ impl MenuKind {
             Self::CpuDashboard => "CPU Dashboard",
             Self::Dashboard => "Dashboard",
             Self::MargoLayout => "Margo Layout",
-            Self::PluginPanel => "Plugin Panel",
             Self::MediaPlayer => "Media Player",
             Self::Dns => "DNS / VPN",
             Self::Ip => "Public IP",
@@ -125,7 +123,6 @@ impl MenuKind {
             MenuKind::Ip,
             MenuKind::Network,
             MenuKind::MargoLayout,
-            MenuKind::PluginPanel,
         ]
     }
 
@@ -163,7 +160,6 @@ impl MenuKind {
             Self::ControlCenter => m.control_center_menu().position().get_untracked(),
             Self::SshSessions => m.ssh_menu().position().get_untracked(),
             Self::MargoLayout => m.margo_layout_menu().position().get_untracked(),
-            Self::PluginPanel => m.plugin_panel_menu().position().get_untracked(),
         }
     }
 
@@ -198,7 +194,6 @@ impl MenuKind {
             Self::ControlCenter => m.control_center_menu().minimum_width().get_untracked(),
             Self::SshSessions => m.ssh_menu().minimum_width().get_untracked(),
             Self::MargoLayout => m.margo_layout_menu().minimum_width().get_untracked(),
-            Self::PluginPanel => m.plugin_panel_menu().minimum_width().get_untracked(),
         }
     }
 
@@ -233,7 +228,6 @@ impl MenuKind {
             Self::ControlCenter => m.control_center_menu().position().get(),
             Self::SshSessions => m.ssh_menu().position().get(),
             Self::MargoLayout => m.margo_layout_menu().position().get(),
-            Self::PluginPanel => m.plugin_panel_menu().position().get(),
         }
     }
 
@@ -268,7 +262,6 @@ impl MenuKind {
             Self::ControlCenter => m.control_center_menu().minimum_width().get(),
             Self::SshSessions => m.ssh_menu().minimum_width().get(),
             Self::MargoLayout => m.margo_layout_menu().minimum_width().get(),
-            Self::PluginPanel => m.plugin_panel_menu().minimum_width().get(),
         }
     }
 
@@ -302,7 +295,6 @@ impl MenuKind {
             Self::ControlCenter => c.menus.control_center_menu.position = p,
             Self::SshSessions => c.menus.ssh_menu.position = p,
             Self::MargoLayout => c.menus.margo_layout_menu.position = p,
-            Self::PluginPanel => c.menus.plugin_panel_menu.position = p,
         });
     }
 
@@ -336,7 +328,6 @@ impl MenuKind {
             Self::ControlCenter => c.menus.control_center_menu.minimum_width = w,
             Self::SshSessions => c.menus.ssh_menu.minimum_width = w,
             Self::MargoLayout => c.menus.margo_layout_menu.minimum_width = w,
-            Self::PluginPanel => c.menus.plugin_panel_menu.minimum_width = w,
         });
     }
 
@@ -371,7 +362,6 @@ impl MenuKind {
             Self::ControlCenter => m.control_center_menu().maximum_height().get_untracked(),
             Self::SshSessions => m.ssh_menu().maximum_height().get_untracked(),
             Self::MargoLayout => m.margo_layout_menu().maximum_height().get_untracked(),
-            Self::PluginPanel => m.plugin_panel_menu().maximum_height().get_untracked(),
         }
     }
 
@@ -406,7 +396,6 @@ impl MenuKind {
             Self::ControlCenter => m.control_center_menu().maximum_height().get(),
             Self::SshSessions => m.ssh_menu().maximum_height().get(),
             Self::MargoLayout => m.margo_layout_menu().maximum_height().get(),
-            Self::PluginPanel => m.plugin_panel_menu().maximum_height().get(),
         }
     }
 
@@ -440,7 +429,6 @@ impl MenuKind {
             Self::ControlCenter => c.menus.control_center_menu.maximum_height = h,
             Self::SshSessions => c.menus.ssh_menu.maximum_height = h,
             Self::MargoLayout => c.menus.margo_layout_menu.maximum_height = h,
-            Self::PluginPanel => c.menus.plugin_panel_menu.maximum_height = h,
         });
     }
 
@@ -477,7 +465,6 @@ impl MenuKind {
             Self::ControlCenter => m.control_center_menu().widgets().get_untracked(),
             Self::SshSessions => m.ssh_menu().widgets().get_untracked(),
             Self::MargoLayout => m.margo_layout_menu().widgets().get_untracked(),
-            Self::PluginPanel => m.plugin_panel_menu().widgets().get_untracked(),
         }
     }
 
@@ -515,7 +502,6 @@ impl MenuKind {
             Self::ControlCenter => m.control_center_menu().widgets().get(),
             Self::SshSessions => m.ssh_menu().widgets().get(),
             Self::MargoLayout => m.margo_layout_menu().widgets().get(),
-            Self::PluginPanel => m.plugin_panel_menu().widgets().get(),
         }
     }
 
@@ -554,7 +540,6 @@ impl MenuKind {
             Self::ControlCenter => c.menus.control_center_menu.widgets = widgets,
             Self::SshSessions => c.menus.ssh_menu.widgets = widgets,
             Self::MargoLayout => c.menus.margo_layout_menu.widgets = widgets,
-            Self::PluginPanel => c.menus.plugin_panel_menu.widgets = widgets,
         });
     }
 }
