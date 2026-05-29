@@ -27,6 +27,41 @@ pub struct Manifest {
     /// Declarative widgets this plugin contributes.
     #[serde(default, rename = "widget")]
     pub widgets: Vec<WidgetDef>,
+    /// User-configurable settings; values substitute into the widgets'
+    /// commands via `{{key}}` placeholders.
+    #[serde(default, rename = "setting")]
+    pub settings: Vec<Setting>,
+}
+
+/// One user-configurable plugin setting. The user's value (or `default`)
+/// replaces `{{key}}` in the plugin's command strings.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize)]
+pub struct Setting {
+    /// Placeholder name: `{{key}}` in commands.
+    pub key: String,
+    #[serde(default)]
+    pub label: String,
+    /// `string` (default), `secret`, `number`, `bool`, or `choice`.
+    #[serde(default, rename = "type")]
+    pub kind: String,
+    #[serde(default)]
+    pub default: String,
+    /// Options for `type = "choice"`.
+    #[serde(default)]
+    pub choices: Vec<String>,
+    #[serde(default)]
+    pub description: String,
+}
+
+/// Replace every `{{key}}` in `template` with its value from `values`.
+/// Unknown placeholders are left untouched.
+pub fn substitute(template: &str, values: &std::collections::BTreeMap<String, String>) -> String {
+    let mut out = template.to_string();
+    for (k, v) in values {
+        let placeholder = ["{{", k.as_str(), "}}"].concat();
+        out = out.replace(&placeholder, v);
+    }
+    out
 }
 
 /// One declarative widget. Mirrors the shell's custom-widget vocabulary:
@@ -233,6 +268,43 @@ min_mshell = "0.8.8"
             WidgetDef { key: "x".into(), ..Default::default() },
         ];
         assert!(validate(&m).is_err()); // duplicate keys
+    }
+
+    #[test]
+    fn parses_settings() {
+        let m: Manifest = toml::from_str(
+            r#"
+id = "x"
+version = "1.0.0"
+[[setting]]
+key = "api_key"
+type = "secret"
+label = "API Key"
+[[setting]]
+key = "provider"
+type = "choice"
+choices = ["a", "b"]
+default = "a"
+"#,
+        )
+        .unwrap();
+        assert_eq!(m.settings.len(), 2);
+        assert_eq!(m.settings[0].kind, "secret");
+        assert_eq!(m.settings[1].choices, vec!["a", "b"]);
+        assert_eq!(m.settings[1].default, "a");
+    }
+
+    #[test]
+    fn substitutes_placeholders() {
+        let mut v = std::collections::BTreeMap::new();
+        v.insert("city".to_string(), "Istanbul".to_string());
+        v.insert("key".to_string(), "abc".to_string());
+        assert_eq!(
+            substitute("wttr.in/{{city}}?k={{key}}", &v),
+            "wttr.in/Istanbul?k=abc"
+        );
+        // Unknown placeholders are left intact.
+        assert_eq!(substitute("x {{nope}} y", &v), "x {{nope}} y");
     }
 
     #[test]

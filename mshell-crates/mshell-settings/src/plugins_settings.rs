@@ -21,6 +21,8 @@ pub(crate) struct PluginsSettingsModel {
     available: Vec<AvailableRow>,
     busy: bool,
     status: String,
+    /// Composite key of the installed plugin whose settings form is open.
+    expanded_settings: Option<String>,
 }
 
 #[derive(Clone)]
@@ -39,6 +41,14 @@ pub(crate) enum PluginsSettingsInput {
     Uninstall(String),
     RegistriesFetched(Vec<(Source, Result<Registry, String>)>),
     Installed(Result<String, String>),
+    /// Open / close a plugin's inline settings form.
+    ToggleSettings(String),
+    /// Persist one setting value (and re-template the live widget).
+    SetSetting {
+        plugin: String,
+        key: String,
+        value: String,
+    },
     /// Re-read local state + installed list and repaint.
     ReloadLocal,
 }
@@ -192,6 +202,7 @@ impl Component for PluginsSettingsModel {
             available: Vec::new(),
             busy: false,
             status: String::new(),
+            expanded_settings: None,
         };
         let widgets = view_output!();
 
@@ -335,11 +346,32 @@ impl Component for PluginsSettingsModel {
             }
             PluginsSettingsInput::Uninstall(key) => {
                 let _ = self.store.uninstall(&key);
-                self.state.set_enabled(&key, false);
+                self.state.forget(&key);
+                if self.expanded_settings.as_deref() == Some(key.as_str()) {
+                    self.expanded_settings = None;
+                }
                 let _ = self.store.save_state(&self.state);
                 self.installed = self.store.installed();
                 config_manager().reload_config();
                 self.status = format!("Removed {key}.");
+            }
+            PluginsSettingsInput::ToggleSettings(key) => {
+                self.expanded_settings = if self.expanded_settings.as_deref() == Some(key.as_str()) {
+                    None
+                } else {
+                    Some(key)
+                };
+            }
+            PluginsSettingsInput::SetSetting { plugin, key, value } => {
+                self.state.set_setting(&plugin, &key, &value);
+                let _ = self.store.save_state(&self.state);
+                // Re-template the live widget if the plugin is enabled.
+                if self.state.is_enabled(&plugin) {
+                    config_manager().reload_config();
+                }
+                // Don't rebuild the list here — that would tear down the open
+                // form mid-edit. The controls already hold the new value.
+                return;
             }
             PluginsSettingsInput::ReloadLocal => {
                 self.state = self.store.load_state();
@@ -510,6 +542,20 @@ fn rebuild_installed(
             row.append(&btn);
         }
 
+        // Settings gear — only when the plugin declares settings.
+        if !p.manifest.settings.is_empty() {
+            let gear = gtk::Button::from_icon_name("emblem-system-symbolic");
+            gear.add_css_class("panel-action-btn");
+            gear.set_valign(gtk::Align::Center);
+            gear.set_tooltip_text(Some("Settings"));
+            let s2 = sender.clone();
+            let key = p.key.clone();
+            gear.connect_clicked(move |_| {
+                s2.input(PluginsSettingsInput::ToggleSettings(key.clone()))
+            });
+            row.append(&gear);
+        }
+
         let sw = gtk::Switch::new();
         sw.set_valign(gtk::Align::Center);
         sw.set_active(model.state.is_enabled(&p.key));
@@ -535,6 +581,141 @@ fn rebuild_installed(
         row.append(&del);
 
         list.append(&row);
+
+        // Inline settings form, when this plugin's gear is toggled open.
+        if model.expanded_settings.as_deref() == Some(p.key.as_str()) {
+            list.append(&build_settings_form(p, &model.state, sender));
+        }
+    }
+}
+
+/// The inline settings card for a plugin: one control per declared setting,
+/// pre-filled from the stored value (or the manifest default).
+fn build_settings_form(
+    p: &InstalledPlugin,
+    state: &PluginsState,
+    sender: &ComponentSender<PluginsSettingsModel>,
+) -> gtk::Box {
+    let form = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    form.add_css_class("plugins-settings-form");
+
+    for s in &p.manifest.settings {
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        row.add_css_class("plugins-setting-row");
+
+        let col = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        col.set_hexpand(true);
+        col.set_valign(gtk::Align::Center);
+        let label = gtk::Label::new(Some(if s.label.is_empty() { &s.key } else { &s.label }));
+        label.add_css_class("label-medium-bold");
+        label.set_halign(gtk::Align::Start);
+        col.append(&label);
+        if !s.description.trim().is_empty() {
+            col.append(&dim_line(s.description.trim()));
+        }
+        row.append(&col);
+
+        let current = state
+            .setting(&p.key, &s.key)
+            .cloned()
+            .unwrap_or_else(|| s.default.clone());
+        let plugin_key = p.key.clone();
+        let setting_key = s.key.clone();
+        let control = setting_control(&s.kind, &s.choices, &current, sender, plugin_key, setting_key);
+        row.append(&control);
+
+        form.append(&row);
+    }
+    form
+}
+
+/// Build the right-hand control for one setting, wired to emit `SetSetting`.
+fn setting_control(
+    kind: &str,
+    choices: &[String],
+    current: &str,
+    sender: &ComponentSender<PluginsSettingsModel>,
+    plugin: String,
+    key: String,
+) -> gtk::Widget {
+    match kind {
+        "bool" => {
+            let sw = gtk::Switch::new();
+            sw.set_valign(gtk::Align::Center);
+            sw.set_active(current == "true");
+            let s2 = sender.clone();
+            sw.connect_active_notify(move |w| {
+                s2.input(PluginsSettingsInput::SetSetting {
+                    plugin: plugin.clone(),
+                    key: key.clone(),
+                    value: if w.is_active() { "true" } else { "false" }.into(),
+                });
+            });
+            sw.upcast()
+        }
+        "choice" => {
+            let strs: Vec<&str> = choices.iter().map(|c| c.as_str()).collect();
+            let dd = gtk::DropDown::from_strings(&strs);
+            dd.set_valign(gtk::Align::Center);
+            if let Some(i) = choices.iter().position(|c| c == current) {
+                dd.set_selected(i as u32);
+            }
+            let s2 = sender.clone();
+            let choices = choices.to_vec();
+            dd.connect_selected_notify(move |w| {
+                if let Some(v) = choices.get(w.selected() as usize) {
+                    s2.input(PluginsSettingsInput::SetSetting {
+                        plugin: plugin.clone(),
+                        key: key.clone(),
+                        value: v.clone(),
+                    });
+                }
+            });
+            dd.upcast()
+        }
+        other => {
+            let entry = gtk::Entry::new();
+            entry.set_valign(gtk::Align::Center);
+            entry.set_hexpand(false);
+            entry.set_width_chars(22);
+            entry.set_text(current);
+            if other == "secret" {
+                entry.set_visibility(false);
+                entry.set_input_purpose(gtk::InputPurpose::Password);
+                entry.set_placeholder_text(Some("•••••"));
+            } else if other == "number" {
+                entry.set_input_purpose(gtk::InputPurpose::Number);
+            }
+            entry.set_tooltip_text(Some("Press Enter (or click away) to apply"));
+            // Apply on Enter and on focus-leave so a typed value isn't lost.
+            let emit = {
+                let s2 = sender.clone();
+                move |text: String| {
+                    s2.input(PluginsSettingsInput::SetSetting {
+                        plugin: plugin.clone(),
+                        key: key.clone(),
+                        value: text,
+                    });
+                }
+            };
+            let emit = std::rc::Rc::new(emit);
+            {
+                let emit = emit.clone();
+                entry.connect_activate(move |e| emit(e.text().to_string()));
+            }
+            {
+                let emit = emit.clone();
+                let focus = gtk::EventControllerFocus::new();
+                let entry_weak = entry.downgrade();
+                focus.connect_leave(move |_| {
+                    if let Some(e) = entry_weak.upgrade() {
+                        emit(e.text().to_string());
+                    }
+                });
+                entry.add_controller(focus);
+            }
+            entry.upcast()
+        }
     }
 }
 

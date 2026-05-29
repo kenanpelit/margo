@@ -13,7 +13,8 @@ pub mod manifest;
 pub mod state;
 
 pub use manifest::{
-    Manifest, MenuRow, Registry, RegistryEntry, WidgetDef, is_newer, meets_min_mshell, validate,
+    Manifest, MenuRow, Registry, RegistryEntry, Setting, WidgetDef, is_newer, meets_min_mshell,
+    substitute, validate,
 };
 pub use state::{PluginsState, Source};
 
@@ -116,7 +117,15 @@ impl PluginStore {
     pub fn save_state(&self, st: &PluginsState) -> Result<(), PluginError> {
         std::fs::create_dir_all(&self.config_dir)?;
         let text = toml::to_string_pretty(st).map_err(|e| PluginError::Parse(e.to_string()))?;
-        std::fs::write(self.state_path(), text)?;
+        let path = self.state_path();
+        std::fs::write(&path, text)?;
+        // The file can hold secret setting values (API keys), so keep it
+        // owner-only.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+        }
         Ok(())
     }
 

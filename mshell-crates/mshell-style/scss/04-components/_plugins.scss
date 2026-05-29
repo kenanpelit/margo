@@ -47,3 +47,17 @@ button.plugins-update-btn {
 .plugins-empty {
   padding: var(--space-2) var(--space-1);
 }
+
+// Inline settings form revealed under an installed plugin row. Nested,
+// slightly inset, on the next surface tier so it reads as "belonging to"
+// the row above it.
+.plugins-settings-form {
+  margin: 0 var(--space-2) var(--space-1) var(--space-4);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-container-high);
+
+  .plugins-setting-row {
+    min-height: 32px;
+  }
+}

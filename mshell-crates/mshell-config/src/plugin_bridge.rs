@@ -10,7 +10,8 @@
 //! widget.
 
 use crate::schema::config::{Config, CustomMenuRow, CustomWidgetConfig};
-use mshell_plugins::{InstalledPlugin, PluginStore, WidgetDef};
+use mshell_plugins::{InstalledPlugin, PluginStore, PluginsState, WidgetDef, substitute};
+use std::collections::BTreeMap;
 
 /// Prefix marking a custom widget as plugin-derived (not user-authored).
 pub const PLUGIN_PREFIX: &str = "plugin:";
@@ -26,14 +27,32 @@ pub fn resync_plugin_widgets(config: &mut Config) {
         if !state.is_enabled(&plugin.key) {
             continue;
         }
+        let values = setting_values(&plugin, &state);
         for widget in &plugin.manifest.widgets {
             config
                 .bars
                 .widgets
                 .custom_widgets
-                .push(to_custom_widget(&plugin, widget));
+                .push(to_custom_widget(&plugin, widget, &values));
         }
     }
+}
+
+/// The effective setting values for a plugin: the user's stored value, or the
+/// manifest default, per declared setting.
+fn setting_values(plugin: &InstalledPlugin, state: &PluginsState) -> BTreeMap<String, String> {
+    plugin
+        .manifest
+        .settings
+        .iter()
+        .map(|s| {
+            let v = state
+                .setting(&plugin.key, &s.key)
+                .cloned()
+                .unwrap_or_else(|| s.default.clone());
+            (s.key.clone(), v)
+        })
+        .collect()
 }
 
 /// Drop every plugin-derived custom widget (used before persisting a layer
@@ -46,32 +65,37 @@ pub fn strip_plugin_widgets(config: &mut Config) {
         .retain(|c| !c.name.starts_with(PLUGIN_PREFIX));
 }
 
-fn to_custom_widget(plugin: &InstalledPlugin, w: &WidgetDef) -> CustomWidgetConfig {
+fn to_custom_widget(
+    plugin: &InstalledPlugin,
+    w: &WidgetDef,
+    values: &BTreeMap<String, String>,
+) -> CustomWidgetConfig {
     // Image paths in a manifest are relative to the plugin's folder.
     let image = if w.image.trim().is_empty() {
         String::new()
     } else {
         plugin.dir.join(&w.image).to_string_lossy().into_owned()
     };
+    let sub = |s: &str| substitute(s, values);
     CustomWidgetConfig {
         name: format!("{PLUGIN_PREFIX}{}:{}", plugin.key, w.key),
         icon: w.icon.clone(),
         image,
-        label: w.label.clone(),
-        tooltip: w.tooltip.clone(),
-        on_click: w.on_click.clone(),
-        on_click_right: w.on_click_right.clone(),
-        exec: w.exec.clone(),
-        template: w.template.clone(),
+        label: sub(&w.label),
+        tooltip: sub(&w.tooltip),
+        on_click: sub(&w.on_click),
+        on_click_right: sub(&w.on_click_right),
+        exec: sub(&w.exec),
+        template: sub(&w.template),
         interval: w.interval,
         max_chars: w.max_chars,
         menu: w
             .menu
             .iter()
             .map(|r| CustomMenuRow {
-                label: r.label.clone(),
+                label: sub(&r.label),
                 icon: r.icon.clone(),
-                exec: r.exec.clone(),
+                exec: sub(&r.exec),
             })
             .collect(),
     }

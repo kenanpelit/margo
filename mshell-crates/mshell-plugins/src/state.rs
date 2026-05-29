@@ -4,6 +4,7 @@
 //! owned by the plugin manager.
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 /// A plugin source: a name + the git repo URL holding its `registry.toml`.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize)]
@@ -20,6 +21,10 @@ pub struct PluginsState {
     /// Composite keys of plugins the user has enabled.
     #[serde(default)]
     pub enabled: Vec<String>,
+    /// Per-plugin setting values: `{ composite-key: { setting-key: value } }`.
+    /// Substituted into the plugin's commands via `{{setting-key}}`.
+    #[serde(default)]
+    pub settings: BTreeMap<String, BTreeMap<String, String>>,
 }
 
 impl PluginsState {
@@ -44,6 +49,24 @@ impl PluginsState {
         } else if !on && present {
             self.enabled.retain(|k| k != key);
         }
+    }
+
+    /// A plugin's stored value for a setting, if the user has set one.
+    pub fn setting(&self, plugin: &str, key: &str) -> Option<&String> {
+        self.settings.get(plugin).and_then(|m| m.get(key))
+    }
+
+    pub fn set_setting(&mut self, plugin: &str, key: &str, value: &str) {
+        self.settings
+            .entry(plugin.to_string())
+            .or_default()
+            .insert(key.to_string(), value.to_string());
+    }
+
+    /// Drop all state for a plugin (on uninstall).
+    pub fn forget(&mut self, key: &str) {
+        self.enabled.retain(|k| k != key);
+        self.settings.remove(key);
     }
 }
 
@@ -87,5 +110,23 @@ mod tests {
         let s: PluginsState = toml::from_str("").unwrap();
         assert!(s.sources.is_empty());
         assert!(s.enabled.is_empty());
+        assert!(s.settings.is_empty());
+    }
+
+    #[test]
+    fn settings_storage_and_forget() {
+        let mut s = PluginsState::default();
+        s.set_setting("weather", "city", "Istanbul");
+        s.set_enabled("weather", true);
+        assert_eq!(s.setting("weather", "city").map(String::as_str), Some("Istanbul"));
+
+        // Survives a TOML round-trip.
+        let back: PluginsState = toml::from_str(&toml::to_string(&s).unwrap()).unwrap();
+        assert_eq!(back.setting("weather", "city").map(String::as_str), Some("Istanbul"));
+
+        // forget() drops both enabled + settings.
+        s.forget("weather");
+        assert!(!s.is_enabled("weather"));
+        assert!(s.setting("weather", "city").is_none());
     }
 }
