@@ -44,11 +44,39 @@ interface types {
     }
 }
 
-/// Host capabilities the guest may call. W2 ships logging; W3 adds
-/// get-setting / http / notify here.
+/// Host capabilities the guest may call — these *are* the sandbox boundary:
+/// the guest can do nothing the host doesn't expose here. W2 shipped logging;
+/// W3 adds settings, notifications, and one-shot HTTP. Streaming HTTP is W4.
 interface host {
     /// Structured logging (0=trace…4=error).
     log: func(level: u32, message: string);
+
+    /// Read a value the user set for this plugin (the declarative `[[setting]]`
+    /// tier — same store as the bar-pill plugins). Empty string if unset.
+    get-setting: func(key: string) -> string;
+
+    /// Post a desktop notification on the plugin's behalf. Best-effort.
+    notify: func(summary: string, body: string);
+
+    /// One outbound HTTP request → full response (non-streaming). The host —
+    /// not the guest — performs the network I/O; this is the only egress the
+    /// guest gets. Streaming (token-by-token) responses arrive in W4.
+    http: func(req: http-request) -> result<http-response, string>;
+
+    record http-request {
+        /// "GET", "POST", … Defaults to GET if empty.
+        method: string,
+        url: string,
+        /// Header name/value pairs.
+        headers: list<tuple<string, string>>,
+        /// Request body; empty for GET.
+        body: string,
+    }
+
+    record http-response {
+        status: u16,
+        body: string,
+    }
 }
 
 world plugin {

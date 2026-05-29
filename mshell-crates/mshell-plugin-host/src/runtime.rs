@@ -9,6 +9,7 @@
 //! Compiled only under `--features wasm`.
 
 use anyhow::Result;
+use std::collections::HashMap;
 use std::path::Path;
 use wasmtime::component::{Component, Linker};
 use wasmtime::{Config, Engine, Store};
@@ -20,8 +21,8 @@ wasmtime::component::bindgen!({
 });
 
 // `Node` and `Event` are brought into scope by the world's `use types.{…}`;
-// the enums + the host capability trait need importing explicitly.
-use margo::plugin::host::Host;
+// the enums + the host capability trait + its records need importing explicitly.
+use margo::plugin::host::{Host, HttpRequest, HttpResponse};
 use margo::plugin::types::{EventKind, NodeKind};
 
 // ── Public, GTK-free UI types ────────────────────────────────────────────────
@@ -64,6 +65,9 @@ pub struct UiEvent {
 
 struct HostState {
     plugin_id: String,
+    /// Values the user set for this plugin (declarative `[[setting]]` tier),
+    /// exposed to the guest via `get-setting`.
+    settings: HashMap<String, String>,
     wasi: WasiCtx,
     table: ResourceTable,
 }
@@ -88,6 +92,60 @@ impl Host for HostState {
             _ => tracing::info!(plugin = id, "{message}"),
         }
     }
+
+    fn get_setting(&mut self, key: String) -> String {
+        self.settings.get(&key).cloned().unwrap_or_default()
+    }
+
+    fn notify(&mut self, summary: String, body: String) {
+        // `--` guards against a guest-supplied summary that starts with `-`.
+        if let Err(e) = std::process::Command::new("notify-send")
+            .arg("--")
+            .arg(&summary)
+            .arg(&body)
+            .spawn()
+        {
+            tracing::warn!(plugin = self.plugin_id, "notify failed: {e}");
+        }
+    }
+
+    fn http(&mut self, req: HttpRequest) -> Result<HttpResponse, String> {
+        host_http(req)
+    }
+}
+
+/// Blocking one-shot HTTP, run on the host's behalf (the guest never touches
+/// the network directly). W3 is synchronous; W4 replaces this with an async,
+/// streaming path so token streams don't block the UI.
+fn host_http(req: HttpRequest) -> Result<HttpResponse, String> {
+    let method = if req.method.is_empty() {
+        "GET"
+    } else {
+        req.method.as_str()
+    };
+    let mut request = ureq::request(method, &req.url);
+    for (name, value) in &req.headers {
+        request = request.set(name, value);
+    }
+    let result = if req.body.is_empty() {
+        request.call()
+    } else {
+        request.send_string(&req.body)
+    };
+    match result {
+        Ok(resp) => {
+            let status = resp.status();
+            let body = resp.into_string().map_err(|e| e.to_string())?;
+            Ok(HttpResponse { status, body })
+        }
+        // A non-2xx status is still a real response (e.g. a 4xx JSON error from
+        // an API) — hand it back to the guest rather than dropping it.
+        Err(ureq::Error::Status(code, resp)) => {
+            let body = resp.into_string().unwrap_or_default();
+            Ok(HttpResponse { status: code, body })
+        }
+        Err(e) => Err(e.to_string()),
+    }
 }
 
 // The `types` interface is types-only, but the generated linker bound still
@@ -108,8 +166,15 @@ impl PluginRuntime {
         })
     }
 
-    /// Instantiate a plugin component, ready to `view` / `update`.
-    pub fn instantiate(&self, plugin_id: &str, wasm_path: &Path) -> Result<PluginInstance> {
+    /// Instantiate a plugin component, ready to `view` / `update`. `settings`
+    /// are the user's values for this plugin's declarative `[[setting]]`s,
+    /// surfaced to the guest through the `get-setting` capability.
+    pub fn instantiate(
+        &self,
+        plugin_id: &str,
+        wasm_path: &Path,
+        settings: HashMap<String, String>,
+    ) -> Result<PluginInstance> {
         let component = Component::from_file(&self.engine, wasm_path)?;
         let mut linker = Linker::new(&self.engine);
         // wasip2 guests link the WASI std interfaces; provide them.
@@ -119,6 +184,7 @@ impl PluginRuntime {
             &self.engine,
             HostState {
                 plugin_id: plugin_id.to_string(),
+                settings,
                 wasi: WasiCtxBuilder::new().build(),
                 table: ResourceTable::new(),
             },

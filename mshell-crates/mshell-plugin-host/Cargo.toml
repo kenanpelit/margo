@@ -12,13 +12,14 @@ license.workspace = true
 # feature off this crate is an empty shell and pulls nothing — default mshell
 # builds stay lean.
 default = []
-wasm = ["dep:wasmtime", "dep:wasmtime-wasi"]
+wasm = ["dep:wasmtime", "dep:wasmtime-wasi", "dep:ureq"]
 
 [dependencies]
 anyhow.workspace = true
 tracing.workspace = true
 wasmtime = { workspace = true, optional = true }
 wasmtime-wasi = { workspace = true, optional = true }
+ureq = { workspace = true, optional = true }
 
 [lints]
 workspace = true

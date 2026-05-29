@@ -8,6 +8,10 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::rc::Rc;
 
+/// The user's values for a plugin's declarative settings, handed to the guest
+/// via the `get-setting` capability (API keys, model choices, …).
+pub type PluginSettings = HashMap<String, String>;
+
 /// A live WASM-plugin surface: owns the instance and re-renders its UI tree
 /// into a container whenever the guest returns a new tree.
 pub struct PluginPanel {
@@ -21,9 +25,16 @@ struct Inner {
 }
 
 impl PluginPanel {
-    /// Instantiate a plugin component and render its initial `view`.
-    pub fn new(runtime: &PluginRuntime, plugin_id: &str, wasm_path: &Path) -> anyhow::Result<Self> {
-        let instance = runtime.instantiate(plugin_id, wasm_path)?;
+    /// Instantiate a plugin component and render its initial `view`. `settings`
+    /// are the user's values for the plugin's declarative `[[setting]]`s,
+    /// surfaced to the guest through `get-setting`.
+    pub fn new(
+        runtime: &PluginRuntime,
+        plugin_id: &str,
+        wasm_path: &Path,
+        settings: PluginSettings,
+    ) -> anyhow::Result<Self> {
+        let instance = runtime.instantiate(plugin_id, wasm_path, settings)?;
         let container = gtk::Box::new(gtk::Orientation::Vertical, 6);
         container.add_css_class("plugin-panel");
         let inner = Rc::new(RefCell::new(Inner {

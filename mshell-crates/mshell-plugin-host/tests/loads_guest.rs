@@ -1,5 +1,7 @@
-//! End-to-end runtime check (W1+W2): load the `hello-guest` WASM component,
-//! call `view`/`update`, and assert the node tree round-trips.
+//! End-to-end runtime check: load the `hello-guest` WASM component, call
+//! `view`/`update`, and assert the node tree round-trips (W1+W2). The
+//! `capabilities` test drives the W3 host imports (`get-setting` + `http`)
+//! against a local one-shot HTTP server — no external network.
 //!
 //! Build the fixture first:
 //!   (cd tests/fixtures/hello-guest && cargo build --target wasm32-wasip2 --release)
@@ -7,6 +9,9 @@
 #![cfg(feature = "wasm")]
 
 use mshell_plugin_host::{PluginRuntime, UiEvent, UiEventKind, UiKind};
+use std::collections::HashMap;
+use std::io::{Read, Write};
+use std::net::TcpListener;
 use std::path::PathBuf;
 
 fn fixture() -> PathBuf {
@@ -23,13 +28,18 @@ fn loads_and_drives_guest() {
     }
 
     let rt = PluginRuntime::new().expect("runtime");
-    let mut inst = rt.instantiate("hello", &path).expect("instantiate");
+    let mut inst = rt
+        .instantiate("hello", &path, HashMap::new())
+        .expect("instantiate");
 
     // Initial render.
     let nodes = inst.view().expect("view");
     let root = nodes.iter().find(|n| n.id == "root").expect("a root node");
     assert_eq!(root.kind, UiKind::VBox);
-    assert_eq!(root.children, vec!["greeting".to_string(), "btn".to_string()]);
+    assert_eq!(
+        root.children,
+        vec!["greeting".to_string(), "btn".to_string(), "caps".to_string()]
+    );
     assert!(
         nodes
             .iter()
@@ -50,4 +60,57 @@ fn loads_and_drives_guest() {
             .iter()
             .any(|n| n.kind == UiKind::Label && n.text.contains("clicked btn"))
     );
+}
+
+/// W3: the guest reads a setting (`url`), calls `http`, and renders the
+/// response. We serve one canned HTTP/1.1 response from a local socket and
+/// pass its address in via settings, so the whole capability path is exercised
+/// deterministically.
+#[test]
+fn capabilities_get_setting_and_http() {
+    let path = fixture();
+    if !path.exists() {
+        eprintln!("skip: guest fixture not built ({})", path.display());
+        return;
+    }
+
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    let server = std::thread::spawn(move || {
+        if let Ok((mut sock, _)) = listener.accept() {
+            let mut buf = [0u8; 1024];
+            let _ = sock.read(&mut buf); // drain the request line/headers
+            let _ = sock.write_all(
+                b"HTTP/1.1 200 OK\r\nContent-Length: 11\r\nConnection: close\r\n\r\nhello world",
+            );
+        }
+    });
+
+    let rt = PluginRuntime::new().expect("runtime");
+    let mut settings = HashMap::new();
+    settings.insert("url".to_string(), format!("http://{addr}/"));
+    let mut inst = rt
+        .instantiate("hello", &path, settings)
+        .expect("instantiate");
+
+    inst.view().expect("view");
+    let after = inst
+        .update(&UiEvent {
+            id: "caps".into(),
+            kind: UiEventKind::Click,
+            value: String::new(),
+        })
+        .expect("update");
+
+    let out = after
+        .iter()
+        .find(|n| n.id == "out")
+        .expect("an output label");
+    assert!(
+        out.text.contains("200") && out.text.contains("hello world"),
+        "expected the fetched body, got: {:?}",
+        out.text
+    );
+
+    server.join().ok();
 }

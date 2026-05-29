@@ -58,12 +58,19 @@ plugin.wasm (guest, sandboxed)            mshell (host, GTK)
 - **W2b — GTK renderer + event loop:** ✅ `mshell-plugin-ui` renders a `UiNode`
   tree to GTK and drives click/submit → `update` → re-render. Feature-gated;
   builds + clippy clean under `--features wasm`.
-- **W2c — frame integration (next):** host a `PluginPanel` in a layer-shell
-  panel opened from a bar pill. Needs the live shell to verify positioning +
-  reactive wiring, so it's built against a running shell.
-- **W3 — Capabilities:** `get_setting`, `notify`, non-streaming `http`.
-- **W4 — Streaming + rich nodes:** streaming `http`, `entry`, scrollable `list`,
-  `markdown` (message bubbles) — enough for a chat panel.
+- **W2c — frame integration:** host a `PluginPanel` in a layer-shell panel
+  opened from a bar pill. Needs the live shell to verify positioning +
+  reactive wiring, so it's built against a running shell. (Done last — the
+  capability + UI work below is verifiable headless; the surface wiring isn't.)
+- **W3 — Capabilities:** ✅ the `host` interface now exposes `get-setting`
+  (reads the declarative `[[setting]]` store), `notify` (best-effort
+  `notify-send`), and one-shot `http` (`http-request`→`http-response`, blocking
+  via `ureq`; the host does the I/O, the guest never touches the network).
+  `instantiate` takes the resolved settings map. Runtime-verified end to end:
+  the guest reads a `url` setting, fetches it, and renders the body — tested
+  against a local one-shot HTTP server (no external network).
+- **W4 — Streaming + rich nodes (next):** streaming `http`, `entry`, scrollable
+  `list`, `markdown` (message bubbles) — enough for a chat panel.
 - **W5 — SDK + docs + real port:** `mplugin-sdk` crate, author guide, and port
   `assistant-panel`'s actual chat panel as the proving ground.
 

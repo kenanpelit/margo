@@ -99,6 +99,8 @@ tracing = "0.1"
 # `mshell-plugin-host` crate's `wasm` feature is enabled.
 wasmtime = "27"
 wasmtime-wasi = "27"
+# Blocking HTTP for the plugin host's `http` capability (W3). Pure-Rust + rustls.
+ureq = "2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror = "2.0"
 
