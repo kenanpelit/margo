@@ -104,6 +104,9 @@ pub(crate) enum ShellInput {
     ToggleDnsMenu(Option<String>),
     TogglePodmanMenu(Option<String>),
     ToggleNotesMenu(Option<String>),
+    /// Toggle an installed plugin's panel/menu by key (monitor, key). Generic
+    /// — the frame resolves the key to the plugin's derived widget.
+    TogglePluginMenu(Option<String>, String),
     ToggleIpMenu(Option<String>),
     ToggleNetworkMenu(Option<String>),
     TogglePowerMenu(Option<String>),
@@ -597,6 +600,11 @@ impl Component for Shell {
             ShellInput::ToggleNotesMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
                     frame.emit(FrameInput::ToggleNotesMenu);
+                }
+            }
+            ShellInput::TogglePluginMenu(monitor_name, key) => {
+                if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
+                    frame.emit(FrameInput::TogglePluginByKey(key));
                 }
             }
             ShellInput::ToggleIpMenu(monitor_name) => {

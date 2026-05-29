@@ -121,6 +121,14 @@ pub enum MenuCommands {
         #[arg(value_name = "TAB")]
         tab: Option<String>,
     },
+    /// Toggle an installed plugin's panel/menu by key — e.g.
+    /// `menu plugin assistant` or `menu plugin mullvad`. Generic: works for
+    /// any plugin that ships a panel or a `[[widget.menu]]`, with no
+    /// per-plugin code (the key matches the plugin id or a widget key).
+    Plugin {
+        /// The plugin key (its id, or a widget key).
+        key: String,
+    },
     /// Close all open menus
     CloseAll,
 }
@@ -257,6 +265,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::Mshelldash { tab } => {
             bus_command_with_arg("Mshelldash", &tab.unwrap_or_default()).await?;
+        }
+        MenuCommands::Plugin { key } => {
+            bus_command_with_arg("PluginMenu", &key).await?;
         }
         MenuCommands::CloseAll => {
             bus_command("CloseAllMenus").await?;

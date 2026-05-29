@@ -160,6 +160,9 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 IPCCommand::SessionAction(action) => {
                     app_sender.emit(ShellInput::RunSessionAction(action));
                 }
+                IPCCommand::PluginMenu(key) => {
+                    app_sender.emit(ShellInput::TogglePluginMenu(active_monitor().await, key));
+                }
                 IPCCommand::CloseAllMenus => app_sender.emit(ShellInput::CloseAllMenus),
                 IPCCommand::VolumeUp => {
                     if let Some(output) = audio_service().default_output.get() {
@@ -459,6 +462,8 @@ enum IPCCommand {
     MediaPlayer,
     Dashboard,
     MShellDash(String),
+    /// Toggle an installed plugin's panel/menu by key (generic — any plugin).
+    PluginMenu(String),
     CloseAllMenus,
     VolumeUp,
     VolumeDown,
@@ -1249,6 +1254,9 @@ impl IPCService {
     }
     async fn mshelldash(&self, tab: String) {
         let _ = self.tx.send(IPCCommand::MShellDash(tab));
+    }
+    async fn plugin_menu(&self, key: String) {
+        let _ = self.tx.send(IPCCommand::PluginMenu(key));
     }
     async fn session_lock(&self) {
         let _ = self.tx.send(IPCCommand::SessionAction(SessionAction::Lock));

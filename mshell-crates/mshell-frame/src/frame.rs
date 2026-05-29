@@ -201,6 +201,10 @@ pub enum FrameInput {
         min_width: i32,
         max_height: i32,
     },
+    /// Toggle a plugin's panel/menu addressed by key (from `mshellctl menu
+    /// plugin <key>`). Generic — resolves the key to the plugin's derived
+    /// widget, then dispatches to the panel or menu path. No per-plugin code.
+    TogglePluginByKey(String),
     ToggleIpMenu,
     ToggleNetworkMenu,
     TogglePowerMenu,
@@ -1227,6 +1231,51 @@ impl Component for Frame {
                     .ok();
                 self.toggle_menu(NPLUGIN_PANEL_MENU, widgets);
                 self.sync_keyboard_mode(root);
+            }
+            FrameInput::TogglePluginByKey(key) => {
+                // Generic `mshellctl menu plugin <key>`: resolve the key to an
+                // enabled plugin's derived widget (matching its composite key,
+                // widget key, or full name) and dispatch to the panel or menu
+                // path. No per-plugin code — any installed plugin works.
+                let found = mshell_config::config_manager::config_manager()
+                    .config()
+                    .bars()
+                    .widgets()
+                    .custom_widgets()
+                    .get_untracked()
+                    .into_iter()
+                    .find(|c| {
+                        let Some(rest) = c.name.strip_prefix("plugin:") else {
+                            return false;
+                        };
+                        if c.panel_entry.trim().is_empty() && c.menu.is_empty() {
+                            return false;
+                        }
+                        let (comp, w) = rest.rsplit_once(':').unwrap_or((rest, ""));
+                        rest == key || comp == key || w == key
+                    });
+                match found {
+                    Some(c) if !c.panel_entry.trim().is_empty() => {
+                        sender.input(FrameInput::ToggleWasmPluginPanel {
+                            name: c.name,
+                            entry: c.panel_entry,
+                            settings: c.panel_settings,
+                            min_width: c.panel_min_width,
+                            max_height: c.panel_max_height,
+                        });
+                    }
+                    Some(c) => {
+                        sender.input(FrameInput::TogglePluginMenu {
+                            name: c.name,
+                            rows: c.menu,
+                            min_width: c.panel_min_width,
+                            max_height: c.panel_max_height,
+                        });
+                    }
+                    None => tracing::warn!(
+                        "menu plugin: no enabled plugin panel/menu for key `{key}`"
+                    ),
+                }
             }
             FrameInput::ToggleIpMenu => {
                 self.toggle_menu(NIP_MENU, widgets);
