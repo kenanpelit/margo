@@ -69,6 +69,9 @@ interface host {
     /// Post a desktop notification on the plugin's behalf. Best-effort.
     notify: func(summary: string, body: string);
 
+    /// Copy text to the system clipboard (Wayland `wl-copy`). Best-effort.
+    copy: func(text: string);
+
     /// One outbound HTTP request → full response (non-streaming). The host —
     /// not the guest — performs the network I/O; this is the only egress the
     /// guest gets. For token streams use `http-start` instead.

@@ -140,6 +140,22 @@ impl Host for HostState {
         }
     }
 
+    fn copy(&mut self, text: String) {
+        use std::io::Write as _;
+        use std::process::{Command, Stdio};
+        match Command::new("wl-copy").stdin(Stdio::piped()).spawn() {
+            Ok(mut child) => {
+                if let Some(mut stdin) = child.stdin.take() {
+                    let _ = stdin.write_all(text.as_bytes());
+                }
+                // stdin dropped → wl-copy reads EOF + forks to hold the
+                // selection; its front process exits quickly, so reap it.
+                let _ = child.wait();
+            }
+            Err(e) => tracing::warn!(plugin = self.plugin_id, "copy failed: {e}"),
+        }
+    }
+
     fn http(&mut self, req: HttpRequest) -> Result<HttpResponse, String> {
         host_http(req)
     }

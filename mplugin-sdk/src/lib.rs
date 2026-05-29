@@ -51,7 +51,7 @@ pub use crate::margo::plugin::types::{Event, EventKind, Node, NodeKind};
 /// outside its own memory goes through one of these.
 pub mod host {
     pub use crate::margo::plugin::host::{
-        get_setting, http, http_start, log, notify, HttpRequest, HttpResponse,
+        copy, get_setting, http, http_start, log, notify, HttpRequest, HttpResponse,
     };
 }
 

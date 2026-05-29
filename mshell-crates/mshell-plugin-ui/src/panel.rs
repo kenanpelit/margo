@@ -153,6 +153,7 @@ fn build(node: &UiNode, by_id: &HashMap<&str, &UiNode>, inner: &Rc<RefCell<Inner
             let label = gtk::Label::new(Some(&node.text));
             label.set_halign(gtk::Align::Start);
             label.set_wrap(true);
+            label.set_selectable(true);
             label.upcast()
         }
         UiKind::Button => {
