@@ -46,12 +46,16 @@ plugin.wasm (guest, sandboxed)            mshell (host, GTK)
 
 ## Milestones (built in order)
 
-- **W1 — Runtime foundation:** new `mshell-plugin-host` crate; load a component,
-  call an export, expose a `log` host import. *(commits the wasmtime dependency —
-  a heavy build/binary cost; gate this behind a Cargo feature so non-WASM builds
-  stay lean.)*
-- **W2 — UI model v0:** render a static `Ui` tree (`vbox/label/button`) into a
-  layer-shell panel; `click` events → `update` → re-render with diffing.
+- **W1 — Runtime foundation:** ✅ `mshell-plugin-host` crate; loads a component,
+  links a `log` host import, calls a guest export. wasmtime is feature-gated
+  (`wasm`) so non-WASM builds stay lean. Verified: `--features wasm` compiles
+  (wasmtime 27 component model).
+- **W2 — UI model + view/update:** ✅ host/guest contract carries a flat node
+  list (`vbox/hbox/label/button/entry`, children by id, rooted at "root");
+  `view()` + `update(event)`. `mshell-plugin-host` exposes GTK-free `UiNode` /
+  `UiEvent` + a `PluginInstance`. Verified to compile under `--features wasm`.
+  *(Remaining for W2b: the GTK renderer + layer-shell panel in the frame, and a
+  guest component to runtime-verify the loop end-to-end.)*
 - **W3 — Capabilities:** `get_setting`, `notify`, non-streaming `http`.
 - **W4 — Streaming + rich nodes:** streaming `http`, `entry`, scrollable `list`,
   `markdown` (message bubbles) — enough for a chat panel.
