@@ -53,9 +53,14 @@ plugin.wasm (guest, sandboxed)            mshell (host, GTK)
 - **W2 — UI model + view/update:** ✅ host/guest contract carries a flat node
   list (`vbox/hbox/label/button/entry`, children by id, rooted at "root");
   `view()` + `update(event)`. `mshell-plugin-host` exposes GTK-free `UiNode` /
-  `UiEvent` + a `PluginInstance`. Verified to compile under `--features wasm`.
-  *(Remaining for W2b: the GTK renderer + layer-shell panel in the frame, and a
-  guest component to runtime-verify the loop end-to-end.)*
+  `UiEvent` + a `PluginInstance`. Runtime-verified end to end by a `hello-guest`
+  component + integration test (load → view → update(click) → round-trip).
+- **W2b — GTK renderer + event loop:** ✅ `mshell-plugin-ui` renders a `UiNode`
+  tree to GTK and drives click/submit → `update` → re-render. Feature-gated;
+  builds + clippy clean under `--features wasm`.
+- **W2c — frame integration (next):** host a `PluginPanel` in a layer-shell
+  panel opened from a bar pill. Needs the live shell to verify positioning +
+  reactive wiring, so it's built against a running shell.
 - **W3 — Capabilities:** `get_setting`, `notify`, non-streaming `http`.
 - **W4 — Streaming + rich nodes:** streaming `http`, `entry`, scrollable `list`,
   `markdown` (message bubbles) — enough for a chat panel.
