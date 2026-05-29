@@ -10,9 +10,10 @@
 #![cfg(feature = "wasm-plugins")]
 
 use mshell_plugin_host::{MediaInfo, MediaInfoSource, SystemInfo, SystemInfoSource};
-use mshell_services::{battery_service, media_service};
+use mshell_services::{battery_service, media_service, network_service};
 use wayle_battery::types::DeviceState;
 use wayle_media::types::PlaybackState;
+use wayle_network::types::connectivity::ConnectionType;
 
 pub struct WayleMediaProvider;
 
@@ -65,14 +66,29 @@ impl SystemInfoSource for WayleSystemProvider {
             DeviceState::FullyCharged => "full".to_string(),
             _ => "unknown".to_string(),
         };
-        // network kind/SSID + idle: wayle exposes both but the field surface
-        // is heavier to thread through; leave them as conservative defaults
-        // for now (a follow-up wires them properly).
+        // Primary connection kind via wayle-network; SSID via the wifi
+        // device when wifi is the primary. Idle in ms isn't exposed by
+        // mshell-idle (it's a stage manager, not a counter) — leave 0
+        // until that surface grows.
+        let net = network_service();
+        let (network_kind, network_ssid) = match net.primary.get() {
+            ConnectionType::Wifi => {
+                let ssid = net
+                    .wifi
+                    .get()
+                    .and_then(|w| w.ssid.get())
+                    .unwrap_or_default();
+                ("wifi".to_string(), ssid)
+            }
+            ConnectionType::Wired => ("ethernet".to_string(), String::new()),
+            ConnectionType::Bluetooth => ("bluetooth".to_string(), String::new()),
+            _ => ("none".to_string(), String::new()),
+        };
         SystemInfo {
             battery_pct,
             battery_status,
-            network_kind: "none".to_string(),
-            network_ssid: String::new(),
+            network_kind,
+            network_ssid,
             idle_ms: 0,
         }
     }
