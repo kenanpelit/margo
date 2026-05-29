@@ -31,6 +31,21 @@ pub struct Manifest {
     /// commands via `{{key}}` placeholders.
     #[serde(default, rename = "setting")]
     pub settings: Vec<Setting>,
+    /// Path (relative to the plugin dir) to a compiled WASM panel, if this
+    /// plugin ships one (the WASM tier). Empty = declarative-only plugin.
+    #[serde(default)]
+    pub entry: String,
+    /// Kind of [`entry`](Self::entry); currently only `"wasm"`.
+    #[serde(default)]
+    pub entry_kind: String,
+}
+
+impl Manifest {
+    /// `true` if this plugin ships a sandboxed WASM panel (`entry` +
+    /// `entry_kind = "wasm"`).
+    pub fn has_wasm_entry(&self) -> bool {
+        !self.entry.trim().is_empty() && self.entry_kind == "wasm"
+    }
 }
 
 /// One user-configurable plugin setting. The user's value (or `default`)
@@ -100,6 +115,10 @@ pub struct WidgetDef {
     /// `on_click`.
     #[serde(default, rename = "menu")]
     pub menu: Vec<MenuRow>,
+    /// When true, clicking this widget opens the plugin's WASM panel
+    /// ([`Manifest::entry`]) instead of running `on_click`.
+    #[serde(default)]
+    pub opens_panel: bool,
 }
 
 /// One row of a widget's dropdown menu: an icon + label that runs a command.
@@ -292,6 +311,32 @@ default = "a"
         assert_eq!(m.settings[0].kind, "secret");
         assert_eq!(m.settings[1].choices, vec!["a", "b"]);
         assert_eq!(m.settings[1].default, "a");
+    }
+
+    #[test]
+    fn parses_wasm_entry() {
+        let m: Manifest = toml::from_str(
+            r#"
+id = "assistant"
+version = "1.0.0"
+entry = "plugin.wasm"
+entry_kind = "wasm"
+
+[[widget]]
+key = "panel"
+icon = "starred-symbolic"
+opens_panel = true
+"#,
+        )
+        .unwrap();
+        assert!(m.has_wasm_entry());
+        assert_eq!(m.entry, "plugin.wasm");
+        assert!(m.widgets[0].opens_panel);
+
+        // A declarative-only plugin has no wasm entry.
+        let d: Manifest = toml::from_str("id = \"x\"\nversion = \"1.0.0\"\n").unwrap();
+        assert!(!d.has_wasm_entry());
+        assert!(!d.widgets.first().map(|w| w.opens_panel).unwrap_or(false));
     }
 
     #[test]

@@ -25,6 +25,11 @@ fn sdk_fixture() -> PathBuf {
         .join("tests/fixtures/sdk-guest/target/wasm32-wasip2/release/sdk_guest.wasm")
 }
 
+fn assistant_fixture() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/assistant-guest/target/wasm32-wasip2/release/assistant_guest.wasm")
+}
+
 /// Serve one canned HTTP/1.1 response from a fresh local socket; returns the
 /// bound address. The body is sent then the connection closes.
 fn serve_once(body: &'static str) -> (String, std::thread::JoinHandle<()>) {
@@ -290,6 +295,67 @@ fn sdk_chat_guest_runs_a_turn() {
             && n.text.contains("ai:")
             && n.text.contains("hello from the model")),
         "expected the streamed reply in an ai bubble, got: {:?}",
+        tree.iter().map(|n| &n.text).collect::<Vec<_>>()
+    );
+
+    server.join().ok();
+}
+
+/// W5 real port: the actual assistant-panel chat (SDK guest with Gemini SSE
+/// parsing) loads and assembles a token stream. We serve a Gemini-shaped
+/// `alt=sse` response from a local socket and point the plugin's `endpoint`
+/// setting at it.
+#[test]
+fn assistant_guest_streams_gemini_sse() {
+    let path = assistant_fixture();
+    if !path.exists() {
+        eprintln!("skip: assistant-guest fixture not built ({})", path.display());
+        return;
+    }
+
+    // Two SSE events, each a Gemini generateContent chunk with a text delta.
+    let sse = "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Hello\"}]}}]}\n\n\
+               data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\", world\"}]}}]}\n\n";
+    let (addr, server) = serve_once(sse);
+
+    let rt = PluginRuntime::new().expect("runtime");
+    let mut settings = HashMap::new();
+    settings.insert("endpoint".to_string(), format!("http://{addr}"));
+    settings.insert("model".to_string(), "gemini-2.5-flash".to_string());
+    settings.insert("api_key".to_string(), "test-key".to_string());
+    let mut inst = rt
+        .instantiate("assistant-panel", &path, settings)
+        .expect("instantiate");
+    inst.view().expect("view");
+
+    inst.update(&UiEvent {
+        id: "input".into(),
+        kind: UiEventKind::Submit,
+        value: "selam".into(),
+    })
+    .expect("submit");
+    assert!(inst.streams_active(), "a reply stream should be in flight");
+
+    let mut last = None;
+    for _ in 0..200 {
+        if let Some(tree) = inst.pump().expect("pump") {
+            last = Some(tree);
+        }
+        if !inst.streams_active() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    if let Some(tree) = inst.pump().expect("pump") {
+        last = Some(tree);
+    }
+
+    let tree = last.expect("at least one pumped render");
+    assert!(
+        tree.iter().any(|n| n.kind == UiKind::Markdown
+            && n.text.contains("ai:")
+            && n.text.contains("Hello, world")),
+        "expected the SSE deltas assembled into the ai bubble, got: {:?}",
         tree.iter().map(|n| &n.text).collect::<Vec<_>>()
     );
 

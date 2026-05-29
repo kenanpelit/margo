@@ -56,6 +56,7 @@ exclude = [
     "mplugin-sdk",
     "mshell-crates/mshell-plugin-host/tests/fixtures/hello-guest",
     "mshell-crates/mshell-plugin-host/tests/fixtures/sdk-guest",
+    "mshell-crates/mshell-plugin-host/tests/fixtures/assistant-guest",
 ]
 resolver = "2"
 

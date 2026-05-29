@@ -1,0 +1,21 @@
+# Test fixture (and reference implementation): the real assistant-panel chat,
+# written with mplugin-sdk — a streaming Google Gemini chat. Proves the SDK
+# against the actual target use case. Standalone, built for wasm32-wasip2.
+[package]
+name = "assistant-guest"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+mplugin-sdk = { path = "../../../../../mplugin-sdk" }
+serde_json = "1"
+
+[profile.release]
+opt-level = "s"
+
+# Standalone — not part of the margo host workspace.
+[workspace]
