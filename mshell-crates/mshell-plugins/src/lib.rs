@@ -12,7 +12,9 @@ pub mod keys;
 pub mod manifest;
 pub mod state;
 
-pub use manifest::{Manifest, Registry, RegistryEntry, WidgetDef, meets_min_mshell, validate};
+pub use manifest::{
+    Manifest, MenuRow, Registry, RegistryEntry, WidgetDef, meets_min_mshell, validate,
+};
 pub use state::{PluginsState, Source};
 
 use std::path::{Path, PathBuf};

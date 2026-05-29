@@ -9,7 +9,7 @@
 //! `plugin:<key>:<widget-key>` so the bar can place them like any custom
 //! widget.
 
-use crate::schema::config::{Config, CustomWidgetConfig};
+use crate::schema::config::{Config, CustomMenuRow, CustomWidgetConfig};
 use mshell_plugins::{InstalledPlugin, PluginStore, WidgetDef};
 
 /// Prefix marking a custom widget as plugin-derived (not user-authored).
@@ -65,5 +65,14 @@ fn to_custom_widget(plugin: &InstalledPlugin, w: &WidgetDef) -> CustomWidgetConf
         template: w.template.clone(),
         interval: w.interval,
         max_chars: w.max_chars,
+        menu: w
+            .menu
+            .iter()
+            .map(|r| CustomMenuRow {
+                label: r.label.clone(),
+                icon: r.icon.clone(),
+                exec: r.exec.clone(),
+            })
+            .collect(),
     }
 }

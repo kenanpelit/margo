@@ -60,6 +60,23 @@ pub struct WidgetDef {
     /// Truncate the rendered label to this many chars (0 = no cap).
     #[serde(default)]
     pub max_chars: u32,
+    /// Optional dropdown menu shown on click (a popover of command rows).
+    /// When present, a left-click opens this menu instead of running
+    /// `on_click`.
+    #[serde(default, rename = "menu")]
+    pub menu: Vec<MenuRow>,
+}
+
+/// One row of a widget's dropdown menu: an icon + label that runs a command.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize)]
+pub struct MenuRow {
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub icon: String,
+    /// Command (`sh -c`) run when the row is activated.
+    #[serde(default)]
+    pub exec: String,
 }
 
 /// A source's root `registry.toml`.

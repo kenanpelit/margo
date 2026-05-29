@@ -8,3 +8,34 @@
     font-variant-numeric: tabular-nums;
   }
 }
+
+// Declarative dropdown menu (plugin / custom widget click-popover). Matches
+// the shell's surface chrome — elevated container, rounded, and rows that
+// hover with the canonical primary state-layer (DESIGN.md §4/§5).
+.custom-widget-menu {
+  > contents {
+    background-color: var(--surface-container-high);
+    border-radius: var(--radius-md);
+    padding: var(--space-1);
+  }
+
+  .custom-widget-menu-row {
+    all: unset;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    color: var(--on-surface);
+    transition: background-color var(--motion-fast) var(--ease-standard);
+
+    image {
+      color: var(--on-surface-variant);
+      -gtk-icon-size: var(--icon-sm);
+    }
+
+    &:hover {
+      background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
+    }
+    &:active {
+      background-color: unquote("color-mix(in srgb, var(--primary) 22%, transparent)");
+    }
+  }
+}

@@ -473,6 +473,21 @@ pub struct CustomWidgetConfig {
     pub interval: u64,
     /// Truncate the rendered label to this many characters (0 = no cap).
     pub max_chars: u32,
+    /// Optional dropdown menu (popover of command rows). When non-empty, a
+    /// left click opens this menu instead of running `on_click`.
+    pub menu: Vec<CustomMenuRow>,
+}
+
+/// One row of a custom widget's dropdown menu: an icon + label that runs a
+/// `sh -c` command when activated.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize, Store, Patch, JsonSchema,
+)]
+#[serde(default)]
+pub struct CustomMenuRow {
+    pub label: String,
+    pub icon: String,
+    pub exec: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]

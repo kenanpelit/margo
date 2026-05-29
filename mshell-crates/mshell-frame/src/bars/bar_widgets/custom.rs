@@ -6,9 +6,9 @@
 //! `bars.widgets.custom_widgets` and placed in a bar slot via
 //! `!Custom <name>`. (Inspired by VibePanel's custom widgets.)
 
-use mshell_config::schema::config::CustomWidgetConfig;
+use mshell_config::schema::config::{CustomMenuRow, CustomWidgetConfig};
 use relm4::gtk::prelude::{
-    BoxExt, ButtonExt, GestureExt, GestureSingleExt, OrientableExt, WidgetExt,
+    BoxExt, ButtonExt, GestureExt, GestureSingleExt, OrientableExt, PopoverExt, WidgetExt,
 };
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::time::Duration;
@@ -106,8 +106,15 @@ impl Component for CustomWidgetModel {
             widgets.icon_box.append(&img);
         }
 
-        // Left click → on_click.
-        {
+        // Left click → open the declarative dropdown menu (a popover of
+        // command rows) when one is defined, otherwise run `on_click`.
+        if !config.menu.is_empty() {
+            let popover = build_menu_popover(&config.menu);
+            popover.set_parent(&widgets.root);
+            widgets
+                .root
+                .connect_clicked(move |_| popover.popup());
+        } else {
             let cmd = config.on_click.clone();
             widgets.root.connect_clicked(move |_| run_cmd(&cmd));
         }
@@ -176,6 +183,46 @@ impl Component for CustomWidgetModel {
         }
         self.update_view(widgets, sender);
     }
+}
+
+/// Build the click-dropdown popover from the widget's declarative menu rows.
+/// Each row is an icon + label button that runs its `exec` and closes.
+fn build_menu_popover(menu: &[CustomMenuRow]) -> gtk::Popover {
+    let popover = gtk::Popover::new();
+    popover.add_css_class("custom-widget-menu");
+    let list = gtk::Box::new(gtk::Orientation::Vertical, 2);
+    for row in menu {
+        let label = row.label.trim();
+        if label.is_empty() && row.exec.trim().is_empty() {
+            continue;
+        }
+        let btn = gtk::Button::new();
+        btn.add_css_class("custom-widget-menu-row");
+        btn.set_has_frame(false);
+
+        let hb = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        if !row.icon.trim().is_empty() {
+            let img = gtk::Image::from_icon_name(row.icon.trim());
+            img.set_pixel_size(ICON_SIZE);
+            hb.append(&img);
+        }
+        let text = if label.is_empty() { row.exec.trim() } else { label };
+        let lbl = gtk::Label::new(Some(text));
+        lbl.set_halign(gtk::Align::Start);
+        lbl.set_hexpand(true);
+        hb.append(&lbl);
+        btn.set_child(Some(&hb));
+
+        let cmd = row.exec.clone();
+        let pop = popover.clone();
+        btn.connect_clicked(move |_| {
+            run_cmd(&cmd);
+            pop.popdown();
+        });
+        list.append(&btn);
+    }
+    popover.set_child(Some(&list));
+    popover
 }
 
 /// Render the `exec` output through the `{output}` template.
