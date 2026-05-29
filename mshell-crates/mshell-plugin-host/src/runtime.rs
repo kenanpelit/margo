@@ -12,6 +12,7 @@ use anyhow::Result;
 use std::path::Path;
 use wasmtime::component::{Component, Linker};
 use wasmtime::{Config, Engine, Store};
+use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiView};
 
 wasmtime::component::bindgen!({
     path: "wit",
@@ -63,6 +64,17 @@ pub struct UiEvent {
 
 struct HostState {
     plugin_id: String,
+    wasi: WasiCtx,
+    table: ResourceTable,
+}
+
+impl WasiView for HostState {
+    fn ctx(&mut self) -> &mut WasiCtx {
+        &mut self.wasi
+    }
+    fn table(&mut self) -> &mut ResourceTable {
+        &mut self.table
+    }
 }
 
 impl Host for HostState {
@@ -100,11 +112,15 @@ impl PluginRuntime {
     pub fn instantiate(&self, plugin_id: &str, wasm_path: &Path) -> Result<PluginInstance> {
         let component = Component::from_file(&self.engine, wasm_path)?;
         let mut linker = Linker::new(&self.engine);
+        // wasip2 guests link the WASI std interfaces; provide them.
+        wasmtime_wasi::add_to_linker_sync(&mut linker)?;
         Plugin::add_to_linker(&mut linker, |s: &mut HostState| s)?;
         let mut store = Store::new(
             &self.engine,
             HostState {
                 plugin_id: plugin_id.to_string(),
+                wasi: WasiCtxBuilder::new().build(),
+                table: ResourceTable::new(),
             },
         );
         let bindings = Plugin::instantiate(&mut store, &component, &linker)?;

@@ -1,0 +1,19 @@
+# Test fixture: a minimal WASM plugin guest used to runtime-verify the host
+# (W1/W2). Excluded from the workspace — built standalone for wasm32-wasip2.
+[package]
+name = "hello-guest"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "0.57"
+
+[profile.release]
+opt-level = "s"
+
+# Standalone — not part of the margo host workspace.
+[workspace]
