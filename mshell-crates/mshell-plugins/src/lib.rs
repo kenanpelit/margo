@@ -23,6 +23,16 @@ pub const OFFICIAL_SOURCE: &str = "https://github.com/kenanpelit/margo-plugins";
 /// Display name seeded for the official source.
 pub const OFFICIAL_SOURCE_NAME: &str = "Official";
 
+/// The mshell version this build reports for plugin `min_mshell` checks. The
+/// workspace version is shared across every crate, so this crate's
+/// `CARGO_PKG_VERSION` is the running shell's version.
+pub const MSHELL_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// `true` if a plugin declaring `min_mshell = min` may run on this build.
+pub fn compatible(min: &str) -> bool {
+    meets_min_mshell(min, MSHELL_VERSION)
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum PluginError {
     #[error("git: {0}")]
@@ -33,6 +43,8 @@ pub enum PluginError {
     Parse(String),
     #[error("invalid plugin: {0}")]
     Invalid(String),
+    #[error("requires mshell ≥ {required} (you have {current})")]
+    Incompatible { required: String, current: String },
 }
 
 /// A plugin found on disk under the plugins dir.
@@ -144,21 +156,37 @@ impl PluginStore {
         source_url: &str,
         entry: &RegistryEntry,
     ) -> Result<String, PluginError> {
+        // Gate on the registry's declared min_mshell before downloading.
+        if !compatible(&entry.min_mshell) {
+            return Err(PluginError::Incompatible {
+                required: entry.min_mshell.clone(),
+                current: MSHELL_VERSION.to_string(),
+            });
+        }
+
         let key = self.key_for(&entry.id, source_url);
         let dest = self.plugin_dir(&key);
         git::install_plugin(source_url, &entry.dir, &dest)?;
 
-        match read_manifest(&dest) {
-            Ok(m) => {
-                if let Err(e) = validate(&m) {
-                    let _ = std::fs::remove_dir_all(&dest);
-                    return Err(PluginError::Invalid(e));
-                }
-            }
+        let manifest = match read_manifest(&dest) {
+            Ok(m) => m,
             Err(e) => {
                 let _ = std::fs::remove_dir_all(&dest);
                 return Err(e);
             }
+        };
+        if let Err(e) = validate(&manifest) {
+            let _ = std::fs::remove_dir_all(&dest);
+            return Err(PluginError::Invalid(e));
+        }
+        // Re-check against the manifest (it's authoritative; the registry
+        // entry can lag).
+        if !compatible(&manifest.min_mshell) {
+            let _ = std::fs::remove_dir_all(&dest);
+            return Err(PluginError::Incompatible {
+                required: manifest.min_mshell.clone(),
+                current: MSHELL_VERSION.to_string(),
+            });
         }
         Ok(key)
     }
@@ -184,6 +212,14 @@ fn read_manifest(dir: &Path) -> Result<Manifest, PluginError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compatibility_gate() {
+        assert!(compatible("")); // no floor
+        assert!(compatible(MSHELL_VERSION)); // exactly this build
+        assert!(compatible("0.0.1")); // older floor
+        assert!(!compatible("999.0.0")); // far-future floor
+    }
 
     #[test]
     fn key_for_official_vs_custom() {

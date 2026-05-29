@@ -509,19 +509,30 @@ fn rebuild_available(
         }
         row.append(&col);
 
-        let btn = gtk::Button::with_label("Install");
-        btn.add_css_class("ok-button-surface");
-        btn.set_valign(gtk::Align::Center);
-        btn.set_sensitive(!model.busy);
-        {
+        if mshell_plugins::compatible(&e.min_mshell) {
+            let btn = gtk::Button::with_label("Install");
+            btn.add_css_class("ok-button-surface");
+            btn.set_valign(gtk::Align::Center);
+            btn.set_sensitive(!model.busy);
             let s2 = sender.clone();
             let url = row_data.source_url.clone();
             let entry = row_data.entry.clone();
             btn.connect_clicked(move |_| {
                 s2.input(PluginsSettingsInput::Install(url.clone(), entry.clone()))
             });
+            row.append(&btn);
+        } else {
+            // Too new for this shell — show why instead of an Install button.
+            let note = gtk::Label::new(Some(&format!("needs mshell ≥ {}", e.min_mshell)));
+            note.add_css_class("label-small");
+            note.add_css_class("dim-label");
+            note.set_valign(gtk::Align::Center);
+            note.set_tooltip_text(Some(&format!(
+                "You have mshell {}",
+                mshell_plugins::MSHELL_VERSION
+            )));
+            row.append(&note);
         }
-        row.append(&btn);
         list.append(&row);
     }
     if shown == 0 {
