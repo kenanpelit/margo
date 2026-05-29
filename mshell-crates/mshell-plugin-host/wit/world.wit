@@ -1,18 +1,62 @@
-// mplugins WASM tier — host/guest contract (W1: minimal).
+// mplugins WASM tier — host/guest contract.
 //
-// W1 establishes the runtime boundary: the guest can call back into the host
-// (`log`) and the host can invoke a guest entry point (`run`). The UI model
-// (a declarative `Ui` tree), capabilities (`get-setting`, `http`, `notify`),
-// and the event/`update` loop arrive in later milestones (W2+) — kept out of
-// W1 so the runtime foundation lands first.
+// W2 adds the UI model + event loop. The guest renders a UI as a *flat list*
+// of nodes (each node names its children by id) — the component model has no
+// recursive types, so the host reconstructs the tree from the list, rooted at
+// the node with id "root". `view` is the initial render; `update(event)`
+// re-renders after an interaction. Capabilities beyond `log` (settings, http,
+// notify) arrive in W3.
 
 package margo:plugin;
 
-world plugin {
-    /// Host capability: structured logging from the guest.
-    /// `level`: 0=trace 1=debug 2=info 3=warn 4=error.
-    import log: func(level: u32, message: string);
+interface types {
+    enum node-kind {
+        vbox,
+        hbox,
+        label,
+        button,
+        entry,
+    }
 
-    /// Guest entry point invoked by the host once instantiated.
-    export run: func();
+    record node {
+        /// Unique within a render; "root" is the tree root. Buttons/entries
+        /// use it to tag the events they emit.
+        id: string,
+        kind: node-kind,
+        /// Label/button caption, or an entry's current text.
+        text: string,
+        /// Child node ids, in order (ignored for leaf kinds).
+        children: list<string>,
+    }
+
+    enum event-kind {
+        click,
+        input,
+        submit,
+    }
+
+    record event {
+        /// Id of the node that produced the event.
+        id: string,
+        kind: event-kind,
+        /// Entry text for input/submit; empty for click.
+        value: string,
+    }
+}
+
+/// Host capabilities the guest may call. W2 ships logging; W3 adds
+/// get-setting / http / notify here.
+interface host {
+    /// Structured logging (0=trace…4=error).
+    log: func(level: u32, message: string);
+}
+
+world plugin {
+    use types.{node, event};
+    import host;
+
+    /// Initial UI, as a flat node list rooted at id "root".
+    export view: func() -> list<node>;
+    /// Re-render after an interaction; returns the new flat node list.
+    export update: func(ev: event) -> list<node>;
 }

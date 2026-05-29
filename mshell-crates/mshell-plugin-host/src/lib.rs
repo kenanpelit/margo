@@ -13,4 +13,4 @@
 mod runtime;
 
 #[cfg(feature = "wasm")]
-pub use runtime::PluginRuntime;
+pub use runtime::{PluginInstance, PluginRuntime, UiEvent, UiEventKind, UiKind, UiNode};

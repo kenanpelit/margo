@@ -1,12 +1,12 @@
-//! W1 runtime: load a WebAssembly **component**, link the `log` host
-//! capability, and call the guest's `run` export.
+//! W2 runtime: load a component, link the `log` capability, and drive the UI
+//! model — `view()` for the initial render and `update(event)` after each
+//! interaction. Both return a flat node list (see `world.wit`).
 //!
-//! NOTE: the wasmtime component-model wiring here is written against the
-//! crate's current API but is **only compiled under `--features wasm`** (a
-//! heavy build). Treat the exact binding names (`PluginImports`,
-//! `Plugin::instantiate`, `call_run`) as provisional until a `--features wasm`
-//! build confirms them; they may need small adjustments to track the pinned
-//! wasmtime version. The `world.wit` contract is the stable part.
+//! This module stays **GTK-free**: it exposes plain Rust types ([`UiNode`],
+//! [`UiEvent`]) so the GTK renderer (in the shell frame) can consume them
+//! without coupling wasmtime to gtk4.
+//!
+//! Compiled only under `--features wasm`.
 
 use anyhow::Result;
 use std::path::Path;
@@ -18,13 +18,54 @@ wasmtime::component::bindgen!({
     world: "plugin",
 });
 
-/// Host state handed to capability implementations.
+// `Node` and `Event` are brought into scope by the world's `use types.{…}`;
+// the enums + the host capability trait need importing explicitly.
+use margo::plugin::host::Host;
+use margo::plugin::types::{EventKind, NodeKind};
+
+// ── Public, GTK-free UI types ────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UiKind {
+    VBox,
+    HBox,
+    Label,
+    Button,
+    Entry,
+}
+
+/// One node of a guest-rendered UI. Children are referenced by id; the tree is
+/// rebuilt by the renderer from the flat list, rooted at id `"root"`.
+#[derive(Debug, Clone)]
+pub struct UiNode {
+    pub id: String,
+    pub kind: UiKind,
+    pub text: String,
+    pub children: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UiEventKind {
+    Click,
+    Input,
+    Submit,
+}
+
+/// An interaction routed back to the guest's `update`.
+#[derive(Debug, Clone)]
+pub struct UiEvent {
+    pub id: String,
+    pub kind: UiEventKind,
+    pub value: String,
+}
+
+// ── Host ─────────────────────────────────────────────────────────────────────
+
 struct HostState {
     plugin_id: String,
 }
 
-// World-level function imports are implemented on the host state.
-impl PluginImports for HostState {
+impl Host for HostState {
     fn log(&mut self, level: u32, message: String) {
         let id = self.plugin_id.as_str();
         match level {
@@ -37,7 +78,11 @@ impl PluginImports for HostState {
     }
 }
 
-/// A wasmtime engine, reused across plugin loads.
+// The `types` interface is types-only, but the generated linker bound still
+// requires its (empty) host trait.
+impl margo::plugin::types::Host for HostState {}
+
+/// A wasmtime engine, reused across plugin instantiations.
 pub struct PluginRuntime {
     engine: Engine,
 }
@@ -51,9 +96,8 @@ impl PluginRuntime {
         })
     }
 
-    /// Instantiate a plugin component and call its `run` export. W1 smoke
-    /// path — W2 swaps `run` for the `Ui`/event loop and a rendered panel.
-    pub fn run(&self, plugin_id: &str, wasm_path: &Path) -> Result<()> {
+    /// Instantiate a plugin component, ready to `view` / `update`.
+    pub fn instantiate(&self, plugin_id: &str, wasm_path: &Path) -> Result<PluginInstance> {
         let component = Component::from_file(&self.engine, wasm_path)?;
         let mut linker = Linker::new(&self.engine);
         Plugin::add_to_linker(&mut linker, |s: &mut HostState| s)?;
@@ -64,7 +108,56 @@ impl PluginRuntime {
             },
         );
         let bindings = Plugin::instantiate(&mut store, &component, &linker)?;
-        bindings.call_run(&mut store)?;
-        Ok(())
+        Ok(PluginInstance { store, bindings })
+    }
+}
+
+/// A live plugin instance. Holds the wasm store, so it is single-threaded and
+/// lives on the GTK main thread alongside its rendered surface.
+pub struct PluginInstance {
+    store: Store<HostState>,
+    bindings: Plugin,
+}
+
+impl PluginInstance {
+    /// Initial render.
+    pub fn view(&mut self) -> Result<Vec<UiNode>> {
+        let nodes = self.bindings.call_view(&mut self.store)?;
+        Ok(nodes.into_iter().map(to_ui_node).collect())
+    }
+
+    /// Re-render after an interaction.
+    pub fn update(&mut self, event: &UiEvent) -> Result<Vec<UiNode>> {
+        let nodes = self.bindings.call_update(&mut self.store, &to_wit_event(event))?;
+        Ok(nodes.into_iter().map(to_ui_node).collect())
+    }
+}
+
+// ── Conversions between the generated component types and the public types ───
+
+fn to_ui_node(n: Node) -> UiNode {
+    UiNode {
+        id: n.id,
+        kind: match n.kind {
+            NodeKind::Vbox => UiKind::VBox,
+            NodeKind::Hbox => UiKind::HBox,
+            NodeKind::Label => UiKind::Label,
+            NodeKind::Button => UiKind::Button,
+            NodeKind::Entry => UiKind::Entry,
+        },
+        text: n.text,
+        children: n.children,
+    }
+}
+
+fn to_wit_event(e: &UiEvent) -> Event {
+    Event {
+        id: e.id.clone(),
+        kind: match e.kind {
+            UiEventKind::Click => EventKind::Click,
+            UiEventKind::Input => EventKind::Input,
+            UiEventKind::Submit => EventKind::Submit,
+        },
+        value: e.value.clone(),
     }
 }
