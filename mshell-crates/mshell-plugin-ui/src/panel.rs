@@ -199,6 +199,10 @@ fn build(node: &UiNode, by_id: &HashMap<&str, &UiNode>, inner: &Rc<RefCell<Inner
             let scroller = gtk::ScrolledWindow::new();
             scroller.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
             scroller.set_vexpand(true);
+            // Kinetic scrolling steals drag gestures, so a click-drag scrolls
+            // instead of selecting text in the bubbles. Off → drag selects,
+            // and a selectable label's built-in Ctrl+C copies it.
+            scroller.set_kinetic_scrolling(false);
             // Give the log a height floor: hosted inside the menu's
             // `propagate_natural_height` ScrolledWindow, a `vexpand`-only inner
             // scroll reports 0 natural height and collapses — so its messages

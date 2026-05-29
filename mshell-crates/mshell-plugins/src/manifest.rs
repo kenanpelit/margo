@@ -131,6 +131,10 @@ pub struct MenuRow {
     /// Command (`sh -c`) run when the row is activated.
     #[serde(default)]
     pub exec: String,
+    /// Optional severity tint following the design language's ladder:
+    /// `"danger"` for destructive rows (disconnect, block, reset), else calm.
+    #[serde(default)]
+    pub severity: String,
 }
 
 /// A source's root `registry.toml`.

@@ -87,16 +87,45 @@ button.plugins-update-btn {
 }
 
 // Declarative plugin menu (a `[[widget.menu]]`'s command rows) hosted in the
-// first-class plugin menu surface — a tidy list of activatable rows.
+// first-class plugin menu surface — follows the design language's row grammar
+// (radius-sm rows, ≥40px targets, calm hover/press tints, symbolic 16px icons).
 .plugin-menu-list {
   padding: var(--space-1);
 }
 
 .plugin-menu-row {
+  min-height: 40px; // §0.9 interactive target
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
+  transition: background-color var(--motion-fast) var(--ease-standard);
+
+  image {
+    -gtk-icon-size: 16px;
+    color: var(--on-surface-variant);
+  }
+  label {
+    color: var(--on-surface);
+  }
 
   &:hover {
-    background-color: var(--surface-container-high);
+    background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
+  }
+  &:active {
+    background-color: unquote("color-mix(in srgb, var(--primary) 22%, transparent)");
+  }
+}
+
+// Destructive rows (disconnect / lockdown / reset) — error-tinted per the
+// severity ladder (§ DESIGN danger state).
+.plugin-menu-row-danger {
+  image,
+  label {
+    color: var(--error);
+  }
+  &:hover {
+    background-color: unquote("color-mix(in srgb, var(--error) 14%, transparent)");
+  }
+  &:active {
+    background-color: unquote("color-mix(in srgb, var(--error) 22%, transparent)");
   }
 }

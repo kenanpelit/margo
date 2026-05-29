@@ -120,6 +120,7 @@ fn to_custom_widget(
                 label: sub(&r.label),
                 icon: r.icon.clone(),
                 exec: sub(&r.exec),
+                severity: r.severity.clone(),
             })
             .collect(),
         panel_entry,

@@ -2475,6 +2475,9 @@ impl Frame {
             }
             let btn = gtk::Button::new();
             btn.add_css_class("plugin-menu-row");
+            if row.severity.trim() == "danger" {
+                btn.add_css_class("plugin-menu-row-danger");
+            }
             btn.set_has_frame(false);
             let hb = gtk::Box::new(gtk::Orientation::Horizontal, 8);
             if !row.icon.trim().is_empty() {

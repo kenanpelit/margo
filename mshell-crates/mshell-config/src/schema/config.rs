@@ -500,6 +500,8 @@ pub struct CustomMenuRow {
     pub label: String,
     pub icon: String,
     pub exec: String,
+    /// Severity tint for the row (`"danger"` = destructive), per DESIGN.md.
+    pub severity: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
