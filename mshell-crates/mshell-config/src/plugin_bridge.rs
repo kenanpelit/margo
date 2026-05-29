@@ -39,9 +39,9 @@ pub fn resync_plugin_widgets(config: &mut Config) {
 }
 
 /// The effective setting values for a plugin: the user's stored value, or the
-/// manifest default, per declared setting.
+/// manifest default, per declared setting — plus built-in placeholders.
 fn setting_values(plugin: &InstalledPlugin, state: &PluginsState) -> BTreeMap<String, String> {
-    plugin
+    let mut values: BTreeMap<String, String> = plugin
         .manifest
         .settings
         .iter()
@@ -52,7 +52,15 @@ fn setting_values(plugin: &InstalledPlugin, state: &PluginsState) -> BTreeMap<St
                 .unwrap_or_else(|| s.default.clone());
             (s.key.clone(), v)
         })
-        .collect()
+        .collect();
+    // Built-in: the plugin's install directory, so commands can run bundled
+    // scripts/assets — e.g. `sh {{plugin_dir}}/chat.sh`. Inserted last so it
+    // wins over any same-named user setting.
+    values.insert(
+        "plugin_dir".to_string(),
+        plugin.dir.to_string_lossy().into_owned(),
+    );
+    values
 }
 
 /// Drop every plugin-derived custom widget (used before persisting a layer
