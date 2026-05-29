@@ -234,13 +234,19 @@ fn wire_panel(button: &gtk::Button, config: &CustomWidgetConfig) {
     });
 }
 
-/// Without the `wasm-plugins` build, a panel pill can't run — hint at the
-/// rebuild and do nothing on click.
+/// Without the `wasm-plugins` build there's no WASM runtime, so a panel pill
+/// falls back to its `on_click` (e.g. a terminal chat) — or hints at the
+/// rebuild if the plugin offers no fallback command.
 #[cfg(not(feature = "wasm-plugins"))]
-fn wire_panel(button: &gtk::Button, _config: &CustomWidgetConfig) {
-    button.set_tooltip_text(Some(
-        "This plugin needs an mshell built with --features wasm-plugins",
-    ));
+fn wire_panel(button: &gtk::Button, config: &CustomWidgetConfig) {
+    let cmd = config.on_click.clone();
+    if cmd.trim().is_empty() {
+        button.set_tooltip_text(Some(
+            "This plugin's panel needs an mshell built with --features wasm-plugins",
+        ));
+    } else {
+        button.connect_clicked(move |_| run_cmd(&cmd));
+    }
 }
 
 /// Build the click-dropdown popover from the widget's declarative menu rows.
