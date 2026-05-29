@@ -422,22 +422,29 @@ fn rebuild_installed(
         title.set_halign(gtk::Align::Start);
         col.append(&title);
 
-        // Show the commands the plugin would run, so the user can review
-        // them before enabling.
+        // What the plugin is — the manifest description, like the Available list.
+        if !p.manifest.description.trim().is_empty() {
+            let desc = gtk::Label::new(Some(p.manifest.description.trim()));
+            desc.add_css_class("label-small");
+            desc.add_css_class("dim-label");
+            desc.set_halign(gtk::Align::Start);
+            desc.set_xalign(0.0);
+            desc.set_wrap(true);
+            desc.set_natural_wrap_mode(gtk::NaturalWrapMode::None);
+            col.append(&desc);
+        }
+
+        // Trust gate: keep the row clean — a quiet hint that it runs commands,
+        // with the full command(s) in the tooltip for review before enabling.
         let cmds = command_summary(p);
         if !cmds.is_empty() {
-            let cmd = gtk::Label::new(Some(&cmds));
-            cmd.add_css_class("label-small");
-            cmd.add_css_class("dim-label");
-            cmd.set_halign(gtk::Align::Start);
-            cmd.set_xalign(0.0);
-            // Commands can be long; keep the row compact with one ellipsized
-            // line and the full text on hover (still selectable for review).
-            cmd.set_ellipsize(gtk::pango::EllipsizeMode::End);
-            cmd.set_max_width_chars(48);
-            cmd.set_tooltip_text(Some(&cmds));
-            cmd.set_selectable(true);
-            col.append(&cmd);
+            let hint = gtk::Label::new(Some("runs shell commands — hover to review"));
+            hint.add_css_class("label-small");
+            hint.add_css_class("dim-label");
+            hint.set_halign(gtk::Align::Start);
+            hint.set_xalign(0.0);
+            hint.set_tooltip_text(Some(&cmds));
+            col.append(&hint);
         }
         row.append(&col);
 
@@ -560,9 +567,5 @@ fn command_summary(p: &InstalledPlugin) -> String {
             }
         }
     }
-    if cmds.is_empty() {
-        String::new()
-    } else {
-        format!("runs: {}", cmds.join(" · "))
-    }
+    cmds.join("\n")
 }

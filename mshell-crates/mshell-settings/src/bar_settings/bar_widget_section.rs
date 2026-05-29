@@ -210,21 +210,12 @@ impl WidgetSectionModel {
         // bars.widgets.custom_widgets (plugin widgets are injected there as
         // `plugin:<key>:<widget>`). Surface them here too — otherwise an
         // installed plugin's widget can never reach a bar from the UI.
-        // Map plugin composite keys → friendly manifest names so the menu
-        // shows "Network Speed · rate", not "plugin:network-speed:rate".
-        let plugin_names: std::collections::HashMap<String, String> =
-            mshell_plugins::PluginStore::new()
-                .installed()
-                .into_iter()
-                .map(|p| (p.key, p.manifest.name))
-                .collect();
-
         let cfg = config_manager().config().read_untracked().clone();
         for cw in &cfg.bars.widgets.custom_widgets {
             if cw.name.trim().is_empty() {
                 continue;
             }
-            let btn = gtk::Button::with_label(&friendly_widget_label(&cw.name, &plugin_names));
+            let btn = gtk::Button::with_label(&custom_widget_label(&cw.name));
             btn.set_css_classes(&["settings-bar-widget-add-item"]);
             btn.set_halign(gtk::Align::Fill);
             btn.set_has_frame(false);
@@ -263,17 +254,16 @@ impl WidgetSectionModel {
 /// custom-source plugins); show them as "<plugin name> · <widget>" using the
 /// installed manifest's name, falling back to the key. Non-plugin custom
 /// widgets keep their raw name.
-fn friendly_widget_label(
-    name: &str,
-    plugin_names: &std::collections::HashMap<String, String>,
-) -> String {
+pub(crate) fn custom_widget_label(name: &str) -> String {
     if let Some(rest) = name.strip_prefix("plugin:")
         && let Some((key, widget)) = rest.rsplit_once(':')
     {
-        let pretty = plugin_names
-            .get(key)
+        let pretty = mshell_plugins::PluginStore::new()
+            .installed()
+            .into_iter()
+            .find(|p| p.key == key)
+            .map(|p| p.manifest.name)
             .filter(|n| !n.trim().is_empty())
-            .cloned()
             .unwrap_or_else(|| key.to_string());
         return format!("{pretty} · {widget}");
     }

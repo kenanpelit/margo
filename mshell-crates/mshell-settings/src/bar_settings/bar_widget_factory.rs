@@ -31,8 +31,9 @@ pub struct ActiveWidgetInit {
 
 #[derive(Debug)]
 pub struct ActiveWidgetModel {
-    pub widget: BarWidget,
     pub location: BarListLocation,
+    /// Display label — friendly plugin/custom name, not "Custom Widget".
+    label: String,
 }
 
 #[derive(Debug)]
@@ -62,8 +63,7 @@ impl FactoryComponent for ActiveWidgetModel {
                 add_css_class: "label-small",
                 set_hexpand: true,
                 set_halign: gtk::Align::Start,
-                #[watch]
-                set_label: self.widget.display_name().to_string().as_str(),
+                set_label: self.label.as_str(),
             },
 
             gtk::Button {
@@ -103,9 +103,13 @@ impl FactoryComponent for ActiveWidgetModel {
         _index: &DynamicIndex,
         _sender: FactorySender<Self>,
     ) -> Self {
+        let label = match &init.widget {
+            BarWidget::Custom(name) => super::bar_widget_section::custom_widget_label(name),
+            other => other.display_name().to_string(),
+        };
         Self {
-            widget: init.widget,
             location: init.location,
+            label,
         }
     }
 
