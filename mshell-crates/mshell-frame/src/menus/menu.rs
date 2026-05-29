@@ -229,6 +229,10 @@ impl Component for MenuModel {
             set_css_classes: &["menu-scroll-window"],
             set_vscrollbar_policy: gtk::PolicyType::Automatic,
             set_hscrollbar_policy: gtk::PolicyType::Never,
+            // The plugin panel hosts selectable text (chat bubbles); kinetic
+            // scrolling would steal the click-drag and scroll instead of
+            // selecting. Disable it there so drag-select + Ctrl+C works.
+            set_kinetic_scrolling: !model.fixed_height,
             set_propagate_natural_height: true,
             // Pin the viewport to exactly `minimum_width` on both
             // axes (min_content_width = max_content_width = w).
