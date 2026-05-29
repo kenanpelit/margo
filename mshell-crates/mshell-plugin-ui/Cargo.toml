@@ -1,0 +1,22 @@
+[package]
+name = "mshell-plugin-ui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "GTK renderer for WASM-plugin UI trees (mplugins WASM tier, W2b)."
+repository.workspace = true
+license.workspace = true
+
+[features]
+# Pulls gtk4 + the wasm host; off by default so non-WASM shell builds stay lean.
+default = []
+wasm = ["dep:gtk4", "dep:mshell-plugin-host", "mshell-plugin-host/wasm"]
+
+[dependencies]
+anyhow.workspace = true
+tracing.workspace = true
+gtk4 = { workspace = true, optional = true }
+mshell-plugin-host = { workspace = true, optional = true }
+
+[lints]
+workspace = true

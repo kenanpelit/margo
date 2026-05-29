@@ -4338,6 +4338,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "mshell-plugin-ui"
+version = "0.8.8"
+dependencies = [
+ "anyhow",
+ "gtk4",
+ "mshell-plugin-host",
+ "tracing",
+]
+
+[[package]]
 name = "mshell-plugins"
 version = "0.8.8"
 dependencies = [

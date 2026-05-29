@@ -38,6 +38,7 @@ members = [
     "mshell-crates/mshell-notification-popups",
     "mshell-crates/mshell-osd",
     "mshell-crates/mshell-plugin-host",
+    "mshell-crates/mshell-plugin-ui",
     "mshell-crates/mshell-plugins",
     "mshell-crates/mshell-polkit",
     "mshell-crates/mshell-screenshot",
@@ -194,6 +195,7 @@ mshell-matugen = { path = "mshell-crates/mshell-matugen" }
 mshell-notification-popups = { path = "mshell-crates/mshell-notification-popups" }
 mshell-osd = { path = "mshell-crates/mshell-osd" }
 mshell-plugin-host = { path = "mshell-crates/mshell-plugin-host" }
+mshell-plugin-ui = { path = "mshell-crates/mshell-plugin-ui" }
 mshell-plugins = { path = "mshell-crates/mshell-plugins" }
 mshell-polkit = { path = "mshell-crates/mshell-polkit" }
 mshell-screenshot = { path = "mshell-crates/mshell-screenshot" }
