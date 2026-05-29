@@ -231,9 +231,14 @@ fn build(node: &UiNode, by_id: &HashMap<&str, &UiNode>, inner: &Rc<RefCell<Inner
         }
     };
     // Apply the plugin's design-language classes (plugin-hero, plugin-action,
-    // plugin-toggle, …) so the panel can match the native widgets.
+    // plugin-toggle, …) so the panel can match the native widgets. The special
+    // `plugin-expand` class also sets `hexpand` (CSS can't), so siblings in a
+    // row share the width evenly.
     for class in node.class.split_whitespace() {
         widget.add_css_class(class);
+        if class == "plugin-expand" {
+            widget.set_hexpand(true);
+        }
     }
     widget
 }
