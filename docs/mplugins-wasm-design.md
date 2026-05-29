@@ -5,8 +5,10 @@ This document designs the **WASM tier**: sandboxed, in-shell plugin **UI**
 (the assistant *panel*, dashboards, etc.) authored in Rust (or any language)
 and compiled to WebAssembly.
 
-> **Status:** design / not yet implemented. This is a multi-stage framework,
-> not a one-shot change. Milestones below are built and shipped in order.
+> **Status:** implemented (W1–W5 + W2c). The capability/UI/SDK tiers are tested
+> headless; the in-shell panel surface (W2c) is feature-gated
+> (`mshell --features wasm-plugins`) and verified in a running shell. The real
+> `assistant-panel` Gemini chat ships in margo-plugins as `plugin.wasm`.
 
 ## Why WASM (not native, not Lua)
 
@@ -58,10 +60,14 @@ plugin.wasm (guest, sandboxed)            mshell (host, GTK)
 - **W2b — GTK renderer + event loop:** ✅ `mshell-plugin-ui` renders a `UiNode`
   tree to GTK and drives click/submit → `update` → re-render. Feature-gated;
   builds + clippy clean under `--features wasm`.
-- **W2c — frame integration:** host a `PluginPanel` in a layer-shell panel
-  opened from a bar pill. Needs the live shell to verify positioning +
-  reactive wiring, so it's built against a running shell. (Done last — the
-  capability + UI work below is verifiable headless; the surface wiring isn't.)
+- **W2c — frame integration:** ✅ a plugin's panel is hosted in a `gtk::Popover`
+  anchored to its bar pill — no `frame.rs`/menu coupling. A manifest
+  `opens_panel` widget carries `panel_entry` (abs `.wasm` path) + `panel_settings`
+  (JSON) onto its derived custom widget (via the plugin bridge); `custom.rs`
+  builds the `PluginPanel` and pops it up on click. Feature-gated
+  (`mshell --features wasm-plugins`, chained mshell → core → frame) so default
+  builds pull no wasmtime; without the feature the pill falls back to `on_click`.
+  Built; the live surface is verified in a running wasm-plugins shell.
 - **W3 — Capabilities:** ✅ the `host` interface now exposes `get-setting`
   (reads the declarative `[[setting]]` store), `notify` (best-effort
   `notify-send`), and one-shot `http` (`http-request`→`http-response`, blocking
@@ -84,9 +90,10 @@ plugin.wasm (guest, sandboxed)            mshell (host, GTK)
   submit a line → stream the reply into an "ai" bubble — against a local server.
   To make the SDK's `export!` work across crates, the contract now exports an
   **`interface guest`** (`view`/`update`) rather than bare world functions.
-  *Remaining:* port the real `assistant-panel` chat into margo-plugins as a
-  shipped `plugin.wasm` (+ manifest `entry`/`entryKind`), and **W2c** to show
-  the panel in the live shell.
+  ✅ **Real port:** `assistant-panel` ships in margo-plugins as a built
+  `plugin.wasm` (manifest `entry`/`entry_kind`) — a streaming Gemini chat that
+  parses the `alt=sse` stream into bubbles, runtime-verified against a local
+  Gemini-shaped SSE server. All milestones complete.
 
 ## Risks / open decisions
 
