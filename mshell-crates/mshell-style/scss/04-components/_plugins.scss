@@ -610,3 +610,17 @@ button.plugin-chip {
   font-variant-numeric: tabular-nums;
   color: var(--on-surface);
 }
+
+// ── Synced lyrics ──────────────────────────────────────────────────────────
+// Each lyric line is centred; the inactive ones sit back (dim, normal weight)
+// and the active one steps forward (larger, SemiBold, primary) so the eye
+// tracks the song. The plugin windows the lines around the active one.
+.lyrics-line {
+  font-size: var(--font-md);
+  transition: color var(--motion-fast) var(--ease-standard);
+}
+.lyrics-line-active {
+  font-size: var(--font-lg);
+  font-weight: 600;
+  color: var(--primary);
+}
