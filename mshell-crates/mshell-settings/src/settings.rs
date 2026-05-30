@@ -432,27 +432,6 @@ impl Component for SettingsWindowModel {
                         },
                     },
 
-                    #[name = "tag_layout_btn"]
-                    gtk::ToggleButton {
-                        add_css_class: "sidebar-button",
-                        set_group: Some(&general_btn),
-                        connect_toggled[stack] => move |b| {
-                            if b.is_active() { stack.set_visible_child_name("tiling_layout"); }
-                        },
-
-                        gtk::Box {
-                            set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 12,
-                            gtk::Image { set_icon_name: Some("view-grid-symbolic") },
-                            gtk::Label {
-                                add_css_class: "label-medium",
-                                set_label: "Tiling Layout",
-                                set_halign: gtk::Align::Start,
-                                set_hexpand: true,
-                            },
-                        },
-                    },
-
                     #[name = "input_btn"]
                     gtk::ToggleButton {
                         add_css_class: "sidebar-button",
@@ -678,6 +657,27 @@ impl Component for SettingsWindowModel {
                             gtk::Label {
                                 add_css_class: "label-medium",
                                 set_label: "Theme",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
+                    #[name = "tag_layout_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("tiling_layout"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("view-grid-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Tiling Layout",
                                 set_halign: gtk::Align::Start,
                                 set_hexpand: true,
                             },
