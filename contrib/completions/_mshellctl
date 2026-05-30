@@ -25,13 +25,18 @@ _mshellctl() {
         args)
             case $words[1] in
                 menu)
+                    # Single-colon rest (mirrors the working _mctl pattern): the
+                    # `1:` positional completes the menu subcommand first; `*:`
+                    # only applies to later args. A `*::` here swallowed
+                    # position 1, so `menu <TAB>` offered nothing.
                     _arguments \
                         '1:menu subcommand:_mshellctl_menu_subcommands' \
-                        '*:: :->menu_args' \
+                        '*:menu argument:->menu_args' \
                         && return 0
                     case $state in
                         menu_args)
-                            if [[ $words[1] == "plugin" && $CURRENT == 2 ]]; then
+                            # `menu plugin <KEY>` → live plugin keys.
+                            if [[ $words[2] == "plugin" && $CURRENT == 3 ]]; then
                                 _mshellctl_plugin_keys
                             fi
                             ;;
@@ -40,21 +45,17 @@ _mshellctl() {
                 plugin)
                     _arguments \
                         '1:plugin subcommand:_mshellctl_plugin_subcommands' \
-                        '*:: :->plugin_args' \
+                        '*:plugin argument:->plugin_args' \
                         && return 0
                     case $state in
                         plugin_args)
-                            case $words[1] in
-                                reload)
-                                    _arguments '1:plugin key:_mshellctl_plugin_keys'
-                                    ;;
-                                keybind)
-                                    _arguments \
-                                        '1:plugin key:_mshellctl_plugin_keys' \
-                                        '2:bind id'
+                            case $words[2] in
+                                reload|keybind)
+                                    # First arg after the subcommand → plugin key.
+                                    [[ $CURRENT == 3 ]] && _mshellctl_plugin_keys
                                     ;;
                                 list)
-                                    _arguments \
+                                    _values 'flag' \
                                         '--names[print only composite keys]' \
                                         '--enabled[only show enabled plugins]'
                                     ;;
