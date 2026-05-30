@@ -209,6 +209,45 @@ pub(crate) struct MenuInit {
     pub(crate) menu_type: MenuType,
 }
 
+// ── Per-menu reactive config effects ─────────────────────────────────────
+// Every menu type wired the same widgets / minimum_width / maximum_height
+// effect by hand (clone config, clone sender, push a closure that reads one
+// reactive field and forwards a `Set*` input). These macros hold that shape
+// once; a menu-type arm just calls the effects it needs with its config
+// accessor (e.g. `effect_widgets!(effects, base_config, sender, clock_menu)`).
+macro_rules! effect_widgets {
+    ($e:expr, $cfg:expr, $s:expr, $acc:ident) => {{
+        let config = $cfg.clone();
+        let sender_clone = $s.clone();
+        $e.push(move |_| {
+            let config = config.clone();
+            sender_clone.input(MenuInput::SetWidget(config.menus().$acc().widgets().get()));
+        });
+    }};
+}
+macro_rules! effect_min_width {
+    ($e:expr, $cfg:expr, $s:expr, $acc:ident) => {{
+        let config = $cfg.clone();
+        let sender_clone = $s.clone();
+        $e.push(move |_| {
+            let config = config.clone();
+            sender_clone
+                .input(MenuInput::SetMinimumWidth(config.menus().$acc().minimum_width().get()));
+        });
+    }};
+}
+macro_rules! effect_max_height {
+    ($e:expr, $cfg:expr, $s:expr, $acc:ident) => {{
+        let config = $cfg.clone();
+        let sender_clone = $s.clone();
+        $e.push(move |_| {
+            let config = config.clone();
+            sender_clone
+                .input(MenuInput::SetMaximumHeight(config.menus().$acc().maximum_height().get()));
+        });
+    }};
+}
+
 #[relm4::component(pub)]
 impl Component for MenuModel {
     type CommandOutput = ();
@@ -299,44 +338,14 @@ impl Component for MenuModel {
         match params.menu_type {
             MenuType::Clock => {
                 css_class = "clock-menu".to_string();
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.menus().clock_menu().widgets().get();
-                    sender_clone.input(MenuInput::SetWidget(widgets));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let minimum_width = config.menus().clock_menu().minimum_width().get();
-                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let maximum_height = config.menus().clock_menu().maximum_height().get();
-                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                });
+                effect_widgets!(effects, base_config, sender, clock_menu);
+                effect_min_width!(effects, base_config, sender, clock_menu);
+                effect_max_height!(effects, base_config, sender, clock_menu);
             }
             MenuType::Clipboard => {
                 css_class = "clipboard-menu".to_string();
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.menus().clipboard_menu().widgets().get();
-                    sender_clone.input(MenuInput::SetWidget(widgets));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let minimum_width = config.menus().clipboard_menu().minimum_width().get();
-                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                });
+                effect_widgets!(effects, base_config, sender, clipboard_menu);
+                effect_min_width!(effects, base_config, sender, clipboard_menu);
                 // NOTE: unlike other menus, the clipboard does NOT cap its
                 // *outer* scroller at `maximum_height`. The clipboard
                 // widget applies that cap to its own inner history
@@ -347,20 +356,8 @@ impl Component for MenuModel {
             }
             MenuType::Notifications => {
                 css_class = "notifications-menu".to_string();
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.menus().notification_menu().widgets().get();
-                    sender_clone.input(MenuInput::SetWidget(widgets));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let minimum_width = config.menus().notification_menu().minimum_width().get();
-                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                });
+                effect_widgets!(effects, base_config, sender, notification_menu);
+                effect_min_width!(effects, base_config, sender, notification_menu);
                 // NOTE: like the clipboard, the notifications menu does NOT
                 // cap its *outer* scroller at `maximum_height`. The widget
                 // applies that cap to its own inner history scroller (see
@@ -370,75 +367,21 @@ impl Component for MenuModel {
             }
             MenuType::Screenshot => {
                 css_class = "screenshot-menu".to_string();
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.menus().screenshot_menu().widgets().get();
-                    sender_clone.input(MenuInput::SetWidget(widgets));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let minimum_width = config.menus().screenshot_menu().minimum_width().get();
-                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let maximum_height = config.menus().screenshot_menu().maximum_height().get();
-                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                });
+                effect_widgets!(effects, base_config, sender, screenshot_menu);
+                effect_min_width!(effects, base_config, sender, screenshot_menu);
+                effect_max_height!(effects, base_config, sender, screenshot_menu);
             }
             MenuType::AppLauncher => {
                 css_class = "app-launcher-menu".to_string();
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.menus().app_launcher_menu().widgets().get();
-                    sender_clone.input(MenuInput::SetWidget(widgets));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let minimum_width = config.menus().app_launcher_menu().minimum_width().get();
-                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let maximum_height = config.menus().app_launcher_menu().maximum_height().get();
-                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                });
+                effect_widgets!(effects, base_config, sender, app_launcher_menu);
+                effect_min_width!(effects, base_config, sender, app_launcher_menu);
+                effect_max_height!(effects, base_config, sender, app_launcher_menu);
             }
             MenuType::Wallpaper => {
                 css_class = "wallpaper-menu".to_string();
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.menus().wallpaper_menu().widgets().get();
-                    sender_clone.input(MenuInput::SetWidget(widgets));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let minimum_width = config.menus().wallpaper_menu().minimum_width().get();
-                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let maximum_height = config.menus().wallpaper_menu().maximum_height().get();
-                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                });
+                effect_widgets!(effects, base_config, sender, wallpaper_menu);
+                effect_min_width!(effects, base_config, sender, wallpaper_menu);
+                effect_max_height!(effects, base_config, sender, wallpaper_menu);
             }
             MenuType::HyprlandScreenshare => {
                 css_class = "hyprland-screenshare-menu".to_string();
@@ -453,591 +396,156 @@ impl Component for MenuModel {
             }
             MenuType::Ufw => {
                 css_class = "ufw-menu".to_string();
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.menus().ufw_menu().widgets().get();
-                    sender_clone.input(MenuInput::SetWidget(widgets));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let minimum_width = config.menus().ufw_menu().minimum_width().get();
-                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let maximum_height = config.menus().ufw_menu().maximum_height().get();
-                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                });
+                effect_widgets!(effects, base_config, sender, ufw_menu);
+                effect_min_width!(effects, base_config, sender, ufw_menu);
+                effect_max_height!(effects, base_config, sender, ufw_menu);
             }
             MenuType::Dns => {
                 css_class = "dns-menu".to_string();
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.menus().dns_menu().widgets().get();
-                    sender_clone.input(MenuInput::SetWidget(widgets));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let minimum_width = config.menus().dns_menu().minimum_width().get();
-                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let maximum_height = config.menus().dns_menu().maximum_height().get();
-                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                });
+                effect_widgets!(effects, base_config, sender, dns_menu);
+                effect_min_width!(effects, base_config, sender, dns_menu);
+                effect_max_height!(effects, base_config, sender, dns_menu);
             }
             MenuType::Podman => {
                 css_class = "podman-menu".to_string();
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.menus().podman_menu().widgets().get();
-                    sender_clone.input(MenuInput::SetWidget(widgets));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let minimum_width = config.menus().podman_menu().minimum_width().get();
-                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let maximum_height = config.menus().podman_menu().maximum_height().get();
-                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                });
+                effect_widgets!(effects, base_config, sender, podman_menu);
+                effect_min_width!(effects, base_config, sender, podman_menu);
+                effect_max_height!(effects, base_config, sender, podman_menu);
             }
             MenuType::Notes => {
                 css_class = "notes-menu".to_string();
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.menus().notes_menu().widgets().get();
-                    sender_clone.input(MenuInput::SetWidget(widgets));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let minimum_width = config.menus().notes_menu().minimum_width().get();
-                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let maximum_height = config.menus().notes_menu().maximum_height().get();
-                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                });
+                effect_widgets!(effects, base_config, sender, notes_menu);
+                effect_min_width!(effects, base_config, sender, notes_menu);
+                effect_max_height!(effects, base_config, sender, notes_menu);
             }
             MenuType::Ip => {
                 css_class = "ip-menu".to_string();
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.menus().ip_menu().widgets().get();
-                    sender_clone.input(MenuInput::SetWidget(widgets));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let minimum_width = config.menus().ip_menu().minimum_width().get();
-                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let maximum_height = config.menus().ip_menu().maximum_height().get();
-                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                });
+                effect_widgets!(effects, base_config, sender, ip_menu);
+                effect_min_width!(effects, base_config, sender, ip_menu);
+                effect_max_height!(effects, base_config, sender, ip_menu);
             }
             MenuType::Network => {
                 css_class = "network-menu".to_string();
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.menus().network_menu().widgets().get();
-                    sender_clone.input(MenuInput::SetWidget(widgets));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let minimum_width = config.menus().network_menu().minimum_width().get();
-                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let maximum_height = config.menus().network_menu().maximum_height().get();
-                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                });
+                effect_widgets!(effects, base_config, sender, network_menu);
+                effect_min_width!(effects, base_config, sender, network_menu);
+                effect_max_height!(effects, base_config, sender, network_menu);
             }
             MenuType::Bluetooth => {
                 // Reuses the .quick-settings-menu CSS so the
                 // existing BluetoothMenuWidget revealer-row gets
                 // the same card chrome it has inside QS panel.
                 css_class = "quick-settings-menu bluetooth-menu".to_string();
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.menus().bluetooth_menu().widgets().get();
-                    sender_clone.input(MenuInput::SetWidget(widgets));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let minimum_width = config.menus().bluetooth_menu().minimum_width().get();
-                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let maximum_height = config.menus().bluetooth_menu().maximum_height().get();
-                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                });
+                effect_widgets!(effects, base_config, sender, bluetooth_menu);
+                effect_min_width!(effects, base_config, sender, bluetooth_menu);
+                effect_max_height!(effects, base_config, sender, bluetooth_menu);
             }
             MenuType::CpuDashboard => {
                 css_class = "cpu-dashboard-menu".to_string();
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.menus().cpu_dashboard_menu().widgets().get();
-                    sender_clone.input(MenuInput::SetWidget(widgets));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let minimum_width =
-                        config.menus().cpu_dashboard_menu().minimum_width().get();
-                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let maximum_height =
-                        config.menus().cpu_dashboard_menu().maximum_height().get();
-                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                });
+                effect_widgets!(effects, base_config, sender, cpu_dashboard_menu);
+                effect_min_width!(effects, base_config, sender, cpu_dashboard_menu);
+                effect_max_height!(effects, base_config, sender, cpu_dashboard_menu);
             }
             MenuType::AudioDashboard => {
                 // Same card-stack chrome as the Bluetooth menu so
                 // the AudioOut / AudioIn revealer rows get the
                 // polished surface-variant card treatment.
                 css_class = "quick-settings-menu audio-dashboard-menu".to_string();
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.menus().audio_dashboard_menu().widgets().get();
-                    sender_clone.input(MenuInput::SetWidget(widgets));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let minimum_width =
-                        config.menus().audio_dashboard_menu().minimum_width().get();
-                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let maximum_height =
-                        config.menus().audio_dashboard_menu().maximum_height().get();
-                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                });
+                effect_widgets!(effects, base_config, sender, audio_dashboard_menu);
+                effect_min_width!(effects, base_config, sender, audio_dashboard_menu);
+                effect_max_height!(effects, base_config, sender, audio_dashboard_menu);
             }
             MenuType::SystemUpdate => {
                 css_class = "system-update-menu".to_string();
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.menus().system_update_menu().widgets().get();
-                    sender_clone.input(MenuInput::SetWidget(widgets));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let minimum_width =
-                        config.menus().system_update_menu().minimum_width().get();
-                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let maximum_height =
-                        config.menus().system_update_menu().maximum_height().get();
-                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                });
+                effect_widgets!(effects, base_config, sender, system_update_menu);
+                effect_min_width!(effects, base_config, sender, system_update_menu);
+                effect_max_height!(effects, base_config, sender, system_update_menu);
             }
             MenuType::Valent => {
                 css_class = "valent-menu".to_string();
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.menus().valent_menu().widgets().get();
-                    sender_clone.input(MenuInput::SetWidget(widgets));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let minimum_width = config.menus().valent_menu().minimum_width().get();
-                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let maximum_height = config.menus().valent_menu().maximum_height().get();
-                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                });
+                effect_widgets!(effects, base_config, sender, valent_menu);
+                effect_min_width!(effects, base_config, sender, valent_menu);
+                effect_max_height!(effects, base_config, sender, valent_menu);
             }
             MenuType::Weather => {
                 css_class = "weather-menu".to_string();
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.menus().weather_menu().widgets().get();
-                    sender_clone.input(MenuInput::SetWidget(widgets));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let minimum_width = config.menus().weather_menu().minimum_width().get();
-                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let maximum_height = config.menus().weather_menu().maximum_height().get();
-                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                });
+                effect_widgets!(effects, base_config, sender, weather_menu);
+                effect_min_width!(effects, base_config, sender, weather_menu);
+                effect_max_height!(effects, base_config, sender, weather_menu);
             }
             MenuType::KeepAwake => {
                 css_class = "keep-awake-menu".to_string();
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.menus().keep_awake_menu().widgets().get();
-                    sender_clone.input(MenuInput::SetWidget(widgets));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let minimum_width = config.menus().keep_awake_menu().minimum_width().get();
-                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let maximum_height =
-                        config.menus().keep_awake_menu().maximum_height().get();
-                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                });
+                effect_widgets!(effects, base_config, sender, keep_awake_menu);
+                effect_min_width!(effects, base_config, sender, keep_awake_menu);
+                effect_max_height!(effects, base_config, sender, keep_awake_menu);
             }
             MenuType::Twilight => {
                 css_class = "twilight-menu".to_string();
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.menus().twilight_menu().widgets().get();
-                    sender_clone.input(MenuInput::SetWidget(widgets));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let minimum_width = config.menus().twilight_menu().minimum_width().get();
-                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let maximum_height = config.menus().twilight_menu().maximum_height().get();
-                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                });
+                effect_widgets!(effects, base_config, sender, twilight_menu);
+                effect_min_width!(effects, base_config, sender, twilight_menu);
+                effect_max_height!(effects, base_config, sender, twilight_menu);
             }
             MenuType::Keybinds => {
                 css_class = "keybinds-menu".to_string();
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.menus().keybinds_menu().widgets().get();
-                    sender_clone.input(MenuInput::SetWidget(widgets));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let minimum_width = config.menus().keybinds_menu().minimum_width().get();
-                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let maximum_height = config.menus().keybinds_menu().maximum_height().get();
-                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                });
+                effect_widgets!(effects, base_config, sender, keybinds_menu);
+                effect_min_width!(effects, base_config, sender, keybinds_menu);
+                effect_max_height!(effects, base_config, sender, keybinds_menu);
             }
             MenuType::AlarmClock => {
                 css_class = "alarm-clock-menu".to_string();
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.menus().alarmclock_menu().widgets().get();
-                    sender_clone.input(MenuInput::SetWidget(widgets));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let minimum_width = config.menus().alarmclock_menu().minimum_width().get();
-                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let maximum_height = config.menus().alarmclock_menu().maximum_height().get();
-                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                });
+                effect_widgets!(effects, base_config, sender, alarmclock_menu);
+                effect_min_width!(effects, base_config, sender, alarmclock_menu);
+                effect_max_height!(effects, base_config, sender, alarmclock_menu);
             }
             MenuType::ControlCenter => {
                 css_class = "control-center-menu".to_string();
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.menus().control_center_menu().widgets().get();
-                    sender_clone.input(MenuInput::SetWidget(widgets));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let minimum_width =
-                        config.menus().control_center_menu().minimum_width().get();
-                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let maximum_height =
-                        config.menus().control_center_menu().maximum_height().get();
-                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                });
+                effect_widgets!(effects, base_config, sender, control_center_menu);
+                effect_min_width!(effects, base_config, sender, control_center_menu);
+                effect_max_height!(effects, base_config, sender, control_center_menu);
             }
             MenuType::SshSessions => {
                 css_class = "ssh-sessions-menu".to_string();
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.menus().ssh_menu().widgets().get();
-                    sender_clone.input(MenuInput::SetWidget(widgets));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let minimum_width = config.menus().ssh_menu().minimum_width().get();
-                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let maximum_height = config.menus().ssh_menu().maximum_height().get();
-                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                });
+                effect_widgets!(effects, base_config, sender, ssh_menu);
+                effect_min_width!(effects, base_config, sender, ssh_menu);
+                effect_max_height!(effects, base_config, sender, ssh_menu);
             }
             MenuType::Power => {
                 css_class = "power-menu".to_string();
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.menus().power_menu().widgets().get();
-                    sender_clone.input(MenuInput::SetWidget(widgets));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let minimum_width = config.menus().power_menu().minimum_width().get();
-                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let maximum_height = config.menus().power_menu().maximum_height().get();
-                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                });
+                effect_widgets!(effects, base_config, sender, power_menu);
+                effect_min_width!(effects, base_config, sender, power_menu);
+                effect_max_height!(effects, base_config, sender, power_menu);
             }
             MenuType::MediaPlayer => {
                 css_class = "media-player-menu".to_string();
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.menus().media_player_menu().widgets().get();
-                    sender_clone.input(MenuInput::SetWidget(widgets));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let minimum_width = config.menus().media_player_menu().minimum_width().get();
-                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let maximum_height = config.menus().media_player_menu().maximum_height().get();
-                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                });
+                effect_widgets!(effects, base_config, sender, media_player_menu);
+                effect_min_width!(effects, base_config, sender, media_player_menu);
+                effect_max_height!(effects, base_config, sender, media_player_menu);
             }
             MenuType::Session => {
                 css_class = "session-menu".to_string();
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.menus().session_menu().widgets().get();
-                    sender_clone.input(MenuInput::SetWidget(widgets));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let minimum_width = config.menus().session_menu().minimum_width().get();
-                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let maximum_height = config.menus().session_menu().maximum_height().get();
-                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                });
+                effect_widgets!(effects, base_config, sender, session_menu);
+                effect_min_width!(effects, base_config, sender, session_menu);
+                effect_max_height!(effects, base_config, sender, session_menu);
             }
             MenuType::Dashboard => {
                 // Same card-stack CSS as quick-settings — dashboard
                 // reuses the .quick-settings-menu class so all the
                 // surface-variant card + hero clock rules apply.
                 css_class = "quick-settings-menu dashboard-menu".to_string();
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.menus().dashboard_menu().widgets().get();
-                    sender_clone.input(MenuInput::SetWidget(widgets));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let minimum_width = config.menus().dashboard_menu().minimum_width().get();
-                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let maximum_height = config.menus().dashboard_menu().maximum_height().get();
-                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                });
+                effect_widgets!(effects, base_config, sender, dashboard_menu);
+                effect_min_width!(effects, base_config, sender, dashboard_menu);
+                effect_max_height!(effects, base_config, sender, dashboard_menu);
             }
             MenuType::MargoLayout => {
                 css_class = "quick-settings-menu margo-layout-menu".to_string();
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let widgets = config.menus().margo_layout_menu().widgets().get();
-                    sender_clone.input(MenuInput::SetWidget(widgets));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let minimum_width = config.menus().margo_layout_menu().minimum_width().get();
-                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let maximum_height = config.menus().margo_layout_menu().maximum_height().get();
-                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                });
+                effect_widgets!(effects, base_config, sender, margo_layout_menu);
+                effect_min_width!(effects, base_config, sender, margo_layout_menu);
+                effect_max_height!(effects, base_config, sender, margo_layout_menu);
             }
             MenuType::PluginPanel => {
                 css_class = "plugin-panel-menu".to_string();
                 // No SetWidget — content is injected via SetExternalContent.
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let minimum_width = config.menus().plugin_panel_menu().minimum_width().get();
-                    sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                });
-                let config = base_config.clone();
-                let sender_clone = sender.clone();
-                effects.push(move |_| {
-                    let config = config.clone();
-                    let maximum_height = config.menus().plugin_panel_menu().maximum_height().get();
-                    sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                });
+                effect_min_width!(effects, base_config, sender, plugin_panel_menu);
+                effect_max_height!(effects, base_config, sender, plugin_panel_menu);
             }
         }
 
