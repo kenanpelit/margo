@@ -717,8 +717,8 @@ fn default_control_center_menu() -> Menu {
         widgets: vec![MenuWidget::ControlCenter],
         minimum_width: 460,
         maximum_height: 720,
-        auto_width: true,
-        auto_height: true,
+        auto_width: false,
+        auto_height: false,
     }
 }
 
@@ -741,8 +741,8 @@ fn default_cpu_dashboard_menu() -> Menu {
         widgets: vec![MenuWidget::CpuDashboard],
         minimum_width: 380,
         maximum_height: 0,
-        auto_width: true,
-        auto_height: true,
+        auto_width: false,
+        auto_height: false,
     }
 }
 
@@ -752,8 +752,8 @@ fn default_audio_dashboard_menu() -> Menu {
         widgets: vec![MenuWidget::AudioDashboard],
         minimum_width: 400,
         maximum_height: 0,
-        auto_width: true,
-        auto_height: true,
+        auto_width: false,
+        auto_height: false,
     }
 }
 
@@ -782,16 +782,22 @@ impl Default for Menus {
                 // → Widgets → Clipboard for other monitor heights.
                 minimum_width: 550,
                 maximum_height: 890,
-                auto_width: true,
-                auto_height: true,
+                auto_width: false,
+                auto_height: false,
             },
             notification_menu: Menu {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::Notifications],
                 minimum_width: 410,
-                maximum_height: 0,
-                auto_width: true,
-                auto_height: true,
+                maximum_height: 600,
+                // The notification history is a list panel: its rows
+                // ellipsize against a *fixed* width and the inner
+                // ListView does its own scroll, so content-auto sizing
+                // would balloon the surface to the ½-/¾-screen ceilings
+                // (≈620×1200). Ship it pinned at 410 wide, capped 600
+                // tall (scrolls past) — auto is a per-user opt-in.
+                auto_width: false,
+                auto_height: false,
             },
             screenshot_menu: Menu {
                 position: Position::TopRight,
@@ -810,8 +816,8 @@ impl Default for Menus {
                 widgets: vec![MenuWidget::AppLauncher],
                 minimum_width: 410,
                 maximum_height: 0,
-                auto_width: true,
-                auto_height: true,
+                auto_width: false,
+                auto_height: false,
             },
             wallpaper_menu: Menu {
                 position: Position::Top,
@@ -1062,8 +1068,10 @@ impl Default for Menus {
                 // sized columns slot in without renegotiation.
                 minimum_width: 860,
                 maximum_height: 0,
-                auto_width: true,
-                auto_height: true,
+                // Fixed two-column 860-wide layout — content-auto would
+                // distort the symmetric columns, so ship it manual.
+                auto_width: false,
+                auto_height: false,
             },
             margo_layout_menu: Menu {
                 // Replaces the legacy `gtk::PopoverMenu` that
