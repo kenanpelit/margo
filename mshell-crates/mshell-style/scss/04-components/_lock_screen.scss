@@ -18,7 +18,7 @@
 }
 
 .lockscreen-entry-wrapper {
-  padding: 0 16px;
+  padding: 0 var(--space-4);
   background-color: var(--surface);
   border: var(--border-width) solid var(--outline);
   // Capsule entry — pill token, not a fixed 90px.

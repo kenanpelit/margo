@@ -9,7 +9,7 @@
 
 // ── Hero card ────────────────────────────────────────────
 .ip-hero {
-  padding: 12px;
+  padding: var(--space-3);
   border-radius: var(--radius-md);
   background-color: var(--surface-container-high);
 }
@@ -21,7 +21,7 @@
 
 // ── Status badge ─────────────────────────────────────────
 .ip-badge {
-  padding: 2px 10px;
+  padding: 2px var(--space-3);
   border-radius: var(--radius-pill);
   font-weight: 600;
   font-size: 0.85em;
@@ -44,5 +44,5 @@
 
 // ── Detail rows ──────────────────────────────────────────
 .ip-detail-row {
-  padding: 3px 4px;
+  padding: var(--space-1) var(--space-1);
 }

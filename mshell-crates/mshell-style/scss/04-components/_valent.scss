@@ -13,7 +13,7 @@
 
 // ── Panel ───────────────────────────────────────────────────────
 .valent-menu-widget {
-  padding: 4px;
+  padding: var(--space-1);
 }
 
 .valent-header-icon {
@@ -29,7 +29,7 @@
 .valent-card {
   background-color: var(--surface-container);
   border-radius: var(--radius-md);
-  padding: 16px;
+  padding: var(--space-4);
 }
 
 .valent-info-icon {

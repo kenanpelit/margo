@@ -30,12 +30,12 @@
 
 // ── Panel ─────────────────────────────────────────────────
 .alarm-clock-menu-widget {
-  padding: 4px;
+  padding: var(--space-1);
 }
 
 // "Ringing — Stop" banner: error-container surface, full-width.
 .alarm-ringing-banner {
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
   background-color: var(--error-container);
   color: var(--on-error-container);
@@ -52,7 +52,7 @@
 
 // Tab switcher spans the panel width.
 .alarm-clock-tabs {
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
   > button {
     min-width: 0;
   }
@@ -60,7 +60,7 @@
 
 // ── Alarm rows ────────────────────────────────────────────
 .alarm-row {
-  padding: 8px 10px;
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
   background-color: var(--surface-container);
   transition: opacity var(--motion-fast) var(--ease-standard);
@@ -88,7 +88,7 @@
 
 // ── Add row ───────────────────────────────────────────────
 .alarm-add-row {
-  padding: 8px 4px 4px;
+  padding: var(--space-2) var(--space-1) var(--space-1);
 }
 
 .alarm-spin {
@@ -98,7 +98,7 @@
 // Repeat-day chips — pill toggles, primary when active.
 .alarm-day-toggle {
   min-width: 30px;
-  padding: 4px 0;
+  padding: var(--space-1) 0;
   border-radius: var(--radius-pill);
   font-variant-numeric: tabular-nums;
   background-color: var(--surface-container-high);
@@ -115,7 +115,7 @@
 
 // ── Stopwatch ─────────────────────────────────────────────
 .alarm-stopwatch {
-  padding: 16px 8px;
+  padding: var(--space-4) var(--space-2);
 }
 
 .alarm-stopwatch-time {

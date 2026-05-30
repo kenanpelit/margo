@@ -3,12 +3,12 @@
 // widgets when the user wants tighter density.
 
 .compact-audio-menu-widget {
-  padding-top: 6px;
-  padding-bottom: 6px;
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
 }
 
 .compact-audio-row {
-  padding: 4px 2px;
+  padding: var(--space-1) 2px;
 }
 
 .compact-audio-icon {
@@ -51,6 +51,6 @@
     min-height: 12px;
     border-radius: var(--radius-pill);
     background-color: var(--primary);
-    margin: -4px;
+    margin: -var(--space-1);
   }
 }

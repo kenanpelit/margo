@@ -32,7 +32,7 @@
 // stamps the focus accent.
 
 .app-launcher-search-row {
-  margin-bottom: 10px;
+  margin-bottom: var(--space-3);
 }
 
 // Larger, bolder magnifier glyph that picks up the primary tint
@@ -41,7 +41,7 @@
 .app-launcher-search-icon {
   color: var(--primary);
   -gtk-icon-size: var(--icon-md);
-  padding: 4px 10px 4px 4px;
+  padding: var(--space-1) var(--space-3) var(--space-1) var(--space-1);
 }
 
 // Search entry — bigger font + accent ring on focus so it reads
@@ -52,7 +52,7 @@
   color: var(--on-surface);
   // Material search field: pill-ish (radius-xl) filled tonal surface.
   border-radius: var(--radius-xl);
-  padding: 10px 16px;
+  padding: var(--space-3) var(--space-4);
   // Primary input → body+ tier on the --font-* scale (§1.6), not an
   // em-relative size.
   font-size: var(--font-md);
@@ -76,12 +76,12 @@
   color: var(--on-surface-variant);
   // Pill chip — use the shape-scale token, not a literal 999.
   border-radius: var(--radius-pill);
-  padding: 2px 9px;
+  padding: 2px var(--space-2);
   font-family: monospace;
   font-size: var(--font-xs);
   font-weight: 600;
   min-height: 0;
-  margin: 0 4px;
+  margin: 0 var(--space-1);
 }
 
 // Show-hidden eye button (existing `ok-button-surface` primitive
@@ -89,8 +89,8 @@
 // flush with the search entry).
 .app-launcher-search-row > button {
   border-radius: var(--radius-sm);
-  padding: 6px 10px;
-  margin-left: 4px;
+  padding: var(--space-2) var(--space-3);
+  margin-left: var(--space-1);
 }
 
 // ── Category pill strip ─────────────────────────────────────────
@@ -98,13 +98,13 @@
 // One pill per provider category. Active pill picks up primary
 // accent (matches "today" highlight in calendar grid).
 .app-launcher-category-strip {
-  margin-bottom: 10px;
+  margin-bottom: var(--space-3);
   // 6 px gap between pills — keeps the strip compact but
   // tappable without overlap.
 }
 
 .app-launcher-category-pill {
-  padding: 3px 0;
+  padding: var(--space-1) 0;
   border-radius: var(--radius-pill);
   // Material filter-chip: recessive (transparent) by default, a soft
   // tonal accent when selected — lower contrast than the old solid
@@ -131,7 +131,7 @@
   // Icon+label box inside the pill carries the horizontal padding
   // so GTK button's intrinsic min-width doesn't push pills wider.
   > .app-launcher-category-pill-content {
-    padding: 2px 12px;
+    padding: 2px var(--space-3);
   }
 
   // Icon sits a hair larger than the surrounding label so the
@@ -187,7 +187,7 @@
 .app-launcher-menu-widget > scrolledwindow {
   background-color: var(--surface-container-lowest);
   border-radius: var(--radius-md);
-  padding: 6px;
+  padding: var(--space-2);
   // Surfaces over borders (DESIGN.md §0/§1): the darker well + a faint
   // inset shadow read as a recessed list without a hard outline. At
   // runtime matugen makes surface-container-lowest distinctly darker
@@ -215,7 +215,7 @@
   // via the 1px outer margin below while collapsing the gap to
   // the minimum the panel can show. (Density: launcher = medium /
   // tight per DESIGN.md — many results must stay visible.)
-  padding: 1px 12px;
+  padding: 1px var(--space-3);
   margin: 1px 0;
   transition: background-color var(--motion-fast) var(--ease-standard),
               color var(--motion-fast) var(--ease-standard),
@@ -286,7 +286,7 @@
   font-size: var(--font-2xs);
   font-weight: 600;
   min-width: 16px;
-  padding: 0 4px;
+  padding: 0 var(--space-1);
 }
 
 // ── Pin marker ──────────────────────────────────────────────────
@@ -297,7 +297,7 @@
   color: var(--primary);
   font-size: var(--font-xs);
   opacity: 0.95;
-  padding: 0 4px;
+  padding: 0 var(--space-1);
 }
 
 // ── Keybind hint footer ─────────────────────────────────────────
@@ -314,7 +314,7 @@
   // band, but no card chrome — keeps the menu's visual weight
   // on the result list above.
   border-top: 1px solid var(--outline-variant);
-  padding-top: 8px;
+  padding-top: var(--space-2);
 
   // It's a GtkFlowBox now: chips wrap onto a second line so every
   // shortcut shows its FULL label (no ellipsis). Strip GTK's default
@@ -337,7 +337,8 @@
   // breathe at the user's preferred panel widths around 620 px.
   // Pre-tighten was 1px 4px 1px 1px (~720 floor); fully tight
   // 1px 2px 1px 1px landed at ~590; 1px 3px hits the ~620 sweet
-  // spot the user picked in Settings.
+  // spot the user picked in Settings. Deliberate off-scale tuning
+  // (DESIGN.md: "request wins for that one widget"), not the scale.
   padding: 1px 3px 1px 1px;
   // Keep chip vertical centre aligned with sibling chips even
   // when the key glyph and label have different baselines.
@@ -353,7 +354,7 @@
   // Compromise padding: middle ground between the original 6 px
   // (~720 floor) and the aggressive 4 px (~590 floor). 5 px lands
   // near ~620 — visually balanced and still leaves headroom for
-  // the Settings spinner.
+  // the Settings spinner. Deliberate off-scale tuning, not the scale.
   padding: 1px 5px 1px 1px;
   font-family: monospace;
   // Keycap = dimmest/smallest tier on the scale (§1.6); FlowBox wraps,
@@ -371,7 +372,7 @@
   // Compromise padding between original (8 px → ~720 floor) and
   // aggressive (4 px → ~590). 5 px keeps the label visually
   // separated from the next chip while preserving most of the
-  // narrowing headroom.
+  // narrowing headroom. Deliberate off-scale tuning, not the scale.
   padding-right: 5px;
   letter-spacing: 0.01em;
 }

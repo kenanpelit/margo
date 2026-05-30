@@ -18,7 +18,7 @@
 
 // ── Panel ─────────────────────────────────────────────────
 .keep-awake-menu-widget {
-  padding: 4px;
+  padding: var(--space-1);
 }
 
 .keep-awake-header-icon {
@@ -28,7 +28,7 @@
 // Duration grid — pill-shaped surface tiles, primary on hover.
 .keep-awake-tile {
   min-width: 64px;
-  padding: 8px 0;
+  padding: var(--space-2) 0;
   border-radius: var(--radius-pill);
   font-variant-numeric: tabular-nums;
   background-color: var(--surface-container);

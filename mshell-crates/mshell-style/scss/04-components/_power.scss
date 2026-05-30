@@ -22,7 +22,7 @@
 
 // ── Hero card ────────────────────────────────────────────
 .power-hero {
-  padding: 12px;
+  padding: var(--space-3);
   // Flat radius language: the battery hero and the button rows below
   // are siblings (not nested), so they share one corner — --radius-sm,
   // matching the profile / control buttons. No 16-vs-12 mismatch.
@@ -35,7 +35,7 @@
 // (non-selected) state carries a calm tonal hover (DESIGN.md
 // §7 state-on-interactive / §Motion).
 .power-profile-button {
-  padding: 10px 4px;
+  padding: var(--space-3) var(--space-1);
   border-radius: var(--radius-sm);
   transition: background-color var(--motion-medium) var(--ease-standard),
               color var(--motion-medium) var(--ease-standard);
@@ -50,7 +50,7 @@
 .power-control-button {
   // Same padding as .power-profile-button so every button in the
   // power widget is the same size (uniform grid), and same radius.
-  padding: 10px 4px;
+  padding: var(--space-3) var(--space-1);
   border-radius: var(--radius-sm);
   transition: background-color var(--motion-fast) var(--ease-standard);
 }

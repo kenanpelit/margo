@@ -12,7 +12,7 @@
 // so it reads as "inactive" rather than "broken".
 
 .bt-hardware-missing {
-    padding: 12px 16px;
+    padding: var(--space-3) var(--space-4);
     border-radius: var(--radius-md);
     background-color: var(--surface-container);
     color: var(--error);
@@ -20,7 +20,7 @@
 }
 
 .bt-radio-off {
-    padding: 12px 16px;
+    padding: var(--space-3) var(--space-4);
     border-radius: var(--radius-md);
     background-color: var(--surface-container);
     color: var(--on-surface-variant);
@@ -36,7 +36,7 @@
 // (primary accent) from the bar widget partial; no re-rule needed here.
 
 .bt-device-row {
-    padding: 12px 16px;
+    padding: var(--space-3) var(--space-4);
     border-radius: var(--radius-sm);
     background-color: var(--surface-container-high);
     transition: background-color var(--motion-fast) var(--ease-standard);

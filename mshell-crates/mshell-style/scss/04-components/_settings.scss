@@ -1,15 +1,15 @@
 @use "../03-primitives/buttons";
 
 .monitor-chip {
-    padding-left: 12px;
+    padding-left: var(--space-3);
     border-radius: var(--radius-sm);
     background-color: var(--primary);
 }
 
 .monitor-chip-empty {
-    margin-top: 4px;
-    margin-left: 3px;
-    padding: 8px 12px;
+    margin-top: var(--space-1);
+    margin-left: var(--space-1);
+    padding: var(--space-2) var(--space-3);
     border-radius: var(--radius-sm);
     background-color: var(--primary);
 }
@@ -41,7 +41,7 @@
 // height-capped ScrolledWindow holds one button per widget.
 .settings-bar-widget-add-popover {
     > contents {
-        padding: 4px;
+        padding: var(--space-1);
     }
 }
 
@@ -50,7 +50,7 @@
 }
 
 .settings-bar-widget-add-item {
-    padding: 8px 12px;
+    padding: var(--space-2) var(--space-3);
     border-radius: var(--radius-sm);
     // Canonical interaction wash — same primary state-layer as every
     // menu row / button across the shell (DESIGN.md §7).
@@ -88,7 +88,7 @@
 .settings-sidebar,
 .settings-subsidebar {
     background-color: var(--surface);
-    padding: 12px;
+    padding: var(--space-3);
 
     .sidebar-button {
         @include buttons.button-base("--surface", "--on-surface");
@@ -140,7 +140,7 @@
 }
 
 .settings-page {
-    padding: 24px 32px 32px 32px;
+    padding: var(--space-5) var(--space-6) var(--space-6) var(--space-6);
     background-color: var(--surface);
     // Bump baseline typography +1 pt across every label inside
     // a settings page so readers don't squint. Inherited by all
@@ -163,13 +163,13 @@
     // big hero margin here stacked into a ~64px void before the first
     // control group. Trim to 16 (see also the adjacency reset below) for
     // one clean, consistent hero→content gap on every page.
-    margin-bottom: 16px;
-    padding: 4px 0;
+    margin-bottom: var(--space-4);
+    padding: var(--space-1) 0;
 
     .settings-hero-icon {
         -gtk-icon-size: 40px;
         color: var(--primary);
-        margin-right: 16px;
+        margin-right: var(--space-4);
         opacity: 0.95;
     }
 
@@ -209,7 +209,7 @@
     color: var(--on-surface);
     background-color: var(--surface-container);
     border-radius: var(--radius-sm);
-    padding: 8px 12px;
+    padding: var(--space-2) var(--space-3);
 }
 
 // ── Sidebar search box ─────────────────────────────────────────
@@ -232,7 +232,7 @@
 // full heading and reads as a category divider without visual
 // weight. ~11 px, dim, letter-spaced.
 .settings-section-caption {
-    margin: 18px 12px 6px 12px;
+    margin: var(--space-4) var(--space-3) var(--space-2) var(--space-3);
     font-size: calc(13.5px * var(--font-scale-settings, 1.0));
     font-weight: 600;
     letter-spacing: 0.06em;
@@ -268,7 +268,7 @@
 // switch / dropdown / value text). Subtitle is optional — bare
 // rows just have a label.
 .action-row {
-    padding: 12px 16px;
+    padding: var(--space-3) var(--space-4);
     min-height: 44px;
     // Canonical primary state-layer over the boxed-list's
     // surface-container base — identical hover identity to every
@@ -324,7 +324,7 @@
         text-transform: uppercase;
         color: var(--on-surface-variant);
         opacity: 0.7;
-        margin: 24px 0 6px 0;
+        margin: var(--space-5) 0 var(--space-2) 0;
 
         // First header on the page doesn't need the big top margin
         // (the hero already provides breathing room).
@@ -373,11 +373,11 @@
 // One row per `mlayout` entry. The active layout gets a primary-
 // tinted background so the user can spot it without reading.
 .layout-list {
-    padding: 4px 0;
+    padding: var(--space-1) 0;
 }
 
 .layout-row {
-    padding: 12px;
+    padding: var(--space-3);
     border-radius: var(--radius-sm);
     background-color: var(--surface-container-high);
     color: var(--on-surface-variant);
@@ -423,7 +423,7 @@
 
 // Settings → Launcher: one editable script row (name + edit + trash).
 .launcher-script-row {
-    padding: 2px 6px;
+    padding: 2px var(--space-2);
     border-radius: var(--radius-sm);
 }
 

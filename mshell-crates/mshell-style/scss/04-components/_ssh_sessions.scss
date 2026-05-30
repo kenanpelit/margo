@@ -16,7 +16,7 @@
 
 // ── Panel ─────────────────────────────────────────────────
 .ssh-sessions-menu-widget {
-  padding: 4px;
+  padding: var(--space-1);
 }
 
 .ssh-sessions-header-icon {
@@ -28,7 +28,7 @@
   font-size: var(--font-2xs);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  padding: 2px 8px;
+  padding: 2px var(--space-2);
   border-radius: var(--radius-pill);
   background-color: var(--primary-container);
   color: var(--on-primary-container);
@@ -37,12 +37,12 @@
 .ssh-sessions-search {
   border-radius: var(--radius-xl);
   background-color: var(--surface-container-highest);
-  padding: 4px 12px;
+  padding: var(--space-1) var(--space-3);
 }
 
 // One host row — flat list item; hover + active tint per DESIGN.md.
 .ssh-host-row {
-  padding: 6px 8px;
+  padding: var(--space-2) var(--space-2);
   border-radius: var(--radius-sm);
   background: transparent;
 

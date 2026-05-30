@@ -10,7 +10,7 @@
 
 .margo-layout-menu-row {
   all: unset;
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   @include state-layer();
 

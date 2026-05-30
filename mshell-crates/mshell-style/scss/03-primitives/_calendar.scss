@@ -21,13 +21,13 @@ calendar {
   background-color: var(--surface);
   border: 2px solid var(--outline);
   border-radius: var(--radius-sm);
-  padding: 10px;
+  padding: var(--space-3);
 }
 
 calendar header {
   background-color: var(--surface);
   color: var(--on-surface);
-  padding: 5px;
+  padding: var(--space-1);
   border: none;
 }
 

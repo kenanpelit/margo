@@ -5,12 +5,12 @@
 // dashboard wants a single-line "what am I connected to" read.
 
 .connectivity-menu-widget {
-  padding-top: 6px;
-  padding-bottom: 6px;
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
 }
 
 .connectivity-cell {
-  padding: 4px 2px;
+  padding: var(--space-1) 2px;
 }
 
 // Connected → primary active tint (DESIGN.md §3); the fade keeps

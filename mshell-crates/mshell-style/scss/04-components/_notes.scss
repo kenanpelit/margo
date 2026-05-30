@@ -10,7 +10,7 @@
 
 // ── Header counters ──────────────────────────────────────
 .notes-counter {
-  padding: 2px 8px;
+  padding: 2px var(--space-2);
   border-radius: var(--radius-pill);
   font-size: 0.8em;
   font-weight: 600;
@@ -31,7 +31,7 @@
 
 // ── + Add buttons / entries ──────────────────────────────
 .notes-add {
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
   @include state-layer();
 }
@@ -40,13 +40,13 @@
 .notes-list row {
   padding: 0;
   border-radius: var(--radius-sm);
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
   background-color: transparent;
 }
 // Note cards: tonal surface, no outline ring (surfaces over
 // borders). --radius-md card shape.
 .notes-card {
-  padding: 6px 8px;
+  padding: var(--space-2) var(--space-2);
   border-radius: var(--radius-md);
   background-color: var(--surface-container-high);
 }

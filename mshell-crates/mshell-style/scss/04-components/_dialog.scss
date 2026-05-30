@@ -3,9 +3,9 @@
 }
 
 .confirmation-dialog-title {
-  margin: 40px 20px;
+  margin: var(--space-6) var(--space-5);
 }
 
 .text-entry-dialog-title {
-  margin: 20px 20px 0 20px;
+  margin: var(--space-5) var(--space-5) 0 var(--space-5);
 }

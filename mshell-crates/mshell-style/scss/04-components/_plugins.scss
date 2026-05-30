@@ -38,7 +38,7 @@
 
 // Show-keys: live key pill. Monospace, pill-rounded, primary-container fill.
 .plugin-key-pill {
-  padding: 4px 10px;
+  padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-pill);
   background-color: var(--primary-container);
   color: var(--on-primary-container);
@@ -67,7 +67,7 @@ button.plugin-swatch {
 // shape — opt into this archetype with `.plugin-panel-large`.
 
 .plugin-panel-large {
-  padding: var(--padding-xl, 24px);
+  padding: var(--padding-xl, var(--space-5));
   background-color: var(--surface);
 }
 
@@ -117,7 +117,7 @@ button.plugin-swatch {
 //   El::hbox(children).class("plugin-segment-bar")
 // where each child has class "plugin-segment" + maybe "plugin-segment-on".
 .plugin-segment-bar {
-  padding: 4px;
+  padding: var(--space-1);
   border-radius: var(--radius-pill);
   background-color: var(--surface-container-low);
   border: var(--border-width) solid var(--outline-variant);
@@ -197,7 +197,7 @@ button.plugin-swatch {
 
 // Status badge inside a card header (e.g. "OK" / "Disabled" / "Error").
 .plugin-status-badge {
-  padding: 2px 8px;
+  padding: 2px var(--space-2);
   border-radius: var(--radius-pill);
   font-size: var(--font-xs);
   font-weight: 600;
@@ -222,9 +222,9 @@ button.plugin-swatch {
 .plugins-keybind-badge {
   font-size: var(--font-xs);
   font-weight: 600;
-  padding: 2px 8px;
+  padding: 2px var(--space-2);
   border-radius: var(--radius-pill);
-  margin-top: 4px;
+  margin-top: var(--space-1);
   background-color: var(--surface-container-high);
   color: var(--on-surface-variant);
 
@@ -260,7 +260,7 @@ button.plugin-swatch {
   color: var(--on-surface-variant);
   background-color: var(--surface-container-highest);
   border-radius: var(--radius-pill);
-  padding: 1px 8px;
+  padding: 1px var(--space-2);
   font-variant-numeric: tabular-nums;
 }
 

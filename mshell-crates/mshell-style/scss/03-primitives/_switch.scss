@@ -1,6 +1,6 @@
 switch {
   all: unset;
-  padding: 4px;
+  padding: var(--space-1);
   background-color: var(--surface);
   border: 1px solid var(--outline);
   border-radius: var(--radius-pill);

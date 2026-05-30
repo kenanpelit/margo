@@ -25,13 +25,13 @@
 // card, on-surface-variant for secondary text, radius-md/-sm
 // scale, tabular numerals for versions.
 .system-update-menu-widget {
-  padding: 4px;
+  padding: var(--space-1);
 }
 
 // Source toggle row — Repo / AUR / Flatpak switches sitting on
 // a faint surface chip so the controls read as one grouped band.
 .system-update-sources {
-  padding: 6px 10px;
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-pill);
   background-color: var(--surface-container);
 
@@ -55,7 +55,7 @@
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--on-surface-variant);
-  margin-top: 8px;
+  margin-top: var(--space-2);
   margin-bottom: 2px;
 
   // Drop the leading gap on the very first header so the table
@@ -69,7 +69,7 @@
 // right. Flat by default (it isn't actionable); a faint surface
 // tint on hover keeps the row legible while scanning.
 .system-update-row {
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
   transition: background-color var(--motion-fast) var(--ease-standard);
 

@@ -4,7 +4,7 @@ popover > contents {
     background-color: var(--surface);
     border-radius: var(--radius-window);
     border: var(--border-width) solid var(--outline);
-    padding: 6px;
+    padding: var(--space-2);
 }
 
 popover modelbutton {
@@ -21,12 +21,12 @@ popover modelbutton {
 }
 
 popover arrow {
-    margin: 0 8px 0 0;
+    margin: 0 var(--space-2) 0 0;
 }
 
 popover label.title {
     all: unset;
-    margin: 4px;
+    margin: var(--space-1);
     color: var(--primary);
     font-size: var(--font-lg);
     opacity: 1;

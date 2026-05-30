@@ -7,7 +7,7 @@
     transition:
         border var(--motion-medium) var(--ease-standard),
         transform var(--motion-medium) var(--ease-standard);
-    margin: 4px;
+    margin: var(--space-1);
     border: 2px solid var(--outline-variant);
     border-radius: var(--radius-md);
 
@@ -19,7 +19,7 @@
 
 .wallpaper-grid {
     all: unset;
-    padding: 0 32px 0 32px;
+    padding: 0 var(--space-6) 0 var(--space-6);
 }
 
 .wallpaper-grid > child {
@@ -39,7 +39,7 @@
 
 .wallpaper-empty-message {
     // On the 4/8/12/16/24/32 spacing scale (DESIGN.md §1); was 20.
-    padding: 0 24px 0 24px;
+    padding: 0 var(--space-5) 0 var(--space-5);
 }
 
 .wallpaper-shadow {

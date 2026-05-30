@@ -20,7 +20,7 @@
     min-height: 20px;
 
     > * {
-        padding: 4px 6px;
+        padding: var(--space-1) var(--space-2);
     }
 }
 
@@ -30,7 +30,7 @@
     min-height: 20px;
 
     > * {
-        padding: 4px 6px;
+        padding: var(--space-1) var(--space-2);
     }
 }
 
@@ -174,7 +174,7 @@
 .bar.islands .margo-tags-bar-widget {
     background-color: var(--surface-container);
     border-radius: var(--radius-widget);
-    padding: 0 6px;
+    padding: 0 var(--space-2);
 }
 
 // ── Uniform pill geometry (applies to hover wash AND islands surface) ────
@@ -206,5 +206,5 @@
 .bar-separator {
     background-color: var(--outline);
     min-width: 1px;
-    margin: 6px 4px;
+    margin: var(--space-2) var(--space-1);
 }

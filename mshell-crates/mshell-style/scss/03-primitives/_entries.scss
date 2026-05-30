@@ -1,6 +1,6 @@
 .ok-entry {
   all: unset;
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   box-shadow: none;
   background-color: transparent;
   color: var(--on-surface);
@@ -18,7 +18,7 @@
 
 .ok-entry-with-border {
   all: unset;
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   box-shadow: none;
   background-color: transparent;
   border-style: solid;

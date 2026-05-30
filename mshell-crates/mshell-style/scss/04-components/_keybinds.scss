@@ -12,7 +12,7 @@
 
 // ── Panel ─────────────────────────────────────────────────
 .keybinds-menu-widget {
-  padding: 4px;
+  padding: var(--space-1);
 }
 
 .keybinds-header-icon {
@@ -23,7 +23,7 @@
 .keybinds-search {
   border-radius: var(--radius-xl);
   background-color: var(--surface-container-highest);
-  padding: 4px 12px;
+  padding: var(--space-1) var(--space-3);
 }
 
 // Category header above each shortcut group (DESIGN.md §1 section
@@ -34,13 +34,13 @@
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--on-surface-variant);
-  margin-top: 8px;
+  margin-top: var(--space-2);
   margin-bottom: 2px;
 }
 
 // One shortcut row: combo cluster (left) + description (right).
 .keybinds-row {
-  padding: 4px 6px;
+  padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
 
   &:hover {
@@ -58,7 +58,7 @@
 // combo reads at a glance; the trigger key is a neutral surface cap.
 .keybind-chip {
   min-width: 18px;
-  padding: 2px 8px;
+  padding: 2px var(--space-2);
   border-radius: var(--radius-sm);
   font-size: var(--font-2xs);
   font-weight: 600;
