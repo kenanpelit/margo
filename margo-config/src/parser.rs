@@ -279,6 +279,20 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
         // focus / layout
         "new_is_master" => cfg.new_is_master = parse_bool(val),
         "default_layout" => cfg.default_layout = val.to_string(),
+        // `taglayout = <tag>, <layout>` — repeatable per-tag default layout.
+        "taglayout" => {
+            if let Some((t, name)) = val.split_once(',') {
+                if let Ok(tag) = t.trim().parse::<u32>() {
+                    let name = name.trim().to_string();
+                    if tag >= 1 && !name.is_empty() {
+                        // Last write wins for a given tag.
+                        cfg.taglayouts.retain(|(existing, _)| *existing != tag);
+                        cfg.taglayouts.push((tag, name));
+                    }
+                }
+            }
+        }
+        "taglayout_force" => cfg.taglayout_force = parse_bool(val),
         "default_mfact" => cfg.default_mfact = parse_f32(val),
         "default_nmaster" => cfg.default_nmaster = parse_u32(val),
         "center_master_overspread" => cfg.center_master_overspread = parse_bool(val),
@@ -1430,6 +1444,8 @@ pub const OPTION_KEYS: &[&str] = &[
     "cursor_size",
     "cursor_theme",
     "default_layout",
+    "taglayout",
+    "taglayout_force",
     "default_mfact",
     "default_nmaster",
     "disable_trackpad",
@@ -1584,6 +1600,26 @@ mod tests {
             strip_inline_comment("repeat_rate = 35\t# faster keys"),
             "repeat_rate = 35"
         );
+    }
+
+    #[test]
+    fn parses_taglayouts_and_force() {
+        let dir = std::env::temp_dir().join(format!("margo-tl-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let main = dir.join("config.conf");
+        std::fs::write(
+            &main,
+            "taglayout = 1, tile\n\
+             taglayout = 2, scroller\n\
+             taglayout = 2, grid\n\
+             taglayout_force = true\n",
+        )
+        .unwrap();
+        let cfg = parse_config(Some(&main)).unwrap();
+        // Last write wins for tag 2 (grid), tag 1 stays tile.
+        assert_eq!(cfg.taglayouts, vec![(1, "tile".to_string()), (2, "grid".to_string())]);
+        assert!(cfg.taglayout_force);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

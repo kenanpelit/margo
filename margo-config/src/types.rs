@@ -641,6 +641,15 @@ pub struct Config {
     // layout / focus
     pub new_is_master: bool,
     pub default_layout: String,
+    /// Per-tag default tiling layout: `(tag_number_1_based, layout_name)`.
+    /// Seeds a tag's layout when the compositor sets up an output. Repeatable
+    /// `taglayout = <tag>, <name>` lines accumulate here.
+    pub taglayouts: Vec<(u32, String)>,
+    /// When true, re-apply [`Self::taglayouts`] on every startup, overriding
+    /// any per-tag layout the session snapshot restored. When false (default),
+    /// the per-tag defaults only seed empty/first-run state and the user's
+    /// live changes (persisted in the session) win.
+    pub taglayout_force: bool,
     pub default_mfact: f32,
     pub default_nmaster: u32,
     pub center_master_overspread: bool,
@@ -999,6 +1008,8 @@ impl Default for Config {
 
             new_is_master: true,
             default_layout: "tile".into(),
+            taglayouts: Vec::new(),
+            taglayout_force: false,
             default_mfact: 0.55,
             default_nmaster: 1,
             center_master_overspread: false,

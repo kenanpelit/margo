@@ -285,6 +285,7 @@ fn is_csv_shaped_key(k: &str) -> bool {
             | "windowrule"
             | "monitorrule"
             | "tagrule"
+            | "taglayout"
             | "layerrule"
             | "monitor"
             | "env"
