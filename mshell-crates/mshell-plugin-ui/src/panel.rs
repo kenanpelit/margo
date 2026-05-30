@@ -788,7 +788,33 @@ fn replace_paired(s: &str, marker: &str, open: &str, close: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::markdown_to_pango;
+    use super::{markdown_to_pango, parse_hex_rgba};
+
+    fn close(a: f64, b: f64) -> bool {
+        (a - b).abs() < 1e-6
+    }
+
+    #[test]
+    fn parses_hex_colours() {
+        // #rrggbb → opaque.
+        let (r, g, b, a) = parse_hex_rgba("#ff0000");
+        assert!(close(r, 1.0) && close(g, 0.0) && close(b, 0.0) && close(a, 1.0));
+        // margo's 0xrrggbbaa form, with alpha.
+        let (r, g, b, a) = parse_hex_rgba("0x00ff0080");
+        assert!(close(r, 0.0) && close(g, 1.0) && close(b, 0.0) && close(a, 128.0 / 255.0));
+        // #rrggbbaa web form.
+        let (.., a) = parse_hex_rgba("#11223344");
+        assert!(close(a, 0x44 as f64 / 255.0));
+        // A near-transparent dark token (the colour-scheme case) keeps low alpha.
+        let (.., a) = parse_hex_rgba("0x44475a14");
+        assert!(close(a, 0x14 as f64 / 255.0));
+    }
+
+    #[test]
+    fn bogus_hex_is_opaque_black() {
+        assert_eq!(parse_hex_rgba("garbage"), (0.0, 0.0, 0.0, 1.0));
+        assert_eq!(parse_hex_rgba(""), (0.0, 0.0, 0.0, 1.0));
+    }
 
     #[test]
     fn renders_inline_styles() {

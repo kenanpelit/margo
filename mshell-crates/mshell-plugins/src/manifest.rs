@@ -278,6 +278,28 @@ on_click = "xdg-open https://wttr.in"
         assert_eq!(m.widgets[0].key, "current");
         assert_eq!(m.widgets[0].interval, 900);
         assert_eq!(m.widgets[0].max_chars, 0); // defaulted
+        assert!(!m.widgets[0].art); // defaulted off
+    }
+
+    #[test]
+    fn art_widget_flag_parses() {
+        let m: Manifest = toml::from_str(
+            r#"
+id = "p"
+name = "P"
+version = "1.0.0"
+author = "a"
+min_mshell = "0.8.8"
+description = "d"
+
+[[widget]]
+key = "k"
+exec = "sh art.sh"
+art = true
+"#,
+        )
+        .unwrap();
+        assert!(m.widgets[0].art);
     }
 
     #[test]

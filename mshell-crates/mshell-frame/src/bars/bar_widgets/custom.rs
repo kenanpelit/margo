@@ -192,22 +192,9 @@ impl Component for CustomWidgetModel {
                 loop {
                     if let Some(stdout) = run_capture(&exec).await {
                         let (art_path, body, paused) = if art {
-                            // `art` output is up to three lines:
-                            //   1: image path (or empty)
-                            //   2: label
-                            //   3: status ("paused"/"stopped" → dim the pill)
-                            let mut lines = stdout.lines();
-                            let first = lines.next().unwrap_or("").trim().to_string();
-                            let label = lines.next().unwrap_or("").to_string();
-                            let status = lines.next().unwrap_or("").trim().to_lowercase();
-                            let path = if !first.is_empty()
-                                && std::path::Path::new(&first).exists()
-                            {
-                                Some(first)
-                            } else {
-                                None
-                            };
-                            let paused = status == "paused" || status == "stopped";
+                            let (cand, label, paused) = split_art_output(&stdout);
+                            // Only show the image if the file actually exists.
+                            let path = cand.filter(|p| std::path::Path::new(p).exists());
                             (path, label, paused)
                         } else {
                             (None, stdout, false)
@@ -325,6 +312,24 @@ fn wire_panel(
     }
 }
 
+/// Split an `art` widget's exec stdout into its three fields:
+/// `(image-path candidate, label, paused)`. Line 1 is the image path (empty →
+/// `None`), line 2 the label, line 3 the status (`paused`/`stopped` → dim).
+/// Pure — the caller decides whether the path actually exists.
+fn split_art_output(stdout: &str) -> (Option<String>, String, bool) {
+    let mut lines = stdout.lines();
+    let first = lines.next().unwrap_or("").trim();
+    let label = lines.next().unwrap_or("").to_string();
+    let status = lines.next().unwrap_or("").trim().to_lowercase();
+    let art = if first.is_empty() {
+        None
+    } else {
+        Some(first.to_string())
+    };
+    let paused = status == "paused" || status == "stopped";
+    (art, label, paused)
+}
+
 /// Render the `exec` output through the `{output}` template.
 fn render(output: &str, template: &str) -> String {
     let output = output.trim();
@@ -376,7 +381,36 @@ async fn run_capture(cmd: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{render, truncate};
+    use super::{render, split_art_output, truncate};
+
+    #[test]
+    fn art_output_splits_three_fields() {
+        let (art, label, paused) = split_art_output("/tmp/cover.png\nSong — Artist\nplaying");
+        assert_eq!(art.as_deref(), Some("/tmp/cover.png"));
+        assert_eq!(label, "Song — Artist");
+        assert!(!paused);
+    }
+
+    #[test]
+    fn art_output_paused_and_stopped_dim() {
+        assert!(split_art_output("/a\nL\npaused").2);
+        assert!(split_art_output("/a\nL\nStopped").2); // case-insensitive
+        assert!(!split_art_output("/a\nL\nPlaying").2);
+    }
+
+    #[test]
+    fn art_output_tolerates_missing_lines() {
+        // Empty art line → no image; missing status → not paused.
+        let (art, label, paused) = split_art_output("\nJust a label");
+        assert_eq!(art, None);
+        assert_eq!(label, "Just a label");
+        assert!(!paused);
+        // Nothing at all.
+        let (art, label, paused) = split_art_output("");
+        assert_eq!(art, None);
+        assert_eq!(label, "");
+        assert!(!paused);
+    }
 
     #[test]
     fn render_uses_template_placeholder() {
