@@ -19,6 +19,7 @@ use crate::keybinds_settings::{KeybindsSettingsInit, KeybindsSettingsModel};
 use crate::general_settings::{GeneralSettingsInit, GeneralSettingsModel};
 use crate::weather_settings::{WeatherSettingsInit, WeatherSettingsModel};
 use crate::idle_settings::{IdleSettingsInit, IdleSettingsModel};
+use crate::tag_layout_settings::{TagLayoutSettingsInit, TagLayoutSettingsModel};
 use crate::launcher_settings::{LauncherSettingsInit, LauncherSettingsModel};
 use crate::menu_settings::menu_settings::{MenuSettingsInit, MenuSettingsModel};
 use crate::notification_settings::{NotificationSettingsInit, NotificationSettingsModel};
@@ -62,6 +63,7 @@ pub struct SettingsWindowModel {
     menu_settings_controller: Controller<MenuSettingsModel>,
     notification_settings_controller: Controller<NotificationSettingsModel>,
     idle_settings_controller: Controller<IdleSettingsModel>,
+    tag_layout_settings_controller: Controller<TagLayoutSettingsModel>,
     launcher_settings_controller: Controller<LauncherSettingsModel>,
     session_settings_controller: Controller<SessionSettingsModel>,
     plugins_settings_controller: Controller<PluginsSettingsModel>,
@@ -424,6 +426,27 @@ impl Component for SettingsWindowModel {
                             gtk::Label {
                                 add_css_class: "label-medium",
                                 set_label: "Idle",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
+                    #[name = "tag_layout_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("tiling_layout"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("view-grid-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Tiling Layout",
                                 set_halign: gtk::Align::Start,
                                 set_hexpand: true,
                             },
@@ -908,6 +931,10 @@ impl Component for SettingsWindowModel {
             .launch(IdleSettingsInit {})
             .detach();
 
+        let tag_layout_settings_controller = TagLayoutSettingsModel::builder()
+            .launch(TagLayoutSettingsInit {})
+            .detach();
+
         let launcher_settings_controller = LauncherSettingsModel::builder()
             .launch(LauncherSettingsInit {})
             .detach();
@@ -937,6 +964,8 @@ impl Component for SettingsWindowModel {
                 ("display", "display"),
                 ("fonts", "fonts"),
                 ("idle", "idle"),
+                ("tiling layout", "tiling_layout"),
+                ("tiling_layout", "tiling_layout"),
                 ("about", "about"),
                 ("animations", "animations"),
                 ("date_time", "date_time"),
@@ -986,6 +1015,7 @@ impl Component for SettingsWindowModel {
             menu_settings_controller,
             notification_settings_controller,
             idle_settings_controller,
+            tag_layout_settings_controller,
             launcher_settings_controller,
             session_settings_controller,
             plugins_settings_controller,
@@ -1229,6 +1259,12 @@ impl Component for SettingsWindowModel {
             model.idle_settings_controller.widget(),
             Some("idle"),
             "Idle",
+        );
+
+        widgets.stack.add_titled(
+            model.tag_layout_settings_controller.widget(),
+            Some("tiling_layout"),
+            "Tiling Layout",
         );
 
         widgets.stack.add_titled(
@@ -1656,6 +1692,7 @@ impl Component for SettingsWindowModel {
                     "input" => Some(&widgets.input_btn),
                     "keybinds" => Some(&widgets.keybinds_btn),
                     "idle" => Some(&widgets.idle_btn),
+                    "tiling_layout" => Some(&widgets.tag_layout_btn),
                     "launcher" => Some(&widgets.launcher_btn),
                     "menus" => Some(&widgets.menus_btn),
                     "network" => Some(&widgets.network_btn),
