@@ -4674,6 +4674,7 @@ dependencies = [
  "anyhow",
  "clap",
  "mshell-cli-style",
+ "mshell-plugins",
  "serde",
  "tokio",
  "zbus 5.15.0",

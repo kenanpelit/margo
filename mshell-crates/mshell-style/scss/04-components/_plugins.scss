@@ -36,6 +36,164 @@
   min-width: 120px;
 }
 
+// ── Panel archetype ──────────────────────────────────────────────────────
+// Spacious surface for "browse + filter + drill" plugins (model-usage,
+// future calendar / kanban …). Matches §12 of DESIGN.md as closely as the
+// WASM-side class hook list allows. Compact pills still use the §5 menu
+// shape — opt into this archetype with `.plugin-panel-large`.
+
+.plugin-panel-large {
+  padding: var(--padding-xl, 24px);
+  background-color: var(--surface);
+}
+
+// §12 header: leading symbolic icon + SemiBold title + circular trailing
+// action buttons. Build it as
+//   El::hbox(vec![image, label, button]).class("plugin-panel-header")
+.plugin-panel-header {
+  padding: 0 0 var(--space-2) 0;
+
+  image {
+    -gtk-icon-size: var(--icon-md);
+    color: var(--on-surface-variant);
+    margin-right: var(--space-3);
+  }
+
+  label {
+    font-size: var(--font-md);
+    font-weight: 600;
+    color: var(--on-surface);
+  }
+
+  button.plugin-panel-action {
+    min-width: 32px;
+    min-height: 32px;
+    padding: 0;
+    border-radius: var(--radius-pill);
+    background-color: transparent;
+    transition: background-color var(--motion-fast) var(--ease-standard);
+
+    image {
+      -gtk-icon-size: 16px;
+      margin: 0;
+      color: var(--on-surface-variant);
+    }
+
+    &:hover {
+      background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
+    }
+    &:active {
+      background-color: unquote("color-mix(in srgb, var(--primary) 22%, transparent)");
+    }
+  }
+}
+
+// §12 segmented control — one unified pill capsule, NOT N separate buttons.
+// Build it as
+//   El::hbox(children).class("plugin-segment-bar")
+// where each child has class "plugin-segment" + maybe "plugin-segment-on".
+.plugin-segment-bar {
+  padding: 4px;
+  border-radius: var(--radius-pill);
+  background-color: var(--surface-container-low);
+  border: var(--border-width) solid var(--outline-variant);
+
+  button.plugin-segment {
+    min-height: 32px;
+    padding: 0 var(--space-3);
+    border-radius: var(--radius-sm);
+    background-color: transparent;
+    color: var(--on-surface-variant);
+    transition: background-color var(--motion-fast) var(--ease-standard);
+
+    label {
+      // Never bump font-weight between states — segments would reflow.
+      font-weight: 500;
+      color: inherit;
+    }
+    &:hover:not(.plugin-segment-on) {
+      background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
+    }
+    &.plugin-segment-on {
+      background-color: var(--secondary-container);
+      color: var(--on-secondary-container);
+      label { color: var(--on-secondary-container); }
+    }
+  }
+}
+
+// Calm rectangular card on a panel — surface-container, radius-md, padding.
+// Used as the building block for stat tiles, info rows, drill-down lists.
+.plugin-card {
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-container);
+}
+
+// Stat tile variant: title (dim, small) + big value + optional hint.
+.plugin-stat {
+  @extend .plugin-card;
+
+  .plugin-stat-label {
+    font-size: var(--font-xs);
+    color: var(--on-surface-variant);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .plugin-stat-value {
+    font-size: var(--font-xl);
+    font-weight: 600;
+    color: var(--on-surface);
+    line-height: 1.1;
+  }
+  .plugin-stat-hint {
+    font-size: var(--font-xs);
+    color: var(--on-surface-variant);
+  }
+}
+
+// Bar-chart row used in "recent activity" lists. Label · progress · count.
+.plugin-bar-row {
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+
+  label {
+    color: var(--on-surface-variant);
+    font-variant-numeric: tabular-nums;
+  }
+  // The mini bar itself — slimmer than a regular progress bar so the row
+  // doesn't dominate the surface.
+  progress {
+    min-height: 6px;
+  }
+  &:hover {
+    background-color: unquote("color-mix(in srgb, var(--primary) 8%, transparent)");
+  }
+}
+
+// Status badge inside a card header (e.g. "OK" / "Disabled" / "Error").
+.plugin-status-badge {
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: var(--font-xs);
+  font-weight: 600;
+  background-color: var(--surface-container-high);
+  color: var(--on-surface-variant);
+
+  &.plugin-status-ok {
+    background-color: var(--primary-container);
+    color: var(--on-primary-container);
+  }
+  &.plugin-status-warn {
+    background-color: unquote("color-mix(in srgb, var(--warning, var(--primary)) 35%, transparent)");
+    color: var(--on-surface);
+  }
+  &.plugin-status-error {
+    background-color: var(--error-container);
+    color: var(--on-error-container);
+  }
+}
+
 // Keybind status badge in the Keybinds list.
 .plugins-keybind-badge {
   font-size: var(--font-xs);

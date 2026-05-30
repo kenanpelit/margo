@@ -15,6 +15,7 @@ path = "src/main.rs"
 anyhow.workspace = true
 clap.workspace = true
 mshell-cli-style.workspace = true
+mshell-plugins.workspace = true
 serde.workspace = true
 tokio.workspace = true
 zbus.workspace = true

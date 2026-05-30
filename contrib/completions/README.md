@@ -1,7 +1,9 @@
-# mctl shell completions
+# margo shell completions
 
-Hand-curated completion scripts for [`mctl`](../../margo-ipc/src/bin/mctl.rs),
-margo's compositor-control CLI.
+Hand-curated completion scripts for `mctl` (the compositor-control CLI)
+**and** `mshellctl` (the shell-control CLI). Both static subcommand
+surface + live, runtime-pulled lookups (dispatch actions for mctl, plugin
+keys for mshellctl).
 
 The clap-derived `mctl completions <shell>` generator covers the
 subcommand and flag layer but can't enumerate margo's dispatch action
@@ -22,31 +24,28 @@ extend the basic completion with:
 ```sh
 # bash (XDG path picked up by bash-completion 2.x)
 mkdir -p ~/.local/share/bash-completion/completions
-cp contrib/completions/mctl.bash \
-   ~/.local/share/bash-completion/completions/mctl
+cp contrib/completions/mctl.bash      ~/.local/share/bash-completion/completions/mctl
+cp contrib/completions/mshellctl.bash ~/.local/share/bash-completion/completions/mshellctl
 
 # zsh (any directory in $fpath works; this one is a common choice)
 mkdir -p ~/.local/share/zsh/site-functions
 cp contrib/completions/_mctl ~/.local/share/zsh/site-functions/_mctl
 # Make sure ~/.local/share/zsh/site-functions is in your $fpath.
-# Most distros ship a default that already includes ~/.zsh/completions
-# or similar; add the line below to ~/.zshrc if needed:
-#   fpath=(~/.local/share/zsh/site-functions $fpath)
 
 # fish (auto-loaded from the standard completions dir)
 mkdir -p ~/.config/fish/completions
-cp contrib/completions/mctl.fish ~/.config/fish/completions/mctl.fish
+cp contrib/completions/mctl.fish      ~/.config/fish/completions/mctl.fish
+cp contrib/completions/mshellctl.fish ~/.config/fish/completions/mshellctl.fish
 ```
 
 ## System-wide install (PKGBUILD / packagers)
 
 ```sh
-install -Dm644 contrib/completions/mctl.bash \
-    "$pkgdir/usr/share/bash-completion/completions/mctl"
-install -Dm644 contrib/completions/_mctl \
-    "$pkgdir/usr/share/zsh/site-functions/_mctl"
-install -Dm644 contrib/completions/mctl.fish \
-    "$pkgdir/usr/share/fish/vendor_completions.d/mctl.fish"
+install -Dm644 contrib/completions/mctl.bash      "$pkgdir/usr/share/bash-completion/completions/mctl"
+install -Dm644 contrib/completions/mshellctl.bash "$pkgdir/usr/share/bash-completion/completions/mshellctl"
+install -Dm644 contrib/completions/_mctl          "$pkgdir/usr/share/zsh/site-functions/_mctl"
+install -Dm644 contrib/completions/mctl.fish      "$pkgdir/usr/share/fish/vendor_completions.d/mctl.fish"
+install -Dm644 contrib/completions/mshellctl.fish "$pkgdir/usr/share/fish/vendor_completions.d/mshellctl.fish"
 ```
 
 ## Refreshing the action cache

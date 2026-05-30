@@ -319,7 +319,23 @@ fn build(node: &UiNode, by_id: &HashMap<&str, &UiNode>, inner: &Rc<RefCell<Inner
             label.upcast()
         }
         UiKind::Button => {
-            let btn = gtk::Button::with_label(&node.text);
+            let btn = gtk::Button::new();
+            // `properties["icon"]` lets a plugin author build icon-only or
+            // leading-icon buttons (e.g. the §12 circular refresh action).
+            // text-only stays the default.
+            match (
+                node.properties.get("icon").map(String::as_str),
+                node.text.is_empty(),
+            ) {
+                (Some(icon), true) => btn.set_icon_name(icon),
+                (Some(icon), false) => {
+                    let h = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+                    h.append(&gtk::Image::from_icon_name(icon));
+                    h.append(&gtk::Label::new(Some(&node.text)));
+                    btn.set_child(Some(&h));
+                }
+                (None, _) => btn.set_label(&node.text),
+            }
             let inner = inner.clone();
             let id = node.id.clone();
             btn.connect_clicked(move |_| {
