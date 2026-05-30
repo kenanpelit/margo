@@ -216,6 +216,24 @@ fn apply_node_properties(widget: &gtk::Widget, props: &HashMap<String, String>) 
     }
 }
 
+/// Accept hex colour strings in either web (`#rrggbb` / `#rrggbbaa`) or
+/// margo's compositor-conf (`0xrrggbbaa`) form. Returns `(r, g, b, a)` in
+/// the unit range; bogus input → opaque black so the swatch still renders.
+fn parse_hex_rgba(input: &str) -> (f64, f64, f64, f64) {
+    let s = input.trim();
+    let hex = s.strip_prefix("0x").or_else(|| s.strip_prefix('#')).unwrap_or(s);
+    let bytes: Vec<u8> = (0..hex.len())
+        .step_by(2)
+        .filter_map(|i| u8::from_str_radix(hex.get(i..i + 2)?, 16).ok())
+        .collect();
+    let to_unit = |b: u8| b as f64 / 255.0;
+    match bytes.len() {
+        3 => (to_unit(bytes[0]), to_unit(bytes[1]), to_unit(bytes[2]), 1.0),
+        4 => (to_unit(bytes[0]), to_unit(bytes[1]), to_unit(bytes[2]), to_unit(bytes[3])),
+        _ => (0.0, 0.0, 0.0, 1.0),
+    }
+}
+
 fn parse_align(s: &str) -> Option<gtk::Align> {
     match s {
         "start" => Some(gtk::Align::Start),
@@ -592,6 +610,33 @@ fn build(node: &UiNode, by_id: &HashMap<&str, &UiNode>, inner: &Rc<RefCell<Inner
             // pre-compiled plugin just sees a transparent placeholder.
             let kind = node.properties.get("kind").map(String::as_str).unwrap_or("");
             let inner_widget: gtk::Widget = match kind {
+                // A filled-rectangle colour swatch driven by `properties["color"]`
+                // (hex `#rrggbb` / `#rrggbbaa`, or margo's `0xrrggbbaa`) and an
+                // optional `properties["size"]`. Used by the colour-scheme
+                // editor + any plugin that wants to render arbitrary user
+                // colours without piercing the design language.
+                "color-swatch" => {
+                    let hex = node
+                        .properties
+                        .get("color")
+                        .map(String::as_str)
+                        .unwrap_or("#00000000");
+                    let size: i32 = node
+                        .properties
+                        .get("size")
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(28);
+                    let rgba = parse_hex_rgba(hex);
+                    let area = gtk::DrawingArea::new();
+                    area.set_content_width(size);
+                    area.set_content_height(size);
+                    area.set_draw_func(move |_, cr, w, h| {
+                        cr.set_source_rgba(rgba.0, rgba.1, rgba.2, rgba.3);
+                        cr.rectangle(0.0, 0.0, w as f64, h as f64);
+                        let _ = cr.fill();
+                    });
+                    area.upcast()
+                }
                 // Future extension kinds slot in here without ever growing the WIT enum.
                 _ => {
                     let b = gtk::Box::new(gtk::Orientation::Vertical, 6);

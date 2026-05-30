@@ -184,6 +184,16 @@ impl El {
         Self::container(NodeKind::Stack, children).prop("visible-child", visible_id)
     }
 
+    /// A filled colour swatch (the canonical use of [`El::extended`]) —
+    /// `hex` accepts `#rrggbb` / `#rrggbbaa` / `0xrrggbbaa`. `size` is the
+    /// pixel side length (the box is square).
+    pub fn color_swatch(hex: impl Into<String>, size: u32) -> El {
+        Self::container(NodeKind::Extended, Vec::new())
+            .prop("kind", "color-swatch")
+            .prop("color", hex)
+            .prop("size", size.to_string())
+    }
+
     /// An extension node — the renderer dispatches on `properties["kind"]`.
     /// Future node kinds ride on top of this instead of growing the WIT
     /// enum, so a host that gains a new extension keeps loading older
