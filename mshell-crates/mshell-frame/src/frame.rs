@@ -743,38 +743,38 @@ impl Component for Frame {
         let top_bar: Controller<BarModel> = Self::build_bar(&sender, BarType::Top);
         let bottom_bar: Controller<BarModel> = Self::build_bar(&sender, BarType::Bottom);
 
-        let calendar_menu = Self::build_menu(&sender, MenuType::Clock, &params.monitor);
-        let clipboard_menu = Self::build_menu(&sender, MenuType::Clipboard, &params.monitor);
-        let notification_menu = Self::build_menu(&sender, MenuType::Notifications, &params.monitor);
-        let screenshot_menu = Self::build_menu(&sender, MenuType::Screenshot, &params.monitor);
-        let app_launcher_menu = Self::build_menu(&sender, MenuType::AppLauncher, &params.monitor);
-        let wallpaper_menu = Self::build_menu(&sender, MenuType::Wallpaper, &params.monitor);
-        let screenshare_menu = Self::build_menu(&sender, MenuType::HyprlandScreenshare, &params.monitor);
-        let wizard_menu = Self::build_menu(&sender, MenuType::Wizard, &params.monitor);
-        let ufw_menu = Self::build_menu(&sender, MenuType::Ufw, &params.monitor);
-        let bluetooth_menu = Self::build_menu(&sender, MenuType::Bluetooth, &params.monitor);
-        let cpu_dashboard_menu = Self::build_menu(&sender, MenuType::CpuDashboard, &params.monitor);
-        let audio_dashboard_menu = Self::build_menu(&sender, MenuType::AudioDashboard, &params.monitor);
-        let system_update_menu = Self::build_menu(&sender, MenuType::SystemUpdate, &params.monitor);
-        let valent_menu = Self::build_menu(&sender, MenuType::Valent, &params.monitor);
-        let weather_menu = Self::build_menu(&sender, MenuType::Weather, &params.monitor);
-        let keep_awake_menu = Self::build_menu(&sender, MenuType::KeepAwake, &params.monitor);
-        let twilight_menu = Self::build_menu(&sender, MenuType::Twilight, &params.monitor);
-        let keybinds_menu = Self::build_menu(&sender, MenuType::Keybinds, &params.monitor);
-        let alarmclock_menu = Self::build_menu(&sender, MenuType::AlarmClock, &params.monitor);
-        let control_center_menu = Self::build_menu(&sender, MenuType::ControlCenter, &params.monitor);
-        let ssh_menu = Self::build_menu(&sender, MenuType::SshSessions, &params.monitor);
-        let dns_menu = Self::build_menu(&sender, MenuType::Dns, &params.monitor);
-        let podman_menu = Self::build_menu(&sender, MenuType::Podman, &params.monitor);
-        let notes_menu = Self::build_menu(&sender, MenuType::Notes, &params.monitor);
-        let plugin_panel_menu = Self::build_menu(&sender, MenuType::PluginPanel, &params.monitor);
-        let ip_menu = Self::build_menu(&sender, MenuType::Ip, &params.monitor);
-        let network_menu = Self::build_menu(&sender, MenuType::Network, &params.monitor);
-        let power_menu = Self::build_menu(&sender, MenuType::Power, &params.monitor);
-        let media_player_menu = Self::build_menu(&sender, MenuType::MediaPlayer, &params.monitor);
-        let session_menu = Self::build_menu(&sender, MenuType::Session, &params.monitor);
-        let dashboard_menu = Self::build_menu(&sender, MenuType::Dashboard, &params.monitor);
-        let margo_layout_menu = Self::build_menu(&sender, MenuType::MargoLayout, &params.monitor);
+        let calendar_menu = Self::build_menu(&sender, MenuType::Clock);
+        let clipboard_menu = Self::build_menu(&sender, MenuType::Clipboard);
+        let notification_menu = Self::build_menu(&sender, MenuType::Notifications);
+        let screenshot_menu = Self::build_menu(&sender, MenuType::Screenshot);
+        let app_launcher_menu = Self::build_menu(&sender, MenuType::AppLauncher);
+        let wallpaper_menu = Self::build_menu(&sender, MenuType::Wallpaper);
+        let screenshare_menu = Self::build_menu(&sender, MenuType::HyprlandScreenshare);
+        let wizard_menu = Self::build_menu(&sender, MenuType::Wizard);
+        let ufw_menu = Self::build_menu(&sender, MenuType::Ufw);
+        let bluetooth_menu = Self::build_menu(&sender, MenuType::Bluetooth);
+        let cpu_dashboard_menu = Self::build_menu(&sender, MenuType::CpuDashboard);
+        let audio_dashboard_menu = Self::build_menu(&sender, MenuType::AudioDashboard);
+        let system_update_menu = Self::build_menu(&sender, MenuType::SystemUpdate);
+        let valent_menu = Self::build_menu(&sender, MenuType::Valent);
+        let weather_menu = Self::build_menu(&sender, MenuType::Weather);
+        let keep_awake_menu = Self::build_menu(&sender, MenuType::KeepAwake);
+        let twilight_menu = Self::build_menu(&sender, MenuType::Twilight);
+        let keybinds_menu = Self::build_menu(&sender, MenuType::Keybinds);
+        let alarmclock_menu = Self::build_menu(&sender, MenuType::AlarmClock);
+        let control_center_menu = Self::build_menu(&sender, MenuType::ControlCenter);
+        let ssh_menu = Self::build_menu(&sender, MenuType::SshSessions);
+        let dns_menu = Self::build_menu(&sender, MenuType::Dns);
+        let podman_menu = Self::build_menu(&sender, MenuType::Podman);
+        let notes_menu = Self::build_menu(&sender, MenuType::Notes);
+        let plugin_panel_menu = Self::build_menu(&sender, MenuType::PluginPanel);
+        let ip_menu = Self::build_menu(&sender, MenuType::Ip);
+        let network_menu = Self::build_menu(&sender, MenuType::Network);
+        let power_menu = Self::build_menu(&sender, MenuType::Power);
+        let media_player_menu = Self::build_menu(&sender, MenuType::MediaPlayer);
+        let session_menu = Self::build_menu(&sender, MenuType::Session);
+        let dashboard_menu = Self::build_menu(&sender, MenuType::Dashboard);
+        let margo_layout_menu = Self::build_menu(&sender, MenuType::MargoLayout);
 
         // Settings doesn't go through `build_menu` because its
         // content isn't a list of `MenuWidget`s — it's a custom
@@ -2564,20 +2564,9 @@ impl Frame {
             })
     }
 
-    fn build_menu(
-        sender: &ComponentSender<Self>,
-        menu_type: MenuType,
-        monitor: &gdk::Monitor,
-    ) -> Controller<MenuModel> {
-        // Logical pixel size of the monitor this frame lives on — drives
-        // the per-menu ½-width / ¾-height auto-size ceilings.
-        let geo = monitor.geometry();
+    fn build_menu(sender: &ComponentSender<Self>, menu_type: MenuType) -> Controller<MenuModel> {
         MenuModel::builder()
-            .launch(MenuInit {
-                menu_type,
-                screen_width: geo.width(),
-                screen_height: geo.height(),
-            })
+            .launch(MenuInit { menu_type })
             .forward(sender.input_sender(), |msg| match msg {
                 MenuOutput::CloseMenu => FrameInput::CloseMenus,
                 MenuOutput::ToggleSessionMenu => FrameInput::ToggleSessionMenu,
@@ -2594,20 +2583,6 @@ impl Frame {
             return;
         };
         let layout = mshell_plugins::PluginStore::new().load_state().panel(&key);
-        // Plugin panels are always manually sized to the plugin's own
-        // panel_min_width / panel_max_height — never content-auto (that
-        // would ignore the plugin's width/height settings and size to
-        // content instead). Force both auto toggles off on every open so
-        // the width/height the plugin author/user set actually applies,
-        // regardless of the menu's config defaults.
-        self.plugin_panel_menu
-            .sender()
-            .send(MenuInput::SetAutoWidth(false))
-            .ok();
-        self.plugin_panel_menu
-            .sender()
-            .send(MenuInput::SetAutoHeight(false))
-            .ok();
         if layout.min_width > 0 {
             self.plugin_panel_menu
                 .sender()

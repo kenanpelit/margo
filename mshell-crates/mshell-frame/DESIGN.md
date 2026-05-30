@@ -445,26 +445,9 @@ it. Two kinds, mutually exclusive:
 
 - **Opens a menu** → `WidgetEntry::Menu` + a `MenuKind` variant.
   Add the variant to `widget_menu_settings.rs` (`MenuKind` enum,
-  `display_name`, `all()`, and **every per-menu dispatch match arm**:
-  read/tracked/write × position / min_width / max_height / auto_width /
-  auto_height, plus read/tracked/write widgets) and a
-  `WidgetEntry::Menu { … }` row in `settings.rs`.
-
-  **Menu sizing model.** Each `Menu` carries `minimum_width`,
-  `maximum_height`, and the two `auto_*` toggles (opt-in, both default
-  `false` — menus ship at their designed fixed size; auto is enabled
-  per-menu in Settings → Widgets):
-  - `auto_width` on → width follows content, floored at
-    `minimum_width`; off → width pinned to `minimum_width`.
-  - `auto_height` on → height grows to fit; off → capped at
-    `maximum_height`.
-  - A **hard safety ceiling always applies in both modes**: a menu can
-    never exceed ½ the monitor width or ¾ its height (it scrolls
-    instead). The ceiling is computed in `menus/menu.rs` from the
-    frame's `gdk::Monitor` geometry (passed via `MenuInit`); the sizing
-    is centralised in the `MenuModel::{req_width,min_w,max_w,max_h,min_h}`
-    helpers, not hand-rolled in the `view!`. The Settings spin for a
-    dimension greys out while its `auto_*` toggle is on.
+  `display_name`, `all()`, and **all 12 dispatch match arms**:
+  read/tracked/write × position/min_width/max_height + read/tracked/
+  write widgets) and a `WidgetEntry::Menu { … }` row in `settings.rs`.
 - **Bar-only pill, no menu** → `WidgetEntry::Pill` + a `BarPillKind`
   variant with a `display_name` + a `description`.
 

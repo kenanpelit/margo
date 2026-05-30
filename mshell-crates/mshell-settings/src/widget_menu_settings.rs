@@ -18,7 +18,7 @@ use mshell_config::schema::config::{
 };
 use mshell_config::schema::position::Position;
 use reactive_graph::prelude::{Get, GetUntracked};
-use relm4::gtk::prelude::{BoxExt, CheckButtonExt, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 
 /// Which menu this settings page targets. The enum carries
@@ -432,208 +432,6 @@ impl MenuKind {
         });
     }
 
-    fn read_auto_width(self) -> bool {
-        let m = config_manager().config().menus();
-        match self {
-            Self::AppLauncher => m.app_launcher_menu().auto_width().get_untracked(),
-            Self::Clipboard => m.clipboard_menu().auto_width().get_untracked(),
-            Self::Clock => m.clock_menu().auto_width().get_untracked(),
-            Self::Dashboard => m.dashboard_menu().auto_width().get_untracked(),
-            Self::MediaPlayer => m.media_player_menu().auto_width().get_untracked(),
-            Self::Dns => m.dns_menu().auto_width().get_untracked(),
-            Self::Ip => m.ip_menu().auto_width().get_untracked(),
-            Self::Network => m.network_menu().auto_width().get_untracked(),
-            Self::Notes => m.notes_menu().auto_width().get_untracked(),
-            Self::Notifications => m.notification_menu().auto_width().get_untracked(),
-            Self::Podman => m.podman_menu().auto_width().get_untracked(),
-            Self::Wallpaper => m.wallpaper_menu().auto_width().get_untracked(),
-            Self::Power => m.power_menu().auto_width().get_untracked(),
-            Self::Screenshot => m.screenshot_menu().auto_width().get_untracked(),
-            Self::Ufw => m.ufw_menu().auto_width().get_untracked(),
-            Self::Bluetooth => m.bluetooth_menu().auto_width().get_untracked(),
-            Self::CpuDashboard => m.cpu_dashboard_menu().auto_width().get_untracked(),
-            Self::AudioDashboard => m.audio_dashboard_menu().auto_width().get_untracked(),
-            Self::SystemUpdate => m.system_update_menu().auto_width().get_untracked(),
-            Self::Valent => m.valent_menu().auto_width().get_untracked(),
-            Self::Weather => m.weather_menu().auto_width().get_untracked(),
-            Self::KeepAwake => m.keep_awake_menu().auto_width().get_untracked(),
-            Self::Twilight => m.twilight_menu().auto_width().get_untracked(),
-            Self::Keybinds => m.keybinds_menu().auto_width().get_untracked(),
-            Self::AlarmClock => m.alarmclock_menu().auto_width().get_untracked(),
-            Self::ControlCenter => m.control_center_menu().auto_width().get_untracked(),
-            Self::SshSessions => m.ssh_menu().auto_width().get_untracked(),
-            Self::MargoLayout => m.margo_layout_menu().auto_width().get_untracked(),
-        }
-    }
-
-    fn tracked_auto_width(self) -> bool {
-        let m = config_manager().config().menus();
-        match self {
-            Self::AppLauncher => m.app_launcher_menu().auto_width().get(),
-            Self::Clipboard => m.clipboard_menu().auto_width().get(),
-            Self::Clock => m.clock_menu().auto_width().get(),
-            Self::Dashboard => m.dashboard_menu().auto_width().get(),
-            Self::MediaPlayer => m.media_player_menu().auto_width().get(),
-            Self::Dns => m.dns_menu().auto_width().get(),
-            Self::Ip => m.ip_menu().auto_width().get(),
-            Self::Network => m.network_menu().auto_width().get(),
-            Self::Notes => m.notes_menu().auto_width().get(),
-            Self::Notifications => m.notification_menu().auto_width().get(),
-            Self::Podman => m.podman_menu().auto_width().get(),
-            Self::Wallpaper => m.wallpaper_menu().auto_width().get(),
-            Self::Power => m.power_menu().auto_width().get(),
-            Self::Screenshot => m.screenshot_menu().auto_width().get(),
-            Self::Ufw => m.ufw_menu().auto_width().get(),
-            Self::Bluetooth => m.bluetooth_menu().auto_width().get(),
-            Self::CpuDashboard => m.cpu_dashboard_menu().auto_width().get(),
-            Self::AudioDashboard => m.audio_dashboard_menu().auto_width().get(),
-            Self::SystemUpdate => m.system_update_menu().auto_width().get(),
-            Self::Valent => m.valent_menu().auto_width().get(),
-            Self::Weather => m.weather_menu().auto_width().get(),
-            Self::KeepAwake => m.keep_awake_menu().auto_width().get(),
-            Self::Twilight => m.twilight_menu().auto_width().get(),
-            Self::Keybinds => m.keybinds_menu().auto_width().get(),
-            Self::AlarmClock => m.alarmclock_menu().auto_width().get(),
-            Self::ControlCenter => m.control_center_menu().auto_width().get(),
-            Self::SshSessions => m.ssh_menu().auto_width().get(),
-            Self::MargoLayout => m.margo_layout_menu().auto_width().get(),
-        }
-    }
-
-    fn write_auto_width(self, v: bool) {
-        config_manager().update_config(|c| match self {
-            Self::AppLauncher => c.menus.app_launcher_menu.auto_width = v,
-            Self::Clipboard => c.menus.clipboard_menu.auto_width = v,
-            Self::Clock => c.menus.clock_menu.auto_width = v,
-            Self::Dashboard => c.menus.dashboard_menu.auto_width = v,
-            Self::MediaPlayer => c.menus.media_player_menu.auto_width = v,
-            Self::Dns => c.menus.dns_menu.auto_width = v,
-            Self::Ip => c.menus.ip_menu.auto_width = v,
-            Self::Network => c.menus.network_menu.auto_width = v,
-            Self::Notes => c.menus.notes_menu.auto_width = v,
-            Self::Notifications => c.menus.notification_menu.auto_width = v,
-            Self::Podman => c.menus.podman_menu.auto_width = v,
-            Self::Wallpaper => c.menus.wallpaper_menu.auto_width = v,
-            Self::Power => c.menus.power_menu.auto_width = v,
-            Self::Screenshot => c.menus.screenshot_menu.auto_width = v,
-            Self::Ufw => c.menus.ufw_menu.auto_width = v,
-            Self::Bluetooth => c.menus.bluetooth_menu.auto_width = v,
-            Self::CpuDashboard => c.menus.cpu_dashboard_menu.auto_width = v,
-            Self::AudioDashboard => c.menus.audio_dashboard_menu.auto_width = v,
-            Self::SystemUpdate => c.menus.system_update_menu.auto_width = v,
-            Self::Valent => c.menus.valent_menu.auto_width = v,
-            Self::Weather => c.menus.weather_menu.auto_width = v,
-            Self::KeepAwake => c.menus.keep_awake_menu.auto_width = v,
-            Self::Twilight => c.menus.twilight_menu.auto_width = v,
-            Self::Keybinds => c.menus.keybinds_menu.auto_width = v,
-            Self::AlarmClock => c.menus.alarmclock_menu.auto_width = v,
-            Self::ControlCenter => c.menus.control_center_menu.auto_width = v,
-            Self::SshSessions => c.menus.ssh_menu.auto_width = v,
-            Self::MargoLayout => c.menus.margo_layout_menu.auto_width = v,
-        });
-    }
-
-    fn read_auto_height(self) -> bool {
-        let m = config_manager().config().menus();
-        match self {
-            Self::AppLauncher => m.app_launcher_menu().auto_height().get_untracked(),
-            Self::Clipboard => m.clipboard_menu().auto_height().get_untracked(),
-            Self::Clock => m.clock_menu().auto_height().get_untracked(),
-            Self::Dashboard => m.dashboard_menu().auto_height().get_untracked(),
-            Self::MediaPlayer => m.media_player_menu().auto_height().get_untracked(),
-            Self::Dns => m.dns_menu().auto_height().get_untracked(),
-            Self::Ip => m.ip_menu().auto_height().get_untracked(),
-            Self::Network => m.network_menu().auto_height().get_untracked(),
-            Self::Notes => m.notes_menu().auto_height().get_untracked(),
-            Self::Notifications => m.notification_menu().auto_height().get_untracked(),
-            Self::Podman => m.podman_menu().auto_height().get_untracked(),
-            Self::Wallpaper => m.wallpaper_menu().auto_height().get_untracked(),
-            Self::Power => m.power_menu().auto_height().get_untracked(),
-            Self::Screenshot => m.screenshot_menu().auto_height().get_untracked(),
-            Self::Ufw => m.ufw_menu().auto_height().get_untracked(),
-            Self::Bluetooth => m.bluetooth_menu().auto_height().get_untracked(),
-            Self::CpuDashboard => m.cpu_dashboard_menu().auto_height().get_untracked(),
-            Self::AudioDashboard => m.audio_dashboard_menu().auto_height().get_untracked(),
-            Self::SystemUpdate => m.system_update_menu().auto_height().get_untracked(),
-            Self::Valent => m.valent_menu().auto_height().get_untracked(),
-            Self::Weather => m.weather_menu().auto_height().get_untracked(),
-            Self::KeepAwake => m.keep_awake_menu().auto_height().get_untracked(),
-            Self::Twilight => m.twilight_menu().auto_height().get_untracked(),
-            Self::Keybinds => m.keybinds_menu().auto_height().get_untracked(),
-            Self::AlarmClock => m.alarmclock_menu().auto_height().get_untracked(),
-            Self::ControlCenter => m.control_center_menu().auto_height().get_untracked(),
-            Self::SshSessions => m.ssh_menu().auto_height().get_untracked(),
-            Self::MargoLayout => m.margo_layout_menu().auto_height().get_untracked(),
-        }
-    }
-
-    fn tracked_auto_height(self) -> bool {
-        let m = config_manager().config().menus();
-        match self {
-            Self::AppLauncher => m.app_launcher_menu().auto_height().get(),
-            Self::Clipboard => m.clipboard_menu().auto_height().get(),
-            Self::Clock => m.clock_menu().auto_height().get(),
-            Self::Dashboard => m.dashboard_menu().auto_height().get(),
-            Self::MediaPlayer => m.media_player_menu().auto_height().get(),
-            Self::Dns => m.dns_menu().auto_height().get(),
-            Self::Ip => m.ip_menu().auto_height().get(),
-            Self::Network => m.network_menu().auto_height().get(),
-            Self::Notes => m.notes_menu().auto_height().get(),
-            Self::Notifications => m.notification_menu().auto_height().get(),
-            Self::Podman => m.podman_menu().auto_height().get(),
-            Self::Wallpaper => m.wallpaper_menu().auto_height().get(),
-            Self::Power => m.power_menu().auto_height().get(),
-            Self::Screenshot => m.screenshot_menu().auto_height().get(),
-            Self::Ufw => m.ufw_menu().auto_height().get(),
-            Self::Bluetooth => m.bluetooth_menu().auto_height().get(),
-            Self::CpuDashboard => m.cpu_dashboard_menu().auto_height().get(),
-            Self::AudioDashboard => m.audio_dashboard_menu().auto_height().get(),
-            Self::SystemUpdate => m.system_update_menu().auto_height().get(),
-            Self::Valent => m.valent_menu().auto_height().get(),
-            Self::Weather => m.weather_menu().auto_height().get(),
-            Self::KeepAwake => m.keep_awake_menu().auto_height().get(),
-            Self::Twilight => m.twilight_menu().auto_height().get(),
-            Self::Keybinds => m.keybinds_menu().auto_height().get(),
-            Self::AlarmClock => m.alarmclock_menu().auto_height().get(),
-            Self::ControlCenter => m.control_center_menu().auto_height().get(),
-            Self::SshSessions => m.ssh_menu().auto_height().get(),
-            Self::MargoLayout => m.margo_layout_menu().auto_height().get(),
-        }
-    }
-
-    fn write_auto_height(self, v: bool) {
-        config_manager().update_config(|c| match self {
-            Self::AppLauncher => c.menus.app_launcher_menu.auto_height = v,
-            Self::Clipboard => c.menus.clipboard_menu.auto_height = v,
-            Self::Clock => c.menus.clock_menu.auto_height = v,
-            Self::Dashboard => c.menus.dashboard_menu.auto_height = v,
-            Self::MediaPlayer => c.menus.media_player_menu.auto_height = v,
-            Self::Dns => c.menus.dns_menu.auto_height = v,
-            Self::Ip => c.menus.ip_menu.auto_height = v,
-            Self::Network => c.menus.network_menu.auto_height = v,
-            Self::Notes => c.menus.notes_menu.auto_height = v,
-            Self::Notifications => c.menus.notification_menu.auto_height = v,
-            Self::Podman => c.menus.podman_menu.auto_height = v,
-            Self::Wallpaper => c.menus.wallpaper_menu.auto_height = v,
-            Self::Power => c.menus.power_menu.auto_height = v,
-            Self::Screenshot => c.menus.screenshot_menu.auto_height = v,
-            Self::Ufw => c.menus.ufw_menu.auto_height = v,
-            Self::Bluetooth => c.menus.bluetooth_menu.auto_height = v,
-            Self::CpuDashboard => c.menus.cpu_dashboard_menu.auto_height = v,
-            Self::AudioDashboard => c.menus.audio_dashboard_menu.auto_height = v,
-            Self::SystemUpdate => c.menus.system_update_menu.auto_height = v,
-            Self::Valent => c.menus.valent_menu.auto_height = v,
-            Self::Weather => c.menus.weather_menu.auto_height = v,
-            Self::KeepAwake => c.menus.keep_awake_menu.auto_height = v,
-            Self::Twilight => c.menus.twilight_menu.auto_height = v,
-            Self::Keybinds => c.menus.keybinds_menu.auto_height = v,
-            Self::AlarmClock => c.menus.alarmclock_menu.auto_height = v,
-            Self::ControlCenter => c.menus.control_center_menu.auto_height = v,
-            Self::SshSessions => c.menus.ssh_menu.auto_height = v,
-            Self::MargoLayout => c.menus.margo_layout_menu.auto_height = v,
-        });
-    }
-
     /// Snapshot the menu's current widget list. Used to seed the
     /// `MenuWidgetListModel` factory at panel-creation time.
     pub(crate) fn read_widgets(self) -> Vec<mshell_config::schema::menu_widgets::MenuWidget> {
@@ -753,14 +551,6 @@ pub(crate) struct WidgetMenuSettingsModel {
     minimum_width: i32,
     /// Maximum visible content height in pixels. 0 = no cap.
     maximum_height: i32,
-    /// When `true`, width follows content (½-screen ceiling) and the
-    /// width spin is disabled; when `false`, width is pinned to
-    /// `minimum_width`.
-    auto_width: bool,
-    /// When `true`, height follows content (¾-screen ceiling) and the
-    /// height spin is disabled; when `false`, height caps at
-    /// `maximum_height`.
-    auto_height: bool,
     /// SystemUpdate-only: the pill's poll cadence in minutes.
     /// Unused (kept at 0) for every other kind — the view hides
     /// the cadence section unless `kind == SystemUpdate`.
@@ -777,13 +567,9 @@ pub(crate) enum WidgetMenuSettingsInput {
     PositionPicked(u32),
     MinWidthChanged(i32),
     MaxHeightChanged(i32),
-    AutoWidthChanged(bool),
-    AutoHeightChanged(bool),
     PositionEffect(Position),
     MinWidthEffect(i32),
     MaxHeightEffect(i32),
-    AutoWidthEffect(bool),
-    AutoHeightEffect(bool),
     CheckIntervalChanged(u32),
     CheckIntervalEffect(u32),
 }
@@ -922,26 +708,11 @@ impl Component for WidgetMenuSettingsModel {
                         },
                     },
 
-                    gtk::CheckButton {
-                        set_label: Some("Auto"),
-                        set_valign: gtk::Align::Center,
-                        set_tooltip_text: Some("Size width to content (capped at ½ the screen). Off = pin to the value on the right."),
-                        #[watch]
-                        #[block_signal(auto_width_handler)]
-                        set_active: model.auto_width,
-                        connect_toggled[sender] => move |b| {
-                            sender.input(WidgetMenuSettingsInput::AutoWidthChanged(b.is_active()));
-                        } @auto_width_handler,
-                    },
-
                     gtk::SpinButton {
                         set_valign: gtk::Align::Center,
                         set_range: (200.0, 2000.0),
                         set_increments: (10.0, 50.0),
                         set_digits: 0,
-                        // Greyed out while Auto sizes the width to content.
-                        #[watch]
-                        set_sensitive: !model.auto_width,
                         #[watch]
                         #[block_signal(min_width_handler)]
                         set_value: model.minimum_width as f64,
@@ -974,27 +745,12 @@ impl Component for WidgetMenuSettingsModel {
                         },
                     },
 
-                    gtk::CheckButton {
-                        set_label: Some("Auto"),
-                        set_valign: gtk::Align::Center,
-                        set_tooltip_text: Some("Grow height to fit content (capped at ¾ the screen). Off = cap at the value on the right."),
-                        #[watch]
-                        #[block_signal(auto_height_handler)]
-                        set_active: model.auto_height,
-                        connect_toggled[sender] => move |b| {
-                            sender.input(WidgetMenuSettingsInput::AutoHeightChanged(b.is_active()));
-                        } @auto_height_handler,
-                    },
-
                     gtk::SpinButton {
                         set_valign: gtk::Align::Center,
                         // 0 = uncapped; otherwise reasonable monitor-sized range.
                         set_range: (0.0, 2000.0),
                         set_increments: (10.0, 50.0),
                         set_digits: 0,
-                        // Greyed out while Auto grows the height to content.
-                        #[watch]
-                        set_sensitive: !model.auto_height,
                         #[watch]
                         #[block_signal(max_height_handler)]
                         set_value: model.maximum_height as f64,
@@ -1084,16 +840,6 @@ impl Component for WidgetMenuSettingsModel {
             let h = kind.tracked_max_height();
             sender_clone.input(WidgetMenuSettingsInput::MaxHeightEffect(h));
         });
-        let sender_clone = sender.clone();
-        effects.push(move |_| {
-            let a = kind.tracked_auto_width();
-            sender_clone.input(WidgetMenuSettingsInput::AutoWidthEffect(a));
-        });
-        let sender_clone = sender.clone();
-        effects.push(move |_| {
-            let a = kind.tracked_auto_height();
-            sender_clone.input(WidgetMenuSettingsInput::AutoHeightEffect(a));
-        });
         // SystemUpdate-only: track the pill's poll cadence so an
         // external `mshellctl config reload` repaints the spin.
         // Harmless for other kinds — the read just doesn't drive
@@ -1127,8 +873,6 @@ impl Component for WidgetMenuSettingsModel {
             position: kind.read_position(),
             minimum_width: kind.read_min_width(),
             maximum_height: kind.read_max_height(),
-            auto_width: kind.read_auto_width(),
-            auto_height: kind.read_auto_height(),
             check_interval_minutes: config_manager()
                 .config()
                 .bars()
@@ -1185,23 +929,9 @@ impl Component for WidgetMenuSettingsModel {
                     });
                 }
             }
-            WidgetMenuSettingsInput::AutoWidthChanged(a) => {
-                if self.auto_width != a {
-                    self.auto_width = a;
-                    self.kind.write_auto_width(a);
-                }
-            }
-            WidgetMenuSettingsInput::AutoHeightChanged(a) => {
-                if self.auto_height != a {
-                    self.auto_height = a;
-                    self.kind.write_auto_height(a);
-                }
-            }
             WidgetMenuSettingsInput::PositionEffect(p) => self.position = p,
             WidgetMenuSettingsInput::MinWidthEffect(w) => self.minimum_width = w,
             WidgetMenuSettingsInput::MaxHeightEffect(h) => self.maximum_height = h,
-            WidgetMenuSettingsInput::AutoWidthEffect(a) => self.auto_width = a,
-            WidgetMenuSettingsInput::AutoHeightEffect(a) => self.auto_height = a,
             WidgetMenuSettingsInput::CheckIntervalEffect(v) => self.check_interval_minutes = v,
         }
     }

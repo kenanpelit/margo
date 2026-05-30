@@ -168,78 +168,7 @@ pub(crate) struct MenuModel {
     /// control actually resizes the surface instead of only clamping a tall
     /// one. Other menus keep grow-to-fit.
     fixed_height: bool,
-    /// Opt-in (default `false`): when `true`, width follows content
-    /// (`minimum_width` is a floor); when `false`, width is pinned to
-    /// `minimum_width`. Either way a ½-screen-width ceiling applies.
-    auto_width: bool,
-    /// Opt-in (default `false`): when `true`, height grows to fit
-    /// content; when `false`, it caps at `maximum_height`. Either way
-    /// a ¾-screen-height ceiling applies.
-    auto_height: bool,
-    /// Monitor logical pixel size — drives the ½-width / ¾-height hard
-    /// ceilings. 0 means "not known yet" (no ceiling clamp).
-    screen_w: i32,
-    screen_h: i32,
     _effects: EffectScope,
-}
-
-impl MenuModel {
-    /// Hard width ceiling: ½ the monitor width (`None` if size unknown).
-    fn width_ceiling(&self) -> Option<i32> {
-        (self.screen_w > 0).then_some(self.screen_w / 2)
-    }
-    /// Hard height ceiling: ¾ the monitor height (`None` if size unknown).
-    fn height_ceiling(&self) -> Option<i32> {
-        (self.screen_h > 0).then_some(self.screen_h * 3 / 4)
-    }
-    /// Floor width, never above the ½-screen ceiling.
-    fn floor_width(&self) -> i32 {
-        match self.width_ceiling() {
-            Some(c) => self.minimum_width.min(c),
-            None => self.minimum_width,
-        }
-    }
-    /// `set_width_request`: -1 (let content drive) in auto, else the
-    /// pinned floor.
-    fn req_width(&self) -> i32 {
-        if self.auto_width { -1 } else { self.floor_width() }
-    }
-    /// `set_min_content_width`: the floor in both modes.
-    fn min_w(&self) -> i32 {
-        self.floor_width()
-    }
-    /// `set_max_content_width`: ½-screen in auto (content grows up to
-    /// it), the pinned floor in manual. -1 = no cap (size unknown).
-    fn max_w(&self) -> i32 {
-        if self.auto_width {
-            self.width_ceiling().unwrap_or(-1)
-        } else {
-            self.floor_width()
-        }
-    }
-    /// `set_max_content_height`: ¾-screen in auto; in manual the
-    /// configured cap clamped to ¾-screen (0 = "no explicit cap" still
-    /// clamps to ¾-screen). -1 = no cap (size unknown).
-    fn max_h(&self) -> i32 {
-        let ceil = self.height_ceiling();
-        if self.auto_height || self.maximum_height <= 0 {
-            ceil.unwrap_or(-1)
-        } else {
-            match ceil {
-                Some(c) => self.maximum_height.min(c),
-                None => self.maximum_height,
-            }
-        }
-    }
-    /// `set_min_content_height`: pin for the fixed-height plugin panel,
-    /// else -1.
-    fn min_h(&self) -> i32 {
-        if self.fixed_height && self.maximum_height > 0 {
-            self.max_h()
-        } else {
-            -1
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -251,8 +180,6 @@ pub(crate) enum MenuInput {
     SetWidget(Vec<MenuWidget>),
     SetMinimumWidth(i32),
     SetMaximumHeight(i32),
-    SetAutoWidth(bool),
-    SetAutoHeight(bool),
     /// Replace the menu's content with a single externally-built widget — used
     /// by the `PluginPanel` menu, whose content is a WASM plugin panel the
     /// frame builds and hands over (keeping its own reference alive). Only the
@@ -280,9 +207,6 @@ pub(crate) enum MenuOutput {
 
 pub(crate) struct MenuInit {
     pub(crate) menu_type: MenuType,
-    /// Monitor logical pixel size, for the ½-width / ¾-height ceilings.
-    pub(crate) screen_width: i32,
-    pub(crate) screen_height: i32,
 }
 
 #[relm4::component(pub)]
@@ -310,37 +234,47 @@ impl Component for MenuModel {
             // selecting. Disable it there so drag-select + Ctrl+C works.
             set_kinetic_scrolling: !model.fixed_height,
             set_propagate_natural_height: true,
-            // Width. Two modes (Settings → Widgets, per menu):
-            //   • auto (default): width follows content, floored at
-            //     `minimum_width` and capped at ½ the monitor width —
-            //     `width_request = -1`, `propagate_natural_width = true`,
-            //     min_content = floor, max_content = ½-screen.
-            //   • manual: pinned to `minimum_width` (min == max ==
-            //     request), the legacy fixed-width behaviour.
-            // Either mode is hard-clamped to ½ screen so a menu can
-            // never run off-screen. Clamping the *content area* with
-            // min/max (not just `width_request`, which is only a floor)
-            // is what actually bounds the launcher's tall result list.
+            // Pin the viewport to exactly `minimum_width` on both
+            // axes (min_content_width = max_content_width = w).
+            // `set_width_request` alone is just a floor; the
+            // ScrolledWindow would still grow if any nested
+            // widget reported a larger natural width (the launcher
+            // result list does — long row names + the binds-strip
+            // footer push the natural well past 720). Clamping the
+            // *content area* with min == max gives GTK a hard
+            // outer dimension regardless of what the child wants,
+            // and makes the Settings → Menus minimum-width spinner
+            // actually shrink the panel.
             #[watch]
-            set_width_request: model.req_width(),
+            set_width_request: model.minimum_width,
             #[watch]
-            set_min_content_width: model.min_w(),
+            set_min_content_width: model.minimum_width,
             #[watch]
-            set_max_content_width: model.max_w(),
+            set_max_content_width: model.minimum_width,
+            set_propagate_natural_width: false,
+            // Vertical height cap. 0 (config default) maps to -1
+            // ("no cap"), so legacy menus keep their grow-to-fit
+            // behaviour unchanged. When the user sets a positive
+            // value, GTK clamps the viewport at that height and
+            // the inner content scrolls — unlike the horizontal
+            // axis, this one actually works because
+            // `vscrollbar_policy` is Automatic (GTK's
+            // `min/max_content_*` are no-ops only with the Never
+            // policy, see gtkscrolledwindow.c:1896).
             #[watch]
-            set_propagate_natural_width: model.auto_width,
-            // Height. auto (default) grows to fit, capped at ¾ the
-            // monitor height (content scrolls past that). manual caps
-            // at `maximum_height`, still clamped to ¾ screen. The
-            // vertical clamp works because `vscrollbar_policy` is
-            // Automatic (GTK's `min/max_content_*` are no-ops only with
-            // the Never policy, see gtkscrolledwindow.c:1896).
-            #[watch]
-            set_max_content_height: model.max_h(),
+            set_max_content_height: if model.maximum_height > 0 {
+                model.maximum_height
+            } else {
+                -1
+            },
             // For the plugin-panel menu, pin the content height so the gear's
             // height control sets the surface size (not just a scroll cap).
             #[watch]
-            set_min_content_height: model.min_h(),
+            set_min_content_height: if model.fixed_height && model.maximum_height > 0 {
+                model.maximum_height
+            } else {
+                -1
+            },
 
             #[name = "widget_container"]
             gtk::Box {
@@ -376,19 +310,15 @@ impl Component for MenuModel {
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let minimum_width = config.clone().menus().clock_menu().minimum_width().get();
+                    let minimum_width = config.menus().clock_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                    let auto_width = config.menus().clock_menu().auto_width().get();
-                    sender_clone.input(MenuInput::SetAutoWidth(auto_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let maximum_height = config.clone().menus().clock_menu().maximum_height().get();
+                    let maximum_height = config.menus().clock_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                    let auto_height = config.menus().clock_menu().auto_height().get();
-                    sender_clone.input(MenuInput::SetAutoHeight(auto_height));
                 });
             }
             MenuType::Clipboard => {
@@ -404,10 +334,8 @@ impl Component for MenuModel {
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let minimum_width = config.clone().menus().clipboard_menu().minimum_width().get();
+                    let minimum_width = config.menus().clipboard_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                    let auto_width = config.menus().clipboard_menu().auto_width().get();
-                    sender_clone.input(MenuInput::SetAutoWidth(auto_width));
                 });
                 // NOTE: unlike other menus, the clipboard does NOT cap its
                 // *outer* scroller at `maximum_height`. The clipboard
@@ -430,10 +358,8 @@ impl Component for MenuModel {
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let minimum_width = config.clone().menus().notification_menu().minimum_width().get();
+                    let minimum_width = config.menus().notification_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                    let auto_width = config.menus().notification_menu().auto_width().get();
-                    sender_clone.input(MenuInput::SetAutoWidth(auto_width));
                 });
                 // NOTE: like the clipboard, the notifications menu does NOT
                 // cap its *outer* scroller at `maximum_height`. The widget
@@ -455,19 +381,15 @@ impl Component for MenuModel {
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let minimum_width = config.clone().menus().screenshot_menu().minimum_width().get();
+                    let minimum_width = config.menus().screenshot_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                    let auto_width = config.menus().screenshot_menu().auto_width().get();
-                    sender_clone.input(MenuInput::SetAutoWidth(auto_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let maximum_height = config.clone().menus().screenshot_menu().maximum_height().get();
+                    let maximum_height = config.menus().screenshot_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                    let auto_height = config.menus().screenshot_menu().auto_height().get();
-                    sender_clone.input(MenuInput::SetAutoHeight(auto_height));
                 });
             }
             MenuType::AppLauncher => {
@@ -483,19 +405,15 @@ impl Component for MenuModel {
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let minimum_width = config.clone().menus().app_launcher_menu().minimum_width().get();
+                    let minimum_width = config.menus().app_launcher_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                    let auto_width = config.menus().app_launcher_menu().auto_width().get();
-                    sender_clone.input(MenuInput::SetAutoWidth(auto_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let maximum_height = config.clone().menus().app_launcher_menu().maximum_height().get();
+                    let maximum_height = config.menus().app_launcher_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                    let auto_height = config.menus().app_launcher_menu().auto_height().get();
-                    sender_clone.input(MenuInput::SetAutoHeight(auto_height));
                 });
             }
             MenuType::Wallpaper => {
@@ -511,19 +429,15 @@ impl Component for MenuModel {
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let minimum_width = config.clone().menus().wallpaper_menu().minimum_width().get();
+                    let minimum_width = config.menus().wallpaper_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                    let auto_width = config.menus().wallpaper_menu().auto_width().get();
-                    sender_clone.input(MenuInput::SetAutoWidth(auto_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let maximum_height = config.clone().menus().wallpaper_menu().maximum_height().get();
+                    let maximum_height = config.menus().wallpaper_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                    let auto_height = config.menus().wallpaper_menu().auto_height().get();
-                    sender_clone.input(MenuInput::SetAutoHeight(auto_height));
                 });
             }
             MenuType::HyprlandScreenshare => {
@@ -550,19 +464,15 @@ impl Component for MenuModel {
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let minimum_width = config.clone().menus().ufw_menu().minimum_width().get();
+                    let minimum_width = config.menus().ufw_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                    let auto_width = config.menus().ufw_menu().auto_width().get();
-                    sender_clone.input(MenuInput::SetAutoWidth(auto_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let maximum_height = config.clone().menus().ufw_menu().maximum_height().get();
+                    let maximum_height = config.menus().ufw_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                    let auto_height = config.menus().ufw_menu().auto_height().get();
-                    sender_clone.input(MenuInput::SetAutoHeight(auto_height));
                 });
             }
             MenuType::Dns => {
@@ -578,19 +488,15 @@ impl Component for MenuModel {
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let minimum_width = config.clone().menus().dns_menu().minimum_width().get();
+                    let minimum_width = config.menus().dns_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                    let auto_width = config.menus().dns_menu().auto_width().get();
-                    sender_clone.input(MenuInput::SetAutoWidth(auto_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let maximum_height = config.clone().menus().dns_menu().maximum_height().get();
+                    let maximum_height = config.menus().dns_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                    let auto_height = config.menus().dns_menu().auto_height().get();
-                    sender_clone.input(MenuInput::SetAutoHeight(auto_height));
                 });
             }
             MenuType::Podman => {
@@ -606,19 +512,15 @@ impl Component for MenuModel {
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let minimum_width = config.clone().menus().podman_menu().minimum_width().get();
+                    let minimum_width = config.menus().podman_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                    let auto_width = config.menus().podman_menu().auto_width().get();
-                    sender_clone.input(MenuInput::SetAutoWidth(auto_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let maximum_height = config.clone().menus().podman_menu().maximum_height().get();
+                    let maximum_height = config.menus().podman_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                    let auto_height = config.menus().podman_menu().auto_height().get();
-                    sender_clone.input(MenuInput::SetAutoHeight(auto_height));
                 });
             }
             MenuType::Notes => {
@@ -634,19 +536,15 @@ impl Component for MenuModel {
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let minimum_width = config.clone().menus().notes_menu().minimum_width().get();
+                    let minimum_width = config.menus().notes_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                    let auto_width = config.menus().notes_menu().auto_width().get();
-                    sender_clone.input(MenuInput::SetAutoWidth(auto_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let maximum_height = config.clone().menus().notes_menu().maximum_height().get();
+                    let maximum_height = config.menus().notes_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                    let auto_height = config.menus().notes_menu().auto_height().get();
-                    sender_clone.input(MenuInput::SetAutoHeight(auto_height));
                 });
             }
             MenuType::Ip => {
@@ -662,19 +560,15 @@ impl Component for MenuModel {
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let minimum_width = config.clone().menus().ip_menu().minimum_width().get();
+                    let minimum_width = config.menus().ip_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                    let auto_width = config.menus().ip_menu().auto_width().get();
-                    sender_clone.input(MenuInput::SetAutoWidth(auto_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let maximum_height = config.clone().menus().ip_menu().maximum_height().get();
+                    let maximum_height = config.menus().ip_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                    let auto_height = config.menus().ip_menu().auto_height().get();
-                    sender_clone.input(MenuInput::SetAutoHeight(auto_height));
                 });
             }
             MenuType::Network => {
@@ -690,19 +584,15 @@ impl Component for MenuModel {
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let minimum_width = config.clone().menus().network_menu().minimum_width().get();
+                    let minimum_width = config.menus().network_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                    let auto_width = config.menus().network_menu().auto_width().get();
-                    sender_clone.input(MenuInput::SetAutoWidth(auto_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let maximum_height = config.clone().menus().network_menu().maximum_height().get();
+                    let maximum_height = config.menus().network_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                    let auto_height = config.menus().network_menu().auto_height().get();
-                    sender_clone.input(MenuInput::SetAutoHeight(auto_height));
                 });
             }
             MenuType::Bluetooth => {
@@ -721,19 +611,15 @@ impl Component for MenuModel {
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let minimum_width = config.clone().menus().bluetooth_menu().minimum_width().get();
+                    let minimum_width = config.menus().bluetooth_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                    let auto_width = config.menus().bluetooth_menu().auto_width().get();
-                    sender_clone.input(MenuInput::SetAutoWidth(auto_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let maximum_height = config.clone().menus().bluetooth_menu().maximum_height().get();
+                    let maximum_height = config.menus().bluetooth_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                    let auto_height = config.menus().bluetooth_menu().auto_height().get();
-                    sender_clone.input(MenuInput::SetAutoHeight(auto_height));
                 });
             }
             MenuType::CpuDashboard => {
@@ -750,20 +636,16 @@ impl Component for MenuModel {
                 effects.push(move |_| {
                     let config = config.clone();
                     let minimum_width =
-                        config.clone().menus().cpu_dashboard_menu().minimum_width().get();
+                        config.menus().cpu_dashboard_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                    let auto_width = config.menus().cpu_dashboard_menu().auto_width().get();
-                    sender_clone.input(MenuInput::SetAutoWidth(auto_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
                     let maximum_height =
-                        config.clone().menus().cpu_dashboard_menu().maximum_height().get();
+                        config.menus().cpu_dashboard_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                    let auto_height = config.menus().cpu_dashboard_menu().auto_height().get();
-                    sender_clone.input(MenuInput::SetAutoHeight(auto_height));
                 });
             }
             MenuType::AudioDashboard => {
@@ -783,20 +665,16 @@ impl Component for MenuModel {
                 effects.push(move |_| {
                     let config = config.clone();
                     let minimum_width =
-                        config.clone().menus().audio_dashboard_menu().minimum_width().get();
+                        config.menus().audio_dashboard_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                    let auto_width = config.menus().audio_dashboard_menu().auto_width().get();
-                    sender_clone.input(MenuInput::SetAutoWidth(auto_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
                     let maximum_height =
-                        config.clone().menus().audio_dashboard_menu().maximum_height().get();
+                        config.menus().audio_dashboard_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                    let auto_height = config.menus().audio_dashboard_menu().auto_height().get();
-                    sender_clone.input(MenuInput::SetAutoHeight(auto_height));
                 });
             }
             MenuType::SystemUpdate => {
@@ -813,20 +691,16 @@ impl Component for MenuModel {
                 effects.push(move |_| {
                     let config = config.clone();
                     let minimum_width =
-                        config.clone().menus().system_update_menu().minimum_width().get();
+                        config.menus().system_update_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                    let auto_width = config.menus().system_update_menu().auto_width().get();
-                    sender_clone.input(MenuInput::SetAutoWidth(auto_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
                     let maximum_height =
-                        config.clone().menus().system_update_menu().maximum_height().get();
+                        config.menus().system_update_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                    let auto_height = config.menus().system_update_menu().auto_height().get();
-                    sender_clone.input(MenuInput::SetAutoHeight(auto_height));
                 });
             }
             MenuType::Valent => {
@@ -842,19 +716,15 @@ impl Component for MenuModel {
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let minimum_width = config.clone().menus().valent_menu().minimum_width().get();
+                    let minimum_width = config.menus().valent_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                    let auto_width = config.menus().valent_menu().auto_width().get();
-                    sender_clone.input(MenuInput::SetAutoWidth(auto_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let maximum_height = config.clone().menus().valent_menu().maximum_height().get();
+                    let maximum_height = config.menus().valent_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                    let auto_height = config.menus().valent_menu().auto_height().get();
-                    sender_clone.input(MenuInput::SetAutoHeight(auto_height));
                 });
             }
             MenuType::Weather => {
@@ -870,19 +740,15 @@ impl Component for MenuModel {
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let minimum_width = config.clone().menus().weather_menu().minimum_width().get();
+                    let minimum_width = config.menus().weather_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                    let auto_width = config.menus().weather_menu().auto_width().get();
-                    sender_clone.input(MenuInput::SetAutoWidth(auto_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let maximum_height = config.clone().menus().weather_menu().maximum_height().get();
+                    let maximum_height = config.menus().weather_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                    let auto_height = config.menus().weather_menu().auto_height().get();
-                    sender_clone.input(MenuInput::SetAutoHeight(auto_height));
                 });
             }
             MenuType::KeepAwake => {
@@ -898,20 +764,16 @@ impl Component for MenuModel {
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let minimum_width = config.clone().menus().keep_awake_menu().minimum_width().get();
+                    let minimum_width = config.menus().keep_awake_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                    let auto_width = config.menus().keep_awake_menu().auto_width().get();
-                    sender_clone.input(MenuInput::SetAutoWidth(auto_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
                     let maximum_height =
-                        config.clone().menus().keep_awake_menu().maximum_height().get();
+                        config.menus().keep_awake_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                    let auto_height = config.menus().keep_awake_menu().auto_height().get();
-                    sender_clone.input(MenuInput::SetAutoHeight(auto_height));
                 });
             }
             MenuType::Twilight => {
@@ -927,19 +789,15 @@ impl Component for MenuModel {
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let minimum_width = config.clone().menus().twilight_menu().minimum_width().get();
+                    let minimum_width = config.menus().twilight_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                    let auto_width = config.menus().twilight_menu().auto_width().get();
-                    sender_clone.input(MenuInput::SetAutoWidth(auto_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let maximum_height = config.clone().menus().twilight_menu().maximum_height().get();
+                    let maximum_height = config.menus().twilight_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                    let auto_height = config.menus().twilight_menu().auto_height().get();
-                    sender_clone.input(MenuInput::SetAutoHeight(auto_height));
                 });
             }
             MenuType::Keybinds => {
@@ -955,19 +813,15 @@ impl Component for MenuModel {
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let minimum_width = config.clone().menus().keybinds_menu().minimum_width().get();
+                    let minimum_width = config.menus().keybinds_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                    let auto_width = config.menus().keybinds_menu().auto_width().get();
-                    sender_clone.input(MenuInput::SetAutoWidth(auto_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let maximum_height = config.clone().menus().keybinds_menu().maximum_height().get();
+                    let maximum_height = config.menus().keybinds_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                    let auto_height = config.menus().keybinds_menu().auto_height().get();
-                    sender_clone.input(MenuInput::SetAutoHeight(auto_height));
                 });
             }
             MenuType::AlarmClock => {
@@ -983,19 +837,15 @@ impl Component for MenuModel {
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let minimum_width = config.clone().menus().alarmclock_menu().minimum_width().get();
+                    let minimum_width = config.menus().alarmclock_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                    let auto_width = config.menus().alarmclock_menu().auto_width().get();
-                    sender_clone.input(MenuInput::SetAutoWidth(auto_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let maximum_height = config.clone().menus().alarmclock_menu().maximum_height().get();
+                    let maximum_height = config.menus().alarmclock_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                    let auto_height = config.menus().alarmclock_menu().auto_height().get();
-                    sender_clone.input(MenuInput::SetAutoHeight(auto_height));
                 });
             }
             MenuType::ControlCenter => {
@@ -1012,20 +862,16 @@ impl Component for MenuModel {
                 effects.push(move |_| {
                     let config = config.clone();
                     let minimum_width =
-                        config.clone().menus().control_center_menu().minimum_width().get();
+                        config.menus().control_center_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                    let auto_width = config.menus().control_center_menu().auto_width().get();
-                    sender_clone.input(MenuInput::SetAutoWidth(auto_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
                     let maximum_height =
-                        config.clone().menus().control_center_menu().maximum_height().get();
+                        config.menus().control_center_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                    let auto_height = config.menus().control_center_menu().auto_height().get();
-                    sender_clone.input(MenuInput::SetAutoHeight(auto_height));
                 });
             }
             MenuType::SshSessions => {
@@ -1041,19 +887,15 @@ impl Component for MenuModel {
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let minimum_width = config.clone().menus().ssh_menu().minimum_width().get();
+                    let minimum_width = config.menus().ssh_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                    let auto_width = config.menus().ssh_menu().auto_width().get();
-                    sender_clone.input(MenuInput::SetAutoWidth(auto_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let maximum_height = config.clone().menus().ssh_menu().maximum_height().get();
+                    let maximum_height = config.menus().ssh_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                    let auto_height = config.menus().ssh_menu().auto_height().get();
-                    sender_clone.input(MenuInput::SetAutoHeight(auto_height));
                 });
             }
             MenuType::Power => {
@@ -1069,19 +911,15 @@ impl Component for MenuModel {
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let minimum_width = config.clone().menus().power_menu().minimum_width().get();
+                    let minimum_width = config.menus().power_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                    let auto_width = config.menus().power_menu().auto_width().get();
-                    sender_clone.input(MenuInput::SetAutoWidth(auto_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let maximum_height = config.clone().menus().power_menu().maximum_height().get();
+                    let maximum_height = config.menus().power_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                    let auto_height = config.menus().power_menu().auto_height().get();
-                    sender_clone.input(MenuInput::SetAutoHeight(auto_height));
                 });
             }
             MenuType::MediaPlayer => {
@@ -1097,19 +935,15 @@ impl Component for MenuModel {
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let minimum_width = config.clone().menus().media_player_menu().minimum_width().get();
+                    let minimum_width = config.menus().media_player_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                    let auto_width = config.menus().media_player_menu().auto_width().get();
-                    sender_clone.input(MenuInput::SetAutoWidth(auto_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let maximum_height = config.clone().menus().media_player_menu().maximum_height().get();
+                    let maximum_height = config.menus().media_player_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                    let auto_height = config.menus().media_player_menu().auto_height().get();
-                    sender_clone.input(MenuInput::SetAutoHeight(auto_height));
                 });
             }
             MenuType::Session => {
@@ -1125,19 +959,15 @@ impl Component for MenuModel {
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let minimum_width = config.clone().menus().session_menu().minimum_width().get();
+                    let minimum_width = config.menus().session_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                    let auto_width = config.menus().session_menu().auto_width().get();
-                    sender_clone.input(MenuInput::SetAutoWidth(auto_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let maximum_height = config.clone().menus().session_menu().maximum_height().get();
+                    let maximum_height = config.menus().session_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                    let auto_height = config.menus().session_menu().auto_height().get();
-                    sender_clone.input(MenuInput::SetAutoHeight(auto_height));
                 });
             }
             MenuType::Dashboard => {
@@ -1156,19 +986,15 @@ impl Component for MenuModel {
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let minimum_width = config.clone().menus().dashboard_menu().minimum_width().get();
+                    let minimum_width = config.menus().dashboard_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                    let auto_width = config.menus().dashboard_menu().auto_width().get();
-                    sender_clone.input(MenuInput::SetAutoWidth(auto_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let maximum_height = config.clone().menus().dashboard_menu().maximum_height().get();
+                    let maximum_height = config.menus().dashboard_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                    let auto_height = config.menus().dashboard_menu().auto_height().get();
-                    sender_clone.input(MenuInput::SetAutoHeight(auto_height));
                 });
             }
             MenuType::MargoLayout => {
@@ -1184,19 +1010,15 @@ impl Component for MenuModel {
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let minimum_width = config.clone().menus().margo_layout_menu().minimum_width().get();
+                    let minimum_width = config.menus().margo_layout_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                    let auto_width = config.menus().margo_layout_menu().auto_width().get();
-                    sender_clone.input(MenuInput::SetAutoWidth(auto_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let maximum_height = config.clone().menus().margo_layout_menu().maximum_height().get();
+                    let maximum_height = config.menus().margo_layout_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                    let auto_height = config.menus().margo_layout_menu().auto_height().get();
-                    sender_clone.input(MenuInput::SetAutoHeight(auto_height));
                 });
             }
             MenuType::PluginPanel => {
@@ -1206,19 +1028,15 @@ impl Component for MenuModel {
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let minimum_width = config.clone().menus().plugin_panel_menu().minimum_width().get();
+                    let minimum_width = config.menus().plugin_panel_menu().minimum_width().get();
                     sender_clone.input(MenuInput::SetMinimumWidth(minimum_width));
-                    let auto_width = config.menus().plugin_panel_menu().auto_width().get();
-                    sender_clone.input(MenuInput::SetAutoWidth(auto_width));
                 });
                 let config = base_config.clone();
                 let sender_clone = sender.clone();
                 effects.push(move |_| {
                     let config = config.clone();
-                    let maximum_height = config.clone().menus().plugin_panel_menu().maximum_height().get();
+                    let maximum_height = config.menus().plugin_panel_menu().maximum_height().get();
                     sender_clone.input(MenuInput::SetMaximumHeight(maximum_height));
-                    let auto_height = config.menus().plugin_panel_menu().auto_height().get();
-                    sender_clone.input(MenuInput::SetAutoHeight(auto_height));
                 });
             }
         }
@@ -1233,12 +1051,6 @@ impl Component for MenuModel {
             built: false,
             lazy_wizard: matches!(params.menu_type, MenuType::Wizard),
             fixed_height: matches!(params.menu_type, MenuType::PluginPanel),
-            // Default to the pinned/manual sizing; the per-menu reactive
-            // effects overwrite these from config on the first tick.
-            auto_width: false,
-            auto_height: false,
-            screen_w: params.screen_width,
-            screen_h: params.screen_height,
             _effects: effects,
         };
 
@@ -1492,12 +1304,6 @@ impl Component for MenuModel {
             }
             MenuInput::SetMaximumHeight(height) => {
                 self.maximum_height = height;
-            }
-            MenuInput::SetAutoWidth(auto) => {
-                self.auto_width = auto;
-            }
-            MenuInput::SetAutoHeight(auto) => {
-                self.auto_height = auto;
             }
             MenuInput::SetExternalContent(content) => {
                 clear_box(&widgets.widget_container);
