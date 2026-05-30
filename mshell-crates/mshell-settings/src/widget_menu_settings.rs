@@ -244,74 +244,14 @@ impl MenuKind {
     /// Snapshot the menu's current widget list. Used to seed the
     /// `MenuWidgetListModel` factory at panel-creation time.
     pub(crate) fn read_widgets(self) -> Vec<mshell_config::schema::menu_widgets::MenuWidget> {
-        let m = config_manager().config().menus();
-        match self {
-            Self::AppLauncher => m.app_launcher_menu().widgets().get_untracked(),
-            Self::Clipboard => m.clipboard_menu().widgets().get_untracked(),
-            Self::Clock => m.clock_menu().widgets().get_untracked(),
-            Self::Dashboard => m.dashboard_menu().widgets().get_untracked(),
-            Self::MediaPlayer => m.media_player_menu().widgets().get_untracked(),
-            Self::Dns => m.dns_menu().widgets().get_untracked(),
-            Self::Ip => m.ip_menu().widgets().get_untracked(),
-            Self::Network => m.network_menu().widgets().get_untracked(),
-            Self::Notes => m.notes_menu().widgets().get_untracked(),
-            Self::Notifications => m.notification_menu().widgets().get_untracked(),
-            Self::Podman => m.podman_menu().widgets().get_untracked(),
-            Self::Wallpaper => m.wallpaper_menu().widgets().get_untracked(),
-            Self::Power => m.power_menu().widgets().get_untracked(),
-            Self::Screenshot => m.screenshot_menu().widgets().get_untracked(),
-            Self::Ufw => m.ufw_menu().widgets().get_untracked(),
-            Self::Bluetooth => m.bluetooth_menu().widgets().get_untracked(),
-            Self::CpuDashboard => m.cpu_dashboard_menu().widgets().get_untracked(),
-            Self::AudioDashboard => m.audio_dashboard_menu().widgets().get_untracked(),
-            Self::SystemUpdate => m.system_update_menu().widgets().get_untracked(),
-            Self::Valent => m.valent_menu().widgets().get_untracked(),
-            Self::Weather => m.weather_menu().widgets().get_untracked(),
-            Self::KeepAwake => m.keep_awake_menu().widgets().get_untracked(),
-            Self::Twilight => m.twilight_menu().widgets().get_untracked(),
-            Self::Keybinds => m.keybinds_menu().widgets().get_untracked(),
-            Self::AlarmClock => m.alarmclock_menu().widgets().get_untracked(),
-            Self::ControlCenter => m.control_center_menu().widgets().get_untracked(),
-            Self::SshSessions => m.ssh_menu().widgets().get_untracked(),
-            Self::MargoLayout => m.margo_layout_menu().widgets().get_untracked(),
-        }
+        menu_read!(self, widgets, get_untracked)
     }
 
     /// Tracked read — subscribes the calling effect to widget-list
     /// changes so an external `mshellctl config reload` repaints
     /// the panel without a UI restart.
     pub(crate) fn tracked_widgets(self) -> Vec<mshell_config::schema::menu_widgets::MenuWidget> {
-        let m = config_manager().config().menus();
-        match self {
-            Self::AppLauncher => m.app_launcher_menu().widgets().get(),
-            Self::Clipboard => m.clipboard_menu().widgets().get(),
-            Self::Clock => m.clock_menu().widgets().get(),
-            Self::Dashboard => m.dashboard_menu().widgets().get(),
-            Self::MediaPlayer => m.media_player_menu().widgets().get(),
-            Self::Dns => m.dns_menu().widgets().get(),
-            Self::Ip => m.ip_menu().widgets().get(),
-            Self::Network => m.network_menu().widgets().get(),
-            Self::Notes => m.notes_menu().widgets().get(),
-            Self::Notifications => m.notification_menu().widgets().get(),
-            Self::Podman => m.podman_menu().widgets().get(),
-            Self::Wallpaper => m.wallpaper_menu().widgets().get(),
-            Self::Power => m.power_menu().widgets().get(),
-            Self::Screenshot => m.screenshot_menu().widgets().get(),
-            Self::Ufw => m.ufw_menu().widgets().get(),
-            Self::Bluetooth => m.bluetooth_menu().widgets().get(),
-            Self::CpuDashboard => m.cpu_dashboard_menu().widgets().get(),
-            Self::AudioDashboard => m.audio_dashboard_menu().widgets().get(),
-            Self::SystemUpdate => m.system_update_menu().widgets().get(),
-            Self::Valent => m.valent_menu().widgets().get(),
-            Self::Weather => m.weather_menu().widgets().get(),
-            Self::KeepAwake => m.keep_awake_menu().widgets().get(),
-            Self::Twilight => m.twilight_menu().widgets().get(),
-            Self::Keybinds => m.keybinds_menu().widgets().get(),
-            Self::AlarmClock => m.alarmclock_menu().widgets().get(),
-            Self::ControlCenter => m.control_center_menu().widgets().get(),
-            Self::SshSessions => m.ssh_menu().widgets().get(),
-            Self::MargoLayout => m.margo_layout_menu().widgets().get(),
-        }
+        menu_read!(self, widgets, get)
     }
 
     /// Persist a new widget list to disk. Called from the panel
@@ -320,36 +260,7 @@ impl MenuKind {
         self,
         widgets: Vec<mshell_config::schema::menu_widgets::MenuWidget>,
     ) {
-        config_manager().update_config(|c| match self {
-            Self::AppLauncher => c.menus.app_launcher_menu.widgets = widgets,
-            Self::Clipboard => c.menus.clipboard_menu.widgets = widgets,
-            Self::Clock => c.menus.clock_menu.widgets = widgets,
-            Self::Dashboard => c.menus.dashboard_menu.widgets = widgets,
-            Self::MediaPlayer => c.menus.media_player_menu.widgets = widgets,
-            Self::Dns => c.menus.dns_menu.widgets = widgets,
-            Self::Ip => c.menus.ip_menu.widgets = widgets,
-            Self::Network => c.menus.network_menu.widgets = widgets,
-            Self::Notes => c.menus.notes_menu.widgets = widgets,
-            Self::Notifications => c.menus.notification_menu.widgets = widgets,
-            Self::Podman => c.menus.podman_menu.widgets = widgets,
-            Self::Wallpaper => c.menus.wallpaper_menu.widgets = widgets,
-            Self::Power => c.menus.power_menu.widgets = widgets,
-            Self::Screenshot => c.menus.screenshot_menu.widgets = widgets,
-            Self::Ufw => c.menus.ufw_menu.widgets = widgets,
-            Self::Bluetooth => c.menus.bluetooth_menu.widgets = widgets,
-            Self::CpuDashboard => c.menus.cpu_dashboard_menu.widgets = widgets,
-            Self::AudioDashboard => c.menus.audio_dashboard_menu.widgets = widgets,
-            Self::SystemUpdate => c.menus.system_update_menu.widgets = widgets,
-            Self::Valent => c.menus.valent_menu.widgets = widgets,
-            Self::Weather => c.menus.weather_menu.widgets = widgets,
-            Self::KeepAwake => c.menus.keep_awake_menu.widgets = widgets,
-            Self::Twilight => c.menus.twilight_menu.widgets = widgets,
-            Self::Keybinds => c.menus.keybinds_menu.widgets = widgets,
-            Self::AlarmClock => c.menus.alarmclock_menu.widgets = widgets,
-            Self::ControlCenter => c.menus.control_center_menu.widgets = widgets,
-            Self::SshSessions => c.menus.ssh_menu.widgets = widgets,
-            Self::MargoLayout => c.menus.margo_layout_menu.widgets = widgets,
-        });
+        menu_write!(self, widgets, widgets);
     }
 }
 

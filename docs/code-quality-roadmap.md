@@ -22,15 +22,17 @@ files, and overlapping feature mechanisms.**
 
 ## High priority
 
-- [ ] **Data-drive the menu/settings boilerplate.** `menus/menu.rs` carries
-  ~32 hand-written per-menu reactive effect blocks; `widget_menu_settings.rs`
-  repeats the same ~27-arm `MenuKind` match for *every* field
-  (read/tracked/write × position/min_width/max_height). Adding one field means
-  editing 30+ sites — error-prone (a single missed multi-line block caused a
-  real bug). Collapse the per-menu match into one macro / registry so each menu
-  is a single record and the dispatch + effects are generated.
-  - First slice (bounded, this file only): a `for_menu!` macro that emits the
-    MenuKind match once; rewrite the 6 read/tracked/write fns through it.
+- [x] **Data-drive the menu/settings boilerplate.** ✅ Done.
+  - [x] `widget_menu_settings.rs`: `menu_read!` / `menu_write!` macros hold the
+    MenuKind→accessor map once; all 12 dispatch helpers (position / min_width /
+    max_height / widgets × read/tracked/write) are now one-liners. ~300 lines
+    removed. (ab18f46, + widgets in a follow-up)
+  - [x] `menus/menu.rs`: `effect_widgets!` / `effect_min_width!` /
+    `effect_max_height!` macros replace the hand-written per-menu reactive
+    effect blocks across ~28 MenuType arms. ~492 lines removed. (6ea8f67)
+  - Remaining (optional): a single `menu` registry that also drives the
+    `MenuType`↔`MenuKind`↔config-accessor relationship so the mapping lives in
+    exactly one table rather than two macros.
 - [ ] **Data-drive Settings-page registration.** Adding a sidebar page is a
   manual 9-point wiring (mod + use + field + sidebar button + builder + route
   + ComponentParts + add_titled + ActivateSection). Easy to get wrong (the
