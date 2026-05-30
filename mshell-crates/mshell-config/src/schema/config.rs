@@ -473,6 +473,11 @@ pub struct CustomWidgetConfig {
     pub interval: u64,
     /// Truncate the rendered label to this many characters (0 = no cap).
     pub max_chars: u32,
+    /// When true and `exec` is set, the exec's stdout is read as
+    /// `<image-path>\n<label…>`: the first line is a file path used as the
+    /// leading image (reloaded on every poll — e.g. live album art), the rest
+    /// is the label. An empty/missing first line falls back to `icon`.
+    pub art: bool,
     /// Optional dropdown menu (popover of command rows). When non-empty, a
     /// left click opens this menu instead of running `on_click`.
     pub menu: Vec<CustomMenuRow>,

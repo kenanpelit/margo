@@ -120,6 +120,7 @@ fn to_custom_widget(
         template: sub(&w.template),
         interval: w.interval,
         max_chars: w.max_chars,
+        art: w.art,
         menu: w
             .menu
             .iter()

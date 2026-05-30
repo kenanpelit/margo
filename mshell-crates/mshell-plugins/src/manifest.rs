@@ -138,6 +138,11 @@ pub struct WidgetDef {
     /// Truncate the rendered label to this many chars (0 = no cap).
     #[serde(default)]
     pub max_chars: u32,
+    /// When true, the `exec` stdout's first line is a file path used as the
+    /// leading image (reloaded each poll — e.g. live album art), the rest is
+    /// the label. Empty/missing first line falls back to `icon`.
+    #[serde(default)]
+    pub art: bool,
     /// Optional dropdown menu shown on click (a popover of command rows).
     /// When present, a left-click opens this menu instead of running
     /// `on_click`.

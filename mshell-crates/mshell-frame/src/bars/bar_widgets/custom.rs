@@ -18,6 +18,10 @@ const ICON_SIZE: i32 = 16;
 
 pub(crate) struct CustomWidgetModel {
     label: String,
+    /// Fallback leading icon name (used when `art` has no current image).
+    icon: String,
+    /// When true, the exec poller's first stdout line is a live image path.
+    art: bool,
 }
 
 #[derive(Debug)]
@@ -54,8 +58,8 @@ pub(crate) struct CustomWidgetInit {
 
 #[derive(Debug)]
 pub(crate) enum CustomWidgetCommandOutput {
-    /// New rendered label text from the `exec` poller.
-    ExecResult(String),
+    /// New rendered label + optional live image path from the `exec` poller.
+    ExecResult { art: Option<String>, label: String },
 }
 
 #[relm4::component(pub)]
@@ -109,7 +113,11 @@ impl Component for CustomWidgetModel {
             String::new()
         };
 
-        let model = CustomWidgetModel { label };
+        let model = CustomWidgetModel {
+            label,
+            icon: config.icon.clone(),
+            art: config.art,
+        };
 
         let widgets = view_output!();
 
@@ -171,13 +179,33 @@ impl Component for CustomWidgetModel {
             let template = config.template.clone();
             let max_chars = config.max_chars;
             let interval = config.interval;
+            let art = config.art;
             sender.command(move |out, shutdown| async move {
                 let shutdown_fut = shutdown.wait();
                 tokio::pin!(shutdown_fut);
                 loop {
                     if let Some(stdout) = run_capture(&exec).await {
-                        let rendered = truncate(&render(&stdout, &template), max_chars);
-                        let _ = out.send(CustomWidgetCommandOutput::ExecResult(rendered));
+                        let (art_path, body) = if art {
+                            // First line = image path; the rest is the label.
+                            let mut lines = stdout.lines();
+                            let first = lines.next().unwrap_or("").trim().to_string();
+                            let rest = lines.collect::<Vec<_>>().join("\n");
+                            let path = if !first.is_empty()
+                                && std::path::Path::new(&first).exists()
+                            {
+                                Some(first)
+                            } else {
+                                None
+                            };
+                            (path, rest)
+                        } else {
+                            (None, stdout)
+                        };
+                        let rendered = truncate(&render(&body, &template), max_chars);
+                        let _ = out.send(CustomWidgetCommandOutput::ExecResult {
+                            art: art_path,
+                            label: rendered,
+                        });
                     }
                     if interval == 0 {
                         break;
@@ -211,8 +239,24 @@ impl Component for CustomWidgetModel {
         _root: &Self::Root,
     ) {
         match message {
-            CustomWidgetCommandOutput::ExecResult(text) => {
-                self.label = text;
+            CustomWidgetCommandOutput::ExecResult { art, label } => {
+                self.label = label;
+                if self.art {
+                    // Reload the leading image (e.g. album art) — rebuild the
+                    // icon box so a changed file on disk actually re-renders.
+                    while let Some(child) = widgets.icon_box.first_child() {
+                        widgets.icon_box.remove(&child);
+                    }
+                    if let Some(path) = art {
+                        let img = gtk::Image::from_file(&path);
+                        img.set_pixel_size(ICON_SIZE);
+                        widgets.icon_box.append(&img);
+                    } else if !self.icon.trim().is_empty() {
+                        let img = gtk::Image::from_icon_name(self.icon.trim());
+                        img.set_pixel_size(ICON_SIZE);
+                        widgets.icon_box.append(&img);
+                    }
+                }
             }
         }
         self.update_view(widgets, sender);
