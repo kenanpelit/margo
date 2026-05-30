@@ -2746,6 +2746,17 @@ impl MargoState {
     }
 
     pub fn apply_tag_rules_to_monitor(&mut self, mon_idx: usize) {
+        // Tags with an explicit Settings → Tiling Layout (`taglayout`)
+        // directive: that per-tag layout (already seeded into `ltidxs`)
+        // wins over a tagrule's `layout_name`, so a layout picked in the
+        // UI isn't clobbered by a blanket `tagrule = …,layout_name:…`.
+        // The rule's mfact / nmaster / wallpaper still apply.
+        let taglayout_tags: std::collections::HashSet<usize> = self
+            .config
+            .taglayouts
+            .iter()
+            .map(|(t, _)| *t as usize)
+            .collect();
         let Some(mon) = self.monitors.get_mut(mon_idx) else {
             return;
         };
@@ -2762,8 +2773,10 @@ impl MargoState {
 
             let tag = rule.id as usize;
             if let Some(layout_name) = &rule.layout_name {
-                if let Some(layout) = LayoutId::from_name(layout_name) {
-                    mon.pertag.ltidxs[tag] = layout;
+                if !taglayout_tags.contains(&tag) {
+                    if let Some(layout) = LayoutId::from_name(layout_name) {
+                        mon.pertag.ltidxs[tag] = layout;
+                    }
                 }
             }
             if rule.mfact > 0.0 {
