@@ -20,15 +20,17 @@ pub struct WayleMediaProvider;
 impl MediaInfoSource for WayleMediaProvider {
     fn snapshot(&self) -> MediaInfo {
         let svc = media_service();
-        // Prefer wayle's active player; otherwise the first one playing in
-        // the list; otherwise any player at all.
-        let player = svc.active_player.get().or_else(|| {
-            let list = svc.player_list.get();
-            list.iter()
-                .find(|p| p.playback_state.get() == PlaybackState::Playing)
-                .cloned()
-                .or_else(|| list.into_iter().next())
-        });
+        // Prefer a player that's actually *playing* (so "what's playing" wins
+        // even when wayle's active player is a different, paused one — e.g.
+        // Spotify playing while a paused browser tab is active); then the
+        // active player; then any player at all.
+        let list = svc.player_list.get();
+        let player = list
+            .iter()
+            .find(|p| p.playback_state.get() == PlaybackState::Playing)
+            .cloned()
+            .or_else(|| svc.active_player.get())
+            .or_else(|| list.into_iter().next());
         let Some(p) = player else {
             return MediaInfo::default();
         };
@@ -43,8 +45,10 @@ impl MediaInfoSource for WayleMediaProvider {
                 PlaybackState::Paused => "paused".to_string(),
                 PlaybackState::Stopped => "stopped".to_string(),
             },
-            position_ms: 0,
-            length_ms: 0,
+            // Wire the live position + track length (were hardcoded 0, which
+            // froze synced-lyrics highlights and sent duration=0 to lrclib).
+            position_ms: p.position.get().as_millis() as u64,
+            length_ms: p.metadata.length.get().map(|d| d.as_millis() as u64).unwrap_or(0),
         }
     }
 }
