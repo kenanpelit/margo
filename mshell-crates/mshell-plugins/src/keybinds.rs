@@ -194,10 +194,45 @@ pub fn sync_with_margo(store: &PluginStore) -> std::io::Result<bool> {
 /// `true` if the user's `config.conf` already pulls in our binds file.
 /// Lets the shell log a one-shot hint when it doesn't.
 pub fn user_sources_us(config_conf: &Path) -> bool {
-    let Ok(text) = std::fs::read_to_string(config_conf) else {
-        return false;
-    };
+    std::fs::read_to_string(config_conf)
+        .map(|text| text_sources_us(&text))
+        .unwrap_or(false)
+}
+
+/// Whether the given config text `source`s our binds file. Whitespace-tolerant:
+/// margo accepts `source=…` and `source = …` alike, so both match (users
+/// naturally write the spaced form to match the rest of their config).
+/// Commented-out lines don't count.
+fn text_sources_us(text: &str) -> bool {
     text.lines()
-        .map(|l| l.trim())
-        .any(|l| l.starts_with("source=") && l.contains("binds.d/mshell-plugins.conf"))
+        .map(str::trim)
+        .filter(|l| !l.starts_with('#'))
+        .any(|l| {
+            l.strip_prefix("source")
+                .map(str::trim_start)
+                .and_then(|r| r.strip_prefix('='))
+                .map(|v| v.contains("binds.d/mshell-plugins.conf"))
+                .unwrap_or(false)
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::text_sources_us;
+
+    #[test]
+    fn detects_sourced_in_any_whitespace_style() {
+        assert!(text_sources_us("source=binds.d/mshell-plugins.conf"));
+        assert!(text_sources_us("source = binds.d/mshell-plugins.conf"));
+        assert!(text_sources_us("  source   =   binds.d/mshell-plugins.conf  "));
+        // Among other lines.
+        assert!(text_sources_us("source = colors.conf\nsource = binds.d/mshell-plugins.conf\n"));
+    }
+
+    #[test]
+    fn ignores_absent_or_commented() {
+        assert!(!text_sources_us("source = colors.conf\nsource = mlayout.conf\n"));
+        assert!(!text_sources_us("# source = binds.d/mshell-plugins.conf"));
+        assert!(!text_sources_us(""));
+    }
 }
