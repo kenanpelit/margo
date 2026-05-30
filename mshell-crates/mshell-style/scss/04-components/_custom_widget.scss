@@ -2,10 +2,19 @@
 // the other pills' label weight; tabular figures so `exec`-driven numeric
 // readouts (clocks, counters) don't jitter the pill width.
 .custom-bar-widget {
+  transition: opacity var(--motion-medium) var(--ease-standard);
+
   .custom-bar-label {
     font-size: var(--font-bar);
     font-weight: 500;
     font-variant-numeric: tabular-nums;
+  }
+
+  // A media-style `art` widget dims when its source is paused/stopped — the
+  // poller adds `.paused` from the helper's status line (matches the built-in
+  // media pill, which fades the same way instead of using a state glyph).
+  &.paused {
+    opacity: 0.55;
   }
 }
 

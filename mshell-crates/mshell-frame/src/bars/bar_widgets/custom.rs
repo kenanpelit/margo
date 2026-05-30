@@ -58,8 +58,14 @@ pub(crate) struct CustomWidgetInit {
 
 #[derive(Debug)]
 pub(crate) enum CustomWidgetCommandOutput {
-    /// New rendered label + optional live image path from the `exec` poller.
-    ExecResult { art: Option<String>, label: String },
+    /// New rendered label + optional live image path + paused flag from the
+    /// `exec` poller. `paused` dims the pill (media-style) and is derived from
+    /// the helper's optional status line (`art` widgets only).
+    ExecResult {
+        art: Option<String>,
+        label: String,
+        paused: bool,
+    },
 }
 
 #[relm4::component(pub)]
@@ -185,11 +191,15 @@ impl Component for CustomWidgetModel {
                 tokio::pin!(shutdown_fut);
                 loop {
                     if let Some(stdout) = run_capture(&exec).await {
-                        let (art_path, body) = if art {
-                            // First line = image path; the rest is the label.
+                        let (art_path, body, paused) = if art {
+                            // `art` output is up to three lines:
+                            //   1: image path (or empty)
+                            //   2: label
+                            //   3: status ("paused"/"stopped" → dim the pill)
                             let mut lines = stdout.lines();
                             let first = lines.next().unwrap_or("").trim().to_string();
-                            let rest = lines.collect::<Vec<_>>().join("\n");
+                            let label = lines.next().unwrap_or("").to_string();
+                            let status = lines.next().unwrap_or("").trim().to_lowercase();
                             let path = if !first.is_empty()
                                 && std::path::Path::new(&first).exists()
                             {
@@ -197,14 +207,16 @@ impl Component for CustomWidgetModel {
                             } else {
                                 None
                             };
-                            (path, rest)
+                            let paused = status == "paused" || status == "stopped";
+                            (path, label, paused)
                         } else {
-                            (None, stdout)
+                            (None, stdout, false)
                         };
                         let rendered = truncate(&render(&body, &template), max_chars);
                         let _ = out.send(CustomWidgetCommandOutput::ExecResult {
                             art: art_path,
                             label: rendered,
+                            paused,
                         });
                     }
                     if interval == 0 {
@@ -239,8 +251,13 @@ impl Component for CustomWidgetModel {
         _root: &Self::Root,
     ) {
         match message {
-            CustomWidgetCommandOutput::ExecResult { art, label } => {
+            CustomWidgetCommandOutput::ExecResult { art, label, paused } => {
                 self.label = label;
+                if paused {
+                    widgets.root.add_css_class("paused");
+                } else {
+                    widgets.root.remove_css_class("paused");
+                }
                 if self.art {
                     // Reload the leading image (e.g. album art) — rebuild the
                     // icon box so a changed file on disk actually re-renders.

@@ -644,3 +644,10 @@ button.mplayer-playpause {
   min-height: 52px;
   border-radius: var(--radius-pill);
 }
+// Cover + track info dim when the player is paused/stopped.
+.mplayer-head {
+  transition: opacity var(--motion-medium) var(--ease-standard);
+  &.mplayer-paused {
+    opacity: 0.55;
+  }
+}
