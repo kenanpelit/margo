@@ -36,6 +36,30 @@
   min-width: 120px;
 }
 
+// Show-keys: live key pill. Monospace, pill-rounded, primary-container fill.
+.plugin-key-pill {
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  background-color: var(--primary-container);
+  color: var(--on-primary-container);
+  font-family: monospace;
+  font-size: var(--font-sm);
+  font-weight: 500;
+}
+
+// Color-scheme-creator: a square colour swatch the user can click to recolour.
+button.plugin-swatch {
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  border: var(--border-width) solid var(--outline-variant);
+
+  &:hover {
+    border-color: var(--primary);
+  }
+}
+
 // ── Panel archetype ──────────────────────────────────────────────────────
 // Spacious surface for "browse + filter + drill" plugins (model-usage,
 // future calendar / kanban …). Matches §12 of DESIGN.md as closely as the
