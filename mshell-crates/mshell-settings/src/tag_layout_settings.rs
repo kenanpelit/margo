@@ -337,7 +337,7 @@ impl Component for TagLayoutSettingsModel {
             TagLayoutSettingsInput::ForceChanged(v) => self.force = v,
             TagLayoutSettingsInput::Apply => {
                 self.status = match write_and_reload(&self.selections, self.force) {
-                    Ok(()) => "Applied. New tags use these layouts now; running tags update on the next start (or immediately when Force is on).".to_string(),
+                    Ok(()) => "Applied — your tags switch to these layouts now. With Force on startup off, a layout you later change live is kept by the session.".to_string(),
                     Err(e) => format!("Couldn't apply: {e}"),
                 };
             }

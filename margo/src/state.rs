@@ -1627,6 +1627,20 @@ impl MargoState {
         self.animation_curves = AnimationCurves::bake(&new_config);
         self.enable_gaps = new_config.enable_gaps;
         self.config = new_config;
+        // Per-tag tiling layouts: re-assert the configured `taglayout`
+        // directives on reload so Settings → Tiling Layout "Apply"
+        // (which writes the config + runs `mctl reload`) takes effect
+        // live. `seed_taglayouts` only touches tags that have an
+        // explicit directive, so unconfigured "(default)" tags keep
+        // whatever the running session set. `current_layout()` reads
+        // `ltidxs[curtag]` directly, so the `arrange_all()` below
+        // re-tiles the visible tag immediately.
+        let taglayouts = self.config.taglayouts.clone();
+        if !taglayouts.is_empty() {
+            for mon in &mut self.monitors {
+                mon.pertag.seed_taglayouts(&taglayouts);
+            }
+        }
         // Reload re-establishes "what the file says" — invalidate the
         // theme baseline so a subsequent `mctl theme default` resets
         // to the freshly-parsed values.
