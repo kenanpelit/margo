@@ -586,3 +586,27 @@ button.plugin-chip {
     label { color: var(--on-secondary-container); }
   }
 }
+
+// ── Breathing orb ──────────────────────────────────────────────────────────
+// The `breath-orb` extended node reads its fill colour from the widget's CSS
+// `color` at draw time, so the phase tint is just a class on the orb. These
+// map the four phases onto the design language's semantic colours (calm
+// primary inhale · warning hold · success exhale · neutral rest).
+.breath-orb-inhale { color: var(--primary); }
+.breath-orb-hold   { color: var(--warning); }
+.breath-orb-exhale { color: var(--success); }
+.breath-orb-rest   { color: var(--on-surface-variant); }
+
+// The big phase word under the orb (e.g. "Breathe In"). Display-size, tinted
+// to match the active phase via the same per-phase classes above.
+.breath-phase {
+  font-size: var(--font-xl);
+  font-weight: 600;
+}
+// The per-phase countdown number — large, tabular so it doesn't jitter.
+.breath-count {
+  font-size: var(--font-xxl, 32px);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface);
+}

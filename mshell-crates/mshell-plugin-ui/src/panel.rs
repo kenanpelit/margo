@@ -637,6 +637,53 @@ fn build(node: &UiNode, by_id: &HashMap<&str, &UiNode>, inner: &Rc<RefCell<Inner
                     });
                     area.upcast()
                 }
+                // A breathing orb: concentric circles whose radius scales with
+                // `properties["fraction"]` (0..1 = lungs empty..full). The
+                // colour is read from the widget's CSS `color` at draw time, so
+                // a plugin tints the phase by setting a class (e.g.
+                // `breath-orb-inhale` → `color: var(--primary)`) and never
+                // hardcodes a colour. Used by the breathing-exercise plugin.
+                "breath-orb" => {
+                    let fraction: f64 = node
+                        .properties
+                        .get("fraction")
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(0.0_f64)
+                        .clamp(0.0, 1.0);
+                    let size: i32 = node
+                        .properties
+                        .get("size")
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(180);
+                    let area = gtk::DrawingArea::new();
+                    area.set_content_width(size);
+                    area.set_content_height(size);
+                    area.set_draw_func(move |a, cr, w, h| {
+                        let c = a.color();
+                        let (r, g, b) = (c.red() as f64, c.green() as f64, c.blue() as f64);
+                        let cx = w as f64 / 2.0;
+                        let cy = h as f64 / 2.0;
+                        let max_r = (w.min(h) as f64 / 2.0) - 4.0;
+                        if max_r <= 0.0 {
+                            return;
+                        }
+                        let tau = std::f64::consts::TAU;
+                        // Faint full-size track ring.
+                        cr.set_source_rgba(r, g, b, 0.16);
+                        cr.arc(cx, cy, max_r, 0.0, tau);
+                        let _ = cr.fill();
+                        // Breathing body: radius scales 0.34..1.0 of the track.
+                        let rr = max_r * (0.34 + 0.66 * fraction);
+                        cr.set_source_rgba(r, g, b, 0.45);
+                        cr.arc(cx, cy, rr, 0.0, tau);
+                        let _ = cr.fill();
+                        // Solid core for a clear focal point.
+                        cr.set_source_rgba(r, g, b, 0.92);
+                        cr.arc(cx, cy, rr * 0.5, 0.0, tau);
+                        let _ = cr.fill();
+                    });
+                    area.upcast()
+                }
                 // Future extension kinds slot in here without ever growing the WIT enum.
                 _ => {
                     let b = gtk::Box::new(gtk::Orientation::Vertical, 6);

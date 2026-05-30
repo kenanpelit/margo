@@ -194,6 +194,18 @@ impl El {
             .prop("size", size.to_string())
     }
 
+    /// A breathing orb (the meditation-style visual) — concentric circles
+    /// whose radius scales with `fraction` (`0.0` = lungs empty, `1.0` = full).
+    /// `size` is the pixel side length. Tint the phase by also setting a CSS
+    /// class (e.g. `breath-orb-inhale`); the renderer reads the orb's colour
+    /// from CSS, so it stays matugen-driven.
+    pub fn breath_orb(fraction: f64, size: u32) -> El {
+        Self::container(NodeKind::Extended, Vec::new())
+            .prop("kind", "breath-orb")
+            .prop("fraction", format!("{fraction:.4}"))
+            .prop("size", size.to_string())
+    }
+
     /// An extension node — the renderer dispatches on `properties["kind"]`.
     /// Future node kinds ride on top of this instead of growing the WIT
     /// enum, so a host that gains a new extension keeps loading older
