@@ -630,10 +630,41 @@ fn build(node: &UiNode, by_id: &HashMap<&str, &UiNode>, inner: &Rc<RefCell<Inner
                     let area = gtk::DrawingArea::new();
                     area.set_content_width(size);
                     area.set_content_height(size);
-                    area.set_draw_func(move |_, cr, w, h| {
+                    area.set_draw_func(move |a, cr, w, h| {
+                        let (w, h) = (w as f64, h as f64);
+                        let radius = (w.min(h) * 0.22).min(6.0);
+                        // Rounded-rect path, inset 0.5px so the stroke stays crisp.
+                        let (x0, y0, x1, y1) = (0.5, 0.5, w - 0.5, h - 0.5);
+                        let pi = std::f64::consts::PI;
+                        cr.new_sub_path();
+                        cr.arc(x1 - radius, y0 + radius, radius, -0.5 * pi, 0.0);
+                        cr.arc(x1 - radius, y1 - radius, radius, 0.0, 0.5 * pi);
+                        cr.arc(x0 + radius, y1 - radius, radius, 0.5 * pi, pi);
+                        cr.arc(x0 + radius, y0 + radius, radius, pi, 1.5 * pi);
+                        cr.close_path();
+                        // A faint neutral track first, so a translucent or very
+                        // dark colour still reads as a filled box (not blank).
+                        let ink = a.color();
+                        cr.set_source_rgba(
+                            ink.red() as f64,
+                            ink.green() as f64,
+                            ink.blue() as f64,
+                            0.10,
+                        );
+                        let _ = cr.fill_preserve();
+                        // The colour itself.
                         cr.set_source_rgba(rgba.0, rgba.1, rgba.2, rgba.3);
-                        cr.rectangle(0.0, 0.0, w as f64, h as f64);
-                        let _ = cr.fill();
+                        let _ = cr.fill_preserve();
+                        // A subtle border so the swatch is delineated on any
+                        // surface, even when the colour matches the background.
+                        cr.set_source_rgba(
+                            ink.red() as f64,
+                            ink.green() as f64,
+                            ink.blue() as f64,
+                            0.35,
+                        );
+                        cr.set_line_width(1.0);
+                        let _ = cr.stroke();
                     });
                     area.upcast()
                 }
