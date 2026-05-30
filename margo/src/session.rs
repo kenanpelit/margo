@@ -215,6 +215,16 @@ pub fn load_from(path: &std::path::Path) -> Result<SessionSnapshot> {
 /// disabled an output, …). Returns the count of successfully-restored
 /// monitors so the dispatch handler can report it to the user.
 pub fn apply_to_state(state: &mut MargoState, snap: &SessionSnapshot) -> usize {
+    // When `taglayout_force` is set, the configured per-tag layouts win over
+    // whatever the snapshot restored — re-applied per monitor below. Snapshot
+    // them here so we don't hold a `state.config` borrow across the mut loop.
+    let force_taglayouts = state.config.taglayout_force;
+    let taglayouts = if force_taglayouts {
+        state.config.taglayouts.clone()
+    } else {
+        Vec::new()
+    };
+
     let mut applied = 0;
     for ms in &snap.monitors {
         let Some(idx) = state.monitors.iter().position(|m| m.name == ms.name) else {
@@ -248,6 +258,12 @@ pub fn apply_to_state(state: &mut MargoState, snap: &SessionSnapshot) -> usize {
 
         m.pertag.curtag = ms.pertag.curtag;
         m.pertag.prevtag = ms.pertag.prevtag;
+
+        // `taglayout_force`: the config's per-tag layouts override the
+        // snapshot we just restored.
+        if force_taglayouts {
+            m.pertag.seed_taglayouts(&taglayouts);
+        }
         applied += 1;
     }
 

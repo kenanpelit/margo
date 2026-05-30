@@ -93,6 +93,25 @@ impl Pertag {
             wallpapers: vec![String::new(); MAX_TAGS + 1],
         }
     }
+
+    /// Override per-tag default layouts from config `taglayout` entries —
+    /// `(tag_1_based, layout_name)`. Out-of-range tags and unknown layout
+    /// names are ignored. Marks each seeded tag as user-picked so the
+    /// auto-layout heuristic doesn't override an explicit choice.
+    pub fn seed_taglayouts(&mut self, taglayouts: &[(u32, String)]) {
+        for (tag, name) in taglayouts {
+            let t = *tag as usize;
+            if t == 0 || t >= self.ltidxs.len() {
+                continue;
+            }
+            if let Some(id) = LayoutId::from_name(name) {
+                self.ltidxs[t] = id;
+                if t < self.user_picked_layout.len() {
+                    self.user_picked_layout[t] = true;
+                }
+            }
+        }
+    }
 }
 
 /// Layout identifier matching C `enum { TILE, SCROLLER, ... }`.

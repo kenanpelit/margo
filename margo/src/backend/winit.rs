@@ -124,11 +124,12 @@ pub fn run(
         width: mode.size.w,
         height: mode.size.h,
     };
-    let pertag = crate::layout::Pertag::new(
+    let mut pertag = crate::layout::Pertag::new(
         state.default_layout(),
         state.config.default_mfact,
         state.config.default_nmaster,
     );
+    pertag.seed_taglayouts(&state.config.taglayouts);
     state.monitors.push(crate::state::MargoMonitor {
         name: "winit".to_string(),
         output: output.clone(),

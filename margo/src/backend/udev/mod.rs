@@ -558,11 +558,12 @@ pub fn run(
             width: wl_mode.size.w,
             height: wl_mode.size.h,
         };
-        let pertag = crate::layout::Pertag::new(
+        let mut pertag = crate::layout::Pertag::new(
             state.default_layout(),
             state.config.default_mfact,
             state.config.default_nmaster,
         );
+        pertag.seed_taglayouts(&state.config.taglayouts);
         state.monitors.push(crate::state::MargoMonitor {
             name: output_name,
             output: output.clone(),
