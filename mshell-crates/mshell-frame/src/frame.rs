@@ -210,6 +210,12 @@ pub enum FrameInput {
     /// author wire `cargo watch` to `mshellctl plugin reload <key>` for a
     /// fast iteration loop without restarting mshell.
     ReloadPlugin(String),
+    /// A global keybind for `(plugin-key, bind-id)` fired: open (or
+    /// reveal) the plugin's panel and deliver a `Keybind` event to the
+    /// guest with the bind id. Margo binds in the generated
+    /// `binds.d/mshell-plugins.conf` spawn `mshellctl plugin keybind …`
+    /// which lands here.
+    FirePluginKeybind(String, String),
     ToggleIpMenu,
     ToggleNetworkMenu,
     TogglePowerMenu,
@@ -1308,6 +1314,76 @@ impl Component for Frame {
                 }
                 #[cfg(not(feature = "wasm-plugins"))]
                 let _ = key;
+            }
+            FrameInput::FirePluginKeybind(key, bind_id) => {
+                #[cfg(feature = "wasm-plugins")]
+                {
+                    use std::collections::hash_map::Entry;
+                    // Resolve the key against the synthesised plugin widgets
+                    // the same way TogglePluginByKey does — accept the
+                    // composite key, the widget key, or the full name.
+                    let found = mshell_config::config_manager::config_manager()
+                        .config()
+                        .bars()
+                        .widgets()
+                        .custom_widgets()
+                        .get_untracked()
+                        .into_iter()
+                        .find(|c| {
+                            let Some(rest) = c.name.strip_prefix("plugin:") else {
+                                return false;
+                            };
+                            if c.panel_entry.trim().is_empty() {
+                                return false;
+                            }
+                            let (comp, w) = rest.rsplit_once(':').unwrap_or((rest, ""));
+                            rest == key || comp == key || w == key
+                        });
+                    if let Some(c) = found {
+                        self.apply_plugin_layout(&c.name, widgets);
+                        // Build/get the cached panel.
+                        if let Entry::Vacant(slot) = self.plugin_panels.entry(c.name.clone()) {
+                            let parsed: std::collections::HashMap<String, String> =
+                                serde_json::from_str(c.panel_settings.trim())
+                                    .unwrap_or_default();
+                            match mshell_plugin_ui::PluginPanel::new(
+                                &self.plugin_panel_runtime,
+                                &c.name,
+                                std::path::Path::new(c.panel_entry.trim()),
+                                parsed,
+                            ) {
+                                Ok(panel) => {
+                                    slot.insert(panel);
+                                }
+                                Err(e) => tracing::warn!(
+                                    "plugin keybind `{key}/{bind_id}`: panel load failed: {e}"
+                                ),
+                            }
+                        }
+                        if let Some(panel) = self.plugin_panels.get(&c.name) {
+                            // Deliver the keybind event so the guest can react.
+                            panel.fire_event(mshell_plugin_ui::UiEvent {
+                                id: bind_id,
+                                kind: mshell_plugin_ui::UiEventKind::Keybind,
+                                value: String::new(),
+                            });
+                            // Mount + open the panel surface.
+                            let content: Widget = panel.widget().clone().upcast();
+                            self.plugin_panel_menu
+                                .sender()
+                                .send(MenuInput::SetExternalContent(content))
+                                .ok();
+                            self.toggle_menu(NPLUGIN_PANEL_MENU, widgets);
+                            self.sync_keyboard_mode(root);
+                        }
+                    } else {
+                        tracing::warn!(
+                            "plugin keybind: no enabled plugin matches `{key}`"
+                        );
+                    }
+                }
+                #[cfg(not(feature = "wasm-plugins"))]
+                let _ = (key, bind_id);
             }
             FrameInput::ToggleIpMenu => {
                 self.toggle_menu(NIP_MENU, widgets);

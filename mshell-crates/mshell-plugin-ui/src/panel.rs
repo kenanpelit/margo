@@ -103,6 +103,14 @@ impl PluginPanel {
         &self.root
     }
 
+    /// Inject a host-originated event (e.g. a fired keybind) into the guest,
+    /// then re-render. Used by the frame's `FirePluginKeybind` handler so a
+    /// registered hotkey reaches the plugin's `update` regardless of whether
+    /// the panel is currently visible.
+    pub fn fire_event(&self, event: UiEvent) {
+        dispatch(&self.inner, event);
+    }
+
     /// Re-run `view` and re-render — e.g. after the plugin's settings change.
     pub fn refresh(&self) -> anyhow::Result<()> {
         let nodes = self.inner.borrow_mut().instance.view()?;

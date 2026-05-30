@@ -84,6 +84,15 @@ interface types {
         /// An `http-start` stream finished. `id` is the request id; on failure
         /// `value` carries an `error: …` message.
         stream-end,
+        /// A global keyboard shortcut the plugin registered through its
+        /// manifest's `[[keybind]]` table fired. `id` is the binding's id
+        /// from the manifest; `value` is empty.
+        keybind,
+        /// Future-proof escape hatch: any new event variant added *after*
+        /// this one rides on `extended` with `id` formatted as
+        /// `<kind>:<actual-id>` so pre-compiled plugins don't break when
+        /// the event taxonomy grows. The renderer dispatches on the prefix.
+        extended,
     }
 
     record event {

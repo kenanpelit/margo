@@ -91,6 +91,10 @@ pub enum UiEventKind {
     StreamChunk,
     /// An `http-start` stream completed (host-originated).
     StreamEnd,
+    /// A global keyboard shortcut the plugin registered fired.
+    Keybind,
+    /// Future-proof escape hatch — `id` is `"<kind>:<actual-id>"`.
+    Extended,
 }
 
 /// An interaction routed back to the guest's `update`.
@@ -718,6 +722,8 @@ fn to_wit_event(e: &UiEvent) -> Event {
             UiEventKind::Submit => EventKind::Submit,
             UiEventKind::StreamChunk => EventKind::StreamChunk,
             UiEventKind::StreamEnd => EventKind::StreamEnd,
+            UiEventKind::Keybind => EventKind::Keybind,
+            UiEventKind::Extended => EventKind::Extended,
         },
         value: e.value.clone(),
     }

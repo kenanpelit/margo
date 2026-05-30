@@ -110,6 +110,9 @@ pub(crate) enum ShellInput {
     /// Force-reload an installed plugin's WASM panel — evict the cached
     /// instance everywhere so the next open re-instantiates from disk.
     ReloadPlugin(String),
+    /// `(monitor, plugin-key, bind-id)`: a global keybind fired; open the
+    /// plugin's panel and deliver a `Keybind` event with the bind id.
+    FirePluginKeybind(Option<String>, String, String),
     ToggleIpMenu(Option<String>),
     ToggleNetworkMenu(Option<String>),
     TogglePowerMenu(Option<String>),
@@ -617,6 +620,11 @@ impl Component for Shell {
                     if let Some(frame) = &group.frame {
                         frame.emit(FrameInput::ReloadPlugin(key.clone()));
                     }
+                }
+            }
+            ShellInput::FirePluginKeybind(monitor_name, key, id) => {
+                if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
+                    frame.emit(FrameInput::FirePluginKeybind(key, id));
                 }
             }
             ShellInput::ToggleIpMenu(monitor_name) => {

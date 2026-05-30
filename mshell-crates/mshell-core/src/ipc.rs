@@ -167,6 +167,13 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 IPCCommand::PluginReload(key) => {
                     app_sender.emit(ShellInput::ReloadPlugin(key));
                 }
+                IPCCommand::PluginKeybind(key, id) => {
+                    app_sender.emit(ShellInput::FirePluginKeybind(
+                        active_monitor().await,
+                        key,
+                        id,
+                    ));
+                }
                 IPCCommand::CloseAllMenus => app_sender.emit(ShellInput::CloseAllMenus),
                 IPCCommand::VolumeUp => {
                     if let Some(output) = audio_service().default_output.get() {
@@ -471,6 +478,9 @@ enum IPCCommand {
     /// Force-reload an installed plugin's WASM panel — evict the cached
     /// instance so the next open instantiates from disk.
     PluginReload(String),
+    /// Fire a registered plugin keybind: `(plugin-key, bind-id)`. Opens
+    /// the plugin's panel and delivers a `Keybind` event with the id.
+    PluginKeybind(String, String),
     CloseAllMenus,
     VolumeUp,
     VolumeDown,
@@ -1352,6 +1362,14 @@ impl IPCService {
     }
     async fn plugin_reload(&self, key: String) {
         let _ = self.tx.send(IPCCommand::PluginReload(key));
+    }
+
+    async fn plugin_keybind(&self, arg: String) {
+        let (key, id) = arg.split_once('|').unwrap_or((arg.as_str(), ""));
+        let _ = self.tx.send(IPCCommand::PluginKeybind(
+            key.to_string(),
+            id.to_string(),
+        ));
     }
 
     async fn plugin_menu(&self, key: String) {

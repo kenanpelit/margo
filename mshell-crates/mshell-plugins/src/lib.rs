@@ -8,14 +8,15 @@
 //! local enabled/sources state — but not any UI.
 
 pub mod git;
+pub mod keybinds;
 pub mod keys;
 pub mod manifest;
 pub mod secrets;
 pub mod state;
 
 pub use manifest::{
-    Manifest, MenuRow, Registry, RegistryEntry, Setting, WidgetDef, is_newer, meets_min_mshell,
-    substitute, validate,
+    Keybind, Manifest, MenuRow, Registry, RegistryEntry, Setting, WidgetDef, is_newer,
+    meets_min_mshell, substitute, validate,
 };
 pub use state::{PanelLayout, PluginsState, Source};
 

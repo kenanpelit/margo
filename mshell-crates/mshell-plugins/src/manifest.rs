@@ -31,6 +31,11 @@ pub struct Manifest {
     /// commands via `{{key}}` placeholders.
     #[serde(default, rename = "setting")]
     pub settings: Vec<Setting>,
+    /// Global keyboard shortcuts the plugin would like to claim. The shell
+    /// resolves conflicts deterministically (alphabetical plugin id wins)
+    /// and writes the survivors to a margo binds file the user can `source=`.
+    #[serde(default, rename = "keybind")]
+    pub keybinds: Vec<Keybind>,
     /// Path (relative to the plugin dir) to a compiled WASM panel, if this
     /// plugin ships one (the WASM tier). Empty = declarative-only plugin.
     #[serde(default)]
@@ -74,6 +79,21 @@ impl Setting {
     pub fn is_secret(&self) -> bool {
         self.kind == "secret"
     }
+}
+
+/// A global keyboard shortcut the plugin declares. The shell registers all
+/// `[[keybind]]` entries with the compositor at startup; on press the bind
+/// opens the plugin's panel and delivers a `keybind` event with this `id`.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize)]
+pub struct Keybind {
+    /// Margo combo string, e.g. `"super,a"` or `"super+ctrl,t"`.
+    pub combo: String,
+    /// Echoed back to the plugin as the event's `id` so a plugin with
+    /// several bindings can disambiguate.
+    pub id: String,
+    /// Free-form help text surfaced in Settings → Plugins → Keybinds.
+    #[serde(default)]
+    pub description: String,
 }
 
 /// Replace every `{{key}}` in `template` with its value from `values`.
