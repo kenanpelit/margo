@@ -451,7 +451,9 @@ it. Two kinds, mutually exclusive:
   `WidgetEntry::Menu { … }` row in `settings.rs`.
 
   **Menu sizing model.** Each `Menu` carries `minimum_width`,
-  `maximum_height`, and the two `auto_*` toggles (both default `true`):
+  `maximum_height`, and the two `auto_*` toggles (opt-in, both default
+  `false` — menus ship at their designed fixed size; auto is enabled
+  per-menu in Settings → Widgets):
   - `auto_width` on → width follows content, floored at
     `minimum_width`; off → width pinned to `minimum_width`.
   - `auto_height` on → height grows to fit; off → capped at

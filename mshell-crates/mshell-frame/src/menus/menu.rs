@@ -168,13 +168,13 @@ pub(crate) struct MenuModel {
     /// control actually resizes the surface instead of only clamping a tall
     /// one. Other menus keep grow-to-fit.
     fixed_height: bool,
-    /// When `true` (default), the menu sizes its width to content
+    /// Opt-in (default `false`): when `true`, width follows content
     /// (`minimum_width` is a floor); when `false`, width is pinned to
     /// `minimum_width`. Either way a ½-screen-width ceiling applies.
     auto_width: bool,
-    /// When `true` (default), the menu grows to fit its content height;
-    /// when `false`, it caps at `maximum_height`. Either way a
-    /// ¾-screen-height ceiling applies.
+    /// Opt-in (default `false`): when `true`, height grows to fit
+    /// content; when `false`, it caps at `maximum_height`. Either way
+    /// a ¾-screen-height ceiling applies.
     auto_height: bool,
     /// Monitor logical pixel size — drives the ½-width / ¾-height hard
     /// ceilings. 0 means "not known yet" (no ceiling clamp).
@@ -1233,10 +1233,10 @@ impl Component for MenuModel {
             built: false,
             lazy_wizard: matches!(params.menu_type, MenuType::Wizard),
             fixed_height: matches!(params.menu_type, MenuType::PluginPanel),
-            // Default to content-fit; the per-menu reactive effects
-            // overwrite these from config on the first tick.
-            auto_width: true,
-            auto_height: true,
+            // Default to the pinned/manual sizing; the per-menu reactive
+            // effects overwrite these from config on the first tick.
+            auto_width: false,
+            auto_height: false,
             screen_w: params.screen_width,
             screen_h: params.screen_height,
             _effects: effects,
