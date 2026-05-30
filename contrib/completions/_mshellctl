@@ -11,90 +11,45 @@
 # ~/.config/margo/mshell/plugins.
 
 _mshellctl() {
-    local context state state_descr line
-    typeset -A opt_args
+    # Flat positional dispatch on $words / $CURRENT — every level calls
+    # `_describe` / `_values` directly. No nested `_arguments`/`->state`, which
+    # fzf-tab (and plain compsys) handle far more reliably for deep subcommands:
+    # the first level worked but the second never produced a group otherwise.
 
-    _arguments -C \
-        '(-h --help)'{-h,--help}'[print help]' \
-        '(-V --version)'{-V,--version}'[print version]' \
-        '1: :_mshellctl_subcommands' \
-        '*::: :->args' \
-        && return 0
+    # `mshellctl <TAB>` → top-level subcommand.
+    if (( CURRENT == 2 )); then
+        _mshellctl_subcommands
+        return
+    fi
 
-    case $state in
-        args)
-            case $words[1] in
-                menu)
-                    # Single-colon rest (mirrors the working _mctl pattern): the
-                    # `1:` positional completes the menu subcommand first; `*:`
-                    # only applies to later args. A `*::` here swallowed
-                    # position 1, so `menu <TAB>` offered nothing.
-                    _arguments \
-                        '1:menu subcommand:_mshellctl_menu_subcommands' \
-                        '*:menu argument:->menu_args' \
-                        && return 0
-                    case $state in
-                        menu_args)
-                            # `menu plugin <KEY>` → live plugin keys.
-                            if [[ $words[2] == "plugin" && $CURRENT == 3 ]]; then
-                                _mshellctl_plugin_keys
-                            fi
-                            ;;
-                    esac
-                    ;;
-                plugin)
-                    _arguments \
-                        '1:plugin subcommand:_mshellctl_plugin_subcommands' \
-                        '*:plugin argument:->plugin_args' \
-                        && return 0
-                    case $state in
-                        plugin_args)
-                            case $words[2] in
-                                reload|keybind)
-                                    # First arg after the subcommand → plugin key.
-                                    [[ $CURRENT == 3 ]] && _mshellctl_plugin_keys
-                                    ;;
-                                list)
-                                    _values 'flag' \
-                                        '--names[print only composite keys]' \
-                                        '--enabled[only show enabled plugins]'
-                                    ;;
-                            esac
-                            ;;
-                    esac
-                    ;;
-                audio)
-                    _arguments '1:audio subcommand:(volume mute toggle-mute output input help)'
-                    ;;
-                bar)
-                    _arguments '1:bar subcommand:(show hide toggle help)'
-                    ;;
-                brightness)
-                    _arguments '1:brightness subcommand:(set up down help)'
-                    ;;
-                wallpaper)
-                    _arguments '1:wallpaper subcommand:(next prev random help)'
-                    ;;
-                settings)
-                    _arguments '1:settings subcommand:(open close toggle help)'
-                    ;;
-                screenshot)
-                    _arguments '1:screenshot subcommand:(select-region help)'
-                    ;;
-                lock)
-                    _arguments '1:lock subcommand:(check help)'
-                    ;;
-                media)
-                    _arguments '1:media subcommand:(play-pause next previous stop help)'
-                    ;;
-                set-wallpaper)
-                    _arguments '1:image file:_files'
-                    ;;
-                help)
-                    _mshellctl_subcommands
-                    ;;
-            esac
+    # Deeper positions dispatch on the subcommand in $words[2].
+    case ${words[2]} in
+        menu)
+            if (( CURRENT == 3 )); then
+                _mshellctl_menu_subcommands
+            elif (( CURRENT == 4 )) && [[ ${words[3]} == plugin ]]; then
+                _mshellctl_plugin_keys              # `menu plugin <KEY>`
+            fi
             ;;
+        plugin)
+            if (( CURRENT == 3 )); then
+                _mshellctl_plugin_subcommands
+            elif (( CURRENT == 4 )) && [[ ${words[3]} == (reload|keybind) ]]; then
+                _mshellctl_plugin_keys              # `plugin reload|keybind <KEY>`
+            elif [[ ${words[3]} == list ]]; then
+                _values 'flag' '--names' '--enabled'
+            fi
+            ;;
+        audio)         (( CURRENT == 3 )) && _values 'audio'      volume mute toggle-mute output input help ;;
+        bar)           (( CURRENT == 3 )) && _values 'bar'        show hide toggle help ;;
+        brightness)    (( CURRENT == 3 )) && _values 'brightness' set up down help ;;
+        wallpaper)     (( CURRENT == 3 )) && _values 'wallpaper'  next prev random help ;;
+        settings)      (( CURRENT == 3 )) && _values 'settings'   open close toggle help ;;
+        screenshot)    (( CURRENT == 3 )) && _values 'screenshot' select-region help ;;
+        lock)          (( CURRENT == 3 )) && _values 'lock'       check help ;;
+        media)         (( CURRENT == 3 )) && _values 'media'      play-pause next previous stop help ;;
+        set-wallpaper) (( CURRENT == 3 )) && _files ;;
+        help)          (( CURRENT == 3 )) && _mshellctl_subcommands ;;
     esac
 }
 
