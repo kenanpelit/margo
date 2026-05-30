@@ -172,80 +172,96 @@ impl WidgetSectionModel {
         let list = gtk::Box::new(gtk::Orientation::Vertical, 0);
         list.add_css_class("settings-bar-widget-add-list");
 
-        // List the catalogue alphabetically (by display name) so the
-        // add-widget popover is easy to scan, rather than enum order.
-        let mut widgets: Vec<BarWidget> = BarWidget::all().to_vec();
-        widgets.sort_by_key(|w| w.display_name().to_ascii_lowercase());
-
-        for widget in &widgets {
-            let btn = gtk::Button::with_label(widget.display_name());
-            btn.set_css_classes(&["settings-bar-widget-add-item"]);
-            btn.set_halign(gtk::Align::Fill);
-            btn.set_has_frame(false);
-
-            let widget_clone = widget.clone();
-            let popover_clone = popover.clone();
-            btn.connect_clicked(move |_| {
-                let widget_clone = widget_clone.clone();
-                config_manager().update_config(move |config| {
-                    let list = match location {
-                        BarListLocation::TopStart => &mut config.bars.top_bar.left_widgets,
-                        BarListLocation::TopCenter => &mut config.bars.top_bar.center_widgets,
-                        BarListLocation::TopEnd => &mut config.bars.top_bar.right_widgets,
-                        BarListLocation::BottomStart => &mut config.bars.bottom_bar.left_widgets,
-                        BarListLocation::BottomCenter => {
-                            &mut config.bars.bottom_bar.center_widgets
-                        }
-                        BarListLocation::BottomEnd => &mut config.bars.bottom_bar.right_widgets,
-                    };
-                    list.push(widget_clone);
-                });
-                popover_clone.popdown();
-            });
-
-            list.append(&btn);
-        }
-
-        // User-defined + plugin custom widgets live in
-        // bars.widgets.custom_widgets (plugin widgets are injected there as
-        // `plugin:<key>:<widget>`). Surface them here too — otherwise an
-        // installed plugin's widget can never reach a bar from the UI.
-        let cfg = config_manager().config().read_untracked().clone();
-        for cw in &cfg.bars.widgets.custom_widgets {
-            if cw.name.trim().is_empty() {
-                continue;
-            }
-            let btn = gtk::Button::with_label(&custom_widget_label(&cw.name));
-            btn.set_css_classes(&["settings-bar-widget-add-item"]);
-            btn.set_halign(gtk::Align::Fill);
-            btn.set_has_frame(false);
-
-            let name = cw.name.clone();
-            let popover_clone = popover.clone();
-            btn.connect_clicked(move |_| {
-                let name = name.clone();
-                config_manager().update_config(move |config| {
-                    let list = match location {
-                        BarListLocation::TopStart => &mut config.bars.top_bar.left_widgets,
-                        BarListLocation::TopCenter => &mut config.bars.top_bar.center_widgets,
-                        BarListLocation::TopEnd => &mut config.bars.top_bar.right_widgets,
-                        BarListLocation::BottomStart => &mut config.bars.bottom_bar.left_widgets,
-                        BarListLocation::BottomCenter => {
-                            &mut config.bars.bottom_bar.center_widgets
-                        }
-                        BarListLocation::BottomEnd => &mut config.bars.bottom_bar.right_widgets,
-                    };
-                    list.push(BarWidget::Custom(name.clone()));
-                });
-                popover_clone.popdown();
-            });
-
-            list.append(&btn);
-        }
-
         scrolled.set_child(Some(&list));
         popover.set_child(Some(&scrolled));
         button.set_popover(Some(&popover));
+
+        // Repopulate on every show — plugin custom widgets are derived from
+        // the live config, so an Install in Settings → Plugins (which mutates
+        // bars.widgets.custom_widgets) shows up here on the next click of the
+        // "Add widget" button, without a shell restart.
+        populate_add_list(&list, &popover, location);
+        {
+            let list = list.clone();
+            let pop = popover.clone();
+            popover.connect_show(move |_| {
+                populate_add_list(&list, &pop, location);
+            });
+        }
+    }
+}
+
+fn populate_add_list(list: &gtk::Box, popover: &gtk::Popover, location: BarListLocation) {
+    // Clear whatever the previous show built.
+    while let Some(child) = list.first_child() {
+        list.remove(&child);
+    }
+
+    // Static catalogue, alphabetised.
+    let mut widgets: Vec<BarWidget> = BarWidget::all().to_vec();
+    widgets.sort_by_key(|w| w.display_name().to_ascii_lowercase());
+
+    for widget in &widgets {
+        let btn = gtk::Button::with_label(widget.display_name());
+        btn.set_css_classes(&["settings-bar-widget-add-item"]);
+        btn.set_halign(gtk::Align::Fill);
+        btn.set_has_frame(false);
+
+        let widget_clone = widget.clone();
+        let popover_clone = popover.clone();
+        btn.connect_clicked(move |_| {
+            let widget_clone = widget_clone.clone();
+            config_manager().update_config(move |config| {
+                let list = match location {
+                    BarListLocation::TopStart => &mut config.bars.top_bar.left_widgets,
+                    BarListLocation::TopCenter => &mut config.bars.top_bar.center_widgets,
+                    BarListLocation::TopEnd => &mut config.bars.top_bar.right_widgets,
+                    BarListLocation::BottomStart => &mut config.bars.bottom_bar.left_widgets,
+                    BarListLocation::BottomCenter => {
+                        &mut config.bars.bottom_bar.center_widgets
+                    }
+                    BarListLocation::BottomEnd => &mut config.bars.bottom_bar.right_widgets,
+                };
+                list.push(widget_clone);
+            });
+            popover_clone.popdown();
+        });
+
+        list.append(&btn);
+    }
+
+    // User-defined + plugin custom widgets — read fresh on every show.
+    let cfg = config_manager().config().read_untracked().clone();
+    for cw in &cfg.bars.widgets.custom_widgets {
+        if cw.name.trim().is_empty() {
+            continue;
+        }
+        let btn = gtk::Button::with_label(&custom_widget_label(&cw.name));
+        btn.set_css_classes(&["settings-bar-widget-add-item"]);
+        btn.set_halign(gtk::Align::Fill);
+        btn.set_has_frame(false);
+
+        let name = cw.name.clone();
+        let popover_clone = popover.clone();
+        btn.connect_clicked(move |_| {
+            let name = name.clone();
+            config_manager().update_config(move |config| {
+                let list = match location {
+                    BarListLocation::TopStart => &mut config.bars.top_bar.left_widgets,
+                    BarListLocation::TopCenter => &mut config.bars.top_bar.center_widgets,
+                    BarListLocation::TopEnd => &mut config.bars.top_bar.right_widgets,
+                    BarListLocation::BottomStart => &mut config.bars.bottom_bar.left_widgets,
+                    BarListLocation::BottomCenter => {
+                        &mut config.bars.bottom_bar.center_widgets
+                    }
+                    BarListLocation::BottomEnd => &mut config.bars.bottom_bar.right_widgets,
+                };
+                list.push(BarWidget::Custom(name.clone()));
+            });
+            popover_clone.popdown();
+        });
+
+        list.append(&btn);
     }
 }
 
