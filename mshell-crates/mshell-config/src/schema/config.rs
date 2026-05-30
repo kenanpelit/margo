@@ -612,6 +612,8 @@ fn default_plugin_panel_menu() -> Menu {
         widgets: vec![],
         minimum_width: 420,
         maximum_height: 560,
+        auto_width: true,
+        auto_height: true,
     }
 }
 
@@ -621,6 +623,8 @@ fn default_bluetooth_menu() -> Menu {
         widgets: vec![MenuWidget::Bluetooth],
         minimum_width: 400,
         maximum_height: 0,
+        auto_width: true,
+        auto_height: true,
     }
 }
 
@@ -630,6 +634,8 @@ fn default_system_update_menu() -> Menu {
         widgets: vec![MenuWidget::SystemUpdate],
         minimum_width: 460,
         maximum_height: 620,
+        auto_width: true,
+        auto_height: true,
     }
 }
 
@@ -639,6 +645,8 @@ fn default_valent_menu() -> Menu {
         widgets: vec![MenuWidget::Valent],
         minimum_width: 460,
         maximum_height: 620,
+        auto_width: true,
+        auto_height: true,
     }
 }
 
@@ -648,6 +656,8 @@ fn default_keep_awake_menu() -> Menu {
         widgets: vec![MenuWidget::KeepAwake],
         minimum_width: 320,
         maximum_height: 0,
+        auto_width: true,
+        auto_height: true,
     }
 }
 
@@ -657,6 +667,8 @@ fn default_weather_menu() -> Menu {
         widgets: vec![MenuWidget::Weather],
         minimum_width: 380,
         maximum_height: 0,
+        auto_width: true,
+        auto_height: true,
     }
 }
 
@@ -666,6 +678,8 @@ fn default_twilight_menu() -> Menu {
         widgets: vec![MenuWidget::Twilight],
         minimum_width: 360,
         maximum_height: 0,
+        auto_width: true,
+        auto_height: true,
     }
 }
 
@@ -678,6 +692,8 @@ fn default_keybinds_menu() -> Menu {
         // shortcut list scrolls instead of overflowing the screen.
         minimum_width: 720,
         maximum_height: 720,
+        auto_width: true,
+        auto_height: true,
     }
 }
 
@@ -690,6 +706,8 @@ fn default_alarmclock_menu() -> Menu {
         // alarm list scrolls instead of overflowing the screen.
         minimum_width: 420,
         maximum_height: 640,
+        auto_width: true,
+        auto_height: true,
     }
 }
 
@@ -699,6 +717,8 @@ fn default_control_center_menu() -> Menu {
         widgets: vec![MenuWidget::ControlCenter],
         minimum_width: 460,
         maximum_height: 720,
+        auto_width: true,
+        auto_height: true,
     }
 }
 
@@ -710,6 +730,8 @@ fn default_ssh_menu() -> Menu {
         // height so a large ~/.ssh/config scrolls.
         minimum_width: 460,
         maximum_height: 720,
+        auto_width: true,
+        auto_height: true,
     }
 }
 
@@ -719,6 +741,8 @@ fn default_cpu_dashboard_menu() -> Menu {
         widgets: vec![MenuWidget::CpuDashboard],
         minimum_width: 380,
         maximum_height: 0,
+        auto_width: true,
+        auto_height: true,
     }
 }
 
@@ -728,6 +752,8 @@ fn default_audio_dashboard_menu() -> Menu {
         widgets: vec![MenuWidget::AudioDashboard],
         minimum_width: 400,
         maximum_height: 0,
+        auto_width: true,
+        auto_height: true,
     }
 }
 
@@ -743,6 +769,8 @@ impl Default for Menus {
                 ],
                 minimum_width: 410,
                 maximum_height: 0,
+                auto_width: true,
+                auto_height: true,
             },
             clipboard_menu: Menu {
                 position: Position::TopRight,
@@ -754,12 +782,16 @@ impl Default for Menus {
                 // → Widgets → Clipboard for other monitor heights.
                 minimum_width: 550,
                 maximum_height: 890,
+                auto_width: true,
+                auto_height: true,
             },
             notification_menu: Menu {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::Notifications],
                 minimum_width: 410,
                 maximum_height: 0,
+                auto_width: true,
+                auto_height: true,
             },
             screenshot_menu: Menu {
                 position: Position::TopRight,
@@ -770,18 +802,24 @@ impl Default for Menus {
                 ],
                 minimum_width: 410,
                 maximum_height: 0,
+                auto_width: true,
+                auto_height: true,
             },
             app_launcher_menu: Menu {
                 position: Position::TopLeft,
                 widgets: vec![MenuWidget::AppLauncher],
                 minimum_width: 410,
                 maximum_height: 0,
+                auto_width: true,
+                auto_height: true,
             },
             wallpaper_menu: Menu {
                 position: Position::Top,
                 widgets: vec![MenuWidget::ThemePicker, MenuWidget::Wallpaper],
                 minimum_width: 1200,
                 maximum_height: 0,
+                auto_width: true,
+                auto_height: true,
             },
             screenshare_menu: ScreenshareMenu {
                 position: Position::TopRight,
@@ -791,42 +829,56 @@ impl Default for Menus {
                 widgets: vec![MenuWidget::Ufw],
                 minimum_width: 410,
                 maximum_height: 0,
+                auto_width: true,
+                auto_height: true,
             },
             dns_menu: Menu {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::Dns],
                 minimum_width: 420,
                 maximum_height: 0,
+                auto_width: true,
+                auto_height: true,
             },
             podman_menu: Menu {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::Podman],
                 minimum_width: 540,
                 maximum_height: 0,
+                auto_width: true,
+                auto_height: true,
             },
             notes_menu: Menu {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::Notes],
                 minimum_width: 480,
                 maximum_height: 0,
+                auto_width: true,
+                auto_height: true,
             },
             ip_menu: Menu {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::Ip],
                 minimum_width: 380,
                 maximum_height: 0,
+                auto_width: true,
+                auto_height: true,
             },
             network_menu: Menu {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::Network],
                 minimum_width: 460,
                 maximum_height: 0,
+                auto_width: true,
+                auto_height: true,
             },
             power_menu: Menu {
                 position: Position::TopRight,
                 widgets: vec![MenuWidget::Power],
                 minimum_width: 360,
                 maximum_height: 0,
+                auto_width: true,
+                auto_height: true,
             },
             bluetooth_menu: default_bluetooth_menu(),
             cpu_dashboard_menu: default_cpu_dashboard_menu(),
@@ -846,12 +898,16 @@ impl Default for Menus {
                 widgets: vec![MenuWidget::MediaPlayer],
                 minimum_width: 380,
                 maximum_height: 0,
+                auto_width: true,
+                auto_height: true,
             },
             session_menu: Menu {
                 position: Position::Top,
                 widgets: vec![MenuWidget::Session],
                 minimum_width: 420,
                 maximum_height: 0,
+                auto_width: true,
+                auto_height: true,
             },
             settings_menu: Menu {
                 // Settings is a wide / tall panel. Top anchor with
@@ -863,6 +919,8 @@ impl Default for Menus {
                 widgets: vec![],
                 minimum_width: 780,
                 maximum_height: 0,
+                auto_width: true,
+                auto_height: true,
             },
             dashboard_menu: Menu {
                 // Rebalanced two-column dashboard:
@@ -1004,6 +1062,8 @@ impl Default for Menus {
                 // sized columns slot in without renegotiation.
                 minimum_width: 860,
                 maximum_height: 0,
+                auto_width: true,
+                auto_height: true,
             },
             margo_layout_menu: Menu {
                 // Replaces the legacy `gtk::PopoverMenu` that
@@ -1017,6 +1077,8 @@ impl Default for Menus {
                 widgets: vec![MenuWidget::MargoLayout],
                 minimum_width: 280,
                 maximum_height: 0,
+                auto_width: true,
+                auto_height: true,
             },
             left_menu_expansion_type: VerticalMenuExpansion::AlwaysExpanded,
             right_menu_expansion_type: VerticalMenuExpansion::AlwaysExpanded,
@@ -1283,6 +1345,25 @@ pub struct Menu {
     /// clipboard history…) so the panel doesn't grow taller than
     /// the user's monitor.
     pub maximum_height: i32,
+    /// When `true` (default), the menu sizes its **width** to its
+    /// content instead of pinning to `minimum_width` — `minimum_width`
+    /// then acts as a floor. A hard ceiling of ½ the monitor width is
+    /// always enforced (in both modes) so a menu can never run off the
+    /// screen. When `false`, the width is pinned to `minimum_width`
+    /// (the legacy fixed-width behaviour).
+    #[serde(default = "default_true")]
+    pub auto_width: bool,
+    /// When `true` (default), the menu grows its **height** to fit its
+    /// content, clamped to a hard ceiling of ¾ the monitor height
+    /// (content scrolls past that). When `false`, the height is capped
+    /// at `maximum_height` (still clamped to ¾ screen). Either way the
+    /// menu can never run off the bottom of the screen.
+    #[serde(default = "default_true")]
+    pub auto_height: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for Menu {
@@ -1292,6 +1373,8 @@ impl Default for Menu {
             widgets: Vec::new(),
             minimum_width: 410,
             maximum_height: 0,
+            auto_width: true,
+            auto_height: true,
         }
     }
 }
