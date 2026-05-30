@@ -20,16 +20,20 @@ use std::path::{Path, PathBuf};
 pub struct Resolution {
     /// Composite plugin key (`"mullvad"`, `"a1b2:my-plugin"`, …).
     pub plugin_key: String,
-    /// The plugin's declared binding.
+    /// The effective binding (after any user override has been applied).
     pub keybind: Keybind,
+    /// The manifest's original combo, kept for "reset to default" in the UI.
+    pub default_combo: String,
     /// `Some(winner_key)` if this binding lost to another plugin claiming
     /// the same combo first; `None` when this is the active binding.
     pub conflict: Option<String>,
+    /// `true` if the user explicitly cleared this binding (combo empty).
+    pub disabled: bool,
 }
 
 impl Resolution {
     pub fn is_active(&self) -> bool {
-        self.conflict.is_none()
+        self.conflict.is_none() && !self.disabled
     }
 }
 
@@ -49,11 +53,25 @@ pub fn resolve_all(store: &PluginStore) -> Vec<Resolution> {
             continue;
         }
         for keybind in &plugin.manifest.keybinds {
-            let combo = normalize_combo(&keybind.combo);
-            if combo.is_empty() || keybind.id.trim().is_empty() {
+            let default_combo = normalize_combo(&keybind.combo);
+            if keybind.id.trim().is_empty() {
                 continue;
             }
-            let conflict = if let Some(winner) = owner.get(&combo) {
+            // The user can override the combo (or disable it with "").
+            let (combo, disabled) = match state.keybind_override(&plugin.key, &keybind.id) {
+                Some(s) if s.trim().is_empty() => (String::new(), true),
+                Some(s) => (normalize_combo(s), false),
+                None => (default_combo.clone(), false),
+            };
+            // A binding with no combo (no manifest default + no override) is
+            // skipped entirely; a *disabled* binding still surfaces in the UI
+            // so the user can re-enable it.
+            if combo.is_empty() && !disabled && default_combo.is_empty() {
+                continue;
+            }
+            let conflict = if disabled || combo.is_empty() {
+                None
+            } else if let Some(winner) = owner.get(&combo) {
                 Some(winner.clone())
             } else {
                 owner.insert(combo.clone(), plugin.key.clone());
@@ -66,7 +84,9 @@ pub fn resolve_all(store: &PluginStore) -> Vec<Resolution> {
                     id: keybind.id.clone(),
                     description: keybind.description.clone(),
                 },
+                default_combo,
                 conflict,
+                disabled,
             });
         }
     }
@@ -146,6 +166,29 @@ pub fn write_binds_file(resolved: &[Resolution]) -> std::io::Result<bool> {
     let mut f = std::fs::File::create(&path)?;
     f.write_all(body.as_bytes())?;
     Ok(true)
+}
+
+/// Convenience for callers (the settings UI, the shell startup) that just
+/// want "write the binds file + ask margo to reload if anything changed".
+/// Returns whether anything was actually written. `mctl reload` is only
+/// attempted when the user already sources us (so we don't ping margo for
+/// nothing).
+pub fn sync_with_margo(store: &PluginStore) -> std::io::Result<bool> {
+    let resolved = resolve_all(store);
+    let changed = write_binds_file(&resolved)?;
+    if changed {
+        let config_conf = dirs::config_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("margo")
+            .join("config.conf");
+        if user_sources_us(&config_conf) {
+            let _ = std::process::Command::new("mctl")
+                .arg("reload")
+                .arg("--force")
+                .spawn();
+        }
+    }
+    Ok(changed)
 }
 
 /// `true` if the user's `config.conf` already pulls in our binds file.

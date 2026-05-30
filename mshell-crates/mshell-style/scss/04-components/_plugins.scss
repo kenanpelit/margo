@@ -36,6 +36,29 @@
   min-width: 120px;
 }
 
+// Keybind status badge in the Keybinds list.
+.plugins-keybind-badge {
+  font-size: var(--font-xs);
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  margin-top: 4px;
+  background-color: var(--surface-container-high);
+  color: var(--on-surface-variant);
+
+  &.plugins-keybind-active {
+    background-color: var(--primary-container);
+    color: var(--on-primary-container);
+  }
+  &.plugins-keybind-conflict {
+    background-color: var(--error-container);
+    color: var(--on-error-container);
+  }
+  &.plugins-keybind-disabled {
+    opacity: 0.7;
+  }
+}
+
 // Available gallery card — the registry view's tile. Slightly bigger leading
 // icon than `.plugins-row` so a remote plugin reads as a discoverable thing,
 // not a settings entry.

@@ -30,39 +30,25 @@ use mshell_services::tokio_rt;
 fn sync_plugin_keybinds() {
     use mshell_plugins::{PluginStore, keybinds};
     let store = PluginStore::new();
+    if let Err(e) = keybinds::sync_with_margo(&store) {
+        tracing::warn!("plugin keybinds: sync failed: {e}");
+        return;
+    }
+    // Log a one-shot hint if the user has bindings but hasn't sourced us.
     let resolved = keybinds::resolve_all(&store);
     let active = resolved.iter().filter(|r| r.is_active()).count();
-    let conflicted = resolved.iter().filter(|r| !r.is_active()).count();
-    let changed = match keybinds::write_binds_file(&resolved) {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::warn!("plugin keybinds: write failed: {e}");
-            return;
-        }
-    };
-    if active == 0 && !changed {
+    if active == 0 {
         return;
     }
     let config_conf = dirs::config_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("margo")
         .join("config.conf");
-    let user_sources = keybinds::user_sources_us(&config_conf);
-    if changed && user_sources {
-        // Best effort — `mctl reload` is the canonical way to refresh margo's
-        // bind set without restarting the compositor.
-        if let Err(e) = std::process::Command::new("mctl")
-            .arg("reload")
-            .arg("--force")
-            .spawn()
-        {
-            tracing::warn!("plugin keybinds: `mctl reload` failed: {e}");
-        }
-    }
-    if active > 0 && !user_sources {
+    if !keybinds::user_sources_us(&config_conf) {
         tracing::info!(
-            "plugin keybinds: {active} active binding(s) (+{conflicted} conflict(s)) waiting at {}. \
-             Add `source=binds.d/mshell-plugins.conf` to ~/.config/margo/config.conf and run `mctl reload` to activate.",
+            "plugin keybinds: {active} active binding(s) waiting at {}. \
+             Add `source=binds.d/mshell-plugins.conf` to ~/.config/margo/config.conf \
+             and run `mctl reload` to activate.",
             keybinds::binds_path().display()
         );
     }

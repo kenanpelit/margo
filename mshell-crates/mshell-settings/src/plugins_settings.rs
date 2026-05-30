@@ -69,6 +69,17 @@ pub(crate) enum PluginsSettingsInput {
     UpdateAll,
     /// Result of an update pass (manual or, on startup, automatic).
     UpdateAllDone(UpdateOutcome),
+    /// Set a per-plugin keybind override. Empty `combo` disables the binding.
+    SetKeybindOverride {
+        plugin: String,
+        bind_id: String,
+        combo: String,
+    },
+    /// Drop the override; the manifest's default combo takes effect again.
+    ResetKeybindOverride {
+        plugin: String,
+        bind_id: String,
+    },
 }
 
 #[derive(Debug)]
@@ -243,6 +254,27 @@ impl Component for PluginsSettingsModel {
                     set_orientation: gtk::Orientation::Vertical,
                     set_spacing: 6,
                 },
+
+                // ── Keybinds ──
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Keybinds",
+                    set_halign: gtk::Align::Start,
+                    set_margin_top: 12,
+                },
+                gtk::Label {
+                    add_css_class: "label-small",
+                    add_css_class: "dim-label",
+                    set_label: "Each enabled plugin can claim global hotkeys. Conflicts resolve by plugin id alphabetically; override the combo below to settle one yourself. Format: `super,a`, `super+ctrl,t`, …",
+                    set_halign: gtk::Align::Start,
+                    set_xalign: 0.0,
+                    set_wrap: true,
+                },
+                #[name = "keybinds_list"]
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 6,
+                },
             },
         }
     }
@@ -281,6 +313,7 @@ impl Component for PluginsSettingsModel {
         rebuild_sources(&widgets.sources_list, &model.state.sources, &sender);
         rebuild_installed(&widgets.installed_list, &model, &sender);
         rebuild_available(&widgets.available_list, &model, &sender);
+        rebuild_keybinds(&widgets.keybinds_list, &model, &sender);
 
         // Re-read local state + installed list whenever the page is shown,
         // in case plugins.toml changed elsewhere (e.g. the CLI, later).
@@ -540,12 +573,30 @@ impl Component for PluginsSettingsModel {
                     self.status = "Everything is up to date.".to_string();
                 }
             }
+            PluginsSettingsInput::SetKeybindOverride { plugin, bind_id, combo } => {
+                self.state
+                    .set_keybind_override(&plugin, &bind_id, combo.trim());
+                let _ = self.store.save_state(&self.state);
+                let _ = mshell_plugins::keybinds::sync_with_margo(&self.store);
+                self.status = if combo.trim().is_empty() {
+                    format!("Disabled {plugin} · {bind_id}.")
+                } else {
+                    format!("Bound {plugin} · {bind_id} to {}.", combo.trim())
+                };
+            }
+            PluginsSettingsInput::ResetKeybindOverride { plugin, bind_id } => {
+                self.state.clear_keybind_override(&plugin, &bind_id);
+                let _ = self.store.save_state(&self.state);
+                let _ = mshell_plugins::keybinds::sync_with_margo(&self.store);
+                self.status = format!("Reset {plugin} · {bind_id} to default.");
+            }
         }
 
         // Repaint everything that could have changed + the status line.
         widgets.status_label.set_label(&self.status);
         rebuild_sources(&widgets.sources_list, &self.state.sources, &sender);
         rebuild_installed(&widgets.installed_list, self, &sender);
+        rebuild_keybinds(&widgets.keybinds_list, self, &sender);
         rebuild_available(&widgets.available_list, self, &sender);
     }
 }
@@ -630,6 +681,136 @@ fn installed_icon(p: &InstalledPlugin) -> String {
         .find(|i| !i.is_empty())
         .unwrap_or(FALLBACK_ICON)
         .to_string()
+}
+
+/// Resolve every enabled plugin's keybinds via the live store (so an override
+/// the user just typed shows up immediately) and render one editable row per
+/// binding. Status badge: green "Active" / yellow "Conflict (won by X)" /
+/// grey "Disabled". Each row carries an entry pre-filled with the current
+/// effective combo + Apply / Reset to default.
+fn rebuild_keybinds(
+    list: &gtk::Box,
+    model: &PluginsSettingsModel,
+    sender: &ComponentSender<PluginsSettingsModel>,
+) {
+    clear(list);
+    let resolved = mshell_plugins::keybinds::resolve_all(&model.store);
+    if resolved.is_empty() {
+        empty_hint(list, "No enabled plugin ships any keybinds yet.");
+        return;
+    }
+
+    // Map composite key → display name so the row label is nice. Fall back to
+    // the key itself when a plugin has no `name` set.
+    let names: std::collections::BTreeMap<&str, &str> = model
+        .installed
+        .iter()
+        .map(|p| (p.key.as_str(), p.manifest.name.as_str()))
+        .collect();
+
+    for r in &resolved {
+        let (row, col) = card_row("input-keyboard-symbolic");
+        let display_name = names
+            .get(r.plugin_key.as_str())
+            .filter(|n| !n.trim().is_empty())
+            .copied()
+            .unwrap_or(r.plugin_key.as_str());
+        let title = gtk::Label::new(Some(&format!(
+            "{display_name} · {}",
+            r.keybind.id
+        )));
+        title.add_css_class("label-medium-bold");
+        title.set_halign(gtk::Align::Start);
+        col.append(&title);
+        if !r.keybind.description.trim().is_empty() {
+            col.append(&dim_line(r.keybind.description.trim()));
+        }
+
+        // Status badge.
+        let badge = gtk::Label::new(None);
+        badge.add_css_class("plugins-keybind-badge");
+        badge.set_halign(gtk::Align::Start);
+        if r.disabled {
+            badge.set_label("Disabled");
+            badge.add_css_class("plugins-keybind-disabled");
+        } else if let Some(winner) = &r.conflict {
+            let winner_name = names
+                .get(winner.as_str())
+                .filter(|n| !n.trim().is_empty())
+                .copied()
+                .unwrap_or(winner.as_str());
+            badge.set_label(&format!("Conflict — {winner_name} wins"));
+            badge.add_css_class("plugins-keybind-conflict");
+        } else {
+            badge.set_label("Active");
+            badge.add_css_class("plugins-keybind-active");
+        }
+        col.append(&badge);
+        row.append(&col);
+
+        // Editable combo.
+        let entry = gtk::Entry::new();
+        entry.set_valign(gtk::Align::Center);
+        entry.set_width_chars(16);
+        entry.set_text(&r.keybind.combo);
+        entry.set_placeholder_text(Some("super,a"));
+        entry.set_tooltip_text(Some("Press Enter (or click Apply) to bind"));
+        row.append(&entry);
+
+        let apply = gtk::Button::with_label("Apply");
+        apply.add_css_class("ok-button-surface");
+        apply.set_valign(gtk::Align::Center);
+        let s2 = sender.clone();
+        let plugin = r.plugin_key.clone();
+        let bind_id = r.keybind.id.clone();
+        let entry_clone = entry.clone();
+        apply.connect_clicked(move |_| {
+            s2.input(PluginsSettingsInput::SetKeybindOverride {
+                plugin: plugin.clone(),
+                bind_id: bind_id.clone(),
+                combo: entry_clone.text().to_string(),
+            });
+        });
+        row.append(&apply);
+
+        // Reset only matters when an override is in effect.
+        let has_override = model
+            .state
+            .keybind_override(&r.plugin_key, &r.keybind.id)
+            .is_some();
+        if has_override {
+            let reset = gtk::Button::from_icon_name("edit-undo-symbolic");
+            reset.add_css_class("panel-action-btn");
+            reset.set_valign(gtk::Align::Center);
+            reset.set_tooltip_text(Some(&format!("Reset to default ({})", r.default_combo)));
+            let s2 = sender.clone();
+            let plugin = r.plugin_key.clone();
+            let bind_id = r.keybind.id.clone();
+            reset.connect_clicked(move |_| {
+                s2.input(PluginsSettingsInput::ResetKeybindOverride {
+                    plugin: plugin.clone(),
+                    bind_id: bind_id.clone(),
+                });
+            });
+            row.append(&reset);
+        }
+
+        // Entry Enter also applies.
+        {
+            let s2 = sender.clone();
+            let plugin = r.plugin_key.clone();
+            let bind_id = r.keybind.id.clone();
+            entry.connect_activate(move |e| {
+                s2.input(PluginsSettingsInput::SetKeybindOverride {
+                    plugin: plugin.clone(),
+                    bind_id: bind_id.clone(),
+                    combo: e.text().to_string(),
+                });
+            });
+        }
+
+        list.append(&row);
+    }
 }
 
 fn rebuild_sources(list: &gtk::Box, sources: &[Source], sender: &ComponentSender<PluginsSettingsModel>) {

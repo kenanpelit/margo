@@ -69,6 +69,11 @@ pub struct PluginsState {
     /// plugin's own settings (gear), not the global Menus page.
     #[serde(default)]
     pub panels: BTreeMap<String, PanelLayout>,
+    /// User overrides for plugin keybinds: `{ plugin-key: { bind-id: combo } }`.
+    /// An empty-string combo disables the binding entirely. Settings →
+    /// Plugins → Keybinds writes here.
+    #[serde(default)]
+    pub keybind_overrides: BTreeMap<String, BTreeMap<String, String>>,
 }
 
 impl PluginsState {
@@ -126,6 +131,33 @@ impl PluginsState {
         self.enabled.retain(|k| k != key);
         self.settings.remove(key);
         self.panels.remove(key);
+        self.keybind_overrides.remove(key);
+    }
+
+    /// The user's override for one binding, if set. `Some("")` means the
+    /// user disabled the binding entirely.
+    pub fn keybind_override(&self, plugin: &str, bind_id: &str) -> Option<&String> {
+        self.keybind_overrides.get(plugin).and_then(|m| m.get(bind_id))
+    }
+
+    /// Set / clear an override. Empty `combo` disables the binding;
+    /// `None`-like semantics live on top via [`Self::clear_keybind_override`].
+    pub fn set_keybind_override(&mut self, plugin: &str, bind_id: &str, combo: &str) {
+        self.keybind_overrides
+            .entry(plugin.to_string())
+            .or_default()
+            .insert(bind_id.to_string(), combo.to_string());
+    }
+
+    /// Forget any override for `(plugin, bind_id)` — falls back to the
+    /// manifest's default combo on the next resolve.
+    pub fn clear_keybind_override(&mut self, plugin: &str, bind_id: &str) {
+        if let Some(m) = self.keybind_overrides.get_mut(plugin) {
+            m.remove(bind_id);
+            if m.is_empty() {
+                self.keybind_overrides.remove(plugin);
+            }
+        }
     }
 }
 
