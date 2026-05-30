@@ -56,6 +56,82 @@ pub(crate) enum MenuKind {
     Wallpaper,
 }
 
+// ── Per-menu field dispatch ──────────────────────────────────────────────
+// The MenuKind → reactive-store accessor map lives here ONCE (read-form +
+// write-form), instead of being copy-pasted as a full 28-arm match in every
+// read/tracked/write helper. Adding a new per-menu field is then one line per
+// helper, not a fresh 28-arm match.
+macro_rules! menu_read {
+    ($self:expr, $field:ident, $g:ident) => {{
+        let m = config_manager().config().menus();
+        match $self {
+            MenuKind::AppLauncher => m.app_launcher_menu().$field().$g(),
+            MenuKind::Clipboard => m.clipboard_menu().$field().$g(),
+            MenuKind::Clock => m.clock_menu().$field().$g(),
+            MenuKind::Dashboard => m.dashboard_menu().$field().$g(),
+            MenuKind::MediaPlayer => m.media_player_menu().$field().$g(),
+            MenuKind::Dns => m.dns_menu().$field().$g(),
+            MenuKind::Ip => m.ip_menu().$field().$g(),
+            MenuKind::Network => m.network_menu().$field().$g(),
+            MenuKind::Notes => m.notes_menu().$field().$g(),
+            MenuKind::Notifications => m.notification_menu().$field().$g(),
+            MenuKind::Podman => m.podman_menu().$field().$g(),
+            MenuKind::Wallpaper => m.wallpaper_menu().$field().$g(),
+            MenuKind::Power => m.power_menu().$field().$g(),
+            MenuKind::Screenshot => m.screenshot_menu().$field().$g(),
+            MenuKind::Ufw => m.ufw_menu().$field().$g(),
+            MenuKind::Bluetooth => m.bluetooth_menu().$field().$g(),
+            MenuKind::CpuDashboard => m.cpu_dashboard_menu().$field().$g(),
+            MenuKind::AudioDashboard => m.audio_dashboard_menu().$field().$g(),
+            MenuKind::SystemUpdate => m.system_update_menu().$field().$g(),
+            MenuKind::Valent => m.valent_menu().$field().$g(),
+            MenuKind::Weather => m.weather_menu().$field().$g(),
+            MenuKind::KeepAwake => m.keep_awake_menu().$field().$g(),
+            MenuKind::Twilight => m.twilight_menu().$field().$g(),
+            MenuKind::Keybinds => m.keybinds_menu().$field().$g(),
+            MenuKind::AlarmClock => m.alarmclock_menu().$field().$g(),
+            MenuKind::ControlCenter => m.control_center_menu().$field().$g(),
+            MenuKind::SshSessions => m.ssh_menu().$field().$g(),
+            MenuKind::MargoLayout => m.margo_layout_menu().$field().$g(),
+        }
+    }};
+}
+
+macro_rules! menu_write {
+    ($self:expr, $field:ident, $val:expr) => {
+        config_manager().update_config(|c| match $self {
+            MenuKind::AppLauncher => c.menus.app_launcher_menu.$field = $val,
+            MenuKind::Clipboard => c.menus.clipboard_menu.$field = $val,
+            MenuKind::Clock => c.menus.clock_menu.$field = $val,
+            MenuKind::Dashboard => c.menus.dashboard_menu.$field = $val,
+            MenuKind::MediaPlayer => c.menus.media_player_menu.$field = $val,
+            MenuKind::Dns => c.menus.dns_menu.$field = $val,
+            MenuKind::Ip => c.menus.ip_menu.$field = $val,
+            MenuKind::Network => c.menus.network_menu.$field = $val,
+            MenuKind::Notes => c.menus.notes_menu.$field = $val,
+            MenuKind::Notifications => c.menus.notification_menu.$field = $val,
+            MenuKind::Podman => c.menus.podman_menu.$field = $val,
+            MenuKind::Wallpaper => c.menus.wallpaper_menu.$field = $val,
+            MenuKind::Power => c.menus.power_menu.$field = $val,
+            MenuKind::Screenshot => c.menus.screenshot_menu.$field = $val,
+            MenuKind::Ufw => c.menus.ufw_menu.$field = $val,
+            MenuKind::Bluetooth => c.menus.bluetooth_menu.$field = $val,
+            MenuKind::CpuDashboard => c.menus.cpu_dashboard_menu.$field = $val,
+            MenuKind::AudioDashboard => c.menus.audio_dashboard_menu.$field = $val,
+            MenuKind::SystemUpdate => c.menus.system_update_menu.$field = $val,
+            MenuKind::Valent => c.menus.valent_menu.$field = $val,
+            MenuKind::Weather => c.menus.weather_menu.$field = $val,
+            MenuKind::KeepAwake => c.menus.keep_awake_menu.$field = $val,
+            MenuKind::Twilight => c.menus.twilight_menu.$field = $val,
+            MenuKind::Keybinds => c.menus.keybinds_menu.$field = $val,
+            MenuKind::AlarmClock => c.menus.alarmclock_menu.$field = $val,
+            MenuKind::ControlCenter => c.menus.control_center_menu.$field = $val,
+            MenuKind::SshSessions => c.menus.ssh_menu.$field = $val,
+            MenuKind::MargoLayout => c.menus.margo_layout_menu.$field = $val,
+        });
+    };
+}
+
 impl MenuKind {
     pub(crate) fn display_name(self) -> &'static str {
         match self {
@@ -127,309 +203,42 @@ impl MenuKind {
     }
 
     /// Snapshot the menu's current position. `_untracked` so the
-    /// initial model load doesn't subscribe; the `EffectScope`
-    /// below subscribes explicitly.
+    /// initial model load doesn't subscribe; the `EffectScope` subscribes
+    /// explicitly via the `tracked_*` variants.
     fn read_position(self) -> Position {
-        let m = config_manager().config().menus();
-        match self {
-            Self::AppLauncher => m.app_launcher_menu().position().get_untracked(),
-            Self::Clipboard => m.clipboard_menu().position().get_untracked(),
-            Self::Clock => m.clock_menu().position().get_untracked(),
-            Self::Dashboard => m.dashboard_menu().position().get_untracked(),
-            Self::MediaPlayer => m.media_player_menu().position().get_untracked(),
-            Self::Dns => m.dns_menu().position().get_untracked(),
-            Self::Ip => m.ip_menu().position().get_untracked(),
-            Self::Network => m.network_menu().position().get_untracked(),
-            Self::Notes => m.notes_menu().position().get_untracked(),
-            Self::Notifications => m.notification_menu().position().get_untracked(),
-            Self::Podman => m.podman_menu().position().get_untracked(),
-            Self::Wallpaper => m.wallpaper_menu().position().get_untracked(),
-            Self::Power => m.power_menu().position().get_untracked(),
-            Self::Screenshot => m.screenshot_menu().position().get_untracked(),
-            Self::Ufw => m.ufw_menu().position().get_untracked(),
-            Self::Bluetooth => m.bluetooth_menu().position().get_untracked(),
-            Self::CpuDashboard => m.cpu_dashboard_menu().position().get_untracked(),
-            Self::AudioDashboard => m.audio_dashboard_menu().position().get_untracked(),
-            Self::SystemUpdate => m.system_update_menu().position().get_untracked(),
-            Self::Valent => m.valent_menu().position().get_untracked(),
-            Self::Weather => m.weather_menu().position().get_untracked(),
-            Self::KeepAwake => m.keep_awake_menu().position().get_untracked(),
-            Self::Twilight => m.twilight_menu().position().get_untracked(),
-            Self::Keybinds => m.keybinds_menu().position().get_untracked(),
-            Self::AlarmClock => m.alarmclock_menu().position().get_untracked(),
-            Self::ControlCenter => m.control_center_menu().position().get_untracked(),
-            Self::SshSessions => m.ssh_menu().position().get_untracked(),
-            Self::MargoLayout => m.margo_layout_menu().position().get_untracked(),
-        }
+        menu_read!(self, position, get_untracked)
     }
 
     fn read_min_width(self) -> i32 {
-        let m = config_manager().config().menus();
-        match self {
-            Self::AppLauncher => m.app_launcher_menu().minimum_width().get_untracked(),
-            Self::Clipboard => m.clipboard_menu().minimum_width().get_untracked(),
-            Self::Clock => m.clock_menu().minimum_width().get_untracked(),
-            Self::Dashboard => m.dashboard_menu().minimum_width().get_untracked(),
-            Self::MediaPlayer => m.media_player_menu().minimum_width().get_untracked(),
-            Self::Dns => m.dns_menu().minimum_width().get_untracked(),
-            Self::Ip => m.ip_menu().minimum_width().get_untracked(),
-            Self::Network => m.network_menu().minimum_width().get_untracked(),
-            Self::Notes => m.notes_menu().minimum_width().get_untracked(),
-            Self::Notifications => m.notification_menu().minimum_width().get_untracked(),
-            Self::Podman => m.podman_menu().minimum_width().get_untracked(),
-            Self::Wallpaper => m.wallpaper_menu().minimum_width().get_untracked(),
-            Self::Power => m.power_menu().minimum_width().get_untracked(),
-            Self::Screenshot => m.screenshot_menu().minimum_width().get_untracked(),
-            Self::Ufw => m.ufw_menu().minimum_width().get_untracked(),
-            Self::Bluetooth => m.bluetooth_menu().minimum_width().get_untracked(),
-            Self::CpuDashboard => m.cpu_dashboard_menu().minimum_width().get_untracked(),
-            Self::AudioDashboard => m.audio_dashboard_menu().minimum_width().get_untracked(),
-            Self::SystemUpdate => m.system_update_menu().minimum_width().get_untracked(),
-            Self::Valent => m.valent_menu().minimum_width().get_untracked(),
-            Self::Weather => m.weather_menu().minimum_width().get_untracked(),
-            Self::KeepAwake => m.keep_awake_menu().minimum_width().get_untracked(),
-            Self::Twilight => m.twilight_menu().minimum_width().get_untracked(),
-            Self::Keybinds => m.keybinds_menu().minimum_width().get_untracked(),
-            Self::AlarmClock => m.alarmclock_menu().minimum_width().get_untracked(),
-            Self::ControlCenter => m.control_center_menu().minimum_width().get_untracked(),
-            Self::SshSessions => m.ssh_menu().minimum_width().get_untracked(),
-            Self::MargoLayout => m.margo_layout_menu().minimum_width().get_untracked(),
-        }
+        menu_read!(self, minimum_width, get_untracked)
     }
 
     fn tracked_position(self) -> Position {
-        let m = config_manager().config().menus();
-        match self {
-            Self::AppLauncher => m.app_launcher_menu().position().get(),
-            Self::Clipboard => m.clipboard_menu().position().get(),
-            Self::Clock => m.clock_menu().position().get(),
-            Self::Dashboard => m.dashboard_menu().position().get(),
-            Self::MediaPlayer => m.media_player_menu().position().get(),
-            Self::Dns => m.dns_menu().position().get(),
-            Self::Ip => m.ip_menu().position().get(),
-            Self::Network => m.network_menu().position().get(),
-            Self::Notes => m.notes_menu().position().get(),
-            Self::Notifications => m.notification_menu().position().get(),
-            Self::Podman => m.podman_menu().position().get(),
-            Self::Wallpaper => m.wallpaper_menu().position().get(),
-            Self::Power => m.power_menu().position().get(),
-            Self::Screenshot => m.screenshot_menu().position().get(),
-            Self::Ufw => m.ufw_menu().position().get(),
-            Self::Bluetooth => m.bluetooth_menu().position().get(),
-            Self::CpuDashboard => m.cpu_dashboard_menu().position().get(),
-            Self::AudioDashboard => m.audio_dashboard_menu().position().get(),
-            Self::SystemUpdate => m.system_update_menu().position().get(),
-            Self::Valent => m.valent_menu().position().get(),
-            Self::Weather => m.weather_menu().position().get(),
-            Self::KeepAwake => m.keep_awake_menu().position().get(),
-            Self::Twilight => m.twilight_menu().position().get(),
-            Self::Keybinds => m.keybinds_menu().position().get(),
-            Self::AlarmClock => m.alarmclock_menu().position().get(),
-            Self::ControlCenter => m.control_center_menu().position().get(),
-            Self::SshSessions => m.ssh_menu().position().get(),
-            Self::MargoLayout => m.margo_layout_menu().position().get(),
-        }
+        menu_read!(self, position, get)
     }
 
     fn tracked_min_width(self) -> i32 {
-        let m = config_manager().config().menus();
-        match self {
-            Self::AppLauncher => m.app_launcher_menu().minimum_width().get(),
-            Self::Clipboard => m.clipboard_menu().minimum_width().get(),
-            Self::Clock => m.clock_menu().minimum_width().get(),
-            Self::Dashboard => m.dashboard_menu().minimum_width().get(),
-            Self::MediaPlayer => m.media_player_menu().minimum_width().get(),
-            Self::Dns => m.dns_menu().minimum_width().get(),
-            Self::Ip => m.ip_menu().minimum_width().get(),
-            Self::Network => m.network_menu().minimum_width().get(),
-            Self::Notes => m.notes_menu().minimum_width().get(),
-            Self::Notifications => m.notification_menu().minimum_width().get(),
-            Self::Podman => m.podman_menu().minimum_width().get(),
-            Self::Wallpaper => m.wallpaper_menu().minimum_width().get(),
-            Self::Power => m.power_menu().minimum_width().get(),
-            Self::Screenshot => m.screenshot_menu().minimum_width().get(),
-            Self::Ufw => m.ufw_menu().minimum_width().get(),
-            Self::Bluetooth => m.bluetooth_menu().minimum_width().get(),
-            Self::CpuDashboard => m.cpu_dashboard_menu().minimum_width().get(),
-            Self::AudioDashboard => m.audio_dashboard_menu().minimum_width().get(),
-            Self::SystemUpdate => m.system_update_menu().minimum_width().get(),
-            Self::Valent => m.valent_menu().minimum_width().get(),
-            Self::Weather => m.weather_menu().minimum_width().get(),
-            Self::KeepAwake => m.keep_awake_menu().minimum_width().get(),
-            Self::Twilight => m.twilight_menu().minimum_width().get(),
-            Self::Keybinds => m.keybinds_menu().minimum_width().get(),
-            Self::AlarmClock => m.alarmclock_menu().minimum_width().get(),
-            Self::ControlCenter => m.control_center_menu().minimum_width().get(),
-            Self::SshSessions => m.ssh_menu().minimum_width().get(),
-            Self::MargoLayout => m.margo_layout_menu().minimum_width().get(),
-        }
+        menu_read!(self, minimum_width, get)
     }
 
     fn write_position(self, p: Position) {
-        config_manager().update_config(|c| match self {
-            Self::AppLauncher => c.menus.app_launcher_menu.position = p,
-            Self::Clipboard => c.menus.clipboard_menu.position = p,
-            Self::Clock => c.menus.clock_menu.position = p,
-            Self::Dashboard => c.menus.dashboard_menu.position = p,
-            Self::MediaPlayer => c.menus.media_player_menu.position = p,
-            Self::Dns => c.menus.dns_menu.position = p,
-            Self::Ip => c.menus.ip_menu.position = p,
-            Self::Network => c.menus.network_menu.position = p,
-            Self::Notes => c.menus.notes_menu.position = p,
-            Self::Notifications => c.menus.notification_menu.position = p,
-            Self::Podman => c.menus.podman_menu.position = p,
-            Self::Wallpaper => c.menus.wallpaper_menu.position = p,
-            Self::Power => c.menus.power_menu.position = p,
-            Self::Screenshot => c.menus.screenshot_menu.position = p,
-            Self::Ufw => c.menus.ufw_menu.position = p,
-            Self::Bluetooth => c.menus.bluetooth_menu.position = p,
-            Self::CpuDashboard => c.menus.cpu_dashboard_menu.position = p,
-            Self::AudioDashboard => c.menus.audio_dashboard_menu.position = p,
-            Self::SystemUpdate => c.menus.system_update_menu.position = p,
-            Self::Valent => c.menus.valent_menu.position = p,
-            Self::Weather => c.menus.weather_menu.position = p,
-            Self::KeepAwake => c.menus.keep_awake_menu.position = p,
-            Self::Twilight => c.menus.twilight_menu.position = p,
-            Self::Keybinds => c.menus.keybinds_menu.position = p,
-            Self::AlarmClock => c.menus.alarmclock_menu.position = p,
-            Self::ControlCenter => c.menus.control_center_menu.position = p,
-            Self::SshSessions => c.menus.ssh_menu.position = p,
-            Self::MargoLayout => c.menus.margo_layout_menu.position = p,
-        });
+        menu_write!(self, position, p);
     }
 
     fn write_min_width(self, w: i32) {
-        config_manager().update_config(|c| match self {
-            Self::AppLauncher => c.menus.app_launcher_menu.minimum_width = w,
-            Self::Clipboard => c.menus.clipboard_menu.minimum_width = w,
-            Self::Clock => c.menus.clock_menu.minimum_width = w,
-            Self::Dashboard => c.menus.dashboard_menu.minimum_width = w,
-            Self::MediaPlayer => c.menus.media_player_menu.minimum_width = w,
-            Self::Dns => c.menus.dns_menu.minimum_width = w,
-            Self::Ip => c.menus.ip_menu.minimum_width = w,
-            Self::Network => c.menus.network_menu.minimum_width = w,
-            Self::Notes => c.menus.notes_menu.minimum_width = w,
-            Self::Notifications => c.menus.notification_menu.minimum_width = w,
-            Self::Podman => c.menus.podman_menu.minimum_width = w,
-            Self::Wallpaper => c.menus.wallpaper_menu.minimum_width = w,
-            Self::Power => c.menus.power_menu.minimum_width = w,
-            Self::Screenshot => c.menus.screenshot_menu.minimum_width = w,
-            Self::Ufw => c.menus.ufw_menu.minimum_width = w,
-            Self::Bluetooth => c.menus.bluetooth_menu.minimum_width = w,
-            Self::CpuDashboard => c.menus.cpu_dashboard_menu.minimum_width = w,
-            Self::AudioDashboard => c.menus.audio_dashboard_menu.minimum_width = w,
-            Self::SystemUpdate => c.menus.system_update_menu.minimum_width = w,
-            Self::Valent => c.menus.valent_menu.minimum_width = w,
-            Self::Weather => c.menus.weather_menu.minimum_width = w,
-            Self::KeepAwake => c.menus.keep_awake_menu.minimum_width = w,
-            Self::Twilight => c.menus.twilight_menu.minimum_width = w,
-            Self::Keybinds => c.menus.keybinds_menu.minimum_width = w,
-            Self::AlarmClock => c.menus.alarmclock_menu.minimum_width = w,
-            Self::ControlCenter => c.menus.control_center_menu.minimum_width = w,
-            Self::SshSessions => c.menus.ssh_menu.minimum_width = w,
-            Self::MargoLayout => c.menus.margo_layout_menu.minimum_width = w,
-        });
+        menu_write!(self, minimum_width, w);
     }
 
     fn read_max_height(self) -> i32 {
-        let m = config_manager().config().menus();
-        match self {
-            Self::AppLauncher => m.app_launcher_menu().maximum_height().get_untracked(),
-            Self::Clipboard => m.clipboard_menu().maximum_height().get_untracked(),
-            Self::Clock => m.clock_menu().maximum_height().get_untracked(),
-            Self::Dashboard => m.dashboard_menu().maximum_height().get_untracked(),
-            Self::MediaPlayer => m.media_player_menu().maximum_height().get_untracked(),
-            Self::Dns => m.dns_menu().maximum_height().get_untracked(),
-            Self::Ip => m.ip_menu().maximum_height().get_untracked(),
-            Self::Network => m.network_menu().maximum_height().get_untracked(),
-            Self::Notes => m.notes_menu().maximum_height().get_untracked(),
-            Self::Notifications => m.notification_menu().maximum_height().get_untracked(),
-            Self::Podman => m.podman_menu().maximum_height().get_untracked(),
-            Self::Wallpaper => m.wallpaper_menu().maximum_height().get_untracked(),
-            Self::Power => m.power_menu().maximum_height().get_untracked(),
-            Self::Screenshot => m.screenshot_menu().maximum_height().get_untracked(),
-            Self::Ufw => m.ufw_menu().maximum_height().get_untracked(),
-            Self::Bluetooth => m.bluetooth_menu().maximum_height().get_untracked(),
-            Self::CpuDashboard => m.cpu_dashboard_menu().maximum_height().get_untracked(),
-            Self::AudioDashboard => m.audio_dashboard_menu().maximum_height().get_untracked(),
-            Self::SystemUpdate => m.system_update_menu().maximum_height().get_untracked(),
-            Self::Valent => m.valent_menu().maximum_height().get_untracked(),
-            Self::Weather => m.weather_menu().maximum_height().get_untracked(),
-            Self::KeepAwake => m.keep_awake_menu().maximum_height().get_untracked(),
-            Self::Twilight => m.twilight_menu().maximum_height().get_untracked(),
-            Self::Keybinds => m.keybinds_menu().maximum_height().get_untracked(),
-            Self::AlarmClock => m.alarmclock_menu().maximum_height().get_untracked(),
-            Self::ControlCenter => m.control_center_menu().maximum_height().get_untracked(),
-            Self::SshSessions => m.ssh_menu().maximum_height().get_untracked(),
-            Self::MargoLayout => m.margo_layout_menu().maximum_height().get_untracked(),
-        }
+        menu_read!(self, maximum_height, get_untracked)
     }
 
     fn tracked_max_height(self) -> i32 {
-        let m = config_manager().config().menus();
-        match self {
-            Self::AppLauncher => m.app_launcher_menu().maximum_height().get(),
-            Self::Clipboard => m.clipboard_menu().maximum_height().get(),
-            Self::Clock => m.clock_menu().maximum_height().get(),
-            Self::Dashboard => m.dashboard_menu().maximum_height().get(),
-            Self::MediaPlayer => m.media_player_menu().maximum_height().get(),
-            Self::Dns => m.dns_menu().maximum_height().get(),
-            Self::Ip => m.ip_menu().maximum_height().get(),
-            Self::Network => m.network_menu().maximum_height().get(),
-            Self::Notes => m.notes_menu().maximum_height().get(),
-            Self::Notifications => m.notification_menu().maximum_height().get(),
-            Self::Podman => m.podman_menu().maximum_height().get(),
-            Self::Wallpaper => m.wallpaper_menu().maximum_height().get(),
-            Self::Power => m.power_menu().maximum_height().get(),
-            Self::Screenshot => m.screenshot_menu().maximum_height().get(),
-            Self::Ufw => m.ufw_menu().maximum_height().get(),
-            Self::Bluetooth => m.bluetooth_menu().maximum_height().get(),
-            Self::CpuDashboard => m.cpu_dashboard_menu().maximum_height().get(),
-            Self::AudioDashboard => m.audio_dashboard_menu().maximum_height().get(),
-            Self::SystemUpdate => m.system_update_menu().maximum_height().get(),
-            Self::Valent => m.valent_menu().maximum_height().get(),
-            Self::Weather => m.weather_menu().maximum_height().get(),
-            Self::KeepAwake => m.keep_awake_menu().maximum_height().get(),
-            Self::Twilight => m.twilight_menu().maximum_height().get(),
-            Self::Keybinds => m.keybinds_menu().maximum_height().get(),
-            Self::AlarmClock => m.alarmclock_menu().maximum_height().get(),
-            Self::ControlCenter => m.control_center_menu().maximum_height().get(),
-            Self::SshSessions => m.ssh_menu().maximum_height().get(),
-            Self::MargoLayout => m.margo_layout_menu().maximum_height().get(),
-        }
+        menu_read!(self, maximum_height, get)
     }
 
     fn write_max_height(self, h: i32) {
-        config_manager().update_config(|c| match self {
-            Self::AppLauncher => c.menus.app_launcher_menu.maximum_height = h,
-            Self::Clipboard => c.menus.clipboard_menu.maximum_height = h,
-            Self::Clock => c.menus.clock_menu.maximum_height = h,
-            Self::Dashboard => c.menus.dashboard_menu.maximum_height = h,
-            Self::MediaPlayer => c.menus.media_player_menu.maximum_height = h,
-            Self::Dns => c.menus.dns_menu.maximum_height = h,
-            Self::Ip => c.menus.ip_menu.maximum_height = h,
-            Self::Network => c.menus.network_menu.maximum_height = h,
-            Self::Notes => c.menus.notes_menu.maximum_height = h,
-            Self::Notifications => c.menus.notification_menu.maximum_height = h,
-            Self::Podman => c.menus.podman_menu.maximum_height = h,
-            Self::Wallpaper => c.menus.wallpaper_menu.maximum_height = h,
-            Self::Power => c.menus.power_menu.maximum_height = h,
-            Self::Screenshot => c.menus.screenshot_menu.maximum_height = h,
-            Self::Ufw => c.menus.ufw_menu.maximum_height = h,
-            Self::Bluetooth => c.menus.bluetooth_menu.maximum_height = h,
-            Self::CpuDashboard => c.menus.cpu_dashboard_menu.maximum_height = h,
-            Self::AudioDashboard => c.menus.audio_dashboard_menu.maximum_height = h,
-            Self::SystemUpdate => c.menus.system_update_menu.maximum_height = h,
-            Self::Valent => c.menus.valent_menu.maximum_height = h,
-            Self::Weather => c.menus.weather_menu.maximum_height = h,
-            Self::KeepAwake => c.menus.keep_awake_menu.maximum_height = h,
-            Self::Twilight => c.menus.twilight_menu.maximum_height = h,
-            Self::Keybinds => c.menus.keybinds_menu.maximum_height = h,
-            Self::AlarmClock => c.menus.alarmclock_menu.maximum_height = h,
-            Self::ControlCenter => c.menus.control_center_menu.maximum_height = h,
-            Self::SshSessions => c.menus.ssh_menu.maximum_height = h,
-            Self::MargoLayout => c.menus.margo_layout_menu.maximum_height = h,
-        });
+        menu_write!(self, maximum_height, h);
     }
 
     /// Snapshot the menu's current widget list. Used to seed the
