@@ -35,7 +35,14 @@ impl MediaInfoSource for WayleMediaProvider {
             return MediaInfo::default();
         };
         MediaInfo {
-            player: String::new(),
+            // The playerctl-style name (bus suffix), e.g. "spotify" — lets a
+            // guest target this exact player with `playerctl -p <name> …`.
+            player: p
+                .id
+                .bus_name()
+                .strip_prefix("org.mpris.MediaPlayer2.")
+                .unwrap_or_else(|| p.id.bus_name())
+                .to_string(),
             title: p.metadata.title.get(),
             artist: p.metadata.artist.get(),
             album: p.metadata.album.get(),

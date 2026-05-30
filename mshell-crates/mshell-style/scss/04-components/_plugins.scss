@@ -624,3 +624,23 @@ button.plugin-chip {
   font-weight: 600;
   color: var(--primary);
 }
+
+// ── Media player (mplayerplus) ───────────────────────────────────────────────
+// Album art: rounded, with a soft elevation so it reads as the focal card.
+.mplayer-art {
+  border-radius: var(--radius-md);
+}
+// A slimmer, calmer progress bar than the default.
+.mplayer-progress {
+  min-height: 6px;
+}
+// A shuffle/repeat toggle whose icon lights up (primary) when active.
+button.mplayer-toggle-on image {
+  color: var(--primary);
+}
+// The central play/pause action — a round filled button.
+button.mplayer-playpause {
+  min-width: 52px;
+  min-height: 52px;
+  border-radius: var(--radius-pill);
+}
