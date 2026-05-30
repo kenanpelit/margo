@@ -2594,6 +2594,20 @@ impl Frame {
             return;
         };
         let layout = mshell_plugins::PluginStore::new().load_state().panel(&key);
+        // Plugin panels are always manually sized to the plugin's own
+        // panel_min_width / panel_max_height — never content-auto (that
+        // would ignore the plugin's width/height settings and size to
+        // content instead). Force both auto toggles off on every open so
+        // the width/height the plugin author/user set actually applies,
+        // regardless of the menu's config defaults.
+        self.plugin_panel_menu
+            .sender()
+            .send(MenuInput::SetAutoWidth(false))
+            .ok();
+        self.plugin_panel_menu
+            .sender()
+            .send(MenuInput::SetAutoHeight(false))
+            .ok();
         if layout.min_width > 0 {
             self.plugin_panel_menu
                 .sender()
