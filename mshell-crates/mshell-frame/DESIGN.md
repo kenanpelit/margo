@@ -11,6 +11,28 @@ The goal: every surface reads as one coherent system — same accent,
 same card chrome, same severity colours, same interaction grammar —
 so a new widget looks like it always belonged.
 
+### Contents
+
+- **§0** Design philosophy — the *intent* behind everything below.
+- **§1** Design tokens — colours, surface tiers, radius, spacing, motion, fonts.
+- **§2** Severity ladder — calm / warn / danger.
+- **§3** Active-state tinting — live/on = `--primary`.
+- **§4** Bar pills — the thin status-chip contract.
+- **§5** Menus — layer-shell surfaces, card chrome, revealer-row, lists.
+- **§6** Bar → menu wiring checklist — the 11 touch-points.
+- **§7** Dashboard & container layout — homogeneous / fill.
+- **§8** Settings registration — movable surfaces **and** sidebar pages.
+- **§9** Config schema conventions — serde defaults, the two `Config`s.
+- **§10** IPC verb convention.
+- **§11** Build / SCSS / verify loop.
+- **§12** Panel archetype — spacious browse-and-filter surfaces.
+- **§13** Interaction philosophy — how the system should *feel*.
+- **§14** Visual restraint & Margo identity.
+- **Quick checklists** — condensed recipes per surface kind.
+
+§0 and §1–§12 are the *visual* contract; §13–§14 are the *behavioural*
+contract. Both are binding.
+
 ---
 
 ## 0. Design philosophy
@@ -20,7 +42,7 @@ keyboard-first** — workstation-grade, not flashy. Fast and breathable;
 focused and distraction-free. It is uniquely Margo: not a clone of
 GNOME, KDE, macOS, or Raycast, but it respects Linux/Wayland workflows.
 
-Guiding rules (these set the *intent*; §1–§11 are the binding details):
+Guiding rules (these set the *intent*; §1–§14 are the binding details):
 
 1. **Surfaces over borders.** Express grouping and depth with layered
    tonal surfaces + subtle shadow, not hard outlines or boxed layouts.
@@ -417,7 +439,8 @@ the user asked to always see behind a threshold — only true *alerts*
 
 ## 8. Settings registration
 
-A new surface must appear in Settings → so the user can move/resize
+### 8a. Movable surfaces (pills & menus)
+A new *surface* must appear in Settings → so the user can move/resize
 it. Two kinds, mutually exclusive:
 
 - **Opens a menu** → `WidgetEntry::Menu` + a `MenuKind` variant.
@@ -431,6 +454,56 @@ it. Two kinds, mutually exclusive:
 Never register the same surface as both. When a former bar-only pill
 gains a menu, move it from Pill → Menu and delete the dead
 `BarPillKind` variant.
+
+### 8b. Settings *pages* (a new sidebar entry)
+A page is a section in the Settings window itself (Idle, Power,
+Tiling Layout, …) — distinct from §8a, which registers a *bar/menu
+surface* for placement. A page is a standard relm4 component
+(`#[relm4::component(pub)] impl Component`) with a `…-page` root box;
+**copy `idle_settings.rs` for the shape** — same tokens (§1), a
+`settings-hero` header, `.ok-button-primary` actions.
+
+Wiring touches **9 points** — miss one and the page won't build or
+won't route:
+
+1. **`mshell-settings/src/lib.rs`** — `mod <page>_settings;`.
+2. **`settings.rs`** — `use crate::<page>_settings::{<Page>Init, <Page>Model};`.
+3. **`settings.rs`** — `<page>_controller: Controller<<Page>Model>` field
+   on `SettingsWindowModel`.
+4. **`settings.rs` sidebar** — a `#[name = "<page>_btn"]
+   gtk::ToggleButton` in the right sidebar group
+   (`set_group: Some(&general_btn)`) whose `connect_toggled[stack]`
+   does `stack.set_visible_child_name("<route>")`; symbolic icon +
+   `label-medium` title.
+5. **`settings.rs` `init`** — build it:
+   `let <page>_controller = <Page>Model::builder().launch(<Page>Init {}).detach();`.
+6. **`settings.rs` section table** — a `("<lowercased label>", "<route>")`
+   row (plus any aliases) in the `(label, route)` search/section list,
+   so `mshellctl`/the launcher can jump straight to it.
+7. **`settings.rs` `ComponentParts`** — assign the `<page>_controller`
+   field in the returned model.
+8. **`settings.rs`** — `widgets.stack.add_titled(model.<page>_controller.widget(),
+   Some("<route>"), "<Title>");`.
+9. **`settings.rs` `ActivateSection`** — a `"<route>" => Some(&widgets.<page>_btn)`
+   match arm.
+
+**Where the data lives — pick the right backend:**
+
+- **Shell-owned setting** (a `mshell-config` YAML-profile field) → read
+  and write through the **`config_manager()` reactive store**; the live
+  profile updates and every surface re-reads. This is the default
+  (`idle_settings`, animations, …).
+- **Compositor-owned setting** (a margo `.conf` directive) → mshell
+  **cannot** reach margo's config through the store; they are separate
+  worlds (§9, CLAUDE.md). The page instead **writes a managed fragment**
+  `~/.config/margo/<name>.conf`, ensures the user's `config.conf`
+  `source`s it (append-once, whitespace-tolerant check), then runs
+  **`mctl reload`**. margo seeds itself from the fragment on (re)start.
+  Reference: the Tiling Layout page (`tag_layout_settings.rs` →
+  `taglayouts.conf`); same shape as the plugin-binds and Keybinds-editor
+  fragments. Caveat: mshell runs under `systemd --user` and does **not**
+  inherit shell-rc env — `mctl` lives in `/usr/bin` so it still resolves,
+  but any env-dependent shell-out from a page must set its env explicitly.
 
 ---
 
@@ -825,6 +898,15 @@ search (`--radius-pill`); lightweight `--surface-container` /
 `--radius-md` rows with metadata at the dim `--outline` tier. Still a
 layer-shell menu (§5); tokens only (§1); keep list density medium —
 don't balloon rows.
+
+**New Settings page (a sidebar entry):** §8b — copy `idle_settings.rs`
+for the component shape (`settings-hero` header, §1 tokens); wire all 9
+points (`mod` in `lib.rs` + use / field / sidebar `ToggleButton` /
+builder / section-table row / `ComponentParts` assign / `add_titled` /
+`ActivateSection` arm in `settings.rs`). Backend: shell-owned setting →
+`config_manager()` store; compositor-owned `.conf` → write a managed
+`~/.config/margo/<name>.conf`, `source` it from `config.conf`, run
+`mctl reload`.
 
 **Philosophy self-check (every new surface):** §13 — at a glance, can the
 user answer *where to look · what changed · what's active · what's
