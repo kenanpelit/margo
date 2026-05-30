@@ -513,3 +513,76 @@ button.plugin-bubble-copy {
     background-color: unquote("color-mix(in srgb, var(--primary) 22%, transparent)");
   }
 }
+
+// A small section heading above a group of cards/tiles (e.g. "Sounds",
+// "Presets"). Dim, uppercase, letter-spaced — quieter than a card title so
+// the content reads as the focus.
+.plugin-section-title {
+  font-size: var(--font-xs);
+  font-weight: 600;
+  color: var(--on-surface-variant);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+// A square-ish toggle tile in a grid (ambient-sound's soundscapes): leading
+// icon + caption, calm by default, filled to the primary container when on
+// (calm → active per the §0.7 severity ladder). The whole tile is a button.
+button.plugin-tile {
+  min-height: 64px;
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-container);
+  color: var(--on-surface-variant);
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+
+  // The renderer builds an icon+text button as a centred horizontal box
+  // (icon then caption) — that reads fine as a compact tile.
+  image {
+    -gtk-icon-size: var(--icon-md);
+    color: inherit;
+  }
+  label {
+    font-size: var(--font-sm);
+    font-weight: 500;
+    color: inherit;
+  }
+  &:hover:not(.plugin-tile-on) {
+    background-color: var(--surface-container-high);
+  }
+  &.plugin-tile-on {
+    background-color: var(--primary-container);
+    color: var(--on-primary-container);
+    image { color: var(--on-primary-container); }
+    label { color: var(--on-primary-container); }
+  }
+}
+
+// A compact selectable chip (sleep-timer durations, when-done actions). Pill
+// outline by default, filled secondary-container when selected. Font-weight
+// never changes between states so a row of chips never reflows.
+button.plugin-chip {
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-pill);
+  background-color: var(--surface-container-low);
+  border: var(--border-width) solid var(--outline-variant);
+  color: var(--on-surface-variant);
+  transition: background-color var(--motion-fast) var(--ease-standard);
+
+  label {
+    font-weight: 500;
+    color: inherit;
+  }
+  &:hover:not(.plugin-chip-on) {
+    background-color: unquote("color-mix(in srgb, var(--primary) 14%, transparent)");
+  }
+  &.plugin-chip-on {
+    background-color: var(--secondary-container);
+    border-color: transparent;
+    color: var(--on-secondary-container);
+    label { color: var(--on-secondary-container); }
+  }
+}
