@@ -552,6 +552,10 @@ fn build(node: &UiNode, by_id: &HashMap<&str, &UiNode>, inner: &Rc<RefCell<Inner
             let grid = gtk::Grid::new();
             grid.set_row_spacing(6);
             grid.set_column_spacing(6);
+            // Equal-width columns that fill the grid's width, so tile grids
+            // (sounds, techniques, …) span the panel instead of hugging the
+            // left. Children that opt into `hexpand` also stretch their cell.
+            grid.set_column_homogeneous(true);
             for (i, child_id) in node.children.iter().enumerate() {
                 if let Some(child) = by_id.get(child_id.as_str()) {
                     let row = (i as i32) / cols;
