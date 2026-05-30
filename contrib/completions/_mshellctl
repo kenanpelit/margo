@@ -1,0 +1,183 @@
+#compdef mshellctl
+# zsh completion for mshellctl
+#
+# Install:
+#   mkdir -p ~/.local/share/zsh/site-functions
+#   cp contrib/completions/_mshellctl ~/.local/share/zsh/site-functions/_mshellctl
+#   # Then ensure that path is in your $fpath (most zsh setups already do).
+#
+# Pulls plugin keys from `mshellctl plugin list --names` so the list
+# stays in sync with whatever's installed in
+# ~/.config/margo/mshell/plugins.
+
+_mshellctl() {
+    local context state state_descr line
+    typeset -A opt_args
+
+    _arguments -C \
+        '(-h --help)'{-h,--help}'[print help]' \
+        '(-V --version)'{-V,--version}'[print version]' \
+        '1: :_mshellctl_subcommands' \
+        '*::: :->args' \
+        && return 0
+
+    case $state in
+        args)
+            case $words[1] in
+                menu)
+                    _arguments \
+                        '1:menu subcommand:_mshellctl_menu_subcommands' \
+                        '*:: :->menu_args' \
+                        && return 0
+                    case $state in
+                        menu_args)
+                            if [[ $words[1] == "plugin" && $CURRENT == 2 ]]; then
+                                _mshellctl_plugin_keys
+                            fi
+                            ;;
+                    esac
+                    ;;
+                plugin)
+                    _arguments \
+                        '1:plugin subcommand:_mshellctl_plugin_subcommands' \
+                        '*:: :->plugin_args' \
+                        && return 0
+                    case $state in
+                        plugin_args)
+                            case $words[1] in
+                                reload)
+                                    _arguments '1:plugin key:_mshellctl_plugin_keys'
+                                    ;;
+                                keybind)
+                                    _arguments \
+                                        '1:plugin key:_mshellctl_plugin_keys' \
+                                        '2:bind id'
+                                    ;;
+                                list)
+                                    _arguments \
+                                        '--names[print only composite keys]' \
+                                        '--enabled[only show enabled plugins]'
+                                    ;;
+                            esac
+                            ;;
+                    esac
+                    ;;
+                audio)
+                    _arguments '1:audio subcommand:(volume mute toggle-mute output input help)'
+                    ;;
+                bar)
+                    _arguments '1:bar subcommand:(show hide toggle help)'
+                    ;;
+                brightness)
+                    _arguments '1:brightness subcommand:(set up down help)'
+                    ;;
+                wallpaper)
+                    _arguments '1:wallpaper subcommand:(next prev random help)'
+                    ;;
+                settings)
+                    _arguments '1:settings subcommand:(open close toggle help)'
+                    ;;
+                screenshot)
+                    _arguments '1:screenshot subcommand:(select-region help)'
+                    ;;
+                lock)
+                    _arguments '1:lock subcommand:(check help)'
+                    ;;
+                media)
+                    _arguments '1:media subcommand:(play-pause next previous stop help)'
+                    ;;
+                set-wallpaper)
+                    _arguments '1:image file:_files'
+                    ;;
+                help)
+                    _mshellctl_subcommands
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+_mshellctl_subcommands() {
+    local -a subs
+    subs=(
+        'audio:adjust output / input audio'
+        'bar:show / hide / toggle bars'
+        'brightness:set / step backlight'
+        'inspect:open the GTK inspector'
+        'lock:lock the session (or check state)'
+        'media:control MPRIS players'
+        'menu:open / close / toggle a menu'
+        'plugin:list / reload / fire a keybind on an installed plugin'
+        'quit:kill mshell'
+        'screenshot:bridge helpers for mscreenshot'
+        'set-wallpaper:set the current wallpaper to a path'
+        'settings:open / close / toggle the settings window'
+        'wallpaper:cycle wallpapers'
+        'wizard:open the in-shell setup wizard'
+        'help:show subcommand help'
+    )
+    _describe -t subcommands 'mshellctl subcommand' subs
+}
+
+_mshellctl_menu_subcommands() {
+    local -a subs
+    subs=(
+        'app-launcher:toggle the app launcher menu'
+        'clipboard:toggle the clipboard menu'
+        'clock:toggle the clock menu'
+        'notifications:toggle the notifications menu'
+        'screenshot:toggle the screenshot menu'
+        'wallpaper:toggle the wallpaper menu'
+        'ufw:toggle the UFW firewall menu'
+        'bluetooth:toggle the Bluetooth menu'
+        'cpu-dashboard:toggle the CPU dashboard menu'
+        'audio-dashboard:toggle the audio dashboard menu'
+        'system-update:toggle the system updates menu'
+        'valent:toggle the Valent Connect menu'
+        'keep-awake:toggle the keep-awake menu'
+        'twilight:toggle the twilight menu'
+        'weather:toggle the weather menu'
+        'keybinds:toggle the keybinds menu'
+        'alarm-clock:toggle the alarm clock menu'
+        'control-center:toggle the control center menu'
+        'ssh-sessions:toggle the SSH sessions menu'
+        'dns:toggle the DNS menu'
+        'podman:toggle the Podman menu'
+        'notes:toggle the notes menu'
+        'ip:toggle the IP menu'
+        'network:toggle the network menu'
+        'power:toggle the power menu'
+        'media-player:toggle the media-player menu'
+        'session:toggle the session menu'
+        'dashboard:toggle the dashboard menu'
+        'mshelldash:toggle the mshelldash menu'
+        'plugin:toggle an installed plugin'\''s panel/menu by key'
+    )
+    _describe -t menus 'menu' subs
+}
+
+_mshellctl_plugin_subcommands() {
+    local -a subs
+    subs=(
+        'list:list installed plugins (--names, --enabled)'
+        'reload:force-reload a plugin'\''s WASM panel from disk'
+        'keybind:fire a registered plugin keybind (opens panel + Keybind event)'
+        'help:show subcommand help'
+    )
+    _describe -t plugin-subcommands 'plugin subcommand' subs
+}
+
+_mshellctl_plugin_keys() {
+    local cache_var=_mshellctl_plugin_keys_cache
+    local -a list
+    if [[ -z ${(P)cache_var} ]]; then
+        list=(${(f)"$(mshellctl plugin list --names 2>/dev/null)"})
+        typeset -g $cache_var="${(j: :)list}"
+    else
+        list=(${=${(P)cache_var}})
+    fi
+    _describe -t plugin-keys 'plugin' list
+}
+
+# DO NOT call `_mshellctl "$@"` here. See the note in `_mctl` for why
+# leaving the file body as pure definitions keeps it source-safe.
