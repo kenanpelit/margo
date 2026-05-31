@@ -5,6 +5,14 @@ After=graphical-session.target
 PartOf=graphical-session.target
 # power-profiles-daemon is a system service; mpower just talks to it via
 # powerprofilesctl, so we only need the graphical session to be up.
+#
+# mpower is margo-specific: it must NOT run alongside another compositor's
+# own auto-profile tool (which would fight over powerprofilesctl). Gate it on
+# the session identity the uwsm session exports into the user manager. Other
+# compositors (Hyprland/niri/mango/…) can keep their own daemon enabled with
+# the inverse condition (ConditionEnvironment=!XDG_CURRENT_DESKTOP=margo) so
+# the two are mutually exclusive and both units can stay enabled at once.
+ConditionEnvironment=XDG_CURRENT_DESKTOP=margo
 
 [Service]
 Type=simple

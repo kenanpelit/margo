@@ -98,19 +98,35 @@ cargo build --release -p mpower
 sudo install -m755 target/release/mpower /usr/bin/mpower
 ```
 
-Enable the user service (replaces `ppp-auto-profile`):
+Enable the user service:
 
 ```bash
-# Retire the old auto-profile units if present.
-systemctl --user disable --now ppp-auto-profile.timer ppp-auto-profile.service 2>/dev/null || true
-
-# Install + enable mpower.
 install -m644 mpower/mpower.service ~/.config/systemd/user/mpower.service
 systemctl --user daemon-reload
 systemctl --user enable --now mpower.service
 ```
 
 `mpower status` confirms it is running and shows what it would do right now.
+
+### Coexisting with other compositors
+
+mpower is **margo-specific** — it would fight any other auto-profile daemon
+over `powerprofilesctl`. The shipped unit therefore carries
+`ConditionEnvironment=XDG_CURRENT_DESKTOP=margo`, so it only starts under a
+margo session.
+
+If you run other compositors (Hyprland, niri, mango, …) with their own
+auto-profile tool (e.g. `ppp-auto-profile`), give *that* unit the inverse
+condition so the two never run together — both can stay enabled:
+
+```ini
+# in ppp-auto-profile.service / .timer, under [Unit]:
+ConditionEnvironment=!XDG_CURRENT_DESKTOP=margo
+```
+
+The session identity (`XDG_CURRENT_DESKTOP`) is exported into the systemd
+`--user` manager environment by the uwsm session launcher, so the condition
+is evaluated against the compositor you actually logged into.
 
 ## Why sysfs + `powerprofilesctl` (not D-Bus/UPower)
 
