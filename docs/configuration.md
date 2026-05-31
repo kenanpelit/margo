@@ -58,6 +58,92 @@ source  = ~/.config/margo/conf.d/*.conf
 
 Both `include = …` (single file) and `source = …` (glob; matches in lex order) are supported. Re-applying via `mctl reload` re-reads the entire tree.
 
+## Layouts
+
+margo ships **15 tiling layouts**. Each tag remembers its own layout choice. Set one by name with the `setlayout` action, or cycle with `switch_layout`.
+
+| `setlayout` name | Layout | Description |
+| --- | --- | --- |
+| `tile` | Tile | dwm classic — master + stack |
+| `scroller` | Scroller | PaperWM-style horizontal column scroller (the default) |
+| `grid` | Grid | equal-area grid |
+| `monocle` | Monocle | one window fills the area; siblings hidden |
+| `deck` | Deck | master + stacked tabs |
+| `center_tile` | Center tile | master centred, stacks to the left + right |
+| `right_tile` | Right tile | master pane on the right |
+| `vertical_tile` | Vertical tile | tile with the master on top |
+| `vertical_scroller` | Vertical scroller | column scroller stacked vertically |
+| `vertical_grid` | Vertical grid | grid laid out column-major |
+| `vertical_deck` | Vertical deck | deck stacked vertically |
+| `tgmix` | TG-mix | tile / grid hybrid |
+| `canvas` | Canvas | free-form pan/zoom canvas (PaperWM-meets-Excalidraw) |
+| `dwindle` | Dwindle | recursive split (Hyprland default) |
+| `overview` | Overview | zoom-out of every tag — usually entered via `toggle_overview`, not set directly |
+
+### Choosing and cycling
+
+```ini
+default_layout = scroller          # any tag without a tagrule uses this
+# What `switch_layout` cycles through, in order:
+circle_layout  = scroller, tile, center_tile, grid, deck, monocle, vertical_grid
+```
+
+```ini
+bind = super,       t, setlayout, tile     # set the current tag's layout by name
+bind = super,       e, switch_layout       # cycle through circle_layout
+tagrule = id:9, layout_name:monocle        # pin a layout to a specific tag
+```
+
+Per-tag layout precedence: **`taglayout` > `tagrule layout_name` > `default_layout`**. A manual `setlayout` sets the tag's live layout and is never clobbered by a reload.
+
+### Master / stack tuning
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `default_mfact` | `0.55` | master pane fraction (0.05 – 0.95) |
+| `default_nmaster` | `1` | how many windows live in the master area |
+| `new_is_master` | `0` | `1` = new windows take the master slot |
+| `center_master_overspread` | `0` | center_tile: master may overrun the stacks |
+| `center_when_single_stack` | `1` | center_tile: centre the master when only one stack pane |
+
+```ini
+bind = super,       i, incnmaster, +1      # grow / shrink the master count
+bind = super,       d, incnmaster, -1
+bind = super,       h, setmfact,   -0.05   # resize the master pane
+bind = super,       l, setmfact,   +0.05
+bind = super,       g, togglegaps          # gaps on/off
+bind = super+shift, g, incgaps,    +4      # widen gaps (negative tightens)
+```
+
+### Scroller options
+
+The scroller is the most option-heavy layout, so it has its own block:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `scroller_default_proportion` | `0.800` | column width ratio for new windows when ≥2 columns are visible |
+| `scroller_default_proportion_single` | `0.800` | width when only one column shows |
+| `scroller_ignore_proportion_single` | `0` | ignore the `*_single` value above |
+| `scroller_focus_center` | `1` | auto-centre the focused column |
+| `scroller_prefer_center` | `1` | open new columns near the focused one rather than at the end |
+| `scroller_prefer_overspread` | `0` | let columns exceed the monitor width |
+| `edge_scroller_pointer_focus` | `1` | moving the pointer to the edge scrolls and re-focuses |
+| `scroller_proportion_preset` | `1.000, 0.800, 0.618, 0.500` | the list `switch_proportion_preset` cycles through (Φ = 0.618) |
+
+```ini
+bind = super, r, set_proportion, 0.618        # set the focused column's width ratio
+bind = super, p, switch_proportion_preset     # cycle scroller_proportion_preset
+```
+
+### Canvas options
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `canvas_tiling` | `0` | `1` = auto-arrange new windows in a grid |
+| `canvas_tiling_gap` | `10` | gap between auto-arranged windows |
+| `canvas_pan_on_kill` | `1` | re-centre after closing a window |
+| `canvas_anchor_animate` | `0` | animate manual anchor changes |
+
 ## Window rules
 
 Match by `app_id` regex, `title` regex, or both. Negation via `exclude_appid` / `exclude_title`. Common shapes:
@@ -147,7 +233,7 @@ Format: `bind = MODIFIERS, KEY, ACTION[, ARG[, ARG…]]`
 
 - Modifiers: `super`, `ctrl`, `alt`, `shift`, or compound (`super+ctrl`). `NONE` for unmodified keys.
 - Key: keysym name (`q`, `Return`, `Print`, `XF86AudioPlay`).
-- Action: any of the 40+ dispatch actions; see `mctl actions --verbose` for the full enumerated list with examples.
+- Action: any entry from the [Dispatch actions](#dispatch-actions) catalogue below (or `mctl actions --verbose` for the always-current list).
 
 ```ini
 bind = super,       Return,        spawn, kitty
@@ -171,6 +257,97 @@ Duplicate-bind detection runs offline:
 ```bash
 mctl check-config       # exits 1 if any bind is shadowed
 ```
+
+## Dispatch actions
+
+Every action below can be bound to a key (`bind`), a mouse button (`mousebind`), a gesture (`gesturebind`), or run live with `mctl dispatch <action> [args]`. Comma-separated aliases are interchangeable. This catalogue is generated from the same source as **`mctl actions --verbose`**, which is always current — run it if a build adds an action this page hasn't caught up with.
+
+### Tags / workspaces
+
+| Action | Arg | Description |
+| --- | --- | --- |
+| `view` | `<MASK>` | Switch to tag(s) by bitmask. Same tag twice toggles back when `view_current_to_back = 1`. Mask = `1<<(tag-1)` → tag 1 = 1, tag 8 = 128. |
+| `toggleview` | `<MASK>` | Add or remove a tag from the active set (multi-tag view). |
+| `tag`, `tagsilent` | `<MASK>` | Move the focused window to tag(s); you stay on the current tag. |
+| `tagview`, `movetagview` | `<MASK>` | Move the focused window **and** follow it to that tag. |
+| `toggletag` | `<MASK>` | Add or remove a tag from the focused window's mask. |
+| `tagall` | | Show every tag at once. |
+| `viewtoleft` / `viewtoright` | | Cycle the view to the previous / next occupied tag. |
+| `tagtoleft` / `tagtoright` | | Move the focused window to the previous / next tag. |
+
+### Focus
+
+| Action | Arg | Description |
+| --- | --- | --- |
+| `focusstack`, `focusdir` | `<DIR>` | Move focus next/previous (`1` / `-1`) or directional (`left`/`right`/`up`/`down`). |
+| `exchange_client`, `smartmovewin` | `<DIR>` | Swap the focused window with its neighbour in that direction. |
+| `focusmon` | `<DIR>` | Move keyboard focus to another monitor (`left`/`right`/`up`/`down` or `1`/`-1`). |
+| `zoom` | | Promote the focused window to the master slot (dwm zoom). |
+
+### Layout
+
+| Action | Arg | Description |
+| --- | --- | --- |
+| `setlayout` | `<NAME>` | Switch the current tag's layout by name (see the [Layouts](#layouts) table). |
+| `switch_layout` | | Cycle through the `circle_layout` list. |
+| `incnmaster` | `<DELTA>` | Change the master-slot count (`+1` / `-1`). |
+| `setmfact` | `<DELTA>` | Adjust the master factor (e.g. `0.05` / `-0.05`); clamped to 0.05–0.95. |
+| `togglegaps` | | Toggle layout gaps on/off. |
+| `incgaps` | `<DELTA>` | Resize gaps by `delta` px (positive widens). |
+
+### Scroller
+
+| Action | Arg | Description |
+| --- | --- | --- |
+| `set_proportion` | `<RATIO>` | Set the focused column's width ratio (0.1 – 1.0). |
+| `switch_proportion_preset` | | Cycle through `scroller_proportion_preset`. |
+
+### Window
+
+| Action | Arg | Description |
+| --- | --- | --- |
+| `togglefloating` | | Toggle the focused window between tiled and floating. |
+| `togglefullscreen` | | Work-area fullscreen (bar stays visible) — standard `F11` feel. |
+| `togglefullscreen_exclusive` | | Exclusive fullscreen — covers the whole output, hides every layer-shell (bar). Right for mpv / games. |
+| `sticky_window`, `togglesticky` | | Pin the focused window to every tag on its monitor; press again to restore. |
+| `killclient` | | Close the focused window. |
+| `movewin` | `<DX> <DY>` | Move the focused window by px (forces floating). |
+| `resizewin` | `<DW> <DH>` | Resize the focused window by px (forces floating; min 50×50). |
+| `moveresize` | `curmove`\|`curresize` | Start an interactive pointer move/resize — for `mousebind`. |
+| `tagmon` | `<DIR>` | Move the focused window to an adjacent monitor. |
+| `disable_output` / `enable_output` / `toggle_output` | `<NAME>` | Soft-disable / re-enable / toggle an output by name (dock/undock). |
+
+### Scratchpad
+
+| Action | Arg | Description |
+| --- | --- | --- |
+| `toggle_named_scratchpad` | `<APPID> <TITLE\|none> <SPAWN>` | Show/hide a named scratchpad; spawn it if absent. Pairs with `windowrule isnamedscratchpad:1`. |
+| `summon`, `bring_here` | `<APPID> <TITLE\|none> <SPAWN>` | Bring a matching app to the current tag, or launch it if not running. |
+| `toggle_scratchpad` | | Toggle every anonymous scratchpad on the focused monitor. |
+| `unscratchpad`, `exit_scratchpad` | | Emergency reset of the focused window's scratchpad/floating/fullscreen state. |
+
+### Overview
+
+| Action | Arg | Description |
+| --- | --- | --- |
+| `toggle_overview` | | Enter/leave the zoom-out overview of all tags (also via hot corner / 4-finger swipe). |
+| `overview_focus_next` / `overview_focus_prev` | | alt+Tab / alt+shift+Tab through thumbnails (opens overview if closed). |
+| `overview_activate` | | Commit the keyboard cycle's selection (bind to Enter/Esc). |
+
+### System
+
+| Action | Arg | Description |
+| --- | --- | --- |
+| `spawn` | `<COMMAND>` | Run a shell command (through `sh -c`). |
+| `run_script`, `rhai-eval` | `<PATH>` | Evaluate a Rhai script against the live compositor. |
+| `screenshot` / `screenshot-window` / `screenshot-region` / `screenshot-region-ui` | | Capture output / window / region (last one also copies to the clipboard) → editor → file. |
+| `reload`, `reload_config` | | Reload `~/.config/margo/config.conf` in place. |
+| `theme`, `set_theme` | `<preset>` | Live-swap the visual preset: `default` / `minimal` / `gaudy` (no config reload). |
+| `session_save` / `session_load` | | Save / restore per-monitor tag + layout state (`session.json`). |
+| `setkeymode` | `<MODE>` | Switch keymode (per-mode bind sets, like vim modes). |
+| `force_unlock` | | Tear down a stuck `ext_session_lock` from the compositor side. |
+| `quit` | | Exit the compositor cleanly. |
+| `debug_dump`, `diagnose` | | Dump compositor state (clients, monitors, layouts) to the log. |
 
 ## See also
 
