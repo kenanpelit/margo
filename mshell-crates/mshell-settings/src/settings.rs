@@ -103,6 +103,9 @@ pub enum SettingsWindowInput {
     /// The sidebar search box was submitted (Enter). Jumps to the first
     /// section / widget page whose label contains the query.
     SearchSubmitted(String),
+    /// The sidebar search text changed — live-filter the sidebar list
+    /// (hide non-matching buttons + the group headers, GNOME-style).
+    SearchChanged(String),
 }
 
 #[derive(Debug)]
@@ -150,21 +153,12 @@ impl Component for SettingsWindowModel {
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
 
-                    gtk::ScrolledWindow {
-                        set_hscrollbar_policy: gtk::PolicyType::Never,
-                        set_vscrollbar_policy: gtk::PolicyType::Automatic,
-                        set_vexpand: true,
-                        set_propagate_natural_width: true,
-
-                #[name = "sidebar_box"]
                 gtk::Box {
                     add_css_class: "settings-sidebar",
                     set_orientation: gtk::Orientation::Vertical,
                     set_width_request: 170,
-                    set_spacing: 4,
                     set_hexpand: false,
 
-                    // ── §12 panel header ──
                     gtk::Box {
                         add_css_class: "panel-header",
                         set_orientation: gtk::Orientation::Horizontal,
@@ -186,9 +180,6 @@ impl Component for SettingsWindowModel {
                         },
                     },
 
-                    // Search box — find any section or widget page by name
-                    // (DESIGN.md §12). Focused on open so you can type
-                    // straight away; Tab / Down descend into the list.
                     #[name = "search_entry"]
                     gtk::SearchEntry {
                         add_css_class: "settings-search",
@@ -202,13 +193,16 @@ impl Component for SettingsWindowModel {
 
                     gtk::Separator {},
 
-                    // Sidebar order: `General` is always first
-                    // (it's the landing page), the rest are
-                    // alphabetical. Top-level entries are big
-                    // structural buckets (Bar, Display, Fonts,
-                    // Idle, Theme, Wallpaper) plus a `Widgets`
-                    // collection that holds per-menu config
-                    // pages via its own sub-sidebar.
+                    gtk::ScrolledWindow {
+                        set_hscrollbar_policy: gtk::PolicyType::Never,
+                        set_vscrollbar_policy: gtk::PolicyType::Automatic,
+                        set_vexpand: true,
+
+                        #[name = "sidebar_box"]
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_spacing: 4,
+
                     #[name = "general_btn"]
                     gtk::ToggleButton {
                         add_css_class: "sidebar-button",
@@ -847,6 +841,7 @@ impl Component for SettingsWindowModel {
 
                 },
                     },
+                },
 
                 #[name = "stack"]
                 gtk::Stack {
@@ -1170,6 +1165,13 @@ impl Component for SettingsWindowModel {
                 let sender = sender.clone();
                 widgets.search_entry.connect_activate(move |e| {
                     sender.input(SettingsWindowInput::SearchSubmitted(e.text().to_string()));
+                });
+            }
+            // Live filter: hide non-matching entries as the user types.
+            {
+                let sender = sender.clone();
+                widgets.search_entry.connect_search_changed(move |e| {
+                    sender.input(SettingsWindowInput::SearchChanged(e.text().to_string()));
                 });
             }
 
@@ -1803,7 +1805,44 @@ impl Component for SettingsWindowModel {
                     }
                 }
             }
+            SettingsWindowInput::SearchChanged(query) => {
+                use gtk::prelude::*;
+                let q = query.trim().to_lowercase();
+                // Walk the (now buttons-only) sidebar list: group headers
+                // hide while a query is active; buttons show only when their
+                // label matches. Empty query restores the full grouped list.
+                let mut child = widgets.sidebar_box.first_child();
+                while let Some(w) = child {
+                    let next = w.next_sibling();
+                    if w.has_css_class("settings-sidebar-section") {
+                        w.set_visible(q.is_empty());
+                    } else if let Ok(btn) = w.clone().downcast::<gtk::ToggleButton>() {
+                        let show =
+                            q.is_empty() || sidebar_button_label(&btn).to_lowercase().contains(&q);
+                        btn.set_visible(show);
+                    }
+                    child = next;
+                }
+            }
         }
         self.update_view(widgets, sender);
     }
+}
+
+/// Pull the label text out of a sidebar ToggleButton (its child is a
+/// `Box { Image, Label }`). Used by the live search filter. Empty when
+/// no label child is found.
+fn sidebar_button_label(btn: &gtk::ToggleButton) -> String {
+    use gtk::prelude::*;
+    let Some(boxw) = btn.child() else {
+        return String::new();
+    };
+    let mut c = boxw.first_child();
+    while let Some(w) = c {
+        if let Ok(lbl) = w.clone().downcast::<gtk::Label>() {
+            return lbl.label().to_string();
+        }
+        c = w.next_sibling();
+    }
+    String::new()
 }
