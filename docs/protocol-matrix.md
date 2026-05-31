@@ -149,7 +149,7 @@ runtime-checked even where the per-protocol behaviour isn't.
 | `zwlr_foreign_toplevel_manager_v1` (write) | ✅ | ✅ | 🟡 (taskbar in checklist) | ❌ | hand-rolled (`protocols/wlr_foreign_toplevel.rs`); activate/close/fullscreen |
 | `ext_workspace_v1` | ✅ | ✅ | ❌ | ❌ | hand-rolled (`protocols/ext_workspace.rs`); 9 fixed tag-workspaces per output |
 | multi-monitor output assignment (internal) | — | ✅ | 🟢 `output_assignment.rs` (4) | ❌ | left-to-right placement + per-output pertag + named tagrule routing |
-| `focus_mon` / `tag_mon` (internal, multi-output) | — | ✅ | 🟢 `focus_mon.rs` (4), `tag_mon.rs` (5) | ❌ | active-monitor cycle + window migrate/re-tag across outputs |
+| `focus_mon` / `tag_mon` (internal, multi-output) | — | ✅ | 🟢 `focus_mon.rs` (4), `tag_mon.rs` (4) | ❌ | active-monitor cycle + window migrate/re-tag across outputs |
 | `dwl_ipc_unstable_v2` (custom) | ✅ | ✅ | 🟡 (bring-up §0 in checklist) | ❌ | margo↔mctl/mshell; `state.json` snapshot is the primary mshell bridge |
 
 ---
@@ -178,7 +178,7 @@ Ordered by blast radius, matching the agreed first wave. The first two
 landed (2026-06-01); the remainder are the live backlog:
 
 1. ~~**tag move across outputs** (`tagmon`) — highest-risk because it mutates
-   per-output state in one step.~~ ✅ `tag_mon.rs` (5 tests).
+   per-output state in one step.~~ ✅ `tag_mon.rs` (4 tests).
 2. ~~**multi-monitor output assignment** (placement + per-output pertag +
    per-output tag rules).~~ ✅ `output_assignment.rs` (4) + `focus_mon.rs` (4).
 3. **layer-shell popup / menu** grab + dismiss — fixture has the surface, not the
