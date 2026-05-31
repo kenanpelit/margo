@@ -85,7 +85,9 @@ impl Profile {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+// No `Eq`: the new f64 detail fields (power draw / capacity Wh) aren't `Eq`.
+// `PartialEq` is all the change-detection (`self.state != state`) needs.
+#[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct PowerState {
     pub(crate) profile: Option<Profile>,
     /// "ac" / "battery" / "unknown".
@@ -95,6 +97,18 @@ pub(crate) struct PowerState {
     pub(crate) battery_percent: Option<u8>,
     /// "Charging" / "Discharging" / "Full" / "Not charging" …
     pub(crate) battery_status: String,
+    /// Battery health (UPower `capacity`, full charge vs design), 0..=100.
+    pub(crate) battery_health: Option<u8>,
+    /// Seconds until empty (discharging) or full (charging); `None`/0 hidden.
+    pub(crate) time_remaining_secs: Option<i64>,
+    /// `true` when `time_remaining_secs` counts up to full (charging).
+    pub(crate) time_to_full: bool,
+    /// Instantaneous power draw / charge rate in watts (UPower `energy_rate`).
+    pub(crate) power_draw_w: Option<f64>,
+    /// Present full-charge capacity in watt-hours (UPower `energy_full`).
+    pub(crate) energy_full_wh: Option<f64>,
+    /// Charge cycle count, when the firmware reports it.
+    pub(crate) charge_cycles: Option<i32>,
     pub(crate) error: Option<String>,
 }
 
@@ -340,6 +354,41 @@ pub(crate) fn read_power_state() -> PowerState {
             DeviceState::Unknown => "",
         }
         .to_string();
+
+        // Detail stats (shown in the power menu). Each is hidden when the
+        // firmware reports nothing useful (0 / unknown).
+        let health = battery.capacity.get();
+        if health > 0.0 {
+            state.battery_health = Some(health.round().clamp(0.0, 100.0) as u8);
+        }
+        let rate = battery.energy_rate.get();
+        if rate > 0.01 {
+            state.power_draw_w = Some(rate);
+        }
+        let full = battery.energy_full.get();
+        if full > 0.0 {
+            state.energy_full_wh = Some(full);
+        }
+        let cycles = battery.charge_cycles.get();
+        if cycles > 0 {
+            state.charge_cycles = Some(cycles);
+        }
+        match dev_state {
+            DeviceState::Charging => {
+                let t = battery.time_to_full.get();
+                if t > 0 {
+                    state.time_remaining_secs = Some(t);
+                    state.time_to_full = true;
+                }
+            }
+            DeviceState::Discharging => {
+                let t = battery.time_to_empty.get();
+                if t > 0 {
+                    state.time_remaining_secs = Some(t);
+                }
+            }
+            _ => {}
+        }
     }
 
     // The line-power adapter is the direct "plugged in" signal;

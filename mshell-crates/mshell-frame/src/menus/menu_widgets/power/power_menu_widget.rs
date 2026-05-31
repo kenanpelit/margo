@@ -46,6 +46,9 @@ pub(crate) struct PowerMenuWidgetModel {
     hero_icon: gtk::Image,
     hero_title: gtk::Label,
     hero_subtitle: gtk::Label,
+    /// Battery detail rows (time remaining / power draw / health / capacity /
+    /// cycles); rebuilt from state in `sync_view`, hidden with no battery.
+    stats_box: gtk::Box,
     /// Profile buttons keyed by their Profile so `sync_view` can
     /// flip `.selected` + the colour-state class onto the
     /// active one.
@@ -154,6 +157,14 @@ impl Component for PowerMenuWidgetModel {
                 },
             },
 
+            // ── Battery details (time / power / health / capacity) ──
+            #[local_ref]
+            stats_box -> gtk::Box {
+                add_css_class: "power-stats",
+                set_orientation: gtk::Orientation::Vertical,
+                set_spacing: 4,
+            },
+
             gtk::Separator { set_orientation: gtk::Orientation::Horizontal },
 
             gtk::Label {
@@ -196,6 +207,7 @@ impl Component for PowerMenuWidgetModel {
         let hero_icon_widget = gtk::Image::from_icon_name("power-profile-balanced-symbolic");
         let hero_title_widget = gtk::Label::new(Some("Power"));
         let hero_subtitle_widget = gtk::Label::new(Some("…"));
+        let stats_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
 
         let profile_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         let mut profile_buttons: Vec<(Profile, gtk::Button)> = Vec::with_capacity(3);
@@ -265,6 +277,7 @@ impl Component for PowerMenuWidgetModel {
             hero_icon: hero_icon_widget.clone(),
             hero_title: hero_title_widget.clone(),
             hero_subtitle: hero_subtitle_widget.clone(),
+            stats_box: stats_box.clone(),
             profile_buttons,
             lock_auto_button: lock_auto_button.clone(),
             lock_auto_icon,
@@ -422,6 +435,37 @@ fn sync_view(model: &PowerMenuWidgetModel) {
         model.hero_subtitle.set_label("Desktop · no battery");
     }
 
+    // Battery detail rows — rebuilt each sync; each row is omitted when the
+    // firmware doesn't report it, and the whole block hides without a battery.
+    while let Some(child) = model.stats_box.first_child() {
+        model.stats_box.remove(&child);
+    }
+    model.stats_box.set_visible(s.battery_available);
+    if s.battery_available {
+        if let Some(secs) = s.time_remaining_secs {
+            let label = if s.time_to_full { "Time to full" } else { "Time left" };
+            model.stats_box.append(&stat_row(label, &fmt_duration(secs)));
+        }
+        if let Some(w) = s.power_draw_w {
+            model
+                .stats_box
+                .append(&stat_row("Power draw", &format!("{w:.1} W")));
+        }
+        if let Some(h) = s.battery_health {
+            model.stats_box.append(&stat_row("Health", &format!("{h}%")));
+        }
+        if let Some(wh) = s.energy_full_wh {
+            model
+                .stats_box
+                .append(&stat_row("Capacity", &format!("{wh:.1} Wh")));
+        }
+        if let Some(c) = s.charge_cycles {
+            model
+                .stats_box
+                .append(&stat_row("Charge cycles", &c.to_string()));
+        }
+    }
+
     // Profile buttons — active one gets `.selected` + its
     // colour-state class.
     for (p, btn) in &model.profile_buttons {
@@ -575,5 +619,37 @@ async fn set_profile(profile: Profile) {
         .await
     {
         warn!(error = %e, ?profile, "power: set_active_profile failed");
+    }
+}
+
+/// A "label … value" detail row for the battery stats block.
+fn stat_row(label: &str, value: &str) -> gtk::Box {
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    row.add_css_class("power-stat-row");
+
+    let name = gtk::Label::new(Some(label));
+    name.set_css_classes(&["label-small", "dim-label"]);
+    name.set_xalign(0.0);
+    name.set_hexpand(true);
+    name.set_halign(gtk::Align::Start);
+
+    let val = gtk::Label::new(Some(value));
+    val.set_css_classes(&["label-small"]);
+    val.set_halign(gtk::Align::End);
+
+    row.append(&name);
+    row.append(&val);
+    row
+}
+
+/// Format a duration in seconds as `Xh Ym` (or `Ym` under an hour).
+fn fmt_duration(secs: i64) -> String {
+    let secs = secs.max(0);
+    let h = secs / 3600;
+    let m = (secs % 3600) / 60;
+    if h > 0 {
+        format!("{h}h {m}m")
+    } else {
+        format!("{m}m")
     }
 }
