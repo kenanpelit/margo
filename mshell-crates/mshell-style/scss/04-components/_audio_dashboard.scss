@@ -104,3 +104,42 @@
   -gtk-icon-size: 14px;
   color: var(--primary);
 }
+
+// ── Per-application mixer (QSAP-style) ─────────────────────────
+.app-mixer-section {
+  margin-top: var(--space-1);
+}
+
+.app-mixer-icon {
+  -gtk-icon-size: 18px;
+  color: var(--on-surface-variant);
+}
+
+.app-mixer-name {
+  font-size: var(--font-sm);
+  color: var(--on-surface);
+}
+
+// ── Output/input port (route) switcher ─────────────────────────
+// Chips for the active device's ports (e.g. Speakers ↔ Headphones).
+.audio-port-row {
+  margin-top: var(--space-1);
+}
+
+.audio-port-chip {
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-pill);
+  font-size: var(--font-xs);
+  background-color: var(--surface-container-high);
+  color: var(--on-surface-variant);
+
+  &.selected {
+    background-color: var(--primary);
+    color: var(--on-primary);
+    label { color: var(--on-primary); }
+  }
+
+  &:disabled {
+    opacity: 0.5;
+  }
+}

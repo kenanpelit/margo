@@ -10,6 +10,10 @@
 //! per-device volume/mute watchers, device-list rebuild) instead
 //! of duplicating it.
 
+use crate::menus::menu_widgets::audio_dashboard::app_mixer::{AppMixerInit, AppMixerModel};
+use crate::menus::menu_widgets::audio_dashboard::port_switcher::{
+    PortSwitcherInit, PortSwitcherModel,
+};
 use crate::menus::menu_widgets::audio_in::audio_in_menu_widget::{
     AudioInMenuWidgetInit, AudioInMenuWidgetModel,
 };
@@ -22,6 +26,10 @@ use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Con
 pub(crate) struct AudioDashboardMenuWidgetModel {
     audio_out: Controller<AudioOutMenuWidgetModel>,
     audio_in: Controller<AudioInMenuWidgetModel>,
+    out_ports: Controller<PortSwitcherModel>,
+    in_ports: Controller<PortSwitcherModel>,
+    app_mixer: Controller<AppMixerModel>,
+    recording_mixer: Controller<AppMixerModel>,
 }
 
 impl std::fmt::Debug for AudioDashboardMenuWidgetModel {
@@ -72,7 +80,17 @@ impl Component for AudioDashboardMenuWidgetModel {
             },
 
             model.audio_out.widget().clone() {},
+            // Output route chips (Speakers ↔ Headphones …) — hidden
+            // unless the default sink exposes ≥2 ports.
+            model.out_ports.widget().clone() {},
+
             model.audio_in.widget().clone() {},
+            model.in_ports.widget().clone() {},
+
+            // Per-app mixers (QSAP-style). Each hides itself when no
+            // stream is active, so they add no chrome when idle.
+            model.app_mixer.widget().clone() {},
+            model.recording_mixer.widget().clone() {},
         }
     }
 
@@ -87,10 +105,26 @@ impl Component for AudioDashboardMenuWidgetModel {
         let audio_in = AudioInMenuWidgetModel::builder()
             .launch(AudioInMenuWidgetInit {})
             .detach();
+        let out_ports = PortSwitcherModel::builder()
+            .launch(PortSwitcherInit { recording: false })
+            .detach();
+        let in_ports = PortSwitcherModel::builder()
+            .launch(PortSwitcherInit { recording: true })
+            .detach();
+        let app_mixer = AppMixerModel::builder()
+            .launch(AppMixerInit { recording: false })
+            .detach();
+        let recording_mixer = AppMixerModel::builder()
+            .launch(AppMixerInit { recording: true })
+            .detach();
 
         let model = AudioDashboardMenuWidgetModel {
             audio_out,
             audio_in,
+            out_ports,
+            in_ports,
+            app_mixer,
+            recording_mixer,
         };
         let widgets = view_output!();
         let _ = (root, sender);
