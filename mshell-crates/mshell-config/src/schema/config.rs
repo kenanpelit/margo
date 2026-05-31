@@ -139,11 +139,29 @@ pub struct Session {
     pub shutdown_command: String,
 }
 
+/// A user-bookmarked weather location: a display name + the query used
+/// to fetch it. The active location stays `General::weather_location_query`;
+/// the weather menu's location switcher writes the chosen entry's `query`
+/// into it (the live `set_location` effect then refetches). Edited via
+/// Settings → Weather ("Save current as…" / Remove) or by hand in YAML.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize, Store, Patch, JsonSchema,
+)]
+#[serde(default)]
+pub struct SavedLocation {
+    pub name: String,
+    pub query: LocationQueryConfig,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
 #[serde(default)]
 pub struct General {
     pub clock_format_24_h: bool,
     pub weather_location_query: LocationQueryConfig,
+    /// Weather locations the menu's location switcher flips between
+    /// (selecting one writes its `query` into `weather_location_query`).
+    /// Empty by default — add bookmarks from Settings → Weather.
+    pub weather_saved_locations: Vec<SavedLocation>,
     pub temperature_unit: TemperatureUnitConfig,
     /// Draw rounded screen corners as a per-monitor overlay.
     /// Layer-shell windows masked at each corner so the
@@ -194,6 +212,7 @@ impl Default for General {
                 lat: OrdF64(0.0),
                 lon: OrdF64(0.0),
             },
+            weather_saved_locations: Vec::new(),
             temperature_unit: TemperatureUnitConfig::Metric,
             show_screen_corners: false,
             screen_corner_radius: 24,

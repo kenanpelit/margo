@@ -10,7 +10,7 @@ use mshell_common::text_entry_dialog::{
     TextEntryDialogInit, TextEntryDialogModel, TextEntryDialogOutput,
 };
 use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{ConfigStoreFields, GeneralStoreFields};
+use mshell_config::schema::config::{ConfigStoreFields, GeneralStoreFields, SavedLocation};
 use mshell_config::schema::location_query::{LocationQueryConfig, LocationQueryType, OrdF64};
 use mshell_config::schema::temperature::TemperatureUnitConfig;
 use reactive_graph::prelude::{Get, GetUntracked};
@@ -26,6 +26,10 @@ pub(crate) struct WeatherSettingsModel {
     city_dialog: Option<Controller<TextEntryDialogModel>>,
     weather_unit_types: gtk::StringList,
     active_weather_unit_type: TemperatureUnitConfig,
+    /// Bookmarked locations the weather-menu switcher flips between.
+    saved_locations: Vec<SavedLocation>,
+    active_query: LocationQueryConfig,
+    save_dialog: Option<Controller<TextEntryDialogModel>>,
     _effects: EffectScope,
 }
 
@@ -40,6 +44,14 @@ pub(crate) enum WeatherSettingsInput {
     WeatherUnitTypeSelected(TemperatureUnitConfig),
     WeatherUnitTypeEffect(TemperatureUnitConfig),
     DialogCanceled,
+    /// Saved-location bookmarks changed in config — refresh the list.
+    SavedLocationsEffect(Vec<SavedLocation>),
+    /// "Save current location as…" pressed — prompt for a name.
+    SaveCurrentClicked,
+    /// Name entered: bookmark the current active query under it.
+    SaveNameChosen(String),
+    /// Remove the bookmark at this list index.
+    RemoveLocation(usize),
 }
 
 #[derive(Debug)]
@@ -256,6 +268,48 @@ impl Component for WeatherSettingsModel {
                         } @unit_handler,
                     },
                 },
+
+                // ── Saved locations: bookmark the current location under a
+                //    name; the weather menu's switcher flips between them. ──
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Saved Locations",
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Bookmark the current location, then switch between bookmarks from the weather menu.",
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::Button {
+                        set_css_classes: &["label-medium", "ok-button-primary"],
+                        set_label: "Save current as…",
+                        set_halign: gtk::Align::Start,
+                        set_valign: gtk::Align::Center,
+                        set_hexpand: false,
+                        connect_clicked[sender] => move |_| {
+                            sender.input(WeatherSettingsInput::SaveCurrentClicked);
+                        },
+                    },
+                },
+
+                #[name = "saved_locations_box"]
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 6,
+                },
             },
         }
     }
@@ -279,6 +333,16 @@ impl Component for WeatherSettingsModel {
             let config = config_manager().config();
             let value = config.general().temperature_unit().get();
             sender_clone.input(WeatherSettingsInput::WeatherUnitTypeEffect(value));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let saved = config_manager()
+                .config()
+                .general()
+                .weather_saved_locations()
+                .get();
+            sender_clone.input(WeatherSettingsInput::SavedLocationsEffect(saved));
         });
 
         let location_query_types = gtk::StringList::new(
@@ -313,6 +377,17 @@ impl Component for WeatherSettingsModel {
                 .general()
                 .temperature_unit()
                 .get_untracked(),
+            saved_locations: config_manager()
+                .config()
+                .general()
+                .weather_saved_locations()
+                .get_untracked(),
+            active_query: config_manager()
+                .config()
+                .general()
+                .weather_location_query()
+                .get_untracked(),
+            save_dialog: None,
             _effects: effects,
         };
 
@@ -321,7 +396,13 @@ impl Component for WeatherSettingsModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
+    fn update_with_view(
+        &mut self,
+        widgets: &mut Self::Widgets,
+        message: Self::Input,
+        sender: ComponentSender<Self>,
+        _root: &Self::Root,
+    ) {
         match message {
             WeatherSettingsInput::LocationQueryTypeSelected(query_type) => {
                 config_manager().update_config(move |config| {
@@ -339,16 +420,19 @@ impl Component for WeatherSettingsModel {
                         };
                 });
             }
-            WeatherSettingsInput::LocationQueryEffect(query) => match query {
-                LocationQueryConfig::Coordinates { lat, lon } => {
-                    self.location_lat_lon = format!("{}, {}", lat.0, lon.0);
-                    self.active_location_query_type = LocationQueryType::Coordinates;
+            WeatherSettingsInput::LocationQueryEffect(query) => {
+                self.active_query = query.clone();
+                match query {
+                    LocationQueryConfig::Coordinates { lat, lon } => {
+                        self.location_lat_lon = format!("{}, {}", lat.0, lon.0);
+                        self.active_location_query_type = LocationQueryType::Coordinates;
+                    }
+                    LocationQueryConfig::City { name, country } => {
+                        self.location_city = format!("{}, {}", name, country);
+                        self.active_location_query_type = LocationQueryType::City;
+                    }
                 }
-                LocationQueryConfig::City { name, country } => {
-                    self.location_city = format!("{}, {}", name, country);
-                    self.active_location_query_type = LocationQueryType::City;
-                }
-            },
+            }
             WeatherSettingsInput::ChangeCoordinatesClicked => {
                 let dialog = TextEntryDialogModel::builder()
                     .launch(TextEntryDialogInit {
@@ -416,6 +500,117 @@ impl Component for WeatherSettingsModel {
                 self.active_weather_unit_type = unit;
             }
             WeatherSettingsInput::DialogCanceled => {}
+            WeatherSettingsInput::SavedLocationsEffect(saved) => {
+                self.saved_locations = saved;
+                self.rebuild_saved_list(&widgets.saved_locations_box, &sender);
+            }
+            WeatherSettingsInput::SaveCurrentClicked => {
+                let dialog = TextEntryDialogModel::builder()
+                    .launch(TextEntryDialogInit {
+                        message: "Name this location".to_string(),
+                        negative_label: "Cancel".to_string(),
+                        positive_label: "Save".to_string(),
+                        entry_placeholder: "e.g. Home, Work".to_string(),
+                        entry2_placeholder: String::new(),
+                        show_second_entry: false,
+                    })
+                    .forward(sender.input_sender(), |msg| match msg {
+                        TextEntryDialogOutput::PositiveSelected(name, _) => {
+                            WeatherSettingsInput::SaveNameChosen(name)
+                        }
+                        TextEntryDialogOutput::NegativeSelected => {
+                            WeatherSettingsInput::DialogCanceled
+                        }
+                    });
+                self.save_dialog = Some(dialog);
+            }
+            WeatherSettingsInput::SaveNameChosen(name) => {
+                let name = name.trim().to_string();
+                if !name.is_empty() {
+                    let query = self.active_query.clone();
+                    config_manager().update_config(move |config| {
+                        // Replace an existing bookmark with the same name
+                        // rather than stacking duplicates.
+                        config
+                            .general
+                            .weather_saved_locations
+                            .retain(|l| l.name != name);
+                        config
+                            .general
+                            .weather_saved_locations
+                            .push(SavedLocation { name, query });
+                    });
+                }
+            }
+            WeatherSettingsInput::RemoveLocation(idx) => {
+                config_manager().update_config(move |config| {
+                    if idx < config.general.weather_saved_locations.len() {
+                        config.general.weather_saved_locations.remove(idx);
+                    }
+                });
+            }
+        }
+
+        self.update_view(widgets, sender);
+    }
+}
+
+impl WeatherSettingsModel {
+    /// Imperatively rebuild the saved-location rows. This is a tiny,
+    /// cold list (a handful of bookmarks, changed rarely), so a plain
+    /// clear-and-append into a held Box is the right tool — no factory
+    /// / virtualization needed.
+    fn rebuild_saved_list(&self, container: &gtk::Box, sender: &ComponentSender<Self>) {
+        while let Some(child) = container.first_child() {
+            container.remove(&child);
+        }
+
+        if self.saved_locations.is_empty() {
+            let empty = gtk::Label::builder()
+                .label("No saved locations yet.")
+                .css_classes(["label-small"])
+                .halign(gtk::Align::Start)
+                .build();
+            container.append(&empty);
+            return;
+        }
+
+        for (idx, loc) in self.saved_locations.iter().enumerate() {
+            let row = gtk::Box::builder()
+                .orientation(gtk::Orientation::Horizontal)
+                .spacing(12)
+                .build();
+
+            let text = gtk::Box::builder()
+                .orientation(gtk::Orientation::Vertical)
+                .hexpand(true)
+                .build();
+            let name = gtk::Label::builder()
+                .label(&loc.name)
+                .css_classes(["label-medium-bold"])
+                .halign(gtk::Align::Start)
+                .build();
+            let summary = gtk::Label::builder()
+                .label(loc.query.summary())
+                .css_classes(["label-small"])
+                .halign(gtk::Align::Start)
+                .build();
+            text.append(&name);
+            text.append(&summary);
+
+            let remove = gtk::Button::builder()
+                .label("Remove")
+                .css_classes(["label-small", "ok-button-surface"])
+                .valign(gtk::Align::Center)
+                .build();
+            let sender = sender.clone();
+            remove.connect_clicked(move |_| {
+                sender.input(WeatherSettingsInput::RemoveLocation(idx));
+            });
+
+            row.append(&text);
+            row.append(&remove);
+            container.append(&row);
         }
     }
 }

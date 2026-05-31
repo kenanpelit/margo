@@ -1,9 +1,13 @@
 use crate::menus::menu_widgets::weather::current::{CurrentInit, CurrentInput, CurrentModel};
 use crate::menus::menu_widgets::weather::daily::{DailyInit, DailyInput, DailyModel};
 use crate::menus::menu_widgets::weather::hourly::{HourlyInit, HourlyInput, HourlyModel};
+use mshell_common::scoped_effects::EffectScope;
+use mshell_config::config_manager::config_manager;
+use mshell_config::schema::config::{ConfigStoreFields, GeneralStoreFields, SavedLocation};
 use mshell_services::weather_service;
 use mshell_utils::weather::spawn_weather_watcher;
-use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
+use reactive_graph::traits::Get;
+use relm4::gtk::prelude::{BoxExt, ButtonExt, ListModelExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 use std::ops::Not;
 use std::time::Duration;
@@ -34,6 +38,14 @@ pub(crate) struct WeatherModel {
     next_button_sensitive: bool,
     loading_state: LoadingState,
     error_msg: String,
+    /// Saved-location bookmarks + the dropdown's backing string list.
+    /// The list is spliced in place on change (never `set_model` under
+    /// `#[watch]`, which spins the main loop — see the reactive-store
+    /// loop note). The switcher only shows with ≥2 bookmarks.
+    saved_locations: Vec<SavedLocation>,
+    location_names: gtk::StringList,
+    active_location_idx: u32,
+    _effects: EffectScope,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -58,6 +70,12 @@ pub(crate) enum WeatherInput {
     PreviousClicked,
     NextClicked,
     RetryClicked,
+    /// Saved bookmarks (and/or the active query) changed in config —
+    /// resync the dropdown list + selected index.
+    SavedLocationsChanged,
+    /// The user picked bookmark `idx` from the switcher: write its
+    /// query into the active `weather_location_query`.
+    LocationSelected(usize),
 }
 
 #[derive(Debug)]
@@ -173,6 +191,25 @@ impl Component for WeatherModel {
 
                 gtk::Box {
                     set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 8,
+
+                    // Saved-location switcher — only shown when the user
+                    // has bookmarked ≥2 places. Picking one rewrites the
+                    // active query; the live set_location effect refetches.
+                    #[name = "location_switcher"]
+                    gtk::DropDown {
+                        add_css_class: "ok-button-surface",
+                        set_valign: gtk::Align::Center,
+                        set_model: Some(&model.location_names),
+                        #[watch]
+                        set_visible: model.saved_locations.len() >= 2,
+                        #[watch]
+                        #[block_signal(loc_handler)]
+                        set_selected: model.active_location_idx,
+                        connect_selected_notify[sender] => move |dd| {
+                            sender.input(WeatherInput::LocationSelected(dd.selected() as usize));
+                        } @loc_handler,
+                    },
 
                     gtk::Label {
                         add_css_class: "label-small-bold-variant",
@@ -259,7 +296,27 @@ impl Component for WeatherModel {
     ) -> ComponentParts<Self> {
         spawn_weather_watcher(&sender, || WeatherCommandOutput::WeatherChanged);
 
-        let model = WeatherModel {
+        // Track the saved-location list + active query reactively so the
+        // switcher resyncs when the user edits bookmarks in Settings.
+        let mut effects = EffectScope::new();
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            // Subscribe to both the bookmark list and the active query
+            // (each `general()` call consumes the store handle).
+            let _ = config_manager()
+                .config()
+                .general()
+                .weather_saved_locations()
+                .get();
+            let _ = config_manager()
+                .config()
+                .general()
+                .weather_location_query()
+                .get();
+            sender_clone.input(WeatherInput::SavedLocationsChanged);
+        });
+
+        let mut model = WeatherModel {
             current_weather_controller: None,
             hourly_controller: None,
             daily_controller: None,
@@ -270,7 +327,12 @@ impl Component for WeatherModel {
             next_button_sensitive: false,
             loading_state: LoadingState::Loading,
             error_msg: "Error loading weather".to_string(),
+            saved_locations: Vec::new(),
+            location_names: gtk::StringList::new(&[]),
+            active_location_idx: 0,
+            _effects: effects,
         };
+        model.resync_locations();
 
         let widgets = view_output!();
 
@@ -303,6 +365,17 @@ impl Component for WeatherModel {
                 // there is no retry, so set the poll interval to the same normal value to
                 // kick off restarting the polling service.
                 weather_service().set_poll_interval(Duration::from_mins(15));
+            }
+            WeatherInput::SavedLocationsChanged => {
+                self.resync_locations();
+            }
+            WeatherInput::LocationSelected(idx) => {
+                if let Some(loc) = self.saved_locations.get(idx) {
+                    let query = loc.query.clone();
+                    config_manager().update_config(move |config| {
+                        config.general.weather_location_query = query;
+                    });
+                }
             }
         }
 
@@ -448,6 +521,30 @@ impl Component for WeatherModel {
 }
 
 impl WeatherModel {
+    /// Pull the saved-location bookmarks + active query from config,
+    /// splice the dropdown's backing string list in place (never
+    /// `set_model`), and mark the active entry selected.
+    fn resync_locations(&mut self) {
+        let saved = config_manager()
+            .config()
+            .general()
+            .weather_saved_locations()
+            .get();
+        let active = config_manager()
+            .config()
+            .general()
+            .weather_location_query()
+            .get();
+
+        let names: Vec<String> = saved.iter().map(|l| l.name.clone()).collect();
+        let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+        let old_count = self.location_names.n_items();
+        self.location_names.splice(0, old_count, &refs);
+
+        self.active_location_idx = saved.iter().position(|l| l.query == active).unwrap_or(0) as u32;
+        self.saved_locations = saved;
+    }
+
     fn update_page_state(&mut self, stack: &gtk::Stack) {
         let has_pages = self.current_weather_controller.is_some();
         self.previous_button_sensitive = has_pages && self.current_page != WeatherPage::Current;

@@ -11,6 +11,32 @@ pub enum LocationQueryConfig {
     City { name: String, country: String },
 }
 
+impl Default for LocationQueryConfig {
+    fn default() -> Self {
+        Self::Coordinates {
+            lat: OrdF64(0.0),
+            lon: OrdF64(0.0),
+        }
+    }
+}
+
+impl LocationQueryConfig {
+    /// One-line human summary for settings rows / menu tooltips —
+    /// "lat, lon" for coordinates, "City, CC" for a named place.
+    pub fn summary(&self) -> String {
+        match self {
+            Self::Coordinates { lat, lon } => format!("{}, {}", lat.0, lon.0),
+            Self::City { name, country } => {
+                if country.is_empty() {
+                    name.clone()
+                } else {
+                    format!("{name}, {country}")
+                }
+            }
+        }
+    }
+}
+
 impl From<LocationQueryConfig> for LocationQuery {
     fn from(c: LocationQueryConfig) -> Self {
         match c {
