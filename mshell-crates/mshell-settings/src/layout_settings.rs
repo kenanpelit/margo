@@ -214,6 +214,7 @@ impl Component for LayoutSettingsModel {
                         },
                     },
                     gtk::Button {
+                        add_css_class: "ok-button-surface",
                         set_label: "Reset",
                         set_tooltip_text: Some("Discard un-applied drags and re-read the live arrangement."),
                         connect_clicked[sender] => move |_| {
@@ -303,12 +304,14 @@ impl Component for LayoutSettingsModel {
                     set_halign: gtk::Align::Start,
 
                     gtk::Button {
+                        add_css_class: "ok-button-surface",
                         set_label: "Refresh",
                         connect_clicked[sender] => move |_| {
                             sender.input(LayoutSettingsInput::Refresh);
                         },
                     },
                     gtk::Button {
+                        add_css_class: "ok-button-surface",
                         set_label: "Init",
                         set_tooltip_text: Some(
                             "Capture the live monitor configuration as layout_default.conf."
@@ -318,6 +321,7 @@ impl Component for LayoutSettingsModel {
                         },
                     },
                     gtk::Button {
+                        add_css_class: "ok-button-surface",
                         set_label: "Suggest",
                         set_tooltip_text: Some(
                             "Generate preset layouts for the detected monitor arrangement and activate the first one."
@@ -351,6 +355,7 @@ impl Component for LayoutSettingsModel {
                         } @new_slug_handler,
                     },
                     gtk::Button {
+                        add_css_class: "ok-button-surface",
                         set_label: "Capture",
                         #[watch]
                         set_sensitive: is_valid_slug(&model.new_slug_buf),
@@ -541,6 +546,7 @@ fn rebuild_layout_rows(
         row.append(&info_col);
 
         let action = gtk::Button::with_label(if layout.active { "Active" } else { "Activate" });
+        action.add_css_class("ok-button-surface");
         action.set_valign(gtk::Align::Center);
         action.set_sensitive(!layout.active);
         let slug = layout.slug.clone();

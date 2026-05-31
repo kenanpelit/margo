@@ -375,6 +375,7 @@ impl Component for SetupSettingsModel {
                         },
                     },
                     gtk::Button {
+                        add_css_class: "ok-button-surface",
                         set_label: "Browse…",
                         set_valign: gtk::Align::Center,
                         connect_clicked[sender] => move |_| {

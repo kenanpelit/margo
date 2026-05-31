@@ -943,18 +943,21 @@ impl Component for DisplaySettingsModel {
                     set_halign: gtk::Align::Start,
 
                     gtk::Button {
+                        add_css_class: "ok-button-surface",
                         set_label: "Sweep day → night",
                         connect_clicked[sender] => move |_| {
                             sender.input(DisplaySettingsInput::PreviewSweep);
                         },
                     },
                     gtk::Button {
+                        add_css_class: "ok-button-surface",
                         set_label: "Reset override",
                         connect_clicked[sender] => move |_| {
                             sender.input(DisplaySettingsInput::ResetOverride);
                         },
                     },
                     gtk::Button {
+                        add_css_class: "ok-button-surface",
                         set_label: "Open presets folder",
                         connect_clicked[sender] => move |_| {
                             sender.input(DisplaySettingsInput::OpenPresetsFolder);
