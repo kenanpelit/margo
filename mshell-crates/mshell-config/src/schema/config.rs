@@ -436,6 +436,7 @@ impl Default for Bars {
                     BarWidget::Network,
                     BarWidget::Clock,
                 ],
+                hidden_widgets: Vec::new(),
             },
             bottom_bar: HorizontalBar::default(),
             islands: false,
@@ -448,8 +449,39 @@ impl Default for Bars {
 #[derive(Default)]
 pub struct BarWidgets {
     pub system_update: SystemUpdateBarWidget,
+    /// Hidden Bar drawer behaviour (hover-expand, auto-collapse, …).
+    pub hidden_bar: HiddenBarConfig,
     /// User-defined pills, referenced from a bar slot via `!Custom <name>`.
     pub custom_widgets: Vec<CustomWidgetConfig>,
+}
+
+/// Behaviour knobs for the [`BarWidget::HiddenBar`] drawer (the widgets it
+/// collapses come from each bar's `hidden_widgets` list).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[serde(default)]
+pub struct HiddenBarConfig {
+    /// Start expanded on shell launch.
+    pub start_expanded: bool,
+    /// Reveal on hover (in addition to click). Off = click-only.
+    pub auto_expand: bool,
+    /// Delay before a hover reveals, in milliseconds (0 = instant).
+    pub hover_delay_ms: u32,
+    /// Collapse again after the pointer leaves (unless pinned).
+    pub auto_collapse: bool,
+    /// Delay before auto-collapse fires, in milliseconds.
+    pub collapse_delay_ms: u32,
+}
+
+impl Default for HiddenBarConfig {
+    fn default() -> Self {
+        Self {
+            start_expanded: false,
+            auto_expand: true,
+            hover_delay_ms: 0,
+            auto_collapse: true,
+            collapse_delay_ms: 1000,
+        }
+    }
 }
 
 /// A user-defined bar pill: an icon / image + optional label, with
@@ -1328,6 +1360,10 @@ pub struct HorizontalBar {
     pub left_widgets: Vec<BarWidget>,
     pub center_widgets: Vec<BarWidget>,
     pub right_widgets: Vec<BarWidget>,
+    /// Widgets collapsed into the [`BarWidget::HiddenBar`] drawer on this
+    /// bar. The Hidden Bar pill (placed in one of the slots above) renders
+    /// these inside a slide revealer; everything else stays visible.
+    pub hidden_widgets: Vec<BarWidget>,
 }
 
 impl Default for HorizontalBar {
@@ -1338,6 +1374,7 @@ impl Default for HorizontalBar {
             left_widgets: Vec::new(),
             center_widgets: Vec::new(),
             right_widgets: Vec::new(),
+            hidden_widgets: Vec::new(),
         }
     }
 }

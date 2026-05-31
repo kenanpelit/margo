@@ -13,6 +13,12 @@ pub enum BarWidget {
     /// Control Center pill — system-preferences glyph that opens the
     /// Control Center menu.
     ControlCenter,
+    /// Hidden Bar — a collapsible "drawer" pill. Renders the widgets
+    /// listed in this bar's `hidden_widgets` inside a slide revealer
+    /// behind a trigger: hover (when auto-expand) or left-click to
+    /// reveal, right-click to pin open, auto-collapse on leave. Port of
+    /// the DMS hidden-bar plugin, native to mshell's bar.
+    HiddenBar,
     /// Combined audio dashboard pill — surfaces both default
     /// output (sink) and default input (source) volumes in one
     /// cluster with right-click cycle (Both/OutputOnly/InputOnly).
@@ -113,6 +119,7 @@ impl BarWidget {
             BarWidget::ActiveWindow => "Active Window",
             BarWidget::AlarmClock => "Alarm Clock",
             BarWidget::ControlCenter => "Control Center",
+            BarWidget::HiddenBar => "Hidden Bar",
             BarWidget::AudioDashboard => "Audio Dashboard",
             BarWidget::Bluetooth => "Bluetooth",
             BarWidget::Clipboard => "Clipboard",

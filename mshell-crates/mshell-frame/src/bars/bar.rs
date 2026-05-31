@@ -56,7 +56,8 @@ use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::bar_widgets::BarWidget;
 use mshell_config::schema::config::{
-    BarWidgetsStoreFields, BarsStoreFields, ConfigStoreFields, HorizontalBarStoreFields,
+    BarWidgetsStoreFields, BarsStoreFields, ConfigStoreFields, HiddenBarConfigStoreFields,
+    HorizontalBarStoreFields,
 };
 use mshell_utils::clear_box::clear_box;
 use reactive_graph::traits::*;
@@ -469,6 +470,87 @@ impl BarModel {
         sender: &ComponentSender<Self>,
     ) -> Box<dyn GenericWidgetController> {
         match widget {
+            BarWidget::HiddenBar => {
+                // Build this bar's `hidden_widgets` as children to live inside
+                // the drawer's revealer; keep their controllers alive in the
+                // HiddenBar model. (Each Store sub-field accessor consumes
+                // `self`, so every value is read from a fresh config chain.)
+                let hidden = match bar_type {
+                    BarType::Top => config_manager()
+                        .config()
+                        .bars()
+                        .top_bar()
+                        .hidden_widgets()
+                        .get(),
+                    BarType::Bottom => config_manager()
+                        .config()
+                        .bars()
+                        .bottom_bar()
+                        .hidden_widgets()
+                        .get(),
+                };
+                let start_expanded = config_manager()
+                    .config()
+                    .bars()
+                    .widgets()
+                    .hidden_bar()
+                    .start_expanded()
+                    .get();
+                let auto_expand = config_manager()
+                    .config()
+                    .bars()
+                    .widgets()
+                    .hidden_bar()
+                    .auto_expand()
+                    .get();
+                let hover_delay_ms = config_manager()
+                    .config()
+                    .bars()
+                    .widgets()
+                    .hidden_bar()
+                    .hover_delay_ms()
+                    .get();
+                let auto_collapse = config_manager()
+                    .config()
+                    .bars()
+                    .widgets()
+                    .hidden_bar()
+                    .auto_collapse()
+                    .get();
+                let collapse_delay_ms = config_manager()
+                    .config()
+                    .bars()
+                    .widgets()
+                    .hidden_bar()
+                    .collapse_delay_ms()
+                    .get();
+
+                let mut child_controllers: Vec<Box<dyn GenericWidgetController>> = Vec::new();
+                let mut children: Vec<gtk::Widget> = Vec::new();
+                for w in &hidden {
+                    if matches!(w, BarWidget::HiddenBar) {
+                        continue; // no nesting a drawer inside itself
+                    }
+                    let ctrl = Self::build_widget(orientation, bar_type, w, sender);
+                    children.push(ctrl.root_widget());
+                    child_controllers.push(ctrl);
+                }
+
+                Box::new(
+                    crate::bars::bar_widgets::hidden_bar::HiddenBarModel::builder()
+                        .launch(crate::bars::bar_widgets::hidden_bar::HiddenBarInit {
+                            orientation,
+                            children,
+                            child_controllers,
+                            start_expanded,
+                            auto_expand,
+                            hover_delay_ms,
+                            auto_collapse,
+                            collapse_delay_ms,
+                        })
+                        .detach(),
+                )
+            }
             BarWidget::AudioDashboard => Box::new(
                 crate::bars::bar_widgets::audio_dashboard::AudioDashboardModel::builder()
                     .launch(crate::bars::bar_widgets::audio_dashboard::AudioDashboardInit {})
