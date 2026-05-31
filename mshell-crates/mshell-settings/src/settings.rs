@@ -1602,10 +1602,35 @@ impl Component for SettingsWindowModel {
                         group_anchor = Some(btn.clone());
                     }
                     widgets_sub_sidebar_box.append(&btn);
-                    widgets_sub_stack.add_named(
-                        model.weather_settings_controller.widget(),
-                        Some("weather"),
-                    );
+                    // Weather is one widget but two config domains: the data
+                    // source (location / units → WeatherSettings) and the menu
+                    // surface (position / width / height → the generic per-menu
+                    // page). Compose both into one scrolling page so all of
+                    // weather's settings live under this single Widgets entry.
+                    let menu_ctrl = WidgetMenuSettingsModel::builder()
+                        .launch(WidgetMenuSettingsInit { kind: MenuKind::Weather })
+                        .detach();
+                    let ws = model.weather_settings_controller.widget().clone();
+                    let ms = menu_ctrl.widget().clone();
+                    // Each sub-page sizes to its content; the outer scroller
+                    // does the scrolling (no nested scrollbars).
+                    for sw in [&ws, &ms] {
+                        sw.set_vscrollbar_policy(gtk::PolicyType::Never);
+                        sw.set_propagate_natural_height(true);
+                        sw.set_vexpand(false);
+                    }
+                    let inner = gtk::Box::new(gtk::Orientation::Vertical, 0);
+                    inner.append(&ws);
+                    inner.append(&ms);
+                    let outer = gtk::ScrolledWindow::builder()
+                        .hscrollbar_policy(gtk::PolicyType::Never)
+                        .vscrollbar_policy(gtk::PolicyType::Automatic)
+                        .hexpand(true)
+                        .vexpand(true)
+                        .child(&inner)
+                        .build();
+                    widgets_sub_stack.add_named(&outer, Some("weather"));
+                    Box::leak(Box::new(menu_ctrl));
                 }
                 WidgetEntry::Clipboard => {
                     let btn = make_sub_btn(
