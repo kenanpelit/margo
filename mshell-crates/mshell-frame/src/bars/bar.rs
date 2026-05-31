@@ -116,6 +116,8 @@ pub(crate) enum BarInput {
     SetRevealed(bool),
     ToggleRevealed,
     SetHovered(bool),
+    /// Forward a Hidden Bar IPC verb to every HiddenBar widget in this bar.
+    HiddenBar(mshell_common::hidden_bar::HiddenBarVerb),
 }
 
 #[derive(Debug)]
@@ -403,6 +405,29 @@ impl Component for BarModel {
         _root: &Self::Root,
     ) {
         match message {
+            BarInput::HiddenBar(verb) => {
+                use crate::bars::bar_widgets::hidden_bar::{HiddenBarInput, HiddenBarModel};
+                use mshell_common::dynamic_box::generic_widget_controller::GenericWidgetControllerExtSafe;
+                use mshell_common::hidden_bar::HiddenBarVerb;
+                use relm4::ComponentController;
+
+                for list in [&self.start_widgets, &self.center_widgets, &self.end_widgets] {
+                    for w in list {
+                        if let Some(ctrl) =
+                            (**w).downcast_ref::<relm4::Controller<HiddenBarModel>>()
+                        {
+                            let input = match verb {
+                                HiddenBarVerb::Toggle => HiddenBarInput::ToggleExpand,
+                                HiddenBarVerb::Expand => HiddenBarInput::Expand,
+                                HiddenBarVerb::Collapse => HiddenBarInput::Collapse,
+                                HiddenBarVerb::Pin => HiddenBarInput::Pin,
+                                HiddenBarVerb::Unpin => HiddenBarInput::Unpin,
+                            };
+                            ctrl.sender().emit(input);
+                        }
+                    }
+                }
+            }
             BarInput::SetStartWidgets(bar_widgets) => {
                 if self.start_widget_kinds == bar_widgets {
                     return;

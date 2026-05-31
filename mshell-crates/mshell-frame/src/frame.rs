@@ -157,6 +157,8 @@ pub enum FrameInput {
         Position,
     ),
     ToggleClockMenu,
+    /// Forward a Hidden Bar IPC verb to both bars' HiddenBar widgets.
+    HiddenBar(mshell_common::hidden_bar::HiddenBarVerb),
     ToggleClipboardMenu,
     ToggleNotificationMenu,
     ToggleScreenshotMenu,
@@ -1085,6 +1087,10 @@ impl Component for Frame {
             FrameInput::ToggleClockMenu => {
                 self.toggle_menu(CLOCK_MENU, widgets);
                 self.sync_keyboard_mode(root);
+            }
+            FrameInput::HiddenBar(verb) => {
+                self.top_bar.sender().emit(BarInput::HiddenBar(verb));
+                self.bottom_bar.sender().emit(BarInput::HiddenBar(verb));
             }
             FrameInput::ToggleClipboardMenu => {
                 self.toggle_menu(CLIPBOARD_MENU, widgets);

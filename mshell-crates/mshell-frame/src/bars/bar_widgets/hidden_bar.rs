@@ -48,6 +48,11 @@ pub(crate) struct HiddenBarModel {
 pub(crate) enum HiddenBarInput {
     ToggleExpand,
     TogglePin,
+    // IPC verbs (mshellctl hidden-bar …)
+    Expand,
+    Collapse,
+    Pin,
+    Unpin,
     // Internal hover / timer events
     HoverEnter,
     HoverLeave,
@@ -184,6 +189,20 @@ impl Component for HiddenBarModel {
                     self.cancel_collapse();
                     self.expand();
                 }
+            }
+            HiddenBarInput::Expand => self.expand(),
+            HiddenBarInput::Collapse => {
+                if !self.pinned {
+                    self.collapse();
+                }
+            }
+            HiddenBarInput::Pin => {
+                self.pinned = true;
+                self.cancel_collapse();
+                self.expand();
+            }
+            HiddenBarInput::Unpin => {
+                self.pinned = false;
             }
             HiddenBarInput::HoverEnter => {
                 self.cancel_collapse();

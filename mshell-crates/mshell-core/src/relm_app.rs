@@ -82,6 +82,8 @@ pub(crate) enum ShellInput {
     ToggleAppLauncherWithTab(Option<String>, String),
     ToggleClipboard(Option<String>),
     ToggleClockMenu(Option<String>),
+    /// Hidden Bar IPC verb — broadcast to every monitor's bars.
+    HiddenBar(mshell_common::hidden_bar::HiddenBarVerb),
     ToggleNotifications(Option<String>),
     NotificationsClearAll,
     NotificationsReadPopups,
@@ -516,6 +518,14 @@ impl Component for Shell {
             ShellInput::ToggleClockMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
                     frame.emit(FrameInput::ToggleClockMenu);
+                }
+            }
+            ShellInput::HiddenBar(verb) => {
+                // Global — every monitor's bars react together.
+                for group in self.window_groups.values() {
+                    if let Some(frame) = group.frame.as_ref() {
+                        frame.emit(FrameInput::HiddenBar(verb));
+                    }
                 }
             }
             ShellInput::ToggleWallpaperMenu(monitor_name) => {

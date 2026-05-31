@@ -42,6 +42,11 @@ pub enum Commands {
         #[command(subcommand)]
         command: BarCommands,
     },
+    /// Control the Hidden Bar drawer widget
+    HiddenBar {
+        /// toggle | expand | collapse | pin | unpin
+        action: String,
+    },
     /// Commands for changing audio
     Audio {
         #[command(subcommand)]

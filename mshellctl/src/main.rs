@@ -15,6 +15,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Menu { command } => mshellctl::subcommands::menu::execute(command).await?,
         Commands::Bar { command } => mshellctl::subcommands::bar::execute(command).await?,
+        Commands::HiddenBar { action } => {
+            bus_command_with_arg("HiddenBar", &action).await?;
+        }
         Commands::Audio { command } => mshellctl::subcommands::audio::execute(command).await?,
         Commands::Media { command } => mshellctl::subcommands::media::execute(command).await?,
         Commands::Brightness { command } => {
