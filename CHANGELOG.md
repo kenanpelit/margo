@@ -7,6 +7,66 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.9.0] – 2026-06-01
+
+### Added
+
+- **mpower** — a native automatic power-profile manager (new binary +
+  `systemd --user` service). Picks the power-profiles-daemon profile from live
+  CPU load and AC/battery state (performance under load on AC, balanced /
+  power-saver on battery), honours a manual override until the next AC change,
+  and is fully configurable from Settings → Power → Automatic Power Profile and
+  `~/.config/margo/mpower.toml`. Replaces the external `ppp-auto-profile`;
+  gated to margo sessions so it never fights another compositor's tool.
+- **Hidden Bar** bar widget — a collapsible drawer (native port of the DMS
+  hidden-bar plugin) that hides a configurable group of pills behind a trigger:
+  hover or click to reveal, right-click to pin, auto-collapse on leave.
+  Settings → Widgets → Hidden Bar picks the contents + behaviour;
+  `mshellctl hidden-bar {toggle,expand,collapse,pin,unpin}` drives it from
+  keybindings.
+- **Catwalk** bar widget — a CPU-reactive animated cat (port of the noctalia
+  plugin): idles below a CPU threshold, walks faster as load climbs; click
+  opens the CPU dashboard. Configurable in Settings → Widgets → Catwalk.
+- **Kenp** colour scheme (dark + light) added to the static theme catalogue.
+- **Power menu battery details** — time remaining, power draw (W), health,
+  capacity (Wh) and charge cycles, plus a **charge-limit control**
+  (preset 60/80/100 + custom) via the kernel `charge_control_end_threshold`
+  (ThinkPad/generic; set through pkexec). (Inspired by dms-framework-battery.)
+- **Dock**: middle-click launches a new instance, scrolling over an icon
+  cycles that app's windows, and per-app **icon overrides**
+  (`dock.icon_overrides`, class → icon name/path) fix apps started with a
+  synthetic `--class`.
+- **Media player**: ± relative-seek buttons and an optional large album cover
+  (the mplayerplus plugin folded into the native MediaPlayer widget);
+  Settings → Widgets → Media Player.
+- **Per-tag default tiling layout** (`taglayout` / `taglayout_force` config +
+  Settings → Tiling Layout page with a per-tag override editor); the
+  compositor seeds them and re-applies on reload.
+- **Plugins**: plugin-declared keybinds with conflict resolution +
+  Settings → Plugins → Keybinds, a panel-archetype design language with a
+  family of `plugin-*` style classes, `mshellctl plugin list`, MPRIS player
+  name exposure, and shell completions.
+- **Docs**: a complete configuration guide (all layouts + the full dispatch
+  action catalogue), a README for every binary, and a GitHub wiki.
+
+### Changed
+
+- Plugin install copies only runtime files (manifest / wasm / assets), never
+  the plugin source tree.
+
+### Fixed
+
+- **Dock — focus the exact window** from the right-click menu (the long-parked
+  bug): the bare `focuswindow address:…` string was silently dropped; it now
+  goes through the recognised `dispatch focuswindow <idx>` path.
+- **Menus** no longer flash a stale previous menu when opening a different menu
+  at a shared screen position (instant stack-child switch; the revealer still
+  animates).
+- Catwalk + Hidden-Bar triggers use the canonical bar-pill hover
+  (`.ok-bar-widget`) instead of a non-existent class.
+- Tiling-layout precedence (`taglayout` > `tagrule` > `default_layout`) and
+  live re-apply on `mctl reload`.
+
 ## [0.8.5] – 2026-05-27
 
 ### Added
