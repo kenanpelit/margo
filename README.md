@@ -26,7 +26,7 @@
 
 ---
 
-**margo** is a Wayland compositor in the dwl/mango tradition — a Rust + [Smithay] port of [mango] with tags instead of workspaces, a deep tiling layout catalogue, and a complete first-party stack for everyday use: a GTK4 desktop shell (`mshell`) with bar / menus / notifications / OSD / settings UI, a control CLI (`mctl`), a screen locker (`mlock`), a TUI login manager (`mlogind`), monitor profiles (`mlayout`), and a screenshot helper (`mscreenshot`). The whole stack ships from one workspace and one release. The compositor speaks `dwl-ipc-v2` so third-party shells like [noctalia] also work — but you don't need one.
+**margo** is a Wayland compositor in the dwl/mango tradition — a Rust + [Smithay] port of [mango] with tags instead of workspaces, a deep tiling layout catalogue, and a complete first-party stack for everyday use: a GTK4 desktop shell (`mshell`) with bar / menus / notifications / OSD / settings UI, a control CLI (`mctl`), a screen locker (`mlock`), a TUI login manager (`mlogind`), monitor profiles (`mlayout`), a screenshot helper (`mscreenshot`), and an automatic power-profile manager (`mpower`). The whole stack ships from one workspace and one release. The compositor speaks `dwl-ipc-v2` so third-party shells like [noctalia] also work — but you don't need one.
 
 [Smithay]: https://github.com/Smithay/smithay
 [mango]: https://github.com/mangowm/mango
@@ -71,6 +71,7 @@ Each binary lives in its own top-level directory — the name links to it.
 | [`mshellctl`](mshellctl/) | Shell IPC CLI — menus, audio, wallpaper, lock |
 | [`mlock`](mlock/) | Screen locker — `ext-session-lock-v1` + PAM |
 | [`mlogind`](mlogind/) | TUI login / display manager — PAM, matugen-themed |
+| [`mpower`](mpower/) | Automatic power-profile manager — CPU + AC/battery aware |
 | [`mlayout`](mlayout/) | Named monitor profiles |
 | [`mscreenshot`](mscreenshot/) | Screen / region / window capture |
 | [`mpicker`](mpicker/) | Native colour picker — frozen screencap + zoom lens |
@@ -203,7 +204,7 @@ path is recorded in `/usr/local/share/margo/install-manifest.txt`, so
 
 ```bash
 cargo build --release --workspace
-for bin in margo start-margo mctl mshell mshellctl mlock mlayout mscreenshot mvisual mlogind mwizard mpicker; do
+for bin in margo start-margo mctl mshell mshellctl mlock mlayout mscreenshot mvisual mlogind mpower mwizard mpicker; do
   sudo install -Dm755 target/release/$bin /usr/bin/$bin
 done
 sudo install -Dm644 margo.desktop /usr/share/wayland-sessions/margo.desktop

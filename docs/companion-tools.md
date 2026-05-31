@@ -114,6 +114,26 @@ sudo mlogind sync-theme   # repaint /etc/mlogind/variables.toml from the active 
 - **Fingerprint (opt-in).** Handled at the PAM level — uncomment `pam_fprintd.so` in `/etc/pam.d/mlogind` after `fprintd-enroll`.
 - **Packaging.** Config + PAM + the systemd unit install to `/etc/mlogind/`, `/etc/pam.d/mlogind`, and `/usr/lib/systemd/system/mlogind.service`, but the package never enables it — switching login managers is a deliberate `systemctl disable --now <old-dm> && systemctl enable mlogind`. Defaults to `tty2`; for another VT add a drop-in under `/etc/systemd/system/mlogind.service.d/`.
 
+## `mpower`
+
+A small **automatic power-profile manager** — a long-lived `systemd --user` daemon that picks the [power-profiles-daemon](https://gitlab.freedesktop.org/upower/power-profiles-daemon) profile (`performance` / `balanced` / `power-saver`) from live CPU load and AC/battery state. It replaces an external auto-profile script: the mechanism now ships with margo, and every knob is exposed in the shell under **Settings → Power → Automatic Power Profile**.
+
+```bash
+mpower status        # live state: power source, current profile, CPU now, thresholds
+mpower pause         # suspend auto-switching (leaves the current profile)
+mpower resume
+```
+
+Each tick (default 5 s) it reads the active profile, AC/battery from `/sys`, and CPU busy% (aggregate **and** the hottest single core) from `/proc/stat`, then:
+
+- **On AC** — climbs to **performance** on sustained high load (the aggregate *or* one pegged core), drops back to **balanced** when calm; streaks + a cooldown damp flapping.
+- **On battery** — **balanced**, or **power-saver** at/under a configurable charge floor. Performance is never selected on battery.
+- **Manual override** — a profile you set by hand (the bar pill, the Settings dropdown, `powerprofilesctl`) is honoured until the next AC transition, then auto resumes.
+
+- **Config.** `~/.config/margo/mpower.toml`, re-read every tick — edits (from the settings page or by hand) go live with no restart. A missing or partial file is filled from the defaults, so you only write the keys you want to change. The full key table is in [`mpower/README.md`](https://github.com/kenanpelit/margo/blob/main/mpower/README.md).
+- **margo-only.** The shipped `mpower.service` carries `ConditionEnvironment=XDG_CURRENT_DESKTOP=margo`, so it only runs under a margo session and never fights another compositor's auto-profile tool over `powerprofilesctl`. Other compositors can keep their own daemon with the inverse condition.
+- **Lean.** No D-Bus/UPower client — sysfs polling + a `powerprofilesctl` shell-out, with in-memory state (no state file).
+
 ## Shell completions
 
 Bash, zsh, and fish completions ship under `/usr/share/{bash-completion,zsh,fish}/...` and pull dispatch action names from `mctl actions --names` at completion time. They auto-load — no rc-file work needed.

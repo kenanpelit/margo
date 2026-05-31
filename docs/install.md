@@ -65,7 +65,7 @@ removes exactly what was added.
 ```bash
 git clone https://github.com/kenanpelit/margo
 cd margo && cargo build --release --workspace
-for bin in margo start-margo mctl mshell mshellctl mlock mlayout mscreenshot mvisual; do
+for bin in margo start-margo mctl mshell mshellctl mlock mlayout mscreenshot mvisual mpower; do
   sudo install -Dm755 target/release/$bin /usr/bin/$bin
 done
 sudo install -Dm644 margo.desktop /usr/share/wayland-sessions/margo.desktop

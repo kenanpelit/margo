@@ -141,8 +141,10 @@ margo session needs **no `xdg-desktop-portal-gnome`** at all:
 - **A native Screenshot portal** — apps that ask the portal for a screenshot
   get one straight from the compositor.
 - Plus the standalone tools: `mscreenshot` (region / window / output → file +
-  clipboard + satty/swappy), `mpicker` (a zoom-lens colour picker), and a
-  screenshot widget with RGB readout, magnifier, and inline annotation.
+  clipboard + satty/swappy), `mpicker` (a zoom-lens colour picker), `mpower`
+  (an automatic power-profile manager — CPU + AC/battery aware, configurable
+  from Settings → Power), and a screenshot widget with RGB readout, magnifier,
+  and inline annotation.
 
 ## Install
 
