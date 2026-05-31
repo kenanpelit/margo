@@ -1,5 +1,8 @@
 use mshell_common::WatcherToken;
+use mshell_config::config_manager::config_manager;
+use mshell_config::schema::config::{ConfigStoreFields, GeneralStoreFields};
 use mshell_utils::media::spawn_media_player_watcher;
+use reactive_graph::prelude::GetUntracked;
 use relm4::gtk::glib;
 use relm4::gtk::pango;
 use relm4::gtk::prelude::*;
@@ -34,6 +37,10 @@ pub(crate) struct MediaPlayerModel {
     scale_value_changed_signal: Option<glib::SignalHandlerId>,
     position: Duration,
     pending_seek: Option<(Duration, Instant)>, // (target, when_we_sent_it)
+    /// Step for the ⏪ / ⏩ relative-seek buttons (general.media_seek_step_seconds).
+    seek_step: Duration,
+    /// Album-cover pixel size, from general.media_large_album_art.
+    cover_size: i32,
     can_loop: bool,
     can_shuffle: bool,
     can_go_next: bool,
@@ -49,6 +56,8 @@ pub(crate) struct MediaPlayerModel {
 pub(crate) enum MediaPlayerInput {
     ScaleChanged(f64), // fires continuously while dragging, only updates pending_seek display
     ScaleClicked(f64), // fires once on mouse up, triggers actual seek
+    SeekBackClicked,   // jump back by seek_step
+    SeekForwardClicked, // jump forward by seek_step
     ShuffleClicked,
     LoopClicked,
     PreviousClicked,
@@ -101,7 +110,7 @@ impl Component for MediaPlayerModel {
                 #[name = "cover"]
                 gtk::Image {
                     add_css_class: "media-player-cover",
-                    set_pixel_size: 64,
+                    set_pixel_size: model.cover_size,
                     set_valign: gtk::Align::Center,
                 },
 
@@ -301,6 +310,34 @@ impl Component for MediaPlayerModel {
                         },
                     },
                 },
+            },
+
+            // ── Relative-seek buttons (±seek_step), ported from
+            // the mplayerplus plugin. Hidden when the player can't
+            // seek; the draggable progress bar above is unaffected.
+            gtk::Box {
+                add_css_class: "media-player-seek",
+                set_orientation: gtk::Orientation::Horizontal,
+                set_halign: gtk::Align::Center,
+                set_spacing: 8,
+                #[watch]
+                set_visible: model.can_seek,
+
+                gtk::Button {
+                    add_css_class: "ok-button-surface",
+                    set_label: &format!("−{}s", model.seek_step.as_secs()),
+                    connect_clicked[sender] => move |_| {
+                        sender.input(MediaPlayerInput::SeekBackClicked);
+                    },
+                },
+
+                gtk::Button {
+                    add_css_class: "ok-button-surface",
+                    set_label: &format!("+{}s", model.seek_step.as_secs()),
+                    connect_clicked[sender] => move |_| {
+                        sender.input(MediaPlayerInput::SeekForwardClicked);
+                    },
+                },
             }
         }
     }
@@ -347,6 +384,29 @@ impl Component for MediaPlayerModel {
         let shuffle_mode = params.player.shuffle_mode.get();
         let loop_mode = params.player.loop_mode.get();
 
+        // Media-player knobs from general config (ported from the mplayerplus
+        // plugin's settings). Read once at construction; a new player spawns a
+        // fresh component, so toggling these in Settings takes effect on the
+        // next track / restart.
+        let seek_step = Duration::from_secs(
+            config_manager()
+                .config()
+                .general()
+                .media_seek_step_seconds()
+                .get_untracked()
+                .max(1) as u64,
+        );
+        let cover_size = if config_manager()
+            .config()
+            .general()
+            .media_large_album_art()
+            .get_untracked()
+        {
+            128
+        } else {
+            64
+        };
+
         let mut model = MediaPlayerModel {
             player: params.player,
             _watcher_token: watcher_token,
@@ -359,6 +419,8 @@ impl Component for MediaPlayerModel {
             scale_value_changed_signal: None,
             position,
             pending_seek: None,
+            seek_step,
+            cover_size,
             can_shuffle,
             can_loop,
             can_go_next,
@@ -414,6 +476,29 @@ impl Component for MediaPlayerModel {
                         let _ = player.set_position(new_position).await;
                     });
                 }
+            }
+            MediaPlayerInput::SeekBackClicked => {
+                let new_position = self.position.saturating_sub(self.seek_step);
+                self.pending_seek = Some((new_position, Instant::now()));
+                self.current_track_time = format_duration(new_position);
+                let player = self.player.clone();
+                tokio::spawn(async move {
+                    let _ = player.set_position(new_position).await;
+                });
+            }
+            MediaPlayerInput::SeekForwardClicked => {
+                let mut new_position = self.position + self.seek_step;
+                if let Some(length) = self.player.metadata.length.get()
+                    && new_position > length
+                {
+                    new_position = length;
+                }
+                self.pending_seek = Some((new_position, Instant::now()));
+                self.current_track_time = format_duration(new_position);
+                let player = self.player.clone();
+                tokio::spawn(async move {
+                    let _ = player.set_position(new_position).await;
+                });
             }
             MediaPlayerInput::ShuffleClicked => {
                 let current_mode = self.player.shuffle_mode.get();

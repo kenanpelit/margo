@@ -171,6 +171,14 @@ pub struct General {
     /// systems without NM (or who'd rather see the popup) can
     /// turn this on in Settings → General.
     pub network_osd_enabled: bool,
+    /// Discrete seek step in seconds for the media-player menu's
+    /// ⏪ / ⏩ buttons (the relative-seek controls ported from the
+    /// mplayerplus plugin). The draggable progress bar is unaffected.
+    pub media_seek_step_seconds: u32,
+    /// Show a larger album cover in the media-player menu. Off keeps the
+    /// compact 64 px cover; on bumps it to a roomier size for a more
+    /// "now playing"-style panel.
+    pub media_large_album_art: bool,
 }
 
 impl Default for General {
@@ -185,6 +193,8 @@ impl Default for General {
             show_screen_corners: false,
             screen_corner_radius: 24,
             network_osd_enabled: false,
+            media_seek_step_seconds: 10,
+            media_large_album_art: false,
         }
     }
 }

@@ -17,6 +17,7 @@ use crate::fonts_settings::{FontsSettingsInit, FontsSettingsModel};
 use crate::input_settings::{InputSettingsInit, InputSettingsModel};
 use crate::keybinds_settings::{KeybindsSettingsInit, KeybindsSettingsModel};
 use crate::general_settings::{GeneralSettingsInit, GeneralSettingsModel};
+use crate::media_player_settings::{MediaPlayerSettingsInit, MediaPlayerSettingsModel};
 use crate::weather_settings::{WeatherSettingsInit, WeatherSettingsModel};
 use crate::idle_settings::{IdleSettingsInit, IdleSettingsModel};
 use crate::lock_settings::{LockSettingsInit, LockSettingsModel};
@@ -42,6 +43,7 @@ pub struct SettingsWindowModel {
     general_settings_controller: Controller<GeneralSettingsModel>,
     setup_settings_controller: Controller<SetupSettingsModel>,
     weather_settings_controller: Controller<WeatherSettingsModel>,
+    media_player_settings_controller: Controller<MediaPlayerSettingsModel>,
     wallpaper_settings_controller: Controller<WallpaperSettingsModel>,
     theme_settings_controller: Controller<ThemeSettingsModel>,
     fonts_settings_controller: Controller<FontsSettingsModel>,
@@ -869,6 +871,10 @@ impl Component for SettingsWindowModel {
             .launch(WeatherSettingsInit {})
             .detach();
 
+        let media_player_settings_controller = MediaPlayerSettingsModel::builder()
+            .launch(MediaPlayerSettingsInit {})
+            .detach();
+
         let wallpaper_settings_controller = WallpaperSettingsModel::builder()
             .launch(WallpaperSettingsInit {})
             .detach();
@@ -1025,6 +1031,7 @@ impl Component for SettingsWindowModel {
             general_settings_controller,
             setup_settings_controller,
             weather_settings_controller,
+            media_player_settings_controller,
             wallpaper_settings_controller,
             theme_settings_controller,
             fonts_settings_controller,
@@ -1449,6 +1456,7 @@ impl Component for SettingsWindowModel {
             Notifications,
             Session,
             Weather,
+            MediaPlayer,
             Clipboard,
             SystemUpdate,
             Dock,
@@ -1466,6 +1474,7 @@ impl Component for SettingsWindowModel {
                     Self::Notifications => "Notifications",
                     Self::Session => "Session",
                     Self::Weather => "Weather",
+                    Self::MediaPlayer => "Media Player",
                 }
             }
         }
@@ -1480,7 +1489,7 @@ impl Component for SettingsWindowModel {
             WidgetEntry::Menu { kind: MenuKind::Clock, stack_name: "clock", label: "Clock", icon: "alarm-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::Dashboard, stack_name: "dashboard", label: "Dashboard", icon: "view-grid-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::Dns, stack_name: "dns", label: "DNS / VPN", icon: "network-vpn-symbolic" },
-            WidgetEntry::Menu { kind: MenuKind::MediaPlayer, stack_name: "media_player", label: "Media Player", icon: "media-playback-start-symbolic" },
+            WidgetEntry::MediaPlayer,
             WidgetEntry::Menu { kind: MenuKind::Network, stack_name: "network", label: "Network Console", icon: "network-workgroup-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::Notes, stack_name: "notes", label: "Notes Hub", icon: "notes-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::Podman, stack_name: "podman", label: "Podman", icon: "package-symbolic" },
@@ -1630,6 +1639,45 @@ impl Component for SettingsWindowModel {
                         .child(&inner)
                         .build();
                     widgets_sub_stack.add_named(&outer, Some("weather"));
+                    Box::leak(Box::new(menu_ctrl));
+                }
+                WidgetEntry::MediaPlayer => {
+                    let btn = make_sub_btn(
+                        "Media Player",
+                        "media-playback-start-symbolic",
+                        "media_player",
+                        group_anchor.as_ref(),
+                    );
+                    if group_anchor.is_none() {
+                        group_anchor = Some(btn.clone());
+                    }
+                    widgets_sub_sidebar_box.append(&btn);
+                    // Media Player is one widget but two config domains: the
+                    // menu surface (position / width / height → the generic
+                    // per-menu page) and the playback knobs (seek step +
+                    // album-art size → MediaPlayerSettings, ported from the
+                    // mplayerplus plugin). Compose both into one scrolling page.
+                    let menu_ctrl = WidgetMenuSettingsModel::builder()
+                        .launch(WidgetMenuSettingsInit { kind: MenuKind::MediaPlayer })
+                        .detach();
+                    let ms = menu_ctrl.widget().clone();
+                    let ps = model.media_player_settings_controller.widget().clone();
+                    for sw in [&ms, &ps] {
+                        sw.set_vscrollbar_policy(gtk::PolicyType::Never);
+                        sw.set_propagate_natural_height(true);
+                        sw.set_vexpand(false);
+                    }
+                    let inner = gtk::Box::new(gtk::Orientation::Vertical, 0);
+                    inner.append(&ms);
+                    inner.append(&ps);
+                    let outer = gtk::ScrolledWindow::builder()
+                        .hscrollbar_policy(gtk::PolicyType::Never)
+                        .vscrollbar_policy(gtk::PolicyType::Automatic)
+                        .hexpand(true)
+                        .vexpand(true)
+                        .child(&inner)
+                        .build();
+                    widgets_sub_stack.add_named(&outer, Some("media_player"));
                     Box::leak(Box::new(menu_ctrl));
                 }
                 WidgetEntry::Clipboard => {
