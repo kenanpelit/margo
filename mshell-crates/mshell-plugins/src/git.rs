@@ -100,18 +100,36 @@ fn scratch_dir(tag: &str) -> PathBuf {
     std::env::temp_dir().join(format!("mplugins-{tag}-{nanos}"))
 }
 
-/// Recursive directory copy, skipping any `.git` metadata.
+/// `true` for entries that are plugin *source*, not runtime — the shell only
+/// needs `manifest.toml`, the `entry` wasm, and any scripts/assets the
+/// manifest references (e.g. `*.sh`, `sounds/`). Copying the Rust source tree
+/// into `~/.config/margo/mshell/plugins/<key>/` just bloats the config dir
+/// (the source already lives in the plugin repo), so skip it on install.
+fn is_source_only(name: &std::ffi::OsStr, is_dir: bool) -> bool {
+    let n = name.to_string_lossy();
+    if is_dir {
+        matches!(n.as_ref(), ".git" | "target" | "src")
+    } else {
+        matches!(
+            n.as_ref(),
+            "Cargo.toml" | "Cargo.lock" | ".gitignore" | "README.md" | "README"
+        ) || n.ends_with(".bak")
+    }
+}
+
+/// Recursive directory copy, skipping `.git` metadata and plugin source
+/// (see [`is_source_only`]) so installs carry only what the shell runs.
 fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dst)?;
     for entry in std::fs::read_dir(src)? {
         let entry = entry?;
         let ty = entry.file_type()?;
+        if is_source_only(&entry.file_name(), ty.is_dir()) {
+            continue;
+        }
         let from = entry.path();
         let to = dst.join(entry.file_name());
         if ty.is_dir() {
-            if entry.file_name() == ".git" {
-                continue;
-            }
             copy_dir_all(&from, &to)?;
         } else {
             std::fs::copy(&from, &to)?;
