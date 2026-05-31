@@ -150,6 +150,12 @@ impl Component for SettingsWindowModel {
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
 
+                    gtk::ScrolledWindow {
+                        set_hscrollbar_policy: gtk::PolicyType::Never,
+                        set_vscrollbar_policy: gtk::PolicyType::Automatic,
+                        set_vexpand: true,
+                        set_propagate_natural_width: true,
+
                 #[name = "sidebar_box"]
                 gtk::Box {
                     add_css_class: "settings-sidebar",
@@ -840,6 +846,7 @@ impl Component for SettingsWindowModel {
                     },
 
                 },
+                    },
 
                 #[name = "stack"]
                 gtk::Stack {
