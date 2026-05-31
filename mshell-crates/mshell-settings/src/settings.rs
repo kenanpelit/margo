@@ -9,9 +9,14 @@ use crate::privacy_settings::{PrivacySettingsInit, PrivacySettingsModel};
 use crate::overview_settings::{OverviewSettingsInit, OverviewSettingsModel};
 use crate::bar_settings::bar_settings::{BarSettingsInit, BarSettingsModel};
 use crate::bar_settings::bar_widget_factory::BarListLocation;
-use crate::bar_settings::bar_widget_section::{BarSection, WidgetSectionInit, WidgetSectionModel};
+use crate::bar_settings::bar_widget_section::{
+    BarSection, WidgetSectionInit, WidgetSectionInput, WidgetSectionModel,
+};
 use crate::hidden_bar_settings::{HiddenBarSettingsInit, HiddenBarSettingsModel};
+use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
+use mshell_config::schema::config::{BarsStoreFields, ConfigStoreFields, HorizontalBarStoreFields};
+use reactive_graph::prelude::Get;
 use reactive_graph::traits::ReadUntracked;
 use crate::date_time_settings::{DateTimeSettingsInit, DateTimeSettingsModel};
 use crate::region_settings::{RegionSettingsInit, RegionSettingsModel};
@@ -1750,6 +1755,33 @@ impl Component for SettingsWindowModel {
                         .child(&inner)
                         .build();
                     widgets_sub_stack.add_named(&outer, Some("hidden_bar"));
+
+                    // Keep the section row lists in sync when hidden_widgets
+                    // changes (e.g. add/remove from this very page, or the
+                    // bar updating it): watch config and re-feed each section.
+                    let top_sender = top_section.sender().clone();
+                    let bottom_sender = bottom_section.sender().clone();
+                    let mut hb_effects = EffectScope::new();
+                    hb_effects.push(move |_| {
+                        let widgets = config_manager()
+                            .config()
+                            .bars()
+                            .top_bar()
+                            .hidden_widgets()
+                            .get();
+                        top_sender.emit(WidgetSectionInput::SetWidgetsEffect(widgets));
+                    });
+                    hb_effects.push(move |_| {
+                        let widgets = config_manager()
+                            .config()
+                            .bars()
+                            .bottom_bar()
+                            .hidden_widgets()
+                            .get();
+                        bottom_sender.emit(WidgetSectionInput::SetWidgetsEffect(widgets));
+                    });
+
+                    Box::leak(Box::new(hb_effects));
                     Box::leak(Box::new(top_section));
                     Box::leak(Box::new(bottom_section));
                 }
