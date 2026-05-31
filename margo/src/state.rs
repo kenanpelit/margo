@@ -1641,6 +1641,31 @@ impl MargoState {
                 mon.pertag.seed_taglayouts(&taglayouts);
             }
         }
+        // Apply the global `default_layout` to every tag that has neither an
+        // explicit `taglayout` override nor a live user-picked layout, so
+        // changing "Default layout" in Settings → Tiling Layout takes effect
+        // on reload (not only at the next start). user_picked tags (a manual
+        // `setlayout`) are left alone — the session keeps them. Runs before
+        // `apply_tag_rules_to_monitor`, so a per-tag `tagrule` layout still
+        // wins over the global default (precedence: taglayout > tagrule >
+        // default).
+        if let Some(def) = LayoutId::from_name(&self.config.default_layout) {
+            let override_tags: std::collections::HashSet<usize> =
+                taglayouts.iter().map(|(t, _)| *t as usize).collect();
+            for mon in &mut self.monitors {
+                for tag in 1..mon.pertag.ltidxs.len() {
+                    let picked = mon
+                        .pertag
+                        .user_picked_layout
+                        .get(tag)
+                        .copied()
+                        .unwrap_or(false);
+                    if !override_tags.contains(&tag) && !picked {
+                        mon.pertag.ltidxs[tag] = def;
+                    }
+                }
+            }
+        }
         // Reload re-establishes "what the file says" — invalidate the
         // theme baseline so a subsequent `mctl theme default` resets
         // to the freshly-parsed values.
