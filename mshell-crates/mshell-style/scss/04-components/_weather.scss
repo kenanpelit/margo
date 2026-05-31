@@ -13,6 +13,48 @@
   -gtk-icon-size: 20px;
 }
 
+// ── Current-conditions hero + detail grid (OpenWeather-parity, §2) ──
+// Worded condition under the headline temperature: same tier as a
+// secondary label — colour, not size, carries the hierarchy.
+.weather-condition-label {
+  font-size: var(--font-md);
+  color: var(--on-surface);
+}
+
+// The two-column "label : value" grid reads as a raised inner
+// surface (one tonal tier above the --surface-container-high card,
+// per the file's existing nesting note) — grouping the metrics
+// without a hard outline.
+.weather-detail-grid {
+  background: var(--surface-container-highest);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+}
+
+.weather-detail-caption {
+  font-size: var(--font-sm);
+  color: var(--on-surface-variant);
+}
+
+.weather-detail-value {
+  font-size: var(--font-sm);
+  font-weight: 700;
+  color: var(--on-surface);
+  font-variant-numeric: tabular-nums;
+}
+
+// Rain-chance chips in the hourly / daily rows — quiet metadata tier.
+.hourly-rain,
+.daily-rain {
+  color: var(--on-surface-variant);
+}
+
+.hourly-rain-icon,
+.daily-rain-icon {
+  color: var(--on-surface-variant);
+  -gtk-icon-size: 13px;
+}
+
 // Surfaces over borders (DESIGN.md §0.1): the detail block reads
 // as a grouped sub-surface via a one-tier tonal step, not a hard
 // outline ring. Inside the dashboard's surface-container weather

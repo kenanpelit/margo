@@ -1,7 +1,7 @@
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, GeneralStoreFields};
-use mshell_utils::weather::{get_temperature_string, get_weather_icon_name};
+use mshell_utils::weather::{get_percent_string, get_temperature_string, get_weather_icon_name};
 use reactive_graph::traits::{Get, GetUntracked};
 use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -71,6 +71,26 @@ impl Component for HourlyItemModel {
                 add_css_class: "label-small-bold",
                 #[watch]
                 set_label: format!("{} UV", model.hourly.uv_index).as_str(),
+            },
+
+            // Rain chance — the most-wanted hourly field, previously
+            // dropped despite being in the wayle model.
+            gtk::Box {
+                add_css_class: "hourly-rain",
+                set_orientation: gtk::Orientation::Horizontal,
+                set_halign: gtk::Align::Center,
+                set_spacing: 2,
+
+                gtk::Image {
+                    add_css_class: "hourly-rain-icon",
+                    set_icon_name: Some("weather-showers-scattered-symbolic"),
+                },
+
+                gtk::Label {
+                    add_css_class: "label-small",
+                    #[watch]
+                    set_label: get_percent_string(&model.hourly.rain_chance).as_str(),
+                },
             },
         }
     }
