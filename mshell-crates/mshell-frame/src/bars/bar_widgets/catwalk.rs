@@ -143,7 +143,7 @@ impl Component for CatwalkModel {
                 self.tick = self.tick.wrapping_add(1);
 
                 // Re-sample CPU roughly once a second.
-                if self.tick % 9 == 0 {
+                if self.tick.is_multiple_of(9) {
                     let (total, idle) = read_cpu_stat_pub();
                     let dt = total.saturating_sub(self.prev_total);
                     let di = idle.saturating_sub(self.prev_idle);
@@ -173,7 +173,7 @@ impl Component for CatwalkModel {
                     6
                 };
 
-                if self.tick % ticks_per_frame == 0 {
+                if self.tick.is_multiple_of(ticks_per_frame) {
                     self.frame = (self.frame + 1) % 4;
                 }
 
