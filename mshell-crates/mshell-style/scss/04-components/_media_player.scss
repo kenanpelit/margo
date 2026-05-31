@@ -71,9 +71,42 @@
 }
 
 // ── Controls row ─────────────────────────────────────────────
+// Inter-button gap is GtkBox `set_spacing` (a widget property, not
+// CSS — `spacing` here would be a no-op), set in media_player.rs.
+// This block only owns the top gap + per-button sizing.
 .media-player-controls {
-  spacing: var(--space-3);
-  margin-top: var(--space-1);
+  margin-top: var(--space-2);
+
+  // Secondary transport buttons (shuffle / prev / next / loop):
+  // round, comfortable tap targets instead of cramped squares.
+  > button {
+    min-width: 42px;
+    min-height: 42px;
+    padding: 0;
+    border-radius: var(--radius-pill);
+
+    image {
+      -gtk-icon-size: 18px;
+    }
+  }
+}
+
+// Primary play/pause — the focal control: larger, filled with the
+// matugen accent so the row has a clear centre of gravity.
+.media-player-controls > button.media-player-ctl-primary {
+  min-width: 56px;
+  min-height: 56px;
+  background-color: var(--primary);
+
+  image {
+    color: var(--on-primary);
+    -gtk-icon-size: 26px;
+  }
+
+  &:disabled image {
+    color: var(--on-primary);
+    opacity: 0.5;
+  }
 }
 
 // ── Bar pill ────────────────────────────────────────────────

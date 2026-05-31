@@ -195,10 +195,14 @@ impl Component for MediaPlayerModel {
             },
 
             // ── Bottom row: centred playback controls ────────────
+            // Inter-button gap is a GtkBox property (CSS `spacing` is a
+            // no-op in GTK), so it's set here — the row read cramped
+            // ("iç içe") before because only the SCSS had it.
             gtk::Box {
                 add_css_class: "media-player-controls",
                 set_orientation: gtk::Orientation::Horizontal,
                 set_halign: gtk::Align::Center,
+                set_spacing: 8,
 
                 gtk::Button {
                     add_css_class: "ok-button-surface",
@@ -245,6 +249,7 @@ impl Component for MediaPlayerModel {
 
                 gtk::Button {
                     add_css_class: "ok-button-surface",
+                    add_css_class: "media-player-ctl-primary",
                     set_hexpand: false,
                     set_vexpand: false,
                     #[watch]
