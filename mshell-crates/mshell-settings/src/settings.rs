@@ -19,6 +19,7 @@ use crate::keybinds_settings::{KeybindsSettingsInit, KeybindsSettingsModel};
 use crate::general_settings::{GeneralSettingsInit, GeneralSettingsModel};
 use crate::weather_settings::{WeatherSettingsInit, WeatherSettingsModel};
 use crate::idle_settings::{IdleSettingsInit, IdleSettingsModel};
+use crate::lock_settings::{LockSettingsInit, LockSettingsModel};
 use crate::tag_layout_settings::{TagLayoutSettingsInit, TagLayoutSettingsModel};
 use crate::launcher_settings::{LauncherSettingsInit, LauncherSettingsModel};
 use crate::menu_settings::menu_settings::{MenuSettingsInit, MenuSettingsModel};
@@ -63,6 +64,7 @@ pub struct SettingsWindowModel {
     menu_settings_controller: Controller<MenuSettingsModel>,
     notification_settings_controller: Controller<NotificationSettingsModel>,
     idle_settings_controller: Controller<IdleSettingsModel>,
+    lock_settings_controller: Controller<LockSettingsModel>,
     tag_layout_settings_controller: Controller<TagLayoutSettingsModel>,
     launcher_settings_controller: Controller<LauncherSettingsModel>,
     session_settings_controller: Controller<SessionSettingsModel>,
@@ -557,6 +559,27 @@ impl Component for SettingsWindowModel {
                         },
                     },
 
+                    #[name = "lock_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("lock"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("system-lock-screen-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Lock Screen",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
                     #[name = "privacy_btn"]
                     gtk::ToggleButton {
                         add_css_class: "sidebar-button",
@@ -956,6 +979,10 @@ impl Component for SettingsWindowModel {
             .launch(DefaultAppsSettingsInit {})
             .detach();
 
+        let lock_settings_controller = LockSettingsModel::builder()
+            .launch(LockSettingsInit {})
+            .detach();
+
         let network_settings_controller = NetworkSettingsModel::builder()
             .launch(NetworkSettingsInit {})
             .detach();
@@ -1013,6 +1040,8 @@ impl Component for SettingsWindowModel {
                 ("display", "display"),
                 ("fonts", "fonts"),
                 ("idle", "idle"),
+                ("lock", "lock"),
+                ("lock screen", "lock"),
                 ("tiling layout", "tiling_layout"),
                 ("tiling_layout", "tiling_layout"),
                 ("about", "about"),
@@ -1064,6 +1093,7 @@ impl Component for SettingsWindowModel {
             menu_settings_controller,
             notification_settings_controller,
             idle_settings_controller,
+            lock_settings_controller,
             tag_layout_settings_controller,
             launcher_settings_controller,
             session_settings_controller,
@@ -1311,6 +1341,12 @@ impl Component for SettingsWindowModel {
         );
 
         widgets.stack.add_titled(
+            model.lock_settings_controller.widget(),
+            Some("lock"),
+            "Lock Screen",
+        );
+
+        widgets.stack.add_titled(
             model.tag_layout_settings_controller.widget(),
             Some("tiling_layout"),
             "Tiling Layout",
@@ -1460,7 +1496,6 @@ impl Component for SettingsWindowModel {
             SystemUpdate,
             Dock,
             SystemTray,
-            Lock,
         }
 
         impl WidgetEntry {
@@ -1470,7 +1505,6 @@ impl Component for SettingsWindowModel {
                     Self::SystemUpdate => "System Updates",
                     Self::Dock => "Margo Dock",
                     Self::SystemTray => "System Tray",
-                    Self::Lock => "Lock",
                     Self::Menu { label, .. } | Self::Pill { label, .. } => label,
                     Self::Notifications => "Notifications",
                     Self::Session => "Session",
@@ -1515,9 +1549,6 @@ impl Component for SettingsWindowModel {
             WidgetEntry::Pill { kind: BarPillKind::ActiveWindow, stack_name: "pill_active_window", label: "Active Window", icon: "window-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::DarkMode, stack_name: "pill_dark_mode", label: "Dark Mode Toggle", icon: "weather-clear-night-symbolic" },
             WidgetEntry::Pill { kind: BarPillKind::ColorPicker, stack_name: "pill_color_picker", label: "ColorPicker", icon: "color-select-symbolic" },
-            // Lock owns a richer page (lock-screen background, written to
-            // mlock.conf) rather than the generic bar-pill info page.
-            WidgetEntry::Lock,
             WidgetEntry::Pill { kind: BarPillKind::Logout, stack_name: "pill_logout", label: "Logout", icon: "system-log-out-symbolic" },
             WidgetEntry::Dock,
             WidgetEntry::Pill { kind: BarPillKind::MargoTags, stack_name: "pill_margo_tags", label: "Margo Tags", icon: "square-symbolic" },
@@ -1667,23 +1698,6 @@ impl Component for SettingsWindowModel {
                     widgets_sub_stack.add_named(ctrl.widget(), Some("system_tray"));
                     Box::leak(Box::new(ctrl));
                 }
-                WidgetEntry::Lock => {
-                    let btn = make_sub_btn(
-                        "Lock",
-                        "system-lock-screen-symbolic",
-                        "lock",
-                        group_anchor.as_ref(),
-                    );
-                    if group_anchor.is_none() {
-                        group_anchor = Some(btn.clone());
-                    }
-                    widgets_sub_sidebar_box.append(&btn);
-                    let ctrl = crate::lock_settings::LockSettingsModel::builder()
-                        .launch(crate::lock_settings::LockSettingsInit {})
-                        .detach();
-                    widgets_sub_stack.add_named(ctrl.widget(), Some("lock"));
-                    Box::leak(Box::new(ctrl));
-                }
             }
         }
 
@@ -1741,6 +1755,7 @@ impl Component for SettingsWindowModel {
                     "input" => Some(&widgets.input_btn),
                     "keybinds" => Some(&widgets.keybinds_btn),
                     "idle" => Some(&widgets.idle_btn),
+                    "lock" => Some(&widgets.lock_btn),
                     "tiling_layout" => Some(&widgets.tag_layout_btn),
                     "launcher" => Some(&widgets.launcher_btn),
                     "menus" => Some(&widgets.menus_btn),
