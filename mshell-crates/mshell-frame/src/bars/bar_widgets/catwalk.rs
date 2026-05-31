@@ -66,18 +66,27 @@ impl Component for CatwalkModel {
     type Init = CatwalkInit;
 
     view! {
+        // Canonical bar-pill anatomy (DESIGN.md §4): outer Box + an inner
+        // button carrying `.ok-button-surface .ok-bar-widget`, which is where
+        // the standard transparent surface + 14%-primary hover wash come from.
         #[root]
-        gtk::Button {
-            add_css_class: "bar-button",
-            add_css_class: "catwalk",
-            set_tooltip_text: Some("Catwalk — CPU activity"),
-            connect_clicked[sender] => move |_| {
-                sender.input(CatwalkInput::Clicked);
-            },
+        gtk::Box {
+            add_css_class: "catwalk-bar-widget",
+            set_hexpand: false,
+            set_vexpand: false,
 
-            #[name = "img"]
-            gtk::Image {
-                set_pixel_size: 22,
+            #[name = "btn"]
+            gtk::Button {
+                set_css_classes: &["ok-button-surface", "ok-bar-widget"],
+                set_tooltip_text: Some("Catwalk — CPU activity"),
+                connect_clicked[sender] => move |_| {
+                    sender.input(CatwalkInput::Clicked);
+                },
+
+                #[name = "img"]
+                gtk::Image {
+                    set_pixel_size: 22,
+                },
             },
         }
     }
@@ -89,18 +98,13 @@ impl Component for CatwalkModel {
     ) -> ComponentParts<Self> {
         let (idle_paths, active_paths) = ensure_frames();
 
-        // Hide the pill background when configured (read once; a change needs
-        // the slot rebuilt, same as other per-widget styling).
-        if config_manager()
+        let hide_background = config_manager()
             .config()
             .bars()
             .widgets()
             .catwalk()
             .hide_background()
-            .get_untracked()
-        {
-            root.add_css_class("hide-background");
-        }
+            .get_untracked();
 
         let (prev_total, prev_idle) = read_cpu_stat_pub();
 
@@ -124,6 +128,13 @@ impl Component for CatwalkModel {
         };
 
         let widgets = view_output!();
+
+        // hide_background drops the surface fill but keeps `.ok-bar-widget`,
+        // so the cat floats yet still gets the standard hover wash.
+        if hide_background {
+            widgets.btn.set_css_classes(&["ok-bar-widget"]);
+        }
+
         ComponentParts { model, widgets }
     }
 

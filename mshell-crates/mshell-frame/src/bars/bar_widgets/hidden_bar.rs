@@ -88,13 +88,13 @@ impl Component for HiddenBarModel {
 
             #[name = "trigger"]
             gtk::Button {
-                add_css_class: "hidden-bar-trigger",
-                add_css_class: "bar-button",
+                // Canonical bar-pill classes (DESIGN.md §4): the transparent
+                // surface + 14%-primary hover wash comes from `.ok-bar-widget`.
                 #[watch]
                 set_css_classes: if model.pinned {
-                    &["hidden-bar-trigger", "bar-button", "pinned"]
+                    &["ok-button-surface", "ok-bar-widget", "hidden-bar-trigger", "pinned"]
                 } else {
-                    &["hidden-bar-trigger", "bar-button"]
+                    &["ok-button-surface", "ok-bar-widget", "hidden-bar-trigger"]
                 },
                 #[watch]
                 set_icon_name: if model.expanded {
