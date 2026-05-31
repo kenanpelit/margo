@@ -195,6 +195,32 @@ impl Component for DockSettingsModel {
                         } @show_tooltips_handler,
                     },
                 },
+
+                // ── Icon overrides (hint) ───────────────────────────
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 4,
+                    gtk::Label {
+                        add_css_class: "label-medium-bold",
+                        set_halign: gtk::Align::Start,
+                        set_label: "Icon overrides",
+                    },
+                    gtk::Label {
+                        add_css_class: "label-small",
+                        set_halign: gtk::Align::Start,
+                        set_label: "Apps started with a synthetic --class (e.g. isolated browser profiles) may not match a .desktop and fall back to a generic icon. Map class → icon (a themed name or absolute path) in your profile:",
+                        set_xalign: 0.0,
+                        set_wrap: true,
+                        set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                    },
+                    gtk::Label {
+                        add_css_class: "label-small",
+                        set_halign: gtk::Align::Start,
+                        set_xalign: 0.0,
+                        set_selectable: true,
+                        set_label: "dock:\n  icon_overrides:\n    - class: Ai\n      icon: helium\n    - class: CompecTA\n      icon: /path/to/icon.png",
+                    },
+                },
             },
         }
     }

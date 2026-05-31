@@ -1124,6 +1124,11 @@ pub struct Dock {
     pub show_tooltips: bool,
     /// Include running apps that aren't pinned (off = pinned-only dock).
     pub show_running: bool,
+    /// Per-app icon overrides — map a window class to an icon name or an
+    /// absolute file path. For apps launched with a synthetic `--class` that
+    /// has no matching `.desktop` (e.g. isolated browser profiles), which
+    /// would otherwise fall back to a generic icon.
+    pub icon_overrides: Vec<DockIconOverride>,
 }
 
 impl Default for Dock {
@@ -1132,8 +1137,21 @@ impl Default for Dock {
             icon_size: 32,
             show_tooltips: true,
             show_running: true,
+            icon_overrides: Vec::new(),
         }
     }
+}
+
+/// A single dock icon override (`class` → `icon`).
+#[derive(
+    Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize, Store, Patch, JsonSchema,
+)]
+#[serde(default)]
+pub struct DockIconOverride {
+    /// Window class / app_id to match (case-insensitive).
+    pub class: String,
+    /// Icon name (themed) or an absolute file path / `file://` URI.
+    pub icon: String,
 }
 
 /// System Tray bar widget (the StatusNotifierItem icon strip). Tunables

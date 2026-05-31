@@ -256,6 +256,11 @@ impl Component for MargoDockItemModel {
 
         let widgets = view_output!();
 
+        // A per-app icon override wins outright — it's the escape hatch for
+        // synthetic `--class` apps that have no matching .desktop.
+        if let Some(icon) = dock_icon_override(&model.class) {
+            apply_override_icon(&widgets.image, &icon);
+        } else {
         let model_clone = model.clone();
         set_icon(
             &model.app_info,
@@ -291,6 +296,7 @@ impl Component for MargoDockItemModel {
                 .get_untracked()
                 .get(),
         );
+        }
 
         model.apply_dock_config(&widgets.image, &widgets.root);
 
@@ -851,5 +857,37 @@ fn add_window_details_to_menu(
         action_group.add_action(&action);
         let title = truncate_string(&client.title.get(), MAX_MENU_ITEM_LENGTH);
         menu.append(Some(&title), Some(&format!("main.{}", action_name)));
+    }
+}
+
+/// Per-app icon override for `class` from `dock.icon_overrides`
+/// (case-insensitive). `None` when there's no non-empty match.
+fn dock_icon_override(class: &str) -> Option<String> {
+    config_manager()
+        .config()
+        .dock()
+        .icon_overrides()
+        .get_untracked()
+        .into_iter()
+        .find(|o| !o.class.trim().is_empty() && o.class.eq_ignore_ascii_case(class))
+        .map(|o| o.icon)
+        .filter(|i| !i.trim().is_empty())
+}
+
+/// Apply an override icon: a `file://` URI or absolute / `~/` path loads from
+/// file; anything else is treated as a themed icon name.
+fn apply_override_icon(image: &gtk::Image, icon: &str) {
+    let icon = icon.trim();
+    if let Some(path) = icon.strip_prefix("file://") {
+        image.set_from_file(Some(path));
+    } else if let Some(rest) = icon.strip_prefix("~/") {
+        match std::env::var_os("HOME") {
+            Some(home) => image.set_from_file(Some(std::path::Path::new(&home).join(rest))),
+            None => image.set_icon_name(Some(icon)),
+        }
+    } else if icon.starts_with('/') {
+        image.set_from_file(Some(icon));
+    } else {
+        image.set_icon_name(Some(icon));
     }
 }
