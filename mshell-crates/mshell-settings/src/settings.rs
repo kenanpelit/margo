@@ -601,27 +601,6 @@ impl Component for SettingsWindowModel {
                         },
                     },
 
-                    #[name = "weather_btn"]
-                    gtk::ToggleButton {
-                        add_css_class: "sidebar-button",
-                        set_group: Some(&general_btn),
-                        connect_toggled[stack] => move |b| {
-                            if b.is_active() { stack.set_visible_child_name("weather"); }
-                        },
-
-                        gtk::Box {
-                            set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 12,
-                            gtk::Image { set_icon_name: Some("weather-few-clouds-symbolic") },
-                            gtk::Label {
-                                add_css_class: "label-medium",
-                                set_label: "Weather",
-                                set_halign: gtk::Align::Start,
-                                set_hexpand: true,
-                            },
-                        },
-                    },
-
                     gtk::Label {
                         add_css_class: "settings-sidebar-section",
                         set_label: "INPUT",
@@ -1220,11 +1199,6 @@ impl Component for SettingsWindowModel {
             "Setup",
         );
 
-        widgets.stack.add_titled(
-            model.weather_settings_controller.widget(),
-            Some("weather"),
-            "Weather",
-        );
 
         widgets.stack.add_titled(
             model.theme_settings_controller.widget(),
@@ -1492,6 +1466,7 @@ impl Component for SettingsWindowModel {
             },
             Notifications,
             Session,
+            Weather,
             Clipboard,
             SystemUpdate,
             Dock,
@@ -1508,6 +1483,7 @@ impl Component for SettingsWindowModel {
                     Self::Menu { label, .. } | Self::Pill { label, .. } => label,
                     Self::Notifications => "Notifications",
                     Self::Session => "Session",
+                    Self::Weather => "Weather",
                 }
             }
         }
@@ -1537,7 +1513,10 @@ impl Component for SettingsWindowModel {
             // interval + per-source toggles), so it's a dedicated entry.
             WidgetEntry::SystemUpdate,
             WidgetEntry::Menu { kind: MenuKind::Valent, stack_name: "valent", label: "Valent Connect", icon: "phone-symbolic" },
-            WidgetEntry::Menu { kind: MenuKind::Weather, stack_name: "weather", label: "Weather", icon: "weather-few-clouds-symbolic" },
+            // Weather owns a dedicated page (location query + units), and it's
+            // the single home for weather config — there's no separate
+            // top-level Weather entry.
+            WidgetEntry::Weather,
             WidgetEntry::Menu { kind: MenuKind::KeepAwake, stack_name: "keep_awake", label: "Keep Awake", icon: "eye-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::Twilight, stack_name: "twilight", label: "Twilight", icon: "weather-clear-night-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::Keybinds, stack_name: "keybinds", label: "Keyboard Shortcuts", icon: "input-keyboard-symbolic" },
@@ -1628,6 +1607,22 @@ impl Component for SettingsWindowModel {
                     widgets_sub_stack.add_named(
                         model.session_settings_controller.widget(),
                         Some("session"),
+                    );
+                }
+                WidgetEntry::Weather => {
+                    let btn = make_sub_btn(
+                        "Weather",
+                        "weather-few-clouds-symbolic",
+                        "weather",
+                        group_anchor.as_ref(),
+                    );
+                    if group_anchor.is_none() {
+                        group_anchor = Some(btn.clone());
+                    }
+                    widgets_sub_sidebar_box.append(&btn);
+                    widgets_sub_stack.add_named(
+                        model.weather_settings_controller.widget(),
+                        Some("weather"),
                     );
                 }
                 WidgetEntry::Clipboard => {
