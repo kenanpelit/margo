@@ -10,7 +10,7 @@ use mshell_config::schema::config::{
     ThemeAttributesStoreFields, ThemeStoreFields,
 };
 use mshell_config::schema::themes::{MatugenMode, Themes};
-use mshell_matugen::json_struct::{Font, MatugenTheme, MatugenThemeCustomOnly, MShell, Sizing};
+use mshell_matugen::json_struct::{Font, MShell, MatugenTheme, MatugenThemeCustomOnly, Sizing};
 use mshell_matugen::matugen::{apply_matugen_from_image_queued, apply_matugen_from_theme_queued};
 use mshell_matugen::static_theme_mapping::static_theme;
 use reactive_graph::effect::Effect;

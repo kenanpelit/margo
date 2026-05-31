@@ -2,8 +2,8 @@ use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, IdleStoreFields};
 use reactive_graph::prelude::{Get, GetUntracked};
-use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
 use relm4::gtk::glib;
+use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
 #[derive(Debug, Clone)]
@@ -343,7 +343,11 @@ impl Component for IdleSettingsModel {
         push_effect!(suspend_timeout_minutes, SuspendTimeoutEffect);
 
         let model = IdleSettingsModel {
-            dim_enabled: config_manager().config().idle().dim_enabled().get_untracked(),
+            dim_enabled: config_manager()
+                .config()
+                .idle()
+                .dim_enabled()
+                .get_untracked(),
             dim_timeout: config_manager()
                 .config()
                 .idle()

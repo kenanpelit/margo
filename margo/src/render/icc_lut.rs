@@ -170,7 +170,11 @@ impl IccLut3D {
                 }
             }
         }
-        AtlasRgbaF32 { width: w, height: h, pixels }
+        AtlasRgbaF32 {
+            width: w,
+            height: h,
+            pixels,
+        }
     }
 }
 
@@ -240,11 +244,7 @@ pub mod colord {
         default_path = "/org/freedesktop/ColorManager"
     )]
     trait ColorManager {
-        fn find_device_by_property(
-            &self,
-            key: &str,
-            value: &str,
-        ) -> zbus::Result<OwnedObjectPath>;
+        fn find_device_by_property(&self, key: &str, value: &str) -> zbus::Result<OwnedObjectPath>;
     }
 
     #[proxy(
@@ -438,7 +438,10 @@ mod tests {
             let [pr, pg, pb, pa] = probe(slice, r, g);
             assert!((pr - r as f32 / max).abs() < 1e-6, "r at ({slice},{r},{g})");
             assert!((pg - g as f32 / max).abs() < 1e-6, "g at ({slice},{r},{g})");
-            assert!((pb - slice as f32 / max).abs() < 1e-6, "b at ({slice},{r},{g})");
+            assert!(
+                (pb - slice as f32 / max).abs() < 1e-6,
+                "b at ({slice},{r},{g})"
+            );
             assert!((pa - 1.0).abs() < 1e-6);
         }
     }

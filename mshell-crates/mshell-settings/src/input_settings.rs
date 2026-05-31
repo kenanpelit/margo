@@ -101,7 +101,14 @@ fn bit(on: bool) -> String {
 /// Motion names for the gesture builder dropdown; the chosen index maps to
 /// this list and the name is written verbatim into the `gesturebind` line.
 const MOTIONS: [&str; 8] = [
-    "up", "down", "left", "right", "up-right", "up-left", "down-left", "down-right",
+    "up",
+    "down",
+    "left",
+    "right",
+    "up-right",
+    "up-left",
+    "down-left",
+    "down-right",
 ];
 const FINGER_OPTS: [&str; 2] = ["3", "4"];
 
@@ -988,7 +995,10 @@ impl Component for InputSettingsModel {
                     return; // an action is required
                 }
                 let motion = MOTIONS.get(self.b_motion as usize).copied().unwrap_or("up");
-                let fingers = FINGER_OPTS.get(self.b_fingers as usize).copied().unwrap_or("3");
+                let fingers = FINGER_OPTS
+                    .get(self.b_fingers as usize)
+                    .copied()
+                    .unwrap_or("3");
                 let mods = match self.b_modifiers.trim() {
                     "" => "none",
                     m => m,
@@ -1050,4 +1060,3 @@ fn rebuild_binds(
         binds_box.append(&row);
     }
 }
-

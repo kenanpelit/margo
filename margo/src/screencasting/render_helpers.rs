@@ -14,14 +14,18 @@
 //!
 //! License preserved: GPL-3.0-or-later → GPL-3.0-or-later.
 
-use anyhow::{ensure, Context as _};
+use anyhow::{Context as _, ensure};
 use smithay::backend::allocator::dmabuf::Dmabuf;
 use smithay::backend::allocator::{Buffer as _, Fourcc};
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::element::{Element, RenderElement, RenderElementStates};
-use smithay::backend::renderer::gles::{GlesError, GlesMapping, GlesRenderer, GlesTarget, GlesTexture};
+use smithay::backend::renderer::gles::{
+    GlesError, GlesMapping, GlesRenderer, GlesTarget, GlesTexture,
+};
 use smithay::backend::renderer::sync::SyncPoint;
-use smithay::backend::renderer::{Bind, Color32F, ExportMem, Frame, Offscreen, Renderer, Texture as _};
+use smithay::backend::renderer::{
+    Bind, Color32F, ExportMem, Frame, Offscreen, Renderer, Texture as _,
+};
 use smithay::utils::{Physical, Rectangle, Scale, Size, Transform};
 
 /// Bounding rect of an iterator of render elements.
@@ -52,9 +56,10 @@ pub fn copy_framebuffer(
     fourcc: Fourcc,
 ) -> Result<GlesMapping, GlesError> {
     let size = target.size();
-    let region = Rectangle::<i32, smithay::utils::Buffer>::from_size(
-        Size::<i32, smithay::utils::Buffer>::from((size.w, size.h)),
-    );
+    let region = Rectangle::<i32, smithay::utils::Buffer>::from_size(Size::<
+        i32,
+        smithay::utils::Buffer,
+    >::from((size.w, size.h)));
     renderer.copy_framebuffer(target, region, fourcc)
 }
 
@@ -70,7 +75,9 @@ pub fn render_to_texture(
 ) -> anyhow::Result<(GlesTexture, SyncPoint)> {
     let mut texture = create_texture(renderer, size, fourcc).context("error creating texture")?;
     let sync_point = {
-        let mut target = renderer.bind(&mut texture).context("error binding texture")?;
+        let mut target = renderer
+            .bind(&mut texture)
+            .context("error binding texture")?;
         render_elements(renderer, &mut target, size, scale, transform, elements)?
     };
     Ok((texture, sync_point))
@@ -126,10 +133,7 @@ pub fn render_to_dmabuf(
 
 /// Clear a dmabuf to fully transparent. Used between cast frames
 /// to wipe the buffer before the renderer overwrites part of it.
-pub fn clear_dmabuf(
-    renderer: &mut GlesRenderer,
-    mut dmabuf: Dmabuf,
-) -> anyhow::Result<SyncPoint> {
+pub fn clear_dmabuf(renderer: &mut GlesRenderer, mut dmabuf: Dmabuf) -> anyhow::Result<SyncPoint> {
     let size = dmabuf.size();
     let size = size.to_logical(1, Transform::Normal).to_physical(1);
     let mut target = renderer.bind(&mut dmabuf).context("error binding dmabuf")?;

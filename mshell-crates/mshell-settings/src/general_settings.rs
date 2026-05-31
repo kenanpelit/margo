@@ -477,7 +477,11 @@ fn refresh_avatar(container: &gtk::Box) {
         container.remove(&child);
     }
     let face = face_path();
-    let img = match face.is_file().then(|| square_avatar_texture(&face)).flatten() {
+    let img = match face
+        .is_file()
+        .then(|| square_avatar_texture(&face))
+        .flatten()
+    {
         Some(tex) => {
             let img = gtk::Image::from_paintable(Some(&tex));
             img.set_pixel_size(AVATAR_PX);

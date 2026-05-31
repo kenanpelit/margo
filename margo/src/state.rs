@@ -21,16 +21,16 @@ mod state_file;
 mod theme;
 mod twilight_methods;
 
-pub use self::animation_tick::{tick_animations, AnimTickSpec};
+pub use self::animation_tick::{AnimTickSpec, tick_animations};
 pub use self::data::{
     ClosingClient, FullscreenMode, HotCorner, LayerSurfaceAnim, MargoClient, MargoMonitor,
     ResizeSnapshot,
 };
 pub(crate) use self::data::{
-    clamp_size, matches_layer_name, matches_rule_text, read_toplevel_identity, WindowRuleReason,
+    WindowRuleReason, clamp_size, matches_layer_name, matches_rule_text, read_toplevel_identity,
 };
 pub use self::focus_target::FocusTarget;
-pub use self::scroller_overview::{overview_cells, ScrollerOverview};
+pub use self::scroller_overview::{ScrollerOverview, overview_cells};
 pub(crate) use self::theme::ThemeBaseline;
 
 use std::{cell::RefCell, path::PathBuf, rc::Rc};
@@ -38,59 +38,53 @@ use std::{cell::RefCell, path::PathBuf, rc::Rc};
 use anyhow::{Context, Result};
 use smithay::{
     backend::allocator::dmabuf::Dmabuf,
-    delegate_output,
-    delegate_seat, delegate_shm,
-    delegate_presentation,
-    desktop::{layer_map_for_output, PopupManager, Space, Window, WindowSurface},
-    input::{
-        Seat, SeatHandler, SeatState,
-        pointer::CursorImageStatus,
-    },
+    delegate_output, delegate_presentation, delegate_seat, delegate_shm,
+    desktop::{PopupManager, Space, Window, WindowSurface, layer_map_for_output},
+    input::{Seat, SeatHandler, SeatState, pointer::CursorImageStatus},
     output::Output,
     reexports::{
-        calloop::{ping::Ping, LoopHandle, LoopSignal},
+        calloop::{LoopHandle, LoopSignal, ping::Ping},
         wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as XdgDecorationMode,
         wayland_server::{
-            DisplayHandle, Resource,
+            Display, DisplayHandle, Resource,
             backend::{ClientData, ClientId, DisconnectReason},
             protocol::wl_surface::WlSurface,
-            Display,
         },
     },
-    utils::{Clock, Monotonic, Size, SERIAL_COUNTER},
+    utils::{Clock, Monotonic, SERIAL_COUNTER, Size},
     wayland::{
-        compositor::{with_states, CompositorClientState, CompositorState},
+        compositor::{CompositorClientState, CompositorState, with_states},
+        dmabuf::{DmabufGlobal, DmabufState},
+        drm_syncobj::DrmSyncobjState,
+        input_method::InputMethodManagerState,
         output::{OutputHandler, OutputManagerState},
+        pointer_constraints::PointerConstraintsState,
+        presentation::PresentationState,
+        relative_pointer::RelativePointerManagerState,
         seat::WaylandFocus,
         selection::{
-            data_device::{set_data_device_focus, DataDeviceState},
+            data_device::{DataDeviceState, set_data_device_focus},
             ext_data_control::DataControlState as ExtDataControlState,
-            primary_selection::{set_primary_focus, PrimarySelectionState},
+            primary_selection::{PrimarySelectionState, set_primary_focus},
             wlr_data_control::DataControlState,
         },
         shell::{
             wlr_layer::WlrLayerShellState,
             xdg::{
-                decoration::XdgDecorationState,
                 ToplevelSurface, XdgShellState, XdgToplevelSurfaceData,
+                decoration::XdgDecorationState,
             },
         },
         shm::{ShmHandler, ShmState},
-        input_method::InputMethodManagerState,
-        pointer_constraints::PointerConstraintsState,
-        presentation::PresentationState,
-        relative_pointer::RelativePointerManagerState,
         text_input::TextInputManagerState,
-        xdg_activation::XdgActivationState,
         viewporter::ViewporterState,
-        dmabuf::{DmabufGlobal, DmabufState},
-        drm_syncobj::DrmSyncobjState,
+        xdg_activation::XdgActivationState,
         xwayland_shell::XWaylandShellState,
     },
     xwayland::{X11Surface, X11Wm},
 };
 
-use margo_config::{parse_config_with_defaults, Config, WindowRule};
+use margo_config::{Config, WindowRule, parse_config_with_defaults};
 
 /// Filesystem path of the runtime state file consumed by mctl's
 /// rich subcommands (`clients`, `outputs`, the prettier
@@ -139,8 +133,6 @@ fn focus_target_label(t: &FocusTarget) -> String {
         FocusTarget::Popup(s) => format!("Popup({:?})", s.id()),
     }
 }
-
-
 
 // ── Animation tick — moved to `state/animation_tick.rs` ────────────────────
 //
@@ -241,8 +233,7 @@ pub struct MargoState {
     /// at runtime. Disable still rejected; mode changes are now
     /// queued via `pending_output_mode_changes` for the udev
     /// backend to drain at the next repaint.
-    pub output_management_state:
-        crate::protocols::output_management::OutputManagementManagerState,
+    pub output_management_state: crate::protocols::output_management::OutputManagementManagerState,
     /// Mode changes accepted by `apply_output_pending` but not yet
     /// applied at the DRM layer. The udev repaint handler drains
     /// this and feeds each entry through `DrmCompositor::use_mode`,
@@ -295,7 +286,8 @@ pub struct MargoState {
     /// it for `Cast::new` to allocate dmabuf-backed PipeWire
     /// buffers without re-opening the DRM node. `None` outside
     /// the udev backend (winit nested mode).
-    pub cast_gbm: Option<smithay::backend::allocator::gbm::GbmDevice<smithay::backend::drm::DrmDeviceFd>>,
+    pub cast_gbm:
+        Option<smithay::backend::allocator::gbm::GbmDevice<smithay::backend::drm::DrmDeviceFd>>,
     /// Renderer-side dmabuf format constraints, snapshotted at
     /// backend init so the screencast cast lifecycle has them
     /// without crossing the borrow boundary into the udev
@@ -305,8 +297,7 @@ pub struct MargoState {
     /// source handles that clients pass to ext-image-copy-capture
     /// to identify what they want to capture. xdp-wlr 0.8+ uses
     /// these for the per-window screencast path.
-    pub image_capture_source_state:
-        smithay::wayland::image_capture_source::ImageCaptureSourceState,
+    pub image_capture_source_state: smithay::wayland::image_capture_source::ImageCaptureSourceState,
     /// `ext-output-image-capture-source-manager-v1` global —
     /// "give me a capture source for this wl_output". Backs the
     /// monitor-share path in xdp-wlr.
@@ -326,8 +317,7 @@ pub struct MargoState {
     /// Clients open a session against an `ImageCaptureSource`,
     /// receive buffer constraints, allocate a matching buffer,
     /// then request a frame which margo renders into the buffer.
-    pub image_copy_capture_state:
-        smithay::wayland::image_copy_capture::ImageCopyCaptureState,
+    pub image_copy_capture_state: smithay::wayland::image_copy_capture::ImageCopyCaptureState,
     /// Active capture sessions, keyed by something we can match
     /// against an `ImageCaptureSource` later — for now we hold
     /// the `Session` handles so they don't get dropped (which
@@ -379,8 +369,7 @@ pub struct MargoState {
     /// `wp_single_pixel_buffer_v1`: lets clients allocate solid-color
     /// buffers without a real shm/dmabuf allocation. Pure smithay
     /// state — no handler trait, no policy.
-    pub single_pixel_buffer_state:
-        smithay::wayland::single_pixel_buffer::SinglePixelBufferState,
+    pub single_pixel_buffer_state: smithay::wayland::single_pixel_buffer::SinglePixelBufferState,
     /// `xdg_foreign_v2`: cross-process surface embedding — Firefox /
     /// Chromium Picture-in-Picture, xdg-desktop-portal screencast
     /// window targeting. A client exports a surface, sends the handle
@@ -409,8 +398,7 @@ pub struct MargoState {
     pub fifo_manager_state: smithay::wayland::fifo::FifoManagerState,
     /// `wp_commit_timing_v1`: companion to fifo — explicit
     /// commit-time targets per surface.
-    pub commit_timing_manager_state:
-        smithay::wayland::commit_timing::CommitTimingManagerState,
+    pub commit_timing_manager_state: smithay::wayland::commit_timing::CommitTimingManagerState,
     /// `wp_alpha_modifier_v1`: per-surface alpha hint so apps can
     /// fade themselves without going through compositor effects.
     pub alpha_modifier_state: smithay::wayland::alpha_modifier::AlphaModifierState,
@@ -428,8 +416,7 @@ pub struct MargoState {
     /// inline (PNG / SVG buffer) instead of the bar inferring it
     /// from the desktop file. mshell's active-window pill can
     /// surface this once a UI consumer is wired up.
-    pub xdg_toplevel_icon_state:
-        smithay::wayland::xdg_toplevel_icon::XdgToplevelIconManager,
+    pub xdg_toplevel_icon_state: smithay::wayland::xdg_toplevel_icon::XdgToplevelIconManager,
     /// `xdg_system_bell_v1`: clients ring the system bell. We just
     /// advertise the global for now and log; routing to a sound
     /// daemon / mshell notification is a future enhancement.
@@ -441,8 +428,7 @@ pub struct MargoState {
     /// `xdg_toplevel_tag_v1`: clients attach semantic tags +
     /// description strings to toplevels. Default no-op; could feed
     /// into window-rule matching later.
-    pub xdg_toplevel_tag_state:
-        smithay::wayland::xdg_toplevel_tag::XdgToplevelTagManager,
+    pub xdg_toplevel_tag_state: smithay::wayland::xdg_toplevel_tag::XdgToplevelTagManager,
     /// Currently-active inhibitors, keyed by their target wl_surface.
     /// `input_handler.rs` checks the focused surface against this map
     /// every key press; a hit short-circuits margo's keybinding match
@@ -469,10 +455,8 @@ pub struct MargoState {
     /// flicker. Entries are bounded by the number of mapped layer
     /// surfaces (handful) and dropped in `layer_destroyed`; no
     /// per-frame allocation.
-    pub layer_layout_hashes: std::collections::HashMap<
-        smithay::reexports::wayland_server::backend::ObjectId,
-        u64,
-    >,
+    pub layer_layout_hashes:
+        std::collections::HashMap<smithay::reexports::wayland_server::backend::ObjectId, u64>,
     /// Per-layer-surface hash of *just* `keyboard_interactivity`,
     /// tracked separately from `layer_layout_hashes` so we can
     /// independently dedup focus-refresh from arrange-refresh.
@@ -482,10 +466,8 @@ pub struct MargoState {
     /// mshell's bar never flips it during normal updates, so layered
     /// content commits (clock tick, network speed, CPU stats) must
     /// NOT pay the focus-refresh cost. Cleared in `layer_destroyed`.
-    pub layer_kb_interactivity_hashes: std::collections::HashMap<
-        smithay::reexports::wayland_server::backend::ObjectId,
-        u64,
-    >,
+    pub layer_kb_interactivity_hashes:
+        std::collections::HashMap<smithay::reexports::wayland_server::backend::ObjectId, u64>,
     /// Per-output frame-callback sequence number. Bumped once per real
     /// vblank (in `note_vblank`) and once per estimated vblank (when
     /// the timer queued from the empty-render path fires). Surfaces
@@ -507,10 +489,8 @@ pub struct MargoState {
     /// (it returns `TimeoutAction::Drop`) or when a real vblank
     /// supersedes it. Keyed by output name to match
     /// `frame_callback_sequence`.
-    pub estimated_vblank_timers: std::collections::HashMap<
-        String,
-        smithay::reexports::calloop::RegistrationToken,
-    >,
+    pub estimated_vblank_timers:
+        std::collections::HashMap<String, smithay::reexports::calloop::RegistrationToken>,
     /// `wp_cursor_shape_v1` — clients (GTK/Qt/Chromium) request a
     /// cursor by name instead of attaching their own surface. Without
     /// this, GTK rolls its own cursor surface and the buffer scale
@@ -766,38 +746,35 @@ impl MargoState {
         let primary_selection_state = PrimarySelectionState::new::<Self>(&dh);
         let data_control_state =
             DataControlState::new::<Self, _>(&dh, Some(&primary_selection_state), |_| true);
-        let ext_data_control_state = ExtDataControlState::new::<Self, _>(
-            &dh,
-            Some(&primary_selection_state),
-            |_| true,
-        );
+        let ext_data_control_state =
+            ExtDataControlState::new::<Self, _>(&dh, Some(&primary_selection_state), |_| true);
         let cursor_shape_manager_state =
             smithay::wayland::cursor_shape::CursorShapeManagerState::new::<Self>(&dh);
         let fractional_scale_manager_state =
             smithay::wayland::fractional_scale::FractionalScaleManagerState::new::<Self>(&dh);
         let layer_shell_state = WlrLayerShellState::new::<Self>(&dh);
-        let session_lock_state = smithay::wayland::session_lock::SessionLockManagerState::new::<Self, _>(&dh, |_| true);
+        let session_lock_state =
+            smithay::wayland::session_lock::SessionLockManagerState::new::<Self, _>(&dh, |_| true);
         let text_input_state = TextInputManagerState::new::<Self>(&dh);
         let input_method_state = InputMethodManagerState::new::<Self, _>(&dh, |_client| true);
         let pointer_constraints_state = PointerConstraintsState::new::<Self>(&dh);
         let relative_pointer_state = RelativePointerManagerState::new::<Self>(&dh);
         let xdg_activation_state = XdgActivationState::new::<Self>(&dh);
         let output_management_state =
-            crate::protocols::output_management::OutputManagementManagerState::new::<
-                Self,
-                _,
-            >(&dh, |_client| true);
+            crate::protocols::output_management::OutputManagementManagerState::new::<Self, _>(
+                &dh,
+                |_client| true,
+            );
         // wp_color_management_v1 (staging) — Phase 1 scaffolding.
         // Standing the global up early lets HDR-aware clients
         // (Chromium, mpv) detect "this compositor speaks colour
         // management" and enable their decode paths even though
         // composite is still SDR. See `protocols/color_management.rs`
         // and `docs/hdr-design.md` for the four-phase rollout.
-        let color_management_state =
-            crate::protocols::color_management::ColorManagementState::new::<Self, _>(
-                &dh,
-                |_client| true,
-            );
+        let color_management_state = crate::protocols::color_management::ColorManagementState::new::<
+            Self,
+            _,
+        >(&dh, |_client| true);
         // ext-image-capture-source-v1 + ext-image-copy-capture-v1
         // — the modern Wayland screencast stack. Without these
         // globals, xdp-wlr 0.8+ can't expose per-window share
@@ -835,9 +812,9 @@ impl MargoState {
         // compositor to stop intercepting its own keybindings (Super,
         // Alt+Tab, …) while the client surface has focus.
         let keyboard_shortcuts_inhibit_state =
-            smithay::wayland::keyboard_shortcuts_inhibit::KeyboardShortcutsInhibitState::new::<
-                Self,
-            >(&dh);
+            smithay::wayland::keyboard_shortcuts_inhibit::KeyboardShortcutsInhibitState::new::<Self>(
+                &dh,
+            );
         // `zwp_pointer_gestures_v1` — touchpad gestures (pinch /
         // swipe / hold) forwarded to focused client.
         let pointer_gestures_state =
@@ -846,19 +823,17 @@ impl MargoState {
         let single_pixel_buffer_state =
             smithay::wayland::single_pixel_buffer::SinglePixelBufferState::new::<Self>(&dh);
         // `xdg_foreign_v2` — cross-process surface embedding.
-        let xdg_foreign_state =
-            smithay::wayland::xdg_foreign::XdgForeignState::new::<Self>(&dh);
+        let xdg_foreign_state = smithay::wayland::xdg_foreign::XdgForeignState::new::<Self>(&dh);
         // `zwp_tablet_manager_v2` — pen tablets.
         let tablet_manager_state =
             smithay::wayland::tablet_manager::TabletManagerState::new::<Self>(&dh);
         // `wp_security_context_v1` — sandboxed-client socket
         // pre-allocation. Filter accepts every client; the protocol's
         // listener-fd mechanism is itself the access boundary.
-        let security_context_state =
-            smithay::wayland::security_context::SecurityContextState::new::<Self, _>(
-                &dh,
-                |_client| true,
-            );
+        let security_context_state = smithay::wayland::security_context::SecurityContextState::new::<
+            Self,
+            _,
+        >(&dh, |_client| true);
         // `org_kde_kwin_server_decoration` — legacy KDE deco.
         // Default to server-side decoration since margo's existing
         // xdg-decoration policy is SSD-first.
@@ -868,8 +843,7 @@ impl MargoState {
                 smithay::reexports::wayland_protocols_misc::server_decoration::server::org_kde_kwin_server_decoration_manager::Mode::Server,
             );
         // `wp_content_type_v1` — surface content-type hints.
-        let content_type_state =
-            smithay::wayland::content_type::ContentTypeState::new::<Self>(&dh);
+        let content_type_state = smithay::wayland::content_type::ContentTypeState::new::<Self>(&dh);
         // `wp_fifo_v1` + `wp_commit_timing_v1` — newer presentation
         // pacing protocols.
         let fifo_manager_state = smithay::wayland::fifo::FifoManagerState::new::<Self>(&dh);
@@ -914,11 +888,10 @@ impl MargoState {
                 &dh,
                 |_client| true,
             );
-        let ext_workspace_state =
-            crate::protocols::ext_workspace::ExtWorkspaceManagerState::new::<Self, _>(
-                &dh,
-                |_client| true,
-            );
+        let ext_workspace_state = crate::protocols::ext_workspace::ExtWorkspaceManagerState::new::<
+            Self,
+            _,
+        >(&dh, |_client| true);
         let virtual_pointer_state =
             crate::protocols::virtual_pointer::VirtualPointerManagerState::new::<Self, _>(
                 &dh,
@@ -937,10 +910,9 @@ impl MargoState {
         // wlr-screencopy-unstable-v1: lets `grim`, `wf-recorder`, `screen rec`
         // etc. capture compositor outputs.
         let screencopy_state =
-            crate::protocols::screencopy::ScreencopyManagerState::new::<Self, _>(
-                &dh,
-                |_client| true,
-            );
+            crate::protocols::screencopy::ScreencopyManagerState::new::<Self, _>(&dh, |_client| {
+                true
+            });
 
         Self {
             compositor_state,
@@ -1061,8 +1033,7 @@ impl MargoState {
             overview_transition_animation_ms: None,
             last_reload_diagnostics: Vec::new(),
             config_error_overlay_until: None,
-            config_error_overlay:
-                crate::render::config_error_overlay::ConfigErrorOverlay::new(),
+            config_error_overlay: crate::render::config_error_overlay::ConfigErrorOverlay::new(),
             overview_cycle_pending: false,
             overview_cycle_modifier_mask: margo_config::Modifiers::empty(),
             scroller_overview: None,
@@ -1096,14 +1067,11 @@ impl MargoState {
     /// button + motion + key events route through the selector
     /// until [`Self::confirm_region_selection`] or
     /// [`Self::cancel_region_selection`] runs.
-    pub fn open_region_selector(
-        &mut self,
-        mode: crate::screenshot_region::SelectorMode,
-    ) {
+    pub fn open_region_selector(&mut self, mode: crate::screenshot_region::SelectorMode) {
         let cursor = (self.input_pointer.x, self.input_pointer.y);
-        self.region_selector = Some(
-            crate::screenshot_region::ActiveRegionSelector::at(cursor, mode),
-        );
+        self.region_selector = Some(crate::screenshot_region::ActiveRegionSelector::at(
+            cursor, mode,
+        ));
         self.request_repaint();
         tracing::info!(
             "region selector opened at ({:.0}, {:.0}) mode={:?}",
@@ -1169,8 +1137,7 @@ impl MargoState {
             return;
         }
         // Pick a migration target — first OTHER enabled monitor.
-        let target = (0..self.monitors.len())
-            .find(|&i| i != mon_idx && self.monitors[i].enabled);
+        let target = (0..self.monitors.len()).find(|&i| i != mon_idx && self.monitors[i].enabled);
         let Some(target) = target else {
             tracing::warn!(
                 "disable_monitor: refusing to disable {} — no other enabled monitor",
@@ -1351,13 +1318,14 @@ impl MargoState {
     #[cfg(not(feature = "a11y"))]
     pub fn publish_a11y_window_list(&mut self) {}
 
-
     /// Start an interactive move grab on the currently focused window.
     /// Triggered by the `moveresize,curmove` action (typically a super+
     /// left-drag mousebind). No-op if there's no focused client or no
     /// pointer button is currently pressed.
     pub fn start_interactive_move(&mut self) {
-        let Some(idx) = self.focused_client_idx() else { return };
+        let Some(idx) = self.focused_client_idx() else {
+            return;
+        };
         let window = self.clients[idx].window.clone();
         let initial_loc = smithay::utils::Point::<i32, smithay::utils::Logical>::from((
             self.clients[idx].geom.x,
@@ -1368,7 +1336,9 @@ impl MargoState {
         // "restore to original float geometry".
         let was_tiled = !self.clients[idx].is_floating;
         let original_float_geom = self.clients[idx].float_geom;
-        let Some(pointer) = self.seat.get_pointer() else { return };
+        let Some(pointer) = self.seat.get_pointer() else {
+            return;
+        };
         // Use the most recent serial we've seen — we're driving the grab
         // ourselves from a synthesized command, so just take the next one.
         let serial = SERIAL_COUNTER.next_serial();
@@ -1394,17 +1364,20 @@ impl MargoState {
     /// defaults to bottom-right (the natural drag-corner gesture). If
     /// you want a specific edge, pass it in the action arg later.
     pub fn start_interactive_resize(&mut self) {
-        let Some(idx) = self.focused_client_idx() else { return };
+        let Some(idx) = self.focused_client_idx() else {
+            return;
+        };
         let c = &self.clients[idx];
         let window = c.window.clone();
-        let initial_loc = smithay::utils::Point::<i32, smithay::utils::Logical>::from((
-            c.geom.x, c.geom.y,
-        ));
+        let initial_loc =
+            smithay::utils::Point::<i32, smithay::utils::Logical>::from((c.geom.x, c.geom.y));
         let initial_size = smithay::utils::Size::<i32, smithay::utils::Logical>::from((
             c.geom.width.max(1),
             c.geom.height.max(1),
         ));
-        let Some(pointer) = self.seat.get_pointer() else { return };
+        let Some(pointer) = self.seat.get_pointer() else {
+            return;
+        };
         let serial = SERIAL_COUNTER.next_serial();
         let start_data = smithay::input::pointer::GrabStartData {
             focus: None,
@@ -1467,7 +1440,6 @@ impl MargoState {
             "Lock force-cleared",
         ]);
     }
-
 
     pub fn request_repaint(&mut self) {
         self.repaint_requested = true;
@@ -1561,10 +1533,8 @@ impl MargoState {
                     // Trigger the C2 on-screen banner. 10 s ought to be
                     // long enough to read "your config is broken, run
                     // mctl check-config" without being a pest.
-                    self.config_error_overlay_until = Some(
-                        std::time::Instant::now()
-                            + std::time::Duration::from_secs(10),
-                    );
+                    self.config_error_overlay_until =
+                        Some(std::time::Instant::now() + std::time::Duration::from_secs(10));
                     self.request_repaint();
                     let err_count = report.errors().count();
                     return Err(anyhow::anyhow!(
@@ -1688,7 +1658,6 @@ impl MargoState {
         Ok(())
     }
 
-
     pub(crate) fn refresh_output_work_area(&mut self, output: &Output) {
         let work_area = {
             let map = layer_map_for_output(output);
@@ -1725,7 +1694,6 @@ impl MargoState {
         }
     }
 
-
     pub fn arrange_monitor(&mut self, mon_idx: usize) {
         let _span = tracy_client::span!("arrange_monitor");
         if mon_idx >= self.monitors.len() {
@@ -1758,8 +1726,16 @@ impl MargoState {
         // and the keyboard-first MRU navigation
         // (`overview_focus_next/prev`) cycles through them with
         // focus + border tracking the selection.
-        let layout = if is_overview { crate::layout::LayoutId::Grid } else { mon.current_layout() };
-        let tagset = if is_overview { !0 } else { mon.current_tagset() };
+        let layout = if is_overview {
+            crate::layout::LayoutId::Grid
+        } else {
+            mon.current_layout()
+        };
+        let tagset = if is_overview {
+            !0
+        } else {
+            mon.current_tagset()
+        };
         let nmaster = mon.current_nmaster();
         let mfact = mon.current_mfact();
         let monitor_area = mon.monitor_area;
@@ -1834,8 +1810,10 @@ impl MargoState {
                 .collect()
         };
 
-        let scroller_proportions: Vec<f32> =
-            tiled.iter().map(|&i| self.clients[i].scroller_proportion).collect();
+        let scroller_proportions: Vec<f32> = tiled
+            .iter()
+            .map(|&i| self.clients[i].scroller_proportion)
+            .collect();
         let focused_tiled_pos = self
             .focused_client_idx()
             .and_then(|focused_idx| tiled.iter().position(|&idx| idx == focused_idx));
@@ -1918,9 +1896,8 @@ impl MargoState {
             // pixels toward the target and then resets, producing the
             // exact 1-pixel-per-frame oscillation we kept seeing in the
             // arrange traces (-1794 → -1795 → -1794 → …).
-            let already_animating_to_target =
-                self.clients[client_idx].animation.running
-                    && self.clients[client_idx].animation.current == rect;
+            let already_animating_to_target = self.clients[client_idx].animation.running
+                && self.clients[client_idx].animation.current == rect;
 
             let should_animate = self.config.animations
                 && self.config.animation_duration_move > 0
@@ -1993,11 +1970,8 @@ impl MargoState {
                 // the snapshot. Without this, Helium's 50–100 ms
                 // ack-and-reflow window leaks the buffer-vs-slot
                 // mismatch onto the screen.
-                let slot_size_changed =
-                    old.width != rect.width || old.height != rect.height;
-                if slot_size_changed
-                    && self.clients[client_idx].resize_snapshot.is_none()
-                {
+                let slot_size_changed = old.width != rect.width || old.height != rect.height;
+                if slot_size_changed && self.clients[client_idx].resize_snapshot.is_none() {
                     self.clients[client_idx].snapshot_pending = true;
                 }
                 // Spring retarget: if the previous animation was still
@@ -2121,7 +2095,11 @@ impl MargoState {
             .iter()
             .filter(|c| visible_in_pass(c))
             .map(|c| {
-                let configure_geom = if c.animation.running { c.animation.current } else { c.geom };
+                let configure_geom = if c.animation.running {
+                    c.animation.current
+                } else {
+                    c.geom
+                };
                 (c.window.clone(), c.geom, configure_geom)
             })
             .collect();
@@ -2138,7 +2116,8 @@ impl MargoState {
         }
 
         for (window, geom, configure_geom) in visible {
-            self.space.map_element(window.clone(), (geom.x, geom.y), false);
+            self.space
+                .map_element(window.clone(), (geom.x, geom.y), false);
 
             if let WindowSurface::Wayland(toplevel) = window.underlying_surface() {
                 tracing::debug!(
@@ -2283,8 +2262,7 @@ impl MargoState {
             // dim opacity to unfocused.
             if let Some(idx) = prev_focus_idx {
                 if idx < self.clients.len() {
-                    let initial_color =
-                        self.clients[idx].opacity_animation.current_border_color;
+                    let initial_color = self.clients[idx].opacity_animation.current_border_color;
                     let initial_color = if initial_color == [0.0, 0.0, 0.0, 0.0] {
                         focuscolor
                     } else {
@@ -2307,8 +2285,7 @@ impl MargoState {
             // Incoming: ramp up to focuscolor + brighten opacity.
             if let Some(idx) = new_focus_idx {
                 if idx < self.clients.len() {
-                    let initial_color =
-                        self.clients[idx].opacity_animation.current_border_color;
+                    let initial_color = self.clients[idx].opacity_animation.current_border_color;
                     let initial_color = if initial_color == [0.0, 0.0, 0.0, 0.0] {
                         bordercolor
                     } else {
@@ -2458,8 +2435,8 @@ impl MargoState {
         refresh_interval: std::time::Duration,
     ) {
         use smithay::reexports::calloop::{
-            timer::{TimeoutAction, Timer},
             RegistrationToken,
+            timer::{TimeoutAction, Timer},
         };
 
         let name = output.name();
@@ -2579,9 +2556,7 @@ impl MargoState {
                 .and_then(|i| self.monitors.get(i).map(|m| m.output.clone()));
 
             if let Some(out) = pointer_output {
-                if let Some((_, s)) =
-                    self.lock_surfaces.iter().find(|(o, _)| o == &out)
-                {
+                if let Some((_, s)) = self.lock_surfaces.iter().find(|(o, _)| o == &out) {
                     return Some(FocusTarget::SessionLock(s.clone()));
                 }
             }
@@ -2618,9 +2593,9 @@ impl MargoState {
 
         // Otherwise: monitor's last-selected client (focus history),
         // falling back to the topmost visible client on the same monitor.
-        let mon_idx = self.pointer_monitor().or_else(|| {
-            self.focused_client_idx().map(|i| self.clients[i].monitor)
-        })?;
+        let mon_idx = self
+            .pointer_monitor()
+            .or_else(|| self.focused_client_idx().map(|i| self.clients[i].monitor))?;
         if mon_idx >= self.monitors.len() {
             return None;
         }
@@ -2841,7 +2816,11 @@ impl MargoState {
         }
 
         let tagset = self.monitors[mon_idx].current_tagset();
-        if let Some(idx) = self.clients.iter().position(|c| c.is_visible_on(mon_idx, tagset)) {
+        if let Some(idx) = self
+            .clients
+            .iter()
+            .position(|c| c.is_visible_on(mon_idx, tagset))
+        {
             self.monitors[mon_idx].selected = Some(idx);
             let window = self.clients[idx].window.clone();
             self.focus_surface(Some(FocusTarget::Window(window)));
@@ -2864,7 +2843,6 @@ impl MargoState {
         };
     }
 
-
     /// Why a window-rule reapply is happening. Lets the single
     /// reapply path log meaningfully and (in future) skip rule subsets
     /// that don't make sense for a given trigger (e.g. `tags:`
@@ -2881,11 +2859,7 @@ impl MargoState {
     /// sites — initial XDG mount, late `app_id` settle, config reload —
     /// route through this with a [`WindowRuleReason`] tag so the debug
     /// log says *why* a rule fired.
-    pub(crate) fn reapply_rules(
-        &mut self,
-        idx: usize,
-        reason: WindowRuleReason,
-    ) -> bool {
+    pub(crate) fn reapply_rules(&mut self, idx: usize, reason: WindowRuleReason) -> bool {
         if idx >= self.clients.len() {
             return false;
         }
@@ -3143,11 +3117,8 @@ impl MargoState {
         // the empty rule's defaults (offsets = 0, no fractions).
         if client.is_floating && client.float_geom.width == 0 {
             let empty_rule = margo_config::WindowRule::default();
-            client.float_geom = Self::rule_float_geometry_for(
-                monitors,
-                client.monitor,
-                &empty_rule,
-            );
+            client.float_geom =
+                Self::rule_float_geometry_for(monitors, client.monitor, &empty_rule);
         }
         // After all matched rules are applied, clamp the floating geometry
         // to any size constraints picked up.
@@ -3161,12 +3132,7 @@ impl MargoState {
         );
     }
 
-    pub(crate) fn window_rule_matches(
-        &self,
-        rule: &WindowRule,
-        app_id: &str,
-        title: &str,
-    ) -> bool {
+    pub(crate) fn window_rule_matches(&self, rule: &WindowRule, app_id: &str, title: &str) -> bool {
         // Positive matches: every present pattern must match.
         let app_ok = rule
             .id
@@ -3203,7 +3169,11 @@ impl MargoState {
         Self::rule_float_geometry_for(&self.monitors, mon_idx, rule)
     }
 
-    fn rule_float_geometry_for(monitors: &[MargoMonitor], mon_idx: usize, rule: &WindowRule) -> Rect {
+    fn rule_float_geometry_for(
+        monitors: &[MargoMonitor],
+        mon_idx: usize,
+        rule: &WindowRule,
+    ) -> Rect {
         let area = monitors
             .get(mon_idx)
             .map(|mon| mon.work_area)
@@ -3237,7 +3207,11 @@ impl MargoState {
 
     fn refresh_wayland_toplevel_identity(&mut self, window: &Window, toplevel: &ToplevelSurface) {
         let (app_id, title) = read_toplevel_identity(toplevel);
-        let Some(idx) = self.clients.iter().position(|client| client.window == *window) else {
+        let Some(idx) = self
+            .clients
+            .iter()
+            .position(|client| client.window == *window)
+        else {
             return;
         };
 
@@ -3267,8 +3241,13 @@ impl MargoState {
         }
 
         let title_rules_exist = self.config.window_rules.iter().any(|rule| {
-            rule.title.as_ref().is_some_and(|pattern| !pattern.is_empty())
-                || rule.exclude_title.as_ref().is_some_and(|pattern| !pattern.is_empty())
+            rule.title
+                .as_ref()
+                .is_some_and(|pattern| !pattern.is_empty())
+                || rule
+                    .exclude_title
+                    .as_ref()
+                    .is_some_and(|pattern| !pattern.is_empty())
         });
         let should_reapply_rules = (app_id_changed && !app_id.is_empty())
             || (title_changed && !title.is_empty() && title_rules_exist);
@@ -3292,9 +3271,7 @@ impl MargoState {
             crate::protocols::dwl_ipc::broadcast_all(self);
         }
     }
-
 }
-
 
 // ── Smithay delegate: XDG decoration ─────────────────────────────────────────
 
@@ -3322,9 +3299,11 @@ impl MargoState {
         let wl_surface = toplevel.wl_surface();
         // Path A: client already mapped — read the resolved
         // `allow_csd` flag right off the `MargoClient`.
-        if let Some(client) = self.clients.iter().find(|c| {
-            c.window.wl_surface().as_deref() == Some(wl_surface)
-        }) {
+        if let Some(client) = self
+            .clients
+            .iter()
+            .find(|c| c.window.wl_surface().as_deref() == Some(wl_surface))
+        {
             return client.allow_csd;
         }
         // Path B: client is between role bind and first commit —
@@ -3406,8 +3385,6 @@ smithay::delegate_cursor_shape!(MargoState);
 impl OutputHandler for MargoState {}
 delegate_output!(MargoState);
 
-
-
 // ── ForeignToplevelListHandler ────────────────────────────────────────────────
 
 impl ForeignToplevelListHandler for MargoState {
@@ -3431,7 +3408,11 @@ impl MargoState {
     fn register_x11_window(&mut self, x11surface: X11Surface) {
         let window = Window::new_x11_window(x11surface);
         let mon_idx = self.focused_monitor();
-        let tags = self.monitors.get(mon_idx).map(|m| m.current_tagset()).unwrap_or(1);
+        let tags = self
+            .monitors
+            .get(mon_idx)
+            .map(|m| m.current_tagset())
+            .unwrap_or(1);
         let mut client = MargoClient::new(window.clone(), mon_idx, tags, &self.config);
         client.surface_type = crate::SurfaceType::X11;
         client.title = window.x11_surface().map(|s| s.title()).unwrap_or_default();
@@ -3456,7 +3437,9 @@ impl MargoState {
 
         let target_mon = client.monitor;
         let focus_new = !client.no_focus && !client.open_silent;
-        let ft_handle = self.foreign_toplevel_list.new_toplevel::<Self>(&client.title, &client.app_id);
+        let ft_handle = self
+            .foreign_toplevel_list
+            .new_toplevel::<Self>(&client.title, &client.app_id);
         ft_handle.send_done();
         client.foreign_toplevel_handle = Some(ft_handle);
         self.clients.push(client);
@@ -3505,7 +3488,6 @@ impl MargoState {
     }
 }
 
-
 // ── Smithay delegate: Viewporter ───────────────────────────────────────────────
 
 smithay::delegate_viewporter!(MargoState);
@@ -3526,7 +3508,6 @@ smithay::delegate_viewporter!(MargoState);
 // here), so the handler is intentionally minimal: input-method popups
 // just get tracked through the regular xdg popup manager so they render
 // at the right location, and dismissal hooks back into PopupManager.
-
 
 // ── Smithay delegate: pointer constraints + relative pointer ─────────────────
 //
@@ -3579,6 +3560,4 @@ smithay::delegate_viewporter!(MargoState);
 // the window. That keeps activation-driven jumps consistent with
 // alt+tab / explicit `mctl dispatch view N`.
 
-
 delegate_presentation!(MargoState);
-

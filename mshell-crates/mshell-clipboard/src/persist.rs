@@ -25,7 +25,9 @@ fn data_dir() -> PathBuf {
         .map(PathBuf::from)
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or_else(|| {
-            let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
+            let home = std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .unwrap_or_default();
             home.join(".local/share")
         });
     base.join("mshell/clipboard")
@@ -78,7 +80,8 @@ pub fn save(entries: &[ClipboardEntry], mode: PersistMode) {
         }
     }
 
-    let persisted: Vec<PersistedEntry> = keep.iter().map(|e| PersistedEntry::from_entry(e)).collect();
+    let persisted: Vec<PersistedEntry> =
+        keep.iter().map(|e| PersistedEntry::from_entry(e)).collect();
 
     // Garbage-collect orphan blobs no longer referenced.
     gc_blobs(&persisted);
@@ -121,8 +124,8 @@ pub fn load() -> Vec<ClipboardEntry> {
                 Err(_) => continue, // blob gone — drop the entry
             }
         };
-        let timestamp =
-            OffsetDateTime::from_unix_timestamp(p.timestamp).unwrap_or_else(|_| OffsetDateTime::now_utc());
+        let timestamp = OffsetDateTime::from_unix_timestamp(p.timestamp)
+            .unwrap_or_else(|_| OffsetDateTime::now_utc());
         let preview = EntryPreview::build(&p.mime_type, &data);
         out.push(ClipboardEntry {
             id: p.id,

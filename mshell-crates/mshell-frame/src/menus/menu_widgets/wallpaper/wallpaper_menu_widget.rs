@@ -514,21 +514,17 @@ impl Component for WallpaperMenuWidgetModel {
 
             let thumbnail_height = params.thumbnail_height;
             let _ = decode_pool().send(Box::new(move || {
-                let result = gdk_pixbuf::Pixbuf::from_file_at_scale(
-                    &path_str,
-                    -1,
-                    thumbnail_height,
-                    true,
-                )
-                .ok()
-                .map(|pixbuf: gdk_pixbuf::Pixbuf| {
-                    let width = pixbuf.width();
-                    let height = pixbuf.height();
-                    let rowstride = pixbuf.rowstride();
-                    let has_alpha = pixbuf.has_alpha();
-                    let bytes = pixbuf.pixel_bytes().unwrap();
-                    (bytes, width, height, rowstride, has_alpha)
-                });
+                let result =
+                    gdk_pixbuf::Pixbuf::from_file_at_scale(&path_str, -1, thumbnail_height, true)
+                        .ok()
+                        .map(|pixbuf: gdk_pixbuf::Pixbuf| {
+                            let width = pixbuf.width();
+                            let height = pixbuf.height();
+                            let rowstride = pixbuf.rowstride();
+                            let has_alpha = pixbuf.has_alpha();
+                            let bytes = pixbuf.pixel_bytes().unwrap();
+                            (bytes, width, height, rowstride, has_alpha)
+                        });
                 let _ = tx.send((path_str, result));
             }));
 
@@ -824,7 +820,6 @@ impl Component for WallpaperMenuWidgetModel {
                         });
                         self.dir_monitor = Some(monitor);
                     }
-
                 }
                 // Always (re)build — even with no/invalid dir — so the bundled
                 // margo default still shows as the first tile.

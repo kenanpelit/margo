@@ -150,7 +150,6 @@ pub const ACTIONS: &[Action] = &[
         summary: "Move the focused window to the next tag.",
         detail: "",
     },
-
     // ── Focus ───────────────────────────────────────────────────────
     Action {
         name: "focusstack",
@@ -186,7 +185,6 @@ pub const ACTIONS: &[Action] = &[
         summary: "Promote the focused window to the layout's master slot (dwm zoom).",
         detail: "",
     },
-
     // ── Layout ──────────────────────────────────────────────────────
     Action {
         name: "setlayout",
@@ -238,7 +236,6 @@ pub const ACTIONS: &[Action] = &[
         summary: "Resize gaps by `delta` pixels (positive widens, negative tightens).",
         detail: "",
     },
-
     // ── Scroller ────────────────────────────────────────────────────
     Action {
         name: "set_proportion",
@@ -256,7 +253,6 @@ pub const ACTIONS: &[Action] = &[
         summary: "Cycle through `scroller_proportion_preset` values.",
         detail: "",
     },
-
     // ── Window ──────────────────────────────────────────────────────
     Action {
         name: "togglefloating",
@@ -370,7 +366,6 @@ pub const ACTIONS: &[Action] = &[
         detail: "Convenience for dock/undock keybinds: \
                  `bind = super+ctrl,F12,toggle_output,eDP-1`.",
     },
-
     // ── Scratchpad ─────────────────────────────────────────────────
     Action {
         name: "toggle_named_scratchpad",
@@ -413,7 +408,6 @@ pub const ACTIONS: &[Action] = &[
                  named_scratchpad, minimized, floating, fullscreen, \
                  maximized_screen so the next arrange treats it as a normal tile.",
     },
-
     // ── Overview ────────────────────────────────────────────────────
     Action {
         name: "toggle_overview",

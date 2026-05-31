@@ -23,7 +23,7 @@
 //! everything `monitorrule` needs to round-trip the live state
 //! into a static layout file.
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use std::process::Command;
 
 /// One captured output as it currently looks on the running
@@ -50,19 +50,17 @@ pub struct CapturedOutput {
 /// usually because `wlr-randr` couldn't connect to a Wayland
 /// session (we then bail with a useful error).
 pub fn capture_via_wlr_randr() -> Result<Vec<CapturedOutput>> {
-    let out = Command::new("wlr-randr")
-        .output()
-        .map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                anyhow!(
-                    "`wlr-randr` not found on PATH. Install it (Arch: \
+    let out = Command::new("wlr-randr").output().map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            anyhow!(
+                "`wlr-randr` not found on PATH. Install it (Arch: \
                      `pacman -S wlr-randr`) — mlayout needs it to read \
                      the live monitor configuration."
-                )
-            } else {
-                anyhow!("running wlr-randr: {e}")
-            }
-        })?;
+            )
+        } else {
+            anyhow!("running wlr-randr: {e}")
+        }
+    })?;
     if !out.status.success() {
         bail!(
             "wlr-randr exited non-zero — are you running this from inside \
@@ -70,8 +68,7 @@ pub fn capture_via_wlr_randr() -> Result<Vec<CapturedOutput>> {
             String::from_utf8_lossy(&out.stderr)
         );
     }
-    let text = String::from_utf8(out.stdout)
-        .context("wlr-randr produced non-UTF8 output")?;
+    let text = String::from_utf8(out.stdout).context("wlr-randr produced non-UTF8 output")?;
     parse_wlr_randr(&text)
 }
 

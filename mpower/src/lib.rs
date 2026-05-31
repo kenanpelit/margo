@@ -17,4 +17,4 @@ pub mod policy;
 pub mod ppd;
 pub mod syspower;
 
-pub use config::{config_path, Config};
+pub use config::{Config, config_path};

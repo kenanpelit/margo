@@ -104,9 +104,11 @@ impl ToplevelData {
         let Some(client) = manager.client() else {
             return;
         };
-        let Ok(toplevel) =
-            client.create_resource::<ZwlrForeignToplevelHandleV1, _, D>(display, manager.version(), ())
-        else {
+        let Ok(toplevel) = client.create_resource::<ZwlrForeignToplevelHandleV1, _, D>(
+            display,
+            manager.version(),
+            (),
+        ) else {
             return;
         };
         manager.toplevel(&toplevel);
@@ -268,12 +270,23 @@ where
     ) {
         if let zwlr_foreign_toplevel_manager_v1::Request::Stop = request {
             resource.finished();
-            state.wlr_foreign_toplevel_state().manager_instances.remove(resource);
+            state
+                .wlr_foreign_toplevel_state()
+                .manager_instances
+                .remove(resource);
         }
     }
 
-    fn destroyed(state: &mut D, _client: ClientId, resource: &ZwlrForeignToplevelManagerV1, _data: &()) {
-        state.wlr_foreign_toplevel_state().manager_instances.remove(resource);
+    fn destroyed(
+        state: &mut D,
+        _client: ClientId,
+        resource: &ZwlrForeignToplevelManagerV1,
+        _data: &(),
+    ) {
+        state
+            .wlr_foreign_toplevel_state()
+            .manager_instances
+            .remove(resource);
     }
 }
 
@@ -319,7 +332,12 @@ where
         }
     }
 
-    fn destroyed(state: &mut D, _client: ClientId, resource: &ZwlrForeignToplevelHandleV1, _data: &()) {
+    fn destroyed(
+        state: &mut D,
+        _client: ClientId,
+        resource: &ZwlrForeignToplevelHandleV1,
+        _data: &(),
+    ) {
         for data in state.wlr_foreign_toplevel_state().toplevels.values_mut() {
             data.instances.remove(resource);
         }

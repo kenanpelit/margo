@@ -19,7 +19,12 @@ pub struct Rect {
 
 impl Rect {
     pub fn new(x: i32, y: i32, width: i32, height: i32) -> Self {
-        Rect { x, y, width, height }
+        Rect {
+            x,
+            y,
+            width,
+            height,
+        }
     }
 
     pub fn area(&self) -> i32 {

@@ -28,15 +28,12 @@
 
 use crate::bars::bar_widgets::podman::fetch_podman_summary;
 use crate::bars::bar_widgets::ufw::{Status as UfwStatus, fetch_ufw_summary};
-use crate::menus::menu_widgets::control_center::tile::{
-    TileWidget, build_expand_tile, build_tile,
-};
+use crate::menus::menu_widgets::control_center::tile::{TileWidget, build_expand_tile, build_tile};
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
     ConfigStoreFields, ControlCenterConfigStoreFields, MatugenStoreFields, ThemeStoreFields,
 };
-use std::collections::HashSet;
 use mshell_config::schema::themes::MatugenMode;
 use mshell_idle::inhibitor::IdleInhibitor;
 use mshell_services::{
@@ -52,13 +49,14 @@ use mshell_utils::notifications::spawn_dnd_watcher;
 use mshell_utils::picker::spawn_color_picker;
 use mshell_utils::power_profile::get_power_profile_label;
 use reactive_graph::prelude::{Get, GetUntracked};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use relm4::gtk;
 use relm4::gtk::prelude::{
     ButtonExt, CheckButtonExt, GestureExt, GestureSingleExt, GridExt, WidgetExt,
 };
 use relm4::{Component, ComponentParts, ComponentSender};
+use std::collections::HashSet;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use wayle_battery::types::DeviceState;
 use wayle_power_profiles::types::profile::PowerProfile;
@@ -129,8 +127,7 @@ pub(crate) struct ControlCenterTilesModel {
     _effects: EffectScope,
 }
 
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct DiskUsage {
     used_bytes: u64,
     total_bytes: u64,
@@ -312,7 +309,6 @@ impl TileId {
             TileId::Podman,
         ]
     }
-
 }
 
 /// Compute the ordered sequence of `TileId`s from a `tile_order` config vec.
@@ -455,12 +451,7 @@ impl ControlCenterTilesWidgets {
     /// columns. Each non-wide tile occupies one cell; we fill left-to-right,
     /// creating a new row whenever the current column would overflow or a
     /// wide tile needs a fresh row.
-    fn rebuild_grid(
-        &self,
-        grid: &gtk::Grid,
-        tile_order: &[String],
-        wide_tiles: &HashSet<String>,
-    ) {
+    fn rebuild_grid(&self, grid: &gtk::Grid, tile_order: &[String], wide_tiles: &HashSet<String>) {
         use relm4::gtk::prelude::GridExt;
 
         // Remove every tile overlay currently in the grid.
@@ -538,7 +529,8 @@ impl Component for ControlCenterTilesModel {
         // Keep Awake is expandable (left-click → detail page); right-click
         // quick-toggles the inhibitor (wired below).
         let tile_keep_awake = build_expand_tile("eye-symbolic", "Keep Awake", "Off");
-        let tile_color_picker = build_tile("color-select-symbolic", "Color Picker", "Pick a colour");
+        let tile_color_picker =
+            build_tile("color-select-symbolic", "Color Picker", "Pick a colour");
         let tile_dnd = build_tile(
             "notification-symbolic",
             "Do Not Disturb",
@@ -685,16 +677,14 @@ impl Component for ControlCenterTilesModel {
             build_edit_overlay(&tile_bluetooth.button, &sender, TileId::Bluetooth);
         let (overlay_audio_out, check_audio_out) =
             build_edit_overlay(&tile_audio_out.button, &sender, TileId::AudioOut);
-        let (overlay_mic, check_mic) =
-            build_edit_overlay(&tile_mic.button, &sender, TileId::Mic);
+        let (overlay_mic, check_mic) = build_edit_overlay(&tile_mic.button, &sender, TileId::Mic);
         let (overlay_battery, check_battery) =
             build_edit_overlay(&tile_battery.button, &sender, TileId::Battery);
         let (overlay_keep_awake, check_keep_awake) =
             build_edit_overlay(&tile_keep_awake.button, &sender, TileId::KeepAwake);
         let (overlay_color_picker, check_color_picker) =
             build_edit_overlay(&tile_color_picker.button, &sender, TileId::ColorPicker);
-        let (overlay_dnd, check_dnd) =
-            build_edit_overlay(&tile_dnd.button, &sender, TileId::Dnd);
+        let (overlay_dnd, check_dnd) = build_edit_overlay(&tile_dnd.button, &sender, TileId::Dnd);
         let (overlay_dark_mode, check_dark_mode) =
             build_edit_overlay(&tile_dark_mode.button, &sender, TileId::DarkMode);
         let (overlay_night_light, check_night_light) =
@@ -703,12 +693,10 @@ impl Component for ControlCenterTilesModel {
             build_edit_overlay(&tile_disk.button, &sender, TileId::Disk);
         let (overlay_airplane_mode, check_airplane_mode) =
             build_edit_overlay(&tile_airplane_mode.button, &sender, TileId::AirplaneMode);
-        let (overlay_vpn, check_vpn) =
-            build_edit_overlay(&tile_vpn.button, &sender, TileId::Vpn);
+        let (overlay_vpn, check_vpn) = build_edit_overlay(&tile_vpn.button, &sender, TileId::Vpn);
         let (overlay_valent, check_valent) =
             build_edit_overlay(&tile_valent.button, &sender, TileId::Valent);
-        let (overlay_ufw, check_ufw) =
-            build_edit_overlay(&tile_ufw.button, &sender, TileId::Ufw);
+        let (overlay_ufw, check_ufw) = build_edit_overlay(&tile_ufw.button, &sender, TileId::Ufw);
         let (overlay_podman, check_podman) =
             build_edit_overlay(&tile_podman.button, &sender, TileId::Podman);
 
@@ -720,12 +708,7 @@ impl Component for ControlCenterTilesModel {
         {
             let s = sender.clone();
             effects.push(move |_| {
-                let mode = config_manager()
-                    .config()
-                    .theme()
-                    .matugen()
-                    .mode()
-                    .get();
+                let mode = config_manager().config().theme().matugen().mode().get();
                 s.input(ControlCenterTilesInput::DarkModeChanged(mode));
             });
         }
@@ -912,8 +895,12 @@ impl Component for ControlCenterTilesModel {
                     spawn_dnd_watcher(&sender, || ControlCenterTilesCommandOutput::DndChanged);
 
                     // Battery watchers
-                    spawn_battery_watcher(&sender, || ControlCenterTilesCommandOutput::BatteryChanged);
-                    spawn_battery_online_watcher(&sender, || ControlCenterTilesCommandOutput::BatteryChanged);
+                    spawn_battery_watcher(&sender, || {
+                        ControlCenterTilesCommandOutput::BatteryChanged
+                    });
+                    spawn_battery_online_watcher(&sender, || {
+                        ControlCenterTilesCommandOutput::BatteryChanged
+                    });
 
                     // Twilight poller — reads the full status so the tile can
                     // show the active profile (mode + temperature), not just
@@ -953,7 +940,11 @@ impl Component for ControlCenterTilesModel {
                         tokio::pin!(shutdown_fut);
                         let mut first = true;
                         loop {
-                            let delay = if first { STARTUP_DELAY } else { SLOW_POLL_INTERVAL };
+                            let delay = if first {
+                                STARTUP_DELAY
+                            } else {
+                                SLOW_POLL_INTERVAL
+                            };
                             first = false;
                             tokio::select! {
                                 () = &mut shutdown_fut => break,
@@ -1029,7 +1020,10 @@ impl Component for ControlCenterTilesModel {
                             }
                             let report = valent::probe().await;
                             let (subtitle, connected) = valent_state_from_report(&report);
-                            let _ = out.send(ControlCenterTilesCommandOutput::ValentStateRefreshed(subtitle, connected));
+                            let _ =
+                                out.send(ControlCenterTilesCommandOutput::ValentStateRefreshed(
+                                    subtitle, connected,
+                                ));
                         }
                     });
                 }
@@ -1254,38 +1248,86 @@ impl Component for ControlCenterTilesModel {
 fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTilesWidgets) {
     // Read per-tile config bools — each call creates a fresh Subfield, so
     // we call config_manager() once per field rather than chaining off `cc`.
-    let cfg_wifi =
-        config_manager().config().control_center().wifi().get_untracked();
-    let cfg_bluetooth =
-        config_manager().config().control_center().bluetooth().get_untracked();
-    let cfg_audio_out =
-        config_manager().config().control_center().audio_out().get_untracked();
-    let cfg_mic =
-        config_manager().config().control_center().mic().get_untracked();
-    let cfg_battery =
-        config_manager().config().control_center().battery().get_untracked();
-    let cfg_keep_awake =
-        config_manager().config().control_center().keep_awake().get_untracked();
-    let cfg_dnd =
-        config_manager().config().control_center().dnd().get_untracked();
-    let cfg_dark_mode =
-        config_manager().config().control_center().dark_mode().get_untracked();
-    let cfg_night_light =
-        config_manager().config().control_center().night_light().get_untracked();
-    let cfg_color_picker =
-        config_manager().config().control_center().color_picker().get_untracked();
-    let cfg_disk =
-        config_manager().config().control_center().disk().get_untracked();
-    let cfg_airplane_mode =
-        config_manager().config().control_center().airplane_mode().get_untracked();
-    let cfg_vpn =
-        config_manager().config().control_center().vpn().get_untracked();
-    let cfg_valent =
-        config_manager().config().control_center().valent().get_untracked();
-    let cfg_ufw =
-        config_manager().config().control_center().ufw().get_untracked();
-    let cfg_podman =
-        config_manager().config().control_center().podman().get_untracked();
+    let cfg_wifi = config_manager()
+        .config()
+        .control_center()
+        .wifi()
+        .get_untracked();
+    let cfg_bluetooth = config_manager()
+        .config()
+        .control_center()
+        .bluetooth()
+        .get_untracked();
+    let cfg_audio_out = config_manager()
+        .config()
+        .control_center()
+        .audio_out()
+        .get_untracked();
+    let cfg_mic = config_manager()
+        .config()
+        .control_center()
+        .mic()
+        .get_untracked();
+    let cfg_battery = config_manager()
+        .config()
+        .control_center()
+        .battery()
+        .get_untracked();
+    let cfg_keep_awake = config_manager()
+        .config()
+        .control_center()
+        .keep_awake()
+        .get_untracked();
+    let cfg_dnd = config_manager()
+        .config()
+        .control_center()
+        .dnd()
+        .get_untracked();
+    let cfg_dark_mode = config_manager()
+        .config()
+        .control_center()
+        .dark_mode()
+        .get_untracked();
+    let cfg_night_light = config_manager()
+        .config()
+        .control_center()
+        .night_light()
+        .get_untracked();
+    let cfg_color_picker = config_manager()
+        .config()
+        .control_center()
+        .color_picker()
+        .get_untracked();
+    let cfg_disk = config_manager()
+        .config()
+        .control_center()
+        .disk()
+        .get_untracked();
+    let cfg_airplane_mode = config_manager()
+        .config()
+        .control_center()
+        .airplane_mode()
+        .get_untracked();
+    let cfg_vpn = config_manager()
+        .config()
+        .control_center()
+        .vpn()
+        .get_untracked();
+    let cfg_valent = config_manager()
+        .config()
+        .control_center()
+        .valent()
+        .get_untracked();
+    let cfg_ufw = config_manager()
+        .config()
+        .control_center()
+        .ufw()
+        .get_untracked();
+    let cfg_podman = config_manager()
+        .config()
+        .control_center()
+        .podman()
+        .get_untracked();
 
     let edit = model.edit_mode;
 
@@ -1293,9 +1335,9 @@ fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTilesWidgets)
     // depends on edit mode (all visible) vs normal mode (only enabled tiles).
     // In edit mode, disabled tiles get the `.disabled` class for opacity dimming.
     let update_tile_visibility = |overlay: &gtk::Overlay,
-                                   tile_btn: &gtk::Button,
-                                   check: &gtk::CheckButton,
-                                   enabled: bool| {
+                                  tile_btn: &gtk::Button,
+                                  check: &gtk::CheckButton,
+                                  enabled: bool| {
         if edit {
             overlay.set_visible(true);
             tile_btn.set_visible(true);
@@ -1314,21 +1356,76 @@ fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTilesWidgets)
         }
     };
 
-    update_tile_visibility(&w.overlay_wifi, &w.tile_wifi.button, &w.check_wifi, cfg_wifi);
-    update_tile_visibility(&w.overlay_bluetooth, &w.tile_bluetooth.button, &w.check_bluetooth, cfg_bluetooth);
-    update_tile_visibility(&w.overlay_audio_out, &w.tile_audio_out.button, &w.check_audio_out, cfg_audio_out);
+    update_tile_visibility(
+        &w.overlay_wifi,
+        &w.tile_wifi.button,
+        &w.check_wifi,
+        cfg_wifi,
+    );
+    update_tile_visibility(
+        &w.overlay_bluetooth,
+        &w.tile_bluetooth.button,
+        &w.check_bluetooth,
+        cfg_bluetooth,
+    );
+    update_tile_visibility(
+        &w.overlay_audio_out,
+        &w.tile_audio_out.button,
+        &w.check_audio_out,
+        cfg_audio_out,
+    );
     update_tile_visibility(&w.overlay_mic, &w.tile_mic.button, &w.check_mic, cfg_mic);
-    update_tile_visibility(&w.overlay_keep_awake, &w.tile_keep_awake.button, &w.check_keep_awake, cfg_keep_awake);
-    update_tile_visibility(&w.overlay_color_picker, &w.tile_color_picker.button, &w.check_color_picker, cfg_color_picker);
+    update_tile_visibility(
+        &w.overlay_keep_awake,
+        &w.tile_keep_awake.button,
+        &w.check_keep_awake,
+        cfg_keep_awake,
+    );
+    update_tile_visibility(
+        &w.overlay_color_picker,
+        &w.tile_color_picker.button,
+        &w.check_color_picker,
+        cfg_color_picker,
+    );
     update_tile_visibility(&w.overlay_dnd, &w.tile_dnd.button, &w.check_dnd, cfg_dnd);
-    update_tile_visibility(&w.overlay_dark_mode, &w.tile_dark_mode.button, &w.check_dark_mode, cfg_dark_mode);
-    update_tile_visibility(&w.overlay_night_light, &w.tile_night_light.button, &w.check_night_light, cfg_night_light);
-    update_tile_visibility(&w.overlay_disk, &w.tile_disk.button, &w.check_disk, cfg_disk);
-    update_tile_visibility(&w.overlay_airplane_mode, &w.tile_airplane_mode.button, &w.check_airplane_mode, cfg_airplane_mode);
+    update_tile_visibility(
+        &w.overlay_dark_mode,
+        &w.tile_dark_mode.button,
+        &w.check_dark_mode,
+        cfg_dark_mode,
+    );
+    update_tile_visibility(
+        &w.overlay_night_light,
+        &w.tile_night_light.button,
+        &w.check_night_light,
+        cfg_night_light,
+    );
+    update_tile_visibility(
+        &w.overlay_disk,
+        &w.tile_disk.button,
+        &w.check_disk,
+        cfg_disk,
+    );
+    update_tile_visibility(
+        &w.overlay_airplane_mode,
+        &w.tile_airplane_mode.button,
+        &w.check_airplane_mode,
+        cfg_airplane_mode,
+    );
     update_tile_visibility(&w.overlay_vpn, &w.tile_vpn.button, &w.check_vpn, cfg_vpn);
-    update_tile_visibility(&w.overlay_valent, &w.tile_valent.button, &w.check_valent, cfg_valent);
+    update_tile_visibility(
+        &w.overlay_valent,
+        &w.tile_valent.button,
+        &w.check_valent,
+        cfg_valent,
+    );
     update_tile_visibility(&w.overlay_ufw, &w.tile_ufw.button, &w.check_ufw, cfg_ufw);
-    update_tile_visibility(&w.overlay_podman, &w.tile_podman.button, &w.check_podman, cfg_podman);
+    update_tile_visibility(
+        &w.overlay_podman,
+        &w.tile_podman.button,
+        &w.check_podman,
+        cfg_podman,
+    );
 
     // Battery tile: additionally hidden when no battery present (normal mode)
     let bat = &model.battery;
@@ -1411,7 +1508,8 @@ fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTilesWidgets)
     // Dark Mode — now a full labeled tile
     let is_dark = model.dark == MatugenMode::Dark;
     w.tile_dark_mode.set_active(is_dark);
-    w.tile_dark_mode.set_subtitle(if is_dark { "On" } else { "Off" });
+    w.tile_dark_mode
+        .set_subtitle(if is_dark { "On" } else { "Off" });
     w.tile_dark_mode.set_icon(match model.dark {
         MatugenMode::Dark => "weather-clear-symbolic",
         MatugenMode::Light => "weather-clear-night-symbolic",
@@ -1429,7 +1527,8 @@ fn apply_visuals(model: &ControlCenterTilesModel, w: &ControlCenterTilesWidgets)
 
     // Airplane Mode
     w.tile_airplane_mode.set_active(model.airplane_mode);
-    w.tile_airplane_mode.set_subtitle(if model.airplane_mode { "On" } else { "Off" });
+    w.tile_airplane_mode
+        .set_subtitle(if model.airplane_mode { "On" } else { "Off" });
 
     // Disk
     w.tile_disk.set_subtitle(&model.disk.format());
@@ -1772,7 +1871,9 @@ fn valent_state_from_report(report: &crate::valent::ValentReport) -> (String, bo
         return ("Unavailable".to_string(), false);
     }
     // Find a connected device: reachable + paired
-    let connected: Vec<_> = report.devices.iter()
+    let connected: Vec<_> = report
+        .devices
+        .iter()
         .filter(|d| d.reachable && d.paired)
         .collect();
     match connected.len() {
@@ -1803,8 +1904,7 @@ fn read_airplane_state() -> (bool, bool) {
 #[cfg(test)]
 mod tests {
     use super::{
-        TileId, ordered_tile_ids, twilight_mode_label, twilight_subtitle,
-        valent_state_from_report,
+        TileId, ordered_tile_ids, twilight_mode_label, twilight_subtitle, valent_state_from_report,
     };
     use crate::twilight::TwilightStatus;
     use crate::valent::{Device, ValentReport};
@@ -1867,11 +1967,7 @@ mod tests {
 
     #[test]
     fn ordered_tile_ids_ignores_unknown_and_dedupes() {
-        let order = vec![
-            "wifi".to_string(),
-            "bogus".to_string(),
-            "wifi".to_string(),
-        ];
+        let order = vec!["wifi".to_string(), "bogus".to_string(), "wifi".to_string()];
         let ids = ordered_tile_ids(&order);
         assert_eq!(ids[0], TileId::Wifi);
         assert_eq!(ids.len(), TileId::all().len());
@@ -1884,7 +1980,10 @@ mod tests {
             daemon_available: false,
             ..Default::default()
         };
-        assert_eq!(valent_state_from_report(&r), ("Unavailable".to_string(), false));
+        assert_eq!(
+            valent_state_from_report(&r),
+            ("Unavailable".to_string(), false)
+        );
     }
 
     #[test]
@@ -1893,13 +1992,19 @@ mod tests {
             daemon_available: true,
             devices: vec![],
         };
-        assert_eq!(valent_state_from_report(&r), ("No devices".to_string(), false));
+        assert_eq!(
+            valent_state_from_report(&r),
+            ("No devices".to_string(), false)
+        );
 
         let r = ValentReport {
             daemon_available: true,
             devices: vec![device("Phone", false, true)],
         };
-        assert_eq!(valent_state_from_report(&r), ("Not reachable".to_string(), false));
+        assert_eq!(
+            valent_state_from_report(&r),
+            ("Not reachable".to_string(), false)
+        );
     }
 
     #[test]
@@ -1914,6 +2019,9 @@ mod tests {
             daemon_available: true,
             devices: vec![device("A", true, true), device("B", true, true)],
         };
-        assert_eq!(valent_state_from_report(&r), ("2 connected".to_string(), true));
+        assert_eq!(
+            valent_state_from_report(&r),
+            ("2 connected".to_string(), true)
+        );
     }
 }

@@ -16,45 +16,37 @@ use smithay::{
     backend::{
         allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice},
         drm::{
-            compositor::DrmCompositor,
+            DrmDevice, DrmDeviceFd, DrmEvent, DrmNode, NodeType, compositor::DrmCompositor,
             exporter::gbm::GbmFramebufferExporter,
-            DrmDevice, DrmDeviceFd, DrmEvent, DrmNode, NodeType,
         },
         egl::{EGLContext, EGLDisplay},
         input::InputEvent,
         libinput::{LibinputInputBackend, LibinputSessionInterface},
         renderer::{
+            ImportDma, ImportEgl,
             element::{
-                AsRenderElements, Wrap,
+                AsRenderElements, Kind, Wrap,
                 memory::MemoryRenderBufferRenderElement,
                 render_elements,
-                surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
-                Kind,
+                surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree},
             },
             gles::{GlesRenderer, GlesTexProgram},
-            ImportDma, ImportEgl,
         },
-        session::{libseat::LibSeatSession, Event as SessionEvent, Session},
+        session::{Event as SessionEvent, Session, libseat::LibSeatSession},
         udev::{UdevBackend, UdevEvent, primary_gpu},
     },
-    desktop::{layer_map_for_output, space::SpaceRenderElements, PopupManager, WindowSurface},
+    desktop::{PopupManager, WindowSurface, layer_map_for_output, space::SpaceRenderElements},
     input::pointer::{CursorImageAttributes, CursorImageStatus},
     output::{Mode as OutputMode, Output, PhysicalProperties, Subpixel},
     reexports::{
-        calloop::{ping::make_ping, EventLoop},
-        drm::control::{
-            property, Device as DrmDeviceTrait, connector, crtc,
-        },
+        calloop::{EventLoop, ping::make_ping},
+        drm::control::{Device as DrmDeviceTrait, connector, crtc, property},
         input::Libinput,
         rustix::fs::OFlags,
     },
     utils::{DeviceFd, Logical, Physical, Point, Rectangle, Scale, Transform},
-    wayland::{
-        compositor::with_states,
-        dmabuf::DmabufFeedbackBuilder,
-        seat::WaylandFocus,
-    },
     wayland::shell::wlr_layer::Layer as WlrLayer,
+    wayland::{compositor::with_states, dmabuf::DmabufFeedbackBuilder, seat::WaylandFocus},
 };
 use tracing::{error, info, warn};
 
@@ -99,12 +91,8 @@ render_elements! {
 
 // ── Type aliases ──────────────────────────────────────────────────────────────
 
-type GbmDrmCompositor = DrmCompositor<
-    GbmAllocator<DrmDeviceFd>,
-    GbmFramebufferExporter<DrmDeviceFd>,
-    (),
-    DrmDeviceFd,
->;
+type GbmDrmCompositor =
+    DrmCompositor<GbmAllocator<DrmDeviceFd>, GbmFramebufferExporter<DrmDeviceFd>, (), DrmDeviceFd>;
 
 pub struct OutputDevice {
     pub output: Output,
@@ -166,8 +154,12 @@ impl GammaProps {
         let mut gamma_lut = None;
         let mut gamma_lut_size = None;
         for (prop, _) in props {
-            let Ok(info) = device.get_property(prop) else { continue };
-            let Ok(name) = info.name().to_str() else { continue };
+            let Ok(info) = device.get_property(prop) else {
+                continue;
+            };
+            let Ok(name) = info.name().to_str() else {
+                continue;
+            };
             match name {
                 "GAMMA_LUT" => {
                     if matches!(info.value_type(), property::ValueType::Blob) {
@@ -276,13 +268,10 @@ pub(super) struct BackendData {
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
-pub fn run(
-    state: &mut MargoState,
-    event_loop: &mut EventLoop<'static, MargoState>,
-) -> Result<()> {
+pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoState>) -> Result<()> {
     // ── 1. Open libseat session ───────────────────────────────────────────────
-    let (mut session, session_notifier) = LibSeatSession::new()
-        .map_err(|e| anyhow::anyhow!("libseat session failed: {e}"))?;
+    let (mut session, session_notifier) =
+        LibSeatSession::new().map_err(|e| anyhow::anyhow!("libseat session failed: {e}"))?;
     let seat_name = session.seat();
     info!("libseat session on seat: {seat_name}");
 
@@ -317,16 +306,17 @@ pub fn run(
     // the primary plane on every motion event.
     {
         let cs = drm.cursor_size();
-        info!("DRM hardware cursor plane: {}×{} (advertised by driver)", cs.w, cs.h);
+        info!(
+            "DRM hardware cursor plane: {}×{} (advertised by driver)",
+            cs.w, cs.h
+        );
     }
 
     // ── 4. GBM + EGL + GLES ──────────────────────────────────────────────────
     let gbm = GbmDevice::new(drm_fd.clone()).context("GbmDevice::new")?;
-    let egl_display =
-        unsafe { EGLDisplay::new(gbm.clone()) }.context("EGLDisplay::new")?;
+    let egl_display = unsafe { EGLDisplay::new(gbm.clone()) }.context("EGLDisplay::new")?;
     let egl_context = EGLContext::new(&egl_display).context("EGLContext::new")?;
-    let mut renderer =
-        unsafe { GlesRenderer::new(egl_context) }.context("GlesRenderer::new")?;
+    let mut renderer = unsafe { GlesRenderer::new(egl_context) }.context("GlesRenderer::new")?;
 
     match renderer.bind_wl_display(&state.display_handle) {
         Ok(()) => info!("EGL Wayland hardware-acceleration enabled"),
@@ -408,8 +398,7 @@ pub fn run(
 
     // ── 6. Enumerate connected connectors and create outputs + compositors ───
     let resources = drm_fd.resource_handles().context("DRM resource_handles")?;
-    let mut used_crtcs: std::collections::HashSet<crtc::Handle> =
-        std::collections::HashSet::new();
+    let mut used_crtcs: std::collections::HashSet<crtc::Handle> = std::collections::HashSet::new();
 
     let mut backend_outputs: HashMap<crtc::Handle, OutputDevice> = HashMap::new();
 
@@ -440,9 +429,12 @@ pub fn run(
         );
 
         // Match against monitorrule config
-        let rule = state.config.monitor_rules.iter().find(|r| {
-            r.name.as_deref().map(|n| n == output_name).unwrap_or(true)
-        }).cloned();
+        let rule = state
+            .config
+            .monitor_rules
+            .iter()
+            .find(|r| r.name.as_deref().map(|n| n == output_name).unwrap_or(true))
+            .cloned();
 
         // Select DRM mode: prefer rule-specified w×h@refresh, else preferred flag
         let drm_mode = select_drm_mode(&conn_info, rule.as_ref());
@@ -461,19 +453,34 @@ pub fn run(
                 (r.x, r.y)
             } else {
                 let x_offset = state.space.outputs().fold(0i32, |acc, o| {
-                    acc + state.space.output_geometry(o).map(|g| g.size.w).unwrap_or(0)
+                    acc + state
+                        .space
+                        .output_geometry(o)
+                        .map(|g| g.size.w)
+                        .unwrap_or(0)
                 });
                 (x_offset, 0)
             }
         } else {
             let x_offset = state.space.outputs().fold(0i32, |acc, o| {
-                acc + state.space.output_geometry(o).map(|g| g.size.w).unwrap_or(0)
+                acc + state
+                    .space
+                    .output_geometry(o)
+                    .map(|g| g.size.w)
+                    .unwrap_or(0)
             });
             (x_offset, 0)
         };
 
-        info!("output: {} {}x{}@{} pos={:?} scale={}", output_name,
-            wl_mode.size.w, wl_mode.size.h, wl_mode.refresh / 1000, position, scale);
+        info!(
+            "output: {} {}x{}@{} pos={:?} scale={}",
+            output_name,
+            wl_mode.size.w,
+            wl_mode.size.h,
+            wl_mode.refresh / 1000,
+            position,
+            scale
+        );
 
         let output = Output::new(
             output_name.clone(),
@@ -517,7 +524,11 @@ pub fn run(
         // when the driver doesn't report a size (very old drivers).
         let cursor_size = {
             let s = drm.cursor_size();
-            if s.w == 0 || s.h == 0 { (64u32, 64u32).into() } else { s }
+            if s.w == 0 || s.h == 0 {
+                (64u32, 64u32).into()
+            } else {
+                s
+            }
         };
         // Both RENDERING and SCANOUT flags so the GBM buffer can be used
         // as a direct scanout source for DRM page-flips without an
@@ -617,7 +628,10 @@ pub fn run(
         let mon_idx = state.monitors.len() - 1;
         state.monitors[mon_idx].gamma_size = gamma_size;
         if gamma_size > 0 {
-            info!("output {} gamma_size = {}", state.monitors[mon_idx].name, gamma_size);
+            info!(
+                "output {} gamma_size = {}",
+                state.monitors[mon_idx].name, gamma_size
+            );
         }
 
         backend_outputs.insert(
@@ -682,7 +696,11 @@ pub fn run(
                     // we signal `presented(...)` — the per-surface
                     // callbacks may end up taking their own borrows
                     // on backend_data via wayland-server dispatch.
-                    let mut to_flush: Vec<(Output, smithay::desktop::utils::OutputPresentationFeedback, u64)> = Vec::new();
+                    let mut to_flush: Vec<(
+                        Output,
+                        smithay::desktop::utils::OutputPresentationFeedback,
+                        u64,
+                    )> = Vec::new();
                     let mut flipped_output: Option<Output> = None;
                     {
                         let mut bd = backend_data.borrow_mut();
@@ -768,7 +786,12 @@ pub fn run(
                 }
                 if state.take_repaint_request() {
                     let mut bd = backend_data.borrow_mut();
-                    let BackendData { renderer, outputs, drm, .. } = &mut *bd;
+                    let BackendData {
+                        renderer,
+                        outputs,
+                        drm,
+                        ..
+                    } = &mut *bd;
                     render_all_outputs(renderer, outputs, drm, state, "repaint");
                 }
                 // ext-image-copy-capture: drain pending frames
@@ -778,7 +801,9 @@ pub fn run(
                 // scene state is the same one the user just saw.
                 if !state.pending_image_copy_frames.is_empty() {
                     let mut bd = backend_data.borrow_mut();
-                    let BackendData { renderer, outputs, .. } = &mut *bd;
+                    let BackendData {
+                        renderer, outputs, ..
+                    } = &mut *bd;
                     drain_image_copy_frames(renderer, outputs, state);
                 }
                 // PipeWire screencast: render every active cast on
@@ -796,7 +821,9 @@ pub fn run(
                         .is_some_and(|s| !s.casts.is_empty());
                     if has_casts {
                         let mut bd = backend_data.borrow_mut();
-                        let BackendData { renderer, outputs, .. } = &mut *bd;
+                        let BackendData {
+                            renderer, outputs, ..
+                        } = &mut *bd;
                         drain_active_cast_frames(renderer, outputs, state);
                     }
                 }
@@ -812,8 +839,9 @@ pub fn run(
     // (libinput will be inserted into state below; the closure reads it from state)
     event_loop
         .handle()
-        .insert_source(session_notifier, |event, _, state: &mut MargoState| {
-            match event {
+        .insert_source(
+            session_notifier,
+            |event, _, state: &mut MargoState| match event {
                 SessionEvent::PauseSession => {
                     info!("session paused");
                     if let Some(li) = state.libinput.as_mut() {
@@ -830,8 +858,8 @@ pub fn run(
                     }
                     state.arrange_all();
                 }
-            }
-        })
+            },
+        )
         .map_err(|e| anyhow::anyhow!("session event source: {e}"))?;
 
     // ── 9. libinput ───────────────────────────────────────────────────────────
@@ -853,25 +881,28 @@ pub fn run(
 
     event_loop
         .handle()
-        .insert_source(LibinputInputBackend::new(libinput), |mut event, _, state: &mut MargoState| {
-            match &mut event {
-                InputEvent::DeviceAdded { device } => {
-                    crate::libinput_config::apply_to_device(device, &state.config);
-                    state.libinput_devices.retain(|known| known != device);
-                    state.libinput_devices.push(device.clone());
+        .insert_source(
+            LibinputInputBackend::new(libinput),
+            |mut event, _, state: &mut MargoState| {
+                match &mut event {
+                    InputEvent::DeviceAdded { device } => {
+                        crate::libinput_config::apply_to_device(device, &state.config);
+                        state.libinput_devices.retain(|known| known != device);
+                        state.libinput_devices.push(device.clone());
+                    }
+                    InputEvent::DeviceRemoved { device } => {
+                        state.libinput_devices.retain(|known| known != device);
+                    }
+                    _ => {}
                 }
-                InputEvent::DeviceRemoved { device } => {
-                    state.libinput_devices.retain(|known| known != device);
-                }
-                _ => {}
-            }
-            handle_input(state, event);
-        })
+                handle_input(state, event);
+            },
+        )
         .map_err(|e| anyhow::anyhow!("libinput source: {e}"))?;
 
     // ── 10. Udev hotplug source ───────────────────────────────────────────────
-    let udev_backend = UdevBackend::new(&seat_name)
-        .map_err(|e| anyhow::anyhow!("UdevBackend::new: {e}"))?;
+    let udev_backend =
+        UdevBackend::new(&seat_name).map_err(|e| anyhow::anyhow!("UdevBackend::new: {e}"))?;
     let loop_handle_for_udev = event_loop.handle();
     event_loop
         .handle()
@@ -956,7 +987,12 @@ pub fn run(
     // ── 11. Initial render pass ───────────────────────────────────────────────
     {
         let mut bd = backend_data.borrow_mut();
-        let BackendData { renderer, outputs, drm, .. } = &mut *bd;
+        let BackendData {
+            renderer,
+            outputs,
+            drm,
+            ..
+        } = &mut *bd;
         render_all_outputs(renderer, outputs, drm, state, "initial");
     }
 
@@ -1002,7 +1038,12 @@ pub(super) fn take_pending_snapshots(
         .iter()
         .enumerate()
         .filter_map(|(i, c)| {
-            if c.snapshot_pending && state.monitors.get(c.monitor).is_some_and(|m| m.output == od.output) {
+            if c.snapshot_pending
+                && state
+                    .monitors
+                    .get(c.monitor)
+                    .is_some_and(|m| m.output == od.output)
+            {
                 Some(i)
             } else {
                 None
@@ -1027,19 +1068,13 @@ pub(super) fn take_pending_snapshots(
             continue;
         }
 
-        match crate::render::window_capture::capture_window(
-            renderer,
-            &window,
-            size,
-            output_scale,
-        ) {
+        match crate::render::window_capture::capture_window(renderer, &window, size, output_scale) {
             Ok(texture) => {
-                state.clients[idx].resize_snapshot =
-                    Some(crate::state::ResizeSnapshot {
-                        texture,
-                        source_size: size,
-                        captured_at: std::time::Instant::now(),
-                    });
+                state.clients[idx].resize_snapshot = Some(crate::state::ResizeSnapshot {
+                    texture,
+                    source_size: size,
+                    captured_at: std::time::Instant::now(),
+                });
                 state.clients[idx].snapshot_pending = false;
                 tracing::debug!(
                     "resize_snapshot: captured {} ({}x{})",
@@ -1089,7 +1124,10 @@ pub(super) fn take_pending_open_close_captures(
         .filter_map(|(i, c)| {
             if c.opening_capture_pending
                 && c.opening_animation.is_some()
-                && state.monitors.get(c.monitor).is_some_and(|m| m.output == od.output)
+                && state
+                    .monitors
+                    .get(c.monitor)
+                    .is_some_and(|m| m.output == od.output)
             {
                 Some(i)
             } else {
@@ -1111,8 +1149,7 @@ pub(super) fn take_pending_open_close_captures(
             // animation timer will catch up once the buffer arrives.
             continue;
         }
-        match crate::render::window_capture::capture_window(renderer, &window, size, output_scale)
-        {
+        match crate::render::window_capture::capture_window(renderer, &window, size, output_scale) {
             Ok(texture) => {
                 state.clients[idx].opening_texture = Some(texture);
                 state.clients[idx].opening_capture_pending = false;
@@ -1141,7 +1178,10 @@ pub(super) fn take_pending_open_close_captures(
         .enumerate()
         .filter_map(|(i, c)| {
             if c.capture_pending
-                && state.monitors.get(c.monitor).is_some_and(|m| m.output == od.output)
+                && state
+                    .monitors
+                    .get(c.monitor)
+                    .is_some_and(|m| m.output == od.output)
             {
                 Some(i)
             } else {
@@ -1164,21 +1204,13 @@ pub(super) fn take_pending_open_close_captures(
             geom.width.max(1),
             geom.height.max(1),
         ));
-        match crate::render::window_capture::capture_surface(
-            renderer,
-            &surface,
-            size,
-            output_scale,
-        ) {
+        match crate::render::window_capture::capture_surface(renderer, &surface, size, output_scale)
+        {
             Ok(texture) => {
                 state.closing_clients[idx].texture = Some(texture);
                 state.closing_clients[idx].capture_pending = false;
                 state.closing_clients[idx].source_surface = None;
-                tracing::debug!(
-                    "close_anim: captured wl_surface ({}x{})",
-                    size.w,
-                    size.h,
-                );
+                tracing::debug!("close_anim: captured wl_surface ({}x{})", size.w, size.h,);
             }
             Err(e) => {
                 tracing::warn!("close_anim: capture failed: {e:?}");
@@ -1198,22 +1230,28 @@ pub(super) fn take_pending_open_close_captures(
     let pending_layer_keys: Vec<_> = state
         .layer_animations
         .iter()
-        .filter_map(|(k, a)| if a.is_close && a.capture_pending { Some(k.clone()) } else { None })
+        .filter_map(|(k, a)| {
+            if a.is_close && a.capture_pending {
+                Some(k.clone())
+            } else {
+                None
+            }
+        })
         .collect();
     for key in pending_layer_keys {
-        let Some(anim) = state.layer_animations.get(&key) else { continue };
-        let Some(surface) = anim.source_surface.clone() else { continue };
+        let Some(anim) = state.layer_animations.get(&key) else {
+            continue;
+        };
+        let Some(surface) = anim.source_surface.clone() else {
+            continue;
+        };
         let geom = anim.geom;
         let size = smithay::utils::Size::<i32, smithay::utils::Logical>::from((
             geom.width.max(1),
             geom.height.max(1),
         ));
-        match crate::render::window_capture::capture_surface(
-            renderer,
-            &surface,
-            size,
-            output_scale,
-        ) {
+        match crate::render::window_capture::capture_surface(renderer, &surface, size, output_scale)
+        {
             Ok(texture) => {
                 if let Some(a) = state.layer_animations.get_mut(&key) {
                     a.texture = Some(texture);
@@ -1317,34 +1355,30 @@ fn drain_image_copy_frames(
             Vec<MargoRenderElement>,
         ) = match &pending.source {
             crate::PendingImageCopySource::Output(name) => {
-                let od = match outputs
-                    .iter_mut()
-                    .find(|(_, od)| od.output.name() == *name)
-                {
+                let od = match outputs.iter_mut().find(|(_, od)| od.output.name() == *name) {
                     Some((_, od)) => od,
                     None => {
                         frame.fail(CaptureFailureReason::Stopped);
                         continue;
                     }
                 };
-                let output_size = od
-                    .output
-                    .current_mode()
-                    .map(|m| m.size)
-                    .unwrap_or_default();
+                let output_size = od.output.current_mode().map(|m| m.size).unwrap_or_default();
                 if output_size.w == 0 || output_size.h == 0 {
                     frame.fail(CaptureFailureReason::Stopped);
                     continue;
                 }
                 let scale = od.output.current_scale().fractional_scale();
-                let buf_size = smithay::utils::Size::<i32, smithay::utils::Buffer>::from(
-                    (output_size.w, output_size.h),
-                );
+                let buf_size = smithay::utils::Size::<i32, smithay::utils::Buffer>::from((
+                    output_size.w,
+                    output_size.h,
+                ));
                 let elements = build_render_elements_inner(
                     renderer,
                     od,
                     state,
-                    RenderTarget::Screencast { include_cursor: false },
+                    RenderTarget::Screencast {
+                        include_cursor: false,
+                    },
                 );
                 (buf_size, scale, elements)
             }
@@ -1359,10 +1393,7 @@ fn drain_image_copy_frames(
                 // — but if the underlying wl_surface destroyed,
                 // render_elements returns empty + we'd send a
                 // black frame, which is worse than failing.
-                let client = state
-                    .clients
-                    .iter()
-                    .find(|c| &c.window == window);
+                let client = state.clients.iter().find(|c| &c.window == window);
                 let geom = match client {
                     Some(c) => c.geom,
                     None => {
@@ -1386,31 +1417,34 @@ fn drain_image_copy_frames(
                 // left lines up with the buffer's origin —
                 // capture is the window itself, not the screen
                 // it's positioned on.
-                let elements: Vec<smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement<GlesRenderer>> =
-                    AsRenderElements::<GlesRenderer>::render_elements(
-                        window,
-                        renderer,
-                        smithay::utils::Point::from((0, 0)),
-                        scale,
-                        1.0,
-                    );
+                let elements: Vec<
+                    smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement<
+                        GlesRenderer,
+                    >,
+                > = AsRenderElements::<GlesRenderer>::render_elements(
+                    window,
+                    renderer,
+                    smithay::utils::Point::from((0, 0)),
+                    scale,
+                    1.0,
+                );
                 // Wrap each surface element in MargoRenderElement
                 // so the existing render_output dispatch works.
                 let wrapped: Vec<MargoRenderElement> = elements
                     .into_iter()
                     .map(MargoRenderElement::WaylandSurface)
                     .collect();
-                let buf_size = smithay::utils::Size::<i32, smithay::utils::Buffer>::from(
-                    (geom.width, geom.height),
-                );
+                let buf_size = smithay::utils::Size::<i32, smithay::utils::Buffer>::from((
+                    geom.width,
+                    geom.height,
+                ));
                 (buf_size, 1.0, wrapped)
             }
         };
 
         let elements_refs: Vec<&MargoRenderElement> = elements_owned.iter().collect();
-        let output_size = smithay::utils::Size::<i32, smithay::utils::Physical>::from(
-            (buf_size.w, buf_size.h),
-        );
+        let output_size =
+            smithay::utils::Size::<i32, smithay::utils::Physical>::from((buf_size.w, buf_size.h));
 
         // Allocate an offscreen renderbuffer and render the scene
         // into it. Identical shape to the SHM arm of
@@ -1418,9 +1452,7 @@ fn drain_image_copy_frames(
         let mut renderbuffer = match <GlesRenderer as Offscreen<
             smithay::backend::renderer::gles::GlesRenderbuffer,
         >>::create_buffer(
-            renderer,
-            drm_fourcc::DrmFourcc::Xrgb8888,
-            buf_size,
+            renderer, drm_fourcc::DrmFourcc::Xrgb8888, buf_size
         ) {
             Ok(rb) => rb,
             Err(e) => {
@@ -1455,18 +1487,15 @@ fn drain_image_copy_frames(
             smithay::utils::Point::<i32, smithay::utils::Buffer>::from((0, 0)),
             buf_size,
         );
-        let mapping = match renderer.copy_framebuffer(
-            &target,
-            region,
-            drm_fourcc::DrmFourcc::Xrgb8888,
-        ) {
-            Ok(m) => m,
-            Err(e) => {
-                warn!("image_copy_capture: copy_framebuffer failed: {e:?}");
-                frame.fail(CaptureFailureReason::Unknown);
-                continue;
-            }
-        };
+        let mapping =
+            match renderer.copy_framebuffer(&target, region, drm_fourcc::DrmFourcc::Xrgb8888) {
+                Ok(m) => m,
+                Err(e) => {
+                    warn!("image_copy_capture: copy_framebuffer failed: {e:?}");
+                    frame.fail(CaptureFailureReason::Unknown);
+                    continue;
+                }
+            };
         drop(target);
         let pixels = match renderer.map_texture(&mapping) {
             Ok(p) => p,
@@ -1483,9 +1512,8 @@ fn drain_image_copy_frames(
         let need = (buf_size.w as usize)
             .saturating_mul(4)
             .saturating_mul(buf_size.h as usize);
-        let copy_result = smithay::wayland::shm::with_buffer_contents_mut(
-            &buffer,
-            |dst_ptr, dst_len, _meta| {
+        let copy_result =
+            smithay::wayland::shm::with_buffer_contents_mut(&buffer, |dst_ptr, dst_len, _meta| {
                 let n = need.min(dst_len).min(pixels.len());
                 // SAFETY: dst_ptr/dst_len come from a validated
                 // wl_shm wl_buffer; we never read more than n
@@ -1496,19 +1524,14 @@ fn drain_image_copy_frames(
                     std::ptr::copy_nonoverlapping(pixels.as_ptr(), dst_ptr, n);
                 }
                 n > 0
-            },
-        );
+            });
         match copy_result {
             Ok(true) => {
                 // Success — present the frame with the current
                 // monotonic time. damage = None means "everything
                 // changed" which is the right answer for a fresh
                 // capture.
-                frame.success(
-                    Transform::Normal,
-                    None,
-                    monotonic_now(),
-                );
+                frame.success(Transform::Normal, None, monotonic_now());
             }
             Ok(false) | Err(_) => {
                 frame.fail(CaptureFailureReason::BufferConstraints);
@@ -1629,10 +1652,7 @@ fn drain_active_cast_frames(
                     }
                 }
 
-                let Some((_, od)) = outputs
-                    .iter()
-                    .find(|(_, od)| od.output == mon.output)
-                else {
+                let Some((_, od)) = outputs.iter().find(|(_, od)| od.output == mon.output) else {
                     continue;
                 };
 
@@ -1645,10 +1665,8 @@ fn drain_active_cast_frames(
                 // so we translate by -(window_pos_relative_to_output).
                 // Margo's client.geom is logical (matches output_geo
                 // origin); convert to physical with the output scale.
-                let win_off_x =
-                    -((geom.x - mon.monitor_area.x) as f64 * scale_f).round() as i32;
-                let win_off_y =
-                    -((geom.y - mon.monitor_area.y) as f64 * scale_f).round() as i32;
+                let win_off_x = -((geom.x - mon.monitor_area.x) as f64 * scale_f).round() as i32;
+                let win_off_y = -((geom.y - mon.monitor_area.y) as f64 * scale_f).round() as i32;
                 let win_off = Point::<i32, Physical>::from((win_off_x, win_off_y));
 
                 let cursor_mode = cast.cursor_mode();
@@ -1676,13 +1694,11 @@ fn drain_active_cast_frames(
                     let v: Vec<CastRenderElement> = e
                         .into_iter()
                         .map(|e| {
-                            CastRenderElement::Relocated(
-                                RelocateRenderElement::from_element(
-                                    e,
-                                    win_off,
-                                    Relocate::Relative,
-                                ),
-                            )
+                            CastRenderElement::Relocated(RelocateRenderElement::from_element(
+                                e,
+                                win_off,
+                                Relocate::Relative,
+                            ))
                         })
                         .collect();
                     (v, loc)
@@ -1694,13 +1710,11 @@ fn drain_active_cast_frames(
                 let main_elems: Vec<CastRenderElement> = output_elems
                     .into_iter()
                     .map(|e| {
-                        CastRenderElement::Relocated(
-                            RelocateRenderElement::from_element(
-                                e,
-                                win_off,
-                                Relocate::Relative,
-                            ),
-                        )
+                        CastRenderElement::Relocated(RelocateRenderElement::from_element(
+                            e,
+                            win_off,
+                            Relocate::Relative,
+                        ))
                     })
                     .collect();
                 // Pointer elements come FIRST so CursorData::compute
@@ -1712,21 +1726,12 @@ fn drain_active_cast_frames(
 
                 let cursor_data: CursorData<CastRenderElement> =
                     CursorData::compute(&elements, cursor_count, cursor_loc, scale);
-                if cast.dequeue_buffer_and_render(
-                    renderer,
-                    &elements,
-                    &cursor_data,
-                    size,
-                    scale,
-                ) {
+                if cast.dequeue_buffer_and_render(renderer, &elements, &cursor_data, size, scale) {
                     cast.last_frame_time = now;
                 }
             }
             CastTarget::Output { name, .. } => {
-                let Some((_, od)) = outputs
-                    .iter()
-                    .find(|(_, od)| od.output.name() == name)
-                else {
+                let Some((_, od)) = outputs.iter().find(|(_, od)| od.output.name() == name) else {
                     continue;
                 };
                 let Some(mode) = od.output.current_mode() else {
@@ -1736,8 +1741,7 @@ fn drain_active_cast_frames(
                 if size.w <= 0 || size.h <= 0 {
                     continue;
                 }
-                let scale =
-                    Scale::from(od.output.current_scale().fractional_scale());
+                let scale = Scale::from(od.output.current_scale().fractional_scale());
                 let output = od.output.clone();
 
                 if cast.check_time_and_schedule(&output, now) {
@@ -1791,13 +1795,7 @@ fn drain_active_cast_frames(
 
                 let cursor_data: CursorData<CastRenderElement> =
                     CursorData::compute(&elements, cursor_count, cursor_loc, scale);
-                if cast.dequeue_buffer_and_render(
-                    renderer,
-                    &elements,
-                    &cursor_data,
-                    size,
-                    scale,
-                ) {
+                if cast.dequeue_buffer_and_render(renderer, &elements, &cursor_data, size, scale) {
                     cast.last_frame_time = now;
                 }
             }
@@ -1859,10 +1857,15 @@ pub fn build_cursor_elements_for_output(
                     .and_then(|attrs| attrs.lock().ok().map(|attrs| attrs.hotspot))
                     .unwrap_or_default()
             });
-            let ptr_i = (ptr_pos - hotspot.to_f64())
-                .to_physical_precise_round::<f64, i32>(output_scale);
+            let ptr_i =
+                (ptr_pos - hotspot.to_f64()).to_physical_precise_round::<f64, i32>(output_scale);
             let cursor_elems = render_elements_from_surface_tree(
-                renderer, surface, ptr_i, output_scale, 1.0f32, Kind::Cursor,
+                renderer,
+                surface,
+                ptr_i,
+                output_scale,
+                1.0f32,
+                Kind::Cursor,
             );
             for e in cursor_elems {
                 elements.push(MargoRenderElement::WaylandSurface(e));
@@ -1871,7 +1874,9 @@ pub fn build_cursor_elements_for_output(
         CursorImageStatus::Hidden => {}
         _ => {
             if let Some(cursor_elem) =
-                state.cursor_manager.render_element(renderer, ptr_pos, output_scale)
+                state
+                    .cursor_manager
+                    .render_element(renderer, ptr_pos, output_scale)
             {
                 elements.push(MargoRenderElement::Cursor(cursor_elem));
             }
@@ -1904,7 +1909,7 @@ pub(super) fn build_render_elements_inner(
 
     if let Some((_, lock_surface)) = state.lock_surfaces.iter().find(|(o, _)| o == &od.output) {
         let mut elements = Vec::new();
-        
+
         // Highest priority: cursor (if inside this output)
         let ptr_global = Point::<f64, _>::from((state.input_pointer.x, state.input_pointer.y));
         if include_cursor && output_geo.to_f64().contains(ptr_global) {
@@ -1921,7 +1926,12 @@ pub(super) fn build_render_elements_inner(
                     let ptr_i = (ptr_pos - hotspot.to_f64())
                         .to_physical_precise_round::<f64, i32>(output_scale);
                     let cursor_elems = render_elements_from_surface_tree(
-                        renderer, surface, ptr_i, output_scale, 1.0f32, Kind::Cursor,
+                        renderer,
+                        surface,
+                        ptr_i,
+                        output_scale,
+                        1.0f32,
+                        Kind::Cursor,
                     );
                     for e in cursor_elems {
                         elements.push(MargoRenderElement::WaylandSurface(e));
@@ -1930,7 +1940,9 @@ pub(super) fn build_render_elements_inner(
                 CursorImageStatus::Hidden => {}
                 _ => {
                     if let Some(cursor_elem) =
-                        state.cursor_manager.render_element(renderer, ptr_pos, output_scale)
+                        state
+                            .cursor_manager
+                            .render_element(renderer, ptr_pos, output_scale)
                     {
                         elements.push(MargoRenderElement::Cursor(cursor_elem));
                     }
@@ -1963,7 +1975,14 @@ pub(super) fn build_render_elements_inner(
     // strip of cells. Replaces the normal window/layer compositing
     // (lock screen above still wins). See P2 in `state/scroller_overview.rs`.
     if state.scroller_overview.is_some() {
-        return build_scroller_overview_elements(renderer, od, state, output_geo, output_scale, include_cursor);
+        return build_scroller_overview_elements(
+            renderer,
+            od,
+            state,
+            output_geo,
+            output_scale,
+            include_cursor,
+        );
     }
 
     let layer_map = layer_map_for_output(&od.output);
@@ -2011,12 +2030,8 @@ pub(super) fn build_render_elements_inner(
     let clipped_surface_program =
         crate::render::clipped_surface::shader(renderer).map(|program| program.0);
 
-    let mut elements: Vec<MargoRenderElement> = Vec::with_capacity(
-        upper_layers.len()
-            + lower_layers.len()
-            + state.clients.len() * 2
-            + 1,
-    );
+    let mut elements: Vec<MargoRenderElement> =
+        Vec::with_capacity(upper_layers.len() + lower_layers.len() + state.clients.len() * 2 + 1);
 
     // First elements are highest z-order in the DRM compositor.
     let ptr_global = Point::<f64, _>::from((state.input_pointer.x, state.input_pointer.y));
@@ -2043,15 +2058,23 @@ pub(super) fn build_render_elements_inner(
                 let ptr_i = (ptr_pos - hotspot.to_f64())
                     .to_physical_precise_round::<f64, i32>(output_scale);
                 let cursor_elems = render_elements_from_surface_tree(
-                    renderer, surface, ptr_i, output_scale, 1.0f32, Kind::Cursor,
+                    renderer,
+                    surface,
+                    ptr_i,
+                    output_scale,
+                    1.0f32,
+                    Kind::Cursor,
                 );
                 for e in cursor_elems {
                     elements.push(MargoRenderElement::WaylandSurface(e));
-                }            }
+                }
+            }
             CursorImageStatus::Hidden => {}
             _ => {
                 if let Some(cursor_elem) =
-                    state.cursor_manager.render_element(renderer, ptr_pos, output_scale)
+                    state
+                        .cursor_manager
+                        .render_element(renderer, ptr_pos, output_scale)
                 {
                     elements.push(MargoRenderElement::Cursor(cursor_elem));
                 }
@@ -2070,11 +2093,10 @@ pub(super) fn build_render_elements_inner(
         if std::time::Instant::now() < until {
             let origin = (output_geo.loc.x, output_geo.loc.y);
             let size = (output_geo.size.w, output_geo.size.h);
-            for solid in state.config_error_overlay.render_elements(
-                origin,
-                size,
-                output_scale,
-            ) {
+            for solid in state
+                .config_error_overlay
+                .render_elements(origin, size, output_scale)
+            {
                 elements.push(MargoRenderElement::Solid(solid));
             }
         }
@@ -2185,7 +2207,12 @@ fn build_scroller_overview_elements(
                 let ptr_i = (ptr_pos - hotspot.to_f64())
                     .to_physical_precise_round::<f64, i32>(output_scale);
                 for e in render_elements_from_surface_tree(
-                    renderer, surface, ptr_i, output_scale, 1.0f32, Kind::Cursor,
+                    renderer,
+                    surface,
+                    ptr_i,
+                    output_scale,
+                    1.0f32,
+                    Kind::Cursor,
                 ) {
                     elements.push(MargoRenderElement::WaylandSurface(e));
                 }
@@ -2193,7 +2220,9 @@ fn build_scroller_overview_elements(
             CursorImageStatus::Hidden => {}
             _ => {
                 if let Some(cursor_elem) =
-                    state.cursor_manager.render_element(renderer, ptr_pos, output_scale)
+                    state
+                        .cursor_manager
+                        .render_element(renderer, ptr_pos, output_scale)
                 {
                     elements.push(MargoRenderElement::Cursor(cursor_elem));
                 }
@@ -2258,9 +2287,11 @@ fn build_scroller_overview_elements(
     for cell in &cells {
         let cell_w = output_geo.size.w.max(1);
         let cell_scale = f64::from(cell.rect.width) / f64::from(cell_w);
-        let cell_origin_phys: Point<i32, Physical> =
-            Point::from((cell.rect.x - output_geo.loc.x, cell.rect.y - output_geo.loc.y))
-                .to_physical_precise_round(scale);
+        let cell_origin_phys: Point<i32, Physical> = Point::from((
+            cell.rect.x - output_geo.loc.x,
+            cell.rect.y - output_geo.loc.y,
+        ))
+        .to_physical_precise_round(scale);
 
         // Each window of this tag, scaled into the cell.
         for client in state.clients.iter().filter(|c| {
@@ -2275,25 +2306,34 @@ fn build_scroller_overview_elements(
                 continue;
             };
             let geo_loc = client.window.geometry().loc;
-            let render_location =
-                Point::<i32, smithay::utils::Logical>::from((
-                    client.geom.x - geo_loc.x,
-                    client.geom.y - geo_loc.y,
-                ));
+            let render_location = Point::<i32, smithay::utils::Logical>::from((
+                client.geom.x - geo_loc.x,
+                client.geom.y - geo_loc.y,
+            ));
             let physical_location =
                 (render_location - output_geo.loc).to_physical_precise_round(scale);
             let surf_elems = render_elements_from_surface_tree::<
                 GlesRenderer,
                 WaylandSurfaceRenderElement<GlesRenderer>,
-            >(renderer, &surface, physical_location, output_scale, 1.0, Kind::Unspecified);
+            >(
+                renderer,
+                &surface,
+                physical_location,
+                output_scale,
+                1.0,
+                Kind::Unspecified,
+            );
             for e in surf_elems {
                 // Namespace by cell key so a tag repeated by the wrap-around
                 // loop doesn't collide with its other copy in the tracker.
                 let ns = crate::render::namespaced::NamespacedElement::new(e, cell.key);
                 let scaled =
                     RescaleRenderElement::from_element(ns, Point::from((0, 0)), cell_scale);
-                let placed =
-                    RelocateRenderElement::from_element(scaled, cell_origin_phys, Relocate::Relative);
+                let placed = RelocateRenderElement::from_element(
+                    scaled,
+                    cell_origin_phys,
+                    Relocate::Relative,
+                );
                 elements.push(MargoRenderElement::NamespacedSurface(placed));
             }
         }
@@ -2307,13 +2347,23 @@ fn build_scroller_overview_elements(
             let surf_elems = render_elements_from_surface_tree::<
                 GlesRenderer,
                 WaylandSurfaceRenderElement<GlesRenderer>,
-            >(renderer, layer.wl_surface(), loc_phys, output_scale, 1.0, Kind::Unspecified);
+            >(
+                renderer,
+                layer.wl_surface(),
+                loc_phys,
+                output_scale,
+                1.0,
+                Kind::Unspecified,
+            );
             for e in surf_elems {
                 let ns = crate::render::namespaced::NamespacedElement::new(e, cell.key);
                 let scaled =
                     RescaleRenderElement::from_element(ns, Point::from((0, 0)), cell_scale);
-                let placed =
-                    RelocateRenderElement::from_element(scaled, cell_origin_phys, Relocate::Relative);
+                let placed = RelocateRenderElement::from_element(
+                    scaled,
+                    cell_origin_phys,
+                    Relocate::Relative,
+                );
                 elements.push(MargoRenderElement::NamespacedSurface(placed));
             }
         }
@@ -2348,10 +2398,7 @@ fn push_closing_clients(
     elements: &mut Vec<MargoRenderElement>,
 ) {
     let scale = Scale::from(output_scale);
-    let target_mon_idx = state
-        .monitors
-        .iter()
-        .position(|m| m.output == *output);
+    let target_mon_idx = state.monitors.iter().position(|m| m.output == *output);
     let Some(target_mon_idx) = target_mon_idx else {
         return;
     };
@@ -2444,9 +2491,7 @@ fn push_client_elements(
         // so the user still sees their password manager / private-
         // browsing tab / 2FA app — only the captured output is
         // censored.
-        if for_screencast
-            && client.is_some_and(|c| c.block_out_from_screencast)
-        {
+        if for_screencast && client.is_some_and(|c| c.block_out_from_screencast) {
             if let Some(c) = client {
                 let dst = Rectangle::<i32, smithay::utils::Physical>::new(
                     smithay::utils::Point::from((
@@ -2458,9 +2503,7 @@ fn push_client_elements(
                         .to_physical_precise_round::<f64, _>(scale),
                 );
                 let id = match window.wl_surface() {
-                    Some(s) => smithay::backend::renderer::element::Id::from_wayland_resource(
-                        &*s,
-                    ),
+                    Some(s) => smithay::backend::renderer::element::Id::from_wayland_resource(&*s),
                     None => smithay::backend::renderer::element::Id::new(),
                 };
                 elements.push(MargoRenderElement::Solid(
@@ -2504,8 +2547,7 @@ fn push_client_elements(
             // share a rect, otherwise the resize transition's
             // snapshot (drawn at the full slot) would extend past
             // the border that already shrunk to `actual`.
-            let snapshot_active =
-                client.resize_snapshot.is_some() || client.snapshot_pending;
+            let snapshot_active = client.resize_snapshot.is_some() || client.snapshot_pending;
             let mut w = client.geom.width.max(1);
             let mut h = client.geom.height.max(1);
             if !snapshot_active {
@@ -2588,11 +2630,7 @@ fn push_client_elements(
                                     client.geom.y - output_geo.loc.y,
                                 )
                                     .into(),
-                                (
-                                    client.geom.width.max(1),
-                                    client.geom.height.max(1),
-                                )
-                                    .into(),
+                                (client.geom.width.max(1), client.geom.height.max(1)).into(),
                             );
                             let shadow = crate::render::shadow::ShadowRenderElement::new(
                                 smithay::backend::renderer::element::Id::new(),
@@ -2677,14 +2715,12 @@ fn push_client_elements(
                             .and_then(|a| c.opening_texture.as_ref().map(|t| (a, t)))
                         {
                             let dst = smithay::utils::Rectangle::new(
-                                (c.geom.x - output_geo.loc.x, c.geom.y - output_geo.loc.y)
-                                    .into(),
+                                (c.geom.x - output_geo.loc.x, c.geom.y - output_geo.loc.y).into(),
                                 (c.geom.width.max(1), c.geom.height.max(1)).into(),
                             );
-                            let id =
-                                smithay::backend::renderer::element::Id::from_wayland_resource(
-                                    wl_surface,
-                                );
+                            let id = smithay::backend::renderer::element::Id::from_wayland_resource(
+                                wl_surface,
+                            );
                             elements.push(MargoRenderElement::OpenClose(
                                 crate::render::open_close::OpenCloseRenderElement::new(
                                     id,
@@ -2730,17 +2766,11 @@ fn push_client_elements(
                     let progress = (elapsed_ms / dur_ms).clamp(0.0, 1.0);
 
                     let dst = smithay::utils::Rectangle::new(
-                        (
-                            c.geom.x - output_geo.loc.x,
-                            c.geom.y - output_geo.loc.y,
-                        )
-                            .into(),
+                        (c.geom.x - output_geo.loc.x, c.geom.y - output_geo.loc.y).into(),
                         (c.geom.width.max(1), c.geom.height.max(1)).into(),
                     );
                     let id =
-                        smithay::backend::renderer::element::Id::from_wayland_resource(
-                            wl_surface,
-                        );
+                        smithay::backend::renderer::element::Id::from_wayland_resource(wl_surface);
 
                     // Capture LIVE → tex_next this frame. The
                     // capture goes through the same offscreen-
@@ -2761,9 +2791,7 @@ fn push_client_elements(
                         ) {
                             Ok(t) => Some(t),
                             Err(e) => {
-                                tracing::trace!(
-                                    "resize_next: live capture failed: {e:?}"
-                                );
+                                tracing::trace!("resize_next: live capture failed: {e:?}");
                                 None
                             }
                         }
@@ -2858,7 +2886,9 @@ fn push_client_elements(
 
                 let rendered = AsRenderElements::<GlesRenderer>::render_elements::<
                     WaylandSurfaceRenderElement<GlesRenderer>,
-                >(window, renderer, physical_location, scale, overview_alpha);
+                >(
+                    window, renderer, physical_location, scale, overview_alpha
+                );
                 // XWayland clients route through the same
                 // `clipped_surface` shader as native Wayland: without
                 // this, the X11 branch pushed the rendered surface
@@ -2924,7 +2954,12 @@ fn push_layer_elements(
         // `unmap_layer` already ran in `layer_destroyed`; this guard
         // is just defensive.)
         let key = surface.layer_surface().wl_surface().id();
-        if state.layer_animations.get(&key).map(|a| a.is_close).unwrap_or(false) {
+        if state
+            .layer_animations
+            .get(&key)
+            .map(|a| a.is_close)
+            .unwrap_or(false)
+        {
             continue;
         }
 
@@ -2954,25 +2989,28 @@ fn push_layer_elements(
         // smooth where `mshell-on-margo` flickers.
         let scale = Scale::from(output_scale);
         let location = geo.loc.to_physical_precise_round(scale);
-        let popup_iter = smithay::desktop::PopupManager::popups_for_surface(
-            surface.wl_surface(),
-        )
-        .flat_map(|(popup, popup_offset)| {
-            let offset = (popup_offset - popup.geometry().loc)
-                .to_f64()
-                .to_physical(scale)
-                .to_i32_round();
-            render_elements_from_surface_tree::<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>(
-                renderer,
-                popup.wl_surface(),
-                location + offset,
-                scale,
-                layer_alpha,
-                Kind::Unspecified,
-            )
-        });
+        let popup_iter = smithay::desktop::PopupManager::popups_for_surface(surface.wl_surface())
+            .flat_map(|(popup, popup_offset)| {
+                let offset = (popup_offset - popup.geometry().loc)
+                    .to_f64()
+                    .to_physical(scale)
+                    .to_i32_round();
+                render_elements_from_surface_tree::<
+                    GlesRenderer,
+                    WaylandSurfaceRenderElement<GlesRenderer>,
+                >(
+                    renderer,
+                    popup.wl_surface(),
+                    location + offset,
+                    scale,
+                    layer_alpha,
+                    Kind::Unspecified,
+                )
+            });
         for elem in popup_iter {
-            elements.push(MargoRenderElement::Space(SpaceRenderElements::Surface(elem)));
+            elements.push(MargoRenderElement::Space(SpaceRenderElements::Surface(
+                elem,
+            )));
         }
         let surface_elems = render_elements_from_surface_tree::<
             GlesRenderer,
@@ -2986,7 +3024,9 @@ fn push_layer_elements(
             Kind::ScanoutCandidate,
         );
         for elem in surface_elems {
-            elements.push(MargoRenderElement::Space(SpaceRenderElements::Surface(elem)));
+            elements.push(MargoRenderElement::Space(SpaceRenderElements::Surface(
+                elem,
+            )));
         }
     }
 }
@@ -3017,7 +3057,11 @@ fn push_closing_layers(
             continue;
         };
         let dst = smithay::utils::Rectangle::new(
-            (anim.geom.x - output_geo.loc.x, anim.geom.y - output_geo.loc.y).into(),
+            (
+                anim.geom.x - output_geo.loc.x,
+                anim.geom.y - output_geo.loc.y,
+            )
+                .into(),
             (anim.geom.width.max(1), anim.geom.height.max(1)).into(),
         );
         // Per-frame fresh Id — the ObjectId is stable across frames
@@ -3058,7 +3102,7 @@ pub(super) fn serve_screencopies(
     elements: &[MargoRenderElement],
 ) {
     use smithay::backend::renderer::{
-        damage::OutputDamageTracker as DamageTracker, Bind, ExportMem, Offscreen,
+        Bind, ExportMem, Offscreen, damage::OutputDamageTracker as DamageTracker,
     };
 
     let now = monotonic_now();
@@ -3149,8 +3193,7 @@ pub(super) fn serve_screencopies(
         // then, region capture with a dmabuf target fails the frame —
         // grim is the only user we know of that requests one and it
         // happily falls back to SHM.
-        if let crate::protocols::screencopy::ScreencopyBuffer::Dmabuf(dmabuf) =
-            screencopy.buffer()
+        if let crate::protocols::screencopy::ScreencopyBuffer::Dmabuf(dmabuf) = screencopy.buffer()
         {
             // Translate every element by `-region_loc` and render
             // to a damage-tracker sized to the *client's* requested
@@ -3162,9 +3205,7 @@ pub(super) fn serve_screencopies(
             // -region_loc so the requested rect lands at (0,0) of
             // the dmabuf and run a damage tracker at buffer_size,
             // which clips anything outside the dmabuf for free.
-            use smithay::backend::renderer::element::utils::{
-                Relocate, RelocateRenderElement,
-            };
+            use smithay::backend::renderer::element::utils::{Relocate, RelocateRenderElement};
             let translate: smithay::utils::Point<i32, smithay::utils::Physical> =
                 (-region_loc.x, -region_loc.y).into();
             let relocated: Vec<RelocateRenderElement<&MargoRenderElement>> = elements_to_render
@@ -3177,13 +3218,7 @@ pub(super) fn serve_screencopies(
                 Ok(mut target) => {
                     let mut tracker = DamageTracker::new(size, scale, Transform::Normal);
                     let res = tracker
-                        .render_output(
-                            renderer,
-                            &mut target,
-                            0,
-                            &relocated,
-                            [0.0, 0.0, 0.0, 1.0],
-                        )
+                        .render_output(renderer, &mut target, 0, &relocated, [0.0, 0.0, 0.0, 1.0])
                         .map(|r| r.damage.map(|d| d.to_owned()));
                     drop(target);
                     res
@@ -3218,22 +3253,22 @@ pub(super) fn serve_screencopies(
         // ── SHM path (renderbuffer + read-back + memcpy) ─────────────
         // Render the FULL output (not just the region). We crop on read-back
         // via `copy_framebuffer`. Renderbuffer matches the output mode.
-        let buf_size = smithay::utils::Size::<i32, smithay::utils::Buffer>::from(
-            (output_size.w, output_size.h),
-        );
+        let buf_size = smithay::utils::Size::<i32, smithay::utils::Buffer>::from((
+            output_size.w,
+            output_size.h,
+        ));
 
-        let mut renderbuffer =
-            match <GlesRenderer as Offscreen<smithay::backend::renderer::gles::GlesRenderbuffer>>::create_buffer(
-                renderer,
-                drm_fourcc::DrmFourcc::Xrgb8888,
-                buf_size,
-            ) {
-                Ok(rb) => rb,
-                Err(e) => {
-                    warn!("screencopy: create_buffer failed: {e:?}");
-                    continue;
-                }
-            };
+        let mut renderbuffer = match <GlesRenderer as Offscreen<
+            smithay::backend::renderer::gles::GlesRenderbuffer,
+        >>::create_buffer(
+            renderer, drm_fourcc::DrmFourcc::Xrgb8888, buf_size
+        ) {
+            Ok(rb) => rb,
+            Err(e) => {
+                warn!("screencopy: create_buffer failed: {e:?}");
+                continue;
+            }
+        };
 
         let mut target = match renderer.bind(&mut renderbuffer) {
             Ok(t) => t,
@@ -3262,18 +3297,20 @@ pub(super) fn serve_screencopies(
         // Crop on copy: pull out the requested sub-region (or the full
         // output if region_loc=(0,0) and size==output_size).
         let region = smithay::utils::Rectangle::new(
-            smithay::utils::Point::<i32, smithay::utils::Buffer>::from(
-                (region_loc.x, region_loc.y),
-            ),
+            smithay::utils::Point::<i32, smithay::utils::Buffer>::from((
+                region_loc.x,
+                region_loc.y,
+            )),
             smithay::utils::Size::<i32, smithay::utils::Buffer>::from((size.w, size.h)),
         );
-        let mapping = match renderer.copy_framebuffer(&target, region, drm_fourcc::DrmFourcc::Xrgb8888) {
-            Ok(m) => m,
-            Err(e) => {
-                warn!("screencopy: copy_framebuffer failed: {e:?}");
-                continue;
-            }
-        };
+        let mapping =
+            match renderer.copy_framebuffer(&target, region, drm_fourcc::DrmFourcc::Xrgb8888) {
+                Ok(m) => m,
+                Err(e) => {
+                    warn!("screencopy: copy_framebuffer failed: {e:?}");
+                    continue;
+                }
+            };
         // Drop the bind so map_texture can re-bind the GL state.
         drop(target);
         let pixels = match renderer.map_texture(&mapping) {
@@ -3291,7 +3328,9 @@ pub(super) fn serve_screencopies(
         // future ScreencopyBuffer variant fails to compile here.
         let copied = match screencopy.buffer() {
             crate::protocols::screencopy::ScreencopyBuffer::Shm(buf) => {
-                let need = (size.w as usize).saturating_mul(4).saturating_mul(size.h as usize);
+                let need = (size.w as usize)
+                    .saturating_mul(4)
+                    .saturating_mul(size.h as usize);
                 let copied_n = match smithay::wayland::shm::with_buffer_contents_mut(
                     buf,
                     |dst_ptr, dst_len, _meta| {
@@ -3341,4 +3380,3 @@ pub(super) fn serve_screencopies(
 }
 
 // ── CRTC helper ───────────────────────────────────────────────────────────────
-

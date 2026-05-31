@@ -5,10 +5,7 @@
 //! could feed these into window-rule matching in the future; for
 //! now the trait's default no-ops are kept.
 
-use smithay::{
-    delegate_xdg_toplevel_tag,
-    wayland::xdg_toplevel_tag::XdgToplevelTagHandler,
-};
+use smithay::{delegate_xdg_toplevel_tag, wayland::xdg_toplevel_tag::XdgToplevelTagHandler};
 
 use crate::state::MargoState;
 

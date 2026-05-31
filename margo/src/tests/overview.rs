@@ -28,8 +28,14 @@ fn open_overview_flips_every_monitor_and_records_backup() {
     for (i, mon) in fx.server.state.monitors.iter().enumerate() {
         assert!(mon.is_overview, "mon[{i}] should be in overview");
     }
-    assert_eq!(fx.server.state.monitors[0].overview_backup_tagset, 0b0000_0001);
-    assert_eq!(fx.server.state.monitors[1].overview_backup_tagset, 0b0000_0100);
+    assert_eq!(
+        fx.server.state.monitors[0].overview_backup_tagset,
+        0b0000_0001
+    );
+    assert_eq!(
+        fx.server.state.monitors[1].overview_backup_tagset,
+        0b0000_0100
+    );
 }
 
 /// close_overview must restore each monitor's pre-overview tagset

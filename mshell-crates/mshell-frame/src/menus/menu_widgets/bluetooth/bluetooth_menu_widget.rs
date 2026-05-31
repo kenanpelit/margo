@@ -349,10 +349,8 @@ impl BluetoothMenuWidgetModel {
             list_box.remove(&child);
         }
 
-        let mut paired: Vec<&Arc<Device>> =
-            devices.iter().filter(|d| d.paired.get()).collect();
-        let mut unpaired: Vec<&Arc<Device>> =
-            devices.iter().filter(|d| !d.paired.get()).collect();
+        let mut paired: Vec<&Arc<Device>> = devices.iter().filter(|d| d.paired.get()).collect();
+        let mut unpaired: Vec<&Arc<Device>> = devices.iter().filter(|d| !d.paired.get()).collect();
 
         paired.sort_by_key(|d| d.alias.get());
         unpaired.sort_by_key(|d| d.alias.get());
@@ -434,8 +432,10 @@ impl BluetoothMenuWidgetModel {
             let trust_btn = gtk::Button::with_label(trust_label);
             trust_btn.add_css_class("bluetooth-dashboard-action-button");
             trust_btn.connect_clicked(move |_| {
-                sender_t
-                    .input(BluetoothMenuWidgetInput::SetTrusted(addr_t.clone(), !trusted));
+                sender_t.input(BluetoothMenuWidgetInput::SetTrusted(
+                    addr_t.clone(),
+                    !trusted,
+                ));
             });
             actions.append(&trust_btn);
 
@@ -448,8 +448,7 @@ impl BluetoothMenuWidgetModel {
         let gesture = gtk::GestureClick::new();
         gesture.connect_pressed(move |_, _, _, _| {
             if paired {
-                sender_click
-                    .input(BluetoothMenuWidgetInput::ConnectToggle(addr_click.clone()));
+                sender_click.input(BluetoothMenuWidgetInput::ConnectToggle(addr_click.clone()));
             } else {
                 sender_click.input(BluetoothMenuWidgetInput::Pair(addr_click.clone()));
             }

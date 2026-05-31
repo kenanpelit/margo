@@ -166,7 +166,11 @@ fn destroying_one_of_two_toplevels_keeps_the_other() {
     fx.roundtrip(id);
 
     let remaining = &fx.server.state.clients;
-    assert_eq!(remaining.len(), 1, "one toplevel destroyed, one should remain");
+    assert_eq!(
+        remaining.len(),
+        1,
+        "one toplevel destroyed, one should remain"
+    );
     assert_eq!(
         remaining[0].app_id, "beta",
         "destroying alpha must leave beta — index/shift bug regression",

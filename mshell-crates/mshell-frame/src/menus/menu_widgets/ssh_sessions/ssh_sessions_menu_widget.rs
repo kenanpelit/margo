@@ -7,9 +7,7 @@
 //! hosts the rendered list is capped; the search narrows it.
 
 use crate::ssh::{self, SshHost};
-use relm4::gtk::prelude::{
-    BoxExt, ButtonExt, EditableExt, EntryExt, OrientableExt, WidgetExt,
-};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, EditableExt, EntryExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -153,7 +151,13 @@ impl Component for SshSessionsMenuWidgetModel {
         match message {
             SshSessionsMenuWidgetInput::Search(term) => {
                 self.filter = term;
-                rebuild(&self.content, &self.hosts, &self.active, &self.filter, &sender);
+                rebuild(
+                    &self.content,
+                    &self.hosts,
+                    &self.active,
+                    &self.filter,
+                    &sender,
+                );
             }
             SshSessionsMenuWidgetInput::ParentRevealChanged(visible) => {
                 self.visible.store(visible, Ordering::Relaxed);
@@ -175,7 +179,13 @@ impl Component for SshSessionsMenuWidgetModel {
             SshSessionsMenuWidgetCommandOutput::Active(active) => {
                 if active != self.active {
                     self.active = active;
-                    rebuild(&self.content, &self.hosts, &self.active, &self.filter, &sender);
+                    rebuild(
+                        &self.content,
+                        &self.hosts,
+                        &self.active,
+                        &self.filter,
+                        &sender,
+                    );
                 }
             }
         }
@@ -257,7 +267,9 @@ fn rebuild(
     }
     // Live targets with no matching config host (e.g. `ssh 1.2.3.4`).
     for target in active {
-        let known = hosts.iter().any(|h| ssh::host_is_active(h, std::slice::from_ref(target)));
+        let known = hosts
+            .iter()
+            .any(|h| ssh::host_is_active(h, std::slice::from_ref(target)));
         if !known && (needle.is_empty() || target.to_ascii_lowercase().contains(&needle)) {
             act.push((
                 SshHost {
@@ -290,10 +302,7 @@ fn rebuild(
         container.append(&make_row(host, *is_active, sender));
     }
     if total > MAX_ROWS {
-        let more = gtk::Label::new(Some(&format!(
-            "+{} more — refine search",
-            total - MAX_ROWS
-        )));
+        let more = gtk::Label::new(Some(&format!("+{} more — refine search", total - MAX_ROWS)));
         more.add_css_class("label-small");
         more.set_halign(gtk::Align::Start);
         more.set_margin_top(4);

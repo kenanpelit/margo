@@ -460,8 +460,11 @@ impl Component for AnimationsSettingsModel {
             }
             AnimationsSettingsInput::ApplyPreset => {
                 if let Some(preset) = PRESETS.get(self.selected as usize) {
-                    let updates: Vec<(&str, String)> =
-                        preset.keys.iter().map(|(k, v)| (*k, v.to_string())).collect();
+                    let updates: Vec<(&str, String)> = preset
+                        .keys
+                        .iter()
+                        .map(|(k, v)| (*k, v.to_string()))
+                        .collect();
                     if patch_conf(&updates).is_ok() {
                         // Applying a preset implies animations on.
                         self.animations = true;

@@ -433,7 +433,10 @@ impl Component for AlarmClockMenuWidgetModel {
 
 /// Rebuild the alarm rows from the persisted config + refresh the
 /// header subtitle + empty-state hint.
-fn rebuild_list(model: &AlarmClockMenuWidgetModel, sender: &ComponentSender<AlarmClockMenuWidgetModel>) {
+fn rebuild_list(
+    model: &AlarmClockMenuWidgetModel,
+    sender: &ComponentSender<AlarmClockMenuWidgetModel>,
+) {
     while let Some(child) = model.alarm_list.first_child() {
         model.alarm_list.remove(&child);
     }
@@ -541,12 +544,16 @@ fn sync_stopwatch(model: &AlarmClockMenuWidgetModel) {
     model
         .sw_time
         .set_label(&stopwatch::format_elapsed(stopwatch::elapsed()));
-    model.sw_start_btn.set_visible(state != StopwatchState::Running);
+    model
+        .sw_start_btn
+        .set_visible(state != StopwatchState::Running);
     model.sw_start_btn.set_label(match state {
         StopwatchState::Paused => "Resume",
         _ => "Start",
     });
-    model.sw_pause_btn.set_visible(state == StopwatchState::Running);
+    model
+        .sw_pause_btn
+        .set_visible(state == StopwatchState::Running);
     model
         .sw_reset_btn
         .set_sensitive(state != StopwatchState::Stopped);

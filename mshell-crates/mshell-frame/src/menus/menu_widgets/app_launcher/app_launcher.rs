@@ -522,9 +522,13 @@ impl Component for AppLauncherModel {
             // (Ctrl+P pinning lives behind the *Shift* combo handled
             // above so the bare Ctrl+P emacs binding is preserved.)
             let is_down = matches!(key, gdk::Key::Down)
-                || (ctrl && !shift && matches!(key, gdk::Key::n | gdk::Key::N | gdk::Key::j | gdk::Key::J));
+                || (ctrl
+                    && !shift
+                    && matches!(key, gdk::Key::n | gdk::Key::N | gdk::Key::j | gdk::Key::J));
             let is_up = matches!(key, gdk::Key::Up)
-                || (ctrl && !shift && matches!(key, gdk::Key::p | gdk::Key::P | gdk::Key::k | gdk::Key::K));
+                || (ctrl
+                    && !shift
+                    && matches!(key, gdk::Key::p | gdk::Key::P | gdk::Key::k | gdk::Key::K));
             if is_down {
                 sender_clone.input(AppLauncherInput::DownPressed);
                 glib::Propagation::Stop
@@ -543,12 +547,37 @@ impl Component for AppLauncherModel {
 
         let sender_clone = sender.clone();
         effect_scope.push(move |_| {
-            let _ = config_manager().config().theme().icons().app_icon_theme().get();
-            let _ = config_manager().config().theme().icons().apply_theme_filter().get();
+            let _ = config_manager()
+                .config()
+                .theme()
+                .icons()
+                .app_icon_theme()
+                .get();
+            let _ = config_manager()
+                .config()
+                .theme()
+                .icons()
+                .apply_theme_filter()
+                .get();
             let _ = config_manager().config().theme().theme().get();
-            let _ = config_manager().config().theme().icons().filter_strength().get();
-            let _ = config_manager().config().theme().icons().monochrome_strength().get();
-            let _ = config_manager().config().theme().icons().contrast_strength().get();
+            let _ = config_manager()
+                .config()
+                .theme()
+                .icons()
+                .filter_strength()
+                .get();
+            let _ = config_manager()
+                .config()
+                .theme()
+                .icons()
+                .monochrome_strength()
+                .get();
+            let _ = config_manager()
+                .config()
+                .theme()
+                .icons()
+                .contrast_strength()
+                .get();
             sender_clone.input(AppLauncherInput::ThemeChanged);
         });
 
@@ -847,9 +876,7 @@ impl AppLauncherModel {
                     .as_ref()
                     .downcast_ref::<Controller<LauncherRowModel>>()
             {
-                let _ = ctrl
-                    .sender()
-                    .send(LauncherRowInput::PinChanged(*pinned));
+                let _ = ctrl.sender().send(LauncherRowInput::PinChanged(*pinned));
             }
         });
     }
@@ -988,15 +1015,51 @@ fn rebuild_binds_strip(strip: &gtk::FlowBox, model: &AppLauncherModel) {
     // opacity 0 so the strip's natural width is identical for
     // every selection.
     let hints: [BindHint; 9] = [
-        BindHint { key: "↵",        label: "Activate",   applicable: true },
-        BindHint { key: "Ctrl ↵",   label: "Alt action", applicable: has_alt },
-        BindHint { key: "Ctrl 1-9", label: "Quick",      applicable: true },
-        BindHint { key: "Tab",      label: "Categories", applicable: true },
-        BindHint { key: "Ctrl ⇧ P", label: pin_label,    applicable: has_pin },
-        BindHint { key: "Del",      label: "Remove",     applicable: has_delete },
-        BindHint { key: "Ctrl E",   label: "Exact",      applicable: true },
-        BindHint { key: "Ctrl R",   label: "Last",       applicable: true },
-        BindHint { key: "Esc",      label: "Close",      applicable: true },
+        BindHint {
+            key: "↵",
+            label: "Activate",
+            applicable: true,
+        },
+        BindHint {
+            key: "Ctrl ↵",
+            label: "Alt action",
+            applicable: has_alt,
+        },
+        BindHint {
+            key: "Ctrl 1-9",
+            label: "Quick",
+            applicable: true,
+        },
+        BindHint {
+            key: "Tab",
+            label: "Categories",
+            applicable: true,
+        },
+        BindHint {
+            key: "Ctrl ⇧ P",
+            label: pin_label,
+            applicable: has_pin,
+        },
+        BindHint {
+            key: "Del",
+            label: "Remove",
+            applicable: has_delete,
+        },
+        BindHint {
+            key: "Ctrl E",
+            label: "Exact",
+            applicable: true,
+        },
+        BindHint {
+            key: "Ctrl R",
+            label: "Last",
+            applicable: true,
+        },
+        BindHint {
+            key: "Esc",
+            label: "Close",
+            applicable: true,
+        },
     ];
 
     // Tear down old chips. GTK4 has no `clear()`.

@@ -235,12 +235,7 @@ impl Component for ControlCenterHeaderModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             ControlCenterHeaderInput::RecomputeUptime => {
                 self.uptime = fmt_uptime(read_uptime_secs());
@@ -270,9 +265,7 @@ impl Component for ControlCenterHeaderModel {
 // ── Private helper ─────────────────────────────────────────────────────────
 
 fn glib_user_name() -> String {
-    relm4::gtk::glib::user_name()
-        .to_string_lossy()
-        .into_owned()
+    relm4::gtk::glib::user_name().to_string_lossy().into_owned()
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

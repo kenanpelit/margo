@@ -1,8 +1,5 @@
 use crate::menus::builder::build_widget;
 use crate::menus::menu_widgets::app_launcher::app_launcher::{AppLauncherInput, AppLauncherModel};
-use crate::menus::menu_widgets::control_center::control_center_menu_widget::{
-    ControlCenterMenuWidgetInput, ControlCenterMenuWidgetModel,
-};
 use crate::menus::menu_widgets::audio_in::audio_in_menu_widget::{
     AudioInMenuWidgetInput, AudioInMenuWidgetModel,
 };
@@ -13,32 +10,25 @@ use crate::menus::menu_widgets::bluetooth::bluetooth_menu_widget::{
     BluetoothMenuWidgetInput, BluetoothMenuWidgetModel,
 };
 use crate::menus::menu_widgets::clipboard::clipboard::{ClipboardInput, ClipboardModel};
-use crate::menus::menu_widgets::notifications::notifications::{
-    NotificationsInput, NotificationsModel,
-};
-use crate::menus::menu_widgets::ssh_sessions::ssh_sessions_menu_widget::{
-    SshSessionsMenuWidgetInput, SshSessionsMenuWidgetModel,
+use crate::menus::menu_widgets::control_center::control_center_menu_widget::{
+    ControlCenterMenuWidgetInput, ControlCenterMenuWidgetModel,
 };
 use crate::menus::menu_widgets::dns::dns_menu_widget::{DnsMenuWidgetInput, DnsMenuWidgetModel};
 use crate::menus::menu_widgets::ip::ip_menu_widget::{IpMenuWidgetInput, IpMenuWidgetModel};
-use crate::menus::menu_widgets::network::network_menu_widget::{
-    NetworkMenuWidgetInput, NetworkMenuWidgetModel,
-};
-use crate::menus::menu_widgets::twilight::twilight_menu_widget::{
-    TwilightMenuWidgetInput, TwilightMenuWidgetModel,
-};
 use crate::menus::menu_widgets::keep_awake::keep_awake_menu_widget::{
     KeepAwakeMenuWidgetInput, KeepAwakeMenuWidgetModel,
 };
-use crate::menus::menu_widgets::podman::podman_menu_widget::{
-    PodmanMenuWidgetInput, PodmanMenuWidgetModel,
-};
-use crate::menus::menu_widgets::ufw::ufw_menu_widget::{UfwMenuWidgetInput, UfwMenuWidgetModel};
-use crate::menus::menu_widgets::system_update::system_update_menu_widget::{
-    SystemUpdateMenuWidgetInput, SystemUpdateMenuWidgetModel,
+use crate::menus::menu_widgets::network::network_menu_widget::{
+    NetworkMenuWidgetInput, NetworkMenuWidgetModel,
 };
 use crate::menus::menu_widgets::network_toggle::network_menu_widget::{
     NetworkToggleMenuWidgetInput, NetworkToggleMenuWidgetModel,
+};
+use crate::menus::menu_widgets::notifications::notifications::{
+    NotificationsInput, NotificationsModel,
+};
+use crate::menus::menu_widgets::podman::podman_menu_widget::{
+    PodmanMenuWidgetInput, PodmanMenuWidgetModel,
 };
 use crate::menus::menu_widgets::screenshare::screenshare_menu_widget::{
     ScreenshareMenuWidgetInit, ScreenshareMenuWidgetInput, ScreenshareMenuWidgetModel,
@@ -47,11 +37,21 @@ use crate::menus::menu_widgets::screenshare::screenshare_menu_widget::{
 use crate::menus::menu_widgets::session::session_menu_widget::{
     SessionMenuWidgetInput, SessionMenuWidgetModel,
 };
-use crate::menus::menu_widgets::wizard::wizard_menu_widget::{
-    WizardMenuWidgetInit, WizardMenuWidgetModel, WizardMenuWidgetOutput,
+use crate::menus::menu_widgets::ssh_sessions::ssh_sessions_menu_widget::{
+    SshSessionsMenuWidgetInput, SshSessionsMenuWidgetModel,
 };
+use crate::menus::menu_widgets::system_update::system_update_menu_widget::{
+    SystemUpdateMenuWidgetInput, SystemUpdateMenuWidgetModel,
+};
+use crate::menus::menu_widgets::twilight::twilight_menu_widget::{
+    TwilightMenuWidgetInput, TwilightMenuWidgetModel,
+};
+use crate::menus::menu_widgets::ufw::ufw_menu_widget::{UfwMenuWidgetInput, UfwMenuWidgetModel};
 use crate::menus::menu_widgets::wallpaper::wallpaper_menu_widget::{
     WallpaperMenuWidgetInput, WallpaperMenuWidgetModel,
+};
+use crate::menus::menu_widgets::wizard::wizard_menu_widget::{
+    WizardMenuWidgetInit, WizardMenuWidgetModel, WizardMenuWidgetOutput,
 };
 use mshell_common::dynamic_box::generic_widget_controller::{
     GenericWidgetController, GenericWidgetControllerExtSafe,
@@ -231,8 +231,9 @@ macro_rules! effect_min_width {
         let sender_clone = $s.clone();
         $e.push(move |_| {
             let config = config.clone();
-            sender_clone
-                .input(MenuInput::SetMinimumWidth(config.menus().$acc().minimum_width().get()));
+            sender_clone.input(MenuInput::SetMinimumWidth(
+                config.menus().$acc().minimum_width().get(),
+            ));
         });
     }};
 }
@@ -242,8 +243,9 @@ macro_rules! effect_max_height {
         let sender_clone = $s.clone();
         $e.push(move |_| {
             let config = config.clone();
-            sender_clone
-                .input(MenuInput::SetMaximumHeight(config.menus().$acc().maximum_height().get()));
+            sender_clone.input(MenuInput::SetMaximumHeight(
+                config.menus().$acc().maximum_height().get(),
+            ));
         });
     }};
 }
@@ -785,10 +787,7 @@ impl Component for MenuModel {
                     if let Some(controller) =
                         controller.downcast_ref::<Controller<ClipboardModel>>()
                     {
-                        controller
-                            .sender()
-                            .send(ClipboardInput::ExitSearch)
-                            .ok();
+                        controller.sender().send(ClipboardInput::ExitSearch).ok();
                     }
                 }
             }

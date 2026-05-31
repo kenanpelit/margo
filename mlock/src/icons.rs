@@ -66,7 +66,14 @@ pub fn battery(cr: &Context, cx: f64, cy: f64, size: f64, level: f64, color: Rgb
     let pad = lw * 1.4;
     let fill_w = (bw - pad * 2.0) * level.clamp(0.0, 1.0);
     if fill_w > 0.5 {
-        rrect(cr, x + pad, y + pad, fill_w, h - pad * 2.0, (h - pad * 2.0) * 0.3);
+        rrect(
+            cr,
+            x + pad,
+            y + pad,
+            fill_w,
+            h - pad * 2.0,
+            (h - pad * 2.0) * 0.3,
+        );
         cr.fill().ok();
     }
 }

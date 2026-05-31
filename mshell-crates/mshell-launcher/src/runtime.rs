@@ -42,8 +42,8 @@
 
 use crate::{
     frecency::FrecencyStore,
-    item::{DisplayItem, LauncherItem},
     hidden::HiddenStore,
+    item::{DisplayItem, LauncherItem},
     pin::PinStore,
     provider::Provider,
     scoring::usage_boost,
@@ -119,11 +119,7 @@ impl LauncherRuntime {
 
     /// Construct with caller-supplied frecency / pin / hidden
     /// stores. Tests pass ephemeral files for full isolation.
-    pub fn with_all_stores(
-        frecency: FrecencyStore,
-        pins: PinStore,
-        hidden: HiddenStore,
-    ) -> Self {
+    pub fn with_all_stores(frecency: FrecencyStore, pins: PinStore, hidden: HiddenStore) -> Self {
         Self {
             providers: Vec::new(),
             frecency,
@@ -209,10 +205,7 @@ impl LauncherRuntime {
 
     /// Return the alternative action closure for the item, if the
     /// owning provider defined one. UI binds this to Ctrl+Enter.
-    pub fn alt_action(
-        &self,
-        item: &LauncherItem,
-    ) -> Option<std::rc::Rc<dyn Fn() + 'static>> {
+    pub fn alt_action(&self, item: &LauncherItem) -> Option<std::rc::Rc<dyn Fn() + 'static>> {
         self.providers
             .iter()
             .find(|p| p.name() == item.provider_name)
@@ -230,14 +223,14 @@ impl LauncherRuntime {
                 seen.push(cat);
             }
         }
-        seen.into_iter().map(|label| ProviderCategory { label }).collect()
+        seen.into_iter()
+            .map(|label| ProviderCategory { label })
+            .collect()
     }
 
     /// Currently-active category label (`"All"` when unfiltered).
     pub fn active_category_label(&self) -> String {
-        self.active_category
-            .clone()
-            .unwrap_or_else(|| "All".into())
+        self.active_category.clone().unwrap_or_else(|| "All".into())
     }
 
     /// Jump to a category by exact label match. Pass `"All"` to
@@ -325,11 +318,7 @@ impl LauncherRuntime {
         // collected so the user can discover all prefixes at
         // once (`;` does the richer cheatsheet version of this).
         if trimmed == ">" {
-            let raw: Vec<LauncherItem> = self
-                .providers
-                .iter()
-                .flat_map(|p| p.commands())
-                .collect();
+            let raw: Vec<LauncherItem> = self.providers.iter().flat_map(|p| p.commands()).collect();
             return self.decorate(raw);
         }
 
@@ -473,7 +462,12 @@ impl LauncherRuntime {
                 } else {
                     String::new()
                 };
-                DisplayItem { item, pinned, quick_key, hidden }
+                DisplayItem {
+                    item,
+                    pinned,
+                    quick_key,
+                    hidden,
+                }
             })
             .collect()
     }
@@ -563,7 +557,11 @@ mod tests {
         let mut rt = LauncherRuntime::with_stores(ephemeral_frecency(), ephemeral_pins());
         rt.register(Box::new(StubProvider {
             name: "stub".into(),
-            items: vec![("low".into(), 0.1), ("high".into(), 0.9), ("mid".into(), 0.5)],
+            items: vec![
+                ("low".into(), 0.1),
+                ("high".into(), 0.9),
+                ("mid".into(), 0.5),
+            ],
         }));
         let out = rt.query("q");
         assert_eq!(out[0].item.name, "high");
@@ -643,8 +641,13 @@ mod tests {
     #[test]
     fn quick_keys_assigned_to_first_nine_rows() {
         let mut rt = LauncherRuntime::with_stores(ephemeral_frecency(), ephemeral_pins());
-        let items: Vec<(String, f64)> = (0..12).map(|i| (format!("i{i}"), 1.0 - i as f64 * 0.01)).collect();
-        rt.register(Box::new(StubProvider { name: "stub".into(), items }));
+        let items: Vec<(String, f64)> = (0..12)
+            .map(|i| (format!("i{i}"), 1.0 - i as f64 * 0.01))
+            .collect();
+        rt.register(Box::new(StubProvider {
+            name: "stub".into(),
+            items,
+        }));
         let out = rt.query("q");
         assert_eq!(out[0].quick_key, "1");
         assert_eq!(out[8].quick_key, "9");
@@ -659,16 +662,31 @@ mod tests {
             cat: String,
         }
         impl Provider for CatProvider {
-            fn name(&self) -> &str { &self.name }
-            fn category(&self) -> &str { &self.cat }
-            fn search(&self, _q: &str) -> Vec<LauncherItem> { Vec::new() }
+            fn name(&self) -> &str {
+                &self.name
+            }
+            fn category(&self) -> &str {
+                &self.cat
+            }
+            fn search(&self, _q: &str) -> Vec<LauncherItem> {
+                Vec::new()
+            }
         }
         let mut rt = LauncherRuntime::with_stores(ephemeral_frecency(), ephemeral_pins());
-        rt.register(Box::new(CatProvider { name: "a".into(), cat: "Apps".into() }));
-        rt.register(Box::new(CatProvider { name: "b".into(), cat: "Insert".into() }));
+        rt.register(Box::new(CatProvider {
+            name: "a".into(),
+            cat: "Apps".into(),
+        }));
+        rt.register(Box::new(CatProvider {
+            name: "b".into(),
+            cat: "Insert".into(),
+        }));
         // Categories include implicit "All" prepended.
         let cats = rt.categories();
-        assert_eq!(cats.iter().map(|c| c.label.as_str()).collect::<Vec<_>>(), vec!["All", "Apps", "Insert"]);
+        assert_eq!(
+            cats.iter().map(|c| c.label.as_str()).collect::<Vec<_>>(),
+            vec!["All", "Apps", "Insert"]
+        );
         // Cycle forward: All → Apps → Insert → All
         assert_eq!(rt.cycle_category(1), "Apps");
         assert_eq!(rt.cycle_category(1), "Insert");

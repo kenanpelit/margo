@@ -16,14 +16,12 @@
 use mshell_common::WatcherToken;
 use mshell_services::network_service;
 use mshell_utils::network::{spawn_network_watcher, spawn_wifi_watcher, spawn_wired_watcher};
-use relm4::gtk::prelude::{
-    BoxExt, ButtonExt, GestureSingleExt, IsA, OrientableExt, WidgetExt,
-};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, GestureSingleExt, IsA, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::time::Duration;
+use wayle_network::core::access_point::SecurityType;
 use wayle_network::types::connectivity::ConnectionType;
 use wayle_network::types::states::NetworkStatus;
-use wayle_network::core::access_point::SecurityType;
 
 /// Live throughput sampling cadence — 1 s gives a readable
 /// KB/s figure without the number jittering too fast to read.
@@ -238,24 +236,22 @@ impl Component for NetworkModel {
         // Live throughput poll — independent 1 s loop over
         // `/proc/net/dev`. Keeps a `prev` reading and emits the
         // per-second delta. File reads only, no subprocess.
-        sender.command(|out, shutdown| {
-            async move {
-                let shutdown_fut = shutdown.wait();
-                tokio::pin!(shutdown_fut);
-                let mut prev = read_net_totals().await;
-                loop {
-                    tokio::select! {
-                        () = &mut shutdown_fut => break,
-                        _ = tokio::time::sleep(SPEED_INTERVAL) => {}
-                    }
-                    let now = read_net_totals().await;
-                    let sample = SpeedSample {
-                        down_bps: now.0.saturating_sub(prev.0),
-                        up_bps: now.1.saturating_sub(prev.1),
-                    };
-                    prev = now;
-                    let _ = out.send(NetworkCommandOutput::SpeedSampled(sample));
+        sender.command(|out, shutdown| async move {
+            let shutdown_fut = shutdown.wait();
+            tokio::pin!(shutdown_fut);
+            let mut prev = read_net_totals().await;
+            loop {
+                tokio::select! {
+                    () = &mut shutdown_fut => break,
+                    _ = tokio::time::sleep(SPEED_INTERVAL) => {}
                 }
+                let now = read_net_totals().await;
+                let sample = SpeedSample {
+                    down_bps: now.0.saturating_sub(prev.0),
+                    up_bps: now.1.saturating_sub(prev.1),
+                };
+                prev = now;
+                let _ = out.send(NetworkCommandOutput::SpeedSampled(sample));
             }
         });
 
@@ -281,7 +277,9 @@ impl Component for NetworkModel {
         let wifi_token = model.wifi_watcher_token.reset();
         spawn_wifi_watcher(&sender, wifi_token, || NetworkCommandOutput::NetworkChanged);
         let wired_token = model.wired_watcher_token.reset();
-        spawn_wired_watcher(&sender, wired_token, || NetworkCommandOutput::NetworkChanged);
+        spawn_wired_watcher(&sender, wired_token, || {
+            NetworkCommandOutput::NetworkChanged
+        });
 
         let widgets = view_output!();
         apply_visual(
@@ -300,12 +298,7 @@ impl Component for NetworkModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             NetworkInput::Clicked => {
                 let _ = sender.output(NetworkOutput::Clicked);
@@ -513,9 +506,7 @@ pub(crate) fn read_network_state() -> NetworkState {
                 secured: !matches!(ap.security.get(), SecurityType::None),
             });
         }
-        state
-            .networks
-            .sort_by_key(|n| std::cmp::Reverse(n.signal));
+        state.networks.sort_by_key(|n| std::cmp::Reverse(n.signal));
     }
 
     state
@@ -636,9 +627,15 @@ mod tests {
     #[test]
     fn signal_icon_buckets() {
         assert_eq!(wifi_signal_icon(0), "network-wireless-signal-none-symbolic");
-        assert_eq!(wifi_signal_icon(10), "network-wireless-signal-weak-symbolic");
+        assert_eq!(
+            wifi_signal_icon(10),
+            "network-wireless-signal-weak-symbolic"
+        );
         assert_eq!(wifi_signal_icon(40), "network-wireless-signal-ok-symbolic");
-        assert_eq!(wifi_signal_icon(60), "network-wireless-signal-good-symbolic");
+        assert_eq!(
+            wifi_signal_icon(60),
+            "network-wireless-signal-good-symbolic"
+        );
         assert_eq!(
             wifi_signal_icon(90),
             "network-wireless-signal-excellent-symbolic"

@@ -231,11 +231,7 @@ impl Component for DockSettingsModel {
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let model = DockSettingsModel {
-            icon_size: config_manager()
-                .config()
-                .dock()
-                .icon_size()
-                .get_untracked() as i32,
+            icon_size: config_manager().config().dock().icon_size().get_untracked() as i32,
             show_tooltips: config_manager()
                 .config()
                 .dock()

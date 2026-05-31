@@ -342,13 +342,11 @@ impl Component for NetworkMenuWidgetModel {
         let tx_hist: Rc<RefCell<Vec<f64>>> = Rc::new(RefCell::new(Vec::new()));
         {
             let h = rx_hist.clone();
-            rx_area_widget
-                .set_draw_func(move |a, cr, w, ht| draw_graph(a, cr, w, ht, &h.borrow()));
+            rx_area_widget.set_draw_func(move |a, cr, w, ht| draw_graph(a, cr, w, ht, &h.borrow()));
         }
         {
             let h = tx_hist.clone();
-            tx_area_widget
-                .set_draw_func(move |a, cr, w, ht| draw_graph(a, cr, w, ht, &h.borrow()));
+            tx_area_widget.set_draw_func(move |a, cr, w, ht| draw_graph(a, cr, w, ht, &h.borrow()));
         }
 
         // The `/proc/net/dev` throughput sampler is started lazily on
@@ -400,16 +398,14 @@ impl Component for NetworkMenuWidgetModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             NetworkMenuWidgetInput::SetWifiEnabled(on) => {
                 let arg = if on { "on" } else { "off" };
-                run_nmcli(vec!["radio".into(), "wifi".into(), arg.into()], sender.clone());
+                run_nmcli(
+                    vec!["radio".into(), "wifi".into(), arg.into()],
+                    sender.clone(),
+                );
             }
             NetworkMenuWidgetInput::Rescan => {
                 run_nmcli(
@@ -419,12 +415,7 @@ impl Component for NetworkMenuWidgetModel {
             }
             NetworkMenuWidgetInput::Connect(ssid) => {
                 run_nmcli(
-                    vec![
-                        "device".into(),
-                        "wifi".into(),
-                        "connect".into(),
-                        ssid,
-                    ],
+                    vec!["device".into(), "wifi".into(), "connect".into(), ssid],
                     sender.clone(),
                 );
             }
@@ -535,10 +526,7 @@ fn start_speed_sampler(sender: &ComponentSender<NetworkMenuWidgetModel>, visible
     });
 }
 
-fn arm_wifi_watchers(
-    sender: &ComponentSender<NetworkMenuWidgetModel>,
-    token: &mut WatcherToken,
-) {
+fn arm_wifi_watchers(sender: &ComponentSender<NetworkMenuWidgetModel>, token: &mut WatcherToken) {
     let t = token.reset();
     spawn_wifi_watcher(sender, t.clone(), || {
         NetworkMenuWidgetCommandOutput::NetworkChanged
@@ -548,10 +536,7 @@ fn arm_wifi_watchers(
     });
 }
 
-fn arm_wired_watcher(
-    sender: &ComponentSender<NetworkMenuWidgetModel>,
-    token: &mut WatcherToken,
-) {
+fn arm_wired_watcher(sender: &ComponentSender<NetworkMenuWidgetModel>, token: &mut WatcherToken) {
     let t = token.reset();
     spawn_wired_watcher(sender, t, || NetworkMenuWidgetCommandOutput::NetworkChanged);
 }
@@ -702,7 +687,11 @@ fn make_network_row(
     let detail = gtk::Label::new(Some(&format!(
         "{}%{}",
         net.signal,
-        if net.secured { "  ·  secured" } else { "  ·  open" }
+        if net.secured {
+            "  ·  secured"
+        } else {
+            "  ·  open"
+        }
     )));
     detail.add_css_class("label-small");
     detail.set_xalign(0.0);

@@ -60,12 +60,20 @@ fn mute_mode(state: Option<MuteArg>) -> i32 {
 pub async fn execute(command: AudioCommands) -> anyhow::Result<()> {
     match command {
         AudioCommands::List { json } => {
-            let method = if json { "AudioListJson" } else { "AudioListText" };
+            let method = if json {
+                "AudioListJson"
+            } else {
+                "AudioListText"
+            };
             let out: String = bus_command_with_reply(method).await?;
             println!("{out}");
         }
         AudioCommands::Status { json } => {
-            let method = if json { "AudioStatusJson" } else { "AudioStatusText" };
+            let method = if json {
+                "AudioStatusJson"
+            } else {
+                "AudioStatusText"
+            };
             let out: String = bus_command_with_reply(method).await?;
             println!("{out}");
         }

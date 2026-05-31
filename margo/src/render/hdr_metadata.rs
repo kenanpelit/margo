@@ -294,7 +294,7 @@ mod tests {
         let block = EdidHdrBlock {
             supported_eotfs: 0b0000_0101, // SDR + PQ
             max_luminance_coded: 128,
-            max_frame_avg_coded: 96,  // 50 * 2^3 = 400
+            max_frame_avg_coded: 96, // 50 * 2^3 = 400
             min_luminance_coded: 0,
         };
         assert!(nearly_eq(block.peak_nits().unwrap(), 800.0, 0.5));

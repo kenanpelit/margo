@@ -1,8 +1,8 @@
 use crate::user_css::paths::{style_path, styles_dir};
 use crate::user_css::style::Style;
-use notify::{Event, EventKind};
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, ThemeStoreFields};
+use notify::{Event, EventKind};
 use reactive_graph::prelude::GetUntracked;
 use reactive_stores::{ArcStore, Patch};
 use std::ops::Not;

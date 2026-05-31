@@ -12,13 +12,19 @@ pub fn apply(http: &str, https: &str, socks: &str, ignore: &str) -> std::io::Res
     let path = dir.join("99-margo-proxy.conf");
     let mut lines = String::new();
     if !http.is_empty() {
-        lines.push_str(&format!("http_proxy=http://{http}\nHTTP_PROXY=http://{http}\n"));
+        lines.push_str(&format!(
+            "http_proxy=http://{http}\nHTTP_PROXY=http://{http}\n"
+        ));
     }
     if !https.is_empty() {
-        lines.push_str(&format!("https_proxy=http://{https}\nHTTPS_PROXY=http://{https}\n"));
+        lines.push_str(&format!(
+            "https_proxy=http://{https}\nHTTPS_PROXY=http://{https}\n"
+        ));
     }
     if !socks.is_empty() {
-        lines.push_str(&format!("all_proxy=socks5://{socks}\nALL_PROXY=socks5://{socks}\n"));
+        lines.push_str(&format!(
+            "all_proxy=socks5://{socks}\nALL_PROXY=socks5://{socks}\n"
+        ));
     }
     if !ignore.is_empty() {
         lines.push_str(&format!("no_proxy={ignore}\nNO_PROXY={ignore}\n"));

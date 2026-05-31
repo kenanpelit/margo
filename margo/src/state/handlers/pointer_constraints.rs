@@ -11,7 +11,7 @@ use smithay::{
     reexports::wayland_server::protocol::wl_surface::WlSurface,
     utils::{Logical, Point},
     wayland::{
-        pointer_constraints::{with_pointer_constraint, PointerConstraintsHandler},
+        pointer_constraints::{PointerConstraintsHandler, with_pointer_constraint},
         seat::WaylandFocus,
     },
 };
@@ -61,9 +61,8 @@ impl PointerConstraintsHandler for MargoState {
             .space
             .elements()
             .find_map(|window| {
-                (window.wl_surface().as_deref() == Some(surface)).then(|| {
-                    self.space.element_location(window).unwrap_or_default()
-                })
+                (window.wl_surface().as_deref() == Some(surface))
+                    .then(|| self.space.element_location(window).unwrap_or_default())
             })
             .unwrap_or_default()
             .to_f64();

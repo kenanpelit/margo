@@ -59,8 +59,7 @@ fn token_request_without_serial_does_not_blow_up() {
     // policy lands when the fixture grows a `add_focused_toplevel`
     // helper that establishes a (serial, seat) baseline.
     assert!(
-        !fx.server.state.clients.is_empty()
-            || fx.server.state.clients.is_empty(),
+        !fx.server.state.clients.is_empty() || fx.server.state.clients.is_empty(),
         "compositor survived activation-global access",
     );
 }

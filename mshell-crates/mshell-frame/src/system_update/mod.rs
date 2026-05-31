@@ -181,13 +181,15 @@ pub(crate) async fn probe(cfg: ProbeConfig) -> UpdateReport {
         }
     }
     if cfg.aur
-        && let Ok(mut entries) = probe_aur().await {
-            report.entries.append(&mut entries);
-        }
+        && let Ok(mut entries) = probe_aur().await
+    {
+        report.entries.append(&mut entries);
+    }
     if cfg.flatpak
-        && let Ok(mut entries) = probe_flatpak().await {
-            report.entries.append(&mut entries);
-        }
+        && let Ok(mut entries) = probe_flatpak().await
+    {
+        report.entries.append(&mut entries);
+    }
 
     report
 }
@@ -289,8 +291,14 @@ async fn probe_flatpak() -> Result<Vec<UpdateEntry>, String> {
             let mut f = line.split('\t');
             let _appid = f.next();
             let name = f.next().unwrap_or("").trim();
-            let new = f.next().map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
-            let old = f.next().map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+            let new = f
+                .next()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
+            let old = f
+                .next()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
             UpdateEntry {
                 source: Source::Flatpak,
                 name: if name.is_empty() {

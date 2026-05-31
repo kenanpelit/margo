@@ -149,12 +149,7 @@ impl Component for MediaPlayerModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             MediaPlayerInput::Clicked => {
                 let _ = sender.output(MediaPlayerOutput::Clicked);
@@ -205,10 +200,7 @@ fn display_player() -> Option<Arc<Player>> {
 /// Watch *every* player's title / artist / cover / playback
 /// state under a fresh `WatcherToken` — so the pill reacts the
 /// instant any player starts, stops, or changes track.
-fn subscribe_players(
-    sender: &ComponentSender<MediaPlayerModel>,
-    watcher_token: &mut WatcherToken,
-) {
+fn subscribe_players(sender: &ComponentSender<MediaPlayerModel>, watcher_token: &mut WatcherToken) {
     let token = watcher_token.reset();
     for player in media_service().player_list.get() {
         let title = player.metadata.title.clone();

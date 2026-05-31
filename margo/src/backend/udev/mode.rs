@@ -12,7 +12,9 @@
 
 use smithay::{
     output::Mode as OutputMode,
-    reexports::drm::control::{connector, Device as DrmDeviceTrait, Mode as DrmMode, ModeTypeFlags},
+    reexports::drm::control::{
+        Device as DrmDeviceTrait, Mode as DrmMode, ModeTypeFlags, connector,
+    },
 };
 
 use super::BackendData;
@@ -107,12 +109,8 @@ pub(super) fn apply_pending_mode_changes(bd: &mut BackendData, state: &mut Margo
         // change, and clients keep believing the old mode is
         // active.
         let new_wl_mode = OutputMode::from(drm_mode);
-        od.output.change_current_state(
-            Some(new_wl_mode),
-            None,
-            None,
-            None,
-        );
+        od.output
+            .change_current_state(Some(new_wl_mode), None, None, None);
         od.output.set_preferred(new_wl_mode);
 
         tracing::info!(

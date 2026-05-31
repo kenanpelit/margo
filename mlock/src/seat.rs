@@ -131,8 +131,8 @@ pub fn handle_keyboard_event(
             if let Some(xkb_state) = state.seat_state.xkb_state.as_mut() {
                 xkb_state.update_mask(mods_depressed, mods_latched, mods_locked, 0, 0, group);
                 // Re-read caps lock effective state.
-                let caps = xkb_state
-                    .mod_name_is_active(xkb::MOD_NAME_CAPS, xkb::STATE_MODS_EFFECTIVE);
+                let caps =
+                    xkb_state.mod_name_is_active(xkb::MOD_NAME_CAPS, xkb::STATE_MODS_EFFECTIVE);
                 if state.seat_state.caps_lock != caps {
                     state.seat_state.caps_lock = caps;
                     state.request_redraw_all();

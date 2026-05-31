@@ -52,7 +52,10 @@ pub fn default_wallpaper_path() -> Option<PathBuf> {
 /// display. Used only when no user wallpaper is cached.
 fn load_default_wallpaper() -> Option<WallpaperImage> {
     let path = default_wallpaper_path()?;
-    info!("no wallpaper set — using bundled default {}", path.display());
+    info!(
+        "no wallpaper set — using bundled default {}",
+        path.display()
+    );
     decode_source(&path)
 }
 
@@ -207,11 +210,10 @@ fn between<'a>(s: &'a str, start: &str, end: &str) -> Option<&'a str> {
 
 /// `(primary, fallback)` URLs for Bing's image of the day.
 fn bing_urls(locale: &str) -> Result<(String, String), String> {
-    let url =
-        format!("https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1&mkt={locale}");
+    let url = format!("https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=1&mkt={locale}");
     let body = curl_text(&url)?;
-    let urlbase =
-        between(&body, "\"urlbase\":\"", "\"").ok_or_else(|| "Bing: urlbase not found".to_string())?;
+    let urlbase = between(&body, "\"urlbase\":\"", "\"")
+        .ok_or_else(|| "Bing: urlbase not found".to_string())?;
     Ok((
         format!("https://www.bing.com{urlbase}_UHD.jpg"),
         format!("https://www.bing.com{urlbase}_1920x1080.jpg"),
@@ -248,7 +250,11 @@ fn nasa_urls() -> Result<(String, String), String> {
 /// the returned path with [`set_wallpaper`] on the main thread (`set_wallpaper`
 /// touches the reactive config store and must not run on a worker thread).
 pub fn fetch_daily_wallpaper(source: &str, locale: &str) -> Result<PathBuf, String> {
-    let source = if source.eq_ignore_ascii_case("nasa") { "nasa" } else { "bing" };
+    let source = if source.eq_ignore_ascii_case("nasa") {
+        "nasa"
+    } else {
+        "bing"
+    };
     let dir = daily_wallpaper_dir();
     fs::create_dir_all(&dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
 
@@ -268,7 +274,11 @@ pub fn fetch_daily_wallpaper(source: &str, locale: &str) -> Result<PathBuf, Stri
         let l = locale.trim().to_lowercase().replace('_', "-");
         if l.is_empty() { "en-us".to_string() } else { l }
     };
-    let (primary, fallback) = if source == "nasa" { nasa_urls()? } else { bing_urls(&loc)? };
+    let (primary, fallback) = if source == "nasa" {
+        nasa_urls()?
+    } else {
+        bing_urls(&loc)?
+    };
 
     let ok = (!primary.is_empty() && curl_download(&primary, &file))
         || (!fallback.is_empty() && curl_download(&fallback, &file));

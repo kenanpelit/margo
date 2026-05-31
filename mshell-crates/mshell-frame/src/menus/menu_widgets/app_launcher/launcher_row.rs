@@ -195,7 +195,12 @@ impl Component for LauncherRowModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let DisplayItem { item, pinned, quick_key, hidden } = params.display;
+        let DisplayItem {
+            item,
+            pinned,
+            quick_key,
+            hidden,
+        } = params.display;
         // Hide the context menu entirely for rows without a
         // usage_key — those are synthetic (commands palette, etc.)
         // and the Pin/Hide actions would have nothing to persist
@@ -302,11 +307,7 @@ fn lookup_app_by_id_suffix(suffix: &str) -> Option<DesktopAppInfo> {
     gio::AppInfo::all()
         .into_iter()
         .filter_map(|info| info.downcast::<DesktopAppInfo>().ok())
-        .find(|info| {
-            info.id()
-                .map(|g| g == suffix)
-                .unwrap_or(false)
-        })
+        .find(|info| info.id().map(|g| g == suffix).unwrap_or(false))
 }
 
 fn apply_app_icon(image: &gtk::Image, info: DesktopAppInfo) {

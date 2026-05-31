@@ -23,9 +23,7 @@ use mshell_utils::audio::{
     spawn_input_devices_watcher, spawn_output_device_volume_mute_watcher,
     spawn_output_devices_watcher,
 };
-use relm4::gtk::prelude::{
-    BoxExt, ButtonExt, GestureSingleExt, OrientableExt, WidgetExt,
-};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, GestureSingleExt, OrientableExt, WidgetExt};
 use relm4::gtk::{EventControllerScroll, EventControllerScrollFlags};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::sync::Arc;
@@ -235,18 +233,13 @@ impl Component for AudioDashboardModel {
             );
         }
         if let Some(d) = &input_device {
-            spawn_input_device_volume_mute_watcher(
-                d,
-                input_watcher_token.reset(),
-                &sender,
-                || AudioDashboardCommandOutput::InputVolumeOrMuteChanged,
-            );
+            spawn_input_device_volume_mute_watcher(d, input_watcher_token.reset(), &sender, || {
+                AudioDashboardCommandOutput::InputVolumeOrMuteChanged
+            });
         }
 
-        let (output_percent, output_muted, output_icon) =
-            read_output_state(&output_device);
-        let (input_percent, input_muted, input_icon) =
-            read_input_state(&input_device);
+        let (output_percent, output_muted, output_icon) = read_output_state(&output_device);
+        let (input_percent, input_muted, input_icon) = read_input_state(&input_device);
 
         let model = AudioDashboardModel {
             output_device,
@@ -431,7 +424,11 @@ fn read_input_state(d: &Option<Arc<InputDevice>>) -> (f64, bool, String) {
         let percent = device.volume.get().average();
         (percent, muted, get_audio_in_icon(device).to_string())
     } else {
-        (0.0, false, "microphone-sensitivity-muted-symbolic".to_string())
+        (
+            0.0,
+            false,
+            "microphone-sensitivity-muted-symbolic".to_string(),
+        )
     }
 }
 
@@ -456,10 +453,9 @@ fn apply_tooltip(model: &AudioDashboardModel, widgets: &AudioDashboardModelWidge
     } else {
         "Input: none".to_string()
     };
-    let tooltip = format!(
-        "{out_line}\n{in_line}\n\nClick: open mixer\nRight-click: cycle display mode"
-    );
-    if let Some(p) = widgets
-        .button
-        .parent() { p.set_tooltip_text(Some(&tooltip)) }
+    let tooltip =
+        format!("{out_line}\n{in_line}\n\nClick: open mixer\nRight-click: cycle display mode");
+    if let Some(p) = widgets.button.parent() {
+        p.set_tooltip_text(Some(&tooltip))
+    }
 }

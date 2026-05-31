@@ -183,7 +183,14 @@ impl Component for IpMenuWidgetModel {
         // `Label(caption) — Label(value)` pair; we keep the value
         // Labels on the model so `sync_view` only touches text.
         let mut detail_values: Vec<(&'static str, gtk::Label)> = Vec::new();
-        for caption in ["City", "Region", "Country", "Coordinates", "Timezone", "Organisation"] {
+        for caption in [
+            "City",
+            "Region",
+            "Country",
+            "Coordinates",
+            "Timezone",
+            "Organisation",
+        ] {
             let (row, value) = make_detail_row(caption);
             details_box.append(&row);
             detail_values.push((caption, value));
@@ -209,12 +216,7 @@ impl Component for IpMenuWidgetModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             IpMenuWidgetInput::RefreshNow => {
                 sender.command(|out, _shutdown| async move {
@@ -236,27 +238,28 @@ impl Component for IpMenuWidgetModel {
             }
             IpMenuWidgetInput::CopyIp => {
                 if let Some(ip) = self.snapshot.info.as_ref().map(|i| i.ip.clone())
-                    && !ip.is_empty() {
-                        // `wl-copy` is in the package depends; pipe
-                        // the IP to it. Detached — we don't care
-                        // about the exit status, the clipboard set
-                        // is fire-and-forget.
-                        tokio::spawn(async move {
-                            use tokio::io::AsyncWriteExt;
-                            match tokio::process::Command::new("wl-copy")
-                                .stdin(std::process::Stdio::piped())
-                                .spawn()
-                            {
-                                Ok(mut child) => {
-                                    if let Some(mut stdin) = child.stdin.take() {
-                                        let _ = stdin.write_all(ip.as_bytes()).await;
-                                    }
-                                    let _ = child.wait().await;
+                    && !ip.is_empty()
+                {
+                    // `wl-copy` is in the package depends; pipe
+                    // the IP to it. Detached — we don't care
+                    // about the exit status, the clipboard set
+                    // is fire-and-forget.
+                    tokio::spawn(async move {
+                        use tokio::io::AsyncWriteExt;
+                        match tokio::process::Command::new("wl-copy")
+                            .stdin(std::process::Stdio::piped())
+                            .spawn()
+                        {
+                            Ok(mut child) => {
+                                if let Some(mut stdin) = child.stdin.take() {
+                                    let _ = stdin.write_all(ip.as_bytes()).await;
                                 }
-                                Err(e) => warn!(error = %e, "wl-copy spawn failed"),
+                                let _ = child.wait().await;
                             }
-                        });
-                    }
+                            Err(e) => warn!(error = %e, "wl-copy spawn failed"),
+                        }
+                    });
+                }
             }
             IpMenuWidgetInput::OpenInBrowser => {
                 let url = match self.snapshot.info.as_ref() {
@@ -339,15 +342,15 @@ fn sync_view(model: &IpMenuWidgetModel) {
     // Hero — IP + status badge.
     let (ip_text, badge_text, badge_class) = match (snap.state, &snap.info) {
         (FetchState::Loading, _) => ("…".to_string(), "Loading", "ip-badge-loading"),
-        (FetchState::Ok, Some(i)) if !i.ip.is_empty() => {
-            (i.ip.clone(), "Online", "ip-badge-ok")
-        }
+        (FetchState::Ok, Some(i)) if !i.ip.is_empty() => (i.ip.clone(), "Online", "ip-badge-ok"),
         (FetchState::Ok, _) => ("unavailable".to_string(), "No data", "ip-badge-err"),
         (FetchState::Err, _) => ("unavailable".to_string(), "Error", "ip-badge-err"),
     };
     model.ip_label.set_label(&ip_text);
     model.status_badge.set_label(badge_text);
-    model.status_badge.set_css_classes(&["ip-badge", badge_class]);
+    model
+        .status_badge
+        .set_css_classes(&["ip-badge", badge_class]);
 
     // Detail rows.
     let info = snap.info.clone().unwrap_or_default();

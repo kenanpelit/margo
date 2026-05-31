@@ -76,10 +76,7 @@ impl Chunks {
         let size = frame.size();
         let (fw, fh) = (size.width, size.height);
 
-        let card_w = fw
-            .saturating_sub(6)
-            .clamp(CARD_W_MIN, CARD_W_MAX)
-            .min(fw);
+        let card_w = fw.saturating_sub(6).clamp(CARD_W_MIN, CARD_W_MAX).min(fw);
         let content_w = card_w.max(24).min(fw);
 
         // Chips pinned one row up from the bottom (so they sit *inside* a
@@ -136,7 +133,12 @@ impl Chunks {
         };
 
         let clock = if show_clock {
-            let r = Rect { x: cx, y, width: content_w, height: CLOCK_H };
+            let r = Rect {
+                x: cx,
+                y,
+                width: content_w,
+                height: CLOCK_H,
+            };
             y += CLOCK_H + GAP;
             r
         } else {
@@ -185,8 +187,18 @@ impl Chunks {
         let value_w = inner_w.saturating_sub(LABEL_W);
         let row = |ry: u16| {
             (
-                Rect { x: inner_x, y: ry, width: LABEL_W, height: 1 },
-                Rect { x: value_x, y: ry, width: value_w, height: 1 },
+                Rect {
+                    x: inner_x,
+                    y: ry,
+                    width: LABEL_W,
+                    height: 1,
+                },
+                Rect {
+                    x: value_x,
+                    y: ry,
+                    width: value_w,
+                    height: 1,
+                },
             )
         };
         // The session value is drawn inline by the greeter (truncated to fit),

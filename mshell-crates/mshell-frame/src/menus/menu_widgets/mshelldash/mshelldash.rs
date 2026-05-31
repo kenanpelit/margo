@@ -50,7 +50,9 @@ pub(crate) struct MShellDashModel {
 
 impl std::fmt::Debug for MShellDashModel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("MShellDashModel").field("active", &self.active).finish()
+        f.debug_struct("MShellDashModel")
+            .field("active", &self.active)
+            .finish()
     }
 }
 
@@ -110,9 +112,7 @@ impl Component for MShellDashModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let overview = OverviewModel::builder()
-            .launch(OverviewInit {})
-            .detach();
+        let overview = OverviewModel::builder().launch(OverviewInit {}).detach();
         let media = MediaPlayersModel::builder()
             .launch(MediaPlayersInit {})
             .detach();
@@ -145,12 +145,18 @@ impl Component for MShellDashModel {
         widgets
             .stack
             .add_named(model._overview.widget(), Some("overview"));
-        widgets.stack.add_named(model._media.widget(), Some("media"));
-        widgets.stack.add_named(model._weather.widget(), Some("weather"));
+        widgets
+            .stack
+            .add_named(model._media.widget(), Some("media"));
+        widgets
+            .stack
+            .add_named(model._weather.widget(), Some("weather"));
         widgets
             .stack
             .add_named(model._wallpaper.widget(), Some("wallpaper"));
-        widgets.stack.add_named(model._system.widget(), Some("system"));
+        widgets
+            .stack
+            .add_named(model._system.widget(), Some("system"));
 
         // Tab bar — one button per tab (icon + label), selected state
         // via the shared `.selected` surface treatment.
@@ -185,9 +191,7 @@ impl Component for MShellDashModel {
     ) {
         let target = match message {
             MShellDashInput::SelectTab(i) => Some(i),
-            MShellDashInput::SelectTabName(name) => {
-                TABS.iter().position(|(n, _, _)| *n == name)
-            }
+            MShellDashInput::SelectTabName(name) => TABS.iter().position(|(n, _, _)| *n == name),
         };
         if let Some(i) = target {
             self.active = i;

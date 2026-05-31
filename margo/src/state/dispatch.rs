@@ -17,8 +17,8 @@
 use smithay::{desktop::WindowSurface, wayland::seat::WaylandFocus};
 
 use super::{
-    read_toplevel_identity, ClosingClient, FocusTarget, FullscreenMode, MargoState,
-    WindowRuleReason,
+    ClosingClient, FocusTarget, FullscreenMode, MargoState, WindowRuleReason,
+    read_toplevel_identity,
 };
 use crate::layout::LayoutId;
 
@@ -27,7 +27,8 @@ impl MargoState {
 
     pub fn kill_focused(&mut self) {
         if let Some(idx) = self.focused_client_idx() {
-            if let WindowSurface::Wayland(toplevel) = self.clients[idx].window.underlying_surface() {
+            if let WindowSurface::Wayland(toplevel) = self.clients[idx].window.underlying_surface()
+            {
                 toplevel.send_close();
             }
         }
@@ -486,8 +487,7 @@ impl MargoState {
     /// deliberate user choice is never overridden.
     pub(crate) fn maybe_apply_adaptive_layout(&mut self, mon_idx: usize) {
         let curtag = self.monitors[mon_idx].pertag.curtag;
-        if self
-            .monitors[mon_idx]
+        if self.monitors[mon_idx]
             .pertag
             .user_picked_layout
             .get(curtag)
@@ -645,7 +645,9 @@ impl MargoState {
     /// niri-float-sticky single-monitor "appears on every tag of
     /// this output" case which is the 95% use.
     pub fn toggle_sticky(&mut self) {
-        let Some(idx) = self.focused_client_idx() else { return };
+        let Some(idx) = self.focused_client_idx() else {
+            return;
+        };
         // Don't sticky scratchpads — they have their own
         // visibility model (`is_scratchpad_show` flag); flipping
         // tags out from under the scratchpad path would confuse it.
@@ -686,17 +688,26 @@ impl MargoState {
 
         // OSD-style notification — short timeout so it doesn't
         // pile up if the user toggles a few windows in a row.
-        let title = if was_sticky { "Sticky off" } else { "Sticky on" };
+        let title = if was_sticky {
+            "Sticky off"
+        } else {
+            "Sticky on"
+        };
         let body = if appid.is_empty() {
             String::from("Focused window")
         } else {
             appid
         };
         let _ = crate::utils::spawn([
-            "notify-send", "-a", "margo",
-            "-i", "view-pin-symbolic",
-            "-t", "1200",
-            title, &body,
+            "notify-send",
+            "-a",
+            "margo",
+            "-i",
+            "view-pin-symbolic",
+            "-t",
+            "1200",
+            title,
+            &body,
         ]);
     }
 
@@ -724,10 +735,15 @@ impl MargoState {
             name.to_string()
         };
         let _ = crate::utils::spawn([
-            "notify-send", "-a", "margo",
-            "-i", "view-grid-symbolic",
-            "-t", "1200",
-            "Margo Layout", &body,
+            "notify-send",
+            "-a",
+            "margo",
+            "-i",
+            "view-grid-symbolic",
+            "-t",
+            "1200",
+            "Margo Layout",
+            &body,
         ]);
     }
 
@@ -738,10 +754,15 @@ impl MargoState {
     pub fn notify_layout_state(&self, action: &str, value: &str) {
         let body = format!("{action}: {value}");
         let _ = crate::utils::spawn([
-            "notify-send", "-a", "margo",
-            "-i", "view-grid-symbolic",
-            "-t", "1000",
-            "Margo Layout", &body,
+            "notify-send",
+            "-a",
+            "margo",
+            "-i",
+            "view-grid-symbolic",
+            "-t",
+            "1000",
+            "Margo Layout",
+            &body,
         ]);
     }
 
@@ -786,10 +807,7 @@ impl MargoState {
         let mon_idx = self.clients[idx].monitor;
         self.arrange_monitor(mon_idx);
         // W3.5: toast feedback for the cycling action.
-        self.notify_layout_state(
-            "scroller proportion",
-            &format!("{:.2}", next_proportion),
-        );
+        self.notify_layout_state("scroller proportion", &format!("{:.2}", next_proportion));
     }
 
     /// Toggle the focused client between [`FullscreenMode::Exclusive`] and
@@ -884,9 +902,7 @@ impl MargoState {
         self.clients[idx].fullscreen_mode = mode;
         self.clients[idx].is_fullscreen = mode != FullscreenMode::Off;
 
-        if let WindowSurface::Wayland(toplevel) =
-            self.clients[idx].window.underlying_surface()
-        {
+        if let WindowSurface::Wayland(toplevel) = self.clients[idx].window.underlying_surface() {
             use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
             // The size hint matches the mode: WorkArea respects the
             // bar's exclusion zone, Exclusive covers the entire
@@ -942,7 +958,6 @@ impl MargoState {
         })
     }
 
-
     pub fn inc_nmaster(&mut self, delta: i32) {
         let mon_idx = self.focused_monitor();
         if mon_idx >= self.monitors.len() {
@@ -970,10 +985,7 @@ impl MargoState {
         for mon_idx in 0..self.monitors.len() {
             self.arrange_monitor(mon_idx);
         }
-        self.notify_layout_state(
-            "gaps",
-            if self.enable_gaps { "on" } else { "off" },
-        );
+        self.notify_layout_state("gaps", if self.enable_gaps { "on" } else { "off" });
     }
 
     pub fn inc_gaps(&mut self, delta: i32) {
@@ -1007,7 +1019,8 @@ impl MargoState {
             }
             self.clients[idx].is_floating = true;
             self.clients[idx].float_geom.width = (self.clients[idx].float_geom.width + dw).max(50);
-            self.clients[idx].float_geom.height = (self.clients[idx].float_geom.height + dh).max(50);
+            self.clients[idx].float_geom.height =
+                (self.clients[idx].float_geom.height + dh).max(50);
             let mon_idx = self.clients[idx].monitor;
             self.arrange_monitor(mon_idx);
         }
@@ -1193,10 +1206,7 @@ impl MargoState {
         // Tag-home redirect: if rules picked tag N but didn't pin a
         // monitor, route to the tag's home output.
         let no_explicit_monitor = !self
-            .matching_window_rules(
-                &self.clients[idx].app_id,
-                &self.clients[idx].title,
-            )
+            .matching_window_rules(&self.clients[idx].app_id, &self.clients[idx].title)
             .iter()
             .any(|r| r.monitor.is_some());
         if no_explicit_monitor {
@@ -1206,8 +1216,7 @@ impl MargoState {
         }
 
         let target_mon = self.clients[idx].monitor;
-        let focus_new =
-            !self.clients[idx].no_focus && !self.clients[idx].open_silent;
+        let focus_new = !self.clients[idx].no_focus && !self.clients[idx].open_silent;
         let window = self.clients[idx].window.clone();
 
         let map_loc = self
@@ -1219,8 +1228,7 @@ impl MargoState {
 
         if focus_new {
             if target_mon < self.monitors.len() {
-                self.monitors[target_mon].prev_selected =
-                    self.monitors[target_mon].selected;
+                self.monitors[target_mon].prev_selected = self.monitors[target_mon].selected;
                 self.monitors[target_mon].selected = Some(idx);
             }
             self.focus_surface(Some(FocusTarget::Window(window)));
@@ -1253,9 +1261,7 @@ impl MargoState {
         // result in a visible scratchpad; pressing again should
         // hide it. Only the second-and-later cycles go through
         // toggle_named_scratchpad's switch_scratchpad_state branch.
-        if self.clients[idx].is_named_scratchpad
-            && !self.clients[idx].is_in_scratchpad
-        {
+        if self.clients[idx].is_named_scratchpad && !self.clients[idx].is_in_scratchpad {
             self.clients[idx].is_in_scratchpad = true;
             self.clients[idx].is_scratchpad_show = true;
             self.clients[idx].is_floating = true;
@@ -1289,7 +1295,6 @@ impl MargoState {
         // first configure; XWayland clients honour it far more
         // reliably than a subsequent shrink.
 
-
         // Kick off the open animation if globally enabled, this client
         // didn't opt out (window-rule `no_animation` / `open_silent`),
         // and the user configured a non-zero open duration. The
@@ -1313,14 +1318,13 @@ impl MargoState {
                 .unwrap_or_else(|| self.config.animation_type_open.clone());
             let kind = crate::render::open_close::OpenCloseKind::parse(&kind_str);
             let now = crate::utils::now_ms();
-            self.clients[idx].opening_animation =
-                Some(crate::animation::OpenCloseClientAnim {
-                    kind,
-                    time_started: now,
-                    duration: self.config.animation_duration_open,
-                    progress: 0.0,
-                    extreme_scale: self.config.zoom_initial_ratio.clamp(0.05, 1.0),
-                });
+            self.clients[idx].opening_animation = Some(crate::animation::OpenCloseClientAnim {
+                kind,
+                time_started: now,
+                duration: self.config.animation_duration_open,
+                progress: 0.0,
+                extreme_scale: self.config.zoom_initial_ratio.clamp(0.05, 1.0),
+            });
             self.clients[idx].opening_capture_pending = true;
             self.request_repaint();
         }

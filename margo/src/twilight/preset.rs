@@ -85,7 +85,9 @@ impl ScheduleData {
                 continue;
             }
             let mut parts = trimmed.split_whitespace();
-            let Some(time_str) = parts.next() else { continue };
+            let Some(time_str) = parts.next() else {
+                continue;
+            };
             let Some(name) = parts.next() else { continue };
             let Some(time_sec) = parse_hhmm(time_str) else {
                 tracing::warn!(
@@ -185,7 +187,6 @@ impl ScheduleData {
 }
 
 fn resolve_dir(dir: &str) -> PathBuf {
-    
     if dir.trim().is_empty() {
         default_dir()
     } else {

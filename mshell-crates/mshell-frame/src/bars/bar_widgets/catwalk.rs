@@ -18,16 +18,40 @@ use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::path::PathBuf;
 
 const IDLE_FRAMES: [(&str, &[u8]); 4] = [
-    ("idle-0.svg", include_bytes!("catwalk_icons/my-idle-0-symbolic.svg")),
-    ("idle-1.svg", include_bytes!("catwalk_icons/my-idle-1-symbolic.svg")),
-    ("idle-2.svg", include_bytes!("catwalk_icons/my-idle-2-symbolic.svg")),
-    ("idle-3.svg", include_bytes!("catwalk_icons/my-idle-3-symbolic.svg")),
+    (
+        "idle-0.svg",
+        include_bytes!("catwalk_icons/my-idle-0-symbolic.svg"),
+    ),
+    (
+        "idle-1.svg",
+        include_bytes!("catwalk_icons/my-idle-1-symbolic.svg"),
+    ),
+    (
+        "idle-2.svg",
+        include_bytes!("catwalk_icons/my-idle-2-symbolic.svg"),
+    ),
+    (
+        "idle-3.svg",
+        include_bytes!("catwalk_icons/my-idle-3-symbolic.svg"),
+    ),
 ];
 const ACTIVE_FRAMES: [(&str, &[u8]); 4] = [
-    ("active-0.svg", include_bytes!("catwalk_icons/my-active-0-symbolic.svg")),
-    ("active-1.svg", include_bytes!("catwalk_icons/my-active-1-symbolic.svg")),
-    ("active-2.svg", include_bytes!("catwalk_icons/my-active-2-symbolic.svg")),
-    ("active-3.svg", include_bytes!("catwalk_icons/my-active-3-symbolic.svg")),
+    (
+        "active-0.svg",
+        include_bytes!("catwalk_icons/my-active-0-symbolic.svg"),
+    ),
+    (
+        "active-1.svg",
+        include_bytes!("catwalk_icons/my-active-1-symbolic.svg"),
+    ),
+    (
+        "active-2.svg",
+        include_bytes!("catwalk_icons/my-active-2-symbolic.svg"),
+    ),
+    (
+        "active-3.svg",
+        include_bytes!("catwalk_icons/my-active-3-symbolic.svg"),
+    ),
 ];
 
 /// Base animation tick — frames advance every N of these.
@@ -110,7 +134,11 @@ impl Component for CatwalkModel {
 
         let sender_clone = sender.clone();
         glib::timeout_add_local(TICK, move || {
-            if sender_clone.input_sender().send(CatwalkInput::Tick).is_err() {
+            if sender_clone
+                .input_sender()
+                .send(CatwalkInput::Tick)
+                .is_err()
+            {
                 return glib::ControlFlow::Break;
             }
             glib::ControlFlow::Continue

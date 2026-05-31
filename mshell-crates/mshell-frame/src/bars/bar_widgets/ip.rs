@@ -116,21 +116,23 @@ impl Component for IpModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        sender.command(|out, shutdown| {
-            async move {
-                let shutdown_fut = shutdown.wait();
-                tokio::pin!(shutdown_fut);
-                let mut first = true;
-                loop {
-                    let delay = if first { STARTUP_DELAY } else { REFRESH_INTERVAL };
-                    first = false;
-                    tokio::select! {
-                        () = &mut shutdown_fut => break,
-                        _ = tokio::time::sleep(delay) => {}
-                    }
-                    let snap = fetch_snapshot().await;
-                    let _ = out.send(IpCommandOutput::Refreshed(snap));
+        sender.command(|out, shutdown| async move {
+            let shutdown_fut = shutdown.wait();
+            tokio::pin!(shutdown_fut);
+            let mut first = true;
+            loop {
+                let delay = if first {
+                    STARTUP_DELAY
+                } else {
+                    REFRESH_INTERVAL
+                };
+                first = false;
+                tokio::select! {
+                    () = &mut shutdown_fut => break,
+                    _ = tokio::time::sleep(delay) => {}
                 }
+                let snap = fetch_snapshot().await;
+                let _ = out.send(IpCommandOutput::Refreshed(snap));
             }
         });
 
@@ -142,12 +144,7 @@ impl Component for IpModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             IpInput::Clicked => {
                 let _ = sender.output(IpOutput::Clicked);

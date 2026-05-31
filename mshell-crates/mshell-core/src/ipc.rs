@@ -1,28 +1,29 @@
 use crate::relm_app::{Shell, ShellInput};
 use mshell_cache::wallpaper::set_wallpaper;
 use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{AlarmConfigStoreFields, AudioConfigStoreFields, ConfigStoreFields, WallpaperStoreFields};
+use mshell_config::schema::config::{
+    AlarmConfigStoreFields, AudioConfigStoreFields, ConfigStoreFields, WallpaperStoreFields,
+};
 use mshell_services::{
-    audio_service, brightness_service, margo_service, media_service, notification_service,
-    tokio_rt,
+    audio_service, brightness_service, margo_service, media_service, notification_service, tokio_rt,
 };
 use mshell_session::session_lock::{lock_session, session_locked};
 use mshell_settings::{close_settings, open_settings, open_wizard};
-use mshell_utils::session::SessionAction;
 use mshell_sounds::{play_alarm_loop, play_audio_volume_change, stop_alarm};
+use mshell_utils::session::SessionAction;
 use reactive_graph::prelude::GetUntracked;
 use relm4::gtk::glib;
 use relm4::{ComponentSender, gtk};
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
-use std::sync::Arc;
 use wayle_audio::core::device::input::InputDevice;
 use wayle_audio::core::device::output::OutputDevice;
 use wayle_audio::volume::types::Volume;
+use wayle_brightness::Percentage;
 use wayle_media::core::player::Player;
 use wayle_media::types::PlaybackState;
-use wayle_brightness::Percentage;
 use zbus::connection;
 use zbus::interface;
 
@@ -121,8 +122,7 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                     app_sender.emit(ShellInput::ToggleAlarmClockMenu(active_monitor().await));
                 }
                 IPCCommand::ControlCenter => {
-                    app_sender
-                        .emit(ShellInput::ToggleControlCenterMenu(active_monitor().await));
+                    app_sender.emit(ShellInput::ToggleControlCenterMenu(active_monitor().await));
                 }
                 IPCCommand::HiddenBar(verb) => {
                     app_sender.emit(ShellInput::HiddenBar(verb));
@@ -158,8 +158,10 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                     app_sender.emit(ShellInput::ToggleDashboardMenu(active_monitor().await));
                 }
                 IPCCommand::MShellDash(tab) => {
-                    app_sender
-                        .emit(ShellInput::ToggleMShellDashMenu(active_monitor().await, tab));
+                    app_sender.emit(ShellInput::ToggleMShellDashMenu(
+                        active_monitor().await,
+                        tab,
+                    ));
                 }
                 IPCCommand::SessionAction(action) => {
                     app_sender.emit(ShellInput::RunSessionAction(action));
@@ -268,8 +270,10 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 }
                 IPCCommand::SwitchOutput(target) => {
                     let devs = usable_outputs();
-                    let names: Vec<(String, String)> =
-                        devs.iter().map(|d| (d.name.get(), d.description.get())).collect();
+                    let names: Vec<(String, String)> = devs
+                        .iter()
+                        .map(|d| (d.name.get(), d.description.get()))
+                        .collect();
                     let cur = audio_service().default_output.get().map(|d| d.name.get());
                     if let Some(i) = pick_device(&names, cur.as_deref(), &target)
                         && devs[i].set_as_default().await.is_ok()
@@ -279,8 +283,10 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 }
                 IPCCommand::SwitchInput(target) => {
                     let devs = usable_inputs();
-                    let names: Vec<(String, String)> =
-                        devs.iter().map(|d| (d.name.get(), d.description.get())).collect();
+                    let names: Vec<(String, String)> = devs
+                        .iter()
+                        .map(|d| (d.name.get(), d.description.get()))
+                        .collect();
                     let cur = audio_service().default_input.get().map(|d| d.name.get());
                     if let Some(i) = pick_device(&names, cur.as_deref(), &target)
                         && devs[i].set_as_default().await.is_ok()
@@ -581,8 +587,12 @@ fn usable_outputs() -> Vec<Arc<OutputDevice>> {
 /// Real capture sources — drops PulseAudio monitor sources (the loopback
 /// "Monitor of <sink>" entries), which aren't microphones. Same stable sort.
 fn usable_inputs() -> Vec<Arc<InputDevice>> {
-    let mut v: Vec<_> =
-        audio_service().input_devices.get().into_iter().filter(|d| !d.is_monitor.get()).collect();
+    let mut v: Vec<_> = audio_service()
+        .input_devices
+        .get()
+        .into_iter()
+        .filter(|d| !d.is_monitor.get())
+        .collect();
     v.sort_by_key(|d| d.key.index);
     v
 }
@@ -667,7 +677,10 @@ fn pick_device(names: &[(String, String)], current: Option<&str>, target: &str) 
     match t.to_ascii_lowercase().as_str() {
         "next" | "switch" => return Some(cur.map(|c| (c + 1) % names.len()).unwrap_or(0)),
         "prev" | "previous" => {
-            return Some(cur.map(|c| (c + names.len() - 1) % names.len()).unwrap_or(0));
+            return Some(
+                cur.map(|c| (c + names.len() - 1) % names.len())
+                    .unwrap_or(0),
+            );
         }
         _ => {}
     }
@@ -707,7 +720,12 @@ fn audio_snapshot() -> AudioSnapshot {
     let svc = audio_service();
     let def_out = svc.default_output.get().map(|d| d.name.get());
     let def_in = svc.default_input.get().map(|d| d.name.get());
-    let snap = |i: usize, name: String, description: String, vol: f64, muted: bool, def: &Option<String>| {
+    let snap = |i: usize,
+                name: String,
+                description: String,
+                vol: f64,
+                muted: bool,
+                def: &Option<String>| {
         DeviceSnapshot {
             index: i,
             active: def.as_deref() == Some(name.as_str()),
@@ -720,12 +738,30 @@ fn audio_snapshot() -> AudioSnapshot {
     let outputs = usable_outputs()
         .iter()
         .enumerate()
-        .map(|(i, d)| snap(i, d.name.get(), d.description.get(), d.volume.get().average(), d.muted.get(), &def_out))
+        .map(|(i, d)| {
+            snap(
+                i,
+                d.name.get(),
+                d.description.get(),
+                d.volume.get().average(),
+                d.muted.get(),
+                &def_out,
+            )
+        })
         .collect();
     let inputs = usable_inputs()
         .iter()
         .enumerate()
-        .map(|(i, d)| snap(i, d.name.get(), d.description.get(), d.volume.get().average(), d.muted.get(), &def_in))
+        .map(|(i, d)| {
+            snap(
+                i,
+                d.name.get(),
+                d.description.get(),
+                d.volume.get().average(),
+                d.muted.get(),
+                &def_in,
+            )
+        })
         .collect();
     AudioSnapshot { outputs, inputs }
 }
@@ -738,7 +774,10 @@ fn fmt_device_line(d: &DeviceSnapshot, icon: &str) -> String {
     if d.muted {
         tags.push_str("  [muted]");
     }
-    format!("  {}: {} {:<42} {:>3}%{}", d.index, icon, d.description, d.volume_percent, tags)
+    format!(
+        "  {}: {} {:<42} {:>3}%{}",
+        d.index, icon, d.description, d.volume_percent, tags
+    )
 }
 
 /// `mshellctl audio list` body — human table or `--json`.
@@ -784,7 +823,11 @@ fn render_audio_status(as_json: bool) -> String {
         ),
         None => format!("{label}: (none)"),
     };
-    format!("{}\n{}", line(out.as_ref(), "Output"), line(inp.as_ref(), "Input"))
+    format!(
+        "{}\n{}",
+        line(out.as_ref(), "Output"),
+        line(inp.as_ref(), "Input")
+    )
 }
 
 // ── Media players (MPRIS, via the shell's MediaService) ─────────────────────
@@ -809,7 +852,9 @@ fn pick_player(target: &str) -> Option<Arc<Player>> {
     let svc = media_service();
     let t = target.trim().to_lowercase();
     if t.is_empty() {
-        return svc.active_player().or_else(|| svc.players().into_iter().next());
+        return svc
+            .active_player()
+            .or_else(|| svc.players().into_iter().next());
     }
     // Match the fragment against the identity, the D-Bus bus name, AND the
     // desktop entry. The bus name is the robust signal: a Chromium/Firefox
@@ -829,27 +874,41 @@ fn pick_player(target: &str) -> Option<Arc<Player>> {
         hay.contains(&t)
             || (t == "browser"
                 && [
-                    "firefox", "chrome", "chromium", "brave", "edge", "vivaldi", "opera",
-                    "webcord", "zen", "librewolf", "waterfox", "floorp", "helium", "thorium",
-                    "ungoogled", "palemoon", "midori", "epiphany", "falkon", "qutebrowser",
+                    "firefox",
+                    "chrome",
+                    "chromium",
+                    "brave",
+                    "edge",
+                    "vivaldi",
+                    "opera",
+                    "webcord",
+                    "zen",
+                    "librewolf",
+                    "waterfox",
+                    "floorp",
+                    "helium",
+                    "thorium",
+                    "ungoogled",
+                    "palemoon",
+                    "midori",
+                    "epiphany",
+                    "falkon",
+                    "qutebrowser",
                 ]
                 .iter()
                 .any(|b| hay.contains(b)))
             || ((t == "mpd" || t == "mpc") && hay.contains("music player daemon"))
     };
     let active = svc.active_player();
-    svc.players()
-        .into_iter()
-        .filter(matches)
-        .max_by_key(|p| {
-            let state = match p.playback_state.get() {
-                PlaybackState::Playing => 2,
-                PlaybackState::Paused => 1,
-                PlaybackState::Stopped => 0,
-            };
-            let is_active = active.as_ref().map(|a| Arc::ptr_eq(a, p)).unwrap_or(false);
-            (state, is_active)
-        })
+    svc.players().into_iter().filter(matches).max_by_key(|p| {
+        let state = match p.playback_state.get() {
+            PlaybackState::Playing => 2,
+            PlaybackState::Paused => 1,
+            PlaybackState::Stopped => 0,
+        };
+        let is_active = active.as_ref().map(|a| Arc::ptr_eq(a, p)).unwrap_or(false);
+        (state, is_active)
+    })
 }
 
 #[derive(serde::Serialize)]
@@ -1031,9 +1090,17 @@ fn spawn_daily_wallpaper_task(tx: mpsc::UnboundedSender<IPCCommand>) {
 /// One daily-wallpaper check (main thread). Skips when disabled or already done
 /// for today; otherwise kicks the blocking fetch on a worker and applies the
 /// result via `SetWallpaper`.
-fn run_daily_check(tx: &mpsc::UnboundedSender<IPCCommand>, last: &std::rc::Rc<std::cell::RefCell<String>>) {
+fn run_daily_check(
+    tx: &mpsc::UnboundedSender<IPCCommand>,
+    last: &std::rc::Rc<std::cell::RefCell<String>>,
+) {
     // Each reactive-store accessor consumes the subfield, so re-walk the chain.
-    if !config_manager().config().wallpaper().daily_wallpaper_enabled().get_untracked() {
+    if !config_manager()
+        .config()
+        .wallpaper()
+        .daily_wallpaper_enabled()
+        .get_untracked()
+    {
         return;
     }
     let Some(today) = glib::DateTime::now_local()
@@ -1048,8 +1115,16 @@ fn run_daily_check(tx: &mpsc::UnboundedSender<IPCCommand>, last: &std::rc::Rc<st
     }
     *last.borrow_mut() = today;
 
-    let source = config_manager().config().wallpaper().daily_wallpaper_source().get_untracked();
-    let locale = config_manager().config().wallpaper().daily_wallpaper_locale().get_untracked();
+    let source = config_manager()
+        .config()
+        .wallpaper()
+        .daily_wallpaper_source()
+        .get_untracked();
+    let locale = config_manager()
+        .config()
+        .wallpaper()
+        .daily_wallpaper_locale()
+        .get_untracked();
     let tx = tx.clone();
     tokio_rt().spawn(async move {
         let fetched = tokio::task::spawn_blocking(move || {
@@ -1118,8 +1193,11 @@ fn run_alarm_tick(last_minute: &std::rc::Rc<std::cell::Cell<i64>>) {
         if alarm.repeat_mask != 0 && (alarm.repeat_mask & (1 << weekday)) == 0 {
             continue; // repeating, but not on today's weekday
         }
-        let label =
-            if alarm.name.trim().is_empty() { "Alarm".to_string() } else { alarm.name.clone() };
+        let label = if alarm.name.trim().is_empty() {
+            "Alarm".to_string()
+        } else {
+            alarm.name.clone()
+        };
         fire_alarm(label);
         if alarm.repeat_mask == 0 {
             // One-shot: disable after it fires.
@@ -1137,17 +1215,37 @@ fn run_alarm_tick(last_minute: &std::rc::Rc<std::cell::Cell<i64>>) {
 /// any outcome, and Snooze re-queues a fire `snooze_minutes` later.
 fn fire_alarm(label: String) {
     play_alarm_loop();
-    if !config_manager().config().alarm().notifications().get_untracked() {
+    if !config_manager()
+        .config()
+        .alarm()
+        .notifications()
+        .get_untracked()
+    {
         return;
     }
-    let snooze_secs =
-        (config_manager().config().alarm().snooze_minutes().get_untracked().max(1) as u64) * 60;
+    let snooze_secs = (config_manager()
+        .config()
+        .alarm()
+        .snooze_minutes()
+        .get_untracked()
+        .max(1) as u64)
+        * 60;
     let urgency = config_manager().config().alarm().urgency().get_untracked();
     std::thread::spawn(move || {
         let action = std::process::Command::new("notify-send")
             .args([
-                "-a", "Alarm Clock", "-i", "alarm-symbolic", "-u", &urgency, "-A", "stop=Stop",
-                "-A", "snooze=Snooze", &label, "It's time.",
+                "-a",
+                "Alarm Clock",
+                "-i",
+                "alarm-symbolic",
+                "-u",
+                &urgency,
+                "-A",
+                "stop=Stop",
+                "-A",
+                "snooze=Snooze",
+                &label,
+                "It's time.",
             ])
             .output()
             .ok()
@@ -1377,10 +1475,9 @@ impl IPCService {
 
     async fn plugin_keybind(&self, arg: String) {
         let (key, id) = arg.split_once('|').unwrap_or((arg.as_str(), ""));
-        let _ = self.tx.send(IPCCommand::PluginKeybind(
-            key.to_string(),
-            id.to_string(),
-        ));
+        let _ = self
+            .tx
+            .send(IPCCommand::PluginKeybind(key.to_string(), id.to_string()));
     }
 
     async fn plugin_menu(&self, key: String) {
@@ -1390,16 +1487,24 @@ impl IPCService {
         let _ = self.tx.send(IPCCommand::SessionAction(SessionAction::Lock));
     }
     async fn session_logout(&self) {
-        let _ = self.tx.send(IPCCommand::SessionAction(SessionAction::Logout));
+        let _ = self
+            .tx
+            .send(IPCCommand::SessionAction(SessionAction::Logout));
     }
     async fn session_suspend(&self) {
-        let _ = self.tx.send(IPCCommand::SessionAction(SessionAction::Suspend));
+        let _ = self
+            .tx
+            .send(IPCCommand::SessionAction(SessionAction::Suspend));
     }
     async fn session_reboot(&self) {
-        let _ = self.tx.send(IPCCommand::SessionAction(SessionAction::Reboot));
+        let _ = self
+            .tx
+            .send(IPCCommand::SessionAction(SessionAction::Reboot));
     }
     async fn session_shutdown(&self) {
-        let _ = self.tx.send(IPCCommand::SessionAction(SessionAction::Shutdown));
+        let _ = self
+            .tx
+            .send(IPCCommand::SessionAction(SessionAction::Shutdown));
     }
     async fn close_all_menus(&self) {
         let _ = self.tx.send(IPCCommand::CloseAllMenus);

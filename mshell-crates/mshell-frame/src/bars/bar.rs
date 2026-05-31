@@ -1,60 +1,58 @@
+use crate::bars::bar_widgets::active_window::{ActiveWindowInit, ActiveWindowModel};
 use crate::bars::bar_widgets::alarm_clock::{AlarmClockInit, AlarmClockModel};
-use crate::bars::bar_widgets::control_center::{ControlCenterInit, ControlCenterModel};
 use crate::bars::bar_widgets::bluetooth::{BluetoothInit, BluetoothModel};
 use crate::bars::bar_widgets::clipboard::{ClipboardInit, ClipboardModel, ClipboardOutput};
-use crate::bars::bar_widgets::weather::{WeatherInit, WeatherModel, WeatherOutput};
 use crate::bars::bar_widgets::clock::{ClockInit, ClockModel, ClockOutput};
-use crate::bars::bar_widgets::cpu_dashboard::{CpuDashboardInit, CpuDashboardModel};
-use crate::bars::bar_widgets::dashboard::{DashboardInit, DashboardModel, DashboardOutput};
-use crate::bars::bar_widgets::dark_mode::{DarkModeInit, DarkModeModel};
-use crate::bars::bar_widgets::keep_awake::{KeepAwakeInit, KeepAwakeModel};
-use crate::bars::bar_widgets::keybinds::{KeybindsInit, KeybindsModel};
-use crate::bars::bar_widgets::ssh_sessions::{SshSessionsInit, SshSessionsModel};
-use crate::bars::bar_widgets::twilight::{TwilightInit, TwilightModel};
-use crate::bars::bar_widgets::lock_keys::{LockKeysInit, LockKeysModel};
 use crate::bars::bar_widgets::color_picker::{ColorPickerInit, ColorPickerModel};
-use crate::bars::bar_widgets::margo_dock::{
-    MargoDockInit, MargoDockModel, MargoDockOutput,
-};
-use crate::bars::bar_widgets::margo_layout::{MargoLayoutInit, MargoLayoutModel, MargoLayoutOutput};
-use crate::bars::bar_widgets::margo_tags::{
-    MargoTagsInit, MargoTagsModel,
-};
-use crate::bars::bar_widgets::lock::{LockInit, LockModel, LockOutput};
-use crate::bars::bar_widgets::setup::{SetupInit, SetupModel, SetupOutput};
-use crate::bars::bar_widgets::logout::{LogoutInit, LogoutModel};
+use crate::bars::bar_widgets::control_center::{ControlCenterInit, ControlCenterModel};
+use crate::bars::bar_widgets::cpu_dashboard::{CpuDashboardInit, CpuDashboardModel};
+use crate::bars::bar_widgets::custom::{CustomWidgetInit, CustomWidgetModel, CustomWidgetOutput};
+use crate::bars::bar_widgets::dark_mode::{DarkModeInit, DarkModeModel};
+use crate::bars::bar_widgets::dashboard::{DashboardInit, DashboardModel, DashboardOutput};
 use crate::bars::bar_widgets::dns::{DnsInit, DnsModel};
 use crate::bars::bar_widgets::ip::{IpInit, IpModel};
-use crate::bars::bar_widgets::network::{NetworkInit, NetworkModel};
-use crate::bars::bar_widgets::notes::{NotesInit, NotesModel};
-use crate::bars::bar_widgets::podman::{PodmanInit, PodmanModel};
-use crate::bars::bar_widgets::power::{PowerInit, PowerModel};
+use crate::bars::bar_widgets::keep_awake::{KeepAwakeInit, KeepAwakeModel};
+use crate::bars::bar_widgets::keybinds::{KeybindsInit, KeybindsModel};
+use crate::bars::bar_widgets::lock::{LockInit, LockModel, LockOutput};
+use crate::bars::bar_widgets::lock_keys::{LockKeysInit, LockKeysModel};
+use crate::bars::bar_widgets::logout::{LogoutInit, LogoutModel};
+use crate::bars::bar_widgets::margo_dock::{MargoDockInit, MargoDockModel, MargoDockOutput};
+use crate::bars::bar_widgets::margo_layout::{
+    MargoLayoutInit, MargoLayoutModel, MargoLayoutOutput,
+};
+use crate::bars::bar_widgets::margo_tags::{MargoTagsInit, MargoTagsModel};
 use crate::bars::bar_widgets::media_player::{
     MediaPlayerInit, MediaPlayerModel, MediaPlayerOutput,
 };
-use crate::bars::bar_widgets::active_window::{ActiveWindowInit, ActiveWindowModel};
-use crate::bars::bar_widgets::ufw::{UfwInit, UfwModel};
+use crate::bars::bar_widgets::network::{NetworkInit, NetworkModel};
+use crate::bars::bar_widgets::notes::{NotesInit, NotesModel};
 use crate::bars::bar_widgets::notifications::{
     NotificationsInit, NotificationsModel, NotificationsOutput,
 };
+use crate::bars::bar_widgets::podman::{PodmanInit, PodmanModel};
+use crate::bars::bar_widgets::power::{PowerInit, PowerModel};
 use crate::bars::bar_widgets::privacy::{PrivacyInit, PrivacyModel};
 use crate::bars::bar_widgets::reboot::{RebootInit, RebootModel};
 use crate::bars::bar_widgets::recording_indicator::{
     RecordingIndicatorInit, RecordingIndicatorModel,
 };
 use crate::bars::bar_widgets::screenshot::{ScreenshotInit, ScreenshotModel, ScreenshotOutput};
+use crate::bars::bar_widgets::setup::{SetupInit, SetupModel, SetupOutput};
 use crate::bars::bar_widgets::shutdown::{ShutdownInit, ShutdownModel};
+use crate::bars::bar_widgets::ssh_sessions::{SshSessionsInit, SshSessionsModel};
 use crate::bars::bar_widgets::system_tray::{SystemTrayInit, SystemTrayModel};
 use crate::bars::bar_widgets::system_update::{SystemUpdateInit, SystemUpdateModel};
-use crate::bars::bar_widgets::custom::{CustomWidgetInit, CustomWidgetModel, CustomWidgetOutput};
-use mshell_config::schema::config::CustomMenuRow;
+use crate::bars::bar_widgets::twilight::{TwilightInit, TwilightModel};
+use crate::bars::bar_widgets::ufw::{UfwInit, UfwModel};
 use crate::bars::bar_widgets::vpn_indicator::{VpnIndicatorInit, VpnIndicatorModel};
 use crate::bars::bar_widgets::wallpaper::{WallpaperInit, WallpaperModel, WallpaperOutput};
+use crate::bars::bar_widgets::weather::{WeatherInit, WeatherModel, WeatherOutput};
 use mshell_common::dynamic_box::generic_widget_controller::GenericWidgetController;
 use mshell_common::dynamic_box::simple_widget_controller::SimpleWidgetController;
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::bar_widgets::BarWidget;
+use mshell_config::schema::config::CustomMenuRow;
 use mshell_config::schema::config::{
     BarWidgetsStoreFields, BarsStoreFields, ConfigStoreFields, HiddenBarConfigStoreFields,
     HorizontalBarStoreFields,
@@ -646,9 +644,11 @@ impl BarModel {
             BarWidget::AudioDashboard => Box::new(
                 crate::bars::bar_widgets::audio_dashboard::AudioDashboardModel::builder()
                     .launch(crate::bars::bar_widgets::audio_dashboard::AudioDashboardInit {})
-                    .forward(sender.output_sender(), |msg| match msg {
+                    .forward(sender.output_sender(), |msg| {
+                        match msg {
                         crate::bars::bar_widgets::audio_dashboard::AudioDashboardOutput::Clicked
                             => BarOutput::AudioDashboardClicked,
+                    }
                     }),
             ),
             BarWidget::ActiveWindow => Box::new(
@@ -656,14 +656,16 @@ impl BarModel {
                     .launch(ActiveWindowInit {})
                     .detach(),
             ),
-            BarWidget::Bluetooth => Box::new(
-                BluetoothModel::builder()
-                    .launch(BluetoothInit {})
-                    .forward(sender.output_sender(), |msg| match msg {
-                        crate::bars::bar_widgets::bluetooth::BluetoothOutput::Clicked
-                            => BarOutput::BluetoothClicked,
-                    }),
-            ),
+            BarWidget::Bluetooth => {
+                Box::new(BluetoothModel::builder().launch(BluetoothInit {}).forward(
+                    sender.output_sender(),
+                    |msg| match msg {
+                        crate::bars::bar_widgets::bluetooth::BluetoothOutput::Clicked => {
+                            BarOutput::BluetoothClicked
+                        }
+                    },
+                ))
+            }
             BarWidget::Weather => Box::new(
                 WeatherModel::builder()
                     .launch(WeatherInit { orientation })
@@ -689,8 +691,9 @@ impl BarModel {
                 CpuDashboardModel::builder()
                     .launch(CpuDashboardInit { orientation })
                     .forward(sender.output_sender(), |msg| match msg {
-                        crate::bars::bar_widgets::cpu_dashboard::CpuDashboardOutput::Clicked
-                            => BarOutput::CpuDashboardClicked,
+                        crate::bars::bar_widgets::cpu_dashboard::CpuDashboardOutput::Clicked => {
+                            BarOutput::CpuDashboardClicked
+                        }
                     }),
             ),
             BarWidget::Dashboard => Box::new(
@@ -709,48 +712,54 @@ impl BarModel {
                 KeepAwakeModel::builder()
                     .launch(KeepAwakeInit { orientation })
                     .forward(sender.output_sender(), |msg| match msg {
-                        crate::bars::bar_widgets::keep_awake::KeepAwakeOutput::Clicked
-                            => BarOutput::KeepAwakeClicked,
+                        crate::bars::bar_widgets::keep_awake::KeepAwakeOutput::Clicked => {
+                            BarOutput::KeepAwakeClicked
+                        }
                     }),
             ),
             BarWidget::Twilight => Box::new(
                 TwilightModel::builder()
                     .launch(TwilightInit { orientation })
                     .forward(sender.output_sender(), |msg| match msg {
-                        crate::bars::bar_widgets::twilight::TwilightOutput::Clicked
-                            => BarOutput::TwilightClicked,
+                        crate::bars::bar_widgets::twilight::TwilightOutput::Clicked => {
+                            BarOutput::TwilightClicked
+                        }
                     }),
             ),
             BarWidget::Keybinds => Box::new(
                 KeybindsModel::builder()
                     .launch(KeybindsInit { orientation })
                     .forward(sender.output_sender(), |msg| match msg {
-                        crate::bars::bar_widgets::keybinds::KeybindsOutput::Clicked
-                            => BarOutput::KeybindsClicked,
+                        crate::bars::bar_widgets::keybinds::KeybindsOutput::Clicked => {
+                            BarOutput::KeybindsClicked
+                        }
                     }),
             ),
             BarWidget::AlarmClock => Box::new(
                 AlarmClockModel::builder()
                     .launch(AlarmClockInit { orientation })
                     .forward(sender.output_sender(), |msg| match msg {
-                        crate::bars::bar_widgets::alarm_clock::AlarmClockOutput::Clicked
-                            => BarOutput::AlarmClockClicked,
+                        crate::bars::bar_widgets::alarm_clock::AlarmClockOutput::Clicked => {
+                            BarOutput::AlarmClockClicked
+                        }
                     }),
             ),
             BarWidget::ControlCenter => Box::new(
                 ControlCenterModel::builder()
                     .launch(ControlCenterInit { orientation })
                     .forward(sender.output_sender(), |msg| match msg {
-                        crate::bars::bar_widgets::control_center::ControlCenterOutput::Clicked
-                            => BarOutput::ControlCenterClicked,
+                        crate::bars::bar_widgets::control_center::ControlCenterOutput::Clicked => {
+                            BarOutput::ControlCenterClicked
+                        }
                     }),
             ),
             BarWidget::SshSessions => Box::new(
                 SshSessionsModel::builder()
                     .launch(SshSessionsInit { orientation })
                     .forward(sender.output_sender(), |msg| match msg {
-                        crate::bars::bar_widgets::ssh_sessions::SshSessionsOutput::Clicked
-                            => BarOutput::SshSessionsClicked,
+                        crate::bars::bar_widgets::ssh_sessions::SshSessionsOutput::Clicked => {
+                            BarOutput::SshSessionsClicked
+                        }
                     }),
             ),
             BarWidget::LockKeys => Box::new(
@@ -804,60 +813,50 @@ impl BarModel {
                     .launch(LogoutInit { orientation })
                     .detach(),
             ),
-            BarWidget::Dns => Box::new(
-                DnsModel::builder()
-                    .launch(DnsInit {})
-                    .forward(sender.output_sender(), |msg| match msg {
-                        crate::bars::bar_widgets::dns::DnsOutput::Clicked => {
-                            BarOutput::DnsClicked
-                        }
-                    }),
-            ),
-            BarWidget::Ip => Box::new(
-                IpModel::builder()
-                    .launch(IpInit {})
-                    .forward(sender.output_sender(), |msg| match msg {
-                        crate::bars::bar_widgets::ip::IpOutput::Clicked => {
-                            BarOutput::IpClicked
-                        }
-                    }),
-            ),
-            BarWidget::Network => Box::new(
-                NetworkModel::builder()
-                    .launch(NetworkInit {})
-                    .forward(sender.output_sender(), |msg| match msg {
-                        crate::bars::bar_widgets::network::NetworkOutput::Clicked => {
-                            BarOutput::NetworkClicked
-                        }
-                    }),
-            ),
-            BarWidget::Notes => Box::new(
-                NotesModel::builder()
-                    .launch(NotesInit {})
-                    .forward(sender.output_sender(), |msg| match msg {
-                        crate::bars::bar_widgets::notes::NotesOutput::Clicked => {
-                            BarOutput::NotesClicked
-                        }
-                    }),
-            ),
-            BarWidget::Podman => Box::new(
-                PodmanModel::builder()
-                    .launch(PodmanInit {})
-                    .forward(sender.output_sender(), |msg| match msg {
-                        crate::bars::bar_widgets::podman::PodmanOutput::Clicked => {
-                            BarOutput::PodmanClicked
-                        }
-                    }),
-            ),
-            BarWidget::Power => Box::new(
-                PowerModel::builder()
-                    .launch(PowerInit {})
-                    .forward(sender.output_sender(), |msg| match msg {
-                        crate::bars::bar_widgets::power::PowerOutput::Clicked => {
-                            BarOutput::PowerClicked
-                        }
-                    }),
-            ),
+            BarWidget::Dns => Box::new(DnsModel::builder().launch(DnsInit {}).forward(
+                sender.output_sender(),
+                |msg| match msg {
+                    crate::bars::bar_widgets::dns::DnsOutput::Clicked => BarOutput::DnsClicked,
+                },
+            )),
+            BarWidget::Ip => Box::new(IpModel::builder().launch(IpInit {}).forward(
+                sender.output_sender(),
+                |msg| match msg {
+                    crate::bars::bar_widgets::ip::IpOutput::Clicked => BarOutput::IpClicked,
+                },
+            )),
+            BarWidget::Network => Box::new(NetworkModel::builder().launch(NetworkInit {}).forward(
+                sender.output_sender(),
+                |msg| match msg {
+                    crate::bars::bar_widgets::network::NetworkOutput::Clicked => {
+                        BarOutput::NetworkClicked
+                    }
+                },
+            )),
+            BarWidget::Notes => Box::new(NotesModel::builder().launch(NotesInit {}).forward(
+                sender.output_sender(),
+                |msg| match msg {
+                    crate::bars::bar_widgets::notes::NotesOutput::Clicked => {
+                        BarOutput::NotesClicked
+                    }
+                },
+            )),
+            BarWidget::Podman => Box::new(PodmanModel::builder().launch(PodmanInit {}).forward(
+                sender.output_sender(),
+                |msg| match msg {
+                    crate::bars::bar_widgets::podman::PodmanOutput::Clicked => {
+                        BarOutput::PodmanClicked
+                    }
+                },
+            )),
+            BarWidget::Power => Box::new(PowerModel::builder().launch(PowerInit {}).forward(
+                sender.output_sender(),
+                |msg| match msg {
+                    crate::bars::bar_widgets::power::PowerOutput::Clicked => {
+                        BarOutput::PowerClicked
+                    }
+                },
+            )),
             BarWidget::MediaPlayer => Box::new(
                 MediaPlayerModel::builder()
                     .launch(MediaPlayerInit {})
@@ -865,15 +864,12 @@ impl BarModel {
                         MediaPlayerOutput::Clicked => BarOutput::MediaPlayerClicked,
                     }),
             ),
-            BarWidget::Ufw => Box::new(
-                UfwModel::builder()
-                    .launch(UfwInit {})
-                    .forward(sender.output_sender(), |msg| match msg {
-                        crate::bars::bar_widgets::ufw::UfwOutput::Clicked => {
-                            BarOutput::UfwClicked
-                        }
-                    }),
-            ),
+            BarWidget::Ufw => Box::new(UfwModel::builder().launch(UfwInit {}).forward(
+                sender.output_sender(),
+                |msg| match msg {
+                    crate::bars::bar_widgets::ufw::UfwOutput::Clicked => BarOutput::UfwClicked,
+                },
+            )),
             BarWidget::Notifications => Box::new(
                 NotificationsModel::builder()
                     .launch(NotificationsInit { orientation })
@@ -917,16 +913,18 @@ impl BarModel {
                 SystemUpdateModel::builder()
                     .launch(SystemUpdateInit { orientation })
                     .forward(sender.output_sender(), |msg| match msg {
-                        crate::bars::bar_widgets::system_update::SystemUpdateOutput::Clicked
-                            => BarOutput::SystemUpdateClicked,
+                        crate::bars::bar_widgets::system_update::SystemUpdateOutput::Clicked => {
+                            BarOutput::SystemUpdateClicked
+                        }
                     }),
             ),
             BarWidget::Valent => Box::new(
                 crate::bars::bar_widgets::valent::ValentModel::builder()
                     .launch(crate::bars::bar_widgets::valent::ValentInit { orientation })
                     .forward(sender.output_sender(), |msg| match msg {
-                        crate::bars::bar_widgets::valent::ValentOutput::Clicked
-                            => BarOutput::ValentClicked,
+                        crate::bars::bar_widgets::valent::ValentOutput::Clicked => {
+                            BarOutput::ValentClicked
+                        }
                     }),
             ),
             BarWidget::VpnIndicator => Box::new(

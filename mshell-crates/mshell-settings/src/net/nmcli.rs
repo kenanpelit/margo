@@ -73,7 +73,14 @@ async fn run(args: &[&str]) -> Result<String, String> {
 }
 
 pub async fn list_connections() -> Result<Vec<ConnRow>, String> {
-    let out = run(&["-t", "-f", "NAME,UUID,TYPE,DEVICE,ACTIVE", "connection", "show"]).await?;
+    let out = run(&[
+        "-t",
+        "-f",
+        "NAME,UUID,TYPE,DEVICE,ACTIVE",
+        "connection",
+        "show",
+    ])
+    .await?;
     Ok(parse_connections(&out))
 }
 
@@ -118,7 +125,10 @@ pub async fn import_vpn(path: &str, kind: &str) -> Result<(), String> {
 pub async fn get_field(uuid: &str, field: &str) -> Result<String, String> {
     let out = run(&["-t", "-f", field, "connection", "show", uuid]).await?;
     // single-field terse output is `field:value`; take the value
-    Ok(split_terse(out.trim()).into_iter().nth(1).unwrap_or_default())
+    Ok(split_terse(out.trim())
+        .into_iter()
+        .nth(1)
+        .unwrap_or_default())
 }
 
 #[cfg(test)]

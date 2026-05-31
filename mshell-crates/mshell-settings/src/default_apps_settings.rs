@@ -43,11 +43,7 @@ const CATEGORIES: &[(&str, &str, &[&str])] = &[
         "audio/mpeg",
         &["audio/mpeg", "audio/flac", "audio/x-vorbis+ogg"],
     ),
-    (
-        "Video",
-        "video/mp4",
-        &["video/mp4", "video/x-matroska"],
-    ),
+    ("Video", "video/mp4", &["video/mp4", "video/x-matroska"]),
     ("Photos", "image/jpeg", &["image/jpeg", "image/png"]),
     ("Files", "inode/directory", &["inode/directory"]),
 ];
@@ -166,10 +162,7 @@ impl Component for DefaultAppsSettingsModel {
             };
 
             // Build the DropDown.
-            let dd = gtk::DropDown::new(
-                Some(string_list),
-                gtk::Expression::NONE,
-            );
+            let dd = gtk::DropDown::new(Some(string_list), gtk::Expression::NONE);
             dd.set_selected(current_idx);
             dd.set_valign(gtk::Align::Center);
 

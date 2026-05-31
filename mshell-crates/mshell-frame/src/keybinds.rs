@@ -33,7 +33,15 @@ pub(crate) struct Section {
 
 /// Category order in the cheatsheet.
 const CATEGORIES: &[&str] = &[
-    "Launch", "Windows", "Workspaces", "Layout", "Scratchpad", "Media", "Shell", "System", "General",
+    "Launch",
+    "Windows",
+    "Workspaces",
+    "Layout",
+    "Scratchpad",
+    "Media",
+    "Shell",
+    "System",
+    "General",
 ];
 
 /// `~/.config/margo/config.conf` (or `$XDG_CONFIG_HOME/margo/...`).
@@ -51,9 +59,10 @@ fn config_path() -> PathBuf {
 fn expand(path: &str, base_dir: &Path) -> PathBuf {
     let p = path.trim().trim_matches('"');
     if let Some(rest) = p.strip_prefix("~/")
-        && let Some(home) = std::env::var_os("HOME") {
-            return PathBuf::from(home).join(rest);
-        }
+        && let Some(home) = std::env::var_os("HOME")
+    {
+        return PathBuf::from(home).join(rest);
+    }
     let pb = PathBuf::from(p);
     if pb.is_absolute() {
         pb
@@ -76,10 +85,11 @@ fn read_all_lines(path: &Path, visited: &mut HashSet<PathBuf>, out: &mut Vec<Str
     for line in text.lines() {
         let trimmed = line.trim();
         if let Some(rest) = trimmed.strip_prefix("source")
-            && let Some(val) = rest.trim_start().strip_prefix('=') {
-                read_all_lines(&expand(val, &base_dir), visited, out);
-                continue;
-            }
+            && let Some(val) = rest.trim_start().strip_prefix('=')
+        {
+            read_all_lines(&expand(val, &base_dir), visited, out);
+            continue;
+        }
         out.push(line.to_string());
     }
 }
@@ -90,7 +100,8 @@ pub(crate) fn load_sections() -> Vec<Section> {
     let mut lines = Vec::new();
     read_all_lines(&config_path(), &mut HashSet::new(), &mut lines);
 
-    let mut by_cat: std::collections::HashMap<&'static str, Vec<Keybind>> = std::collections::HashMap::new();
+    let mut by_cat: std::collections::HashMap<&'static str, Vec<Keybind>> =
+        std::collections::HashMap::new();
     for line in &lines {
         if let Some((cat, kb)) = parse_bind(line) {
             by_cat.entry(cat).or_default().push(kb);
@@ -100,7 +111,10 @@ pub(crate) fn load_sections() -> Vec<Section> {
     CATEGORIES
         .iter()
         .filter_map(|&title| {
-            by_cat.remove(title).filter(|b| !b.is_empty()).map(|binds| Section { title, binds })
+            by_cat
+                .remove(title)
+                .filter(|b| !b.is_empty())
+                .map(|binds| Section { title, binds })
         })
         .collect()
 }
@@ -144,16 +158,20 @@ fn parse_bind(line: &str) -> Option<(&'static str, Keybind)> {
 /// Pull a trailing `#"quoted"` or ` # plain` comment off a bind body.
 fn split_comment(body: &str) -> (&str, Option<String>) {
     if let Some(start) = body.rfind("#\"")
-        && let Some(end) = body[start + 2..].find('"') {
-            let desc = body[start + 2..start + 2 + end].trim().to_string();
-            return (body[..start].trim_end(), Some(desc));
-        }
+        && let Some(end) = body[start + 2..].find('"')
+    {
+        let desc = body[start + 2..start + 2 + end].trim().to_string();
+        return (body[..start].trim_end(), Some(desc));
+    }
     // Plain ` # comment` (hash preceded by whitespace).
     let bytes = body.as_bytes();
     for (i, &b) in bytes.iter().enumerate() {
         if b == b'#' && i > 0 && bytes[i - 1].is_ascii_whitespace() {
             let desc = body[i + 1..].trim().to_string();
-            return (body[..i].trim_end(), if desc.is_empty() { None } else { Some(desc) });
+            return (
+                body[..i].trim_end(),
+                if desc.is_empty() { None } else { Some(desc) },
+            );
         }
     }
     (body, None)

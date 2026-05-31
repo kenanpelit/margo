@@ -91,29 +91,13 @@ impl MlockSurface {
         // Draw via cairo. ImageSurface borrows the buffer; we flush
         // before unmap.
         crate::render::draw_lock_frame(
-            pixels,
-            width,
-            height,
-            stride,
-            seat_state,
-            user,
-            wallpaper,
-            avatar,
-            accent,
+            pixels, width, height, stride, seat_state, user, wallpaper, avatar, accent,
         )?;
 
         // Hand the buffer off to the compositor. wl_shm_pool needs an
         // OwnedFd; we kept `fd` until now.
         let pool = shm.create_pool(fd.as_fd(), len as i32, qh, ());
-        let buffer = pool.create_buffer(
-            0,
-            width,
-            height,
-            stride,
-            wl_shm::Format::Argb8888,
-            qh,
-            (),
-        );
+        let buffer = pool.create_buffer(0, width, height, stride, wl_shm::Format::Argb8888, qh, ());
         // The pool can be released as soon as the buffer references it.
         pool.destroy();
 

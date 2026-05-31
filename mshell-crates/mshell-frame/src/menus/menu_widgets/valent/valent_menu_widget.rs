@@ -201,12 +201,13 @@ impl Component for ValentMenuWidgetModel {
                 let sender = sender.clone();
                 dialog.open(gtk::Window::NONE, gtk::gio::Cancellable::NONE, move |res| {
                     if let Ok(file) = res
-                        && let Some(path) = file.path() {
-                            sender.input(ValentMenuWidgetInput::Share(
-                                id.clone(),
-                                path.to_string_lossy().into_owned(),
-                            ));
-                        }
+                        && let Some(path) = file.path()
+                    {
+                        sender.input(ValentMenuWidgetInput::Share(
+                            id.clone(),
+                            path.to_string_lossy().into_owned(),
+                        ));
+                    }
                 });
             }
             ValentMenuWidgetInput::Share(id, path) => {
@@ -269,7 +270,10 @@ fn rebuild_content(
     }
 
     let Some(report) = report else {
-        container.append(&info_card("dialog-information-symbolic", "Checking for devices…"));
+        container.append(&info_card(
+            "dialog-information-symbolic",
+            "Checking for devices…",
+        ));
         return;
     };
 
@@ -305,10 +309,7 @@ fn rebuild_content(
 
 // ── Cards ───────────────────────────────────────────────────────
 
-fn connected_card(
-    device: &Device,
-    sender: &ComponentSender<ValentMenuWidgetModel>,
-) -> gtk::Box {
+fn connected_card(device: &Device, sender: &ComponentSender<ValentMenuWidgetModel>) -> gtk::Box {
     let card = card_box("valent-card");
 
     // Header row: name + action buttons.
@@ -372,8 +373,7 @@ fn connected_card(
     // Cellular stats only show when the phone's connectivity report
     // plugin actually sends data — otherwise both rows just read
     // "Unknown", which looks broken. A muted hint explains why.
-    let has_connectivity =
-        device.network_strength >= 0 || !device.network_type.is_empty();
+    let has_connectivity = device.network_strength >= 0 || !device.network_type.is_empty();
     if has_connectivity {
         stats.append(&stat_row(
             network_type_icon(&device.network_type),
@@ -408,10 +408,7 @@ fn connected_card(
     card
 }
 
-fn pairing_card(
-    device: &Device,
-    sender: &ComponentSender<ValentMenuWidgetModel>,
-) -> gtk::Box {
+fn pairing_card(device: &Device, sender: &ComponentSender<ValentMenuWidgetModel>) -> gtk::Box {
     let card = card_box("valent-card");
 
     let name = gtk::Label::builder()
@@ -451,10 +448,7 @@ fn pairing_card(
     card
 }
 
-fn unreachable_card(
-    device: &Device,
-    sender: &ComponentSender<ValentMenuWidgetModel>,
-) -> gtk::Box {
+fn unreachable_card(device: &Device, sender: &ComponentSender<ValentMenuWidgetModel>) -> gtk::Box {
     let card = info_card(
         "phone-symbolic",
         &format!("{} is paired but not reachable.", device.name),
@@ -560,9 +554,17 @@ fn stat_row(icon: &str, label: &str, value: &str) -> gtk::Box {
     let col = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .build();
-    let cap = gtk::Label::builder().label(label).halign(gtk::Align::Start).xalign(0.0).build();
+    let cap = gtk::Label::builder()
+        .label(label)
+        .halign(gtk::Align::Start)
+        .xalign(0.0)
+        .build();
     cap.add_css_class("valent-stat-caption");
-    let val = gtk::Label::builder().label(value).halign(gtk::Align::Start).xalign(0.0).build();
+    let val = gtk::Label::builder()
+        .label(value)
+        .halign(gtk::Align::Start)
+        .xalign(0.0)
+        .build();
     val.add_css_class("valent-stat-value");
     col.append(&cap);
     col.append(&val);

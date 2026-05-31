@@ -19,6 +19,7 @@ use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
     ConfigStoreFields, DockStoreFields, IconsStoreFields, ThemeStoreFields,
 };
+use mshell_margo_client::{Address, Client, MargoEvent};
 use mshell_services::margo_service;
 use reactive_graph::traits::*;
 use relm4::gtk::{Orientation, RevealerTransitionType};
@@ -27,7 +28,6 @@ use relm4::{
     gtk::prelude::*,
 };
 use std::sync::Arc;
-use mshell_margo_client::{Address, Client, MargoEvent};
 
 #[derive(Clone, Debug)]
 pub struct DockItem {
@@ -102,16 +102,15 @@ impl Component for MargoDockModel {
         let factory = DynamicBoxFactory::<DockItem, String> {
             id: Box::new(|item| item.class.clone()),
             create: Box::new(move |item| {
-                let controller: Controller<MargoDockItemModel> =
-                    MargoDockItemModel::builder()
-                        .launch(MargoDockItemInit {
-                            class: item.class.clone(),
-                            client_count: item.client_count,
-                            bar_type: params.bar_type,
-                            orientation: params.orientation,
-                            pinned: item.pinned,
-                        })
-                        .detach();
+                let controller: Controller<MargoDockItemModel> = MargoDockItemModel::builder()
+                    .launch(MargoDockItemInit {
+                        class: item.class.clone(),
+                        client_count: item.client_count,
+                        bar_type: params.bar_type,
+                        orientation: params.orientation,
+                        pinned: item.pinned,
+                    })
+                    .detach();
                 Box::new(controller) as Box<dyn GenericWidgetController>
             }),
             update: None,
@@ -472,21 +471,19 @@ impl MargoDockModel {
     }
 
     fn spawn_active_window_watcher(sender: &ComponentSender<Self>) {
-        sender.command(move |out, shutdown| {
-            async move {
-                let hyprland = margo_service();
-                let mut events = hyprland.events();
-                let shutdown_fut = shutdown.wait();
-                tokio::pin!(shutdown_fut);
+        sender.command(move |out, shutdown| async move {
+            let hyprland = margo_service();
+            let mut events = hyprland.events();
+            let shutdown_fut = shutdown.wait();
+            tokio::pin!(shutdown_fut);
 
-                loop {
-                    tokio::select! {
-                        () = &mut shutdown_fut => return,
-                        event = events.next() => {
-                            let Some(event) = event else { continue; };
-                            if let MargoEvent::ActiveWindowV2 { address } = event {
-                                let _ = out.send(MargoDockCommandOutput::ActiveWindowChanged(address));
-                            }
+            loop {
+                tokio::select! {
+                    () = &mut shutdown_fut => return,
+                    event = events.next() => {
+                        let Some(event) = event else { continue; };
+                        if let MargoEvent::ActiveWindowV2 { address } = event {
+                            let _ = out.send(MargoDockCommandOutput::ActiveWindowChanged(address));
                         }
                     }
                 }

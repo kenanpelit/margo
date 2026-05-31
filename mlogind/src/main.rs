@@ -80,7 +80,11 @@ fn sync_theme() -> Result<(), Box<dyn Error>> {
         )
     })?;
 
-    println!("mlogind: synced palette {} → {}", src.display(), dst.display());
+    println!(
+        "mlogind: synced palette {} → {}",
+        src.display(),
+        dst.display()
+    );
     Ok(())
 }
 

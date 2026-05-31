@@ -11,7 +11,9 @@ use smithay::{
     output::Output,
     reexports::wayland_server::protocol::wl_output::WlOutput,
     utils::Size,
-    wayland::session_lock::{LockSurface, SessionLockHandler, SessionLockManagerState, SessionLocker},
+    wayland::session_lock::{
+        LockSurface, SessionLockHandler, SessionLockManagerState, SessionLocker,
+    },
 };
 
 use crate::state::MargoState;

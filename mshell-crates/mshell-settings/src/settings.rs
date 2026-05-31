@@ -1,47 +1,47 @@
 use crate::about_settings::{AboutSettingsInit, AboutSettingsModel};
 use crate::animations_settings::{AnimationsSettingsInit, AnimationsSettingsModel};
-use crate::bluetooth_settings::{BluetoothSettingsInit, BluetoothSettingsModel};
-use crate::default_apps_settings::{DefaultAppsSettingsInit, DefaultAppsSettingsModel};
-use crate::network_settings::{NetworkSettingsInit, NetworkSettingsModel};
-use crate::plugins_settings::{PluginsSettingsInit, PluginsSettingsModel};
-use crate::power_settings::{PowerSettingsInit, PowerSettingsModel};
-use crate::privacy_settings::{PrivacySettingsInit, PrivacySettingsModel};
-use crate::overview_settings::{OverviewSettingsInit, OverviewSettingsModel};
+use crate::bar_pill_settings::{BarPillKind, BarPillSettingsInit, BarPillSettingsModel};
 use crate::bar_settings::bar_settings::{BarSettingsInit, BarSettingsModel};
 use crate::bar_settings::bar_widget_factory::BarListLocation;
 use crate::bar_settings::bar_widget_section::{
     BarSection, WidgetSectionInit, WidgetSectionInput, WidgetSectionModel,
 };
+use crate::bluetooth_settings::{BluetoothSettingsInit, BluetoothSettingsModel};
+use crate::catwalk_settings::{CatwalkSettingsInit, CatwalkSettingsModel};
+use crate::date_time_settings::{DateTimeSettingsInit, DateTimeSettingsModel};
+use crate::default_apps_settings::{DefaultAppsSettingsInit, DefaultAppsSettingsModel};
+use crate::display_settings::{DisplaySettingsInit, DisplaySettingsModel};
+use crate::fonts_settings::{FontsSettingsInit, FontsSettingsModel};
+use crate::general_settings::{GeneralSettingsInit, GeneralSettingsModel};
 use crate::hidden_bar_settings::{HiddenBarSettingsInit, HiddenBarSettingsModel};
+use crate::idle_settings::{IdleSettingsInit, IdleSettingsModel};
+use crate::input_settings::{InputSettingsInit, InputSettingsModel};
+use crate::keybinds_settings::{KeybindsSettingsInit, KeybindsSettingsModel};
+use crate::launcher_settings::{LauncherSettingsInit, LauncherSettingsModel};
+use crate::lock_settings::{LockSettingsInit, LockSettingsModel};
+use crate::media_player_settings::{MediaPlayerSettingsInit, MediaPlayerSettingsModel};
+use crate::menu_settings::menu_settings::{MenuSettingsInit, MenuSettingsModel};
+use crate::network_settings::{NetworkSettingsInit, NetworkSettingsModel};
+use crate::notification_settings::{NotificationSettingsInit, NotificationSettingsModel};
+use crate::overview_settings::{OverviewSettingsInit, OverviewSettingsModel};
+use crate::plugins_settings::{PluginsSettingsInit, PluginsSettingsModel};
+use crate::power_settings::{PowerSettingsInit, PowerSettingsModel};
+use crate::privacy_settings::{PrivacySettingsInit, PrivacySettingsModel};
+use crate::region_settings::{RegionSettingsInit, RegionSettingsModel};
+use crate::session_settings::{SessionSettingsInit, SessionSettingsModel};
+use crate::setup_settings::{SetupSettingsInit, SetupSettingsModel};
+use crate::sound_settings::{SoundSettingsInit, SoundSettingsModel};
+use crate::tag_layout_settings::{TagLayoutSettingsInit, TagLayoutSettingsModel};
+use crate::theme_settings::theme_settings::{ThemeSettingsInit, ThemeSettingsModel};
+use crate::users_settings::{UsersSettingsInit, UsersSettingsModel};
+use crate::wallpaper_settings::{WallpaperSettingsInit, WallpaperSettingsModel};
+use crate::weather_settings::{WeatherSettingsInit, WeatherSettingsModel};
+use crate::widget_menu_settings::{MenuKind, WidgetMenuSettingsInit, WidgetMenuSettingsModel};
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{BarsStoreFields, ConfigStoreFields, HorizontalBarStoreFields};
 use reactive_graph::prelude::Get;
 use reactive_graph::traits::ReadUntracked;
-use crate::catwalk_settings::{CatwalkSettingsInit, CatwalkSettingsModel};
-use crate::date_time_settings::{DateTimeSettingsInit, DateTimeSettingsModel};
-use crate::region_settings::{RegionSettingsInit, RegionSettingsModel};
-use crate::sound_settings::{SoundSettingsInit, SoundSettingsModel};
-use crate::users_settings::{UsersSettingsInit, UsersSettingsModel};
-use crate::display_settings::{DisplaySettingsInit, DisplaySettingsModel};
-use crate::fonts_settings::{FontsSettingsInit, FontsSettingsModel};
-use crate::input_settings::{InputSettingsInit, InputSettingsModel};
-use crate::keybinds_settings::{KeybindsSettingsInit, KeybindsSettingsModel};
-use crate::general_settings::{GeneralSettingsInit, GeneralSettingsModel};
-use crate::media_player_settings::{MediaPlayerSettingsInit, MediaPlayerSettingsModel};
-use crate::weather_settings::{WeatherSettingsInit, WeatherSettingsModel};
-use crate::idle_settings::{IdleSettingsInit, IdleSettingsModel};
-use crate::lock_settings::{LockSettingsInit, LockSettingsModel};
-use crate::tag_layout_settings::{TagLayoutSettingsInit, TagLayoutSettingsModel};
-use crate::launcher_settings::{LauncherSettingsInit, LauncherSettingsModel};
-use crate::menu_settings::menu_settings::{MenuSettingsInit, MenuSettingsModel};
-use crate::notification_settings::{NotificationSettingsInit, NotificationSettingsModel};
-use crate::session_settings::{SessionSettingsInit, SessionSettingsModel};
-use crate::setup_settings::{SetupSettingsInit, SetupSettingsModel};
-use crate::theme_settings::theme_settings::{ThemeSettingsInit, ThemeSettingsModel};
-use crate::wallpaper_settings::{WallpaperSettingsInit, WallpaperSettingsModel};
-use crate::bar_pill_settings::{BarPillKind, BarPillSettingsInit, BarPillSettingsModel};
-use crate::widget_menu_settings::{MenuKind, WidgetMenuSettingsInit, WidgetMenuSettingsModel};
 use relm4::gtk::prelude::{
     BoxExt, ButtonExt, EditableExt, MonitorExt, OrientableExt, ToggleButtonExt, WidgetExt,
 };
@@ -1127,9 +1127,10 @@ impl Component for SettingsWindowModel {
                 let mut child = sidebar.first_child();
                 while let Some(c) = child {
                     if let Ok(btn) = c.clone().downcast::<gtk::ToggleButton>()
-                        && btn.has_css_class("sidebar-button") {
-                            buttons.push(btn);
-                        }
+                        && btn.has_css_class("sidebar-button")
+                    {
+                        buttons.push(btn);
+                    }
                     child = c.next_sibling();
                 }
                 if buttons.is_empty() {
@@ -1144,8 +1145,10 @@ impl Component for SettingsWindowModel {
                     .unwrap_or(false);
                 if in_search {
                     if dir == 1 {
-                        let target =
-                            buttons.iter().find(|b| b.is_active()).unwrap_or(&buttons[0]);
+                        let target = buttons
+                            .iter()
+                            .find(|b| b.is_active())
+                            .unwrap_or(&buttons[0]);
                         target.grab_focus();
                         return glib::Propagation::Stop;
                     }
@@ -1210,7 +1213,6 @@ impl Component for SettingsWindowModel {
             Some("setup"),
             "Setup",
         );
-
 
         widgets.stack.add_titled(
             model.theme_settings_controller.widget(),
@@ -1412,7 +1414,9 @@ impl Component for SettingsWindowModel {
         // Helper closure: build one sub-sidebar ToggleButton +
         // wire it to flip the sub-stack. All buttons except the
         // first share the same `group` so they radio-toggle.
-        let make_sub_btn = |label: &str, icon: &str, stack_name: &'static str,
+        let make_sub_btn = |label: &str,
+                            icon: &str,
+                            stack_name: &'static str,
                             first: Option<&gtk::ToggleButton>|
          -> gtk::ToggleButton {
             let mut builder = gtk::ToggleButton::builder().css_classes(["sidebar-button"]);
@@ -1508,57 +1512,217 @@ impl Component for SettingsWindowModel {
 
         let mut entries: Vec<WidgetEntry> = vec![
             // Menu surfaces (own their own widget_menu_settings page).
-            WidgetEntry::Menu { kind: MenuKind::AppLauncher, stack_name: "app_launcher", label: "App Launcher", icon: "view-grid-symbolic" },
+            WidgetEntry::Menu {
+                kind: MenuKind::AppLauncher,
+                stack_name: "app_launcher",
+                label: "App Launcher",
+                icon: "view-grid-symbolic",
+            },
             // Clipboard owns a richer page (menu size + history
             // behaviour), so it's a dedicated entry rather than the
             // generic per-menu settings.
             WidgetEntry::Clipboard,
-            WidgetEntry::Menu { kind: MenuKind::Clock, stack_name: "clock", label: "Clock", icon: "alarm-symbolic" },
-            WidgetEntry::Menu { kind: MenuKind::Dashboard, stack_name: "dashboard", label: "Dashboard", icon: "view-grid-symbolic" },
-            WidgetEntry::Menu { kind: MenuKind::Dns, stack_name: "dns", label: "DNS / VPN", icon: "network-vpn-symbolic" },
+            WidgetEntry::Menu {
+                kind: MenuKind::Clock,
+                stack_name: "clock",
+                label: "Clock",
+                icon: "alarm-symbolic",
+            },
+            WidgetEntry::Menu {
+                kind: MenuKind::Dashboard,
+                stack_name: "dashboard",
+                label: "Dashboard",
+                icon: "view-grid-symbolic",
+            },
+            WidgetEntry::Menu {
+                kind: MenuKind::Dns,
+                stack_name: "dns",
+                label: "DNS / VPN",
+                icon: "network-vpn-symbolic",
+            },
             WidgetEntry::MediaPlayer,
             WidgetEntry::HiddenBar,
             WidgetEntry::Catwalk,
-            WidgetEntry::Menu { kind: MenuKind::Network, stack_name: "network", label: "Network Console", icon: "network-workgroup-symbolic" },
-            WidgetEntry::Menu { kind: MenuKind::Notes, stack_name: "notes", label: "Notes Hub", icon: "notes-symbolic" },
-            WidgetEntry::Menu { kind: MenuKind::Podman, stack_name: "podman", label: "Podman", icon: "package-symbolic" },
-            WidgetEntry::Menu { kind: MenuKind::Power, stack_name: "power", label: "Power Profile", icon: "power-profile-balanced-symbolic" },
-            WidgetEntry::Menu { kind: MenuKind::Ip, stack_name: "ip", label: "Public IP", icon: "network-wired-symbolic" },
-            WidgetEntry::Menu { kind: MenuKind::Screenshot, stack_name: "screenshot", label: "Screenshot", icon: "camera-photo-symbolic" },
-            WidgetEntry::Menu { kind: MenuKind::Ufw, stack_name: "ufw", label: "UFW Firewall", icon: "firewall-symbolic" },
-            WidgetEntry::Menu { kind: MenuKind::Bluetooth, stack_name: "bluetooth", label: "Bluetooth", icon: "bluetooth-active-symbolic" },
-            WidgetEntry::Menu { kind: MenuKind::CpuDashboard, stack_name: "cpu_dashboard", label: "CPU Dashboard", icon: "computer-symbolic" },
-            WidgetEntry::Menu { kind: MenuKind::AudioDashboard, stack_name: "audio_dashboard", label: "Audio Dashboard", icon: "audio-volume-high-symbolic" },
+            WidgetEntry::Menu {
+                kind: MenuKind::Network,
+                stack_name: "network",
+                label: "Network Console",
+                icon: "network-workgroup-symbolic",
+            },
+            WidgetEntry::Menu {
+                kind: MenuKind::Notes,
+                stack_name: "notes",
+                label: "Notes Hub",
+                icon: "notes-symbolic",
+            },
+            WidgetEntry::Menu {
+                kind: MenuKind::Podman,
+                stack_name: "podman",
+                label: "Podman",
+                icon: "package-symbolic",
+            },
+            WidgetEntry::Menu {
+                kind: MenuKind::Power,
+                stack_name: "power",
+                label: "Power Profile",
+                icon: "power-profile-balanced-symbolic",
+            },
+            WidgetEntry::Menu {
+                kind: MenuKind::Ip,
+                stack_name: "ip",
+                label: "Public IP",
+                icon: "network-wired-symbolic",
+            },
+            WidgetEntry::Menu {
+                kind: MenuKind::Screenshot,
+                stack_name: "screenshot",
+                label: "Screenshot",
+                icon: "camera-photo-symbolic",
+            },
+            WidgetEntry::Menu {
+                kind: MenuKind::Ufw,
+                stack_name: "ufw",
+                label: "UFW Firewall",
+                icon: "firewall-symbolic",
+            },
+            WidgetEntry::Menu {
+                kind: MenuKind::Bluetooth,
+                stack_name: "bluetooth",
+                label: "Bluetooth",
+                icon: "bluetooth-active-symbolic",
+            },
+            WidgetEntry::Menu {
+                kind: MenuKind::CpuDashboard,
+                stack_name: "cpu_dashboard",
+                label: "CPU Dashboard",
+                icon: "computer-symbolic",
+            },
+            WidgetEntry::Menu {
+                kind: MenuKind::AudioDashboard,
+                stack_name: "audio_dashboard",
+                label: "Audio Dashboard",
+                icon: "audio-volume-high-symbolic",
+            },
             // System Updates owns a richer page (menu size + check
             // interval + per-source toggles), so it's a dedicated entry.
             WidgetEntry::SystemUpdate,
-            WidgetEntry::Menu { kind: MenuKind::Valent, stack_name: "valent", label: "Valent Connect", icon: "phone-symbolic" },
+            WidgetEntry::Menu {
+                kind: MenuKind::Valent,
+                stack_name: "valent",
+                label: "Valent Connect",
+                icon: "phone-symbolic",
+            },
             // Weather owns a dedicated page (location query + units), and it's
             // the single home for weather config — there's no separate
             // top-level Weather entry.
             WidgetEntry::Weather,
-            WidgetEntry::Menu { kind: MenuKind::KeepAwake, stack_name: "keep_awake", label: "Keep Awake", icon: "eye-symbolic" },
-            WidgetEntry::Menu { kind: MenuKind::Twilight, stack_name: "twilight", label: "Twilight", icon: "weather-clear-night-symbolic" },
-            WidgetEntry::Menu { kind: MenuKind::Keybinds, stack_name: "keybinds", label: "Keyboard Shortcuts", icon: "input-keyboard-symbolic" },
-            WidgetEntry::Menu { kind: MenuKind::AlarmClock, stack_name: "alarmclock", label: "Alarm Clock", icon: "alarm-symbolic" },
-            WidgetEntry::Menu { kind: MenuKind::ControlCenter, stack_name: "control_center", label: "Control Center", icon: "preferences-system-symbolic" },
-            WidgetEntry::Menu { kind: MenuKind::SshSessions, stack_name: "ssh_sessions", label: "SSH Sessions", icon: "utilities-terminal-symbolic" },
-            WidgetEntry::Menu { kind: MenuKind::MargoLayout, stack_name: "margo_layout", label: "Margo Layout Switcher", icon: "view-grid-symbolic" },
+            WidgetEntry::Menu {
+                kind: MenuKind::KeepAwake,
+                stack_name: "keep_awake",
+                label: "Keep Awake",
+                icon: "eye-symbolic",
+            },
+            WidgetEntry::Menu {
+                kind: MenuKind::Twilight,
+                stack_name: "twilight",
+                label: "Twilight",
+                icon: "weather-clear-night-symbolic",
+            },
+            WidgetEntry::Menu {
+                kind: MenuKind::Keybinds,
+                stack_name: "keybinds",
+                label: "Keyboard Shortcuts",
+                icon: "input-keyboard-symbolic",
+            },
+            WidgetEntry::Menu {
+                kind: MenuKind::AlarmClock,
+                stack_name: "alarmclock",
+                label: "Alarm Clock",
+                icon: "alarm-symbolic",
+            },
+            WidgetEntry::Menu {
+                kind: MenuKind::ControlCenter,
+                stack_name: "control_center",
+                label: "Control Center",
+                icon: "preferences-system-symbolic",
+            },
+            WidgetEntry::Menu {
+                kind: MenuKind::SshSessions,
+                stack_name: "ssh_sessions",
+                label: "SSH Sessions",
+                icon: "utilities-terminal-symbolic",
+            },
+            WidgetEntry::Menu {
+                kind: MenuKind::MargoLayout,
+                stack_name: "margo_layout",
+                label: "Margo Layout Switcher",
+                icon: "view-grid-symbolic",
+            },
             // Bar-only pills (no menu surface — just info pages).
-            WidgetEntry::Pill { kind: BarPillKind::ActiveWindow, stack_name: "pill_active_window", label: "Active Window", icon: "window-symbolic" },
-            WidgetEntry::Pill { kind: BarPillKind::DarkMode, stack_name: "pill_dark_mode", label: "Dark Mode Toggle", icon: "weather-clear-night-symbolic" },
-            WidgetEntry::Pill { kind: BarPillKind::ColorPicker, stack_name: "pill_color_picker", label: "ColorPicker", icon: "color-select-symbolic" },
-            WidgetEntry::Pill { kind: BarPillKind::Logout, stack_name: "pill_logout", label: "Logout", icon: "system-log-out-symbolic" },
+            WidgetEntry::Pill {
+                kind: BarPillKind::ActiveWindow,
+                stack_name: "pill_active_window",
+                label: "Active Window",
+                icon: "window-symbolic",
+            },
+            WidgetEntry::Pill {
+                kind: BarPillKind::DarkMode,
+                stack_name: "pill_dark_mode",
+                label: "Dark Mode Toggle",
+                icon: "weather-clear-night-symbolic",
+            },
+            WidgetEntry::Pill {
+                kind: BarPillKind::ColorPicker,
+                stack_name: "pill_color_picker",
+                label: "ColorPicker",
+                icon: "color-select-symbolic",
+            },
+            WidgetEntry::Pill {
+                kind: BarPillKind::Logout,
+                stack_name: "pill_logout",
+                label: "Logout",
+                icon: "system-log-out-symbolic",
+            },
             WidgetEntry::Dock,
-            WidgetEntry::Pill { kind: BarPillKind::MargoTags, stack_name: "pill_margo_tags", label: "Margo Tags", icon: "square-symbolic" },
-            WidgetEntry::Pill { kind: BarPillKind::Privacy, stack_name: "pill_privacy", label: "Privacy", icon: "microphone-sensitivity-high-symbolic" },
-            WidgetEntry::Pill { kind: BarPillKind::Reboot, stack_name: "pill_reboot", label: "Reboot", icon: "system-reboot-symbolic" },
-            WidgetEntry::Pill { kind: BarPillKind::RecordingIndicator, stack_name: "pill_recording", label: "Recording Indicator", icon: "media-record-symbolic" },
-            WidgetEntry::Pill { kind: BarPillKind::Shutdown, stack_name: "pill_shutdown", label: "Shutdown", icon: "system-shutdown-symbolic" },
+            WidgetEntry::Pill {
+                kind: BarPillKind::MargoTags,
+                stack_name: "pill_margo_tags",
+                label: "Margo Tags",
+                icon: "square-symbolic",
+            },
+            WidgetEntry::Pill {
+                kind: BarPillKind::Privacy,
+                stack_name: "pill_privacy",
+                label: "Privacy",
+                icon: "microphone-sensitivity-high-symbolic",
+            },
+            WidgetEntry::Pill {
+                kind: BarPillKind::Reboot,
+                stack_name: "pill_reboot",
+                label: "Reboot",
+                icon: "system-reboot-symbolic",
+            },
+            WidgetEntry::Pill {
+                kind: BarPillKind::RecordingIndicator,
+                stack_name: "pill_recording",
+                label: "Recording Indicator",
+                icon: "media-record-symbolic",
+            },
+            WidgetEntry::Pill {
+                kind: BarPillKind::Shutdown,
+                stack_name: "pill_shutdown",
+                label: "Shutdown",
+                icon: "system-shutdown-symbolic",
+            },
             // System Tray owns a dedicated page (default-expanded toggle),
             // so it's a dedicated entry rather than the generic pill info page.
             WidgetEntry::SystemTray,
-            WidgetEntry::Pill { kind: BarPillKind::VpnIndicator, stack_name: "pill_vpn", label: "VPN Indicator", icon: "network-vpn-symbolic" },
+            WidgetEntry::Pill {
+                kind: BarPillKind::VpnIndicator,
+                stack_name: "pill_vpn",
+                label: "VPN Indicator",
+                icon: "network-vpn-symbolic",
+            },
             // Rich pages with their own controllers.
             WidgetEntry::Notifications,
             WidgetEntry::Session,
@@ -1573,7 +1737,12 @@ impl Component for SettingsWindowModel {
 
         for entry in entries {
             match entry {
-                WidgetEntry::Menu { kind, stack_name, label, icon } => {
+                WidgetEntry::Menu {
+                    kind,
+                    stack_name,
+                    label,
+                    icon,
+                } => {
                     let btn = make_sub_btn(label, icon, stack_name, group_anchor.as_ref());
                     if group_anchor.is_none() {
                         group_anchor = Some(btn.clone());
@@ -1585,7 +1754,12 @@ impl Component for SettingsWindowModel {
                     widgets_sub_stack.add_named(ctrl.widget(), Some(stack_name));
                     menu_controllers.push(ctrl);
                 }
-                WidgetEntry::Pill { kind, stack_name, label, icon } => {
+                WidgetEntry::Pill {
+                    kind,
+                    stack_name,
+                    label,
+                    icon,
+                } => {
                     let btn = make_sub_btn(label, icon, stack_name, group_anchor.as_ref());
                     if group_anchor.is_none() {
                         group_anchor = Some(btn.clone());
@@ -1624,10 +1798,8 @@ impl Component for SettingsWindowModel {
                         group_anchor = Some(btn.clone());
                     }
                     widgets_sub_sidebar_box.append(&btn);
-                    widgets_sub_stack.add_named(
-                        model.session_settings_controller.widget(),
-                        Some("session"),
-                    );
+                    widgets_sub_stack
+                        .add_named(model.session_settings_controller.widget(), Some("session"));
                 }
                 WidgetEntry::Weather => {
                     let btn = make_sub_btn(
@@ -1646,7 +1818,9 @@ impl Component for SettingsWindowModel {
                     // page). Compose both into one scrolling page so all of
                     // weather's settings live under this single Widgets entry.
                     let menu_ctrl = WidgetMenuSettingsModel::builder()
-                        .launch(WidgetMenuSettingsInit { kind: MenuKind::Weather })
+                        .launch(WidgetMenuSettingsInit {
+                            kind: MenuKind::Weather,
+                        })
                         .detach();
                     let ws = model.weather_settings_controller.widget().clone();
                     let ms = menu_ctrl.widget().clone();
@@ -1687,7 +1861,9 @@ impl Component for SettingsWindowModel {
                     // album-art size → MediaPlayerSettings, ported from the
                     // mplayerplus plugin). Compose both into one scrolling page.
                     let menu_ctrl = WidgetMenuSettingsModel::builder()
-                        .launch(WidgetMenuSettingsInit { kind: MenuKind::MediaPlayer })
+                        .launch(WidgetMenuSettingsInit {
+                            kind: MenuKind::MediaPlayer,
+                        })
                         .detach();
                     let ms = menu_ctrl.widget().clone();
                     let ps = model.media_player_settings_controller.widget().clone();
@@ -1882,7 +2058,9 @@ impl Component for SettingsWindowModel {
 
         widgets_page.append(&widgets_sub_sidebar);
         widgets_page.append(&widgets_sub_stack);
-        widgets.stack.add_titled(&widgets_page, Some("widgets"), "Widgets");
+        widgets
+            .stack
+            .add_titled(&widgets_page, Some("widgets"), "Widgets");
 
         // Park the per-menu + per-bar-pill controllers on the
         // model so they outlive `init()`. Box::leak isn't ideal

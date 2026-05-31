@@ -14,14 +14,17 @@ use margo_config::Config;
 use smithay::{
     desktop::Window,
     output::Output,
-    wayland::{compositor::with_states, shell::xdg::{ToplevelSurface, XdgToplevelSurfaceData}},
+    wayland::{
+        compositor::with_states,
+        shell::xdg::{ToplevelSurface, XdgToplevelSurfaceData},
+    },
 };
 
 use crate::{
+    MAX_TAGS,
     animation::{ClientAnimation, OpacityAnimation},
     layout::{LayoutId, Pertag, Rect},
     protocols::{dwl_ipc::DwlIpcState, foreign_toplevel::ForeignToplevelHandle},
-    MAX_TAGS,
 };
 
 // ── Hot corner enum ─────────────────────────────────────────────────────────
@@ -399,10 +402,18 @@ pub struct MargoMonitor {
 }
 
 impl MargoMonitor {
-    pub fn current_tagset(&self) -> u32 { self.tagset[self.seltags] }
-    pub fn current_layout(&self) -> LayoutId { self.pertag.ltidxs[self.pertag.curtag] }
-    pub fn current_mfact(&self) -> f32 { self.pertag.mfacts[self.pertag.curtag] }
-    pub fn current_nmaster(&self) -> u32 { self.pertag.nmasters[self.pertag.curtag] }
+    pub fn current_tagset(&self) -> u32 {
+        self.tagset[self.seltags]
+    }
+    pub fn current_layout(&self) -> LayoutId {
+        self.pertag.ltidxs[self.pertag.curtag]
+    }
+    pub fn current_mfact(&self) -> f32 {
+        self.pertag.mfacts[self.pertag.curtag]
+    }
+    pub fn current_nmaster(&self) -> u32 {
+        self.pertag.nmasters[self.pertag.curtag]
+    }
 }
 
 // ── In-flight close transitions ──────────────────────────────────────────────

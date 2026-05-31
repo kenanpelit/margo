@@ -1,4 +1,4 @@
-use crate::json_struct::{Base16, Colors, MatugenTheme, MShell, Palettes, color};
+use crate::json_struct::{Base16, Colors, MShell, MatugenTheme, Palettes, color};
 
 /// Kenp — a high-contrast electric palette: warm butter-yellow primary,
 /// periwinkle secondary and mint tertiary over a near-black indigo surface,

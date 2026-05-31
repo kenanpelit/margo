@@ -628,12 +628,7 @@ impl Component for FontsSettingsModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        _sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             FontsSettingsInput::PrimaryFontSelected(font) => {
                 config_manager().update_config(|config| match font.as_deref() {
@@ -655,9 +650,7 @@ impl Component for FontsSettingsModel {
             }
             FontsSettingsInput::MonospaceFontSelected(font) => {
                 config_manager().update_config(|config| match font.as_deref() {
-                    Some("(none)") | None => {
-                        config.theme.attributes.font.monospace = String::new()
-                    }
+                    Some("(none)") | None => config.theme.attributes.font.monospace = String::new(),
                     Some(font) => config.theme.attributes.font.monospace = font.to_string(),
                 });
             }

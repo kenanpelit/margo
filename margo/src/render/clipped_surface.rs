@@ -10,8 +10,8 @@ use smithay::{
     backend::renderer::{
         buffer_y_inverted,
         element::{
-            surface::WaylandSurfaceRenderElement, Element, Id, Kind, RenderElement,
-            UnderlyingStorage,
+            Element, Id, Kind, RenderElement, UnderlyingStorage,
+            surface::WaylandSurfaceRenderElement,
         },
         gles::{
             GlesError, GlesFrame, GlesRenderer, GlesTexProgram, Uniform, UniformName, UniformType,

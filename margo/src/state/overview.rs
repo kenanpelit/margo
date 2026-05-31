@@ -40,7 +40,11 @@ impl MargoState {
     /// to seed `overview_transition_animation_ms`.
     fn overview_transition_ms(&self) -> u32 {
         let cfg = self.config.overview_transition_ms;
-        if cfg > 0 { cfg } else { Self::OVERVIEW_TRANSITION_MS }
+        if cfg > 0 {
+            cfg
+        } else {
+            Self::OVERVIEW_TRANSITION_MS
+        }
     }
 
     pub fn open_overview(&mut self) {
@@ -113,7 +117,11 @@ impl MargoState {
         //      used when no thumbnail was ever hovered.
         let activate_idx = activate_window
             .as_ref()
-            .and_then(|window| self.clients.iter().position(|client| &client.window == window))
+            .and_then(|window| {
+                self.clients
+                    .iter()
+                    .position(|client| &client.window == window)
+            })
             .or_else(|| self.clients.iter().position(|c| c.is_overview_hovered));
 
         // Same targeting as open_overview: only arrange the monitors
@@ -164,10 +172,7 @@ impl MargoState {
             self.monitors
                 .get(self.clients[idx].monitor)
                 .is_some_and(|mon| {
-                    self.clients[idx].is_visible_on(
-                        self.clients[idx].monitor,
-                        mon.current_tagset(),
-                    )
+                    self.clients[idx].is_visible_on(self.clients[idx].monitor, mon.current_tagset())
                 })
         });
 
@@ -225,14 +230,10 @@ impl MargoState {
     /// `Config::overview_cycle_order`. Decoupled from the multi-monitor
     /// path so the arrange-time call site can request just this
     /// monitor's slice.
-    pub(crate) fn overview_visible_clients_for_monitor(
-        &self,
-        mon_idx: usize,
-    ) -> Vec<usize> {
+    pub(crate) fn overview_visible_clients_for_monitor(&self, mon_idx: usize) -> Vec<usize> {
         use margo_config::OverviewCycleOrder;
         let mut out = Vec::new();
-        let mut seen: std::collections::HashSet<usize> =
-            std::collections::HashSet::new();
+        let mut seen: std::collections::HashSet<usize> = std::collections::HashSet::new();
 
         let visible_here = |i: usize, c: &MargoClient| -> bool {
             c.monitor == mon_idx
@@ -243,40 +244,38 @@ impl MargoState {
                 && i < self.clients.len()
         };
 
-        let push_mru = |out: &mut Vec<usize>,
-                        seen: &mut std::collections::HashSet<usize>,
-                        tag_filter: u32| {
-            for &i in &self.monitors[mon_idx].focus_history {
-                if i >= self.clients.len() {
-                    continue;
-                }
-                let c = &self.clients[i];
-                if tag_filter != 0 && (c.tags & tag_filter) == 0 {
-                    continue;
-                }
-                if visible_here(i, c) && seen.insert(i) {
-                    out.push(i);
-                }
-            }
-        };
-        let push_tag_order = |out: &mut Vec<usize>,
-                              seen: &mut std::collections::HashSet<usize>,
-                              skip_tags: u32| {
-            for tag_idx in 0..crate::layout::MAX_TAGS as u32 {
-                let tag_bit = 1u32 << tag_idx;
-                if (skip_tags & tag_bit) != 0 {
-                    continue;
-                }
-                for (i, c) in self.clients.iter().enumerate() {
-                    if (c.tags & tag_bit) == 0 {
+        let push_mru =
+            |out: &mut Vec<usize>, seen: &mut std::collections::HashSet<usize>, tag_filter: u32| {
+                for &i in &self.monitors[mon_idx].focus_history {
+                    if i >= self.clients.len() {
+                        continue;
+                    }
+                    let c = &self.clients[i];
+                    if tag_filter != 0 && (c.tags & tag_filter) == 0 {
                         continue;
                     }
                     if visible_here(i, c) && seen.insert(i) {
                         out.push(i);
                     }
                 }
-            }
-        };
+            };
+        let push_tag_order =
+            |out: &mut Vec<usize>, seen: &mut std::collections::HashSet<usize>, skip_tags: u32| {
+                for tag_idx in 0..crate::layout::MAX_TAGS as u32 {
+                    let tag_bit = 1u32 << tag_idx;
+                    if (skip_tags & tag_bit) != 0 {
+                        continue;
+                    }
+                    for (i, c) in self.clients.iter().enumerate() {
+                        if (c.tags & tag_bit) == 0 {
+                            continue;
+                        }
+                        if visible_here(i, c) && seen.insert(i) {
+                            out.push(i);
+                        }
+                    }
+                }
+            };
 
         match self.config.overview_cycle_order {
             OverviewCycleOrder::Mru => {

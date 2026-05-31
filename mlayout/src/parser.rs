@@ -41,7 +41,7 @@
 //! reserved for `mlayout` and won't collide with margo's
 //! parser, which treats every `#`-prefixed line as a comment.
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -136,8 +136,8 @@ pub fn gather_layouts(dir: &Path) -> Result<Vec<Layout>> {
             Ok(md) if md.is_file() => {}
             _ => continue,
         }
-        let layout = parse_file(&path)
-            .with_context(|| format!("parse layout file: {}", path.display()))?;
+        let layout =
+            parse_file(&path).with_context(|| format!("parse layout file: {}", path.display()))?;
         layouts.push(layout);
     }
 
@@ -147,8 +147,7 @@ pub fn gather_layouts(dir: &Path) -> Result<Vec<Layout>> {
 
 /// Parse one layout file end-to-end.
 pub fn parse_file(path: &Path) -> Result<Layout> {
-    let body = fs::read_to_string(path)
-        .with_context(|| format!("read {}", path.display()))?;
+    let body = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
 
     let file_name = path
         .file_name()
@@ -259,9 +258,10 @@ fn apply_directive(
             *pending_label = Some(unquote(val).trim().to_string());
         }
         "color" => {
-            let n: u8 = unquote(val).trim().parse().with_context(|| {
-                format!("color must be 0..=17, got `{}`", val)
-            })?;
+            let n: u8 = unquote(val)
+                .trim()
+                .parse()
+                .with_context(|| format!("color must be 0..=17, got `{}`", val))?;
             if n > 17 {
                 bail!("color must be 0..=17, got {}", n);
             }

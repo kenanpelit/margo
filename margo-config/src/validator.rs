@@ -44,9 +44,8 @@ fn resolve_config_path(explicit: Option<&Path>) -> std::io::Result<PathBuf> {
     if let Some(p) = explicit {
         return Ok(p.to_path_buf());
     }
-    let home = std::env::var("HOME").map_err(|_| {
-        std::io::Error::new(std::io::ErrorKind::NotFound, "HOME env var not set")
-    })?;
+    let home = std::env::var("HOME")
+        .map_err(|_| std::io::Error::new(std::io::ErrorKind::NotFound, "HOME env var not set"))?;
     Ok(PathBuf::from(home).join(".config/margo/config.conf"))
 }
 
@@ -143,10 +142,7 @@ fn validate_text(
         }
 
         // Unknown top-level key (best-effort; allowlist).
-        if !is_csv_shaped_key(key)
-            && !is_bind_key(key)
-            && !is_known_scalar_key(key)
-        {
+        if !is_csv_shaped_key(key) && !is_bind_key(key) && !is_known_scalar_key(key) {
             let key_col = raw.find(key.chars().next().unwrap_or('?')).unwrap_or(0) + 1;
             report.push(ConfigDiagnostic {
                 path: path.to_path_buf(),

@@ -191,7 +191,11 @@ fn unknown_preset_returns_err_without_mutating_state() {
     let before_borderpx = fx.server.state.config.borderpx;
     let before_baseline_set = fx.server.state.theme_baseline.is_some();
 
-    let err = fx.server.state.apply_theme_preset("xenomorph_mode").unwrap_err();
+    let err = fx
+        .server
+        .state
+        .apply_theme_preset("xenomorph_mode")
+        .unwrap_err();
     assert!(err.contains("unknown theme preset"));
     assert!(err.contains("`default`"));
     assert!(err.contains("`minimal`"));

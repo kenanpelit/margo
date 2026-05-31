@@ -36,7 +36,7 @@
 //! `vertical-stack` only — the rest gets unwieldy quickly and the
 //! user can hand-edit if their setup is exotic.
 
-use crate::capture::{auto_color_for_connector, auto_label_for_connector, CapturedOutput};
+use crate::capture::{CapturedOutput, auto_color_for_connector, auto_label_for_connector};
 
 /// One preset arrangement — title for the picker, file slug, and
 /// the rectified output list (positions resolved, labels assigned).

@@ -1,6 +1,4 @@
-use crate::bars::bar_widgets::margo_tag::{
-    MargoTagInput, MargoTagModel,
-};
+use crate::bars::bar_widgets::margo_tag::{MargoTagInput, MargoTagModel};
 use futures::StreamExt;
 use mshell_common::dynamic_box::dynamic_box::{
     DynamicBoxFactory, DynamicBoxInit, DynamicBoxInput, DynamicBoxModel,
@@ -8,6 +6,7 @@ use mshell_common::dynamic_box::dynamic_box::{
 use mshell_common::dynamic_box::generic_widget_controller::{
     GenericWidgetController, GenericWidgetControllerExtSafe,
 };
+use mshell_margo_client::{MargoEvent, Workspace, WorkspaceId};
 use mshell_services::margo_service;
 use mshell_utils::hover_scroll::attach_hover_scroll;
 use mshell_utils::margo::{get_active_workspaces, go_down_workspace, go_up_workspace};
@@ -17,7 +16,6 @@ use relm4::{
     gtk::prelude::*,
 };
 use std::sync::Arc;
-use mshell_margo_client::{MargoEvent, Workspace, WorkspaceId};
 
 #[derive(Clone, Debug)]
 pub enum WsRow {
@@ -84,9 +82,7 @@ impl Component for MargoTagsModel {
             create: Box::new(move |item| match item {
                 WsRow::Workspace(workspace) => {
                     let controller: Controller<MargoTagModel> =
-                        MargoTagModel::builder()
-                            .launch(workspace.clone())
-                            .detach();
+                        MargoTagModel::builder().launch(workspace.clone()).detach();
                     Box::new(controller) as Box<dyn GenericWidgetController>
                 }
             }),
@@ -189,9 +185,9 @@ impl Component for MargoTagsModel {
                         .as_ref()
                         .downcast_ref::<Controller<MargoTagModel>>()
                     {
-                        let _ = ctrl.sender().send(MargoTagInput::ActiveUpdate(
-                            active_workspaces.clone(),
-                        ));
+                        let _ = ctrl
+                            .sender()
+                            .send(MargoTagInput::ActiveUpdate(active_workspaces.clone()));
                     }
                 })
             }
@@ -201,33 +197,31 @@ impl Component for MargoTagsModel {
 
 impl MargoTagsModel {
     fn spawn_main_watcher(sender: &ComponentSender<Self>) {
-        sender.command(move |out, shutdown| {
-            async move {
-                let hyprland = margo_service();
-                let mut events = hyprland.events();
-                let shutdown_fut = shutdown.wait();
-                tokio::pin!(shutdown_fut);
+        sender.command(move |out, shutdown| async move {
+            let hyprland = margo_service();
+            let mut events = hyprland.events();
+            let shutdown_fut = shutdown.wait();
+            tokio::pin!(shutdown_fut);
 
-                loop {
-                    tokio::select! {
-                        () = &mut shutdown_fut => return,
-                        event = events.next() => {
-                            let Some(event) = event else { continue; };
-                            match event {
-                                MargoEvent::WorkspaceV2 { .. } => {
-                                    let _ = out.send(MargoTagsCommandOutput::ActiveWorkspaceChanged);
-                                }
-                                MargoEvent::CreateWorkspaceV2 { .. }
-                                | MargoEvent::DestroyWorkspaceV2 { .. }
-                                | MargoEvent::MoveWorkspaceV2 { .. }
-                                | MargoEvent::RenameWorkspace { .. }
-                                | MargoEvent::ActiveSpecialV2 { .. }
-                                | MargoEvent::MonitorAddedV2 { .. }
-                                | MargoEvent::MonitorRemovedV2 { .. } => {
-                                    let _ = out.send(MargoTagsCommandOutput::WorkspacesChanged);
-                                }
-                                _ => {}
+            loop {
+                tokio::select! {
+                    () = &mut shutdown_fut => return,
+                    event = events.next() => {
+                        let Some(event) = event else { continue; };
+                        match event {
+                            MargoEvent::WorkspaceV2 { .. } => {
+                                let _ = out.send(MargoTagsCommandOutput::ActiveWorkspaceChanged);
                             }
+                            MargoEvent::CreateWorkspaceV2 { .. }
+                            | MargoEvent::DestroyWorkspaceV2 { .. }
+                            | MargoEvent::MoveWorkspaceV2 { .. }
+                            | MargoEvent::RenameWorkspace { .. }
+                            | MargoEvent::ActiveSpecialV2 { .. }
+                            | MargoEvent::MonitorAddedV2 { .. }
+                            | MargoEvent::MonitorRemovedV2 { .. } => {
+                                let _ = out.send(MargoTagsCommandOutput::WorkspacesChanged);
+                            }
+                            _ => {}
                         }
                     }
                 }
@@ -248,21 +242,19 @@ impl MargoTagsModel {
     /// flows through each `Workspace`'s own Reactive fields, watched
     /// by the child `MargoTagModel` widgets.
     fn spawn_workspace_list_watcher(sender: &ComponentSender<Self>) {
-        sender.command(move |out, shutdown| {
-            async move {
-                let mut stream = margo_service().workspaces.watch();
-                let shutdown_fut = shutdown.wait();
-                tokio::pin!(shutdown_fut);
-                loop {
-                    tokio::select! {
-                        () = &mut shutdown_fut => return,
-                        next = stream.next() => match next {
-                            Some(_) => {
-                                let _ = out.send(MargoTagsCommandOutput::WorkspacesChanged);
-                            }
-                            None => return,
-                        },
-                    }
+        sender.command(move |out, shutdown| async move {
+            let mut stream = margo_service().workspaces.watch();
+            let shutdown_fut = shutdown.wait();
+            tokio::pin!(shutdown_fut);
+            loop {
+                tokio::select! {
+                    () = &mut shutdown_fut => return,
+                    next = stream.next() => match next {
+                        Some(_) => {
+                            let _ = out.send(MargoTagsCommandOutput::WorkspacesChanged);
+                        }
+                        None => return,
+                    },
                 }
             }
         });

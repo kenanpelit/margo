@@ -179,9 +179,7 @@ pub async fn register_polkit_agent(
     // Register with the polkit authority
     let session_id = resolve_session_id(&connection).await;
     if session_id.is_empty() {
-        anyhow::bail!(
-            "could not determine a logind session to register the polkit agent for"
-        );
+        anyhow::bail!("could not determine a logind session to register the polkit agent for");
     }
     info!("[polkit] registering agent for session-id={session_id}");
 

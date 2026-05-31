@@ -85,7 +85,9 @@ impl HiddenStore {
             tracing::warn!(path = %parent.display(), error = %err, "launcher_hidden: mkdir failed");
             return;
         }
-        let disk = Disk { hidden: self.set.clone() };
+        let disk = Disk {
+            hidden: self.set.clone(),
+        };
         let json = match serde_json::to_string_pretty(&disk) {
             Ok(s) => s,
             Err(err) => {

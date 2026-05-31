@@ -44,9 +44,7 @@ static MONTH_FORMAT: once_cell::sync::Lazy<Vec<time::format_description::FormatI
     once_cell::sync::Lazy::new(|| parse("[month repr:long] [year]").unwrap());
 
 static WEEKDAY_FORMAT: once_cell::sync::Lazy<Vec<time::format_description::FormatItem<'static>>> =
-    once_cell::sync::Lazy::new(|| {
-        parse("[weekday repr:long]").unwrap()
-    });
+    once_cell::sync::Lazy::new(|| parse("[weekday repr:long]").unwrap());
 
 #[derive(Debug)]
 pub(crate) struct CalendarModel {

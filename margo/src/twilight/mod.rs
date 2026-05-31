@@ -45,7 +45,10 @@ pub enum Source {
     /// `mctl twilight test <duration_s>` — animate from current
     /// schedule's day to night across `duration_s` seconds, then
     /// fall back to `Scheduled`.
-    Test { started_at: Instant, duration_ms: u64 },
+    Test {
+        started_at: Instant,
+        duration_ms: u64,
+    },
 }
 
 /// Live state for the running scheduler. Owned by `MargoState`;
@@ -138,7 +141,11 @@ impl TwilightState {
                 next_tick_ms: 1_000,
             };
         }
-        if let Source::Test { started_at, duration_ms } = self.source {
+        if let Source::Test {
+            started_at,
+            duration_ms,
+        } = self.source
+        {
             let elapsed = started_at.elapsed().as_millis() as u64;
             if elapsed >= duration_ms {
                 // Sweep done; fall back to scheduled.
@@ -153,8 +160,7 @@ impl TwilightState {
                         progress,
                     ),
                     gamma_pct: ((inputs.settings.day_gamma as f32
-                        + (inputs.settings.night_gamma as f32
-                            - inputs.settings.day_gamma as f32)
+                        + (inputs.settings.night_gamma as f32 - inputs.settings.day_gamma as f32)
                             * progress)
                         .round() as u32)
                         .clamp(10, 200),
@@ -300,7 +306,10 @@ mod tests {
     #[test]
     fn disabled_returns_no_target() {
         let mut s = TwilightState::default();
-        let inputs = TickInputs { enabled: false, ..baseline_inputs() };
+        let inputs = TickInputs {
+            enabled: false,
+            ..baseline_inputs()
+        };
         let out = s.tick(inputs);
         assert!(out.target.is_none());
     }

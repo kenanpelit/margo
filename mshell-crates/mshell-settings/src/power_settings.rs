@@ -1093,10 +1093,7 @@ impl Component for PowerSettingsModel {
                     self.warned = false;
                 } else if enabled && !self.on_ac && (pct as u32) <= threshold && !self.warned {
                     self.warned = true;
-                    notify::toast(
-                        "Battery low",
-                        format!("{}% remaining", pct),
-                    );
+                    notify::toast("Battery low", format!("{}% remaining", pct));
                 }
 
                 sender.input(PowerSettingsInput::RefreshState);
@@ -1323,19 +1320,14 @@ fn read_on_ac() -> bool {
     let dev_state = battery_service().device.state.get();
     line_power_service()
         .map(|s| s.device.online.get())
-        .unwrap_or(
-            dev_state == DeviceState::Charging || dev_state == DeviceState::FullyCharged,
-        )
+        .unwrap_or(dev_state == DeviceState::Charging || dev_state == DeviceState::FullyCharged)
 }
 
 fn read_profile() -> Option<Profile> {
     // If power-profiles-daemon is unavailable, `active_profile` returns
     // `PowerProfile::Unknown`. We surface `None` (hidden) in that case so
     // the UI hides the section rather than showing a misleading value.
-    let p = power_profile_service()
-        .power_profiles
-        .active_profile
-        .get();
+    let p = power_profile_service().power_profiles.active_profile.get();
     match p {
         PowerProfile::Unknown => None,
         other => Some(Profile::from_wayle(&other)),

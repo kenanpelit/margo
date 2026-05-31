@@ -19,9 +19,7 @@ use crate::bars::bar_widgets::ufw::{
     Status, UfwSummary, fetch_ufw_summary, fetch_ufw_summary_pkexec, status_word,
 };
 use relm4::gtk::glib;
-use relm4::gtk::prelude::{
-    BoxExt, ButtonExt, ListBoxRowExt, ObjectExt, OrientableExt, WidgetExt,
-};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, ListBoxRowExt, ObjectExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -300,12 +298,7 @@ impl Component for UfwMenuWidgetModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             UfwMenuWidgetInput::ToggleEnable(want_on) => {
                 let cmd = if want_on { "enable" } else { "disable" };
@@ -396,7 +389,9 @@ fn sync_view(model: &UfwMenuWidgetModel, sender: &ComponentSender<UfwMenuWidgetM
         Some(Status::Inactive) => "ufw-status-inactive",
         _ => "ufw-status-unknown",
     };
-    model.status_label.set_css_classes(&["ufw-status-badge", class]);
+    model
+        .status_label
+        .set_css_classes(&["ufw-status-badge", class]);
 
     // Toggle switch — block our own signal so the set_state call
     // doesn't loop back into ToggleEnable.

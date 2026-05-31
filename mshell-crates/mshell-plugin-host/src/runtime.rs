@@ -14,7 +14,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
-use std::sync::{mpsc, Arc};
+use std::sync::{Arc, mpsc};
 use wasmtime::component::{Component, Linker};
 use wasmtime::{Config, Engine, Store};
 use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiView};
@@ -278,9 +278,7 @@ impl Host for HostState {
 
     fn clipboard_read(&mut self) -> String {
         match std::process::Command::new("wl-paste").arg("-n").output() {
-            Ok(out) if out.status.success() => {
-                String::from_utf8_lossy(&out.stdout).into_owned()
-            }
+            Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).into_owned(),
             Ok(_) => String::new(),
             Err(e) => {
                 tracing::warn!(plugin = self.plugin_id, "clipboard-read failed: {e}");

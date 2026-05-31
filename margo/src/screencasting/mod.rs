@@ -94,9 +94,7 @@ impl Screencasting {
     /// receiver that drains `PwToNiri` messages from PipeWire
     /// callbacks back into the compositor event loop. Mirrors
     /// niri's `Screencasting::new`.
-    pub fn new(
-        event_loop: &calloop::LoopHandle<'static, crate::state::MargoState>,
-    ) -> Self {
+    pub fn new(event_loop: &calloop::LoopHandle<'static, crate::state::MargoState>) -> Self {
         let pw_to_compositor = {
             let (tx, rx) = calloop::channel::channel();
             event_loop

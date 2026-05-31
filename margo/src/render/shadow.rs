@@ -143,7 +143,11 @@ impl ShadowRenderElement {
                 window_rect.loc.y - padding + offset.1,
             )
                 .into(),
-            (window_rect.size.w + 2 * padding, window_rect.size.h + 2 * padding).into(),
+            (
+                window_rect.size.w + 2 * padding,
+                window_rect.size.h + 2 * padding,
+            )
+                .into(),
         );
         Self {
             id,
@@ -243,10 +247,8 @@ impl RenderElement<GlesRenderer> for ShadowRenderElement {
                 ),
             },
         ];
-        let src: Rectangle<f64, Buffer> = Rectangle::new(
-            (0.0, 0.0).into(),
-            (phys_w as f64, phys_h as f64).into(),
-        );
+        let src: Rectangle<f64, Buffer> =
+            Rectangle::new((0.0, 0.0).into(), (phys_w as f64, phys_h as f64).into());
         let size: smithay::utils::Size<i32, Buffer> = (dst.size.w, dst.size.h).into();
         frame.render_pixel_shader_to(
             &self.program,

@@ -132,9 +132,10 @@ fn default_path() -> PathBuf {
         return d.join("margo").join("launcher_command_history.json");
     }
     if let Ok(d) = std::env::var("XDG_RUNTIME_DIR")
-        && !d.is_empty() {
-            return PathBuf::from(d).join("margo_launcher_command_history.json");
-        }
+        && !d.is_empty()
+    {
+        return PathBuf::from(d).join("margo_launcher_command_history.json");
+    }
     PathBuf::from("/tmp/margo_launcher_command_history.json")
 }
 
@@ -229,7 +230,10 @@ mod tests {
         }
         assert_eq!(h.entries().len(), CommandHistory::MAX_ENTRIES);
         // Newest entry is at the front; oldest 10 were dropped.
-        assert_eq!(h.entries()[0], format!("cmd-{}", CommandHistory::MAX_ENTRIES + 9));
+        assert_eq!(
+            h.entries()[0],
+            format!("cmd-{}", CommandHistory::MAX_ENTRIES + 9)
+        );
     }
 
     #[test]

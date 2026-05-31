@@ -10,7 +10,9 @@
 //! widget.
 
 use crate::schema::config::{Config, CustomMenuRow, CustomWidgetConfig};
-use mshell_plugins::{InstalledPlugin, PanelLayout, PluginStore, PluginsState, WidgetDef, substitute};
+use mshell_plugins::{
+    InstalledPlugin, PanelLayout, PluginStore, PluginsState, WidgetDef, substitute,
+};
 use std::collections::BTreeMap;
 
 /// Prefix marking a custom widget as plugin-derived (not user-authored).

@@ -67,7 +67,10 @@ pub(crate) async fn probe() -> Option<TwilightStatus> {
             .and_then(|x| x.as_str())
             .unwrap_or_default()
             .to_string(),
-        current_temp_k: v.get("current_temp_k").and_then(|x| x.as_u64()).map(|n| n as u32),
+        current_temp_k: v
+            .get("current_temp_k")
+            .and_then(|x| x.as_u64())
+            .map(|n| n as u32),
         current_gamma_pct: v
             .get("current_gamma_pct")
             .and_then(|x| x.as_u64())
@@ -138,7 +141,8 @@ pub(crate) fn load_presets() -> Vec<Preset> {
             let (Some(time), Some(name)) = (parts.next(), parts.next()) else {
                 continue;
             };
-            if let Some((temp_k, gamma_pct)) = read_preset(&presets_dir.join(format!("{name}.toml")))
+            if let Some((temp_k, gamma_pct)) =
+                read_preset(&presets_dir.join(format!("{name}.toml")))
             {
                 out.push(Preset {
                     name: name.to_string(),
@@ -161,7 +165,11 @@ pub(crate) fn load_presets() -> Vec<Preset> {
             if p.extension().and_then(|s| s.to_str()) != Some("toml") {
                 continue;
             }
-            let name = p.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
+            let name = p
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_string();
             if let Some((temp_k, gamma_pct)) = read_preset(&p) {
                 out.push(Preset {
                     name,
@@ -180,7 +188,11 @@ pub(crate) fn load_presets() -> Vec<Preset> {
 /// toggle / mode / temperature / preset actions.
 pub(crate) fn run(args: Vec<String>) {
     relm4::spawn(async move {
-        match tokio::process::Command::new("mctl").args(&args).status().await {
+        match tokio::process::Command::new("mctl")
+            .args(&args)
+            .status()
+            .await
+        {
             Ok(s) if s.success() => {}
             Ok(s) => warn!(?s, ?args, "mctl twilight returned non-zero"),
             Err(e) => warn!(error = %e, ?args, "mctl twilight spawn failed"),

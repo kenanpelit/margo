@@ -283,7 +283,9 @@ impl Provider for SshProvider {
 /// ArchLinuxPkgsProvider's terminal spawn.
 fn spawn_terminal_ssh(terminal: &str, host: &str) {
     let result = if terminal == "wezterm" {
-        Command::new(terminal).args(["start", "--", "ssh", host]).spawn()
+        Command::new(terminal)
+            .args(["start", "--", "ssh", host])
+            .spawn()
     } else {
         Command::new(terminal).args(["-e", "ssh", host]).spawn()
     };
@@ -340,7 +342,11 @@ hosts:
     #[test]
     fn missing_file_yields_empty_hosts() {
         let p = SshProvider::with_path(PathBuf::from("/nonexistent/assh.yml"));
-        assert!(p.search("ssh").iter().any(|i| i.name == "No SSH hosts found"));
+        assert!(
+            p.search("ssh")
+                .iter()
+                .any(|i| i.name == "No SSH hosts found")
+        );
     }
 
     #[test]

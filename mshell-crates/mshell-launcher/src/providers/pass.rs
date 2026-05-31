@@ -107,10 +107,7 @@ fn scan(root: &Path, dir: &Path, out: &mut Vec<String>, depth: usize) {
             continue;
         }
         let path = entry.path();
-        let is_dir = entry
-            .file_type()
-            .map(|t| t.is_dir())
-            .unwrap_or(false);
+        let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
         if is_dir {
             scan(root, &path, out, depth + 1);
         } else if let Some(stem) = name.strip_suffix(".gpg") {
@@ -310,8 +307,7 @@ mod tests {
         use std::sync::atomic::{AtomicU32, Ordering};
         static COUNTER: AtomicU32 = AtomicU32::new(0);
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir()
-            .join(format!("dcli-pass-test-{}-{n}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("dcli-pass-test-{}-{n}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("web")).unwrap();
         std::fs::create_dir_all(dir.join(".git")).unwrap();
@@ -342,7 +338,11 @@ mod tests {
     fn and_token_filter_treats_spaces_as_wildcards() {
         let dir = temp_store();
         let p = PassProvider::with_dir(dir.clone());
-        let names: Vec<String> = p.search("pass web git").iter().map(|i| i.name.clone()).collect();
+        let names: Vec<String> = p
+            .search("pass web git")
+            .iter()
+            .map(|i| i.name.clone())
+            .collect();
         // "web" + "git" both present in web/github and web/gitlab.
         assert!(names.contains(&"web/github".to_string()));
         assert!(names.contains(&"web/gitlab".to_string()));
@@ -362,7 +362,11 @@ mod tests {
     #[test]
     fn missing_store_yields_warning_row() {
         let p = PassProvider::with_dir(PathBuf::from("/nonexistent/store"));
-        assert!(p.search("pass").iter().any(|i| i.name == "No password entries found"));
+        assert!(
+            p.search("pass")
+                .iter()
+                .any(|i| i.name == "No password entries found")
+        );
     }
 
     #[test]

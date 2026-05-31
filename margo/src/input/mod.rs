@@ -121,9 +121,8 @@ pub fn find_keybinding<'a>(
 ) -> Option<&'a KeyBinding> {
     bindings.iter().find(|kb| {
         // mode check
-        let mode_ok = kb.is_common_mode
-            || kb.mode == mode
-            || (kb.is_default_mode && mode == "default");
+        let mode_ok =
+            kb.is_common_mode || kb.mode == mode || (kb.is_default_mode && mode == "default");
 
         // lock check
         let lock_ok = if is_locked { kb.lock_apply } else { true };
@@ -143,8 +142,7 @@ pub fn find_keybinding<'a>(
             KeyType::Sym => kb.key.keysym == keysym,
             KeyType::Code => {
                 let mc = &kb.key.keycode;
-                keycode != 0
-                    && (mc.code1 == keycode || mc.code2 == keycode || mc.code3 == keycode)
+                keycode != 0 && (mc.code1 == keycode || mc.code2 == keycode || mc.code3 == keycode)
             }
         }
     })

@@ -107,8 +107,7 @@ impl Component for CalendarGridModel {
     ) {
         match message {
             CalendarGridInput::CheckDayRollover => {
-                let now =
-                    OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc());
+                let now = OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc());
                 if now.date() != self.current_date {
                     self.current_date = now.date();
                     widgets.calendar.set_year(now.year());

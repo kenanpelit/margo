@@ -97,7 +97,10 @@ impl KeyMenuWidget {
             items.push(Span::styled("]", bracket));
             if !compact {
                 items.push(Span::raw(" "));
-                items.push(Span::styled(power_control.hint.as_str(), power_control.style()));
+                items.push(Span::styled(
+                    power_control.hint.as_str(),
+                    power_control.style(),
+                ));
             }
         }
 

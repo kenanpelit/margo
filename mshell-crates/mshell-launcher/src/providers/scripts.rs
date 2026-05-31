@@ -24,13 +24,7 @@
 //! of the `>start` palette.
 
 use crate::{item::LauncherItem, notify::toast, provider::Provider};
-use std::{
-    cell::RefCell,
-    collections::HashSet,
-    path::PathBuf,
-    process::Command,
-    rc::Rc,
-};
+use std::{cell::RefCell, collections::HashSet, path::PathBuf, process::Command, rc::Rc};
 
 /// One indexed script. Cached after `refresh()` so subsequent
 /// `>start` keystrokes are a pure in-memory filter — no `readdir`
@@ -89,7 +83,11 @@ impl ScriptsProvider {
     /// Just the script names, for compact display. Cheap because
     /// it just clones already-cached strings.
     pub fn indexed_names(&self) -> Vec<String> {
-        self.entries.borrow().iter().map(|e| e.name.clone()).collect()
+        self.entries
+            .borrow()
+            .iter()
+            .map(|e| e.name.clone())
+            .collect()
     }
 
     /// Walk every directory on `$PATH` and collect executables
@@ -236,9 +234,7 @@ impl Provider for ScriptsProvider {
         // would dilute the frecency signal at small counts.
         entries
             .iter()
-            .filter(|entry| {
-                filter.is_empty() || entry.name.to_ascii_lowercase().contains(&filter)
-            })
+            .filter(|entry| filter.is_empty() || entry.name.to_ascii_lowercase().contains(&filter))
             .map(|entry| self.make_item(entry, 100.0))
             .collect()
     }

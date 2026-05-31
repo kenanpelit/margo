@@ -1052,7 +1052,7 @@ impl Default for Config {
             twilight_night_temp: 3300,
             twilight_day_gamma: 100,
             twilight_night_gamma: 90,
-            twilight_transition_s: 2700,   // 45 min, sunsetr's documented default
+            twilight_transition_s: 2700, // 45 min, sunsetr's documented default
             twilight_update_interval: 60,
             twilight_latitude: 0.0,
             twilight_longitude: 0.0,
@@ -1089,14 +1089,54 @@ impl Default for Config {
             scratchpad_height_ratio: 0.9,
             single_scratchpad: true,
 
-            rootcolor: Rgba([0x32_u8 as f32 / 255.0, 0x32_u8 as f32 / 255.0, 0x32_u8 as f32 / 255.0, 1.0]),
-            bordercolor: Rgba([0x44_u8 as f32 / 255.0, 0x44_u8 as f32 / 255.0, 0x44_u8 as f32 / 255.0, 1.0]),
-            focuscolor: Rgba([0xc6_u8 as f32 / 255.0, 0x6b_u8 as f32 / 255.0, 0x25_u8 as f32 / 255.0, 1.0]),
-            maximizescreencolor: Rgba([0x89_u8 as f32 / 255.0, 0xaa_u8 as f32 / 255.0, 0x61_u8 as f32 / 255.0, 1.0]),
-            urgentcolor: Rgba([0xad_u8 as f32 / 255.0, 0x40_u8 as f32 / 255.0, 0x1f_u8 as f32 / 255.0, 1.0]),
-            scratchpadcolor: Rgba([0x51_u8 as f32 / 255.0, 0x6c_u8 as f32 / 255.0, 0x93_u8 as f32 / 255.0, 1.0]),
-            globalcolor: Rgba([0xb1_u8 as f32 / 255.0, 0x53_u8 as f32 / 255.0, 0xa7_u8 as f32 / 255.0, 1.0]),
-            overlaycolor: Rgba([0x14_u8 as f32 / 255.0, 0xa5_u8 as f32 / 255.0, 0x7c_u8 as f32 / 255.0, 1.0]),
+            rootcolor: Rgba([
+                0x32_u8 as f32 / 255.0,
+                0x32_u8 as f32 / 255.0,
+                0x32_u8 as f32 / 255.0,
+                1.0,
+            ]),
+            bordercolor: Rgba([
+                0x44_u8 as f32 / 255.0,
+                0x44_u8 as f32 / 255.0,
+                0x44_u8 as f32 / 255.0,
+                1.0,
+            ]),
+            focuscolor: Rgba([
+                0xc6_u8 as f32 / 255.0,
+                0x6b_u8 as f32 / 255.0,
+                0x25_u8 as f32 / 255.0,
+                1.0,
+            ]),
+            maximizescreencolor: Rgba([
+                0x89_u8 as f32 / 255.0,
+                0xaa_u8 as f32 / 255.0,
+                0x61_u8 as f32 / 255.0,
+                1.0,
+            ]),
+            urgentcolor: Rgba([
+                0xad_u8 as f32 / 255.0,
+                0x40_u8 as f32 / 255.0,
+                0x1f_u8 as f32 / 255.0,
+                1.0,
+            ]),
+            scratchpadcolor: Rgba([
+                0x51_u8 as f32 / 255.0,
+                0x6c_u8 as f32 / 255.0,
+                0x93_u8 as f32 / 255.0,
+                1.0,
+            ]),
+            globalcolor: Rgba([
+                0xb1_u8 as f32 / 255.0,
+                0x53_u8 as f32 / 255.0,
+                0xa7_u8 as f32 / 255.0,
+                1.0,
+            ]),
+            overlaycolor: Rgba([
+                0x14_u8 as f32 / 255.0,
+                0xa5_u8 as f32 / 255.0,
+                0x7c_u8 as f32 / 255.0,
+                1.0,
+            ]),
             shadowscolor: Rgba([0.0, 0.0, 0.0, 1.0]),
 
             blur: false,

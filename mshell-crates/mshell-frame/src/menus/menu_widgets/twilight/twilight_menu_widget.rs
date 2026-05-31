@@ -296,7 +296,11 @@ impl Component for TwilightMenuWidgetModel {
             TwilightMenuWidgetInput::SetMode(mode) => {
                 self.status.mode = mode.to_string();
                 self.settle_until = Instant::now() + SETTLE;
-                twilight::run(vec!["twilight".into(), "set".into(), format!("mode={mode}")]);
+                twilight::run(vec![
+                    "twilight".into(),
+                    "set".into(),
+                    format!("mode={mode}"),
+                ]);
             }
             TwilightMenuWidgetInput::TempChanged(k) => {
                 if let Some(h) = self.temp_debounce.take() {

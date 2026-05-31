@@ -1,4 +1,4 @@
-use crate::json_struct::{Base16, Colors, MatugenTheme, MShell, Palettes, color};
+use crate::json_struct::{Base16, Colors, MShell, MatugenTheme, Palettes, color};
 
 pub fn everforest_light_hard(mshell: MShell) -> MatugenTheme {
     MatugenTheme {

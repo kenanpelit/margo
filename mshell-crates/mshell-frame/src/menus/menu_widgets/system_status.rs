@@ -215,9 +215,7 @@ impl Component for SystemStatusModel {
     ) -> ComponentParts<Self> {
         spawn_battery_watcher(&sender, || SystemStatusCommandOutput::BatteryChanged);
         spawn_battery_online_watcher(&sender, || SystemStatusCommandOutput::BatteryChanged);
-        spawn_active_profile_watcher(&sender, None, || {
-            SystemStatusCommandOutput::ProfileChanged
-        });
+        spawn_active_profile_watcher(&sender, None, || SystemStatusCommandOutput::ProfileChanged);
 
         // Self-cancelling temp poll (mirrors sysstat pattern).
         let sender_clone = sender.clone();
@@ -281,18 +279,12 @@ impl Component for SystemStatusModel {
         }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        _sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             SystemStatusInput::BatteryChanged => {
                 let battery = battery_service().device.clone();
                 self.has_battery = battery.is_present.get();
-                self.battery_percent =
-                    battery.percentage.get().round().clamp(0.0, 100.0) as i32;
+                self.battery_percent = battery.percentage.get().round().clamp(0.0, 100.0) as i32;
                 self.battery_state = battery.state.get();
                 self.battery_charging = is_on_ac(self.battery_state);
             }

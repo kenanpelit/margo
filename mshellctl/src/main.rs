@@ -36,9 +36,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Wallpaper { command } => {
             mshellctl::subcommands::wallpaper::execute(command).await?
         }
-        Commands::Plugin { command } => {
-            mshellctl::subcommands::plugin::execute(command).await?
-        }
+        Commands::Plugin { command } => mshellctl::subcommands::plugin::execute(command).await?,
         Commands::Screenshot { command } => {
             mshellctl::subcommands::screenshot::execute(command).await?
         }

@@ -246,9 +246,6 @@ mod tests {
         let r = plane(&ramp, n, 0)[n - 1];
         // At 6500K Tanner Helland gives r_factor = 1.0; output
         // should be 65535 (or one ULP below from the quantise).
-        assert!(
-            r >= 65530,
-            "R at 6500K fullscale should be ~65535, got {r}"
-        );
+        assert!(r >= 65530, "R at 6500K fullscale should be ~65535, got {r}");
     }
 }

@@ -137,7 +137,9 @@ impl PluginsState {
     /// The user's override for one binding, if set. `Some("")` means the
     /// user disabled the binding entirely.
     pub fn keybind_override(&self, plugin: &str, bind_id: &str) -> Option<&String> {
-        self.keybind_overrides.get(plugin).and_then(|m| m.get(bind_id))
+        self.keybind_overrides
+            .get(plugin)
+            .and_then(|m| m.get(bind_id))
     }
 
     /// Set / clear an override. Empty `combo` disables the binding;
@@ -209,11 +211,17 @@ mod tests {
         let mut s = PluginsState::default();
         s.set_setting("weather", "city", "Istanbul");
         s.set_enabled("weather", true);
-        assert_eq!(s.setting("weather", "city").map(String::as_str), Some("Istanbul"));
+        assert_eq!(
+            s.setting("weather", "city").map(String::as_str),
+            Some("Istanbul")
+        );
 
         // Survives a TOML round-trip.
         let back: PluginsState = toml::from_str(&toml::to_string(&s).unwrap()).unwrap();
-        assert_eq!(back.setting("weather", "city").map(String::as_str), Some("Istanbul"));
+        assert_eq!(
+            back.setting("weather", "city").map(String::as_str),
+            Some("Istanbul")
+        );
 
         // forget() drops both enabled + settings.
         s.forget("weather");

@@ -34,8 +34,9 @@ fn layer_surface_maps_into_output_layer_map() {
     fx.add_output("HEADLESS-1", (1920, 1080));
     let id = fx.add_client();
 
-    let (_layer_surface, surface) =
-        fx.client(id).create_layer_surface("noctalia-bar", Layer::Top);
+    let (_layer_surface, surface) = fx
+        .client(id)
+        .create_layer_surface("noctalia-bar", Layer::Top);
     surface.commit();
     fx.client(id).flush();
     fx.roundtrip(id);
@@ -71,8 +72,7 @@ fn layer_rule_noanim_suppresses_open_animation() {
     fx.add_output("HEADLESS-1", (1920, 1080));
     let id = fx.add_client();
 
-    let (_layer_surface, surface) =
-        fx.client(id).create_layer_surface("bar", Layer::Top);
+    let (_layer_surface, surface) = fx.client(id).create_layer_surface("bar", Layer::Top);
     surface.commit();
     fx.client(id).flush();
     fx.roundtrip(id);
@@ -100,8 +100,9 @@ fn matching_namespace_with_animations_on_queues_entry() {
     fx.add_output("HEADLESS-1", (1920, 1080));
     let id = fx.add_client();
 
-    let (_layer_surface, surface) =
-        fx.client(id).create_layer_surface("noctalia-launcher", Layer::Top);
+    let (_layer_surface, surface) = fx
+        .client(id)
+        .create_layer_surface("noctalia-launcher", Layer::Top);
     surface.commit();
     fx.client(id).flush();
     fx.roundtrip(id);
@@ -124,8 +125,7 @@ fn layer_animations_off_in_config_skips_queueing() {
     fx.add_output("HEADLESS-1", (1920, 1080));
     let id = fx.add_client();
 
-    let (_layer_surface, surface) =
-        fx.client(id).create_layer_surface("waybar", Layer::Top);
+    let (_layer_surface, surface) = fx.client(id).create_layer_surface("waybar", Layer::Top);
     surface.commit();
     fx.client(id).flush();
     fx.roundtrip(id);
@@ -154,8 +154,7 @@ fn layer_destroyed_unmaps_from_output() {
     fx.add_output("HEADLESS-1", (1920, 1080));
     let id = fx.add_client();
 
-    let (layer_surface, surface) =
-        fx.client(id).create_layer_surface("rofi", Layer::Top);
+    let (layer_surface, surface) = fx.client(id).create_layer_surface("rofi", Layer::Top);
     surface.commit();
     fx.client(id).flush();
     fx.roundtrip(id);

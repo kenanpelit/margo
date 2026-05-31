@@ -92,8 +92,16 @@ mod tests {
     #[test]
     fn aggregate_busy_is_one_minus_idle_fraction() {
         // 100 total jiffies elapsed, 25 of them idle → 75% busy.
-        let prev = CpuSample { total: 1000, idle: 500, cores: vec![] };
-        let cur = CpuSample { total: 1100, idle: 525, cores: vec![] };
+        let prev = CpuSample {
+            total: 1000,
+            idle: 500,
+            cores: vec![],
+        };
+        let cur = CpuSample {
+            total: 1100,
+            idle: 525,
+            cores: vec![],
+        };
         let (avg, max) = busy(&prev, &cur).unwrap();
         assert!((avg - 75.0).abs() < 0.01);
         // No usable cores → max falls back to aggregate.
@@ -103,7 +111,11 @@ mod tests {
     #[test]
     fn hottest_core_exceeds_average() {
         // Two cores: one pegged (0 idle of 100), one idle (90 idle of 100).
-        let prev = CpuSample { total: 200, idle: 90, cores: vec![(100, 0), (100, 90)] };
+        let prev = CpuSample {
+            total: 200,
+            idle: 90,
+            cores: vec![(100, 0), (100, 90)],
+        };
         let cur = CpuSample {
             total: 400,
             idle: 180,
@@ -116,7 +128,11 @@ mod tests {
 
     #[test]
     fn no_time_elapsed_is_none() {
-        let s = CpuSample { total: 1000, idle: 500, cores: vec![] };
+        let s = CpuSample {
+            total: 1000,
+            idle: 500,
+            cores: vec![],
+        };
         assert!(busy(&s, &s).is_none());
     }
 }

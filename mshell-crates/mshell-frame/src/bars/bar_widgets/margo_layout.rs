@@ -18,10 +18,7 @@
 
 use mshell_margo_client::read_state_json;
 use relm4::{
-    Component, ComponentParts, ComponentSender, gtk,
-    gtk::Orientation,
-    gtk::glib,
-    gtk::prelude::*,
+    Component, ComponentParts, ComponentSender, gtk, gtk::Orientation, gtk::glib, gtk::prelude::*,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -126,7 +123,11 @@ impl Component for MargoLayoutModel {
         // shutdown".
         let sender_tick = sender.clone();
         let timeout = glib::timeout_add_local(ACTIVE_POLL_INTERVAL, move || {
-            if sender_tick.input_sender().send(MargoLayoutInput::Tick).is_err() {
+            if sender_tick
+                .input_sender()
+                .send(MargoLayoutInput::Tick)
+                .is_err()
+            {
                 return glib::ControlFlow::Break;
             }
             glib::ControlFlow::Continue
@@ -179,7 +180,11 @@ fn current_active_layout_idx() -> Option<usize> {
         .iter()
         .find(|o| o.name == state.active_output)?;
     let idx = focused.layout_idx;
-    if idx < state.layouts.len() { Some(idx) } else { None }
+    if idx < state.layouts.len() {
+        Some(idx)
+    } else {
+        None
+    }
 }
 
 /// Read the layout name at `idx` from state.json (or fall back to

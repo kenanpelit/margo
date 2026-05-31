@@ -16,6 +16,5 @@ pub use panel::{PluginPanel, PluginSettings};
 // panel — the runtime is created once and passed to [`PluginPanel::new`].
 #[cfg(feature = "wasm")]
 pub use mshell_plugin_host::{
-    MediaInfo, MediaInfoSource, PluginRuntime, SystemInfo, SystemInfoSource, UiEvent,
-    UiEventKind,
+    MediaInfo, MediaInfoSource, PluginRuntime, SystemInfo, SystemInfoSource, UiEvent, UiEventKind,
 };

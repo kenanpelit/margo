@@ -205,7 +205,10 @@ pub fn validate(m: &Manifest) -> Result<(), String> {
         return Err("manifest id is empty".into());
     }
     if m.id.contains(':') || m.id.contains('/') {
-        return Err(format!("manifest id `{}` must not contain ':' or '/'", m.id));
+        return Err(format!(
+            "manifest id `{}` must not contain ':' or '/'",
+            m.id
+        ));
     }
     if m.version.trim().is_empty() {
         return Err("manifest version is empty".into());
@@ -349,8 +352,14 @@ min_mshell = "0.8.8"
 
         m.version = "1.0.0".into();
         m.widgets = vec![
-            WidgetDef { key: "x".into(), ..Default::default() },
-            WidgetDef { key: "x".into(), ..Default::default() },
+            WidgetDef {
+                key: "x".into(),
+                ..Default::default()
+            },
+            WidgetDef {
+                key: "x".into(),
+                ..Default::default()
+            },
         ];
         assert!(validate(&m).is_err()); // duplicate keys
     }

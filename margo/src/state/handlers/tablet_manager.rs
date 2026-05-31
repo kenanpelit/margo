@@ -6,10 +6,7 @@
 //! margo follows the cursor-shape protocol for now, so the callback
 //! is a default no-op.
 
-use smithay::{
-    delegate_tablet_manager,
-    wayland::tablet_manager::TabletSeatHandler,
-};
+use smithay::{delegate_tablet_manager, wayland::tablet_manager::TabletSeatHandler};
 
 use crate::state::MargoState;
 

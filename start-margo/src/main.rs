@@ -190,10 +190,7 @@ fn spawn_margo(path: &std::path::Path, args: &[OsString]) -> Result<std::process
 }
 
 fn run_loop(args: &Args) -> Result<i32> {
-    let margo_path = args
-        .path
-        .clone()
-        .unwrap_or_else(|| PathBuf::from("margo"));
+    let margo_path = args.path.clone().unwrap_or_else(|| PathBuf::from("margo"));
 
     // Crash log — Vec of Instants inside the rolling window. We don't
     // need a ring buffer because `--max-restarts` caps the size at a

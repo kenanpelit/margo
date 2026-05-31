@@ -13,9 +13,7 @@
 //! ~250-line copy-paste blocks (this file used to be 4041
 //! lines!) are gone.
 
-use crate::menu_settings::menu_config_panel::{
-    MenuConfigPanelInit, MenuConfigPanelModel,
-};
+use crate::menu_settings::menu_config_panel::{MenuConfigPanelInit, MenuConfigPanelModel};
 use crate::widget_menu_settings::MenuKind;
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
@@ -288,12 +286,7 @@ impl Component for MenuSettingsModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        _sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             MenuSettingsInput::ScreensharePositionChanged(position) => {
                 self.screenshare_position = position.clone();

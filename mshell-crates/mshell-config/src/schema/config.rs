@@ -58,7 +58,13 @@ pub struct Alarm {
 
 impl Default for Alarm {
     fn default() -> Self {
-        Self { hour: 7, minutes: 0, name: String::new(), enabled: false, repeat_mask: 0 }
+        Self {
+            hour: 7,
+            minutes: 0,
+            name: String::new(),
+            enabled: false,
+            repeat_mask: 0,
+        }
     }
 }
 
@@ -132,7 +138,6 @@ pub struct Session {
     pub reboot_command: String,
     pub shutdown_command: String,
 }
-
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
 #[serde(default)]
@@ -974,10 +979,7 @@ impl Default for Menus {
                             // DailyOverview merged surface; user
                             // asked for them separated.)
                             MenuWidget::Container(ContainerConfig {
-                                widgets: vec![
-                                    MenuWidget::CalendarGrid,
-                                    MenuWidget::Weather,
-                                ],
+                                widgets: vec![MenuWidget::CalendarGrid, MenuWidget::Weather],
                                 spacing: 10,
                                 orientation: Orientation::Vertical,
                                 // Equalised with the right column —
@@ -1192,7 +1194,6 @@ pub struct ScriptAutostart {
     pub delay_secs: u32,
 }
 
-
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
 #[serde(default)]
 pub struct Notifications {
@@ -1245,9 +1246,7 @@ impl Default for Notifications {
     }
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, Store, JsonSchema,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, Store, JsonSchema)]
 pub enum WallpaperRotationMode {
     /// Walk the directory listing in order.
     #[default]
@@ -1502,9 +1501,7 @@ impl VerticalMenuExpansion {
 /// `Automatic` stores a PAC URL for reference; margo has no runtime PAC
 /// interpreter — apps launched after setting this mode need to support
 /// `auto_proxy`/`WPAD` on their own.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, Store, JsonSchema,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, Store, JsonSchema)]
 pub enum ProxyMode {
     /// No proxy — the environment.d file is removed.
     #[default]
@@ -1626,7 +1623,9 @@ pub struct PrivacyConfig {
 
 impl Default for PrivacyConfig {
     fn default() -> Self {
-        Self { remember_recent: true }
+        Self {
+            remember_recent: true,
+        }
     }
 }
 
@@ -1770,8 +1769,7 @@ mod schema_tests {
     /// (including untouched sub-structs) keeps its default.
     #[test]
     fn partial_yaml_keeps_other_defaults() {
-        let cfg: Config =
-            serde_yaml::from_str("general:\n  clock_format_24_h: true\n").unwrap();
+        let cfg: Config = serde_yaml::from_str("general:\n  clock_format_24_h: true\n").unwrap();
         assert!(cfg.general.clock_format_24_h);
         // notifications section was never mentioned → defaults intact.
         assert!(cfg.notifications.show_close_button);

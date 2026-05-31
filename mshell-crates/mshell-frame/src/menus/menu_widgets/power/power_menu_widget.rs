@@ -227,11 +227,7 @@ impl Component for PowerMenuWidgetModel {
 
         let profile_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         let mut profile_buttons: Vec<(Profile, gtk::Button)> = Vec::with_capacity(3);
-        for profile in [
-            Profile::PowerSaver,
-            Profile::Balanced,
-            Profile::Performance,
-        ] {
+        for profile in [Profile::PowerSaver, Profile::Balanced, Profile::Performance] {
             let btn = make_profile_button(profile);
             let s = sender.clone();
             btn.connect_clicked(move |_| s.input(PowerMenuWidgetInput::SetProfile(profile)));
@@ -242,8 +238,7 @@ impl Component for PowerMenuWidgetModel {
         // ── Power-control buttons ───────────────────────────────
         let controls_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
 
-        let (cycle_button, _, _) =
-            make_control_button("media-playlist-shuffle-symbolic", "Cycle");
+        let (cycle_button, _, _) = make_control_button("media-playlist-shuffle-symbolic", "Cycle");
         {
             let s = sender.clone();
             cycle_button.connect_clicked(move |_| s.input(PowerMenuWidgetInput::CycleProfile));
@@ -306,9 +301,7 @@ impl Component for PowerMenuWidgetModel {
 
         // Reactive — profile from power-profiles-daemon, battery
         // from UPower, both over D-Bus. No polling.
-        spawn_active_profile_watcher(&sender, None, || {
-            PowerMenuWidgetCommandOutput::StateChanged
-        });
+        spawn_active_profile_watcher(&sender, None, || PowerMenuWidgetCommandOutput::StateChanged);
         spawn_battery_watcher(&sender, || PowerMenuWidgetCommandOutput::StateChanged);
         spawn_battery_online_watcher(&sender, || PowerMenuWidgetCommandOutput::StateChanged);
 
@@ -348,12 +341,7 @@ impl Component for PowerMenuWidgetModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             PowerMenuWidgetInput::SetProfile(profile) => {
                 // The `active_profile` watcher fires `StateChanged`
@@ -508,8 +496,14 @@ fn sync_view(model: &PowerMenuWidgetModel) {
     model.stats_box.set_visible(s.battery_available);
     if s.battery_available {
         if let Some(secs) = s.time_remaining_secs {
-            let label = if s.time_to_full { "Time to full" } else { "Time left" };
-            model.stats_box.append(&stat_row(label, &fmt_duration(secs)));
+            let label = if s.time_to_full {
+                "Time to full"
+            } else {
+                "Time left"
+            };
+            model
+                .stats_box
+                .append(&stat_row(label, &fmt_duration(secs)));
         }
         if let Some(w) = s.power_draw_w {
             model
@@ -517,7 +511,9 @@ fn sync_view(model: &PowerMenuWidgetModel) {
                 .append(&stat_row("Power draw", &format!("{w:.1} W")));
         }
         if let Some(h) = s.battery_health {
-            model.stats_box.append(&stat_row("Health", &format!("{h}%")));
+            model
+                .stats_box
+                .append(&stat_row("Health", &format!("{h}%")));
         }
         if let Some(wh) = s.energy_full_wh {
             model
@@ -563,9 +559,11 @@ fn sync_view(model: &PowerMenuWidgetModel) {
         model
             .lock_auto_icon
             .set_icon_name(Some("changes-prevent-symbolic"));
-        model
-            .lock_auto_button
-            .set_css_classes(&["ok-button-surface", "power-control-button", "selected"]);
+        model.lock_auto_button.set_css_classes(&[
+            "ok-button-surface",
+            "power-control-button",
+            "selected",
+        ]);
     } else {
         model.lock_auto_label.set_label("Lock Auto");
         model
@@ -578,9 +576,11 @@ fn sync_view(model: &PowerMenuWidgetModel) {
 
     // Idle Toggle — `.selected` while the inhibitor is engaged.
     if model.idle_inhibited {
-        model
-            .idle_button
-            .set_css_classes(&["ok-button-surface", "power-control-button", "selected"]);
+        model.idle_button.set_css_classes(&[
+            "ok-button-surface",
+            "power-control-button",
+            "selected",
+        ]);
     } else {
         model
             .idle_button
@@ -592,8 +592,7 @@ fn sync_view(model: &PowerMenuWidgetModel) {
 /// set — 0/10/20…100, with the `-charging` variant when the
 /// status says so.
 fn battery_icon(pct: u8, status: &str) -> &'static str {
-    let charging = status.eq_ignore_ascii_case("charging")
-        || status.eq_ignore_ascii_case("full");
+    let charging = status.eq_ignore_ascii_case("charging") || status.eq_ignore_ascii_case("full");
     let bucket = match pct {
         0..=4 => 0,
         5..=14 => 10,
@@ -678,10 +677,11 @@ async fn toggle_auto_lock() {
         }
         Ok(false) => {
             if let Some(parent) = path.parent()
-                && let Err(e) = tokio::fs::create_dir_all(parent).await {
-                    warn!(error = %e, "power: failed to create auto-profile lock dir");
-                    return;
-                }
+                && let Err(e) = tokio::fs::create_dir_all(parent).await
+            {
+                warn!(error = %e, "power: failed to create auto-profile lock dir");
+                return;
+            }
             if let Err(e) = tokio::fs::write(&path, b"").await {
                 warn!(error = %e, "power: failed to set auto-profile lock");
             }

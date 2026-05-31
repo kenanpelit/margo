@@ -22,16 +22,16 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use gtk4 as gtk;
 use gtk::cairo;
 use gtk::glib;
 use gtk::prelude::*;
 use gtk::{
-    Adjustment, Application, ApplicationWindow, Box as GtkBox, DrawingArea, Frame, Grid,
-    HeaderBar, Label, Orientation, Scale, SpinButton, ToggleButton,
+    Adjustment, Application, ApplicationWindow, Box as GtkBox, DrawingArea, Frame, Grid, HeaderBar,
+    Label, Orientation, Scale, SpinButton, ToggleButton,
 };
+use gtk4 as gtk;
 
-use margo_layouts::{arrange, ArrangeCtx, GapConfig, LayoutId, Rect, MAX_TAGS};
+use margo_layouts::{ArrangeCtx, GapConfig, LayoutId, MAX_TAGS, Rect, arrange};
 
 const APP_ID: &str = "dev.margo.visual";
 
@@ -78,7 +78,10 @@ impl AppState {
         for i in 1..=MAX_TAGS {
             pertag[i].layout = seeds[(i - 1) % seeds.len()];
         }
-        Self { pertag, current_tag: 1 }
+        Self {
+            pertag,
+            current_tag: 1,
+        }
     }
 
     fn current(&self) -> &LayoutParams {
@@ -94,7 +97,11 @@ impl AppState {
 
 fn render_layout(cr: &cairo::Context, w: i32, h: i32, p: &LayoutParams, big: bool) {
     // Background.
-    let bg = if big { (0.08, 0.09, 0.12) } else { (0.06, 0.07, 0.09) };
+    let bg = if big {
+        (0.08, 0.09, 0.12)
+    } else {
+        (0.06, 0.07, 0.09)
+    };
     cr.set_source_rgb(bg.0, bg.1, bg.2);
     let _ = cr.paint();
 
@@ -216,23 +223,26 @@ fn refresh_pertag_label(ui: &Ui, state: &AppState) {
         let mark = if t == state.current_tag { "•" } else { " " };
         parts.push(format!("{mark}{t}={}", l.symbol()));
     }
-    ui.pertag_label.set_text(&format!("pinned: {}", parts.join("  ")));
+    ui.pertag_label
+        .set_text(&format!("pinned: {}", parts.join("  ")));
 }
 
 fn refresh_controls_from_state(ui: &Ui, state: &AppState, suppress: &Cell<bool>) {
     suppress.set(true);
     let p = state.current().clone();
 
-    ui.selected_label
-        .set_markup(&format!("<b>{}</b>  ({})", p.layout.name(), p.layout.symbol()));
+    ui.selected_label.set_markup(&format!(
+        "<b>{}</b>  ({})",
+        p.layout.name(),
+        p.layout.symbol()
+    ));
 
     ui.n_windows_spin.set_value(p.n_windows as f64);
     ui.mfact_scale.set_value(p.mfact as f64);
     ui.nmaster_spin.set_value(p.nmaster as f64);
     ui.inner_gap_spin.set_value(p.inner_gap as f64);
     ui.outer_gap_spin.set_value(p.outer_gap as f64);
-    ui.focus_spin
-        .set_range(0.0, p.n_windows.max(1) as f64);
+    ui.focus_spin.set_range(0.0, p.n_windows.max(1) as f64);
     ui.focus_spin.set_value(p.focus as f64);
     ui.scroller_scale.set_value(p.scroller_prop as f64);
 
@@ -392,8 +402,7 @@ fn build_params_panel(
     };
 
     // Window count.
-    let n_windows_spin =
-        SpinButton::with_range(0.0, 16.0, 1.0);
+    let n_windows_spin = SpinButton::with_range(0.0, 16.0, 1.0);
     n_windows_spin.set_value(3.0);
     params.attach(&mk_label("Windows"), 0, 0, 1, 1);
     params.attach(&n_windows_spin, 1, 0, 1, 1);
@@ -464,28 +473,58 @@ fn build_params_panel(
         }};
     }
 
-    wire!(n_windows_spin, connect_value_changed, |p: &mut LayoutParams, w: &SpinButton| {
-        p.n_windows = w.value() as u32;
-        if p.focus > p.n_windows { p.focus = p.n_windows; }
-    });
-    wire!(nmaster_spin, connect_value_changed, |p: &mut LayoutParams, w: &SpinButton| {
-        p.nmaster = w.value().max(1.0) as u32;
-    });
-    wire!(mfact_scale, connect_value_changed, |p: &mut LayoutParams, w: &Scale| {
-        p.mfact = w.value() as f32;
-    });
-    wire!(scroller_scale, connect_value_changed, |p: &mut LayoutParams, w: &Scale| {
-        p.scroller_prop = w.value() as f32;
-    });
-    wire!(inner_gap_spin, connect_value_changed, |p: &mut LayoutParams, w: &SpinButton| {
-        p.inner_gap = w.value() as i32;
-    });
-    wire!(outer_gap_spin, connect_value_changed, |p: &mut LayoutParams, w: &SpinButton| {
-        p.outer_gap = w.value() as i32;
-    });
-    wire!(focus_spin, connect_value_changed, |p: &mut LayoutParams, w: &SpinButton| {
-        p.focus = w.value() as u32;
-    });
+    wire!(
+        n_windows_spin,
+        connect_value_changed,
+        |p: &mut LayoutParams, w: &SpinButton| {
+            p.n_windows = w.value() as u32;
+            if p.focus > p.n_windows {
+                p.focus = p.n_windows;
+            }
+        }
+    );
+    wire!(
+        nmaster_spin,
+        connect_value_changed,
+        |p: &mut LayoutParams, w: &SpinButton| {
+            p.nmaster = w.value().max(1.0) as u32;
+        }
+    );
+    wire!(
+        mfact_scale,
+        connect_value_changed,
+        |p: &mut LayoutParams, w: &Scale| {
+            p.mfact = w.value() as f32;
+        }
+    );
+    wire!(
+        scroller_scale,
+        connect_value_changed,
+        |p: &mut LayoutParams, w: &Scale| {
+            p.scroller_prop = w.value() as f32;
+        }
+    );
+    wire!(
+        inner_gap_spin,
+        connect_value_changed,
+        |p: &mut LayoutParams, w: &SpinButton| {
+            p.inner_gap = w.value() as i32;
+        }
+    );
+    wire!(
+        outer_gap_spin,
+        connect_value_changed,
+        |p: &mut LayoutParams, w: &SpinButton| {
+            p.outer_gap = w.value() as i32;
+        }
+    );
+    wire!(
+        focus_spin,
+        connect_value_changed,
+        |p: &mut LayoutParams, w: &SpinButton| {
+            p.focus = w.value() as u32;
+        }
+    );
 
     ParamsPanel {
         root: outer,

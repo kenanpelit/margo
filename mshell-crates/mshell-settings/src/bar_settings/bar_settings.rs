@@ -799,14 +799,11 @@ impl Component for BarSettingsModel {
                     h.abort();
                 }
                 let sender_clone = sender.clone();
-                self.top_min_height_debounce =
-                    Some(glib::spawn_future_local(async move {
-                        glib::timeout_future(std::time::Duration::from_millis(
-                            MIN_HEIGHT_DEBOUNCE_MS,
-                        ))
+                self.top_min_height_debounce = Some(glib::spawn_future_local(async move {
+                    glib::timeout_future(std::time::Duration::from_millis(MIN_HEIGHT_DEBOUNCE_MS))
                         .await;
-                        sender_clone.input(BarSettingsInput::CommitTopMinHeight);
-                    }));
+                    sender_clone.input(BarSettingsInput::CommitTopMinHeight);
+                }));
             }
             BarSettingsInput::BottomMinHeightChanged(min) => {
                 self.bottom_min_height = min;
@@ -814,14 +811,11 @@ impl Component for BarSettingsModel {
                     h.abort();
                 }
                 let sender_clone = sender.clone();
-                self.bottom_min_height_debounce =
-                    Some(glib::spawn_future_local(async move {
-                        glib::timeout_future(std::time::Duration::from_millis(
-                            MIN_HEIGHT_DEBOUNCE_MS,
-                        ))
+                self.bottom_min_height_debounce = Some(glib::spawn_future_local(async move {
+                    glib::timeout_future(std::time::Duration::from_millis(MIN_HEIGHT_DEBOUNCE_MS))
                         .await;
-                        sender_clone.input(BarSettingsInput::CommitBottomMinHeight);
-                    }));
+                    sender_clone.input(BarSettingsInput::CommitBottomMinHeight);
+                }));
             }
             BarSettingsInput::CommitTopMinHeight => {
                 self.top_min_height_debounce = None;

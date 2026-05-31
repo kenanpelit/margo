@@ -104,21 +104,23 @@ impl Component for UfwModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        sender.command(|out, shutdown| {
-            async move {
-                let shutdown_fut = shutdown.wait();
-                tokio::pin!(shutdown_fut);
-                let mut first = true;
-                loop {
-                    let delay = if first { STARTUP_DELAY } else { REFRESH_INTERVAL };
-                    first = false;
-                    tokio::select! {
-                        () = &mut shutdown_fut => break,
-                        _ = tokio::time::sleep(delay) => {}
-                    }
-                    let summary = fetch_ufw_summary().await;
-                    let _ = out.send(UfwCommandOutput::Refreshed(summary));
+        sender.command(|out, shutdown| async move {
+            let shutdown_fut = shutdown.wait();
+            tokio::pin!(shutdown_fut);
+            let mut first = true;
+            loop {
+                let delay = if first {
+                    STARTUP_DELAY
+                } else {
+                    REFRESH_INTERVAL
+                };
+                first = false;
+                tokio::select! {
+                    () = &mut shutdown_fut => break,
+                    _ = tokio::time::sleep(delay) => {}
                 }
+                let summary = fetch_ufw_summary().await;
+                let _ = out.send(UfwCommandOutput::Refreshed(summary));
             }
         });
 
@@ -132,12 +134,7 @@ impl Component for UfwModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             UfwInput::Clicked => {
                 let _ = sender.output(UfwOutput::Clicked);
@@ -317,7 +314,14 @@ async fn which(bin: &str) -> std::io::Result<()> {
         .arg(bin)
         .status()
         .await?;
-    if status.success() { Ok(()) } else { Err(std::io::Error::new(std::io::ErrorKind::NotFound, bin.to_string())) }
+    if status.success() {
+        Ok(())
+    } else {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            bin.to_string(),
+        ))
+    }
 }
 
 async fn run_capture(cmd: &str, args: &[&str]) -> Option<String> {

@@ -15,9 +15,8 @@ use wayle_audio::core::device::output::OutputDevice;
 pub fn is_hdmi_output(d: &OutputDevice) -> bool {
     let name = d.name.get().to_lowercase();
     let desc = d.description.get().to_lowercase();
-    let hit = |s: &str| {
-        s.contains("hdmi") || s.contains("displayport") || s.contains("display port")
-    };
+    let hit =
+        |s: &str| s.contains("hdmi") || s.contains("displayport") || s.contains("display port");
     hit(&name) || hit(&desc)
 }
 

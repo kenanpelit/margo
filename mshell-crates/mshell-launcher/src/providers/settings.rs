@@ -90,8 +90,14 @@ impl SettingsSection {
             Self::Fonts => &["fonts", "font", "typography"],
             Self::Idle => &["idle", "screensaver", "lock", "timeout", "afk"],
             Self::Launcher => &[
-                "launcher", "spotlight", "search", "frecency", "cache",
-                "history", "scripts", "start",
+                "launcher",
+                "spotlight",
+                "search",
+                "frecency",
+                "cache",
+                "history",
+                "scripts",
+                "start",
             ],
             Self::Menus => &["menus", "menu", "popups"],
             Self::Theme => &["theme", "colors", "matugen", "scheme", "dark", "light"],
@@ -248,7 +254,10 @@ mod tests {
     fn activation_invokes_callback_with_section_id() {
         let (p, calls) = capturing_provider();
         let items = p.search("display");
-        let display = items.iter().find(|i| i.name == "Settings → Display").unwrap();
+        let display = items
+            .iter()
+            .find(|i| i.name == "Settings → Display")
+            .unwrap();
         (display.on_activate)();
         assert_eq!(calls.borrow().as_slice(), &["display".to_string()]);
     }

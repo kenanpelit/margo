@@ -17,12 +17,12 @@
 //! is the wrong size for its slot" jitter that survives our
 //! size-snap fix.
 
+use smithay::backend::renderer::Texture;
 use smithay::backend::renderer::element::{Element, Id, Kind, RenderElement, UnderlyingStorage};
 use smithay::backend::renderer::gles::{
     GlesError, GlesFrame, GlesRenderer, GlesTexProgram, GlesTexture, Uniform, UniformValue,
 };
 use smithay::backend::renderer::utils::{CommitCounter, DamageSet, OpaqueRegions};
-use smithay::backend::renderer::Texture;
 use smithay::utils::user_data::UserDataMap;
 use smithay::utils::{Buffer, Logical, Physical, Point, Rectangle, Scale, Transform};
 
@@ -167,10 +167,7 @@ impl Element for ResizeRenderElement {
         commit: Option<CommitCounter>,
     ) -> DamageSet<i32, Physical> {
         if commit != Some(self.commit) {
-            DamageSet::from_slice(&[Rectangle::new(
-                Point::default(),
-                self.geometry(scale).size,
-            )])
+            DamageSet::from_slice(&[Rectangle::new(Point::default(), self.geometry(scale).size)])
         } else {
             DamageSet::default()
         }
@@ -226,10 +223,8 @@ impl RenderElement<GlesRenderer> for ResizeRenderElement {
 
         let install_override = |frame: &mut GlesFrame<'_, '_>| {
             if let Some(program) = self.program.as_ref().filter(|_| self.radius > 0.0) {
-                frame.override_default_tex_program(
-                    program.clone(),
-                    self.rounded_clip_uniforms(dst),
-                );
+                frame
+                    .override_default_tex_program(program.clone(), self.rounded_clip_uniforms(dst));
                 true
             } else {
                 false

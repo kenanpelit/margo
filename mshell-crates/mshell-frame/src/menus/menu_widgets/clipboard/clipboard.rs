@@ -108,7 +108,11 @@ fn tab_label(tab: ClipTab, counts: &[usize; 5]) -> String {
 /// configured `clipboard.density`. Read on init + each reveal so a
 /// Settings change applies on the next open without a restart.
 fn apply_density(root: &gtk::Box) {
-    let compact = config_manager().config().clipboard().density().get_untracked()
+    let compact = config_manager()
+        .config()
+        .clipboard()
+        .density()
+        .get_untracked()
         == ClipboardDensity::Compact;
     if compact {
         root.add_css_class("compact");
@@ -684,12 +688,17 @@ impl Component for ClipboardModel {
                     key_sender.input(ClipboardInput::CycleTab);
                     gtk::glib::Propagation::Stop
                 }
-                gtk::gdk::Key::_1 | gtk::gdk::Key::_2 | gtk::gdk::Key::_3
-                | gtk::gdk::Key::_4 | gtk::gdk::Key::_5
+                gtk::gdk::Key::_1
+                | gtk::gdk::Key::_2
+                | gtk::gdk::Key::_3
+                | gtk::gdk::Key::_4
+                | gtk::gdk::Key::_5
                     if !searching && !ctrl =>
                 {
-                    let idx = (keyval.to_unicode().and_then(|c| c.to_digit(10)).unwrap_or(1)
-                        as usize)
+                    let idx = (keyval
+                        .to_unicode()
+                        .and_then(|c| c.to_digit(10))
+                        .unwrap_or(1) as usize)
                         .saturating_sub(1);
                     if let Some(tab) = ClipTab::ALL.get(idx) {
                         key_sender.input(ClipboardInput::SetTab(*tab));

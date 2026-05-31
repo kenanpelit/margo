@@ -164,8 +164,7 @@ mod tests {
 
     #[test]
     fn transition_tick_is_far_finer_than_idle() {
-        let idle =
-            next_tick_ms(Phase::Day, 60);
+        let idle = next_tick_ms(Phase::Day, 60);
         let trans = next_tick_ms(Phase::TransitionToDay { progress: 0.5 }, 60);
         assert!(idle >= 60_000);
         assert!(trans <= 500);

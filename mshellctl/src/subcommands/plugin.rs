@@ -98,10 +98,7 @@ fn list_plugins(names_only: bool, enabled_only: bool) {
     }
 
     // Header.
-    println!(
-        "{:<22} {:<9} {:<9} {}",
-        "KEY", "VERSION", "STATUS", "KEYBINDS"
-    );
+    println!("{:<22} {:<9} {:<9} KEYBINDS", "KEY", "VERSION", "STATUS");
     for p in rows {
         let status = if state.is_enabled(&p.key) {
             "enabled"

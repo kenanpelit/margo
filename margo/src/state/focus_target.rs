@@ -14,23 +14,21 @@ use std::sync::Arc;
 use smithay::{
     desktop::{Window, WindowSurface},
     input::{
+        Seat,
         dnd::{DndFocus, Source},
         keyboard::{KeyboardTarget, KeysymHandle, ModifiersState},
         pointer::{
             AxisFrame, ButtonEvent, GestureHoldBeginEvent, GestureHoldEndEvent,
             GesturePinchBeginEvent, GesturePinchEndEvent, GesturePinchUpdateEvent,
-            GestureSwipeBeginEvent, GestureSwipeEndEvent, GestureSwipeUpdateEvent,
-            MotionEvent, PointerTarget, RelativeMotionEvent,
+            GestureSwipeBeginEvent, GestureSwipeEndEvent, GestureSwipeUpdateEvent, MotionEvent,
+            PointerTarget, RelativeMotionEvent,
         },
         touch::TouchTarget,
-        Seat,
     },
-    reexports::wayland_server::{protocol::wl_surface::WlSurface, DisplayHandle},
+    reexports::wayland_server::{DisplayHandle, protocol::wl_surface::WlSurface},
     utils::{Logical, Point, Serial},
     wayland::{
-        seat::WaylandFocus,
-        selection::data_device::WlOfferData,
-        session_lock::LockSurface,
+        seat::WaylandFocus, selection::data_device::WlOfferData, session_lock::LockSurface,
         shell::wlr_layer::LayerSurface as WlrLayerSurface,
     },
     xwayland::X11Surface,
@@ -198,73 +196,192 @@ impl KeyboardTarget<MargoState> for FocusTarget {
 
 impl PointerTarget<MargoState> for FocusTarget {
     fn enter(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &MotionEvent) {
-        if let Some(s) = self.inner_wl_surface() { PointerTarget::enter(s, seat, data, event); }
+        if let Some(s) = self.inner_wl_surface() {
+            PointerTarget::enter(s, seat, data, event);
+        }
     }
     fn motion(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &MotionEvent) {
-        if let Some(s) = self.inner_wl_surface() { PointerTarget::motion(s, seat, data, event); }
+        if let Some(s) = self.inner_wl_surface() {
+            PointerTarget::motion(s, seat, data, event);
+        }
     }
-    fn relative_motion(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &RelativeMotionEvent) {
-        if let Some(s) = self.inner_wl_surface() { PointerTarget::relative_motion(s, seat, data, event); }
+    fn relative_motion(
+        &self,
+        seat: &Seat<MargoState>,
+        data: &mut MargoState,
+        event: &RelativeMotionEvent,
+    ) {
+        if let Some(s) = self.inner_wl_surface() {
+            PointerTarget::relative_motion(s, seat, data, event);
+        }
     }
     fn button(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &ButtonEvent) {
-        if let Some(s) = self.inner_wl_surface() { PointerTarget::button(s, seat, data, event); }
+        if let Some(s) = self.inner_wl_surface() {
+            PointerTarget::button(s, seat, data, event);
+        }
     }
     fn axis(&self, seat: &Seat<MargoState>, data: &mut MargoState, frame: AxisFrame) {
-        if let Some(s) = self.inner_wl_surface() { PointerTarget::axis(s, seat, data, frame); }
+        if let Some(s) = self.inner_wl_surface() {
+            PointerTarget::axis(s, seat, data, frame);
+        }
     }
     fn frame(&self, seat: &Seat<MargoState>, data: &mut MargoState) {
-        if let Some(s) = self.inner_wl_surface() { PointerTarget::frame(s, seat, data); }
+        if let Some(s) = self.inner_wl_surface() {
+            PointerTarget::frame(s, seat, data);
+        }
     }
     fn leave(&self, seat: &Seat<MargoState>, data: &mut MargoState, serial: Serial, time: u32) {
-        if let Some(s) = self.inner_wl_surface() { PointerTarget::leave(s, seat, data, serial, time); }
+        if let Some(s) = self.inner_wl_surface() {
+            PointerTarget::leave(s, seat, data, serial, time);
+        }
     }
-    fn gesture_swipe_begin(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &GestureSwipeBeginEvent) {
-        if let Some(s) = self.inner_wl_surface() { PointerTarget::gesture_swipe_begin(s, seat, data, event); }
+    fn gesture_swipe_begin(
+        &self,
+        seat: &Seat<MargoState>,
+        data: &mut MargoState,
+        event: &GestureSwipeBeginEvent,
+    ) {
+        if let Some(s) = self.inner_wl_surface() {
+            PointerTarget::gesture_swipe_begin(s, seat, data, event);
+        }
     }
-    fn gesture_swipe_update(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &GestureSwipeUpdateEvent) {
-        if let Some(s) = self.inner_wl_surface() { PointerTarget::gesture_swipe_update(s, seat, data, event); }
+    fn gesture_swipe_update(
+        &self,
+        seat: &Seat<MargoState>,
+        data: &mut MargoState,
+        event: &GestureSwipeUpdateEvent,
+    ) {
+        if let Some(s) = self.inner_wl_surface() {
+            PointerTarget::gesture_swipe_update(s, seat, data, event);
+        }
     }
-    fn gesture_swipe_end(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &GestureSwipeEndEvent) {
-        if let Some(s) = self.inner_wl_surface() { PointerTarget::gesture_swipe_end(s, seat, data, event); }
+    fn gesture_swipe_end(
+        &self,
+        seat: &Seat<MargoState>,
+        data: &mut MargoState,
+        event: &GestureSwipeEndEvent,
+    ) {
+        if let Some(s) = self.inner_wl_surface() {
+            PointerTarget::gesture_swipe_end(s, seat, data, event);
+        }
     }
-    fn gesture_pinch_begin(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &GesturePinchBeginEvent) {
-        if let Some(s) = self.inner_wl_surface() { PointerTarget::gesture_pinch_begin(s, seat, data, event); }
+    fn gesture_pinch_begin(
+        &self,
+        seat: &Seat<MargoState>,
+        data: &mut MargoState,
+        event: &GesturePinchBeginEvent,
+    ) {
+        if let Some(s) = self.inner_wl_surface() {
+            PointerTarget::gesture_pinch_begin(s, seat, data, event);
+        }
     }
-    fn gesture_pinch_update(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &GesturePinchUpdateEvent) {
-        if let Some(s) = self.inner_wl_surface() { PointerTarget::gesture_pinch_update(s, seat, data, event); }
+    fn gesture_pinch_update(
+        &self,
+        seat: &Seat<MargoState>,
+        data: &mut MargoState,
+        event: &GesturePinchUpdateEvent,
+    ) {
+        if let Some(s) = self.inner_wl_surface() {
+            PointerTarget::gesture_pinch_update(s, seat, data, event);
+        }
     }
-    fn gesture_pinch_end(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &GesturePinchEndEvent) {
-        if let Some(s) = self.inner_wl_surface() { PointerTarget::gesture_pinch_end(s, seat, data, event); }
+    fn gesture_pinch_end(
+        &self,
+        seat: &Seat<MargoState>,
+        data: &mut MargoState,
+        event: &GesturePinchEndEvent,
+    ) {
+        if let Some(s) = self.inner_wl_surface() {
+            PointerTarget::gesture_pinch_end(s, seat, data, event);
+        }
     }
-    fn gesture_hold_begin(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &GestureHoldBeginEvent) {
-        if let Some(s) = self.inner_wl_surface() { PointerTarget::gesture_hold_begin(s, seat, data, event); }
+    fn gesture_hold_begin(
+        &self,
+        seat: &Seat<MargoState>,
+        data: &mut MargoState,
+        event: &GestureHoldBeginEvent,
+    ) {
+        if let Some(s) = self.inner_wl_surface() {
+            PointerTarget::gesture_hold_begin(s, seat, data, event);
+        }
     }
-    fn gesture_hold_end(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &GestureHoldEndEvent) {
-        if let Some(s) = self.inner_wl_surface() { PointerTarget::gesture_hold_end(s, seat, data, event); }
+    fn gesture_hold_end(
+        &self,
+        seat: &Seat<MargoState>,
+        data: &mut MargoState,
+        event: &GestureHoldEndEvent,
+    ) {
+        if let Some(s) = self.inner_wl_surface() {
+            PointerTarget::gesture_hold_end(s, seat, data, event);
+        }
     }
 }
 
 impl TouchTarget<MargoState> for FocusTarget {
-    fn down(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &smithay::input::touch::DownEvent, seq: Serial) {
-        if let Some(s) = self.inner_wl_surface() { TouchTarget::down(s, seat, data, event, seq); }
+    fn down(
+        &self,
+        seat: &Seat<MargoState>,
+        data: &mut MargoState,
+        event: &smithay::input::touch::DownEvent,
+        seq: Serial,
+    ) {
+        if let Some(s) = self.inner_wl_surface() {
+            TouchTarget::down(s, seat, data, event, seq);
+        }
     }
-    fn up(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &smithay::input::touch::UpEvent, seq: Serial) {
-        if let Some(s) = self.inner_wl_surface() { TouchTarget::up(s, seat, data, event, seq); }
+    fn up(
+        &self,
+        seat: &Seat<MargoState>,
+        data: &mut MargoState,
+        event: &smithay::input::touch::UpEvent,
+        seq: Serial,
+    ) {
+        if let Some(s) = self.inner_wl_surface() {
+            TouchTarget::up(s, seat, data, event, seq);
+        }
     }
-    fn motion(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &smithay::input::touch::MotionEvent, seq: Serial) {
-        if let Some(s) = self.inner_wl_surface() { TouchTarget::motion(s, seat, data, event, seq); }
+    fn motion(
+        &self,
+        seat: &Seat<MargoState>,
+        data: &mut MargoState,
+        event: &smithay::input::touch::MotionEvent,
+        seq: Serial,
+    ) {
+        if let Some(s) = self.inner_wl_surface() {
+            TouchTarget::motion(s, seat, data, event, seq);
+        }
     }
     fn frame(&self, seat: &Seat<MargoState>, data: &mut MargoState, seq: Serial) {
-        if let Some(s) = self.inner_wl_surface() { TouchTarget::frame(s, seat, data, seq); }
+        if let Some(s) = self.inner_wl_surface() {
+            TouchTarget::frame(s, seat, data, seq);
+        }
     }
     fn cancel(&self, seat: &Seat<MargoState>, data: &mut MargoState, seq: Serial) {
-        if let Some(s) = self.inner_wl_surface() { TouchTarget::cancel(s, seat, data, seq); }
+        if let Some(s) = self.inner_wl_surface() {
+            TouchTarget::cancel(s, seat, data, seq);
+        }
     }
-    fn shape(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &smithay::input::touch::ShapeEvent, seq: Serial) {
-        if let Some(s) = self.inner_wl_surface() { TouchTarget::shape(s, seat, data, event, seq); }
+    fn shape(
+        &self,
+        seat: &Seat<MargoState>,
+        data: &mut MargoState,
+        event: &smithay::input::touch::ShapeEvent,
+        seq: Serial,
+    ) {
+        if let Some(s) = self.inner_wl_surface() {
+            TouchTarget::shape(s, seat, data, event, seq);
+        }
     }
-    fn orientation(&self, seat: &Seat<MargoState>, data: &mut MargoState, event: &smithay::input::touch::OrientationEvent, seq: Serial) {
-        if let Some(s) = self.inner_wl_surface() { TouchTarget::orientation(s, seat, data, event, seq); }
+    fn orientation(
+        &self,
+        seat: &Seat<MargoState>,
+        data: &mut MargoState,
+        event: &smithay::input::touch::OrientationEvent,
+        seq: Serial,
+    ) {
+        if let Some(s) = self.inner_wl_surface() {
+            TouchTarget::orientation(s, seat, data, event, seq);
+        }
     }
 }
 

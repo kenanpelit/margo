@@ -30,7 +30,9 @@ pub fn fetch_registry(url: &str) -> Result<Registry, PluginError> {
 /// existing contents). Caller validates the resulting manifest.
 pub fn install_plugin(url: &str, entry_dir: &str, dest: &Path) -> Result<(), PluginError> {
     if entry_dir.trim().is_empty() || entry_dir.contains("..") {
-        return Err(PluginError::Git(format!("invalid plugin dir `{entry_dir}`")));
+        return Err(PluginError::Git(format!(
+            "invalid plugin dir `{entry_dir}`"
+        )));
     }
     let tmp = scratch_dir("inst");
     let result = (|| {

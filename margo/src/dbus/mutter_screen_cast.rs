@@ -33,11 +33,11 @@ use tracing::{debug, warn};
 use zbus::fdo::RequestNameFlags;
 use zbus::object_server::{InterfaceRef, SignalEmitter};
 use zbus::zvariant::{DeserializeDict, OwnedObjectPath, SerializeDict, Type, Value};
-use zbus::{fdo, interface, ObjectServer};
+use zbus::{ObjectServer, fdo, interface};
 
+use super::Start;
 use super::cast_ids::{CastSessionId, CastStreamId};
 use super::ipc_output::{IpcOutput, IpcOutputMap};
-use super::Start;
 
 #[derive(Clone)]
 pub struct ScreenCast {
@@ -154,7 +154,11 @@ impl ScreenCast {
         let path = format!("/org/gnome/Mutter/ScreenCast/Session/u{}", session_id.get());
         let path = OwnedObjectPath::try_from(path).unwrap();
 
-        let session = Session::new(session_id, self.ipc_outputs.clone(), self.to_compositor.clone());
+        let session = Session::new(
+            session_id,
+            self.ipc_outputs.clone(),
+            self.to_compositor.clone(),
+        );
         match server.at(&path, session.clone()).await {
             Ok(true) => {
                 let iface = server.interface(&path).await.unwrap();
@@ -164,7 +168,7 @@ impl ScreenCast {
             Err(err) => {
                 return Err(fdo::Error::Failed(format!(
                     "error creating session object: {err:?}"
-                )))
+                )));
             }
         }
 
@@ -261,7 +265,7 @@ impl Session {
             Err(err) => {
                 return Err(fdo::Error::Failed(format!(
                     "error creating stream object: {err:?}"
-                )))
+                )));
             }
         }
 
@@ -300,7 +304,7 @@ impl Session {
             Err(err) => {
                 return Err(fdo::Error::Failed(format!(
                     "error creating stream object: {err:?}"
-                )))
+                )));
             }
         }
 
@@ -315,7 +319,7 @@ impl Session {
 impl Stream {
     #[zbus(signal)]
     pub async fn pipe_wire_stream_added(ctxt: &SignalEmitter<'_>, node_id: u32)
-        -> zbus::Result<()>;
+    -> zbus::Result<()>;
 
     #[zbus(property)]
     async fn parameters(&self) -> StreamParameters {

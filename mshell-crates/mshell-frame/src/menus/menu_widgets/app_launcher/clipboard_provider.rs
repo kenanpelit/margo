@@ -34,10 +34,7 @@ impl Default for ClipboardProvider {
 fn render_label(entry: &ClipboardEntry) -> String {
     match &entry.preview {
         EntryPreview::Text(text) => {
-            let collapsed: String = text
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" ");
+            let collapsed: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
             truncate(&collapsed, 80)
         }
         EntryPreview::Image { width, height, .. } => {
@@ -123,10 +120,7 @@ impl Provider for ClipboardProvider {
                 usage_key: None,
                 on_activate: Rc::new(|| {
                     clipboard_service().clear_history();
-                    mshell_launcher::notify::toast(
-                        "Clipboard cleared",
-                        "All entries removed",
-                    );
+                    mshell_launcher::notify::toast("Clipboard cleared", "All entries removed");
                 }),
             },
         ]
@@ -148,10 +142,7 @@ impl Provider for ClipboardProvider {
                 usage_key: None,
                 on_activate: Rc::new(|| {
                     clipboard_service().clear_history();
-                    mshell_launcher::notify::toast(
-                        "Clipboard cleared",
-                        "All entries removed",
-                    );
+                    mshell_launcher::notify::toast("Clipboard cleared", "All entries removed");
                 }),
             }];
         }
@@ -171,9 +162,7 @@ impl Provider for ClipboardProvider {
             .enumerate()
             .filter_map(|(idx, entry)| {
                 let label = render_label(&entry);
-                if !filter.is_empty()
-                    && !label.to_ascii_lowercase().contains(&filter)
-                {
+                if !filter.is_empty() && !label.to_ascii_lowercase().contains(&filter) {
                     return None;
                 }
                 let entry_id = entry.id;

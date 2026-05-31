@@ -25,14 +25,16 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use notify::{Config as NotifyConfig, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{
+    Config as NotifyConfig, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher,
+};
 use tokio::sync::mpsc;
-use tokio::time::{interval, MissedTickBehavior};
+use tokio::time::{MissedTickBehavior, interval};
 
-use crate::state_json::{lowest_tag, monitor_id, read_raw, state_json_path, RawClient, StateJson};
+use crate::state_json::{RawClient, StateJson, lowest_tag, monitor_id, read_raw, state_json_path};
 use crate::{
-    Address, Client, ClientLocation, ClientSize, FullscreenMode, MargoEvent,
-    MargoService, Monitor, Reactive, Workspace, WorkspaceInfo,
+    Address, Client, ClientLocation, ClientSize, FullscreenMode, MargoEvent, MargoService, Monitor,
+    Reactive, Workspace, WorkspaceInfo,
 };
 
 /// Safety-net poll cadence. With inotify carrying every real change,
@@ -88,7 +90,10 @@ pub(crate) fn spawn(service: &Arc<MargoService>) {
                     // care about events affecting state.json
                     // (create / modify / rename-target).
                     let touches_state = if let Some(ref name) = target_name {
-                        event.paths.iter().any(|p| p.file_name() == Some(name.as_os_str()))
+                        event
+                            .paths
+                            .iter()
+                            .any(|p| p.file_name() == Some(name.as_os_str()))
                     } else {
                         true
                     };
@@ -458,27 +463,26 @@ fn apply(service: &MargoService, state: &StateJson) {
         .find(|m| m.focused.get())
         .map(|m| m.active_workspace.get().id);
     if new_focused_tag != prev_focused_tag
-        && let Some(id) = new_focused_tag {
-            emitted.push(MargoEvent::WorkspaceV2 {
-                id,
-                name: id.to_string(),
-            });
-        }
+        && let Some(id) = new_focused_tag
+    {
+        emitted.push(MargoEvent::WorkspaceV2 {
+            id,
+            name: id.to_string(),
+        });
+    }
 
     // ── Clients ──────────────────────────────────────────────────────
     let current_clients = service.clients.get();
     let mut next_clients: Vec<Arc<Client>> = Vec::with_capacity(state.clients.len());
     for c in &state.clients {
         let addr = client_address(c);
-        let new_client = if let Some(existing) = current_clients
-            .iter()
-            .find(|cl| cl.address.get() == addr)
-        {
-            update_client_in_place(existing, c, state);
-            Arc::clone(existing)
-        } else {
-            build_client(c, state, &workspace_by_id)
-        };
+        let new_client =
+            if let Some(existing) = current_clients.iter().find(|cl| cl.address.get() == addr) {
+                update_client_in_place(existing, c, state);
+                Arc::clone(existing)
+            } else {
+                build_client(c, state, &workspace_by_id)
+            };
         next_clients.push(new_client);
     }
     // Client lifecycle + active-window events. mshell-port's
@@ -488,14 +492,9 @@ fn apply(service: &MargoService, state: &StateJson) {
     // upstream-shape compatibility.
     {
         use std::collections::HashSet;
-        let prev_addrs: HashSet<Address> = current_clients
-            .iter()
-            .map(|c| c.address.get())
-            .collect();
-        let next_addrs: HashSet<Address> = next_clients
-            .iter()
-            .map(|c| c.address.get())
-            .collect();
+        let prev_addrs: HashSet<Address> =
+            current_clients.iter().map(|c| c.address.get()).collect();
+        let next_addrs: HashSet<Address> = next_clients.iter().map(|c| c.address.get()).collect();
         for addr in next_addrs.difference(&prev_addrs) {
             if let Some(c) = next_clients.iter().find(|cl| cl.address.get() == *addr) {
                 emitted.push(MargoEvent::OpenWindow {
@@ -522,9 +521,10 @@ fn apply(service: &MargoService, state: &StateJson) {
         .find(|c| c.focus_history_id.get() == 0)
         .map(|c| c.address.get());
     if prev_focused != new_focused
-        && let Some(addr) = new_focused {
-            emitted.push(MargoEvent::ActiveWindowV2 { address: addr });
-        }
+        && let Some(addr) = new_focused
+    {
+        emitted.push(MargoEvent::ActiveWindowV2 { address: addr });
+    }
     // Globally focused client — `state.json`'s `focused_idx`
     // indexes into `state.clients`, and `next_clients` is built in
     // that same order, so `next_clients[focused_idx]` is the one

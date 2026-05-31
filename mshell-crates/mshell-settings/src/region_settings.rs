@@ -154,7 +154,10 @@ impl Component for RegionSettingsModel {
 /// The system `LANG` from `localectl status`, falling back to $LANG then a
 /// neutral default.
 fn read_locale() -> String {
-    if let Ok(out) = std::process::Command::new("localectl").arg("status").output() {
+    if let Ok(out) = std::process::Command::new("localectl")
+        .arg("status")
+        .output()
+    {
         for line in String::from_utf8_lossy(&out.stdout).lines() {
             if line.contains("System Locale:")
                 && let Some(lang) = line
@@ -175,7 +178,9 @@ fn read_locale() -> String {
 /// Available locales from `localectl list-locales`; falls back to a small
 /// set so the dropdown is never empty.
 fn list_locales() -> Vec<String> {
-    if let Ok(out) = std::process::Command::new("localectl").arg("list-locales").output()
+    if let Ok(out) = std::process::Command::new("localectl")
+        .arg("list-locales")
+        .output()
         && out.status.success()
     {
         let locales: Vec<String> = String::from_utf8_lossy(&out.stdout)

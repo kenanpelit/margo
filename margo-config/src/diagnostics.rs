@@ -87,10 +87,7 @@ impl ConfigDiagnostic {
                 col = self.col.max(1),
             ));
         } else {
-            out.push_str(&format!(
-                "{}[{}]: {}\n",
-                sev_label, self.code, self.message
-            ));
+            out.push_str(&format!("{}[{}]: {}\n", sev_label, self.code, self.message));
             out.push_str(&format!(
                 "  --> {}:{}:{}\n",
                 self.path.display(),
@@ -111,7 +108,12 @@ impl ConfigDiagnostic {
         out.push_str(&format!(
             "{} {pipe} {}\n",
             if colored {
-                format!("{blue}{gutter}{reset}", blue = blue, reset = reset, gutter = gutter)
+                format!(
+                    "{blue}{gutter}{reset}",
+                    blue = blue,
+                    reset = reset,
+                    gutter = gutter
+                )
             } else {
                 gutter.clone()
             },

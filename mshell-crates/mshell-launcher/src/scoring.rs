@@ -101,6 +101,10 @@ mod tests {
         // perfect 3-char nucleo match (~80+) still wins.
         let mut m = make_matcher();
         let perfect = fuzzy_score(&mut m, "vim", "vim").unwrap();
-        assert!(perfect > usage_boost(1000), "perfect={perfect} boost={}", usage_boost(1000));
+        assert!(
+            perfect > usage_boost(1000),
+            "perfect={perfect} boost={}",
+            usage_boost(1000)
+        );
     }
 }

@@ -13,16 +13,15 @@ use std::os::unix::io::OwnedFd;
 use smithay::{
     delegate_data_control, delegate_data_device, delegate_ext_data_control,
     delegate_primary_selection,
-    input::{dnd::DndGrabHandler, Seat},
+    input::{Seat, dnd::DndGrabHandler},
     wayland::selection::{
+        SelectionHandler, SelectionSource, SelectionTarget,
         data_device::{DataDeviceHandler, DataDeviceState, WaylandDndGrabHandler},
         ext_data_control::{
-            DataControlHandler as ExtDataControlHandler,
-            DataControlState as ExtDataControlState,
+            DataControlHandler as ExtDataControlHandler, DataControlState as ExtDataControlState,
         },
         primary_selection::{PrimarySelectionHandler, PrimarySelectionState},
         wlr_data_control::{DataControlHandler, DataControlState},
-        SelectionHandler, SelectionSource, SelectionTarget,
     },
 };
 

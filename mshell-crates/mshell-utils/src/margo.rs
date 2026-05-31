@@ -1,7 +1,7 @@
+use mshell_margo_client::{Workspace, WorkspaceInfo};
 use mshell_services::margo_service;
 use std::sync::Arc;
 use tracing::error;
-use mshell_margo_client::{Workspace, WorkspaceInfo};
 
 /// Active workspaces under the **margo** semantics: only the
 /// focused monitor's active tag counts as "active" for bar
@@ -48,7 +48,8 @@ pub fn get_active_workspaces() -> Vec<WorkspaceInfo> {
         .find(|m| m.focused.get())
         .or_else(|| monitors.first());
 
-    mon.map(|m| vec![m.active_workspace.get()]).unwrap_or_default()
+    mon.map(|m| vec![m.active_workspace.get()])
+        .unwrap_or_default()
 }
 
 pub fn is_an_active_workspace(workspace: &Arc<Workspace>) -> bool {

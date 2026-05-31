@@ -1,4 +1,4 @@
-use crate::json_struct::{Base16, Colors, MatugenTheme, MShell, Palettes, color};
+use crate::json_struct::{Base16, Colors, MShell, MatugenTheme, Palettes, color};
 
 pub fn gruvbox_light_soft(mshell: MShell) -> MatugenTheme {
     MatugenTheme {

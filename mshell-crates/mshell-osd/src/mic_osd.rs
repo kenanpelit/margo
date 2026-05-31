@@ -142,8 +142,7 @@ impl Component for MicOsdModel {
                 } else {
                     let volume = device.volume.get();
                     self.slider_value = volume.average();
-                    self.value_label =
-                        format!("{}%", volume.average_percentage().round() as i32);
+                    self.value_label = format!("{}%", volume.average_percentage().round() as i32);
                 }
 
                 let token = self.hide_token.reset();

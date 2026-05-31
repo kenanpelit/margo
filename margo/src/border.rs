@@ -40,7 +40,8 @@ impl Default for ClientBorder {
 
 impl ClientBorder {
     pub fn update(&mut self, geom: Rect, width: f32, radius: f32, color: [f32; 4]) {
-        if self.geom != geom || self.width != width || self.radius != radius || self.color != color {
+        if self.geom != geom || self.width != width || self.radius != radius || self.color != color
+        {
             self.geom = geom;
             self.width = width;
             self.radius = radius;
@@ -87,10 +88,7 @@ pub fn refresh(state: &mut MargoState) {
             // Letting the border pop in at the end of the open
             // animation matches niri/Hyprland behaviour and is far less
             // jarring than the alternative.
-            let hide = c.no_border
-                || c.is_fullscreen
-                || !visible
-                || c.opening_animation.is_some();
+            let hide = c.no_border || c.is_fullscreen || !visible || c.opening_animation.is_some();
 
             // The border has to wrap the *actual* on-screen content,
             // not the layout-reserved rect: Electron clients (Helium
@@ -214,15 +212,17 @@ pub fn refresh(state: &mut MargoState) {
         // thumbnail sizes. Multiplier is config-driven, default 1.6
         // (clamped 1.0–4.0). Hidden borders stay at 0.
         let mut effective = if hide { 0.0 } else { width };
-        if !hide
-            && state.is_overview_open()
-            && state.clients[idx].is_overview_hovered
-        {
-            let mul = state.config.overview_selected_border_multiplier.clamp(1.0, 4.0);
+        if !hide && state.is_overview_open() && state.clients[idx].is_overview_hovered {
+            let mul = state
+                .config
+                .overview_selected_border_multiplier
+                .clamp(1.0, 4.0);
             effective *= mul;
         }
         let radius = state.config.border_radius as f32;
-        state.clients[idx].border.update(geom, effective, radius, color);
+        state.clients[idx]
+            .border
+            .update(geom, effective, radius, color);
     }
 }
 

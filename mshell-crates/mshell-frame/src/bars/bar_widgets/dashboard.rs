@@ -50,7 +50,10 @@ pub(crate) struct DashboardModel {
 pub(crate) enum DashboardInput {
     UpdateTime,
     CycleFormat,
-    ReloadFormats { formats: Vec<String>, fallback_24h: bool },
+    ReloadFormats {
+        formats: Vec<String>,
+        fallback_24h: bool,
+    },
 }
 
 #[derive(Debug)]
@@ -108,7 +111,11 @@ impl SimpleComponent for DashboardModel {
         // sysstat.rs `schedule_poll` for the full story.
         let sender_clone = sender.clone();
         let id = glib::timeout_add_local(std::time::Duration::from_secs(1), move || {
-            if sender_clone.input_sender().send(DashboardInput::UpdateTime).is_err() {
+            if sender_clone
+                .input_sender()
+                .send(DashboardInput::UpdateTime)
+                .is_err()
+            {
                 return glib::ControlFlow::Break;
             }
             glib::ControlFlow::Continue
@@ -134,11 +141,7 @@ impl SimpleComponent for DashboardModel {
         let sender_clone = sender.clone();
         let base_config_eff = base_config.clone();
         effects.push(move |_| {
-            let fallback_24h = base_config_eff
-                .clone()
-                .general()
-                .clock_format_24_h()
-                .get();
+            let fallback_24h = base_config_eff.clone().general().clock_format_24_h().get();
             let formats = collect_formats(base_config_eff.clone().tempo().get());
             sender_clone.input(DashboardInput::ReloadFormats {
                 formats,
@@ -187,12 +190,8 @@ impl SimpleComponent for DashboardModel {
                 if self.formats.len() > 1 {
                     let next = (self.current_idx.get() + 1) % self.formats.len();
                     self.current_idx.set(next);
-                    self.time_label = render_now(
-                        &self.formats,
-                        next,
-                        self.fallback_24h,
-                        self.orientation,
-                    );
+                    self.time_label =
+                        render_now(&self.formats, next, self.fallback_24h, self.orientation);
                 }
             }
             DashboardInput::ReloadFormats {
@@ -202,12 +201,7 @@ impl SimpleComponent for DashboardModel {
                 self.formats = formats;
                 self.fallback_24h = fallback_24h;
                 self.current_idx.set(0);
-                self.time_label = render_now(
-                    &self.formats,
-                    0,
-                    self.fallback_24h,
-                    self.orientation,
-                );
+                self.time_label = render_now(&self.formats, 0, self.fallback_24h, self.orientation);
             }
         }
     }
@@ -236,7 +230,12 @@ fn collect_formats(tempo: Tempo) -> Vec<String> {
     out
 }
 
-fn render_now(formats: &[String], idx: usize, fallback_24h: bool, orientation: Orientation) -> String {
+fn render_now(
+    formats: &[String],
+    idx: usize,
+    fallback_24h: bool,
+    orientation: Orientation,
+) -> String {
     let now = Local::now();
     if let Some(fmt) = formats.get(idx) {
         return now.format(fmt).to_string();

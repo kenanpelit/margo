@@ -2,9 +2,6 @@ use crate::menus::menu::{MenuModel, MenuOutput};
 use crate::menus::menu_widgets::alarm_clock::alarm_clock_menu_widget::{
     AlarmClockMenuWidgetInit, AlarmClockMenuWidgetModel,
 };
-use crate::menus::menu_widgets::control_center::control_center_menu_widget::{
-    ControlCenterMenuWidgetInit, ControlCenterMenuWidgetModel, ControlCenterMenuWidgetOutput,
-};
 use crate::menus::menu_widgets::app_launcher::app_launcher::{
     AppLauncherInit, AppLauncherModel, AppLauncherOutput,
 };
@@ -29,45 +26,47 @@ use crate::menus::menu_widgets::clock::{ClockInit, ClockModel};
 use crate::menus::menu_widgets::compact_audio::{CompactAudioInit, CompactAudioModel};
 use crate::menus::menu_widgets::connectivity::{ConnectivityInit, ConnectivityModel};
 use crate::menus::menu_widgets::container::{ContainerInit, ContainerModel};
+use crate::menus::menu_widgets::control_center::control_center_menu_widget::{
+    ControlCenterMenuWidgetInit, ControlCenterMenuWidgetModel, ControlCenterMenuWidgetOutput,
+};
 use crate::menus::menu_widgets::cpu_dashboard::cpu_dashboard_menu_widget::{
     CpuDashboardMenuWidgetInit, CpuDashboardMenuWidgetModel,
 };
 use crate::menus::menu_widgets::divider::{DividerMenuWidgetInit, DividerMenuWidgetModel};
+use crate::menus::menu_widgets::dns::dns_menu_widget::{DnsMenuWidgetInit, DnsMenuWidgetModel};
+use crate::menus::menu_widgets::ip::ip_menu_widget::{IpMenuWidgetInit, IpMenuWidgetModel};
+use crate::menus::menu_widgets::keep_awake::keep_awake_menu_widget::{
+    KeepAwakeMenuWidgetInit, KeepAwakeMenuWidgetModel, KeepAwakeMenuWidgetOutput,
+};
+use crate::menus::menu_widgets::keybinds::keybinds_menu_widget::{
+    KeybindsMenuWidgetInit, KeybindsMenuWidgetModel,
+};
 use crate::menus::menu_widgets::margo_layout::margo_layout_menu_widget::{
     MargoLayoutMenuWidgetInit, MargoLayoutMenuWidgetModel, MargoLayoutMenuWidgetOutput,
 };
 use crate::menus::menu_widgets::media_player::media_players::{
     MediaPlayersInit, MediaPlayersModel,
 };
-use crate::menus::menu_widgets::dns::dns_menu_widget::{
-    DnsMenuWidgetInit, DnsMenuWidgetModel,
+use crate::menus::menu_widgets::network::network_menu_widget::{
+    NetworkMenuWidgetInit, NetworkMenuWidgetModel,
 };
 use crate::menus::menu_widgets::network_toggle::network_menu_widget::{
     NetworkToggleMenuWidgetInit, NetworkToggleMenuWidgetModel,
 };
-use crate::menus::menu_widgets::ip::ip_menu_widget::{
-    IpMenuWidgetInit, IpMenuWidgetModel,
-};
-use crate::menus::menu_widgets::network::network_menu_widget::{
-    NetworkMenuWidgetInit, NetworkMenuWidgetModel,
-};
 use crate::menus::menu_widgets::notes::notes_menu_widget::{
     NotesMenuWidgetInit, NotesMenuWidgetModel,
-};
-use crate::menus::menu_widgets::power::power_menu_widget::{
-    PowerMenuWidgetInit, PowerMenuWidgetModel,
 };
 use crate::menus::menu_widgets::notifications::notifications::{
     NotificationsInit, NotificationsModel, NotificationsOutput,
 };
+use crate::menus::menu_widgets::overview_intel::{OverviewIntelInit, OverviewIntelModel};
+use crate::menus::menu_widgets::panel_header::{PanelHeaderInit, PanelHeaderModel};
 use crate::menus::menu_widgets::podman::podman_menu_widget::{
     PodmanMenuWidgetInit, PodmanMenuWidgetModel,
 };
-use crate::menus::menu_widgets::ufw::ufw_menu_widget::{
-    UfwMenuWidgetInit, UfwMenuWidgetModel,
+use crate::menus::menu_widgets::power::power_menu_widget::{
+    PowerMenuWidgetInit, PowerMenuWidgetModel,
 };
-use crate::menus::menu_widgets::overview_intel::{OverviewIntelInit, OverviewIntelModel};
-use crate::menus::menu_widgets::panel_header::{PanelHeaderInit, PanelHeaderModel};
 use crate::menus::menu_widgets::quick_action::quick_actions::{
     QuickActionsInit, QuickActionsModel, QuickActionsOutput,
 };
@@ -81,27 +80,22 @@ use crate::menus::menu_widgets::session::session_menu_widget::{
     SessionMenuWidgetInit, SessionMenuWidgetModel, SessionMenuWidgetOutput,
 };
 use crate::menus::menu_widgets::spacer::{SpacerInit, SpacerModel};
+use crate::menus::menu_widgets::ssh_sessions::ssh_sessions_menu_widget::{
+    SshSessionsMenuWidgetInit, SshSessionsMenuWidgetModel,
+};
 use crate::menus::menu_widgets::system_status::{SystemStatusInit, SystemStatusModel};
 use crate::menus::menu_widgets::system_update::system_update_menu_widget::{
     SystemUpdateMenuWidgetInit, SystemUpdateMenuWidgetModel, SystemUpdateMenuWidgetOutput,
 };
-use crate::menus::menu_widgets::valent::valent_menu_widget::{
-    ValentMenuWidgetInit, ValentMenuWidgetModel, ValentMenuWidgetOutput,
-};
-use crate::menus::menu_widgets::keep_awake::keep_awake_menu_widget::{
-    KeepAwakeMenuWidgetInit, KeepAwakeMenuWidgetModel, KeepAwakeMenuWidgetOutput,
-};
-use crate::menus::menu_widgets::keybinds::keybinds_menu_widget::{
-    KeybindsMenuWidgetInit, KeybindsMenuWidgetModel,
-};
-use crate::menus::menu_widgets::ssh_sessions::ssh_sessions_menu_widget::{
-    SshSessionsMenuWidgetInit, SshSessionsMenuWidgetModel,
+use crate::menus::menu_widgets::theme_picker::theme_picker_menu_widget::{
+    ThemePickerMenuWidgetInit, ThemePickerMenuWidgetModel,
 };
 use crate::menus::menu_widgets::twilight::twilight_menu_widget::{
     TwilightMenuWidgetInit, TwilightMenuWidgetModel,
 };
-use crate::menus::menu_widgets::theme_picker::theme_picker_menu_widget::{
-    ThemePickerMenuWidgetInit, ThemePickerMenuWidgetModel,
+use crate::menus::menu_widgets::ufw::ufw_menu_widget::{UfwMenuWidgetInit, UfwMenuWidgetModel};
+use crate::menus::menu_widgets::valent::valent_menu_widget::{
+    ValentMenuWidgetInit, ValentMenuWidgetModel, ValentMenuWidgetOutput,
 };
 use crate::menus::menu_widgets::wallpaper::wallpaper_menu_widget::{
     WallpaperMenuWidgetInit, WallpaperMenuWidgetModel,

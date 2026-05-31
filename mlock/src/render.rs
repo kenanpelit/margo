@@ -113,7 +113,13 @@ fn read_palette() -> Option<Palette> {
     // Secondary text tier: on-surface pulled ~⅓ toward the surface so
     // metadata recedes without a second hue (DESIGN.md §1 fonts).
     let muted = mix(text, bg, 0.34);
-    Some(Palette { bg, text, muted, accent, danger })
+    Some(Palette {
+        bg,
+        text,
+        muted,
+        accent,
+        danger,
+    })
 }
 
 /// `<key> … base = "#rrggbb"` — matugen inline table (background/primary).
@@ -132,7 +138,11 @@ fn field_bare(toml: &str, key: &str) -> Option<(f64, f64, f64)> {
 }
 
 fn mix(a: (f64, f64, f64), b: (f64, f64, f64), t: f64) -> (f64, f64, f64) {
-    (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t, a.2 + (b.2 - a.2) * t)
+    (
+        a.0 + (b.0 - a.0) * t,
+        a.1 + (b.1 - a.1) * t,
+        a.2 + (b.2 - a.2) * t,
+    )
 }
 
 fn parse_hex6(hex: &str) -> Option<(f64, f64, f64)> {
@@ -221,19 +231,34 @@ pub fn draw_lock_frame(
     };
 
     let total = avatar_block_h
-        + greeting_h as f64 + GAP_GREETING_CLOCK
-        + clock_h as f64 + GAP_CLOCK_DATE
-        + date_h as f64 + GAP_DATE_CARD
+        + greeting_h as f64
+        + GAP_GREETING_CLOCK
+        + clock_h as f64
+        + GAP_CLOCK_DATE
+        + date_h as f64
+        + GAP_DATE_CARD
         + card_h
-        + (if caps_visible { GAP_CARD_CAPS + caps_chip_h } else { 0.0 })
-        + GAP_CAPS_STATUS + status_h;
+        + (if caps_visible {
+            GAP_CARD_CAPS + caps_chip_h
+        } else {
+            0.0
+        })
+        + GAP_CAPS_STATUS
+        + status_h;
 
     let cx = width as f64 / 2.0;
     let mut y = (height as f64 - total) / 2.0;
 
     // 5. Avatar.
     if let Some(av) = avatar {
-        draw_avatar(&cr, cx, y + AVATAR_SIZE / 2.0, AVATAR_SIZE / 2.0, av, accent)?;
+        draw_avatar(
+            &cr,
+            cx,
+            y + AVATAR_SIZE / 2.0,
+            AVATAR_SIZE / 2.0,
+            av,
+            accent,
+        )?;
         y += AVATAR_SIZE + GAP_AVATAR_GREETING;
     }
 
@@ -275,8 +300,7 @@ pub fn draw_lock_frame(
     let visible_dots = seat.password.chars().count().min(MAX_VISIBLE_DOTS);
 
     if visible_dots > 0 {
-        let total_dot_w =
-            visible_dots as f64 * (DOT_RADIUS * 2.0 + DOT_SPACING) - DOT_SPACING;
+        let total_dot_w = visible_dots as f64 * (DOT_RADIUS * 2.0 + DOT_SPACING) - DOT_SPACING;
         let mut dx = cx - total_dot_w / 2.0 + DOT_RADIUS + shake_dx;
         cr.set_source_rgb(accent.0, accent.1, accent.2);
         for _ in 0..visible_dots {
@@ -354,7 +378,14 @@ pub fn draw_lock_frame(
         let icon_gap = 8.0;
         let total = icon_w + icon_gap + sw as f64;
         let x0 = cx - total / 2.0;
-        icons::lock(&cr, x0 + icon_w / 2.0, y + sh as f64 / 2.0, icon_w, pal.muted, 0.7);
+        icons::lock(
+            &cr,
+            x0 + icon_w / 2.0,
+            y + sh as f64 / 2.0,
+            icon_w,
+            pal.muted,
+            0.7,
+        );
         cr.set_source_rgba(pal.muted.0, pal.muted.1, pal.muted.2, 0.7);
         cr.move_to(x0 + icon_w + icon_gap, y);
         pangocairo::functions::show_layout(&cr, &layout_status);
@@ -438,12 +469,7 @@ pub fn draw_lock_frame(
     Ok(())
 }
 
-fn draw_battery(
-    cr: &cairo::Context,
-    right_x: f64,
-    top_y: f64,
-    bat: crate::battery::BatteryInfo,
-) {
+fn draw_battery(cr: &cairo::Context, right_x: f64, top_y: f64, bat: crate::battery::BatteryInfo) {
     let pal = palette();
     let color = if bat.percent <= 15 && !bat.charging {
         pal.danger
@@ -534,7 +560,14 @@ fn shake_offset(seat: &SeatState) -> f64 {
     (t * SHAKE_FREQ_HZ * std::f64::consts::TAU).sin() * SHAKE_AMPLITUDE * envelope
 }
 
-fn draw_card_with_shadow(cr: &cairo::Context, x: f64, y: f64, w: f64, h: f64, accent: (f64, f64, f64)) {
+fn draw_card_with_shadow(
+    cr: &cairo::Context,
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+    accent: (f64, f64, f64),
+) {
     // Soft shadow: stack three increasingly faded, increasingly larger
     // rounded rects — cheap blur fake that reads convincingly.
     for (offset, alpha) in [(2.0, 0.18), (6.0, 0.12), (12.0, 0.07)] {

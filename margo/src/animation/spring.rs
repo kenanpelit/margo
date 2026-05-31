@@ -194,8 +194,7 @@ impl Spring {
             let omega2 = ((beta * beta) - (omega0 * omega0)).sqrt();
             self.to
                 + envelope
-                    * (x0 * (omega2 * t).cosh()
-                        + ((beta * x0 + v0) / omega2) * (omega2 * t).sinh())
+                    * (x0 * (omega2 * t).cosh() + ((beta * x0 + v0) / omega2) * (omega2 * t).sinh())
         }
     }
 }

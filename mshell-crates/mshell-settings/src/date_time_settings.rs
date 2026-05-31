@@ -232,10 +232,16 @@ fn list_timezones() -> Vec<String> {
             return zones;
         }
     }
-    ["UTC", "Europe/Istanbul", "Europe/London", "America/New_York", "Asia/Tokyo"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect()
+    [
+        "UTC",
+        "Europe/Istanbul",
+        "Europe/London",
+        "America/New_York",
+        "Asia/Tokyo",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect()
 }
 
 /// Run `timedatectl <args>` (polkit-authenticated), reaping asynchronously.

@@ -18,9 +18,7 @@ use crate::bars::bar_widgets::sysstat::{
     find_cpu_temp_sensor_pub, read_cpu_stat_pub, read_temp_millideg_pub,
 };
 use relm4::gtk::Orientation;
-use relm4::gtk::prelude::{
-    BoxExt, ButtonExt, GestureSingleExt, OrientableExt, WidgetExt,
-};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, GestureSingleExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -270,8 +268,7 @@ impl Component for CpuDashboardModel {
                     self.temp_celsius = t / 1000;
                 }
 
-                self.ram_percent =
-                    read_ram_used_percent_local().unwrap_or(self.ram_percent);
+                self.ram_percent = read_ram_used_percent_local().unwrap_or(self.ram_percent);
 
                 _root.set_tooltip_text(Some(&format!(
                     "CPU {}%  ·  Temp {}°C  ·  RAM {}%\nClick: open dashboard\nRight-click: toggle RAM in bar",

@@ -299,17 +299,18 @@ fn apply_visual(widgets: &PowerModelWidgets, root: &gtk::Box, s: &PowerState) {
     } else {
         let mut lines = vec![format!("Profile: {}", profile.label())];
         if s.battery_available
-            && let Some(pct) = s.battery_percent {
-                lines.push(format!(
-                    "Battery: {}% ({})",
-                    pct,
-                    if s.battery_status.is_empty() {
-                        "unknown"
-                    } else {
-                        &s.battery_status
-                    }
-                ));
-            }
+            && let Some(pct) = s.battery_percent
+        {
+            lines.push(format!(
+                "Battery: {}% ({})",
+                pct,
+                if s.battery_status.is_empty() {
+                    "unknown"
+                } else {
+                    &s.battery_status
+                }
+            ));
+        }
         lines.push(format!(
             "Power source: {}",
             match s.power_source.as_str() {
@@ -325,7 +326,12 @@ fn apply_visual(widgets: &PowerModelWidgets, root: &gtk::Box, s: &PowerState) {
     // Three-state colour: performance = red, power-saver =
     // green, balanced = neutral. Reset all before adding the
     // current so stale state doesn't pile up across refreshes.
-    for c in ["profile-saver", "profile-balanced", "profile-performance", "profile-unknown"] {
+    for c in [
+        "profile-saver",
+        "profile-balanced",
+        "profile-performance",
+        "profile-unknown",
+    ] {
         root.remove_css_class(c);
     }
     root.add_css_class(profile.css_class());
@@ -336,18 +342,14 @@ fn apply_visual(widgets: &PowerModelWidgets, root: &gtk::Box, s: &PowerState) {
 pub(crate) fn read_power_state() -> PowerState {
     let mut state = PowerState::default();
 
-    let profile = power_profile_service()
-        .power_profiles
-        .active_profile
-        .get();
+    let profile = power_profile_service().power_profiles.active_profile.get();
     state.profile = Some(Profile::from_wayle(&profile));
 
     let battery = battery_service().device.clone();
     let dev_state = battery.state.get();
     if battery.is_present.get() {
         state.battery_available = true;
-        state.battery_percent =
-            Some(battery.percentage.get().round().clamp(0.0, 100.0) as u8);
+        state.battery_percent = Some(battery.percentage.get().round().clamp(0.0, 100.0) as u8);
         state.battery_status = match dev_state {
             DeviceState::Charging => "Charging",
             DeviceState::Discharging => "Discharging",
@@ -398,9 +400,9 @@ pub(crate) fn read_power_state() -> PowerState {
     // The line-power adapter is the direct "plugged in" signal;
     // fall back to the UPower device state when there's no
     // line-power device.
-    let on_ac = line_power_service().map(|s| s.device.online.get()).unwrap_or(
-        dev_state == DeviceState::Charging || dev_state == DeviceState::FullyCharged,
-    );
+    let on_ac = line_power_service()
+        .map(|s| s.device.online.get())
+        .unwrap_or(dev_state == DeviceState::Charging || dev_state == DeviceState::FullyCharged);
     state.power_source = if on_ac {
         "ac".to_string()
     } else if state.battery_available {

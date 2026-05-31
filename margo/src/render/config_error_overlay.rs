@@ -19,8 +19,8 @@
 
 use smithay::{
     backend::renderer::element::{
-        solid::{SolidColorBuffer, SolidColorRenderElement},
         Kind,
+        solid::{SolidColorBuffer, SolidColorRenderElement},
     },
     utils::{Physical, Point, Scale},
 };

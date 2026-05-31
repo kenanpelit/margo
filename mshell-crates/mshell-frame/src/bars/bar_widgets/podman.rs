@@ -84,21 +84,23 @@ impl Component for PodmanModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        sender.command(|out, shutdown| {
-            async move {
-                let shutdown_fut = shutdown.wait();
-                tokio::pin!(shutdown_fut);
-                let mut first = true;
-                loop {
-                    let delay = if first { STARTUP_DELAY } else { REFRESH_INTERVAL };
-                    first = false;
-                    tokio::select! {
-                        () = &mut shutdown_fut => break,
-                        _ = tokio::time::sleep(delay) => {}
-                    }
-                    let s = fetch_podman_summary().await;
-                    let _ = out.send(PodmanCommandOutput::Refreshed(s));
+        sender.command(|out, shutdown| async move {
+            let shutdown_fut = shutdown.wait();
+            tokio::pin!(shutdown_fut);
+            let mut first = true;
+            loop {
+                let delay = if first {
+                    STARTUP_DELAY
+                } else {
+                    REFRESH_INTERVAL
+                };
+                first = false;
+                tokio::select! {
+                    () = &mut shutdown_fut => break,
+                    _ = tokio::time::sleep(delay) => {}
                 }
+                let s = fetch_podman_summary().await;
+                let _ = out.send(PodmanCommandOutput::Refreshed(s));
             }
         });
 
@@ -112,12 +114,7 @@ impl Component for PodmanModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             PodmanInput::Clicked => {
                 let _ = sender.output(PodmanOutput::Clicked);
@@ -217,21 +214,21 @@ pub(crate) async fn fetch_podman_summary() -> PodmanSummary {
 
     if let Some(pods_raw) = run_capture("podman", &["pod", "ps", "--format", "json"]).await
         && let Ok(pods) = serde_json::from_str::<serde_json::Value>(&pods_raw)
-            && let Some(arr) = pods.as_array() {
-                s.total_pods = arr.len();
-                s.running_pods = arr
-                    .iter()
-                    .filter(|p| {
-                        is_running_state(p.get("Status").and_then(|v| v.as_str()).unwrap_or(""))
-                    })
-                    .count();
-            }
+        && let Some(arr) = pods.as_array()
+    {
+        s.total_pods = arr.len();
+        s.running_pods = arr
+            .iter()
+            .filter(|p| is_running_state(p.get("Status").and_then(|v| v.as_str()).unwrap_or("")))
+            .count();
+    }
 
     if let Some(images_raw) = run_capture("podman", &["images", "--format", "json"]).await
         && let Ok(images) = serde_json::from_str::<serde_json::Value>(&images_raw)
-            && let Some(arr) = images.as_array() {
-                s.image_count = arr.len();
-            }
+        && let Some(arr) = images.as_array()
+    {
+        s.image_count = arr.len();
+    }
 
     s
 }

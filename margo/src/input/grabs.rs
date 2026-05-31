@@ -21,10 +21,10 @@
 use smithay::{
     desktop::Window,
     input::pointer::{
-        AxisFrame, ButtonEvent, GestureHoldBeginEvent, GestureHoldEndEvent,
-        GesturePinchBeginEvent, GesturePinchEndEvent, GesturePinchUpdateEvent,
-        GestureSwipeBeginEvent, GestureSwipeEndEvent, GestureSwipeUpdateEvent,
-        GrabStartData, MotionEvent, PointerGrab, PointerInnerHandle, RelativeMotionEvent,
+        AxisFrame, ButtonEvent, GestureHoldBeginEvent, GestureHoldEndEvent, GesturePinchBeginEvent,
+        GesturePinchEndEvent, GesturePinchUpdateEvent, GestureSwipeBeginEvent,
+        GestureSwipeEndEvent, GestureSwipeUpdateEvent, GrabStartData, MotionEvent, PointerGrab,
+        PointerInnerHandle, RelativeMotionEvent,
     },
     reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::ResizeEdge,
     reexports::wayland_server::protocol::wl_surface::WlSurface,
@@ -69,11 +69,7 @@ impl PointerGrab<MargoState> for MoveSurfaceGrab {
         let new_loc = self.initial_loc.to_f64() + delta;
         let new_loc = new_loc.to_i32_round();
 
-        if let Some(idx) = data
-            .clients
-            .iter()
-            .position(|c| c.window == self.window)
-        {
+        if let Some(idx) = data.clients.iter().position(|c| c.window == self.window) {
             data.clients[idx].is_floating = true;
             // Drag-tile-small visual: when the user is dragging a
             // window that was tiled at grab start AND the config
@@ -240,18 +236,14 @@ impl ResizeSurfaceGrab {
         // Right edge: width grows with positive dx; loc.x unchanged.
         if matches!(
             self.edges,
-            ResizeEdge::Right
-                | ResizeEdge::TopRight
-                | ResizeEdge::BottomRight
+            ResizeEdge::Right | ResizeEdge::TopRight | ResizeEdge::BottomRight
         ) {
             new_size.w = (self.initial_size.w + dx).max(1);
         }
         // Left edge: width grows with negative dx; loc.x shifts.
         if matches!(
             self.edges,
-            ResizeEdge::Left
-                | ResizeEdge::TopLeft
-                | ResizeEdge::BottomLeft
+            ResizeEdge::Left | ResizeEdge::TopLeft | ResizeEdge::BottomLeft
         ) {
             new_size.w = (self.initial_size.w - dx).max(1);
             new_loc.x = self.initial_loc.x + dx;
@@ -259,9 +251,7 @@ impl ResizeSurfaceGrab {
         // Bottom edge: height grows with positive dy.
         if matches!(
             self.edges,
-            ResizeEdge::Bottom
-                | ResizeEdge::BottomLeft
-                | ResizeEdge::BottomRight
+            ResizeEdge::Bottom | ResizeEdge::BottomLeft | ResizeEdge::BottomRight
         ) {
             new_size.h = (self.initial_size.h + dy).max(1);
         }
@@ -290,11 +280,7 @@ impl PointerGrab<MargoState> for ResizeSurfaceGrab {
         let delta = event.location - self.start_data.location;
         let (new_loc, new_size) = self.compute_new_geom(delta);
 
-        if let Some(idx) = data
-            .clients
-            .iter()
-            .position(|c| c.window == self.window)
-        {
+        if let Some(idx) = data.clients.iter().position(|c| c.window == self.window) {
             data.clients[idx].is_floating = true;
             data.clients[idx].float_geom.x = new_loc.x;
             data.clients[idx].float_geom.y = new_loc.y;
@@ -428,11 +414,7 @@ fn resolve_drag_tile_drop(
     dragged: &Window,
     original_float_geom: crate::layout::Rect,
 ) {
-    let Some(src) = data
-        .clients
-        .iter()
-        .position(|c| &c.window == dragged)
-    else {
+    let Some(src) = data.clients.iter().position(|c| &c.window == dragged) else {
         return;
     };
 
@@ -448,11 +430,7 @@ fn resolve_drag_tile_drop(
     ));
 
     if let Some((target_window, _)) = data.space.element_under(cursor) {
-        if let Some(dst) = data
-            .clients
-            .iter()
-            .position(|c| c.window == *target_window)
-        {
+        if let Some(dst) = data.clients.iter().position(|c| c.window == *target_window) {
             if dst != src && !data.clients[dst].is_floating {
                 data.clients.swap(src, dst);
             }

@@ -85,21 +85,19 @@ impl Component for NightLightModel {
         // Poll `mctl twilight status` so the button tracks the
         // schedule (and any external `mctl twilight` calls), not
         // just our own clicks.
-        sender.command(|out, shutdown| {
-            async move {
-                let shutdown_fut = shutdown.wait();
-                tokio::pin!(shutdown_fut);
-                let mut first = true;
-                loop {
-                    let delay = if first { STARTUP_DELAY } else { POLL_INTERVAL };
-                    first = false;
-                    tokio::select! {
-                        () = &mut shutdown_fut => break,
-                        _ = tokio::time::sleep(delay) => {}
-                    }
-                    if let Some(enabled) = probe_twilight_enabled().await {
-                        let _ = out.send(NightLightCommandOutput::EnabledChanged(enabled));
-                    }
+        sender.command(|out, shutdown| async move {
+            let shutdown_fut = shutdown.wait();
+            tokio::pin!(shutdown_fut);
+            let mut first = true;
+            loop {
+                let delay = if first { STARTUP_DELAY } else { POLL_INTERVAL };
+                first = false;
+                tokio::select! {
+                    () = &mut shutdown_fut => break,
+                    _ = tokio::time::sleep(delay) => {}
+                }
+                if let Some(enabled) = probe_twilight_enabled().await {
+                    let _ = out.send(NightLightCommandOutput::EnabledChanged(enabled));
                 }
             }
         });
@@ -109,12 +107,7 @@ impl Component for NightLightModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             NightLightInput::Clicked => {
                 sender.command(|out, _shutdown| async move {

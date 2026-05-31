@@ -25,13 +25,13 @@ mod cursor;
 #[cfg(feature = "dbus")]
 mod dbus;
 mod dispatch;
-mod render;
 mod input;
 mod input_handler;
-mod libinput_config;
 mod layout;
+mod libinput_config;
 mod plugin;
 mod protocols;
+mod render;
 #[cfg(feature = "xdp-gnome-screencast")]
 mod screencasting;
 mod screenshot_region;
@@ -54,7 +54,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use clap::Parser;
 use smithay::reexports::{
-    calloop::{generic::Generic, EventLoop, Interest, Mode, PostAction},
+    calloop::{EventLoop, Interest, Mode, PostAction, generic::Generic},
     wayland_server::Display,
 };
 use tracing::{error, info, warn};
@@ -242,10 +242,11 @@ fn main() -> Result<()> {
 
     let args = Args::parse();
 
-    let config = margo_config::parse_config_with_defaults(args.config.as_deref()).unwrap_or_else(|e| {
-        error!("config error: {e}, using defaults");
-        margo_config::Config::default()
-    });
+    let config =
+        margo_config::parse_config_with_defaults(args.config.as_deref()).unwrap_or_else(|e| {
+            error!("config error: {e}, using defaults");
+            margo_config::Config::default()
+        });
 
     for (name, value) in &config.envs {
         // SAFETY: single-threaded at this point, no other threads reading env
@@ -278,15 +279,18 @@ fn main() -> Result<()> {
     // user's MARGO_LOG filter sends regular output.
     match smithay::reexports::calloop::signals::Signals::new(&[
         smithay::reexports::calloop::signals::Signal::SIGUSR1,
-    ]) { Ok(signals) => {
-        if let Err(e) = loop_handle.insert_source(signals, |_, _, state: &mut MargoState| {
-            state.debug_dump();
-        }) {
-            warn!("SIGUSR1 source: {e}");
+    ]) {
+        Ok(signals) => {
+            if let Err(e) = loop_handle.insert_source(signals, |_, _, state: &mut MargoState| {
+                state.debug_dump();
+            }) {
+                warn!("SIGUSR1 source: {e}");
+            }
         }
-    } _ => {
-        warn!("could not register SIGUSR1 — `pkill -USR1 margo` won't work");
-    }}
+        _ => {
+            warn!("could not register SIGUSR1 — `pkill -USR1 margo` won't work");
+        }
+    }
 
     // Wayland display source: when the display fd is readable, dispatch
     // pending client requests, then flush any responses. Without
@@ -370,7 +374,9 @@ fn main() -> Result<()> {
             error!("  • In qemu, enable virtio-gpu with --enable-virgl");
             error!("");
             error!("Falling back to winit (nested mode — needs WAYLAND_DISPLAY or DISPLAY).");
-            error!("Software rendering (pixman) fallback is W2.2b in road_map.md, not yet shipped.");
+            error!(
+                "Software rendering (pixman) fallback is W2.2b in road_map.md, not yet shipped."
+            );
             if let Some(wd) = &parent_wayland_display {
                 unsafe { std::env::set_var("WAYLAND_DISPLAY", wd) };
             }
@@ -448,7 +454,10 @@ fn main() -> Result<()> {
                 loop_handle
                     .insert_source(xwayland, move |event, _, state: &mut MargoState| {
                         match event {
-                            XWaylandEvent::Ready { x11_socket, display_number } => {
+                            XWaylandEvent::Ready {
+                                x11_socket,
+                                display_number,
+                            } => {
                                 unsafe {
                                     std::env::set_var("DISPLAY", format!(":{display_number}"));
                                     // XCURSOR_SIZE / XCURSOR_THEME let
@@ -468,10 +477,7 @@ fn main() -> Result<()> {
                                     // a missing slot so we never
                                     // override an explicit choice.
                                     let cursor_size = state.config.cursor_size.max(8);
-                                    std::env::set_var(
-                                        "XCURSOR_SIZE",
-                                        cursor_size.to_string(),
-                                    );
+                                    std::env::set_var("XCURSOR_SIZE", cursor_size.to_string());
                                     if std::env::var_os("XCURSOR_THEME").is_none() {
                                         if let Some(theme) = state
                                             .config
@@ -487,7 +493,8 @@ fn main() -> Result<()> {
                                     "XWayland ready on :{display_number} \
                                      XCURSOR_SIZE={} XCURSOR_THEME={}",
                                     state.config.cursor_size,
-                                    std::env::var("XCURSOR_THEME").unwrap_or_else(|_| "<unset>".into()),
+                                    std::env::var("XCURSOR_THEME")
+                                        .unwrap_or_else(|_| "<unset>".into()),
                                 );
                                 utils::import_session_environment(&[
                                     "XDG_SESSION_DESKTOP",
@@ -525,7 +532,11 @@ fn main() -> Result<()> {
             c.xkb_rules.model.clone(),
             c.xkb_rules.layout.clone(),
             c.xkb_rules.variant.clone(),
-            if c.xkb_rules.options.is_empty() { None } else { Some(c.xkb_rules.options.clone()) },
+            if c.xkb_rules.options.is_empty() {
+                None
+            } else {
+                Some(c.xkb_rules.options.clone())
+            },
             c.repeat_delay,
             c.repeat_rate,
         )
@@ -561,8 +572,8 @@ fn main() -> Result<()> {
     // calls `DBusServers::start`.
     #[cfg(feature = "dbus")]
     {
-        use crate::dbus::mutter_service_channel::{NewClient, ServiceChannel};
         use crate::dbus::Start as _;
+        use crate::dbus::mutter_service_channel::{NewClient, ServiceChannel};
 
         // Per-interface channels so blocking D-Bus callbacks can
         // hand work to the calloop thread without taking a
@@ -582,23 +593,23 @@ fn main() -> Result<()> {
                             return;
                         }
                     };
-                    if let Err(e) = state.display_handle.insert_client(
-                        stream,
-                        std::sync::Arc::new(MargoClientData::default()),
-                    ) {
+                    if let Err(e) = state
+                        .display_handle
+                        .insert_client(stream, std::sync::Arc::new(MargoClientData::default()))
+                    {
                         tracing::warn!("insert_client (svc): {e:?}");
                     }
                 }
                 calloop::channel::Event::Closed => (),
-            })
-        { Err(e) => {
-            warn!("ServiceChannel calloop source insert failed: {e}");
-        } _ => {
-            match ServiceChannel::new(svc_tx).start() {
+            }) {
+            Err(e) => {
+                warn!("ServiceChannel calloop source insert failed: {e}");
+            }
+            _ => match ServiceChannel::new(svc_tx).start() {
                 Ok(conn) => margo.dbus_servers.conn_service_channel = Some(conn),
                 Err(e) => warn!("ServiceChannel D-Bus start failed: {e}"),
-            }
-        }}
+            },
+        }
     }
 
     // ── DisplayConfig D-Bus shim ──────────────────────────────────────────────
@@ -607,8 +618,8 @@ fn main() -> Result<()> {
     // ScreenCast chooser's Entire Screen tab.
     #[cfg(feature = "dbus")]
     {
-        use crate::dbus::mutter_display_config::DisplayConfig;
         use crate::dbus::Start as _;
+        use crate::dbus::mutter_display_config::DisplayConfig;
 
         // Snapshot the live monitor list into the shared
         // `ipc_outputs` Arc once, so DisplayConfig sees the
@@ -635,10 +646,10 @@ fn main() -> Result<()> {
     // are a follow-up.
     #[cfg(feature = "dbus")]
     {
+        use crate::dbus::Start as _;
         use crate::dbus::gnome_shell_introspect::{
             CompositorToIntrospect, Introspect, IntrospectToCompositor, WindowProperties,
         };
-        use crate::dbus::Start as _;
         use std::collections::HashMap;
 
         let (intr_tx, intr_rx) = calloop::channel::channel::<IntrospectToCompositor>();
@@ -665,15 +676,15 @@ fn main() -> Result<()> {
                     }
                     let _ = resp_tx.try_send(CompositorToIntrospect::Windows(map));
                 }
-            })
-        { Err(e) => {
-            warn!("Introspect calloop source insert failed: {e}");
-        } _ => {
-            match Introspect::new(intr_tx, resp_rx).start() {
+            }) {
+            Err(e) => {
+                warn!("Introspect calloop source insert failed: {e}");
+            }
+            _ => match Introspect::new(intr_tx, resp_rx).start() {
                 Ok(conn) => margo.dbus_servers.conn_introspect = Some(conn),
                 Err(e) => warn!("Introspect D-Bus start failed: {e}"),
-            }
-        }}
+            },
+        }
     }
 
     // ── Gnome Shell Screenshot D-Bus shim ─────────────────────────────────────
@@ -683,17 +694,17 @@ fn main() -> Result<()> {
     // apps invoking the portal).
     #[cfg(feature = "dbus")]
     {
+        use crate::dbus::Start as _;
         use crate::dbus::gnome_shell_screenshot::{
             CompositorToScreenshot, Screenshot, ScreenshotToCompositor,
         };
-        use crate::dbus::Start as _;
 
         let (shot_tx, shot_rx) = calloop::channel::channel::<ScreenshotToCompositor>();
         let (resp_tx, resp_rx) = async_channel::unbounded::<CompositorToScreenshot>();
 
-        match event_loop
-            .handle()
-            .insert_source(shot_rx, move |event, _, _state: &mut MargoState| {
+        match event_loop.handle().insert_source(
+            shot_rx,
+            move |event, _, _state: &mut MargoState| {
                 let calloop::channel::Event::Msg(msg) = event else {
                     return;
                 };
@@ -708,8 +719,8 @@ fn main() -> Result<()> {
                         // the resulting path back to the portal shim.
                         // The portal frontend turns it into the
                         // `file://` URI the requesting app receives.
-                        let runtime = std::env::var("XDG_RUNTIME_DIR")
-                            .unwrap_or_else(|_| "/tmp".to_owned());
+                        let runtime =
+                            std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".to_owned());
                         let stamp = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .map(|d| d.as_millis())
@@ -728,18 +739,16 @@ fn main() -> Result<()> {
                                 std::thread::spawn(move || {
                                     let ok = matches!(child.wait(), Ok(s) if s.success())
                                         && path.exists();
-                                    let _ = resp.try_send(
-                                        CompositorToScreenshot::ScreenshotResult(
+                                    let _ =
+                                        resp.try_send(CompositorToScreenshot::ScreenshotResult(
                                             ok.then_some(path),
-                                        ),
-                                    );
+                                        ));
                                 });
                             }
                             Err(e) => {
                                 warn!("grim spawn for portal screenshot failed: {e}");
-                                let _ = resp_tx.try_send(
-                                    CompositorToScreenshot::ScreenshotResult(None),
-                                );
+                                let _ = resp_tx
+                                    .try_send(CompositorToScreenshot::ScreenshotResult(None));
                             }
                         }
                     }
@@ -749,15 +758,16 @@ fn main() -> Result<()> {
                         let _ = reply.try_send(None);
                     }
                 }
-            })
-        { Err(e) => {
-            warn!("Screenshot calloop source insert failed: {e}");
-        } _ => {
-            match Screenshot::new(shot_tx, resp_rx).start() {
+            },
+        ) {
+            Err(e) => {
+                warn!("Screenshot calloop source insert failed: {e}");
+            }
+            _ => match Screenshot::new(shot_tx, resp_rx).start() {
                 Ok(conn) => margo.dbus_servers.conn_screen_shot = Some(conn),
                 Err(e) => warn!("Screenshot D-Bus start failed: {e}"),
-            }
-        }}
+            },
+        }
     }
 
     // ── Mutter ScreenCast D-Bus shim — the main event ─────────────────────────
@@ -773,8 +783,8 @@ fn main() -> Result<()> {
     // `crate::screencasting::pw_utils::Cast`.
     #[cfg(feature = "xdp-gnome-screencast")]
     {
-        use crate::dbus::mutter_screen_cast::{ScreenCast, ScreenCastToCompositor};
         use crate::dbus::Start as _;
+        use crate::dbus::mutter_screen_cast::{ScreenCast, ScreenCastToCompositor};
 
         let (sc_tx, sc_rx) = calloop::channel::channel::<ScreenCastToCompositor>();
         // Same shared `ipc_outputs` Arc DisplayConfig got above;
@@ -797,27 +807,21 @@ fn main() -> Result<()> {
                         cursor_mode,
                         signal_ctx,
                     } => {
-                        state.start_cast(
-                            session_id,
-                            stream_id,
-                            target,
-                            cursor_mode,
-                            signal_ctx,
-                        );
+                        state.start_cast(session_id, stream_id, target, cursor_mode, signal_ctx);
                     }
                     ScreenCastToCompositor::StopCast { session_id } => {
                         state.stop_cast(session_id);
                     }
                 }
-            })
-        { Err(e) => {
-            warn!("ScreenCast calloop source insert failed: {e}");
-        } _ => {
-            match ScreenCast::new(outputs, sc_tx).start() {
+            }) {
+            Err(e) => {
+                warn!("ScreenCast calloop source insert failed: {e}");
+            }
+            _ => match ScreenCast::new(outputs, sc_tx).start() {
                 Ok(conn) => margo.dbus_servers.conn_screen_cast = Some(conn),
                 Err(e) => warn!("ScreenCast D-Bus start failed: {e}"),
-            }
-        }}
+            },
+        }
     }
 
     // ── exec_once commands ────────────────────────────────────────────────────

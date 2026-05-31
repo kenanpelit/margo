@@ -8,12 +8,12 @@ use crate::common_widgets::revealer_row::revealer_row_label::{
 };
 use crate::menus::menu_widgets::screenshot::delay_option::{DelayOption, DelayOptionsList};
 use crate::menus::menu_widgets::screenshot::save_option::{SaveOptionRow, SaveOptionsList};
-use notify_rust::Notification;
 use mshell_screenshot::{
     CaptureArea, OutputTarget, ScreenshotRequest, ScreenshotResult, take_screenshot,
 };
 use mshell_sounds::play_shutter;
 use mshell_utils::notifications::show_file_saved_notification;
+use notify_rust::Notification;
 use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 use std::time::Duration;

@@ -385,7 +385,10 @@ mod tests {
     fn layout_keyword_lists_all_14() {
         let p = MctlProvider::new();
         let items = p.search("layout");
-        let layout_count = items.iter().filter(|i| i.id.starts_with("mctl:layout:")).count();
+        let layout_count = items
+            .iter()
+            .filter(|i| i.id.starts_with("mctl:layout:"))
+            .count();
         assert_eq!(layout_count, 14);
     }
 
@@ -419,7 +422,10 @@ mod tests {
         let p = MctlProvider::new();
         let items = p.search("Twilight");
         // Label prefix on the new nucleo-comparable scale.
-        let twilight = items.iter().find(|i| i.id.starts_with("mctl:twilight:")).unwrap();
+        let twilight = items
+            .iter()
+            .find(|i| i.id.starts_with("mctl:twilight:"))
+            .unwrap();
         assert!(twilight.score >= 150.0);
     }
 }

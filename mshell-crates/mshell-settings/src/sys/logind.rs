@@ -101,10 +101,7 @@ pub async fn write_dropin(h: &LogindHandlers) -> Result<(), String> {
         let _ = stdin.write_all(body.as_bytes()).await;
         let _ = stdin.shutdown().await;
     }
-    let out = child
-        .wait_with_output()
-        .await
-        .map_err(|e| e.to_string())?;
+    let out = child.wait_with_output().await.map_err(|e| e.to_string())?;
     if out.status.success() {
         Ok(())
     } else {

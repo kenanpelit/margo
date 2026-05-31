@@ -83,10 +83,7 @@ pub fn overview_cells(
     let center_i = center_pos.round() as i64;
     let lo = center_i - radius;
     let hi = center_i + radius;
-    (lo..=hi)
-        .enumerate()
-        .map(|(k, i)| make(i, k))
-        .collect()
+    (lo..=hi).enumerate().map(|(k, i)| make(i, k)).collect()
 }
 
 /// Per-monitor continuous scroll state within an open overview.
@@ -632,7 +629,12 @@ impl MargoState {
 mod tests {
     use super::{Rect, overview_cells};
 
-    const OUT: Rect = Rect { x: 0, y: 0, width: 1920, height: 1080 };
+    const OUT: Rect = Rect {
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1080,
+    };
 
     #[test]
     fn empty_tags_yields_no_cells() {
@@ -680,7 +682,10 @@ mod tests {
     #[test]
     fn tags_preserved_in_order() {
         let cells = overview_cells(OUT, &[3, 5, 9], 0.4, 10, 1.0, false);
-        assert_eq!(cells.iter().map(|c| c.tag).collect::<Vec<_>>(), vec![3, 5, 9]);
+        assert_eq!(
+            cells.iter().map(|c| c.tag).collect::<Vec<_>>(),
+            vec![3, 5, 9]
+        );
     }
 
     #[test]

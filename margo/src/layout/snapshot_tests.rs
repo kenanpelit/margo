@@ -394,7 +394,10 @@ fn right_tile_two_windows() {
     // Master (idx 0) should be on the RIGHT; stack on the LEFT.
     let master = arranged.iter().find(|(i, _)| *i == 0).unwrap().1;
     let stack0 = arranged.iter().find(|(i, _)| *i == 1).unwrap().1;
-    assert!(master.x > stack0.x, "right_tile: master should be right of stack");
+    assert!(
+        master.x > stack0.x,
+        "right_tile: master should be right of stack"
+    );
     assert_snapshot!(format_arranged(&arranged));
 }
 
@@ -426,7 +429,10 @@ fn canvas_does_not_arrange() {
     let f = Fixture::with_windows(HD_1080P, 3);
     let ctx = f.ctx().build();
     let arranged = canvas(&ctx);
-    assert!(arranged.is_empty(), "canvas should return empty (no auto-arrange)");
+    assert!(
+        arranged.is_empty(),
+        "canvas should return empty (no auto-arrange)"
+    );
 }
 
 // ── Cross-cutting: every layout stays inside work area for SDR cases ──────
@@ -647,16 +653,11 @@ fn deck_stack_clients_share_one_rect() {
             let f = Fixture::with_windows(HD_1080P, n);
             let ctx = f.ctx().nmaster(nmaster as u32).build();
             let arranged = deck(&ctx);
-            let stack: Vec<_> = arranged
-                .iter()
-                .skip(nmaster)
-                .map(|(_, r)| *r)
-                .collect();
+            let stack: Vec<_> = arranged.iter().skip(nmaster).map(|(_, r)| *r).collect();
             let first = stack[0];
             for (i, rect) in stack.iter().enumerate() {
                 assert_eq!(
-                    *rect,
-                    first,
+                    *rect, first,
                     "deck n={n} nmaster={nmaster} stack[{i}] diverged from shared stack rect",
                 );
             }
@@ -850,8 +851,7 @@ fn gap_zero_makes_layouts_use_full_work_area() {
             wa.y,
         );
         assert!(
-            ((wa.x + wa.width) - max_x).abs() <= 2
-                && ((wa.y + wa.height) - max_y).abs() <= 2,
+            ((wa.x + wa.width) - max_x).abs() <= 2 && ((wa.y + wa.height) - max_y).abs() <= 2,
             "{layout:?}: bottom-right ({max_x},{max_y}) drifted from work-area ({},{})",
             wa.x + wa.width,
             wa.y + wa.height,

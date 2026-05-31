@@ -4,10 +4,10 @@
 use smithay::{
     backend::input::{
         Axis, ButtonState, GestureBeginEvent, GestureSwipeUpdateEvent, InputBackend, InputEvent,
-        KeyState, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent,
-        PointerMotionAbsoluteEvent,
+        KeyState, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
+        PointerMotionAbsoluteEvent, PointerMotionEvent,
     },
-    desktop::{layer_map_for_output, WindowSurfaceType},
+    desktop::{WindowSurfaceType, layer_map_for_output},
     input::{
         keyboard::{FilterResult, ModifiersState},
         pointer::{AxisFrame, ButtonEvent, MotionEvent, RelativeMotionEvent},
@@ -19,7 +19,7 @@ use smithay::{
 use tracing::{debug, info};
 
 use crate::{
-    input::{find_keybinding, TouchPoint, TouchRelease},
+    input::{TouchPoint, TouchRelease, find_keybinding},
     state::{FocusTarget, MargoState},
 };
 
@@ -244,13 +244,7 @@ fn derive_motion_code(dx: f64, dy: f64) -> u32 {
 /// `source` is just a log tag so the trace clearly says which input
 /// path matched — handy when binding-debugging on a 2-in-1 with both
 /// a touchpad and a touchscreen.
-fn dispatch_swipe(
-    state: &mut MargoState,
-    dx: f64,
-    dy: f64,
-    fingers: u32,
-    source: &'static str,
-) {
+fn dispatch_swipe(state: &mut MargoState, dx: f64, dy: f64, fingers: u32, source: &'static str) {
     let total = (dx * dx + dy * dy).sqrt();
     let cfg_threshold = state.config.swipe_min_threshold as f64;
     let threshold = if cfg_threshold > 1.0 {
@@ -273,9 +267,11 @@ fn dispatch_swipe(
         .map(|k| smithay_mods_to_margo(&k.modifier_state()))
         .unwrap_or_else(margo_config::Modifiers::empty);
 
-    let binding = state.config.gesture_bindings.iter().find(|b| {
-        b.fingers == fingers && b.motion == motion && b.modifiers == mods
-    });
+    let binding = state
+        .config
+        .gesture_bindings
+        .iter()
+        .find(|b| b.fingers == fingers && b.motion == motion && b.modifiers == mods);
 
     if let Some(binding) = binding {
         info!(
@@ -411,7 +407,8 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
             }
         }
 
-        keyboard.input(            state,
+        keyboard.input(
+            state,
             keycode,
             key_state,
             serial,
@@ -457,9 +454,7 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                         }
                         if let Some(kb) = matched {
                             if matches!(kb.action.as_str(), "force_unlock" | "force-unlock") {
-                                tracing::warn!(
-                                    "lock: force_unlock keybind hit, breaking out"
-                                );
+                                tracing::warn!("lock: force_unlock keybind hit, breaking out");
                                 let action = kb.action.clone();
                                 let arg = kb.arg.clone();
                                 crate::dispatch::dispatch_action(state, &action, &arg);
@@ -467,10 +462,7 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                             }
                         }
                     }
-                    let focus = state
-                        .seat
-                        .get_keyboard()
-                        .and_then(|kb| kb.current_focus());
+                    let focus = state.seat.get_keyboard().and_then(|kb| kb.current_focus());
                     tracing::info!(
                         "lock: forwarding key keycode={} state={:?} focus={}",
                         keycode.raw(),
@@ -515,8 +507,13 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                     let keysym = handle.modified_sym();
                     let mods = smithay_mods_to_margo(modifiers);
                     let mode = state.input_keyboard.mode.clone();
-                    debug!("key pressed: keysym={:#x} mods={:?} mode={}", keysym.raw(), mods, mode);
-                    
+                    debug!(
+                        "key pressed: keysym={:#x} mods={:?} mode={}",
+                        keysym.raw(),
+                        mods,
+                        mode
+                    );
+
                     let mut matched = find_keybinding(
                         &state.config.key_bindings,
                         mods,
@@ -525,7 +522,7 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                         &mode,
                         false,
                     );
-                    
+
                     // Fallback to raw unshifted symbols if modified_sym didn't match.
                     // This fixes bindings like `super+shift,1` where modified_sym is `!` but raw is `1`.
                     if matched.is_none() {
@@ -687,7 +684,7 @@ fn handle_pointer_motion<B: InputBackend, E: PointerMotionEvent<B>>(
             .and_then(|f| f.wl_surface())
         {
             use smithay::wayland::pointer_constraints::{
-                with_pointer_constraint, PointerConstraint,
+                PointerConstraint, with_pointer_constraint,
             };
             with_pointer_constraint(&focus_surface, &pointer, |constraint| {
                 if let Some(constraint) = constraint {
@@ -729,7 +726,11 @@ fn handle_pointer_motion<B: InputBackend, E: PointerMotionEvent<B>>(
         ptr.motion(
             state,
             ptr_focus.clone(),
-            &MotionEvent { location: pos, serial, time },
+            &MotionEvent {
+                location: pos,
+                serial,
+                time,
+            },
         );
         ptr.relative_motion(
             state,
@@ -835,7 +836,9 @@ fn update_hot_corner(state: &mut MargoState) {
 
     // Same corner as last motion — check if dwell threshold elapsed.
     let Some(corner) = current_corner else { return };
-    let Some(armed) = state.hot_corner_armed_at else { return };
+    let Some(armed) = state.hot_corner_armed_at else {
+        return;
+    };
     let dwell = std::time::Duration::from_millis(state.config.hot_corner_dwell_ms as u64);
     if armed.elapsed() < dwell {
         return;
@@ -933,7 +936,11 @@ fn handle_pointer_motion_abs<B: InputBackend, E: PointerMotionAbsoluteEvent<B>>(
     let serial = SERIAL_COUNTER.next_serial();
     let output = state.space.outputs().next().cloned();
     if let Some(output) = output {
-        let size = state.space.output_geometry(&output).unwrap_or_default().size;
+        let size = state
+            .space
+            .output_geometry(&output)
+            .unwrap_or_default()
+            .size;
         let pos = event.position_transformed(size);
         state.input_pointer.x = pos.x;
         state.input_pointer.y = pos.y;
@@ -952,7 +959,11 @@ fn handle_pointer_motion_abs<B: InputBackend, E: PointerMotionAbsoluteEvent<B>>(
             ptr.motion(
                 state,
                 ptr_focus,
-                &MotionEvent { location: pos, serial, time: event.time_msec() },
+                &MotionEvent {
+                    location: pos,
+                    serial,
+                    time: event.time_msec(),
+                },
             );
             ptr.frame(state);
         }
@@ -1103,11 +1114,16 @@ fn handle_pointer_button<B: InputBackend, E: PointerButtonEvent<B>>(
                 }
                 None => state.close_overview(None),
             }
-        } else { match focus_under(state, pos) { Some((target, _)) => {
-            state.focus_surface(Some(target));
-        } _ => {
-            state.focus_surface(None);
-        }}}
+        } else {
+            match focus_under(state, pos) {
+                Some((target, _)) => {
+                    state.focus_surface(Some(target));
+                }
+                _ => {
+                    state.focus_surface(None);
+                }
+            }
+        }
     }
     state.request_repaint();
     if let Some(ptr) = state.seat.get_pointer() {
@@ -1124,10 +1140,7 @@ fn handle_pointer_button<B: InputBackend, E: PointerButtonEvent<B>>(
     }
 }
 
-fn handle_pointer_axis<B: InputBackend, E: PointerAxisEvent<B>>(
-    state: &mut MargoState,
-    event: E,
-) {
+fn handle_pointer_axis<B: InputBackend, E: PointerAxisEvent<B>>(state: &mut MargoState, event: E) {
     // Scroller overview: scroll continuously pans the tag strip on the
     // monitor under the pointer (niri-style), with momentum + snap handled
     // in the physics tick. Convert the device delta to cell units: a wheel
@@ -1232,11 +1245,21 @@ fn released_modifier_bit(keysym: u32) -> Option<margo_config::Modifiers> {
 
 fn smithay_mods_to_margo(m: &ModifiersState) -> margo_config::Modifiers {
     let mut out = margo_config::Modifiers::empty();
-    if m.shift { out |= margo_config::Modifiers::SHIFT; }
-    if m.ctrl  { out |= margo_config::Modifiers::CTRL; }
-    if m.alt   { out |= margo_config::Modifiers::ALT; }
-    if m.logo  { out |= margo_config::Modifiers::LOGO; }
-    if m.caps_lock { out |= margo_config::Modifiers::CAPS; }
+    if m.shift {
+        out |= margo_config::Modifiers::SHIFT;
+    }
+    if m.ctrl {
+        out |= margo_config::Modifiers::CTRL;
+    }
+    if m.alt {
+        out |= margo_config::Modifiers::ALT;
+    }
+    if m.logo {
+        out |= margo_config::Modifiers::LOGO;
+    }
+    if m.caps_lock {
+        out |= margo_config::Modifiers::CAPS;
+    }
     out
 }
 
@@ -1244,7 +1267,10 @@ fn exclusive_keyboard_layer(state: &MargoState) -> Option<FocusTarget> {
     if state.session_locked {
         // Find the lock surface on the currently focused monitor/output.
         let pos = Point::from((state.input_pointer.x, state.input_pointer.y));
-        let output = state.space.output_under(pos).next()
+        let output = state
+            .space
+            .output_under(pos)
+            .next()
             .or_else(|| state.monitors.first().map(|m| &m.output));
 
         if let Some(output) = output {
@@ -1253,7 +1279,10 @@ fn exclusive_keyboard_layer(state: &MargoState) -> Option<FocusTarget> {
             }
         }
         // Fallback to the first available lock surface.
-        return state.lock_surfaces.first().map(|(_, s)| FocusTarget::SessionLock(s.clone()));
+        return state
+            .lock_surfaces
+            .first()
+            .map(|(_, s)| FocusTarget::SessionLock(s.clone()));
     }
 
     for layer in state.layer_shell_state.layer_surfaces().rev() {
@@ -1287,11 +1316,15 @@ fn focus_under(
 ) -> Option<(FocusTarget, Point<f64, Logical>)> {
     if state.session_locked {
         return state.space.output_under(pos).next().and_then(|output| {
-            state.lock_surfaces.iter().find(|(o, _)| o == output).map(|(_, s)| {
-                let output_geo = state.space.output_geometry(output).unwrap();
-                let local = pos - output_geo.loc.to_f64();
-                (FocusTarget::SessionLock(s.clone()), local)
-            })
+            state
+                .lock_surfaces
+                .iter()
+                .find(|(o, _)| o == output)
+                .map(|(_, s)| {
+                    let output_geo = state.space.output_geometry(output).unwrap();
+                    let local = pos - output_geo.loc.to_f64();
+                    (FocusTarget::SessionLock(s.clone()), local)
+                })
         });
     }
 
@@ -1324,15 +1357,9 @@ fn pointer_focus_under(
     // route input to hidden background apps and defeat the lock.
     if state.session_locked {
         let output = state.space.output_under(pos).next()?;
-        let (_, lock_surface) = state
-            .lock_surfaces
-            .iter()
-            .find(|(o, _)| o == output)?;
+        let (_, lock_surface) = state.lock_surfaces.iter().find(|(o, _)| o == output)?;
         let output_geo = state.space.output_geometry(output)?;
-        return Some((
-            lock_surface.wl_surface().clone(),
-            output_geo.loc.to_f64(),
-        ));
+        return Some((lock_surface.wl_surface().clone(), output_geo.loc.to_f64()));
     }
 
     // Layer surfaces sit above + below the windows.
@@ -1377,8 +1404,7 @@ fn layer_pointer_under(
             if let Some((surface, surf_loc)) =
                 layer.surface_under(layer_local, WindowSurfaceType::ALL)
             {
-                let space_loc =
-                    (surf_loc + layer_geo.loc + output_geo.loc).to_f64();
+                let space_loc = (surf_loc + layer_geo.loc + output_geo.loc).to_f64();
                 return Some((surface, space_loc));
             }
         }

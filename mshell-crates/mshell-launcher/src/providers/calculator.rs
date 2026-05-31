@@ -71,7 +71,10 @@ impl CalculatorProvider {
             return false;
         }
         // Reject pure-letters (would match every short app name).
-        if expr.chars().all(|c| c.is_ascii_alphabetic() || c.is_whitespace()) {
+        if expr
+            .chars()
+            .all(|c| c.is_ascii_alphabetic() || c.is_whitespace())
+        {
             return false;
         }
         true
@@ -85,13 +88,15 @@ impl CalculatorProvider {
         let rewritten = self.function_prefix_re.replace_all(expr, "math::$1(");
         let rewritten = substitute_constant(&rewritten, "pi", std::f64::consts::PI);
         let rewritten = substitute_constant(&rewritten, "e", std::f64::consts::E);
-        let rewritten = self.int_literal_re.replace_all(&rewritten, |c: &regex::Captures| {
-            // Already has a fractional tail like `1.5` → leave it.
-            if c.name("tail").is_some() {
-                return c.get(0).unwrap().as_str().to_string();
-            }
-            format!("{}.0", &c["n"])
-        });
+        let rewritten = self
+            .int_literal_re
+            .replace_all(&rewritten, |c: &regex::Captures| {
+                // Already has a fractional tail like `1.5` → leave it.
+                if c.name("tail").is_some() {
+                    return c.get(0).unwrap().as_str().to_string();
+                }
+                format!("{}.0", &c["n"])
+            });
 
         match eval(&rewritten).ok()? {
             Value::Int(i) => Some(i.to_string()),
@@ -107,7 +112,10 @@ impl CalculatorProvider {
 fn substitute_constant(input: &str, name: &str, value: f64) -> String {
     let pattern = format!(r"\b{name}\b");
     Regex::new(&pattern)
-        .map(|re| re.replace_all(input, value.to_string().as_str()).into_owned())
+        .map(|re| {
+            re.replace_all(input, value.to_string().as_str())
+                .into_owned()
+        })
         .unwrap_or_else(|_| input.to_string())
 }
 

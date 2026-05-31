@@ -45,7 +45,7 @@
 use std::cell::Cell;
 use std::path::PathBuf;
 
-use rhai::{Array, Dynamic, Engine, FnPtr, Scope, AST};
+use rhai::{AST, Array, Dynamic, Engine, FnPtr, Scope};
 use tracing::{error, info, warn};
 
 use margo_config::Arg;
@@ -742,8 +742,7 @@ fn fire_hook(state: &mut MargoState, kind: HookKind) {
         let _guard = StateGuard;
 
         for h in &hooks {
-            let res: Result<Dynamic, Box<rhai::EvalAltResult>> =
-                h.call(&sc.engine, &sc.ast, ());
+            let res: Result<Dynamic, Box<rhai::EvalAltResult>> = h.call(&sc.engine, &sc.ast, ());
             if let Err(e) = res {
                 warn!(error = ?e, "init.rhai: hook error");
             }

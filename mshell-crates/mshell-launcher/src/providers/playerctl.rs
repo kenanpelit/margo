@@ -116,8 +116,7 @@ impl Provider for PlayerctlProvider {
 
     fn search(&self, query: &str) -> Vec<LauncherItem> {
         let q = query.trim_start();
-        if !(q == "player" || q.starts_with("player ") || q == "play" || q.starts_with("play "))
-        {
+        if !(q == "player" || q.starts_with("player ") || q == "play" || q.starts_with("play ")) {
             return Vec::new();
         }
 
@@ -142,7 +141,11 @@ impl Provider for PlayerctlProvider {
         // workflows (just pause whatever's playing) don't need
         // to scroll.
         for (idx, (label, sub, icon)) in [
-            ("Play / Pause", "play-pause", "media-playback-start-symbolic"),
+            (
+                "Play / Pause",
+                "play-pause",
+                "media-playback-start-symbolic",
+            ),
             ("Next track", "next", "media-skip-forward-symbolic"),
             ("Previous track", "previous", "media-skip-backward-symbolic"),
             ("Stop", "stop", "media-playback-stop-symbolic"),

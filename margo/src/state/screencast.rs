@@ -39,8 +39,7 @@ impl MargoState {
             PwToNiri::FatalError => {
                 tracing::warn!("stopping screencasting due to PipeWire fatal error");
                 if let Some(mut casting) = self.screencasting.take() {
-                    let session_ids: Vec<_> =
-                        casting.casts.iter().map(|c| c.session_id).collect();
+                    let session_ids: Vec<_> = casting.casts.iter().map(|c| c.session_id).collect();
                     casting.casts.clear();
                     casting.pipewire = None;
                     self.screencasting = Some(casting);
@@ -108,16 +107,14 @@ impl MargoState {
                     self.stop_cast(session_id);
                     return;
                 };
-                let size = smithay::utils::Size::<i32, smithay::utils::Physical>::from(
-                    (mode.size.w, mode.size.h),
-                );
+                let size = smithay::utils::Size::<i32, smithay::utils::Physical>::from((
+                    mode.size.w,
+                    mode.size.h,
+                ));
                 let refresh = mode.refresh as u32;
                 let weak = mon.output.downgrade();
                 (
-                    CastTarget::Output {
-                        output: weak,
-                        name,
-                    },
+                    CastTarget::Output { output: weak, name },
                     size,
                     refresh,
                     false,
@@ -144,9 +141,10 @@ impl MargoState {
                     self.stop_cast(session_id);
                     return;
                 }
-                let size = smithay::utils::Size::<i32, smithay::utils::Physical>::from(
-                    (geom.width, geom.height),
-                );
+                let size = smithay::utils::Size::<i32, smithay::utils::Physical>::from((
+                    geom.width,
+                    geom.height,
+                ));
                 // Use the focused monitor's refresh as a stand-in;
                 // PipeWire negotiates an actual pacing later.
                 let refresh = self
@@ -168,8 +166,7 @@ impl MargoState {
 
         // Lazy-init Screencasting + PipeWire on first cast.
         if self.screencasting.is_none() {
-            let casting =
-                crate::screencasting::Screencasting::new(&self.loop_handle);
+            let casting = crate::screencasting::Screencasting::new(&self.loop_handle);
             self.screencasting = Some(Box::new(casting));
         }
         let casting = self.screencasting.as_mut().unwrap();
@@ -204,9 +201,7 @@ impl MargoState {
         ) {
             Ok(cast) => {
                 casting.casts.push(cast);
-                tracing::info!(
-                    "StartCast: session={session_id} stream={stream_id} cast pushed"
-                );
+                tracing::info!("StartCast: session={session_id} stream={stream_id} cast pushed");
             }
             Err(err) => {
                 tracing::warn!(error = ?err, "StartCast: pw.start_cast failed");

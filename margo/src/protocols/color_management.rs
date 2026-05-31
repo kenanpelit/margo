@@ -138,7 +138,7 @@ impl ColorManagementState {
         // dispatch impls below stay compiled in as dead code so the
         // refactor when Phase 2 ships is "uncomment one line" rather
         // than "rebuild all the protocol plumbing".
-        let _ = (display, filter);  // silence unused; both come back in Phase 2.
+        let _ = (display, filter); // silence unused; both come back in Phase 2.
         // display.create_global::<D, WpColorManagerV1, _>(
         //     VERSION,
         //     ColorManagerGlobalData {
@@ -407,9 +407,7 @@ where
                 // Look up the description's identity from the resource's
                 // user_data and stash it. Phase 2 reads this at render
                 // sample time to pick the right transfer-function decode.
-                if let Some(desc) =
-                    image_description.data::<ImageDescription>()
-                {
+                if let Some(desc) = image_description.data::<ImageDescription>() {
                     data.identity.store(desc.identity, Ordering::Relaxed);
                 }
             }
@@ -490,10 +488,13 @@ where
     ) {
         match request {
             wp_image_description_creator_icc_v1::Request::Create { image_description } => {
-                let resource = data_init.init(image_description, ImageDescription {
-                    identity: 0,
-                    params: ImageDescriptionParams::default(),
-                });
+                let resource = data_init.init(
+                    image_description,
+                    ImageDescription {
+                        identity: 0,
+                        params: ImageDescriptionParams::default(),
+                    },
+                );
                 resource.failed(
                     wp_image_description_v1::Cause::Unsupported,
                     "ICC profile creation not yet supported (Phase 4)".to_string(),
@@ -538,7 +539,10 @@ where
                 if params.primaries_named.is_none() && params.mastering_primaries.is_none() {
                     let resource = data_init.init(
                         image_description,
-                        ImageDescription { identity: 0, params },
+                        ImageDescription {
+                            identity: 0,
+                            params,
+                        },
                     );
                     resource.failed(
                         wp_image_description_v1::Cause::OperatingSystem,
@@ -549,7 +553,10 @@ where
                 if params.tf_named.is_none() {
                     let resource = data_init.init(
                         image_description,
-                        ImageDescription { identity: 0, params },
+                        ImageDescription {
+                            identity: 0,
+                            params,
+                        },
                     );
                     resource.failed(
                         wp_image_description_v1::Cause::OperatingSystem,
@@ -558,10 +565,7 @@ where
                     return;
                 }
                 let identity = state.color_management_state().alloc_identity();
-                let desc = ImageDescription {
-                    identity,
-                    params,
-                };
+                let desc = ImageDescription { identity, params };
                 let resource = data_init.init(image_description, desc);
                 resource.ready(identity as u32);
             }
@@ -694,14 +698,13 @@ where
                 // sRGB / BT.709: R=(0.640,0.330) G=(0.300,0.600)
                 // B=(0.150,0.060) W=D65 (0.3127,0.3290).
                 let prim = data.params.mastering_primaries.unwrap_or([
-                    640_000, 330_000,   // R x, y
-                    300_000, 600_000,   // G x, y
-                    150_000,  60_000,   // B x, y
-                    312_700, 329_000,   // W x, y (D65)
+                    640_000, 330_000, // R x, y
+                    300_000, 600_000, // G x, y
+                    150_000, 60_000, // B x, y
+                    312_700, 329_000, // W x, y (D65)
                 ]);
                 info.primaries(
-                    prim[0], prim[1], prim[2], prim[3],
-                    prim[4], prim[5], prim[6], prim[7],
+                    prim[0], prim[1], prim[2], prim[3], prim[4], prim[5], prim[6], prim[7],
                 );
 
                 // ── 2. primaries_named (optional, only if known enum) ──
@@ -722,25 +725,18 @@ where
                 info.tf_named(tf);
 
                 // ── 4. luminances (min × 10000, max, reference) ──
-                let (min_lum, max_lum, ref_lum) = data
-                    .params
-                    .luminances
-                    .unwrap_or((0, 80, 80));
+                let (min_lum, max_lum, ref_lum) = data.params.luminances.unwrap_or((0, 80, 80));
                 info.luminances(min_lum, max_lum, ref_lum);
 
                 // ── 5. target_primaries — reuse `primaries` if no
                 //     mastering primaries are stored. mpv/Chromium use
                 //     this to know "what gamut should I tone-map for".
                 info.target_primaries(
-                    prim[0], prim[1], prim[2], prim[3],
-                    prim[4], prim[5], prim[6], prim[7],
+                    prim[0], prim[1], prim[2], prim[3], prim[4], prim[5], prim[6], prim[7],
                 );
 
                 // ── 6. target_luminance (min × 10000, max) ──
-                let (target_min, target_max) = data
-                    .params
-                    .mastering_luminance
-                    .unwrap_or((0, 80));
+                let (target_min, target_max) = data.params.mastering_luminance.unwrap_or((0, 80));
                 info.target_luminance(target_min, target_max);
 
                 // ── 7. target_max_cll / fall (only if HDR-tagged) ──

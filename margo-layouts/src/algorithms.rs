@@ -165,7 +165,11 @@ pub fn grid(ctx: &ArrangeCtx) -> ArrangeResult {
     for (i, &idx) in ctx.tiled.iter().enumerate() {
         let col = i % cols;
         let row = i / cols;
-        let extra_x = if overcols > 0 && i >= n - overcols { dx } else { 0 };
+        let extra_x = if overcols > 0 && i >= n - overcols {
+            dx
+        } else {
+            0
+        };
         let rect = Rect::new(
             wa.x + oh + col as i32 * (cw + ih) + extra_x,
             wa.y + ov + row as i32 * (ch + iv),
@@ -279,7 +283,13 @@ pub fn center_tile(ctx: &ArrangeCtx) -> ArrangeResult {
     }
 
     // right stack
-    let rx = wa.x + oh + if stack_count >= 2 { side_w + ih + master_w + ih } else { master_w + ih };
+    let rx = wa.x
+        + oh
+        + if stack_count >= 2 {
+            side_w + ih + master_w + ih
+        } else {
+            master_w + ih
+        };
     let mut ry = 0;
     for i in 0..right_count {
         let idx = ctx.tiled[nm + left_count + i];
@@ -577,7 +587,12 @@ pub fn tgmix(ctx: &ArrangeCtx) -> ArrangeResult {
     let master_w = ((wa.width - 2 * oh) as f32 * ctx.mfact) as i32;
 
     let master_wa = Rect::new(wa.x, wa.y, master_w + 2 * oh, wa.height);
-    let stack_wa = Rect::new(wa.x + oh + master_w + g.gappih, wa.y, wa.width - oh - master_w - g.gappih, wa.height);
+    let stack_wa = Rect::new(
+        wa.x + oh + master_w + g.gappih,
+        wa.y,
+        wa.width - oh - master_w - g.gappih,
+        wa.height,
+    );
 
     let master_props: Vec<f32> =
         ctx.scroller_proportions[..ctx.scroller_proportions.len().min(nm)].to_vec();
@@ -653,12 +668,7 @@ pub fn dwindle(ctx: &ArrangeCtx) -> ArrangeResult {
     let ih = g.gappih;
     let iv = g.gappiv;
 
-    let mut rect = Rect::new(
-        wa.x + oh,
-        wa.y + ov,
-        wa.width - 2 * oh,
-        wa.height - 2 * ov,
-    );
+    let mut rect = Rect::new(wa.x + oh, wa.y + ov, wa.width - 2 * oh, wa.height - 2 * ov);
     let mut result = Vec::with_capacity(n);
 
     for (i, &idx) in ctx.tiled.iter().enumerate() {
@@ -670,11 +680,21 @@ pub fn dwindle(ctx: &ArrangeCtx) -> ArrangeResult {
         if split_h {
             let half = (rect.width - ih) / 2;
             result.push((idx, Rect::new(rect.x, rect.y, half, rect.height)));
-            rect = Rect::new(rect.x + half + ih, rect.y, rect.width - half - ih, rect.height);
+            rect = Rect::new(
+                rect.x + half + ih,
+                rect.y,
+                rect.width - half - ih,
+                rect.height,
+            );
         } else {
             let half = (rect.height - iv) / 2;
             result.push((idx, Rect::new(rect.x, rect.y, rect.width, half)));
-            rect = Rect::new(rect.x, rect.y + half + iv, rect.width, rect.height - half - iv);
+            rect = Rect::new(
+                rect.x,
+                rect.y + half + iv,
+                rect.width,
+                rect.height - half - iv,
+            );
         }
     }
     result

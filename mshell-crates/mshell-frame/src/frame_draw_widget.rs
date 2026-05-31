@@ -1003,25 +1003,26 @@ mod imp {
                 id.remove();
             }
             let weak = self.obj().downgrade();
-            let id = glib::timeout_add_local_once(std::time::Duration::from_millis(120), move || {
-                let Some(widget) = weak.upgrade() else {
-                    return;
-                };
-                let imp = widget.imp();
-                imp.pending_region_timeout.replace(None);
-                let Some(args) = imp.pending_region_args.borrow_mut().take() else {
-                    return;
-                };
-                imp.update_input_region(
-                    &args.style,
-                    args.window_width,
-                    args.window_height,
-                    args.hole_x,
-                    args.hole_y,
-                    args.hole_width,
-                    args.hole_height,
-                );
-            });
+            let id =
+                glib::timeout_add_local_once(std::time::Duration::from_millis(120), move || {
+                    let Some(widget) = weak.upgrade() else {
+                        return;
+                    };
+                    let imp = widget.imp();
+                    imp.pending_region_timeout.replace(None);
+                    let Some(args) = imp.pending_region_args.borrow_mut().take() else {
+                        return;
+                    };
+                    imp.update_input_region(
+                        &args.style,
+                        args.window_width,
+                        args.window_height,
+                        args.hole_x,
+                        args.hole_y,
+                        args.hole_width,
+                        args.hole_height,
+                    );
+                });
             self.pending_region_timeout.replace(Some(id));
         }
 

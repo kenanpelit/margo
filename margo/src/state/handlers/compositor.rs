@@ -40,27 +40,24 @@
 use smithay::{
     backend::renderer::utils::on_commit_buffer_handler,
     delegate_compositor,
-    desktop::{layer_map_for_output, PopupKind, WindowSurface, WindowSurfaceType},
+    desktop::{PopupKind, WindowSurface, WindowSurfaceType, layer_map_for_output},
     reexports::{
         calloop::Interest,
         wayland_server::{
-            protocol::{wl_buffer::WlBuffer, wl_surface::WlSurface},
             Client, Resource,
+            protocol::{wl_buffer::WlBuffer, wl_surface::WlSurface},
         },
     },
     wayland::{
         buffer::BufferHandler,
         compositor::{
-            add_blocker, add_pre_commit_hook, get_parent, is_sync_subsurface, with_states,
             BufferAssignment, CompositorClientState, CompositorHandler, CompositorState,
-            SurfaceAttributes,
+            SurfaceAttributes, add_blocker, add_pre_commit_hook, get_parent, is_sync_subsurface,
+            with_states,
         },
         dmabuf::get_dmabuf,
         seat::WaylandFocus,
-        shell::{
-            wlr_layer::LayerSurfaceData,
-            xdg::XdgToplevelSurfaceData,
-        },
+        shell::{wlr_layer::LayerSurfaceData, xdg::XdgToplevelSurfaceData},
     },
     xwayland::XWaylandClientData,
 };
@@ -212,8 +209,7 @@ impl CompositorHandler for MargoState {
             // because we wanted to wait for app_id before applying
             // window rules). If so, finalise the initial map now.
             let deferred_idx = self.clients.iter().position(|c| {
-                c.is_initial_map_pending
-                    && c.window.wl_surface().as_deref() == Some(&root)
+                c.is_initial_map_pending && c.window.wl_surface().as_deref() == Some(&root)
             });
             if let Some(idx) = deferred_idx {
                 self.finalize_initial_map(idx);
@@ -257,7 +253,10 @@ impl CompositorHandler for MargoState {
 
             let layer_output = self.space.outputs().find_map(|output| {
                 let map = layer_map_for_output(output);
-                if map.layer_for_surface(&root, WindowSurfaceType::TOPLEVEL).is_some() {
+                if map
+                    .layer_for_surface(&root, WindowSurfaceType::TOPLEVEL)
+                    .is_some()
+                {
                     Some(output.clone())
                 } else {
                     None
@@ -300,7 +299,8 @@ impl CompositorHandler for MargoState {
                     let mut kb_hasher = DefaultHasher::new();
                     let layer = {
                         let map = layer_map_for_output(&output);
-                        map.layer_for_surface(&root, WindowSurfaceType::TOPLEVEL).cloned()
+                        map.layer_for_surface(&root, WindowSurfaceType::TOPLEVEL)
+                            .cloned()
                     };
                     if let Some(layer) = layer {
                         layer.layer_surface().with_cached_state(|cur| {
@@ -308,7 +308,12 @@ impl CompositorHandler for MargoState {
                             format!("{:?}", cur.anchor).hash(&mut layout_hasher);
                             format!("{:?}", cur.exclusive_zone).hash(&mut layout_hasher);
                             format!("{:?}", cur.exclusive_edge).hash(&mut layout_hasher);
-                            (cur.margin.top, cur.margin.bottom, cur.margin.left, cur.margin.right)
+                            (
+                                cur.margin.top,
+                                cur.margin.bottom,
+                                cur.margin.left,
+                                cur.margin.right,
+                            )
                                 .hash(&mut layout_hasher);
                             format!("{:?}", cur.layer).hash(&mut layout_hasher);
                             format!("{:?}", cur.keyboard_interactivity).hash(&mut kb_hasher);
@@ -323,15 +328,18 @@ impl CompositorHandler for MargoState {
                 let new_hash = new_layout_hash ^ new_kb_hash.rotate_left(1);
                 let key = root.id();
                 let prev_combined = self.layer_layout_hashes.get(&key).copied();
-                let layout_changed = prev_combined.map(|h| {
-                    // Lower 64 bits = layout hash; we packed layout ^ rotated kb.
-                    // Recover layout part by re-xoring rotated kb; if the
-                    // stored hash matches the new layout hash xor'd with
-                    // the *previously stored* kb hash, layout didn't change.
-                    // Simpler: just compare the new layout/kb pair against
-                    // a per-surface (layout, kb) tuple. Use parallel maps.
-                    h != new_hash
-                }).unwrap_or(true) || !initial_sent;
+                let layout_changed = prev_combined
+                    .map(|h| {
+                        // Lower 64 bits = layout hash; we packed layout ^ rotated kb.
+                        // Recover layout part by re-xoring rotated kb; if the
+                        // stored hash matches the new layout hash xor'd with
+                        // the *previously stored* kb hash, layout didn't change.
+                        // Simpler: just compare the new layout/kb pair against
+                        // a per-surface (layout, kb) tuple. Use parallel maps.
+                        h != new_hash
+                    })
+                    .unwrap_or(true)
+                    || !initial_sent;
                 if layout_changed {
                     self.layer_layout_hashes.insert(key.clone(), new_hash);
                 }
@@ -345,7 +353,8 @@ impl CompositorHandler for MargoState {
                     .map(|prev| prev != new_kb_hash)
                     .unwrap_or(true);
                 if kb_changed {
-                    self.layer_kb_interactivity_hashes.insert(key.clone(), new_kb_hash);
+                    self.layer_kb_interactivity_hashes
+                        .insert(key.clone(), new_kb_hash);
                 }
 
                 if layout_changed {
@@ -444,7 +453,7 @@ pub fn send_scale_transform(
 /// toplevels. Returns `None` for cursor / DnD icon / freshly-
 /// created surfaces that aren't yet mapped anywhere.
 pub fn output_for_root(state: &MargoState, root: &WlSurface) -> Option<smithay::output::Output> {
-    use smithay::desktop::{layer_map_for_output, WindowSurfaceType};
+    use smithay::desktop::{WindowSurfaceType, layer_map_for_output};
     use smithay::wayland::seat::WaylandFocus;
     for output in state.space.outputs() {
         let map = layer_map_for_output(output);
@@ -457,11 +466,7 @@ pub fn output_for_root(state: &MargoState, root: &WlSurface) -> Option<smithay::
     }
     for window in state.space.elements() {
         if window.wl_surface().as_deref() == Some(root) {
-            return state
-                .space
-                .outputs_for_element(window)
-                .into_iter()
-                .next();
+            return state.space.outputs_for_element(window).into_iter().next();
         }
     }
     None

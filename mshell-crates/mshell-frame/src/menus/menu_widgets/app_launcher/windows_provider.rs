@@ -132,7 +132,11 @@ impl WindowsProvider {
                     .arg(tag_mask.to_string())
                     .spawn()
                 {
-                    tracing::warn!(?err, mask = tag_mask, "windows provider focus dispatch failed");
+                    tracing::warn!(
+                        ?err,
+                        mask = tag_mask,
+                        "windows provider focus dispatch failed"
+                    );
                 }
             }),
         }
@@ -198,10 +202,7 @@ impl Provider for WindowsProvider {
         // alt-tab replacement (open launcher → see windows →
         // pick).
         if filter.is_empty() {
-            return entries
-                .iter()
-                .map(|e| self.make_item(e, 0.0))
-                .collect();
+            return entries.iter().map(|e| self.make_item(e, 0.0)).collect();
         }
 
         let mut matcher = self.matcher.borrow_mut();

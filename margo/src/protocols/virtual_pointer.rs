@@ -454,7 +454,10 @@ where
                     WEnum::Value(wl_pointer::Axis::VerticalScroll) => Axis::Vertical,
                     WEnum::Value(wl_pointer::Axis::HorizontalScroll) => Axis::Horizontal,
                     _ => {
-                        resource.post_error(zwlr_virtual_pointer_v1::Error::InvalidAxis, "invalid axis");
+                        resource.post_error(
+                            zwlr_virtual_pointer_v1::Error::InvalidAxis,
+                            "invalid axis",
+                        );
                         return;
                     }
                 };
@@ -486,7 +489,10 @@ where
                     WEnum::Value(wl_pointer::Axis::VerticalScroll) => Axis::Vertical,
                     WEnum::Value(wl_pointer::Axis::HorizontalScroll) => Axis::Horizontal,
                     _ => {
-                        resource.post_error(zwlr_virtual_pointer_v1::Error::InvalidAxis, "invalid axis");
+                        resource.post_error(
+                            zwlr_virtual_pointer_v1::Error::InvalidAxis,
+                            "invalid axis",
+                        );
                         return;
                     }
                 };
@@ -502,7 +508,10 @@ where
                     WEnum::Value(wl_pointer::Axis::VerticalScroll) => Axis::Vertical,
                     WEnum::Value(wl_pointer::Axis::HorizontalScroll) => Axis::Horizontal,
                     _ => {
-                        resource.post_error(zwlr_virtual_pointer_v1::Error::InvalidAxis, "invalid axis");
+                        resource.post_error(
+                            zwlr_virtual_pointer_v1::Error::InvalidAxis,
+                            "invalid axis",
+                        );
                         return;
                     }
                 };

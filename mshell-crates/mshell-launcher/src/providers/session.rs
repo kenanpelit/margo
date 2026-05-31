@@ -75,14 +75,24 @@ impl SessionAction {
                 label: "Lock".into(),
                 icon: "system-lock-screen-symbolic".into(),
                 keywords: vec!["lock".into(), "screen".into(), "secure".into()],
-                command: vec!["mshellctl".into(), "menu".into(), "session".into(), "lock".into()],
+                command: vec![
+                    "mshellctl".into(),
+                    "menu".into(),
+                    "session".into(),
+                    "lock".into(),
+                ],
             },
             Self {
                 id: Suspend,
                 label: "Suspend".into(),
                 icon: "system-suspend-symbolic".into(),
                 keywords: vec!["suspend".into(), "sleep".into(), "standby".into()],
-                command: vec!["mshellctl".into(), "menu".into(), "session".into(), "suspend".into()],
+                command: vec![
+                    "mshellctl".into(),
+                    "menu".into(),
+                    "session".into(),
+                    "suspend".into(),
+                ],
             },
             Self {
                 id: Hibernate,
@@ -96,7 +106,12 @@ impl SessionAction {
                 label: "Reboot".into(),
                 icon: "system-reboot-symbolic".into(),
                 keywords: vec!["reboot".into(), "restart".into(), "reload".into()],
-                command: vec!["mshellctl".into(), "menu".into(), "session".into(), "reboot".into()],
+                command: vec![
+                    "mshellctl".into(),
+                    "menu".into(),
+                    "session".into(),
+                    "reboot".into(),
+                ],
             },
             Self {
                 id: RebootToUefi,
@@ -132,7 +147,12 @@ impl SessionAction {
                     "sign".into(),
                     "exit".into(),
                 ],
-                command: vec!["mshellctl".into(), "menu".into(), "session".into(), "logout".into()],
+                command: vec![
+                    "mshellctl".into(),
+                    "menu".into(),
+                    "session".into(),
+                    "logout".into(),
+                ],
             },
             Self {
                 id: Shutdown,
@@ -144,7 +164,12 @@ impl SessionAction {
                     "off".into(),
                     "poweroff".into(),
                 ],
-                command: vec!["mshellctl".into(), "menu".into(), "session".into(), "shutdown".into()],
+                command: vec![
+                    "mshellctl".into(),
+                    "menu".into(),
+                    "session".into(),
+                    "shutdown".into(),
+                ],
             },
         ]
     }

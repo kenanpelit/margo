@@ -224,14 +224,20 @@ mod tests {
     fn detects_sourced_in_any_whitespace_style() {
         assert!(text_sources_us("source=binds.d/mshell-plugins.conf"));
         assert!(text_sources_us("source = binds.d/mshell-plugins.conf"));
-        assert!(text_sources_us("  source   =   binds.d/mshell-plugins.conf  "));
+        assert!(text_sources_us(
+            "  source   =   binds.d/mshell-plugins.conf  "
+        ));
         // Among other lines.
-        assert!(text_sources_us("source = colors.conf\nsource = binds.d/mshell-plugins.conf\n"));
+        assert!(text_sources_us(
+            "source = colors.conf\nsource = binds.d/mshell-plugins.conf\n"
+        ));
     }
 
     #[test]
     fn ignores_absent_or_commented() {
-        assert!(!text_sources_us("source = colors.conf\nsource = mlayout.conf\n"));
+        assert!(!text_sources_us(
+            "source = colors.conf\nsource = mlayout.conf\n"
+        ));
         assert!(!text_sources_us("# source = binds.d/mshell-plugins.conf"));
         assert!(!text_sources_us(""));
     }

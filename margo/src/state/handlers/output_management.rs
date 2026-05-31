@@ -9,12 +9,11 @@
 //! screen and no recovery short of TTY login).
 
 use crate::{
-    delegate_output_management,
+    PendingOutputModeChange, delegate_output_management,
     protocols::output_management::{
         OutputManagementHandler, OutputManagementManagerState, PendingHeadConfig,
     },
     state::MargoState,
-    PendingOutputModeChange,
 };
 
 impl OutputManagementHandler for MargoState {
@@ -38,16 +37,11 @@ impl OutputManagementHandler for MargoState {
         // protocol allows the request, so guard server-side too.
         let any_disable = pending.values().any(|p| !p.enabled());
         if any_disable {
-            let currently_enabled =
-                self.monitors.iter().filter(|m| m.enabled).count();
+            let currently_enabled = self.monitors.iter().filter(|m| m.enabled).count();
             let pending_disabling = pending
                 .iter()
                 .filter(|(name, p)| {
-                    !p.enabled()
-                        && self
-                            .monitors
-                            .iter()
-                            .any(|m| m.name == **name && m.enabled)
+                    !p.enabled() && self.monitors.iter().any(|m| m.name == **name && m.enabled)
                 })
                 .count();
             if pending_disabling >= currently_enabled {

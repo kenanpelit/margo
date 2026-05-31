@@ -100,11 +100,7 @@ impl FactoryComponent for ActiveWidgetModel {
         }
     }
 
-    fn init_model(
-        init: Self::Init,
-        _index: &DynamicIndex,
-        _sender: FactorySender<Self>,
-    ) -> Self {
+    fn init_model(init: Self::Init, _index: &DynamicIndex, _sender: FactorySender<Self>) -> Self {
         let label = match &init.widget {
             BarWidget::Custom(name) => super::bar_widget_section::custom_widget_label(name),
             other => other.display_name().to_string(),

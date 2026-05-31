@@ -6,9 +6,9 @@ use std::{
 use crate::user_css::paths::styles_dir;
 use crate::user_css::style::Style;
 use crate::user_css::style_utils::{load_style, watch_style_loop};
-use notify::{Config as NotifyConfig, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, ThemeStoreFields};
+use notify::{Config as NotifyConfig, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use reactive_graph::prelude::GetUntracked;
 use reactive_stores::{ArcStore, Patch};
 use tracing::{error, info};

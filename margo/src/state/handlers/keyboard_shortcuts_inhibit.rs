@@ -18,8 +18,7 @@ use smithay::{
     delegate_keyboard_shortcuts_inhibit,
     reexports::wayland_server::Resource,
     wayland::keyboard_shortcuts_inhibit::{
-        KeyboardShortcutsInhibitHandler, KeyboardShortcutsInhibitState,
-        KeyboardShortcutsInhibitor,
+        KeyboardShortcutsInhibitHandler, KeyboardShortcutsInhibitState, KeyboardShortcutsInhibitor,
     },
 };
 

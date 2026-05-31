@@ -5,6 +5,7 @@ use mshell_config::schema::config::{
     ConfigStoreFields, DockStoreFields, IconsStoreFields, ThemeStoreFields,
 };
 use mshell_config::schema::themes::Themes;
+use mshell_margo_client::{Address, Client};
 use mshell_services::margo_service;
 use mshell_utils::app_icon::app_icon::set_icon;
 use mshell_utils::app_info::find_app_info;
@@ -19,7 +20,6 @@ use relm4::gtk::prelude::{
 use relm4::gtk::{Orientation, gio};
 use relm4::{Component, ComponentParts, ComponentSender, Sender, WidgetTemplate, gtk};
 use tracing::error;
-use mshell_margo_client::{Address, Client};
 
 const MAX_MENU_ITEM_LENGTH: usize = 25;
 
@@ -261,41 +261,41 @@ impl Component for MargoDockItemModel {
         if let Some(icon) = dock_icon_override(&model.class) {
             apply_override_icon(&widgets.image, &icon);
         } else {
-        let model_clone = model.clone();
-        set_icon(
-            &model.app_info,
-            &Some(model_clone.class),
-            &widgets.image,
-            base_config.theme().icons().app_icon_theme().get_untracked(),
-            &config_manager().config().theme().theme().get_untracked(),
-            config_manager()
-                .config()
-                .theme()
-                .icons()
-                .apply_theme_filter()
-                .get_untracked(),
-            config_manager()
-                .config()
-                .theme()
-                .icons()
-                .filter_strength()
-                .get_untracked()
-                .get(),
-            config_manager()
-                .config()
-                .theme()
-                .icons()
-                .monochrome_strength()
-                .get_untracked()
-                .get(),
-            config_manager()
-                .config()
-                .theme()
-                .icons()
-                .contrast_strength()
-                .get_untracked()
-                .get(),
-        );
+            let model_clone = model.clone();
+            set_icon(
+                &model.app_info,
+                &Some(model_clone.class),
+                &widgets.image,
+                base_config.theme().icons().app_icon_theme().get_untracked(),
+                &config_manager().config().theme().theme().get_untracked(),
+                config_manager()
+                    .config()
+                    .theme()
+                    .icons()
+                    .apply_theme_filter()
+                    .get_untracked(),
+                config_manager()
+                    .config()
+                    .theme()
+                    .icons()
+                    .filter_strength()
+                    .get_untracked()
+                    .get(),
+                config_manager()
+                    .config()
+                    .theme()
+                    .icons()
+                    .monochrome_strength()
+                    .get_untracked()
+                    .get(),
+                config_manager()
+                    .config()
+                    .theme()
+                    .icons()
+                    .contrast_strength()
+                    .get_untracked()
+                    .get(),
+            );
         }
 
         model.apply_dock_config(&widgets.image, &widgets.root);
@@ -591,11 +591,7 @@ impl MargoDockItemModel {
     /// when tooltips are turned off). Called on build, on window-count
     /// change, and when the dock settings change live.
     fn apply_dock_config(&self, image: &gtk::Image, root: &gtk::Box) {
-        let size = config_manager()
-            .config()
-            .dock()
-            .icon_size()
-            .get_untracked();
+        let size = config_manager().config().dock().icon_size().get_untracked();
         image.set_pixel_size(size as i32);
         let show_tooltips = config_manager()
             .config()

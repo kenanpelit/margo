@@ -122,11 +122,17 @@ impl Provider for TagsProvider {
             .enumerate()
             .map(|(idx, n)| {
                 let mask: u32 = 1 << (n - 1);
-                let active = snap.as_ref().map(|s| s.active_mask & mask != 0).unwrap_or(false);
-                let occupied = snap.as_ref().map(|s| s.occupied_mask & mask != 0).unwrap_or(false);
+                let active = snap
+                    .as_ref()
+                    .map(|s| s.active_mask & mask != 0)
+                    .unwrap_or(false);
+                let occupied = snap
+                    .as_ref()
+                    .map(|s| s.occupied_mask & mask != 0)
+                    .unwrap_or(false);
                 let glyph = match (active, occupied) {
-                    (true, _) => "● ",     // currently visible
-                    (false, true) => "◐ ", // has windows but hidden
+                    (true, _) => "● ",      // currently visible
+                    (false, true) => "◐ ",  // has windows but hidden
                     (false, false) => "○ ", // empty
                 };
                 let descr = format!(

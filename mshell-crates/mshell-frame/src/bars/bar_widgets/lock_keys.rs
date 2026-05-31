@@ -117,15 +117,12 @@ impl Component for LockKeysModel {
         // .input() aborts mshell.
         {
             let s = sender.clone();
-            relm4::gtk::glib::timeout_add_local(
-                Duration::from_millis(500),
-                move || {
-                    if s.input_sender().send(LockKeysInput::Poll).is_err() {
-                        return relm4::gtk::glib::ControlFlow::Break;
-                    }
-                    relm4::gtk::glib::ControlFlow::Continue
-                },
-            );
+            relm4::gtk::glib::timeout_add_local(Duration::from_millis(500), move || {
+                if s.input_sender().send(LockKeysInput::Poll).is_err() {
+                    return relm4::gtk::glib::ControlFlow::Break;
+                }
+                relm4::gtk::glib::ControlFlow::Continue
+            });
         }
 
         let model = LockKeysModel {
@@ -138,12 +135,7 @@ impl Component for LockKeysModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        _sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             LockKeysInput::Poll => {
                 let (c, n, s) = read_lock_state();

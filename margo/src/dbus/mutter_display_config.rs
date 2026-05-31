@@ -30,8 +30,8 @@ use zbus::object_server::SignalEmitter;
 use zbus::zvariant::{OwnedValue, Type};
 use zbus::{interface, zvariant};
 
-use super::ipc_output::IpcOutputMap;
 use super::Start;
+use super::ipc_output::IpcOutputMap;
 
 pub struct DisplayConfig {
     ipc_outputs: Arc<Mutex<IpcOutputMap>>,

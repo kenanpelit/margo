@@ -32,8 +32,7 @@ pub struct Engine {
 
 impl Engine {
     fn url_for(&self, query: &str) -> String {
-        self.url_template
-            .replace("{q}", &url_encode(query))
+        self.url_template.replace("{q}", &url_encode(query))
     }
 }
 
@@ -214,16 +213,15 @@ impl Provider for WebsearchProvider {
         // looking up the matching engine by keyword (suffix of
         // the item's id) and re-encoding the query.
         let keyword = item.id.strip_prefix("websearch:")?;
-        let engine = self
-            .engines
-            .iter()
-            .find(|e| e.keyword == keyword)?
-            .clone();
+        let engine = self.engines.iter().find(|e| e.keyword == keyword)?.clone();
         // The query is everything after `"{engine.label}: "`.
         let query = item.name.split_once(": ").map(|(_, q)| q.to_string())?;
         Some(std::rc::Rc::new(move || {
             let url = engine.url_for(&query);
-            let mut child = match Command::new("wl-copy").stdin(std::process::Stdio::piped()).spawn() {
+            let mut child = match Command::new("wl-copy")
+                .stdin(std::process::Stdio::piped())
+                .spawn()
+            {
                 Ok(c) => c,
                 Err(err) => {
                     tracing::warn!(?err, "wl-copy spawn failed for websearch alt-action");

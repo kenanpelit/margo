@@ -294,7 +294,9 @@ fn rebuild_rows(
         let remove = gtk::Button::from_icon_name("user-trash-symbolic");
         remove.add_css_class("ok-button-flat");
         remove.set_valign(gtk::Align::Center);
-        remove.set_tooltip_text(Some("Remove this override (the tag falls back to the default)"));
+        remove.set_tooltip_text(Some(
+            "Remove this override (the tag falls back to the default)",
+        ));
         let s = sender.clone();
         remove.connect_clicked(move |_| {
             s.input(TagLayoutSettingsInput::RemoveRow(idx));

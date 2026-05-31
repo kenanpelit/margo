@@ -74,7 +74,14 @@ fn cidr_list_valid(s: &str) -> bool {
 // ── IP method options ─────────────────────────────────────────────────────────
 
 const IPV4_METHODS: &[&str] = &["auto", "manual", "link-local", "shared", "disabled"];
-const IPV6_METHODS: &[&str] = &["auto", "manual", "link-local", "shared", "ignore", "disabled"];
+const IPV6_METHODS: &[&str] = &[
+    "auto",
+    "manual",
+    "link-local",
+    "shared",
+    "ignore",
+    "disabled",
+];
 const METERED_OPTIONS: &[&str] = &["unknown", "yes", "no"];
 
 fn method_index(methods: &[&str], value: &str) -> u32 {
@@ -769,35 +776,49 @@ impl Component for ConnectionEditorModel {
 
                 let sender_c = sender.clone();
                 glib::spawn_future_local(async move {
-                    let autoconnect =
-                        nmcli::get_field(&uuid, "connection.autoconnect").await.unwrap_or_default()
-                            == "yes";
-                    let metered =
-                        nmcli::get_field(&uuid, "connection.metered").await.unwrap_or_default();
-                    let ipv4_method =
-                        nmcli::get_field(&uuid, "ipv4.method").await.unwrap_or_default();
-                    let ipv4_addresses =
-                        nmcli::get_field(&uuid, "ipv4.addresses").await.unwrap_or_default();
-                    let ipv4_gateway =
-                        nmcli::get_field(&uuid, "ipv4.gateway").await.unwrap_or_default();
-                    let ipv4_dns =
-                        nmcli::get_field(&uuid, "ipv4.dns").await.unwrap_or_default();
-                    let ipv4_dns_search =
-                        nmcli::get_field(&uuid, "ipv4.dns-search").await.unwrap_or_default();
-                    let ipv4_routes =
-                        nmcli::get_field(&uuid, "ipv4.routes").await.unwrap_or_default();
-                    let ipv6_method =
-                        nmcli::get_field(&uuid, "ipv6.method").await.unwrap_or_default();
-                    let ipv6_addresses =
-                        nmcli::get_field(&uuid, "ipv6.addresses").await.unwrap_or_default();
-                    let ipv6_gateway =
-                        nmcli::get_field(&uuid, "ipv6.gateway").await.unwrap_or_default();
-                    let ipv6_dns =
-                        nmcli::get_field(&uuid, "ipv6.dns").await.unwrap_or_default();
-                    let ipv6_dns_search =
-                        nmcli::get_field(&uuid, "ipv6.dns-search").await.unwrap_or_default();
-                    let ipv6_routes =
-                        nmcli::get_field(&uuid, "ipv6.routes").await.unwrap_or_default();
+                    let autoconnect = nmcli::get_field(&uuid, "connection.autoconnect")
+                        .await
+                        .unwrap_or_default()
+                        == "yes";
+                    let metered = nmcli::get_field(&uuid, "connection.metered")
+                        .await
+                        .unwrap_or_default();
+                    let ipv4_method = nmcli::get_field(&uuid, "ipv4.method")
+                        .await
+                        .unwrap_or_default();
+                    let ipv4_addresses = nmcli::get_field(&uuid, "ipv4.addresses")
+                        .await
+                        .unwrap_or_default();
+                    let ipv4_gateway = nmcli::get_field(&uuid, "ipv4.gateway")
+                        .await
+                        .unwrap_or_default();
+                    let ipv4_dns = nmcli::get_field(&uuid, "ipv4.dns")
+                        .await
+                        .unwrap_or_default();
+                    let ipv4_dns_search = nmcli::get_field(&uuid, "ipv4.dns-search")
+                        .await
+                        .unwrap_or_default();
+                    let ipv4_routes = nmcli::get_field(&uuid, "ipv4.routes")
+                        .await
+                        .unwrap_or_default();
+                    let ipv6_method = nmcli::get_field(&uuid, "ipv6.method")
+                        .await
+                        .unwrap_or_default();
+                    let ipv6_addresses = nmcli::get_field(&uuid, "ipv6.addresses")
+                        .await
+                        .unwrap_or_default();
+                    let ipv6_gateway = nmcli::get_field(&uuid, "ipv6.gateway")
+                        .await
+                        .unwrap_or_default();
+                    let ipv6_dns = nmcli::get_field(&uuid, "ipv6.dns")
+                        .await
+                        .unwrap_or_default();
+                    let ipv6_dns_search = nmcli::get_field(&uuid, "ipv6.dns-search")
+                        .await
+                        .unwrap_or_default();
+                    let ipv6_routes = nmcli::get_field(&uuid, "ipv6.routes")
+                        .await
+                        .unwrap_or_default();
 
                     sender_c.input(ConnectionEditorInput::Loaded(EditorFields {
                         autoconnect,
@@ -867,59 +888,49 @@ impl Component for ConnectionEditorModel {
             ConnectionEditorInput::Apply => {
                 self.error.clear();
 
-                let ipv4_is_manual = IPV4_METHODS
-                    .get(self.ipv4_method_idx as usize)
-                    == Some(&"manual");
-                let ipv6_is_manual = IPV6_METHODS
-                    .get(self.ipv6_method_idx as usize)
-                    == Some(&"manual");
+                let ipv4_is_manual =
+                    IPV4_METHODS.get(self.ipv4_method_idx as usize) == Some(&"manual");
+                let ipv6_is_manual =
+                    IPV6_METHODS.get(self.ipv6_method_idx as usize) == Some(&"manual");
 
                 // --- Validation ---
                 if ipv4_is_manual {
-                    if !self.ipv4_addresses.is_empty()
-                        && !cidr_list_valid(&self.ipv4_addresses)
-                    {
+                    if !self.ipv4_addresses.is_empty() && !cidr_list_valid(&self.ipv4_addresses) {
                         self.error =
                             "IPv4 Addresses: each entry must be in CIDR form (e.g. 192.168.1.50/24)."
                                 .to_string();
                         self.update_view(widgets, sender);
                         return;
                     }
-                    if !self.ipv4_gateway.is_empty()
-                        && self.ipv4_gateway.parse::<IpAddr>().is_err()
+                    if !self.ipv4_gateway.is_empty() && self.ipv4_gateway.parse::<IpAddr>().is_err()
                     {
                         self.error = "IPv4 Gateway: not a valid IP address.".to_string();
                         self.update_view(widgets, sender);
                         return;
                     }
                     if !all_ips_valid(&self.ipv4_dns) {
-                        self.error =
-                            "IPv4 DNS: each entry must be a valid IP address.".to_string();
+                        self.error = "IPv4 DNS: each entry must be a valid IP address.".to_string();
                         self.update_view(widgets, sender);
                         return;
                     }
                 }
 
                 if ipv6_is_manual {
-                    if !self.ipv6_addresses.is_empty()
-                        && !cidr_list_valid(&self.ipv6_addresses)
-                    {
+                    if !self.ipv6_addresses.is_empty() && !cidr_list_valid(&self.ipv6_addresses) {
                         self.error =
                             "IPv6 Addresses: each entry must be in CIDR form (e.g. 2001:db8::1/64)."
                                 .to_string();
                         self.update_view(widgets, sender);
                         return;
                     }
-                    if !self.ipv6_gateway.is_empty()
-                        && self.ipv6_gateway.parse::<IpAddr>().is_err()
+                    if !self.ipv6_gateway.is_empty() && self.ipv6_gateway.parse::<IpAddr>().is_err()
                     {
                         self.error = "IPv6 Gateway: not a valid IP address.".to_string();
                         self.update_view(widgets, sender);
                         return;
                     }
                     if !all_ips_valid(&self.ipv6_dns) {
-                        self.error =
-                            "IPv6 DNS: each entry must be a valid IP address.".to_string();
+                        self.error = "IPv6 DNS: each entry must be a valid IP address.".to_string();
                         self.update_view(widgets, sender);
                         return;
                     }
@@ -1007,16 +1018,15 @@ impl Component for ConnectionEditorModel {
                     }
 
                     if is_wifi && !psk_val.is_empty() {
-                        pairs.push((
-                            "802-11-wireless-security.psk".into(),
-                            psk_val,
-                        ));
+                        pairs.push(("802-11-wireless-security.psk".into(), psk_val));
                     }
 
                     // nmcli::modify takes &[(&str, &str)] — build refs into
                     // the owned pairs vec, which lives in scope until `.await` returns.
-                    let kv: Vec<(&str, &str)> =
-                        pairs.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+                    let kv: Vec<(&str, &str)> = pairs
+                        .iter()
+                        .map(|(k, v)| (k.as_str(), v.as_str()))
+                        .collect();
 
                     if let Err(e) = nmcli::modify(&uuid, &kv).await {
                         mshell_launcher::notify::toast("Network", &e);

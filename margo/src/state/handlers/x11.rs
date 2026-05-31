@@ -18,6 +18,7 @@ use smithay::{
     utils::{Logical, Rectangle},
     wayland::{
         selection::{
+            SelectionTarget,
             data_device::{
                 clear_data_device_selection, current_data_device_selection_userdata,
                 request_data_device_client_selection, set_data_device_selection,
@@ -26,13 +27,12 @@ use smithay::{
                 clear_primary_selection, current_primary_selection_userdata,
                 request_primary_client_selection, set_primary_selection,
             },
-            SelectionTarget,
         },
         xwayland_shell::{XWaylandShellHandler, XWaylandShellState},
     },
     xwayland::{
-        xwm::{Reorder, ResizeEdge, X11Window, XwmId},
         X11Surface, X11Wm, XwmHandler,
+        xwm::{Reorder, ResizeEdge, X11Window, XwmId},
     },
 };
 
@@ -167,12 +167,7 @@ impl XwmHandler for MargoState {
         }
     }
 
-    fn new_selection(
-        &mut self,
-        _xwm: XwmId,
-        selection: SelectionTarget,
-        mime_types: Vec<String>,
-    ) {
+    fn new_selection(&mut self, _xwm: XwmId, selection: SelectionTarget, mime_types: Vec<String>) {
         match selection {
             SelectionTarget::Clipboard => {
                 set_data_device_selection(&self.display_handle, &self.seat, mime_types, ())

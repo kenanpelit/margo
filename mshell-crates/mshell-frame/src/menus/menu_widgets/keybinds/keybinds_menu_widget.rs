@@ -165,7 +165,9 @@ fn matches_filter(b: &Keybind, needle: &str) -> bool {
     }
     b.desc.to_ascii_lowercase().contains(needle)
         || b.key.to_ascii_lowercase().contains(needle)
-        || b.mods.iter().any(|m| m.to_ascii_lowercase().contains(needle))
+        || b.mods
+            .iter()
+            .any(|m| m.to_ascii_lowercase().contains(needle))
 }
 
 /// One shortcut row: key-combo cluster + description.

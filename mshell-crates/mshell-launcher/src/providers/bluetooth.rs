@@ -123,10 +123,7 @@ impl Provider for BluetoothProvider {
 
     fn handles_command(&self, query: &str) -> bool {
         let q = query.trim_start();
-        q == "bt"
-            || q.starts_with("bt ")
-            || q == "bluetooth"
-            || q.starts_with("bluetooth ")
+        q == "bt" || q.starts_with("bt ") || q == "bluetooth" || q.starts_with("bluetooth ")
     }
 
     fn commands(&self) -> Vec<LauncherItem> {
@@ -145,11 +142,7 @@ impl Provider for BluetoothProvider {
 
     fn search(&self, query: &str) -> Vec<LauncherItem> {
         let q = query.trim_start();
-        if !(q == "bt"
-            || q.starts_with("bt ")
-            || q == "bluetooth"
-            || q.starts_with("bluetooth "))
-        {
+        if !(q == "bt" || q.starts_with("bt ") || q == "bluetooth" || q.starts_with("bluetooth ")) {
             return Vec::new();
         }
         let filter = q
@@ -186,11 +179,7 @@ impl Provider for BluetoothProvider {
                 let name = dev.name.clone();
                 let toast_name = name.clone();
                 let connected = dev.connected;
-                let action_label = if connected {
-                    "Disconnect"
-                } else {
-                    "Connect"
-                };
+                let action_label = if connected { "Disconnect" } else { "Connect" };
                 LauncherItem {
                     id: format!("bt:{}", dev.mac),
                     name: if connected {
@@ -214,10 +203,7 @@ impl Provider for BluetoothProvider {
                     usage_key: Some(format!("bt:{}", dev.mac)),
                     on_activate: Rc::new(move || {
                         let sub = if connected { "disconnect" } else { "connect" };
-                        if let Err(err) = Command::new("bluetoothctl")
-                            .args([sub, &mac])
-                            .spawn()
-                        {
+                        if let Err(err) = Command::new("bluetoothctl").args([sub, &mac]).spawn() {
                             tracing::warn!(?err, mac, sub, "bluetoothctl failed");
                         } else {
                             toast(action_label, toast_name.clone());
@@ -251,7 +237,8 @@ mod tests {
 
     #[test]
     fn parse_paired_handles_basic_lines() {
-        let sample = "Device AA:BB:CC:DD:EE:FF JBL Tune\nDevice 11:22:33:44:55:66 Logitech MX Master 3\n";
+        let sample =
+            "Device AA:BB:CC:DD:EE:FF JBL Tune\nDevice 11:22:33:44:55:66 Logitech MX Master 3\n";
         let parsed = parse_paired(sample);
         assert_eq!(parsed.len(), 2);
         assert_eq!(parsed[0].0, "AA:BB:CC:DD:EE:FF");

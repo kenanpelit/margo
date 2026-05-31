@@ -190,17 +190,10 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                 let warn_count = state
                     .last_reload_diagnostics
                     .iter()
-                    .filter(|d| {
-                        matches!(
-                            d.severity,
-                            margo_config::diagnostics::Severity::Warning,
-                        )
-                    })
+                    .filter(|d| matches!(d.severity, margo_config::diagnostics::Severity::Warning,))
                     .count();
                 if warn_count > 0 {
-                    tracing::info!(
-                        "config reloaded with {warn_count} warning(s)"
-                    );
+                    tracing::info!("config reloaded with {warn_count} warning(s)");
                     let body = format!(
                         "Reload OK but {warn_count} warning{} — run `mctl config-errors`",
                         if warn_count == 1 { "" } else { "s" }
@@ -298,46 +291,45 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                     let field = field.trim();
                     let val = raw_val.trim();
                     let applied = match field {
-                        "day_temp" => {
-                            val.parse::<u32>().ok().map(|v| {
-                                state.config.twilight_day_temp = v.clamp(1000, 25000)
-                            })
-                        }
-                        "night_temp" => val.parse::<u32>().ok().map(|v| {
-                            state.config.twilight_night_temp = v.clamp(1000, 25000)
-                        }),
+                        "day_temp" => val
+                            .parse::<u32>()
+                            .ok()
+                            .map(|v| state.config.twilight_day_temp = v.clamp(1000, 25000)),
+                        "night_temp" => val
+                            .parse::<u32>()
+                            .ok()
+                            .map(|v| state.config.twilight_night_temp = v.clamp(1000, 25000)),
                         "day_gamma" => val
                             .parse::<u32>()
                             .ok()
                             .map(|v| state.config.twilight_day_gamma = v.clamp(10, 200)),
-                        "night_gamma" => val.parse::<u32>().ok().map(|v| {
-                            state.config.twilight_night_gamma = v.clamp(10, 200)
-                        }),
+                        "night_gamma" => val
+                            .parse::<u32>()
+                            .ok()
+                            .map(|v| state.config.twilight_night_gamma = v.clamp(10, 200)),
                         "enabled" | "twilight" => val
                             .parse::<u32>()
                             .ok()
                             .map(|v| state.config.twilight = v != 0),
-                        "transition_s" => val.parse::<u32>().ok().map(|v| {
-                            state.config.twilight_transition_s = v.clamp(30, 7200)
-                        }),
+                        "transition_s" => val
+                            .parse::<u32>()
+                            .ok()
+                            .map(|v| state.config.twilight_transition_s = v.clamp(30, 7200)),
                         "mode" => {
                             // Accept the same lowercase tokens as the
                             // on-disk `twilight_mode` config key so the
                             // CLI / GUI stay symmetrical with the file.
                             match val.to_ascii_lowercase().as_str() {
                                 "geo" => {
-                                    state.config.twilight_mode =
-                                        margo_config::TwilightMode::Geo;
+                                    state.config.twilight_mode = margo_config::TwilightMode::Geo;
                                     Some(())
                                 }
                                 "manual" => {
-                                    state.config.twilight_mode =
-                                        margo_config::TwilightMode::Manual;
+                                    state.config.twilight_mode = margo_config::TwilightMode::Manual;
                                     Some(())
                                 }
                                 "static" => {
-                                    state.config.twilight_mode =
-                                        margo_config::TwilightMode::Static;
+                                    state.config.twilight_mode = margo_config::TwilightMode::Static;
                                     Some(())
                                 }
                                 "schedule" => {
@@ -355,9 +347,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                         state.force_tick_twilight();
                         tracing::info!(field = %field, value = %val, "twilight_set");
                     } else {
-                        tracing::warn!(
-                            "twilight_set: unknown field or bad value: {spec:?}"
-                        );
+                        tracing::warn!("twilight_set: unknown field or bad value: {spec:?}");
                     }
                 }
             }
@@ -472,15 +462,13 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
         "switch_layout" => state.switch_layout(),
         "togglefloating" => state.toggle_floating(),
         "togglefullscreen" => state.toggle_fullscreen(),
-        "togglefullscreen_exclusive" | "togglefullscreen-exclusive" | "togglefullscreenexclusive" => {
-            state.toggle_fullscreen_exclusive()
-        }
+        "togglefullscreen_exclusive"
+        | "togglefullscreen-exclusive"
+        | "togglefullscreenexclusive" => state.toggle_fullscreen_exclusive(),
         // niri-float-sticky equivalent — pin the focused client to
         // every tag on its monitor. Toggle via the same action;
         // second press restores the previous tag set.
-        "sticky_window" | "togglesticky" | "toggle_sticky" | "sticky" => {
-            state.toggle_sticky()
-        }
+        "sticky_window" | "togglesticky" | "toggle_sticky" | "sticky" => state.toggle_sticky(),
         // Mango-style named scratchpad. Three args (mapped from the
         // bind line):
         //   v  → app_id pattern (e.g. `dropdown-terminal`)
@@ -488,9 +476,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
         //   v3 → spawn command run when no matching client exists
         // Together: `bind = super,Return,toggle_named_scratchpad,
         //           dropdown-terminal,none,kitty --class dropdown-terminal`
-        "toggle_named_scratchpad"
-        | "togglenamedscratchpad"
-        | "toggle-named-scratchpad" => {
+        "toggle_named_scratchpad" | "togglenamedscratchpad" | "toggle-named-scratchpad" => {
             let name = arg.v.as_deref();
             let title = arg.v2.as_deref().filter(|s| {
                 let t = s.trim();
@@ -509,8 +495,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
         // Bind example:
         //   bind = alt,1,summon,^Kenp$,none,start-kkenp
         //   bind = alt,2,summon,^firefox$,,firefox
-        "summon" | "taghere" | "tag_here" | "tag-here" | "bring_here"
-        | "bringhere" => {
+        "summon" | "taghere" | "tag_here" | "tag-here" | "bring_here" | "bringhere" => {
             let name = arg.v.as_deref();
             let title = arg.v2.as_deref().filter(|s| {
                 let t = s.trim();
@@ -524,9 +509,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
         // accidentally got promoted to scratchpad (typo bind, fuzzy
         // app_id match) and the user wants it back as a normal
         // tile / float.
-        "unscratchpad" | "unscratchpad_focused" | "exit_scratchpad" => {
-            state.unscratchpad_focused()
-        }
+        "unscratchpad" | "unscratchpad_focused" | "exit_scratchpad" => state.unscratchpad_focused(),
         "incnmaster" => state.inc_nmaster(arg.i),
         "setmfact" => state.set_mfact(arg.f),
         "togglegaps" => state.toggle_gaps(),
@@ -628,11 +611,7 @@ fn tag_arg(arg: &Arg) -> u32 {
 }
 
 fn float_arg(arg: &Arg) -> f32 {
-    if arg.f != 0.0 {
-        arg.f
-    } else {
-        arg.i as f32
-    }
+    if arg.f != 0.0 { arg.f } else { arg.i as f32 }
 }
 
 fn direction_arg(arg: &Arg) -> i32 {

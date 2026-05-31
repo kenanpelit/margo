@@ -395,10 +395,7 @@ impl Component for LayoutSettingsModel {
                 spawn_list(sender.clone());
             }
             LayoutSettingsInput::Activate(slug) => {
-                spawn_cmd(
-                    sender.clone(),
-                    vec!["set".to_string(), slug],
-                );
+                spawn_cmd(sender.clone(), vec!["set".to_string(), slug]);
             }
             LayoutSettingsInput::Init => {
                 spawn_cmd(
@@ -435,11 +432,7 @@ impl Component for LayoutSettingsModel {
                 }
                 spawn_cmd(
                     sender.clone(),
-                    vec![
-                        "new".to_string(),
-                        slug,
-                        "--activate".to_string(),
-                    ],
+                    vec!["new".to_string(), slug, "--activate".to_string()],
                 );
                 self.new_slug_buf.clear();
             }
@@ -692,7 +685,12 @@ fn snap_arrangement(outs: &mut [EditorOut], moved: &str) {
                 best_x = cand;
             }
         }
-        for cand in [o.y, o.y + o.height - m.height, o.y + o.height, o.y - m.height] {
+        for cand in [
+            o.y,
+            o.y + o.height - m.height,
+            o.y + o.height,
+            o.y - m.height,
+        ] {
             let d = (m.y - cand).abs();
             if d < best_dy {
                 best_dy = d;
@@ -729,7 +727,11 @@ fn spawn_apply_geometry(mut outs: Vec<EditorOut>, sender: ComponentSender<Layout
                 .arg("--pos")
                 .arg(format!("{},{}", o.x, o.y));
         }
-        let res = cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).output().await;
+        let res = cmd
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .await;
         let outcome = match res {
             Ok(o) if o.status.success() => Ok("apply arrangement".to_string()),
             Ok(o) => {
@@ -764,7 +766,11 @@ fn rebuild_editor_canvas(
     let min_x = outs.iter().map(|o| o.x).min().unwrap_or(0) as f64;
     let min_y = outs.iter().map(|o| o.y).min().unwrap_or(0) as f64;
     let max_x = outs.iter().map(|o| o.x + o.width.max(1)).max().unwrap_or(1) as f64;
-    let max_y = outs.iter().map(|o| o.y + o.height.max(1)).max().unwrap_or(1) as f64;
+    let max_y = outs
+        .iter()
+        .map(|o| o.y + o.height.max(1))
+        .max()
+        .unwrap_or(1) as f64;
     let span_w = (max_x - min_x).max(1.0);
     let span_h = (max_y - min_y).max(1.0);
     let s = ((cw - 2.0 * pad) / span_w).min((ch - 2.0 * pad) / span_h);
@@ -828,10 +834,7 @@ fn build_tile(o: &EditorOut, tw: f64, th: f64) -> gtk::Box {
 
 fn parse_catalogue(body: &str) -> Result<LayoutCatalogue, String> {
     let v: Value = serde_json::from_str(body).map_err(|e| e.to_string())?;
-    let active = v
-        .get("active")
-        .and_then(Value::as_str)
-        .map(str::to_string);
+    let active = v.get("active").and_then(Value::as_str).map(str::to_string);
     let config_dir = v
         .get("config_dir")
         .and_then(Value::as_str)
@@ -860,10 +863,7 @@ fn parse_layout_entry(v: &Value) -> Option<LayoutEntry> {
         .and_then(Value::as_str)
         .unwrap_or(&slug)
         .to_string();
-    let active = v
-        .get("active")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
+    let active = v.get("active").and_then(Value::as_bool).unwrap_or(false);
     let shortcuts = v
         .get("shortcuts")
         .and_then(Value::as_array)
@@ -893,18 +893,12 @@ fn parse_layout_entry(v: &Value) -> Option<LayoutEntry> {
 
 fn parse_output_entry(v: &Value) -> Option<OutputEntry> {
     let connector = v.get("connector")?.as_str()?.to_string();
-    let label = v
-        .get("label")
-        .and_then(Value::as_str)
-        .map(str::to_string);
+    let label = v.get("label").and_then(Value::as_str).map(str::to_string);
     let x = v.get("x").and_then(Value::as_i64).unwrap_or(0) as i32;
     let y = v.get("y").and_then(Value::as_i64).unwrap_or(0) as i32;
     let width = v.get("width").and_then(Value::as_i64).unwrap_or(0) as i32;
     let height = v.get("height").and_then(Value::as_i64).unwrap_or(0) as i32;
-    let color = v
-        .get("color")
-        .and_then(Value::as_str)
-        .map(str::to_string);
+    let color = v.get("color").and_then(Value::as_str).map(str::to_string);
     Some(OutputEntry {
         connector,
         label,
@@ -932,8 +926,16 @@ fn draw_layout_map(
     }
     let min_x = outputs.iter().map(|o| o.x).min().unwrap_or(0) as f64;
     let min_y = outputs.iter().map(|o| o.y).min().unwrap_or(0) as f64;
-    let max_x = outputs.iter().map(|o| o.x + o.width.max(1)).max().unwrap_or(1) as f64;
-    let max_y = outputs.iter().map(|o| o.y + o.height.max(1)).max().unwrap_or(1) as f64;
+    let max_x = outputs
+        .iter()
+        .map(|o| o.x + o.width.max(1))
+        .max()
+        .unwrap_or(1) as f64;
+    let max_y = outputs
+        .iter()
+        .map(|o| o.y + o.height.max(1))
+        .max()
+        .unwrap_or(1) as f64;
     let span_w = (max_x - min_x).max(1.0);
     let span_h = (max_y - min_y).max(1.0);
     let pad = 6.0;
@@ -948,7 +950,14 @@ fn draw_layout_map(
         let rh = (o.height.max(1) as f64) * scale;
         let (r, g, b) = parse_hex_rgb(o.color.as_deref()).unwrap_or_else(|| default_swatch(i));
 
-        rounded_rect(cr, rx + 1.0, ry + 1.0, (rw - 2.0).max(1.0), (rh - 2.0).max(1.0), 3.0);
+        rounded_rect(
+            cr,
+            rx + 1.0,
+            ry + 1.0,
+            (rw - 2.0).max(1.0),
+            (rh - 2.0).max(1.0),
+            3.0,
+        );
         cr.set_source_rgba(r, g, b, 0.28);
         let _ = cr.fill_preserve();
         cr.set_source_rgba(r, g, b, 0.95);

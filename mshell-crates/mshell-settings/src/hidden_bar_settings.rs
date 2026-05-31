@@ -294,13 +294,15 @@ impl Component for HiddenBarSettingsModel {
     fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             HiddenBarSettingsInput::StartExpandedChanged(v) => {
-                config_manager().update_config(move |c| c.bars.widgets.hidden_bar.start_expanded = v);
+                config_manager()
+                    .update_config(move |c| c.bars.widgets.hidden_bar.start_expanded = v);
             }
             HiddenBarSettingsInput::AutoExpandChanged(v) => {
                 config_manager().update_config(move |c| c.bars.widgets.hidden_bar.auto_expand = v);
             }
             HiddenBarSettingsInput::HoverDelayChanged(v) => {
-                config_manager().update_config(move |c| c.bars.widgets.hidden_bar.hover_delay_ms = v);
+                config_manager()
+                    .update_config(move |c| c.bars.widgets.hidden_bar.hover_delay_ms = v);
             }
             HiddenBarSettingsInput::AutoCollapseChanged(v) => {
                 config_manager()

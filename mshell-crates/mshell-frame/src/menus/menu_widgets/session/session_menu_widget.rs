@@ -158,24 +158,23 @@ impl Component for SessionMenuWidgetModel {
         // a `KeyvalTrigger` matched against the keymap before any
         // widget gets a turn at the event. As long as the layer
         // surface holds keyboard focus, the binding fires.
-        let make_shortcut =
-            |key: gdk::Key, mods: gdk::ModifierType, msg: ShortcutAction| {
-                let s = sender.clone();
-                gtk::Shortcut::builder()
-                    .trigger(&gtk::KeyvalTrigger::new(key, mods))
-                    .action(&gtk::CallbackAction::new(move |_, _| {
-                        match msg {
-                            ShortcutAction::Arm(action) => {
-                                s.input(SessionMenuWidgetInput::Arm(action));
-                            }
-                            ShortcutAction::Cancel => {
-                                s.input(SessionMenuWidgetInput::Cancel);
-                            }
+        let make_shortcut = |key: gdk::Key, mods: gdk::ModifierType, msg: ShortcutAction| {
+            let s = sender.clone();
+            gtk::Shortcut::builder()
+                .trigger(&gtk::KeyvalTrigger::new(key, mods))
+                .action(&gtk::CallbackAction::new(move |_, _| {
+                    match msg {
+                        ShortcutAction::Arm(action) => {
+                            s.input(SessionMenuWidgetInput::Arm(action));
                         }
-                        glib::Propagation::Stop
-                    }))
-                    .build()
-            };
+                        ShortcutAction::Cancel => {
+                            s.input(SessionMenuWidgetInput::Cancel);
+                        }
+                    }
+                    glib::Propagation::Stop
+                }))
+                .build()
+        };
 
         let sc = gtk::ShortcutController::new();
         sc.set_scope(gtk::ShortcutScope::Local);
@@ -203,7 +202,9 @@ impl Component for SessionMenuWidgetModel {
         .into_iter()
         .enumerate()
         {
-            let Some(action) = SessionAction::ALL.get(i) else { continue };
+            let Some(action) = SessionAction::ALL.get(i) else {
+                continue;
+            };
             sc.add_shortcut(make_shortcut(
                 a,
                 gdk::ModifierType::empty(),
@@ -279,12 +280,7 @@ impl Component for SessionMenuWidgetModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        sender: ComponentSender<Self>,
-        root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, root: &Self::Root) {
         match message {
             SessionMenuWidgetInput::Activate(action) => {
                 run_session_action(action);
@@ -428,7 +424,11 @@ fn make_session_button(action: SessionAction) -> gtk::Button {
     inner.append(&label);
     gtk::Button::builder()
         .child(&inner)
-        .css_classes(vec!["ok-button-surface", "session-button", action.css_class()])
+        .css_classes(vec![
+            "ok-button-surface",
+            "session-button",
+            action.css_class(),
+        ])
         .hexpand(true)
         .focusable(true)
         .build()

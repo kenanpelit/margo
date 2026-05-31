@@ -167,8 +167,7 @@ impl Fixture {
     /// running `Server` over a fresh `UnixStream` pair. Returns the
     /// stable [`ClientId`] used by other helpers.
     pub fn add_client(&mut self) -> ClientId {
-        let (server_side, client_side) =
-            UnixStream::pair().expect("UnixStream::pair");
+        let (server_side, client_side) = UnixStream::pair().expect("UnixStream::pair");
         // Server registers our peer as a regular Wayland client —
         // `MargoClientData::default()` matches what main.rs hands
         // freshly-connected clients from the listening socket.

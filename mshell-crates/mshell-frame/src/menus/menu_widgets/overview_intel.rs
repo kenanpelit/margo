@@ -27,11 +27,11 @@
 // positive here (dropping the `&` fails to compile).
 #![allow(clippy::needless_borrow)]
 
+use crate::system_update::{self, ProbeConfig};
 use mshell_common::scoped_effects::EffectScope;
 use mshell_services::{battery_service, notification_service};
 use mshell_utils::battery::spawn_battery_watcher;
 use mshell_utils::notifications::spawn_notifications_watcher;
-use crate::system_update::{self, ProbeConfig};
 use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -223,9 +223,7 @@ impl Component for OverviewIntelModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        spawn_notifications_watcher(&sender, || {
-            OverviewIntelCommandOutput::NotificationsChanged
-        });
+        spawn_notifications_watcher(&sender, || OverviewIntelCommandOutput::NotificationsChanged);
         spawn_battery_watcher(&sender, || OverviewIntelCommandOutput::BatteryChanged);
 
         // 5 s tick for the cached update count + date refresh (date
@@ -283,18 +281,12 @@ impl Component for OverviewIntelModel {
         }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             OverviewIntelInput::Refresh => {
                 let battery = battery_service().device.clone();
                 self.has_battery = battery.is_present.get();
-                self.battery_percent =
-                    battery.percentage.get().round().clamp(0.0, 100.0) as i32;
+                self.battery_percent = battery.percentage.get().round().clamp(0.0, 100.0) as i32;
                 self.battery_charging = current_battery_charging();
                 self.notification_count = notification_service().notifications.get().len();
             }
@@ -386,7 +378,11 @@ fn has_any_alert(model: &OverviewIntelModel) -> bool {
 fn quiet_summary(model: &OverviewIntelModel) -> String {
     let mut parts: Vec<String> = vec!["Quiet — nothing urgent".to_string()];
     if model.has_battery {
-        let charge_word = if model.battery_charging { "charging" } else { "battery" };
+        let charge_word = if model.battery_charging {
+            "charging"
+        } else {
+            "battery"
+        };
         parts.push(format!("{}% {}", model.battery_percent, charge_word));
     }
     parts.join(" · ")
@@ -406,4 +402,3 @@ fn current_battery_charging() -> bool {
         .map(|s| s.device.online.get())
         .unwrap_or(state == DeviceState::Charging || state == DeviceState::FullyCharged)
 }
-

@@ -17,7 +17,7 @@ use std::collections::HashMap;
 
 use smithay::{
     backend::{
-        drm::{compositor::FrameFlags, DrmDevice},
+        drm::{DrmDevice, compositor::FrameFlags},
         renderer::gles::GlesRenderer,
     },
     output::Output,
@@ -27,10 +27,9 @@ use smithay::{
 use tracing::{error, warn};
 
 use super::{
-    build_cursor_elements_for_output, build_render_elements,
+    MargoRenderElement, OutputDevice, build_cursor_elements_for_output, build_render_elements,
     helpers::{monotonic_now, output_refresh_duration},
     serve_screencopies, take_pending_open_close_captures, take_pending_snapshots,
-    MargoRenderElement, OutputDevice,
 };
 use crate::state::MargoState;
 
@@ -64,7 +63,7 @@ pub(super) fn update_primary_scanout_outputs(
 ) {
     use smithay::backend::renderer::element::default_primary_scanout_output_compare;
     use smithay::desktop::utils::update_surface_primary_scanout_output;
-    use smithay::wayland::compositor::{with_surface_tree_downward, TraversalAction};
+    use smithay::wayland::compositor::{TraversalAction, with_surface_tree_downward};
 
     for window in state.space.elements() {
         if !state.space.outputs_for_element(window).contains(output) {
@@ -204,8 +203,8 @@ pub(super) fn build_presentation_feedback(
 ) -> smithay::desktop::utils::OutputPresentationFeedback {
     use smithay::desktop::layer_map_for_output;
     use smithay::desktop::utils::{
-        surface_presentation_feedback_flags_from_states, surface_primary_scanout_output,
-        OutputPresentationFeedback,
+        OutputPresentationFeedback, surface_presentation_feedback_flags_from_states,
+        surface_primary_scanout_output,
     };
 
     let mut feedback = OutputPresentationFeedback::new(output);
@@ -364,14 +363,15 @@ fn render_output(
             .monitors
             .iter()
             .find(|m| m.output == od.output)
-            .map(|m| (
-                (m.monitor_area.x, m.monitor_area.y),
-                (m.monitor_area.width, m.monitor_area.height),
-            ))
+            .map(|m| {
+                (
+                    (m.monitor_area.x, m.monitor_area.y),
+                    (m.monitor_area.width, m.monitor_area.height),
+                )
+            })
             .unwrap_or(((0, 0), (1920, 1080)));
         let scale = od.output.current_scale().fractional_scale();
-        let (cursor_elements, _cursor_loc) =
-            build_cursor_elements_for_output(renderer, od, state);
+        let (cursor_elements, _cursor_loc) = build_cursor_elements_for_output(renderer, od, state);
         let cursor_count = cursor_elements.len();
 
         if let Some(sel) = state.region_selector.as_mut() {
@@ -380,8 +380,7 @@ fn render_output(
             for c in cursor_elements.into_iter().take(cursor_count) {
                 head.push(c);
             }
-            let scene_tail: Vec<MargoRenderElement> =
-                elements.drain(cursor_count..).collect();
+            let scene_tail: Vec<MargoRenderElement> = elements.drain(cursor_count..).collect();
             for o in overlay {
                 head.push(MargoRenderElement::Solid(o));
             }
@@ -401,12 +400,9 @@ fn render_output(
         && let Some(output_geo) = state.space.output_geometry(&od.output)
     {
         let scale = od.output.current_scale().fractional_scale();
-        if let Some(wp_elem) = wp.render_element(
-            renderer,
-            output_geo.loc.to_f64(),
-            output_geo.size,
-            scale,
-        ) {
+        if let Some(wp_elem) =
+            wp.render_element(renderer, output_geo.loc.to_f64(), output_geo.size, scale)
+        {
             elements.push(MargoRenderElement::Cursor(wp_elem));
         }
     }
@@ -473,9 +469,7 @@ fn render_output(
                         // pathological 0-refresh case some virtual
                         // outputs report.
                         if m.refresh > 0 {
-                            std::time::Duration::from_nanos(
-                                1_000_000_000_000u64 / m.refresh as u64,
-                            )
+                            std::time::Duration::from_nanos(1_000_000_000_000u64 / m.refresh as u64)
                         } else {
                             std::time::Duration::from_micros(16_667)
                         }

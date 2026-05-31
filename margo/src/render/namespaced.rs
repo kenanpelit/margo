@@ -10,9 +10,7 @@
 //! method delegates to the inner element except `id()`.
 
 use smithay::backend::renderer::Renderer;
-use smithay::backend::renderer::element::{
-    Element, Id, Kind, RenderElement, UnderlyingStorage,
-};
+use smithay::backend::renderer::element::{Element, Id, Kind, RenderElement, UnderlyingStorage};
 use smithay::backend::renderer::utils::{CommitCounter, DamageSet, OpaqueRegions};
 use smithay::utils::{Buffer, Physical, Rectangle, Scale, user_data::UserDataMap};
 
@@ -87,7 +85,8 @@ impl<R: Renderer, E: RenderElement<R>> RenderElement<R> for NamespacedElement<E>
         opaque_regions: &[Rectangle<i32, Physical>],
         cache: Option<&UserDataMap>,
     ) -> Result<(), R::Error> {
-        self.inner.draw(frame, src, dst, damage, opaque_regions, cache)
+        self.inner
+            .draw(frame, src, dst, damage, opaque_regions, cache)
     }
 
     fn underlying_storage(&self, renderer: &mut R) -> Option<UnderlyingStorage<'_>> {

@@ -115,7 +115,11 @@ fn strip_key<'a>(line: &'a str, lower: &str, key: &str) -> Option<&'a str> {
     }
     // Slice the original (preserving case) at the same offset.
     let off = key.len();
-    Some(line[off..].trim_start_matches(|c: char| c.is_whitespace() || c == '=').trim())
+    Some(
+        line[off..]
+            .trim_start_matches(|c: char| c.is_whitespace() || c == '=')
+            .trim(),
+    )
 }
 
 /// Poll the live `ssh` client processes and return the set of target
@@ -137,15 +141,28 @@ pub(crate) async fn active_targets() -> Vec<String> {
             continue;
         }
         // Non-client ssh processes + proxy/launcher sub-lines.
-        if ["sshd", "ssh-agent", "ssh-add", "ssh-keygen", "ssh-copy-id", "autossh", "pgrep", "-e ssh", " -W "]
-            .iter()
-            .any(|needle| line.contains(needle))
+        if [
+            "sshd",
+            "ssh-agent",
+            "ssh-add",
+            "ssh-keygen",
+            "ssh-copy-id",
+            "autossh",
+            "pgrep",
+            "-e ssh",
+            " -W ",
+        ]
+        .iter()
+        .any(|needle| line.contains(needle))
         {
             continue;
         }
         let parts: Vec<&str> = line.split_whitespace().collect();
         // Index of the `ssh` binary token.
-        let Some(ssh_idx) = parts.iter().position(|p| *p == "ssh" || p.ends_with("/ssh")) else {
+        let Some(ssh_idx) = parts
+            .iter()
+            .position(|p| *p == "ssh" || p.ends_with("/ssh"))
+        else {
             continue;
         };
         // Target = last non-flag arg after `ssh`.
@@ -155,9 +172,10 @@ pub(crate) async fn active_targets() -> Vec<String> {
             .find(|p| !p.starts_with('-'))
             .map(|s| s.to_string());
         if let Some(target) = target
-            && !seen.contains(&target) {
-                seen.push(target);
-            }
+            && !seen.contains(&target)
+        {
+            seen.push(target);
+        }
     }
     seen
 }
@@ -174,9 +192,9 @@ fn target_matches(target: &str, host: &SshHost) -> bool {
     if !host.user.is_empty()
         && (target == format!("{}@{}", host.user, host.hostname)
             || target == format!("{}@{}", host.user, host.name))
-        {
-            return true;
-        }
+    {
+        return true;
+    }
     false
 }
 

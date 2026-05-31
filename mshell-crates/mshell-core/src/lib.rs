@@ -91,9 +91,11 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                 }
             });
             if let Some(msg) = msg
-                && msg.starts_with("Child name '") && msg.contains("not found in GtkStack") {
-                    return glib::LogWriterOutput::Handled;
-                }
+                && msg.starts_with("Child name '")
+                && msg.contains("not found in GtkStack")
+            {
+                return glib::LogWriterOutput::Handled;
+            }
         }
         glib::log_writer_default(level, fields)
     });
@@ -177,8 +179,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     {
         tokio_rt().spawn(async move {
             if entry.delay_secs > 0 {
-                tokio::time::sleep(std::time::Duration::from_secs(entry.delay_secs as u64))
-                    .await;
+                tokio::time::sleep(std::time::Duration::from_secs(entry.delay_secs as u64)).await;
             }
             if let Err(err) = std::process::Command::new(&entry.name).spawn() {
                 tracing::warn!(script = %entry.name, ?err, "autostart: spawn failed");
@@ -220,10 +221,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
                 let n = outcome.updated.len();
                 if n > 0 {
                     mshell_config::config_manager::config_manager().reload_config();
-                    let body = format!(
-                        "Updated {n} plugin(s): {}",
-                        outcome.updated.join(", ")
-                    );
+                    let body = format!("Updated {n} plugin(s): {}", outcome.updated.join(", "));
                     let _ = std::process::Command::new("notify-send")
                         .args([
                             "-a",

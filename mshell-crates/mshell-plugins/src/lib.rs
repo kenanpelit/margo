@@ -164,11 +164,7 @@ impl PluginStore {
 
     /// Install `entry` from `source_url`, validate its manifest, and return
     /// the composite key it was stored under. Does NOT enable it.
-    pub fn install(
-        &self,
-        source_url: &str,
-        entry: &RegistryEntry,
-    ) -> Result<String, PluginError> {
+    pub fn install(&self, source_url: &str, entry: &RegistryEntry) -> Result<String, PluginError> {
         // Gate on the registry's declared min_mshell before downloading.
         if !compatible(&entry.min_mshell) {
             return Err(PluginError::Incompatible {
@@ -251,10 +247,8 @@ impl PluginStore {
                 dirty = true;
             }
         }
-        if dirty {
-            if let Err(e) = self.save_state(&state) {
-                tracing::warn!("secret migration: save_state failed: {e}");
-            }
+        if dirty && let Err(e) = self.save_state(&state) {
+            tracing::warn!("secret migration: save_state failed: {e}");
         }
         moved
     }
@@ -292,7 +286,7 @@ impl PluginStore {
                 for entry in &reg.plugins {
                     if self.key_for(&entry.id, url) == p.key
                         && is_newer(&entry.version, &p.manifest.version)
-                        && best.map_or(true, |(_, b)| is_newer(&entry.version, &b.version))
+                        && best.is_none_or(|(_, b)| is_newer(&entry.version, &b.version))
                     {
                         best = Some((url.as_str(), entry));
                     }

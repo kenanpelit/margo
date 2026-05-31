@@ -177,12 +177,11 @@ impl Component for UsersSettingsModel {
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             UsersSettingsInput::SaveFullName(user, name) => {
-                self.run_priv(&sender, vec![
-                    "chfn".into(),
-                    "-f".into(),
-                    name,
-                    user,
-                ], "Full name updated");
+                self.run_priv(
+                    &sender,
+                    vec!["chfn".into(), "-f".into(), name, user],
+                    "Full name updated",
+                );
             }
 
             UsersSettingsInput::SetAdmin(user, make_admin) => {
@@ -196,7 +195,11 @@ impl Component for UsersSettingsModel {
                 self.run_priv(
                     &sender,
                     vec!["gpasswd".into(), flag.into(), user, "wheel".into()],
-                    if make_admin { "Now an administrator" } else { "Now a standard user" },
+                    if make_admin {
+                        "Now an administrator"
+                    } else {
+                        "Now a standard user"
+                    },
                 );
             }
 
@@ -235,7 +238,9 @@ impl Component for UsersSettingsModel {
                                     self.set_status("Picture updated.", true);
                                     rebuild(&self.list, &sender);
                                 }
-                                Err(e) => self.set_status(&format!("Couldn't write ~/.face: {e}"), false),
+                                Err(e) => {
+                                    self.set_status(&format!("Couldn't write ~/.face: {e}"), false)
+                                }
                             }
                         }
                         None => self.set_status("HOME not set.", false),
@@ -289,7 +294,13 @@ impl Component for UsersSettingsModel {
                 self.add_entry.set_text("");
                 self.run_priv(
                     &sender,
-                    vec!["useradd".into(), "-m".into(), "-s".into(), "/bin/bash".into(), name],
+                    vec![
+                        "useradd".into(),
+                        "-m".into(),
+                        "-s".into(),
+                        "/bin/bash".into(),
+                        name,
+                    ],
                     "User created — set a password from their card",
                 );
             }
@@ -306,7 +317,11 @@ impl Component for UsersSettingsModel {
                     return;
                 }
                 // `userdel` without -r keeps the home directory (safer default).
-                self.run_priv(&sender, vec!["userdel".into(), user], "User removed (home kept)");
+                self.run_priv(
+                    &sender,
+                    vec!["userdel".into(), user],
+                    "User removed (home kept)",
+                );
             }
         }
     }
@@ -354,7 +369,10 @@ impl UsersSettingsModel {
         let ok_msg = ok_msg.to_string();
         sender.oneshot_command(async move {
             match run_pkexec(&args).await {
-                Ok(()) => UsersSettingsCommandOutput::OpDone { ok: true, msg: ok_msg },
+                Ok(()) => UsersSettingsCommandOutput::OpDone {
+                    ok: true,
+                    msg: ok_msg,
+                },
                 Err(e) => UsersSettingsCommandOutput::OpDone { ok: false, msg: e },
             }
         });
@@ -451,7 +469,11 @@ fn user_card(u: &UserInfo, sender: &ComponentSender<UsersSettingsModel>) -> gtk:
     name.set_halign(gtk::Align::Start);
     name.set_xalign(0.0);
     text.append(&name);
-    let role = gtk::Label::new(Some(if u.admin { "Administrator" } else { "Standard user" }));
+    let role = gtk::Label::new(Some(if u.admin {
+        "Administrator"
+    } else {
+        "Standard user"
+    }));
     role.add_css_class("label-small");
     role.set_halign(gtk::Align::Start);
     role.set_xalign(0.0);
@@ -671,9 +693,7 @@ fn admin_members() -> Vec<String> {
 
 /// Avatar path: `~/.face` for the current user, else the AccountsService icon.
 fn avatar_for(name: &str, is_current: bool) -> Option<PathBuf> {
-    if is_current
-        && let Some(home) = std::env::var_os("HOME")
-    {
+    if is_current && let Some(home) = std::env::var_os("HOME") {
         let face = PathBuf::from(home).join(".face");
         if face.exists() {
             return Some(face);

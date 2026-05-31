@@ -95,7 +95,11 @@ impl StatusMessage {
     ) {
         if let Some(status_message) = status {
             let text: Box<str> = status_message.clone().into();
-            let color = if status_message.is_error() { danger } else { info };
+            let color = if status_message.is_error() {
+                danger
+            } else {
+                info
+            };
             let widget = Paragraph::new(text.as_ref())
                 .alignment(Alignment::Center)
                 .style(Style::default().fg(color));

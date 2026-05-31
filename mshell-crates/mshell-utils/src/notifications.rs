@@ -1,6 +1,6 @@
-use notify_rust::Notification;
 use mshell_common::watch;
 use mshell_services::notification_service;
+use notify_rust::Notification;
 use relm4::{Component, ComponentSender};
 use std::path::PathBuf;
 

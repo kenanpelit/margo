@@ -42,13 +42,12 @@ pub fn load_avatar(user: &str) -> Option<image::RgbaImage> {
         // and AccountsService's bare `<username>` have no extension,
         // so we read the bytes and let the image crate sniff magic
         // numbers via `load_from_memory`.
-        match std::fs::read(p).and_then(|bytes| {
-            image::load_from_memory(&bytes).map_err(std::io::Error::other)
-        }) {
+        match std::fs::read(p)
+            .and_then(|bytes| image::load_from_memory(&bytes).map_err(std::io::Error::other))
+        {
             Ok(img) => {
                 tracing::info!(path = %p.display(), "avatar: decoded source");
-                let sized =
-                    img.resize_to_fill(192, 192, image::imageops::FilterType::Lanczos3);
+                let sized = img.resize_to_fill(192, 192, image::imageops::FilterType::Lanczos3);
                 return Some(sized.to_rgba8());
             }
             Err(e) => {

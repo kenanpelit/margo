@@ -171,13 +171,21 @@ impl Component for ScreenSettingsModel {
 
         let sender_clone = sender.clone();
         effects.push(move |_| {
-            let v = config_manager().config().general().show_screen_corners().get();
+            let v = config_manager()
+                .config()
+                .general()
+                .show_screen_corners()
+                .get();
             sender_clone.input(ScreenSettingsInput::ShowScreenCornersEffect(v));
         });
 
         let sender_clone = sender.clone();
         effects.push(move |_| {
-            let v = config_manager().config().general().screen_corner_radius().get();
+            let v = config_manager()
+                .config()
+                .general()
+                .screen_corner_radius()
+                .get();
             sender_clone.input(ScreenSettingsInput::ScreenCornerRadiusEffect(v as i32));
         });
 

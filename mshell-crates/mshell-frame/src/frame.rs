@@ -16,10 +16,10 @@ use crate::frame_draw_widget::FrameDrawWidget;
 use crate::frame_spacer::{FrameSpacerInit, FrameSpacerInput, FrameSpacerModel};
 use crate::menus::menu::MenuInput::ForwardHyprlandScreenshareReply;
 use crate::menus::menu::{MenuInit, MenuInput, MenuModel, MenuOutput, MenuType};
-use mshell_config::schema::config::CustomMenuRow;
 use crate::menus::menu_widgets::mshelldash::mshelldash::{
     MShellDashInit, MShellDashInput, MShellDashModel,
 };
+use mshell_config::schema::config::CustomMenuRow;
 
 const CLOCK_MENU: &str = "clock";
 const CLIPBOARD_MENU: &str = "clipboard";
@@ -151,8 +151,23 @@ pub enum FrameInput {
     SetLeftMenuExpansionType(VerticalMenuExpansion),
     SetRightMenuExpansionType(VerticalMenuExpansion),
     RepositionMenus(
-        Position, Position, Position, Position, Position, Position, Position, Position, Position,
-        Position, Position, Position, Position, Position, Position, Position, Position,
+        Position,
+        Position,
+        Position,
+        Position,
+        Position,
+        Position,
+        Position,
+        Position,
+        Position,
+        Position,
+        Position,
+        Position,
+        Position,
+        Position,
+        Position,
+        Position,
+        Position,
         // dashboard_menu_position
         Position,
     ),
@@ -700,7 +715,10 @@ impl Component for Frame {
         //    compositor decides to grant focus.)
         let sender_esc = sender.clone();
         let shortcut = gtk::Shortcut::builder()
-            .trigger(&gtk::KeyvalTrigger::new(gdk::Key::Escape, gdk::ModifierType::empty()))
+            .trigger(&gtk::KeyvalTrigger::new(
+                gdk::Key::Escape,
+                gdk::ModifierType::empty(),
+            ))
             .action(&gtk::CallbackAction::new(move |_, _| {
                 tracing::debug!("frame: ESC shortcut fired");
                 // If the clipboard `/` filter is open, Esc leaves search
@@ -855,8 +873,7 @@ impl Component for Frame {
             let config = menu_config.clone();
             let power_menu_position = config.menus().power_menu().position().get();
             let config = menu_config.clone();
-            let media_player_menu_position =
-                config.menus().media_player_menu().position().get();
+            let media_player_menu_position = config.menus().media_player_menu().position().get();
             let config = menu_config.clone();
             let session_menu_position = config.menus().session_menu().position().get();
             let config = menu_config.clone();
@@ -1292,9 +1309,9 @@ impl Component for Frame {
                             max_height: c.panel_max_height,
                         });
                     }
-                    None => tracing::warn!(
-                        "menu plugin: no enabled plugin panel/menu for key `{key}`"
-                    ),
+                    None => {
+                        tracing::warn!("menu plugin: no enabled plugin panel/menu for key `{key}`")
+                    }
                 }
             }
             FrameInput::ReloadPlugin(key) => {
@@ -1350,8 +1367,7 @@ impl Component for Frame {
                         // Build/get the cached panel.
                         if let Entry::Vacant(slot) = self.plugin_panels.entry(c.name.clone()) {
                             let parsed: std::collections::HashMap<String, String> =
-                                serde_json::from_str(c.panel_settings.trim())
-                                    .unwrap_or_default();
+                                serde_json::from_str(c.panel_settings.trim()).unwrap_or_default();
                             match mshell_plugin_ui::PluginPanel::new(
                                 &self.plugin_panel_runtime,
                                 &c.name,
@@ -1383,9 +1399,7 @@ impl Component for Frame {
                             self.sync_keyboard_mode(root);
                         }
                     } else {
-                        tracing::warn!(
-                            "plugin keybind: no enabled plugin matches `{key}`"
-                        );
+                        tracing::warn!("plugin keybind: no enabled plugin matches `{key}`");
                     }
                 }
                 #[cfg(not(feature = "wasm-plugins"))]
@@ -1431,10 +1445,9 @@ impl Component for Frame {
                     self.toggle_menu(SETTINGS_MENU, widgets);
                     self.sync_keyboard_mode(root);
                 }
-                let _ = self
-                    .settings_menu
-                    .sender()
-                    .send(mshell_settings::SettingsWindowInput::ActivateSection(section));
+                let _ = self.settings_menu.sender().send(
+                    mshell_settings::SettingsWindowInput::ActivateSection(section),
+                );
             }
             FrameInput::CloseSettingsMenu => {
                 // Idempotent close: no-op if Settings isn't currently
@@ -1451,7 +1464,8 @@ impl Component for Frame {
             }
             FrameInput::ToggleMShellDashMenu(tab) => {
                 if !tab.is_empty() {
-                    self.mshelldash_menu.emit(MShellDashInput::SelectTabName(tab));
+                    self.mshelldash_menu
+                        .emit(MShellDashInput::SelectTabName(tab));
                 }
                 self.toggle_menu(MSHELLDASH_MENU, widgets);
                 self.sync_keyboard_mode(root);
@@ -1686,9 +1700,8 @@ impl Frame {
         let root_weak = root.downgrade();
         let pending_mode = self.pending_kbd_mode.clone();
         let pending_timeout = self.pending_kbd_mode_timeout.clone();
-        let id = gtk::glib::timeout_add_local_once(
-            std::time::Duration::from_millis(90),
-            move || {
+        let id =
+            gtk::glib::timeout_add_local_once(std::time::Duration::from_millis(90), move || {
                 *pending_timeout.borrow_mut() = None;
                 let Some(mode) = pending_mode.borrow_mut().take() else {
                     return;
@@ -1698,8 +1711,7 @@ impl Frame {
                 };
                 root.set_keyboard_mode(mode);
                 tracing::debug!(?mode, "frame: sync_keyboard_mode (applied)");
-            },
-        );
+            });
         *self.pending_kbd_mode_timeout.borrow_mut() = Some(id);
     }
 
@@ -1719,8 +1731,7 @@ impl Frame {
             (&widgets.bottom_right_stack, self.bottom_right_revealed),
         ];
         stacks.iter().any(|(stack, revealed)| {
-            *revealed
-                && stack.visible_child_name().map(|n| n.to_string()) == Some(name.to_string())
+            *revealed && stack.visible_child_name().map(|n| n.to_string()) == Some(name.to_string())
         })
     }
 
@@ -1759,7 +1770,9 @@ impl Frame {
                     self.left_revealed = !left_revealed;
                     now_visible = self.left_revealed;
                 } else {
-                    widgets.left_stack.set_visible_child_full(name, gtk::StackTransitionType::None);
+                    widgets
+                        .left_stack
+                        .set_visible_child_full(name, gtk::StackTransitionType::None);
                     self.left_revealed = true;
                 }
             }
@@ -1769,7 +1782,9 @@ impl Frame {
                     self.right_revealed = !right_revealed;
                     now_visible = self.right_revealed;
                 } else {
-                    widgets.right_stack.set_visible_child_full(name, gtk::StackTransitionType::None);
+                    widgets
+                        .right_stack
+                        .set_visible_child_full(name, gtk::StackTransitionType::None);
                     self.right_revealed = true;
                 }
             }
@@ -1779,7 +1794,9 @@ impl Frame {
                     self.top_revealed = !top_revealed;
                     now_visible = self.top_revealed;
                 } else {
-                    widgets.top_stack.set_visible_child_full(name, gtk::StackTransitionType::None);
+                    widgets
+                        .top_stack
+                        .set_visible_child_full(name, gtk::StackTransitionType::None);
                     self.top_revealed = true;
                 }
             }
@@ -1789,7 +1806,9 @@ impl Frame {
                     self.top_left_revealed = !top_left_revealed;
                     now_visible = self.top_left_revealed;
                 } else {
-                    widgets.top_left_stack.set_visible_child_full(name, gtk::StackTransitionType::None);
+                    widgets
+                        .top_left_stack
+                        .set_visible_child_full(name, gtk::StackTransitionType::None);
                     self.top_left_revealed = true;
                 }
             }
@@ -1799,7 +1818,9 @@ impl Frame {
                     self.top_right_revealed = !top_right_revealed;
                     now_visible = self.top_right_revealed;
                 } else {
-                    widgets.top_right_stack.set_visible_child_full(name, gtk::StackTransitionType::None);
+                    widgets
+                        .top_right_stack
+                        .set_visible_child_full(name, gtk::StackTransitionType::None);
                     self.top_right_revealed = true;
                 }
             }
@@ -1809,7 +1830,9 @@ impl Frame {
                     self.bottom_revealed = !bottom_revealed;
                     now_visible = self.bottom_revealed;
                 } else {
-                    widgets.bottom_stack.set_visible_child_full(name, gtk::StackTransitionType::None);
+                    widgets
+                        .bottom_stack
+                        .set_visible_child_full(name, gtk::StackTransitionType::None);
                     self.bottom_revealed = true;
                 }
             }
@@ -1819,7 +1842,9 @@ impl Frame {
                     self.bottom_left_revealed = !bottom_left_revealed;
                     now_visible = self.bottom_left_revealed;
                 } else {
-                    widgets.bottom_left_stack.set_visible_child_full(name, gtk::StackTransitionType::None);
+                    widgets
+                        .bottom_left_stack
+                        .set_visible_child_full(name, gtk::StackTransitionType::None);
                     self.bottom_left_revealed = true;
                 }
             }
@@ -1830,7 +1855,9 @@ impl Frame {
                 self.bottom_right_revealed = !bottom_right_revealed;
                 now_visible = self.bottom_right_revealed;
             } else {
-                widgets.bottom_right_stack.set_visible_child_full(name, gtk::StackTransitionType::None);
+                widgets
+                    .bottom_right_stack
+                    .set_visible_child_full(name, gtk::StackTransitionType::None);
                 self.bottom_right_revealed = true;
             }
         }
@@ -2154,8 +2181,7 @@ impl Frame {
             .bluetooth_menu()
             .position()
             .get();
-        let cpu_dashboard_menu_widget: Widget =
-            self.cpu_dashboard_menu.widget().clone().upcast();
+        let cpu_dashboard_menu_widget: Widget = self.cpu_dashboard_menu.widget().clone().upcast();
         let cpu_dashboard_menu_position = mshell_config::config_manager::config_manager()
             .config()
             .menus()
@@ -2170,8 +2196,7 @@ impl Frame {
             .audio_dashboard_menu()
             .position()
             .get();
-        let system_update_menu_widget: Widget =
-            self.system_update_menu.widget().clone().upcast();
+        let system_update_menu_widget: Widget = self.system_update_menu.widget().clone().upcast();
         let system_update_menu_position = mshell_config::config_manager::config_manager()
             .config()
             .menus()
@@ -2220,8 +2245,7 @@ impl Frame {
             .alarmclock_menu()
             .position()
             .get();
-        let control_center_menu_widget: Widget =
-            self.control_center_menu.widget().clone().upcast();
+        let control_center_menu_widget: Widget = self.control_center_menu.widget().clone().upcast();
         let control_center_menu_position = mshell_config::config_manager::config_manager()
             .config()
             .menus()
@@ -2238,8 +2262,7 @@ impl Frame {
         let dns_menu_widget: Widget = self.dns_menu.widget().clone().upcast();
         let podman_menu_widget: Widget = self.podman_menu.widget().clone().upcast();
         let notes_menu_widget: Widget = self.notes_menu.widget().clone().upcast();
-        let plugin_panel_menu_widget: Widget =
-            self.plugin_panel_menu.widget().clone().upcast();
+        let plugin_panel_menu_widget: Widget = self.plugin_panel_menu.widget().clone().upcast();
         let plugin_panel_menu_position = mshell_config::config_manager::config_manager()
             .config()
             .menus()
@@ -2249,13 +2272,11 @@ impl Frame {
         let ip_menu_widget: Widget = self.ip_menu.widget().clone().upcast();
         let network_menu_widget: Widget = self.network_menu.widget().clone().upcast();
         let power_menu_widget: Widget = self.power_menu.widget().clone().upcast();
-        let media_player_menu_widget: Widget =
-            self.media_player_menu.widget().clone().upcast();
+        let media_player_menu_widget: Widget = self.media_player_menu.widget().clone().upcast();
         let session_menu_widget: Widget = self.session_menu.widget().clone().upcast();
         let settings_menu_widget: Widget = self.settings_menu.widget().clone().upcast();
         let dashboard_menu_widget: Widget = self.dashboard_menu.widget().clone().upcast();
-        let mshelldash_menu_widget: Widget =
-            self.mshelldash_menu.widget().clone().upcast();
+        let mshelldash_menu_widget: Widget = self.mshelldash_menu.widget().clone().upcast();
 
         widgets.left_stack.remove_all();
         widgets.right_stack.remove_all();
@@ -2303,12 +2324,7 @@ impl Frame {
             SCREENSHARE_MENU,
             &screenshare_menu_position,
         );
-        Self::add_to_stack(
-            widgets,
-            &ufw_menu_widget,
-            NUFW_MENU,
-            &ufw_menu_position,
-        );
+        Self::add_to_stack(widgets, &ufw_menu_widget, NUFW_MENU, &ufw_menu_position);
         Self::add_to_stack(
             widgets,
             &bluetooth_menu_widget,
@@ -2375,18 +2391,8 @@ impl Frame {
             CONTROL_CENTER_MENU,
             &control_center_menu_position,
         );
-        Self::add_to_stack(
-            widgets,
-            &ssh_menu_widget,
-            SSH_MENU,
-            &ssh_menu_position,
-        );
-        Self::add_to_stack(
-            widgets,
-            &dns_menu_widget,
-            NDNS_MENU,
-            &dns_menu_position,
-        );
+        Self::add_to_stack(widgets, &ssh_menu_widget, SSH_MENU, &ssh_menu_position);
+        Self::add_to_stack(widgets, &dns_menu_widget, NDNS_MENU, &dns_menu_position);
         Self::add_to_stack(
             widgets,
             &podman_menu_widget,
@@ -2465,8 +2471,7 @@ impl Frame {
         // `FrameInput::ToggleMargoLayoutMenu` which calls
         // `toggle_menu(MARGO_LAYOUT_MENU, …)` against the same
         // stack.
-        let margo_layout_menu_widget: Widget =
-            self.margo_layout_menu.widget().clone().upcast();
+        let margo_layout_menu_widget: Widget = self.margo_layout_menu.widget().clone().upcast();
         let margo_layout_menu_position = mshell_config::config_manager::config_manager()
             .config()
             .menus()
@@ -2649,7 +2654,11 @@ impl Frame {
                 img.set_pixel_size(16);
                 hb.append(&img);
             }
-            let text = if label.is_empty() { row.exec.trim() } else { label };
+            let text = if label.is_empty() {
+                row.exec.trim()
+            } else {
+                label
+            };
             let lbl = gtk::Label::new(Some(text));
             lbl.set_halign(gtk::Align::Start);
             lbl.set_hexpand(true);

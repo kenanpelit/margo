@@ -39,8 +39,7 @@ pub struct MlockState {
     pub compositor: Option<wl_compositor::WlCompositor>,
     pub shm: Option<wl_shm::WlShm>,
     pub seat: Option<wl_seat::WlSeat>,
-    pub session_lock_manager:
-        Option<ext_session_lock_manager_v1::ExtSessionLockManagerV1>,
+    pub session_lock_manager: Option<ext_session_lock_manager_v1::ExtSessionLockManagerV1>,
 
     // Outputs discovered through the registry. Each entry becomes one
     // MlockSurface once we hold the session_lock.
@@ -62,10 +61,7 @@ pub struct MlockState {
 }
 
 impl MlockState {
-    pub fn new(
-        conn: &Connection,
-        qh: &QueueHandle<MlockState>,
-    ) -> Result<Self> {
+    pub fn new(conn: &Connection, qh: &QueueHandle<MlockState>) -> Result<Self> {
         let (globals, _) = registry_queue_init::<MlockState>(conn).map_err(|e| {
             anyhow!("registry init failed: {e}. compositor doesn't speak Wayland properly?")
         })?;
@@ -226,17 +222,14 @@ impl MlockState {
             Err(e) => {
                 warn!("authentication failed: {e}");
                 self.seat_state.fail_count = self.seat_state.fail_count.saturating_add(1);
-                self.seat_state.fail_message = Some(
-                    if self.seat_state.fail_count > 1 {
-                        format!("Wrong password · {} attempts", self.seat_state.fail_count)
-                    } else {
-                        "Wrong password".to_string()
-                    },
-                );
+                self.seat_state.fail_message = Some(if self.seat_state.fail_count > 1 {
+                    format!("Wrong password · {} attempts", self.seat_state.fail_count)
+                } else {
+                    "Wrong password".to_string()
+                });
                 // Trigger a ~400 ms shake animation.
-                self.seat_state.shake_until = Some(
-                    std::time::Instant::now() + std::time::Duration::from_millis(400),
-                );
+                self.seat_state.shake_until =
+                    Some(std::time::Instant::now() + std::time::Duration::from_millis(400));
                 self.request_redraw_all();
             }
         }
@@ -294,8 +287,7 @@ impl MlockState {
             crate::power::execute(action);
             self.seat_state.power_confirm = None;
         } else {
-            self.seat_state.power_confirm =
-                Some((action, now + std::time::Duration::from_secs(3)));
+            self.seat_state.power_confirm = Some((action, now + std::time::Duration::from_secs(3)));
         }
         self.request_redraw_all();
     }
@@ -347,7 +339,10 @@ impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for MlockState {
         // Hot-plug handling could go here. For MVP we lock the
         // outputs present at startup; new outputs would need a fresh
         // lock surface. Keeping it simple — just log.
-        if let wl_registry::Event::Global { interface, name, .. } = event {
+        if let wl_registry::Event::Global {
+            interface, name, ..
+        } = event
+        {
             debug!("registry global: {interface} (name={name})");
         }
     }
@@ -452,7 +447,9 @@ impl Dispatch<wl_seat::WlSeat, ()> for MlockState {
         _: &Connection,
         qh: &QueueHandle<Self>,
     ) {
-        if let wl_seat::Event::Capabilities { capabilities: WEnum::Value(caps) } = event
+        if let wl_seat::Event::Capabilities {
+            capabilities: WEnum::Value(caps),
+        } = event
             && caps.contains(wl_seat::Capability::Keyboard)
             && state.seat_state.keyboard.is_none()
         {

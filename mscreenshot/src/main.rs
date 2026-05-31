@@ -31,7 +31,7 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use clap::{Parser, Subcommand};
 
 #[derive(Parser, Debug)]
@@ -180,7 +180,9 @@ fn run() -> Result<()> {
         Cmd::Wf => (CaptureSource::Window, DeliveryMode::SaveOnly),
         Cmd::Wi => (CaptureSource::Window, DeliveryMode::EditSave),
         Cmd::Open | Cmd::Dir | Cmd::NotifyHandle { .. } => {
-            unreachable!("Open/Dir/NotifyHandle handled earlier and short-circuit before this match")
+            unreachable!(
+                "Open/Dir/NotifyHandle handled earlier and short-circuit before this match"
+            )
         }
     };
 
@@ -195,10 +197,7 @@ fn run() -> Result<()> {
             require("slurp")?;
         }
     }
-    if matches!(
-        mode,
-        DeliveryMode::ClipOnly | DeliveryMode::EditSaveClip
-    ) {
+    if matches!(mode, DeliveryMode::ClipOnly | DeliveryMode::EditSaveClip) {
         require("wl-copy")?;
     }
 
@@ -298,10 +297,7 @@ fn capture_region(dest: &Path) -> Result<()> {
         let g = run_capture_stdout(
             "slurp",
             &[
-                "-b", "00000055",
-                "-c", "f5f5f5ee",
-                "-s", "00000000",
-                "-w", "3",
+                "-b", "00000055", "-c", "f5f5f5ee", "-s", "00000000", "-w", "3",
             ],
         )?;
         g.trim().to_string()
@@ -379,9 +375,7 @@ fn capture_window(dest: &Path) -> Result<()> {
         _ => {
             // No focused window geom; fall back to region select
             // — same UX the old bash helper had.
-            eprintln!(
-                "(no focused window geometry — falling back to region select)"
-            );
+            eprintln!("(no focused window geometry — falling back to region select)");
             capture_region(dest)
         }
     }
@@ -401,8 +395,8 @@ fn mctl_status_json() -> Result<serde_json::Value> {
             String::from_utf8_lossy(&out.stderr).trim()
         );
     }
-    let json: serde_json::Value = serde_json::from_slice(&out.stdout)
-        .context("parse mctl status JSON")?;
+    let json: serde_json::Value =
+        serde_json::from_slice(&out.stdout).context("parse mctl status JSON")?;
     Ok(json)
 }
 
@@ -416,9 +410,12 @@ fn focused_output_name() -> Result<String> {
     let pick = outputs
         .iter()
         .find(|o| {
-            o["focused"]
-                .as_object()
-                .is_some_and(|f| !f.get("title").and_then(|t| t.as_str()).unwrap_or("").is_empty())
+            o["focused"].as_object().is_some_and(|f| {
+                !f.get("title")
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("")
+                    .is_empty()
+            })
         })
         .or_else(|| outputs.iter().find(|o| o["active"].as_bool() == Some(true)))
         .or_else(|| outputs.first());
@@ -541,8 +538,7 @@ fn save_final(temp: &Path) -> Result<PathBuf> {
 
 fn copy_to_clipboard(file: &Path) -> Result<()> {
     use std::io::Write;
-    let bytes = std::fs::read(file)
-        .with_context(|| format!("read {}", file.display()))?;
+    let bytes = std::fs::read(file).with_context(|| format!("read {}", file.display()))?;
     let mut child = Command::new("wl-copy")
         .args(["--type", "image/png"])
         .stdin(Stdio::piped())
@@ -562,8 +558,7 @@ fn make_temp_png() -> Result<PathBuf> {
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/tmp"));
     let dir = runtime_dir.join(format!("mscreenshot-{}", unsafe { libc::getuid() }));
-    std::fs::create_dir_all(&dir)
-        .with_context(|| format!("create temp dir {}", dir.display()))?;
+    std::fs::create_dir_all(&dir).with_context(|| format!("create temp dir {}", dir.display()))?;
     let stamp = current_timestamp();
     let pid = std::process::id();
     Ok(dir.join(format!("capture_{stamp}_{pid}.png")))
@@ -573,9 +568,7 @@ fn save_dir() -> Result<PathBuf> {
     if let Some(s) = std::env::var_os("SCREENSHOT_SAVE_DIR") {
         return Ok(PathBuf::from(s));
     }
-    if let Some(s) = std::env::var_os("XDG_PICTURES_DIR")
-        .filter(|v| !v.is_empty())
-    {
+    if let Some(s) = std::env::var_os("XDG_PICTURES_DIR").filter(|v| !v.is_empty()) {
         return Ok(PathBuf::from(s).join("Screenshots"));
     }
     if let Ok(home) = std::env::var("HOME") {
@@ -586,8 +579,7 @@ fn save_dir() -> Result<PathBuf> {
 
 fn ensure_parent(p: &Path) -> Result<()> {
     if let Some(parent) = p.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("create {}", parent.display()))?;
+        std::fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
     }
     Ok(())
 }
@@ -626,11 +618,7 @@ fn open_latest() -> Result<()> {
         .filter_map(|e| e.ok().map(|e| e.path()))
         .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("png"))
         .collect();
-    entries.sort_by_key(|p| {
-        std::fs::metadata(p)
-            .and_then(|m| m.modified())
-            .ok()
-    });
+    entries.sort_by_key(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok());
     let Some(latest) = entries.last() else {
         bail!("no screenshots in {}", dir.display());
     };
@@ -675,13 +663,19 @@ fn which(cmd: &str) -> bool {
     let Some(path) = std::env::var_os("PATH") else {
         return false;
     };
-    std::env::split_paths(&path)
-        .any(|d| std::fs::metadata(d.join(cmd)).map(|m| m.is_file()).unwrap_or(false))
+    std::env::split_paths(&path).any(|d| {
+        std::fs::metadata(d.join(cmd))
+            .map(|m| m.is_file())
+            .unwrap_or(false)
+    })
 }
 
 fn env_truthy(name: &str) -> bool {
     matches!(
-        std::env::var(name).unwrap_or_default().to_ascii_lowercase().as_str(),
+        std::env::var(name)
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .as_str(),
         "1" | "true" | "yes" | "on"
     )
 }
@@ -727,15 +721,9 @@ fn spawn_notify_action(title: &str, body: &str, path: &Path) {
     // current_exe() resolves to /usr/bin/mscreenshot in installed
     // form. Falls back to the bare name (PATH lookup) if unavailable
     // — that path is unusual but cheap to handle.
-    let exe = std::env::current_exe()
-        .unwrap_or_else(|_| std::path::PathBuf::from("mscreenshot"));
+    let exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("mscreenshot"));
     let _ = Command::new(&exe)
-        .args([
-            "notify-handle",
-            title,
-            body,
-            &path.display().to_string(),
-        ])
+        .args(["notify-handle", title, body, &path.display().to_string()])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())

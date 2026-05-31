@@ -232,20 +232,15 @@ impl Component for ControlCenterSlidersModel {
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         // Spawn watchers for default audio output, input, and brightness.
-        spawn_default_output_watcher(
-            &sender,
-            None,
-            || ControlCenterSlidersCommandOutput::OutputChanged,
-        );
-        spawn_default_input_watcher(
-            &sender,
-            None,
-            || ControlCenterSlidersCommandOutput::InputChanged,
-        );
-        spawn_brightness_watcher(
-            &sender,
-            || ControlCenterSlidersCommandOutput::BrightnessChanged,
-        );
+        spawn_default_output_watcher(&sender, None, || {
+            ControlCenterSlidersCommandOutput::OutputChanged
+        });
+        spawn_default_input_watcher(&sender, None, || {
+            ControlCenterSlidersCommandOutput::InputChanged
+        });
+        spawn_brightness_watcher(&sender, || {
+            ControlCenterSlidersCommandOutput::BrightnessChanged
+        });
 
         // Snapshot initial state.
         let output_device = audio_service().default_output.get();
@@ -269,15 +264,12 @@ impl Component for ControlCenterSlidersModel {
             .unwrap_or_else(|| "audio-input-microphone-symbolic".to_string());
 
         let has_backlight = brightness_service().is_some();
-        let brightness_device = brightness_service()
-            .as_ref()
-            .and_then(|s| s.primary.get());
+        let brightness_device = brightness_service().as_ref().and_then(|s| s.primary.get());
         let brightness_fraction = brightness_device
             .as_ref()
             .map(|d| d.percentage().fraction())
             .unwrap_or(0.0);
-        let brightness_icon =
-            get_brightness_icon(brightness_fraction * 100.0).to_string();
+        let brightness_icon = get_brightness_icon(brightness_fraction * 100.0).to_string();
 
         let model = ControlCenterSlidersModel {
             output_device,
@@ -371,9 +363,8 @@ impl Component for ControlCenterSlidersModel {
                 }
 
                 // Refresh brightness.
-                self.brightness_device = brightness_service()
-                    .as_ref()
-                    .and_then(|s| s.primary.get());
+                self.brightness_device =
+                    brightness_service().as_ref().and_then(|s| s.primary.get());
                 if let Some(d) = &self.brightness_device {
                     self.brightness_fraction = d.percentage().fraction();
                     self.brightness_icon =

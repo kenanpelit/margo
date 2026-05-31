@@ -433,7 +433,11 @@ impl Component for SetupSettingsModel {
         let s = sender.clone();
         effects.push(move |_| {
             s.input(SetupSettingsInput::ClockEffect(
-                config_manager().config().general().clock_format_24_h().get(),
+                config_manager()
+                    .config()
+                    .general()
+                    .clock_format_24_h()
+                    .get(),
             ));
         });
         let s = sender.clone();

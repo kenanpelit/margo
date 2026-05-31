@@ -239,13 +239,8 @@ fn create_overlay_window(
                 // extending the preview.
                 state_end.drag_start.set(None);
                 state_end.drag_current.set(None);
-                *state_end.selection.borrow_mut() = Some((
-                    output_name.clone(),
-                    final_x,
-                    final_y,
-                    final_w,
-                    final_h,
-                ));
+                *state_end.selection.borrow_mut() =
+                    Some((output_name.clone(), final_x, final_y, final_w, final_h));
                 for w in state_end.windows.borrow().iter() {
                     if let Some(child) = w.child() {
                         child.queue_draw();
@@ -281,29 +276,26 @@ fn create_overlay_window(
                 state_key.fire(Err(ScreenshotError::Cancelled));
                 glib::Propagation::Stop
             }
-            gdk::Key::Return | gdk::Key::KP_Enter => {
-                fire_preview(&state_key, None)
-            }
+            gdk::Key::Return | gdk::Key::KP_Enter => fire_preview(&state_key, None),
             // Ctrl+S → commit but force the OutputTarget to File
             // (save-to-disk, no clipboard, no editor) regardless
             // of whatever target the calling widget originally
             // wanted. Lets the user repurpose any "Area" button
             // into a quick save without backing out.
-            gdk::Key::S | gdk::Key::s
-                if modifier.contains(gdk::ModifierType::CONTROL_MASK) =>
-            {
+            gdk::Key::S | gdk::Key::s if modifier.contains(gdk::ModifierType::CONTROL_MASK) => {
                 fire_preview(&state_key, Some(OutputTarget::File))
             }
             // Ctrl+E → commit + force EditAndSave (open in
             // satty / swappy). Same override mechanic as Ctrl+S.
-            gdk::Key::E | gdk::Key::e
-                if modifier.contains(gdk::ModifierType::CONTROL_MASK) =>
-            {
+            gdk::Key::E | gdk::Key::e if modifier.contains(gdk::ModifierType::CONTROL_MASK) => {
                 fire_preview(&state_key, Some(OutputTarget::EditAndSave))
             }
             gdk::Key::Up | gdk::Key::Down | gdk::Key::Left | gdk::Key::Right => {
-                let step =
-                    if modifier.contains(gdk::ModifierType::SHIFT_MASK) { 10.0 } else { 1.0 };
+                let step = if modifier.contains(gdk::ModifierType::SHIFT_MASK) {
+                    10.0
+                } else {
+                    1.0
+                };
                 let (dx, dy) = match keyval {
                     gdk::Key::Up => (0.0, -step),
                     gdk::Key::Down => (0.0, step),
@@ -464,7 +456,10 @@ fn fire_preview(state: &SharedState, override_target: Option<OutputTarget>) -> g
 /// already pinned against the requested edge.
 fn nudge_selection(state: &SharedState, dx: f64, dy: f64) -> bool {
     let mut sel = state.selection.borrow_mut();
-    let Some((out, x, y, w, h)) = sel.as_mut().map(|s| (s.0.clone(), &mut s.1, &mut s.2, &mut s.3, &mut s.4)) else {
+    let Some((out, x, y, w, h)) = sel
+        .as_mut()
+        .map(|s| (s.0.clone(), &mut s.1, &mut s.2, &mut s.3, &mut s.4))
+    else {
         return false;
     };
     let (max_w, max_h) = state

@@ -51,7 +51,10 @@ const ACTIONS: &[(&str, &str)] = &[
     ("tagtoright", "no arguments"),
     ("focusmon", "Direction — left | right | up | down"),
     ("tagmon", "Direction — left | right | up | down"),
-    ("setlayout", "Layout — tile | monocle | scroller | grid | deck | dwindle …"),
+    (
+        "setlayout",
+        "Layout — tile | monocle | scroller | grid | deck | dwindle …",
+    ),
     ("switch_layout", "no arguments"),
     ("incnmaster", "Master count delta — 1 or -1"),
     ("setmfact", "Master ratio delta — e.g. 0.05 or -0.05"),
@@ -60,7 +63,10 @@ const ACTIONS: &[(&str, &str)] = &[
     ("togglegaps", "no arguments"),
     ("incgaps", "Gap delta — e.g. 5 or -5"),
     ("toggle_scratchpad", "no arguments"),
-    ("toggle_named_scratchpad", "app-id regex , title|none , spawn command"),
+    (
+        "toggle_named_scratchpad",
+        "app-id regex , title|none , spawn command",
+    ),
     ("unscratchpad", "no arguments"),
     ("summon", "match regex , exclude|none , spawn command"),
     ("toggle_overview", "no arguments"),
@@ -87,8 +93,17 @@ const ACTIONS: &[(&str, &str)] = &[
 ];
 
 /// Cheatsheet-style category order — also the section order in `binds.conf`.
-const CATEGORIES: &[&str] =
-    &["Launch", "Windows", "Workspaces", "Layout", "Scratchpad", "Media", "Shell", "System", "General"];
+const CATEGORIES: &[&str] = &[
+    "Launch",
+    "Windows",
+    "Workspaces",
+    "Layout",
+    "Scratchpad",
+    "Media",
+    "Shell",
+    "System",
+    "General",
+];
 
 // ── One bind ────────────────────────────────────────────────────────────────
 #[derive(Clone, Debug, Default)]
@@ -124,7 +139,11 @@ impl Bind {
         if self.m_shift {
             v.push("shift");
         }
-        if v.is_empty() { "NONE".to_string() } else { v.join("+") }
+        if v.is_empty() {
+            "NONE".to_string()
+        } else {
+            v.join("+")
+        }
     }
 
     /// Regenerate the canonical `bind … = …` line.
@@ -200,7 +219,11 @@ fn expand(path: &str, base_dir: &Path) -> PathBuf {
         return PathBuf::from(home).join(rest);
     }
     let pb = PathBuf::from(p);
-    if pb.is_absolute() { pb } else { base_dir.join(pb) }
+    if pb.is_absolute() {
+        pb
+    } else {
+        base_dir.join(pb)
+    }
 }
 
 /// Read a config file plus every `source =` it pulls in (depth-first, guarded).
@@ -298,15 +321,24 @@ fn split_comment(body: &str) -> (&str, Option<String>) {
     for (i, &b) in bytes.iter().enumerate() {
         if b == b'#' && i > 0 && bytes[i - 1].is_ascii_whitespace() {
             let desc = body[i + 1..].trim().to_string();
-            return (body[..i].trim_end(), if desc.is_empty() { None } else { Some(desc) });
+            return (
+                body[..i].trim_end(),
+                if desc.is_empty() { None } else { Some(desc) },
+            );
         }
     }
     (body, None)
 }
 
 fn sort_key(a: &Bind, b: &Bind) -> std::cmp::Ordering {
-    let ca = CATEGORIES.iter().position(|c| *c == a.category()).unwrap_or(usize::MAX);
-    let cb = CATEGORIES.iter().position(|c| *c == b.category()).unwrap_or(usize::MAX);
+    let ca = CATEGORIES
+        .iter()
+        .position(|c| *c == a.category())
+        .unwrap_or(usize::MAX);
+    let cb = CATEGORIES
+        .iter()
+        .position(|c| *c == b.category())
+        .unwrap_or(usize::MAX);
     ca.cmp(&cb)
         .then_with(|| a.key.to_lowercase().cmp(&b.key.to_lowercase()))
         .then_with(|| a.action.cmp(&b.action))
@@ -361,18 +393,52 @@ fn categorise(action: &str, args: &str) -> &'static str {
                 "Launch"
             }
         }
-        "view" | "tag" | "tagview" | "toggleview" | "toggletag" | "tagall" | "viewtoleft"
-        | "viewtoright" | "tagtoleft" | "tagtoright" | "focusmon" | "tagmon" | "toggle_overview"
-        | "overview_focus_next" | "overview_focus_prev" | "overview_activate" => "Workspaces",
-        "setlayout" | "switch_layout" | "incnmaster" | "setmfact" | "set_proportion"
-        | "switch_proportion_preset" | "incgaps" | "togglegaps" | "canvas_pan" | "canvas_reset" => {
-            "Layout"
-        }
-        "killclient" | "togglefloating" | "togglefullscreen" | "togglefullscreen_exclusive"
-        | "movewin" | "resizewin" | "zoom" | "focusdir" | "focusstack" | "focuswindow"
-        | "exchange_client" | "sticky_window" => "Windows",
-        "screenshot" | "screenshot-window" | "screenshot-region" | "screenshot-region-ui"
-        | "screenshot-output" | "theme" | "twilight_toggle" | "twilight_set" => "Shell",
+        "view"
+        | "tag"
+        | "tagview"
+        | "toggleview"
+        | "toggletag"
+        | "tagall"
+        | "viewtoleft"
+        | "viewtoright"
+        | "tagtoleft"
+        | "tagtoright"
+        | "focusmon"
+        | "tagmon"
+        | "toggle_overview"
+        | "overview_focus_next"
+        | "overview_focus_prev"
+        | "overview_activate" => "Workspaces",
+        "setlayout"
+        | "switch_layout"
+        | "incnmaster"
+        | "setmfact"
+        | "set_proportion"
+        | "switch_proportion_preset"
+        | "incgaps"
+        | "togglegaps"
+        | "canvas_pan"
+        | "canvas_reset" => "Layout",
+        "killclient"
+        | "togglefloating"
+        | "togglefullscreen"
+        | "togglefullscreen_exclusive"
+        | "movewin"
+        | "resizewin"
+        | "zoom"
+        | "focusdir"
+        | "focusstack"
+        | "focuswindow"
+        | "exchange_client"
+        | "sticky_window" => "Windows",
+        "screenshot"
+        | "screenshot-window"
+        | "screenshot-region"
+        | "screenshot-region-ui"
+        | "screenshot-output"
+        | "theme"
+        | "twilight_toggle"
+        | "twilight_set" => "Shell",
         "reload" | "quit" | "force_unlock" | "session_save" | "session_load" | "setkeymode"
         | "run_script" => "System",
         _ => "General",
@@ -438,7 +504,10 @@ fn plan_config_rewrite(text: &str) -> String {
     }
 
     if !already_sources {
-        let at = last_source_at.map(|i| i + 1).or(first_bind_at).unwrap_or(kept.len());
+        let at = last_source_at
+            .map(|i| i + 1)
+            .or(first_bind_at)
+            .unwrap_or(kept.len());
         kept.insert(at.min(kept.len()), "source = binds.conf".to_string());
     }
 
@@ -560,7 +629,13 @@ pub(crate) enum KeybindsSettingsInput {
     Edit(usize),
     ActionChanged,
     StartCapture(bool),
-    KeyCaptured { name: String, sup: bool, ctrl: bool, shift: bool, alt: bool },
+    KeyCaptured {
+        name: String,
+        sup: bool,
+        ctrl: bool,
+        shift: bool,
+        alt: bool,
+    },
     Save,
     Cancel,
     Delete,
@@ -797,8 +872,10 @@ impl Component for KeybindsSettingsModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let actions: Vec<(String, String)> =
-            ACTIONS.iter().map(|(n, h)| (n.to_string(), h.to_string())).collect();
+        let actions: Vec<(String, String)> = ACTIONS
+            .iter()
+            .map(|(n, h)| (n.to_string(), h.to_string()))
+            .collect();
         let action_model = gtk::StringList::new(&[]);
         for (n, _) in &actions {
             action_model.append(n);
@@ -860,7 +937,11 @@ impl Component for KeybindsSettingsModel {
                     return true;
                 }
                 let idx = row.index() as usize;
-                haystacks.borrow().get(idx).map(|h| h.contains(&*q)).unwrap_or(true)
+                haystacks
+                    .borrow()
+                    .get(idx)
+                    .map(|h| h.contains(&*q))
+                    .unwrap_or(true)
             });
         }
 
@@ -879,9 +960,14 @@ impl Component for KeybindsSettingsModel {
                 };
                 let n = name.to_string();
                 // Ignore bare modifier presses — wait for a real trigger key.
-                if n.starts_with("Super") || n.starts_with("Control") || n.starts_with("Shift")
-                    || n.starts_with("Alt") || n.starts_with("Meta") || n.starts_with("Hyper")
-                    || n.starts_with("ISO_") || n == "Mode_switch"
+                if n.starts_with("Super")
+                    || n.starts_with("Control")
+                    || n.starts_with("Shift")
+                    || n.starts_with("Alt")
+                    || n.starts_with("Meta")
+                    || n.starts_with("Hyper")
+                    || n.starts_with("ISO_")
+                    || n == "Mode_switch"
                 {
                     return glib::Propagation::Stop;
                 }
@@ -910,7 +996,10 @@ impl Component for KeybindsSettingsModel {
             }
             KeybindsSettingsInput::AddNew => {
                 self.mode = Mode::Edit(None);
-                self.load_draft(&Bind { action: "spawn".into(), ..Default::default() });
+                self.load_draft(&Bind {
+                    action: "spawn".into(),
+                    ..Default::default()
+                });
                 self.delete_btn.set_visible(false);
                 self.edit_title.set_label("New shortcut");
                 self.stack.set_visible_child_name("edit");
@@ -938,7 +1027,13 @@ impl Component for KeybindsSettingsModel {
                     self.capture_btn.set_label("Press a key…");
                 }
             }
-            KeybindsSettingsInput::KeyCaptured { name, sup, ctrl, shift, alt } => {
+            KeybindsSettingsInput::KeyCaptured {
+                name,
+                sup,
+                ctrl,
+                shift,
+                alt,
+            } => {
                 self.key_entry.set_text(&name);
                 self.super_btn.set_active(sup);
                 self.ctrl_btn.set_active(ctrl);
@@ -1003,7 +1098,8 @@ impl KeybindsSettingsModel {
         let idx = match pos {
             Some(i) => i,
             None if !b.action.is_empty() => {
-                self.actions.push((b.action.clone(), "custom action".into()));
+                self.actions
+                    .push((b.action.clone(), "custom action".into()));
                 self.action_model.append(&b.action);
                 self.actions.len() - 1
             }
@@ -1017,7 +1113,11 @@ impl KeybindsSettingsModel {
     fn read_draft(&self) -> Option<Bind> {
         let key = self.key_entry.text().trim().to_string();
         let aidx = self.action_dd.selected() as usize;
-        let action = self.actions.get(aidx).map(|(n, _)| n.clone()).unwrap_or_default();
+        let action = self
+            .actions
+            .get(aidx)
+            .map(|(n, _)| n.clone())
+            .unwrap_or_default();
         if key.is_empty() || action.is_empty() {
             return None;
         }
@@ -1040,7 +1140,9 @@ fn make_subtitle(migrated: bool, count: usize) -> String {
     if migrated {
         format!("{count} shortcuts · editing binds.conf")
     } else {
-        format!("{count} shortcuts · the first edit moves them into binds.conf (config.conf backed up)")
+        format!(
+            "{count} shortcuts · the first edit moves them into binds.conf (config.conf backed up)"
+        )
     }
 }
 
@@ -1051,9 +1153,15 @@ fn sync_action_hint(model: &KeybindsSettingsModel) {
         model.args_hint.set_label(hint);
         let no_args = hint.starts_with("no argument");
         model.args_entry.set_sensitive(!no_args);
-        model.args_entry.set_placeholder_text(if no_args { Some("—") } else { Some(hint.as_str()) });
+        model.args_entry.set_placeholder_text(if no_args {
+            Some("—")
+        } else {
+            Some(hint.as_str())
+        });
         if name == "spawn" || name == "exec" || name == "run_script" {
-            model.args_entry.set_placeholder_text(Some("Command — e.g. kitty"));
+            model
+                .args_entry
+                .set_placeholder_text(Some("Command — e.g. kitty"));
         }
     }
 }
@@ -1164,7 +1272,11 @@ fn action_summary(b: &Bind) -> String {
     let args = b.args.trim();
     match b.action.as_str() {
         "spawn" | "exec" | "run_script" if !args.is_empty() => {
-            let cmd = args.split_whitespace().take(5).collect::<Vec<_>>().join(" ");
+            let cmd = args
+                .split_whitespace()
+                .take(5)
+                .collect::<Vec<_>>()
+                .join(" ");
             format!("{} → {}", b.action, cmd)
         }
         _ if !args.is_empty() => format!("{} {}", b.action, args),
@@ -1211,10 +1323,14 @@ mod tests {
     #[test]
     fn multi_arg_summon_survives_commas() {
         // The 8th split field keeps embedded commas; regex args stay intact.
-        let line = "bind = alt,2,summon,^(TmuxKenp|kitty)$,^Tmux$,uwsm app -a TmuxKenp -- start-kkenp";
+        let line =
+            "bind = alt,2,summon,^(TmuxKenp|kitty)$,^Tmux$,uwsm app -a TmuxKenp -- start-kkenp";
         let b = parse_bind_line(line).expect("parse");
         assert_eq!(b.action, "summon");
-        assert_eq!(b.args, "^(TmuxKenp|kitty)$,^Tmux$,uwsm app -a TmuxKenp -- start-kkenp");
+        assert_eq!(
+            b.args,
+            "^(TmuxKenp|kitty)$,^Tmux$,uwsm app -a TmuxKenp -- start-kkenp"
+        );
         // Round-trips byte-for-byte (input already in canonical comma form).
         assert_eq!(b.to_line(), line);
     }
@@ -1278,7 +1394,9 @@ env = FOO,bar
         // No bind line remains in config.conf …
         assert!(
             !new_cfg.lines().any(|l| {
-                l.trim().find('=').is_some_and(|eq| is_bind_key(l.trim()[..eq].trim()))
+                l.trim()
+                    .find('=')
+                    .is_some_and(|eq| is_bind_key(l.trim()[..eq].trim()))
             }),
             "config still has a bind line:\n{new_cfg}"
         );
@@ -1288,7 +1406,13 @@ env = FOO,bar
         let so_binds = new_cfg.find("source = binds.conf").unwrap();
         assert!(so_binds > so_colors, "binds.conf sourced after colors.conf");
         // … and every non-bind line survived verbatim.
-        for keep in ["gaps_out = 8", "source = colors.conf", "windowrule = float,^(pavucontrol)$", "env = FOO,bar", "# layouts"] {
+        for keep in [
+            "gaps_out = 8",
+            "source = colors.conf",
+            "windowrule = float,^(pavucontrol)$",
+            "env = FOO,bar",
+            "# layouts",
+        ] {
             assert!(new_cfg.contains(keep), "lost line: {keep}");
         }
 
@@ -1305,7 +1429,11 @@ env = FOO,bar
         let once = plan_config_rewrite(SAMPLE);
         let twice = plan_config_rewrite(&once);
         assert_eq!(once.matches("source = binds.conf").count(), 1);
-        assert_eq!(twice.matches("source = binds.conf").count(), 1, "no duplicate source on re-run");
+        assert_eq!(
+            twice.matches("source = binds.conf").count(),
+            1,
+            "no duplicate source on re-run"
+        );
     }
 
     #[test]
@@ -1314,7 +1442,10 @@ env = FOO,bar
         assert_eq!(categorise("view", "2"), "Workspaces");
         assert_eq!(categorise("setlayout", "tile"), "Layout");
         assert_eq!(categorise("summon", "^x$"), "Scratchpad");
-        assert_eq!(categorise("spawn", "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+"), "Media");
+        assert_eq!(
+            categorise("spawn", "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+"),
+            "Media"
+        );
         assert_eq!(categorise("spawn", "kitty"), "Launch");
     }
 }

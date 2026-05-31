@@ -9,30 +9,30 @@
 
 use std::collections::BTreeMap;
 use std::os::unix::net::UnixStream;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
-use smithay::reexports::wayland_protocols::xdg::shell::client::{
-    xdg_surface::{self, XdgSurface},
-    xdg_toplevel::{self, XdgToplevel},
-    xdg_wm_base::{self, XdgWmBase},
-};
 use smithay::reexports::wayland_protocols::ext::session_lock::v1::client::{
     ext_session_lock_manager_v1::ExtSessionLockManagerV1,
     ext_session_lock_surface_v1::{self, ExtSessionLockSurfaceV1},
     ext_session_lock_v1::{self, ExtSessionLockV1},
 };
-use smithay::reexports::wayland_protocols::wp::pointer_constraints::zv1::client::{
-    zwp_locked_pointer_v1::{self, ZwpLockedPointerV1},
-    zwp_pointer_constraints_v1::{self, ZwpPointerConstraintsV1},
-};
 use smithay::reexports::wayland_protocols::wp::idle_inhibit::zv1::client::{
     zwp_idle_inhibit_manager_v1::ZwpIdleInhibitManagerV1,
     zwp_idle_inhibitor_v1::{self, ZwpIdleInhibitorV1},
 };
+use smithay::reexports::wayland_protocols::wp::pointer_constraints::zv1::client::{
+    zwp_locked_pointer_v1::{self, ZwpLockedPointerV1},
+    zwp_pointer_constraints_v1::{self, ZwpPointerConstraintsV1},
+};
 use smithay::reexports::wayland_protocols::xdg::decoration::zv1::client::{
     zxdg_decoration_manager_v1::ZxdgDecorationManagerV1,
     zxdg_toplevel_decoration_v1::{self, ZxdgToplevelDecorationV1},
+};
+use smithay::reexports::wayland_protocols::xdg::shell::client::{
+    xdg_surface::{self, XdgSurface},
+    xdg_toplevel::{self, XdgToplevel},
+    xdg_wm_base::{self, XdgWmBase},
 };
 use smithay::reexports::wayland_protocols_wlr::layer_shell::v1::client::{
     zwlr_layer_shell_v1::{self, ZwlrLayerShellV1},
@@ -275,10 +275,7 @@ impl Client {
     /// proxy for an existing xdg_toplevel. Returns the proxy; tests
     /// follow up with `set_mode` / `unset_mode` and assert against
     /// `MargoState`'s response.
-    pub fn create_decoration(
-        &mut self,
-        toplevel: &XdgToplevel,
-    ) -> ZxdgToplevelDecorationV1 {
+    pub fn create_decoration(&mut self, toplevel: &XdgToplevel) -> ZxdgToplevelDecorationV1 {
         let manager: ZxdgDecorationManagerV1 = self.bind_global(1);
         let decoration = manager.get_toplevel_decoration(toplevel, &self.qh, ());
         self.connection.flush().expect("client flush");
@@ -310,11 +307,7 @@ impl Client {
     /// but the protocol object itself must be created without
     /// panicking — the constraint is lazily activated when focus
     /// arrives.
-    pub fn lock_pointer(
-        &mut self,
-        surface: &WlSurface,
-        pointer: &WlPointer,
-    ) -> ZwpLockedPointerV1 {
+    pub fn lock_pointer(&mut self, surface: &WlSurface, pointer: &WlPointer) -> ZwpLockedPointerV1 {
         let manager: ZwpPointerConstraintsV1 = self.bind_global(1);
         let locked = manager.lock_pointer(
             surface,
@@ -518,7 +511,11 @@ impl Dispatch<XdgToplevel, ()> for ClientState {
     ) {
         let id = toplevel.id().protocol_id();
         match event {
-            xdg_toplevel::Event::Configure { width, height, states } => {
+            xdg_toplevel::Event::Configure {
+                width,
+                height,
+                states,
+            } => {
                 let entry = state.pending_toplevel.entry(id).or_default();
                 entry.size = (width, height);
                 // Each state byte is u32-LE in the spec.

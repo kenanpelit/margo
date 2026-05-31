@@ -3,9 +3,9 @@
 //! every udev sub-module can depend on.
 
 use smithay::{
+    backend::drm::DrmDeviceFd,
     output::Output,
     reexports::drm::control::{connector, crtc},
-    backend::drm::DrmDeviceFd,
     utils::Transform,
 };
 

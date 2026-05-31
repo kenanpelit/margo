@@ -73,12 +73,7 @@ impl Component for ControlCenterModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             ControlCenterInput::Clicked => {
                 let _ = sender.output(ControlCenterOutput::Clicked);

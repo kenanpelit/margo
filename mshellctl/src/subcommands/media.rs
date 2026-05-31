@@ -33,12 +33,20 @@ pub async fn execute(command: MediaCommands) -> anyhow::Result<()> {
             bus_command_with_arg("MediaPrev", &player.unwrap_or_default()).await?;
         }
         MediaCommands::Status { json } => {
-            let method = if json { "MediaStatusJson" } else { "MediaStatusText" };
+            let method = if json {
+                "MediaStatusJson"
+            } else {
+                "MediaStatusText"
+            };
             let out: String = bus_command_with_reply(method).await?;
             println!("{out}");
         }
         MediaCommands::List { json } => {
-            let method = if json { "MediaListJson" } else { "MediaListText" };
+            let method = if json {
+                "MediaListJson"
+            } else {
+                "MediaListText"
+            };
             let out: String = bus_command_with_reply(method).await?;
             println!("{out}");
         }

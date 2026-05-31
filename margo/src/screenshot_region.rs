@@ -33,8 +33,8 @@
 //! to `mscreenshot`, and get out of the way.
 
 use smithay::backend::renderer::element::{
-    solid::{SolidColorBuffer, SolidColorRenderElement},
     Kind,
+    solid::{SolidColorBuffer, SolidColorRenderElement},
 };
 use smithay::utils::{Physical, Point, Scale};
 
@@ -255,8 +255,7 @@ impl ActiveRegionSelector {
         // the CommitCounter when something actually changed so
         // damage tracking stays tight).
         let (ow, oh) = output_size_logical;
-        self.dim_overlay
-            .update((ow.max(1), oh.max(1)), DIM_COLOR);
+        self.dim_overlay.update((ow.max(1), oh.max(1)), DIM_COLOR);
         let dim_elem = SolidColorRenderElement::from_buffer(
             &self.dim_overlay,
             to_phys(0, 0),
@@ -277,7 +276,8 @@ impl ActiveRegionSelector {
             let t = OUTLINE_PX;
             let safe = |v: i32| -> i32 { v.max(1) };
             self.outline_top.update((safe(lw), safe(t)), OUTLINE_COLOR);
-            self.outline_bottom.update((safe(lw), safe(t)), OUTLINE_COLOR);
+            self.outline_bottom
+                .update((safe(lw), safe(t)), OUTLINE_COLOR);
             self.outline_left
                 .update((safe(t), safe(lh - 2 * t).max(1)), OUTLINE_COLOR);
             self.outline_right

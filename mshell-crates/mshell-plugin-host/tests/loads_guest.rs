@@ -254,7 +254,9 @@ fn sdk_chat_guest_runs_a_turn() {
     // Initial UI: an entry to type into, inside the SDK-built tree.
     let nodes = inst.view().expect("view");
     assert!(
-        nodes.iter().any(|n| n.kind == UiKind::Entry && n.id == "input"),
+        nodes
+            .iter()
+            .any(|n| n.kind == UiKind::Entry && n.id == "input"),
         "expected the chat entry"
     );
 
@@ -267,9 +269,9 @@ fn sdk_chat_guest_runs_a_turn() {
         })
         .expect("submit");
     assert!(
-        after
-            .iter()
-            .any(|n| n.kind == UiKind::Markdown && n.text.contains("you:") && n.text.contains("hi there")),
+        after.iter().any(|n| n.kind == UiKind::Markdown
+            && n.text.contains("you:")
+            && n.text.contains("hi there")),
         "expected the user's line as a bubble"
     );
     assert!(inst.streams_active(), "a reply stream should be in flight");
@@ -309,7 +311,10 @@ fn sdk_chat_guest_runs_a_turn() {
 fn assistant_guest_streams_gemini_sse() {
     let path = assistant_fixture();
     if !path.exists() {
-        eprintln!("skip: assistant-guest fixture not built ({})", path.display());
+        eprintln!(
+            "skip: assistant-guest fixture not built ({})",
+            path.display()
+        );
         return;
     }
 

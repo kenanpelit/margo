@@ -1,6 +1,6 @@
 pub(crate) mod airplane_mode;
-pub(crate) mod do_not_disturb;
 pub(crate) mod color_picker;
+pub(crate) mod do_not_disturb;
 pub(crate) mod idle_inhibitor;
 pub(crate) mod lock;
 pub(crate) mod logout;

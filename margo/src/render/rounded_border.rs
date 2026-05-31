@@ -18,12 +18,12 @@ use std::cell::RefCell;
 
 use smithay::backend::renderer::{
     element::{Element, Id, Kind, RenderElement, UnderlyingStorage},
-    gles::{GlesError, GlesFrame, GlesPixelProgram, GlesRenderer, Uniform, UniformName, UniformType},
+    gles::{
+        GlesError, GlesFrame, GlesPixelProgram, GlesRenderer, Uniform, UniformName, UniformType,
+    },
     utils::{CommitCounter, DamageSet, OpaqueRegions},
 };
-use smithay::utils::{
-    Buffer as BufferCoord, Logical, Physical, Rectangle, Scale, Size, Transform,
-};
+use smithay::utils::{Buffer as BufferCoord, Logical, Physical, Rectangle, Scale, Size, Transform};
 
 /// Compiled shader program — shared across all `RoundedBorderElement`
 /// instances drawn on the same `GlesRenderer`.
@@ -123,10 +123,12 @@ impl Element for RoundedBorderElement {
     }
 
     fn src(&self) -> Rectangle<f64, BufferCoord> {
-        Rectangle::from_size(self.geometry.size.to_f64().to_buffer(
-            1.0,
-            Transform::Normal,
-        ))
+        Rectangle::from_size(
+            self.geometry
+                .size
+                .to_f64()
+                .to_buffer(1.0, Transform::Normal),
+        )
     }
 
     fn transform(&self) -> Transform {

@@ -236,7 +236,11 @@ fn uptime() -> String {
     let Ok(text) = std::fs::read_to_string("/proc/uptime") else {
         return "—".to_string();
     };
-    let Some(secs) = text.split_whitespace().next().and_then(|s| s.parse::<f64>().ok()) else {
+    let Some(secs) = text
+        .split_whitespace()
+        .next()
+        .and_then(|s| s.parse::<f64>().ok())
+    else {
         return "—".to_string();
     };
     let total = secs as u64;

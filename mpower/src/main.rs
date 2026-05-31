@@ -24,7 +24,7 @@ use std::time::{Duration, Instant};
 
 use mpower::config::Config;
 use mpower::cpu::{self, CpuSample};
-use mpower::policy::{self, Band, BALANCED, PERFORMANCE};
+use mpower::policy::{self, BALANCED, Band, PERFORMANCE};
 use mpower::{ppd, syspower};
 
 fn main() {
@@ -274,12 +274,12 @@ fn print_status() {
     }
     println!(
         "  current profile: {}",
-        current.as_deref().unwrap_or("unavailable (no power-profiles-daemon)")
+        current
+            .as_deref()
+            .unwrap_or("unavailable (no power-profiles-daemon)")
     );
     match live {
-        Some((avg, max)) => println!(
-            "  cpu now:         avg {avg:.0}% / hottest core {max:.0}%"
-        ),
+        Some((avg, max)) => println!("  cpu now:         avg {avg:.0}% / hottest core {max:.0}%"),
         None => println!("  cpu now:         (sampling)"),
     }
     println!(

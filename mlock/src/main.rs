@@ -112,10 +112,7 @@ fn run() -> Result<()> {
         .roundtrip(&mut state)
         .context("post-lock roundtrip")?;
 
-    info!(
-        outputs = state.outputs.len(),
-        "lock surfaces created"
-    );
+    info!(outputs = state.outputs.len(), "lock surfaces created");
 
     // Main loop — poll(2)-based so we get periodic ticks even when
     // no Wayland events arrive (live clock, shake animation, etc.).
@@ -142,7 +139,11 @@ fn run() -> Result<()> {
 
         state.conn.flush().context("flush")?;
 
-        let timeout_ms: i32 = if state.seat_state.is_shaking() { 16 } else { 500 };
+        let timeout_ms: i32 = if state.seat_state.is_shaking() {
+            16
+        } else {
+            500
+        };
         let fd = state.conn.backend().poll_fd().as_raw_fd();
         let mut pfd = libc::pollfd {
             fd,
@@ -150,7 +151,8 @@ fn run() -> Result<()> {
             revents: 0,
         };
         let r = unsafe { libc::poll(&mut pfd, 1, timeout_ms) };
-        if r > 0 && pfd.revents & libc::POLLIN != 0
+        if r > 0
+            && pfd.revents & libc::POLLIN != 0
             && let Some(guard) = event_queue.prepare_read()
         {
             let _ = guard.read();

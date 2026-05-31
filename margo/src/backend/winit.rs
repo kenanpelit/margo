@@ -6,22 +6,21 @@ use smithay::{
     backend::{
         egl::EGLDevice,
         renderer::{
+            ImportDma, ImportEgl,
             damage::OutputDamageTracker,
             element::{
-                render_elements,
-                surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
-                Kind,
+                Kind, render_elements,
+                surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree},
             },
             gles::GlesRenderer,
-            ImportDma, ImportEgl,
         },
         winit::{self, WinitEvent},
     },
-    desktop::{space::render_output, Window},
+    desktop::{Window, space::render_output},
     input::pointer::CursorImageStatus,
     output::{Mode as OutputMode, Output, PhysicalProperties, Subpixel},
     reexports::calloop::EventLoop,
-    utils::{Transform, Physical, Point},
+    utils::{Physical, Point, Transform},
     wayland::dmabuf::DmabufFeedbackBuilder,
 };
 
@@ -40,12 +39,9 @@ use crate::state::MargoState;
 
 const REFRESH_HZ: u32 = 60;
 
-pub fn run(
-    state: &mut MargoState,
-    event_loop: &mut EventLoop<'static, MargoState>,
-) -> Result<()> {
-    let (mut backend, winit_evt) = winit::init::<GlesRenderer>()
-        .map_err(|e| anyhow::anyhow!("winit init failed: {e}"))?;
+pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoState>) -> Result<()> {
+    let (mut backend, winit_evt) =
+        winit::init::<GlesRenderer>().map_err(|e| anyhow::anyhow!("winit init failed: {e}"))?;
 
     let dmabuf_formats = backend.renderer().dmabuf_formats();
     match EGLDevice::device_for_display(backend.renderer().egl_context().display())
@@ -157,7 +153,7 @@ pub fn run(
         transform: 0,
         enabled: true,
         gamma_size: 0,
-            focus_history: std::collections::VecDeque::new(), // winit/nested: no DRM gamma plane
+        focus_history: std::collections::VecDeque::new(), // winit/nested: no DRM gamma plane
     });
     state.apply_tag_rules_to_monitor(state.monitors.len() - 1);
 
@@ -179,13 +175,19 @@ pub fn run(
                     }
                     output_size = size;
                     force_full_redraw = 2;
-                    let new_mode = OutputMode { size, refresh: REFRESH_HZ as i32 * 1000 };
+                    let new_mode = OutputMode {
+                        size,
+                        refresh: REFRESH_HZ as i32 * 1000,
+                    };
                     output.change_current_state(Some(new_mode), None, None, None);
                     output.set_preferred(new_mode);
                     state.space.map_output(&output, (0, 0));
                     // Update monitor geometry to match new window size
                     let new_area = crate::layout::Rect {
-                        x: 0, y: 0, width: size.w, height: size.h,
+                        x: 0,
+                        y: 0,
+                        width: size.w,
+                        height: size.h,
                     };
                     if let Some(mon) = state.monitors.iter_mut().find(|m| m.output == output) {
                         mon.monitor_area = new_area;
@@ -208,7 +210,10 @@ pub fn run(
                     state.input_pointer.y = state.input_pointer.y.clamp(0.0, out_h - 1.0);
 
                     // In nested (winit) mode: show OS cursor when no client sets its own
-                    let show_os_cursor = !matches!(state.cursor_status, CursorImageStatus::Surface(_) | CursorImageStatus::Hidden);
+                    let show_os_cursor = !matches!(
+                        state.cursor_status,
+                        CursorImageStatus::Surface(_) | CursorImageStatus::Hidden
+                    );
                     backend.window().set_cursor_visible(show_os_cursor);
 
                     // Snapshot cursor surface for rendering
@@ -234,23 +239,49 @@ pub fn run(
                             }
                         };
 
-                        if let Some((_, lock_surface)) = state.lock_surfaces.iter().find(|(o, _)| o == &output) {
+                        if let Some((_, lock_surface)) =
+                            state.lock_surfaces.iter().find(|(o, _)| o == &output)
+                        {
                             let mut extras: Vec<WinitExtra> = Vec::new();
                             let cursor_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
                                 cursor_surface
                                     .as_ref()
-                                    .map(|s| render_elements_from_surface_tree(
-                                        renderer, s, ptr_pos, 1.0, 1.0, Kind::Cursor,
-                                    ))
+                                    .map(|s| {
+                                        render_elements_from_surface_tree(
+                                            renderer,
+                                            s,
+                                            ptr_pos,
+                                            1.0,
+                                            1.0,
+                                            Kind::Cursor,
+                                        )
+                                    })
                                     .unwrap_or_default();
-                            for e in cursor_elements { extras.push(WinitExtra::WaylandSurface(e)); }
+                            for e in cursor_elements {
+                                extras.push(WinitExtra::WaylandSurface(e));
+                            }
 
                             let lock_elements = render_elements_from_surface_tree(
-                                renderer, lock_surface.wl_surface(), Point::<i32, Physical>::from((0, 0)), 1.0, 1.0, Kind::Unspecified,
+                                renderer,
+                                lock_surface.wl_surface(),
+                                Point::<i32, Physical>::from((0, 0)),
+                                1.0,
+                                1.0,
+                                Kind::Unspecified,
                             );
-                            for e in lock_elements { extras.push(WinitExtra::WaylandSurface(e)); }
+                            for e in lock_elements {
+                                extras.push(WinitExtra::WaylandSurface(e));
+                            }
                             let _ = render_output::<GlesRenderer, WinitExtra, Window, _>(
-                                &output, renderer, &mut fb, 1.0, age, &[], &extras, &mut damage_tracker, [0.0, 0.0, 0.0, 1.0],
+                                &output,
+                                renderer,
+                                &mut fb,
+                                1.0,
+                                age,
+                                &[],
+                                &extras,
+                                &mut damage_tracker,
+                                [0.0, 0.0, 0.0, 1.0],
                             );
                             return;
                         }
@@ -258,25 +289,31 @@ pub fn run(
                         let cursor_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
                             cursor_surface
                                 .as_ref()
-                                .map(|s| render_elements_from_surface_tree(
-                                    renderer, s, ptr_pos, 1.0, 1.0, Kind::Cursor,
-                                ))
+                                .map(|s| {
+                                    render_elements_from_surface_tree(
+                                        renderer,
+                                        s,
+                                        ptr_pos,
+                                        1.0,
+                                        1.0,
+                                        Kind::Cursor,
+                                    )
+                                })
                                 .unwrap_or_default();
 
                         // Borders render via custom GLES SDF shader. Compile
                         // once on first frame; if compile fails (driver
                         // limitation) silently fall back to no borders.
                         let border_elements: Vec<_> =
-                            match crate::render::rounded_border::shader(renderer) { Some(prog) => {
-                                crate::border::render_elements(
+                            match crate::render::rounded_border::shader(renderer) {
+                                Some(prog) => crate::border::render_elements(
                                     state,
                                     smithay::utils::Point::from((0, 0)),
                                     smithay::utils::Scale::from(1.0_f64),
                                     prog.0,
-                                )
-                            } _ => {
-                                Vec::new()
-                            }};
+                                ),
+                                _ => Vec::new(),
+                            };
 
                         let mut extras: Vec<WinitExtra> =
                             Vec::with_capacity(cursor_elements.len() + border_elements.len());

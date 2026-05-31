@@ -25,8 +25,8 @@ use drm_fourcc::DrmFourcc;
 use smithay::{
     backend::renderer::{
         element::{
-            memory::{MemoryRenderBuffer, MemoryRenderBufferRenderElement},
             Kind,
+            memory::{MemoryRenderBuffer, MemoryRenderBufferRenderElement},
         },
         gles::GlesRenderer,
     },
@@ -113,10 +113,8 @@ impl WallpaperState {
         // dimensions as logical 1:1, and resolves physical scaling
         // internally via the renderer's output scale. We can stay in
         // logical coords throughout.
-        let src = Rectangle::<f64, Logical>::new(
-            Point::from((src_x, src_y)),
-            Size::from((src_w, src_h)),
-        );
+        let src =
+            Rectangle::<f64, Logical>::new(Point::from((src_x, src_y)), Size::from((src_w, src_h)));
         let dst_size = Size::<i32, Logical>::from((output_size.w, output_size.h));
         let render_pos = Point::<f64, Physical>::from((
             output_loc.x * output_scale,
@@ -137,10 +135,7 @@ impl WallpaperState {
 }
 
 fn resolve_path(explicit: Option<&str>) -> Option<PathBuf> {
-    if let Some(p) = explicit
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-    {
+    if let Some(p) = explicit.map(|s| s.trim()).filter(|s| !s.is_empty()) {
         let expanded = expand_home(p);
         if exists_and_readable(&expanded) {
             return Some(expanded);

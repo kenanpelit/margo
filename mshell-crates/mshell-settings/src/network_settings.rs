@@ -8,7 +8,9 @@ use mshell_utils::network::{
 };
 use reactive_graph::prelude::GetUntracked;
 use relm4::gtk::glib;
-use relm4::gtk::prelude::{BoxExt, ButtonExt, EditableExt, EntryExt, FileExt, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::{
+    BoxExt, ButtonExt, EditableExt, EntryExt, FileExt, OrientableExt, WidgetExt,
+};
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 use std::ops::Not;
 use std::sync::Arc;
@@ -583,25 +585,53 @@ impl Component for NetworkSettingsModel {
 
         // Build the editor controller first — its widget is referenced in
         // view_output!() via `model.editor_controller.widget()`.
-        let editor_controller = ConnectionEditorModel::builder()
-            .launch(())
-            .forward(sender.input_sender(), |output| match output {
-                ConnectionEditorOutput::Closed => NetworkSettingsInput::EditorClosed,
-            });
+        let editor_controller =
+            ConnectionEditorModel::builder()
+                .launch(())
+                .forward(sender.input_sender(), |output| match output {
+                    ConnectionEditorOutput::Closed => NetworkSettingsInput::EditorClosed,
+                });
 
         // ── Read initial proxy values from config ──────────────────────────
-        let proxy_mode = config_manager().config().network().proxy_mode().get_untracked();
-        let proxy_http = config_manager().config().network().proxy_http().get_untracked();
-        let proxy_https = config_manager().config().network().proxy_https().get_untracked();
-        let proxy_socks = config_manager().config().network().proxy_socks().get_untracked();
-        let proxy_ignore = config_manager().config().network().proxy_ignore().get_untracked();
-        let proxy_pac_url = config_manager().config().network().proxy_pac_url().get_untracked();
+        let proxy_mode = config_manager()
+            .config()
+            .network()
+            .proxy_mode()
+            .get_untracked();
+        let proxy_http = config_manager()
+            .config()
+            .network()
+            .proxy_http()
+            .get_untracked();
+        let proxy_https = config_manager()
+            .config()
+            .network()
+            .proxy_https()
+            .get_untracked();
+        let proxy_socks = config_manager()
+            .config()
+            .network()
+            .proxy_socks()
+            .get_untracked();
+        let proxy_ignore = config_manager()
+            .config()
+            .network()
+            .proxy_ignore()
+            .get_untracked();
+        let proxy_pac_url = config_manager()
+            .config()
+            .network()
+            .proxy_pac_url()
+            .get_untracked();
 
         let model = NetworkSettingsModel {
             wifi_available: wifi_opt.is_some(),
             wifi_enabled: wifi_opt.as_ref().map(|w| w.enabled.get()).unwrap_or(false),
             wifi_ssid: wifi_opt.as_ref().and_then(|w| w.ssid.get()),
-            access_points: wifi_opt.as_ref().map(|w| w.access_points.get()).unwrap_or_default(),
+            access_points: wifi_opt
+                .as_ref()
+                .map(|w| w.access_points.get())
+                .unwrap_or_default(),
             wired_available: wired_opt.is_some(),
             wired_status: wired_opt
                 .as_ref()
@@ -1038,10 +1068,8 @@ impl NetworkSettingsModel {
         }
 
         // Sort: connected AP first, then descending signal
-        let mut sorted: Vec<&Arc<AccessPoint>> = aps
-            .iter()
-            .filter(|a| !a.is_hidden.get())
-            .collect();
+        let mut sorted: Vec<&Arc<AccessPoint>> =
+            aps.iter().filter(|a| !a.is_hidden.get()).collect();
         sorted.sort_by(|a, b| {
             let a_active = active_ssid
                 .as_deref()
@@ -1212,10 +1240,7 @@ impl NetworkSettingsModel {
         }
     }
 
-    fn build_vpn_row(
-        conn: &ConnRow,
-        sender: &ComponentSender<NetworkSettingsModel>,
-    ) -> gtk::Box {
+    fn build_vpn_row(conn: &ConnRow, sender: &ComponentSender<NetworkSettingsModel>) -> gtk::Box {
         use relm4::gtk::prelude::*;
 
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
@@ -1234,8 +1259,7 @@ impl NetworkSettingsModel {
         name_lbl.set_halign(gtk::Align::Start);
         info.append(&name_lbl);
 
-        let state_lbl =
-            gtk::Label::new(Some(if conn.active { "Active" } else { "Inactive" }));
+        let state_lbl = gtk::Label::new(Some(if conn.active { "Active" } else { "Inactive" }));
         state_lbl.add_css_class("label-small");
         state_lbl.set_halign(gtk::Align::Start);
         info.append(&state_lbl);

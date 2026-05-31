@@ -299,7 +299,11 @@ impl Component for LauncherSettingsModel {
 
         rebuild_scripts_box(&widgets.scripts_box, &model.scripts, &sender);
         widgets.pass_store_entry.set_text(
-            &config_manager().config().pass().store_path().get_untracked(),
+            &config_manager()
+                .config()
+                .pass()
+                .store_path()
+                .get_untracked(),
         );
 
         let _ = root;
@@ -336,10 +340,7 @@ impl Component for LauncherSettingsModel {
             }
             LauncherSettingsInput::ClearClipboard => {
                 mshell_clipboard::clipboard_service().clear_history();
-                mshell_launcher::notify::toast(
-                    "Clipboard cleared",
-                    "All entries removed.",
-                );
+                mshell_launcher::notify::toast("Clipboard cleared", "All entries removed.");
             }
             LauncherSettingsInput::AddScript(name) => {
                 let name = name.trim().to_string();
@@ -400,8 +401,10 @@ fn rebuild_scripts_box(
     }
     if scripts.is_empty() {
         let empty = gtk::Label::builder()
-            .label("No startup scripts yet. Type a script name above and \
-                   click Add.")
+            .label(
+                "No startup scripts yet. Type a script name above and \
+                   click Add.",
+            )
             .halign(gtk::Align::Start)
             .xalign(0.0)
             .wrap(true)
@@ -464,7 +467,10 @@ fn rebuild_scripts_box(
             let name = name.clone();
             let sender = sender.clone();
             toggle.connect_active_notify(move |sw| {
-                sender.input(LauncherSettingsInput::SetAutostart(name.clone(), sw.is_active()));
+                sender.input(LauncherSettingsInput::SetAutostart(
+                    name.clone(),
+                    sw.is_active(),
+                ));
             });
         }
         row.append(&toggle);

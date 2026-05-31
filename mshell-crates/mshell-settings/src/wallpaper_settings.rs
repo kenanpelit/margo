@@ -579,29 +579,37 @@ impl Component for WallpaperSettingsModel {
 
         let sender_clone = sender.clone();
         effects.push(move |_| {
-            let value = config_manager()
-                .config()
-                .wallpaper()
-                .rotation_mode()
-                .get();
+            let value = config_manager().config().wallpaper().rotation_mode().get();
             sender_clone.input(WallpaperSettingsInput::RotationModeEffect(value));
         });
 
         let sender_clone = sender.clone();
         effects.push(move |_| {
-            let value = config_manager().config().wallpaper().daily_wallpaper_enabled().get();
+            let value = config_manager()
+                .config()
+                .wallpaper()
+                .daily_wallpaper_enabled()
+                .get();
             sender_clone.input(WallpaperSettingsInput::DailyEnabledEffect(value));
         });
 
         let sender_clone = sender.clone();
         effects.push(move |_| {
-            let value = config_manager().config().wallpaper().daily_wallpaper_source().get();
+            let value = config_manager()
+                .config()
+                .wallpaper()
+                .daily_wallpaper_source()
+                .get();
             sender_clone.input(WallpaperSettingsInput::DailySourceEffect(value));
         });
 
         let sender_clone = sender.clone();
         effects.push(move |_| {
-            let value = config_manager().config().wallpaper().daily_wallpaper_locale().get();
+            let value = config_manager()
+                .config()
+                .wallpaper()
+                .daily_wallpaper_locale()
+                .get();
             sender_clone.input(WallpaperSettingsInput::DailyLocaleEffect(value));
         });
 
@@ -741,10 +749,12 @@ impl Component for WallpaperSettingsModel {
             }
             WallpaperSettingsInput::DailySourceChanged(idx) => {
                 let src = if idx == 1 { "nasa" } else { "bing" }.to_string();
-                config_manager().update_config(|c| c.wallpaper.daily_wallpaper_source = src.clone());
+                config_manager()
+                    .update_config(|c| c.wallpaper.daily_wallpaper_source = src.clone());
             }
             WallpaperSettingsInput::DailyLocaleChanged(locale) => {
-                config_manager().update_config(|c| c.wallpaper.daily_wallpaper_locale = locale.clone());
+                config_manager()
+                    .update_config(|c| c.wallpaper.daily_wallpaper_locale = locale.clone());
             }
             WallpaperSettingsInput::FetchNowClicked => {
                 let source = self.daily_source.clone();
@@ -779,8 +789,11 @@ impl Component for WallpaperSettingsModel {
             Ok(path) => {
                 // On the main thread → safe to touch the reactive config store.
                 set_wallpaper(&path);
-                let name =
-                    path.file_name().and_then(|n| n.to_str()).unwrap_or("wallpaper").to_string();
+                let name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("wallpaper")
+                    .to_string();
                 notify("Daily wallpaper", &format!("Applied {name}"));
             }
             Err(e) => notify("Daily wallpaper failed", &e),
@@ -794,7 +807,14 @@ fn notify(summary: &str, body: &str) {
     let body = body.to_string();
     relm4::spawn(async move {
         let _ = tokio::process::Command::new("notify-send")
-            .args(["-a", "mshell", "-i", "preferences-desktop-wallpaper-symbolic", &summary, &body])
+            .args([
+                "-a",
+                "mshell",
+                "-i",
+                "preferences-desktop-wallpaper-symbolic",
+                &summary,
+                &body,
+            ])
             .status()
             .await;
     });

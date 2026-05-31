@@ -11,9 +11,7 @@
 
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
-use mshell_config::schema::config::{
-    ConfigStoreFields, MatugenStoreFields, ThemeStoreFields,
-};
+use mshell_config::schema::config::{ConfigStoreFields, MatugenStoreFields, ThemeStoreFields};
 use mshell_config::schema::themes::MatugenMode;
 use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk::Orientation;
@@ -94,12 +92,7 @@ impl Component for DarkModeModel {
 
         let sender_clone = sender.clone();
         effects.push(move |_| {
-            let mode = config_manager()
-                .config()
-                .theme()
-                .matugen()
-                .mode()
-                .get();
+            let mode = config_manager().config().theme().matugen().mode().get();
             sender_clone.input(DarkModeInput::SetMode(mode));
         });
 
@@ -119,12 +112,7 @@ impl Component for DarkModeModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        _sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             DarkModeInput::Clicked => {
                 config_manager().update_config(|config| {

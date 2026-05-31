@@ -114,21 +114,19 @@ impl Component for MargoTagModel {
         // opening on an already-existing tag wouldn't tick the
         // occupied dot.
         let ws_for_watch = params.clone();
-        sender.command(move |out, shutdown| {
-            async move {
-                let mut stream = ws_for_watch.windows.watch();
-                let shutdown_fut = shutdown.wait();
-                tokio::pin!(shutdown_fut);
-                loop {
-                    tokio::select! {
-                        () = &mut shutdown_fut => break,
-                        next = stream.next() => {
-                            match next {
-                                Some(count) => {
-                                    let _ = out.send(MargoTagCommandOutput::WindowsChanged(count));
-                                }
-                                None => break,
+        sender.command(move |out, shutdown| async move {
+            let mut stream = ws_for_watch.windows.watch();
+            let shutdown_fut = shutdown.wait();
+            tokio::pin!(shutdown_fut);
+            loop {
+                tokio::select! {
+                    () = &mut shutdown_fut => break,
+                    next = stream.next() => {
+                        match next {
+                            Some(count) => {
+                                let _ = out.send(MargoTagCommandOutput::WindowsChanged(count));
                             }
+                            None => break,
                         }
                     }
                 }
@@ -145,12 +143,7 @@ impl Component for MargoTagModel {
     // auto-call — which is why an earlier version of this file left
     // the active pill stuck on the initially-focused tag forever:
     // model state changed, but the GTK button's class list didn't.
-    fn update(
-        &mut self,
-        message: Self::Input,
-        _sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             MargoTagInput::ActiveUpdate(workspace_infos) => {
                 self.is_active = workspace_infos
@@ -175,11 +168,9 @@ impl Component for MargoTagModel {
                     command.arg("dispatch").arg("view").arg(mask.to_string());
                     match command.status().await {
                         Ok(status) if status.success() => {}
-                        Ok(status) => warn!(
-                            ?status,
-                            tag = id,
-                            "mctl dispatch view returned non-zero"
-                        ),
+                        Ok(status) => {
+                            warn!(?status, tag = id, "mctl dispatch view returned non-zero")
+                        }
                         Err(e) => warn!(error = %e, tag = id, "mctl dispatch view spawn failed"),
                     }
                 });

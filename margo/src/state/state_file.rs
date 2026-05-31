@@ -8,7 +8,7 @@
 //! correctness requirement. Atomically replaced via tmp-rename so
 //! readers never see a half-written file.
 
-use super::{state_file_path, MargoState};
+use super::{MargoState, state_file_path};
 use crate::MAX_TAGS;
 
 impl MargoState {
@@ -83,7 +83,11 @@ impl MargoState {
         let focused_mon_idx = self
             .input_pointer
             .last_monitor
-            .or_else(|| focused_idx.and_then(|i| self.clients.get(i)).map(|c| c.monitor))
+            .or_else(|| {
+                focused_idx
+                    .and_then(|i| self.clients.get(i))
+                    .map(|c| c.monitor)
+            })
             .unwrap_or(0);
         let outputs: Vec<_> = self
             .monitors
@@ -158,8 +162,11 @@ impl MargoState {
             .iter()
             .enumerate()
             .map(|(idx, c)| {
-                let mon_name = self.monitors.get(c.monitor)
-                    .map(|m| m.name.clone()).unwrap_or_default();
+                let mon_name = self
+                    .monitors
+                    .get(c.monitor)
+                    .map(|m| m.name.clone())
+                    .unwrap_or_default();
                 json!({
                     "idx": idx,
                     "monitor": mon_name,

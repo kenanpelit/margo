@@ -137,8 +137,7 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
     match command {
         MenuCommands::AppLauncher { tab, list_tabs } => {
             if list_tabs {
-                let tabs: Vec<String> =
-                    bus_command_with_reply("ListAppLauncherTabs").await?;
+                let tabs: Vec<String> = bus_command_with_reply("ListAppLauncherTabs").await?;
                 for t in tabs {
                     println!("{t}");
                 }

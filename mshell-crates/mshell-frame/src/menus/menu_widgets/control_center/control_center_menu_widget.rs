@@ -35,8 +35,14 @@ use crate::menus::menu_widgets::control_center::tiles::{
 use crate::menus::menu_widgets::dns::dns_menu_widget::{
     DnsMenuWidgetInit, DnsMenuWidgetInput, DnsMenuWidgetModel,
 };
+use crate::menus::menu_widgets::keep_awake::keep_awake_menu_widget::{
+    KeepAwakeMenuWidgetInit, KeepAwakeMenuWidgetInput, KeepAwakeMenuWidgetModel,
+};
 use crate::menus::menu_widgets::network::network_menu_widget::{
     NetworkMenuWidgetInit, NetworkMenuWidgetInput, NetworkMenuWidgetModel,
+};
+use crate::menus::menu_widgets::podman::podman_menu_widget::{
+    PodmanMenuWidgetInit, PodmanMenuWidgetInput, PodmanMenuWidgetModel,
 };
 use crate::menus::menu_widgets::power::power_menu_widget::{
     PowerMenuWidgetInit, PowerMenuWidgetModel,
@@ -44,14 +50,8 @@ use crate::menus::menu_widgets::power::power_menu_widget::{
 use crate::menus::menu_widgets::twilight::twilight_menu_widget::{
     TwilightMenuWidgetInit, TwilightMenuWidgetInput, TwilightMenuWidgetModel,
 };
-use crate::menus::menu_widgets::keep_awake::keep_awake_menu_widget::{
-    KeepAwakeMenuWidgetInit, KeepAwakeMenuWidgetInput, KeepAwakeMenuWidgetModel,
-};
 use crate::menus::menu_widgets::ufw::ufw_menu_widget::{
     UfwMenuWidgetInit, UfwMenuWidgetInput, UfwMenuWidgetModel,
-};
-use crate::menus::menu_widgets::podman::podman_menu_widget::{
-    PodmanMenuWidgetInit, PodmanMenuWidgetInput, PodmanMenuWidgetModel,
 };
 use crate::menus::menu_widgets::valent::valent_menu_widget::{
     ValentMenuWidgetInit, ValentMenuWidgetInput, ValentMenuWidgetModel,
@@ -164,9 +164,7 @@ impl Component for ControlCenterMenuWidgetModel {
                 ControlCenterHeaderOutput::Settings => {
                     ControlCenterMenuWidgetInput::_HeaderActionHandled
                 }
-                ControlCenterHeaderOutput::ToggleEdit => {
-                    ControlCenterMenuWidgetInput::ToggleEdit
-                }
+                ControlCenterHeaderOutput::ToggleEdit => ControlCenterMenuWidgetInput::ToggleEdit,
             });
 
         // ── Main-page components ─────────────────────────────────────────────
@@ -257,7 +255,11 @@ impl Component for ControlCenterMenuWidgetModel {
             Some(PAGE_BLUETOOTH),
         );
         stack.add_named(
-            &build_detail_page("Audio Out", sender.input_sender(), audio_out_detail.widget()),
+            &build_detail_page(
+                "Audio Out",
+                sender.input_sender(),
+                audio_out_detail.widget(),
+            ),
             Some(PAGE_AUDIO_OUT),
         );
         stack.add_named(
@@ -265,7 +267,11 @@ impl Component for ControlCenterMenuWidgetModel {
             Some(PAGE_MIC),
         );
         stack.add_named(
-            &build_detail_page("Battery & Power", sender.input_sender(), battery_detail.widget()),
+            &build_detail_page(
+                "Battery & Power",
+                sender.input_sender(),
+                battery_detail.widget(),
+            ),
             Some(PAGE_BATTERY),
         );
         stack.add_named(
@@ -273,7 +279,11 @@ impl Component for ControlCenterMenuWidgetModel {
             Some(PAGE_VPN),
         );
         stack.add_named(
-            &build_detail_page("Valent Connect", sender.input_sender(), valent_detail.widget()),
+            &build_detail_page(
+                "Valent Connect",
+                sender.input_sender(),
+                valent_detail.widget(),
+            ),
             Some(PAGE_VALENT),
         );
         stack.add_named(
@@ -281,7 +291,11 @@ impl Component for ControlCenterMenuWidgetModel {
             Some(PAGE_TWILIGHT),
         );
         stack.add_named(
-            &build_detail_page("Keep Awake", sender.input_sender(), keep_awake_detail.widget()),
+            &build_detail_page(
+                "Keep Awake",
+                sender.input_sender(),
+                keep_awake_detail.widget(),
+            ),
             Some(PAGE_KEEP_AWAKE),
         );
         stack.add_named(
@@ -325,12 +339,7 @@ impl Component for ControlCenterMenuWidgetModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             ControlCenterMenuWidgetInput::RequestSessionMenu => {
                 sender
@@ -355,9 +364,11 @@ impl Component for ControlCenterMenuWidgetModel {
                 // When the whole panel hides, snap back to main so the next
                 // open starts clean.
                 if !revealed {
-                    self.stack.set_transition_type(gtk::StackTransitionType::None);
+                    self.stack
+                        .set_transition_type(gtk::StackTransitionType::None);
                     self.stack.set_visible_child_name(PAGE_MAIN);
-                    self.stack.set_transition_type(gtk::StackTransitionType::SlideLeftRight);
+                    self.stack
+                        .set_transition_type(gtk::StackTransitionType::SlideLeftRight);
                     // Tell any active detail component that it's hidden.
                     self.bt_detail
                         .sender()

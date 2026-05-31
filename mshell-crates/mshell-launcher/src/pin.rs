@@ -103,7 +103,9 @@ impl PinStore {
             tracing::warn!(path = %parent.display(), error = %err, "launcher_pins: mkdir failed");
             return;
         }
-        let disk = Disk { pinned: self.set.clone() };
+        let disk = Disk {
+            pinned: self.set.clone(),
+        };
         let json = match serde_json::to_string_pretty(&disk) {
             Ok(s) => s,
             Err(err) => {
@@ -141,7 +143,10 @@ mod tests {
         let path = std::env::temp_dir().join(format!(
             "mshell_launcher_pins_{}_{}.json",
             std::process::id(),
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0)
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
         ));
         let _ = std::fs::remove_file(&path);
         PinStore::load_from(path)
@@ -168,7 +173,10 @@ mod tests {
         let path = std::env::temp_dir().join(format!(
             "mshell_launcher_pins_reload_{}_{}.json",
             std::process::id(),
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0)
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
         ));
         let _ = std::fs::remove_file(&path);
         let mut s = PinStore::load_from(path.clone());

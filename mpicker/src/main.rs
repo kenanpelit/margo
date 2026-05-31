@@ -131,9 +131,10 @@ fn main() -> Result<()> {
     if let Some(color) = picked {
         println!("{}", color);
         if cli.autocopy
-            && let Err(e) = wl_copy(&color) {
-                eprintln!("mpicker: wl-copy failed: {e}");
-            }
+            && let Err(e) = wl_copy(&color)
+        {
+            eprintln!("mpicker: wl-copy failed: {e}");
+        }
         if cli.notify {
             let _ = std::process::Command::new("notify-send")
                 .arg("--app-name=Color Picker")
@@ -307,10 +308,7 @@ fn build_overlay(
 /// Resolve which `gdk::Monitor` matches the wayland output by
 /// connector name — same heuristic the screenshot area_selector
 /// uses but copied locally since the helper is crate-private.
-fn find_gdk_monitor(
-    monitors: &gtk4::gio::ListModel,
-    output: &OutputInfo,
-) -> Option<gdk::Monitor> {
+fn find_gdk_monitor(monitors: &gtk4::gio::ListModel, output: &OutputInfo) -> Option<gdk::Monitor> {
     for i in 0..monitors.n_items() {
         let obj = monitors.item(i)?;
         let mon: gdk::Monitor = obj.downcast().ok()?;
@@ -333,7 +331,9 @@ fn enumerate_outputs() -> Result<Vec<OutputInfo>> {
     let monitors = display.monitors();
     let mut outputs = Vec::new();
     for i in 0..monitors.n_items() {
-        let Some(obj) = monitors.item(i) else { continue };
+        let Some(obj) = monitors.item(i) else {
+            continue;
+        };
         let Ok(mon): std::result::Result<gdk::Monitor, _> = obj.downcast() else {
             continue;
         };
@@ -575,9 +575,7 @@ fn rgba_image_to_cairo_surface(img: &RgbaImage) -> Result<ImageSurface, cairo::E
     let mut surface = ImageSurface::create(Format::ARgb32, w, h)?;
     let stride = surface.stride() as usize;
     {
-        let mut data = surface
-            .data()
-            .map_err(|_| cairo::Error::WriteError)?;
+        let mut data = surface.data().map_err(|_| cairo::Error::WriteError)?;
         for y in 0..(h as usize) {
             for x in 0..(w as usize) {
                 let p = img.get_pixel(x as u32, y as u32);

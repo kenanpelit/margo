@@ -98,7 +98,9 @@ impl Component for NetworkToggleMenuWidgetModel {
                     RevealerRowOutput::ActionButtonClicked => {
                         NetworkToggleMenuWidgetInput::ActionButtonClicked
                     }
-                    RevealerRowOutput::Revealed => NetworkToggleMenuWidgetInput::RevealerRowRevealed,
+                    RevealerRowOutput::Revealed => {
+                        NetworkToggleMenuWidgetInput::RevealerRowRevealed
+                    }
                     RevealerRowOutput::Hidden => NetworkToggleMenuWidgetInput::RevealerRowHidden,
                 });
 

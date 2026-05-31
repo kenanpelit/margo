@@ -20,7 +20,7 @@
 //! `toggle_scratchpad` mirrors the same flow against clients that
 //! were promoted via the legacy "no name, no title" path.
 
-use super::{matches_rule_text, FocusTarget, MargoState};
+use super::{FocusTarget, MargoState, matches_rule_text};
 use crate::layout::Rect;
 
 impl MargoState {
@@ -29,11 +29,7 @@ impl MargoState {
     /// supplied, whose title also matches. Used by
     /// `toggle_named_scratchpad` to locate an already-running instance
     /// before deciding whether to spawn a new one.
-    fn find_client_by_id_or_title(
-        &self,
-        name: Option<&str>,
-        title: Option<&str>,
-    ) -> Option<usize> {
+    fn find_client_by_id_or_title(&self, name: Option<&str>, title: Option<&str>) -> Option<usize> {
         // Use the same regex matcher the windowrule machinery uses so
         // bind authors can write `clipse`, `^clipse$`, or `clip(se|board)`
         // and get consistent semantics. The earlier `.contains()`
@@ -157,7 +153,8 @@ impl MargoState {
         // Re-map at the float position. `map_element(_, _, true)`
         // raises to the top of the scene, which is what we want for a
         // toggled-up scratchpad.
-        self.space.map_element(window.clone(), (c.float_geom.x, c.float_geom.y), true);
+        self.space
+            .map_element(window.clone(), (c.float_geom.x, c.float_geom.y), true);
         self.enforce_z_order();
         self.arrange_monitor(target_mon_idx);
         self.focus_surface(Some(FocusTarget::Window(window)));
@@ -284,12 +281,7 @@ impl MargoState {
     /// Hidden scratchpads are skipped — they have their own
     /// `toggle_named_scratchpad` dispatch and summoning them here
     /// would bypass the single-scratchpad enforcement.
-    pub fn summon(
-        &mut self,
-        name: Option<&str>,
-        title: Option<&str>,
-        spawn: Option<&str>,
-    ) {
+    pub fn summon(&mut self, name: Option<&str>, title: Option<&str>, spawn: Option<&str>) {
         let target = self.find_summonable_client(name, title);
         let Some(idx) = target else {
             if let Some(cmd) = spawn.filter(|s| !s.trim().is_empty())
@@ -351,11 +343,7 @@ impl MargoState {
     /// Like `find_client_by_id_or_title` but skips hidden scratchpads —
     /// summoning them would conflict with the named-scratchpad toggle
     /// dispatch and bypass single_scratchpad enforcement.
-    fn find_summonable_client(
-        &self,
-        name: Option<&str>,
-        title: Option<&str>,
-    ) -> Option<usize> {
+    fn find_summonable_client(&self, name: Option<&str>, title: Option<&str>) -> Option<usize> {
         let name_pat = name.unwrap_or("");
         let title_pat = title.unwrap_or("");
         for (idx, c) in self.clients.iter().enumerate() {
@@ -391,7 +379,9 @@ impl MargoState {
     /// vanilla tiled toplevel. Cheaper and more reliable than
     /// chasing the specific flag that's misbehaving.
     pub fn unscratchpad_focused(&mut self) {
-        let Some(idx) = self.focused_client_idx() else { return };
+        let Some(idx) = self.focused_client_idx() else {
+            return;
+        };
         let already_normal = !self.clients[idx].is_in_scratchpad
             && !self.clients[idx].is_named_scratchpad
             && !self.clients[idx].is_scratchpad_show
@@ -428,7 +418,8 @@ impl MargoState {
         // the scene). Active tagset already covers the recovered
         // window since `is_visible_on`'s scratchpad-guard no longer
         // suppresses it.
-        self.space.map_element(window.clone(), (geom.x, geom.y), true);
+        self.space
+            .map_element(window.clone(), (geom.x, geom.y), true);
         self.arrange_monitor(mon_idx);
         self.focus_surface(Some(FocusTarget::Window(window)));
         tracing::info!(
@@ -452,10 +443,7 @@ impl MargoState {
     /// the current focused window"). Mirrors mango's implementation
     /// faithfully enough that the pattern carries over.
     pub fn toggle_scratchpad(&mut self) {
-        if let Some(mon_idx) = self
-            .focused_client_idx()
-            .map(|i| self.clients[i].monitor)
-        {
+        if let Some(mon_idx) = self.focused_client_idx().map(|i| self.clients[i].monitor) {
             // First pass: if any anonymous scratchpad is currently
             // shown, hide them all. (single_scratchpad makes this
             // mostly the same as toggle_named, just keyed off the
@@ -471,10 +459,7 @@ impl MargoState {
 
             for i in to_toggle {
                 let c = &self.clients[i];
-                if self.config.single_scratchpad
-                    && c.is_named_scratchpad
-                    && !c.is_minimized
-                {
+                if self.config.single_scratchpad && c.is_named_scratchpad && !c.is_minimized {
                     self.clients[i].is_minimized = true;
                     let window = self.clients[i].window.clone();
                     self.space.unmap_elem(&window);

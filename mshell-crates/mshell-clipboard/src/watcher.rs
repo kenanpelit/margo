@@ -520,12 +520,7 @@ impl Dispatch<ExtDataControlDeviceV1, ()> for WatcherState {
                 // Password managers (KeePassXC / Bitwarden / KDE)
                 // tag secret copies with this hint mime — drop them
                 // entirely so passwords never enter history.
-                if skip_sensitive
-                    && pending
-                        .mime_types
-                        .iter()
-                        .any(|m| m == SENSITIVE_HINT_MIME)
-                {
+                if skip_sensitive && pending.mime_types.iter().any(|m| m == SENSITIVE_HINT_MIME) {
                     debug!("Skipped sensitive (password-manager) clipboard entry");
                     pending.offer.destroy();
                     return;

@@ -266,14 +266,14 @@ impl Component for DnsMenuWidgetModel {
 
         // Build preset rows + collect their apply buttons.
         let presets_box = gtk::Box::new(gtk::Orientation::Vertical, 6);
-        let mut preset_apply_buttons: Vec<(String, gtk::Button)> = Vec::with_capacity(PRESETS.len());
+        let mut preset_apply_buttons: Vec<(String, gtk::Button)> =
+            Vec::with_capacity(PRESETS.len());
         for (id, label, ips, icon) in PRESETS {
             let (row, apply_btn) = make_preset_row(label, ips, icon);
             let s = sender.clone();
             let action = format!("provider:{id}");
-            apply_btn.connect_clicked(move |_| {
-                s.input(DnsMenuWidgetInput::RunAction(action.clone()))
-            });
+            apply_btn
+                .connect_clicked(move |_| s.input(DnsMenuWidgetInput::RunAction(action.clone())));
             preset_apply_buttons.push((id.to_string(), apply_btn));
             presets_box.append(&row);
         }
@@ -305,12 +305,7 @@ impl Component for DnsMenuWidgetModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             DnsMenuWidgetInput::RunAction(action) => {
                 run_action(action, self.state.clone(), sender.clone());

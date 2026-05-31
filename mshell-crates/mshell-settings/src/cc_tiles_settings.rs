@@ -9,9 +9,9 @@
 //! `WidgetMenuSettingsModel` page when
 //! `kind == MenuKind::ControlCenter`.
 
+use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{ConfigStoreFields, ControlCenterConfigStoreFields};
-use mshell_common::scoped_effects::EffectScope;
 use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk::prelude::{BoxExt, ButtonExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
@@ -20,10 +20,22 @@ use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
 /// All known tile ids in the canonical default order.
 const ALL_TILE_IDS: &[&str] = &[
-    "wifi", "bluetooth", "audio_out", "mic", "vpn", "valent",
-    "battery", "keep_awake", "dnd", "airplane_mode",
-    "dark_mode", "night_light", "color_picker", "disk",
-    "ufw", "podman",
+    "wifi",
+    "bluetooth",
+    "audio_out",
+    "mic",
+    "vpn",
+    "valent",
+    "battery",
+    "keep_awake",
+    "dnd",
+    "airplane_mode",
+    "dark_mode",
+    "night_light",
+    "color_picker",
+    "disk",
+    "ufw",
+    "podman",
 ];
 
 fn tile_display_name(id: &str) -> &'static str {
@@ -221,7 +233,11 @@ fn build_tile_row(tile_id: &str, sender: &ComponentSender<CcTilesSettingsModel>)
     container.append(&up_btn);
     container.append(&down_btn);
 
-    TileRow { container, switch, wide_switch }
+    TileRow {
+        container,
+        switch,
+        wide_switch,
+    }
 }
 
 // ── Model ─────────────────────────────────────────────────────────────────────
@@ -346,9 +362,7 @@ impl Component for CcTilesSettingsModel {
                 let _ = cm.config().control_center().ufw().get();
                 let _ = cm.config().control_center().podman().get();
                 let _ = cm.config().control_center().wide_tiles().get();
-                let order = effective_order(
-                    &cm.config().control_center().tile_order().get(),
-                );
+                let order = effective_order(&cm.config().control_center().tile_order().get());
                 s.input(CcTilesSettingsInput::OrderChanged(order));
             });
         }
@@ -438,10 +452,7 @@ fn build_rows(
     order: &[String],
     sender: &ComponentSender<CcTilesSettingsModel>,
 ) -> Vec<TileRow> {
-    let rows: Vec<TileRow> = order
-        .iter()
-        .map(|id| build_tile_row(id, sender))
-        .collect();
+    let rows: Vec<TileRow> = order.iter().map(|id| build_tile_row(id, sender)).collect();
     for row in &rows {
         rows_box.append(&row.container);
     }

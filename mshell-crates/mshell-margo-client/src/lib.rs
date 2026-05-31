@@ -41,7 +41,7 @@ mod sync;
 /// Re-export so callers that want to peek at the raw snapshot
 /// (debug tooling, integration tests) can do so without a
 /// second JSON round-trip.
-pub use state_json::{read as read_state_json, StateJson};
+pub use state_json::{StateJson, read as read_state_json};
 
 // ── Reactive property ────────────────────────────────────────────────────────
 
@@ -147,8 +147,8 @@ impl<T: Clone + Send + Sync + 'static> Reactive<T> {
             .expect("Reactive<T> RwLock poisoned")
             .clone();
         let initial = futures::stream::once(async move { current });
-        let live = tokio_stream::wrappers::BroadcastStream::new(rx)
-            .filter_map(|r| async move { r.ok() });
+        let live =
+            tokio_stream::wrappers::BroadcastStream::new(rx).filter_map(|r| async move { r.ok() });
         Box::pin(initial.chain(live))
     }
 }
@@ -388,22 +388,46 @@ impl PartialEq for Client {
 pub enum MargoEvent {
     // Workspace lifecycle / focus — all named-field struct variants
     // matching upstream wayle-hyprland 0.2 exactly.
-    WorkspaceV2 { id: WorkspaceId, name: String },
-    CreateWorkspaceV2 { id: WorkspaceId, name: String },
-    DestroyWorkspaceV2 { id: WorkspaceId, name: String },
-    MoveWorkspaceV2 { id: WorkspaceId, name: String, monitor: String },
-    RenameWorkspace { id: WorkspaceId, name: String },
-    ActiveSpecialV2 { id: WorkspaceId, name: String, monitor: String },
+    WorkspaceV2 {
+        id: WorkspaceId,
+        name: String,
+    },
+    CreateWorkspaceV2 {
+        id: WorkspaceId,
+        name: String,
+    },
+    DestroyWorkspaceV2 {
+        id: WorkspaceId,
+        name: String,
+    },
+    MoveWorkspaceV2 {
+        id: WorkspaceId,
+        name: String,
+        monitor: String,
+    },
+    RenameWorkspace {
+        id: WorkspaceId,
+        name: String,
+    },
+    ActiveSpecialV2 {
+        id: WorkspaceId,
+        name: String,
+        monitor: String,
+    },
 
     // Client / focus.
-    ActiveWindowV2 { address: Address },
+    ActiveWindowV2 {
+        address: Address,
+    },
     OpenWindow {
         address: Address,
         workspace_name: String,
         class: String,
         title: String,
     },
-    CloseWindow { address: Address },
+    CloseWindow {
+        address: Address,
+    },
     MoveWindowV2 {
         address: Address,
         workspace_id: WorkspaceId,
@@ -411,8 +435,15 @@ pub enum MargoEvent {
     },
 
     // Monitor hotplug.
-    MonitorAddedV2 { id: MonitorId, name: String, description: String },
-    MonitorRemovedV2 { id: MonitorId, name: String },
+    MonitorAddedV2 {
+        id: MonitorId,
+        name: String,
+        description: String,
+    },
+    MonitorRemovedV2 {
+        id: MonitorId,
+        name: String,
+    },
 
     /// Catch-all for upstream variants we haven't mirrored.
     #[doc(hidden)]
@@ -477,7 +508,9 @@ impl MargoService {
                 "mshell-margo-client: initial state.json snapshot loaded"
             );
         } else {
-            tracing::warn!("mshell-margo-client: state.json not readable on startup; bar will fill on the first poll tick");
+            tracing::warn!(
+                "mshell-margo-client: state.json not readable on startup; bar will fill on the first poll tick"
+            );
         }
         sync::spawn(&service);
         Ok(service)
@@ -507,7 +540,11 @@ impl MargoService {
             // Pattern: `hl.dsp.focus({ workspace = "r-1" })` or
             // `… workspace = "5" …`. Extract the quoted token.
             extract_quoted(trimmed).map(|t| translate_workspace(&t))
-        } else { trimmed.strip_prefix("dispatch ").map(|rest| rest.split_whitespace().map(String::from).collect()) };
+        } else {
+            trimmed
+                .strip_prefix("dispatch ")
+                .map(|rest| rest.split_whitespace().map(String::from).collect())
+        };
 
         let Some(args) = mctl_args else {
             tracing::warn!(cmd = %trimmed, "dispatch: unrecognised command, ignoring");
@@ -544,11 +581,11 @@ impl MargoService {
         tracing::debug!(query = %query, "mshell-margo-client: eval");
         if query.contains("layout")
             && let Some(state) = state_json::read()
-                && let Some(out) = state.outputs.iter().find(|o| o.active)
-                && let Some(name) = state.layouts.get(out.layout_idx)
-            {
-                return Ok(name.clone());
-            }
+            && let Some(out) = state.outputs.iter().find(|o| o.active)
+            && let Some(name) = state.layouts.get(out.layout_idx)
+        {
+            return Ok(name.clone());
+        }
         Ok(String::new())
     }
 
@@ -602,7 +639,11 @@ impl MargoService {
         // Margo hasn't yet written a non-empty active_output —
         // fall back to the focused client's monitor as a
         // best-effort guess (matches the old startup-race behavior).
-        state.clients.iter().find(|c| c.focused).map(|c| c.monitor.clone())
+        state
+            .clients
+            .iter()
+            .find(|c| c.focused)
+            .map(|c| c.monitor.clone())
     }
 
     /// Snapshot the focused client.
@@ -612,10 +653,7 @@ impl MargoService {
             let c = state.clients.iter().find(|c| c.focused)?;
             // Mirror sync::client_address — keep both formulas
             // in lockstep (sync.rs comment marks the source-of-truth).
-            Address::new(format!(
-                "{:04x}{:08x}",
-                c.monitor_idx as u16, c.idx as u32
-            ))
+            Address::new(format!("{:04x}{:08x}", c.monitor_idx as u16, c.idx as u32))
         };
         self.clients
             .get()
@@ -635,8 +673,7 @@ impl MargoService {
     pub fn events(&self) -> Pin<Box<dyn Stream<Item = MargoEvent> + Send>> {
         let rx = self.event_tx.subscribe();
         Box::pin(
-            tokio_stream::wrappers::BroadcastStream::new(rx)
-                .filter_map(|r| async move { r.ok() }),
+            tokio_stream::wrappers::BroadcastStream::new(rx).filter_map(|r| async move { r.ok() }),
         )
     }
 }
@@ -673,4 +710,3 @@ fn extract_quoted(s: &str) -> Option<String> {
     let end = rest.find('"')?;
     Some(rest[..end].to_string())
 }
-

@@ -218,7 +218,8 @@ impl Component for CatwalkSettingsModel {
     fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             CatwalkSettingsInput::ThresholdChanged(v) => {
-                config_manager().update_config(move |c| c.bars.widgets.catwalk.minimum_threshold = v);
+                config_manager()
+                    .update_config(move |c| c.bars.widgets.catwalk.minimum_threshold = v);
             }
             CatwalkSettingsInput::HideBackgroundChanged(v) => {
                 config_manager().update_config(move |c| c.bars.widgets.catwalk.hide_background = v);

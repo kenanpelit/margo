@@ -137,11 +137,7 @@ impl Component for PrivacyModel {
             let snapshot: Vec<String> = recording_streams
                 .get()
                 .iter()
-                .map(|s| {
-                    s.application_name
-                        .get()
-                        .unwrap_or_else(|| s.name.get())
-                })
+                .map(|s| s.application_name.get().unwrap_or_else(|| s.name.get()))
                 .collect();
             let _ = out.send(PrivacyCommandOutput::MicChanged(snapshot));
         });
@@ -172,11 +168,7 @@ impl Component for PrivacyModel {
             .recording_streams
             .get()
             .iter()
-            .map(|s| {
-                s.application_name
-                    .get()
-                    .unwrap_or_else(|| s.name.get())
-            })
+            .map(|s| s.application_name.get().unwrap_or_else(|| s.name.get()))
             .collect();
 
         let model = PrivacyModel {
@@ -268,9 +260,7 @@ async fn camera_in_use() -> bool {
         .filter_map(|e| {
             let name = e.file_name();
             let s = name.to_string_lossy();
-            if s.starts_with("video")
-                && s.chars().skip(5).all(|c| c.is_ascii_digit())
-            {
+            if s.starts_with("video") && s.chars().skip(5).all(|c| c.is_ascii_digit()) {
                 Some(e.path())
             } else {
                 None

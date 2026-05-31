@@ -254,12 +254,7 @@ impl Component for PodmanMenuWidgetModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             PodmanMenuWidgetInput::RefreshNow => {
                 sender.command(|out, _shutdown| async move {
@@ -358,9 +353,7 @@ fn sync_view(model: &PodmanMenuWidgetModel, sender: &ComponentSender<PodmanMenuW
             .append(&placeholder_row("(no containers)"));
     } else {
         for c in &s.containers {
-            model
-                .containers_list
-                .append(&make_container_row(c, sender));
+            model.containers_list.append(&make_container_row(c, sender));
         }
     }
 
@@ -453,7 +446,12 @@ fn make_container_row(
             "media-pause-symbolic",
             "Stop",
             sender,
-            vec!["stop".to_string(), "-t".to_string(), "3".to_string(), c.id.clone()],
+            vec![
+                "stop".to_string(),
+                "-t".to_string(),
+                "3".to_string(),
+                c.id.clone(),
+            ],
         ));
         actions.append(&action_button(
             "view-refresh-symbolic",
@@ -529,10 +527,7 @@ fn make_image_row(
     row
 }
 
-fn make_pod_row(
-    p: &PodRow,
-    sender: &ComponentSender<PodmanMenuWidgetModel>,
-) -> gtk::ListBoxRow {
+fn make_pod_row(p: &PodRow, sender: &ComponentSender<PodmanMenuWidgetModel>) -> gtk::ListBoxRow {
     let row = gtk::ListBoxRow::new();
     row.set_activatable(false);
     row.set_selectable(false);
@@ -590,7 +585,12 @@ fn make_pod_row(
         "trash-symbolic",
         "Remove",
         sender,
-        vec!["pod".to_string(), "rm".to_string(), "-f".to_string(), p.id.clone()],
+        vec![
+            "pod".to_string(),
+            "rm".to_string(),
+            "-f".to_string(),
+            p.id.clone(),
+        ],
     ));
     outer.append(&actions);
 
@@ -643,17 +643,20 @@ async fn fetch_panel_state() -> PodmanPanelState {
     }
 
     if let Some(json) = run_capture("podman", &["ps", "--all", "--format", "json"]).await
-        && let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(&json) {
-            state.containers = arr.iter().map(parse_container_row).collect();
-        }
+        && let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(&json)
+    {
+        state.containers = arr.iter().map(parse_container_row).collect();
+    }
     if let Some(json) = run_capture("podman", &["images", "--format", "json"]).await
-        && let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(&json) {
-            state.images = arr.iter().map(parse_image_row).collect();
-        }
+        && let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(&json)
+    {
+        state.images = arr.iter().map(parse_image_row).collect();
+    }
     if let Some(json) = run_capture("podman", &["pod", "ps", "--format", "json"]).await
-        && let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(&json) {
-            state.pods = arr.iter().map(parse_pod_row).collect();
-        }
+        && let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(&json)
+    {
+        state.pods = arr.iter().map(parse_pod_row).collect();
+    }
 
     state
 }

@@ -20,11 +20,7 @@
 //! layout) and emits `CloseMenu` so the drawer collapses.
 
 use mshell_margo_client::read_state_json;
-use relm4::{
-    Component, ComponentParts, ComponentSender, gtk,
-    gtk::glib,
-    gtk::prelude::*,
-};
+use relm4::{Component, ComponentParts, ComponentSender, gtk, gtk::glib, gtk::prelude::*};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
@@ -183,12 +179,7 @@ impl Component for MargoLayoutMenuWidgetModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             MargoLayoutMenuWidgetInput::Activate(idx) => {
                 // Optimistic highlight: paint the new row selected
@@ -224,7 +215,11 @@ fn current_active_layout_idx() -> Option<usize> {
         .iter()
         .find(|o| o.name == state.active_output)?;
     let idx = focused.layout_idx;
-    if idx < state.layouts.len() { Some(idx) } else { None }
+    if idx < state.layouts.len() {
+        Some(idx)
+    } else {
+        None
+    }
 }
 
 fn apply_active_class(buttons: &[gtk::Button], active: Option<usize>) {

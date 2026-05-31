@@ -33,8 +33,8 @@ use std::sync::mpsc;
 use std::thread;
 
 use accesskit::{
-    ActionHandler, ActionRequest, ActivationHandler, DeactivationHandler, Live, Node, NodeId,
-    Role, Tree, TreeUpdate,
+    ActionHandler, ActionRequest, ActivationHandler, DeactivationHandler, Live, Node, NodeId, Role,
+    Tree, TreeUpdate,
 };
 use accesskit_unix::Adapter;
 
@@ -108,7 +108,10 @@ impl A11yState {
     /// Publish the current window list + focus to the adapter.
     /// `windows` is iterated in compositor order; the focused
     /// window's id becomes the tree's `focus`.
-    pub fn publish_window_list<'a>(&mut self, windows: impl IntoIterator<Item = &'a WindowSnapshot>) {
+    pub fn publish_window_list<'a>(
+        &mut self,
+        windows: impl IntoIterator<Item = &'a WindowSnapshot>,
+    ) {
         let Some(tx) = self.to_accesskit.as_ref() else {
             return;
         };

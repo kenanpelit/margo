@@ -103,12 +103,21 @@ impl WorkspaceData {
         D: Dispatch<ExtWorkspaceHandleV1, ExtWorkspaceManagerV1> + 'static,
     {
         let workspace = client
-            .create_resource::<ExtWorkspaceHandleV1, _, D>(display, manager.version(), manager.clone())
+            .create_resource::<ExtWorkspaceHandleV1, _, D>(
+                display,
+                manager.version(),
+                manager.clone(),
+            )
             .unwrap();
         manager.workspace(&workspace);
         workspace.id(self.id.clone());
         workspace.name(self.name.clone());
-        workspace.coordinates(self.coordinates.iter().flat_map(|x| x.to_ne_bytes()).collect());
+        workspace.coordinates(
+            self.coordinates
+                .iter()
+                .flat_map(|x| x.to_ne_bytes())
+                .collect(),
+        );
         workspace.state(self.proto_state());
         workspace.capabilities(ext_workspace_handle_v1::WorkspaceCapabilities::Activate);
         self.instances.push(workspace);
@@ -128,7 +137,11 @@ impl GroupData {
         D: Dispatch<ExtWorkspaceGroupHandleV1, ExtWorkspaceManagerV1> + 'static,
     {
         let group = client
-            .create_resource::<ExtWorkspaceGroupHandleV1, _, D>(display, manager.version(), manager.clone())
+            .create_resource::<ExtWorkspaceGroupHandleV1, _, D>(
+                display,
+                manager.version(),
+                manager.clone(),
+            )
             .unwrap();
         manager.workspace_group(&group);
         group.capabilities(ext_workspace_group_handle_v1::GroupCapabilities::empty());
@@ -256,7 +269,10 @@ pub fn refresh(state: &mut MargoState) {
                         data.coordinates[0] = mon.mon_idx as u32;
                         for inst in &data.instances {
                             inst.coordinates(
-                                data.coordinates.iter().flat_map(|x| x.to_ne_bytes()).collect(),
+                                data.coordinates
+                                    .iter()
+                                    .flat_map(|x| x.to_ne_bytes())
+                                    .collect(),
                             );
                         }
                         changed = true;
@@ -272,7 +288,8 @@ pub fn refresh(state: &mut MargoState) {
                         instances: Vec::new(),
                     };
                     let display = proto.display.clone();
-                    let managers: Vec<ExtWorkspaceManagerV1> = proto.instances.keys().cloned().collect();
+                    let managers: Vec<ExtWorkspaceManagerV1> =
+                        proto.instances.keys().cloned().collect();
                     for manager in &managers {
                         if let Some(client) = manager.client() {
                             data.add_instance::<MargoState>(&display, &client, manager);
@@ -290,7 +307,9 @@ pub fn refresh(state: &mut MargoState) {
         if proto.groups.contains_key(&mon.output) {
             continue;
         }
-        let mut data = GroupData { instances: Vec::new() };
+        let mut data = GroupData {
+            instances: Vec::new(),
+        };
         let display = proto.display.clone();
         let managers: Vec<ExtWorkspaceManagerV1> = proto.instances.keys().cloned().collect();
         for manager in &managers {
@@ -323,7 +342,8 @@ pub fn refresh(state: &mut MargoState) {
     }
 }
 
-impl<D> GlobalDispatch<ExtWorkspaceManagerV1, ExtWorkspaceGlobalData, D> for ExtWorkspaceManagerState
+impl<D> GlobalDispatch<ExtWorkspaceManagerV1, ExtWorkspaceGlobalData, D>
+    for ExtWorkspaceManagerState
 where
     D: GlobalDispatch<ExtWorkspaceManagerV1, ExtWorkspaceGlobalData>,
     D: Dispatch<ExtWorkspaceManagerV1, ()>,
@@ -347,12 +367,17 @@ where
         let mut new_workspaces: HashMap<Output, Vec<ExtWorkspaceHandleV1>> = HashMap::new();
         for ((output, _), data) in proto.workspaces.iter_mut() {
             let workspace = data.add_instance::<D>(handle, client, &manager).clone();
-            new_workspaces.entry(output.clone()).or_default().push(workspace);
+            new_workspaces
+                .entry(output.clone())
+                .or_default()
+                .push(workspace);
         }
 
         // Existing groups → new client, wiring enters.
         for (output, group_data) in proto.groups.iter_mut() {
-            let group = group_data.add_instance::<D>(handle, client, &manager, output).clone();
+            let group = group_data
+                .add_instance::<D>(handle, client, &manager, output)
+                .clone();
             for workspace in new_workspaces.get(output).into_iter().flatten() {
                 group.workspace_enter(workspace);
             }
@@ -412,7 +437,10 @@ where
     }
 
     fn destroyed(state: &mut D, _client: ClientId, resource: &ExtWorkspaceManagerV1, _data: &()) {
-        state.ext_workspace_manager_state().instances.retain(|m, _| m != resource);
+        state
+            .ext_workspace_manager_state()
+            .instances
+            .retain(|m, _| m != resource);
     }
 }
 

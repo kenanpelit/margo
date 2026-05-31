@@ -56,11 +56,10 @@ fn main() -> std::process::ExitCode {
                     println!("\nrules using niri-style features:");
                     header_printed = true;
                 }
-                let label = r
-                    .id
-                    .as_deref()
-                    .or(r.title.as_deref())
-                    .unwrap_or("(no match)");
+                let label =
+                    r.id.as_deref()
+                        .or(r.title.as_deref())
+                        .unwrap_or("(no match)");
                 let label = if label.len() > 60 {
                     format!("{}…", &label[..59])
                 } else {

@@ -361,10 +361,7 @@ impl Component for OverviewSettingsModel {
     ) -> ComponentParts<Self> {
         let cfg = read_config();
         let model = OverviewSettingsModel {
-            style_is_scroller: matches!(
-                cfg.overview_style,
-                margo_config::OverviewStyle::Scroller
-            ),
+            style_is_scroller: matches!(cfg.overview_style, margo_config::OverviewStyle::Scroller),
             scroller_zoom: cfg.scroller_overview_zoom,
             scroller_gap: cfg.scroller_overview_gap,
             scroller_loop: cfg.scroller_overview_loop,
@@ -398,7 +395,10 @@ impl Component for OverviewSettingsModel {
                 apply("scroller_overview_gap", v.to_string());
             }
             OverviewSettingsInput::SetScrollerLoop(on) => {
-                apply("scroller_overview_loop", if on { "1" } else { "0" }.to_string());
+                apply(
+                    "scroller_overview_loop",
+                    if on { "1" } else { "0" }.to_string(),
+                );
             }
             OverviewSettingsInput::SetGridZoom(v) => {
                 apply("overview_zoom", format!("{v:.2}"));

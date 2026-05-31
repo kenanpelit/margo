@@ -72,9 +72,10 @@ impl ValentReport {
             return None;
         }
         if !preferred_id.is_empty()
-            && let Some(d) = self.devices.iter().find(|d| d.id == preferred_id) {
-                return Some(d);
-            }
+            && let Some(d) = self.devices.iter().find(|d| d.id == preferred_id)
+        {
+            return Some(d);
+        }
         self.devices
             .iter()
             .find(|d| d.reachable)
@@ -127,7 +128,13 @@ pub(crate) async fn probe() -> ValentReport {
     }
 
     let managed = match run(&[
-        "call", "--session", "--dest", DEST, "--object-path", ROOT_PATH, "--method",
+        "call",
+        "--session",
+        "--dest",
+        DEST,
+        "--object-path",
+        ROOT_PATH,
+        "--method",
         "org.freedesktop.DBus.ObjectManager.GetManagedObjects",
     ])
     .await
@@ -150,13 +157,22 @@ pub(crate) async fn probe() -> ValentReport {
 
     devices.sort_by_key(|a| a.name.to_lowercase());
 
-    ValentReport { daemon_available: true, devices }
+    ValentReport {
+        daemon_available: true,
+        devices,
+    }
 }
 
 async fn daemon_available() -> bool {
     match run(&[
-        "call", "--session", "--dest", "org.freedesktop.DBus", "--object-path",
-        "/org/freedesktop/DBus", "--method", "org.freedesktop.DBus.ListNames",
+        "call",
+        "--session",
+        "--dest",
+        "org.freedesktop.DBus",
+        "--object-path",
+        "/org/freedesktop/DBus",
+        "--method",
+        "org.freedesktop.DBus.ListNames",
     ])
     .await
     {
@@ -173,7 +189,8 @@ fn parse_devices(raw: &str) -> Vec<Device> {
         .expect("valent device regex")
     });
     static ID_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"'Id':\s*<'([^']+)'>").unwrap());
-    static NAME_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"'Name':\s*<'([^']+)'>").unwrap());
+    static NAME_RE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"'Name':\s*<'([^']+)'>").unwrap());
     static STATE_RE: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"'State':\s*<uint32\s+(\d+)>").unwrap());
 
@@ -185,9 +202,7 @@ fn parse_devices(raw: &str) -> Vec<Device> {
         let id = ID_RE
             .captures(props)
             .map(|c| c[1].to_string())
-            .unwrap_or_else(|| {
-                path.split("/Device/").nth(1).unwrap_or(path).to_string()
-            });
+            .unwrap_or_else(|| path.split("/Device/").nth(1).unwrap_or(path).to_string());
         let name = NAME_RE
             .captures(props)
             .map(|c| c[1].to_string())
@@ -226,9 +241,10 @@ async fn fetch_battery(dev: &mut Device) {
         return;
     };
     if let Some(c) = PCT_RE.captures(&out)
-        && let Ok(pct) = c[1].parse::<f64>() {
-            dev.battery_charge = Some(pct.round() as i32);
-        }
+        && let Ok(pct) = c[1].parse::<f64>()
+    {
+        dev.battery_charge = Some(pct.round() as i32);
+    }
     if let Some(c) = CHG_RE.captures(&out) {
         dev.battery_charging = &c[1] == "true";
     }
@@ -256,8 +272,15 @@ async fn fetch_connectivity(dev: &mut Device) {
 
 async fn describe(path: &str, action: &str) -> Result<String, String> {
     run(&[
-        "call", "--session", "--dest", DEST, "--object-path", path, "--method",
-        "org.gtk.Actions.Describe", action,
+        "call",
+        "--session",
+        "--dest",
+        DEST,
+        "--object-path",
+        path,
+        "--method",
+        "org.gtk.Actions.Describe",
+        action,
     ])
     .await
 }
@@ -273,8 +296,17 @@ async fn activate(device_id: &str, action: &str) {
 async fn activate_param(device_id: &str, action: &str, param: &str) {
     let path = device_path(device_id);
     if let Err(e) = run(&[
-        "call", "--session", "--dest", DEST, "--object-path", &path, "--method",
-        "org.gtk.Actions.Activate", action, param, "{}",
+        "call",
+        "--session",
+        "--dest",
+        DEST,
+        "--object-path",
+        &path,
+        "--method",
+        "org.gtk.Actions.Activate",
+        action,
+        param,
+        "{}",
     ])
     .await
     {
@@ -332,7 +364,11 @@ pub(crate) async fn refresh_discovery() {
 // ── gdbus helper ────────────────────────────────────────────────
 
 async fn run(args: &[&str]) -> Result<String, String> {
-    match tokio::process::Command::new("gdbus").args(args).output().await {
+    match tokio::process::Command::new("gdbus")
+        .args(args)
+        .output()
+        .await
+    {
         Ok(o) if o.status.success() => Ok(String::from_utf8_lossy(&o.stdout).into_owned()),
         Ok(o) => Err(String::from_utf8_lossy(&o.stderr).trim().to_string()),
         Err(e) => Err(format!("gdbus spawn: {e}")),

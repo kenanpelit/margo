@@ -1,10 +1,10 @@
 mod bars;
 mod common_widgets;
-mod keep_awake;
-mod keybinds;
 pub mod frame;
 mod frame_draw_widget;
 mod frame_spacer;
+mod keep_awake;
+mod keybinds;
 mod menus;
 #[cfg(feature = "wasm-plugins")]
 mod plugin_providers;

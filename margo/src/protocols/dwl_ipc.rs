@@ -8,19 +8,19 @@
 use smithay::{
     output::Output,
     reexports::wayland_server::{
-        backend::ClientId, Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New,
+        Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, backend::ClientId,
     },
 };
 use tracing::debug;
 
 use crate::{
+    MAX_TAGS,
     layout::LayoutId,
     protocols::generated::dwl_ipc::{
         zdwl_ipc_manager_v2::{self, ZdwlIpcManagerV2},
         zdwl_ipc_output_v2::{self, TagState, ZdwlIpcOutputV2},
     },
     state::MargoState,
-    MAX_TAGS,
 };
 
 /// All layout IDs in a fixed order matching the IPC layout index.
@@ -98,15 +98,14 @@ impl Dispatch<ZdwlIpcManagerV2, ()> for MargoState {
                 let ipc_output = data_init.init(id, ());
 
                 // Find which monitor this wl_output belongs to
-                let mon_idx = match Output::from_resource(&output) { Some(smithay_output) => {
-                    state
+                let mon_idx = match Output::from_resource(&output) {
+                    Some(smithay_output) => state
                         .monitors
                         .iter()
                         .position(|m| m.output == smithay_output)
-                        .unwrap_or(0)
-                } _ => {
-                    0
-                }};
+                        .unwrap_or(0),
+                    _ => 0,
+                };
 
                 // Send initial state for this output
                 if mon_idx < state.monitors.len() {
@@ -123,8 +122,7 @@ impl Dispatch<ZdwlIpcManagerV2, ()> for MargoState {
         }
     }
 
-    fn destroyed(_state: &mut Self, _client: ClientId, _resource: &ZdwlIpcManagerV2, _data: &()) {
-    }
+    fn destroyed(_state: &mut Self, _client: ClientId, _resource: &ZdwlIpcManagerV2, _data: &()) {}
 }
 
 // ── Dispatch: ZdwlIpcOutputV2 requests ───────────────────────────────────────
@@ -146,7 +144,10 @@ impl Dispatch<ZdwlIpcOutputV2, ()> for MargoState {
             .position(|m| m.dwl_ipc.outputs.iter().any(|o| o == resource));
 
         match request {
-            zdwl_ipc_output_v2::Request::SetTags { tagmask, toggle_tagset } => {
+            zdwl_ipc_output_v2::Request::SetTags {
+                tagmask,
+                toggle_tagset,
+            } => {
                 let idx = mon_idx.unwrap_or(0);
                 if idx < state.monitors.len() && tagmask != 0 {
                     let sel = if toggle_tagset != 0 {
@@ -238,8 +239,10 @@ fn send_monitor_state(state: &MargoState, mon_idx: usize, out: &ZdwlIpcOutputV2)
     // per-tag state
     for tag in 0..MAX_TAGS {
         let bit = 1u32 << tag;
-        let occupied =
-            state.clients.iter().any(|c| c.monitor == mon_idx && (c.tags & bit) != 0) as u32;
+        let occupied = state
+            .clients
+            .iter()
+            .any(|c| c.monitor == mon_idx && (c.tags & bit) != 0) as u32;
         let focused = state
             .focused_client_idx()
             .map(|i| (state.clients[i].tags & bit) != 0 && state.clients[i].monitor == mon_idx)
@@ -262,10 +265,7 @@ fn send_monitor_state(state: &MargoState, mon_idx: usize, out: &ZdwlIpcOutputV2)
 
     // layout
     let layout = mon.current_layout();
-    let layout_idx = ALL_LAYOUTS
-        .iter()
-        .position(|&l| l == layout)
-        .unwrap_or(0) as u32;
+    let layout_idx = ALL_LAYOUTS.iter().position(|&l| l == layout).unwrap_or(0) as u32;
     out.layout(layout_idx);
     out.layout_symbol(layout.symbol().to_string());
 

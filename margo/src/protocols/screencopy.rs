@@ -17,8 +17,8 @@
 //!    copies the rendered surface into the client buffer.
 
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use smithay::backend::allocator::dmabuf::Dmabuf;
@@ -26,7 +26,7 @@ use smithay::backend::allocator::{Buffer, Fourcc};
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::sync::SyncPoint;
 use smithay::output::Output;
-use smithay::reexports::calloop::{generic::Generic, Interest, LoopHandle, Mode, PostAction};
+use smithay::reexports::calloop::{Interest, LoopHandle, Mode, PostAction, generic::Generic};
 use smithay::reexports::wayland_protocols_wlr::screencopy::v1::server::{
     zwlr_screencopy_frame_v1, zwlr_screencopy_manager_v1,
 };
@@ -228,7 +228,13 @@ where
                     frame.failed();
                     return;
                 };
-                (frame, overlay_cursor, mode.size, Point::from((0, 0)), output)
+                (
+                    frame,
+                    overlay_cursor,
+                    mode.size,
+                    Point::from((0, 0)),
+                    output,
+                )
             }
             zwlr_screencopy_manager_v1::Request::CaptureOutputRegion {
                 frame,
@@ -271,13 +277,7 @@ where
                 let untrans = output_transform
                     .invert()
                     .transform_rect_in(clamped, &output_physical);
-                (
-                    frame,
-                    overlay_cursor,
-                    untrans.size,
-                    clamped.loc,
-                    output,
-                )
+                (frame, overlay_cursor, untrans.size, clamped.loc, output)
             }
             zwlr_screencopy_manager_v1::Request::Destroy => return,
             _ => unreachable!("zwlr_screencopy_manager_v1 request not in protocol XML"),

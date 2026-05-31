@@ -133,11 +133,7 @@ impl Component for ValentModel {
         // (the panel's device switcher writes it).
         let mut effects = EffectScope::new();
         effects.push(|_| {
-            let _ = config_manager()
-                .config()
-                .valent()
-                .main_device_id()
-                .get();
+            let _ = config_manager().config().valent().main_device_id().get();
         });
 
         let model = ValentModel {
@@ -161,12 +157,7 @@ impl Component for ValentModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             ValentInput::Clicked => {
                 let _ = sender.output(ValentOutput::Clicked);
@@ -211,7 +202,9 @@ fn icon_for(report: Option<&ValentReport>) -> &'static str {
 }
 
 fn battery_label(report: Option<&ValentReport>) -> String {
-    let Some(r) = report else { return String::new() };
+    let Some(r) = report else {
+        return String::new();
+    };
     match r.main_device(&preferred_id()) {
         Some(d) => d
             .battery_charge
@@ -238,7 +231,11 @@ fn tooltip(report: Option<&ValentReport>) -> String {
         lines.push("Disconnected".to_string());
     } else {
         if let Some(c) = d.battery_charge {
-            let chg = if d.battery_charging { " (charging)" } else { "" };
+            let chg = if d.battery_charging {
+                " (charging)"
+            } else {
+                ""
+            };
             lines.push(format!("Battery: {c}%{chg}"));
         }
         if !d.network_type.is_empty() {

@@ -12,9 +12,7 @@ use mshell_config::schema::wallpaper::{ContrastFilterStrength, ThemeFilterStreng
 use mshell_style::user_css::style_utils::list_available_styles;
 use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk::glib;
-use relm4::gtk::prelude::{
-    BoxExt, ButtonExt, CastNone, ListModelExt, OrientableExt, WidgetExt,
-};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, CastNone, ListModelExt, OrientableExt, WidgetExt};
 use relm4::prelude::FactoryVecDeque;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::path::PathBuf;
@@ -1463,4 +1461,3 @@ fn available_app_icon_themes() -> Vec<String> {
     themes.sort();
     themes
 }
-

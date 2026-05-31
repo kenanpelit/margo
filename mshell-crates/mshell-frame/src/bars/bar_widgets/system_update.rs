@@ -247,12 +247,7 @@ impl Component for SystemUpdateModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             SystemUpdateInput::Clicked => {
                 // Open the System Updates panel; the panel's Update
@@ -291,7 +286,11 @@ fn configured_interval() -> Duration {
         .check_interval_minutes()
         .get_untracked();
     let dur = Duration::from_secs((minutes as u64).saturating_mul(60));
-    if dur < MIN_INTERVAL { MIN_INTERVAL } else { dur }
+    if dur < MIN_INTERVAL {
+        MIN_INTERVAL
+    } else {
+        dur
+    }
 }
 
 // ── View helpers ────────────────────────────────────────────────
@@ -301,7 +300,11 @@ fn count_of(report: Option<&UpdateReport>) -> usize {
 }
 
 fn css_classes(report: Option<&UpdateReport>) -> Vec<&'static str> {
-    let mut classes = vec!["ok-button-surface", "ok-bar-widget", "system-update-bar-widget"];
+    let mut classes = vec![
+        "ok-button-surface",
+        "ok-bar-widget",
+        "system-update-bar-widget",
+    ];
     match report {
         Some(r) if r.error.is_some() => classes.push("error"),
         Some(r) if r.total() > 0 => classes.push("has-updates"),

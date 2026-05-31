@@ -22,9 +22,7 @@
 use crate::bars::bar_widgets::sysstat::{
     find_cpu_temp_sensor_pub, read_cpu_stat_pub, read_temp_millideg_pub,
 };
-use relm4::gtk::prelude::{
-    BoxExt, DrawingAreaExt, DrawingAreaExtManual, OrientableExt, WidgetExt,
-};
+use relm4::gtk::prelude::{BoxExt, DrawingAreaExt, DrawingAreaExtManual, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, RelmWidgetExt, gtk};
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -555,8 +553,8 @@ impl Component for CpuDashboardMenuWidgetModel {
                         self.cpu_percent = ((busy * 100) / delta_total) as u32;
                         self.user_percent =
                             ((user.saturating_sub(self.prev_user) * 100) / delta_total) as u32;
-                        self.system_percent = ((system.saturating_sub(self.prev_system) * 100)
-                            / delta_total) as u32;
+                        self.system_percent =
+                            ((system.saturating_sub(self.prev_system) * 100) / delta_total) as u32;
                     }
                     self.prev_total = total;
                     self.prev_idle = idle;
@@ -610,7 +608,11 @@ impl Component for CpuDashboardMenuWidgetModel {
                     container.append(&bar);
                     container.append(&pct_label);
                     widgets.cores_box.append(&container);
-                    self.core_rows.push(CoreRow { container, bar, pct_label });
+                    self.core_rows.push(CoreRow {
+                        container,
+                        bar,
+                        pct_label,
+                    });
                 }
                 while self.core_rows.len() > self.cores.percent.len() {
                     if let Some(row) = self.core_rows.pop() {
@@ -655,7 +657,10 @@ impl Component for CpuDashboardMenuWidgetModel {
 
 impl CpuDashboardMenuWidgetModel {
     fn identity_line(&self) -> String {
-        format!("{} · {}C / {}T", self.cpu_model, self.cpu_cores, self.cpu_threads)
+        format!(
+            "{} · {}C / {}T",
+            self.cpu_model, self.cpu_cores, self.cpu_threads
+        )
     }
 
     fn swap_fraction(&self) -> f64 {
@@ -714,10 +719,14 @@ fn read_cpu_freq_ghz() -> Option<f32> {
     let mut n = 0u32;
     for line in s.lines() {
         if let Some(rest) = line.strip_prefix("cpu MHz")
-            && let Some(v) = rest.split(':').nth(1).and_then(|x| x.trim().parse::<f32>().ok()) {
-                sum += v;
-                n += 1;
-            }
+            && let Some(v) = rest
+                .split(':')
+                .nth(1)
+                .and_then(|x| x.trim().parse::<f32>().ok())
+        {
+            sum += v;
+            n += 1;
+        }
     }
     if n == 0 {
         return None;
@@ -739,11 +748,19 @@ fn read_cpu_info() -> (String, usize, usize) {
         } else if model.is_empty()
             && let Some(rest) = line.strip_prefix("model name")
         {
-            model = rest.split(':').nth(1).map(|x| x.trim().to_string()).unwrap_or_default();
+            model = rest
+                .split(':')
+                .nth(1)
+                .map(|x| x.trim().to_string())
+                .unwrap_or_default();
         } else if cores == 0
             && let Some(rest) = line.strip_prefix("cpu cores")
         {
-            cores = rest.split(':').nth(1).and_then(|x| x.trim().parse().ok()).unwrap_or(0);
+            cores = rest
+                .split(':')
+                .nth(1)
+                .and_then(|x| x.trim().parse().ok())
+                .unwrap_or(0);
         }
     }
     if cores == 0 {
@@ -770,7 +787,12 @@ fn read_mem_detail() -> Option<(u64, u64, u64, u64)> {
     let mut swap_total = 0u64;
     let mut swap_free = 0u64;
     for line in s.lines() {
-        let val = |rest: &str| -> u64 { rest.split_whitespace().next().and_then(|x| x.parse().ok()).unwrap_or(0) };
+        let val = |rest: &str| -> u64 {
+            rest.split_whitespace()
+                .next()
+                .and_then(|x| x.parse().ok())
+                .unwrap_or(0)
+        };
         if let Some(r) = line.strip_prefix("MemTotal:") {
             total = val(r);
         } else if let Some(r) = line.strip_prefix("MemAvailable:") {

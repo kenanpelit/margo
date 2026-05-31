@@ -3,13 +3,13 @@
 //! Uses the zdwl_ipc_unstable_v2 Wayland protocol to query and control margo.
 //! Connects to the compositor via the standard WAYLAND_DISPLAY socket.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
 use wayland_client::{
-    globals::{registry_queue_init, GlobalListContents},
-    protocol::{wl_output, wl_registry},
     Connection, Dispatch, EventQueue, QueueHandle,
+    globals::{GlobalListContents, registry_queue_init},
+    protocol::{wl_output, wl_registry},
 };
 
 use mctl::actions::{ACTIONS, Group};
@@ -556,8 +556,7 @@ enum TwilightCmd {
     },
     /// Live-tweak one config field. Persists until reload — the
     /// on-disk config isn't touched.
-    #[command(
-        long_about = "Live-tweak one twilight config field. The change \
+    #[command(long_about = "Live-tweak one twilight config field. The change \
                       persists until the next `mctl reload` — the on-disk \
                       config file is NOT modified.\n\
                       \n\
@@ -573,8 +572,7 @@ enum TwilightCmd {
                       EXAMPLES:\n  \
                         mctl twilight set mode=schedule       # switch to preset schedule\n  \
                         mctl twilight set night_temp=2200     # warmer nights\n  \
-                        mctl twilight set enabled=0           # disable until reload"
-    )]
+                        mctl twilight set enabled=0           # disable until reload")]
     Set {
         /// `field=value`. Supported fields: `day_temp`,
         /// `night_temp`, `day_gamma`, `night_gamma`, `transition_s`,
@@ -699,16 +697,19 @@ impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for IpcState {
         _: &Connection,
         qh: &QueueHandle<Self>,
     ) {
-        if let wl_registry::Event::Global { name, interface, version } = event {
+        if let wl_registry::Event::Global {
+            name,
+            interface,
+            version,
+        } = event
+        {
             match interface.as_str() {
                 "zdwl_ipc_manager_v2" => {
-                    let mgr: ZdwlIpcManagerV2 =
-                        registry.bind(name, version.min(2), qh, ());
+                    let mgr: ZdwlIpcManagerV2 = registry.bind(name, version.min(2), qh, ());
                     state.manager = Some(mgr);
                 }
                 "wl_output" => {
-                    let wl_out: wl_output::WlOutput =
-                        registry.bind(name, version.min(3), qh, name);
+                    let wl_out: wl_output::WlOutput = registry.bind(name, version.min(3), qh, name);
                     let idx = state.outputs.len();
                     state.outputs.push(OutputInfo {
                         wl_output: Some(wl_out.clone()),
@@ -732,7 +733,10 @@ impl Dispatch<wl_output::WlOutput, u32> for IpcState {
         _qh: &QueueHandle<Self>,
     ) {
         if let wl_output::Event::Name { name } = event
-            && let Some(o) = state.outputs.iter_mut().find(|o| o.wl_output.as_ref() == Some(proxy))
+            && let Some(o) = state
+                .outputs
+                .iter_mut()
+                .find(|o| o.wl_output.as_ref() == Some(proxy))
         {
             o.name = name;
         }
@@ -772,7 +776,12 @@ impl Dispatch<ZdwlIpcOutputV2, usize> for IpcState {
         };
         match event {
             Event::Active { active } => out.active = active != 0,
-            Event::Tag { tag, state: tag_state, clients, focused } => {
+            Event::Tag {
+                tag,
+                state: tag_state,
+                clients,
+                focused,
+            } => {
                 if let Some(t) = out.tags.get_mut(tag as usize) {
                     t.state = match tag_state {
                         wayland_client::WEnum::Value(v) => v as u32,
@@ -811,13 +820,22 @@ fn main() -> Result<()> {
     // generating completions during a package install or
     // sanity-checking a windowrule pattern in their editor.
     match &args.command {
-        Command::Actions { verbose, group, names } => {
+        Command::Actions {
+            verbose,
+            group,
+            names,
+        } => {
             return cmd_actions(*verbose, group.as_deref(), *names);
         }
         Command::Completions { shell } => {
             return cmd_completions(*shell);
         }
-        Command::Rules { config, appid, title, verbose } => {
+        Command::Rules {
+            config,
+            appid,
+            title,
+            verbose,
+        } => {
             return cmd_rules(config.as_deref(), appid, title, *verbose);
         }
         Command::CheckConfig { config } => {
@@ -825,7 +843,13 @@ fn main() -> Result<()> {
         }
         // The state-file commands don't need a Wayland connection.
         // They read whatever margo last wrote out.
-        Command::Clients { json, tag, monitor, app_id, wide } => {
+        Command::Clients {
+            json,
+            tag,
+            monitor,
+            app_id,
+            wide,
+        } => {
             return cmd_clients(*json, *tag, monitor.as_deref(), app_id.as_deref(), *wide);
         }
         Command::Outputs { json } => {
@@ -859,36 +883,39 @@ fn main() -> Result<()> {
     let mut state = IpcState::default();
 
     // Bind manager + outputs
-    globals
-        .contents()
-        .with_list(|list| {
-            for global in list {
-                match global.interface.as_str() {
-                    "zdwl_ipc_manager_v2" => {
-                        let mgr: ZdwlIpcManagerV2 =
-                            globals.registry().bind(global.name, global.version.min(2), &qh, ());
-                        state.manager = Some(mgr);
-                    }
-                    "wl_output" => {
-                        // Bind to v4+ so the connector `Name`
-                        // event fires (`wl_output.name` was added
-                        // in protocol version 4). Older v3 only
-                        // carries Geometry / Mode / Done / Scale
-                        // — no connector name, which is why
-                        // `mctl status`'s `output=` field used to
-                        // print empty.
-                        let wl_out: wl_output::WlOutput = globals
+    globals.contents().with_list(|list| {
+        for global in list {
+            match global.interface.as_str() {
+                "zdwl_ipc_manager_v2" => {
+                    let mgr: ZdwlIpcManagerV2 =
+                        globals
                             .registry()
-                            .bind(global.name, global.version.min(4), &qh, global.name);
-                        state.outputs.push(OutputInfo {
-                            wl_output: Some(wl_out),
-                            ..Default::default()
-                        });
-                    }
-                    _ => {}
+                            .bind(global.name, global.version.min(2), &qh, ());
+                    state.manager = Some(mgr);
                 }
+                "wl_output" => {
+                    // Bind to v4+ so the connector `Name`
+                    // event fires (`wl_output.name` was added
+                    // in protocol version 4). Older v3 only
+                    // carries Geometry / Mode / Done / Scale
+                    // — no connector name, which is why
+                    // `mctl status`'s `output=` field used to
+                    // print empty.
+                    let wl_out: wl_output::WlOutput = globals.registry().bind(
+                        global.name,
+                        global.version.min(4),
+                        &qh,
+                        global.name,
+                    );
+                    state.outputs.push(OutputInfo {
+                        wl_output: Some(wl_out),
+                        ..Default::default()
+                    });
+                }
+                _ => {}
             }
-        });
+        }
+    });
 
     if state.manager.is_none() {
         bail!("compositor does not support zdwl_ipc_manager_v2 — is margo running?");
@@ -922,7 +949,10 @@ fn main() -> Result<()> {
 
     // Execute command
     match args.command {
-        Command::Dispatch { name, args: cmd_args } => {
+        Command::Dispatch {
+            name,
+            args: cmd_args,
+        } => {
             let a: Vec<&str> = cmd_args.iter().map(String::as_str).collect();
             let get = |i: usize| a.get(i).copied().unwrap_or("").to_string();
             ipc_out.dispatch(name, get(0), get(1), get(2), get(3), get(4));
@@ -1029,14 +1059,12 @@ fn main() -> Result<()> {
             // line buried in journalctl. `--force` keeps the old
             // permissive behaviour.
             if !force {
-                let report = margo_config::validator::validate_config(None)
-                    .unwrap_or_else(|e| {
-                        eprintln!("error: validator could not read config: {e}");
-                        std::process::exit(2);
-                    });
+                let report = margo_config::validator::validate_config(None).unwrap_or_else(|e| {
+                    eprintln!("error: validator could not read config: {e}");
+                    std::process::exit(2);
+                });
                 if report.has_errors() {
-                    let colored =
-                        std::io::IsTerminal::is_terminal(&std::io::stderr());
+                    let colored = std::io::IsTerminal::is_terminal(&std::io::stderr());
                     for d in &report.diagnostics {
                         if d.is_error() {
                             eprint!("{}", d.render(colored));
@@ -1053,8 +1081,7 @@ fn main() -> Result<()> {
                     std::process::exit(1);
                 }
                 if report.has_warnings() {
-                    let colored =
-                        std::io::IsTerminal::is_terminal(&std::io::stderr());
+                    let colored = std::io::IsTerminal::is_terminal(&std::io::stderr());
                     for d in &report.diagnostics {
                         if !d.is_error() {
                             eprint!("{}", d.render(colored));
@@ -1064,7 +1091,11 @@ fn main() -> Result<()> {
                     eprintln!(
                         "mctl reload: proceeding with {} warning{}.",
                         report.warnings().count(),
-                        if report.warnings().count() == 1 { "" } else { "s" }
+                        if report.warnings().count() == 1 {
+                            ""
+                        } else {
+                            "s"
+                        }
                     );
                 }
             }
@@ -1087,8 +1118,12 @@ fn main() -> Result<()> {
             //   set     → slot 4 = "field=value"
             //   reset   → no args
             match action {
-                TwilightCmd::Status { .. } => unreachable!("Status is handled before this match arm"),
-                TwilightCmd::Preset { .. } => unreachable!("Preset is handled before this match arm"),
+                TwilightCmd::Status { .. } => {
+                    unreachable!("Status is handled before this match arm")
+                }
+                TwilightCmd::Preset { .. } => {
+                    unreachable!("Preset is handled before this match arm")
+                }
                 TwilightCmd::Preview { kelvin, gamma } => {
                     ipc_out.dispatch(
                         "twilight_preview".to_string(),
@@ -1206,25 +1241,34 @@ fn main() -> Result<()> {
             // back to the dwl-ipc snapshot if the file isn't there
             // (margo-version mismatch, race on boot, etc.).
             let used_state_file = if json {
-                match read_state_file() { Ok(rich) => {
-                    println!("{}", serde_json::to_string_pretty(&rich)?);
-                    true
-                } _ => {
-                    print_status_json(&state)?;
-                    true
-                }}
-            } else { match read_state_file() { Ok(rich) => {
-                print_status_rich(&rich, args.output.as_deref());
-                true
-            } _ => {
-                false
-            }}};
+                match read_state_file() {
+                    Ok(rich) => {
+                        println!("{}", serde_json::to_string_pretty(&rich)?);
+                        true
+                    }
+                    _ => {
+                        print_status_json(&state)?;
+                        true
+                    }
+                }
+            } else {
+                match read_state_file() {
+                    Ok(rich) => {
+                        print_status_rich(&rich, args.output.as_deref());
+                        true
+                    }
+                    _ => false,
+                }
+            };
             if !used_state_file {
                 print_status(&state, target_idx);
             }
         }
         Command::Watch => {
-            println!("Watching output '{}' (Ctrl-C to stop)…", state.outputs[target_idx].name);
+            println!(
+                "Watching output '{}' (Ctrl-C to stop)…",
+                state.outputs[target_idx].name
+            );
             loop {
                 eq.blocking_dispatch(&mut state)?;
                 if state.ready {
@@ -1294,7 +1338,11 @@ fn cmd_actions(verbose: bool, group_filter: Option<&str>, names_only: bool) -> R
         }
         matched_any = true;
         writeln!(out)?;
-        writeln!(out, "── {} ─────────────────────────────────────", g.label())?;
+        writeln!(
+            out,
+            "── {} ─────────────────────────────────────",
+            g.label()
+        )?;
         for action in group_actions {
             let mut spellings = String::from(action.name);
             for alias in action.aliases {
@@ -1315,9 +1363,7 @@ fn cmd_actions(verbose: bool, group_filter: Option<&str>, names_only: bool) -> R
         }
     }
 
-    if !matched_any
-        && let Some(filter) = group_filter
-    {
+    if !matched_any && let Some(filter) = group_filter {
         bail!(
             "no group matches '{filter}'. Available: \
              Tag, Focus, Layout, Scroller, Window, Scratchpad, Overview, System"
@@ -1397,7 +1443,7 @@ fn cmd_rules(
     title: &str,
     verbose: bool,
 ) -> Result<()> {
-    use margo_config::{parse_config, WindowRule};
+    use margo_config::{WindowRule, parse_config};
 
     let cfg_path = config_override
         .map(|p| p.to_path_buf())
@@ -1578,8 +1624,8 @@ fn print_rule(rule: &margo_config::WindowRule) {
 }
 
 fn cmd_twilight_status(as_json: bool) -> Result<()> {
-    let state = read_state_file()
-        .map_err(|e| anyhow::anyhow!("cannot read margo state.json: {e}"))?;
+    let state =
+        read_state_file().map_err(|e| anyhow::anyhow!("cannot read margo state.json: {e}"))?;
     let tw = state
         .get("twilight")
         .cloned()
@@ -1600,8 +1646,14 @@ fn cmd_twilight_status(as_json: bool) -> Result<()> {
     let cur_g = tw.get("current_gamma_pct").and_then(|v| v.as_u64());
     let day_k = tw.get("day_temp_k").and_then(|v| v.as_u64()).unwrap_or(0);
     let nig_k = tw.get("night_temp_k").and_then(|v| v.as_u64()).unwrap_or(0);
-    let day_g = tw.get("day_gamma_pct").and_then(|v| v.as_u64()).unwrap_or(0);
-    let nig_g = tw.get("night_gamma_pct").and_then(|v| v.as_u64()).unwrap_or(0);
+    let day_g = tw
+        .get("day_gamma_pct")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let nig_g = tw
+        .get("night_gamma_pct")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
 
     let colored = std::io::IsTerminal::is_terminal(&std::io::stdout());
     let (b, dim, r) = if colored {
@@ -1614,9 +1666,7 @@ fn cmd_twilight_status(as_json: bool) -> Result<()> {
         if enabled { "ON" } else { "off" },
         mode
     );
-    println!(
-        "  {dim}phase{r}   = {phase}    {dim}source{r} = {source}"
-    );
+    println!("  {dim}phase{r}   = {phase}    {dim}source{r} = {source}");
     match (cur_k, cur_g) {
         (Some(k), Some(g)) => {
             println!("  {dim}current{r} = {b}{k}K{r} @ {b}{g}%{r}");
@@ -1669,12 +1719,8 @@ fn cmd_twilight_preset(action: &TwilightPresetCmd) -> Result<()> {
         }
         TwilightPresetCmd::Remove { name } => cmd_twilight_preset_remove(&dir, name),
         TwilightPresetCmd::Schedule { action } => match action {
-            TwilightScheduleCmd::Set { time, name } => {
-                cmd_twilight_schedule_set(&dir, time, name)
-            }
-            TwilightScheduleCmd::Remove { time } => {
-                cmd_twilight_schedule_remove(&dir, time)
-            }
+            TwilightScheduleCmd::Set { time, name } => cmd_twilight_schedule_set(&dir, time, name),
+            TwilightScheduleCmd::Remove { time } => cmd_twilight_schedule_remove(&dir, time),
         },
     }
 }
@@ -1697,7 +1743,11 @@ fn cmd_twilight_preset_list(dir: &std::path::Path) -> Result<()> {
             if p.extension().and_then(|s| s.to_str()) != Some("toml") {
                 continue;
             }
-            let name = p.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
+            let name = p
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_string();
             let parsed = read_preset_file(&p);
             names.push((name, parsed));
         }
@@ -1756,12 +1806,7 @@ fn cmd_twilight_preset_show(dir: &std::path::Path, name: &str) -> Result<()> {
     Ok(())
 }
 
-fn cmd_twilight_preset_set(
-    dir: &std::path::Path,
-    name: &str,
-    temp: u32,
-    gamma: u32,
-) -> Result<()> {
+fn cmd_twilight_preset_set(dir: &std::path::Path, name: &str, temp: u32, gamma: u32) -> Result<()> {
     validate_preset_name(name)?;
     if !(1000..=25000).contains(&temp) {
         anyhow::bail!("temp must be 1000–25000, got {temp}");
@@ -1824,9 +1869,8 @@ fn cmd_twilight_preset_remove(dir: &std::path::Path, name: &str) -> Result<()> {
             if !out.ends_with('\n') {
                 out.push('\n');
             }
-            std::fs::write(&schedule_path, out).map_err(|e| {
-                anyhow::anyhow!("cannot rewrite {}: {e}", schedule_path.display())
-            })?;
+            std::fs::write(&schedule_path, out)
+                .map_err(|e| anyhow::anyhow!("cannot rewrite {}: {e}", schedule_path.display()))?;
             println!("removed {dropped} schedule line(s) referencing {name:?}");
         }
     }
@@ -1834,11 +1878,7 @@ fn cmd_twilight_preset_remove(dir: &std::path::Path, name: &str) -> Result<()> {
     Ok(())
 }
 
-fn cmd_twilight_schedule_set(
-    dir: &std::path::Path,
-    time: &str,
-    name: &str,
-) -> Result<()> {
+fn cmd_twilight_schedule_set(dir: &std::path::Path, time: &str, name: &str) -> Result<()> {
     let normalized = normalize_hhmm(time)?;
     validate_preset_name(name)?;
     // Guard against pointing the schedule at a preset that doesn't
@@ -1971,9 +2011,7 @@ fn validate_preset_name(name: &str) -> Result<()> {
         anyhow::bail!("preset name cannot be empty");
     }
     if name.contains('/') || name.contains('\\') || name.starts_with('.') {
-        anyhow::bail!(
-            "preset name {name:?} is invalid — no slashes, no leading dot"
-        );
+        anyhow::bail!("preset name {name:?} is invalid — no slashes, no leading dot");
     }
     Ok(())
 }
@@ -2023,12 +2061,10 @@ fn request_reload() {
         for global in list {
             match global.interface.as_str() {
                 "zdwl_ipc_manager_v2" => {
-                    let m: ZdwlIpcManagerV2 = globals.registry().bind(
-                        global.name,
-                        global.version.min(2),
-                        &qh,
-                        (),
-                    );
+                    let m: ZdwlIpcManagerV2 =
+                        globals
+                            .registry()
+                            .bind(global.name, global.version.min(2), &qh, ());
                     mgr = Some(m);
                 }
                 "wl_output" if output.is_none() => {
@@ -2073,8 +2109,8 @@ fn request_reload() {
 
 fn cmd_config_errors() -> Result<()> {
     use margo_config::diagnostics::{ConfigDiagnostic, Severity};
-    let state = read_state_file()
-        .map_err(|e| anyhow::anyhow!("cannot read margo state.json: {e}"))?;
+    let state =
+        read_state_file().map_err(|e| anyhow::anyhow!("cannot read margo state.json: {e}"))?;
     let entries = state
         .get("config_errors")
         .and_then(|v| v.as_array())
@@ -2144,14 +2180,12 @@ fn cmd_check_config(config_override: Option<&std::path::Path>) -> Result<()> {
     use margo_config::diagnostics::{ConfigDiagnostic, Severity};
     use std::collections::HashMap;
 
-    let cfg_path = config_override
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| {
-            std::path::PathBuf::from(format!(
-                "{}/.config/margo/config.conf",
-                std::env::var("HOME").unwrap_or_else(|_| ".".to_string())
-            ))
-        });
+    let cfg_path = config_override.map(|p| p.to_path_buf()).unwrap_or_else(|| {
+        std::path::PathBuf::from(format!(
+            "{}/.config/margo/config.conf",
+            std::env::var("HOME").unwrap_or_else(|_| ".".to_string())
+        ))
+    });
 
     if !cfg_path.exists() {
         eprintln!("error: config file not found: {}", cfg_path.display());
@@ -2161,8 +2195,8 @@ fn cmd_check_config(config_override: Option<&std::path::Path>) -> Result<()> {
     // Pass 1 — structured validator. Picks up trailing/leading/doubled
     // commas in CSV-shaped values, missing `=`, unknown top-level keys,
     // unresolved include/source paths.
-    let mut report = margo_config::validator::validate_config(Some(&cfg_path))
-        .unwrap_or_else(|e| {
+    let mut report =
+        margo_config::validator::validate_config(Some(&cfg_path)).unwrap_or_else(|e| {
             eprintln!("error: validator could not read config: {e}");
             std::process::exit(2);
         });
@@ -2185,7 +2219,9 @@ fn cmd_check_config(config_override: Option<&std::path::Path>) -> Result<()> {
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
-        let Some(eq_pos) = raw.find('=') else { continue };
+        let Some(eq_pos) = raw.find('=') else {
+            continue;
+        };
         let key = raw[..eq_pos].trim();
         let val = raw[eq_pos + 1..].trim();
 
@@ -2217,10 +2253,7 @@ fn cmd_check_config(config_override: Option<&std::path::Path>) -> Result<()> {
                         | "layer_name"
                 ) && let Err(e) = regex::Regex::new(v_raw.trim())
                 {
-                    let pat_col = raw
-                        .find(v_raw.trim())
-                        .map(|i| i + 1)
-                        .unwrap_or(eq_pos + 2);
+                    let pat_col = raw.find(v_raw.trim()).map(|i| i + 1).unwrap_or(eq_pos + 2);
                     report.push(ConfigDiagnostic {
                         path: cfg_path.clone(),
                         line: lineno,
@@ -2343,11 +2376,7 @@ fn select_output(state: &IpcState, name: Option<&str>) -> Result<usize> {
         None => {
             // Prefer the active (focused) output, fall back to index 0.
             // The `.or(Some(0))` guarantees a `Some`, so this never errors.
-            Ok(state
-                .outputs
-                .iter()
-                .position(|o| o.active)
-                .unwrap_or(0))
+            Ok(state.outputs.iter().position(|o| o.active).unwrap_or(0))
         }
     }
 }
@@ -2431,7 +2460,8 @@ fn print_status(state: &IpcState, idx: usize) {
     println!();
     println!(
         "{dim}layouts:{reset} {}",
-        state.layouts
+        state
+            .layouts
             .iter()
             .enumerate()
             .map(|(i, l)| format!("{i}:{l}"))
@@ -2458,10 +2488,17 @@ fn print_status_rich(state: &serde_json::Value, output_filter: Option<&str>) {
         Some(o) => o,
         None => return,
     };
-    let clients = state["clients"].as_array().map(|v| v.as_slice()).unwrap_or(&[]);
+    let clients = state["clients"]
+        .as_array()
+        .map(|v| v.as_slice())
+        .unwrap_or(&[]);
     let layout_names: Vec<String> = state["layouts"]
         .as_array()
-        .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
     let tag_count = state["tag_count"].as_u64().unwrap_or(9) as usize;
 
@@ -2489,19 +2526,14 @@ fn print_status_rich(state: &serde_json::Value, output_filter: Option<&str>) {
             println!();
         }
         printed_any = true;
-        println!(
-            "{active_marker}{bold}{name}{reset}  {dim}layout {reset}{cyan}{layout}{reset}"
-        );
+        println!("{active_marker}{bold}{name}{reset}  {dim}layout {reset}{cyan}{layout}{reset}");
 
         // Focused window on this output (find from clients array).
         let mon_idx = out["x"].as_i64(); // unused — we match by name
         let _ = mon_idx;
         let focused = clients
             .iter()
-            .find(|c| {
-                c["focused"].as_bool() == Some(true)
-                    && c["monitor"].as_str() == Some(name)
-            });
+            .find(|c| c["focused"].as_bool() == Some(true) && c["monitor"].as_str() == Some(name));
         if let Some(c) = focused {
             let app = c["app_id"].as_str().unwrap_or("");
             let title = c["title"].as_str().unwrap_or("");
@@ -2517,9 +2549,7 @@ fn print_status_rich(state: &serde_json::Value, output_filter: Option<&str>) {
             } else {
                 format!("  {}", flags.join(" "))
             };
-            println!(
-                "    {dim}focused{reset}: {bold}{app}{reset} · {title}{flags_str}"
-            );
+            println!("    {dim}focused{reset}: {bold}{app}{reset} · {title}{flags_str}");
             let w = c["width"].as_i64().unwrap_or(0);
             let h = c["height"].as_i64().unwrap_or(0);
             if w > 0 && h > 0 {
@@ -2602,8 +2632,8 @@ fn read_state_file() -> Result<serde_json::Value> {
             path.display()
         )
     })?;
-    let json: serde_json::Value = serde_json::from_str(&body)
-        .with_context(|| format!("parse {}", path.display()))?;
+    let json: serde_json::Value =
+        serde_json::from_str(&body).with_context(|| format!("parse {}", path.display()))?;
     Ok(json)
 }
 
@@ -2864,7 +2894,10 @@ fn cmd_focused(json_out: bool) -> Result<()> {
     let clients = state["clients"]
         .as_array()
         .ok_or_else(|| anyhow::anyhow!("state file missing `clients` array"))?;
-    let Some(focused) = clients.iter().find(|c| c["focused"].as_bool() == Some(true)) else {
+    let Some(focused) = clients
+        .iter()
+        .find(|c| c["focused"].as_bool() == Some(true))
+    else {
         if json_out {
             println!("null");
         } else {

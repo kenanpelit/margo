@@ -18,28 +18,24 @@ use smithay::{
     backend::{
         allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice},
         drm::{
+            DrmDevice, DrmDeviceFd, DrmNode,
             compositor::{DrmCompositor, FrameFlags},
             exporter::gbm::GbmFramebufferExporter,
-            DrmDevice, DrmDeviceFd, DrmNode,
         },
     },
     output::{Mode as OutputMode, Output, PhysicalProperties, Subpixel},
-    reexports::drm::control::{connector, crtc, Device as DrmDeviceTrait},
+    reexports::drm::control::{Device as DrmDeviceTrait, connector, crtc},
 };
 use tracing::{info, warn};
 
 use super::{
-    build_render_elements,
+    BackendData, GammaProps, OutputDevice, build_render_elements,
     helpers::{find_crtc, smithay_transform},
     mode::select_drm_mode,
-    BackendData, GammaProps, OutputDevice,
 };
 use crate::state::MargoState;
 
-pub(super) fn rescan_outputs(
-    backend_data: &Rc<RefCell<BackendData>>,
-    state: &mut MargoState,
-) {
+pub(super) fn rescan_outputs(backend_data: &Rc<RefCell<BackendData>>, state: &mut MargoState) {
     // Phase 1: remove disconnected outputs.
     let mut bd = backend_data.borrow_mut();
     let BackendData {
@@ -81,8 +77,7 @@ pub(super) fn rescan_outputs(
     // Phase 2: add newly-connected outputs.
     let mut added_any = false;
     let mut bd = backend_data.borrow_mut();
-    let used_crtcs: std::collections::HashSet<crtc::Handle> =
-        bd.outputs.keys().copied().collect();
+    let used_crtcs: std::collections::HashSet<crtc::Handle> = bd.outputs.keys().copied().collect();
     let resources = match bd.drm.resource_handles() {
         Ok(r) => r,
         Err(e) => {
@@ -144,11 +139,17 @@ pub(super) fn rescan_outputs(
             &elements,
             [0.1, 0.1, 0.1, 1.0],
             FrameFlags::DEFAULT,
-        ) { Err(e) => {
-            tracing::warn!("hotplug initial render failed for {}: {e:?}", od.output.name());
-        } _ => {
-            let _ = od.compositor.queue_frame(());
-        }}
+        ) {
+            Err(e) => {
+                tracing::warn!(
+                    "hotplug initial render failed for {}: {e:?}",
+                    od.output.name()
+                );
+            }
+            _ => {
+                let _ = od.compositor.queue_frame(());
+            }
+        }
         bd.outputs.insert(crtc_h, od);
     }
     drop(bd);
@@ -202,13 +203,21 @@ pub(super) fn setup_connector(
             (r.x, r.y)
         } else {
             let x_offset = state.space.outputs().fold(0i32, |acc, o| {
-                acc + state.space.output_geometry(o).map(|g| g.size.w).unwrap_or(0)
+                acc + state
+                    .space
+                    .output_geometry(o)
+                    .map(|g| g.size.w)
+                    .unwrap_or(0)
             });
             (x_offset, 0)
         }
     } else {
         let x_offset = state.space.outputs().fold(0i32, |acc, o| {
-            acc + state.space.output_geometry(o).map(|g| g.size.w).unwrap_or(0)
+            acc + state
+                .space
+                .output_geometry(o)
+                .map(|g| g.size.w)
+                .unwrap_or(0)
         });
         (x_offset, 0)
     };
@@ -360,11 +369,10 @@ pub(super) fn setup_connector(
 }
 
 fn migrate_clients_off_output(state: &mut MargoState, removed: &Output) {
-    let removed_idx = state
-        .monitors
-        .iter()
-        .position(|m| &m.output == removed);
-    let Some(removed_idx) = removed_idx else { return };
+    let removed_idx = state.monitors.iter().position(|m| &m.output == removed);
+    let Some(removed_idx) = removed_idx else {
+        return;
+    };
 
     let target_idx = state
         .monitors

@@ -21,7 +21,9 @@ where
     S: AsRef<OsStr>,
 {
     let mut it = args.into_iter();
-    let program = it.next().ok_or_else(|| anyhow::anyhow!("empty spawn args"))?;
+    let program = it
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("empty spawn args"))?;
     let cmd = Command::new("setsid");
     spawn_detached(cmd, |c| {
         c.arg("--fork").arg(program).args(it);
@@ -73,7 +75,12 @@ fn spawn_detached(mut cmd: Command, build: impl FnOnce(&mut Command)) -> Result<
 /// `systemctl` exited non-zero (no user manager / dbus broken /
 /// permission denied) the import would no-op without any trace.
 pub fn import_session_environment(extra: &[&str]) {
-    let mut vars = vec!["WAYLAND_DISPLAY", "DISPLAY", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE"];
+    let mut vars = vec![
+        "WAYLAND_DISPLAY",
+        "DISPLAY",
+        "XDG_CURRENT_DESKTOP",
+        "XDG_SESSION_TYPE",
+    ];
     vars.extend_from_slice(extra);
     // De-duplicate while preserving order — `extra` may overlap
     // with the defaults (e.g. caller passed "DISPLAY" explicitly
@@ -97,7 +104,11 @@ pub fn import_session_environment(extra: &[&str]) {
         .map(|(k, v)| {
             // Truncate long values (a ridiculously-long XCURSOR_THEME
             // shouldn't blow up the log line).
-            let v = if v.len() > 64 { format!("{}…", &v[..63]) } else { v.clone() };
+            let v = if v.len() > 64 {
+                format!("{}…", &v[..63])
+            } else {
+                v.clone()
+            };
             format!("{k}={v}")
         })
         .collect();
@@ -162,9 +173,7 @@ pub fn import_session_environment(extra: &[&str]) {
             // Common: dbus-update-activation-environment not
             // installed (rare today, was the case on minimal
             // arch installs). Demote to debug.
-            tracing::debug!(
-                "import_session_environment: dbus-update-activation skipped: {e}",
-            );
+            tracing::debug!("import_session_environment: dbus-update-activation skipped: {e}",);
         }
     }
 }
@@ -209,8 +218,5 @@ pub fn clamp_f32(x: f32, min: f32, max: f32) -> f32 {
 /// Check if a point (px, py) is inside a rectangle.
 #[inline]
 pub fn point_in_rect(px: f64, py: f64, rx: i32, ry: i32, rw: i32, rh: i32) -> bool {
-    px >= rx as f64
-        && py >= ry as f64
-        && px < (rx + rw) as f64
-        && py < (ry + rh) as f64
+    px >= rx as f64 && py >= ry as f64 && px < (rx + rw) as f64 && py < (ry + rh) as f64
 }

@@ -34,7 +34,10 @@ impl KeepAwakeSession {
     pub(crate) fn global() -> &'static Self {
         INSTANCE.get_or_init(|| {
             let (deadline_tx, _rx) = watch::channel(None);
-            KeepAwakeSession { deadline_tx, epoch: AtomicU64::new(0) }
+            KeepAwakeSession {
+                deadline_tx,
+                epoch: AtomicU64::new(0),
+            }
         })
     }
 

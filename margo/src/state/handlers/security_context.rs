@@ -23,11 +23,7 @@ use smithay::{
 use crate::state::MargoState;
 
 impl SecurityContextHandler for MargoState {
-    fn context_created(
-        &mut self,
-        source: SecurityContextListenerSource,
-        context: SecurityContext,
-    ) {
+    fn context_created(&mut self, source: SecurityContextListenerSource, context: SecurityContext) {
         let res = self
             .loop_handle
             .insert_source(source, move |client_stream, _, state| {

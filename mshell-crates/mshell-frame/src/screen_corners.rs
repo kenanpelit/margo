@@ -122,12 +122,7 @@ fn draw_corner_mask(ctx: &cairo::Context, corner: Corner, r: f64) {
         // Bottom-left: centre (r, 0), arc from left to bottom.
         Corner::BottomLeft => (r, 0.0, std::f64::consts::PI, std::f64::consts::FRAC_PI_2),
         // Bottom-right: centre (0, 0), arc from bottom to right.
-        Corner::BottomRight => (
-            0.0,
-            0.0,
-            std::f64::consts::FRAC_PI_2,
-            0.0,
-        ),
+        Corner::BottomRight => (0.0, 0.0, std::f64::consts::FRAC_PI_2, 0.0),
     };
 
     // Build the L-shape: walk the outer rectangle perimeter for

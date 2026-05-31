@@ -53,7 +53,9 @@ impl IdleStage {
 
 /// Start the idle manager. Returns a sender to push timeout
 /// changes and a receiver that yields the current idle stage.
-pub fn start(initial: IdleConfig) -> Result<(watch::Sender<IdleConfig>, watch::Receiver<IdleStage>)> {
+pub fn start(
+    initial: IdleConfig,
+) -> Result<(watch::Sender<IdleConfig>, watch::Receiver<IdleStage>)> {
     let (cfg_tx, cfg_rx) = watch::channel(initial);
     let (stage_tx, stage_rx) = watch::channel(IdleStage::Active);
 
@@ -109,8 +111,7 @@ impl AppData {
             (IdleStage::Suspend, cfg.suspend_minutes),
         ] {
             if let Some(minutes) = minutes.filter(|m| *m > 0) {
-                let object =
-                    notifier.get_idle_notification(minutes * 60_000, seat, qh, stage);
+                let object = notifier.get_idle_notification(minutes * 60_000, seat, qh, stage);
                 self.notifications.push(Notification {
                     stage,
                     object,
@@ -190,10 +191,7 @@ impl Dispatch<ext_idle_notification_v1::ExtIdleNotificationV1, IdleStage> for Ap
 delegate_noop!(AppData: ignore ext_idle_notifier_v1::ExtIdleNotifierV1);
 delegate_noop!(AppData: ignore wl_seat::WlSeat);
 
-fn run(
-    mut cfg_rx: watch::Receiver<IdleConfig>,
-    stage_tx: watch::Sender<IdleStage>,
-) -> Result<()> {
+fn run(mut cfg_rx: watch::Receiver<IdleConfig>, stage_tx: watch::Sender<IdleStage>) -> Result<()> {
     let conn = Connection::connect_to_env().context("connect to Wayland")?;
     let mut queue = conn.new_event_queue();
     let qh = queue.handle();

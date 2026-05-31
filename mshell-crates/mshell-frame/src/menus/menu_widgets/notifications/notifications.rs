@@ -302,10 +302,8 @@ impl Component for NotificationsModel {
         let factory = gtk::SignalListItemFactory::new();
         Self::wire_factory(&factory, &sender);
 
-        let list_view = gtk::ListView::new(
-            None::<gtk::NoSelection>,
-            None::<gtk::SignalListItemFactory>,
-        );
+        let list_view =
+            gtk::ListView::new(None::<gtk::NoSelection>, None::<gtk::SignalListItemFactory>);
         list_view.set_model(Some(&selection));
         list_view.set_factory(Some(&factory));
         list_view.set_single_click_activate(false);

@@ -717,8 +717,7 @@ impl SimpleComponent for WizardMenuWidgetModel {
                 } else {
                     list.iter().map(|s| s.as_str()).collect()
                 };
-                self.wifi_model
-                    .splice(0, self.wifi_model.n_items(), &items);
+                self.wifi_model.splice(0, self.wifi_model.n_items(), &items);
                 self.wifi_networks = list;
             }
             WizardMenuWidgetInput::WifiSelected(idx) => self.wifi_selected = idx,
@@ -964,7 +963,12 @@ fn read_live() -> WizardMenuWidgetModel {
             Some("default") => "default".to_string(),
             _ => "Nova".to_string(),
         },
-        mode: config_manager().config().theme().matugen().mode().get_untracked(),
+        mode: config_manager()
+            .config()
+            .theme()
+            .matugen()
+            .mode()
+            .get_untracked(),
         theme_scheme: config_manager().config().theme().theme().get_untracked(),
         font_scale: config_manager()
             .config()

@@ -135,9 +135,7 @@ impl Provider for CommandProvider {
         let history = self.history.borrow();
         let query_lower = expression.to_ascii_lowercase();
         for (idx, entry) in history.entries().iter().enumerate() {
-            if !expression.is_empty()
-                && !entry.to_ascii_lowercase().contains(&query_lower)
-            {
+            if !expression.is_empty() && !entry.to_ascii_lowercase().contains(&query_lower) {
                 continue;
             }
             // Don't duplicate the live row if the history entry

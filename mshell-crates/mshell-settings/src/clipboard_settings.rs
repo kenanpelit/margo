@@ -337,12 +337,7 @@ impl Component for ClipboardSettingsModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        _sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             ClipboardSettingsInput::SetPosition(i) => {
                 config_manager()
@@ -352,7 +347,8 @@ impl Component for ClipboardSettingsModel {
                 config_manager().update_config(|c| c.menus.clipboard_menu.minimum_width = v.max(1));
             }
             ClipboardSettingsInput::SetMaxHeight(v) => {
-                config_manager().update_config(|c| c.menus.clipboard_menu.maximum_height = v.max(0));
+                config_manager()
+                    .update_config(|c| c.menus.clipboard_menu.maximum_height = v.max(0));
             }
             ClipboardSettingsInput::SetMaxEntries(v) => {
                 config_manager().update_config(|c| c.clipboard.max_entries = v.max(1) as usize);
@@ -364,8 +360,9 @@ impl Component for ClipboardSettingsModel {
                 apply_clipboard_config();
             }
             ClipboardSettingsInput::SetClearPolicy(i) => {
-                config_manager()
-                    .update_config(|c| c.clipboard.clear_policy = ClipboardClearPolicy::from_index(i));
+                config_manager().update_config(|c| {
+                    c.clipboard.clear_policy = ClipboardClearPolicy::from_index(i)
+                });
                 apply_clipboard_config();
             }
             ClipboardSettingsInput::SetDensity(i) => {

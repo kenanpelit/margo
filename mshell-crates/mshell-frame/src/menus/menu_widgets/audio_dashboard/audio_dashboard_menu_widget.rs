@@ -88,7 +88,10 @@ impl Component for AudioDashboardMenuWidgetModel {
             .launch(AudioInMenuWidgetInit {})
             .detach();
 
-        let model = AudioDashboardMenuWidgetModel { audio_out, audio_in };
+        let model = AudioDashboardMenuWidgetModel {
+            audio_out,
+            audio_in,
+        };
         let widgets = view_output!();
         let _ = (root, sender);
         ComponentParts { model, widgets }

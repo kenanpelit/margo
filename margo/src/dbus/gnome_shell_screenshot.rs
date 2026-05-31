@@ -74,7 +74,10 @@ impl Screenshot {
 
     async fn pick_color(&self) -> fdo::Result<HashMap<String, OwnedValue>> {
         let (tx, rx) = async_channel::bounded(1);
-        if let Err(err) = self.to_compositor.send(ScreenshotToCompositor::PickColor(tx)) {
+        if let Err(err) = self
+            .to_compositor
+            .send(ScreenshotToCompositor::PickColor(tx))
+        {
             warn!("error sending PickColor to compositor: {err:?}");
             return Err(fdo::Error::Failed("internal error".to_owned()));
         }

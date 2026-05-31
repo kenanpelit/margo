@@ -298,12 +298,7 @@ impl Component for SessionSettingsModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        _sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             SessionSettingsInput::LockChanged(v) => {
                 config_manager().update_config(|c| c.session.lock_command = v);

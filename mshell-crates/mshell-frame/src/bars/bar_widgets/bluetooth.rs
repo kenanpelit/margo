@@ -131,12 +131,7 @@ impl Component for BluetoothModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             BluetoothInput::Clicked => {
                 let _ = sender.output(BluetoothOutput::Clicked);

@@ -169,7 +169,11 @@ fn chrono_like_now() -> String {
     // Avoids pulling chrono in for an audit string.
     let days = (secs / 86_400) as i64;
     let z = days + 719_468;
-    let era = if z >= 0 { z / 146_097 } else { (z - 146_096) / 146_097 };
+    let era = if z >= 0 {
+        z / 146_097
+    } else {
+        (z - 146_096) / 146_097
+    };
     let doe = (z - era * 146_097) as u64;
     let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
     let y = yoe as i64 + era * 400;
@@ -251,9 +255,17 @@ pub fn apply_to_state(state: &mut MargoState, snap: &SessionSnapshot) -> usize {
         m.pertag.mfacts[..n].copy_from_slice(&ms.pertag.mfacts[..n]);
         let n = m.pertag.nmasters.len().min(ms.pertag.nmasters.len());
         m.pertag.nmasters[..n].copy_from_slice(&ms.pertag.nmasters[..n]);
-        let n = m.pertag.canvas_pan_x.len().min(ms.pertag.canvas_pan_x.len());
+        let n = m
+            .pertag
+            .canvas_pan_x
+            .len()
+            .min(ms.pertag.canvas_pan_x.len());
         m.pertag.canvas_pan_x[..n].copy_from_slice(&ms.pertag.canvas_pan_x[..n]);
-        let n = m.pertag.canvas_pan_y.len().min(ms.pertag.canvas_pan_y.len());
+        let n = m
+            .pertag
+            .canvas_pan_y
+            .len()
+            .min(ms.pertag.canvas_pan_y.len());
         m.pertag.canvas_pan_y[..n].copy_from_slice(&ms.pertag.canvas_pan_y[..n]);
 
         m.pertag.curtag = ms.pertag.curtag;

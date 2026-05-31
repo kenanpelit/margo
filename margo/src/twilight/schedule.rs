@@ -41,9 +41,13 @@ pub enum Phase {
     Night,
     /// In the morning ramp, `progress` is 0.0 at the very start
     /// (still cool/night-coloured) and 1.0 at the end (full day).
-    TransitionToDay { progress: f32 },
+    TransitionToDay {
+        progress: f32,
+    },
     /// Mirror of the above, applied in the evening.
-    TransitionToNight { progress: f32 },
+    TransitionToNight {
+        progress: f32,
+    },
 }
 
 /// Bundle of the parameters the schedule needs to decide what
@@ -149,7 +153,9 @@ impl Schedule {
                 // Evening: invert progress so 1.0 = end of ramp
                 // (full night) — symmetric semantics for the
                 // interpolator.
-                Phase::TransitionToNight { progress: 1.0 - prog }
+                Phase::TransitionToNight {
+                    progress: 1.0 - prog,
+                }
             }
         }
     }
@@ -223,8 +229,8 @@ pub fn sun_elevation_deg(lat_deg: f32, lon_deg: f32, now: SystemTime) -> f32 {
 
     let l = (280.460 + 0.985_647_4 * d).rem_euclid(360.0).to_radians();
     let g = (357.528 + 0.985_600_3 * d).rem_euclid(360.0).to_radians();
-    let lambda = l + (1.915_f64.to_radians()) * g.sin()
-        + (0.020_f64.to_radians()) * (2.0 * g).sin();
+    let lambda =
+        l + (1.915_f64.to_radians()) * g.sin() + (0.020_f64.to_radians()) * (2.0 * g).sin();
     let eps = (23.439 - 0.000_000_4 * d).to_radians();
     let delta = (eps.sin() * lambda.sin()).asin();
 
@@ -325,7 +331,10 @@ mod tests {
         let t = time_at(43_200); // 12:00 UTC
         let _ = s.current(t); // no panic; phase depends on local tz
         // Also test the static mode here for coverage.
-        let st = Schedule { mode: Mode::Static, ..s };
+        let st = Schedule {
+            mode: Mode::Static,
+            ..s
+        };
         assert!(matches!(st.current(t), Phase::Day));
     }
 

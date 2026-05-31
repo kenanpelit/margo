@@ -302,7 +302,10 @@ mod tests {
         let captured = Rc::new(RefCell::new(String::new()));
         let p = make(captured.clone());
         let items = p.search(";");
-        let google = items.iter().find(|i| i.name.starts_with("g <query>")).unwrap();
+        let google = items
+            .iter()
+            .find(|i| i.name.starts_with("g <query>"))
+            .unwrap();
         (google.on_activate)();
         assert_eq!(*captured.borrow(), "g rust async");
     }
@@ -312,6 +315,10 @@ mod tests {
         let captured = Rc::new(RefCell::new(String::new()));
         let p = make(captured);
         let items = p.search(";emoji");
-        assert!(items.iter().all(|i| i.description.to_lowercase().contains("emoji")));
+        assert!(
+            items
+                .iter()
+                .all(|i| i.description.to_lowercase().contains("emoji"))
+        );
     }
 }

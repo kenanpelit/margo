@@ -17,13 +17,11 @@
 //! (`save_notes`), which writes-and-renames a sibling `.tmp`
 //! file so a crash can't corrupt the document.
 
-use crate::bars::bar_widgets::notes::{
-    NotesState, Note, Todo, load_notes, new_id, save_notes,
-};
+use crate::bars::bar_widgets::notes::{Note, NotesState, Todo, load_notes, new_id, save_notes};
 use relm4::gtk::glib;
 use relm4::gtk::prelude::{
-    BoxExt, ButtonExt, CheckButtonExt, EditableExt, EntryExt, ListBoxRowExt,
-    OrientableExt, TextBufferExt, TextViewExt, WidgetExt,
+    BoxExt, ButtonExt, CheckButtonExt, EditableExt, EntryExt, ListBoxRowExt, OrientableExt,
+    TextBufferExt, TextViewExt, WidgetExt,
 };
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::time::Duration;
@@ -61,7 +59,11 @@ pub(crate) enum NotesMenuWidgetInput {
     /// Append an empty note card and persist.
     AddNote,
     /// Replace an entire note (title/body) and persist.
-    UpdateNote { id: String, title: String, body: String },
+    UpdateNote {
+        id: String,
+        title: String,
+        body: String,
+    },
     /// Delete a note by id and persist.
     DeleteNote(String),
     /// Append a todo with the given text and persist.
@@ -293,12 +295,7 @@ impl Component for NotesMenuWidgetModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             NotesMenuWidgetInput::ReloadFromDisk => {
                 sender.command(|out, _shutdown| async move {

@@ -223,8 +223,8 @@ impl Provider for AppsProvider {
             let term_bin = term.clone().unwrap_or_else(|| {
                 let path = std::env::var_os("PATH").unwrap_or_default();
                 for candidate in ["kitty", "alacritty", "foot", "wezterm", "xterm"] {
-                    let found = std::env::split_paths(&path)
-                        .any(|dir| dir.join(candidate).is_file());
+                    let found =
+                        std::env::split_paths(&path).any(|dir| dir.join(candidate).is_file());
                     if found {
                         return candidate.to_string();
                     }

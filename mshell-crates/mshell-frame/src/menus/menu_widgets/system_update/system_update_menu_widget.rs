@@ -256,9 +256,7 @@ impl Component for SystemUpdateMenuWidgetModel {
                     config_manager().update_config(move |config| match source {
                         Source::Repo => config.bars.widgets.system_update.check_repo = active,
                         Source::Aur => config.bars.widgets.system_update.check_aur = active,
-                        Source::Flatpak => {
-                            config.bars.widgets.system_update.check_flatpak = active
-                        }
+                        Source::Flatpak => config.bars.widgets.system_update.check_flatpak = active,
                     });
                     sender.input(SystemUpdateMenuWidgetInput::Refresh);
                 }
@@ -298,7 +296,9 @@ fn header_label(report: Option<&UpdateReport>, refreshing: bool) -> String {
 }
 
 fn summary_line(report: Option<&UpdateReport>) -> String {
-    let Some(r) = report else { return String::new() };
+    let Some(r) = report else {
+        return String::new();
+    };
     [Source::Repo, Source::Aur, Source::Flatpak]
         .into_iter()
         .filter_map(|s| {
@@ -326,7 +326,11 @@ fn rebuild_list(list: &gtk::Box, report: &UpdateReport) {
     }
 
     for source in [Source::Repo, Source::Aur, Source::Flatpak] {
-        let entries: Vec<_> = report.entries.iter().filter(|e| e.source == source).collect();
+        let entries: Vec<_> = report
+            .entries
+            .iter()
+            .filter(|e| e.source == source)
+            .collect();
         if entries.is_empty() {
             continue;
         }

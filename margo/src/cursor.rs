@@ -8,8 +8,8 @@ use drm_fourcc::DrmFourcc;
 use smithay::{
     backend::renderer::{
         element::{
-            memory::{MemoryRenderBuffer, MemoryRenderBufferRenderElement},
             Kind,
+            memory::{MemoryRenderBuffer, MemoryRenderBufferRenderElement},
         },
         gles::GlesRenderer,
     },
@@ -69,7 +69,11 @@ impl CursorManager {
         let buffer = image.to_memory_buffer();
         let mut cache = HashMap::new();
         cache.insert("default".to_string(), (image, buffer));
-        Self { cache, current: "default".to_string(), size }
+        Self {
+            cache,
+            current: "default".to_string(),
+            size,
+        }
     }
 
     /// Switch to the cursor named `primary` (with `alts` as theme fallbacks,
@@ -138,7 +142,10 @@ fn load_from_theme(cursor_name: &str, size: u32) -> Option<CursorImage> {
     let theme = xcursor::CursorTheme::load(&theme_name);
     let path = theme.load_icon(cursor_name)?;
     let mut data = Vec::new();
-    std::fs::File::open(&path).ok()?.read_to_end(&mut data).ok()?;
+    std::fs::File::open(&path)
+        .ok()?
+        .read_to_end(&mut data)
+        .ok()?;
     let images = xcursor::parser::parse_xcursor(&data)?;
 
     // Pick the image closest to the requested size
@@ -197,5 +204,11 @@ fn embedded_arrow() -> CursorImage {
         })
         .collect();
 
-    CursorImage { pixels, width: 16, height: 16, hotspot_x: 0, hotspot_y: 0 }
+    CursorImage {
+        pixels,
+        width: 16,
+        height: 16,
+        hotspot_x: 0,
+        hotspot_y: 0,
+    }
 }

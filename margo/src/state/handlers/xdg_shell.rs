@@ -109,7 +109,11 @@ impl XdgShellHandler for MargoState {
         tracing::info!(
             "new toplevel: app_id={:?} monitor={target_mon} idx={new_idx} \
              (map deferred until first commit)",
-            if app_id.is_empty() { "<unset>" } else { &app_id },
+            if app_id.is_empty() {
+                "<unset>"
+            } else {
+                &app_id
+            },
         );
     }
 
@@ -158,10 +162,8 @@ impl XdgShellHandler for MargoState {
             return;
         };
         let window = self.clients[idx].window.clone();
-        let initial_loc = Point::<i32, Logical>::from((
-            self.clients[idx].geom.x,
-            self.clients[idx].geom.y,
-        ));
+        let initial_loc =
+            Point::<i32, Logical>::from((self.clients[idx].geom.x, self.clients[idx].geom.y));
         // CSD-initiated move via xdg_toplevel.move always starts
         // a regular drag — never the tile-to-tile swap path.
         let original_float_geom = self.clients[idx].float_geom;
@@ -291,7 +293,11 @@ impl XdgShellHandler for MargoState {
                 return;
             }
             keyboard.set_focus(self, grab.current_grab(), serial);
-            keyboard.set_grab(self, smithay::desktop::PopupKeyboardGrab::new(&grab), serial);
+            keyboard.set_grab(
+                self,
+                smithay::desktop::PopupKeyboardGrab::new(&grab),
+                serial,
+            );
         }
 
         if let Some(pointer) = seat.get_pointer() {
@@ -382,15 +388,14 @@ impl XdgShellHandler for MargoState {
                 let prev = self.monitors[mon_idx].prev_selected;
                 let target = prev
                     .filter(|&i| {
-                        i < self.clients.len()
-                            && self.clients[i].is_visible_on(mon_idx, tagset)
+                        i < self.clients.len() && self.clients[i].is_visible_on(mon_idx, tagset)
                     })
                     .or_else(|| {
                         // Spatial fallback: window whose geom is
                         // closest (in vec order) to the removed slot.
-                        (0..self.clients.len()).rev().find(|&i| {
-                            i < idx && self.clients[i].is_visible_on(mon_idx, tagset)
-                        })
+                        (0..self.clients.len())
+                            .rev()
+                            .find(|&i| i < idx && self.clients[i].is_visible_on(mon_idx, tagset))
                     })
                     .or_else(|| {
                         self.clients
@@ -439,11 +444,7 @@ impl XdgShellHandler for MargoState {
     // well-behaved clients keep rendering windowed chrome until the
     // configure event lands with the right state.
 
-    fn fullscreen_request(
-        &mut self,
-        toplevel: ToplevelSurface,
-        wl_output: Option<WlOutput>,
-    ) {
+    fn fullscreen_request(&mut self, toplevel: ToplevelSurface, wl_output: Option<WlOutput>) {
         let wl_surf = toplevel.wl_surface().clone();
         let Some(idx) = self
             .clients

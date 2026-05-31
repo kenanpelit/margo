@@ -30,11 +30,7 @@ impl XdgActivationHandler for MargoState {
         &mut self.xdg_activation_state
     }
 
-    fn token_created(
-        &mut self,
-        _token: XdgActivationToken,
-        data: XdgActivationTokenData,
-    ) -> bool {
+    fn token_created(&mut self, _token: XdgActivationToken, data: XdgActivationTokenData) -> bool {
         // A token without a (serial, seat) bundle is suspicious —
         // someone scripted activation without going through a real
         // user interaction. Reject.

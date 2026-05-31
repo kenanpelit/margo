@@ -133,12 +133,7 @@ impl Component for MenuConfigPanelModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        _sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             MenuConfigPanelInput::WidgetListChanged(widgets) => {
                 self.kind.write_widgets(widgets);

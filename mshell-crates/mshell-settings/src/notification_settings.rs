@@ -5,9 +5,7 @@ use mshell_config::schema::config::{
 };
 use mshell_config::schema::position::NotificationPosition;
 use reactive_graph::prelude::{Get, GetUntracked};
-use relm4::gtk::prelude::{
-    BoxExt, ButtonExt, EditableExt, EntryExt, OrientableExt, WidgetExt,
-};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, EditableExt, EntryExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 
 #[derive(Debug, Clone)]
@@ -617,17 +615,20 @@ impl Component for NotificationSettingsModel {
         // Wire the add entry + button, and paint the initial rows.
         let entry = widgets.blocklist_entry.clone();
         let sender_clone = sender.clone();
-        let submit = move |entry: &gtk::Entry, sender: &ComponentSender<NotificationSettingsModel>| {
-            let name = entry.text().trim().to_string();
-            if !name.is_empty() {
-                sender.input(NotificationSettingsInput::BlocklistAdd(name));
-                entry.set_text("");
-            }
-        };
+        let submit =
+            move |entry: &gtk::Entry, sender: &ComponentSender<NotificationSettingsModel>| {
+                let name = entry.text().trim().to_string();
+                if !name.is_empty() {
+                    sender.input(NotificationSettingsInput::BlocklistAdd(name));
+                    entry.set_text("");
+                }
+            };
         {
             let entry = entry.clone();
             let sender = sender_clone.clone();
-            widgets.blocklist_add.connect_clicked(move |_| submit(&entry, &sender));
+            widgets
+                .blocklist_add
+                .connect_clicked(move |_| submit(&entry, &sender));
         }
         {
             let sender = sender_clone.clone();
@@ -723,10 +724,7 @@ impl Component for NotificationSettingsModel {
                 self.menu_max_height = h;
             }
             NotificationSettingsInput::BlocklistAdd(name) => {
-                let exists = self
-                    .blocklist
-                    .iter()
-                    .any(|e| e.eq_ignore_ascii_case(&name));
+                let exists = self.blocklist.iter().any(|e| e.eq_ignore_ascii_case(&name));
                 if !exists {
                     self.blocklist.push(name);
                     let list = self.blocklist.clone();

@@ -152,12 +152,7 @@ impl Component for KeepAwakeModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             KeepAwakeInput::Clicked => {
                 let _ = sender.output(KeepAwakeOutput::Clicked);

@@ -30,18 +30,11 @@ impl Server {
     pub fn new(config: Config) -> Self {
         let event_loop: EventLoop<'static, MargoState> =
             EventLoop::try_new().expect("test EventLoop::try_new");
-        let mut display: Display<MargoState> =
-            Display::new().expect("test Display::new");
+        let mut display: Display<MargoState> = Display::new().expect("test Display::new");
         let loop_handle = event_loop.handle();
         let loop_signal = event_loop.get_signal();
 
-        let state = MargoState::new(
-            config,
-            &mut display,
-            loop_handle,
-            loop_signal,
-            None,
-        );
+        let state = MargoState::new(config, &mut display, loop_handle, loop_signal, None);
 
         Self {
             event_loop,

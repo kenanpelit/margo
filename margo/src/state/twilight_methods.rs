@@ -43,13 +43,12 @@ impl MargoState {
         // without spamming a file write on every 50 ms transition tick.
         self.write_state_file();
         let timer = smithay::reexports::calloop::timer::Timer::from_duration(next);
-        let _ = self.loop_handle.insert_source(
-            timer,
-            move |_, _, state: &mut MargoState| {
+        let _ = self
+            .loop_handle
+            .insert_source(timer, move |_, _, state: &mut MargoState| {
                 let next = state.tick_twilight();
                 smithay::reexports::calloop::timer::TimeoutAction::ToDuration(next)
-            },
-        );
+            });
     }
 
     /// Advance twilight one tick + apply the resulting ramp to every
@@ -124,11 +123,7 @@ impl MargoState {
                 continue;
             }
             if size != last_size {
-                cached = crate::twilight::gamma_lut::build_ramp(
-                    temp_k,
-                    gamma_pct,
-                    size as usize,
-                );
+                cached = crate::twilight::gamma_lut::build_ramp(temp_k, gamma_pct, size as usize);
                 last_size = size;
             }
             // Drop any pending entry for this output first so we

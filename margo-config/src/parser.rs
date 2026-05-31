@@ -281,14 +281,14 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
         "default_layout" => cfg.default_layout = val.to_string(),
         // `taglayout = <tag>, <layout>` — repeatable per-tag default layout.
         "taglayout" => {
-            if let Some((t, name)) = val.split_once(',') {
-                if let Ok(tag) = t.trim().parse::<u32>() {
-                    let name = name.trim().to_string();
-                    if tag >= 1 && !name.is_empty() {
-                        // Last write wins for a given tag.
-                        cfg.taglayouts.retain(|(existing, _)| *existing != tag);
-                        cfg.taglayouts.push((tag, name));
-                    }
+            if let Some((t, name)) = val.split_once(',')
+                && let Ok(tag) = t.trim().parse::<u32>()
+            {
+                let name = name.trim().to_string();
+                if tag >= 1 && !name.is_empty() {
+                    // Last write wins for a given tag.
+                    cfg.taglayouts.retain(|(existing, _)| *existing != tag);
+                    cfg.taglayouts.push((tag, name));
                 }
             }
         }
@@ -361,9 +361,7 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
                 }
             }
         }
-        "scroller_overview_zoom" => {
-            cfg.scroller_overview_zoom = parse_f32(val).clamp(0.1, 1.0)
-        }
+        "scroller_overview_zoom" => cfg.scroller_overview_zoom = parse_f32(val).clamp(0.1, 1.0),
         "scroller_overview_gap" => cfg.scroller_overview_gap = parse_i32(val).max(0),
         "scroller_overview_loop" => cfg.scroller_overview_loop = parse_bool(val),
 
@@ -1617,7 +1615,10 @@ mod tests {
         .unwrap();
         let cfg = parse_config(Some(&main)).unwrap();
         // Last write wins for tag 2 (grid), tag 1 stays tile.
-        assert_eq!(cfg.taglayouts, vec![(1, "tile".to_string()), (2, "grid".to_string())]);
+        assert_eq!(
+            cfg.taglayouts,
+            vec![(1, "tile".to_string()), (2, "grid".to_string())]
+        );
         assert!(cfg.taglayout_force);
         let _ = std::fs::remove_dir_all(&dir);
     }

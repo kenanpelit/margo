@@ -713,9 +713,8 @@ fn login_form_render<B: Backend>(
 
     let now = Local::now();
     let muted = Style::default().fg(theme.muted);
-    let label_style = |focused: bool| {
-        Style::default().fg(if focused { theme.accent } else { theme.muted })
-    };
+    let label_style =
+        |focused: bool| Style::default().fg(if focused { theme.accent } else { theme.muted });
 
     // Greeting.
     frame.render_widget(
@@ -822,7 +821,13 @@ fn login_form_render<B: Backend>(
         );
 
     // Status line (centred, themed) + the power-control chip row.
-    StatusMessage::render(status_message, frame, chunks.status_message, theme.danger, theme.muted);
+    StatusMessage::render(
+        status_message,
+        frame,
+        chunks.status_message,
+        theme.danger,
+        theme.muted,
+    );
     key_menu.render(frame, chunks.key_menu, theme.accent);
 }
 
@@ -902,8 +907,14 @@ mod render_tests {
             assert!(out.contains("F1"), "F1 missing at {w}x{h}\n{out}");
             assert!(out.contains("F2"), "F2 missing at {w}x{h}\n{out}");
             assert!(out.contains("F3"), "F3 missing at {w}x{h}\n{out}");
-            assert!(out.contains("Password"), "Password label missing at {w}x{h}\n{out}");
-            assert!(out.contains("Margo"), "session name missing at {w}x{h}\n{out}");
+            assert!(
+                out.contains("Password"),
+                "Password label missing at {w}x{h}\n{out}"
+            );
+            assert!(
+                out.contains("Margo"),
+                "session name missing at {w}x{h}\n{out}"
+            );
         }
     }
 }

@@ -163,21 +163,23 @@ impl Component for DnsModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        sender.command(|out, shutdown| {
-            async move {
-                let shutdown_fut = shutdown.wait();
-                tokio::pin!(shutdown_fut);
-                let mut first = true;
-                loop {
-                    let delay = if first { STARTUP_DELAY } else { REFRESH_INTERVAL };
-                    first = false;
-                    tokio::select! {
-                        () = &mut shutdown_fut => break,
-                        _ = tokio::time::sleep(delay) => {}
-                    }
-                    let s = probe_dns_state().await;
-                    let _ = out.send(DnsCommandOutput::Refreshed(s));
+        sender.command(|out, shutdown| async move {
+            let shutdown_fut = shutdown.wait();
+            tokio::pin!(shutdown_fut);
+            let mut first = true;
+            loop {
+                let delay = if first {
+                    STARTUP_DELAY
+                } else {
+                    REFRESH_INTERVAL
+                };
+                first = false;
+                tokio::select! {
+                    () = &mut shutdown_fut => break,
+                    _ = tokio::time::sleep(delay) => {}
                 }
+                let s = probe_dns_state().await;
+                let _ = out.send(DnsCommandOutput::Refreshed(s));
             }
         });
 
@@ -191,12 +193,7 @@ impl Component for DnsModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             DnsInput::Clicked => {
                 let _ = sender.output(DnsOutput::Clicked);
@@ -320,13 +317,7 @@ pub(crate) async fn probe_dns_state() -> DnsState {
         }
         if let Some(ignore_auto) = run_capture(
             "nmcli",
-            &[
-                "-g",
-                "ipv4.ignore-auto-dns",
-                "connection",
-                "show",
-                &name,
-            ],
+            &["-g", "ipv4.ignore-auto-dns", "connection", "show", &name],
         )
         .await
         {
@@ -375,19 +366,20 @@ pub(crate) async fn probe_dns_state() -> DnsState {
     }
 
     if state.display_dns.is_empty()
-        && let Ok(raw) = tokio::fs::read_to_string("/etc/resolv.conf").await {
-            let parsed: Vec<&str> = raw
-                .lines()
-                .filter_map(|l| {
-                    let t = l.trim();
-                    if t.starts_with('#') {
-                        return None;
-                    }
-                    t.strip_prefix("nameserver").map(|s| s.trim())
-                })
-                .collect();
-            state.display_dns = parsed.join(" ");
-        }
+        && let Ok(raw) = tokio::fs::read_to_string("/etc/resolv.conf").await
+    {
+        let parsed: Vec<&str> = raw
+            .lines()
+            .filter_map(|l| {
+                let t = l.trim();
+                if t.starts_with('#') {
+                    return None;
+                }
+                t.strip_prefix("nameserver").map(|s| s.trim())
+            })
+            .collect();
+        state.display_dns = parsed.join(" ");
+    }
 
     if state.display_dns.is_empty() && !state.vpn && !state.blocky && !state.blocked {
         state.error = Some("no DNS probes available".to_string());
@@ -396,8 +388,11 @@ pub(crate) async fn probe_dns_state() -> DnsState {
 }
 
 async fn primary_nm_connection() -> Option<(String, String)> {
-    let out =
-        run_capture("nmcli", &["-t", "-f", "NAME,DEVICE", "connection", "show", "--active"]).await?;
+    let out = run_capture(
+        "nmcli",
+        &["-t", "-f", "NAME,DEVICE", "connection", "show", "--active"],
+    )
+    .await?;
     for line in out.lines() {
         let mut parts = line.splitn(2, ':');
         let name = parts.next()?.to_string();

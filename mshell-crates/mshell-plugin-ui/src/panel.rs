@@ -1,7 +1,7 @@
 //! Renders a WASM plugin's UI tree into GTK and drives its event loop.
 
-use gtk4 as gtk;
 use gtk::prelude::*;
+use gtk4 as gtk;
 use mshell_plugin_host::{PluginInstance, PluginRuntime, UiEvent, UiEventKind, UiKind, UiNode};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -221,7 +221,10 @@ fn apply_node_properties(widget: &gtk::Widget, props: &HashMap<String, String>) 
 /// the unit range; bogus input → opaque black so the swatch still renders.
 fn parse_hex_rgba(input: &str) -> (f64, f64, f64, f64) {
     let s = input.trim();
-    let hex = s.strip_prefix("0x").or_else(|| s.strip_prefix('#')).unwrap_or(s);
+    let hex = s
+        .strip_prefix("0x")
+        .or_else(|| s.strip_prefix('#'))
+        .unwrap_or(s);
     let bytes: Vec<u8> = (0..hex.len())
         .step_by(2)
         .filter_map(|i| u8::from_str_radix(hex.get(i..i + 2)?, 16).ok())
@@ -229,7 +232,12 @@ fn parse_hex_rgba(input: &str) -> (f64, f64, f64, f64) {
     let to_unit = |b: u8| b as f64 / 255.0;
     match bytes.len() {
         3 => (to_unit(bytes[0]), to_unit(bytes[1]), to_unit(bytes[2]), 1.0),
-        4 => (to_unit(bytes[0]), to_unit(bytes[1]), to_unit(bytes[2]), to_unit(bytes[3])),
+        4 => (
+            to_unit(bytes[0]),
+            to_unit(bytes[1]),
+            to_unit(bytes[2]),
+            to_unit(bytes[3]),
+        ),
         _ => (0.0, 0.0, 0.0, 1.0),
     }
 }
@@ -453,7 +461,12 @@ fn build(node: &UiNode, by_id: &HashMap<&str, &UiNode>, inner: &Rc<RefCell<Inner
                 // `properties["fit"]` chooses how the image fills its area —
                 // mirrors `gtk::ContentFit`. Defaults to `contain` (aspect-fit).
                 pic.set_content_fit(
-                    match node.properties.get("fit").map(String::as_str).unwrap_or("contain") {
+                    match node
+                        .properties
+                        .get("fit")
+                        .map(String::as_str)
+                        .unwrap_or("contain")
+                    {
                         "fill" => gtk::ContentFit::Fill,
                         "cover" => gtk::ContentFit::Cover,
                         "scale-down" => gtk::ContentFit::ScaleDown,
@@ -612,7 +625,11 @@ fn build(node: &UiNode, by_id: &HashMap<&str, &UiNode>, inner: &Rc<RefCell<Inner
             // dispatch on that. Unknown extensions render as an empty vbox so
             // a future host with new kinds doesn't crash older renderers; the
             // pre-compiled plugin just sees a transparent placeholder.
-            let kind = node.properties.get("kind").map(String::as_str).unwrap_or("");
+            let kind = node
+                .properties
+                .get("kind")
+                .map(String::as_str)
+                .unwrap_or("");
             let inner_widget: gtk::Widget = match kind {
                 // A filled-rectangle colour swatch driven by `properties["color"]`
                 // (hex `#rrggbb` / `#rrggbbaa`, or margo's `0xrrggbbaa`) and an

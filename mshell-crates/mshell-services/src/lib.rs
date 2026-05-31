@@ -23,11 +23,11 @@ where
 {
     tokio_rt().spawn(future)
 }
+use mshell_margo_client::MargoService;
 use wayle_audio::AudioService;
 use wayle_battery::BatteryService;
 use wayle_bluetooth::BluetoothService;
 use wayle_brightness::BrightnessService;
-use mshell_margo_client::MargoService;
 use wayle_media::MediaService;
 use wayle_network::NetworkService;
 use wayle_notification::NotificationService;
@@ -77,9 +77,7 @@ pub async fn init_services(
             // remote http(s) covers from Spotify / browsers) to local
             // files on `TrackMetadata::cover_art`, which the media
             // widgets render as album art.
-            Ok::<_, anyhow::Error>(
-                MediaService::builder().with_art_cache().build().await?,
-            )
+            Ok::<_, anyhow::Error>(MediaService::builder().with_art_cache().build().await?)
         },
         async { Ok::<_, anyhow::Error>(NetworkService::new().await?) },
         async { Ok::<_, anyhow::Error>(NotificationService::new().await?) },

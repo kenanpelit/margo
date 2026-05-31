@@ -11,7 +11,7 @@
 use smithay::{
     delegate_xdg_decoration,
     reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as XdgDecorationMode,
-    wayland::shell::xdg::{decoration::XdgDecorationHandler, ToplevelSurface},
+    wayland::shell::xdg::{ToplevelSurface, decoration::XdgDecorationHandler},
 };
 
 use crate::state::MargoState;

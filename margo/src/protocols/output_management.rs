@@ -504,7 +504,9 @@ where
                     Some(ConfigurationState::Ongoing(p)) => p,
                     _ => return,
                 };
-                client_data.configs.insert(cfg.clone(), ConfigurationState::Finished);
+                client_data
+                    .configs
+                    .insert(cfg.clone(), ConfigurationState::Finished);
                 let ok = state.apply_output_pending(pending);
                 if ok {
                     cfg.succeeded();
@@ -518,16 +520,16 @@ where
                 // doesn't touch features we don't support
                 // (mode/enable). Anything else: reject.
                 if let Some(ConfigurationState::Ongoing(map)) = client_data.configs.get(cfg) {
-                    let supportable = map
-                        .values()
-                        .all(|p| p.enabled && p.mode.is_none());
+                    let supportable = map.values().all(|p| p.enabled && p.mode.is_none());
                     if supportable {
                         cfg.succeeded();
                     } else {
                         cfg.failed();
                     }
                 }
-                client_data.configs.insert(cfg.clone(), ConfigurationState::Finished);
+                client_data
+                    .configs
+                    .insert(cfg.clone(), ConfigurationState::Finished);
             }
             zwlr_output_configuration_v1::Request::Destroy => {
                 client_data.configs.remove(cfg);
@@ -626,11 +628,7 @@ impl PendingHeadConfig {
 
 // ── Helper: build snapshot from a smithay Output ─────────────────────────────
 
-pub fn snapshot_from_output(
-    output: &Output,
-    enabled: bool,
-    pos: (i32, i32),
-) -> OutputSnapshot {
+pub fn snapshot_from_output(output: &Output, enabled: bool, pos: (i32, i32)) -> OutputSnapshot {
     let phys = output.physical_properties();
     let modes = output.modes();
     let current_mode = output.current_mode();
@@ -644,14 +642,14 @@ pub fn snapshot_from_output(
         })
         .collect();
     let current_idx = current_mode.and_then(|cm| {
-        modes.iter().position(|m| {
-            m.size == cm.size && m.refresh == cm.refresh
-        })
+        modes
+            .iter()
+            .position(|m| m.size == cm.size && m.refresh == cm.refresh)
     });
     let preferred_idx = preferred_mode.and_then(|pm| {
-        modes.iter().position(|m| {
-            m.size == pm.size && m.refresh == pm.refresh
-        })
+        modes
+            .iter()
+            .position(|m| m.size == pm.size && m.refresh == pm.refresh)
     });
     OutputSnapshot {
         name: output.name(),

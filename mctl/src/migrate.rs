@@ -149,7 +149,10 @@ fn write_header(format: SourceFormat, out: &mut String) {
 // `movetoworkspace N`, `pseudo`, `togglesplit`, etc.
 
 fn translate_hyprland_line(line: &str, lineno: usize, result: &mut MigrationResult) {
-    if let Some(rest) = line.strip_prefix("bind").and_then(|s| s.trim_start().strip_prefix('=')) {
+    if let Some(rest) = line
+        .strip_prefix("bind")
+        .and_then(|s| s.trim_start().strip_prefix('='))
+    {
         translate_hyprland_bind(rest.trim(), lineno, result);
         return;
     }
@@ -167,7 +170,10 @@ fn translate_hyprland_line(line: &str, lineno: usize, result: &mut MigrationResu
     // their semantics (mouse / locked / repeat) don't all map
     // cleanly. Notes the variant in a warning.
     for suffix in ["bindm", "bindl", "binde", "bindle", "bindel", "bindr"] {
-        if let Some(rest) = line.strip_prefix(suffix).and_then(|s| s.trim_start().strip_prefix('=')) {
+        if let Some(rest) = line
+            .strip_prefix(suffix)
+            .and_then(|s| s.trim_start().strip_prefix('='))
+        {
             result.warnings.push(format!(
                 "L{lineno}: hyprland `{suffix}` flag-bind treated as plain bind \
                  (mouse / locked / repeat semantics not fully translated)"
@@ -181,9 +187,9 @@ fn translate_hyprland_line(line: &str, lineno: usize, result: &mut MigrationResu
 fn translate_hyprland_bind(spec: &str, lineno: usize, result: &mut MigrationResult) {
     let parts: Vec<&str> = spec.splitn(4, ',').map(str::trim).collect();
     if parts.len() < 3 {
-        result.warnings.push(format!(
-            "L{lineno}: bind missing fields — got `{spec}`"
-        ));
+        result
+            .warnings
+            .push(format!("L{lineno}: bind missing fields — got `{spec}`"));
         return;
     }
     let mods = parts[0];
@@ -198,9 +204,9 @@ fn translate_hyprland_bind(spec: &str, lineno: usize, result: &mut MigrationResu
     };
 
     if margo_arg.is_empty() {
-        result.output.push_str(&format!(
-            "bind = {margo_mods},{margo_key},{margo_action}\n"
-        ));
+        result
+            .output
+            .push_str(&format!("bind = {margo_mods},{margo_key},{margo_action}\n"));
     } else {
         result.output.push_str(&format!(
             "bind = {margo_mods},{margo_key},{margo_action},{margo_arg}\n"
@@ -277,9 +283,9 @@ fn translate_sway_bind(spec: &str, lineno: usize, result: &mut MigrationResult) 
 
     let split = spec.splitn(2, char::is_whitespace).collect::<Vec<_>>();
     if split.len() < 2 {
-        result.warnings.push(format!(
-            "L{lineno}: bindsym missing action — got `{spec}`"
-        ));
+        result
+            .warnings
+            .push(format!("L{lineno}: bindsym missing action — got `{spec}`"));
         return;
     }
     let key_combo = split[0];
@@ -297,9 +303,9 @@ fn translate_sway_bind(spec: &str, lineno: usize, result: &mut MigrationResult) 
     };
 
     if margo_arg.is_empty() {
-        result.output.push_str(&format!(
-            "bind = {margo_mods},{margo_key},{margo_action}\n"
-        ));
+        result
+            .output
+            .push_str(&format!("bind = {margo_mods},{margo_key},{margo_action}\n"));
     } else {
         result.output.push_str(&format!(
             "bind = {margo_mods},{margo_key},{margo_action},{margo_arg}\n"
@@ -458,11 +464,27 @@ mod tests {
             bind = SUPER, 1, workspace, 1\n\
         ";
         let r = migrate_str(SourceFormat::Hyprland, src);
-        assert!(r.output.contains("bind = super,Q,killclient"), "{}", r.output);
-        assert!(r.output.contains("bind = super,Return,spawn,kitty"), "{}", r.output);
-        assert!(r.output.contains("bind = super+shift,F,togglefloating"), "{}", r.output);
+        assert!(
+            r.output.contains("bind = super,Q,killclient"),
+            "{}",
+            r.output
+        );
+        assert!(
+            r.output.contains("bind = super,Return,spawn,kitty"),
+            "{}",
+            r.output
+        );
+        assert!(
+            r.output.contains("bind = super+shift,F,togglefloating"),
+            "{}",
+            r.output
+        );
         assert!(r.output.contains("bind = super,1,view,1"), "{}", r.output);
-        assert!(r.warnings.is_empty(), "unexpected warnings: {:?}", r.warnings);
+        assert!(
+            r.warnings.is_empty(),
+            "unexpected warnings: {:?}",
+            r.warnings
+        );
     }
 
     #[test]
@@ -470,7 +492,11 @@ mod tests {
         let src = "bind = SUPER+SHIFT, 5, movetoworkspace, 5\n";
         let r = migrate_str(SourceFormat::Hyprland, src);
         // workspace 5 → 1 << 4 = 16.
-        assert!(r.output.contains("bind = super+shift,5,tag,16"), "{}", r.output);
+        assert!(
+            r.output.contains("bind = super+shift,5,tag,16"),
+            "{}",
+            r.output
+        );
     }
 
     #[test]
@@ -480,8 +506,16 @@ mod tests {
             bind = SUPER, l, movefocus, r\n\
         ";
         let r = migrate_str(SourceFormat::Hyprland, src);
-        assert!(r.output.contains("bind = super,h,focusdir,left"), "{}", r.output);
-        assert!(r.output.contains("bind = super,l,focusdir,right"), "{}", r.output);
+        assert!(
+            r.output.contains("bind = super,h,focusdir,left"),
+            "{}",
+            r.output
+        );
+        assert!(
+            r.output.contains("bind = super,l,focusdir,right"),
+            "{}",
+            r.output
+        );
     }
 
     #[test]
@@ -502,9 +536,21 @@ mod tests {
             bindsym Mod4+1 workspace 1\n\
         ";
         let r = migrate_str(SourceFormat::Sway, src);
-        assert!(r.output.contains("bind = super,Return,spawn,kitty"), "{}", r.output);
-        assert!(r.output.contains("bind = super,q,killclient"), "{}", r.output);
-        assert!(r.output.contains("bind = super+shift,f,togglefloating"), "{}", r.output);
+        assert!(
+            r.output.contains("bind = super,Return,spawn,kitty"),
+            "{}",
+            r.output
+        );
+        assert!(
+            r.output.contains("bind = super,q,killclient"),
+            "{}",
+            r.output
+        );
+        assert!(
+            r.output.contains("bind = super+shift,f,togglefloating"),
+            "{}",
+            r.output
+        );
         assert!(r.output.contains("bind = super,1,view,1"), "{}", r.output);
     }
 
@@ -513,7 +559,11 @@ mod tests {
         let src = "bindsym Mod4+Shift+3 move container to workspace number 3\n";
         let r = migrate_str(SourceFormat::Sway, src);
         // workspace 3 → 1 << 2 = 4.
-        assert!(r.output.contains("bind = super+shift,3,tag,4"), "{}", r.output);
+        assert!(
+            r.output.contains("bind = super+shift,3,tag,4"),
+            "{}",
+            r.output
+        );
     }
 
     #[test]
@@ -521,7 +571,11 @@ mod tests {
         let src = "bindsym --release Mod4+q kill\n";
         let r = migrate_str(SourceFormat::Sway, src);
         assert!(r.warnings.iter().any(|w| w.contains("--release")));
-        assert!(r.output.contains("bind = super,q,killclient"), "{}", r.output);
+        assert!(
+            r.output.contains("bind = super,q,killclient"),
+            "{}",
+            r.output
+        );
     }
 
     #[test]

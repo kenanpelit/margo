@@ -1,4 +1,4 @@
-use crate::json_struct::{MatugenTheme, MShell};
+use crate::json_struct::{MShell, MatugenTheme};
 use crate::static_themes::bauhaus::bauhaus;
 use crate::static_themes::black_turq::black_turq;
 use crate::static_themes::bloodrust::blood_rust;

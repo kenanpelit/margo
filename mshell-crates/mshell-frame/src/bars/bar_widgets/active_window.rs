@@ -129,22 +129,20 @@ impl Component for ActiveWindowModel {
         // change-only (no replay), so subscribe *first* then prime
         // from the current snapshot — whichever side a startup
         // focus update lands on, the pill fills in.
-        sender.command(|out, shutdown| {
-            async move {
-                let mut stream = margo_service().focused_client.watch();
-                let _ = out.send(ActiveWindowCommandOutput::FocusChanged);
-                let shutdown_fut = shutdown.wait();
-                tokio::pin!(shutdown_fut);
-                loop {
-                    tokio::select! {
-                        () = &mut shutdown_fut => break,
-                        next = stream.next() => match next {
-                            Some(_) => {
-                                let _ = out.send(ActiveWindowCommandOutput::FocusChanged);
-                            }
-                            None => break,
-                        },
-                    }
+        sender.command(|out, shutdown| async move {
+            let mut stream = margo_service().focused_client.watch();
+            let _ = out.send(ActiveWindowCommandOutput::FocusChanged);
+            let shutdown_fut = shutdown.wait();
+            tokio::pin!(shutdown_fut);
+            loop {
+                tokio::select! {
+                    () = &mut shutdown_fut => break,
+                    next = stream.next() => match next {
+                        Some(_) => {
+                            let _ = out.send(ActiveWindowCommandOutput::FocusChanged);
+                        }
+                        None => break,
+                    },
                 }
             }
         });
@@ -243,11 +241,13 @@ fn apply_visual(widgets: &ActiveWindowModelWidgets, model: &ActiveWindowModel) {
     let title = if title.is_empty() { "Window" } else { title };
 
     widgets.label.set_label(title);
-    widgets.root.set_tooltip_text(Some(&if model.class.trim().is_empty() {
-        title.to_string()
-    } else {
-        format!("{}  ·  {}", model.class.trim(), title)
-    }));
+    widgets
+        .root
+        .set_tooltip_text(Some(&if model.class.trim().is_empty() {
+            title.to_string()
+        } else {
+            format!("{}  ·  {}", model.class.trim(), title)
+        }));
 }
 
 /// Start the title marquee: a periodic timer that scrolls the capped

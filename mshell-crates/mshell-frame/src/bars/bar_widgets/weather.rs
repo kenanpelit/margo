@@ -230,7 +230,9 @@ impl WeatherModel {
                     let place = if !weather.location.city.is_empty() {
                         match &weather.location.region {
                             Some(region) => format!("{}, {}", weather.location.city, region),
-                            None => format!("{}, {}", weather.location.city, weather.location.country),
+                            None => {
+                                format!("{}, {}", weather.location.city, weather.location.country)
+                            }
                         }
                     } else {
                         format!("{}, {}", weather.location.lat, weather.location.lon)
@@ -240,8 +242,7 @@ impl WeatherModel {
                     } else {
                         format!("{place} · {} · {} {}", self.temp, self.high, self.low)
                     };
-                    self.tooltip =
-                        format!("{summary}\nClick: open  ·  Right-click: high / low");
+                    self.tooltip = format!("{summary}\nClick: open  ·  Right-click: high / low");
                     return;
                 }
                 self.fallback("Weather");

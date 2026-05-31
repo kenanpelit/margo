@@ -301,7 +301,11 @@ impl Component for PluginsSettingsModel {
         // Auto-update policy dropdown: Off / On login. Index 1 == "login".
         let dropdown = &widgets.auto_update_dropdown;
         dropdown.set_model(Some(&gtk::StringList::new(&["Off", "On login"])));
-        dropdown.set_selected(if model.state.auto_update_on_login() { 1 } else { 0 });
+        dropdown.set_selected(if model.state.auto_update_on_login() {
+            1
+        } else {
+            0
+        });
         {
             let s = sender.clone();
             dropdown.connect_selected_notify(move |d| {
@@ -470,7 +474,8 @@ impl Component for PluginsSettingsModel {
                 self.status = format!("Removed {key}.");
             }
             PluginsSettingsInput::ToggleSettings(key) => {
-                self.expanded_settings = if self.expanded_settings.as_deref() == Some(key.as_str()) {
+                self.expanded_settings = if self.expanded_settings.as_deref() == Some(key.as_str())
+                {
                     None
                 } else {
                     Some(key)
@@ -494,10 +499,7 @@ impl Component for PluginsSettingsModel {
                     // migration, evict it now.
                     if self.state.setting(&plugin, &key).is_some() {
                         self.state.set_setting(&plugin, &key, "");
-                        self.state
-                            .settings
-                            .get_mut(&plugin)
-                            .map(|m| m.remove(&key));
+                        self.state.settings.get_mut(&plugin).map(|m| m.remove(&key));
                         let _ = self.store.save_state(&self.state);
                     }
                 } else {
@@ -545,10 +547,9 @@ impl Component for PluginsSettingsModel {
                     let store = self.store.clone();
                     let (tx, rx) = tokio::sync::oneshot::channel();
                     tokio::spawn(async move {
-                        let outcome =
-                            tokio::task::spawn_blocking(move || store.run_update_pass())
-                                .await
-                                .unwrap_or_default();
+                        let outcome = tokio::task::spawn_blocking(move || store.run_update_pass())
+                            .await
+                            .unwrap_or_default();
                         let _ = tx.send(outcome);
                     });
                     let s2 = sender.clone();
@@ -573,7 +574,11 @@ impl Component for PluginsSettingsModel {
                     self.status = "Everything is up to date.".to_string();
                 }
             }
-            PluginsSettingsInput::SetKeybindOverride { plugin, bind_id, combo } => {
+            PluginsSettingsInput::SetKeybindOverride {
+                plugin,
+                bind_id,
+                combo,
+            } => {
                 self.state
                     .set_keybind_override(&plugin, &bind_id, combo.trim());
                 let _ = self.store.save_state(&self.state);
@@ -715,10 +720,7 @@ fn rebuild_keybinds(
             .filter(|n| !n.trim().is_empty())
             .copied()
             .unwrap_or(r.plugin_key.as_str());
-        let title = gtk::Label::new(Some(&format!(
-            "{display_name} · {}",
-            r.keybind.id
-        )));
+        let title = gtk::Label::new(Some(&format!("{display_name} · {}", r.keybind.id)));
         title.add_css_class("label-medium-bold");
         title.set_halign(gtk::Align::Start);
         col.append(&title);
@@ -813,7 +815,11 @@ fn rebuild_keybinds(
     }
 }
 
-fn rebuild_sources(list: &gtk::Box, sources: &[Source], sender: &ComponentSender<PluginsSettingsModel>) {
+fn rebuild_sources(
+    list: &gtk::Box,
+    sources: &[Source],
+    sender: &ComponentSender<PluginsSettingsModel>,
+) {
     clear(list);
     for s in sources {
         let (row, col) = card_row("network-server-symbolic");
@@ -853,7 +859,11 @@ fn rebuild_installed(
     }
     for p in &model.installed {
         let (row, col) = card_row(&installed_icon(p));
-        let name = if p.manifest.name.is_empty() { &p.manifest.id } else { &p.manifest.name };
+        let name = if p.manifest.name.is_empty() {
+            &p.manifest.id
+        } else {
+            &p.manifest.name
+        };
         col.append(&title_line(name, &p.manifest.version));
 
         if !p.manifest.description.trim().is_empty() {
@@ -909,7 +919,10 @@ fn rebuild_installed(
             let s2 = sender.clone();
             let key = p.key.clone();
             sw.connect_active_notify(move |s| {
-                s2.input(PluginsSettingsInput::ToggleEnabled(key.clone(), s.is_active()))
+                s2.input(PluginsSettingsInput::ToggleEnabled(
+                    key.clone(),
+                    s.is_active(),
+                ))
             });
         }
         row.append(&sw);
@@ -970,7 +983,14 @@ fn build_settings_form(
         };
         let plugin_key = p.key.clone();
         let setting_key = s.key.clone();
-        let control = setting_control(&s.kind, &s.choices, &current, sender, plugin_key, setting_key);
+        let control = setting_control(
+            &s.kind,
+            &s.choices,
+            &current,
+            sender,
+            plugin_key,
+            setting_key,
+        );
         row.append(&control);
 
         form.append(&row);
@@ -987,7 +1007,10 @@ fn build_settings_form(
 /// `true` if the plugin contributes an in-shell surface (a WASM panel or a
 /// declarative `[[widget.menu]]`) whose size is worth configuring.
 fn plugin_has_panel(m: &mshell_plugins::Manifest) -> bool {
-    m.has_wasm_entry() || m.widgets.iter().any(|w| w.opens_panel || !w.menu.is_empty())
+    m.has_wasm_entry()
+        || m.widgets
+            .iter()
+            .any(|w| w.opens_panel || !w.menu.is_empty())
 }
 
 /// Anchor choices for a plugin panel: `(stored kebab, display name)`.
@@ -1015,7 +1038,9 @@ fn panel_size_section(
     title.add_css_class("label-medium-bold");
     title.set_halign(gtk::Align::Start);
     section.append(&title);
-    section.append(&dim_line("Where + how big this plugin's in-shell surface opens."));
+    section.append(&dim_line(
+        "Where + how big this plugin's in-shell surface opens.",
+    ));
 
     let displays: Vec<&str> = PANEL_POSITIONS.iter().map(|(_, d)| *d).collect();
     let pos_dd = gtk::DropDown::from_strings(&displays);
@@ -1183,7 +1208,9 @@ fn rebuild_available(
     let installed_keys: Vec<&str> = model.installed.iter().map(|p| p.key.as_str()).collect();
     let mut shown = 0;
     for row_data in &model.available {
-        let key = model.store.key_for(&row_data.entry.id, &row_data.source_url);
+        let key = model
+            .store
+            .key_for(&row_data.entry.id, &row_data.source_url);
         if installed_keys.contains(&key.as_str()) {
             continue; // already installed (updates live in the Installed list)
         }
@@ -1222,7 +1249,10 @@ fn rebuild_available(
             let note = dim_line(&format!("needs mshell ≥ {}", e.min_mshell));
             note.set_wrap(false);
             note.set_valign(gtk::Align::Center);
-            note.set_tooltip_text(Some(&format!("You have mshell {}", mshell_plugins::MSHELL_VERSION)));
+            note.set_tooltip_text(Some(&format!(
+                "You have mshell {}",
+                mshell_plugins::MSHELL_VERSION
+            )));
             row.append(&note);
         }
         list.append(&row);

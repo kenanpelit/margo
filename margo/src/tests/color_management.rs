@@ -24,7 +24,9 @@ fn color_management_global_not_advertised_until_phase_2() {
     fx.roundtrip(id);
     let names = fx.client(id).global_names();
     assert!(
-        !names.iter().any(|n| n.starts_with("wp_color_manager") || n.starts_with("xx_color_manager")),
+        !names
+            .iter()
+            .any(|n| n.starts_with("wp_color_manager") || n.starts_with("xx_color_manager")),
         "Phase 2 of HDR isn't shipped yet; the color-management global must stay gated. \
          Saw advertised globals: {:?}",
         names,

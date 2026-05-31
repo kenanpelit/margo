@@ -84,9 +84,7 @@ fn resolve_symlink_target(path: &Path) -> PathBuf {
     } else {
         // Relative symlinks are resolved against the link's parent
         // directory, not the current working dir.
-        path.parent()
-            .map(|p| p.join(&link))
-            .unwrap_or(link)
+        path.parent().map(|p| p.join(&link)).unwrap_or(link)
     }
 }
 

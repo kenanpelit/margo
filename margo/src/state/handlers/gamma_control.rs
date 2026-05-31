@@ -32,11 +32,7 @@ impl GammaControlHandler for MargoState {
         // Coalesce: if a pending entry already exists for this
         // output, replace it. Avoids unbounded queue growth if a
         // client spams set_gamma faster than the backend drains.
-        if let Some(existing) = self
-            .pending_gamma
-            .iter_mut()
-            .find(|(o, _)| o == output)
-        {
+        if let Some(existing) = self.pending_gamma.iter_mut().find(|(o, _)| o == output) {
             existing.1 = ramp;
         } else {
             self.pending_gamma.push((output.clone(), ramp));

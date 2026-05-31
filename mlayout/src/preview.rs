@@ -55,9 +55,9 @@ pub fn place_outputs(layout: &Layout) -> Vec<PlacedOutput> {
         let (mut x, mut y) = (o.x, o.y);
         let (w, h) = (o.width, o.height);
 
-        let overlap = placed.iter().any(|p| {
-            x + w > p.x && x < p.x + p.width && y + h > p.y && y < p.y + p.height
-        });
+        let overlap = placed
+            .iter()
+            .any(|p| x + w > p.x && x < p.x + p.width && y + h > p.y && y < p.y + p.height);
         if overlap {
             x = auto_x;
             y = 0;
@@ -86,16 +86,13 @@ fn has_explicit_position(o: &LayoutOutput) -> bool {
 }
 
 fn make(o: &LayoutOutput, x: i32, y: i32) -> PlacedOutput {
-    let label = o
-        .label
-        .clone()
-        .unwrap_or_else(|| {
-            if o.connector.is_empty() {
-                "?".to_string()
-            } else {
-                o.connector.clone()
-            }
-        });
+    let label = o.label.clone().unwrap_or_else(|| {
+        if o.connector.is_empty() {
+            "?".to_string()
+        } else {
+            o.connector.clone()
+        }
+    });
     let color = o.color.unwrap_or_else(|| auto_colour(&label));
     PlacedOutput {
         label,
@@ -144,8 +141,7 @@ const PALETTE_BG: [u8; 18] = [
 ];
 
 const PALETTE_FG: [u8; 18] = [
-    255, 255, 255, 232, 232, 232, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-    255, 255, 255,
+    255, 255, 255, 232, 232, 232, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
 ];
 
 /// The same 18-colour palette as RGB hex (Tailwind 500 family), for GUI
@@ -250,10 +246,7 @@ pub fn render_ascii(layout: &Layout, cols: usize) -> String {
                 Some(idx) => {
                     let bg = PALETTE_BG[idx as usize];
                     let fg = PALETTE_FG[idx as usize];
-                    out.push_str(&format!(
-                        "\x1b[48;5;{}m\x1b[38;5;{}m{}\x1b[0m",
-                        bg, fg, ch
-                    ));
+                    out.push_str(&format!("\x1b[48;5;{}m\x1b[38;5;{}m{}\x1b[0m", bg, fg, ch));
                 }
                 None => out.push(ch),
             }
@@ -366,7 +359,11 @@ mod tests {
             out("DP-2", 0, 0, 200, 1080),
         ]));
         let labels: Vec<&str> = placed.iter().map(|p| p.label.as_str()).collect();
-        assert_eq!(labels, ["DP-1", "DP-2", "DP-3"], "should be connector-sorted");
+        assert_eq!(
+            labels,
+            ["DP-1", "DP-2", "DP-3"],
+            "should be connector-sorted"
+        );
         assert_eq!(placed[0].x, 0);
         assert_eq!(placed[1].x, 100);
         assert_eq!(placed[2].x, 300);

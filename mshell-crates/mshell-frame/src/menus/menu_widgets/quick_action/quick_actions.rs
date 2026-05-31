@@ -1,11 +1,11 @@
 use crate::menus::menu_widgets::quick_action::actions::airplane_mode::{
     AirplaneModeInit, AirplaneModeModel,
 };
-use crate::menus::menu_widgets::quick_action::actions::do_not_disturb::{
-    DoNotDisturbInit, DoNotDisturbModel,
-};
 use crate::menus::menu_widgets::quick_action::actions::color_picker::{
     ColorPickerInit, ColorPickerModel, ColorPickerOutput,
+};
+use crate::menus::menu_widgets::quick_action::actions::do_not_disturb::{
+    DoNotDisturbInit, DoNotDisturbModel,
 };
 use crate::menus::menu_widgets::quick_action::actions::idle_inhibitor::{
     IdleInhibitorInit, IdleInhibitorModel,
@@ -20,10 +20,10 @@ use crate::menus::menu_widgets::quick_action::actions::screenshot::{
     ScreenshotInit, ScreenshotModel, ScreenshotOutput,
 };
 use crate::menus::menu_widgets::quick_action::actions::settings::{SettingsInit, SettingsModel};
+use crate::menus::menu_widgets::quick_action::actions::shutdown::{ShutdownInit, ShutdownModel};
 use crate::menus::menu_widgets::quick_action::actions::wallpaper::{
     WallpaperInit, WallpaperModel, WallpaperOutput,
 };
-use crate::menus::menu_widgets::quick_action::actions::shutdown::{ShutdownInit, ShutdownModel};
 use mshell_common::dynamic_box::generic_widget_controller::GenericWidgetController;
 use mshell_config::schema::menu_widgets::{QuickActionWidget, QuickActionsConfig};
 use relm4::gtk::prelude::*;
@@ -136,13 +136,14 @@ impl QuickActionsModel {
             QuickActionWidget::Reboot => {
                 Box::new(RebootModel::builder().launch(RebootInit {}).detach())
             }
-            QuickActionWidget::Wallpaper => Box::new(
-                WallpaperModel::builder()
-                    .launch(WallpaperInit {})
-                    .forward(sender.output_sender(), |msg| match msg {
+            QuickActionWidget::Wallpaper => {
+                Box::new(WallpaperModel::builder().launch(WallpaperInit {}).forward(
+                    sender.output_sender(),
+                    |msg| match msg {
                         WallpaperOutput::CloseMenu => QuickActionsOutput::CloseMenu,
-                    }),
-            ),
+                    },
+                ))
+            }
             QuickActionWidget::Screenshot => Box::new(
                 ScreenshotModel::builder()
                     .launch(ScreenshotInit {})

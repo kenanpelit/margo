@@ -10,9 +10,9 @@
 
 use smithay::{
     delegate_layer_shell,
-    desktop::{layer_map_for_output, LayerSurface as DesktopLayerSurface},
+    desktop::{LayerSurface as DesktopLayerSurface, layer_map_for_output},
     output::Output,
-    reexports::wayland_server::{protocol::wl_output::WlOutput, Resource},
+    reexports::wayland_server::{Resource, protocol::wl_output::WlOutput},
     wayland::shell::wlr_layer::{
         Layer, LayerSurface as WlrLayerSurface, WlrLayerShellHandler, WlrLayerShellState,
     },
@@ -44,7 +44,9 @@ impl WlrLayerShellHandler for MargoState {
             })
             .or_else(|| self.space.outputs().next().cloned());
 
-        let Some(smithay_output) = smithay_output else { return };
+        let Some(smithay_output) = smithay_output else {
+            return;
+        };
 
         let desktop_layer = DesktopLayerSurface::new(surface, namespace.clone());
         let wl_surface_clone = desktop_layer.wl_surface().clone();
@@ -269,10 +271,8 @@ impl WlrLayerShellHandler for MargoState {
                 .selected
                 .filter(|&idx| {
                     idx < self.clients.len()
-                        && self.clients[idx].is_visible_on(
-                            mon_idx,
-                            self.monitors[mon_idx].current_tagset(),
-                        )
+                        && self.clients[idx]
+                            .is_visible_on(mon_idx, self.monitors[mon_idx].current_tagset())
                 })
                 .or_else(|| {
                     let tagset = self.monitors[mon_idx].current_tagset();

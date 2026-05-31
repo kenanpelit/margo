@@ -157,7 +157,9 @@ impl Component for KeepAwakeMenuWidgetModel {
 
         // Build the duration tiles (presets + ∞).
         for (mins, label) in PRESETS {
-            widgets.grid.insert(&duration_tile(label, Some(*mins), &sender), -1);
+            widgets
+                .grid
+                .insert(&duration_tile(label, Some(*mins), &sender), -1);
         }
         widgets.grid.insert(&duration_tile("∞", None, &sender), -1);
 
@@ -169,12 +171,7 @@ impl Component for KeepAwakeMenuWidgetModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             KeepAwakeMenuWidgetInput::ParentRevealChanged(revealed) => {
                 self.revealed.store(revealed, Ordering::Relaxed);
@@ -254,7 +251,9 @@ fn sync(model: &KeepAwakeMenuWidgetModel) {
     model.status_label.set_label(&status);
 
     // Extend only makes sense for a timed session; off whenever active.
-    model.extend_button.set_visible(active && remaining.is_some());
+    model
+        .extend_button
+        .set_visible(active && remaining.is_some());
     model.off_button.set_visible(active);
 }
 

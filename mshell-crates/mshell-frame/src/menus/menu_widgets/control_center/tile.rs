@@ -66,12 +66,7 @@ pub(crate) fn build_expand_tile(icon_name: &str, title: &str, subtitle: &str) ->
 }
 
 /// Internal helper shared by `build_tile` and `build_expand_tile`.
-fn build_tile_inner(
-    icon_name: &str,
-    title: &str,
-    subtitle: &str,
-    expandable: bool,
-) -> TileWidget {
+fn build_tile_inner(icon_name: &str, title: &str, subtitle: &str, expandable: bool) -> TileWidget {
     let button = gtk::Button::new();
     button.add_css_class("control-center-tile");
 

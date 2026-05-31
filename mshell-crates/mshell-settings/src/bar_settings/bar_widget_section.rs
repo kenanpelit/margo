@@ -219,14 +219,10 @@ fn populate_add_list(list: &gtk::Box, popover: &gtk::Popover, location: BarListL
                     BarListLocation::TopCenter => &mut config.bars.top_bar.center_widgets,
                     BarListLocation::TopEnd => &mut config.bars.top_bar.right_widgets,
                     BarListLocation::BottomStart => &mut config.bars.bottom_bar.left_widgets,
-                    BarListLocation::BottomCenter => {
-                        &mut config.bars.bottom_bar.center_widgets
-                    }
+                    BarListLocation::BottomCenter => &mut config.bars.bottom_bar.center_widgets,
                     BarListLocation::BottomEnd => &mut config.bars.bottom_bar.right_widgets,
                     BarListLocation::TopHidden => &mut config.bars.top_bar.hidden_widgets,
-                    BarListLocation::BottomHidden => {
-                        &mut config.bars.bottom_bar.hidden_widgets
-                    }
+                    BarListLocation::BottomHidden => &mut config.bars.bottom_bar.hidden_widgets,
                 };
                 list.push(widget_clone);
             });
@@ -257,14 +253,10 @@ fn populate_add_list(list: &gtk::Box, popover: &gtk::Popover, location: BarListL
                     BarListLocation::TopCenter => &mut config.bars.top_bar.center_widgets,
                     BarListLocation::TopEnd => &mut config.bars.top_bar.right_widgets,
                     BarListLocation::BottomStart => &mut config.bars.bottom_bar.left_widgets,
-                    BarListLocation::BottomCenter => {
-                        &mut config.bars.bottom_bar.center_widgets
-                    }
+                    BarListLocation::BottomCenter => &mut config.bars.bottom_bar.center_widgets,
                     BarListLocation::BottomEnd => &mut config.bars.bottom_bar.right_widgets,
                     BarListLocation::TopHidden => &mut config.bars.top_bar.hidden_widgets,
-                    BarListLocation::BottomHidden => {
-                        &mut config.bars.bottom_bar.hidden_widgets
-                    }
+                    BarListLocation::BottomHidden => &mut config.bars.bottom_bar.hidden_widgets,
                 };
                 list.push(BarWidget::Custom(name.clone()));
             });

@@ -538,8 +538,7 @@ impl Component for WidgetMenuSettingsModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let position_refs: Vec<&str> =
-            Position::all().iter().map(|p| p.display_name()).collect();
+        let position_refs: Vec<&str> = Position::all().iter().map(|p| p.display_name()).collect();
         let position_model = gtk::StringList::new(&position_refs);
 
         let mut effects = EffectScope::new();
@@ -615,12 +614,7 @@ impl Component for WidgetMenuSettingsModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        _sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             WidgetMenuSettingsInput::PositionPicked(idx) => {
                 let p = Position::from_index(idx);

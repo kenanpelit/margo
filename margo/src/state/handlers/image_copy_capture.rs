@@ -173,8 +173,8 @@ impl ImageCopyCaptureHandler for MargoState {
         // request and drain, so don't store an index.
         if let Some(handle) = source
             .user_data()
-            .get::<smithay::wayland::foreign_toplevel_list::ForeignToplevelHandle>()
-        {
+            .get::<smithay::wayland::foreign_toplevel_list::ForeignToplevelHandle>(
+        ) {
             if let Some(client) = self.clients.iter().find(|c| {
                 c.foreign_toplevel_handle
                     .as_ref()

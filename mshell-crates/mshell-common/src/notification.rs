@@ -257,7 +257,11 @@ impl Component for NotificationModel {
         // with the opacity fading during the drag for feedback. Scoped
         // to `content` so the close button + action buttons stay clear.
         // Unifying into one gesture avoids click-vs-drag conflicts.
-        let default_key = model.notification.default_action.get().map(|a| a.id.clone());
+        let default_key = model
+            .notification
+            .default_action
+            .get()
+            .map(|a| a.id.clone());
         if default_key.is_some() {
             widgets.content.add_css_class("notification-clickable");
         }
@@ -485,9 +489,7 @@ pub fn detect_code(text: &str) -> Option<String> {
         }
 
         // Plain 4–8 digit run on a token boundary.
-        if (4..=8).contains(&first_len)
-            && (i == n || !bytes[i].is_ascii_alphabetic())
-        {
+        if (4..=8).contains(&first_len) && (i == n || !bytes[i].is_ascii_alphabetic()) {
             return Some(text[start..i].to_string());
         }
     }
@@ -500,7 +502,10 @@ mod detect_code_tests {
 
     #[test]
     fn plain_codes_4_to_8_digits() {
-        assert_eq!(detect_code("Your code is 482913").as_deref(), Some("482913"));
+        assert_eq!(
+            detect_code("Your code is 482913").as_deref(),
+            Some("482913")
+        );
         assert_eq!(detect_code("OTP: 1234").as_deref(), Some("1234"));
         assert_eq!(detect_code("PIN 12345678 now").as_deref(), Some("12345678"));
     }

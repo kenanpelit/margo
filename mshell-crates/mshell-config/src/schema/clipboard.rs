@@ -114,7 +114,11 @@ impl ClipboardClearPolicy {
     }
 
     pub fn display_names() -> Vec<&'static str> {
-        vec!["Never (manual only)", "After N hours", "On logout / restart"]
+        vec![
+            "Never (manual only)",
+            "After N hours",
+            "On logout / restart",
+        ]
     }
 
     pub fn from_index(i: u32) -> Self {
@@ -186,7 +190,9 @@ impl ClipboardDensity {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, reactive_stores::Patch, JsonSchema)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, reactive_stores::Patch, JsonSchema,
+)]
 #[serde(default)]
 pub struct Clipboard {
     /// Max rolling-history entries before the oldest non-pinned

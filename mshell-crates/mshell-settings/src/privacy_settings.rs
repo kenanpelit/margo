@@ -433,11 +433,7 @@ impl Component for PrivacySettingsModel {
             let snapshot: Vec<String> = recording_streams
                 .get()
                 .iter()
-                .map(|s| {
-                    s.application_name
-                        .get()
-                        .unwrap_or_else(|| s.name.get())
-                })
+                .map(|s| s.application_name.get().unwrap_or_else(|| s.name.get()))
                 .collect();
             let _ = out.send(PrivacySettingsCommandOutput::MicChanged(snapshot));
         });
@@ -447,11 +443,7 @@ impl Component for PrivacySettingsModel {
             .recording_streams
             .get()
             .iter()
-            .map(|s| {
-                s.application_name
-                    .get()
-                    .unwrap_or_else(|| s.name.get())
-            })
+            .map(|s| s.application_name.get().unwrap_or_else(|| s.name.get()))
             .collect();
 
         // ── Camera poll (start on map, stop on unmap) ────────────────
@@ -462,7 +454,10 @@ impl Component for PrivacySettingsModel {
         // forever while the component lives; for a settings page we gate
         // on visibility instead.
         {
-            use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+            use std::sync::{
+                Arc,
+                atomic::{AtomicBool, Ordering},
+            };
             let active = Arc::new(AtomicBool::new(false));
             let active_map = active.clone();
             let active_unmap = active.clone();
@@ -655,7 +650,12 @@ impl Component for PrivacySettingsModel {
         }
 
         // Rebuild the App Permissions box from current model state.
-        rebuild_perms_box(&widgets.perms_box, self.flatpak_available, &self.perms, &sender);
+        rebuild_perms_box(
+            &widgets.perms_box,
+            self.flatpak_available,
+            &self.perms,
+            &sender,
+        );
 
         self.update_view(widgets, sender);
     }
@@ -679,7 +679,11 @@ fn mic_status_label(apps: &[String]) -> String {
 
 fn lock_summary(enabled: bool, timeout_minutes: u32) -> String {
     if enabled {
-        format!("Screen locks after {} minute{} idle", timeout_minutes, if timeout_minutes == 1 { "" } else { "s" })
+        format!(
+            "Screen locks after {} minute{} idle",
+            timeout_minutes,
+            if timeout_minutes == 1 { "" } else { "s" }
+        )
     } else {
         "Automatic screen lock is off".to_string()
     }

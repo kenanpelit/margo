@@ -243,7 +243,11 @@ impl Component for SoundSettingsModel {
         let default_in = svc.default_input.get();
 
         // ── Output controls ──
-        let out_model = string_list(out_devices.iter().map(|d| label_or_name(d.description.get(), d.name.get())));
+        let out_model = string_list(
+            out_devices
+                .iter()
+                .map(|d| label_or_name(d.description.get(), d.name.get())),
+        );
         let out_dd = gtk::DropDown::builder().model(&out_model).build();
         out_dd.set_width_request(240);
         out_dd.set_valign(gtk::Align::Center);
@@ -259,7 +263,12 @@ impl Component for SoundSettingsModel {
         });
 
         let out_scale = volume_scale();
-        out_scale.set_value(default_out.as_ref().map(|d| d.volume.get().average()).unwrap_or(0.0));
+        out_scale.set_value(
+            default_out
+                .as_ref()
+                .map(|d| d.volume.get().average())
+                .unwrap_or(0.0),
+        );
         let out_scale_handler = out_scale.connect_value_changed({
             let s = sender.clone();
             move |sc| s.input(SoundSettingsInput::SetOutputVolume(sc.value()))
@@ -273,7 +282,11 @@ impl Component for SoundSettingsModel {
         });
 
         // ── Input controls ──
-        let in_model = string_list(in_devices.iter().map(|d| label_or_name(d.description.get(), d.name.get())));
+        let in_model = string_list(
+            in_devices
+                .iter()
+                .map(|d| label_or_name(d.description.get(), d.name.get())),
+        );
         let in_dd = gtk::DropDown::builder().model(&in_model).build();
         in_dd.set_width_request(240);
         in_dd.set_valign(gtk::Align::Center);
@@ -289,7 +302,12 @@ impl Component for SoundSettingsModel {
         });
 
         let in_scale = volume_scale();
-        in_scale.set_value(default_in.as_ref().map(|d| d.volume.get().average()).unwrap_or(0.0));
+        in_scale.set_value(
+            default_in
+                .as_ref()
+                .map(|d| d.volume.get().average())
+                .unwrap_or(0.0),
+        );
         let in_scale_handler = in_scale.connect_value_changed({
             let s = sender.clone();
             move |sc| s.input(SoundSettingsInput::SetInputVolume(sc.value()))
@@ -336,11 +354,7 @@ impl Component for SoundSettingsModel {
         {
             let s = sender.clone();
             effects.push(move |_| {
-                let v = config_manager()
-                    .config()
-                    .audio()
-                    .hide_hdmi_outputs()
-                    .get();
+                let v = config_manager().config().audio().hide_hdmi_outputs().get();
                 s.input(SoundSettingsInput::HideHdmiOutputsEffect(v));
             });
         }
@@ -459,7 +473,12 @@ impl Component for SoundSettingsModel {
             SoundSettingsCommandOutput::OutVolMuteChanged => self.sync_output(),
             SoundSettingsCommandOutput::OutDevicesChanged => {
                 self.out_devices = audio_service().output_devices.get();
-                splice(&self.out_model, self.out_devices.iter().map(|d| label_or_name(d.description.get(), d.name.get())));
+                splice(
+                    &self.out_model,
+                    self.out_devices
+                        .iter()
+                        .map(|d| label_or_name(d.description.get(), d.name.get())),
+                );
                 self.sync_output();
             }
             SoundSettingsCommandOutput::InDefaultChanged => {
@@ -474,7 +493,12 @@ impl Component for SoundSettingsModel {
             SoundSettingsCommandOutput::InVolMuteChanged => self.sync_input(),
             SoundSettingsCommandOutput::InDevicesChanged => {
                 self.in_devices = audio_service().input_devices.get();
-                splice(&self.in_model, self.in_devices.iter().map(|d| label_or_name(d.description.get(), d.name.get())));
+                splice(
+                    &self.in_model,
+                    self.in_devices
+                        .iter()
+                        .map(|d| label_or_name(d.description.get(), d.name.get())),
+                );
                 self.sync_input();
             }
         }
@@ -494,10 +518,17 @@ impl SoundSettingsModel {
                 self.out_dd.set_selected(i);
             }
         });
-        let vol = default.as_ref().map(|d| d.volume.get().average()).unwrap_or(0.0);
-        block(&self.out_scale, &self.out_scale_handler, || self.out_scale.set_value(vol));
+        let vol = default
+            .as_ref()
+            .map(|d| d.volume.get().average())
+            .unwrap_or(0.0);
+        block(&self.out_scale, &self.out_scale_handler, || {
+            self.out_scale.set_value(vol)
+        });
         let muted = default.as_ref().map(|d| d.muted.get()).unwrap_or(false);
-        block(&self.out_mute, &self.out_mute_handler, || self.out_mute.set_active(muted));
+        block(&self.out_mute, &self.out_mute_handler, || {
+            self.out_mute.set_active(muted)
+        });
     }
 
     fn sync_input(&self) {
@@ -510,10 +541,17 @@ impl SoundSettingsModel {
                 self.in_dd.set_selected(i);
             }
         });
-        let vol = default.as_ref().map(|d| d.volume.get().average()).unwrap_or(0.0);
-        block(&self.in_scale, &self.in_scale_handler, || self.in_scale.set_value(vol));
+        let vol = default
+            .as_ref()
+            .map(|d| d.volume.get().average())
+            .unwrap_or(0.0);
+        block(&self.in_scale, &self.in_scale_handler, || {
+            self.in_scale.set_value(vol)
+        });
         let muted = default.as_ref().map(|d| d.muted.get()).unwrap_or(false);
-        block(&self.in_mute, &self.in_mute_handler, || self.in_mute.set_active(muted));
+        block(&self.in_mute, &self.in_mute_handler, || {
+            self.in_mute.set_active(muted)
+        });
     }
 }
 
@@ -529,7 +567,11 @@ fn block<W: IsA<gtk::glib::Object>>(widget: &W, handler: &SignalHandlerId, f: im
 /// Analog Stereo") when set, falling back to the technical node `name`
 /// (`alsa_output.pci-…`) only if the description is empty.
 fn label_or_name(description: String, name: String) -> String {
-    if description.trim().is_empty() { name } else { description }
+    if description.trim().is_empty() {
+        name
+    } else {
+        description
+    }
 }
 
 fn string_list(names: impl Iterator<Item = String>) -> gtk::StringList {
@@ -554,9 +596,15 @@ fn volume_scale() -> gtk::Scale {
 }
 
 fn device_index(devices: &[Arc<OutputDevice>], name: &str) -> Option<u32> {
-    devices.iter().position(|d| d.name.get() == name).map(|i| i as u32)
+    devices
+        .iter()
+        .position(|d| d.name.get() == name)
+        .map(|i| i as u32)
 }
 
 fn device_index_in(devices: &[Arc<InputDevice>], name: &str) -> Option<u32> {
-    devices.iter().position(|d| d.name.get() == name).map(|i| i as u32)
+    devices
+        .iter()
+        .position(|d| d.name.get() == name)
+        .map(|i| i as u32)
 }

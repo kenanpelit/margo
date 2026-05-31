@@ -1,12 +1,12 @@
 use crate::utils::username::current_username;
 use gtk4::glib;
 use gtk4::glib::SourceId;
+use mshell_auth::pam;
 use mshell_cache::wallpaper::{
     WallpaperStateStoreFields, current_wallpaper_image, wallpaper_store,
 };
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::schema::config::{ConfigStoreFields, GeneralStoreFields};
-use mshell_auth::pam;
 use mshell_session::session_lock::session_lock;
 use reactive_graph::prelude::{Get, GetUntracked};
 use relm4::gtk::gdk;

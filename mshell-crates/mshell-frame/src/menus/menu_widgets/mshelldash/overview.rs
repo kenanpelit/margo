@@ -284,10 +284,14 @@ fn read_cpu_freq_ghz() -> Option<f32> {
     let mut n = 0u32;
     for line in s.lines() {
         if let Some(rest) = line.strip_prefix("cpu MHz")
-            && let Some(v) = rest.split(':').nth(1).and_then(|x| x.trim().parse::<f32>().ok()) {
-                sum += v;
-                n += 1;
-            }
+            && let Some(v) = rest
+                .split(':')
+                .nth(1)
+                .and_then(|x| x.trim().parse::<f32>().ok())
+        {
+            sum += v;
+            n += 1;
+        }
     }
     if n == 0 {
         return None;
@@ -302,7 +306,10 @@ fn read_mem() -> Option<(u64, u64)> {
     let mut avail = 0u64;
     for line in s.lines() {
         let val = |rest: &str| -> u64 {
-            rest.split_whitespace().next().and_then(|x| x.parse().ok()).unwrap_or(0)
+            rest.split_whitespace()
+                .next()
+                .and_then(|x| x.parse().ok())
+                .unwrap_or(0)
         };
         if let Some(r) = line.strip_prefix("MemTotal:") {
             total = val(r);

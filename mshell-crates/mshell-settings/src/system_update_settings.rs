@@ -246,16 +246,12 @@ impl Component for SystemUpdateSettingsModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        _sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             SystemUpdateSettingsInput::SetPosition(i) => {
-                config_manager()
-                    .update_config(|c| c.menus.system_update_menu.position = Position::from_index(i));
+                config_manager().update_config(|c| {
+                    c.menus.system_update_menu.position = Position::from_index(i)
+                });
             }
             SystemUpdateSettingsInput::SetMinWidth(v) => {
                 config_manager()
@@ -267,8 +263,9 @@ impl Component for SystemUpdateSettingsModel {
             }
             SystemUpdateSettingsInput::SetIntervalHours(h) => {
                 let minutes = (h.max(1) as u32).saturating_mul(60);
-                config_manager()
-                    .update_config(|c| c.bars.widgets.system_update.check_interval_minutes = minutes);
+                config_manager().update_config(|c| {
+                    c.bars.widgets.system_update.check_interval_minutes = minutes
+                });
             }
             SystemUpdateSettingsInput::SetCheckRepo(on) => {
                 config_manager().update_config(|c| c.bars.widgets.system_update.check_repo = on);

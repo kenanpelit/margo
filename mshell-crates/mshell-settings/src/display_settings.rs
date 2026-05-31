@@ -173,7 +173,11 @@ pub(crate) enum DisplaySettingsInput {
     OpenPresetsFolder,
     /// A preset row's temperature/gamma spin changed. Debounced into
     /// a coalesced `mctl twilight preset set` + reload.
-    PresetTempGammaEdited { name: String, temp: u32, gamma: u32 },
+    PresetTempGammaEdited {
+        name: String,
+        temp: u32,
+        gamma: u32,
+    },
     /// Debounce fired — flush every dirty preset to disk via `mctl`.
     PresetCommit,
     /// A preset row's schedule time was re-entered (Enter). Moves the
@@ -184,7 +188,9 @@ pub(crate) enum DisplaySettingsInput {
         name: String,
     },
     /// Delete a preset (file + its schedule line).
-    PresetDeleted { name: String },
+    PresetDeleted {
+        name: String,
+    },
     /// Add-row "Add" clicked — create a preset and schedule it.
     PresetAdded {
         name: String,
@@ -981,8 +987,7 @@ impl Component for DisplaySettingsModel {
     ) -> ComponentParts<Self> {
         let state = load_current_config();
 
-        let mode_label_refs: Vec<&str> =
-            ModeKey::all().iter().map(|m| m.label()).collect();
+        let mode_label_refs: Vec<&str> = ModeKey::all().iter().map(|m| m.label()).collect();
         let mode_model = gtk::StringList::new(&mode_label_refs);
 
         // Twilight schedule + presets from disk. Read-only here
@@ -1029,12 +1034,7 @@ impl Component for DisplaySettingsModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(
-        &mut self,
-        message: Self::Input,
-        sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         let mut dirty: Option<(&'static str, String)> = None;
         match message {
             DisplaySettingsInput::EnabledChanged(v) => {
@@ -1109,17 +1109,19 @@ impl Component for DisplaySettingsModel {
             }
             DisplaySettingsInput::SunriseChanged(s) => {
                 if let Some(secs) = parse_hhmm(&s)
-                    && self.state.sunrise_sec != secs {
-                        self.state.sunrise_sec = secs;
-                        dirty = Some(("twilight_sunrise", s));
-                    }
+                    && self.state.sunrise_sec != secs
+                {
+                    self.state.sunrise_sec = secs;
+                    dirty = Some(("twilight_sunrise", s));
+                }
             }
             DisplaySettingsInput::SunsetChanged(s) => {
                 if let Some(secs) = parse_hhmm(&s)
-                    && self.state.sunset_sec != secs {
-                        self.state.sunset_sec = secs;
-                        dirty = Some(("twilight_sunset", s));
-                    }
+                    && self.state.sunset_sec != secs
+                {
+                    self.state.sunset_sec = secs;
+                    dirty = Some(("twilight_sunset", s));
+                }
             }
             DisplaySettingsInput::StaticTempChanged(v) => {
                 if self.state.static_temp == v {
@@ -1155,10 +1157,11 @@ impl Component for DisplaySettingsModel {
                 // hasn't run — create it so the file manager has
                 // somewhere to land instead of failing.
                 if !dir.exists()
-                    && let Err(e) = std::fs::create_dir_all(dir.join("presets")) {
-                        warn!(path = %dir.display(), error = %e, "twilight: cannot create preset dir");
-                        return;
-                    }
+                    && let Err(e) = std::fs::create_dir_all(dir.join("presets"))
+                {
+                    warn!(path = %dir.display(), error = %e, "twilight: cannot create preset dir");
+                    return;
+                }
                 let dir_str = dir.display().to_string();
                 relm4::spawn(async move {
                     match tokio::process::Command::new("xdg-open")
@@ -1236,7 +1239,8 @@ impl Component for DisplaySettingsModel {
                 {
                     row.time_hhmm = new_time.clone();
                 }
-                self.schedule_rows.sort_by(|a, b| a.time_hhmm.cmp(&b.time_hhmm));
+                self.schedule_rows
+                    .sort_by(|a, b| a.time_hhmm.cmp(&b.time_hhmm));
                 run_mctl_seq(vec![
                     vec![
                         "twilight".into(),
@@ -1275,7 +1279,10 @@ impl Component for DisplaySettingsModel {
             } => {
                 let name = name.trim().to_string();
                 if name.is_empty() || parse_hhmm(&time).is_none() {
-                    warn!(name, time, "twilight: add preset rejected (empty name or bad HH:MM)");
+                    warn!(
+                        name,
+                        time, "twilight: add preset rejected (empty name or bad HH:MM)"
+                    );
                     populate_schedule_editor(&self.schedule_grid, &self.schedule_rows, &sender);
                     return;
                 }
@@ -1285,7 +1292,8 @@ impl Component for DisplaySettingsModel {
                     temp_k: temp,
                     gamma_pct: gamma,
                 });
-                self.schedule_rows.sort_by(|a, b| a.time_hhmm.cmp(&b.time_hhmm));
+                self.schedule_rows
+                    .sort_by(|a, b| a.time_hhmm.cmp(&b.time_hhmm));
                 run_mctl_seq(vec![
                     vec![
                         "twilight".into(),
@@ -1707,7 +1715,9 @@ fn load_schedule_rows(dir: &std::path::Path) -> Vec<ScheduleRow> {
             continue;
         }
         let mut parts = trimmed.split_whitespace();
-        let Some(time_str) = parts.next() else { continue };
+        let Some(time_str) = parts.next() else {
+            continue;
+        };
         let Some(name) = parts.next() else { continue };
         if parse_hhmm(time_str).is_none() {
             continue;

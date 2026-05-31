@@ -7,22 +7,22 @@ use mshell_config::schema::config::{
     BarsStoreFields, ConfigStoreFields, FrameStoreFields, GeneralStoreFields, IdleStoreFields,
     WallpaperRotationMode, WallpaperStoreFields,
 };
+use mshell_frame::frame::{Frame, FrameInit, FrameInput};
 use mshell_idle::idle_manager::{self, IdleConfig, IdleStage};
 use mshell_idle::inhibitor::IdleInhibitor;
-use mshell_services::margo_service;
-use mshell_session::session_lock::{lock_session, session_locked};
-use mshell_frame::frame::{Frame, FrameInit, FrameInput};
 use mshell_lockscreen::lock_screen_manager::{LockScreenManagerInit, LockScreenManagerModel};
 use mshell_notification_popups::popup_notifications::{
     PopupNotificationsInit, PopupNotificationsModel,
 };
-use mshell_services::notification_service;
 use mshell_osd::brightness_osd::{BrightnessOsdInit, BrightnessOsdModel};
 use mshell_osd::mic_osd::{MicOsdInit, MicOsdModel};
 use mshell_osd::network_osd::{NetworkOsdInit, NetworkOsdModel};
 use mshell_osd::sound_alerts::SoundAlertsModel;
 use mshell_osd::volume_osd::{VolumeOsdInit, VolumeOsdModel};
 use mshell_polkit::PolkitPromptModel;
+use mshell_services::margo_service;
+use mshell_services::notification_service;
+use mshell_session::session_lock::{lock_session, session_locked};
 use mshell_style::style_manager::{StyleManagerModel, StyleManagerOutput};
 use mshell_wallpaper::wallpaper::{WallpaperInit, WallpaperModel};
 use reactive_graph::effect::Effect;
@@ -169,11 +169,7 @@ impl Component for Shell {
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let icon_theme = gtk::IconTheme::for_display(&gtk::gdk::Display::default().unwrap());
-        icon_theme.add_search_path(
-            dirs::home_dir()
-                .unwrap()
-                .join(".config/margo/mshell/icons"),
-        );
+        icon_theme.add_search_path(dirs::home_dir().unwrap().join(".config/margo/mshell/icons"));
 
         root.init_layer_shell();
         root.set_layer(Layer::Background);
@@ -249,8 +245,7 @@ impl Component for Shell {
         // above. Launcher → `mshell_settings::open_settings_at_section`
         // → registered closure → channel → main-loop task →
         // ShellInput::OpenSettingsAtSection(monitor, section).
-        let (section_tx, mut section_rx) =
-            tokio::sync::mpsc::unbounded_channel::<String>();
+        let (section_tx, mut section_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
         mshell_settings::set_section_backend(move |section: &str| {
             let _ = section_tx.send(section.to_string());
         });
@@ -258,8 +253,7 @@ impl Component for Shell {
         relm4::gtk::glib::spawn_future_local(async move {
             while let Some(section) = section_rx.recv().await {
                 let monitor = margo_service().active_monitor_name().await;
-                section_app_sender
-                    .emit(ShellInput::OpenSettingsAtSection(monitor, section));
+                section_app_sender.emit(ShellInput::OpenSettingsAtSection(monitor, section));
             }
         });
 
@@ -675,9 +669,10 @@ impl Component for Shell {
                 let target_ptr = target.map(|f| f as *const _);
                 for group in self.window_groups.values() {
                     if let Some(frame) = group.frame.as_ref()
-                        && Some(frame as *const _) != target_ptr {
-                            frame.emit(FrameInput::CloseSettingsMenu);
-                        }
+                        && Some(frame as *const _) != target_ptr
+                    {
+                        frame.emit(FrameInput::CloseSettingsMenu);
+                    }
                 }
                 if let Some(frame) = target {
                     frame.emit(FrameInput::ToggleSettingsMenu);
@@ -696,9 +691,10 @@ impl Component for Shell {
                 let target_ptr = target.map(|f| f as *const _);
                 for group in self.window_groups.values() {
                     if let Some(frame) = group.frame.as_ref()
-                        && Some(frame as *const _) != target_ptr {
-                            frame.emit(FrameInput::CloseSettingsMenu);
-                        }
+                        && Some(frame as *const _) != target_ptr
+                    {
+                        frame.emit(FrameInput::CloseSettingsMenu);
+                    }
                 }
                 if let Some(frame) = target {
                     frame.emit(FrameInput::OpenSettingsAtSection(section));
@@ -803,8 +799,8 @@ fn spawn_wallpaper_rotation_timer() {
                 .rotation_interval_minutes()
                 .get_untracked()
                 .max(1);
-            let due = last_rotation.get().elapsed()
-                >= Duration::from_secs(u64::from(interval_min) * 60);
+            let due =
+                last_rotation.get().elapsed() >= Duration::from_secs(u64::from(interval_min) * 60);
             if due {
                 let direction = match config_manager()
                     .config()
@@ -839,7 +835,13 @@ fn read_idle_config() -> IdleConfig {
         .idle()
         .lock_enabled()
         .get()
-        .then(|| config_manager().config().idle().lock_timeout_minutes().get());
+        .then(|| {
+            config_manager()
+                .config()
+                .idle()
+                .lock_timeout_minutes()
+                .get()
+        });
     let suspend_minutes = config_manager()
         .config()
         .idle()
@@ -935,8 +937,9 @@ fn spawn_idle_manager() -> tokio::sync::watch::Sender<IdleConfig> {
                         if !session_locked() {
                             lock_session();
                         }
-                        if let Err(e) =
-                            std::process::Command::new("systemctl").arg("suspend").spawn()
+                        if let Err(e) = std::process::Command::new("systemctl")
+                            .arg("suspend")
+                            .spawn()
                         {
                             tracing::warn!("idle suspend failed: {e}");
                         }

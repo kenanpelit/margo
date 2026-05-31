@@ -19,12 +19,12 @@
 //! stay rounded throughout the transition. Niri's effect is configurable
 //! per-window-rule; for now margo uses one preset set at config level.
 
+use smithay::backend::renderer::Texture;
 use smithay::backend::renderer::element::{Element, Id, Kind, RenderElement, UnderlyingStorage};
 use smithay::backend::renderer::gles::{
     GlesError, GlesFrame, GlesRenderer, GlesTexProgram, GlesTexture, Uniform, UniformValue,
 };
 use smithay::backend::renderer::utils::{CommitCounter, DamageSet, OpaqueRegions};
-use smithay::backend::renderer::Texture;
 use smithay::utils::user_data::UserDataMap;
 use smithay::utils::{Buffer, Logical, Physical, Point, Rectangle, Scale, Transform};
 
@@ -69,9 +69,7 @@ impl OpenCloseKind {
         match s.as_str() {
             "fade" => OpenCloseKind::Fade,
             "zoom" => OpenCloseKind::Zoom,
-            "slide_in_up" | "slide_up" | "slide_out_up" => {
-                OpenCloseKind::Slide(SlideDirection::Up)
-            }
+            "slide_in_up" | "slide_up" | "slide_out_up" => OpenCloseKind::Slide(SlideDirection::Up),
             "slide_in_down" | "slide_down" | "slide_out_down" => {
                 OpenCloseKind::Slide(SlideDirection::Down)
             }
@@ -266,7 +264,8 @@ impl Element for OpenCloseRenderElement {
     }
 
     fn geometry(&self, _scale: Scale<f64>) -> Rectangle<i32, Physical> {
-        self.current_geometry().to_physical_precise_round(self.scale)
+        self.current_geometry()
+            .to_physical_precise_round(self.scale)
     }
 
     fn transform(&self) -> Transform {
@@ -281,10 +280,7 @@ impl Element for OpenCloseRenderElement {
         // Always damage the *current* full rect when our commit moves,
         // otherwise nothing — smithay redraws the cleared area itself.
         if commit != Some(self.commit) {
-            DamageSet::from_slice(&[Rectangle::new(
-                Point::default(),
-                self.geometry(scale).size,
-            )])
+            DamageSet::from_slice(&[Rectangle::new(Point::default(), self.geometry(scale).size)])
         } else {
             DamageSet::default()
         }
@@ -321,10 +317,8 @@ impl RenderElement<GlesRenderer> for OpenCloseRenderElement {
 
         let install_override = |frame: &mut GlesFrame<'_, '_>| {
             if let Some(program) = self.program.as_ref().filter(|_| self.radius > 0.0) {
-                frame.override_default_tex_program(
-                    program.clone(),
-                    self.rounded_clip_uniforms(dst),
-                );
+                frame
+                    .override_default_tex_program(program.clone(), self.rounded_clip_uniforms(dst));
                 true
             } else {
                 false
