@@ -38,6 +38,8 @@ const CLUT_INKY_PINKY: &[u8] = include_bytes!("../cluts/inky_pinky.bin");
 const CLUT_KANAGAWA_DRAGON: &[u8] = include_bytes!("../cluts/kanagawa_dragon.bin");
 const CLUT_KANAGAWA_LOTUS: &[u8] = include_bytes!("../cluts/kanagawa_lotus.bin");
 const CLUT_KANAGAWA_WAVE: &[u8] = include_bytes!("../cluts/kanagawa_wave.bin");
+const CLUT_KENP: &[u8] = include_bytes!("../cluts/kenp.bin");
+const CLUT_KENP_LIGHT: &[u8] = include_bytes!("../cluts/kenp_light.bin");
 const CLUT_MARGO: &[u8] = include_bytes!("../cluts/margo.bin");
 const CLUT_MIASMA: &[u8] = include_bytes!("../cluts/miasma.bin");
 const CLUT_MONOKAI_CLASSIC: &[u8] = include_bytes!("../cluts/monokai_classic.bin");
@@ -100,6 +102,8 @@ pub fn embedded_clut(theme: &Themes) -> Option<&'static [u8]> {
         Themes::KanagawaDragon => Some(CLUT_KANAGAWA_DRAGON),
         Themes::KanagawaLotus => Some(CLUT_KANAGAWA_LOTUS),
         Themes::KanagawaWave => Some(CLUT_KANAGAWA_WAVE),
+        Themes::Kenp => Some(CLUT_KENP),
+        Themes::KenpLight => Some(CLUT_KENP_LIGHT),
         Themes::Miasma => Some(CLUT_MIASMA),
         Themes::MonokaiClassic => Some(CLUT_MONOKAI_CLASSIC),
         Themes::NordDark => Some(CLUT_NORD_DARK),
