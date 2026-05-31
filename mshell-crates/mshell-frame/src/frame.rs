@@ -1759,7 +1759,7 @@ impl Frame {
                     self.left_revealed = !left_revealed;
                     now_visible = self.left_revealed;
                 } else {
-                    widgets.left_stack.set_visible_child_name(name);
+                    widgets.left_stack.set_visible_child_full(name, gtk::StackTransitionType::None);
                     self.left_revealed = true;
                 }
             }
@@ -1769,7 +1769,7 @@ impl Frame {
                     self.right_revealed = !right_revealed;
                     now_visible = self.right_revealed;
                 } else {
-                    widgets.right_stack.set_visible_child_name(name);
+                    widgets.right_stack.set_visible_child_full(name, gtk::StackTransitionType::None);
                     self.right_revealed = true;
                 }
             }
@@ -1779,7 +1779,7 @@ impl Frame {
                     self.top_revealed = !top_revealed;
                     now_visible = self.top_revealed;
                 } else {
-                    widgets.top_stack.set_visible_child_name(name);
+                    widgets.top_stack.set_visible_child_full(name, gtk::StackTransitionType::None);
                     self.top_revealed = true;
                 }
             }
@@ -1789,7 +1789,7 @@ impl Frame {
                     self.top_left_revealed = !top_left_revealed;
                     now_visible = self.top_left_revealed;
                 } else {
-                    widgets.top_left_stack.set_visible_child_name(name);
+                    widgets.top_left_stack.set_visible_child_full(name, gtk::StackTransitionType::None);
                     self.top_left_revealed = true;
                 }
             }
@@ -1799,7 +1799,7 @@ impl Frame {
                     self.top_right_revealed = !top_right_revealed;
                     now_visible = self.top_right_revealed;
                 } else {
-                    widgets.top_right_stack.set_visible_child_name(name);
+                    widgets.top_right_stack.set_visible_child_full(name, gtk::StackTransitionType::None);
                     self.top_right_revealed = true;
                 }
             }
@@ -1809,7 +1809,7 @@ impl Frame {
                     self.bottom_revealed = !bottom_revealed;
                     now_visible = self.bottom_revealed;
                 } else {
-                    widgets.bottom_stack.set_visible_child_name(name);
+                    widgets.bottom_stack.set_visible_child_full(name, gtk::StackTransitionType::None);
                     self.bottom_revealed = true;
                 }
             }
@@ -1819,7 +1819,7 @@ impl Frame {
                     self.bottom_left_revealed = !bottom_left_revealed;
                     now_visible = self.bottom_left_revealed;
                 } else {
-                    widgets.bottom_left_stack.set_visible_child_name(name);
+                    widgets.bottom_left_stack.set_visible_child_full(name, gtk::StackTransitionType::None);
                     self.bottom_left_revealed = true;
                 }
             }
@@ -1830,7 +1830,7 @@ impl Frame {
                 self.bottom_right_revealed = !bottom_right_revealed;
                 now_visible = self.bottom_right_revealed;
             } else {
-                widgets.bottom_right_stack.set_visible_child_name(name);
+                widgets.bottom_right_stack.set_visible_child_full(name, gtk::StackTransitionType::None);
                 self.bottom_right_revealed = true;
             }
         }
