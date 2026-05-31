@@ -25,7 +25,7 @@
 //! `active_profile` watcher then fires `StateChanged` so the
 //! highlight tracks reality with no re-probe.
 
-use crate::bars::bar_widgets::power::{PowerState, Profile, read_power_state};
+use crate::bars::bar_widgets::power::{PowerState, Profile, read_power_state, set_charge_limit};
 use mshell_idle::inhibitor::IdleInhibitor;
 use mshell_services::power_profile_service;
 use mshell_utils::battery::{spawn_battery_online_watcher, spawn_battery_watcher};
@@ -59,6 +59,12 @@ pub(crate) struct PowerMenuWidgetModel {
     lock_auto_icon: gtk::Image,
     lock_auto_label: gtk::Label,
     idle_button: gtk::Button,
+    /// Charge-limit section (hidden when the platform has no
+    /// `charge_control_end_threshold`); preset buttons keyed by their %
+    /// so `sync_view` can highlight the active one.
+    charge_section: gtk::Box,
+    charge_buttons: Vec<(u8, gtk::Button)>,
+    charge_spin: gtk::SpinButton,
 }
 
 impl std::fmt::Debug for PowerMenuWidgetModel {
@@ -77,6 +83,8 @@ pub(crate) enum PowerMenuWidgetInput {
     CycleProfile,
     ToggleAutoLock,
     ToggleIdleInhibit,
+    /// Set the battery charge limit (end threshold %).
+    SetChargeLimit(u8),
 }
 
 #[derive(Debug)]
@@ -196,6 +204,14 @@ impl Component for PowerMenuWidgetModel {
                 set_spacing: 6,
                 set_homogeneous: true,
             },
+
+            // ── Charge limit (kernel sysfs; hidden when unsupported) ──
+            #[local_ref]
+            charge_section -> gtk::Box {
+                add_css_class: "power-charge-limit",
+                set_orientation: gtk::Orientation::Vertical,
+                set_spacing: 6,
+            },
         }
     }
 
@@ -250,6 +266,44 @@ impl Component for PowerMenuWidgetModel {
         }
         controls_box.append(&idle_button);
 
+        // ── Charge-limit section (kernel sysfs) ─────────────────
+        let charge_section = gtk::Box::new(gtk::Orientation::Vertical, 6);
+        let charge_sep = gtk::Separator::new(gtk::Orientation::Horizontal);
+        charge_section.append(&charge_sep);
+        let charge_title = gtk::Label::new(Some("Charge limit"));
+        charge_title.set_css_classes(&["label-medium-bold"]);
+        charge_title.set_xalign(0.0);
+        charge_section.append(&charge_title);
+
+        let preset_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        preset_row.set_homogeneous(true);
+        let mut charge_buttons: Vec<(u8, gtk::Button)> = Vec::with_capacity(3);
+        for pct in [60u8, 80, 100] {
+            let btn = gtk::Button::with_label(&format!("{pct}%"));
+            btn.set_css_classes(&["ok-button-surface", "power-charge-preset"]);
+            let s = sender.clone();
+            btn.connect_clicked(move |_| s.input(PowerMenuWidgetInput::SetChargeLimit(pct)));
+            preset_row.append(&btn);
+            charge_buttons.push((pct, btn));
+        }
+        charge_section.append(&preset_row);
+
+        let custom_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        let charge_spin = gtk::SpinButton::with_range(40.0, 100.0, 1.0);
+        charge_spin.set_hexpand(true);
+        let apply_button = gtk::Button::with_label("Apply");
+        apply_button.set_css_classes(&["ok-button-surface"]);
+        {
+            let s = sender.clone();
+            let spin = charge_spin.clone();
+            apply_button.connect_clicked(move |_| {
+                s.input(PowerMenuWidgetInput::SetChargeLimit(spin.value() as u8));
+            });
+        }
+        custom_row.append(&charge_spin);
+        custom_row.append(&apply_button);
+        charge_section.append(&custom_row);
+
         // Reactive — profile from power-profiles-daemon, battery
         // from UPower, both over D-Bus. No polling.
         spawn_active_profile_watcher(&sender, None, || {
@@ -283,6 +337,9 @@ impl Component for PowerMenuWidgetModel {
             lock_auto_icon,
             lock_auto_label,
             idle_button: idle_button.clone(),
+            charge_section: charge_section.clone(),
+            charge_buttons,
+            charge_spin: charge_spin.clone(),
         };
 
         let widgets = view_output!();
@@ -325,6 +382,14 @@ impl Component for PowerMenuWidgetModel {
                 tokio::spawn(async move {
                     let _ = IdleInhibitor::global().toggle().await;
                 });
+            }
+            PowerMenuWidgetInput::SetChargeLimit(limit) => {
+                // pkexec writes the sysfs threshold asynchronously (polkit
+                // prompt). Reflect the intended value optimistically; the
+                // battery watcher / next read confirms the applied value.
+                set_charge_limit(limit);
+                self.state.charge_limit = Some(limit);
+                sync_view(self);
             }
         }
     }
@@ -463,6 +528,20 @@ fn sync_view(model: &PowerMenuWidgetModel) {
             model
                 .stats_box
                 .append(&stat_row("Charge cycles", &c.to_string()));
+        }
+    }
+
+    // Charge limit — show only where the kernel exposes it; highlight the
+    // matching preset and mirror the value into the custom spin.
+    model.charge_section.set_visible(s.charge_limit.is_some());
+    if let Some(limit) = s.charge_limit {
+        model.charge_spin.set_value(limit as f64);
+        for (pct, btn) in &model.charge_buttons {
+            let mut classes = vec!["ok-button-surface", "power-charge-preset"];
+            if *pct == limit {
+                classes.push("selected");
+            }
+            btn.set_css_classes(&classes);
         }
     }
 

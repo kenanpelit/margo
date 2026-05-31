@@ -109,6 +109,10 @@ pub(crate) struct PowerState {
     pub(crate) energy_full_wh: Option<f64>,
     /// Charge cycle count, when the firmware reports it.
     pub(crate) charge_cycles: Option<i32>,
+    /// Battery charge limit (end threshold, %) via the kernel
+    /// `charge_control_end_threshold` sysfs (thinkpad_acpi / generic).
+    /// `None` = the platform doesn't expose one.
+    pub(crate) charge_limit: Option<u8>,
     pub(crate) error: Option<String>,
 }
 
@@ -405,5 +409,50 @@ pub(crate) fn read_power_state() -> PowerState {
         "unknown".to_string()
     };
 
+    state.charge_limit = read_charge_limit();
+
     state
+}
+
+/// Path to the battery's charge-limit (end threshold) sysfs file, if the
+/// platform exposes one (`thinkpad_acpi` and the generic power-supply driver
+/// both publish `charge_control_end_threshold`). World-readable; writing it
+/// needs root.
+pub(crate) fn charge_limit_end_path() -> Option<std::path::PathBuf> {
+    let dir = std::fs::read_dir("/sys/class/power_supply").ok()?;
+    for entry in dir.flatten() {
+        let p = entry.path().join("charge_control_end_threshold");
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    None
+}
+
+/// Current charge limit (end threshold %), or `None` when unsupported.
+pub(crate) fn read_charge_limit() -> Option<u8> {
+    let p = charge_limit_end_path()?;
+    std::fs::read_to_string(p).ok()?.trim().parse::<u8>().ok()
+}
+
+/// Set the charge limit (end threshold) via `pkexec` — the sysfs file is
+/// root-owned, so the polkit agent prompts. The start threshold is nudged
+/// just below the limit first (ThinkPad's EC rejects start ≥ end).
+pub(crate) fn set_charge_limit(limit: u8) {
+    let limit = limit.clamp(20, 100);
+    let Some(end_path) = charge_limit_end_path() else {
+        return;
+    };
+    let start_path = end_path.with_file_name("charge_control_start_threshold");
+    let start = limit.saturating_sub(5);
+    let script = format!(
+        "echo {start} > '{}' 2>/dev/null; echo {limit} > '{}'",
+        start_path.display(),
+        end_path.display(),
+    );
+    let _ = std::process::Command::new("pkexec")
+        .arg("sh")
+        .arg("-c")
+        .arg(script)
+        .spawn();
 }
