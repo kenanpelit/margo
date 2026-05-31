@@ -1,10 +1,11 @@
 //! `mlayout` — quick-switch helper for margo's monitor layout.
 //!
 //! Drop one `layout_<name>.conf` file per setup into the margo
-//! config directory (each containing the `monitorrule` lines that
-//! describe that arrangement), point your main `config.conf` at
-//! `source = mlayout.conf`, and use this binary to flip the
-//! `mlayout.conf` symlink between the available files. A
+//! config's `layouts/` subdir (each containing the `monitorrule`
+//! lines that describe that arrangement), point your main
+//! `config.conf` at `source = mlayout.conf`, and use this binary to
+//! flip the root-level `mlayout.conf` symlink between the files in
+//! `layouts/`. A
 //! `mctl reload` fires automatically after the swap so the change
 //! lands without a logout.
 //!
@@ -259,7 +260,7 @@ fn run() -> Result<()> {
         _ => {}
     }
 
-    let layouts = parser::gather_layouts(&config_dir)?;
+    let layouts = parser::gather_layouts(&layouts_dir(&config_dir))?;
 
     match cli.command {
         Cmd::List { preview, json } => cmd_list(&config_dir, &layouts, preview, json),
@@ -317,7 +318,7 @@ fn cmd_init(
         );
     }
 
-    let target = config_dir.join(format!("layout_{}.conf", name));
+    let target = layouts_dir(config_dir).join(format!("layout_{}.conf", name));
     if target.exists() && !force {
         bail!(
             "{} already exists — pass `--force` to overwrite, or pick \
@@ -504,7 +505,7 @@ fn cmd_suggest(
     println!("\nWriting layout_{}.conf …", chosen.slug);
 
     // 7. Write ONLY the picked preset.
-    let target = config_dir.join(format!("layout_{}.conf", chosen.slug));
+    let target = layouts_dir(config_dir).join(format!("layout_{}.conf", chosen.slug));
     let shortcut = presets::shortcut_for(chosen.slug, &[]);
     let body = presets::render(chosen, shortcut);
     std::fs::write(&target, body)
@@ -564,7 +565,7 @@ fn cleanup_auto_generated_presets(config_dir: &Path) -> Result<Vec<String>> {
     let active_target = active.as_ref().map(|s| format!("layout_{}.conf", s));
 
     let mut removed = Vec::new();
-    let entries = match std::fs::read_dir(config_dir) {
+    let entries = match std::fs::read_dir(layouts_dir(config_dir)) {
         Ok(e) => e,
         Err(_) => return Ok(removed),
     };
@@ -627,7 +628,7 @@ fn cmd_new(
 ) -> Result<()> {
     ensure_config_dir(config_dir)?;
 
-    let target = config_dir.join(format!("layout_{}.conf", name));
+    let target = layouts_dir(config_dir).join(format!("layout_{}.conf", name));
     if target.exists() && !force {
         bail!(
             "{} already exists — pass `--force` to overwrite.",
@@ -780,9 +781,19 @@ fn wire_config_file(path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// The `layouts/` subdir under the margo config dir. All named
+/// `layout_<slug>.conf` snapshots live here; the active-layout symlink
+/// (`mlayout.conf`) stays at the config-dir root so `config.conf`'s
+/// `source = mlayout.conf` keeps working.
+fn layouts_dir(config_dir: &Path) -> PathBuf {
+    config_dir.join("layouts")
+}
+
 fn ensure_config_dir(dir: &Path) -> Result<()> {
     std::fs::create_dir_all(dir)
         .with_context(|| format!("create config dir {}", dir.display()))?;
+    std::fs::create_dir_all(layouts_dir(dir))
+        .with_context(|| format!("create layouts dir {}", layouts_dir(dir).display()))?;
     Ok(())
 }
 
@@ -1246,7 +1257,15 @@ fn activate(config_dir: &Path, layout: &Layout) -> Result<()> {
     // Clean any leftover from a previous crash.
     let _ = std::fs::remove_file(&temp);
 
-    std::os::unix::fs::symlink(&layout.path, &temp)
+    // Point the root-level `mlayout.conf` at `layouts/<file>` with a
+    // *relative* target so the symlink survives being moved with a
+    // dotfiles tree (falls back to the absolute path if the layout file
+    // somehow has no name).
+    let link_target = match layout.path.file_name() {
+        Some(name) => Path::new("layouts").join(name),
+        None => layout.path.clone(),
+    };
+    std::os::unix::fs::symlink(&link_target, &temp)
         .with_context(|| format!("create symlink at {}", temp.display()))?;
     std::fs::rename(&temp, &active)
         .with_context(|| format!("rename {} → {}", temp.display(), active.display()))?;

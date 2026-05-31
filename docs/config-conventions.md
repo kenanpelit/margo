@@ -135,11 +135,13 @@ Touch all four or the knob silently no-ops / fails validation:
 
 ## 7. mlayout (monitor arrangement) convention
 
-- Named layouts are `layout_<slug>.conf` files in the margo config dir;
-  `mlayout` scans them (`gather_layouts`).
-- The **active** layout is the `mlayout.conf` **symlink** → the chosen
-  `layout_<slug>.conf`; `config.conf` `source = mlayout.conf` picks it up. The
-  symlink *is* the runtime selection; the `layout_*` files are the catalogue.
+- Named layouts are `layout_<slug>.conf` files in
+  `~/.config/margo/layouts/`; `mlayout` scans that subdir (`gather_layouts`).
+- The **active** layout is the root-level `mlayout.conf` **symlink** → the
+  chosen `layouts/layout_<slug>.conf` (relative target, dotfiles-portable);
+  `config.conf` `source = mlayout.conf` picks it up. The symlink *is* the
+  runtime selection; the `layouts/layout_*` files are the catalogue. (Keeping
+  `mlayout.conf` at the root means the `source` line never changes.)
 - This is idiomatic — `mlayout.conf → layout_*.conf` is the design, not a
   redundant chain. Distinct from §6's *tiling* layout (`taglayout`), which is a
   different concept (per-tag tiling algorithm, not monitor arrangement).

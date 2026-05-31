@@ -3,9 +3,9 @@
 //! A *layout* is a self-contained margo config snippet (one or more
 //! `monitorrule = ...` lines) describing one specific multi-monitor
 //! arrangement. Each layout lives in its own file under the margo
-//! config directory:
+//! config's `layouts/` subdir:
 //!
-//!     ~/.config/margo/layout_<name>.conf
+//!     ~/.config/margo/layouts/layout_<name>.conf
 //!
 //! Every line that margo's parser reads as a comment (`#` prefix)
 //! is normal — but lines beginning with `#@` are *meta-directives*
@@ -112,8 +112,9 @@ pub struct LayoutOutput {
 pub fn gather_layouts(dir: &Path) -> Result<Vec<Layout>> {
     let entries = match fs::read_dir(dir) {
         Ok(e) => e,
+        // No layouts dir yet (fresh setup, or none captured) → no layouts.
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-            bail!("config directory does not exist: {}", dir.display());
+            return Ok(Vec::new());
         }
         Err(err) => return Err(err.into()),
     };
