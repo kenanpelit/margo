@@ -76,14 +76,17 @@ jobs:
         # doesn't ship, so `--workspace` is fine here.
         run: cargo test --workspace
 
-      - name: cargo clippy (advisory)
-        # Non-gating on purpose. CI runs against Arch's rolling Rust, so
-        # each toolchain bump can introduce new lints (e.g. 1.95 added
-        # clippy::derivable_impls hits) — a hard `-D warnings` gate would
-        # turn unrelated toolchain drift into red builds. clippy still
-        # runs for visibility; promote it back to a gate with a pinned
-        # toolchain + a cleanup pass if desired.
-        run: cargo clippy --workspace --all-targets
+      - name: cargo fmt (gate)
+        # Formatting is deterministic on the pinned toolchain
+        # (rust-toolchain.toml), so this is a hard gate.
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy (gate)
+        # Now gating: rust-toolchain.toml pins the toolchain, so the lint set
+        # is stable and `-D warnings` won't flip red on unrelated rolling-Rust
+        # drift. Bump the pin deliberately (with a clippy pass) to adopt new
+        # lints. `--all-targets` so tests/examples are linted too.
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: mctl check-config (bundled example)
         # Validates that an example user config parses without unknown

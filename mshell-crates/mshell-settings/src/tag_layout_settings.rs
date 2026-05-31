@@ -87,12 +87,11 @@ fn default_layout_in(text: &str) -> Option<usize> {
         if line.starts_with('#') {
             continue;
         }
-        if let Some(rest) = line.strip_prefix("default_layout") {
-            if let Some(v) = rest.trim_start().strip_prefix('=') {
-                if let Some(idx) = layout_index(v.trim()) {
-                    return Some(idx);
-                }
-            }
+        if let Some(rest) = line.strip_prefix("default_layout")
+            && let Some(v) = rest.trim_start().strip_prefix('=')
+            && let Some(idx) = layout_index(v.trim())
+        {
+            return Some(idx);
         }
     }
     None
@@ -125,16 +124,13 @@ fn read_state() -> (usize, Vec<(usize, usize)>, bool) {
             }
         } else if let Some(rest) = line.strip_prefix("taglayout") {
             // `taglayout = <tag>, <name>` (not the `taglayout_force` key above)
-            if let Some(v) = rest.trim_start().strip_prefix('=') {
-                if let Some((t, name)) = v.split_once(',') {
-                    if let (Ok(tag), Some(idx)) =
-                        (t.trim().parse::<usize>(), layout_index(name.trim()))
-                    {
-                        if (1..=MAX_TAGS).contains(&tag) && !rows.iter().any(|(rt, _)| *rt == tag) {
-                            rows.push((tag, idx));
-                        }
-                    }
-                }
+            if let Some(v) = rest.trim_start().strip_prefix('=')
+                && let Some((t, name)) = v.split_once(',')
+                && let (Ok(tag), Some(idx)) = (t.trim().parse::<usize>(), layout_index(name.trim()))
+                && (1..=MAX_TAGS).contains(&tag)
+                && !rows.iter().any(|(rt, _)| *rt == tag)
+            {
+                rows.push((tag, idx));
             }
         }
     }

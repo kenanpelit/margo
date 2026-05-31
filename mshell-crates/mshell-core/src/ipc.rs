@@ -1038,26 +1038,25 @@ fn spawn_plugin_watcher_task(tx: mpsc::UnboundedSender<IPCCommand>) {
                         continue;
                     }
                     for path in &ev.paths {
-                        if path.file_name().is_some_and(|n| n == "plugin.wasm") {
-                            if let Some(parent) = path.parent() {
-                                if let Some(key) = by_dir.get(parent) {
-                                    pending.insert(key.clone());
-                                    last_event = Some(Instant::now());
-                                }
-                            }
+                        if path.file_name().is_some_and(|n| n == "plugin.wasm")
+                            && let Some(parent) = path.parent()
+                            && let Some(key) = by_dir.get(parent)
+                        {
+                            pending.insert(key.clone());
+                            last_event = Some(Instant::now());
                         }
                     }
                 }
                 Ok(Err(e)) => tracing::debug!("plugin watcher event err: {e}"),
                 Err(sync_mpsc::RecvTimeoutError::Timeout) => {
-                    if let Some(t) = last_event {
-                        if t.elapsed() >= debounce {
-                            for key in pending.drain() {
-                                tracing::info!(plugin = %key, "hot-reload: plugin.wasm changed");
-                                let _ = tx.send(IPCCommand::PluginReload(key));
-                            }
-                            last_event = None;
+                    if let Some(t) = last_event
+                        && t.elapsed() >= debounce
+                    {
+                        for key in pending.drain() {
+                            tracing::info!(plugin = %key, "hot-reload: plugin.wasm changed");
+                            let _ = tx.send(IPCCommand::PluginReload(key));
                         }
+                        last_event = None;
                     }
                 }
                 Err(sync_mpsc::RecvTimeoutError::Disconnected) => break,
