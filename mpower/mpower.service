@@ -1,0 +1,19 @@
+[Unit]
+Description=Automatic power-profile manager for margo (mpower)
+Documentation=https://github.com/kenanpelit/margo
+After=graphical-session.target
+PartOf=graphical-session.target
+# power-profiles-daemon is a system service; mpower just talks to it via
+# powerprofilesctl, so we only need the graphical session to be up.
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/mpower run
+Restart=on-failure
+RestartSec=3
+# Cheap, single-threaded poller — keep it nice so it never competes with
+# the workload it is measuring.
+Nice=10
+
+[Install]
+WantedBy=graphical-session.target

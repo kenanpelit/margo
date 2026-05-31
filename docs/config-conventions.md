@@ -46,11 +46,12 @@ Margo's own `source`d fragments are grouped under `conf.d/` (matugen
 colors, mshell taglayouts, the mlayout active-layout symlink); plugin
 keybinds keep their own `binds.d/`; monitor-arrangement snapshots live in
 `layouts/`. `config.conf` itself stays at the config-dir root (that's what
-`margo -c` reads). `mlock.conf` / `mlogind-variables.toml` are **not** margo
-config — they're separate tools' files that happen to share the dir, so they
-stay at the root, not in `conf.d/`.
+`margo -c` reads). `mlock.conf` / `mlogind-variables.toml` / `mpower.toml` are
+**not** margo config — they're separate tools' files that happen to share the
+dir, so they stay at the root, not in `conf.d/`.
 | `mlock.conf` | `mlock` | user | yes |
 | `mlogind-variables.toml` | `mlogind` | user | yes |
+| `mpower.toml` | `mpower` | **mshell** (Settings → Power → Automatic Power Profile) + user | yes — re-read every tick |
 | `twilight/` | `twilight` | `twilight` + user presets | presets yes |
 | `mshell/profiles/*.yaml` | mshell | **mshell** | tolerated |
 | `mshell/plugins.toml` | mshell | **mshell** (plugin manager) | no |

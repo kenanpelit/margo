@@ -1,0 +1,24 @@
+[package]
+name = "mpower"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Automatic power-profile manager for margo (CPU + AC/battery aware power-profiles-daemon switcher)"
+
+[lib]
+name = "mpower"
+path = "src/lib.rs"
+
+[[bin]]
+name = "mpower"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+serde = { workspace = true }
+toml = { workspace = true }
+
+[lints]
+workspace = true

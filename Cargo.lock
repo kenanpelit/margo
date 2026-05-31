@@ -4097,6 +4097,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mpower"
+version = "0.8.9"
+dependencies = [
+ "anyhow",
+ "serde",
+ "toml 0.8.23",
+]
+
+[[package]]
 name = "mscreenshot"
 version = "0.8.9"
 dependencies = [
@@ -4571,6 +4580,7 @@ dependencies = [
  "fontconfig",
  "futures",
  "margo-config",
+ "mpower",
  "mshell-cache",
  "mshell-clipboard",
  "mshell-common",

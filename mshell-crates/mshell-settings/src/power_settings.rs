@@ -105,6 +105,11 @@ pub(crate) struct PowerSettingsModel {
     power_key_idx: u32,
     lid_idx: u32,
     lid_external_idx: u32,
+    // Automatic power-profile manager (mpower) — mirrors mpower.toml. The
+    // struct is owned by the mpower crate so the daemon and this page can't
+    // drift; writes go straight to ~/.config/margo/mpower.toml, which mpower
+    // re-reads every tick.
+    auto: mpower::Config,
     // EffectScope keeps config-watcher effects alive for the lifetime
     // of this component.
     _effects: EffectScope,
@@ -133,6 +138,18 @@ pub(crate) enum PowerSettingsInput {
     SetPowerKey(u32),
     SetLid(u32),
     SetLidExternal(u32),
+    // Automatic power-profile manager (mpower) — each writes mpower.toml
+    AutoEnabledChanged(bool),
+    AutoNotifyChanged(bool),
+    AutoTickChanged(u32),
+    AutoHighAvgChanged(u32),
+    AutoHighMaxChanged(u32),
+    AutoLowAvgChanged(u32),
+    AutoLowMaxChanged(u32),
+    AutoHighStreakChanged(u32),
+    AutoLowStreakChanged(u32),
+    AutoCooldownChanged(u32),
+    AutoBatterySaverChanged(u32),
 }
 
 #[derive(Debug)]
@@ -339,6 +356,354 @@ impl Component for PowerSettingsModel {
                     gtk::Label {
                         add_css_class: "label-small",
                         set_label: "power-profiles-daemon is not available on this system.",
+                        set_halign: gtk::Align::Start,
+                        set_xalign: 0.0,
+                        set_wrap: true,
+                    },
+                },
+
+                // ── Automatic Power Profile (mpower) ───────────────
+                // One container, gated on ppd availability, so the whole
+                // section shows/hides as a unit.
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 16,
+                    #[watch]
+                    set_visible: model.profile.is_some(),
+
+                    gtk::Label {
+                        add_css_class: "label-large-bold",
+                        set_label: "Automatic Power Profile",
+                        set_halign: gtk::Align::Start,
+                    },
+
+                    // Enable
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Enabled",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Let mpower choose the profile from CPU load and power source. On AC it ramps to performance under load and falls back to balanced when idle; on battery it stays balanced (power-saver when low). A profile you pick by hand is kept until you next plug or unplug.",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(auto_enabled_handler)]
+                            set_active: model.auto.enabled,
+                            connect_state_set[sender] => move |_, v| {
+                                sender.input(PowerSettingsInput::AutoEnabledChanged(v));
+                                glib::Propagation::Proceed
+                            } @auto_enabled_handler,
+                        },
+                    },
+
+                    // Sample interval
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Sample interval (seconds)",
+                                set_hexpand: true,
+                            },
+                        },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (1.0, 60.0),
+                            set_increments: (1.0, 5.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(auto_tick_handler)]
+                            set_value: model.auto.tick_seconds as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(PowerSettingsInput::AutoTickChanged(s.value() as u32));
+                            } @auto_tick_handler,
+                        },
+                    },
+
+                    // Performance: average load %
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Performance: average load (%)",
+                                set_hexpand: true,
+                            },
+                        },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (1.0, 100.0),
+                            set_increments: (1.0, 5.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(auto_high_avg_handler)]
+                            set_value: model.auto.high_avg_percent as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(PowerSettingsInput::AutoHighAvgChanged(s.value() as u32));
+                            } @auto_high_avg_handler,
+                        },
+                    },
+
+                    // Performance: hottest core %
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Performance: hottest core (%)",
+                                set_hexpand: true,
+                            },
+                        },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (1.0, 100.0),
+                            set_increments: (1.0, 5.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(auto_high_max_handler)]
+                            set_value: model.auto.high_max_percent as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(PowerSettingsInput::AutoHighMaxChanged(s.value() as u32));
+                            } @auto_high_max_handler,
+                        },
+                    },
+
+                    // Balanced: average load %
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Balanced: average load (%)",
+                                set_hexpand: true,
+                            },
+                        },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.0, 100.0),
+                            set_increments: (1.0, 5.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(auto_low_avg_handler)]
+                            set_value: model.auto.low_avg_percent as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(PowerSettingsInput::AutoLowAvgChanged(s.value() as u32));
+                            } @auto_low_avg_handler,
+                        },
+                    },
+
+                    // Balanced: hottest core %
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Balanced: hottest core (%)",
+                                set_hexpand: true,
+                            },
+                        },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.0, 100.0),
+                            set_increments: (1.0, 5.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(auto_low_max_handler)]
+                            set_value: model.auto.low_max_percent as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(PowerSettingsInput::AutoLowMaxChanged(s.value() as u32));
+                            } @auto_low_max_handler,
+                        },
+                    },
+
+                    // Performance streak
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Performance streak (samples)",
+                                set_hexpand: true,
+                            },
+                        },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (1.0, 10.0),
+                            set_increments: (1.0, 2.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(auto_high_streak_handler)]
+                            set_value: model.auto.high_streak as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(PowerSettingsInput::AutoHighStreakChanged(s.value() as u32));
+                            } @auto_high_streak_handler,
+                        },
+                    },
+
+                    // Balanced streak
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Balanced streak (samples)",
+                                set_hexpand: true,
+                            },
+                        },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (1.0, 10.0),
+                            set_increments: (1.0, 2.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(auto_low_streak_handler)]
+                            set_value: model.auto.low_streak as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(PowerSettingsInput::AutoLowStreakChanged(s.value() as u32));
+                            } @auto_low_streak_handler,
+                        },
+                    },
+
+                    // Cooldown
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Cooldown between changes (seconds)",
+                                set_hexpand: true,
+                            },
+                        },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.0, 300.0),
+                            set_increments: (5.0, 30.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(auto_cooldown_handler)]
+                            set_value: model.auto.cooldown_seconds as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(PowerSettingsInput::AutoCooldownChanged(s.value() as u32));
+                            } @auto_cooldown_handler,
+                        },
+                    },
+
+                    // Battery power-saver floor
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Battery power-saver below (%)",
+                                set_hexpand: true,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_halign: gtk::Align::Start,
+                                set_label: "On battery, drop to power-saver at or below this charge. 0 disables it (battery stays on balanced).",
+                                set_hexpand: true,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_range: (0.0, 100.0),
+                            set_increments: (1.0, 5.0),
+                            set_digits: 0,
+                            #[watch]
+                            #[block_signal(auto_saver_handler)]
+                            set_value: model.auto.battery_saver_below as f64,
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(PowerSettingsInput::AutoBatterySaverChanged(s.value() as u32));
+                            } @auto_saver_handler,
+                        },
+                    },
+
+                    // Notify on change
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_halign: gtk::Align::Start,
+                                set_label: "Notify on profile change",
+                                set_hexpand: true,
+                            },
+                        },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            #[block_signal(auto_notify_handler)]
+                            set_active: model.auto.notify,
+                            connect_state_set[sender] => move |_, v| {
+                                sender.input(PowerSettingsInput::AutoNotifyChanged(v));
+                                glib::Propagation::Proceed
+                            } @auto_notify_handler,
+                        },
+                    },
+
+                    gtk::Label {
+                        add_css_class: "label-small",
+                        set_label: "Managed by the mpower service. Changes apply on its next sample — no restart needed.",
                         set_halign: gtk::Align::Start,
                         set_xalign: 0.0,
                         set_wrap: true,
@@ -690,6 +1055,7 @@ impl Component for PowerSettingsModel {
             power_key_idx: idx_of("poweroff"),
             lid_idx: idx_of("suspend"),
             lid_external_idx: idx_of("suspend"),
+            auto: mpower::Config::load(),
             _effects: effects,
         };
 
@@ -819,6 +1185,52 @@ impl Component for PowerSettingsModel {
                     }
                 });
             }
+
+            // Automatic power-profile (mpower) — mutate the mirror, persist.
+            PowerSettingsInput::AutoEnabledChanged(v) => {
+                self.auto.enabled = v;
+                self.save_auto();
+            }
+            PowerSettingsInput::AutoNotifyChanged(v) => {
+                self.auto.notify = v;
+                self.save_auto();
+            }
+            PowerSettingsInput::AutoTickChanged(v) => {
+                self.auto.tick_seconds = v;
+                self.save_auto();
+            }
+            PowerSettingsInput::AutoHighAvgChanged(v) => {
+                self.auto.high_avg_percent = v;
+                self.save_auto();
+            }
+            PowerSettingsInput::AutoHighMaxChanged(v) => {
+                self.auto.high_max_percent = v;
+                self.save_auto();
+            }
+            PowerSettingsInput::AutoLowAvgChanged(v) => {
+                self.auto.low_avg_percent = v;
+                self.save_auto();
+            }
+            PowerSettingsInput::AutoLowMaxChanged(v) => {
+                self.auto.low_max_percent = v;
+                self.save_auto();
+            }
+            PowerSettingsInput::AutoHighStreakChanged(v) => {
+                self.auto.high_streak = v;
+                self.save_auto();
+            }
+            PowerSettingsInput::AutoLowStreakChanged(v) => {
+                self.auto.low_streak = v;
+                self.save_auto();
+            }
+            PowerSettingsInput::AutoCooldownChanged(v) => {
+                self.auto.cooldown_seconds = v;
+                self.save_auto();
+            }
+            PowerSettingsInput::AutoBatterySaverChanged(v) => {
+                self.auto.battery_saver_below = v;
+                self.save_auto();
+            }
         }
 
         apply_battery_visuals(widgets, self);
@@ -841,6 +1253,14 @@ impl PowerSettingsModel {
             power_key: sys::logind::ACTIONS[self.power_key_idx as usize].into(),
             lid: sys::logind::ACTIONS[self.lid_idx as usize].into(),
             lid_external: sys::logind::ACTIONS[self.lid_external_idx as usize].into(),
+        }
+    }
+
+    /// Persist the mpower mirror to `~/.config/margo/mpower.toml`. The daemon
+    /// re-reads it on its next tick, so there is nothing else to poke.
+    fn save_auto(&self) {
+        if let Err(e) = self.auto.save() {
+            tracing::warn!(error = %e, "power-settings: failed to write mpower.toml");
         }
     }
 }
