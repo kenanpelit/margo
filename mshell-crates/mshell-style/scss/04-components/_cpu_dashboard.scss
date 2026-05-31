@@ -102,6 +102,14 @@
   opacity: 0.7;
 }
 
+// Frequency min–max spread under the GHz hero value — quieter than the
+// caption, metadata tier.
+.cpu-dashboard-hero-subcaption {
+  font-size: var(--font-2xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface-variant);
+}
+
 .cpu-dashboard-section-label {
   font-size: var(--font-xs);
   font-weight: 600;

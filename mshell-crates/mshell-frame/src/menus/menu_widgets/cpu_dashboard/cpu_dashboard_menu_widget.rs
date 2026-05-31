@@ -20,7 +20,8 @@
 //! signal at the same time.
 
 use crate::bars::bar_widgets::sysstat::{
-    find_cpu_temp_sensor_pub, read_cpu_stat_pub, read_temp_millideg_pub,
+    find_cpu_temp_sensor_pub, read_all_fans_pub, read_all_temp_sensors_pub, read_cpu_stat_pub,
+    read_temp_millideg_pub,
 };
 use relm4::gtk::prelude::{BoxExt, DrawingAreaExt, DrawingAreaExtManual, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, RelmWidgetExt, gtk};
@@ -106,7 +107,13 @@ pub(crate) struct CpuDashboardMenuWidgetModel {
     user_percent: u32,
     system_percent: u32,
     freq_ghz: f32,
+    freq_min_ghz: f32,
+    freq_max_ghz: f32,
     temp_celsius: i32,
+    /// All hwmon temperature sensors (CPU/GPU/NVMe/…) as `(label, °C)`.
+    temps: Vec<(String, i32)>,
+    /// All hwmon fans as `(label, rpm)`.
+    fans: Vec<(String, u32)>,
     ram_percent: u32,
     mem_used_kb: u64,
     mem_total_kb: u64,
@@ -126,6 +133,10 @@ pub(crate) struct CpuDashboardMenuWidgetModel {
     cores: CoreDeltas,
     sensor_path: Option<PathBuf>,
     core_rows: Vec<CoreRow>,
+    /// Per-sensor `(caption, value)` label pairs, reused across polls
+    /// (rebuilt only when the sensor count changes).
+    temp_rows: Vec<(gtk::Label, gtk::Label)>,
+    fan_rows: Vec<(gtk::Label, gtk::Label)>,
     /// CPU-load samples for the sparkline; shared with the draw func.
     history: Rc<RefCell<Vec<u32>>>,
 }
@@ -241,6 +252,14 @@ impl Component for CpuDashboardMenuWidgetModel {
                         set_label: "GHZ",
                         set_halign: gtk::Align::Center,
                     },
+                    gtk::Label {
+                        add_css_class: "cpu-dashboard-hero-subcaption",
+                        #[watch]
+                        set_visible: model.freq_max_ghz > 0.0,
+                        #[watch]
+                        set_label: &format!("{:.1}–{:.1}", model.freq_min_ghz, model.freq_max_ghz),
+                        set_halign: gtk::Align::Center,
+                    },
                 },
 
                 gtk::Box {
@@ -294,6 +313,45 @@ impl Component for CpuDashboardMenuWidgetModel {
             gtk::Box {
                 set_orientation: gtk::Orientation::Vertical,
                 set_spacing: 4,
+            },
+
+            // Temperatures — every hwmon sensor (CPU/GPU/NVMe/chipset),
+            // not just the CPU package. Whole section hides when none.
+            #[name = "temps_section"]
+            gtk::Box {
+                set_orientation: gtk::Orientation::Vertical,
+                set_spacing: 4,
+                #[watch]
+                set_visible: !model.temps.is_empty(),
+                gtk::Label {
+                    add_css_class: "cpu-dashboard-section-label",
+                    set_label: "TEMPERATURES",
+                    set_halign: gtk::Align::Start,
+                },
+                #[name = "sensors_box"]
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 4,
+                },
+            },
+
+            // Fans (hwmon fanN_input). Hidden on fanless / no-sensor hosts.
+            #[name = "fans_section"]
+            gtk::Box {
+                set_orientation: gtk::Orientation::Vertical,
+                set_spacing: 4,
+                #[watch]
+                set_visible: !model.fans.is_empty(),
+                gtk::Label {
+                    add_css_class: "cpu-dashboard-section-label",
+                    set_label: "FANS",
+                    set_halign: gtk::Align::Start,
+                },
+                #[name = "fans_box"]
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 4,
+                },
             },
 
             // Memory + swap — symmetric labelled bar rows: caption,
@@ -462,12 +520,19 @@ impl Component for CpuDashboardMenuWidgetModel {
             relm4::gtk::glib::ControlFlow::Continue
         });
 
+        let (freq_min_ghz, freq_avg_ghz, freq_max_ghz) =
+            read_cpu_freq_stats().unwrap_or((0.0, 0.0, 0.0));
+
         let model = CpuDashboardMenuWidgetModel {
             cpu_percent: 0,
             user_percent: 0,
             system_percent: 0,
-            freq_ghz: read_cpu_freq_ghz().unwrap_or(0.0),
+            freq_ghz: freq_avg_ghz,
+            freq_min_ghz,
+            freq_max_ghz,
             temp_celsius,
+            temps: read_all_temp_sensors_pub(),
+            fans: read_all_fans_pub(),
             ram_percent,
             mem_used_kb,
             mem_total_kb,
@@ -487,6 +552,8 @@ impl Component for CpuDashboardMenuWidgetModel {
             cores: CoreDeltas::default(),
             sensor_path,
             core_rows: Vec::new(),
+            temp_rows: Vec::new(),
+            fan_rows: Vec::new(),
             history: Rc::new(RefCell::new(Vec::with_capacity(HISTORY_LEN))),
         };
 
@@ -635,7 +702,16 @@ impl Component for CpuDashboardMenuWidgetModel {
                     self.temp_celsius = t / 1000;
                 }
 
-                self.freq_ghz = read_cpu_freq_ghz().unwrap_or(self.freq_ghz);
+                if let Some((min, avg, max)) = read_cpu_freq_stats() {
+                    self.freq_ghz = avg;
+                    self.freq_min_ghz = min;
+                    self.freq_max_ghz = max;
+                }
+
+                self.temps = read_all_temp_sensors_pub();
+                self.fans = read_all_fans_pub();
+                self.sync_sensor_rows(&widgets.sensors_box, &widgets.fans_box);
+
                 if let Some((used, total, swap_used, swap_total)) = read_mem_detail() {
                     self.mem_used_kb = used;
                     self.mem_total_kb = total;
@@ -670,6 +746,66 @@ impl CpuDashboardMenuWidgetModel {
             (self.swap_used_kb as f64) / (self.swap_total_kb as f64)
         }
     }
+
+    /// Reconcile the temperature / fan row widgets against the latest
+    /// readings. The row structure is rebuilt only when a sensor count
+    /// changes (sensors appear/disappear rarely); otherwise just the
+    /// value labels update, so there's no per-poll widget churn.
+    fn sync_sensor_rows(&mut self, sensors_box: &gtk::Box, fans_box: &gtk::Box) {
+        if self.temp_rows.len() != self.temps.len() {
+            while let Some(c) = sensors_box.first_child() {
+                sensors_box.remove(&c);
+            }
+            self.temp_rows.clear();
+            for _ in &self.temps {
+                let (row, cap, val) = stat_row();
+                sensors_box.append(&row);
+                self.temp_rows.push((cap, val));
+            }
+        }
+        for (i, (name, c)) in self.temps.iter().enumerate() {
+            if let Some((cap, val)) = self.temp_rows.get(i) {
+                cap.set_label(name);
+                val.set_label(&format!("{c}°C"));
+                val.set_css_classes(&["cpu-dashboard-stat-value", temp_label_class(*c)]);
+            }
+        }
+
+        if self.fan_rows.len() != self.fans.len() {
+            while let Some(c) = fans_box.first_child() {
+                fans_box.remove(&c);
+            }
+            self.fan_rows.clear();
+            for _ in &self.fans {
+                let (row, cap, val) = stat_row();
+                fans_box.append(&row);
+                self.fan_rows.push((cap, val));
+            }
+        }
+        for (i, (name, rpm)) in self.fans.iter().enumerate() {
+            if let Some((cap, val)) = self.fan_rows.get(i) {
+                cap.set_label(name);
+                val.set_label(&format!("{rpm} RPM"));
+            }
+        }
+    }
+}
+
+/// Build a `caption … value` stat row (caption left/expanding, value
+/// right-aligned), matching the dashboard's other labelled rows.
+fn stat_row() -> (gtk::Box, gtk::Label, gtk::Label) {
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    let cap = gtk::Label::new(None);
+    cap.add_css_class("cpu-dashboard-stat-caption");
+    cap.set_xalign(0.0);
+    cap.set_hexpand(true);
+    let val = gtk::Label::new(None);
+    val.add_css_class("cpu-dashboard-stat-value");
+    val.set_xalign(1.0);
+    val.set_width_chars(7);
+    row.append(&cap);
+    row.append(&val);
+    (row, cap, val)
 }
 
 /// KiB → "X.Y GB".
@@ -711,12 +847,15 @@ fn read_cpu_breakdown() -> Option<(u64, u64, u64, u64)> {
     Some((total, idle, user, system))
 }
 
-/// Average current CPU frequency in GHz from `/proc/cpuinfo`'s
-/// `cpu MHz` lines.
-fn read_cpu_freq_ghz() -> Option<f32> {
+/// `(min, avg, max)` current CPU frequency in GHz across all logical
+/// CPUs, from `/proc/cpuinfo`'s `cpu MHz` lines. The spread is useful
+/// on modern CPUs where idle cores park at a low clock while one boosts.
+fn read_cpu_freq_stats() -> Option<(f32, f32, f32)> {
     let s = std::fs::read_to_string("/proc/cpuinfo").ok()?;
     let mut sum = 0.0f32;
     let mut n = 0u32;
+    let mut min = f32::MAX;
+    let mut max = 0.0f32;
     for line in s.lines() {
         if let Some(rest) = line.strip_prefix("cpu MHz")
             && let Some(v) = rest
@@ -726,12 +865,14 @@ fn read_cpu_freq_ghz() -> Option<f32> {
         {
             sum += v;
             n += 1;
+            min = min.min(v);
+            max = max.max(v);
         }
     }
     if n == 0 {
         return None;
     }
-    Some(sum / n as f32 / 1000.0)
+    Some((min / 1000.0, sum / n as f32 / 1000.0, max / 1000.0))
 }
 
 /// `(model name, physical cores, logical threads)` from `/proc/cpuinfo`.
