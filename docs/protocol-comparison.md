@@ -7,6 +7,11 @@
 > - **Hyprland** `0.55.0` (`v0.55.0-86-gebc1816`) — `src/protocols/*.cpp` + `src/protocols/core/`.
 > - **mango** `0.13.1` (`0.13.1-69-gd702cc2`) — wlroots `wlr_*_create()` call sites + `protocols/*.xml`.
 
+> **Companion:** [`protocol-matrix.md`](protocol-matrix.md) is the *internal*
+> view — for each protocol margo advertises, whether it's implemented and how
+> it's tested (CI fixture vs manual vs none). This doc is the *cross-project*
+> view (who advertises what).
+
 This document is the source-of-truth audit of which Wayland protocols
 each daily-driver compositor advertises. **mango** — the C/wlroots
 (dwl-derived) compositor that margo is the Rust rewrite of — is
