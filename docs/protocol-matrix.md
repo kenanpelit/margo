@@ -148,6 +148,8 @@ runtime-checked even where the per-protocol behaviour isn't.
 | `ext_foreign_toplevel_list_v1` (read) | ✅ | ✅ | ❌ | ❌ | consumed by mshell active-window pill; covered de-facto at runtime, no fixture |
 | `zwlr_foreign_toplevel_manager_v1` (write) | ✅ | ✅ | 🟡 (taskbar in checklist) | ❌ | hand-rolled (`protocols/wlr_foreign_toplevel.rs`); activate/close/fullscreen |
 | `ext_workspace_v1` | ✅ | ✅ | ❌ | ❌ | hand-rolled (`protocols/ext_workspace.rs`); 9 fixed tag-workspaces per output |
+| multi-monitor output assignment (internal) | — | ✅ | 🟢 `output_assignment.rs` (4) | ❌ | left-to-right placement + per-output pertag + named tagrule routing |
+| `focus_mon` / `tag_mon` (internal, multi-output) | — | ✅ | 🟢 `focus_mon.rs` (4), `tag_mon.rs` (5) | ❌ | active-monitor cycle + window migrate/re-tag across outputs |
 | `dwl_ipc_unstable_v2` (custom) | ✅ | ✅ | 🟡 (bring-up §0 in checklist) | ❌ | margo↔mctl/mshell; `state.json` snapshot is the primary mshell bridge |
 
 ---
@@ -156,11 +158,13 @@ runtime-checked even where the per-protocol behaviour isn't.
 
 - **Advertised & implemented:** every protocol in this matrix (no advertise-only
   stubs — `⚠️` rows are *partial behaviour*, not missing handlers).
-- **Runtime-tested in CI (🟢):** 16 protocol areas via `margo/src/tests/`
+- **Runtime-tested in CI (🟢):** the protocol areas above via `margo/src/tests/`
   (`globals`, `xdg_shell`, `xdg_decoration`, `xdg_activation`, `layer_shell`,
   `session_lock`, `xwayland_shell`, `pointer_constraints`, `output_management`,
-  `color_management`, `gamma_control`, `screencopy`, `dmabuf`, `idle` ×2,
-  `selection`).
+  `color_management`, `gamma_control`, `screencopy`, `dmabuf`, `idle`,
+  `selection`) plus the multi-monitor *internal* paths (`output_assignment`,
+  `focus_mon`, `tag_mon`) — the latter drive a real focused toplevel through the
+  fixture (see `add_keyboard`).
 - **Unit / snapshot:** concentrated in the **render/colour/twilight** stack and
   the **layout engine** (38 layout snapshots) — pure-logic surfaces. The wire
   protocols mostly rely on the integration fixture instead, by design.
@@ -170,16 +174,20 @@ runtime-checked even where the per-protocol behaviour isn't.
 
 ### Next integration-fixture targets (the riskiest untested paths)
 
-Ordered by blast radius, matching the agreed first wave:
+Ordered by blast radius, matching the agreed first wave. The first two
+landed (2026-06-01); the remainder are the live backlog:
 
-1. **tag move across outputs** (`tagmon` / multi-monitor output assignment) —
-   currently 🟡 manual only; highest-risk because it mutates per-output `Pertag`.
-2. **layer-shell popup / menu** grab + dismiss — fixture has the surface, not the
+1. ~~**tag move across outputs** (`tagmon`) — highest-risk because it mutates
+   per-output state in one step.~~ ✅ `tag_mon.rs` (5 tests).
+2. ~~**multi-monitor output assignment** (placement + per-output pertag +
+   per-output tag rules).~~ ✅ `output_assignment.rs` (4) + `focus_mon.rs` (4).
+3. **layer-shell popup / menu** grab + dismiss — fixture has the surface, not the
    popup-grab path.
-3. **focus restore after unmap / lock** — `session_lock.rs` covers lock, not the
-   post-unlock focus stack.
-4. **floating-over-tiled** stacking + focus.
-5. **scroller offscreen focus** (focus a window scrolled out of view) — the
+4. **focus restore after unmap / lock** — `session_lock.rs` covers lock, not the
+   post-unlock focus stack. (`add_keyboard` fixture helper, added for `tag_mon`,
+   now unblocks this.)
+5. **floating-over-tiled** stacking + focus.
+6. **scroller offscreen focus** (focus a window scrolled out of view) — the
    overview has 6 tests; the offscreen-focus scroll-into-view path is separate.
 
 See `road_map.md` §15.2 (test coverage) for the running backlog; this matrix is the

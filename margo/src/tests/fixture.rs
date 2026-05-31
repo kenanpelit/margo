@@ -163,6 +163,30 @@ impl Fixture {
         state.apply_tag_rules_to_monitor(mon_idx);
     }
 
+    /// Attach a keyboard to the seat with a default XKB layout.
+    ///
+    /// `MargoState::new` deliberately doesn't add a keyboard — the
+    /// real one is built in `main.rs` from the parsed `Config`'s
+    /// xkb settings. Most protocol tests don't need it, but any
+    /// test that exercises *keyboard focus* (`focused_client_idx`,
+    /// `tag_mon`, focus-restore after unmap) does: without a
+    /// keyboard, `seat.get_keyboard()` is `None` and those paths
+    /// early-return as no-ops, so the test would pass vacuously.
+    /// Call this once before mapping the windows under test.
+    pub fn add_keyboard(&mut self) {
+        self.server
+            .state
+            .seat
+            .add_keyboard(
+                smithay::input::keyboard::XkbConfig::default(),
+                // repeat delay / rate — irrelevant headless, just
+                // non-degenerate values matching main.rs's range.
+                200,
+                25,
+            )
+            .expect("test add_keyboard");
+    }
+
     /// Add a new wayland-client-side `Client` connected to the
     /// running `Server` over a fresh `UnixStream` pair. Returns the
     /// stable [`ClientId`] used by other helpers.
