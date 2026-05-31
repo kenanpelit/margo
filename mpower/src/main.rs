@@ -69,6 +69,16 @@ fn run_daemon() {
         "mpower: started (config: {})",
         mpower::config_path().display()
     );
+    // Materialise the config on first run so it's discoverable and
+    // hand-editable. We run on built-in defaults regardless, but a file the
+    // user can see and tweak beats an invisible one.
+    let path = mpower::config_path();
+    if !path.exists() {
+        match Config::default().save() {
+            Ok(()) => eprintln!("mpower: wrote default config to {}", path.display()),
+            Err(e) => eprintln!("mpower: could not write {}: {e}", path.display()),
+        }
+    }
     let mut st = State::default();
     loop {
         let cfg = Config::load();
