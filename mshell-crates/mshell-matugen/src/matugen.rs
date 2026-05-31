@@ -355,7 +355,11 @@ fn write_margo_colors(theme: &MatugenTheme) {
     }
 
     let body = to_margo_colors(theme);
-    let path = margo_dir.join("colors.conf");
+    // Margo config fragments live under `conf.d/` (config.conf sources
+    // `conf.d/colors.conf`). Ensure the dir exists before writing.
+    let conf_d = margo_dir.join("conf.d");
+    let _ = std::fs::create_dir_all(&conf_d);
+    let path = conf_d.join("colors.conf");
     // Skip the write + reload when nothing changed (avoids a needless
     // compositor reload on every wallpaper rotation when the palette is
     // unchanged — e.g. a static theme).

@@ -40,7 +40,7 @@ use parser::Layout;
 /// Default link basename inside the margo config directory. The
 /// user's `config.conf` should `source = mlayout.conf` so this
 /// path gets pulled into the active config on every reload.
-const ACTIVE_LINK: &str = "mlayout.conf";
+const ACTIVE_LINK: &str = "conf.d/mlayout.conf";
 
 #[derive(Parser, Debug)]
 #[command(
@@ -758,7 +758,9 @@ fn is_layout_source_line(line: &str) -> bool {
     };
     let rest = rest.trim();
     let rest = rest.trim_matches('"').trim_matches('\'');
-    rest == "mlayout.conf"
+    // Accept the current `conf.d/mlayout.conf` and the legacy top-level
+    // `mlayout.conf` so an already-wired config isn't re-wired.
+    rest == "conf.d/mlayout.conf" || rest == "mlayout.conf"
 }
 
 fn wire_config_file(path: &Path) -> Result<()> {
@@ -774,7 +776,7 @@ fn wire_config_file(path: &Path) -> Result<()> {
     existing.push('\n');
     existing.push_str(WIRE_MARKER);
     existing.push('\n');
-    existing.push_str("source = mlayout.conf\n");
+    existing.push_str("source = conf.d/mlayout.conf\n");
 
     std::fs::write(path, existing)
         .with_context(|| format!("write {}", path.display()))?;
@@ -783,8 +785,8 @@ fn wire_config_file(path: &Path) -> Result<()> {
 
 /// The `layouts/` subdir under the margo config dir. All named
 /// `layout_<slug>.conf` snapshots live here; the active-layout symlink
-/// (`mlayout.conf`) stays at the config-dir root so `config.conf`'s
-/// `source = mlayout.conf` keeps working.
+/// lives at `conf.d/mlayout.conf` (a sibling dir) and `config.conf`
+/// `source`s `conf.d/mlayout.conf`.
 fn layouts_dir(config_dir: &Path) -> PathBuf {
     config_dir.join("layouts")
 }
@@ -1254,15 +1256,22 @@ fn activate(config_dir: &Path, layout: &Layout) -> Result<()> {
         std::process::id()
     ));
 
+    // The active link lives at `conf.d/mlayout.conf`; make sure conf.d
+    // exists before we drop the symlink in it.
+    if let Some(parent) = active.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("create {}", parent.display()))?;
+    }
+
     // Clean any leftover from a previous crash.
     let _ = std::fs::remove_file(&temp);
 
-    // Point the root-level `mlayout.conf` at `layouts/<file>` with a
-    // *relative* target so the symlink survives being moved with a
-    // dotfiles tree (falls back to the absolute path if the layout file
-    // somehow has no name).
+    // Point `conf.d/mlayout.conf` at `../layouts/<file>` with a *relative*
+    // target (conf.d/ and layouts/ are siblings) so the symlink survives
+    // being moved with a dotfiles tree. Falls back to the absolute path if
+    // the layout file somehow has no name.
     let link_target = match layout.path.file_name() {
-        Some(name) => Path::new("layouts").join(name),
+        Some(name) => Path::new("..").join("layouts").join(name),
         None => layout.path.clone(),
     };
     std::os::unix::fs::symlink(&link_target, &temp)

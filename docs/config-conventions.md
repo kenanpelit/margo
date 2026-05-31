@@ -36,10 +36,19 @@ binary and several are **machine-written**. Do not move or merge across owners.
 | Path | Owner | Written by | Hand-edit? |
 |---|---|---|---|
 | `config.conf` | margo | user (often a **dotfiles symlink**) | yes |
-| `colors.conf` | margo (sourced) | **matugen** (wallpaper palette) | no — regenerated |
-| `taglayouts.conf` | margo (sourced) | **mshell** (Settings → Tiling Layout) | tolerated |
+| `conf.d/colors.conf` | margo (sourced) | **matugen** (wallpaper palette) | no — regenerated |
+| `conf.d/taglayouts.conf` | margo (sourced) | **mshell** (Settings → Tiling Layout) | tolerated |
+| `conf.d/mlayout.conf` | margo (sourced) | `mlayout` (active-layout symlink → `../layouts/…`) | no — runtime state |
 | `binds.d/*.conf` | margo (sourced) | **plugin manager** (plugin keybinds) | tolerated |
-| `mlayout.conf` + `layout_*.conf` | margo (sourced) / `mlayout` | `mlayout` (active = symlink) | the `layout_*` yes |
+| `layouts/layout_*.conf` | `mlayout` | `mlayout` (+ user-saved) | yes |
+
+Margo's own `source`d fragments are grouped under `conf.d/` (matugen
+colors, mshell taglayouts, the mlayout active-layout symlink); plugin
+keybinds keep their own `binds.d/`; monitor-arrangement snapshots live in
+`layouts/`. `config.conf` itself stays at the config-dir root (that's what
+`margo -c` reads). `mlock.conf` / `mlogind-variables.toml` are **not** margo
+config — they're separate tools' files that happen to share the dir, so they
+stay at the root, not in `conf.d/`.
 | `mlock.conf` | `mlock` | user | yes |
 | `mlogind-variables.toml` | `mlogind` | user | yes |
 | `twilight/` | `twilight` | `twilight` + user presets | presets yes |
@@ -56,10 +65,10 @@ merging machine-written fragments into `config.conf` **breaks the writer**
 `config.conf` pulls fragments in with `source = <relative-path>`:
 
 ```
-source = colors.conf            # matugen-written
-source = binds.d/<plugin>.conf  # plugin-manager-written
-source = mlayout.conf           # mlayout active-layout symlink
-source = taglayouts.conf        # mshell-written (Settings → Tiling Layout)
+source = conf.d/colors.conf       # matugen-written
+source = conf.d/taglayouts.conf   # mshell-written (Settings → Tiling Layout)
+source = conf.d/mlayout.conf      # mlayout active-layout symlink → ../layouts/
+source = binds.d/<plugin>.conf    # plugin-manager-written
 ```
 
 - **Machine-written fragments are append-or-overwrite targets for their tool.**
@@ -76,9 +85,10 @@ When the **shell** needs to drive **compositor** config (a Settings page that
 writes a `.conf`), do NOT reach into the compositor — they are separate worlds
 (§0). Instead:
 
-1. Write a managed fragment `~/.config/margo/<name>.conf` (mshell owns it).
-2. Ensure `config.conf` `source`s it once (append-if-missing,
-   whitespace-tolerant check — see `config_sources_us`).
+1. Write a managed fragment under `~/.config/margo/conf.d/<name>.conf`
+   (mshell owns it; create `conf.d/` if missing).
+2. Ensure `config.conf` `source`s it once (`source = conf.d/<name>.conf`,
+   append-if-missing, whitespace-tolerant check — see `config_sources_us`).
 3. Run `mctl reload`.
 
 Examples: `taglayouts.conf` (Tiling Layout), `binds.d/` (plugin keybinds),
@@ -137,11 +147,10 @@ Touch all four or the knob silently no-ops / fails validation:
 
 - Named layouts are `layout_<slug>.conf` files in
   `~/.config/margo/layouts/`; `mlayout` scans that subdir (`gather_layouts`).
-- The **active** layout is the root-level `mlayout.conf` **symlink** → the
-  chosen `layouts/layout_<slug>.conf` (relative target, dotfiles-portable);
-  `config.conf` `source = mlayout.conf` picks it up. The symlink *is* the
-  runtime selection; the `layouts/layout_*` files are the catalogue. (Keeping
-  `mlayout.conf` at the root means the `source` line never changes.)
+- The **active** layout is the `conf.d/mlayout.conf` **symlink** → the chosen
+  `../layouts/layout_<slug>.conf` (relative target, dotfiles-portable);
+  `config.conf` `source = conf.d/mlayout.conf` picks it up. The symlink *is*
+  the runtime selection; the `layouts/layout_*` files are the catalogue.
 - This is idiomatic — `mlayout.conf → layout_*.conf` is the design, not a
   redundant chain. Distinct from §6's *tiling* layout (`taglayout`), which is a
   different concept (per-tag tiling algorithm, not monitor arrangement).
