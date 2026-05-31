@@ -451,8 +451,31 @@ pub struct BarWidgets {
     pub system_update: SystemUpdateBarWidget,
     /// Hidden Bar drawer behaviour (hover-expand, auto-collapse, …).
     pub hidden_bar: HiddenBarConfig,
+    /// Catwalk — the CPU-reactive animated cat pill.
+    pub catwalk: CatwalkConfig,
     /// User-defined pills, referenced from a bar slot via `!Custom <name>`.
     pub custom_widgets: Vec<CustomWidgetConfig>,
+}
+
+/// Settings for the [`BarWidget::Catwalk`] animated-cat pill (port of the
+/// noctalia catwalk plugin).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[serde(default)]
+pub struct CatwalkConfig {
+    /// CPU busy% below which the cat idles ("Zz"); above it walks, speeding up
+    /// with load. 5–25 is sensible.
+    pub minimum_threshold: u32,
+    /// Drop the pill background so the cat floats on the bar.
+    pub hide_background: bool,
+}
+
+impl Default for CatwalkConfig {
+    fn default() -> Self {
+        Self {
+            minimum_threshold: 10,
+            hide_background: false,
+        }
+    }
 }
 
 /// Behaviour knobs for the [`BarWidget::HiddenBar`] drawer (the widgets it

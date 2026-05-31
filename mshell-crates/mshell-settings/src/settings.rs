@@ -18,6 +18,7 @@ use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{BarsStoreFields, ConfigStoreFields, HorizontalBarStoreFields};
 use reactive_graph::prelude::Get;
 use reactive_graph::traits::ReadUntracked;
+use crate::catwalk_settings::{CatwalkSettingsInit, CatwalkSettingsModel};
 use crate::date_time_settings::{DateTimeSettingsInit, DateTimeSettingsModel};
 use crate::region_settings::{RegionSettingsInit, RegionSettingsModel};
 use crate::sound_settings::{SoundSettingsInit, SoundSettingsModel};
@@ -55,6 +56,7 @@ pub struct SettingsWindowModel {
     weather_settings_controller: Controller<WeatherSettingsModel>,
     media_player_settings_controller: Controller<MediaPlayerSettingsModel>,
     hidden_bar_settings_controller: Controller<HiddenBarSettingsModel>,
+    catwalk_settings_controller: Controller<CatwalkSettingsModel>,
     wallpaper_settings_controller: Controller<WallpaperSettingsModel>,
     theme_settings_controller: Controller<ThemeSettingsModel>,
     fonts_settings_controller: Controller<FontsSettingsModel>,
@@ -890,6 +892,10 @@ impl Component for SettingsWindowModel {
             .launch(HiddenBarSettingsInit {})
             .detach();
 
+        let catwalk_settings_controller = CatwalkSettingsModel::builder()
+            .launch(CatwalkSettingsInit {})
+            .detach();
+
         let wallpaper_settings_controller = WallpaperSettingsModel::builder()
             .launch(WallpaperSettingsInit {})
             .detach();
@@ -1048,6 +1054,7 @@ impl Component for SettingsWindowModel {
             weather_settings_controller,
             media_player_settings_controller,
             hidden_bar_settings_controller,
+            catwalk_settings_controller,
             wallpaper_settings_controller,
             theme_settings_controller,
             fonts_settings_controller,
@@ -1474,6 +1481,7 @@ impl Component for SettingsWindowModel {
             Weather,
             MediaPlayer,
             HiddenBar,
+            Catwalk,
             Clipboard,
             SystemUpdate,
             Dock,
@@ -1493,6 +1501,7 @@ impl Component for SettingsWindowModel {
                     Self::Weather => "Weather",
                     Self::MediaPlayer => "Media Player",
                     Self::HiddenBar => "Hidden Bar",
+                    Self::Catwalk => "Catwalk",
                 }
             }
         }
@@ -1509,6 +1518,7 @@ impl Component for SettingsWindowModel {
             WidgetEntry::Menu { kind: MenuKind::Dns, stack_name: "dns", label: "DNS / VPN", icon: "network-vpn-symbolic" },
             WidgetEntry::MediaPlayer,
             WidgetEntry::HiddenBar,
+            WidgetEntry::Catwalk,
             WidgetEntry::Menu { kind: MenuKind::Network, stack_name: "network", label: "Network Console", icon: "network-workgroup-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::Notes, stack_name: "notes", label: "Notes Hub", icon: "notes-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::Podman, stack_name: "podman", label: "Podman", icon: "package-symbolic" },
@@ -1784,6 +1794,20 @@ impl Component for SettingsWindowModel {
                     Box::leak(Box::new(hb_effects));
                     Box::leak(Box::new(top_section));
                     Box::leak(Box::new(bottom_section));
+                }
+                WidgetEntry::Catwalk => {
+                    let btn = make_sub_btn(
+                        "Catwalk",
+                        "face-smile-symbolic",
+                        "catwalk",
+                        group_anchor.as_ref(),
+                    );
+                    if group_anchor.is_none() {
+                        group_anchor = Some(btn.clone());
+                    }
+                    widgets_sub_sidebar_box.append(&btn);
+                    widgets_sub_stack
+                        .add_named(model.catwalk_settings_controller.widget(), Some("catwalk"));
                 }
                 WidgetEntry::Clipboard => {
                     let btn = make_sub_btn(

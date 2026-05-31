@@ -2515,6 +2515,7 @@ impl Frame {
             .launch(BarInit { bar_type })
             .forward(sender.input_sender(), |msg| match msg {
                 BarOutput::ClockClicked => FrameInput::ToggleClockMenu,
+                BarOutput::CatwalkClicked => FrameInput::ToggleCpuDashboardMenu,
                 BarOutput::DashboardClicked => FrameInput::ToggleDashboardMenu,
                 BarOutput::ClipboardClicked => FrameInput::ToggleClipboardMenu,
                 BarOutput::NotificationsClicked => FrameInput::ToggleNotificationMenu,

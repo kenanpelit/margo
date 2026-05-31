@@ -126,6 +126,7 @@ pub(crate) enum BarInput {
 #[derive(Debug)]
 pub(crate) enum BarOutput {
     ClockClicked,
+    CatwalkClicked,
     DashboardClicked,
     ClipboardClicked,
     NotificationsClicked,
@@ -633,6 +634,15 @@ impl BarModel {
                         .detach(),
                 )
             }
+            BarWidget::Catwalk => Box::new(
+                crate::bars::bar_widgets::catwalk::CatwalkModel::builder()
+                    .launch(crate::bars::bar_widgets::catwalk::CatwalkInit {})
+                    .forward(sender.output_sender(), |msg| match msg {
+                        crate::bars::bar_widgets::catwalk::CatwalkOutput::Clicked => {
+                            BarOutput::CatwalkClicked
+                        }
+                    }),
+            ),
             BarWidget::AudioDashboard => Box::new(
                 crate::bars::bar_widgets::audio_dashboard::AudioDashboardModel::builder()
                     .launch(crate::bars::bar_widgets::audio_dashboard::AudioDashboardInit {})

@@ -19,6 +19,10 @@ pub enum BarWidget {
     /// reveal, right-click to pin open, auto-collapse on leave. Port of
     /// the DMS hidden-bar plugin, native to mshell's bar.
     HiddenBar,
+    /// Catwalk — a CPU-reactive animated cat (port of the noctalia plugin).
+    /// Idles ("Zz") below a CPU threshold, walks faster as load climbs;
+    /// click opens the CPU dashboard.
+    Catwalk,
     /// Combined audio dashboard pill — surfaces both default
     /// output (sink) and default input (source) volumes in one
     /// cluster with right-click cycle (Both/OutputOnly/InputOnly).
@@ -120,6 +124,7 @@ impl BarWidget {
             BarWidget::AlarmClock => "Alarm Clock",
             BarWidget::ControlCenter => "Control Center",
             BarWidget::HiddenBar => "Hidden Bar",
+            BarWidget::Catwalk => "Catwalk (animated cat)",
             BarWidget::AudioDashboard => "Audio Dashboard",
             BarWidget::Bluetooth => "Bluetooth",
             BarWidget::Clipboard => "Clipboard",
@@ -175,6 +180,7 @@ impl BarWidget {
             BarWidget::AlarmClock,
             BarWidget::ControlCenter,
             BarWidget::HiddenBar,
+            BarWidget::Catwalk,
             BarWidget::AudioDashboard,
             BarWidget::Bluetooth,
             BarWidget::Clipboard,

@@ -29,6 +29,7 @@ mod display_settings;
 mod dock_settings;
 mod fonts_settings;
 mod general_settings;
+mod catwalk_settings;
 mod hidden_bar_settings;
 mod input_settings;
 mod keybinds_settings;
