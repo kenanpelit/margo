@@ -766,15 +766,18 @@ fn add_window_details_to_menu(
     for (index, client) in matching.iter().enumerate() {
         let action_name = format!("details{}", index);
         let action = gio::SimpleAction::new(&action_name, None);
-        let address = client.address.get().clone();
+        // Use the same command shape as left-click focus: the bare
+        // `focuswindow address:0x…` string isn't one of the forms
+        // `MargoService::dispatch` recognises, so it was silently dropped —
+        // that's why picking a window from the menu did nothing. `focus_command`
+        // emits `dispatch focuswindow <idx>`, which margo turns into
+        // `activate_window_idx` (focuses the exact window + jumps to its tag).
+        let command = focus_command(client);
         action.connect_activate(move |_, _| {
-            let address = address.clone();
+            let command = command.clone();
             tokio::spawn(async move {
                 let hyprland = margo_service();
-                if let Err(e) = hyprland
-                    .dispatch(&format!("focuswindow address:0x{}", address))
-                    .await
-                {
+                if let Err(e) = hyprland.dispatch(&command).await {
                     error!(error = %e, "Failed to focus client");
                 }
             });
