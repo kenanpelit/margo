@@ -135,6 +135,20 @@
     border-right: solid 1px var(--outline-variant);
 }
 
+// Group header in the sidebar (Appearance / Shell / System / …).
+// DESIGN.md §1 section-label: dim, uppercase, letter-spaced; sits a
+// notch above its buttons. Non-interactive — just structures the list.
+.settings-sidebar-section {
+    font-size: var(--font-2xs);
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--on-surface-variant);
+    margin-top: var(--space-3);
+    margin-bottom: var(--space-1);
+    padding-left: var(--space-2);
+}
+
 .settings-stack {
     background-color: var(--surface);
 }

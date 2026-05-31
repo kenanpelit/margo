@@ -222,168 +222,49 @@ impl Component for SettingsWindowModel {
                         },
                     },
 
-                    #[name = "about_btn"]
+                    gtk::Label {
+                        add_css_class: "settings-sidebar-section",
+                        set_label: "APPEARANCE",
+                        set_halign: gtk::Align::Start,
+                        set_xalign: 0.0,
+                    },
+
+                    #[name = "theme_btn"]
                     gtk::ToggleButton {
                         add_css_class: "sidebar-button",
                         set_group: Some(&general_btn),
                         connect_toggled[stack] => move |b| {
-                            if b.is_active() { stack.set_visible_child_name("about"); }
+                            if b.is_active() { stack.set_visible_child_name("theme"); }
                         },
 
                         gtk::Box {
                             set_orientation: gtk::Orientation::Horizontal,
                             set_spacing: 12,
-                            gtk::Image { set_icon_name: Some("help-about-symbolic") },
+                            gtk::Image { set_icon_name: Some("palette-symbolic") },
                             gtk::Label {
                                 add_css_class: "label-medium",
-                                set_label: "About",
+                                set_label: "Theme",
                                 set_halign: gtk::Align::Start,
                                 set_hexpand: true,
                             },
                         },
                     },
 
-                    #[name = "animations_btn"]
+                    #[name = "wallpaper_btn"]
                     gtk::ToggleButton {
                         add_css_class: "sidebar-button",
                         set_group: Some(&general_btn),
                         connect_toggled[stack] => move |b| {
-                            if b.is_active() { stack.set_visible_child_name("animations"); }
+                            if b.is_active() { stack.set_visible_child_name("wallpaper"); }
                         },
 
                         gtk::Box {
                             set_orientation: gtk::Orientation::Horizontal,
                             set_spacing: 12,
-                            gtk::Image { set_icon_name: Some("preferences-desktop-screensaver-symbolic") },
+                            gtk::Image { set_icon_name: Some("wallpaper-symbolic") },
                             gtk::Label {
                                 add_css_class: "label-medium",
-                                set_label: "Animations",
-                                set_halign: gtk::Align::Start,
-                                set_hexpand: true,
-                            },
-                        },
-                    },
-
-                    #[name = "overview_btn"]
-                    gtk::ToggleButton {
-                        add_css_class: "sidebar-button",
-                        set_group: Some(&general_btn),
-                        connect_toggled[stack] => move |b| {
-                            if b.is_active() { stack.set_visible_child_name("overview"); }
-                        },
-
-                        gtk::Box {
-                            set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 12,
-                            gtk::Image { set_icon_name: Some("view-grid-symbolic") },
-                            gtk::Label {
-                                add_css_class: "label-medium",
-                                set_label: "Overview",
-                                set_halign: gtk::Align::Start,
-                                set_hexpand: true,
-                            },
-                        },
-                    },
-
-                    #[name = "bar_btn"]
-                    gtk::ToggleButton {
-                        add_css_class: "sidebar-button",
-                        set_group: Some(&general_btn),
-                        connect_toggled[stack] => move |b| {
-                            if b.is_active() { stack.set_visible_child_name("bar"); }
-                        },
-
-                        gtk::Box {
-                            set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 12,
-                            gtk::Image { set_icon_name: Some("sidebar-symbolic") },
-                            gtk::Label {
-                                add_css_class: "label-medium",
-                                set_label: "Bar",
-                                set_halign: gtk::Align::Start,
-                                set_hexpand: true,
-                            },
-                        },
-                    },
-
-                    #[name = "bluetooth_btn"]
-                    gtk::ToggleButton {
-                        add_css_class: "sidebar-button",
-                        set_group: Some(&general_btn),
-                        connect_toggled[stack] => move |b| {
-                            if b.is_active() { stack.set_visible_child_name("bluetooth"); }
-                        },
-
-                        gtk::Box {
-                            set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 12,
-                            gtk::Image { set_icon_name: Some("bluetooth-active-symbolic") },
-                            gtk::Label {
-                                add_css_class: "label-medium",
-                                set_label: "Bluetooth",
-                                set_halign: gtk::Align::Start,
-                                set_hexpand: true,
-                            },
-                        },
-                    },
-
-                    #[name = "date_time_btn"]
-                    gtk::ToggleButton {
-                        add_css_class: "sidebar-button",
-                        set_group: Some(&general_btn),
-                        connect_toggled[stack] => move |b| {
-                            if b.is_active() { stack.set_visible_child_name("date_time"); }
-                        },
-
-                        gtk::Box {
-                            set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 12,
-                            gtk::Image { set_icon_name: Some("preferences-system-time-symbolic") },
-                            gtk::Label {
-                                add_css_class: "label-medium",
-                                set_label: "Date & Time",
-                                set_halign: gtk::Align::Start,
-                                set_hexpand: true,
-                            },
-                        },
-                    },
-
-                    #[name = "default_apps_btn"]
-                    gtk::ToggleButton {
-                        add_css_class: "sidebar-button",
-                        set_group: Some(&general_btn),
-                        connect_toggled[stack] => move |b| {
-                            if b.is_active() { stack.set_visible_child_name("default_apps"); }
-                        },
-
-                        gtk::Box {
-                            set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 12,
-                            gtk::Image { set_icon_name: Some("application-x-executable-symbolic") },
-                            gtk::Label {
-                                add_css_class: "label-medium",
-                                set_label: "Default Apps",
-                                set_halign: gtk::Align::Start,
-                                set_hexpand: true,
-                            },
-                        },
-                    },
-
-                    #[name = "display_btn"]
-                    gtk::ToggleButton {
-                        add_css_class: "sidebar-button",
-                        set_group: Some(&general_btn),
-                        connect_toggled[stack] => move |b| {
-                            if b.is_active() { stack.set_visible_child_name("display"); }
-                        },
-
-                        gtk::Box {
-                            set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 12,
-                            gtk::Image { set_icon_name: Some("video-display-symbolic") },
-                            gtk::Label {
-                                add_css_class: "label-medium",
-                                set_label: "Display",
+                                set_label: "Wallpaper",
                                 set_halign: gtk::Align::Start,
                                 set_hexpand: true,
                             },
@@ -411,6 +292,250 @@ impl Component for SettingsWindowModel {
                         },
                     },
 
+                    #[name = "animations_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("animations"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("preferences-desktop-screensaver-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Animations",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
+                    gtk::Label {
+                        add_css_class: "settings-sidebar-section",
+                        set_label: "SHELL",
+                        set_halign: gtk::Align::Start,
+                        set_xalign: 0.0,
+                    },
+
+                    #[name = "bar_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("bar"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("sidebar-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Bar",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
+                    #[name = "menus_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("menus"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("view-list-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Menus",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
+                    #[name = "widgets_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("widgets"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("view-grid-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Widgets",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+                    #[name = "overview_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("overview"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("view-grid-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Overview",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
+                    #[name = "tag_layout_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("tiling_layout"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("view-grid-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Tiling Layout",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
+                    gtk::Label {
+                        add_css_class: "settings-sidebar-section",
+                        set_label: "SYSTEM",
+                        set_halign: gtk::Align::Start,
+                        set_xalign: 0.0,
+                    },
+
+                    #[name = "display_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("display"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("video-display-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Display",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
+                    #[name = "sound_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("sound"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("audio-volume-high-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Sound",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
+                    #[name = "network_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("network"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("network-wireless-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Network",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
+                    #[name = "bluetooth_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("bluetooth"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("bluetooth-active-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Bluetooth",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
+                    #[name = "power_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("power"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("battery-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Power",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
                     #[name = "idle_btn"]
                     gtk::ToggleButton {
                         add_css_class: "sidebar-button",
@@ -430,6 +555,55 @@ impl Component for SettingsWindowModel {
                                 set_hexpand: true,
                             },
                         },
+                    },
+
+                    #[name = "privacy_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("privacy"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("security-high-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Privacy",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
+                    #[name = "weather_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("weather"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("weather-few-clouds-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Weather",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
+                    gtk::Label {
+                        add_css_class: "settings-sidebar-section",
+                        set_label: "INPUT",
+                        set_halign: gtk::Align::Start,
+                        set_xalign: 0.0,
                     },
 
                     #[name = "input_btn"]
@@ -495,84 +669,28 @@ impl Component for SettingsWindowModel {
                         },
                     },
 
-                    #[name = "menus_btn"]
-                    gtk::ToggleButton {
-                        add_css_class: "sidebar-button",
-                        set_group: Some(&general_btn),
-                        connect_toggled[stack] => move |b| {
-                            if b.is_active() { stack.set_visible_child_name("menus"); }
-                        },
-
-                        gtk::Box {
-                            set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 12,
-                            gtk::Image { set_icon_name: Some("view-list-symbolic") },
-                            gtk::Label {
-                                add_css_class: "label-medium",
-                                set_label: "Menus",
-                                set_halign: gtk::Align::Start,
-                                set_hexpand: true,
-                            },
-                        },
+                    gtk::Label {
+                        add_css_class: "settings-sidebar-section",
+                        set_label: "LOCALE & ACCOUNTS",
+                        set_halign: gtk::Align::Start,
+                        set_xalign: 0.0,
                     },
 
-                    #[name = "network_btn"]
+                    #[name = "date_time_btn"]
                     gtk::ToggleButton {
                         add_css_class: "sidebar-button",
                         set_group: Some(&general_btn),
                         connect_toggled[stack] => move |b| {
-                            if b.is_active() { stack.set_visible_child_name("network"); }
+                            if b.is_active() { stack.set_visible_child_name("date_time"); }
                         },
 
                         gtk::Box {
                             set_orientation: gtk::Orientation::Horizontal,
                             set_spacing: 12,
-                            gtk::Image { set_icon_name: Some("network-wireless-symbolic") },
+                            gtk::Image { set_icon_name: Some("preferences-system-time-symbolic") },
                             gtk::Label {
                                 add_css_class: "label-medium",
-                                set_label: "Network",
-                                set_halign: gtk::Align::Start,
-                                set_hexpand: true,
-                            },
-                        },
-                    },
-
-                    #[name = "power_btn"]
-                    gtk::ToggleButton {
-                        add_css_class: "sidebar-button",
-                        set_group: Some(&general_btn),
-                        connect_toggled[stack] => move |b| {
-                            if b.is_active() { stack.set_visible_child_name("power"); }
-                        },
-
-                        gtk::Box {
-                            set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 12,
-                            gtk::Image { set_icon_name: Some("battery-symbolic") },
-                            gtk::Label {
-                                add_css_class: "label-medium",
-                                set_label: "Power",
-                                set_halign: gtk::Align::Start,
-                                set_hexpand: true,
-                            },
-                        },
-                    },
-
-                    #[name = "privacy_btn"]
-                    gtk::ToggleButton {
-                        add_css_class: "sidebar-button",
-                        set_group: Some(&general_btn),
-                        connect_toggled[stack] => move |b| {
-                            if b.is_active() { stack.set_visible_child_name("privacy"); }
-                        },
-
-                        gtk::Box {
-                            set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 12,
-                            gtk::Image { set_icon_name: Some("security-high-symbolic") },
-                            gtk::Label {
-                                add_css_class: "label-medium",
-                                set_label: "Privacy",
+                                set_label: "Date & Time",
                                 set_halign: gtk::Align::Start,
                                 set_hexpand: true,
                             },
@@ -600,84 +718,21 @@ impl Component for SettingsWindowModel {
                         },
                     },
 
-                    #[name = "setup_btn"]
+                    #[name = "default_apps_btn"]
                     gtk::ToggleButton {
                         add_css_class: "sidebar-button",
                         set_group: Some(&general_btn),
                         connect_toggled[stack] => move |b| {
-                            if b.is_active() { stack.set_visible_child_name("setup"); }
+                            if b.is_active() { stack.set_visible_child_name("default_apps"); }
                         },
 
                         gtk::Box {
                             set_orientation: gtk::Orientation::Horizontal,
                             set_spacing: 12,
-                            gtk::Image { set_icon_name: Some("emblem-system-symbolic") },
+                            gtk::Image { set_icon_name: Some("application-x-executable-symbolic") },
                             gtk::Label {
                                 add_css_class: "label-medium",
-                                set_label: "Setup",
-                                set_halign: gtk::Align::Start,
-                                set_hexpand: true,
-                            },
-                        },
-                    },
-
-                    #[name = "sound_btn"]
-                    gtk::ToggleButton {
-                        add_css_class: "sidebar-button",
-                        set_group: Some(&general_btn),
-                        connect_toggled[stack] => move |b| {
-                            if b.is_active() { stack.set_visible_child_name("sound"); }
-                        },
-
-                        gtk::Box {
-                            set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 12,
-                            gtk::Image { set_icon_name: Some("audio-volume-high-symbolic") },
-                            gtk::Label {
-                                add_css_class: "label-medium",
-                                set_label: "Sound",
-                                set_halign: gtk::Align::Start,
-                                set_hexpand: true,
-                            },
-                        },
-                    },
-
-                    #[name = "theme_btn"]
-                    gtk::ToggleButton {
-                        add_css_class: "sidebar-button",
-                        set_group: Some(&general_btn),
-                        connect_toggled[stack] => move |b| {
-                            if b.is_active() { stack.set_visible_child_name("theme"); }
-                        },
-
-                        gtk::Box {
-                            set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 12,
-                            gtk::Image { set_icon_name: Some("palette-symbolic") },
-                            gtk::Label {
-                                add_css_class: "label-medium",
-                                set_label: "Theme",
-                                set_halign: gtk::Align::Start,
-                                set_hexpand: true,
-                            },
-                        },
-                    },
-
-                    #[name = "tag_layout_btn"]
-                    gtk::ToggleButton {
-                        add_css_class: "sidebar-button",
-                        set_group: Some(&general_btn),
-                        connect_toggled[stack] => move |b| {
-                            if b.is_active() { stack.set_visible_child_name("tiling_layout"); }
-                        },
-
-                        gtk::Box {
-                            set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 12,
-                            gtk::Image { set_icon_name: Some("view-grid-symbolic") },
-                            gtk::Label {
-                                add_css_class: "label-medium",
-                                set_label: "Tiling Layout",
+                                set_label: "Default Apps",
                                 set_halign: gtk::Align::Start,
                                 set_hexpand: true,
                             },
@@ -705,46 +760,11 @@ impl Component for SettingsWindowModel {
                         },
                     },
 
-                    #[name = "wallpaper_btn"]
-                    gtk::ToggleButton {
-                        add_css_class: "sidebar-button",
-                        set_group: Some(&general_btn),
-                        connect_toggled[stack] => move |b| {
-                            if b.is_active() { stack.set_visible_child_name("wallpaper"); }
-                        },
-
-                        gtk::Box {
-                            set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 12,
-                            gtk::Image { set_icon_name: Some("wallpaper-symbolic") },
-                            gtk::Label {
-                                add_css_class: "label-medium",
-                                set_label: "Wallpaper",
-                                set_halign: gtk::Align::Start,
-                                set_hexpand: true,
-                            },
-                        },
-                    },
-
-                    #[name = "weather_btn"]
-                    gtk::ToggleButton {
-                        add_css_class: "sidebar-button",
-                        set_group: Some(&general_btn),
-                        connect_toggled[stack] => move |b| {
-                            if b.is_active() { stack.set_visible_child_name("weather"); }
-                        },
-
-                        gtk::Box {
-                            set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 12,
-                            gtk::Image { set_icon_name: Some("weather-few-clouds-symbolic") },
-                            gtk::Label {
-                                add_css_class: "label-medium",
-                                set_label: "Weather",
-                                set_halign: gtk::Align::Start,
-                                set_hexpand: true,
-                            },
-                        },
+                    gtk::Label {
+                        add_css_class: "settings-sidebar-section",
+                        set_label: "ADVANCED",
+                        set_halign: gtk::Align::Start,
+                        set_xalign: 0.0,
                     },
 
                     #[name = "plugins_btn"]
@@ -768,26 +788,55 @@ impl Component for SettingsWindowModel {
                         },
                     },
 
-                    #[name = "widgets_btn"]
+                    #[name = "setup_btn"]
                     gtk::ToggleButton {
                         add_css_class: "sidebar-button",
                         set_group: Some(&general_btn),
                         connect_toggled[stack] => move |b| {
-                            if b.is_active() { stack.set_visible_child_name("widgets"); }
+                            if b.is_active() { stack.set_visible_child_name("setup"); }
                         },
 
                         gtk::Box {
                             set_orientation: gtk::Orientation::Horizontal,
                             set_spacing: 12,
-                            gtk::Image { set_icon_name: Some("view-grid-symbolic") },
+                            gtk::Image { set_icon_name: Some("emblem-system-symbolic") },
                             gtk::Label {
                                 add_css_class: "label-medium",
-                                set_label: "Widgets",
+                                set_label: "Setup",
                                 set_halign: gtk::Align::Start,
                                 set_hexpand: true,
                             },
                         },
                     },
+
+                    gtk::Label {
+                        add_css_class: "settings-sidebar-section",
+                        set_label: "ABOUT",
+                        set_halign: gtk::Align::Start,
+                        set_xalign: 0.0,
+                    },
+
+                    #[name = "about_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("about"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("help-about-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "About",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
+
                 },
 
                 #[name = "stack"]
