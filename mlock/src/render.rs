@@ -259,7 +259,16 @@ pub fn draw_lock_frame(
     let shake_dx = shake_offset(seat);
     let card_x = cx - card_w / 2.0 + shake_dx;
 
-    draw_card_with_shadow(&cr, card_x, y, card_w, card_h, accent);
+    // On a failed attempt the card border escalates to the danger tone
+    // alongside the shake + red status line, so chrome and tint move
+    // together (DESIGN.md §2 severity ladder) instead of the border
+    // staying calm-accent while everything else signals failure.
+    let card_border = if seat.fail_message.is_some() {
+        pal.danger
+    } else {
+        accent
+    };
+    draw_card_with_shadow(&cr, card_x, y, card_w, card_h, card_border);
 
     // 10. Dots / placeholder pill.
     let band_y = y + CARD_PADDING_Y + DOTS_BAND_HEIGHT / 2.0;
