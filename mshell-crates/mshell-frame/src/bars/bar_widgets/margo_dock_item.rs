@@ -40,6 +40,10 @@ pub(crate) struct MargoDockItemModel {
 pub(crate) enum MargoDockItemInput {
     LeftClicked,
     RightClicked,
+    /// Middle-click — launch a fresh instance even if already running (D2P).
+    MiddleClicked,
+    /// Scroll over the icon — cycle the app's windows (`true` = forward) (D2P).
+    ScrollCycle(bool),
     ThemeChanged(String, Themes, bool, f64, f64, f64),
     ClientCountChanged(i16),
     Selected(Address),
@@ -196,6 +200,23 @@ impl Component for MargoDockItemModel {
                             sender.input(MargoDockItemInput::RightClicked);
                         },
                     },
+                    // Middle-click → new instance (D2P).
+                    add_controller = gtk::GestureClick::builder().button(2).build() {
+                        connect_released[sender] => move |_, _, _, _| {
+                            sender.input(MargoDockItemInput::MiddleClicked);
+                        },
+                    },
+                    // Scroll → cycle the app's windows (D2P).
+                    add_controller = gtk::EventControllerScroll::new(
+                        gtk::EventControllerScrollFlags::VERTICAL,
+                    ) {
+                        connect_scroll[sender] => move |_, _dx, dy| {
+                            if dy != 0.0 {
+                                sender.input(MargoDockItemInput::ScrollCycle(dy > 0.0));
+                            }
+                            gtk::glib::Propagation::Stop
+                        },
+                    },
 
                     #[name="image"]
                     gtk::Image {
@@ -344,6 +365,51 @@ impl Component for MargoDockItemModel {
                     let command = focus_command(client_to_focus);
                     if let Err(e) = hyprland.dispatch(&command).await {
                         error!(error = %e, "Failed to focus client");
+                    }
+                });
+            }
+            MargoDockItemInput::MiddleClicked => {
+                // New instance — launch even when already running (D2P).
+                if let Some(app) = &self.app_info {
+                    launch_detached(app);
+                }
+            }
+            MargoDockItemInput::ScrollCycle(forward) => {
+                let hyprland = margo_service();
+                let clients = hyprland.clients.get();
+                let mut matching: Vec<_> = clients
+                    .iter()
+                    .filter(|client| client.class.get() == self.class)
+                    .cloned()
+                    .collect();
+                matching.sort_by_key(|client| client.address.get());
+                if matching.len() < 2 {
+                    // 0 or 1 window — nothing to cycle through.
+                    if let Some(c) = matching.first() {
+                        let command = focus_command(c);
+                        tokio::spawn(async move {
+                            let _ = hyprland.dispatch(&command).await;
+                        });
+                    }
+                    return;
+                }
+                // Start from the last window we focused for this app (else 0)
+                // and step in the scroll direction.
+                let cur = self
+                    .last_selected_address
+                    .as_ref()
+                    .and_then(|a| matching.iter().position(|c| c.address.get() == *a))
+                    .unwrap_or(0);
+                let len = matching.len();
+                let next = if forward {
+                    (cur + 1) % len
+                } else {
+                    (cur + len - 1) % len
+                };
+                let command = focus_command(&matching[next]);
+                tokio::spawn(async move {
+                    if let Err(e) = hyprland.dispatch(&command).await {
+                        error!(error = %e, "Failed to cycle client");
                     }
                 });
             }
