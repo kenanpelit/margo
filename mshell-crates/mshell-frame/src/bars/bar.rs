@@ -118,6 +118,9 @@ pub(crate) enum BarInput {
     SetHovered(bool),
     /// Forward a Hidden Bar IPC verb to every HiddenBar widget in this bar.
     HiddenBar(mshell_common::hidden_bar::HiddenBarVerb),
+    /// `hidden_widgets` config changed — rebuild the slot holding the drawer
+    /// so it re-reads its contents (live add/remove from Settings).
+    RebuildHidden,
 }
 
 #[derive(Debug)]
@@ -309,6 +312,17 @@ impl Component for BarModel {
                     let widgets = config.bars().top_bar().center_widgets().get();
                     sender_clone.input(BarInput::SetCenteredWidgets(widgets));
                 });
+
+                // Rebuild the Hidden Bar drawer when its contents change
+                // (the drawer reads `hidden_widgets` at build time, so a live
+                // edit needs the slot holding it rebuilt).
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let _ = config.bars().top_bar().hidden_widgets().get();
+                    sender_clone.input(BarInput::RebuildHidden);
+                });
             }
             BarType::Bottom => {
                 orientation = Orientation::Horizontal;
@@ -358,6 +372,14 @@ impl Component for BarModel {
                     let config = config.clone();
                     let widgets = config.bars().bottom_bar().center_widgets().get();
                     sender_clone.input(BarInput::SetCenteredWidgets(widgets));
+                });
+
+                let config = base_config.clone();
+                let sender_clone = sender.clone();
+                effects.push(move |_| {
+                    let config = config.clone();
+                    let _ = config.bars().bottom_bar().hidden_widgets().get();
+                    sender_clone.input(BarInput::RebuildHidden);
                 });
             }
         }
@@ -481,6 +503,41 @@ impl Component for BarModel {
             }
             BarInput::SetHovered(hovered) => {
                 self.hovered = hovered;
+            }
+            BarInput::RebuildHidden => {
+                if self.start_widget_kinds.contains(&BarWidget::HiddenBar) {
+                    let kinds = self.start_widget_kinds.clone();
+                    clear_box(&widgets.start_container);
+                    self.start_widgets.clear();
+                    for item in &kinds {
+                        let c =
+                            BarModel::build_widget(self.orientation, self.bar_type, item, &sender);
+                        widgets.start_container.append(&c.root_widget());
+                        self.start_widgets.push(c);
+                    }
+                }
+                if self.center_widget_kinds.contains(&BarWidget::HiddenBar) {
+                    let kinds = self.center_widget_kinds.clone();
+                    clear_box(&widgets.center_container);
+                    self.center_widgets.clear();
+                    for item in &kinds {
+                        let c =
+                            BarModel::build_widget(self.orientation, self.bar_type, item, &sender);
+                        widgets.center_container.append(&c.root_widget());
+                        self.center_widgets.push(c);
+                    }
+                }
+                if self.end_widget_kinds.contains(&BarWidget::HiddenBar) {
+                    let kinds = self.end_widget_kinds.clone();
+                    clear_box(&widgets.end_container);
+                    self.end_widgets.clear();
+                    for item in &kinds {
+                        let c =
+                            BarModel::build_widget(self.orientation, self.bar_type, item, &sender);
+                        widgets.end_container.append(&c.root_widget());
+                        self.end_widgets.push(c);
+                    }
+                }
             }
         }
         self.update_view(widgets, sender);
