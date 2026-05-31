@@ -8,6 +8,11 @@ use crate::power_settings::{PowerSettingsInit, PowerSettingsModel};
 use crate::privacy_settings::{PrivacySettingsInit, PrivacySettingsModel};
 use crate::overview_settings::{OverviewSettingsInit, OverviewSettingsModel};
 use crate::bar_settings::bar_settings::{BarSettingsInit, BarSettingsModel};
+use crate::bar_settings::bar_widget_factory::BarListLocation;
+use crate::bar_settings::bar_widget_section::{BarSection, WidgetSectionInit, WidgetSectionModel};
+use crate::hidden_bar_settings::{HiddenBarSettingsInit, HiddenBarSettingsModel};
+use mshell_config::config_manager::config_manager;
+use reactive_graph::traits::ReadUntracked;
 use crate::date_time_settings::{DateTimeSettingsInit, DateTimeSettingsModel};
 use crate::region_settings::{RegionSettingsInit, RegionSettingsModel};
 use crate::sound_settings::{SoundSettingsInit, SoundSettingsModel};
@@ -44,6 +49,7 @@ pub struct SettingsWindowModel {
     setup_settings_controller: Controller<SetupSettingsModel>,
     weather_settings_controller: Controller<WeatherSettingsModel>,
     media_player_settings_controller: Controller<MediaPlayerSettingsModel>,
+    hidden_bar_settings_controller: Controller<HiddenBarSettingsModel>,
     wallpaper_settings_controller: Controller<WallpaperSettingsModel>,
     theme_settings_controller: Controller<ThemeSettingsModel>,
     fonts_settings_controller: Controller<FontsSettingsModel>,
@@ -875,6 +881,10 @@ impl Component for SettingsWindowModel {
             .launch(MediaPlayerSettingsInit {})
             .detach();
 
+        let hidden_bar_settings_controller = HiddenBarSettingsModel::builder()
+            .launch(HiddenBarSettingsInit {})
+            .detach();
+
         let wallpaper_settings_controller = WallpaperSettingsModel::builder()
             .launch(WallpaperSettingsInit {})
             .detach();
@@ -1032,6 +1042,7 @@ impl Component for SettingsWindowModel {
             setup_settings_controller,
             weather_settings_controller,
             media_player_settings_controller,
+            hidden_bar_settings_controller,
             wallpaper_settings_controller,
             theme_settings_controller,
             fonts_settings_controller,
@@ -1457,6 +1468,7 @@ impl Component for SettingsWindowModel {
             Session,
             Weather,
             MediaPlayer,
+            HiddenBar,
             Clipboard,
             SystemUpdate,
             Dock,
@@ -1475,6 +1487,7 @@ impl Component for SettingsWindowModel {
                     Self::Session => "Session",
                     Self::Weather => "Weather",
                     Self::MediaPlayer => "Media Player",
+                    Self::HiddenBar => "Hidden Bar",
                 }
             }
         }
@@ -1490,6 +1503,7 @@ impl Component for SettingsWindowModel {
             WidgetEntry::Menu { kind: MenuKind::Dashboard, stack_name: "dashboard", label: "Dashboard", icon: "view-grid-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::Dns, stack_name: "dns", label: "DNS / VPN", icon: "network-vpn-symbolic" },
             WidgetEntry::MediaPlayer,
+            WidgetEntry::HiddenBar,
             WidgetEntry::Menu { kind: MenuKind::Network, stack_name: "network", label: "Network Console", icon: "network-workgroup-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::Notes, stack_name: "notes", label: "Notes Hub", icon: "notes-symbolic" },
             WidgetEntry::Menu { kind: MenuKind::Podman, stack_name: "podman", label: "Podman", icon: "package-symbolic" },
@@ -1679,6 +1693,65 @@ impl Component for SettingsWindowModel {
                         .build();
                     widgets_sub_stack.add_named(&outer, Some("media_player"));
                     Box::leak(Box::new(menu_ctrl));
+                }
+                WidgetEntry::HiddenBar => {
+                    let btn = make_sub_btn(
+                        "Hidden Bar",
+                        "view-more-horizontal-symbolic",
+                        "hidden_bar",
+                        group_anchor.as_ref(),
+                    );
+                    if group_anchor.is_none() {
+                        group_anchor = Some(btn.clone());
+                    }
+                    widgets_sub_sidebar_box.append(&btn);
+
+                    // Behaviour knobs + a widget-list editor per bar. The list
+                    // editors reuse the bar-layout section component (TopHidden
+                    // / BottomHidden locations), so add / remove / reorder work
+                    // exactly like the normal bar slots — that's how the user
+                    // picks what the drawer hides.
+                    let cfg = config_manager().config().read_untracked().clone();
+                    let top_section = WidgetSectionModel::builder()
+                        .launch(WidgetSectionInit {
+                            bar_section: BarSection::Hidden,
+                            location: BarListLocation::TopHidden,
+                            widgets: cfg.bars.top_bar.hidden_widgets.clone(),
+                        })
+                        .detach();
+                    let bottom_section = WidgetSectionModel::builder()
+                        .launch(WidgetSectionInit {
+                            bar_section: BarSection::Hidden,
+                            location: BarListLocation::BottomHidden,
+                            widgets: cfg.bars.bottom_bar.hidden_widgets.clone(),
+                        })
+                        .detach();
+
+                    let inner = gtk::Box::new(gtk::Orientation::Vertical, 12);
+                    inner.append(model.hidden_bar_settings_controller.widget());
+
+                    let top_label = gtk::Label::new(Some("Top bar — hidden widgets"));
+                    top_label.add_css_class("label-large-bold");
+                    top_label.set_halign(gtk::Align::Start);
+                    inner.append(&top_label);
+                    inner.append(top_section.widget());
+
+                    let bottom_label = gtk::Label::new(Some("Bottom bar — hidden widgets"));
+                    bottom_label.add_css_class("label-large-bold");
+                    bottom_label.set_halign(gtk::Align::Start);
+                    inner.append(&bottom_label);
+                    inner.append(bottom_section.widget());
+
+                    let outer = gtk::ScrolledWindow::builder()
+                        .hscrollbar_policy(gtk::PolicyType::Never)
+                        .vscrollbar_policy(gtk::PolicyType::Automatic)
+                        .hexpand(true)
+                        .vexpand(true)
+                        .child(&inner)
+                        .build();
+                    widgets_sub_stack.add_named(&outer, Some("hidden_bar"));
+                    Box::leak(Box::new(top_section));
+                    Box::leak(Box::new(bottom_section));
                 }
                 WidgetEntry::Clipboard => {
                     let btn = make_sub_btn(

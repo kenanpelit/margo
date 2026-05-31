@@ -18,9 +18,11 @@ pub enum BarListLocation {
     TopStart,
     TopCenter,
     TopEnd,
+    TopHidden,
     BottomStart,
     BottomCenter,
     BottomEnd,
+    BottomHidden,
 }
 
 #[derive(Debug)]
@@ -137,9 +139,11 @@ fn list_mut(
         BarListLocation::TopStart => &mut config.bars.top_bar.left_widgets,
         BarListLocation::TopCenter => &mut config.bars.top_bar.center_widgets,
         BarListLocation::TopEnd => &mut config.bars.top_bar.right_widgets,
+        BarListLocation::TopHidden => &mut config.bars.top_bar.hidden_widgets,
         BarListLocation::BottomStart => &mut config.bars.bottom_bar.left_widgets,
         BarListLocation::BottomCenter => &mut config.bars.bottom_bar.center_widgets,
         BarListLocation::BottomEnd => &mut config.bars.bottom_bar.right_widgets,
+        BarListLocation::BottomHidden => &mut config.bars.bottom_bar.hidden_widgets,
     }
 }
 

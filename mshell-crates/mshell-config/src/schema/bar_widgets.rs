@@ -174,6 +174,7 @@ impl BarWidget {
             BarWidget::ActiveWindow,
             BarWidget::AlarmClock,
             BarWidget::ControlCenter,
+            BarWidget::HiddenBar,
             BarWidget::AudioDashboard,
             BarWidget::Bluetooth,
             BarWidget::Clipboard,
