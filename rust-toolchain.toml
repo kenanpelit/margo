@@ -1,0 +1,16 @@
+# Pinned toolchain for reproducible builds + a stable clippy/rustfmt lint set,
+# so CI can gate on `clippy -D warnings` and `fmt --check` without a
+# rolling-stable bump turning unrelated lint/format drift into red builds.
+# Tracks the project MSRV (Cargo.toml `rust-version`); bump it deliberately
+# (and run a clippy/fmt pass) rather than tracking `stable`.
+#
+# rustup honours this automatically; Arch's pacman `rust` ignores it and uses
+# the system toolchain, which is fine for the AUR -git package.
+[toolchain]
+# Pinned to a current stable. The dependency floor is 1.93 (the `fixed` crate;
+# relm4 needs 1.92), reflected in Cargo.toml `rust-version` — this pin sits at
+# or above it. Bump deliberately (with a clippy/fmt pass), not via rolling
+# `stable`, so CI gates don't break on unrelated lint/format drift.
+channel = "1.95.0"
+components = ["clippy", "rustfmt"]
+profile = "minimal"
