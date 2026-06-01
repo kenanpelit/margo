@@ -26,7 +26,7 @@
 # simply not run `mshell`; the helper binaries are still useful.
 
 pkgname=margo-git
-pkgver=r0.0
+pkgver=r1288.b9c510f
 pkgrel=1
 pkgdesc="Rust/Smithay Wayland tiling compositor + first-party mshell desktop (mango heritage)"
 url="https://github.com/kenanpelit/margo"
@@ -107,7 +107,7 @@ optdepends=(
   "swappy: post-capture annotation editor for mscreenshot"
   "satty: alternative annotation editor for mscreenshot"
   "wf-recorder: screen recording via wlr-screencopy"
-  "yt-dlp: `mplay play`/`download` of YouTube + other streaming URLs"
+  "yt-dlp: \`mplay play\`/\`download\` of YouTube + other streaming URLs"
   # Clipboard managers — mshell clipboard widget + mshellshare paste
   "copyq: clipboard manager via wlr-data-control"
   "wl-clip-persist: keep clipboard alive after the producer exits"
@@ -117,7 +117,7 @@ optdepends=(
   "networkmanager: NetworkManager backend for mshell network + ndns"
   "bluez: Bluez backend for mshell bluetooth widget"
   "upower: UPower backend for mshell battery widget"
-  "power-profiles-daemon: power profile switching for mshell"
+  "power-profiles-daemon: power profile switching for mshell + the mpower auto-profile service"
   "brightnessctl: brightness fallback when DDC/CI is unavailable"
   "iwd: alternative wireless backend for the network widget"
   "ufw: needed by the mshell nufw firewall widget"
@@ -221,9 +221,11 @@ build() {
   # mlogind joins the compositor group: it's a TUI (ratatui + pam +
   # uzers) with NO zbus/tokio in its graph, so it can't contaminate
   # margo's zbus(async-io) artifact via feature unification.
+  # mpower likewise: it's a tiny poller (serde + toml + anyhow, shells
+  # out to powerprofilesctl) with no zbus/tokio, so it's safe here too.
   cargo build --frozen --release \
     -p margo -p start-margo \
-    -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mlogind -p mplay
+    -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mlogind -p mpower -p mplay
 
   # mshell trio + mpicker + mwizard. mpicker pulls
   # mshell-screenshot (→ wayle-* → zbus/tokio), so it has to
@@ -231,7 +233,15 @@ build() {
   # feature unification from leaking back into margo's build.
   # mwizard depends on mshell-config to write the shell
   # profile, so it builds alongside the rest of the shell stack.
+  #
+  # `--features mshell/wasm-plugins` builds mshell with the sandboxed
+  # in-shell WASM plugin panels (mplugins WASM tier — e.g. the
+  # assistant-panel chat). It pulls wasmtime, so it's opt-in upstream;
+  # we turn it on here so the packaged shell ships the panels. The
+  # feature lives only in mshell's graph (mshell → mshell-core →
+  # mshell-frame), so mpicker/mwizard/margo-portal are unaffected.
   cargo build --frozen --release \
+    --features mshell/wasm-plugins \
     -p mshell -p mshellctl -p mshellshare -p mpicker -p mwizard \
     -p margo-portal
 }
@@ -266,7 +276,7 @@ package() {
   local bin
   for bin in \
       margo start-margo \
-      mctl mlock mlayout mscreenshot mvisual mlogind mplay \
+      mctl mlock mlayout mscreenshot mvisual mlogind mpower mplay \
       mshell mshellctl mshellshare mpicker mwizard; do
     install -Dm755 "$CARGO_TARGET_DIR/release/$bin" "$pkgdir/usr/bin/$bin"
   done
@@ -436,6 +446,18 @@ package() {
   ln -sf "../mshell.service" \
     "$pkgdir/usr/lib/systemd/user/graphical-session.target.wants/mshell.service"
 
+  # ── mpower auto power-profile user service ─────────────────────
+  # Drives power-profiles-daemon from CPU load + AC/battery. Same
+  # auto-enable + gating pattern as mshell: shipped enabled into
+  # graphical-session.target, with ConditionEnvironment=XDG_CURRENT_DESKTOP=margo
+  # keeping it margo-only so it never fights another compositor's
+  # auto-profile tool over powerprofilesctl. A user's own
+  # ~/.config/systemd/user/mpower.service still overrides this one.
+  install -Dm644 "mpower/mpower.service" \
+    "$pkgdir/usr/lib/systemd/user/mpower.service"
+  ln -sf "../mpower.service" \
+    "$pkgdir/usr/lib/systemd/user/graphical-session.target.wants/mpower.service"
+
   # ── Session integration reference ──────────────────────────────
   # The uwsm .desktop + wrapper scripts above are installed live (to
   # wayland-sessions and /usr/bin). The full set is also dropped
@@ -448,10 +470,13 @@ package() {
     cp -a contrib/sessions/. "$pkgdir/usr/share/doc/$pkgname/sessions/"
   fi
 
-  # ── mctl shell completions ─────────────────────────────────────
-  # Hand-curated under contrib/completions/: extends the clap-
-  # derived subcommand layer with dispatch-action names (`mctl
-  # actions --names`), layout names, and output names.
+  # ── mctl + mshellctl shell completions ─────────────────────────
+  # Hand-curated under contrib/completions/. The mctl set extends
+  # the clap-derived subcommand layer with dispatch-action names
+  # (`mctl actions --names`), layout names, and output names. The
+  # mshellctl set adds live plugin-key completion against
+  # `mshellctl plugin list --names` for `menu plugin <KEY>`,
+  # `plugin reload <KEY>`, and `plugin keybind <KEY>`.
   if [[ -f "contrib/completions/mctl.bash" ]]; then
     install -Dm644 "contrib/completions/mctl.bash" \
       "$pkgdir/usr/share/bash-completion/completions/mctl"
@@ -463,6 +488,18 @@ package() {
   if [[ -f "contrib/completions/mctl.fish" ]]; then
     install -Dm644 "contrib/completions/mctl.fish" \
       "$pkgdir/usr/share/fish/vendor_completions.d/mctl.fish"
+  fi
+  if [[ -f "contrib/completions/mshellctl.bash" ]]; then
+    install -Dm644 "contrib/completions/mshellctl.bash" \
+      "$pkgdir/usr/share/bash-completion/completions/mshellctl"
+  fi
+  if [[ -f "contrib/completions/_mshellctl" ]]; then
+    install -Dm644 "contrib/completions/_mshellctl" \
+      "$pkgdir/usr/share/zsh/site-functions/_mshellctl"
+  fi
+  if [[ -f "contrib/completions/mshellctl.fish" ]]; then
+    install -Dm644 "contrib/completions/mshellctl.fish" \
+      "$pkgdir/usr/share/fish/vendor_completions.d/mshellctl.fish"
   fi
 
   # ── mshell sound assets ────────────────────────────────────────
