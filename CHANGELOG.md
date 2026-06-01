@@ -7,6 +7,34 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.9.1] – 2026-06-01
+
+A wave of widgets ported from noctalia-shell v5, plus the removal of the
+mshelldash surface.
+
+### Added
+
+- **Keyboard Layout** bar widget — shows the active xkb layout (e.g. `US`,
+  `TR`); click cycles to the next configured layout. The compositor now tracks
+  the active layout group (`KeyboardHandle::with_xkb_state`), publishes its name
+  in `state.json` (`keyboard_layout`), and exposes a `cyclekblayout` dispatch
+  action (`mctl dispatch cyclekblayout`). Configure multiple layouts with
+  `xkb_rules_layout = tr,us` for cycling to do anything.
+- **Audio Visualizer** bar widget — a live spectrum strip driven by the `cava`
+  CLI (raw/ascii mode); pulses with playback and shows a flat resting strip on
+  silence. Degrades gracefully when `cava` isn't installed.
+- **Keyword-aware Settings search** — the Settings search now matches section
+  keywords, not just page labels, so `brightness` finds Display, `vpn` finds
+  Network, `suspend` finds Power, etc. (both Enter-to-jump and the live sidebar
+  filter).
+
+### Removed
+
+- **mshelldash** — the standalone tabbed dashboard surface and its
+  `mshellctl menu mshelldash` verb were removed. The classic `dashboard` menu is
+  unaffected. The Screen Time tracker that lived only inside it was removed with
+  it.
+
 ## [0.9.0] – 2026-06-01
 
 ### Added
