@@ -27,6 +27,7 @@ mod dbus;
 mod dispatch;
 mod input;
 mod input_handler;
+mod ipc;
 mod layout;
 mod libinput_config;
 mod plugin;
@@ -279,6 +280,11 @@ fn main() -> Result<()> {
         loop_signal,
         args.config.clone(),
     );
+
+    // Socket IPC: export MARGO_SOCKET (before any child is spawned so
+    // it's inherited) and bind the control socket on the event loop.
+    ipc::export_socket_env();
+    ipc::insert_ipc_source(&loop_handle);
 
     // SIGUSR1 → dump runtime state to the journal. Lets a user staring
     // at a frozen / grey screen capture diagnostics without crashing the

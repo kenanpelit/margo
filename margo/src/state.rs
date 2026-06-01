@@ -525,6 +525,12 @@ pub struct MargoState {
     /// per event-loop iteration — see `write_state_file` /
     /// `flush_state_file_if_dirty`.
     pub state_dirty: std::cell::Cell<bool>,
+    /// Active IPC socket connections, keyed by a monotonic token.
+    pub ipc_conns: std::collections::HashMap<u32, crate::ipc::server::IpcConn>,
+    /// Next IPC connection token.
+    pub ipc_next_token: u32,
+    /// `watch`-mode IPC subscriptions, fanned out on each dirty flush.
+    pub ipc_watches: crate::ipc::watch::WatchRegistry,
     pub clock: Clock<Monotonic>,
     pub should_quit: bool,
     /// Set whenever something dirties the scene. Drained by the udev/winit
@@ -971,6 +977,9 @@ impl MargoState {
             loop_handle,
             loop_signal,
             state_dirty: std::cell::Cell::new(false),
+            ipc_conns: std::collections::HashMap::new(),
+            ipc_next_token: 0,
+            ipc_watches: crate::ipc::watch::WatchRegistry::default(),
             clock: Clock::new(),
             should_quit: false,
             repaint_requested: true,

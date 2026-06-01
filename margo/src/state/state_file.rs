@@ -30,10 +30,14 @@ impl MargoState {
     ///
     /// Best-effort: failures are logged at debug level, never surfaced —
     /// the file is tooling-only, not a hard correctness requirement.
-    pub fn flush_state_file_if_dirty(&self) {
+    pub fn flush_state_file_if_dirty(&mut self) {
         if !self.state_dirty.replace(false) {
             return;
         }
+        // Push fresh frames to every `watch` subscriber (the primary
+        // IPC path). The legacy state.json write is kept until every
+        // consumer has migrated to the socket (then removed wholesale).
+        self.ipc_push_watches();
         let path = state_file_path();
         if let Err(err) = self.write_state_file_inner(&path) {
             tracing::debug!(path = %path.display(), error = ?err, "state.json write failed");
@@ -58,7 +62,7 @@ impl MargoState {
         Ok(())
     }
 
-    fn build_state_snapshot(&self) -> serde_json::Value {
+    pub(crate) fn build_state_snapshot(&self) -> serde_json::Value {
         use serde_json::json;
 
         let focused_idx = self.focused_client_idx();
