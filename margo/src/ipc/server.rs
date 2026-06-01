@@ -56,13 +56,25 @@ pub fn insert_ipc_source(handle: &LoopHandle<'static, MargoState>) {
     }
 }
 
-/// Map up to 5 positional dispatch args onto margo's `Arg`, mirroring
-/// the old dwl-ipc dispatch slot semantics: slots 1-3 parse as numbers
-/// (i / i2 / f), slot 4 is the primary string (`v`), slot 5 secondary
-/// (`v2`). A single non-numeric first arg also fills `v` (spawn/theme/
-/// run_script shape).
+/// Map dispatch args onto margo's `Arg`. margo's actions come in two
+/// shapes and never mix them, so we branch on the first token:
+///
+/// * **String-payload** (spawn / theme / run_script / twilight_set): the
+///   first token is non-numeric. The line protocol is whitespace-split,
+///   so the *whole* remainder is rejoined into `v` — otherwise a command
+///   like `spawn kitty -e htop` would drop everything past `kitty`.
+/// * **Numeric/positional** (view / settagset / twilight_preview / …):
+///   slots 1-3 parse as numbers (i / i2 / f), slots 4-5 are strings
+///   (`v` / `v2`), mirroring the old dwl-ipc dispatch slot semantics.
 pub fn args_to_dispatch_arg(args: &[String]) -> Arg {
     let mut arg = Arg::default();
+    let first_numeric = args.first().is_some_and(|s| s.parse::<i64>().is_ok());
+    if !first_numeric {
+        if !args.is_empty() {
+            arg.v = Some(args.join(" "));
+        }
+        return arg;
+    }
     if let Some(a) = args.first().and_then(|s| s.parse::<i32>().ok()) {
         arg.i = a;
     }
@@ -77,12 +89,6 @@ pub fn args_to_dispatch_arg(args: &[String]) -> Arg {
     }
     if let Some(s) = args.get(4) {
         arg.v2 = Some(s.clone());
-    }
-    if arg.v.is_none()
-        && let Some(s) = args.first()
-        && s.parse::<i64>().is_err()
-    {
-        arg.v = Some(s.clone());
     }
     arg
 }
@@ -223,5 +229,84 @@ impl MargoState {
     pub fn ipc_drop_conn(&mut self, token: u32) {
         self.ipc_conns.remove(&token);
         self.ipc_watches.remove_conn(token);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::args_to_dispatch_arg;
+
+    fn args(parts: &[&str]) -> Vec<String> {
+        parts.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn numeric_first_maps_positional_slots() {
+        // `dispatch settagset 256 1`
+        let a = args_to_dispatch_arg(&args(&["256", "1"]));
+        assert_eq!(a.i, 256);
+        assert_eq!(a.i2, 1);
+        assert_eq!(a.f, 0.0);
+        assert!(a.v.is_none());
+    }
+
+    #[test]
+    fn numeric_first_parses_float_third_slot() {
+        let a = args_to_dispatch_arg(&args(&["1", "2", "0.5"]));
+        assert_eq!(a.i, 1);
+        assert_eq!(a.i2, 2);
+        assert_eq!(a.f, 0.5);
+    }
+
+    #[test]
+    fn single_numeric_arg() {
+        // `dispatch view 4`
+        let a = args_to_dispatch_arg(&args(&["4"]));
+        assert_eq!(a.i, 4);
+        assert!(a.v.is_none());
+    }
+
+    #[test]
+    fn string_payload_single_word() {
+        // `dispatch theme default`
+        let a = args_to_dispatch_arg(&args(&["default"]));
+        assert_eq!(a.v.as_deref(), Some("default"));
+        assert_eq!(a.i, 0);
+    }
+
+    #[test]
+    fn string_payload_rejoins_multiword_command() {
+        // `dispatch spawn kitty -e htop` — regression: must not drop
+        // everything past the first token.
+        let a = args_to_dispatch_arg(&args(&["kitty", "-e", "htop"]));
+        assert_eq!(a.v.as_deref(), Some("kitty -e htop"));
+        assert_eq!(a.i, 0);
+        assert_eq!(a.i2, 0);
+    }
+
+    #[test]
+    fn string_payload_preserves_flags_and_paths() {
+        let a = args_to_dispatch_arg(&args(&["run_helper", "--flag", "/abs/path with space"]));
+        assert_eq!(
+            a.v.as_deref(),
+            Some("run_helper --flag /abs/path with space")
+        );
+    }
+
+    #[test]
+    fn no_args_is_default() {
+        // `dispatch reload`
+        let a = args_to_dispatch_arg(&[]);
+        assert_eq!(a.i, 0);
+        assert!(a.v.is_none());
+    }
+
+    #[test]
+    fn positional_string_slots_for_numeric_action() {
+        // numeric-first action that also carries string slots 4/5
+        let a = args_to_dispatch_arg(&args(&["1", "2", "3", "slot4", "slot5"]));
+        assert_eq!(a.i, 1);
+        assert_eq!(a.v.as_deref(), Some("slot4"));
+        assert_eq!(a.v2.as_deref(), Some("slot5"));
     }
 }

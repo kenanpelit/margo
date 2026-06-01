@@ -313,6 +313,20 @@ mod tests {
     }
 
     #[test]
+    fn recently_added_keys_are_not_flagged_unknown() {
+        // Guards parser↔OPTION_KEYS drift: a key handled by the parser
+        // but missing from OPTION_KEYS would wrongly warn W001 here
+        // (the exact regression these knobs hit during development).
+        for key in ["tag_carousel", "edge_scroller_focus_allow_speed"] {
+            let r = validate_str(&format!("{key} = 1\n"));
+            assert!(
+                !r.warnings().any(|w| w.code == "W001"),
+                "`{key}` should be a known config key, got W001"
+            );
+        }
+    }
+
+    #[test]
     fn trailing_comma_in_bind_is_an_error() {
         let r = validate_str("bind = alt,Tab,overview_focus_next,\n");
         assert!(r.has_errors(), "trailing comma must surface as E001");

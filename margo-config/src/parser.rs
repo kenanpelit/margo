@@ -1628,6 +1628,46 @@ mod tests {
     }
 
     #[test]
+    fn parses_tag_carousel_and_edge_scroller_speed() {
+        let dir = std::env::temp_dir().join(format!("margo-knobs-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let main = dir.join("config.conf");
+        std::fs::write(
+            &main,
+            "tag_carousel = 1\n\
+             edge_scroller_focus_allow_speed = 40\n",
+        )
+        .unwrap();
+        let cfg = parse_config(Some(&main)).unwrap();
+        assert!(cfg.tag_carousel);
+        assert_eq!(cfg.edge_scroller_focus_allow_speed, 40.0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn edge_scroller_speed_is_clamped() {
+        let dir = std::env::temp_dir().join(format!("margo-clamp-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let main = dir.join("config.conf");
+        // Out-of-range values clamp into 0..=1000; negatives floor to 0.
+        std::fs::write(&main, "edge_scroller_focus_allow_speed = 99999\n").unwrap();
+        assert_eq!(
+            parse_config(Some(&main))
+                .unwrap()
+                .edge_scroller_focus_allow_speed,
+            1000.0
+        );
+        std::fs::write(&main, "edge_scroller_focus_allow_speed = -5\n").unwrap();
+        assert_eq!(
+            parse_config(Some(&main))
+                .unwrap()
+                .edge_scroller_focus_allow_speed,
+            0.0
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn flush_hash_is_preserved() {
         // Regex `#` flush against neighbour char — common in
         // window-rule title patterns. The space before `=` is
