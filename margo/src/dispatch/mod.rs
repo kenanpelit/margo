@@ -42,7 +42,28 @@
 use margo_config::Arg;
 use tracing::debug;
 
+use crate::layout::LayoutId;
 use crate::state::MargoState;
+
+/// Canonical, ordered layout list — the index space `mctl layout
+/// <index>` (and the legacy dwl-ipc `SetLayout`) addresses. Kept in
+/// sync with the `layouts` array in the state snapshot.
+const ALL_LAYOUTS: &[LayoutId] = &[
+    LayoutId::Tile,
+    LayoutId::Scroller,
+    LayoutId::Grid,
+    LayoutId::Monocle,
+    LayoutId::Deck,
+    LayoutId::CenterTile,
+    LayoutId::RightTile,
+    LayoutId::VerticalScroller,
+    LayoutId::VerticalTile,
+    LayoutId::VerticalGrid,
+    LayoutId::VerticalDeck,
+    LayoutId::TgMix,
+    LayoutId::Canvas,
+    LayoutId::Dwindle,
+];
 
 pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
     debug!(action = %action, "dispatch");
@@ -463,6 +484,53 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
             }
         }
         "switch_layout" => state.switch_layout(),
+        // ── IPC-only setters (ports of the old dwl-ipc protocol ops so
+        //    mctl's `tags` / `client-tags` / `layout <index>` keep
+        //    working over the socket). Applied to the focused monitor. ──
+        // `settagset`: set the active tagset by raw bitmask.
+        //   arg.i = tagmask, arg.i2 != 0 → write the *inactive* slot.
+        "settagset" => {
+            let idx = state.focused_monitor();
+            let mask = arg.i as u32;
+            if idx < state.monitors.len() && mask != 0 {
+                let sel = if arg.i2 != 0 {
+                    1 - state.monitors[idx].seltags
+                } else {
+                    state.monitors[idx].seltags
+                };
+                state.monitors[idx].tagset[sel] = mask;
+                state.arrange_monitor(idx);
+                state.write_state_file();
+            }
+        }
+        // `setclienttags`: mutate the focused client's tags as
+        //   `(current & arg.i) ^ arg.i2` (and-mask / xor-mask).
+        "setclienttags" => {
+            let idx = state.focused_monitor();
+            if let Some(cidx) = state.focused_client_idx()
+                && state.clients[cidx].monitor == idx
+            {
+                let current = state.clients[cidx].tags;
+                let new = (current & arg.i as u32) ^ arg.i2 as u32;
+                if new != 0 {
+                    state.clients[cidx].old_tags = state.clients[cidx].tags;
+                    state.clients[cidx].is_tag_switching = true;
+                    state.clients[cidx].animation.running = false;
+                    state.clients[cidx].tags = new;
+                    state.arrange_monitor(idx);
+                    state.write_state_file();
+                }
+            }
+        }
+        // `setlayoutindex`: pick a layout by 0-based index into the
+        //   canonical layout list.
+        "setlayoutindex" => {
+            if let Some(layout) = ALL_LAYOUTS.get(arg.i as usize) {
+                state.set_layout(layout.name());
+                state.notify_layout(layout.name());
+                state.write_state_file();
+            }
+        }
         "togglefloating" => state.toggle_floating(),
         "togglefullscreen" => state.toggle_fullscreen(),
         "togglefullscreen_exclusive"
