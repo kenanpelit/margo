@@ -114,13 +114,6 @@ pub enum MenuCommands {
     /// Toggle the combined dashboard menu (clock + weather +
     /// quick settings, all in one panel)
     Dashboard,
-    /// Toggle the tabbed mshelldash surface. Optionally open straight
-    /// to a tab: overview · media · weather · wallpaper · system.
-    Mshelldash {
-        /// Target tab to open (omit to just toggle the current tab).
-        #[arg(value_name = "TAB")]
-        tab: Option<String>,
-    },
     /// Toggle an installed plugin's panel/menu by key — e.g.
     /// `menu plugin assistant` or `menu plugin mullvad`. Generic: works for
     /// any plugin that ships a panel or a `[[widget.menu]]`, with no
@@ -261,9 +254,6 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         },
         MenuCommands::Dashboard => {
             bus_command("Dashboard").await?;
-        }
-        MenuCommands::Mshelldash { tab } => {
-            bus_command_with_arg("Mshelldash", &tab.unwrap_or_default()).await?;
         }
         MenuCommands::Plugin { key } => {
             bus_command_with_arg("PluginMenu", &key).await?;

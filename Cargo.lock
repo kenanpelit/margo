@@ -4538,11 +4538,7 @@ name = "mshell-services"
 version = "0.9.0"
 dependencies = [
  "anyhow",
- "chrono",
- "futures",
  "mshell-margo-client",
- "serde",
- "serde_json",
  "tokio",
  "tracing",
  "wayle-audio",

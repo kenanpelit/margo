@@ -20,7 +20,6 @@ pub(crate) mod keep_awake;
 pub(crate) mod keybinds;
 pub(crate) mod margo_layout;
 pub(crate) mod media_player;
-pub(crate) mod mshelldash;
 pub(crate) mod network;
 pub(crate) mod network_toggle;
 pub(crate) mod notes;

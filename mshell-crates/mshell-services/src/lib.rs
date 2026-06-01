@@ -3,9 +3,6 @@ use std::time::Duration;
 use tokio::runtime::Runtime;
 use tracing::info;
 
-pub mod screen_time;
-pub use screen_time::{ScreenTimeApp, ScreenTimeService, ScreenTimeSnapshot};
-
 static TOKIO_RT: OnceLock<Runtime> = OnceLock::new();
 
 /// The same tokio runtime that `init_services` ran on. Watchers that
@@ -99,12 +96,6 @@ pub async fn init_services(
     BLUETOOTH_SERVICE.set(Arc::new(bluetooth)).ok();
     BRIGHTNESS_SERVICE.set(brightness).ok();
     MARGO_SERVICE.set(hyprland).ok();
-    // Screen-time tracking subscribes to the just-installed margo
-    // service's focused_client reactive and runs for the shell's
-    // lifetime, accruing per-app focus time into daily buckets.
-    SCREEN_TIME_SERVICE
-        .set(ScreenTimeService::new_started(margo_service()))
-        .ok();
     if let Some(line_power) = line_power {
         LINE_POWER_SERVICE.set(Some(Arc::new(line_power))).ok();
     } else {
@@ -185,15 +176,6 @@ pub fn margo_service() -> Arc<MargoService> {
     MARGO_SERVICE
         .get()
         .expect("MargoService not initialized")
-        .clone()
-}
-
-static SCREEN_TIME_SERVICE: OnceLock<Arc<ScreenTimeService>> = OnceLock::new();
-
-pub fn screen_time_service() -> Arc<ScreenTimeService> {
-    SCREEN_TIME_SERVICE
-        .get()
-        .expect("ScreenTimeService not initialized")
         .clone()
 }
 
