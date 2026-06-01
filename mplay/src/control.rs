@@ -15,7 +15,10 @@ use crate::ytdl;
 const APP_ID: &str = "mpv";
 
 fn env_i32(key: &str, default: i32) -> i32 {
-    std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+    std::env::var(key)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
 }
 fn default_w() -> i32 {
     env_i32("MARGO_MPV_WIDTH", 640)
@@ -79,24 +82,37 @@ fn resolve_source(arg: Option<&str>) -> String {
     ytdl::normalize_source(&raw)
 }
 
-/// Path to the youtube-dl→mpv shim, if present (keeps the dotfiles hook).
-fn ytdlp_mpv_bin() -> Option<String> {
-    if have("yt-dlp-mpv") {
-        return Some("yt-dlp-mpv".to_string());
-    }
-    for c in [
-        format!("{}/.cachy/modules/mpv/scripts/yt-dlp-mpv", home()),
-        format!("{}/.config/arch-config/modules/mpv/scripts/yt-dlp-mpv", home()),
-    ] {
-        if std::path::Path::new(&c).is_file() {
-            return Some(c);
-        }
-    }
-    None
-}
-
 fn home() -> String {
     std::env::var("HOME").unwrap_or_default()
+}
+
+fn runtime_dir() -> std::path::PathBuf {
+    std::env::var_os("XDG_RUNTIME_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::path::PathBuf::from(format!("/run/user/{}", unsafe { libc::getuid() }))
+        })
+        .join("mplay")
+}
+
+/// Single-quote a path for safe embedding in a `/bin/sh` script.
+fn sh_quote(p: &std::path::Path) -> String {
+    format!("'{}'", p.to_string_lossy().replace('\'', "'\\''"))
+}
+
+/// Materialize a tiny wrapper that hands mpv's `ytdl_hook` back to our own
+/// embedded shim (`mplay ytdlp …`). The wrapper lives in the runtime dir
+/// and points at the *current* mplay binary — no hard-coded dotfiles path.
+fn ensure_ytdl_shim() -> Option<String> {
+    let exe = std::env::current_exe().ok()?;
+    let dir = runtime_dir();
+    std::fs::create_dir_all(&dir).ok()?;
+    let path = dir.join("ytdl-shim");
+    let script = format!("#!/bin/sh\nexec {} ytdlp \"$@\"\n", sh_quote(&exe));
+    std::fs::write(&path, script).ok()?;
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).ok()?;
+    Some(path.to_string_lossy().into_owned())
 }
 
 /// Launch mpv (pseudo-gui + IPC socket), optionally loading `source`.
@@ -116,8 +132,8 @@ fn spawn_mpv(source: Option<&str>) -> Result<()> {
     ];
     if source.is_some() {
         args.push("--no-audio-display".into());
-        if let Some(bin) = ytdlp_mpv_bin() {
-            args.push(format!("--script-opts-append=ytdl_hook-ytdl_path={bin}"));
+        if let Some(shim) = ensure_ytdl_shim() {
+            args.push(format!("--script-opts-append=ytdl_hook-ytdl_path={shim}"));
         }
     }
 
@@ -131,7 +147,9 @@ fn spawn_mpv(source: Option<&str>) -> Result<()> {
     if let Some(src) = source {
         cmd.arg(src);
     }
-    cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
     cmd.spawn()?;
     Ok(())
 }
@@ -249,7 +267,9 @@ pub fn focus() -> Result<()> {
 
 fn ensure_floating() -> Result<()> {
     let f = margo::focused()?;
-    let floating = margo::parse_focused(&f).map(|c| c.floating).unwrap_or(false);
+    let floating = margo::parse_focused(&f)
+        .map(|c| c.floating)
+        .unwrap_or(false);
     if !floating {
         let _ = margo::dispatch("togglefloating", &[]);
         sleep(Duration::from_millis(50));

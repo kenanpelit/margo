@@ -7,6 +7,7 @@ mod margo;
 mod mpv_ipc;
 mod paper;
 mod ytdl;
+mod ytdl_shim;
 
 use anyhow::{Result, anyhow};
 use clap::Parser;
@@ -45,5 +46,6 @@ fn main() -> Result<()> {
             }
             WallpaperCmd::Stop { output } => paper::stop(output.as_deref()),
         },
+        Command::Ytdlp { args } => std::process::exit(ytdl_shim::run(&args)),
     }
 }

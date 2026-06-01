@@ -41,6 +41,12 @@ pub enum Command {
     /// Native video wallpaper (start/stop)
     #[command(alias = "wall", subcommand)]
     Wallpaper(WallpaperCmd),
+    /// Internal: yt-dlp shim invoked by mpv's ytdl_hook (not for direct use)
+    #[command(hide = true, trailing_var_arg = true, allow_hyphen_values = true)]
+    Ytdlp {
+        /// yt-dlp arguments forwarded by mpv
+        args: Vec<String>,
+    },
 }
 
 #[derive(Subcommand)]

@@ -37,7 +37,11 @@ fn obj_to_client(o: &Value) -> Option<Client> {
     Some(Client {
         idx: o.get("idx")?.as_i64()?,
         app_id: o.get("app_id")?.as_str()?.to_string(),
-        monitor: o.get("monitor").and_then(Value::as_str).unwrap_or("").to_string(),
+        monitor: o
+            .get("monitor")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
         tags: o.get("tags").and_then(Value::as_u64).unwrap_or(0) as u32,
         x: o.get("x").and_then(Value::as_i64).unwrap_or(0) as i32,
         y: o.get("y").and_then(Value::as_i64).unwrap_or(0) as i32,
@@ -55,7 +59,10 @@ fn obj_to_output(o: &Value) -> Option<Output> {
         width: o.get("width").and_then(Value::as_i64).unwrap_or(0) as i32,
         height: o.get("height").and_then(Value::as_i64).unwrap_or(0) as i32,
         active: o.get("active").and_then(Value::as_bool).unwrap_or(false),
-        active_tag_mask: o.get("active_tag_mask").and_then(Value::as_u64).unwrap_or(0) as u32,
+        active_tag_mask: o
+            .get("active_tag_mask")
+            .and_then(Value::as_u64)
+            .unwrap_or(0) as u32,
     })
 }
 
@@ -99,8 +106,7 @@ fn mctl_get(topic: &str) -> Result<Value> {
         .args(["get", topic])
         .output()
         .with_context(|| format!("running `mctl get {topic}`"))?;
-    let v: Value =
-        serde_json::from_slice(&out.stdout).context("parsing mctl JSON output")?;
+    let v: Value = serde_json::from_slice(&out.stdout).context("parsing mctl JSON output")?;
     Ok(v)
 }
 
