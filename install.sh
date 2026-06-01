@@ -246,7 +246,7 @@ debian_build() {
   cd "$REPO_ROOT"
   log "building compositor group (release)"
   cargo build --release -p margo -p start-margo \
-    -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual
+    -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mplay
   log "building shell group (release)"
   cargo build --release -p mshell -p mshellctl -p mshellshare \
     -p mpicker -p mwizard -p margo-portal
@@ -283,7 +283,7 @@ debian_install_files() {
 
   # ── binaries ──
   local bin
-  for bin in margo start-margo mctl mlock mlayout mscreenshot mvisual \
+  for bin in margo start-margo mctl mlock mlayout mscreenshot mvisual mplay \
              mshell mshellctl mshellshare mpicker mwizard; do
     install_file 755 "${tgt}/${bin}" "/usr/bin/${bin}"
   done
@@ -386,7 +386,7 @@ debian_uninstall() {
   if [[ ! -f "$MANIFEST" ]]; then
     warn "no manifest at ${MANIFEST} — removing known fixed paths only"
     local p
-    for p in /usr/bin/{margo,start-margo,mctl,mlock,mlayout,mscreenshot,mvisual,mshell,mshellctl,mshellshare,mpicker,mwizard} \
+    for p in /usr/bin/{margo,start-margo,mctl,mlock,mlayout,mscreenshot,mvisual,mplay,mshell,mshellctl,mshellshare,mpicker,mwizard} \
              /usr/lib/margo/margo-portal \
              /usr/share/wayland-sessions/margo.desktop \
              /usr/share/xdg-desktop-portal/margo-portals.conf \

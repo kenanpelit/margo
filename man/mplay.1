@@ -1,0 +1,119 @@
+.\" mplay(1) — margo's native mpv companion
+.\" Command list mirrors `mplay --help`.
+.TH MPLAY 1 "2026-06-01" "margo 0.9.3" "Margo Manual"
+.SH NAME
+mplay \- control an mpv window and play video wallpapers under margo
+.SH SYNOPSIS
+.B mplay
+.I COMMAND
+.RI [ ARGS .\|.\|.]
+.SH DESCRIPTION
+.B mplay
+is margo's first-party mpv helper. It drives a single floating mpv
+window through the compositor (via
+.BR mctl (1))
+and mpv's own JSON IPC socket, and it plays looping video wallpapers
+natively on the background layer (an in-tree port of mpvpaper, using
+wlr-layer-shell + EGL + libmpv \(em no external
+.B mpvpaper
+process).
+.PP
+The window commands talk to a running mpv started with an IPC socket
+(see
+.BR start ).
+The wallpaper commands run an independent engine per output.
+.SH COMMANDS
+.TP
+.B start
+Launch mpv in pseudo-gui mode with a JSON IPC socket. No-op if mpv is
+already running with its socket.
+.TP
+.B toggle
+Toggle play/pause on the running mpv.
+.TP
+.BI play " [URL]"
+Play a file or URL. With no argument, reads the clipboard. YouTube/ytdl
+URLs are detected automatically. If mpv is already running the source is
+loaded in place (replace); otherwise a new mpv window is spawned.
+.TP
+.BI download " [URL]"
+Download a YouTube video to
+.I ~/Downloads
+with
+.BR yt-dlp .
+Alias:
+.BR dl .
+.TP
+.B snap
+Cycle the floating mpv window across the four screen corners (top-left
+\(-> top-right \(-> bottom-right \(-> bottom-left). A tiled or oversized
+window is first floated and shrunk to the default size.
+.TP
+.B pin
+Toggle pinning the mpv window to every tag (sticky).
+.TP
+.B focus
+Focus the mpv window, hopping monitor and switching tag as needed.
+.TP
+.B stop
+Quit mpv.
+.TP
+.BI "wallpaper start " "SRC " \
+[ \-\-output\ NAME ]\ [ \-\-mute ]\ [ \-\-no\-loop ]\ [ \-\-scale\ MODE ]\ [ \-\-daemon ]
+Play
+.I SRC
+(a video file or URL) as a wallpaper on the background layer.
+.RS
+.TP
+.BI \-\-output " NAME"
+Target a single output by connector name (default: all outputs).
+.TP
+.B \-\-mute
+Mute audio.
+.TP
+.B \-\-no\-loop
+Play once instead of looping.
+.TP
+.BI \-\-scale " MODE"
+.IR fit ", " fill " (default), or " stretch .
+.TP
+.B \-\-daemon
+Fork into the background.
+.RE
+.TP
+.BI "wallpaper stop " "[ \-\-output NAME ]"
+Stop the wallpaper on
+.I NAME
+(default: every running instance). Alias for the group:
+.BR wall .
+.SH ENVIRONMENT
+.TP
+.B MARGO_MPV_SOCKET
+mpv JSON IPC socket path (default
+.IR /tmp/mpvsocket ).
+.TP
+.B MARGO_MPV_WIDTH ", " MARGO_MPV_HEIGHT
+Default window size (640\(mu360).
+.TP
+.B MARGO_MPV_MARGIN_X ", " MARGO_MPV_MARGIN_Y
+Corner margins for
+.B snap
+(32 / 96).
+.TP
+.B YT_DLP_BROWSER_USER_AGENT
+Override the user-agent used by the embedded yt-dlp shim.
+.SH FILES
+.TP
+.I $XDG_RUNTIME_DIR/mplay/<output>.pid
+Wallpaper engine pidfiles (one per output, or
+.I all.pid
+when targeting every output).
+.TP
+.I $XDG_RUNTIME_DIR/mplay/ytdl-shim
+Generated wrapper handing mpv's ytdl_hook back to
+.BR "mplay ytdlp" .
+.SH SEE ALSO
+.BR mctl (1),
+.BR margo (1),
+.BR mpv (1),
+.BR yt-dlp (1)
