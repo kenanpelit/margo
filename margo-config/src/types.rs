@@ -635,6 +635,13 @@ pub struct Config {
     pub scroller_prefer_center: bool,
     pub scroller_prefer_overspread: bool,
     pub edge_scroller_pointer_focus: bool,
+    /// Edge-scroller pointer focus speed gate. When the pointer rests
+    /// at a scroller's leading/trailing edge and its per-event motion
+    /// magnitude is **below** this value, focus shifts to the adjacent
+    /// column. `0.0` (default) disables the feature entirely; a value
+    /// like `40.0` enables it for slow nudges while ignoring fast
+    /// cross-screen sweeps. Clamped to 0..1000.
+    pub edge_scroller_focus_allow_speed: f32,
     pub scroller_proportion_presets: Vec<f32>,
     pub circle_layouts: Vec<String>,
 
@@ -1003,6 +1010,7 @@ impl Default for Config {
             scroller_prefer_center: false,
             scroller_prefer_overspread: true,
             edge_scroller_pointer_focus: true,
+            edge_scroller_focus_allow_speed: 0.0,
             scroller_proportion_presets: vec![],
             circle_layouts: vec![],
 

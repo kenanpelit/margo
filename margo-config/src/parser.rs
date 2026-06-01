@@ -266,6 +266,9 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
         "scroller_prefer_center" => cfg.scroller_prefer_center = parse_bool(val),
         "scroller_prefer_overspread" => cfg.scroller_prefer_overspread = parse_bool(val),
         "edge_scroller_pointer_focus" => cfg.edge_scroller_pointer_focus = parse_bool(val),
+        "edge_scroller_focus_allow_speed" => {
+            cfg.edge_scroller_focus_allow_speed = parse_f32(val).clamp(0.0, 1000.0)
+        }
         "scroller_proportion_preset" => {
             cfg.scroller_proportion_presets = parse_float_list(val)
                 .into_iter()
@@ -1456,6 +1459,7 @@ pub const OPTION_KEYS: &[&str] = &[
     "drag_tile_to_tile",
     "drag_warp_cursor",
     "edge_scroller_pointer_focus",
+    "edge_scroller_focus_allow_speed",
     "enable_floating_snap",
     "enable_hotarea",
     "exchange_cross_monitor",

@@ -670,6 +670,11 @@ fn handle_pointer_motion<B: InputBackend, E: PointerMotionEvent<B>>(
     state.clamp_pointer_to_outputs();
     state.input_pointer.motion_events += 1;
     state.refresh_pointer_monitor_tracking();
+    // Edge-scroller pointer focus (no-op unless
+    // `edge_scroller_focus_allow_speed > 0`). Speed = this event's
+    // accelerated motion magnitude.
+    let edge_speed = (event.delta_x().powi(2) + event.delta_y().powi(2)).sqrt();
+    state.maybe_edge_scroller_focus(edge_speed);
     state.request_repaint();
 
     // Pointer-constraints enforcement. Two cases:

@@ -517,6 +517,17 @@ pub struct MargoState {
     pub ipc_next_token: u32,
     /// `watch`-mode IPC subscriptions, fanned out on each dirty flush.
     pub ipc_watches: crate::ipc::watch::WatchRegistry,
+    /// Transient carousel slide direction for the next `view_tag`
+    /// transition: 0 = derive from the tag-index delta (default),
+    /// +1 = force forward, -1 = force backward. Set by relative tag
+    /// navigation when `tag_carousel` wraps the first/last tag, then
+    /// consumed + reset inside `view_tag`.
+    pub tag_carousel_dir: i8,
+    /// Debounce latch for edge-scroller pointer focus: armed (true)
+    /// while the pointer is away from a scroller's leading/trailing
+    /// edge; cleared on a focus shift so resting at the edge fires
+    /// exactly once until the pointer leaves and re-enters.
+    pub edge_scroller_armed: bool,
     pub clock: Clock<Monotonic>,
     pub should_quit: bool,
     /// Set whenever something dirties the scene. Drained by the udev/winit
@@ -960,6 +971,8 @@ impl MargoState {
             ipc_conns: std::collections::HashMap::new(),
             ipc_next_token: 0,
             ipc_watches: crate::ipc::watch::WatchRegistry::default(),
+            tag_carousel_dir: 0,
+            edge_scroller_armed: true,
             clock: Clock::new(),
             should_quit: false,
             repaint_requested: true,

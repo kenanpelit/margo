@@ -191,7 +191,14 @@ impl MargoState {
         let mon_geom = self.monitors[mon_idx].monitor_area;
         let new_idx = current.trailing_zeros() as i32;
         let old_idx_target = new_tagmask.trailing_zeros() as i32;
-        let going_forward = old_idx_target > new_idx;
+        // A pending carousel direction (set by a wrap-around relative
+        // move) overrides the tag-index comparison; consume it here so
+        // the next, non-wrapping transition behaves normally.
+        let going_forward = match std::mem::replace(&mut self.tag_carousel_dir, 0) {
+            d if d > 0 => true,
+            d if d < 0 => false,
+            _ => old_idx_target > new_idx,
+        };
         // Offscreen *staging* origin for the inbound slide. We only set
         // x/y here; the size is taken from the client's previous c.geom
         // below so the animation is a pure translate (no size change,
@@ -386,8 +393,70 @@ impl MargoState {
             0
         };
         let max = crate::MAX_TAGS as i32;
-        let next = (current_tag + delta).rem_euclid(max);
+        let raw = current_tag + delta;
+        let next = raw.rem_euclid(max);
+        // Carousel: when the move wraps past the first / last tag, force
+        // the slide to continue in the travel direction (so 9→1 going
+        // right slides rightward) instead of the long reverse the
+        // tag-index delta would otherwise pick. Consumed in `view_tag`.
+        if self.config.tag_carousel && (raw < 0 || raw >= max) {
+            self.tag_carousel_dir = delta.signum() as i8;
+        }
         self.view_tag(1u32 << next);
+    }
+
+    /// Edge-scroller pointer focus: when the pointer rests at the
+    /// leading / trailing edge of a scroller layout and is moving
+    /// slowly (per-event magnitude `speed` below
+    /// `edge_scroller_focus_allow_speed`), shift focus to the adjacent
+    /// column. Disabled when the speed knob is `0.0`. Debounced via
+    /// `edge_scroller_armed` so it fires once per edge dwell.
+    pub fn maybe_edge_scroller_focus(&mut self, speed: f64) {
+        let allow = self.config.edge_scroller_focus_allow_speed;
+        if !self.config.edge_scroller_pointer_focus || allow <= 0.0 {
+            self.edge_scroller_armed = true;
+            return;
+        }
+        let Some(mon_idx) = self.input_pointer.last_monitor else {
+            self.edge_scroller_armed = true;
+            return;
+        };
+        let Some(mon) = self.monitors.get(mon_idx) else {
+            return;
+        };
+        let layout = mon.pertag.ltidxs[mon.pertag.curtag];
+        let area = mon.monitor_area;
+        const MARGIN: f64 = 8.0;
+        let (dir, at_edge) = match layout {
+            crate::layout::LayoutId::Scroller => {
+                if self.input_pointer.x <= area.x as f64 + MARGIN {
+                    (-1, true)
+                } else if self.input_pointer.x >= (area.x + area.width) as f64 - MARGIN {
+                    (1, true)
+                } else {
+                    (0, false)
+                }
+            }
+            crate::layout::LayoutId::VerticalScroller => {
+                if self.input_pointer.y <= area.y as f64 + MARGIN {
+                    (-1, true)
+                } else if self.input_pointer.y >= (area.y + area.height) as f64 - MARGIN {
+                    (1, true)
+                } else {
+                    (0, false)
+                }
+            }
+            _ => (0, false),
+        };
+        if !at_edge {
+            // Re-arm once the pointer leaves the edge zone.
+            self.edge_scroller_armed = true;
+            return;
+        }
+        if self.edge_scroller_armed && speed < allow as f64 {
+            self.edge_scroller_armed = false;
+            self.focus_stack(dir);
+        }
     }
 
     pub fn tag_focused(&mut self, tagmask: u32) {
