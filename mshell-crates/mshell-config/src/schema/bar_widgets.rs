@@ -30,6 +30,10 @@ pub enum BarWidget {
     /// toggles, and device pickers for both sides. Replaces the
     /// standalone AudioInput / AudioOutput pills.
     AudioDashboard,
+    /// Audio spectrum visualizer — a strip of live cava-driven bars.
+    /// Render-only (no menu); degrades to flat bars if `cava` isn't
+    /// installed or there's no audio.
+    AudioVisualizer,
     Bluetooth,
     Clipboard,
     Clock,
@@ -130,6 +134,7 @@ impl BarWidget {
             BarWidget::HiddenBar => "Hidden Bar",
             BarWidget::Catwalk => "Catwalk (animated cat)",
             BarWidget::AudioDashboard => "Audio Dashboard",
+            BarWidget::AudioVisualizer => "Audio Visualizer",
             BarWidget::Bluetooth => "Bluetooth",
             BarWidget::Clipboard => "Clipboard",
             BarWidget::Clock => "Clock",
@@ -187,6 +192,7 @@ impl BarWidget {
             BarWidget::HiddenBar,
             BarWidget::Catwalk,
             BarWidget::AudioDashboard,
+            BarWidget::AudioVisualizer,
             BarWidget::Bluetooth,
             BarWidget::Clipboard,
             BarWidget::Clock,

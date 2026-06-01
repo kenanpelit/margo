@@ -2,6 +2,7 @@ pub(crate) mod active_window;
 pub(crate) mod alarm_clock;
 pub(crate) mod app_launcher;
 pub(crate) mod audio_dashboard;
+pub(crate) mod audio_visualizer;
 pub(crate) mod bluetooth;
 pub(crate) mod catwalk;
 pub(crate) mod clipboard;

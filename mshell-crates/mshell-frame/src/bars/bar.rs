@@ -1,5 +1,6 @@
 use crate::bars::bar_widgets::active_window::{ActiveWindowInit, ActiveWindowModel};
 use crate::bars::bar_widgets::alarm_clock::{AlarmClockInit, AlarmClockModel};
+use crate::bars::bar_widgets::audio_visualizer::{AudioVisualizerInit, AudioVisualizerModel};
 use crate::bars::bar_widgets::bluetooth::{BluetoothInit, BluetoothModel};
 use crate::bars::bar_widgets::clipboard::{ClipboardInit, ClipboardModel, ClipboardOutput};
 use crate::bars::bar_widgets::clock::{ClockInit, ClockModel, ClockOutput};
@@ -721,6 +722,11 @@ impl BarModel {
             BarWidget::KeyboardLayout => Box::new(
                 KeyboardLayoutModel::builder()
                     .launch(KeyboardLayoutInit { orientation })
+                    .detach(),
+            ),
+            BarWidget::AudioVisualizer => Box::new(
+                AudioVisualizerModel::builder()
+                    .launch(AudioVisualizerInit { orientation })
                     .detach(),
             ),
             BarWidget::Twilight => Box::new(

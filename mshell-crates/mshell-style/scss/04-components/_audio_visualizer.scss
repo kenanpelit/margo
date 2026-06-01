@@ -1,0 +1,14 @@
+// Audio Visualizer — cava-driven spectrum strip in a bar pill.
+// DESIGN.md: bars carry the primary accent; the strip itself is
+// chromeless so it floats on the transparent bar.
+.audio-visualizer-strip {
+  // Inter-bar gap is set in Rust (set_spacing); nothing extra.
+}
+
+.audio-visualizer-bar {
+  border-radius: var(--radius-pill);
+  background-color: var(--primary);
+  // Smooth the per-frame height jumps so the strip pulses instead of
+  // strobing.
+  transition: min-height var(--motion-fast) var(--ease-standard);
+}
