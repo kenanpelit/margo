@@ -2,18 +2,74 @@
 
 use crate::state::MargoState;
 use calloop::generic::Generic;
-use calloop::{Interest, LoopHandle, Mode, PostAction};
+use calloop::{Interest, LoopHandle, Mode, PostAction, RegistrationToken};
 use margo_config::Arg;
 use std::io::{ErrorKind, Read, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 
-/// Per-connection read buffer + framing state.
+/// Cap on a single connection's pending outbound bytes. A `watch`
+/// subscriber that falls this far behind (its kernel send buffer is full
+/// *and* we've queued this much on top) is cut loose rather than letting
+/// margo's memory grow without bound — it reconnects and re-syncs from a
+/// fresh snapshot. 4 MiB is hundreds of state frames.
+const IPC_OUT_CAP: usize = 4 * 1024 * 1024;
+
+/// Result of trying to drain a connection's outbound buffer.
+#[derive(Debug, PartialEq, Eq)]
+pub enum DrainState {
+    /// Everything queued was written.
+    Drained,
+    /// The socket's send buffer is full; some bytes remain queued.
+    Blocked,
+    /// The peer closed or the write errored — drop the connection.
+    Closed,
+}
+
+/// Per-connection framing state.
 pub struct IpcConn {
     pub stream: UnixStream,
+    /// Inbound byte buffer; complete `\n`-terminated lines are popped off.
     pub buf: Vec<u8>,
+    /// Outbound byte buffer for frames the socket couldn't take yet
+    /// (slow reader). Drained opportunistically + via a WRITE source.
+    pub out_buf: Vec<u8>,
+    /// calloop token of the WRITE-interest source, present only while
+    /// `out_buf` is non-empty (armed on a blocked write, removed once
+    /// drained). Keeps level-triggered WRITE from spinning when idle.
+    pub write_token: Option<RegistrationToken>,
     /// True once this connection issued a `watch` (stays open, receives
     /// pushed frames).
     pub watching: bool,
+}
+
+/// Pop the next complete `\n`-terminated line off `buf` (draining the
+/// consumed bytes), trimmed of surrounding whitespace (incl. a trailing
+/// `\r`). Returns `None` when no full line is buffered yet, leaving the
+/// partial bytes in place for the next read.
+pub fn pop_line(buf: &mut Vec<u8>) -> Option<String> {
+    let pos = buf.iter().position(|&b| b == b'\n')?;
+    let raw: Vec<u8> = buf.drain(..=pos).collect();
+    Some(
+        String::from_utf8_lossy(&raw[..raw.len() - 1])
+            .trim()
+            .to_string(),
+    )
+}
+
+/// Write as much of `buf` as a non-blocking socket will accept, draining
+/// the written prefix in place. Never blocks.
+pub fn drain_to(mut stream: &UnixStream, buf: &mut Vec<u8>) -> DrainState {
+    while !buf.is_empty() {
+        match stream.write(buf) {
+            Ok(0) => return DrainState::Closed,
+            Ok(n) => {
+                buf.drain(..n);
+            }
+            Err(e) if e.kind() == ErrorKind::WouldBlock => return DrainState::Blocked,
+            Err(_) => return DrainState::Closed,
+        }
+    }
+    DrainState::Drained
 }
 
 /// Bind the socket and register the accept source on the loop. Removes
@@ -114,6 +170,8 @@ impl MargoState {
             IpcConn {
                 stream,
                 buf: Vec::new(),
+                out_buf: Vec::new(),
+                write_token: None,
                 watching: false,
             },
         );
@@ -165,13 +223,8 @@ impl MargoState {
                 let Some(c) = self.ipc_conns.get_mut(&token) else {
                     return;
                 };
-                match c.buf.iter().position(|&b| b == b'\n') {
-                    Some(pos) => {
-                        let raw: Vec<u8> = c.buf.drain(..=pos).collect();
-                        String::from_utf8_lossy(&raw[..raw.len() - 1])
-                            .trim()
-                            .to_string()
-                    }
+                match pop_line(&mut c.buf) {
+                    Some(l) => l,
                     None => return,
                 }
             };
@@ -210,34 +263,231 @@ impl MargoState {
         }
     }
 
-    /// Serialize + write a single JSON frame (newline-terminated) to a
-    /// connection. Drops the connection on write error.
+    /// Queue a single JSON frame (newline-terminated) for a connection
+    /// and try to flush it immediately. Never blocks the event loop: a
+    /// frame the socket can't take right now stays buffered and is
+    /// retried via a WRITE source. A connection whose backlog exceeds
+    /// [`IPC_OUT_CAP`] is dropped (slow consumer → reconnect + re-sync).
     pub fn ipc_send(&mut self, token: u32, value: &serde_json::Value) {
-        let drop = {
+        let over_cap = {
             let Some(c) = self.ipc_conns.get_mut(&token) else {
                 return;
             };
             let mut line = value.to_string();
             line.push('\n');
-            c.stream.write_all(line.as_bytes()).is_err()
+            if c.out_buf.len().saturating_add(line.len()) > IPC_OUT_CAP {
+                true
+            } else {
+                c.out_buf.extend_from_slice(line.as_bytes());
+                false
+            }
         };
-        if drop {
+        if over_cap {
+            tracing::warn!(
+                token,
+                "ipc: outbound backlog over cap, dropping slow client"
+            );
             self.ipc_drop_conn(token);
+            return;
+        }
+        self.ipc_flush_out(token);
+    }
+
+    /// Drain a connection's outbound buffer as far as the socket allows,
+    /// then (dis)arm the WRITE source to match what's left. Called from
+    /// the request/push path (never from inside the WRITE source — see
+    /// [`Self::ipc_flush_out_from_write_source`]).
+    fn ipc_flush_out(&mut self, token: u32) {
+        let state = {
+            let Some(c) = self.ipc_conns.get_mut(&token) else {
+                return;
+            };
+            drain_to(&c.stream, &mut c.out_buf)
+        };
+        match state {
+            DrainState::Closed => self.ipc_drop_conn(token),
+            DrainState::Drained => self.ipc_disarm_write(token),
+            DrainState::Blocked => self.ipc_arm_write(token),
+        }
+    }
+
+    /// Flush variant invoked *by* the connection's WRITE source. Returns
+    /// the `PostAction` for that source so calloop removes it on drain —
+    /// we must not `remove()` it from under ourselves here.
+    fn ipc_flush_out_from_write_source(&mut self, token: u32) -> PostAction {
+        let state = match self.ipc_conns.get_mut(&token) {
+            Some(c) => drain_to(&c.stream, &mut c.out_buf),
+            None => return PostAction::Remove,
+        };
+        match state {
+            DrainState::Blocked => PostAction::Continue,
+            DrainState::Drained => {
+                if let Some(c) = self.ipc_conns.get_mut(&token) {
+                    c.write_token = None;
+                }
+                PostAction::Remove
+            }
+            DrainState::Closed => {
+                // Forget the token first so `ipc_drop_conn` doesn't try to
+                // remove this still-running source; calloop removes it via
+                // the returned `Remove`.
+                if let Some(c) = self.ipc_conns.get_mut(&token) {
+                    c.write_token = None;
+                }
+                self.ipc_drop_conn(token);
+                PostAction::Remove
+            }
+        }
+    }
+
+    /// Register a level-triggered WRITE source for a backed-up connection
+    /// (idempotent). Uses a cloned fd so it coexists with the READ source
+    /// in the same epoll instance.
+    fn ipc_arm_write(&mut self, token: u32) {
+        let already = self
+            .ipc_conns
+            .get(&token)
+            .map(|c| c.write_token.is_some())
+            .unwrap_or(true);
+        if already {
+            return;
+        }
+        let fd = match self
+            .ipc_conns
+            .get(&token)
+            .and_then(|c| c.stream.try_clone().ok())
+        {
+            Some(fd) => fd,
+            None => {
+                self.ipc_drop_conn(token);
+                return;
+            }
+        };
+        let source = Generic::new(fd, Interest::WRITE, Mode::Level);
+        let res = self
+            .loop_handle
+            .insert_source(source, move |_, _fd, state: &mut MargoState| {
+                Ok(state.ipc_flush_out_from_write_source(token))
+            });
+        match res {
+            Ok(rtoken) => {
+                if let Some(c) = self.ipc_conns.get_mut(&token) {
+                    c.write_token = Some(rtoken);
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "ipc: arm write source");
+                self.ipc_drop_conn(token);
+            }
+        }
+    }
+
+    /// Remove a connection's WRITE source once its backlog has drained.
+    fn ipc_disarm_write(&mut self, token: u32) {
+        let rt = self
+            .ipc_conns
+            .get_mut(&token)
+            .and_then(|c| c.write_token.take());
+        if let Some(rt) = rt {
+            self.loop_handle.remove(rt);
         }
     }
 
     pub fn ipc_drop_conn(&mut self, token: u32) {
-        self.ipc_conns.remove(&token);
+        if let Some(c) = self.ipc_conns.remove(&token)
+            && let Some(rt) = c.write_token
+        {
+            self.loop_handle.remove(rt);
+        }
         self.ipc_watches.remove_conn(token);
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::args_to_dispatch_arg;
+    use super::{DrainState, args_to_dispatch_arg, drain_to, pop_line};
+    use std::io::Read;
+    use std::os::unix::net::UnixStream;
 
     fn args(parts: &[&str]) -> Vec<String> {
         parts.iter().map(|s| s.to_string()).collect()
+    }
+
+    // ── framing: pop_line ──────────────────────────────────
+
+    #[test]
+    fn pop_line_none_until_newline() {
+        let mut buf = b"get sta".to_vec();
+        assert_eq!(pop_line(&mut buf), None);
+        // Partial bytes stay buffered for the next read.
+        assert_eq!(buf, b"get sta");
+        buf.extend_from_slice(b"te\n");
+        assert_eq!(pop_line(&mut buf).as_deref(), Some("get state"));
+        assert!(buf.is_empty());
+    }
+
+    #[test]
+    fn pop_line_drains_multiple_lines_in_order() {
+        let mut buf = b"get state\ndispatch view 4\n".to_vec();
+        assert_eq!(pop_line(&mut buf).as_deref(), Some("get state"));
+        assert_eq!(pop_line(&mut buf).as_deref(), Some("dispatch view 4"));
+        assert_eq!(pop_line(&mut buf), None);
+    }
+
+    #[test]
+    fn pop_line_trims_crlf_and_whitespace() {
+        let mut buf = b"  watch state  \r\n".to_vec();
+        assert_eq!(pop_line(&mut buf).as_deref(), Some("watch state"));
+    }
+
+    #[test]
+    fn pop_line_keeps_partial_after_complete() {
+        let mut buf = b"get state\ndispatch vi".to_vec();
+        assert_eq!(pop_line(&mut buf).as_deref(), Some("get state"));
+        assert_eq!(pop_line(&mut buf), None);
+        assert_eq!(buf, b"dispatch vi");
+    }
+
+    // ── outbound: drain_to ─────────────────────────────────
+
+    #[test]
+    fn drain_to_writes_everything_when_socket_has_room() {
+        let (a, mut b) = UnixStream::pair().unwrap();
+        a.set_nonblocking(true).unwrap();
+        let mut buf = b"hello\n".to_vec();
+        assert_eq!(drain_to(&a, &mut buf), DrainState::Drained);
+        assert!(buf.is_empty());
+        let mut got = [0u8; 6];
+        b.read_exact(&mut got).unwrap();
+        assert_eq!(&got, b"hello\n");
+    }
+
+    #[test]
+    fn drain_to_blocks_and_keeps_remainder_when_buffer_full() {
+        // Nobody reads `b`; a big payload overruns the kernel send buffer.
+        let (a, _b) = UnixStream::pair().unwrap();
+        a.set_nonblocking(true).unwrap();
+        let mut buf = vec![b'x'; 16 * 1024 * 1024];
+        let before = buf.len();
+        let state = drain_to(&a, &mut buf);
+        assert_eq!(state, DrainState::Blocked);
+        // Some bytes left the buffer, but not all — back-pressure, no spin.
+        assert!(!buf.is_empty(), "should retain the unsent tail");
+        assert!(
+            buf.len() < before,
+            "should have drained the writable prefix"
+        );
+    }
+
+    #[test]
+    fn drain_to_reports_closed_when_peer_is_gone() {
+        let (a, b) = UnixStream::pair().unwrap();
+        a.set_nonblocking(true).unwrap();
+        drop(b);
+        // Rust ignores SIGPIPE process-wide, so the write surfaces as an
+        // error rather than killing the test.
+        let mut buf = vec![b'x'; 16 * 1024 * 1024];
+        assert_eq!(drain_to(&a, &mut buf), DrainState::Closed);
     }
 
     #[test]

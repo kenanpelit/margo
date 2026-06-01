@@ -194,11 +194,11 @@ impl MargoState {
         // A pending carousel direction (set by a wrap-around relative
         // move) overrides the tag-index comparison; consume it here so
         // the next, non-wrapping transition behaves normally.
-        let going_forward = match std::mem::replace(&mut self.tag_carousel_dir, 0) {
-            d if d > 0 => true,
-            d if d < 0 => false,
-            _ => old_idx_target > new_idx,
-        };
+        let going_forward = transition_forward(
+            std::mem::replace(&mut self.tag_carousel_dir, 0),
+            old_idx_target,
+            new_idx,
+        );
         // Offscreen *staging* origin for the inbound slide. We only set
         // x/y here; the size is taken from the client's previous c.geom
         // below so the animation is a pure translate (no size change,
@@ -393,14 +393,13 @@ impl MargoState {
             0
         };
         let max = crate::MAX_TAGS as i32;
-        let raw = current_tag + delta;
-        let next = raw.rem_euclid(max);
         // Carousel: when the move wraps past the first / last tag, force
         // the slide to continue in the travel direction (so 9→1 going
         // right slides rightward) instead of the long reverse the
         // tag-index delta would otherwise pick. Consumed in `view_tag`.
-        if self.config.tag_carousel && (raw < 0 || raw >= max) {
-            self.tag_carousel_dir = delta.signum() as i8;
+        let (next, carousel_dir) = carousel_step(current_tag, delta, max, self.config.tag_carousel);
+        if carousel_dir != 0 {
+            self.tag_carousel_dir = carousel_dir;
         }
         self.view_tag(1u32 << next);
     }
@@ -426,35 +425,20 @@ impl MargoState {
         };
         let layout = mon.pertag.ltidxs[mon.pertag.curtag];
         let area = mon.monitor_area;
-        const MARGIN: f64 = 8.0;
-        let (dir, at_edge) = match layout {
-            crate::layout::LayoutId::Scroller => {
-                if self.input_pointer.x <= area.x as f64 + MARGIN {
-                    (-1, true)
-                } else if self.input_pointer.x >= (area.x + area.width) as f64 - MARGIN {
-                    (1, true)
-                } else {
-                    (0, false)
-                }
-            }
-            crate::layout::LayoutId::VerticalScroller => {
-                if self.input_pointer.y <= area.y as f64 + MARGIN {
-                    (-1, true)
-                } else if self.input_pointer.y >= (area.y + area.height) as f64 - MARGIN {
-                    (1, true)
-                } else {
-                    (0, false)
-                }
-            }
-            _ => (0, false),
-        };
-        if !at_edge {
-            // Re-arm once the pointer leaves the edge zone.
-            self.edge_scroller_armed = true;
-            return;
-        }
-        if self.edge_scroller_armed && speed < allow as f64 {
-            self.edge_scroller_armed = false;
+        let outcome = edge_scroller_decision(
+            layout,
+            self.input_pointer.x,
+            self.input_pointer.y,
+            area.x,
+            area.y,
+            area.width,
+            area.height,
+            speed,
+            allow,
+            self.edge_scroller_armed,
+        );
+        self.edge_scroller_armed = outcome.armed;
+        if let Some(dir) = outcome.focus {
             self.focus_stack(dir);
         }
     }
@@ -1418,5 +1402,322 @@ impl MargoState {
         // Notify xdp-gnome's window picker so a live screencast
         // share dialog refreshes its list while open.
         self.emit_windows_changed();
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Pure decision helpers (no `&mut self`), split out of the methods
+// above so the tag-carousel and edge-scroller logic is unit-testable
+// without standing up a full compositor `State`.
+// ─────────────────────────────────────────────────────────────
+
+/// One relative tag step. Returns the target tag *index* (0-based,
+/// already wrapped into `0..max`) and the carousel slide direction to
+/// stash (`+1`/`-1` only when the move wrapped past an end *and*
+/// carousel is enabled, else `0`).
+pub fn carousel_step(current_tag: i32, delta: i32, max: i32, carousel: bool) -> (i32, i8) {
+    let raw = current_tag + delta;
+    let next = raw.rem_euclid(max);
+    let dir = if carousel && (raw < 0 || raw >= max) {
+        delta.signum() as i8
+    } else {
+        0
+    };
+    (next, dir)
+}
+
+/// Resolve the tag-transition slide direction: a pending carousel
+/// direction (already consumed by the caller) overrides the natural
+/// tag-index comparison.
+pub fn transition_forward(carousel_dir: i8, old_idx_target: i32, new_idx: i32) -> bool {
+    match carousel_dir {
+        d if d > 0 => true,
+        d if d < 0 => false,
+        _ => old_idx_target > new_idx,
+    }
+}
+
+/// Outcome of the edge-scroller pointer-focus decision.
+#[derive(Debug, PartialEq, Eq)]
+pub struct EdgeOutcome {
+    /// Direction to shift focus (`-1`/`+1`), or `None` for no change.
+    pub focus: Option<i32>,
+    /// New debounce state (`armed`) to store back.
+    pub armed: bool,
+}
+
+/// Edge-scroller pointer-focus decision. The enabled/allow guard and the
+/// monitor lookup stay in the caller; this is the pure edge-detection +
+/// speed-gated debounce. `armed` in → `armed` out; fires `focus` once per
+/// edge dwell (only while armed and moving slower than `allow`).
+#[allow(clippy::too_many_arguments)]
+pub fn edge_scroller_decision(
+    layout: LayoutId,
+    px: f64,
+    py: f64,
+    ax: i32,
+    ay: i32,
+    aw: i32,
+    ah: i32,
+    speed: f64,
+    allow: f32,
+    armed: bool,
+) -> EdgeOutcome {
+    const MARGIN: f64 = 8.0;
+    let (dir, at_edge) = match layout {
+        LayoutId::Scroller => {
+            if px <= ax as f64 + MARGIN {
+                (-1, true)
+            } else if px >= (ax + aw) as f64 - MARGIN {
+                (1, true)
+            } else {
+                (0, false)
+            }
+        }
+        LayoutId::VerticalScroller => {
+            if py <= ay as f64 + MARGIN {
+                (-1, true)
+            } else if py >= (ay + ah) as f64 - MARGIN {
+                (1, true)
+            } else {
+                (0, false)
+            }
+        }
+        _ => (0, false),
+    };
+    if !at_edge {
+        // Re-arm once the pointer leaves the edge zone.
+        return EdgeOutcome {
+            focus: None,
+            armed: true,
+        };
+    }
+    if armed && speed < allow as f64 {
+        EdgeOutcome {
+            focus: Some(dir),
+            armed: false,
+        }
+    } else {
+        EdgeOutcome { focus: None, armed }
+    }
+}
+
+#[cfg(test)]
+mod decision_tests {
+    use super::{EdgeOutcome, carousel_step, edge_scroller_decision, transition_forward};
+    use crate::layout::LayoutId;
+
+    // ── tag carousel ───────────────────────────────────────
+
+    #[test]
+    fn carousel_no_wrap_keeps_dir_zero() {
+        // tag 1 (idx 0) → tag 2 (idx 1), no wrap.
+        assert_eq!(carousel_step(0, 1, 9, true), (1, 0));
+        // middle move.
+        assert_eq!(carousel_step(4, 2, 9, true), (6, 0));
+    }
+
+    #[test]
+    fn carousel_wrap_forward_sets_positive_dir() {
+        // tag 9 (idx 8) + 1 → wraps to tag 1 (idx 0), slide forward.
+        assert_eq!(carousel_step(8, 1, 9, true), (0, 1));
+    }
+
+    #[test]
+    fn carousel_wrap_backward_sets_negative_dir() {
+        // tag 1 (idx 0) - 1 → wraps to tag 9 (idx 8), slide backward.
+        assert_eq!(carousel_step(0, -1, 9, true), (8, -1));
+    }
+
+    #[test]
+    fn carousel_disabled_never_sets_dir() {
+        // Same wrap, but carousel off → dir 0 (natural transition wins).
+        assert_eq!(carousel_step(8, 1, 9, false), (0, 0));
+        assert_eq!(carousel_step(0, -1, 9, false), (8, 0));
+    }
+
+    #[test]
+    fn transition_forward_carousel_dir_overrides_indices() {
+        // Positive carousel dir → forward regardless of index order.
+        assert!(transition_forward(1, 0, 8));
+        // Negative carousel dir → backward regardless of index order.
+        assert!(!transition_forward(-1, 8, 0));
+    }
+
+    #[test]
+    fn transition_forward_falls_back_to_index_compare() {
+        // No carousel dir: forward iff old target index > new index.
+        assert!(transition_forward(0, 8, 0));
+        assert!(!transition_forward(0, 0, 8));
+        assert!(!transition_forward(0, 3, 3));
+    }
+
+    // ── edge scroller ──────────────────────────────────────
+
+    // 1000-wide area at origin; MARGIN is 8px.
+    const AX: i32 = 0;
+    const AY: i32 = 0;
+    const AW: i32 = 1000;
+    const AH: i32 = 1000;
+
+    #[test]
+    fn left_edge_slow_and_armed_focuses_previous() {
+        let o = edge_scroller_decision(
+            LayoutId::Scroller,
+            5.0,
+            500.0,
+            AX,
+            AY,
+            AW,
+            AH,
+            10.0,
+            40.0,
+            true,
+        );
+        assert_eq!(
+            o,
+            EdgeOutcome {
+                focus: Some(-1),
+                armed: false
+            }
+        );
+    }
+
+    #[test]
+    fn right_edge_slow_and_armed_focuses_next() {
+        let o = edge_scroller_decision(
+            LayoutId::Scroller,
+            995.0,
+            500.0,
+            AX,
+            AY,
+            AW,
+            AH,
+            10.0,
+            40.0,
+            true,
+        );
+        assert_eq!(o.focus, Some(1));
+        assert!(!o.armed);
+    }
+
+    #[test]
+    fn middle_of_area_does_not_fire_and_rearms() {
+        let o = edge_scroller_decision(
+            LayoutId::Scroller,
+            500.0,
+            500.0,
+            AX,
+            AY,
+            AW,
+            AH,
+            10.0,
+            40.0,
+            false,
+        );
+        assert_eq!(
+            o,
+            EdgeOutcome {
+                focus: None,
+                armed: true
+            }
+        );
+    }
+
+    #[test]
+    fn fast_motion_at_edge_does_not_fire() {
+        // Speed above the allow threshold → no focus, stays armed.
+        let o = edge_scroller_decision(
+            LayoutId::Scroller,
+            5.0,
+            500.0,
+            AX,
+            AY,
+            AW,
+            AH,
+            99.0,
+            40.0,
+            true,
+        );
+        assert_eq!(o.focus, None);
+        assert!(o.armed);
+    }
+
+    #[test]
+    fn already_disarmed_does_not_refire_at_edge() {
+        // Dwelling at the edge: once it fired (armed=false) it won't
+        // fire again until the pointer leaves the edge zone.
+        let o = edge_scroller_decision(
+            LayoutId::Scroller,
+            5.0,
+            500.0,
+            AX,
+            AY,
+            AW,
+            AH,
+            10.0,
+            40.0,
+            false,
+        );
+        assert_eq!(o.focus, None);
+        assert!(!o.armed);
+    }
+
+    #[test]
+    fn vertical_scroller_uses_y_axis() {
+        // Top edge → previous.
+        let top = edge_scroller_decision(
+            LayoutId::VerticalScroller,
+            500.0,
+            4.0,
+            AX,
+            AY,
+            AW,
+            AH,
+            10.0,
+            40.0,
+            true,
+        );
+        assert_eq!(top.focus, Some(-1));
+        // Bottom edge → next.
+        let bot = edge_scroller_decision(
+            LayoutId::VerticalScroller,
+            500.0,
+            996.0,
+            AX,
+            AY,
+            AW,
+            AH,
+            10.0,
+            40.0,
+            true,
+        );
+        assert_eq!(bot.focus, Some(1));
+        // A horizontal-edge x position is irrelevant in vertical mode.
+        let mid = edge_scroller_decision(
+            LayoutId::VerticalScroller,
+            5.0,
+            500.0,
+            AX,
+            AY,
+            AW,
+            AH,
+            10.0,
+            40.0,
+            true,
+        );
+        assert_eq!(mid.focus, None);
+    }
+
+    #[test]
+    fn non_scroller_layout_never_fires() {
+        let o = edge_scroller_decision(LayoutId::Tile, 5.0, 5.0, AX, AY, AW, AH, 1.0, 40.0, true);
+        assert_eq!(
+            o,
+            EdgeOutcome {
+                focus: None,
+                armed: true
+            }
+        );
     }
 }
