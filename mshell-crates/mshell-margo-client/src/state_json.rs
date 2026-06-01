@@ -101,6 +101,22 @@ pub struct RawClient {
     pub height: i32,
 }
 
+/// Resolve margo's IPC socket: `$MARGO_SOCKET` if set, else
+/// `$XDG_RUNTIME_DIR/margo/margo-ipc.sock`. This is the live state
+/// source — the shell subscribes to `watch state` over it.
+pub fn socket_path() -> std::path::PathBuf {
+    if let Some(p) = std::env::var_os("MARGO_SOCKET") {
+        return std::path::PathBuf::from(p);
+    }
+    let runtime = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            let uid = unsafe { libc::getuid() };
+            std::path::PathBuf::from(format!("/run/user/{uid}"))
+        });
+    runtime.join("margo").join("margo-ipc.sock")
+}
+
 /// Resolve the conventional path to state.json — same logic mlock
 /// uses (`XDG_RUNTIME_DIR/margo/state.json`, falling back to
 /// `/run/user/<uid>/margo/state.json` when the env-var is unset).

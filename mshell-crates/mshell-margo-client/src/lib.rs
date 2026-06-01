@@ -504,18 +504,19 @@ impl MargoService {
             keyboard_layout: Reactive::new(String::new()),
             event_tx,
         });
-        // Run one synchronous read so widgets see populated state
-        // on the very first paint, not on the next poll tick.
-        if let Some(snapshot) = state_json::read() {
+        // Prime once over the socket (`get state`) so widgets see
+        // populated state on the very first paint, not on the first
+        // watch frame.
+        if let Some(snapshot) = sync::fetch_state_once().await {
             sync::apply_snapshot(&service, &snapshot);
             tracing::info!(
                 outputs = snapshot.outputs.len(),
                 clients = snapshot.clients.len(),
-                "mshell-margo-client: initial state.json snapshot loaded"
+                "mshell-margo-client: initial state snapshot loaded over IPC socket"
             );
         } else {
             tracing::warn!(
-                "mshell-margo-client: state.json not readable on startup; bar will fill on the first poll tick"
+                "mshell-margo-client: margo IPC socket not reachable on startup; bar fills on the first watch frame"
             );
         }
         sync::spawn(&service);

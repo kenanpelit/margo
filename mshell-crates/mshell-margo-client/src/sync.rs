@@ -1,183 +1,87 @@
-//! Reactive sync layer — turns margo's `state.json` rewrites into
+//! Reactive sync layer — turns margo's pushed state frames into
 //! reactive property updates on a [`MargoService`].
 //!
-//! state.json is rewritten by margo on every meaningful change
-//! (focus / tag / arrange / hotplug / pointer-monitor crossing /
-//! config reload). We use **inotify** on the parent directory so
-//! every margo-side rewrite delivers an in-process wakeup within
-//! ~1 ms — much tighter than the legacy 250 ms poll, and the kernel
-//! does the work instead of mshell waking up 4× per second forever.
-//!
-//! A 2 s polling loop runs as a safety net for the edge cases where
-//! inotify wouldn't deliver:
-//!   * `$XDG_RUNTIME_DIR/margo/` doesn't exist yet (margo hasn't
-//!     started its first state file write). The watcher is bootstrapped
-//!     once the directory appears.
-//!   * Rare inotify-event coalescing under heavy churn (writes within
-//!     the same kernel tick).
-//!   * Lost wakeups from cross-fs writes (margo could write to a
-//!     different filesystem; rare but possible on some setups).
-//!
-//! The task holds only a `Weak` reference so the service still drops
-//! cleanly when the last `Arc<MargoService>` is released.
+//! The shell subscribes to `watch state` on margo's IPC socket
+//! (`$MARGO_SOCKET` / `$XDG_RUNTIME_DIR/margo/margo-ipc.sock`). margo
+//! pushes a full snapshot frame on every meaningful change (focus /
+//! tag / arrange / hotplug / config reload), so the shell updates
+//! event-driven with zero idle wakeups and no file polling. The task
+//! reconnects with a short backoff so it survives a compositor
+//! restart, and holds only a `Weak` reference so the service still
+//! drops cleanly when the last `Arc<MargoService>` is released.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use notify::{
-    Config as NotifyConfig, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher,
-};
-use tokio::sync::mpsc;
-use tokio::time::{MissedTickBehavior, interval};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
-use crate::state_json::{RawClient, StateJson, lowest_tag, monitor_id, read_raw, state_json_path};
+use crate::state_json::{RawClient, StateJson, lowest_tag, monitor_id, socket_path};
 use crate::{
     Address, Client, ClientLocation, ClientSize, FullscreenMode, MargoEvent, MargoService, Monitor,
     Reactive, Workspace, WorkspaceInfo,
 };
 
-/// Safety-net poll cadence. With inotify carrying every real change,
-/// this only ever serves the corner cases (inotify init failed, parent
-/// dir vanished mid-session, etc.). 2 s keeps idle CPU near zero while
-/// still bounding worst-case latency to "feels instant" if the user
-/// somehow loses the kernel signal.
-const FALLBACK_POLL_INTERVAL: Duration = Duration::from_secs(2);
+/// Backoff between socket reconnect attempts.
+const RECONNECT_DELAY: Duration = Duration::from_millis(500);
 
-/// Spawn the reactive sync task. The task holds only a `Weak`
-/// reference to the service so the service still drops cleanly.
-///
-/// We compare the raw `state.json` bytes against the last applied
-/// snapshot and skip the apply path entirely when they match.
-/// `apply()` rebuilds every `Workspace` / `Monitor` / `Client` `Arc`
-/// from scratch and calls `Reactive::set(new_vec)`; the `Reactive`
-/// notification fires on every `set` regardless of whether the
-/// underlying value changed (Vec<Arc<_>> equality is by pointer, so
-/// even an unchanged snapshot looks "new"). Without this short-
-/// circuit, the bar's downstream reactive subscribers (focused-tag
-/// pill, dock, layout) all repaint on every wakeup, and the repaint
-/// coalesces visibly with frequent state.json writes on the margo
-/// side (window title changes during typing, focus updates, dwl-ipc
-/// broadcasts) — the user sees the bar flickering on every
-/// keystroke in another window.
+/// Spawn the reactive sync task: a `watch state` subscription on
+/// margo's IPC socket. The task holds only a `Weak` reference to the
+/// service so it still drops cleanly when the last `Arc<MargoService>`
+/// is released. Frames arrive only on real state changes (margo pushes
+/// on its dirty-flush), so there is no polling and `apply` runs exactly
+/// as often as the compositor changes.
 pub(crate) fn spawn(service: &Arc<MargoService>) {
     let weak = Arc::downgrade(service);
     tokio::spawn(async move {
-        let path = state_json_path();
-        // Watch the parent directory, not state.json directly:
-        //   * margo writes atomically (write tmp → rename), so an
-        //     inotify watch on the file would be lost the moment
-        //     margo replaces it. Parent-dir watching survives
-        //     atomic-rename cycles forever.
-        //   * The parent (`$XDG_RUNTIME_DIR/margo/`) may not exist
-        //     when mshell starts — margo creates it on its first
-        //     state-file write. We handle that by retrying inside
-        //     the fallback poll until the directory appears.
-        let parent = path.parent().map(|p| p.to_path_buf()).unwrap_or_default();
-        let target_name = path.file_name().map(|n| n.to_os_string());
-
-        // Bridge inotify's blocking-thread events into the async task
-        // via a small channel. notify(v9) drives the watcher from its
-        // own OS thread; we only need to know "something happened,
-        // re-read" — so the channel just carries a unit signal.
-        let (tx, mut rx) = mpsc::channel::<()>(8);
-        let watcher_tx = tx.clone();
-        let mut watcher: Option<RecommendedWatcher> = match RecommendedWatcher::new(
-            move |res: notify::Result<Event>| {
-                if let Ok(event) = res {
-                    // Filter early so we don't wake up on unrelated
-                    // sibling files. We watch the whole dir but only
-                    // care about events affecting state.json
-                    // (create / modify / rename-target).
-                    let touches_state = if let Some(ref name) = target_name {
-                        event
-                            .paths
-                            .iter()
-                            .any(|p| p.file_name() == Some(name.as_os_str()))
-                    } else {
-                        true
-                    };
-                    if touches_state
-                        && matches!(
-                            event.kind,
-                            EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
-                        )
-                    {
-                        let _ = watcher_tx.try_send(());
-                    }
-                }
-            },
-            NotifyConfig::default(),
-        ) {
-            Ok(w) => Some(w),
-            Err(err) => {
-                tracing::warn!(
-                    error = %err,
-                    "mshell-margo-client: inotify watcher init failed, falling back to {}s polling",
-                    FALLBACK_POLL_INTERVAL.as_secs()
-                );
-                None
-            }
-        };
-        let mut watching = false;
-        if let Some(w) = watcher.as_mut() {
-            match w.watch(&parent, RecursiveMode::NonRecursive) {
-                Ok(()) => {
-                    watching = true;
-                    tracing::debug!(parent = %parent.display(), "mshell-margo-client: inotify watch armed");
-                }
-                Err(err) => {
-                    tracing::warn!(
-                        parent = %parent.display(),
-                        error = %err,
-                        "mshell-margo-client: failed to arm inotify watch, will retry on poll"
-                    );
-                }
-            }
-        }
-
-        let mut last_raw: Option<String> = None;
-        let mut ticker = interval(FALLBACK_POLL_INTERVAL);
-        ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
-
+        // Subscribe to the compositor's IPC socket with `watch state`:
+        // margo pushes a full snapshot frame on every change (focus /
+        // tag / arrange / hotplug / config reload), so there is no
+        // polling and no idle wakeups. Reconnect with a short backoff
+        // so the shell survives a compositor restart.
         loop {
-            // Wait for *either* an inotify wakeup or the fallback
-            // tick. tokio::select! is the standard primitive for
-            // this; cancel-safety is fine because both branches are
-            // cheap async ops (channel recv + sleep tick) that don't
-            // own pending work when dropped.
-            tokio::select! {
-                _ = rx.recv() => {},
-                _ = ticker.tick() => {
-                    // Periodic retry of the watcher arm — covers the
-                    // "parent dir didn't exist at startup" case. Once
-                    // armed successfully, subsequent retries are no-ops
-                    // (notify v9 returns Ok / WatchExists; we treat any
-                    // non-error as "already watching").
-                    if !watching
-                        && let Some(w) = watcher.as_mut()
-                            && w.watch(&parent, RecursiveMode::NonRecursive).is_ok()
-                        {
-                            watching = true;
-                            tracing::debug!(parent = %parent.display(), "mshell-margo-client: inotify watch armed on retry");
-                        }
-                },
+            if weak.upgrade().is_none() {
+                break;
             }
-
-            let Some(service) = weak.upgrade() else { break };
-            let Some(raw) = read_raw() else { continue };
-            if last_raw.as_deref() == Some(&raw) {
+            let stream = match tokio::net::UnixStream::connect(socket_path()).await {
+                Ok(s) => s,
+                Err(_) => {
+                    tokio::time::sleep(RECONNECT_DELAY).await;
+                    continue;
+                }
+            };
+            let (rd, mut wr) = stream.into_split();
+            if wr.write_all(b"watch state\n").await.is_err() {
+                tokio::time::sleep(RECONNECT_DELAY).await;
                 continue;
             }
-            if let Ok(state) = serde_json::from_str::<StateJson>(&raw) {
-                apply(&service, &state);
-                last_raw = Some(raw);
+            let mut lines = BufReader::new(rd).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let Some(service) = weak.upgrade() else {
+                    return;
+                };
+                if let Ok(state) = serde_json::from_str::<StateJson>(&line) {
+                    apply(&service, &state);
+                }
             }
+            // Connection closed (compositor exit / restart) — back off
+            // and reconnect.
+            tokio::time::sleep(RECONNECT_DELAY).await;
         }
-        // Explicitly drop the watcher so the OS thread it owns shuts
-        // down when this task exits (Arc<MargoService> dropped).
-        drop(watcher);
     });
+}
+
+/// One-shot `get state` over the socket — used to prime the service on
+/// startup so widgets see populated state on their first paint. Returns
+/// `None` when margo isn't running yet (the `watch` task will fill in
+/// once it connects).
+pub(crate) async fn fetch_state_once() -> Option<StateJson> {
+    let stream = tokio::net::UnixStream::connect(socket_path()).await.ok()?;
+    let (rd, mut wr) = stream.into_split();
+    wr.write_all(b"get state\n").await.ok()?;
+    let mut lines = BufReader::new(rd).lines();
+    let line = lines.next_line().await.ok()??;
+    serde_json::from_str::<StateJson>(&line).ok()
 }
 
 /// Project a freshly-deserialized [`StateJson`] onto the service's
@@ -226,7 +130,7 @@ fn apply(service: &MargoService, state: &StateJson) {
     let mut emitted: Vec<MargoEvent> = Vec::new();
 
     // Mirror the active keyboard-layout name (change-only — `set`
-    // broadcasts unconditionally, and this polls every 250 ms).
+    // broadcasts unconditionally, so guard on an actual change).
     if service.keyboard_layout.get() != state.keyboard_layout {
         service.keyboard_layout.set(state.keyboard_layout.clone());
     }

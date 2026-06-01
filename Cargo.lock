@@ -4399,7 +4399,6 @@ dependencies = [
  "anyhow",
  "futures",
  "libc",
- "notify",
  "serde",
  "serde_json",
  "tokio",
