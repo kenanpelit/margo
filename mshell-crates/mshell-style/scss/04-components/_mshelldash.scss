@@ -163,3 +163,19 @@
   }
   &.danger progress { background-color: var(--error); }
 }
+
+// ── Screen Time tab ────────────────────────────────────────────────
+// Per-app focus-time breakdown. Reuses the shared card / hero / -bar
+// vocabulary; only the app-row icon needs its own treatment.
+.screentime-row {
+  // Inter-row gap is set in Rust (set_spacing); nothing extra here.
+}
+
+.screentime-icon {
+  -gtk-icon-size: var(--icon-sm);
+  color: var(--on-surface-variant);
+  // Hold a stable column so rows don't jitter when an app icon is
+  // missing from the theme (renders blank but keeps its slot).
+  min-width: 18px;
+  min-height: 18px;
+}
