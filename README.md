@@ -26,7 +26,7 @@
 
 ---
 
-**margo** is a Wayland compositor in the dwl/mango tradition — a Rust + [Smithay] port of [mango] with tags instead of workspaces, a deep tiling layout catalogue, and a complete first-party stack for everyday use: a GTK4 desktop shell (`mshell`) with bar / menus / notifications / OSD / settings UI, a control CLI (`mctl`), a screen locker (`mlock`), a TUI login manager (`mlogind`), monitor profiles (`mlayout`), a screenshot helper (`mscreenshot`), and an automatic power-profile manager (`mpower`). The whole stack ships from one workspace and one release. The compositor speaks `dwl-ipc-v2` so third-party shells like [noctalia] also work — but you don't need one.
+**margo** is a Wayland compositor in the dwl/mango tradition — a Rust + [Smithay] port of [mango] with tags instead of workspaces, a deep tiling layout catalogue, and a complete first-party stack for everyday use: a GTK4 desktop shell (`mshell`) with bar / menus / notifications / OSD / settings UI, a control CLI (`mctl`), a screen locker (`mlock`), a TUI login manager (`mlogind`), monitor profiles (`mlayout`), a screenshot helper (`mscreenshot`), and an automatic power-profile manager (`mpower`). The whole stack ships from one workspace and one release. The compositor exposes a scriptable Unix control socket (`get` / `watch` / `dispatch`) plus the standard `ext-workspace` + `foreign-toplevel-list` protocols, so third-party bars (sfwbar, ironbar) work too — but you don't need one.
 
 [Smithay]: https://github.com/Smithay/smithay
 [mango]: https://github.com/mangowm/mango
@@ -74,6 +74,7 @@ Each binary lives in its own top-level directory — the name links to it.
 | [`mpower`](mpower/) | Automatic power-profile manager — CPU + AC/battery aware |
 | [`mlayout`](mlayout/) | Named monitor profiles |
 | [`mscreenshot`](mscreenshot/) | Screen / region / window capture |
+| [`mplay`](mplay/) | mpv companion — window control, video wallpaper, media keys |
 | [`mpicker`](mpicker/) | Native colour picker — frozen screencap + zoom lens |
 | [`mwizard`](mwizard/) | First-launch setup wizard launcher |
 | [`mvisual`](mvisual/) | Renderer visual debugger |
@@ -95,7 +96,7 @@ Library-only crates (`margo-config`, `margo-layouts`, and the `mshell-crates/*` 
 - **Embedded scripting.** Drop `~/.config/margo/init.rhai`; call any compositor action from a sandboxed Rhai interpreter, hook `on_focus_change` / `on_tag_switch` / `on_window_open`.
 - **Hot reload.** `mctl reload` (or `Super+Ctrl+R`) re-applies window rules, key binds, monitor topology, animation curves, gestures — no logout.
 - **DRM hotplug.** Dock / undock, plug a second monitor mid-session; outputs come and go cleanly.
-- **`dwl-ipc-v2` compatibility.** Drop-in for [noctalia], waybar-dwl, fnott, and any other dwl/mango widget — that's how the bar / launcher / OSD / notifications surface on screen.
+- **Scriptable Unix-socket IPC.** A single control socket (`$MARGO_SOCKET`) speaks `get` / `watch` / `dispatch` as newline-delimited JSON — drive or observe the compositor from `mctl`, `socat`, or any script, no Wayland client needed. `mshell` subscribes to it for live state; third-party bars (sfwbar, ironbar) get the standard `ext-workspace` + `foreign-toplevel-list` protocols. (The legacy `dwl-ipc-v2` + the polled `state.json` were removed.)
 
 ## Supervisor (`start-margo`)
 
@@ -129,7 +130,7 @@ Ready-to-copy session glue (a Wayland-session `.desktop`, a uwsm wrapper, the `m
 
 ## Shell (`mshell`)
 
-A first-party GTK4 + relm4 + gtk4-layer-shell desktop shell that consumes `dwl-ipc-v2` directly. No need to wire up an external shell unless you want one — `mshell` ships with everything below preconfigured, and Settings UI lives inside the same panel as the menus (no separate window).
+A first-party GTK4 + relm4 + gtk4-layer-shell desktop shell that subscribes to margo's Unix IPC socket (`watch state`) for live compositor state. No need to wire up an external shell unless you want one — `mshell` ships with everything below preconfigured, and Settings UI lives inside the same panel as the menus (no separate window).
 
 - **Bar with configurable pill set.** Workspace pills (per-tag accent + window-count dots), active-window pill, clock, media player, network speed, battery, audio, tray, notifications. Plus the opt-in **A-series** (Privacy mic+cam indicator, CPU/RAM/Temp sysstat, Caps/Num/Scroll lock keys, Dark-mode toggle, KeepAwake idle-inhibit, rounded screen corners) and **B-series** (System-update count badge with right-click refresh, Display→Layout panel driving mlayout).
 - **Composite menus.** Dashboard (hero + 2-col + power footer) folds clock, weather and quick-settings into a single panel; clock menu carries a noctalia-style calendar grid; session menu (`super+delete`) drives Lock / Logout / Suspend / Reboot / Shutdown with 3-second countdown confirmation; notifications menu with urgency bar, count badge, action buttons and date-grouped history.
@@ -204,13 +205,13 @@ path is recorded in `/usr/local/share/margo/install-manifest.txt`, so
 
 ```bash
 cargo build --release --workspace
-for bin in margo start-margo mctl mshell mshellctl mlock mlayout mscreenshot mvisual mlogind mpower mwizard mpicker; do
+for bin in margo start-margo mctl mshell mshellctl mlock mlayout mscreenshot mvisual mlogind mpower mplay mwizard mpicker; do
   sudo install -Dm755 target/release/$bin /usr/bin/$bin
 done
 sudo install -Dm644 margo.desktop /usr/share/wayland-sessions/margo.desktop
 ```
 
-System dependencies: `wayland`, `libinput`, `libxkbcommon`, `seatd`, `mesa`, `libdrm`, `pixman`, `pcre2`, `cairo`, `pango`, `pam`, `gtk4` (≥ 4.20), `gtk4-layer-shell`, `xorg-xwayland` (optional). Runtime: `grim`, `slurp`, `wl-clipboard` for screenshots; `wlr-randr` for live monitor re-layout; `notify-send` (libnotify) for `mscreenshot`'s notification action buttons.
+System dependencies: `wayland`, `libinput`, `libxkbcommon`, `seatd`, `mesa`, `libdrm`, `pixman`, `pcre2`, `cairo`, `pango`, `pam`, `gtk4` (≥ 4.20), `gtk4-layer-shell`, `xorg-xwayland` (optional). Runtime: `grim`, `slurp`, `wl-clipboard` for screenshots; `wlr-randr` for live monitor re-layout; `notify-send` (libnotify) for `mscreenshot`'s notification action buttons; `mpv` (libmpv) for `mplay` window control + video wallpaper, with optional `yt-dlp` / `playerctl` / `mpc` for its `play` / `media` commands.
 
 ### Nix flake
 
@@ -340,7 +341,7 @@ Engine: [Rhai] (pure Rust, sandboxed by default). Guide: **[Scripting](https://k
 
 ## Acknowledgements
 
-Built on [Smithay]. The compositor is a Rust rewrite of [mango](https://github.com/mangowm/mango) (which forked [dwl](https://codeberg.org/dwl/dwl), itself a dwm-on-wlroots descendant) — the tag model, pertag, layout algorithms and dwl-ipc protocol trace back through that line. The shell (mshell) is a fork of OkShell. Wayland protocol code is ported from [niri](https://github.com/YaLTeR/niri) (foreign-toplevel write-side, ext-workspace, virtual-pointer), and mshell widgets reimplement patterns from [noctalia](https://github.com/noctalia-dev/noctalia-shell). margo additionally borrows architectural patterns (not code) from niri (focus oracle, hotplug, screencast portal, transactional resize), [anvil](https://github.com/Smithay/smithay/tree/master/anvil) (Smithay's reference compositor) and [Hyprland](https://hypr.land) (color-management protocol shape). `mlock` follows the architecture of [nlock](https://github.com/OldUser101/nlock) and [waylock](https://codeberg.org/ifreund/waylock).
+Built on [Smithay]. The compositor is a Rust rewrite of [mango](https://github.com/mangowm/mango) (which forked [dwl](https://codeberg.org/dwl/dwl), itself a dwm-on-wlroots descendant) — the tag model, pertag, and layout algorithms trace back through that line. The shell (mshell) is a fork of OkShell. Wayland protocol code is ported from [niri](https://github.com/YaLTeR/niri) (foreign-toplevel write-side, ext-workspace, virtual-pointer), and mshell widgets reimplement patterns from [noctalia](https://github.com/noctalia-dev/noctalia-shell). margo additionally borrows architectural patterns (not code) from niri (focus oracle, hotplug, screencast portal, transactional resize), [anvil](https://github.com/Smithay/smithay/tree/master/anvil) (Smithay's reference compositor) and [Hyprland](https://hypr.land) (color-management protocol shape). `mlock` follows the architecture of [nlock](https://github.com/OldUser101/nlock) and [waylock](https://codeberg.org/ifreund/waylock).
 
 Derived portions are preserved under their respective licenses — see `licenses/`: mango, dwl, OkShell, niri (GPL-3.0-or-later), dwm and noctalia (MIT). margo is **GPL-3.0-or-later**. (margo is a pure-Smithay Rust compositor; it carries no wlroots, tinywl or sway code, so those upstream licenses are not included.)
 
