@@ -1,6 +1,7 @@
 //! Client for mpv's JSON IPC socket (`--input-ipc-server`). One
-//! `{"command":[…]}` line per request. We don't read replies — these are
-//! fire-and-forget control commands.
+//! `{"command":[…]}` line per request. Control commands are
+//! fire-and-forget; `get_property` reads the reply back for state queries
+//! (e.g. the pause state shown in the toggle notification).
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
