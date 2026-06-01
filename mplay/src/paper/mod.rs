@@ -97,6 +97,11 @@ pub fn run(src: &str, output: Option<&str>, opts: PaperOpts, daemon: bool) -> Re
     let mut outs: Vec<LiveOutput> = Vec::new();
     for s in &state.surfaces {
         let egl_out = EglOutput::new(&egl_root, s.wl_surface.id(), s.width, s.height)?;
+        // The GL context must be current on this thread *before*
+        // mpv_render_context_create: mpv probes GL (version, extensions,
+        // proc addresses) at creation, and with no current context that
+        // probe fails ("operation not implemented").
+        egl_out.make_current(&egl_root)?;
         let mpv = MpvVideo::new(egl_root_ptr, wl_display, src, &opts, efd)?;
         let _ = mpv.render(&egl_out, &egl_root, s.width, s.height);
         outs.push(LiveOutput {
