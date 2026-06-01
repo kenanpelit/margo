@@ -253,6 +253,7 @@ impl MargoState {
             "tag_count": MAX_TAGS,
             "active_output": active_output,
             "focused_idx": focused_idx,
+            "keyboard_layout": self.current_kb_layout,
             "outputs": outputs,
             "clients": clients,
             "layouts": layout_names,

@@ -224,6 +224,13 @@ fn apply(service: &MargoService, state: &StateJson) {
     // …) and would otherwise sit forever on `events.next().await`
     // because the poll loop only pushes through `Reactive::set`.
     let mut emitted: Vec<MargoEvent> = Vec::new();
+
+    // Mirror the active keyboard-layout name (change-only — `set`
+    // broadcasts unconditionally, and this polls every 250 ms).
+    if service.keyboard_layout.get() != state.keyboard_layout {
+        service.keyboard_layout.set(state.keyboard_layout.clone());
+    }
+
     let prev_focused_tag: Option<i64> = service
         .monitors
         .get()

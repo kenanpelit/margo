@@ -562,6 +562,17 @@ pub const ACTIONS: &[Action] = &[
         detail: "",
     },
     Action {
+        name: "cyclekblayout",
+        aliases: &["cycle_kb_layout", "cycle-kb-layout"],
+        args: "",
+        group: Group::System,
+        summary: "Cycle the keyboard to the next configured xkb layout.",
+        detail: "No-op when a single `xkb_rules_layout` is configured. \
+                 Wraps at the end of the list. The active layout name is \
+                 published in state.json (`keyboard_layout`) for the shell's \
+                 keyboard-layout pill.",
+    },
+    Action {
         name: "force_unlock",
         aliases: &["force-unlock"],
         args: "",

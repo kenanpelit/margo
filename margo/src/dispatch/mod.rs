@@ -49,6 +49,9 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
     match action {
         "quit" => state.should_quit = true,
         "debug_dump" | "debug-dump" | "diagnose" => state.debug_dump(),
+        // Cycle the keyboard to the next configured xkb layout. Driven
+        // by a keybind or the shell's keyboard-layout pill (via mctl).
+        "cyclekblayout" | "cycle_kb_layout" | "cycle-kb-layout" => state.cycle_keyboard_layout(),
         // Emergency escape from a stuck lock screen. Tears down the
         // current ext_session_lock from the compositor side without
         // requiring the locker client to cooperate — useful when

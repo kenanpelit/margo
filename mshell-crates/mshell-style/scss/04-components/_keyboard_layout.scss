@@ -1,0 +1,10 @@
+// Keyboard Layout — bar pill showing the active xkb layout code.
+// DESIGN.md: plain bar-pill surface, default text colour so the code
+// reads on the transparent pill; tabular numerals for stable width.
+.keyboard-layout-bar-label {
+  font-size: var(--font-bar);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface);
+}

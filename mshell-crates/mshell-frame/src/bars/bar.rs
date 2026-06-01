@@ -13,6 +13,7 @@ use crate::bars::bar_widgets::dns::{DnsInit, DnsModel};
 use crate::bars::bar_widgets::ip::{IpInit, IpModel};
 use crate::bars::bar_widgets::keep_awake::{KeepAwakeInit, KeepAwakeModel};
 use crate::bars::bar_widgets::keybinds::{KeybindsInit, KeybindsModel};
+use crate::bars::bar_widgets::keyboard_layout::{KeyboardLayoutInit, KeyboardLayoutModel};
 use crate::bars::bar_widgets::lock::{LockInit, LockModel, LockOutput};
 use crate::bars::bar_widgets::lock_keys::{LockKeysInit, LockKeysModel};
 use crate::bars::bar_widgets::logout::{LogoutInit, LogoutModel};
@@ -716,6 +717,11 @@ impl BarModel {
                             BarOutput::KeepAwakeClicked
                         }
                     }),
+            ),
+            BarWidget::KeyboardLayout => Box::new(
+                KeyboardLayoutModel::builder()
+                    .launch(KeyboardLayoutInit { orientation })
+                    .detach(),
             ),
             BarWidget::Twilight => Box::new(
                 TwilightModel::builder()

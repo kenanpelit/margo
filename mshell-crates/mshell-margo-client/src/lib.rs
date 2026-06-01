@@ -465,6 +465,11 @@ pub struct MargoService {
     /// per-`Client` `focus_history_id` is per-monitor and matched
     /// by app-id, so it can't identify the single focused window.
     pub focused_client: Reactive<Option<Arc<Client>>>,
+    /// Human-readable name of the active xkb keyboard layout, mirrored
+    /// from state.json's `keyboard_layout` field. Empty until the
+    /// compositor has observed a key event. The keyboard-layout bar
+    /// pill reads this.
+    pub keyboard_layout: Reactive<String>,
     /// Diff-driven typed-event channel for the OkShell widget
     /// pattern (`hyprland.events()` consumers). `sync::apply`
     /// computes the diff between two state.json snapshots and
@@ -496,6 +501,7 @@ impl MargoService {
             clients: Reactive::new(Vec::new()),
             monitors: Reactive::new(Vec::new()),
             focused_client: Reactive::new(None),
+            keyboard_layout: Reactive::new(String::new()),
             event_tx,
         });
         // Run one synchronous read so widgets see populated state

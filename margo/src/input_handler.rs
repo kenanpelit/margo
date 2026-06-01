@@ -643,6 +643,11 @@ fn handle_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(state: &mut MargoSta
                 FilterResult::Forward
             },
         );
+
+        // The key event may have toggled the xkb layout group (e.g.
+        // a `grp:` toggle). Re-cache the active layout name so the
+        // shell's keyboard-layout pill reflects the switch.
+        state.refresh_keyboard_layout();
     }
 }
 

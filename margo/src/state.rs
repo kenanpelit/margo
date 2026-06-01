@@ -573,6 +573,12 @@ pub struct MargoState {
     pub lock_surfaces: Vec<(Output, smithay::wayland::session_lock::LockSurface)>,
 
     pub session_locked: bool,
+    /// Human-readable name of the keyboard's currently active xkb
+    /// layout (e.g. "English (US)", "Turkish"). Cached here and
+    /// published in state.json so the shell's keyboard-layout pill
+    /// can show it without re-deriving the keymap. Updated on every
+    /// key event that changes the effective layout group.
+    pub current_kb_layout: String,
     pub enable_gaps: bool,
     pub cursor_status: CursorImageStatus,
     pub cursor_manager: CursorManager,
@@ -985,6 +991,7 @@ impl MargoState {
             clients: vec![],
             monitors: vec![],
             session_locked: false,
+            current_kb_layout: String::new(),
             idle_notifier_state,
             idle_inhibit_state,
             virtual_keyboard_manager_state,
@@ -3276,6 +3283,37 @@ impl MargoState {
 // ── Smithay delegate: XDG decoration ─────────────────────────────────────────
 
 impl MargoState {
+    /// Re-read the seat keyboard's currently active xkb layout name
+    /// and, if it changed since the last cache, store it + mark
+    /// state.json dirty so the shell's keyboard-layout pill refreshes.
+    /// Cheap (a keymap name lookup) — safe to call on every key event.
+    pub fn refresh_keyboard_layout(&mut self) {
+        let Some(kbd) = self.seat.get_keyboard() else {
+            return;
+        };
+        let name = kbd.with_xkb_state(self, |ctx| {
+            let xkb = ctx.xkb().lock().unwrap();
+            let layout = xkb.active_layout();
+            xkb.layout_name(layout).to_string()
+        });
+        if self.current_kb_layout != name {
+            self.current_kb_layout = name;
+            self.write_state_file();
+        }
+    }
+
+    /// Cycle the seat keyboard to the next configured xkb layout,
+    /// wrapping at the end. Triggered by the `cyclekblayout` dispatch
+    /// action (mctl + the shell's keyboard-layout pill). No-op when a
+    /// single layout is configured.
+    pub fn cycle_keyboard_layout(&mut self) {
+        let Some(kbd) = self.seat.get_keyboard() else {
+            return;
+        };
+        kbd.with_xkb_state(self, |mut ctx| ctx.cycle_next_layout());
+        self.refresh_keyboard_layout();
+    }
+
     /// What decoration mode should we send to a freshly-bound or
     /// reset toplevel? Defaults to `ServerSide`; flips to
     /// `ClientSide` only when the client is in our `clients` vec

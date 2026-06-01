@@ -26,6 +26,12 @@ pub struct StateJson {
     pub outputs: Vec<RawOutput>,
     pub clients: Vec<RawClient>,
     pub tag_count: u32,
+    /// Human-readable name of the active xkb keyboard layout (e.g.
+    /// "English (US)", "Turkish"). Empty until the compositor has
+    /// observed a key event. `#[serde(default)]` for forward-compat
+    /// with older margo builds that don't emit the field.
+    #[serde(default)]
+    pub keyboard_layout: String,
 }
 
 /// Coerce `null` / missing / integer into `Option<i64>`. serde's

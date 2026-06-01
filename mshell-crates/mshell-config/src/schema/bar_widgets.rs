@@ -65,6 +65,10 @@ pub enum BarWidget {
     /// (active first), click a host to connect in a new terminal.
     SshSessions,
     LockKeys,
+    /// Keyboard-layout pill — shows the active xkb layout (e.g. "US",
+    /// "TR") read from margo's state.json. Click cycles to the next
+    /// configured layout via `mctl dispatch cyclekblayout`.
+    KeyboardLayout,
     MargoDock,
     MargoLayoutSwitcher,
     MargoTags,
@@ -137,6 +141,7 @@ impl BarWidget {
             BarWidget::Keybinds => "Keyboard Shortcuts",
             BarWidget::SshSessions => "SSH Sessions",
             BarWidget::LockKeys => "Lock Keys (Caps/Num/Scroll)",
+            BarWidget::KeyboardLayout => "Keyboard Layout",
             BarWidget::MargoDock => "Margo Dock",
             BarWidget::MargoLayoutSwitcher => "Margo Layout Switcher",
             BarWidget::MargoTags => "Margo Tags",
@@ -193,6 +198,7 @@ impl BarWidget {
             BarWidget::Keybinds,
             BarWidget::SshSessions,
             BarWidget::LockKeys,
+            BarWidget::KeyboardLayout,
             BarWidget::MargoDock,
             BarWidget::MargoLayoutSwitcher,
             BarWidget::MargoTags,
