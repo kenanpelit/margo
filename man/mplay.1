@@ -58,6 +58,17 @@ Focus the mpv window, hopping monitor and switching tag as needed.
 .B stop
 Quit mpv.
 .TP
+.BI "media " "ACTION " [ PLAYER ]
+Smart media control across players. \fIACTION\fR is one of
+.IR toggle ", " play ", " pause ", " stop ", " next ", " prev ", " status .
+\fIPLAYER\fR targets a specific player \(em
+.IR spotify ", " vlc ", " mpv ", " mpd " (" mpc "), " browser
+\(em or, omitted, auto-detects the best active one (scored across mpv,
+MPD, and MPRIS players, biased toward the last-used one). Spotify is
+launched on demand when targeted explicitly. Shows a now-playing
+notification with album art. Alias:
+.BR m .
+.TP
 .BI "wallpaper start " "SRC " \
 [ \-\-output\ NAME ]\ [ \-\-mute ]\ [ \-\-no\-loop ]\ [ \-\-scale\ MODE ]\ [ \-\-daemon ]
 Play
