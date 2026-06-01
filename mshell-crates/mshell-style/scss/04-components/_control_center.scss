@@ -54,6 +54,16 @@
   // spacing set to 10 in Rust; nothing extra.
 }
 
+// Active output/input device name under its slider row — shows the
+// current sink/source without opening the picker. Indented to sit
+// under the slider (clear of the icon column).
+.control-center-device-name {
+  font-size: var(--font-xs);
+  color: var(--on-surface-variant);
+  margin-left: 30px;
+  margin-top: -4px;
+}
+
 // Icon in the slider row — dim variant, same tier as audio-dashboard icons.
 .control-center-slider-icon {
   -gtk-icon-size: var(--icon-sm);

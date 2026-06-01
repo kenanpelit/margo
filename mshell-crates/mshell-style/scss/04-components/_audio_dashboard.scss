@@ -105,6 +105,14 @@
   color: var(--primary);
 }
 
+// Active device name shown above each output/input row so the user
+// sees the current sink/source without expanding the picker.
+.audio-device-active-label {
+  font-size: var(--font-xs);
+  color: var(--on-surface-variant);
+  margin-left: var(--space-1);
+}
+
 // ── Per-application mixer (QSAP-style) ─────────────────────────
 .app-mixer-section {
   margin-top: var(--space-1);

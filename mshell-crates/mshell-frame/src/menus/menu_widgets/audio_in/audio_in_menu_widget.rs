@@ -12,7 +12,7 @@ use mshell_services::audio_service;
 use mshell_utils::audio::{
     get_audio_in_icon, spawn_default_input_watcher, spawn_input_device_volume_mute_watcher,
 };
-use relm4::gtk::prelude::WidgetExt;
+use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 use std::sync::Arc;
 use wayle_audio::core::device::input::InputDevice;
@@ -21,6 +21,9 @@ use wayle_audio::volume::types::Volume;
 pub(crate) struct AudioInMenuWidgetModel {
     revealer_row: Controller<RevealerRowModel<RevealerRowSliderModel, AudioInRevealedContentModel>>,
     active_device_watcher_token: WatcherToken,
+    /// Human-readable name of the active input device, shown above the
+    /// row so it's visible without expanding the picker.
+    device_name: String,
 }
 
 #[derive(Debug)]
@@ -55,6 +58,18 @@ impl Component for AudioInMenuWidgetModel {
         #[root]
         gtk::Box {
             add_css_class: "audio-in-menu-widget",
+            set_orientation: gtk::Orientation::Vertical,
+            set_spacing: 2,
+
+            gtk::Label {
+                add_css_class: "audio-device-active-label",
+                #[watch]
+                set_label: &model.device_name,
+                #[watch]
+                set_visible: !model.device_name.is_empty(),
+                set_halign: gtk::Align::Start,
+                set_ellipsize: gtk::pango::EllipsizeMode::End,
+            },
 
             model.revealer_row.widget().clone() {},
         }
@@ -100,6 +115,7 @@ impl Component for AudioInMenuWidgetModel {
         let model = AudioInMenuWidgetModel {
             revealer_row,
             active_device_watcher_token: WatcherToken::new(),
+            device_name: String::new(),
         };
 
         let widgets = view_output!();
@@ -141,6 +157,12 @@ impl Component for AudioInMenuWidgetModel {
                 }
             }
             AudioInMenuWidgetInput::UpdateDevice(device) => {
+                let desc = device.description.get();
+                self.device_name = if desc.is_empty() {
+                    device.name.get()
+                } else {
+                    desc
+                };
                 self.revealer_row
                     .emit(RevealerRowInput::UpdateActionIconName(
                         get_audio_in_icon(&device).to_string(),

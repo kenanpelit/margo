@@ -34,12 +34,14 @@ pub(crate) struct ControlCenterSlidersModel {
     output_device: Option<Arc<OutputDevice>>,
     output_percent: f64, // 0.0–1.0
     output_icon: String,
+    output_name: String,
     suppress_output_signal: bool,
 
     // Mic (input) state
     input_device: Option<Arc<InputDevice>>,
     input_percent: f64, // 0.0–1.0
     input_icon: String,
+    input_name: String,
     suppress_input_signal: bool,
 
     // Brightness state
@@ -144,6 +146,18 @@ impl Component for ControlCenterSlidersModel {
                 },
             },
 
+            // Active output device name — visible without opening the
+            // picker. Indented to align under the slider.
+            gtk::Label {
+                add_css_class: "control-center-device-name",
+                #[watch]
+                set_label: &model.output_name,
+                #[watch]
+                set_visible: !model.output_name.is_empty(),
+                set_halign: gtk::Align::Start,
+                set_ellipsize: gtk::pango::EllipsizeMode::End,
+            },
+
             // ── Mic row ───────────────────────────────────────────
             gtk::Box {
                 add_css_class: "control-center-slider-row",
@@ -187,6 +201,17 @@ impl Component for ControlCenterSlidersModel {
                         sender.input(ControlCenterSlidersInput::OpenInputDevices);
                     },
                 },
+            },
+
+            // Active input (mic) device name.
+            gtk::Label {
+                add_css_class: "control-center-device-name",
+                #[watch]
+                set_label: &model.input_name,
+                #[watch]
+                set_visible: !model.input_name.is_empty(),
+                set_halign: gtk::Align::Start,
+                set_ellipsize: gtk::pango::EllipsizeMode::End,
             },
 
             // ── Brightness row ────────────────────────────────────
@@ -271,14 +296,25 @@ impl Component for ControlCenterSlidersModel {
             .unwrap_or(0.0);
         let brightness_icon = get_brightness_icon(brightness_fraction * 100.0).to_string();
 
+        let output_name = output_device
+            .as_ref()
+            .map(device_name_out)
+            .unwrap_or_default();
+        let input_name = input_device
+            .as_ref()
+            .map(device_name_in)
+            .unwrap_or_default();
+
         let model = ControlCenterSlidersModel {
             output_device,
             output_percent,
             output_icon,
+            output_name,
             suppress_output_signal: false,
             input_device,
             input_percent,
             input_icon,
+            input_name,
             suppress_input_signal: false,
             brightness_device,
             brightness_fraction,
@@ -347,9 +383,12 @@ impl Component for ControlCenterSlidersModel {
                 if let Some(d) = &self.output_device {
                     self.output_percent = d.volume.get().average();
                     self.output_icon = get_audio_out_icon(d).to_string();
+                    self.output_name = device_name_out(d);
                     self.suppress_output_signal = true;
                     widgets.vol_scale.set_value(self.output_percent);
                     self.suppress_output_signal = false;
+                } else {
+                    self.output_name = String::new();
                 }
 
                 // Refresh input (mic) volume.
@@ -357,9 +396,12 @@ impl Component for ControlCenterSlidersModel {
                 if let Some(d) = &self.input_device {
                     self.input_percent = d.volume.get().average();
                     self.input_icon = get_audio_in_icon(d).to_string();
+                    self.input_name = device_name_in(d);
                     self.suppress_input_signal = true;
                     widgets.mic_scale.set_value(self.input_percent);
                     self.suppress_input_signal = false;
+                } else {
+                    self.input_name = String::new();
                 }
 
                 // Refresh brightness.
@@ -443,4 +485,17 @@ impl Component for ControlCenterSlidersModel {
 
         self.update_view(widgets, sender);
     }
+}
+
+/// Human-readable name for an output device — its description, falling
+/// back to the PipeWire node name.
+fn device_name_out(d: &Arc<OutputDevice>) -> String {
+    let desc = d.description.get();
+    if desc.is_empty() { d.name.get() } else { desc }
+}
+
+/// Human-readable name for an input device.
+fn device_name_in(d: &Arc<InputDevice>) -> String {
+    let desc = d.description.get();
+    if desc.is_empty() { d.name.get() } else { desc }
 }
