@@ -155,16 +155,29 @@ fn exists_and_readable(p: &Path) -> bool {
     std::fs::metadata(p).map(|m| m.is_file()).unwrap_or(false)
 }
 
+/// Fetch the compositor state snapshot over margo's IPC socket
+/// (`$MARGO_SOCKET` / `$XDG_RUNTIME_DIR/margo/margo-ipc.sock`) with a
+/// one-shot `get state`. Returns `None` when margo isn't reachable —
+/// the caller falls back to the built-in wallpaper paths.
 fn read_state_json() -> Option<serde_json::Value> {
-    let runtime = std::env::var_os("XDG_RUNTIME_DIR")
+    use std::io::{BufRead, BufReader, Write};
+    let sock_path = std::env::var_os("MARGO_SOCKET")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
-            let uid = unsafe { libc::getuid() };
-            PathBuf::from(format!("/run/user/{uid}"))
+            let runtime = std::env::var_os("XDG_RUNTIME_DIR")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| {
+                    let uid = unsafe { libc::getuid() };
+                    PathBuf::from(format!("/run/user/{uid}"))
+                });
+            runtime.join("margo").join("margo-ipc.sock")
         });
-    let path = runtime.join("margo").join("state.json");
-    let raw = std::fs::read(&path).ok()?;
-    serde_json::from_slice(&raw).ok()
+    let mut sock = std::os::unix::net::UnixStream::connect(sock_path).ok()?;
+    sock.write_all(b"get state\n").ok()?;
+    let mut reader = BufReader::new(sock);
+    let mut line = String::new();
+    reader.read_line(&mut line).ok()?;
+    serde_json::from_str(line.trim()).ok()
 }
 
 fn home_dir() -> PathBuf {

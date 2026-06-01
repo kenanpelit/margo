@@ -117,37 +117,18 @@ pub fn socket_path() -> std::path::PathBuf {
     runtime.join("margo").join("margo-ipc.sock")
 }
 
-/// Resolve the conventional path to state.json — same logic mlock
-/// uses (`XDG_RUNTIME_DIR/margo/state.json`, falling back to
-/// `/run/user/<uid>/margo/state.json` when the env-var is unset).
-pub fn state_json_path() -> std::path::PathBuf {
-    let runtime = std::env::var_os("XDG_RUNTIME_DIR")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| {
-            let uid = unsafe { libc::getuid() };
-            std::path::PathBuf::from(format!("/run/user/{uid}"))
-        });
-    runtime.join("margo").join("state.json")
-}
-
-/// Read and parse the current state.json. Returns `None` when the
-/// file is missing (margo not running) or the parse fails.
+/// One-shot `get state` over margo's IPC socket. Returns `None` when
+/// the compositor isn't running or the reply doesn't parse. Used by
+/// the synchronous callers (launcher tag/window providers) that want a
+/// quick snapshot without subscribing.
 pub fn read() -> Option<StateJson> {
-    let raw = read_raw()?;
-    match serde_json::from_str::<StateJson>(&raw) {
-        Ok(s) => Some(s),
-        Err(e) => {
-            let path = state_json_path();
-            tracing::warn!(path = %path.display(), error = %e, "state.json parse failed");
-            None
-        }
-    }
-}
-
-/// Just the raw bytes — used by the poll loop to short-circuit when
-/// the file hasn't changed since the last apply.
-pub fn read_raw() -> Option<String> {
-    std::fs::read_to_string(state_json_path()).ok()
+    use std::io::{BufRead, BufReader, Write};
+    let mut sock = std::os::unix::net::UnixStream::connect(socket_path()).ok()?;
+    sock.write_all(b"get state\n").ok()?;
+    let mut reader = BufReader::new(sock);
+    let mut line = String::new();
+    reader.read_line(&mut line).ok()?;
+    serde_json::from_str::<StateJson>(line.trim()).ok()
 }
 
 /// Margo encodes tag IDs as a bitmask — convert the lowest-set bit
