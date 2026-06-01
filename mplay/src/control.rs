@@ -166,11 +166,41 @@ pub fn start() -> Result<()> {
     Ok(())
 }
 
+/// Rich play/pause notification: ▶/⏸ icon + the media title, coalesced
+/// into a single updating popup (like the volume OSD).
+fn notify_media(playing: bool, title: &str) {
+    if !have("notify-send") {
+        return;
+    }
+    let (icon, summary) = if playing {
+        ("media-playback-start", "▶  Oynatılıyor")
+    } else {
+        ("media-playback-pause", "⏸  Duraklatıldı")
+    };
+    let _ = Command::new("notify-send")
+        .args([
+            "-t",
+            "1500",
+            "-i",
+            icon,
+            "-h",
+            "string:x-canonical-private-synchronous:mplay",
+            summary,
+            title,
+        ])
+        .status();
+}
+
 pub fn toggle() -> Result<()> {
     if !mpv_running() || !mpv_ipc::socket_ready() {
         bail!("MPV çalışmıyor");
     }
     mpv_ipc::toggle_pause()?;
+    // Let mpv apply the cycle, then report the resulting state + title.
+    sleep(Duration::from_millis(40));
+    let playing = !mpv_ipc::get_bool("pause").unwrap_or(false);
+    let title = mpv_ipc::get_string("media-title").unwrap_or_default();
+    notify_media(playing, &title);
     Ok(())
 }
 
