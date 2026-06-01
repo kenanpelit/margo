@@ -67,7 +67,6 @@ label.bt-connected {
 // Flat, clickable device row — mirrors `.audio-dashboard-device-row`.
 .bluetooth-dashboard-device-row {
   all: unset;
-  display: flex;           // relm4 gtk Box — CSS box model hint
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   font-size: var(--font-xs);

@@ -256,15 +256,42 @@ enum Command {
     #[command(name = "session-load", display_order = 34, alias = "session_load")]
     SessionLoad,
 
+    /// Raw IPC query — print one JSON reply and exit.
+    #[command(
+        display_order = 2,
+        long_about = "Send a `get <topic> [args…]` request over margo's IPC socket and \
+                      pretty-print the single JSON reply.\n\n\
+                      TOPICS: state | clients | client <id> | monitors | monitor <name> | \
+                      tags <monitor> | focused | layouts | keyboard-layout | twilight | \
+                      config-errors\n\n\
+                      EXAMPLES:\n  \
+                        mctl get state\n  \
+                        mctl get clients\n  \
+                        mctl get tags DP-3"
+    )]
+    Get {
+        /// Topic and any args (e.g. `state`, `client 3`, `tags DP-3`).
+        #[arg(required = true, num_args = 1..)]
+        topic: Vec<String>,
+    },
+
     /// Stream state updates from margo (runs until Ctrl-C)
     #[command(
         display_order = 2,
-        long_about = "Stream a fresh status block every time the compositor publishes a \
-                      `frame` event on the targeted output. Useful for watching focus / \
-                      tag / layout changes live, or for piping into `awk`/`jq` in shell \
-                      scripts that react to compositor state."
+        long_about = "Subscribe to a `watch <topic>` stream over margo's IPC socket and \
+                      print a fresh JSON frame on every change. With no topic this watches \
+                      `state` (the full snapshot) and renders the human status block; with \
+                      a topic it prints raw JSON frames.\n\n\
+                      EXAMPLES:\n  \
+                        mctl watch                 # live status (state)\n  \
+                        mctl watch tags DP-3       # raw tag frames for one monitor\n  \
+                        mctl watch focused"
     )]
-    Watch,
+    Watch {
+        /// Topic to watch (omit for `state` + human status rendering).
+        #[arg(num_args = 0..)]
+        topic: Vec<String>,
+    },
 
     /// Print current status (one shot)
     #[command(
@@ -927,11 +954,24 @@ fn main() -> Result<()> {
                 print_status_rich(&snap, args.output.as_deref());
             }
         }
-        Command::Watch => {
-            mctl::ipc_client::watch_stream("watch state", |frame| {
-                print_status_rich(&frame, args.output.as_deref());
-                true
-            })?;
+        Command::Get { topic } => {
+            let reply = mctl::ipc_client::request_once(&format!("get {}", topic.join(" ")))?;
+            println!("{}", serde_json::to_string_pretty(&reply)?);
+        }
+        Command::Watch { topic } => {
+            if topic.is_empty() {
+                // Bare `watch`: live status stream with human rendering.
+                mctl::ipc_client::watch_stream("watch state", |frame| {
+                    print_status_rich(&frame, args.output.as_deref());
+                    true
+                })?;
+            } else {
+                // `watch <topic>`: raw JSON frames.
+                mctl::ipc_client::watch_stream(&format!("watch {}", topic.join(" ")), |frame| {
+                    println!("{frame}");
+                    true
+                })?;
+            }
         }
         Command::Actions { .. }
         | Command::Completions { .. }

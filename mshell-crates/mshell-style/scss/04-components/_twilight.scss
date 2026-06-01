@@ -61,7 +61,7 @@
     min-height: 16px;
     border-radius: var(--radius-pill);
     background-color: var(--primary);
-    margin: -var(--space-2);
+    margin: calc(var(--space-2) * -1);
   }
   // The live-value readout drawn at the right of the track.
   value {

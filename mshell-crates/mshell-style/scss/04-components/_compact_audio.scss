@@ -51,6 +51,6 @@
     min-height: 12px;
     border-radius: var(--radius-pill);
     background-color: var(--primary);
-    margin: -var(--space-1);
+    margin: calc(var(--space-1) * -1);
   }
 }

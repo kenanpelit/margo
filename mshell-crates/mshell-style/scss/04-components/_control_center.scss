@@ -78,7 +78,6 @@
   padding: var(--space-1);
   border-radius: var(--radius-sm);
   color: var(--on-surface-variant);
-  cursor: pointer;
   @include state-layer();
 
   image {
@@ -134,7 +133,6 @@
   background: var(--surface-container);
   border-radius: var(--radius-md);
   padding: var(--space-3);
-  cursor: pointer;
   // State-layer over the resting surface colour so hover composites cleanly.
   @include state-layer(var(--surface-container));
 
@@ -274,7 +272,6 @@
   all: unset;
   border-radius: var(--radius-sm);
   padding: var(--space-2);
-  cursor: pointer;
   color: var(--on-surface-variant);
   @include state-layer(transparent);
 
