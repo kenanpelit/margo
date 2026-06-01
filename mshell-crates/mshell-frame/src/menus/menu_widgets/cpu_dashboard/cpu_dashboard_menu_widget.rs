@@ -133,10 +133,6 @@ pub(crate) struct CpuDashboardMenuWidgetModel {
     cores: CoreDeltas,
     sensor_path: Option<PathBuf>,
     core_rows: Vec<CoreRow>,
-    /// Per-sensor `(caption, value)` label pairs, reused across polls
-    /// (rebuilt only when the sensor count changes).
-    temp_rows: Vec<(gtk::Label, gtk::Label)>,
-    fan_rows: Vec<(gtk::Label, gtk::Label)>,
     /// CPU-load samples for the sparkline; shared with the draw func.
     history: Rc<RefCell<Vec<u32>>>,
 }
@@ -315,42 +311,64 @@ impl Component for CpuDashboardMenuWidgetModel {
                 set_spacing: 4,
             },
 
-            // Temperatures — every hwmon sensor (CPU/GPU/NVMe/chipset),
-            // not just the CPU package. Whole section hides when none.
-            #[name = "temps_section"]
+            // Sensors — one tidy line: the average across all hwmon
+            // temperature sensors (CPU/GPU/NVMe/…) + the average fan
+            // RPM. Each half hides when it has no readings; the whole
+            // line hides on a sensorless host.
             gtk::Box {
-                set_orientation: gtk::Orientation::Vertical,
-                set_spacing: 4,
+                add_css_class: "cpu-dashboard-sensor-line",
+                set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 18,
+                set_margin_top: 2,
                 #[watch]
-                set_visible: !model.temps.is_empty(),
-                gtk::Label {
-                    add_css_class: "cpu-dashboard-section-label",
-                    set_label: "TEMPERATURES",
-                    set_halign: gtk::Align::Start,
-                },
-                #[name = "sensors_box"]
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Vertical,
-                    set_spacing: 4,
-                },
-            },
+                set_visible: !model.temps.is_empty() || !model.fans.is_empty(),
 
-            // Fans (hwmon fanN_input). Hidden on fanless / no-sensor hosts.
-            #[name = "fans_section"]
-            gtk::Box {
-                set_orientation: gtk::Orientation::Vertical,
-                set_spacing: 4,
-                #[watch]
-                set_visible: !model.fans.is_empty(),
-                gtk::Label {
-                    add_css_class: "cpu-dashboard-section-label",
-                    set_label: "FANS",
-                    set_halign: gtk::Align::Start,
-                },
-                #[name = "fans_box"]
                 gtk::Box {
-                    set_orientation: gtk::Orientation::Vertical,
-                    set_spacing: 4,
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 6,
+                    #[watch]
+                    set_visible: !model.temps.is_empty(),
+                    gtk::Image {
+                        add_css_class: "current-weather-detail-icon",
+                        set_icon_name: Some("temperature-symbolic"),
+                    },
+                    gtk::Label {
+                        add_css_class: "cpu-dashboard-section-label",
+                        set_label: "TEMP",
+                        set_valign: gtk::Align::Center,
+                    },
+                    gtk::Label {
+                        #[watch]
+                        set_css_classes: &[
+                            "cpu-dashboard-stat-value",
+                            temp_label_class(model.avg_temp()),
+                        ],
+                        #[watch]
+                        set_label: &format!("{}°C", model.avg_temp()),
+                        set_valign: gtk::Align::Center,
+                    },
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 6,
+                    #[watch]
+                    set_visible: !model.fans.is_empty(),
+                    gtk::Image {
+                        add_css_class: "current-weather-detail-icon",
+                        set_icon_name: Some("weather-windy-symbolic"),
+                    },
+                    gtk::Label {
+                        add_css_class: "cpu-dashboard-section-label",
+                        set_label: "FAN",
+                        set_valign: gtk::Align::Center,
+                    },
+                    gtk::Label {
+                        add_css_class: "cpu-dashboard-stat-value",
+                        #[watch]
+                        set_label: &format!("{} RPM", model.avg_fan()),
+                        set_valign: gtk::Align::Center,
+                    },
                 },
             },
 
@@ -552,8 +570,6 @@ impl Component for CpuDashboardMenuWidgetModel {
             cores: CoreDeltas::default(),
             sensor_path,
             core_rows: Vec::new(),
-            temp_rows: Vec::new(),
-            fan_rows: Vec::new(),
             history: Rc::new(RefCell::new(Vec::with_capacity(HISTORY_LEN))),
         };
 
@@ -710,7 +726,6 @@ impl Component for CpuDashboardMenuWidgetModel {
 
                 self.temps = read_all_temp_sensors_pub();
                 self.fans = read_all_fans_pub();
-                self.sync_sensor_rows(&widgets.sensors_box, &widgets.fans_box);
 
                 if let Some((used, total, swap_used, swap_total)) = read_mem_detail() {
                     self.mem_used_kb = used;
@@ -747,65 +762,24 @@ impl CpuDashboardMenuWidgetModel {
         }
     }
 
-    /// Reconcile the temperature / fan row widgets against the latest
-    /// readings. The row structure is rebuilt only when a sensor count
-    /// changes (sensors appear/disappear rarely); otherwise just the
-    /// value labels update, so there's no per-poll widget churn.
-    fn sync_sensor_rows(&mut self, sensors_box: &gtk::Box, fans_box: &gtk::Box) {
-        if self.temp_rows.len() != self.temps.len() {
-            while let Some(c) = sensors_box.first_child() {
-                sensors_box.remove(&c);
-            }
-            self.temp_rows.clear();
-            for _ in &self.temps {
-                let (row, cap, val) = stat_row();
-                sensors_box.append(&row);
-                self.temp_rows.push((cap, val));
-            }
+    /// Mean temperature across all hwmon sensors, rounded to °C. 0 when
+    /// no sensors (the line is hidden in that case anyway).
+    fn avg_temp(&self) -> i32 {
+        if self.temps.is_empty() {
+            return 0;
         }
-        for (i, (name, c)) in self.temps.iter().enumerate() {
-            if let Some((cap, val)) = self.temp_rows.get(i) {
-                cap.set_label(name);
-                val.set_label(&format!("{c}°C"));
-                val.set_css_classes(&["cpu-dashboard-stat-value", temp_label_class(*c)]);
-            }
-        }
-
-        if self.fan_rows.len() != self.fans.len() {
-            while let Some(c) = fans_box.first_child() {
-                fans_box.remove(&c);
-            }
-            self.fan_rows.clear();
-            for _ in &self.fans {
-                let (row, cap, val) = stat_row();
-                fans_box.append(&row);
-                self.fan_rows.push((cap, val));
-            }
-        }
-        for (i, (name, rpm)) in self.fans.iter().enumerate() {
-            if let Some((cap, val)) = self.fan_rows.get(i) {
-                cap.set_label(name);
-                val.set_label(&format!("{rpm} RPM"));
-            }
-        }
+        let sum: i32 = self.temps.iter().map(|(_, c)| *c).sum();
+        sum / self.temps.len() as i32
     }
-}
 
-/// Build a `caption … value` stat row (caption left/expanding, value
-/// right-aligned), matching the dashboard's other labelled rows.
-fn stat_row() -> (gtk::Box, gtk::Label, gtk::Label) {
-    let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-    let cap = gtk::Label::new(None);
-    cap.add_css_class("cpu-dashboard-stat-caption");
-    cap.set_xalign(0.0);
-    cap.set_hexpand(true);
-    let val = gtk::Label::new(None);
-    val.add_css_class("cpu-dashboard-stat-value");
-    val.set_xalign(1.0);
-    val.set_width_chars(7);
-    row.append(&cap);
-    row.append(&val);
-    (row, cap, val)
+    /// Mean fan speed across all hwmon fans, rounded to RPM.
+    fn avg_fan(&self) -> u32 {
+        if self.fans.is_empty() {
+            return 0;
+        }
+        let sum: u64 = self.fans.iter().map(|(_, rpm)| *rpm as u64).sum();
+        (sum / self.fans.len() as u64) as u32
+    }
 }
 
 /// KiB → "X.Y GB".
