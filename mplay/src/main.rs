@@ -4,6 +4,7 @@ mod cli;
 mod control;
 mod geometry;
 mod margo;
+mod media;
 mod mpv_ipc;
 mod paper;
 mod ytdl;
@@ -26,6 +27,12 @@ fn main() -> Result<()> {
         Command::Pin => control::pin(),
         Command::Focus => control::focus(),
         Command::Stop => control::stop(),
+        Command::Media { action, player } => {
+            let cmd = media::status::Command::parse(&action).ok_or_else(|| {
+                anyhow!("geçersiz media komutu: {action} (toggle|play|pause|stop|next|prev|status)")
+            })?;
+            media::run(cmd, player.as_deref())
+        }
         Command::Wallpaper(w) => match w {
             WallpaperCmd::Start {
                 src,

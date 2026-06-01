@@ -38,6 +38,14 @@ pub enum Command {
     Focus,
     /// Quit mpv
     Stop,
+    /// Smart media control across players (mpv/MPD/MPRIS: Spotify, VLC, …)
+    #[command(alias = "m")]
+    Media {
+        /// toggle | play | pause | stop | next | prev | status
+        action: String,
+        /// Target: spotify | vlc | mpv | mpd | browser (default: auto-detect)
+        player: Option<String>,
+    },
     /// Native video wallpaper (start/stop)
     #[command(alias = "wall", subcommand)]
     Wallpaper(WallpaperCmd),
