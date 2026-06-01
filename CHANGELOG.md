@@ -7,6 +7,54 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.9.4] – 2026-06-01
+
+Brings the user's external helper scripts in-house: a new first-party `mplay`
+binary, a synthetic-key `sendkey` action, and manual power-profile control.
+
+### Added
+
+- **`mplay` — native mpv companion** (new binary). Replaces `margo-mpv.sh`:
+  - **Window control:** `start` / `toggle` / `play [URL]` / `download` / `snap`
+    (corner cycle) / `pin` (all-tags) / `focus` / `stop`, over mpv's JSON IPC
+    socket + `mctl`.
+  - **Native video wallpaper:** `mplay wallpaper start <SRC>` / `stop` — an
+    in-tree mpvpaper port (wlr-layer-shell background surface + EGL +
+    hand-written libmpv render-gl FFI), no external `mpvpaper`/uinput.
+  - **Smart media control:** `mplay media <toggle|play|pause|stop|next|prev|
+    status> [player]` — auto-detects the best active player across MPRIS
+    (`playerctl`), MPD (`mpc`), and mpv; scoring + last-player memory + Spotify
+    autostart + album-art notifications (osc-media.sh port).
+  - Embedded yt-dlp shim (anti-bot fallback, cookies, browser UA) — no external
+    `yt-dlp-mpv` script. optdepends: `mpv`, `yt-dlp`, `playerctl`, `mpc`.
+- **`sendkey` dispatch action** — inject a synthetic key combo into the focused
+  window: `sendkey,<combo>[,<appid-regex>][,<fallback>]`. Forwards the keys via
+  the seat keyboard (no ydotool/uinput/virtual-keyboard). Powers 3-finger
+  touchpad browser tab-switching (`ctrl+Tab` / `ctrl+shift+Tab`, app-id gated,
+  with a `focusdir` fallback) — replaces fusuma + fusuma-plugin-sendkey.
+  Layout-independent keys only (Tab, Page_Up/Down, arrows, F-keys, …).
+- **`mpower cycle` / `mpower set <profile>`** — manual power-profile switching
+  (e.g. on a keybind); the auto-profile daemon honours the manual change until
+  the next AC transition.
+
+### Fixed
+
+- **`mctl dispatch spawn` multi-word args** — `spawn 'kitty -e htop'` no longer
+  drops everything past the first token over the socket.
+- **IPC outbound back-pressure** — a slow `watch` subscriber is buffered
+  (bounded, with a WRITE source) instead of being dropped on the first partial
+  write; the event loop never blocks or spins.
+- **CI** — drop debuginfo + incremental artifacts so the full-workspace build
+  fits the runner disk.
+
+### Internal
+
+- Large unit-test expansion (mplay controller/media/engine helpers, sendkey
+  combo/regex parsing, IPC framing) — workspace suite well past 600 tests,
+  clippy `-D warnings` clean.
+- Docs (site + README) refreshed for the socket IPC + the new tools; all
+  `config.conf` comments translated to English.
+
 ## [0.9.3] – 2026-06-01
 
 A from-scratch IPC rewrite: the legacy `dwl-ipc-unstable-v2` Wayland protocol
