@@ -74,7 +74,7 @@ fn read_clipboard() -> String {
 }
 
 /// Resolve a source from an explicit argument, else the clipboard.
-fn resolve_source(arg: Option<&str>) -> String {
+pub fn resolve_source(arg: Option<&str>) -> String {
     let raw = match arg {
         Some(a) if !a.trim().is_empty() => a.to_string(),
         _ => read_clipboard(),

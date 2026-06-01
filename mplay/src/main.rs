@@ -37,6 +37,12 @@ fn main() -> Result<()> {
             } => {
                 let scale = ScaleMode::parse(&scale)
                     .ok_or_else(|| anyhow!("geçersiz --scale: {scale} (fit|fill|stretch)"))?;
+                let src = control::resolve_source(src.as_deref());
+                if src.is_empty() {
+                    return Err(anyhow!(
+                        "wallpaper: kaynak yok (argüman ver veya panoya bir yol/URL koy)"
+                    ));
+                }
                 let opts = PaperOpts {
                     mute,
                     looping: !no_loop,

@@ -53,8 +53,8 @@ pub enum Command {
 pub enum WallpaperCmd {
     /// Play a video wallpaper on the background layer
     Start {
-        /// Video file or URL
-        src: String,
+        /// Video file or URL (defaults to clipboard contents)
+        src: Option<String>,
         /// Target output name (default: all outputs)
         #[arg(long)]
         output: Option<String>,
