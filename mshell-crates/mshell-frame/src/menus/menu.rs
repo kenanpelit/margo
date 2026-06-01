@@ -551,16 +551,27 @@ impl Component for MenuModel {
             }
         }
 
+        // The wizard is the one menu that isn't config-driven (its arm
+        // above deliberately skips effect_min_width!/effect_max_height!),
+        // so it carries its own fixed start size here: a 640×720
+        // layer-shell surface. The width is pinned (min == max content
+        // width) and `fixed_height` pins the height too (min == max
+        // content height = 720), so the 8-page setup Stack opens at a
+        // stable size instead of jumping as the user steps through pages.
+        let (minimum_width, maximum_height) = match params.menu_type {
+            MenuType::Wizard => (640, 720),
+            _ => (410, 0),
+        };
         let model = MenuModel {
             widget_controllers: Vec::new(),
             widget_kinds: Vec::new(),
-            minimum_width: 410,
-            maximum_height: 0,
+            minimum_width,
+            maximum_height,
             css_class,
             weather_all_in_one: matches!(params.menu_type, MenuType::Weather),
             built: false,
             lazy_wizard: matches!(params.menu_type, MenuType::Wizard),
-            fixed_height: matches!(params.menu_type, MenuType::PluginPanel),
+            fixed_height: matches!(params.menu_type, MenuType::PluginPanel | MenuType::Wizard),
             _effects: effects,
         };
 

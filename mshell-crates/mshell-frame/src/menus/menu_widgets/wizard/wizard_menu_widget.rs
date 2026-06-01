@@ -167,7 +167,11 @@ impl SimpleComponent for WizardMenuWidgetModel {
             set_orientation: gtk::Orientation::Vertical,
             set_spacing: 16,
             set_hexpand: true,
-            set_width_request: 440,
+            // Fills the 640 px wizard menu minus the container's 20 px
+            // side margins. `hexpand` already stretches it; this floor
+            // keeps the form controls at the full width if a page's
+            // natural width ever comes in narrower.
+            set_width_request: 600,
 
             gtk::Label {
                 add_css_class: "label-small",
