@@ -3458,6 +3458,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "khronos-egl"
+version = "6.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6aae1df220ece3c0ada96b8153459b67eebe9ae9212258bb0134ae60416fdf76"
+dependencies = [
+ "libc",
+ "libloading",
+]
+
+[[package]]
 name = "khronos_api"
 version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4094,6 +4104,22 @@ dependencies = [
  "gtk4-layer-shell",
  "image",
  "mshell-screenshot",
+]
+
+[[package]]
+name = "mplay"
+version = "0.9.3"
+dependencies = [
+ "anyhow",
+ "calloop 0.14.4",
+ "clap",
+ "khronos-egl",
+ "libc",
+ "serde_json",
+ "tracing",
+ "wayland-client",
+ "wayland-egl",
+ "wayland-protocols-wlr",
 ]
 
 [[package]]

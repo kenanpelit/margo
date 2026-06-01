@@ -1,0 +1,16 @@
+[package]
+name = "mplay"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+clap = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+anyhow.workspace = true
+calloop.workspace = true
+wayland-client.workspace = true
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
+khronos-egl = { version = "6", features = ["dynamic"] }
+wayland-egl = "0.32"
+libc.workspace = true
+tracing.workspace = true

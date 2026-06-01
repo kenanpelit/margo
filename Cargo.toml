@@ -9,6 +9,7 @@ members = [
     "mlock",
     "mlogind",
     "mpicker",
+    "mplay",
     "mpower",
     "mscreenshot",
     "mvisual",
