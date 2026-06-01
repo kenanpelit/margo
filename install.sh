@@ -290,6 +290,13 @@ debian_install_files() {
   # margo-portal lives under /usr/lib (D-Bus-activated, not a CLI)
   install_file 755 "${tgt}/margo-portal" "/usr/lib/margo/margo-portal"
 
+  # ── man pages (margo / mctl / mshellctl, section 1) ──
+  local manpage
+  for manpage in "${REPO_ROOT}"/man/*.1; do
+    [[ -e "$manpage" ]] || continue
+    install_file 644 "$manpage" "/usr/share/man/man1/$(basename "$manpage")"
+  done
+
   # ── wayland session entry ──
   install_file 644 "${REPO_ROOT}/margo.desktop" "/usr/share/wayland-sessions/margo.desktop"
 

@@ -330,6 +330,16 @@ package() {
       "$pkgdir/usr/share/icons/MargoMaterial/"
   fi
 
+  # ── Man pages ──────────────────────────────────────────────────
+  # Hand-written roff for the compositor + the two IPC clients
+  # (margo / mctl / mshellctl). Section 1.
+  local manpage
+  for manpage in man/*.1; do
+    [[ -f "$manpage" ]] || continue
+    install -Dm644 "$manpage" \
+      "$pkgdir/usr/share/man/man1/$(basename "$manpage")"
+  done
+
   # ── Example compositor configs / docs ──────────────────────────
   install -Dm644 "margo/src/config.example.conf" \
     "$pkgdir/usr/share/doc/$pkgname/config.example.conf"

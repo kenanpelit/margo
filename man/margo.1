@@ -1,0 +1,187 @@
+.\" margo(1) — Wayland compositor
+.\" Hand-written roff. Keep in sync with `margo --help` and CHANGELOG.
+.TH MARGO 1 "2026-06-01" "margo 0.9.1" "Margo Manual"
+.SH NAME
+margo \- a feature-rich Wayland tiling compositor
+.SH SYNOPSIS
+.B margo
+.RI [ OPTIONS ]
+.SH DESCRIPTION
+.B margo
+is a Rust + Smithay Wayland compositor with dynamic tiling, forked in
+spirit from the dwl/mango lineage and rewritten from scratch. It ships a
+first-party desktop shell
+.RB ( mshell )
+and a family of companion tools.
+.PP
+margo composes windows with 14 tiling layouts (tile, scroller, grid,
+monocle, deck, dwindle, \[char46]\&.\&.\&.), per-tag layout memory, a
+nine-tag workspace model, and a PCRE2-style window-rule engine. It speaks
+the
+.B dwl-ipc-unstable-v2
+protocol plus
+.BR foreign-toplevel-list ,
+and publishes a JSON state snapshot that the shell and tooling read.
+.PP
+margo is normally launched by a display manager via the bundled
+.I margo.desktop
+session entry (or the uwsm-managed variant), not invoked by hand. Run it
+directly only for nested
+.RB ( --winit )
+or debugging sessions.
+.SH OPTIONS
+.TP
+.BR \-c ", " \-\-config " " \fIFILE\fR
+Path to the configuration file.
+Default:
+.IR ~/.config/margo/config.conf .
+.TP
+.BR \-s ", " \-\-startup\-command " " \fICMD\fR
+Shell command run once, after the compositor is ready.
+.TP
+.B \-\-winit
+Use the winit backend (nested Wayland/X11 window) instead of the
+udev/DRM backend. Useful for development on top of another compositor.
+.TP
+.BR \-\-xwayland\-satellite " " [\fIBINARY\fR]
+Disable the in-tree Smithay XWayland and run Supreeeme's
+.B xwayland\-satellite
+as a separate process instead. More resilient (an X11 client crash
+can't take the compositor down) and inherits its HiDPI cursor, primary
+selection, and clipboard fixes. Pass without an argument to use the
+binary from
+.BR PATH ;
+pass
+.RI = PATH
+to choose one. Mutually exclusive with
+.BR \-\-no\-xwayland .
+.TP
+.B \-\-no\-xwayland
+Disable XWayland entirely \(em a pure-Wayland session with no X11
+client support. Wins over
+.B \-\-xwayland\-satellite
+if both are given.
+.TP
+.BR \-h ", " \-\-help
+Print help (\fB\-h\fR for a short summary, \fB\-\-help\fR for the long form).
+.TP
+.BR \-V ", " \-\-version
+Print version.
+.SH "KEYBINDINGS AND DISPATCH"
+Keybindings are defined in the config file as
+.B bind
+lines that name a
+.IR "dispatch action" .
+Every action is also reachable at runtime through
+.BR "mctl dispatch" .
+.PP
+.in +4n
+.EX
+bind = super,Return,spawn,kitty
+bind = super,1,view,1
+bind = super+ctrl,Escape,unscratchpad
+.EE
+.in
+.PP
+For the complete, authoritative catalogue of dispatch actions (grouped
+by category, with argument shapes), run:
+.PP
+.in +4n
+.EX
+mctl actions \-\-verbose
+.EE
+.in
+.SS "Tag bitmask convention"
+Tags are a bitmask: tag
+.I N
+is
+.RI "1 << (" N "\-1)" .
+Tag 1 = 1, tag 2 = 2, tag 3 = 4, \[char46]\&.\&.\&, tag 8 = 128, tag 9 = 256.
+.SH IPC
+margo exposes two control channels:
+.TP
+.B dwl-ipc-unstable-v2
+A custom Wayland protocol consumed by
+.BR mctl (1)
+for status, layout/tag changes, and dispatch.
+.TP
+.B state.json
+A JSON snapshot (focused client, outputs, clients, layouts, active
+keyboard layout, twilight state, \[char46]\&.\&.\&.) written on every change to
+.IR $XDG_RUNTIME_DIR/margo/state.json .
+The desktop shell mirrors it into its reactive store.
+.SH CONFIGURATION
+The config is plain text
+.RI ( key " = " value )
+with regex window rules. It is read at startup and hot-reloadable with
+.B mctl reload
+(or the
+.B reload
+dispatch action). Validate a file without applying it using
+.BR "mctl check\-config" ;
+inspect diagnostics from the last reload with
+.BR "mctl config\-errors" .
+.PP
+A fully commented example is installed at
+.IR /usr/share/doc/margo/config.example.conf .
+.SH FILES
+.TP
+.I ~/.config/margo/config.conf
+Compositor configuration (hot-reloadable).
+.TP
+.I ~/.config/margo/
+Per-tag layout profiles
+.RI ( layout_ <name> .conf ),
+keybind fragments, and shell-managed config fragments.
+.TP
+.I $XDG_RUNTIME_DIR/margo/state.json
+Live state snapshot (tooling + shell IPC side-channel).
+.TP
+.I $XDG_STATE_HOME/margo/session.json
+Saved per-monitor tag/layout state
+.RB ( "mctl session\-save" " / " session\-load ).
+.TP
+.I /usr/share/doc/margo/config.example.conf
+Annotated example configuration.
+.SH ENVIRONMENT
+.TP
+.B MARGO_LOG
+tracing filter, e.g.
+.IR info ", " debug ", or " margo=trace,smithay=info .
+.TP
+.B XDG_RUNTIME_DIR
+Base for the runtime state directory; falls back to
+.IR /run/user/<uid> .
+.SH EXAMPLES
+Start a nested instance for development:
+.PP
+.in +4n
+.EX
+margo \-\-winit
+.EE
+.in
+.PP
+Launch with verbose logging and an autostart command:
+.PP
+.in +4n
+.EX
+MARGO_LOG=debug margo \-s 'kitty'
+.EE
+.in
+.SH "SEE ALSO"
+.BR mctl (1),
+.BR mshellctl (1),
+.BR mlayout (1),
+.BR mscreenshot (1),
+.BR mlock (1),
+.BR mpicker (1)
+.PP
+Project documentation:
+.UR https://github.com/kenanpelit/margo
+.UE
+.SH AUTHORS
+margo is developed by Kenan Pelit and contributors.
+.SH BUGS
+Report issues at
+.UR https://github.com/kenanpelit/margo/issues
+.UE .

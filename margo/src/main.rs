@@ -149,20 +149,29 @@ pub struct PendingOutputModeChange {
 A feature-rich Wayland compositor (Rust/Smithay rewrite of mango).
 
 COMPANION BINARIES (each has its own --help):
-  mctl              IPC client — status, layout, tag, dispatch,
-                    actions catalogue (`mctl actions`).
-  mlayout      Named monitor-arrangement profiles. Capture the
+  mctl              Compositor IPC client — status, layout, tag,
+                    dispatch, actions catalogue (`mctl actions`).
+  mshellctl         Desktop-shell IPC client — toggle menus, audio,
+                    brightness, wallpaper, lock.
+  mlayout           Named monitor-arrangement profiles. Capture the
                     live setup with `init` / `new`, switch with
                     `set`, `next`, `prev`, or `pick`.
   mscreenshot       Screenshot helper — `rec` / `area` / `screen` /
                     `window` / `open` / `dir`.
+  mpicker           Native screen colour picker (frozen overlay + lens).
+  mlock             Lock-screen binary (PAM + ext-session-lock-v1).
 
 ENVIRONMENT:
   MARGO_LOG         tracing filter (e.g. `info`, `debug`,
                     `margo=trace,smithay=info`).
 
+FILES:
+  ~/.config/margo/config.conf   compositor configuration (hot-reloadable)
+  $XDG_RUNTIME_DIR/margo/state.json   live state snapshot (IPC side-channel)
+
 DOCUMENTATION:
-  /usr/share/doc/margo-git/   config example, road map, READMEs
+  man margo, man mctl, man mshellctl
+  /usr/share/doc/margo/        config example, road map, READMEs
   https://github.com/kenanpelit/margo"
 )]
 struct Args {

@@ -14,7 +14,31 @@ use crate::subcommands::wallpaper::WallpaperCommands;
 use mshell_cli_style;
 
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
+#[command(
+    author,
+    version,
+    about = "Control the margo desktop shell (mshell) over D-Bus.",
+    long_about = "\
+Control the running margo desktop shell (mshell) over the session
+D-Bus (service `com.mshell.Shell`).
+
+mshellctl drives the SHELL — menus, bars, audio, brightness, wallpaper,
+the lock screen — and is distinct from `mctl`, which controls the
+COMPOSITOR (windows, tags, layouts). The two talk to different daemons.
+
+EXAMPLES:
+  mshellctl menu control-center     # toggle the quick-settings panel
+  mshellctl menu dashboard          # toggle the dashboard
+  mshellctl audio volume 60         # set output volume to 60%
+  mshellctl audio mute              # toggle output mute
+  mshellctl brightness up           # raise backlight 5%
+  mshellctl media toggle            # MPRIS play/pause the active player
+  mshellctl wallpaper next          # cycle to the next wallpaper
+  mshellctl lock                    # lock the session
+
+SEE ALSO:
+  man mshellctl, man mctl, man margo"
+)]
 #[command(styles = mshell_cli_style::get_styles())]
 pub struct Cli {
     #[command(subcommand)]

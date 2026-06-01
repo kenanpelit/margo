@@ -1,0 +1,176 @@
+.\" mctl(1) — margo compositor IPC client
+.\" Command list mirrors `mctl --help`; the exhaustive flag surface
+.\" lives in `mctl <CMD> --help` and `mctl actions`.
+.TH MCTL 1 "2026-06-01" "margo 0.9.1" "Margo Manual"
+.SH NAME
+mctl \- query and control the margo Wayland compositor
+.SH SYNOPSIS
+.B mctl
+.RI [ \-o " " OUTPUT ]
+.I COMMAND
+.RI [ ARGS .\|.\|.]
+.SH DESCRIPTION
+.B mctl
+talks to a running
+.BR margo (1)
+compositor over the
+.B dwl-ipc-unstable-v2
+protocol (and reads the
+.I state.json
+snapshot for richer queries). It controls the
+.IR compositor "\(em"
+windows, tags, layouts, and the dispatch action table.
+.PP
+For the
+.I shell
+(menus, audio, brightness, wallpaper) use
+.BR mshellctl (1)
+instead; the two talk to different daemons.
+.SH "GLOBAL OPTIONS"
+.TP
+.BR \-o ", " \-\-output " " \fIOUTPUT\fR
+Target output (connector name, e.g.
+.IR eDP-1 ).
+Default: the focused output, falling back to the first.
+.TP
+.BR \-h ", " \-\-help
+Print help.
+.TP
+.BR \-V ", " \-\-version
+Print version.
+.SH COMMANDS
+.SS "Query"
+.TP
+.B status
+Print current focused-client / tag state (one shot).
+.TP
+.B watch
+Stream state updates until interrupted (Ctrl-C).
+.TP
+.B clients
+List every open window with tag, monitor, app_id, and title.
+.TP
+.B outputs
+List connected outputs with mode, position, scale, and layout.
+.TP
+.B focused
+Print the focused window's app_id + title (terse, scriptable).
+.TP
+.B config-errors
+Show config diagnostics from the last reload (niri-style).
+.SS "Control"
+.TP
+.B dispatch \fIACTION\fR [\fIARGS\fR]
+Run a compositor action by name (the same names used in
+.B bind
+lines). See
+.B ACTIONS
+below.
+.TP
+.B tags \fIBITMASK\fR
+Set the active tagset on the target output (raw tag bitmask).
+.TP
+.B layout \fIINDEX\fR
+Set the layout by 0-based index (matches the compositor's layout list).
+.TP
+.B client-tags \fIBITMASK\fR
+Mutate the focused client's tag bitmask (advanced).
+.TP
+.B reload
+Reload
+.IR ~/.config/margo/config.conf .
+.TP
+.B theme \fIPRESET\fR
+Live-swap the visual theme preset.
+.TP
+.B twilight \fI.\|.\|.\fR
+Control the built-in blue-light filter (toggle / temperature / mode).
+.TP
+.B quit
+Quit the compositor cleanly.
+.SS "Session"
+.TP
+.B session-save
+Save per-monitor tag/layout state to
+.IR session.json .
+.TP
+.B session-load
+Restore per-monitor tag/layout state from
+.IR session.json .
+.SS "Scripting and tooling"
+.TP
+.B run \fIFILE\fR
+One-shot Rhai script execution against the live compositor.
+.TP
+.B actions " " [\fB\-\-group\fR \fIGROUP\fR] [\fB\-\-names\fR] [\fB\-\-verbose\fR]
+List every dispatch action margo accepts (for binds and
+.BR "mctl dispatch" ).
+.TP
+.B rules \fIAPP_ID\fR \fITITLE\fR
+Dry-run window rules against an app_id / title pair.
+.TP
+.B check-config " " [\fIFILE\fR]
+Validate a config file (niri-style diagnostics) without applying it.
+.TP
+.B migrate \fIFILE\fR
+Translate a Hyprland or Sway/i3 config to margo.
+.TP
+.B completions \fISHELL\fR
+Emit a shell-completion script
+.RI ( bash " | " zsh " | " fish " | " elvish " | " powershell ).
+.PP
+Run
+.B mctl
+.I COMMAND
+.B \-\-help
+for the full argument surface of any command.
+.SH ACTIONS
+Dispatch actions are the verbs behind both
+.B bind
+lines and
+.BR "mctl dispatch" .
+The authoritative, grouped catalogue \(em with argument shapes \(em is:
+.PP
+.in +4n
+.EX
+mctl actions \-\-verbose
+mctl actions \-\-group Tag      # one category
+mctl actions \-\-names         # bare names (for completions)
+.EE
+.in
+.SS "Tag bitmask convention"
+Tag
+.I N
+is
+.RI "1 << (" N "\-1)" :
+tag 1 = 1, tag 2 = 2, tag 3 = 4, \[char46]\&.\&.\&, tag 8 = 128, tag 9 = 256.
+.SH EXAMPLES
+.in +4n
+.EX
+mctl status
+mctl watch
+mctl tags 128                  # switch to tag 8
+mctl layout 1                  # scroller layout
+mctl dispatch togglefloating
+mctl dispatch view 4           # switch to tag 3
+mctl dispatch spawn 'kitty \-e htop'
+mctl \-o DP-2 layout 0          # target a specific output
+.EE
+.in
+.SH FILES
+.TP
+.I ~/.config/margo/config.conf
+Compositor configuration that
+.B reload
+re-reads.
+.TP
+.I $XDG_RUNTIME_DIR/margo/state.json
+State snapshot mctl reads for rich queries.
+.SH "SEE ALSO"
+.BR margo (1),
+.BR mshellctl (1),
+.BR mlayout (1)
+.SH AUTHORS
+Part of margo, by Kenan Pelit and contributors \(em
+.UR https://github.com/kenanpelit/margo
+.UE .

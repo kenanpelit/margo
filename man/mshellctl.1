@@ -1,0 +1,116 @@
+.\" mshellctl(1) — margo desktop-shell IPC client
+.\" Command list mirrors `mshellctl --help`; per-command detail is in
+.\" `mshellctl <CMD> --help`.
+.TH MSHELLCTL 1 "2026-06-01" "margo 0.9.1" "Margo Manual"
+.SH NAME
+mshellctl \- control the margo desktop shell (mshell)
+.SH SYNOPSIS
+.B mshellctl
+.I COMMAND
+.RI [ SUBCOMMAND "] [" ARGS .\|.\|.]
+.SH DESCRIPTION
+.B mshellctl
+drives the running margo desktop shell
+.RB ( mshell )
+over the session D-Bus (service
+.IR com.mshell.Shell ).
+It controls the
+.IR shell "\(em"
+menus, bars, audio, brightness, wallpaper, and the lock screen.
+.PP
+This is distinct from
+.BR mctl (1),
+which controls the
+.I compositor
+(windows, tags, layouts). The two talk to different daemons \(em don't
+conflate them.
+.SH COMMANDS
+.SS "Menus and bars"
+.TP
+.B menu \fISUBCOMMAND\fR
+Open / close a shell menu:
+.IR control-center ", " dashboard ", " cpu-dashboard ", " audio-dashboard ,
+.IR ssh-sessions ", " session ", " plugin ", \[char46]\&.\&.\&."
+.TP
+.B bar \fISUBCOMMAND\fR
+Hide or reveal bars.
+.TP
+.B hidden-bar \fISUBCOMMAND\fR
+Control the Hidden Bar drawer widget
+.RI ( toggle " | " expand " | " collapse " | " pin " | " unpin ).
+.TP
+.B settings \fISUBCOMMAND\fR
+Open / control the settings window.
+.TP
+.B wizard
+Open the in-shell setup wizard (a layer-shell menu).
+.SS "Audio and media"
+.TP
+.B audio \fISUBCOMMAND\fR
+Volume, mute, mic, and device switching \(em e.g.
+.IR volume-up ", " "volume " PERCENT ", " mute ", " "output " next .
+.TP
+.B media \fISUBCOMMAND\fR
+Control MPRIS players:
+.IR toggle ", " next ", " prev ", " status ", " list .
+.TP
+.B brightness \fISUBCOMMAND\fR
+Backlight control:
+.IR up " | " down .
+.SS "Appearance"
+.TP
+.B set-wallpaper \fIPATH\fR
+Set the current wallpaper to a specific image.
+.TP
+.B wallpaper \fISUBCOMMAND\fR
+Cycle the wallpaper:
+.IR next " | " prev " | " random .
+.SS "Session and system"
+.TP
+.B lock " " [\fBcheck\fR]
+Lock the session. Bare
+.B lock
+locks;
+.B lock check
+reports the current lock state.
+.TP
+.B quit
+Kill mshell.
+.TP
+.B plugin \fISUBCOMMAND\fR
+Manage installed WASM plugins (e.g. reload from disk).
+.TP
+.B screenshot \fISUBCOMMAND\fR
+Bridge to the
+.BR mscreenshot (1)
+helper (e.g. the in-shell region selector).
+.TP
+.B inspect
+Launch the GTK4 inspector (find CSS node ids / classes).
+.PP
+Run
+.B mshellctl
+.I COMMAND
+.B \-\-help
+for the full subcommand and argument surface.
+.SH EXAMPLES
+.in +4n
+.EX
+mshellctl menu control-center     # toggle the quick-settings panel
+mshellctl menu dashboard
+mshellctl audio volume 60         # set output volume to 60%
+mshellctl audio mute
+mshellctl brightness up
+mshellctl media toggle            # play/pause the active player
+mshellctl wallpaper next
+mshellctl lock
+.EE
+.in
+.SH "SEE ALSO"
+.BR margo (1),
+.BR mctl (1),
+.BR mscreenshot (1)
+.SH AUTHORS
+Part of margo, by Kenan Pelit and contributors \(em
+.UR https://github.com/kenanpelit/margo
+.UE .

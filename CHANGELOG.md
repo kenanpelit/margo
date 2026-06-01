@@ -7,6 +7,18 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- **Man pages** for the core tools — `margo(1)`, `mctl(1)`, `mshellctl(1)`
+  (hand-written roff under `man/`, installed to `/usr/share/man/man1` by both
+  the PKGBUILD and `install.sh`).
+
+### Changed
+
+- **CLI help polish** — `mshellctl` now has a proper description + examples
+  (was a bare "MShell CLI"), and `margo --help` lists all companion binaries
+  with aligned columns plus a FILES section and `man` pointers.
+
 ## [0.9.1] – 2026-06-01
 
 A wave of widgets ported from noctalia-shell v5, plus the removal of the
