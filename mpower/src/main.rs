@@ -346,35 +346,13 @@ fn set_profile(arg: Option<String>) {
 
 fn apply_profile(profile: &str) {
     if ppd::set(profile) {
-        notify_profile(profile);
+        // Reuse the daemon's English notification (same icons + wording).
+        notify(profile);
         println!("{profile}");
     } else {
         eprintln!("mpower: failed to set profile '{profile}'");
         std::process::exit(1);
     }
-}
-
-fn notify_profile(profile: &str) {
-    let (icon, title) = match profile {
-        "performance" => ("power-profile-performance-symbolic", "Performans"),
-        "power-saver" => ("power-profile-power-saver-symbolic", "Güç Tasarrufu"),
-        "balanced" => ("power-profile-balanced-symbolic", "Dengeli"),
-        other => ("power-profile-balanced-symbolic", other),
-    };
-    let _ = std::process::Command::new("notify-send")
-        .args([
-            "-a",
-            "mpower",
-            "-t",
-            "1800",
-            "-h",
-            "string:x-canonical-private-synchronous:mpower",
-            "-i",
-            icon,
-            &format!("Güç Profili: {title}"),
-            "Profil değiştirildi",
-        ])
-        .status();
 }
 
 fn print_help() {
