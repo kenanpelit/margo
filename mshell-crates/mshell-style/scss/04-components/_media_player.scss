@@ -30,7 +30,6 @@
 
 // Info column holds title + artist + progress bar.
 .media-player-info {
-  spacing: var(--space-1);
 }
 
 // Track title — prominent, single line, no clip.
@@ -52,7 +51,6 @@
 
 // Progress row: time labels + seek bar.
 .media-player-progress-row {
-  spacing: var(--space-2);
   margin-top: var(--space-1);
 }
 

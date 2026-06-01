@@ -129,7 +129,6 @@
     // tighter so the row reads as a dense control strip rather
     // than a sparse launcher grid.
     > box {
-      column-gap: var(--space-1);
     }
 
     button {
@@ -152,7 +151,6 @@
   // edge rather than spreading vertically — keeps cards
   // compact even when the other column is taller.
   .container-menu-widget {
-    align-items: flex-start;
   }
 
   // ── Visual merges via adjacent-sibling selectors ──────

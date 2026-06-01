@@ -16,6 +16,15 @@ fn main() {
     opts = opts.load_path("scss");
     let css =
         grass::from_string(scss, &opts).unwrap_or_else(|e| panic!("SCSS compile failed: {e}"));
+    // grass prepends `@charset "UTF-8";` whenever the output contains
+    // non-ASCII (our box-drawing comments, ×, Φ, …). GTK4's CSS parser
+    // doesn't understand @-rules and logs "Unknown @ rule" on every
+    // load — strip any leading @charset line (the data is already UTF-8).
+    let css: String = css
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("@charset"))
+        .collect::<Vec<_>>()
+        .join("\n");
     fs::write(&css_out, css)
         .unwrap_or_else(|e| panic!("Failed to write {}: {e}", css_out.display()));
 }
