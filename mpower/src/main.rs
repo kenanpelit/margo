@@ -15,8 +15,8 @@
 //!     by hand), mpower backs off and leaves it alone until the next AC
 //!     transition, then resumes.
 //!
-//! CLI: `mpower` / `mpower run` (daemon) · `mpower status` · `mpower pause` ·
-//! `mpower resume` · `mpower reload`.
+//! CLI: `mpower` / `mpower run` (daemon) · `mpower status` · `mpower cycle` ·
+//! `mpower set <profile>` · `mpower pause` · `mpower resume` · `mpower reload`.
 
 use std::path::PathBuf;
 use std::thread;
@@ -31,6 +31,8 @@ fn main() {
     match std::env::args().nth(1).as_deref() {
         None | Some("run") | Some("daemon") => run_daemon(),
         Some("status") => print_status(),
+        Some("cycle") => cycle_profile(),
+        Some("set") => set_profile(std::env::args().nth(2)),
         Some("pause") => set_pause(true),
         Some("resume") => set_pause(false),
         Some("reload") => println!(
@@ -307,6 +309,74 @@ fn print_status() {
     println!("  config file:     {}", mpower::config_path().display());
 }
 
+// ── Manual control ────────────────────────────────────────────────────────
+// One-shot profile changes (for a keybind / bar pill). The running daemon
+// detects the external change and backs off auto-switching until the next
+// AC transition — so a manual cycle "sticks" without any lock file.
+
+/// Cycle to the next available profile (powerprofilesctl list order, i.e.
+/// performance → balanced → power-saver → …).
+fn cycle_profile() {
+    let mut order = ppd::list();
+    if order.is_empty() {
+        order = ["performance", "balanced", "power-saver"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+    }
+    let cur = ppd::get();
+    let next = match cur
+        .as_deref()
+        .and_then(|c| order.iter().position(|p| p == c))
+    {
+        Some(i) => &order[(i + 1) % order.len()],
+        None => &order[0],
+    };
+    apply_profile(next);
+}
+
+/// Set a specific profile by name.
+fn set_profile(arg: Option<String>) {
+    let Some(profile) = arg else {
+        eprintln!("usage: mpower set <performance|balanced|power-saver>");
+        std::process::exit(2);
+    };
+    apply_profile(&profile);
+}
+
+fn apply_profile(profile: &str) {
+    if ppd::set(profile) {
+        notify_profile(profile);
+        println!("{profile}");
+    } else {
+        eprintln!("mpower: failed to set profile '{profile}'");
+        std::process::exit(1);
+    }
+}
+
+fn notify_profile(profile: &str) {
+    let (icon, title) = match profile {
+        "performance" => ("power-profile-performance-symbolic", "Performans"),
+        "power-saver" => ("power-profile-power-saver-symbolic", "Güç Tasarrufu"),
+        "balanced" => ("power-profile-balanced-symbolic", "Dengeli"),
+        other => ("power-profile-balanced-symbolic", other),
+    };
+    let _ = std::process::Command::new("notify-send")
+        .args([
+            "-a",
+            "mpower",
+            "-t",
+            "1800",
+            "-h",
+            "string:x-canonical-private-synchronous:mpower",
+            "-i",
+            icon,
+            &format!("Güç Profili: {title}"),
+            "Profil değiştirildi",
+        ])
+        .status();
+}
+
 fn print_help() {
     println!(
         "mpower — automatic power-profile manager for margo
@@ -314,9 +384,14 @@ fn print_help() {
 USAGE:
     mpower [run]        Run the daemon (default).
     mpower status       Print live state + thresholds.
+    mpower cycle        Switch to the next profile (perf → balanced → saver).
+    mpower set <PROF>   Set a profile: performance | balanced | power-saver.
     mpower pause        Suspend auto-switching (leaves current profile).
     mpower resume       Resume auto-switching.
     mpower reload       (no-op — the daemon re-reads its config every tick)
+
+    A manual cycle/set is honoured by the daemon (it backs off auto-switching
+    until the next AC transition).
 
 CONFIG:
     {}
