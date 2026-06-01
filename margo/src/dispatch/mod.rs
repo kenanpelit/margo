@@ -45,6 +45,8 @@ use tracing::debug;
 use crate::layout::LayoutId;
 use crate::state::MargoState;
 
+mod sendkey;
+
 /// Canonical, ordered layout list — the index space `mctl layout
 /// <index>` (and the legacy dwl-ipc `SetLayout`) addresses. Kept in
 /// sync with the `layouts` array in the state snapshot.
@@ -274,6 +276,10 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                 }
             }
         }
+
+        // Inject a synthetic key combo into the focused window (optionally
+        // app-id gated, with a fallback action). See `sendkey.rs`.
+        "sendkey" => state.send_key(arg),
 
         // ── Twilight (built-in blue-light filter) ───────────────────
         // All four follow the same shape: mutate `state.twilight`

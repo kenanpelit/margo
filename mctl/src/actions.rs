@@ -451,6 +451,21 @@ pub const ACTIONS: &[Action] = &[
         detail: "",
     },
     Action {
+        name: "sendkey",
+        aliases: &[],
+        args: "<COMBO>[,<APPID-REGEX>][,<FALLBACK>]",
+        group: Group::System,
+        summary: "Inject a synthetic key combo into the focused window.",
+        detail: "COMBO is `+`-joined modifiers + one key (xkb names): \
+                 `ctrl+Tab`, `ctrl+shift+Tab`, `ctrl+Page_Up`. With an \
+                 optional anchored APPID-REGEX the combo is sent only when \
+                 the focused window's app_id matches; otherwise the optional \
+                 FALLBACK action (`action[:arg]`, e.g. `focusdir:up`) runs. \
+                 Handy on a touchpad gesture for browser tab switching. \
+                 Layout-independent keys only (Tab, Page_Up/Down, arrows, \
+                 F-keys, Home/End, Esc, Return, Space, digits).",
+    },
+    Action {
         name: "run_script",
         aliases: &["run-script", "rhai-eval"],
         args: "<PATH>",
