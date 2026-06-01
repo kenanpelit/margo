@@ -24,8 +24,10 @@ const BARS: usize = 12;
 const BAR_WIDTH: i32 = 3;
 /// Tallest a bar can grow to (pill height budget).
 const BAR_MAX_PX: f64 = 18.0;
-/// Shortest a bar ever shows (so silence reads as a thin baseline).
-const BAR_MIN_PX: i32 = 2;
+/// Shortest a bar ever shows. Kept tall enough that the strip is
+/// clearly visible at rest (silence / no cava) instead of collapsing
+/// into an invisible 1-2px sliver.
+const BAR_MIN_PX: i32 = 6;
 /// cava `ascii_max_range` — the value scale of each frame sample.
 const CAVA_RANGE: f64 = 100.0;
 
@@ -81,6 +83,9 @@ impl Component for AudioVisualizerModel {
                 set_spacing: 2,
                 set_halign: gtk::Align::Center,
                 set_valign: gtk::Align::Center,
+                // Reserve a stable height so the pill always occupies
+                // real space (bars grow from a baseline within it).
+                set_height_request: BAR_MAX_PX as i32,
             },
         }
     }
@@ -114,7 +119,8 @@ impl Component for AudioVisualizerModel {
         for _ in 0..BARS {
             let bar = gtk::Box::new(Orientation::Vertical, 0);
             bar.add_css_class("audio-visualizer-bar");
-            bar.set_valign(gtk::Align::Center);
+            // Grow from a shared bottom baseline like a real equalizer.
+            bar.set_valign(gtk::Align::End);
             bar.set_size_request(BAR_WIDTH, BAR_MIN_PX);
             widgets.strip.append(&bar);
             bars.push(bar);
