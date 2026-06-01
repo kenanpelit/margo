@@ -7,6 +7,60 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.9.3] – 2026-06-01
+
+A from-scratch IPC rewrite: the legacy `dwl-ipc-unstable-v2` Wayland protocol
+and the polled `state.json` snapshot file are gone, replaced by a single
+Unix-domain control socket.
+
+### Changed
+
+- **New socket IPC (replaces dwl-ipc-v2 + `state.json`).** margo now serves a
+  single newline-delimited control socket at
+  `$XDG_RUNTIME_DIR/margo/margo-ipc.sock` (exported as `MARGO_SOCKET`) speaking
+  `get <topic>`, `watch <topic>` (push-on-change), and
+  `dispatch <action> [args…]`. mshell subscribes with `watch state` instead of
+  inotify-watching a file, and `mctl` talks the same protocol — no Wayland
+  client needed to script the compositor. Protocol documented in `docs/ipc.md`.
+  - **Breaking:** the `dwl-ipc-unstable-v2` protocol and the `state.json` file
+    are removed entirely; external bars that read them need a socket adapter.
+    The standard `ext-workspace` and `foreign-toplevel-list` protocols are
+    unchanged.
+
+### Added
+
+- **`mctl get <topic>` / `mctl watch <topic>`** — raw socket queries and
+  change streams (topics: `state`, `clients`, `client <id>`, `monitors`,
+  `monitor <name>`, `tags <monitor>`, `focused`, `layouts`, `keyboard-layout`,
+  `twilight`, `config-errors`).
+- **Dispatch actions** `settagset`, `setclienttags`, `setlayoutindex` (plus the
+  existing `cyclekblayout`), all reachable over the socket.
+- **`tag_carousel`** — wrapping a relative tag move past the first/last tag
+  slides in the travel direction instead of reversing the long way.
+- **`edge_scroller_focus_allow_speed`** — in a scroller layout, a slow pointer
+  resting at the leading/trailing edge shifts focus to the adjacent column
+  (debounced; `0` disables).
+
+### Fixed
+
+- **Multi-word `spawn` over the socket** — `mctl dispatch spawn 'kitty -e htop'`
+  no longer drops everything past the first token.
+- **Outbound back-pressure** — a slow `watch` subscriber is now buffered
+  (bounded to 4 MiB, with a level-triggered WRITE source) instead of being
+  dropped on the first partial write; a subscriber past the cap is cut loose to
+  reconnect. The event loop never blocks or spins on a stalled reader.
+- **`mctl get`** is now a real subcommand (was only used internally).
+- **GTK4 CSS parser warnings** — scrubbed the remaining unsupported properties
+  (`overflow`, `cursor`, `column-gap`, `@charset`, `-var()` negation) from the
+  shell stylesheet.
+
+### Internal
+
+- Large unit-test expansion around the new IPC surface: request framing,
+  outbound drain/back-pressure, topic projection (incl. error frames), dispatch
+  arg mapping, tag-carousel + edge-scroller decisions, and the `mctl` socket
+  client. Workspace suite at 565 tests, clippy `-D warnings` clean.
+
 ## [0.9.2] – 2026-06-01
 
 ### Added
