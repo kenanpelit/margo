@@ -34,7 +34,7 @@ impl MargoState {
     /// idempotent (it reads live config + override state).
     pub fn force_tick_twilight(&mut self) {
         let next = self.tick_twilight();
-        // Persist the new twilight state to state.json. Every explicit
+        // Persist the new twilight state to state snapshot. Every explicit
         // user action (`mctl twilight toggle/reset/set/preview/test`,
         // reload_config) comes through here, but the steady-state
         // calloop timer calls `tick_twilight` directly — so this writes

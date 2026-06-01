@@ -506,7 +506,7 @@ pub struct MargoState {
     pub display_handle: DisplayHandle,
     pub loop_handle: LoopHandle<'static, MargoState>,
     pub loop_signal: LoopSignal,
-    /// `state.json` write is dirty (a change happened since the last
+    /// `state snapshot` write is dirty (a change happened since the last
     /// flush). Coalesces a burst of per-change writes into one serialize
     /// per event-loop iteration — see `mark_state_dirty` /
     /// `flush_state_file_if_dirty`.
@@ -567,7 +567,7 @@ pub struct MargoState {
     pub session_locked: bool,
     /// Human-readable name of the keyboard's currently active xkb
     /// layout (e.g. "English (US)", "Turkish"). Cached here and
-    /// published in state.json so the shell's keyboard-layout pill
+    /// published in state snapshot so the shell's keyboard-layout pill
     /// can show it without re-deriving the keymap. Updated on every
     /// key event that changes the effective layout group.
     pub current_kb_layout: String,
@@ -2143,10 +2143,10 @@ impl MargoState {
         crate::border::refresh(self);
         self.request_repaint();
         // Refresh the IPC channels so `mctl clients`/`focused`/`status`
-        // and any dwl-ipc-v2 bar (waybar-dwl, noctalia, fnott) see new
+        // and any IPC `watch state` subscriber sees the new
         // windows the moment they're laid out. arrange_all already
         // covered both, but arrange_monitor (the path most map/unmap/
-        // tag-move events take) didn't — leaving state.json + the bar
+        // tag-move events take) didn't — leaving state snapshot + the bar
         // tag-counts stuck on the boot snapshot of zero.
         self.mark_state_dirty();
         self.mark_state_dirty();
@@ -2308,7 +2308,7 @@ impl MargoState {
         crate::border::refresh(self);
         self.request_repaint();
 
-        // Broadcast the new focus to dwl-ipc-v2 clients (noctalia,
+        // Mark dirty so IPC watch subscribers see the new focus (
         // waybar-dwl, …). The struct gets its title / appid /
         // fullscreen / floating fields from `focused_client_idx`,
         // which we just changed; without this the bar would keep
@@ -2666,7 +2666,7 @@ impl MargoState {
     }
 
     /// Detect monitor crossings on pointer motion and refresh
-    /// state.json when the cursor enters a new output. Cheap inside
+    /// state snapshot when the cursor enters a new output. Cheap inside
     /// the common case (same monitor → integer compare, no I/O);
     /// only crossings — rare relative to motion events — pay the
     /// serialization cost. Keeps `state.active_output` in sync so
@@ -3274,7 +3274,7 @@ impl MargoState {
 impl MargoState {
     /// Re-read the seat keyboard's currently active xkb layout name
     /// and, if it changed since the last cache, store it + mark
-    /// state.json dirty so the shell's keyboard-layout pill refreshes.
+    /// state snapshot dirty so the shell's keyboard-layout pill refreshes.
     /// Cheap (a keymap name lookup) — safe to call on every key event.
     pub fn refresh_keyboard_layout(&mut self) {
         let Some(kbd) = self.seat.get_keyboard() else {

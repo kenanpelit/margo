@@ -53,7 +53,7 @@ pub struct PointerState {
     pub grab_y: f64,
     /// Monitor index the pointer was last on. Used to gate
     /// `mark_state_dirty()` to *crossings* only — motion within
-    /// the same monitor stays cheap; crossings rewrite state.json
+    /// the same monitor stays cheap; crossings rewrite state snapshot
     /// so mshell's `active_monitor_name()` sees the new output
     /// even when no client is focused (empty monitor / sloppy
     /// focus into empty space).

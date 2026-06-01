@@ -16,12 +16,12 @@ and a family of companion tools.
 .PP
 margo composes windows with 14 tiling layouts (tile, scroller, grid,
 monocle, deck, dwindle, \[char46]\&.\&.\&.), per-tag layout memory, a
-nine-tag workspace model, and a PCRE2-style window-rule engine. It speaks
-the
-.B dwl-ipc-unstable-v2
-protocol plus
-.BR foreign-toplevel-list ,
-and publishes a JSON state snapshot that the shell and tooling read.
+nine-tag workspace model, and a PCRE2-style window-rule engine. It exposes
+a Unix-socket control IPC (see
+.B IPC
+below) plus the standard
+.BR foreign-toplevel-list " and " ext-workspace " protocols."
+The shell and tooling read state as JSON over the same socket.
 .PP
 margo is normally launched by a display manager via the bundled
 .I margo.desktop
@@ -98,18 +98,30 @@ is
 .RI "1 << (" N "\-1)" .
 Tag 1 = 1, tag 2 = 2, tag 3 = 4, \[char46]\&.\&.\&, tag 8 = 128, tag 9 = 256.
 .SH IPC
-margo exposes two control channels:
+margo's control IPC is a single Unix-domain socket at
+.IR $XDG_RUNTIME_DIR/margo/margo-ipc.sock
+(also exported as
+.BR MARGO_SOCKET ).
+Clients send newline-delimited text requests and receive newline-delimited
+JSON replies:
 .TP
-.B dwl-ipc-unstable-v2
-A custom Wayland protocol consumed by
+.B get \fItopic\fR
+One-shot query (\fIstate\fR, \fIclients\fR, \fImonitors\fR, \fItags\fR,
+\fIfocused\fR, \fIlayouts\fR, \fIkeyboard-layout\fR, …).
+.TP
+.B watch \fItopic\fR
+Stream a fresh JSON frame on every state change. The desktop shell
+subscribes to \fBwatch state\fR and mirrors each frame into its reactive
+store.
+.TP
+.B dispatch \fIaction\fR [\fIargs\fR]
+Run a compositor action (the same verbs as
+.B bind
+lines).
+.PP
 .BR mctl (1)
-for status, layout/tag changes, and dispatch.
-.TP
-.B state.json
-A JSON snapshot (focused client, outputs, clients, layouts, active
-keyboard layout, twilight state, \[char46]\&.\&.\&.) written on every change to
-.IR $XDG_RUNTIME_DIR/margo/state.json .
-The desktop shell mirrors it into its reactive store.
+is the reference client. Scripts can drive it directly, e.g.
+.RB "\(lq" "printf 'get state\\n' | socat - UNIX-CONNECT:$MARGO_SOCKET" "\(rq."
 .SH CONFIGURATION
 The config is plain text
 .RI ( key " = " value )
@@ -134,8 +146,8 @@ Per-tag layout profiles
 .RI ( layout_ <name> .conf ),
 keybind fragments, and shell-managed config fragments.
 .TP
-.I $XDG_RUNTIME_DIR/margo/state.json
-Live state snapshot (tooling + shell IPC side-channel).
+.I $XDG_RUNTIME_DIR/margo/margo-ipc.sock
+Control IPC socket (also exported as \fBMARGO_SOCKET\fR).
 .TP
 .I $XDG_STATE_HOME/margo/session.json
 Saved per-monitor tag/layout state

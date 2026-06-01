@@ -22,8 +22,8 @@
 //!   * `dispatch()` / `eval()` / `events()` are no-ops.
 //!   * Bar widgets render their empty state without crashing.
 //!
-//! Phase 2c will wire the same surface to margo's `dwl-ipc-v2` +
-//! `foreign-toplevel-list` + `state.json`, with margo's tag bitmask
+//! The surface is fed by a `watch state` subscription on margo's IPC
+//! socket (see `sync.rs`), with margo's tag bitmask
 //! folded into the `WorkspaceId` axis (9 tags → IDs 1..=9, signed
 //! to leave room for the negative IDs Hyprland uses for special
 //! workspaces — margo emits none, so values stay positive).

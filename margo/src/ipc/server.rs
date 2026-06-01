@@ -118,7 +118,7 @@ impl MargoState {
                 // calloop hands a `&mut NoIoDrop<UnixStream>` (Deref only,
                 // no DerefMut). `UnixStream` implements `Read for
                 // &UnixStream`, so read through the shared reference.
-                Ok(state.ipc_readable(token, &**fd))
+                Ok(state.ipc_readable(token, fd))
             });
         if let Err(e) = res {
             tracing::warn!(error = %e, "ipc: insert client source");

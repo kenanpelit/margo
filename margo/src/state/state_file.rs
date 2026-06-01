@@ -3,7 +3,7 @@
 //! `build_state_snapshot` produces the JSON document every IPC `get`/
 //! `watch` reply is built from. `mark_state_dirty` / `flush_ipc_if_dirty`
 //! coalesce a burst of changes into one pushed `watch` frame per
-//! event-loop iteration. There is no longer a state.json file — the
+//! event-loop iteration. There is no longer a state snapshot file — the
 //! Unix socket is the only state egress.
 
 use super::MargoState;
@@ -22,7 +22,7 @@ impl MargoState {
 
     /// Once per event-loop iteration: if state changed, push a fresh
     /// snapshot frame to every IPC `watch` subscriber. This is the sole
-    /// state-egress path — there is no state.json file anymore.
+    /// state-egress path — there is no state snapshot file anymore.
     pub fn flush_ipc_if_dirty(&mut self) {
         if !self.state_dirty.replace(false) {
             return;
@@ -95,7 +95,7 @@ impl MargoState {
                         .fold(0u32, |a, c| a | c.tags),
                     "is_overview": mon.is_overview,
                     // W3.6: per-tag wallpaper hint of the *active*
-                    // tag. Wallpaper daemons watching state.json
+                    // tag. Wallpaper daemons watching state snapshot
                     // can swap on tag change. Empty string = "use
                     // session default". Per-tag map is in
                     // `wallpapers_by_tag` below for daemons that
@@ -163,7 +163,7 @@ impl MargoState {
             })
             .collect();
 
-        // Mirror dwl-ipc's layouts list — same set the live status
+        // The canonical layouts list — same set the live status
         // bar shows.
         let all_layouts = [
             crate::layout::LayoutId::Tile,
@@ -198,7 +198,7 @@ impl MargoState {
             .unwrap_or_default();
 
         // Diagnostics from the most recent reload (or initial parse).
-        // Exposed in state.json so `mctl config-errors` can fetch
+        // Exposed in state snapshot so `mctl config-errors` can fetch
         // them without a dedicated IPC roundtrip.
         let config_errors: Vec<_> = self
             .last_reload_diagnostics

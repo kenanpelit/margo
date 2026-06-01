@@ -20,8 +20,8 @@
 //! - `assign` / `remove` / `create_workspace` → no-op (margo's tag set
 //!   is fixed per monitor).
 //!
-//! Tag state is also exposed via `dwl-ipc-unstable-v2`; this protocol
-//! lets shells that don't speak dwl-ipc (sfwbar, ironbar, …) show margo
+//! Tag state is also exposed over margo's IPC socket; this protocol
+//! lets standard ext-workspace shells (sfwbar, ironbar, …) show margo
 //! workspaces. Refreshed once per repaint by [`refresh`].
 
 use std::collections::hash_map::Entry;

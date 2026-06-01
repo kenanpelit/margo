@@ -392,7 +392,7 @@ pub struct MargoMonitor {
     pub enabled: bool,
     /// Last N focused-client indices for this monitor (MRU order,
     /// most recent first). Capped at `FOCUS_HISTORY_DEPTH`. Exposed
-    /// in state.json as `focus_history`.
+    /// in state snapshot as `focus_history`.
     pub focus_history: VecDeque<usize>,
     /// Number of u16 entries per channel in DRM `GAMMA_LUT_SIZE`.
     /// 0 → gamma control unsupported (winit backend or connector

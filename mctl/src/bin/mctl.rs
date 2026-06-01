@@ -1,6 +1,6 @@
 //! mctl — margo compositor control tool (replaces mmsg)
 //!
-//! Uses the zdwl_ipc_unstable_v2 Wayland protocol to query and control margo.
+//! Talks to margo over its Unix-socket IPC (get / watch / dispatch).
 //! Connects to the compositor via the standard WAYLAND_DISPLAY socket.
 
 use anyhow::{Context, Result, bail};
@@ -16,7 +16,7 @@ use mctl::actions::{ACTIONS, Group};
     name = "mctl",
     version,
     about = "margo compositor control",
-    long_about = "Query and control the margo Wayland compositor via the dwl-ipc-v2 protocol.\n\
+    long_about = "Query and control the margo Wayland compositor over its Unix-socket IPC.\n\
                   \n\
                   EXAMPLES:\n  \
                     mctl status                         # current focused-client / tag state\n  \
@@ -56,7 +56,7 @@ enum Command {
         long_about = "Dispatch a compositor command by name.\n\
                       \n\
                       The action <NAME> is the same string used in `bind = MODS,KEY,<NAME>,<args>` \
-                      lines in `config.conf`. Up to 5 trailing args fill the dwl-ipc dispatch slots:\n\
+                      lines in `config.conf`. Up to 5 trailing args fill the dispatch slots:\n\
                       \n  \
                         ARGS[0] → slot 1 → arg.i   (i32, parsed; empty / non-numeric ⇒ 0)\n  \
                         ARGS[1] → slot 2 → arg.i2  (i32, parsed; rarely used)\n  \
@@ -180,7 +180,7 @@ enum Command {
                       Applies `(tags & AND_MASK) ^ XOR_MASK`. Almost no one calls this \
                       directly — `mctl dispatch tag <MASK>` (replace) and \
                       `mctl dispatch toggletag <MASK>` (toggle one bit) cover the user-side \
-                      cases. This raw form exists so dwl-ipc-v2 clients (status bars) can \
+                      cases. This raw form exists so external clients (status bars) can \
                       build their own tag-manipulation UI without going through dispatch."
     )]
     ClientTags {
@@ -328,7 +328,7 @@ enum Command {
     ///   set <field>=<value> # live tweak (day_temp, night_temp, day_gamma, …)
     ///   reset               # clear preview/test, resume schedule
     ///
-    /// `mctl twilight status --json` prints the raw state.json
+    /// `mctl twilight status --json` prints the raw state snapshot
     /// `twilight` object for scripting consumption.
     #[command(display_order = 37, alias = "tl")]
     Twilight {
@@ -340,7 +340,7 @@ enum Command {
     ///
     /// Hyprland's `hyprctl configerrors` analogue. Empty when the
     /// last reload was clean. Reads from the live compositor (via
-    /// the same state.json IPC `mctl status` uses), so it reflects
+    /// the same state snapshot IPC `mctl status` uses), so it reflects
     /// what the compositor actually applied — not what
     /// `check-config` thinks about the file on disk right now.
     #[command(display_order = 38)]
@@ -439,7 +439,7 @@ enum Command {
 
     /// List every open window with tag, monitor, app_id, title.
     ///
-    /// Reads `$XDG_RUNTIME_DIR/margo/state.json` (margo refreshes
+    /// Reads `the margo IPC socket` (margo refreshes
     /// it on every arrange/focus/output-change event). Same data
     /// you'd get from triggering `pkill -USR1 margo` and grepping
     /// the journal, but live and parseable.
@@ -448,7 +448,7 @@ enum Command {
         display_order = 3,
         long_about = "List every open window the compositor knows about — tag, \
                       monitor, app_id, title, geometry, focus, floating/fullscreen \
-                      state. Reads `$XDG_RUNTIME_DIR/margo/state.json` which margo \
+                      state. Reads the compositor state snapshot over the IPC socket which margo \
                       refreshes on every relevant event.\n\
                       \n\
                       EXAMPLES:\n  \
@@ -507,7 +507,7 @@ enum Command {
         long_about = "Print the focused window's app_id + title in a single \
                       line — designed for status-bar scripts that just need \
                       `who has focus right now`. `--json` for the full \
-                      ClientInfo struct.\n\
+                      client object.\n\
                       \n\
                       EXAMPLES:\n  \
                         mctl focused                    # `app_id · title`\n  \
@@ -522,10 +522,10 @@ enum Command {
 #[derive(Subcommand, Debug)]
 enum TwilightCmd {
     /// Print the current twilight state (temperature, gamma, phase,
-    /// source). Reads `state.json` — works even when the compositor
+    /// source). Reads `state snapshot` — works even when the compositor
     /// is paused on a heavy frame.
     Status {
-        /// Emit the raw `state.json` `twilight` object as JSON.
+        /// Emit the raw `state snapshot` `twilight` object as JSON.
         #[arg(long)]
         json: bool,
     },
@@ -1215,8 +1215,7 @@ fn print_rule(rule: &margo_config::WindowRule) {
 }
 
 fn cmd_twilight_status(as_json: bool) -> Result<()> {
-    let state =
-        read_state_file().map_err(|e| anyhow::anyhow!("cannot read margo state.json: {e}"))?;
+    let state = read_state_file().map_err(|e| anyhow::anyhow!("cannot query margo IPC: {e}"))?;
     let tw = state
         .get("twilight")
         .cloned()
@@ -1285,7 +1284,7 @@ fn cmd_twilight_status(as_json: bool) -> Result<()> {
 fn twilight_dir() -> std::path::PathBuf {
     // Match the compositor's `default_dir()` from
     // `margo/src/twilight/preset.rs`. If the user has overridden
-    // `twilight_schedule_dir` in their config, state.json doesn't
+    // `twilight_schedule_dir` in their config, state snapshot doesn't
     // currently expose it — they'll need `mctl reload` after manual
     // edits in that custom location (uncommon enough to defer).
     if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
@@ -1639,8 +1638,7 @@ fn request_reload() {
 
 fn cmd_config_errors() -> Result<()> {
     use margo_config::diagnostics::{ConfigDiagnostic, Severity};
-    let state =
-        read_state_file().map_err(|e| anyhow::anyhow!("cannot read margo state.json: {e}"))?;
+    let state = read_state_file().map_err(|e| anyhow::anyhow!("cannot query margo IPC: {e}"))?;
     let entries = state
         .get("config_errors")
         .and_then(|v| v.as_array())
@@ -1893,7 +1891,7 @@ fn cmd_completions(shell: Shell) -> Result<()> {
     Ok(())
 }
 
-/// Render `mctl status` from the richer state.json snapshot —
+/// Render `mctl status` from the richer state snapshot snapshot —
 /// per-output blocks with proper connector names + tag client
 /// counts. Used when the file exists (post-r143 margo).
 fn print_status_rich(state: &serde_json::Value, output_filter: Option<&str>) {
@@ -2070,7 +2068,7 @@ fn send_dispatch(action: &str, args: &[&str]) -> Result<()> {
 
 fn read_state_file() -> Result<serde_json::Value> {
     // Query the compositor's IPC socket for the full state snapshot.
-    // (Same document margo used to dump to state.json — the function
+    // (Same document margo used to dump to state snapshot — the function
     // name is kept so every caller stays unchanged.)
     mctl::ipc_client::request_once("get state").with_context(|| {
         format!(

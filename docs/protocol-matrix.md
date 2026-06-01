@@ -150,7 +150,7 @@ runtime-checked even where the per-protocol behaviour isn't.
 | `ext_workspace_v1` | ✅ | ✅ | ❌ | ❌ | hand-rolled (`protocols/ext_workspace.rs`); 9 fixed tag-workspaces per output |
 | multi-monitor output assignment (internal) | — | ✅ | 🟢 `output_assignment.rs` (4) | ❌ | left-to-right placement + per-output pertag + named tagrule routing |
 | `focus_mon` / `tag_mon` (internal, multi-output) | — | ✅ | 🟢 `focus_mon.rs` (4), `tag_mon.rs` (4) | ❌ | active-monitor cycle + window migrate/re-tag across outputs |
-| `dwl_ipc_unstable_v2` (custom) | ✅ | ✅ | 🟡 (bring-up §0 in checklist) | ❌ | margo↔mctl/mshell; `state.json` snapshot is the primary mshell bridge |
+| Unix-socket IPC (`margo-ipc.sock`) | — | ✅ | 🟡 (`ipc::protocol` parse tests; manual via socat) | ❌ | margo↔mctl/mshell; `get`/`watch`/`dispatch`, JSON over `$MARGO_SOCKET`. Replaced the removed `dwl_ipc_unstable_v2` + `state.json`. See `docs/ipc.md` |
 
 ---
 

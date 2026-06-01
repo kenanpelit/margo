@@ -2,7 +2,7 @@
 //! JSON reply protocol exposing `get`, `watch`, and `dispatch`.
 //!
 //! Replaces the legacy dwl-ipc-v2 Wayland protocol and the polled
-//! state.json file — clients connect to `$XDG_RUNTIME_DIR/margo/
+//! state snapshot file — clients connect to `$XDG_RUNTIME_DIR/margo/
 //! margo-ipc.sock` (also exported as `MARGO_SOCKET`) and speak the
 //! line protocol documented in `docs/ipc.md`.
 
@@ -17,7 +17,7 @@ use std::path::PathBuf;
 
 /// Conventional socket path: `$XDG_RUNTIME_DIR/margo/margo-ipc.sock`,
 /// falling back to `/run/user/<uid>/margo/...` when XDG is unset —
-/// the same base dir the old state.json used.
+/// the same base dir the old state snapshot used.
 pub fn socket_path() -> PathBuf {
     let runtime = std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)

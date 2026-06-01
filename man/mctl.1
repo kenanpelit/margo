@@ -13,11 +13,10 @@ mctl \- query and control the margo Wayland compositor
 .B mctl
 talks to a running
 .BR margo (1)
-compositor over the
-.B dwl-ipc-unstable-v2
-protocol (and reads the
-.I state.json
-snapshot for richer queries). It controls the
+compositor over its Unix-domain-socket IPC
+.RI ( $MARGO_SOCKET ", default " $XDG_RUNTIME_DIR/margo/margo-ipc.sock )
+\(em newline-delimited text requests, newline-delimited JSON replies.
+It controls the
 .IR compositor "\(em"
 windows, tags, layouts, and the dispatch action table.
 .PP
@@ -164,8 +163,8 @@ Compositor configuration that
 .B reload
 re-reads.
 .TP
-.I $XDG_RUNTIME_DIR/margo/state.json
-State snapshot mctl reads for rich queries.
+.I $XDG_RUNTIME_DIR/margo/margo-ipc.sock
+margo's control IPC socket (\fBMARGO_SOCKET\fR).
 .SH "SEE ALSO"
 .BR margo (1),
 .BR mshellctl (1),

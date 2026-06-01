@@ -892,7 +892,7 @@ fn apply_sloppy_focus(state: &mut MargoState, target: Option<&FocusTarget>) {
     // While a popup grab is up, motion over an underlying toplevel
     // must not refocus it: PopupKeyboardGrab will drop our
     // `keyboard.set_focus()` anyway, but the surrounding side
-    // effects (selected, dwl-ipc broadcast, scripting hooks,
+    // effects (selected, IPC watch push, scripting hooks,
     // border crossfade) still run and shake the popup loose.
     if state
         .seat

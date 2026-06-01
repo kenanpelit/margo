@@ -168,7 +168,7 @@ ENVIRONMENT:
 
 FILES:
   ~/.config/margo/config.conf   compositor configuration (hot-reloadable)
-  $XDG_RUNTIME_DIR/margo/state.json   live state snapshot (IPC side-channel)
+  $XDG_RUNTIME_DIR/margo/margo-ipc.sock   IPC socket (get / watch / dispatch)
 
 DOCUMENTATION:
   man margo, man mctl, man mshellctl

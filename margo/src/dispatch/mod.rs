@@ -7,7 +7,7 @@
 //!   1. **Keybinds** parsed from `config.conf` — the parser produces
 //!      a `KeyBinding { action, arg, .. }` and the keyboard handler
 //!      calls this function directly.
-//!   2. **dwl-ipc dispatch requests** from `mctl dispatch <name> [args…]`.
+//!   2. **socket `dispatch` requests** from `mctl dispatch <name> [args…]`.
 //!      The IPC handler decodes the 5 string slots into an `Arg`
 //!      and calls in.
 //!   3. **Gesture / mouse / axis binds** — same handler shape, just
@@ -443,11 +443,11 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
             }
         }
         "killclient" => state.kill_focused(),
-        // Focus a specific window by its `state.json` client index, jumping
+        // Focus a specific window by its `state snapshot` client index, jumping
         // to its tag first if hidden. Lets the shell dock focus the exact
         // window a user clicks (margo is tag-based and otherwise has no
         // focus-by-window dispatch). The index arrives as the first dispatch
-        // arg → `arg.i` (the dwl-ipc bridge maps arg1→i, not v); reading
+        // arg → `arg.i` (the socket dispatch maps arg1→i, not v); reading
         // `arg.v` here is why the first cut silently did nothing.
         "focuswindow" | "activatewindow" | "focusclient" => {
             if arg.i >= 0 {

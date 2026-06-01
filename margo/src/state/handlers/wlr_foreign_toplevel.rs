@@ -32,7 +32,7 @@ impl MargoState {
     }
 
     /// Same as [`Self::activate_window_surface`] but addressed by client
-    /// index (the `idx` published in `state.json`). Used by the
+    /// index (the `idx` published in `state snapshot`). Used by the
     /// `focuswindow` IPC dispatch so the dock can focus the exact window
     /// a user clicks, not just jump to its tag.
     pub(crate) fn activate_window_idx(&mut self, idx: usize) {

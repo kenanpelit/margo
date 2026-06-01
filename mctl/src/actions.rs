@@ -1,5 +1,5 @@
 //! Structured catalogue of every dispatch action margo accepts over
-//! the dwl-ipc-v2 dispatch channel (and from `bind = …,…,<action>` in
+//! the IPC socket `dispatch` verb (and from `bind = …,…,<action>` in
 //! the config file). The list mirrors the match arms in
 //! `margo/src/dispatch/mod.rs`; keep them in sync — the consumer
 //! tooling here (`mctl actions`, the bash/zsh/fish completion
@@ -569,7 +569,7 @@ pub const ACTIONS: &[Action] = &[
         summary: "Cycle the keyboard to the next configured xkb layout.",
         detail: "No-op when a single `xkb_rules_layout` is configured. \
                  Wraps at the end of the list. The active layout name is \
-                 published in state.json (`keyboard_layout`) for the shell's \
+                 published in the state snapshot (`keyboard_layout`) for the shell's \
                  keyboard-layout pill.",
     },
     Action {

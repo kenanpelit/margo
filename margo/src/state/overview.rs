@@ -408,7 +408,7 @@ impl MargoState {
         // colour tracks the selection without going through the
         // smithay focus path. Calling `focus_surface` on every Tab
         // press also kicks off an opacity-crossfade animation per
-        // step (state.rs:200-208) and shuffles dwl-ipc focus_history
+        // step (state.rs:200-208) and shuffles the snapshot focus_history
         // — both visible side-effects that made the cycle feel
         // sluggish ("border yerine sadece imleç dolaşıyor"). The
         // user commits the cycle's choice via `overview_activate`

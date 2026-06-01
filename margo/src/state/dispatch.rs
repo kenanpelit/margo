@@ -774,7 +774,7 @@ impl MargoState {
             }
             let mon_idx = self.clients[idx].monitor;
             self.arrange_monitor(mon_idx);
-            // dwl-ipc-v2 reports `floating` per output's focused
+            // the snapshot reports `floating` per client; the old per-output focused
             // client; the bar status indicator (noctalia "tile/float"
             // glyph) needs an explicit broadcast or it stays stale.
             self.mark_state_dirty();
@@ -852,7 +852,7 @@ impl MargoState {
     ///    fullscreen does nothing" until W4.5.
     /// 3. `arrange_monitor` runs the layout pass which queues
     ///    the actual configure send + rerenders the scene.
-    /// 4. `broadcast_monitor` updates dwl-ipc bars (which carry
+    /// 4. `mark_state_dirty` pushes a watch frame (which carries
     ///    the focused-client `fullscreen` flag for the icon
     ///    indicator).
     ///
@@ -889,8 +889,8 @@ impl MargoState {
     ///    X11 surfaces are skipped; NetWMState round-trip isn't
     ///    wired today (known limitation, see `state/handlers/x11.rs`).
     /// 3. Layout pass + IPC broadcast — `arrange_monitor` reads the
-    ///    new mode to size the geometry, then dwl-ipc clients
-    ///    (noctalia / waybar-dwl) see the updated state.json.
+    ///    new mode to size the geometry, then IPC watch subscribers
+    ///    (noctalia / waybar-dwl) see the updated state snapshot.
     pub fn set_client_fullscreen_mode(&mut self, idx: usize, mode: FullscreenMode) {
         if idx >= self.clients.len() {
             return;
@@ -1119,7 +1119,7 @@ impl MargoState {
         // We warped the pointer ourselves (without going through
         // libinput's motion handler), so the
         // `refresh_pointer_monitor_tracking` call there never
-        // fires. Run it manually so state.json's `active_output`
+        // fires. Run it manually so state snapshot's `active_output`
         // updates immediately — otherwise Super+Space right after
         // focusmon would still target the previous monitor.
         self.refresh_pointer_monitor_tracking();
@@ -1152,7 +1152,7 @@ impl MargoState {
         // window with `tagmon` or the matching 3-finger gesture and
         // the pointer is suddenly stranded on the empty side. Warp
         // first, then refocus through the standard path so border /
-        // dwl-ipc / scripting hooks all see a single coherent
+        // IPC watchers / scripting hooks all see a single coherent
         // "window is here now" event.
         let g = self.clients[idx].geom;
         if g.width > 0 && g.height > 0 {
