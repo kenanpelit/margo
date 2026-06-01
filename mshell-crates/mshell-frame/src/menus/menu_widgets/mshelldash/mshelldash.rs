@@ -14,6 +14,10 @@
 //! components as child controllers, so they stay in sync with their
 //! standalone menus instead of being reimplemented.
 
+use crate::menus::menu_widgets::audio_dashboard::audio_dashboard_menu_widget::{
+    AudioDashboardMenuWidgetInit, AudioDashboardMenuWidgetModel,
+};
+use crate::menus::menu_widgets::calendar::{CalendarInit, CalendarModel};
 use crate::menus::menu_widgets::cpu_dashboard::cpu_dashboard_menu_widget::{
     CpuDashboardMenuWidgetInit, CpuDashboardMenuWidgetModel,
 };
@@ -32,12 +36,14 @@ use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 
 /// (stack name, label, symbolic icon) per tab, in display order.
-const TABS: [(&str, &str, &str); 6] = [
+const TABS: [(&str, &str, &str); 8] = [
     ("overview", "Overview", "view-grid-symbolic"),
     ("media", "Media", "multimedia-player-symbolic"),
     ("weather", "Weather", "weather-clear-symbolic"),
     ("wallpaper", "Wallpaper", "image-x-generic-symbolic"),
     ("system", "System", "utilities-system-monitor-symbolic"),
+    ("audio", "Audio", "audio-volume-high-symbolic"),
+    ("calendar", "Calendar", "x-office-calendar-symbolic"),
     ("screentime", "Screen Time", "appointment-soon-symbolic"),
 ];
 
@@ -50,6 +56,8 @@ pub(crate) struct MShellDashModel {
     _weather: Controller<WeatherModel>,
     _wallpaper: Controller<WallpaperMenuWidgetModel>,
     _system: Controller<CpuDashboardMenuWidgetModel>,
+    _audio: Controller<AudioDashboardMenuWidgetModel>,
+    _calendar: Controller<CalendarModel>,
     screentime: Controller<ScreenTimeModel>,
 }
 
@@ -134,6 +142,10 @@ impl Component for MShellDashModel {
         let system = CpuDashboardMenuWidgetModel::builder()
             .launch(CpuDashboardMenuWidgetInit {})
             .detach();
+        let audio = AudioDashboardMenuWidgetModel::builder()
+            .launch(AudioDashboardMenuWidgetInit {})
+            .detach();
+        let calendar = CalendarModel::builder().launch(CalendarInit {}).detach();
         let screentime = ScreenTimeModel::builder()
             .launch(ScreenTimeInit {})
             .detach();
@@ -146,6 +158,8 @@ impl Component for MShellDashModel {
             _weather: weather,
             _wallpaper: wallpaper,
             _system: system,
+            _audio: audio,
+            _calendar: calendar,
             screentime,
         };
 
@@ -166,6 +180,12 @@ impl Component for MShellDashModel {
         widgets
             .stack
             .add_named(model._system.widget(), Some("system"));
+        widgets
+            .stack
+            .add_named(model._audio.widget(), Some("audio"));
+        widgets
+            .stack
+            .add_named(model._calendar.widget(), Some("calendar"));
         widgets
             .stack
             .add_named(model.screentime.widget(), Some("screentime"));
