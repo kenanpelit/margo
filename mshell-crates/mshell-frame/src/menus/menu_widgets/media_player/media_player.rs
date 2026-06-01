@@ -325,6 +325,9 @@ impl Component for MediaPlayerModel {
                 set_orientation: gtk::Orientation::Horizontal,
                 set_halign: gtk::Align::Center,
                 set_spacing: 8,
+                // Gap from the play/pause cluster above so the ±seek
+                // buttons don't read as stuck to it.
+                set_margin_top: 10,
                 #[watch]
                 set_visible: model.can_seek,
 
