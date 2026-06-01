@@ -349,7 +349,7 @@ impl MargoState {
         if do_anim {
             self.request_repaint();
         }
-        crate::protocols::dwl_ipc::broadcast_monitor(self, mon_idx);
+        self.mark_state_dirty();
         // Phase 3 scripting: fire `on_tag_switch` handlers. Runs
         // after focus + broadcast so a handler reading
         // `current_tag()` / `focused_appid()` sees the post-switch
@@ -370,7 +370,7 @@ impl MargoState {
             self.update_pertag_for_tagset(mon_idx, new);
             self.arrange_monitor(mon_idx);
             self.focus_first_visible_or_clear(mon_idx);
-            crate::protocols::dwl_ipc::broadcast_monitor(self, mon_idx);
+            self.mark_state_dirty();
         }
     }
 
@@ -412,7 +412,7 @@ impl MargoState {
             self.focus_first_visible_or_clear(mon_idx);
         }
 
-        crate::protocols::dwl_ipc::broadcast_monitor(self, mon_idx);
+        self.mark_state_dirty();
     }
 
     pub fn tag_relative(&mut self, delta: i32) {
@@ -457,7 +457,7 @@ impl MargoState {
                 self.focus_first_visible_or_clear(mon_idx);
             }
 
-            crate::protocols::dwl_ipc::broadcast_monitor(self, mon_idx);
+            self.mark_state_dirty();
         }
     }
 
@@ -682,7 +682,7 @@ impl MargoState {
         }
 
         self.arrange_monitor(mon_idx);
-        crate::protocols::dwl_ipc::broadcast_monitor(self, mon_idx);
+        self.mark_state_dirty();
         self.request_repaint();
         crate::scripting::fire_focus_change(self);
 
@@ -777,7 +777,7 @@ impl MargoState {
             // dwl-ipc-v2 reports `floating` per output's focused
             // client; the bar status indicator (noctalia "tile/float"
             // glyph) needs an explicit broadcast or it stays stale.
-            crate::protocols::dwl_ipc::broadcast_monitor(self, mon_idx);
+            self.mark_state_dirty();
         }
     }
 
@@ -939,7 +939,7 @@ impl MargoState {
         );
 
         self.arrange_monitor(mon_idx);
-        crate::protocols::dwl_ipc::broadcast_monitor(self, mon_idx);
+        self.mark_state_dirty();
     }
 
     /// Does any client on `mon_idx` currently hold an exclusive
@@ -1114,8 +1114,8 @@ impl MargoState {
             self.focus_surface(None);
         }
 
-        crate::protocols::dwl_ipc::broadcast_monitor(self, current);
-        crate::protocols::dwl_ipc::broadcast_monitor(self, next);
+        self.mark_state_dirty();
+        self.mark_state_dirty();
         // We warped the pointer ourselves (without going through
         // libinput's motion handler), so the
         // `refresh_pointer_monitor_tracking` call there never
@@ -1171,8 +1171,8 @@ impl MargoState {
         self.monitors[target_mon].selected = Some(idx);
         self.focus_surface(Some(FocusTarget::Window(window)));
 
-        crate::protocols::dwl_ipc::broadcast_monitor(self, current_mon);
-        crate::protocols::dwl_ipc::broadcast_monitor(self, target_mon);
+        self.mark_state_dirty();
+        self.mark_state_dirty();
         self.request_repaint();
     }
 }

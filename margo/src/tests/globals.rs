@@ -69,7 +69,6 @@ const REQUIRED_GLOBALS: &[&str] = &[
     "ext_foreign_toplevel_image_capture_source_manager_v1",
     "ext_image_copy_capture_manager_v1",
     "ext_foreign_toplevel_list_v1",
-    "zdwl_ipc_manager_v2",
     "zxdg_output_manager_v1",
     "zwlr_output_manager_v1",
 ];

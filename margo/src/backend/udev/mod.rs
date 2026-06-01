@@ -597,7 +597,6 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
             canvas_saved_pan_y: 0.0,
             canvas_saved_zoom: 1.0,
             minimap_visible: false,
-            dwl_ipc: crate::protocols::dwl_ipc::DwlIpcState::new(),
             scale: 1.0,
             transform: 0,
             enabled: true,
@@ -1006,7 +1005,7 @@ pub fn run(state: &mut MargoState, event_loop: &mut EventLoop<'static, MargoStat
     // shows up after the first `arrange_all` (typically a tag toggle
     // or window mapping), which means a stale-margo session has no
     // way to query its own state.
-    state.write_state_file();
+    state.mark_state_dirty();
 
     info!("udev backend ready ({} outputs)", state.monitors.len());
     Ok(())

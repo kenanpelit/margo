@@ -86,20 +86,6 @@ use smithay::{
 
 use margo_config::{Config, WindowRule, parse_config_with_defaults};
 
-/// Filesystem path of the runtime state file consumed by mctl's
-/// rich subcommands (`clients`, `outputs`, the prettier
-/// `status`). Default location: `$XDG_RUNTIME_DIR/margo/state.json`,
-/// fallback `/run/user/$UID/margo/state.json` if XDG isn't set.
-pub fn state_file_path() -> PathBuf {
-    let dir = std::env::var_os("XDG_RUNTIME_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            let uid = unsafe { libc::getuid() };
-            PathBuf::from(format!("/run/user/{uid}"))
-        });
-    dir.join("margo").join("state.json")
-}
-
 use crate::{
     animation::{AnimationCurves, AnimationType, ClientAnimation, OpacityAnimation},
     cursor::CursorManager,
@@ -522,7 +508,7 @@ pub struct MargoState {
     pub loop_signal: LoopSignal,
     /// `state.json` write is dirty (a change happened since the last
     /// flush). Coalesces a burst of per-change writes into one serialize
-    /// per event-loop iteration — see `write_state_file` /
+    /// per event-loop iteration — see `mark_state_dirty` /
     /// `flush_state_file_if_dirty`.
     pub state_dirty: std::cell::Cell<bool>,
     /// Active IPC socket connections, keyed by a monotonic token.
@@ -887,12 +873,6 @@ impl MargoState {
         let animation_curves = AnimationCurves::bake(&config);
         let input_keyboard = KeyboardState::new(&config);
 
-        // Register dwl-ipc-v2 global
-        dh.create_global::<Self, crate::protocols::generated::dwl_ipc::zdwl_ipc_manager_v2::ZdwlIpcManagerV2, _>(
-            2,
-            crate::protocols::dwl_ipc::DwlIpcGlobalData,
-        );
-
         let xwayland_shell_state = XWaylandShellState::new::<Self>(&dh);
         let foreign_toplevel_list = ForeignToplevelListState::new::<Self>(&dh);
         let wlr_foreign_toplevel =
@@ -1072,7 +1052,7 @@ impl MargoState {
     /// `mctl outputs`. Public so dispatch handlers can also
     /// trigger a write after non-arrange state changes.
     pub fn refresh_state_file(&self) {
-        self.write_state_file();
+        self.mark_state_dirty();
     }
 
     /// Open the in-compositor region selector at the current cursor
@@ -1186,7 +1166,7 @@ impl MargoState {
         self.arrange_monitor(target);
         self.focus_first_visible_or_clear(target);
         self.publish_output_topology();
-        self.write_state_file();
+        self.mark_state_dirty();
         tracing::info!(
             from = %src_name,
             to = %target_name,
@@ -1207,7 +1187,7 @@ impl MargoState {
         self.monitors[mon_idx].enabled = true;
         self.arrange_monitor(mon_idx);
         self.publish_output_topology();
-        self.write_state_file();
+        self.mark_state_dirty();
         tracing::info!(output = %self.monitors[mon_idx].name, "re-enabled output");
     }
 
@@ -1288,7 +1268,7 @@ impl MargoState {
             self.arrange_monitor(mon_idx);
         }
         self.request_repaint();
-        self.write_state_file();
+        self.mark_state_dirty();
         self.publish_a11y_window_list();
     }
 
@@ -1306,7 +1286,7 @@ impl MargoState {
             }
         }
         self.request_repaint();
-        self.write_state_file();
+        self.mark_state_dirty();
         self.publish_a11y_window_list();
     }
 
@@ -1663,7 +1643,7 @@ impl MargoState {
             self.apply_tag_rules_to_monitor(mon_idx);
         }
         self.arrange_all();
-        crate::protocols::dwl_ipc::broadcast_all(self);
+        self.mark_state_dirty();
         self.request_repaint();
         // Config swap may have flipped twilight on/off or changed
         // day/night temps — force a resample so the new values
@@ -2168,8 +2148,8 @@ impl MargoState {
         // covered both, but arrange_monitor (the path most map/unmap/
         // tag-move events take) didn't — leaving state.json + the bar
         // tag-counts stuck on the boot snapshot of zero.
-        self.write_state_file();
-        crate::protocols::dwl_ipc::broadcast_monitor(self, mon_idx);
+        self.mark_state_dirty();
+        self.mark_state_dirty();
     }
 
     /// Smithay's `Space::map_element` always inserts the touched
@@ -2337,7 +2317,7 @@ impl MargoState {
         // fire. mango broadcasts on every focus change too — this
         // is straight parity.
         if prev_focus_idx != new_focus_idx {
-            crate::protocols::dwl_ipc::broadcast_all(self);
+            self.mark_state_dirty();
             // Phase 3 scripting: invoke any `on_focus_change`
             // handlers the user registered in init.rhai. Hooks
             // see the new focused state via `focused_appid()` /
@@ -2696,7 +2676,7 @@ impl MargoState {
         let current = self.pointer_monitor();
         if self.input_pointer.last_monitor != current {
             self.input_pointer.last_monitor = current;
-            self.write_state_file();
+            self.mark_state_dirty();
         }
     }
 
@@ -3274,7 +3254,7 @@ impl MargoState {
                 self.arrange_monitor(old_monitor);
             }
             self.arrange_monitor(new_monitor);
-            crate::protocols::dwl_ipc::broadcast_all(self);
+            self.mark_state_dirty();
         } else if title_changed || app_id_changed {
             // Even when no rule reapply was needed (the client just
             // changed its title — e.g. browser tab switch — and no
@@ -3284,7 +3264,7 @@ impl MargoState {
             // commit; without this the bar would freeze on the
             // previous title until something else triggered a
             // broadcast.
-            crate::protocols::dwl_ipc::broadcast_all(self);
+            self.mark_state_dirty();
         }
     }
 }
@@ -3307,7 +3287,7 @@ impl MargoState {
         });
         if self.current_kb_layout != name {
             self.current_kb_layout = name;
-            self.write_state_file();
+            self.mark_state_dirty();
         }
     }
 

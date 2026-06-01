@@ -1,65 +1,33 @@
-//! `state.json` serialization — the runtime side-channel mctl's
-//! rich subcommands (`clients`, `outputs`, `status`) read to render
-//! richer info than fits in dwl-ipc-v2 events. Extracted from
-//! `state.rs` (roadmap Q1).
+//! State snapshot builder + the per-iteration IPC flush.
 //!
-//! Best-effort: write failures are logged at debug level, never
-//! surfaced to the user — the file is tooling-only, not a hard
-//! correctness requirement. Atomically replaced via tmp-rename so
-//! readers never see a half-written file.
+//! `build_state_snapshot` produces the JSON document every IPC `get`/
+//! `watch` reply is built from. `mark_state_dirty` / `flush_ipc_if_dirty`
+//! coalesce a burst of changes into one pushed `watch` frame per
+//! event-loop iteration. There is no longer a state.json file — the
+//! Unix socket is the only state egress.
 
-use super::{MargoState, state_file_path};
+use super::MargoState;
 use crate::MAX_TAGS;
 
 impl MargoState {
-    /// Mark `state.json` as needing a rewrite. The write is **coalesced**:
-    /// the actual serialize happens once per event-loop iteration in
-    /// `flush_state_file_if_dirty`, so a burst of changes (one layout
-    /// switch touches focus + windows + tags, each of which calls this)
-    /// serializes the snapshot once instead of N times. The file is a
-    /// tooling side-channel (`mctl clients/outputs/status` + the shell);
-    /// a sub-iteration delay is irrelevant.
-    pub fn write_state_file(&self) {
+    /// Mark compositor state as changed since the last flush. The
+    /// actual fan-out (a fresh frame to every IPC `watch` subscriber)
+    /// is **coalesced** to once per event-loop iteration in
+    /// `flush_ipc_if_dirty`, so a burst of changes (one layout switch
+    /// touches focus + windows + tags, each of which calls this) pushes
+    /// the snapshot once instead of N times.
+    pub fn mark_state_dirty(&self) {
         self.state_dirty.set(true);
     }
 
-    /// Serialise the current state — outputs, clients, layouts — to
-    /// `$XDG_RUNTIME_DIR/margo/state.json` (atomic rename) iff a change was
-    /// marked since the last flush. Driven from the compositor's
-    /// event-loop callback, once per iteration.
-    ///
-    /// Best-effort: failures are logged at debug level, never surfaced —
-    /// the file is tooling-only, not a hard correctness requirement.
-    pub fn flush_state_file_if_dirty(&mut self) {
+    /// Once per event-loop iteration: if state changed, push a fresh
+    /// snapshot frame to every IPC `watch` subscriber. This is the sole
+    /// state-egress path — there is no state.json file anymore.
+    pub fn flush_ipc_if_dirty(&mut self) {
         if !self.state_dirty.replace(false) {
             return;
         }
-        // Push fresh frames to every `watch` subscriber (the primary
-        // IPC path). The legacy state.json write is kept until every
-        // consumer has migrated to the socket (then removed wholesale).
         self.ipc_push_watches();
-        let path = state_file_path();
-        if let Err(err) = self.write_state_file_inner(&path) {
-            tracing::debug!(path = %path.display(), error = ?err, "state.json write failed");
-        }
-    }
-
-    fn write_state_file_inner(&self, path: &std::path::Path) -> anyhow::Result<()> {
-        use std::io::Write as _;
-
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-
-        let payload = self.build_state_snapshot();
-        let json = serde_json::to_string(&payload)?;
-
-        let tmp = path.with_extension(format!("tmp.{}", std::process::id()));
-        let mut f = std::fs::File::create(&tmp)?;
-        f.write_all(json.as_bytes())?;
-        drop(f);
-        std::fs::rename(&tmp, path)?;
-        Ok(())
     }
 
     pub(crate) fn build_state_snapshot(&self) -> serde_json::Value {

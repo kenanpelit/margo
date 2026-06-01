@@ -87,7 +87,7 @@ impl MargoState {
         self.overview_transition_animation_ms = Some(self.overview_transition_ms());
         self.arrange_monitors(&flipped);
         self.overview_transition_animation_ms = None;
-        crate::protocols::dwl_ipc::broadcast_all(self);
+        self.mark_state_dirty();
     }
 
     pub fn close_overview(&mut self, activate_window: Option<Window>) {
@@ -188,7 +188,7 @@ impl MargoState {
             self.focus_first_visible_or_clear(mon_idx);
         }
 
-        crate::protocols::dwl_ipc::broadcast_all(self);
+        self.mark_state_dirty();
     }
 
     pub fn toggle_overview(&mut self) {

@@ -500,7 +500,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                 };
                 state.monitors[idx].tagset[sel] = mask;
                 state.arrange_monitor(idx);
-                state.write_state_file();
+                state.mark_state_dirty();
             }
         }
         // `setclienttags`: mutate the focused client's tags as
@@ -518,7 +518,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                     state.clients[cidx].animation.running = false;
                     state.clients[cidx].tags = new;
                     state.arrange_monitor(idx);
-                    state.write_state_file();
+                    state.mark_state_dirty();
                 }
             }
         }
@@ -528,7 +528,7 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
             if let Some(layout) = ALL_LAYOUTS.get(arg.i as usize) {
                 state.set_layout(layout.name());
                 state.notify_layout(layout.name());
-                state.write_state_file();
+                state.mark_state_dirty();
             }
         }
         "togglefloating" => state.toggle_floating(),

@@ -24,7 +24,7 @@ use crate::{
     MAX_TAGS,
     animation::{ClientAnimation, OpacityAnimation},
     layout::{LayoutId, Pertag, Rect},
-    protocols::{dwl_ipc::DwlIpcState, foreign_toplevel::ForeignToplevelHandle},
+    protocols::foreign_toplevel::ForeignToplevelHandle,
 };
 
 // ── Hot corner enum ─────────────────────────────────────────────────────────
@@ -387,7 +387,6 @@ pub struct MargoMonitor {
     pub canvas_saved_pan_y: f32,
     pub canvas_saved_zoom: f32,
     pub minimap_visible: bool,
-    pub dwl_ipc: DwlIpcState,
     pub scale: f32,
     pub transform: i32,
     pub enabled: bool,

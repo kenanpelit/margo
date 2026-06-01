@@ -41,7 +41,7 @@ impl MargoState {
         // on the `enabled`/config changes that consumers (the shell's
         // night-light button polls `mctl twilight status`) must see,
         // without spamming a file write on every 50 ms transition tick.
-        self.write_state_file();
+        self.mark_state_dirty();
         let timer = smithay::reexports::calloop::timer::Timer::from_duration(next);
         let _ = self
             .loop_handle

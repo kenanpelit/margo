@@ -334,9 +334,9 @@ impl MargoState {
         let window = self.clients[idx].window.clone();
         self.focus_surface(Some(FocusTarget::Window(window)));
 
-        crate::protocols::dwl_ipc::broadcast_monitor(self, target_mon);
+        self.mark_state_dirty();
         if source_mon != target_mon && source_mon < self.monitors.len() {
-            crate::protocols::dwl_ipc::broadcast_monitor(self, source_mon);
+            self.mark_state_dirty();
         }
     }
 
