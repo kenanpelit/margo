@@ -6,17 +6,8 @@
 use anyhow::{Context, Result, bail};
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
-use wayland_client::{
-    Connection, Dispatch, EventQueue, QueueHandle,
-    globals::{GlobalListContents, registry_queue_init},
-    protocol::{wl_output, wl_registry},
-};
 
 use mctl::actions::{ACTIONS, Group};
-use mctl::protocols::dwl_ipc::{
-    zdwl_ipc_manager_v2::{self, ZdwlIpcManagerV2},
-    zdwl_ipc_output_v2::{self, ZdwlIpcOutputV2},
-};
 
 // ── CLI ───────────────────────────────────────────────────────────────────────
 
@@ -651,163 +642,7 @@ enum TwilightScheduleCmd {
 
 // ── IPC state machine ─────────────────────────────────────────────────────────
 
-#[derive(Debug, Default)]
-struct OutputInfo {
-    name: String,
-    wl_output: Option<wl_output::WlOutput>,
-    ipc_output: Option<ZdwlIpcOutputV2>,
-    active: bool,
-    tags: [TagInfo; 9],
-    layout_idx: u32,
-    layout_symbol: String,
-    title: String,
-    appid: String,
-    fullscreen: bool,
-    floating: bool,
-    x: i32,
-    y: i32,
-    width: i32,
-    height: i32,
-}
-
-#[derive(Debug, Default, Clone)]
-struct TagInfo {
-    state: u32,
-    clients: u32,
-    focused: bool,
-}
-
-#[derive(Default)]
-struct IpcState {
-    manager: Option<ZdwlIpcManagerV2>,
-    outputs: Vec<OutputInfo>,
-    layouts: Vec<String>,
-    tag_count: u32,
-    ready: bool,
-}
-
 // ── Dispatch impls ────────────────────────────────────────────────────────────
-
-impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for IpcState {
-    fn event(
-        state: &mut Self,
-        registry: &wl_registry::WlRegistry,
-        event: wl_registry::Event,
-        _: &GlobalListContents,
-        _: &Connection,
-        qh: &QueueHandle<Self>,
-    ) {
-        if let wl_registry::Event::Global {
-            name,
-            interface,
-            version,
-        } = event
-        {
-            match interface.as_str() {
-                "zdwl_ipc_manager_v2" => {
-                    let mgr: ZdwlIpcManagerV2 = registry.bind(name, version.min(2), qh, ());
-                    state.manager = Some(mgr);
-                }
-                "wl_output" => {
-                    let wl_out: wl_output::WlOutput = registry.bind(name, version.min(3), qh, name);
-                    let idx = state.outputs.len();
-                    state.outputs.push(OutputInfo {
-                        wl_output: Some(wl_out.clone()),
-                        ..Default::default()
-                    });
-                    let _ = (idx, wl_out);
-                }
-                _ => {}
-            }
-        }
-    }
-}
-
-impl Dispatch<wl_output::WlOutput, u32> for IpcState {
-    fn event(
-        state: &mut Self,
-        proxy: &wl_output::WlOutput,
-        event: wl_output::Event,
-        _name: &u32,
-        _: &Connection,
-        _qh: &QueueHandle<Self>,
-    ) {
-        if let wl_output::Event::Name { name } = event
-            && let Some(o) = state
-                .outputs
-                .iter_mut()
-                .find(|o| o.wl_output.as_ref() == Some(proxy))
-        {
-            o.name = name;
-        }
-    }
-}
-
-impl Dispatch<ZdwlIpcManagerV2, ()> for IpcState {
-    fn event(
-        state: &mut Self,
-        _: &ZdwlIpcManagerV2,
-        event: zdwl_ipc_manager_v2::Event,
-        _: &(),
-        _: &Connection,
-        _qh: &QueueHandle<Self>,
-    ) {
-        match event {
-            zdwl_ipc_manager_v2::Event::Tags { amount } => state.tag_count = amount,
-            zdwl_ipc_manager_v2::Event::Layout { name } => state.layouts.push(name),
-            _ => {}
-        }
-    }
-}
-
-impl Dispatch<ZdwlIpcOutputV2, usize> for IpcState {
-    fn event(
-        state: &mut Self,
-        _proxy: &ZdwlIpcOutputV2,
-        event: zdwl_ipc_output_v2::Event,
-        idx: &usize,
-        _: &Connection,
-        _qh: &QueueHandle<Self>,
-    ) {
-        use zdwl_ipc_output_v2::Event;
-        let out = match state.outputs.get_mut(*idx) {
-            Some(o) => o,
-            None => return,
-        };
-        match event {
-            Event::Active { active } => out.active = active != 0,
-            Event::Tag {
-                tag,
-                state: tag_state,
-                clients,
-                focused,
-            } => {
-                if let Some(t) = out.tags.get_mut(tag as usize) {
-                    t.state = match tag_state {
-                        wayland_client::WEnum::Value(v) => v as u32,
-                        wayland_client::WEnum::Unknown(v) => v,
-                    };
-                    t.clients = clients;
-                    t.focused = focused != 0;
-                }
-            }
-            Event::Layout { layout } => out.layout_idx = layout,
-            Event::LayoutSymbol { layout } => out.layout_symbol = layout,
-            Event::Title { title } => out.title = title,
-            Event::Appid { appid } => out.appid = appid,
-            Event::Fullscreen { is_fullscreen } => out.fullscreen = is_fullscreen != 0,
-            Event::Floating { is_floating } => out.floating = is_floating != 0,
-            Event::X { x } => out.x = x,
-            Event::Y { y } => out.y = y,
-            Event::Width { width } => out.width = width,
-            Event::Height { height } => out.height = height,
-            Event::Frame => {
-                state.ready = true;
-            }
-            _ => {}
-        }
-    }
-}
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
@@ -874,89 +709,13 @@ fn main() -> Result<()> {
         _ => {}
     }
 
-    let conn = Connection::connect_to_env()
-        .map_err(|e| anyhow::anyhow!("cannot connect to Wayland display: {e}"))?;
-
-    let (globals, mut eq): (_, EventQueue<IpcState>) = registry_queue_init(&conn)?;
-    let qh = eq.handle();
-
-    let mut state = IpcState::default();
-
-    // Bind manager + outputs
-    globals.contents().with_list(|list| {
-        for global in list {
-            match global.interface.as_str() {
-                "zdwl_ipc_manager_v2" => {
-                    let mgr: ZdwlIpcManagerV2 =
-                        globals
-                            .registry()
-                            .bind(global.name, global.version.min(2), &qh, ());
-                    state.manager = Some(mgr);
-                }
-                "wl_output" => {
-                    // Bind to v4+ so the connector `Name`
-                    // event fires (`wl_output.name` was added
-                    // in protocol version 4). Older v3 only
-                    // carries Geometry / Mode / Done / Scale
-                    // — no connector name, which is why
-                    // `mctl status`'s `output=` field used to
-                    // print empty.
-                    let wl_out: wl_output::WlOutput = globals.registry().bind(
-                        global.name,
-                        global.version.min(4),
-                        &qh,
-                        global.name,
-                    );
-                    state.outputs.push(OutputInfo {
-                        wl_output: Some(wl_out),
-                        ..Default::default()
-                    });
-                }
-                _ => {}
-            }
-        }
-    });
-
-    if state.manager.is_none() {
-        bail!("compositor does not support zdwl_ipc_manager_v2 — is margo running?");
-    }
-
-    // Roundtrip to receive tags + layout announcements
-    eq.roundtrip(&mut state)?;
-
-    let mgr = state.manager.as_ref().unwrap().clone();
-
-    // Bind ipc_output for each wl_output
-    for (idx, out) in state.outputs.iter_mut().enumerate() {
-        if let Some(wl_out) = &out.wl_output {
-            let ipc_out = mgr.get_output(wl_out, &qh, idx);
-            out.ipc_output = Some(ipc_out);
-        }
-    }
-
-    // Wait for frame events (initial state flush)
-    eq.roundtrip(&mut state)?;
-    eq.roundtrip(&mut state)?;
-
-    // Select target output
-    let target_idx = select_output(&state, args.output.as_deref())?;
-
-    let ipc_out = state.outputs[target_idx]
-        .ipc_output
-        .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("no ipc output for target"))?
-        .clone();
-
-    // Execute command
     match args.command {
         Command::Dispatch {
             name,
             args: cmd_args,
         } => {
             let a: Vec<&str> = cmd_args.iter().map(String::as_str).collect();
-            let get = |i: usize| a.get(i).copied().unwrap_or("").to_string();
-            ipc_out.dispatch(name, get(0), get(1), get(2), get(3), get(4));
-            eq.roundtrip(&mut state)?;
+            send_dispatch(&name, &a)?;
         }
         Command::Run { file } => {
             // W3.2 — resolve to an absolute path so the
@@ -969,18 +728,9 @@ fn main() -> Result<()> {
                 }
             };
             let abs_str = abs.to_string_lossy().to_string();
-            // arg.v is fed from slot 4 (see dwl_ipc.rs Dispatch
-            // handler). Slots 1-3 are numeric-parsed and dropped
-            // on a non-numeric path, so the script path goes here.
-            ipc_out.dispatch(
-                "run_script".to_string(),
-                String::new(),
-                String::new(),
-                String::new(),
-                abs_str,
-                String::new(),
-            );
-            eq.roundtrip(&mut state)?;
+            // Single non-numeric arg lands in `arg.v` (the path), which
+            // run_script reads.
+            send_dispatch("run_script", &[&abs_str])?;
         }
         Command::Migrate { file, from, output } => {
             // W4.4 — pure-function translation, no compositor IPC
@@ -1035,20 +785,22 @@ fn main() -> Result<()> {
             return Ok(());
         }
         Command::Tags { mask, toggle } => {
-            ipc_out.set_tags(mask, toggle);
-            eq.roundtrip(&mut state)?;
+            send_dispatch(
+                "settagset",
+                &[&mask.to_string(), if toggle != 0 { "1" } else { "0" }],
+            )?;
         }
         Command::ClientTags { and_mask, xor_mask } => {
-            ipc_out.set_client_tags(and_mask, xor_mask);
-            eq.roundtrip(&mut state)?;
+            send_dispatch(
+                "setclienttags",
+                &[&and_mask.to_string(), &xor_mask.to_string()],
+            )?;
         }
         Command::Layout { index } => {
-            ipc_out.set_layout(index);
-            eq.roundtrip(&mut state)?;
+            send_dispatch("setlayoutindex", &[&index.to_string()])?;
         }
         Command::Quit => {
-            ipc_out.quit();
-            eq.roundtrip(&mut state)?;
+            send_dispatch("quit", &[])?;
         }
         Command::Reload { force } => {
             // Pre-flight: validate before we touch IPC. The compositor
@@ -1099,15 +851,7 @@ fn main() -> Result<()> {
                     );
                 }
             }
-            ipc_out.dispatch(
-                "reload_config".to_string(),
-                String::new(),
-                String::new(),
-                String::new(),
-                String::new(),
-                String::new(),
-            );
-            eq.roundtrip(&mut state)?;
+            send_dispatch("reload_config", &[])?;
         }
         Command::Twilight { action } => {
             // Status is handled higher up (no IPC needed). The
@@ -1125,25 +869,14 @@ fn main() -> Result<()> {
                     unreachable!("Preset is handled before this match arm")
                 }
                 TwilightCmd::Preview { kelvin, gamma } => {
-                    ipc_out.dispatch(
-                        "twilight_preview".to_string(),
-                        kelvin.to_string(),
-                        gamma.to_string(),
-                        String::new(),
-                        String::new(),
-                        String::new(),
-                    );
+                    send_dispatch(
+                        "twilight_preview",
+                        &[&kelvin.to_string(), &gamma.to_string()],
+                    )?;
                 }
                 TwilightCmd::Test { seconds } => {
                     let s = seconds.clamp(1, 60);
-                    ipc_out.dispatch(
-                        "twilight_test".to_string(),
-                        s.to_string(),
-                        String::new(),
-                        String::new(),
-                        String::new(),
-                        String::new(),
-                    );
+                    send_dispatch("twilight_test", &[&s.to_string()])?;
                 }
                 TwilightCmd::Set { spec } => {
                     let Some(spec) = spec else {
@@ -1164,118 +897,41 @@ fn main() -> Result<()> {
                         );
                         std::process::exit(2);
                     };
-                    ipc_out.dispatch(
-                        "twilight_set".to_string(),
-                        String::new(),
-                        String::new(),
-                        String::new(),
-                        spec,
-                        String::new(),
-                    );
+                    // Single non-numeric arg → `arg.v` (the spec).
+                    send_dispatch("twilight_set", &[&spec])?;
                 }
                 TwilightCmd::Reset => {
-                    ipc_out.dispatch(
-                        "twilight_reset".to_string(),
-                        String::new(),
-                        String::new(),
-                        String::new(),
-                        String::new(),
-                        String::new(),
-                    );
+                    send_dispatch("twilight_reset", &[])?;
                 }
                 TwilightCmd::Toggle => {
-                    ipc_out.dispatch(
-                        "twilight_toggle".to_string(),
-                        String::new(),
-                        String::new(),
-                        String::new(),
-                        String::new(),
-                        String::new(),
-                    );
+                    send_dispatch("twilight_toggle", &[])?;
                 }
             }
-            eq.roundtrip(&mut state)?;
         }
         Command::Theme { preset } => {
-            // dwl-ipc-v2 dispatch maps the 5 string slots as:
-            //   arg1=i  arg2=i2  arg3=f  arg4=v  arg5=v2
-            // The handler reads `arg.v`, so the preset string has to
-            // land in slot 4. Slots 1-3 stay empty (they'd be
-            // numeric-parsed and dropped on a non-numeric value).
-            ipc_out.dispatch(
-                "theme".to_string(),
-                String::new(),
-                String::new(),
-                String::new(),
-                preset,
-                String::new(),
-            );
-            eq.roundtrip(&mut state)?;
+            // Single non-numeric arg lands in `arg.v` (the preset name),
+            // which the `theme` action reads.
+            send_dispatch("theme", &[&preset])?;
         }
         Command::SessionSave => {
-            ipc_out.dispatch(
-                "session_save".to_string(),
-                String::new(),
-                String::new(),
-                String::new(),
-                String::new(),
-                String::new(),
-            );
-            eq.roundtrip(&mut state)?;
+            send_dispatch("session_save", &[])?;
         }
         Command::SessionLoad => {
-            ipc_out.dispatch(
-                "session_load".to_string(),
-                String::new(),
-                String::new(),
-                String::new(),
-                String::new(),
-                String::new(),
-            );
-            eq.roundtrip(&mut state)?;
+            send_dispatch("session_load", &[])?;
         }
         Command::Status { json } => {
-            // Prefer the rich state.json (post-r143) which carries
-            // the output's connector name plus tag-mask info that
-            // dwl-ipc-v2 doesn't broadcast in a single event. Fall
-            // back to the dwl-ipc snapshot if the file isn't there
-            // (margo-version mismatch, race on boot, etc.).
-            let used_state_file = if json {
-                match read_state_file() {
-                    Ok(rich) => {
-                        println!("{}", serde_json::to_string_pretty(&rich)?);
-                        true
-                    }
-                    _ => {
-                        print_status_json(&state)?;
-                        true
-                    }
-                }
+            let snap = read_state_file()?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&snap)?);
             } else {
-                match read_state_file() {
-                    Ok(rich) => {
-                        print_status_rich(&rich, args.output.as_deref());
-                        true
-                    }
-                    _ => false,
-                }
-            };
-            if !used_state_file {
-                print_status(&state, target_idx);
+                print_status_rich(&snap, args.output.as_deref());
             }
         }
         Command::Watch => {
-            println!(
-                "Watching output '{}' (Ctrl-C to stop)…",
-                state.outputs[target_idx].name
-            );
-            loop {
-                eq.blocking_dispatch(&mut state)?;
-                if state.ready {
-                    state.ready = false;
-                    print_status(&state, target_idx);
-                }
-            }
+            mctl::ipc_client::watch_stream("watch state", |frame| {
+                print_status_rich(&frame, args.output.as_deref());
+                true
+            })?;
         }
         Command::Actions { .. }
         | Command::Completions { .. }
@@ -1285,9 +941,9 @@ fn main() -> Result<()> {
         | Command::Clients { .. }
         | Command::Outputs { .. }
         | Command::Focused { .. } => {
-            // Both branches return early at the top of `main`;
-            // this arm only exists to keep the match exhaustive.
-            unreachable!("Status/ConfigErrors/Clients/Outputs/Focused return early in main");
+            // These return early at the top of `main`; this arm only
+            // exists to keep the match exhaustive.
+            unreachable!("offline commands return early in main");
         }
     }
 
@@ -1369,71 +1025,6 @@ fn cmd_actions(verbose: bool, group_filter: Option<&str>, names_only: bool) -> R
              Tag, Focus, Layout, Scroller, Window, Scratchpad, Overview, System"
         );
     }
-    Ok(())
-}
-
-fn print_status_json(state: &IpcState) -> Result<()> {
-    use serde_json::json;
-    let outputs: Vec<_> = state
-        .outputs
-        .iter()
-        .map(|out| {
-            let layout_name = state
-                .layouts
-                .get(out.layout_idx as usize)
-                .cloned()
-                .unwrap_or_default();
-            let tags: Vec<_> = out
-                .tags
-                .iter()
-                .enumerate()
-                .take(state.tag_count as usize)
-                .map(|(i, t)| {
-                    let state_str = match t.state {
-                        0 => "none",
-                        1 => "active",
-                        2 => "urgent",
-                        _ => "unknown",
-                    };
-                    json!({
-                        "index": i + 1,
-                        "state": state_str,
-                        "clients": t.clients,
-                        "focused": t.focused,
-                    })
-                })
-                .collect();
-            json!({
-                "name": out.name,
-                "active": out.active,
-                "layout": out.layout_symbol,
-                "layout_name": layout_name,
-                "layout_idx": out.layout_idx,
-                "focused": {
-                    "appid": out.appid,
-                    "title": out.title,
-                    "fullscreen": out.fullscreen,
-                    "floating": out.floating,
-                    "x": out.x,
-                    "y": out.y,
-                    "width": out.width,
-                    "height": out.height,
-                },
-                "tags": tags,
-            })
-        })
-        .collect();
-    // Stable JSON schema. Bump `version` on any breaking change
-    // (field renamed or removed); additive changes (new fields,
-    // new enum variants on existing fields) keep the version
-    // unchanged and consumers should ignore unknown fields.
-    let document = json!({
-        "version": 1,
-        "tag_count": state.tag_count,
-        "layouts": state.layouts,
-        "outputs": outputs,
-    });
-    println!("{}", serde_json::to_string_pretty(&document)?);
     Ok(())
 }
 
@@ -2040,71 +1631,10 @@ fn normalize_hhmm(s: &str) -> Result<String> {
 /// the file write already succeeded, and `mctl reload` later will
 /// finish the job.
 fn request_reload() {
-    // Best-effort fire-and-forget: any failure path (no compositor,
-    // no socket, no manager global) just returns silently. The
-    // file write already happened; `mctl reload` later closes the
-    // loop if the compositor wasn't up yet.
-    let Ok(conn) = Connection::connect_to_env() else {
-        return;
-    };
-    let Ok((globals, mut eq)): std::result::Result<(_, EventQueue<IpcState>), _> =
-        registry_queue_init(&conn)
-    else {
-        return;
-    };
-    let qh = eq.handle();
-    let mut state = IpcState::default();
-
-    let (mgr_opt, output_opt) = globals.contents().with_list(|list| {
-        let mut mgr = None;
-        let mut output = None;
-        for global in list {
-            match global.interface.as_str() {
-                "zdwl_ipc_manager_v2" => {
-                    let m: ZdwlIpcManagerV2 =
-                        globals
-                            .registry()
-                            .bind(global.name, global.version.min(2), &qh, ());
-                    mgr = Some(m);
-                }
-                "wl_output" if output.is_none() => {
-                    // The `Dispatch<WlOutput, u32>` impl for IpcState
-                    // expects the global's `name` as user data.
-                    let o: wl_output::WlOutput = globals.registry().bind(
-                        global.name,
-                        global.version.min(4),
-                        &qh,
-                        global.name,
-                    );
-                    output = Some(o);
-                }
-                _ => {}
-            }
-        }
-        (mgr, output)
-    });
-
-    let (Some(mgr), Some(output)) = (mgr_opt, output_opt) else {
-        return;
-    };
-    state.manager = Some(mgr.clone());
-
-    if eq.roundtrip(&mut state).is_err() {
-        return;
-    }
-
-    // `reload_config` is a compositor-wide dispatch; the output
-    // index passed here is just bookkeeping for the Dispatch impl.
-    let ipc_out = mgr.get_output(&output, &qh, 0usize);
-    ipc_out.dispatch(
-        "reload_config".to_string(),
-        String::new(),
-        String::new(),
-        String::new(),
-        String::new(),
-        String::new(),
-    );
-    let _ = eq.roundtrip(&mut state);
+    // Best-effort fire-and-forget reload over the IPC socket. Any
+    // failure (compositor not running, no socket) is ignored — the
+    // file write already happened and `mctl reload` later closes the loop.
+    let _ = send_dispatch("reload_config", &[]);
 }
 
 fn cmd_config_errors() -> Result<()> {
@@ -2363,113 +1893,6 @@ fn cmd_completions(shell: Shell) -> Result<()> {
     Ok(())
 }
 
-fn select_output(state: &IpcState, name: Option<&str>) -> Result<usize> {
-    if state.outputs.is_empty() {
-        bail!("no outputs found");
-    }
-    match name {
-        Some(n) => state
-            .outputs
-            .iter()
-            .position(|o| o.name == n)
-            .ok_or_else(|| anyhow::anyhow!("output '{n}' not found")),
-        None => {
-            // Prefer the active (focused) output, fall back to index 0.
-            // The `.or(Some(0))` guarantees a `Some`, so this never errors.
-            Ok(state.outputs.iter().position(|o| o.active).unwrap_or(0))
-        }
-    }
-}
-
-fn print_status(state: &IpcState, idx: usize) {
-    use std::io::IsTerminal;
-    let tty = std::io::stdout().is_terminal();
-    let bold = if tty { "\x1b[1m" } else { "" };
-    let dim = if tty { "\x1b[2m" } else { "" };
-    let cyan = if tty { "\x1b[36m" } else { "" };
-    let yellow = if tty { "\x1b[33m" } else { "" };
-    let green = if tty { "\x1b[32m" } else { "" };
-    let red = if tty { "\x1b[31m" } else { "" };
-    let reset = if tty { "\x1b[0m" } else { "" };
-
-    let out = &state.outputs[idx];
-
-    // Header line — output name + active/inactive marker + layout symbol.
-    let active_marker = if out.active {
-        format!("{green}●{reset} ")
-    } else {
-        "  ".to_string()
-    };
-    println!(
-        "{active_marker}{bold}{}{reset}  {dim}layout {reset}{cyan}{}{reset}",
-        out.name, out.layout_symbol
-    );
-
-    // Focused window line.
-    if out.appid.is_empty() && out.title.is_empty() {
-        println!("    {dim}focused{reset}: (none)");
-    } else {
-        let mut flags = Vec::new();
-        if out.fullscreen {
-            flags.push(format!("{red}FULLSCREEN{reset}"));
-        }
-        if out.floating {
-            flags.push(format!("{yellow}FLOAT{reset}"));
-        }
-        let flags_str = if flags.is_empty() {
-            String::new()
-        } else {
-            format!("  {}", flags.join(" "))
-        };
-        println!(
-            "    {dim}focused{reset}: {bold}{}{reset} · {}{flags_str}",
-            out.appid, out.title
-        );
-        if out.width > 0 && out.height > 0 {
-            println!(
-                "    {dim}geometry{reset}: {}×{} @ {},{}",
-                out.width, out.height, out.x, out.y
-            );
-        }
-    }
-
-    // Tags row — compact one-line summary.
-    let mut row = String::new();
-    for (i, tag) in out.tags.iter().enumerate().take(state.tag_count as usize) {
-        let n = i + 1;
-        let label = format!("{n}·{}", tag.clients);
-        let cell = if tag.focused {
-            format!("{green}[{label}]●{reset}")
-        } else if tag.state == 1 {
-            // active but not the focused tag — multi-tag-view case.
-            format!("{cyan}[{label}]{reset}")
-        } else if tag.state == 2 {
-            format!("{red}{label}!{reset}")
-        } else if tag.clients > 0 {
-            label.to_string()
-        } else {
-            format!("{dim}{label}{reset}")
-        };
-        if !row.is_empty() {
-            row.push(' ');
-            row.push(' ');
-        }
-        row.push_str(&cell);
-    }
-    println!("    {dim}tags{reset}: {row}");
-    println!();
-    println!(
-        "{dim}layouts:{reset} {}",
-        state
-            .layouts
-            .iter()
-            .enumerate()
-            .map(|(i, l)| format!("{i}:{l}"))
-            .collect::<Vec<_>>()
-            .join(", ")
-    );
-}
-
 /// Render `mctl status` from the richer state.json snapshot —
 /// per-output blocks with proper connector names + tag client
 /// counts. Used when the file exists (post-r143 margo).
@@ -2621,6 +2044,29 @@ fn print_status_rich(state: &serde_json::Value, output_filter: Option<&str>) {
 }
 
 // ── State-file consumers ────────────────────────────────────────
+
+/// Send a `dispatch <action> [args…]` request over the IPC socket and
+/// surface any error frame. Empty args are skipped (the line protocol
+/// is whitespace-split); the value-bearing actions read their single
+/// non-numeric arg as `arg.v`.
+fn send_dispatch(action: &str, args: &[&str]) -> Result<()> {
+    let mut req = String::from("dispatch ");
+    req.push_str(action);
+    for a in args {
+        if a.is_empty() {
+            continue;
+        }
+        req.push(' ');
+        req.push_str(a);
+    }
+    let reply = mctl::ipc_client::request_once(&req)?;
+    if reply.get("ok").and_then(|v| v.as_bool()) != Some(true)
+        && let Some(err) = reply.get("error").and_then(|v| v.as_str())
+    {
+        bail!("dispatch {action}: {err}");
+    }
+    Ok(())
+}
 
 fn read_state_file() -> Result<serde_json::Value> {
     // Query the compositor's IPC socket for the full state snapshot.
