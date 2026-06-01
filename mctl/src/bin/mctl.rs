@@ -2623,28 +2623,15 @@ fn print_status_rich(state: &serde_json::Value, output_filter: Option<&str>) {
 // ── State-file consumers ────────────────────────────────────────
 
 fn read_state_file() -> Result<serde_json::Value> {
-    let path = state_file_path();
-    let body = std::fs::read_to_string(&path).with_context(|| {
+    // Query the compositor's IPC socket for the full state snapshot.
+    // (Same document margo used to dump to state.json — the function
+    // name is kept so every caller stays unchanged.)
+    mctl::ipc_client::request_once("get state").with_context(|| {
         format!(
-            "read {}: margo writes this file on every layout/focus change. \
-             Is margo running? (You can poke it with `pkill -USR1 margo` or \
-             toggle a tag to force a refresh.)",
-            path.display()
+            "query margo IPC socket {}: is margo running?",
+            mctl::ipc_client::socket_path().display()
         )
-    })?;
-    let json: serde_json::Value =
-        serde_json::from_str(&body).with_context(|| format!("parse {}", path.display()))?;
-    Ok(json)
-}
-
-fn state_file_path() -> std::path::PathBuf {
-    let dir = std::env::var_os("XDG_RUNTIME_DIR")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| {
-            let uid = unsafe { libc::getuid() };
-            std::path::PathBuf::from(format!("/run/user/{uid}"))
-        });
-    dir.join("margo").join("state.json")
+    })
 }
 
 fn cmd_clients(
