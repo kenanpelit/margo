@@ -241,6 +241,39 @@ impl CompositorHandler for MargoState {
                         tracing::trace!("commit on already-configured toplevel");
                     }
                 }
+                // If a resize snapshot is in flight and this commit
+                // brings the live buffer up to (≈) the target slot
+                // size, the client has finished reflowing — drop the
+                // snapshot now so the crisp live surface is revealed
+                // immediately instead of waiting out the animation/grace
+                // clock. This is the "whichever comes first" reveal that
+                // keeps the border pinned to the slot through a grow:
+                // without it, a client that reflows AFTER the move
+                // animation ends would have its border collapse onto the
+                // stale buffer for a frame (the super+r lag symptom).
+                // Damage-driven renders don't run `tick_animations`, so
+                // the commit handler is where this drop has to happen.
+                if let Some(idx) = self
+                    .clients
+                    .iter()
+                    .position(|c| c.window.wl_surface().as_deref() == Some(&root))
+                {
+                    if self.clients[idx].resize_snapshot.is_some() {
+                        let target = if self.clients[idx].animation.running {
+                            self.clients[idx].animation.current
+                        } else {
+                            self.clients[idx].geom
+                        };
+                        let actual = self.clients[idx].window.geometry().size;
+                        const TOL: i32 = 4;
+                        if (actual.w - target.width).abs() <= TOL
+                            && (actual.h - target.height).abs() <= TOL
+                        {
+                            self.clients[idx].resize_snapshot = None;
+                            self.clients[idx].snapshot_pending = false;
+                        }
+                    }
+                }
                 // Re-derive border geometry from the freshly-committed
                 // window_geometry. Clients (notably Electron — Helium /
                 // Spotify) sometimes commit at a smaller size than we

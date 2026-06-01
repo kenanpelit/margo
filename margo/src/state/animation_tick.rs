@@ -20,14 +20,28 @@
 use super::{ClosingClient, LayerSurfaceAnim, MargoClient};
 use crate::animation::{AnimationCurves, AnimationType};
 
+/// Extra time (ms) past the move-animation duration that a resize
+/// snapshot is held when the client still hasn't reflowed to the
+/// target slot size. Bounds how long a stale snapshot can sit on
+/// screen for a client that never reaches the requested size (e.g. an
+/// Electron app clamping to its own min-size). Without this ceiling a
+/// never-matching client would freeze a snapshot indefinitely.
+const SNAPSHOT_GRACE_MS: u32 = 300;
+/// Tolerance (logical px) for deciding the live buffer has reached the
+/// resize target. Absorbs fractional-scale rounding and the few-px
+/// CSD insets some clients bake into their declared `geometry().size`.
+const SNAPSHOT_SIZE_TOL: i32 = 4;
+
 /// Per-call parameters for [`tick_animations`]. Bundles the
 /// move-animation duration (used for both bezier ticks and resize-
 /// snapshot expiry) with the spring physics configuration, so the
 /// call site doesn't have to thread four scalars individually.
 #[derive(Debug, Clone, Copy)]
 pub struct AnimTickSpec {
-    /// Total bezier duration in `now_ms` units. Also bounds resize
-    /// snapshot life-time regardless of which clock is in use.
+    /// Total bezier duration in `now_ms` units. (Resize-snapshot
+    /// lifetime is no longer derived from this — it tracks the live
+    /// buffer catching up to the slot, with each client's own
+    /// `animation.duration` + [`SNAPSHOT_GRACE_MS`] as the ceiling.)
     pub duration_move: u32,
     /// `true` → spring physics integrator drives the move animation;
     /// `false` → original bezier sampling.
@@ -148,22 +162,55 @@ pub fn tick_animations(
     }
 
     for c in clients.iter_mut() {
-        // Resize-snapshot expiry. Bezier mode caps the snapshot's life
-        // at `duration_move` (its crossfade alpha is fully transparent
-        // by then anyway). Spring mode has no fixed duration — the
-        // snapshot is dropped when the spring settles, inside the
-        // settle branch below — so we only run the wall-clock cap on
-        // bezier here. Otherwise a long spring overshoot would lose
-        // its snapshot mid-flight and the live surface (still at the
-        // pre-resize size) would suddenly pop into view.
-        if !spec.use_spring
-            && let Some(snapshot) = c.resize_snapshot.as_ref()
-        {
-            let dur = std::time::Duration::from_millis(spec.duration_move as u64);
-            if snapshot.captured_at.elapsed() >= dur {
+        // Resize-snapshot lifetime. The snapshot covers the gap between
+        // the layout slot changing size and the client committing a
+        // buffer at that new size. We hold it until ONE of:
+        //
+        //   * the live buffer has reached the target slot size (the
+        //     client finished reflowing) — drop now and reveal the
+        //     crisp live surface, OR
+        //   * a grace ceiling past the animation's own duration elapses
+        //     — so a client that never reaches the requested size
+        //     (Electron min-size clamp) can't freeze a stale snapshot
+        //     on screen forever.
+        //
+        // This replaces the old unconditional drop at animation-end on
+        // a fixed `duration_move` wall clock. That premature drop is
+        // what produced the "pencere ile border ayrı hareket ediyor /
+        // border geç kalıyor" symptom on `switch_proportion_preset`
+        // (super+r): when a grow landed slower than `duration_move`,
+        // the snapshot vanished while the buffer was still the old
+        // smaller size, `border::refresh` collapsed the border onto
+        // that buffer, and it crawled back out as the client reflowed.
+        // Tying the lifetime to the buffer catching up keeps the border
+        // pinned to the slot until content and frame match.
+        //
+        // `changed` is forced while a snapshot is alive so the loop
+        // keeps repainting (and re-evaluating this block) until the
+        // snapshot resolves — otherwise a client that goes idle without
+        // matching the slot could leave a held snapshot frozen until an
+        // unrelated damage event. The ceiling bounds that to
+        // `animation.duration + SNAPSHOT_GRACE_MS`.
+        if c.resize_snapshot.is_some() {
+            let target = if c.animation.running {
+                c.animation.current
+            } else {
+                c.geom
+            };
+            let actual = c.window.geometry().size;
+            let matched = (actual.w - target.width).abs() <= SNAPSHOT_SIZE_TOL
+                && (actual.h - target.height).abs() <= SNAPSHOT_SIZE_TOL;
+            let ceiling = std::time::Duration::from_millis(
+                c.animation.duration.saturating_add(SNAPSHOT_GRACE_MS) as u64,
+            );
+            let aged_out = c
+                .resize_snapshot
+                .as_ref()
+                .is_some_and(|s| s.captured_at.elapsed() >= ceiling);
+            if matched || aged_out {
                 c.resize_snapshot = None;
-                changed = true;
             }
+            changed = true;
         }
 
         let anim = &mut c.animation;
@@ -188,10 +235,12 @@ pub fn tick_animations(
             if elapsed_ms >= anim.duration {
                 // Hard end. Snap to the exact target — `value_at` may
                 // miss it by a fraction of a pixel, and we don't want
-                // the difference surviving into the next frame.
+                // the difference surviving into the next frame. The
+                // resize snapshot is NOT dropped here; the lifetime
+                // block at the top of the loop holds it until the live
+                // buffer matches the slot (or the grace ceiling hits).
                 anim.running = false;
                 c.geom = anim.current;
-                c.resize_snapshot = None;
                 continue;
             }
             // 1D progress spring goes 0 → 1 over `duration`. Apply that
@@ -222,10 +271,12 @@ pub fn tick_animations(
             if elapsed >= anim.duration {
                 anim.running = false;
                 c.geom = anim.current;
-                // Slot animation settled: also drop any lingering
-                // snapshot (defensive — the expiry check above usually
-                // catches it first).
-                c.resize_snapshot = None;
+                // Slot animation settled. The snapshot is left for the
+                // lifetime block at the top of the loop to drop once the
+                // live buffer matches the slot (or the grace ceiling
+                // hits) — dropping it here unconditionally is exactly
+                // what collapsed the border onto a not-yet-reflowed
+                // buffer on slow grows.
                 continue;
             }
             let t = elapsed as f64 / anim.duration as f64;
