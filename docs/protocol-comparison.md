@@ -133,14 +133,15 @@ margo (ported from niri) so it no longer trails on them:
 | Protocol | margo | niri | Hyprland | mango | What it unlocks |
 |---|---|---|---|---|---|
 | `zwlr_foreign_toplevel_manager_v1` (write-side) | ✅ | ✅ | ✅ | ✅ | Taskbar click-to-activate / close / (un)fullscreen (mshell active-window pill) |
-| `ext_workspace_v1` | ✅ | ✅ | ✅ | ✅ | Workspace state for shells that don't speak dwl-ipc (sfwbar, ironbar) |
+| `ext_workspace_v1` | ✅ | ✅ | ✅ | ✅ | Workspace state for third-party bars (sfwbar, ironbar) — the standard bar-state path now that dwl-ipc is gone |
 | `zwlr_virtual_pointer_manager_v1` | ✅ | ✅ | ✅ | ✅ | Synthetic pointer — `wtype --click`, remote desktop, accessibility |
 
 margo's foreign-toplevel write-side runs *alongside* the existing
 smithay `ext-foreign-toplevel-list-v1` (read side stays untouched).
 `ext_workspace_v1` maps each output to a workspace group with 9 fixed
-tag-workspaces (active = bitmask membership); dwl-ipc still runs in
-parallel. `virtual_pointer` feeds margo's normal input path.
+tag-workspaces (active = bitmask membership); it is the standard bar-state
+protocol now that dwl-ipc has been removed (mctl + mshell use the Unix
+control socket instead). `virtual_pointer` feeds margo's normal input path.
 
 ## The remaining three gaps — blocked, not just deferred
 

@@ -8,13 +8,18 @@ Margo ships several binaries that share its workspace:
 | **`mctl`** | IPC + dispatch (Swiss-army CLI) |
 | **`mlayout`** | named monitor profiles |
 | **`mscreenshot`** | screen / region / window capture |
+| **`mplay`** | mpv companion — window control, video wallpaper, media keys |
+| **`mpower`** | automatic power-profile daemon + manual `cycle` / `set` |
 | **`mlogind`** | TUI login / display manager (matugen-themed) |
 
 Run any of them with `--help` for the full command surface.
 
 ## `mctl`
 
-Drives the compositor over the in-tree Wayland IPC plus a state.json sidecar.
+Drives the compositor over its Unix control socket (`$MARGO_SOCKET`,
+`get` / `watch` / `dispatch`). The old `dwl-ipc-unstable-v2` Wayland protocol
+and the polled `state.json` sidecar were removed in favour of this single
+socket — see [the IPC protocol](ipc.md).
 
 ### Inspection (no compositor side-effects)
 
@@ -100,6 +105,35 @@ Editor preference: `swappy` if installed, else `satty`, else skip the editor pas
 
 When bound via `bind = NONE,Print,screenshot-region-ui`, margo dims the screen, lets you drag a rect (Enter to confirm, Esc to cancel) and spawns `mscreenshot <mode>` with `MARGO_REGION_GEOM="X,Y WxH"` set so `slurp` is skipped. Cursor stays visible while in selection mode (W2.1).
 
+## `mplay`
+
+margo's native mpv companion — replaces the old `margo-mpv.sh` / `osc-media.sh`
+scripts. Three jobs:
+
+```sh
+# Window control (talks to the mpv JSON IPC socket + mctl)
+mplay start            # launch mpv (pseudo-gui) with an IPC socket
+mplay toggle           # play / pause
+mplay play [URL]       # play a file/URL (or the clipboard; ytdl auto)
+mplay download [URL]   # yt-dlp → ~/Downloads
+mplay snap             # cycle the floating mpv window across corners
+mplay pin              # pin to all tags (sticky)
+mplay focus            # focus the mpv window (hops monitor/tag)
+mplay stop             # quit mpv
+
+# Smart media control across players (MPRIS via playerctl, MPD via mpc, mpv)
+mplay media toggle           # auto-detect the best active player
+mplay media next|prev [PLAYER]   # PLAYER: spotify|vlc|mpv|mpd|browser
+
+# Native video wallpaper (in-tree mpvpaper port: wlr-layer-shell + EGL + libmpv)
+mplay wallpaper start <SRC> [--output N] [--mute] [--no-loop] [--scale fit|fill|stretch]
+mplay wallpaper stop [--output N]
+```
+
+The embedded yt-dlp shim (anti-bot client fallback + cookie file + browser
+user-agent) is built in — no external `yt-dlp-mpv` script. Optional deps:
+`yt-dlp`, `playerctl`, `mpc`.
+
 ## `mlogind`
 
 A first-party **TUI login / display manager**, forked from [lemurs](https://github.com/coastalwhite/lemurs) (MIT/Apache-2.0). It runs as a systemd service on a bare VT — no compositor needed to log in — draws a `ratatui` greeter (user + session switcher + password), authenticates through PAM, sets up the environment + utmpx, and launches the chosen X11 / Wayland session (margo included). margo appears as a session out of the box (`/usr/share/wayland-sessions/margo.desktop`).
@@ -120,9 +154,14 @@ A small **automatic power-profile manager** — a long-lived `systemd --user` da
 
 ```bash
 mpower status        # live state: power source, current profile, CPU now, thresholds
+mpower cycle         # manually switch to the next profile (perf → balanced → saver)
+mpower set balanced  # manually pick a profile (performance | balanced | power-saver)
 mpower pause         # suspend auto-switching (leaves the current profile)
 mpower resume
 ```
+
+A manual `cycle` / `set` (handy on a keybind — e.g. `ctrl+alt,p`) counts as a
+manual override: the daemon honours it until the next AC transition (below).
 
 Each tick (default 5 s) it reads the active profile, AC/battery from `/sys`, and CPU busy% (aggregate **and** the hottest single core) from `/proc/stat`, then:
 

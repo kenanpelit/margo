@@ -180,7 +180,7 @@ tagrule = id:9, layout_name:monocle
 tagrule = id:1, monitor_name:DP-3
 tagrule = id:7, monitor_name:eDP-1
 
-# Per-tag wallpaper hint (state.json exposes; daemon reads on tag-switch)
+# Per-tag wallpaper hint (exposed in the IPC `state` topic; the shell reads it on tag-switch)
 tagrule = id:5, wallpaper:/home/kenan/wall/lake.jpg
 ```
 

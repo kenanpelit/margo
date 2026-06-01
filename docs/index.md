@@ -115,11 +115,11 @@ scripts. The whole shell recolours itself from your wallpaper.
 - **Window rules with PCRE2.** Float password prompts, pin apps to tags, blackout password managers from screencasts, swallow terminal children, force CSD per-app — all by `app_id` / `title` regex.
 - **Embedded scripting.** Drop `~/.config/margo/init.rhai`; call any compositor action from a sandboxed Rhai interpreter and hook `on_focus_change` / `on_tag_switch` / `on_window_open` / `on_window_close`. Plugins via `~/.config/margo/plugins/<name>/`.
 - **Hot-reload + DRM hotplug.** `mctl reload` (or Super+Ctrl+R) re-applies rules, keybinds, monitor topology, animation curves, and gestures with no logout. Dock / undock and multi-monitor hotplug work cleanly.
-- **`dwl-ipc-v2` compatible.** Still a drop-in for noctalia, waybar-dwl, fnott, and any other dwl/mango widget — if you'd rather bring your own.
+- **Scriptable Unix-socket IPC.** A single control socket (`$MARGO_SOCKET`) speaks `get` / `watch` / `dispatch` as newline-delimited JSON — drive or observe the compositor from any language (`mctl`, `socat`, a script), no Wayland client needed. Third-party bars (sfwbar, ironbar) still get the standard `ext-workspace` + `foreign-toplevel-list` protocols. (The legacy `dwl-ipc-v2` + the polled `state.json` were removed.)
 
 ## The shell (mshell)
 
-A GTK4 + relm4 desktop shell that talks to margo over `dwl-ipc-v2` and mirrors
+A GTK4 + relm4 desktop shell that subscribes to margo's IPC socket (`watch state`) and mirrors
 its state live. Everything below is configured from a single YAML profile — no
 scripting glue.
 
