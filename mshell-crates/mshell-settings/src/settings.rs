@@ -1666,6 +1666,18 @@ impl Component for SettingsWindowModel {
                 icon: "window-symbolic",
             },
             WidgetEntry::Pill {
+                kind: BarPillKind::AudioVisualizer,
+                stack_name: "pill_audio_visualizer",
+                label: "Audio Visualizer",
+                icon: "audio-volume-high-symbolic",
+            },
+            WidgetEntry::Pill {
+                kind: BarPillKind::KeyboardLayout,
+                stack_name: "pill_keyboard_layout",
+                label: "Keyboard Layout",
+                icon: "input-keyboard-symbolic",
+            },
+            WidgetEntry::Pill {
                 kind: BarPillKind::DarkMode,
                 stack_name: "pill_dark_mode",
                 label: "Dark Mode Toggle",

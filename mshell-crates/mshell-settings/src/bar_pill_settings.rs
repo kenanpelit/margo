@@ -18,7 +18,9 @@ use relm4::{Component, ComponentParts, ComponentSender, gtk};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BarPillKind {
     ActiveWindow,
+    AudioVisualizer,
     DarkMode,
+    KeyboardLayout,
     ColorPicker,
     // Lock has its own rich page (lock-screen background) — see
     // `lock_settings.rs` — so it's not a generic bar-pill info page.
@@ -35,7 +37,9 @@ impl BarPillKind {
     pub(crate) fn display_name(self) -> &'static str {
         match self {
             Self::ActiveWindow => "Active Window",
+            Self::AudioVisualizer => "Audio Visualizer",
             Self::DarkMode => "Dark Mode Toggle",
+            Self::KeyboardLayout => "Keyboard Layout",
             Self::ColorPicker => "ColorPicker",
             Self::Logout => "Logout",
             Self::MargoTags => "Margo Tags",
@@ -54,8 +58,14 @@ impl BarPillKind {
             Self::ActiveWindow => {
                 "Shows the title of the currently focused window. Click to cycle through windows on the active tag."
             }
+            Self::AudioVisualizer => {
+                "Live audio spectrum — a strip of bars driven by the `cava` CLI (raw mode). Pulses with whatever is playing; sits as a flat resting strip on silence. Needs `cava` installed."
+            }
             Self::DarkMode => {
                 "One-click flip between Light and Dark matugen modes. Icon reflects the mode you'd switch *to*."
+            }
+            Self::KeyboardLayout => {
+                "Shows the active xkb keyboard layout (e.g. US, TR). Click cycles to the next configured layout — set multiple via `xkb_rules_layout = tr,us` in config.conf."
             }
             Self::ColorPicker => {
                 "Picks a colour from the screen and copies hex/rgb to the clipboard. Click to start picking."
