@@ -21,9 +21,9 @@ pub struct KeyCombo {
 /// Modifier name → left-variant evdev keycode.
 fn mod_to_evdev(name: &str) -> Option<u32> {
     match name.to_ascii_lowercase().as_str() {
-        "ctrl" | "control" => Some(29),  // KEY_LEFTCTRL
-        "shift" => Some(42),             // KEY_LEFTSHIFT
-        "alt" | "meta" => Some(56),      // KEY_LEFTALT
+        "ctrl" | "control" => Some(29),                // KEY_LEFTCTRL
+        "shift" => Some(42),                           // KEY_LEFTSHIFT
+        "alt" | "meta" => Some(56),                    // KEY_LEFTALT
         "super" | "logo" | "mod" | "win" => Some(125), // KEY_LEFTMETA
         _ => None,
     }
@@ -80,7 +80,11 @@ pub fn key_name_to_evdev(name: &str) -> Option<u32> {
 /// Parse `ctrl+shift+Tab` → mods + key (evdev codes). `+`-joined; the last
 /// token is the key, the rest are modifiers. Any unknown token → `None`.
 pub fn parse_combo(spec: &str) -> Option<KeyCombo> {
-    let toks: Vec<&str> = spec.split('+').map(str::trim).filter(|s| !s.is_empty()).collect();
+    let toks: Vec<&str> = spec
+        .split('+')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
     let (key_tok, mod_toks) = toks.split_last()?;
     let key = key_name_to_evdev(key_tok)?;
     let mut mods = Vec::with_capacity(mod_toks.len());
@@ -190,17 +194,32 @@ mod tests {
     fn parse_combo_mods_and_key() {
         assert_eq!(
             parse_combo("ctrl+Tab"),
-            Some(KeyCombo { mods: vec![29], key: 15 })
+            Some(KeyCombo {
+                mods: vec![29],
+                key: 15
+            })
         );
         assert_eq!(
             parse_combo("ctrl+shift+Tab"),
-            Some(KeyCombo { mods: vec![29, 42], key: 15 })
+            Some(KeyCombo {
+                mods: vec![29, 42],
+                key: 15
+            })
         );
-        assert_eq!(parse_combo("Tab"), Some(KeyCombo { mods: vec![], key: 15 }));
+        assert_eq!(
+            parse_combo("Tab"),
+            Some(KeyCombo {
+                mods: vec![],
+                key: 15
+            })
+        );
         // case-insensitive
         assert_eq!(
             parse_combo("CTRL+tab"),
-            Some(KeyCombo { mods: vec![29], key: 15 })
+            Some(KeyCombo {
+                mods: vec![29],
+                key: 15
+            })
         );
         // unknown key / mod
         assert_eq!(parse_combo("ctrl+bogus"), None);
