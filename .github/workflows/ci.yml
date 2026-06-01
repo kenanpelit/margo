@@ -47,6 +47,7 @@ jobs:
             wayland wayland-protocols libinput libxkbcommon \
             mesa libdrm seatd pixman libgudev systemd-libs \
             pcre2 pam cairo pango dbus \
+            mpv \
             gtk4 gtk4-layer-shell gdk-pixbuf2 graphene fontconfig freetype2 \
             gstreamer gst-plugins-base gst-plugins-base-libs gst-plugins-good \
             alsa-lib libpulse pipewire
@@ -66,7 +67,7 @@ jobs:
       # differs from what the package ships. This split mirrors the
       # PKGBUILD so CI validates the real production build configuration.
       - name: cargo build (compositor group)
-        run: cargo build -p margo -p start-margo -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual
+        run: cargo build -p margo -p start-margo -p mctl -p mlock -p mlayout -p mscreenshot -p mvisual -p mlogind -p mpower -p mplay
 
       - name: cargo build (shell group)
         run: cargo build -p mshell -p mshellctl -p mshellshare -p mpicker -p mwizard -p margo-portal

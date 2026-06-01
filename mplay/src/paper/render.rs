@@ -92,11 +92,13 @@ impl MpvVideo {
             get_proc_address: Some(mpv_get_proc_address),
             get_proc_address_ctx: egl_root_ptr,
         };
-        let mut api_type = m::MPV_RENDER_API_TYPE_OPENGL.as_ptr() as *mut c_void;
         let mut params = [
             m::mpv_render_param {
+                // `data` IS the api-type C string ("opengl"), not a pointer
+                // to it — a double indirection makes mpv read garbage and
+                // fail render_context_create with "operation not implemented".
                 type_: m::MPV_RENDER_PARAM_API_TYPE,
-                data: &mut api_type as *mut _ as *mut c_void,
+                data: m::MPV_RENDER_API_TYPE_OPENGL.as_ptr() as *mut c_void,
             },
             m::mpv_render_param {
                 type_: m::MPV_RENDER_PARAM_OPENGL_INIT_PARAMS,
