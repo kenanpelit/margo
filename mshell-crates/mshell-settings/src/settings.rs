@@ -2150,7 +2150,7 @@ impl Component for SettingsWindowModel {
                         .search_index
                         .borrow()
                         .iter()
-                        .find(|(label, _)| label.contains(&q))
+                        .find(|(label, _)| label.contains(&q) || keywords_for(label).contains(&q))
                         .map(|(_, route)| route.clone());
                     if let Some(route) = route {
                         widgets.search_entry.set_text("");
@@ -2170,8 +2170,9 @@ impl Component for SettingsWindowModel {
                     if w.has_css_class("settings-sidebar-section") {
                         w.set_visible(q.is_empty());
                     } else if let Ok(btn) = w.clone().downcast::<gtk::ToggleButton>() {
+                        let label = sidebar_button_label(&btn).to_lowercase();
                         let show =
-                            q.is_empty() || sidebar_button_label(&btn).to_lowercase().contains(&q);
+                            q.is_empty() || label.contains(&q) || keywords_for(&label).contains(&q);
                         btn.set_visible(show);
                     }
                     child = next;
@@ -2179,6 +2180,47 @@ impl Component for SettingsWindowModel {
             }
         }
         self.update_view(widgets, sender);
+    }
+}
+
+/// Section-level search keywords, keyed by the lowercased sidebar
+/// label (or top-level search-index route). Lets a query like
+/// "brightness" surface Display or "vpn" surface Network without
+/// maintaining a per-control index that would drift from the hand-built
+/// pages. Returns an empty string for sections with no extra synonyms.
+fn keywords_for(label: &str) -> &'static str {
+    match label {
+        "power" => {
+            "battery suspend sleep hibernate profile performance balanced saver lid power-button"
+        }
+        "network" => "wifi wi-fi wireless ethernet wired vpn proxy dns connection ip hotspot",
+        "bluetooth" => "bt pair pairing device headset",
+        "display" => "monitor screen resolution scale scaling brightness refresh rate hidpi",
+        "theme" => "color colour palette matugen accent scheme dark light mode tint",
+        "wallpaper" => "background image picture slideshow rotation",
+        "sound" => "audio volume output input microphone speaker mute device sink source",
+        "fonts" => "font typeface family size weight",
+        "keybinds" => "keybind keybinding shortcut hotkey bind keyboard binding cheatsheet",
+        "input" => "keyboard mouse touchpad layout xkb repeat sensitivity natural scroll cursor",
+        "animations" => "animation motion transition speed easing",
+        "date_time" | "date time" => "clock time date timezone ntp format 24-hour",
+        "region" => "locale language format measurement",
+        "idle" => "screensaver dim timeout inhibitor dpms blank suspend",
+        "lock" | "lock screen" => "lockscreen password security blur unlock pam",
+        "privacy" => "location camera microphone permission history geoclue recent flatpak",
+        "launcher" => "app launcher run search spotlight provider calc ssh",
+        "menus" => "menu popup dashboard",
+        "notifications" => "notification toast popup do-not-disturb dnd",
+        "general" => "avatar profile name user greeting",
+        "tiling_layout" | "tiling layout" => "tile tiling gaps layout window split master stack",
+        "plugins" => "plugin wasm extension addon",
+        "default_apps" | "default apps" => "default browser terminal editor mime handler",
+        "bar" => "panel pill widget topbar bottombar status",
+        "widgets" => "widget pill bar component",
+        "users" => "user account password",
+        "about" => "version build info credits",
+        "setup" => "wizard onboarding first-run",
+        _ => "",
     }
 }
 
