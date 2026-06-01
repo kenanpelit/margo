@@ -173,8 +173,8 @@ zbus = "5"
 # Wayle service crates (audio / battery / bt / brightness / media /
 # network / sysinfo / systray / weather …). `wayle-hyprland` is
 # intentionally excluded — replaced by the in-tree
-# `mshell-margo-client` crate that talks margo's dwl-ipc-v2 +
-# foreign-toplevel-list + state.json instead of Hyprland's socket.
+# `mshell-margo-client` crate that talks margo's Unix IPC socket
+# (`watch state`) + foreign-toplevel-list instead of Hyprland's socket.
 wayle-audio = "0.1"
 wayle-battery = "0.1"
 wayle-bluetooth = "0.1"
