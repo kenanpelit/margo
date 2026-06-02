@@ -188,7 +188,7 @@ impl Component for BarSettingsModel {
                     gtk::Label {
                         add_css_class: "label-small",
                         set_halign: gtk::Align::Start,
-                        set_label: "Islands: a transparent bar where each pill floats as its own rounded surface (instead of one continuous strip). Restart the shell to apply.",
+                        set_label: "Islands: a transparent bar where each pill floats as its own rounded surface (instead of one continuous strip). Applies immediately.",
                         set_hexpand: true,
                         set_xalign: 0.0,
                         set_wrap: true,

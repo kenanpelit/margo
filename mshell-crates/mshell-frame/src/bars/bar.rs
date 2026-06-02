@@ -116,6 +116,9 @@ pub(crate) enum BarInput {
     SetRevealed(bool),
     ToggleRevealed,
     SetHovered(bool),
+    /// `bars.islands` toggled in Settings — flip the marker class live so
+    /// the strip ⇄ floating-pills switch applies without a shell restart.
+    SetIslands(bool),
     /// Forward a Hidden Bar IPC verb to every HiddenBar widget in this bar.
     HiddenBar(mshell_common::hidden_bar::HiddenBarVerb),
     /// `hidden_widgets` config changed — rebuild the slot holding the drawer
@@ -385,6 +388,15 @@ impl Component for BarModel {
             }
         }
 
+        // Islands is a global (not per-bar) setting, applied live: this
+        // effect re-toggles the marker class on every change, so the
+        // strip ⇄ floating-pills switch takes effect without a restart.
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let islands = config_manager().config().bars().islands().get();
+            sender_clone.input(BarInput::SetIslands(islands));
+        });
+
         let islands = config_manager().config().bars().islands().get_untracked();
 
         let model = BarModel {
@@ -449,6 +461,19 @@ impl Component for BarModel {
                             ctrl.sender().emit(input);
                         }
                     }
+                }
+            }
+            BarInput::SetIslands(enabled) => {
+                if self.islands != enabled {
+                    self.islands = enabled;
+                }
+                // Idempotent: GTK no-ops a redundant add/remove, so it's
+                // safe to apply on every notify (incl. the effect's
+                // initial fire that mirrors the init-time class).
+                if enabled {
+                    widgets.bar_center.add_css_class("islands");
+                } else {
+                    widgets.bar_center.remove_css_class("islands");
                 }
             }
             BarInput::SetStartWidgets(bar_widgets) => {
