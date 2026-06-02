@@ -41,10 +41,14 @@ impl Component for MenuWidgetListModel {
         gtk::Box {
             set_orientation: gtk::Orientation::Vertical,
             set_spacing: 4,
-            add_css_class: if init.draw_border {
-                "settings-menu-widget-section"
+            // Use `set_css_classes` (not `add_css_class`) so the
+            // no-border case applies an empty slice rather than an empty
+            // string — `add_css_class("")` trips
+            // `gtk_widget_add_css_class: css_class[0] != '\0'`.
+            set_css_classes: if init.draw_border {
+                &["settings-menu-widget-section"] as &[&str]
             } else {
-                ""
+                &[]
             },
 
             #[local_ref]
