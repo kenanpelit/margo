@@ -356,8 +356,13 @@ pub(crate) async fn fetch_ufw_summary_pkexec() -> UfwSummary {
 }
 
 async fn which(bin: &str) -> std::io::Result<()> {
+    // Null both streams: `.status()` inherits stdio, so `which`'s
+    // `/usr/bin/ufw` stdout would otherwise leak into the shell's
+    // journal on every poll. We only care about the exit code.
     let status = tokio::process::Command::new("which")
         .arg(bin)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .status()
         .await?;
     if status.success() {
