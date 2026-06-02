@@ -7,6 +7,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.9.6] – 2026-06-03
+
+A Bluetooth + overview release: a native auto-connect engine that
+retires the external scripts, a configurable scroller-overview backdrop,
+and a fix so the scroller overview renders windows on never-visited tags
+correctly.
+
 ### Added
 
 - **Native Bluetooth auto-connect + audio routing.** Replaces the external
@@ -22,6 +29,38 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   backs a keybind and the Settings "Toggle now" button. The mic toggle is
   off by default — forcing a headset mic drops the codec to HSP/HFP and
   degrades playback.
+- **Bluetooth menu redesign.** The opened menu groups devices into
+  Paired / Available, sorts connected devices first, shows a spinner
+  while a connect/disconnect is in flight, and adds a ★ pin to add or
+  remove a device from the login auto-connect list. Device name + battery
+  text bumped to a larger, legible size.
+- **Configurable scroller-overview backdrop.** Settings → Overview gains a
+  **Backdrop** section: pick a solid colour (with alpha) or an image
+  (cover-fit) painted behind the tag cells. Both apply live; a missing
+  image path falls back to the solid colour.
+- **Per-script autostart trigger.** Settings → Launcher startup scripts can
+  run on **every shell start** or **login only** (once per session), set
+  per script.
+- **Per-bar enable + explicit auto-hide.** The top and bottom bars each get
+  their own enable switch and a configurable auto-hide delay.
+- **Project-ethos note on the About page.**
+
+### Fixed
+
+- **Scroller overview shows un-visited tags correctly.** Windows on tags
+  you hadn't switched to yet rendered crammed at their stale map-time
+  position and size until the tag was visited once. The overview now
+  pre-arranges every off-screen tag it will show (layout geometry + a
+  resize configure) and feeds those off-`space` windows frame callbacks
+  while it's open, so frame-throttled clients (GTK, Electron) repaint to
+  their slot size from the first open.
+- **SCSS edits always rebuild the baked stylesheet.** `mshell-style`'s
+  build script now emits a per-file `rerun-if-changed` for every nested
+  SCSS partial, so editing a component partial no longer bakes a stale
+  stylesheet into the binary until an unrelated file change forces a
+  rebuild.
+- **Startup-scripts list height** grows with content (capped, then
+  scrolls) instead of cramming into a tiny box.
 
 ## [0.9.5] – 2026-06-02
 
