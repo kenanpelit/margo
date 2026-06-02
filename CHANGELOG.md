@@ -7,6 +7,57 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.9.5] – 2026-06-02
+
+A shell polish release: drag-to-reorder across Settings, a frameless
+"floating panels" bar mode, a batch of post-resume / log-noise fixes,
+and DESIGN.md turned into an enforceable quality gate.
+
+### Added
+
+- **Drag-to-reorder in Settings.** Every reorderable list — bar-widget
+  sections, menu-widget lists (incl. nested containers), quick actions,
+  and Control-Center tiles — now has a ≡ grip handle you can grab and
+  drag to reorder, alongside the existing ↑/↓ buttons (kept for
+  keyboard/accessibility). A live `.drop-target` indicator highlights the
+  landing row as you drag. Implemented with a shared `GestureDrag` helper
+  (`reorder_dnd`), not GTK DnD — `GtkListBox` swallows drag-and-drop
+  motion/drop before rows see it.
+- **Frameless bar mode.** Turning off **Settings → Bar → "Enable frame
+  drawing"** no longer leaves the bars/menus transparent: each paints its
+  own opaque, themed, rounded surface, so the shell reads as discrete
+  floating panels (matugen-tracked).
+
+### Changed
+
+- **Islands bar toggle applies live** — flipping Settings → Bar → Islands
+  no longer needs a shell restart.
+- **UFW bar poll no longer shells out to `sudo`.** The pill/tile state
+  comes from a privilege-free `systemctl is-active ufw.service`; the full
+  rule list is fetched (sudo/pkexec) only when the menu is opened. Poll
+  interval relaxed 120 s → 300 s. Eliminates the per-poll sudo/PAM
+  journal spam (and the `/usr/bin/ufw` stdout leak from the `which`
+  probe).
+- **DESIGN.md is now an enforceable quality gate** (§15 lint rules with
+  grep recipes, §16 component state matrix, §17 async states, §18 reuse
+  registry, §19 surface decision tree, reorderable-row + positioning
+  standards). Doc only.
+
+### Fixed
+
+- **Shell froze for 1–2 min after suspend/resume.** Synchronous
+  `state.json` reads on the GTK main thread blocked while the just-resumed
+  compositor drained its input backlog. Bounded with a 250 ms timeout so
+  a busy compositor can never freeze the shell.
+- **Window border lagged content on `switch_proportion_preset` resize** —
+  the resize snapshot is now held until the live buffer reaches the new
+  slot size (or a grace ceiling), keeping border and content locked
+  together on slow grows.
+- Stop a burst of harmless-but-noisy GTK assertions: control-center grid
+  rebuild (`gtk_grid_remove`), menu scroller min/max content-size, and an
+  empty-string CSS class on borderless menu-widget lists.
+- Setup wizard menu opens at a sensible fixed 640×720.
+
 ## [0.9.4] – 2026-06-01
 
 Brings the user's external helper scripts in-house: a new first-party `mplay`
