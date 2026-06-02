@@ -13,15 +13,19 @@
 //! Discovery starts/stops on `ParentRevealChanged(true/false)`.
 
 use mshell_common::WatcherToken;
+use mshell_config::config_manager::config_manager;
+use mshell_config::schema::config::{BluetoothDevice, ConfigStoreFields};
 use mshell_services::bluetooth_service;
 use mshell_utils::bluetooth::{
     get_bluetooth_device_icon, spawn_bluetooth_device_battery_watcher,
     spawn_bluetooth_device_watcher, spawn_bluetooth_devices_watcher,
     spawn_bluetooth_enabled_watcher,
 };
+use reactive_graph::traits::GetUntracked;
 use relm4::gtk::glib;
 use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
+use std::collections::HashMap;
 use std::sync::Arc;
 use wayle_bluetooth::core::device::Device;
 
@@ -33,6 +37,13 @@ pub(crate) struct BluetoothMenuWidgetModel {
     /// Cancels the previous per-device battery/state watchers when the
     /// device list changes.
     device_watcher_token: WatcherToken,
+    /// Addresses with a connect/disconnect in flight → spinner on the row
+    /// (§16 loading). Maps address → the connected state we're waiting for,
+    /// so the spinner clears exactly when the op settles.
+    busy: HashMap<String, bool>,
+    /// MACs (uppercased) configured for login auto-connect — drives the
+    /// ★ pin on each row. Snapshotted from config, refreshed on edits.
+    autoconnect_macs: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -50,6 +61,9 @@ pub(crate) enum BluetoothMenuWidgetInput {
     Forget(String),
     /// Internal: flip the trusted flag.
     SetTrusted(String, bool),
+    /// Internal: add/remove a device from the login auto-connect list
+    /// (MAC, friendly name).
+    TogglePin(String, String),
     /// Internal: re-read service state + rebuild list.
     RefreshState,
 }
@@ -183,6 +197,8 @@ impl Component for BluetoothMenuWidgetModel {
             enabled: bt.enabled.get(),
             devices: bt.devices.get(),
             device_watcher_token: WatcherToken::new(),
+            busy: HashMap::new(),
+            autoconnect_macs: read_autoconnect_macs(),
         };
 
         let widgets = view_output!();
@@ -244,7 +260,10 @@ impl Component for BluetoothMenuWidgetModel {
             // ── Connect / disconnect ─────────────────────────────
             BluetoothMenuWidgetInput::ConnectToggle(address) => {
                 if let Some(device) = self.find_device(&address) {
-                    if device.connected.get() {
+                    let was_connected = device.connected.get();
+                    // Spinner until the device reports the flipped state.
+                    self.busy.insert(address.clone(), !was_connected);
+                    if was_connected {
                         tokio::spawn(async move {
                             let _ = device.disconnect().await;
                         });
@@ -297,14 +316,34 @@ impl Component for BluetoothMenuWidgetModel {
                 }
             }
 
+            // ── Auto-connect pin ─────────────────────────────────
+            BluetoothMenuWidgetInput::TogglePin(mac, name) => {
+                toggle_autoconnect(&mac, &name);
+                self.autoconnect_macs = read_autoconnect_macs();
+            }
+
             // ── State refresh (fired by update_cmd) ──────────────
             BluetoothMenuWidgetInput::RefreshState => {
-                // Model already updated in update_cmd; list rebuild below.
+                // Clear the spinner for any device that has reached the
+                // state we were waiting for (or vanished from the list).
+                let devices = &self.devices;
+                self.busy.retain(|addr, want| {
+                    matches!(
+                        devices.iter().find(|d| d.address.get() == *addr),
+                        Some(d) if d.connected.get() != *want
+                    )
+                });
             }
         }
 
         // Rebuild device list every message cycle.
-        Self::rebuild_device_list(&widgets.device_list_box, &self.devices, &sender);
+        Self::rebuild_device_list(
+            &widgets.device_list_box,
+            &self.devices,
+            &self.busy,
+            &self.autoconnect_macs,
+            &sender,
+        );
 
         self.update_view(widgets, sender);
     }
@@ -337,9 +376,15 @@ impl BluetoothMenuWidgetModel {
 
     /// Rebuild the flat device list.  Full-wipe + repopulate; the list
     /// is short (< ~20 entries) so this is fine without a factory.
+    ///
+    /// Devices are split into **Paired** and **Available** groups, each
+    /// under a small section sub-label, so the menu scans the way the
+    /// Settings page does. Connected devices sort to the top of Paired.
     fn rebuild_device_list(
         list_box: &gtk::Box,
         devices: &[Arc<Device>],
+        busy: &HashMap<String, bool>,
+        autoconnect_macs: &[String],
         sender: &ComponentSender<BluetoothMenuWidgetModel>,
     ) {
         use relm4::gtk::prelude::*;
@@ -352,17 +397,53 @@ impl BluetoothMenuWidgetModel {
         let mut paired: Vec<&Arc<Device>> = devices.iter().filter(|d| d.paired.get()).collect();
         let mut unpaired: Vec<&Arc<Device>> = devices.iter().filter(|d| !d.paired.get()).collect();
 
-        paired.sort_by_key(|d| d.alias.get());
+        // Connected first, then alphabetical — the live device is what you
+        // most often came here to act on.
+        paired.sort_by_key(|d| (!d.connected.get(), d.alias.get()));
         unpaired.sort_by_key(|d| d.alias.get());
 
-        for device in paired.iter().chain(unpaired.iter()) {
-            list_box.append(&Self::build_device_row(device, sender));
+        let sub_label = |text: &str| {
+            let l = gtk::Label::new(Some(text));
+            l.add_css_class("bluetooth-dashboard-subsection-label");
+            l.set_halign(gtk::Align::Start);
+            l
+        };
+
+        if !paired.is_empty() {
+            // Only worth labelling the groups when both are present.
+            if !unpaired.is_empty() {
+                list_box.append(&sub_label("PAIRED"));
+            }
+            for device in &paired {
+                list_box.append(&Self::build_device_row(
+                    device,
+                    busy,
+                    autoconnect_macs,
+                    sender,
+                ));
+            }
+        }
+
+        if !unpaired.is_empty() {
+            if !paired.is_empty() {
+                list_box.append(&sub_label("AVAILABLE"));
+            }
+            for device in &unpaired {
+                list_box.append(&Self::build_device_row(
+                    device,
+                    busy,
+                    autoconnect_macs,
+                    sender,
+                ));
+            }
         }
     }
 
     /// Build one flat dashboard-style device row.
     fn build_device_row(
         device: &Arc<Device>,
+        busy: &HashMap<String, bool>,
+        autoconnect_macs: &[String],
         sender: &ComponentSender<BluetoothMenuWidgetModel>,
     ) -> gtk::Box {
         use relm4::gtk::prelude::*;
@@ -374,10 +455,15 @@ impl BluetoothMenuWidgetModel {
         let trusted = device.trusted.get();
         let battery = device.battery_percentage.get();
         let icon_name = get_bluetooth_device_icon(device.clone());
+        let in_flight = busy.contains_key(&address);
+        let pinned = autoconnect_macs.contains(&address.to_ascii_uppercase());
 
         // ── Outer row — clickable flat surface ───────────────────
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         row.add_css_class("bluetooth-dashboard-device-row");
+        if connected {
+            row.add_css_class("connected");
+        }
         row.set_cursor_from_name(Some("pointer"));
 
         // Device icon
@@ -403,17 +489,56 @@ impl BluetoothMenuWidgetModel {
             row.append(&bat_label);
         }
 
-        // Connected check accent
-        let check = gtk::Image::from_icon_name("object-select-symbolic");
-        check.add_css_class("bluetooth-dashboard-device-check");
-        check.set_valign(gtk::Align::Center);
-        check.set_visible(connected);
-        row.append(&check);
+        // ── Trailing status: spinner while an op is in flight (§16
+        //    loading), else the primary-accent connected check.
+        if in_flight {
+            let spinner = gtk::Spinner::new();
+            spinner.add_css_class("bluetooth-dashboard-spinner");
+            spinner.set_valign(gtk::Align::Center);
+            spinner.start();
+            row.append(&spinner);
+        } else {
+            let check = gtk::Image::from_icon_name("object-select-symbolic");
+            check.add_css_class("bluetooth-dashboard-device-check");
+            check.set_valign(gtk::Align::Center);
+            check.set_visible(connected);
+            row.append(&check);
+        }
 
-        // ── Secondary actions box (Forget + Trust, compact) ──────
+        // ── Secondary actions box (Pin + Forget + Trust, compact) ─
         if paired {
             let actions = gtk::Box::new(gtk::Orientation::Horizontal, 4);
             actions.set_valign(gtk::Align::Center);
+
+            // Auto-connect pin (★) — add/remove this device from the login
+            // auto-connect list. Filled star when pinned.
+            let pin_icon = if pinned {
+                "starred-symbolic"
+            } else {
+                "non-starred-symbolic"
+            };
+            let pin_btn = gtk::Button::from_icon_name(pin_icon);
+            pin_btn.add_css_class("bluetooth-dashboard-pin-button");
+            if pinned {
+                pin_btn.add_css_class("pinned");
+            }
+            pin_btn.set_tooltip_text(Some(if pinned {
+                "Auto-connects at login — click to stop"
+            } else {
+                "Auto-connect this device at login"
+            }));
+            {
+                let addr_p = address.clone();
+                let name_p = alias.clone();
+                let sender_p = sender.clone();
+                pin_btn.connect_clicked(move |_| {
+                    sender_p.input(BluetoothMenuWidgetInput::TogglePin(
+                        addr_p.clone(),
+                        name_p.clone(),
+                    ));
+                });
+            }
+            actions.append(&pin_btn);
 
             // Forget
             let addr_f = address.clone();
@@ -457,4 +582,38 @@ impl BluetoothMenuWidgetModel {
 
         row
     }
+}
+
+/// Uppercased MACs currently configured for login auto-connect.
+fn read_autoconnect_macs() -> Vec<String> {
+    config_manager()
+        .config()
+        .bluetooth()
+        .get_untracked()
+        .devices
+        .iter()
+        .map(|d| d.mac.trim().to_ascii_uppercase())
+        .collect()
+}
+
+/// Add the device to the auto-connect list, or remove it if already there.
+/// Matching is by MAC (case-insensitive); `name` seeds a new entry's label.
+fn toggle_autoconnect(mac: &str, name: &str) {
+    let mac = mac.trim().to_string();
+    let name = name.trim().to_string();
+    config_manager().update_config(move |c| {
+        if let Some(pos) = c
+            .bluetooth
+            .devices
+            .iter()
+            .position(|d| d.mac.eq_ignore_ascii_case(&mac))
+        {
+            c.bluetooth.devices.remove(pos);
+        } else {
+            c.bluetooth.devices.push(BluetoothDevice {
+                mac: mac.clone(),
+                name: name.clone(),
+            });
+        }
+    });
 }

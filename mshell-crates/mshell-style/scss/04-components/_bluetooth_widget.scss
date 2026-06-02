@@ -74,6 +74,17 @@ label.bt-connected {
   @include state-layer();
 }
 
+// Connected = the §16 "selected/active" row treatment: a raised
+// container base + a primary-tinted device icon so the live device
+// stands out from the rest of the list at a glance.
+.bluetooth-dashboard-device-row.connected {
+  background-color: var(--surface-container-high);
+
+  .bluetooth-dashboard-icon {
+    color: var(--primary);
+  }
+}
+
 // Primary-accent check shown when connected.
 .bluetooth-dashboard-device-check {
   -gtk-icon-size: 14px;
@@ -103,4 +114,44 @@ label.bt-connected {
   border-radius: var(--radius-sm);
   color: var(--on-surface-variant);
   @include state-layer();
+}
+
+// PAIRED / AVAILABLE sub-section labels inside the device list — a
+// lighter echo of `.bluetooth-dashboard-section-label`.
+.bluetooth-dashboard-subsection-label {
+  font-size: var(--font-2xs);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
+  margin-top: var(--space-2);
+  margin-bottom: var(--space-1);
+  padding-left: var(--space-1);
+}
+
+// In-flight connect/disconnect spinner (§16 loading) — primary-tinted,
+// sized to sit where the connected check normally is.
+.bluetooth-dashboard-spinner {
+  -gtk-icon-size: 14px;
+  min-width: 14px;
+  min-height: 14px;
+  color: var(--primary);
+}
+
+// Auto-connect pin (★): calm when off, primary when the device is on
+// the login auto-connect list.
+.bluetooth-dashboard-pin-button {
+  all: unset;
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+  color: var(--on-surface-variant);
+  @include state-layer();
+
+  image {
+    -gtk-icon-size: 14px;
+  }
+
+  &.pinned {
+    color: var(--primary);
+  }
 }
