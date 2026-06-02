@@ -288,34 +288,20 @@ impl Component for MenuModel {
             // actually shrink the panel.
             #[watch]
             set_width_request: model.minimum_width,
-            #[watch]
-            set_min_content_width: model.minimum_width,
-            #[watch]
-            set_max_content_width: model.minimum_width,
             set_propagate_natural_width: false,
-            // Vertical height cap. 0 (config default) maps to -1
-            // ("no cap"), so legacy menus keep their grow-to-fit
-            // behaviour unchanged. When the user sets a positive
-            // value, GTK clamps the viewport at that height and
-            // the inner content scrolls — unlike the horizontal
-            // axis, this one actually works because
-            // `vscrollbar_policy` is Automatic (GTK's
-            // `min/max_content_*` are no-ops only with the Never
-            // policy, see gtkscrolledwindow.c:1896).
-            #[watch]
-            set_max_content_height: if model.maximum_height > 0 {
-                model.maximum_height
-            } else {
-                -1
-            },
-            // For the plugin-panel menu, pin the content height so the gear's
-            // height control sets the surface size (not just a scroll cap).
-            #[watch]
-            set_min_content_height: if model.fixed_height && model.maximum_height > 0 {
-                model.maximum_height
-            } else {
-                -1
-            },
+            // The content min/max bounds (the actual width pin + the
+            // vertical height cap) are applied imperatively by
+            // `pin_scroller_bounds` — at init and whenever
+            // `minimum_width` / `maximum_height` change. Setting them
+            // here as `#[watch]` tripped `set_min/max_content_*`
+            // `min <= max` assertions on every grow/shrink: a single
+            // static setter order can't stay valid in both directions
+            // (min-first breaks on grow, max-first breaks on shrink).
+            // The helper does a `-1`-reset-then-set dance that's
+            // assertion-safe regardless of the previous value. The
+            // vertical cap only takes effect because `vscrollbar_policy`
+            // is Automatic (GTK's `min/max_content_*` are no-ops with
+            // the Never policy, see gtkscrolledwindow.c:1896).
 
             #[name = "widget_container"]
             gtk::Box {
@@ -586,6 +572,16 @@ impl Component for MenuModel {
         classes.extend(model.css_class.split_whitespace());
         widgets.scrolled_window.set_css_classes(&classes);
 
+        // Apply the initial content min/max bounds (width pin + height
+        // cap) imperatively — see `pin_scroller_bounds` and the note in
+        // the `view!` block above.
+        pin_scroller_bounds(
+            &widgets.scrolled_window,
+            model.minimum_width,
+            model.maximum_height,
+            model.fixed_height,
+        );
+
         if let MenuType::Wallpaper = params.menu_type {
             widgets.widget_container.set_margin_all(8);
         }
@@ -819,9 +815,21 @@ impl Component for MenuModel {
             }
             MenuInput::SetMinimumWidth(width) => {
                 self.minimum_width = width;
+                pin_scroller_bounds(
+                    &widgets.scrolled_window,
+                    self.minimum_width,
+                    self.maximum_height,
+                    self.fixed_height,
+                );
             }
             MenuInput::SetMaximumHeight(height) => {
                 self.maximum_height = height;
+                pin_scroller_bounds(
+                    &widgets.scrolled_window,
+                    self.minimum_width,
+                    self.maximum_height,
+                    self.fixed_height,
+                );
             }
             MenuInput::SetExternalContent(content) => {
                 clear_box(&widgets.widget_container);
@@ -927,4 +935,44 @@ impl Debug for MenuModel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MenuModel").finish()
     }
+}
+
+/// Pin a menu's scrolled-window content bounds without tripping GTK's
+/// `set_min/max_content_*` `min <= max` assertions.
+///
+/// Width is pinned to a hard `min == max == minimum_width` (the
+/// horizontal axis ignores the child's natural width only when both are
+/// equal). Height caps at `maximum_height` (0 → -1 = no cap);
+/// `fixed_height` additionally pins the *minimum* content height so the
+/// plugin panel gets a fixed surface rather than just a scroll cap.
+///
+/// Each axis drops its floor to `-1` before setting the new pair, so no
+/// transient state ever has `min > max` — safe whether the value grew
+/// or shrank since the last call. A single static `view!` setter order
+/// can't promise that (min-first asserts on grow, max-first on shrink),
+/// which is why this runs imperatively from `init` and the
+/// `SetMinimumWidth` / `SetMaximumHeight` handlers.
+fn pin_scroller_bounds(
+    sw: &gtk::ScrolledWindow,
+    minimum_width: i32,
+    maximum_height: i32,
+    fixed_height: bool,
+) {
+    use relm4::gtk::prelude::*;
+
+    sw.set_width_request(minimum_width);
+
+    sw.set_min_content_width(-1);
+    sw.set_max_content_width(minimum_width);
+    sw.set_min_content_width(minimum_width);
+
+    let max_h = if maximum_height > 0 { maximum_height } else { -1 };
+    let min_h = if fixed_height && maximum_height > 0 {
+        maximum_height
+    } else {
+        -1
+    };
+    sw.set_min_content_height(-1);
+    sw.set_max_content_height(max_h);
+    sw.set_min_content_height(min_h);
 }
