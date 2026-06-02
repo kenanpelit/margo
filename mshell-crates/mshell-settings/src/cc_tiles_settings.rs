@@ -240,7 +240,10 @@ fn build_tile_row(tile_id: &str, sender: &ComponentSender<CcTilesSettingsModel>)
             &container,
             tile_id.to_string(),
             move |from, to| {
-                s.input(CcTilesSettingsInput::MoveTo(from.to_string(), to.to_string()));
+                s.input(CcTilesSettingsInput::MoveTo(
+                    from.to_string(),
+                    to.to_string(),
+                ));
             },
         );
     }

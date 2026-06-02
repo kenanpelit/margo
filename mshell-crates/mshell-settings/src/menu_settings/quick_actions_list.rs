@@ -63,9 +63,7 @@ impl Component for QuickActionListModel {
                 QuickActionRowOutput::Remove(idx) => QuickActionListInput::RemoveAction(idx),
                 QuickActionRowOutput::MoveUp(idx) => QuickActionListInput::MoveUp(idx),
                 QuickActionRowOutput::MoveDown(idx) => QuickActionListInput::MoveDown(idx),
-                QuickActionRowOutput::Reorder(from, to) => {
-                    QuickActionListInput::Reorder(from, to)
-                }
+                QuickActionRowOutput::Reorder(from, to) => QuickActionListInput::Reorder(from, to),
             });
 
         {

@@ -77,9 +77,7 @@ impl Component for MenuWidgetListModel {
             .forward(sender.input_sender(), |output| match output {
                 MenuWidgetRowOutput::MoveUp(idx) => MenuWidgetListInput::MoveUp(idx),
                 MenuWidgetRowOutput::MoveDown(idx) => MenuWidgetListInput::MoveDown(idx),
-                MenuWidgetRowOutput::Reorder(from, to) => {
-                    MenuWidgetListInput::Reorder(from, to)
-                }
+                MenuWidgetRowOutput::Reorder(from, to) => MenuWidgetListInput::Reorder(from, to),
                 MenuWidgetRowOutput::Remove(idx) => MenuWidgetListInput::RemoveWidget(idx),
                 MenuWidgetRowOutput::WidgetChanged(idx, w) => {
                     MenuWidgetListInput::WidgetChanged(idx, w)
