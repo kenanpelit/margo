@@ -50,6 +50,11 @@ pub(crate) fn attach_row_drag_source(row: &impl IsA<gtk::Widget>, index: &Dynami
 
     let source = gtk::DragSource::new();
     source.set_actions(gdk::DragAction::MOVE);
+    // Capture phase: the row's drag gesture sees pointer motion before its
+    // children / the enclosing ListBox, so a drag starts from anywhere on
+    // the row. A plain click (no motion) doesn't claim, so the buttons
+    // still work. Without this the drag never starts on ListBox rows.
+    source.set_propagation_phase(gtk::PropagationPhase::Capture);
     let src_index = index.clone();
     let src_row = row.clone();
     source.connect_prepare(move |_, _, _| {

@@ -61,6 +61,12 @@ impl FactoryComponent for ActiveWidgetModel {
             set_orientation: gtk::Orientation::Horizontal,
             set_spacing: 8,
 
+            gtk::Image {
+                set_icon_name: Some("list-drag-handle-symbolic"),
+                add_css_class: "reorder-grip",
+                set_tooltip_text: Some("Drag to reorder"),
+            },
+
             gtk::Label {
                 add_css_class: "label-small",
                 set_hexpand: true,

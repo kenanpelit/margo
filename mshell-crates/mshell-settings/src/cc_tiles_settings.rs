@@ -226,6 +226,11 @@ fn build_tile_row(tile_id: &str, sender: &ComponentSender<CcTilesSettingsModel>)
         });
     }
 
+    let grip = gtk::Image::from_icon_name("list-drag-handle-symbolic");
+    grip.add_css_class("reorder-grip");
+    grip.set_tooltip_text(Some("Drag to reorder"));
+
+    container.append(&grip);
     container.append(&name_label);
     container.append(&switch);
     container.append(&wide_label);

@@ -57,6 +57,12 @@ impl FactoryComponent for MenuWidgetRowModel {
                 set_orientation: gtk::Orientation::Horizontal,
                 set_spacing: 8,
 
+                gtk::Image {
+                    set_icon_name: Some("list-drag-handle-symbolic"),
+                    add_css_class: "reorder-grip",
+                    set_tooltip_text: Some("Drag to reorder"),
+                },
+
                 gtk::Label {
                     set_hexpand: true,
                     set_halign: gtk::Align::Start,

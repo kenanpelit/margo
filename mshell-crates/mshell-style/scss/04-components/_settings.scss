@@ -22,8 +22,28 @@
     background-color: var(--surface-container);
 }
 
+// Drag-to-reorder grip handle (the ≡ icon at the start of each
+// reorderable row). Purely an affordance — the whole row is draggable —
+// so it's dimmed and shows a grab cursor on hover.
+.reorder-grip {
+    color: var(--on-surface-variant);
+    opacity: 0.7;
+
+    &:hover {
+        opacity: 1;
+        cursor: grab;
+    }
+}
+
 .settings-bar-widget-section-list {
     all: unset;
+
+    // Highlight the whole list while a dragged row hovers over it (the
+    // drop target lives on the ListBox, not the rows).
+    &:drop(active) {
+        background-color: var(--surface-container-high);
+        border-radius: var(--radius-sm);
+    }
 
     row {
         background: transparent;
@@ -35,13 +55,6 @@
         // gap it will leave is obvious (matches the dock's `.dragging`).
         &.dragging {
             opacity: 0.4;
-        }
-
-        // Highlight the row a dragged item is hovering over as the drop
-        // landing spot.
-        &:drop(active) {
-            background-color: var(--surface-container-high);
-            border-radius: var(--radius-sm);
         }
     }
 }
