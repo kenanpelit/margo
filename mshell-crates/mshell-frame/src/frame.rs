@@ -1031,6 +1031,16 @@ impl Component for Frame {
                 widgets
                     .frame_draw_widget
                     .update_style(|s| s.draw_frame = draw_frame);
+                // The frame_draw_widget is the bars' + menus' only
+                // background (they sit transparent on top of it). With
+                // it off they'd vanish, so flip `.frame-disabled` on the
+                // shared overlay — SCSS then gives each bar/menu its own
+                // opaque standalone surface (see `_frame_fallback.scss`).
+                if draw_frame {
+                    widgets.overlay.remove_css_class("frame-disabled");
+                } else {
+                    widgets.overlay.add_css_class("frame-disabled");
+                }
             }
             FrameInput::QueueFrameRedraw => {
                 widgets.frame_draw_widget.queue_draw();

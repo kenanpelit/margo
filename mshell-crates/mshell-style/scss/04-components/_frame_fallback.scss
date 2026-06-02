@@ -1,0 +1,35 @@
+// Standalone (frameless) bar + menu surfaces.
+//
+// The bars and menus normally borrow their background from the single
+// connected `FrameDrawWidget` that paints behind them — they themselves
+// are transparent. When "Enable frame drawing" (Settings → Bar) is off,
+// that widget paints nothing, which would leave every bar and menu fully
+// transparent and unusable.
+//
+// `.frame-disabled` is toggled on the frame overlay (frame.rs,
+// `FrameInput::SetDrawFrame`). In that mode each bar and menu paints its
+// own opaque, themed, rounded surface so the shell reads as discrete
+// floating panels instead of one connected frame. All colours come from
+// the matugen palette tokens, so this tracks the wallpaper theme.
+
+.frame-disabled {
+  // Each top/bottom bar becomes a floating rounded panel inset from the
+  // screen edges.
+  .bar {
+    background-color: var(--surface-container);
+    border: 1px solid var(--outline-variant);
+    border-radius: var(--radius-lg);
+    margin: var(--space-2);
+    padding: var(--space-1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  }
+
+  // Menu surfaces (clipboard, dashboard, control-center, …) get the same
+  // opaque rounded treatment so they're legible without the frame behind.
+  .menu-scroll-window {
+    background-color: var(--surface-container);
+    border: 1px solid var(--outline-variant);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  }
+}
