@@ -13,8 +13,6 @@ pub enum QuickActionRowOutput {
     Remove(DynamicIndex),
     MoveUp(DynamicIndex),
     MoveDown(DynamicIndex),
-    /// Drag-and-drop reorder: move from one index to another in this list.
-    Reorder(usize, usize),
 }
 
 #[relm4::factory(pub)]
@@ -81,10 +79,7 @@ impl FactoryComponent for QuickActionRowModel {
         returned_widget.set_selectable(false);
         returned_widget.set_focusable(false);
         returned_widget.set_can_focus(false);
-        let drop_sender = sender.clone();
-        crate::reorder_dnd::attach_row_reorder(returned_widget, index, move |from, to| {
-            let _ = drop_sender.output(QuickActionRowOutput::Reorder(from, to));
-        });
+        crate::reorder_dnd::attach_row_drag_source(returned_widget, index);
         widgets
     }
 }

@@ -1,17 +1,22 @@
-//! Shared drag-to-reorder wiring for Settings factory rows.
+//! Shared drag-to-reorder wiring for Settings lists.
 //!
-//! Every reorderable list in Settings (bar widgets, menu widgets, quick
-//! actions, control-center tiles) has up/down buttons; this adds GTK4
-//! drag-and-drop on top. Grab a row and drop it onto another in the
-//! **same** list and `on_drop(from, to)` fires with the source + target
-//! indices. Cross-list drops are rejected by comparing the two rows'
-//! parent list widget, so dragging between separate lists (e.g. the
-//! bar's start vs end sections, or a nested container vs its parent) is
-//! ignored — matching the buttons' within-list scope.
+//! Adds GTK4 drag-and-drop on top of the up/down buttons. Grab a row and
+//! drop it within the **same** list; `on_drop(from, to)` fires with the
+//! source + landing indices, with natural semantics (dragging down lands
+//! after the target, up lands before).
 //!
-//! Drop semantics are natural: dragging down lands after the target,
-//! dragging up lands before it. Pairs with `.dragging` (dims the grabbed
-//! row) and `:drop(active)` (highlights the landing row) styling.
+//! Two pieces because GtkListBox **swallows DnD motion/drop before its
+//! rows see it** — a per-row `DropTarget` never fires:
+//!   * [`attach_row_drag_source`] on each row records the drag origin.
+//!   * [`attach_listbox_drop_target`] on the *ListBox* receives the drop
+//!     and resolves the landing row from the pointer via `row_at_y`.
+//! Both compare the source/target list widget so a drag started in one
+//! list can't drop into another.
+//!
+//! [`attach_row_reorder_keyed`] is the single-widget variant for lists
+//! built directly in a `gtk::Box` (control-center tiles) — a plain Box
+//! does *not* swallow DnD, so there source and target both sit on the
+//! row. Pairs with `.dragging` styling (dims the grabbed row).
 
 use relm4::factory::DynamicIndex;
 use relm4::gtk::prelude::*;
@@ -32,30 +37,24 @@ thread_local! {
     static DRAG_KEYED: RefCell<Option<(gtk::Widget, String)>> = const { RefCell::new(None) };
 }
 
-/// Attach drag-to-reorder to a factory `row` (typically the returned
-/// `ListBoxRow`) whose logical position is `index`. `on_drop(from, to)`
-/// runs only for drops within the same parent list.
-pub(crate) fn attach_row_reorder<F>(row: &impl IsA<gtk::Widget>, index: &DynamicIndex, on_drop: F)
-where
-    F: Fn(usize, usize) + 'static,
-{
+/// Attach the drag **source** to a factory `row` (the returned
+/// `ListBoxRow`), recording its logical `index` when a drag starts.
+///
+/// The matching drop side lives on the *ListBox* via
+/// [`attach_listbox_drop_target`], not on each row: GtkListBox swallows
+/// DnD motion/drop before its rows see it, so a per-row `DropTarget`
+/// never fires (the drag starts but nothing accepts it). A single target
+/// on the list works and resolves the landing row from the pointer.
+pub(crate) fn attach_row_drag_source(row: &impl IsA<gtk::Widget>, index: &DynamicIndex) {
     let row = row.clone().upcast::<gtk::Widget>();
 
-    // --- Source ---
     let source = gtk::DragSource::new();
     source.set_actions(gdk::DragAction::MOVE);
-    // Capture phase: the row's drag gesture sees pointer motion before its
-    // children / the enclosing ListBox, so a drag starts from anywhere on
-    // the row. A plain click (no motion) doesn't claim, so the up/down/
-    // remove buttons still work.
-    source.set_propagation_phase(gtk::PropagationPhase::Capture);
     let src_index = index.clone();
     let src_row = row.clone();
     source.connect_prepare(move |_, _, _| {
-        let idx = src_index.current_index();
-        tracing::info!(idx, "reorder_dnd: drag prepare");
         if let Some(list) = src_row.parent() {
-            DRAG.with(|c| *c.borrow_mut() = Some((list, idx)));
+            DRAG.with(|c| *c.borrow_mut() = Some((list, src_index.current_index())));
         }
         // Real payload travels via DRAG; the provider just needs to offer
         // the STRING type the DropTarget accepts.
@@ -73,28 +72,38 @@ where
         DRAG.with(|c| *c.borrow_mut() = None);
     });
     row.add_controller(source);
+}
 
-    // --- Target ---
+/// Attach the drop **target** to a `ListBox` whose rows carry
+/// [`attach_row_drag_source`]. On drop the landing row is resolved from
+/// the pointer's y via `row_at_y` (a drop in the empty space past the
+/// last row lands at the end). `on_drop(from, to)` fires only when the
+/// drag originated in this same list.
+pub(crate) fn attach_listbox_drop_target<F>(list: &gtk::ListBox, on_drop: F)
+where
+    F: Fn(usize, usize) + 'static,
+{
     let target = gtk::DropTarget::new(glib::Type::STRING, gdk::DragAction::MOVE);
-    let dst_index = index.clone();
-    let dst_row = row.clone();
-    target.connect_drop(move |_, _, _, _| {
-        let to = dst_index.current_index();
-        let taken = DRAG.with(|c| c.borrow_mut().take());
-        let same_list = taken
-            .as_ref()
-            .is_some_and(|(src_list, _)| dst_row.parent().as_ref() == Some(src_list));
-        tracing::info!(to, ?taken, same_list, "reorder_dnd: drop");
-        if let Some((_, from)) = taken
-            && same_list
-            && from != to
-        {
-            on_drop(from, to);
-            return true;
+    let list_for_drop = list.clone();
+    target.connect_drop(move |_, _, _x, y| {
+        let Some((src_list, from)) = DRAG.with(|c| c.borrow_mut().take()) else {
+            return false;
+        };
+        // Reject drags that started in a different list.
+        if src_list != list_for_drop.clone().upcast::<gtk::Widget>() {
+            return false;
         }
-        false
+        let count = list_for_drop.observe_children().n_items() as usize;
+        let to = match list_for_drop.row_at_y(y as i32) {
+            Some(row) => row.index().max(0) as usize,
+            None => count.saturating_sub(1),
+        };
+        if from != to {
+            on_drop(from, to);
+        }
+        true
     });
-    row.add_controller(target);
+    list.add_controller(target);
 }
 
 /// Like [`attach_row_reorder`] but the row is identified by a stable

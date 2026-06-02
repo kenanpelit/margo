@@ -77,7 +77,6 @@ impl Component for MenuWidgetListModel {
             .forward(sender.input_sender(), |output| match output {
                 MenuWidgetRowOutput::MoveUp(idx) => MenuWidgetListInput::MoveUp(idx),
                 MenuWidgetRowOutput::MoveDown(idx) => MenuWidgetListInput::MoveDown(idx),
-                MenuWidgetRowOutput::Reorder(from, to) => MenuWidgetListInput::Reorder(from, to),
                 MenuWidgetRowOutput::Remove(idx) => MenuWidgetListInput::RemoveWidget(idx),
                 MenuWidgetRowOutput::WidgetChanged(idx, w) => {
                     MenuWidgetListInput::WidgetChanged(idx, w)
@@ -94,6 +93,14 @@ impl Component for MenuWidgetListModel {
         let model = MenuWidgetListModel { widgets };
 
         let widget_list = model.widgets.widget();
+
+        // Drag-to-reorder: rows are drag sources; the drop target lives here
+        // on the ListBox and feeds the existing Reorder handler.
+        crate::reorder_dnd::attach_listbox_drop_target(widget_list, {
+            let sender = sender.clone();
+            move |from, to| sender.input(MenuWidgetListInput::Reorder(from, to))
+        });
+
         let view_widgets = view_output!();
 
         Self::build_add_menu(&view_widgets.add_button, &sender);

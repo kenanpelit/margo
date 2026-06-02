@@ -123,12 +123,9 @@ impl FactoryComponent for ActiveWidgetModel {
         returned_widget.set_selectable(false);
         returned_widget.set_focusable(false);
         returned_widget.set_can_focus(false);
-        // Drag-to-reorder, in addition to the up/down buttons: grab a row
-        // and drop it onto another within the same section's ListBox.
-        let location = self.location;
-        crate::reorder_dnd::attach_row_reorder(returned_widget, index, move |from, to| {
-            move_item(location, from, to);
-        });
+        // Drag-to-reorder (the drop target lives on the section's ListBox,
+        // see `bar_widget_section`): mark this row as a drag source.
+        crate::reorder_dnd::attach_row_drag_source(returned_widget, index);
         widgets
     }
 }
@@ -169,7 +166,7 @@ fn reorder(location: BarListLocation, idx: usize, delta: i32) {
 /// `from` we insert at `to.min(len)`, which gives the natural drag
 /// behaviour (dragging down lands after the target, dragging up lands
 /// before it).
-fn move_item(location: BarListLocation, from: usize, to: usize) {
+pub(crate) fn move_item(location: BarListLocation, from: usize, to: usize) {
     config_manager().update_config(move |config| {
         let list = list_mut(config, location);
         if from >= list.len() || from == to {

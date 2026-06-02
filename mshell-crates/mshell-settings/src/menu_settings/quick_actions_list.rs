@@ -63,7 +63,6 @@ impl Component for QuickActionListModel {
                 QuickActionRowOutput::Remove(idx) => QuickActionListInput::RemoveAction(idx),
                 QuickActionRowOutput::MoveUp(idx) => QuickActionListInput::MoveUp(idx),
                 QuickActionRowOutput::MoveDown(idx) => QuickActionListInput::MoveDown(idx),
-                QuickActionRowOutput::Reorder(from, to) => QuickActionListInput::Reorder(from, to),
             });
 
         {
@@ -76,6 +75,14 @@ impl Component for QuickActionListModel {
         let model = QuickActionListModel { actions };
 
         let action_list = model.actions.widget();
+
+        // Drag-to-reorder: rows are drag sources; the drop target lives here
+        // on the ListBox and feeds the existing Reorder handler.
+        crate::reorder_dnd::attach_listbox_drop_target(action_list, {
+            let sender = sender.clone();
+            move |from, to| sender.input(QuickActionListInput::Reorder(from, to))
+        });
+
         let widgets = view_output!();
 
         Self::build_add_menu(&widgets.add_action_button, &sender);
