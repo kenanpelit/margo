@@ -11,7 +11,7 @@
 
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
-    ConfigStoreFields, LauncherStoreFields, PassStoreFields, ScriptAutostart,
+    AutostartTrigger, ConfigStoreFields, LauncherStoreFields, PassStoreFields, ScriptAutostart,
 };
 use mshell_launcher::providers::ScriptsProvider;
 use mshell_launcher::{frecency, history};
@@ -49,6 +49,8 @@ pub(crate) enum LauncherSettingsInput {
     SetAutostart(String, bool),
     /// Set how many seconds after startup a script runs (by name).
     SetDelay(String, u32),
+    /// Set a script's run trigger (Every start / Login only), by name.
+    SetTrigger(String, AutostartTrigger),
     /// Set the GNU pass store directory (`config.pass.store_path`).
     /// Empty falls back to $PASSWORD_STORE_DIR / ~/.password-store.
     SetPassStorePath(String),
@@ -350,7 +352,12 @@ impl Component for LauncherSettingsModel {
                 }
                 // New entries default to enabled so "type + Add" is
                 // enough to autostart; the toggle turns it back off.
-                upsert_autostart(&name, |e| e.enabled = true);
+                // They also default to LoginOnce — the common intent for
+                // autostart is "run when I log in", not on every restart.
+                upsert_autostart(&name, |e| {
+                    e.enabled = true;
+                    e.trigger = AutostartTrigger::LoginOnce;
+                });
                 self.scripts = read_autostart_scripts();
                 rebuild_scripts_box(&widgets.scripts_box, &self.scripts, &sender);
             }
@@ -366,6 +373,9 @@ impl Component for LauncherSettingsModel {
             }
             LauncherSettingsInput::SetDelay(name, secs) => {
                 upsert_autostart(&name, |e| e.delay_secs = secs);
+            }
+            LauncherSettingsInput::SetTrigger(name, trigger) => {
+                upsert_autostart(&name, |e| e.trigger = trigger);
             }
             LauncherSettingsInput::SetPassStorePath(path) => {
                 let path = path.trim().to_string();
@@ -458,6 +468,27 @@ fn rebuild_scripts_box(
         row.append(&delay_spin);
         row.append(&secs);
 
+        // Trigger: "Every start" vs "Login only". Login-only fires once
+        // per login session and is skipped on `systemctl --user restart
+        // mshell`; every-start matches the historical behaviour.
+        let trigger = gtk::DropDown::from_strings(&["Every start", "Login only"]);
+        trigger.set_valign(gtk::Align::Center);
+        trigger.set_tooltip_text(Some(
+            "When this runs: every shell start, or once per login (skipped on restart)",
+        ));
+        trigger.set_selected(entry.trigger.to_index()); // before connect → no spurious input
+        {
+            let name = name.clone();
+            let sender = sender.clone();
+            trigger.connect_selected_notify(move |d| {
+                sender.input(LauncherSettingsInput::SetTrigger(
+                    name.clone(),
+                    AutostartTrigger::from_index(d.selected()),
+                ));
+            });
+        }
+        row.append(&trigger);
+
         // Autostart toggle.
         let toggle = gtk::Switch::new();
         toggle.set_valign(gtk::Align::Center);
@@ -509,6 +540,7 @@ fn upsert_autostart(name: &str, mutate: impl FnOnce(&mut ScriptAutostart)) {
                 name: name.to_string(),
                 enabled: false,
                 delay_secs: 0,
+                trigger: AutostartTrigger::default(),
             };
             mutate(&mut entry);
             config.launcher.autostart_scripts.push(entry);

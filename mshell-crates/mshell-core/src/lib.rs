@@ -169,6 +169,12 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     // `delay_secs` after startup. Spawned by short name via the session
     // $PATH (the same way ScriptsProvider discovered it). One-shot at
     // boot — not reactive; toggling in Settings applies next launch.
+    //
+    // `LoginOnce` entries are gated on a per-session marker file under
+    // $XDG_RUNTIME_DIR (torn down by systemd at logout). If it already
+    // exists this is an in-session restart, so we skip them; otherwise
+    // it's the first start of the login and we run them + drop the marker.
+    let first_start_of_session = !autostart_marker_seen_then_touch();
     for entry in mshell_config::config_manager::config_manager()
         .config()
         .launcher()
@@ -176,6 +182,12 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         .get_untracked()
         .into_iter()
         .filter(|e| e.enabled && !e.name.is_empty())
+        .filter(|e| {
+            !matches!(
+                e.trigger,
+                mshell_config::schema::config::AutostartTrigger::LoginOnce
+            ) || first_start_of_session
+        })
     {
         tokio_rt().spawn(async move {
             if entry.delay_secs > 0 {
@@ -277,6 +289,33 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     info!("Goodbye!");
 
     Ok(())
+}
+
+/// Return whether the per-login autostart marker already existed, and
+/// create it if it didn't. `false` means "first mshell start of this
+/// login session"; `true` means an in-session restart.
+///
+/// The marker lives under `$XDG_RUNTIME_DIR/margo/` — that directory is
+/// per-login and torn down by systemd at logout, so the marker is gone
+/// by the next login and `LoginOnce` scripts run again. If we can't
+/// resolve a runtime dir or touch the file, we conservatively report
+/// "first start" so a misconfigured environment still autostarts.
+fn autostart_marker_seen_then_touch() -> bool {
+    let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from) else {
+        tracing::warn!("autostart: XDG_RUNTIME_DIR unset; treating as first login start");
+        return false;
+    };
+    let marker = dir.join("margo").join("autostart.done");
+    if marker.exists() {
+        return true;
+    }
+    if let Some(parent) = marker.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Err(err) = std::fs::File::create(&marker) {
+        tracing::warn!(?err, "autostart: could not write session marker");
+    }
+    false
 }
 
 /// Map the YAML clipboard config onto the clipboard crate's

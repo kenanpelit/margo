@@ -1213,6 +1213,58 @@ pub struct ScriptAutostart {
     pub enabled: bool,
     /// Seconds to wait after startup before running it.
     pub delay_secs: u32,
+    /// When the script fires within a login session. Defaults to
+    /// `EveryStart` so configs written before this field existed keep
+    /// their original "runs on every restart" behaviour.
+    pub trigger: AutostartTrigger,
+}
+
+/// How often an autostart script fires across a login session.
+///
+/// A *login session* is the graphical seat session — it survives
+/// `systemctl --user restart mshell` but ends at logout. We tell the
+/// two apart with a marker file under `$XDG_RUNTIME_DIR`, which systemd
+/// tears down at logout, so `LoginOnce` runs exactly once per login.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, Store, JsonSchema)]
+pub enum AutostartTrigger {
+    /// Run on every shell start, including in-session mshell restarts.
+    /// The pre-existing behaviour, and the serde default for old configs.
+    #[default]
+    EveryStart,
+    /// Run only on the first shell start of a login session; skipped on
+    /// `systemctl --user restart mshell` until the next login.
+    LoginOnce,
+}
+
+impl PatchField for AutostartTrigger {
+    fn patch_field(
+        &mut self,
+        new: Self,
+        path: &StorePath,
+        notify: &mut dyn FnMut(&StorePath),
+        _keys: Option<&KeyMap>,
+    ) {
+        if *self != new {
+            *self = new;
+            notify(path);
+        }
+    }
+}
+
+impl AutostartTrigger {
+    pub fn to_index(self) -> u32 {
+        match self {
+            AutostartTrigger::EveryStart => 0,
+            AutostartTrigger::LoginOnce => 1,
+        }
+    }
+
+    pub fn from_index(index: u32) -> Self {
+        match index {
+            1 => AutostartTrigger::LoginOnce,
+            _ => AutostartTrigger::EveryStart,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
