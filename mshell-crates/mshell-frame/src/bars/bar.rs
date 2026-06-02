@@ -102,8 +102,18 @@ pub(crate) struct BarModel {
     /// "Islands" appearance (`bars.islands`): transparent bar + opaque
     /// floating pills. Read once at build; toggling needs a restart.
     islands: bool,
+    /// Master on/off (`HorizontalBar::enabled`). When `false` the bar is
+    /// fully inert — never revealed, hover ignored. A true "disable",
+    /// distinct from auto-hide (`revealed == false`).
+    enabled: bool,
     revealed: bool,
     hovered: bool,
+    /// Auto-hide debounce (ms the pointer must stay off before hiding).
+    auto_hide_delay_ms: i32,
+    /// Generation counter for the pending auto-hide timeout: a re-enter
+    /// (or another leave) bumps it so a stale timer no-ops instead of
+    /// hiding the bar out from under the pointer.
+    hide_gen: u64,
     _effects: EffectScope,
 }
 
@@ -116,6 +126,15 @@ pub(crate) enum BarInput {
     SetRevealed(bool),
     ToggleRevealed,
     SetHovered(bool),
+    /// `HorizontalBar::enabled` toggled — master on/off (live).
+    SetEnabled(bool),
+    /// `HorizontalBar::auto_hide_delay_ms` changed (live).
+    SetAutoHideDelay(i32),
+    /// Pointer left the bar's hover region — start the auto-hide debounce.
+    ScheduleHide,
+    /// Fired by the debounce timer; hides only if no re-enter happened
+    /// since (generation still matches).
+    HideIfStale(u64),
     /// `bars.islands` toggled in Settings — flip the marker class live so
     /// the strip ⇄ floating-pills switch applies without a shell restart.
     SetIslands(bool),
@@ -202,13 +221,19 @@ impl Component for BarModel {
                     sender.input(BarInput::SetHovered(true));
                 },
                 connect_leave[sender] => move |_| {
-                    sender.input(BarInput::SetHovered(false));
+                    // Debounced hide (auto-hide bars only); see ScheduleHide.
+                    sender.input(BarInput::ScheduleHide);
                 },
             },
 
             gtk::Revealer {
+                // A bar with no widgets in any slot is fully inert: it
+                // never reveals, not even on edge-hover — so clearing a
+                // bar's widgets is a real "turn it off" (vs.
+                // `reveal_by_default = false`, which is auto-hide:
+                // hidden but revealed on hover).
                 #[watch]
-                set_reveal_child: model.revealed || model.hovered,
+                set_reveal_child: model.enabled && !model.is_widgetless() && (model.revealed || model.hovered),
                 set_transition_type: transition_type,
 
                 #[name = "bar_center"]
@@ -399,6 +424,57 @@ impl Component for BarModel {
 
         let islands = config_manager().config().bars().islands().get_untracked();
 
+        // Enabled / auto-hide (reveal_by_default) / auto-hide delay — all
+        // live, keyed on this bar's type. `enabled=false` fully disables
+        // the bar; `reveal_by_default=false` is auto-hide.
+        let bt = params.bar_type;
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let cfg = config_manager().config();
+            let v = match bt {
+                BarType::Top => cfg.bars().top_bar().enabled().get(),
+                BarType::Bottom => cfg.bars().bottom_bar().enabled().get(),
+            };
+            sender_clone.input(BarInput::SetEnabled(v));
+        });
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let cfg = config_manager().config();
+            let v = match bt {
+                BarType::Top => cfg.bars().top_bar().reveal_by_default().get(),
+                BarType::Bottom => cfg.bars().bottom_bar().reveal_by_default().get(),
+            };
+            sender_clone.input(BarInput::SetRevealed(v));
+        });
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let cfg = config_manager().config();
+            let v = match bt {
+                BarType::Top => cfg.bars().top_bar().auto_hide_delay_ms().get(),
+                BarType::Bottom => cfg.bars().bottom_bar().auto_hide_delay_ms().get(),
+            };
+            sender_clone.input(BarInput::SetAutoHideDelay(v));
+        });
+
+        let enabled = match params.bar_type {
+            BarType::Top => config_manager().config().bars().top_bar().enabled(),
+            BarType::Bottom => config_manager().config().bars().bottom_bar().enabled(),
+        }
+        .get_untracked();
+        let auto_hide_delay_ms = match params.bar_type {
+            BarType::Top => config_manager()
+                .config()
+                .bars()
+                .top_bar()
+                .auto_hide_delay_ms(),
+            BarType::Bottom => config_manager()
+                .config()
+                .bars()
+                .bottom_bar()
+                .auto_hide_delay_ms(),
+        }
+        .get_untracked();
+
         let model = BarModel {
             h_expand,
             v_expand,
@@ -414,8 +490,11 @@ impl Component for BarModel {
             min_height: 0,
             css_class,
             islands,
+            enabled,
             revealed: reveal_by_default,
             hovered: false,
+            auto_hide_delay_ms,
+            hide_gen: 0,
             _effects: effects,
         };
 
@@ -528,7 +607,40 @@ impl Component for BarModel {
                 self.revealed = !self.revealed;
             }
             BarInput::SetHovered(hovered) => {
+                // Any explicit hover change invalidates a pending auto-hide
+                // timer (re-entering must not let a stale timer hide us).
+                self.hide_gen = self.hide_gen.wrapping_add(1);
                 self.hovered = hovered;
+            }
+            BarInput::SetEnabled(enabled) => {
+                self.enabled = enabled;
+            }
+            BarInput::SetAutoHideDelay(ms) => {
+                self.auto_hide_delay_ms = ms;
+            }
+            BarInput::ScheduleHide => {
+                if self.revealed {
+                    // Always-visible bar: hover state is cosmetic, drop it now.
+                    self.hovered = false;
+                } else {
+                    // Auto-hide: wait `auto_hide_delay_ms` before hiding so
+                    // the bar doesn't snap away the instant the pointer
+                    // crosses its edge. A re-enter bumps `hide_gen`, making
+                    // this timer a no-op.
+                    self.hide_gen = self.hide_gen.wrapping_add(1);
+                    let generation = self.hide_gen;
+                    let delay = self.auto_hide_delay_ms.max(0) as u64;
+                    let s = sender.clone();
+                    gtk::glib::timeout_add_local_once(
+                        std::time::Duration::from_millis(delay),
+                        move || s.input(BarInput::HideIfStale(generation)),
+                    );
+                }
+            }
+            BarInput::HideIfStale(generation) => {
+                if generation == self.hide_gen {
+                    self.hovered = false;
+                }
             }
             BarInput::RebuildHidden => {
                 if self.start_widget_kinds.contains(&BarWidget::HiddenBar) {
@@ -571,6 +683,15 @@ impl Component for BarModel {
 }
 
 impl BarModel {
+    /// True when no widgets sit in any slot — such a bar is treated as
+    /// fully off (never revealed), so clearing a bar's widgets disables
+    /// it outright.
+    fn is_widgetless(&self) -> bool {
+        self.start_widget_kinds.is_empty()
+            && self.center_widget_kinds.is_empty()
+            && self.end_widget_kinds.is_empty()
+    }
+
     fn build_widget(
         orientation: Orientation,
         bar_type: BarType,

@@ -444,8 +444,10 @@ impl Default for Bars {
             frame: Frame::default(),
             widgets: BarWidgets::default(),
             top_bar: HorizontalBar {
+                enabled: true,
                 minimum_height: 0,
                 reveal_by_default: true,
+                auto_hide_delay_ms: default_auto_hide_delay_ms(),
                 left_widgets: vec![BarWidget::MargoTags],
                 center_widgets: vec![BarWidget::MargoDock],
                 right_widgets: vec![
@@ -1414,8 +1416,20 @@ impl Default for ScreenshareMenu {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
 #[serde(default)]
 pub struct HorizontalBar {
+    /// Master on/off. When `false` the bar is fully inert — never shown,
+    /// not even on edge-hover (a true "disable", distinct from
+    /// `reveal_by_default = false` which is auto-hide).
+    #[serde(default = "default_true")]
+    pub enabled: bool,
     pub minimum_height: i32,
+    /// `true` → always visible. `false` → auto-hide: hidden, slides in
+    /// when the pointer reaches the bar's screen edge.
     pub reveal_by_default: bool,
+    /// Auto-hide only: ms the pointer must leave the bar before it slides
+    /// back out (debounce so it doesn't snap away the instant you move
+    /// off it).
+    #[serde(default = "default_auto_hide_delay_ms")]
+    pub auto_hide_delay_ms: i32,
     pub left_widgets: Vec<BarWidget>,
     pub center_widgets: Vec<BarWidget>,
     pub right_widgets: Vec<BarWidget>,
@@ -1425,11 +1439,21 @@ pub struct HorizontalBar {
     pub hidden_widgets: Vec<BarWidget>,
 }
 
+fn default_true() -> bool {
+    true
+}
+
+fn default_auto_hide_delay_ms() -> i32 {
+    400
+}
+
 impl Default for HorizontalBar {
     fn default() -> Self {
         Self {
+            enabled: true,
             minimum_height: 0,
             reveal_by_default: true,
+            auto_hide_delay_ms: default_auto_hide_delay_ms(),
             left_widgets: Vec::new(),
             center_widgets: Vec::new(),
             right_widgets: Vec::new(),

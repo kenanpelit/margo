@@ -32,10 +32,14 @@ pub(crate) struct BarSettingsModel {
     bottom_bar_start_controller: Controller<WidgetSectionModel>,
     bottom_bar_center_controller: Controller<WidgetSectionModel>,
     bottom_bar_end_controller: Controller<WidgetSectionModel>,
+    top_enabled: bool,
+    bottom_enabled: bool,
     top_min_height: i32,
     bottom_min_height: i32,
     top_reveal_by_default: bool,
     bottom_reveal_by_default: bool,
+    top_auto_hide_delay: i32,
+    bottom_auto_hide_delay: i32,
     /// Hover tint strength (%) shared by every bar pill.
     bar_hover_strength: i32,
     /// Debounce handles for the two `min_height` spin buttons.
@@ -52,6 +56,8 @@ pub(crate) struct BarSettingsModel {
     /// `MIN_HEIGHT_DEBOUNCE_MS`.
     top_min_height_debounce: Option<glib::JoinHandle<()>>,
     bottom_min_height_debounce: Option<glib::JoinHandle<()>>,
+    top_auto_hide_delay_debounce: Option<glib::JoinHandle<()>>,
+    bottom_auto_hide_delay_debounce: Option<glib::JoinHandle<()>>,
     _effects: EffectScope,
 }
 
@@ -79,6 +85,12 @@ pub(crate) enum BarSettingsInput {
     CommitBottomMinHeight,
     TopRevealByDefaultChanged(bool),
     BottomRevealByDefaultChanged(bool),
+    TopEnabledToggled(bool),
+    BottomEnabledToggled(bool),
+    TopAutoHideDelayChanged(i32),
+    BottomAutoHideDelayChanged(i32),
+    CommitTopAutoHideDelay,
+    CommitBottomAutoHideDelay,
     BarHoverStrengthChanged(i32),
     BarHoverStrengthEffect(i32),
 
@@ -92,6 +104,10 @@ pub(crate) enum BarSettingsInput {
     BottomMinHeightEffect(i32),
     TopRevealByDefaultEffect(bool),
     BottomRevealByDefaultEffect(bool),
+    TopEnabledEffect(bool),
+    BottomEnabledEffect(bool),
+    TopAutoHideDelayEffect(i32),
+    BottomAutoHideDelayEffect(i32),
 }
 
 #[derive(Debug)]
@@ -312,6 +328,41 @@ impl Component for BarSettingsModel {
                     set_orientation: gtk::Orientation::Horizontal,
                     set_spacing: 20,
 
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Show this bar",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Off turns the bar off entirely — it never appears, not even on hover.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        #[block_signal(top_enabled_handler)]
+                        set_active: model.top_enabled,
+                        connect_state_set[sender] => move |_, enabled| {
+                            sender.input(BarSettingsInput::TopEnabledToggled(enabled));
+                            glib::Propagation::Proceed
+                        } @top_enabled_handler,
+                    }
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
                     gtk::Label {
                         add_css_class: "label-small",
                         set_halign: gtk::Align::Start,
@@ -341,14 +392,14 @@ impl Component for BarSettingsModel {
                         gtk::Label {
                             add_css_class: "label-medium-bold",
                             set_halign: gtk::Align::Start,
-                            set_label: "Reveal by default",
+                            set_label: "Auto-hide",
                             set_hexpand: true,
                         },
 
                         gtk::Label {
                             add_css_class: "label-small",
                             set_halign: gtk::Align::Start,
-                            set_label: "Whether to reveal the bar when first starting MShell.",
+                            set_label: "Hide the bar; it slides in when you move the pointer to its screen edge.",
                             set_hexpand: true,
                             set_xalign: 0.0,
                             set_wrap: true,
@@ -358,14 +409,40 @@ impl Component for BarSettingsModel {
 
                     gtk::Switch {
                         set_valign: gtk::Align::Center,
+                        // Auto-hide is the inverse of reveal_by_default.
                         #[watch]
                         #[block_signal(top_reveal_by_default_handler)]
-                        set_active: model.top_reveal_by_default,
-                        connect_state_set[sender] => move |_, enabled| {
-                            sender.input(BarSettingsInput::TopRevealByDefaultChanged(enabled));
+                        set_active: !model.top_reveal_by_default,
+                        connect_state_set[sender] => move |_, auto_hide| {
+                            sender.input(BarSettingsInput::TopRevealByDefaultChanged(!auto_hide));
                             glib::Propagation::Proceed
                         } @top_reveal_by_default_handler,
                     }
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+                    #[watch]
+                    set_sensitive: !model.top_reveal_by_default,
+
+                    gtk::Label {
+                        add_css_class: "label-small",
+                        set_halign: gtk::Align::Start,
+                        set_label: "Auto-hide delay (ms)",
+                        set_hexpand: true,
+                    },
+
+                    gtk::SpinButton {
+                        set_range: (0.0, 5000.0),
+                        set_increments: (50.0, 250.0),
+                        #[watch]
+                        #[block_signal(top_auto_hide_delay_handler)]
+                        set_value: model.top_auto_hide_delay as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(BarSettingsInput::TopAutoHideDelayChanged(s.value() as i32));
+                        } @top_auto_hide_delay_handler,
+                    },
                 },
 
                 model.top_bar_start_controller.widget().clone() {},
@@ -378,6 +455,41 @@ impl Component for BarSettingsModel {
                     add_css_class: "label-large-bold",
                     set_label: "Bottom Bar",
                     set_halign: gtk::Align::Start,
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Show this bar",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Off turns the bar off entirely — it never appears, not even on hover.",
+                            set_hexpand: true,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        #[watch]
+                        #[block_signal(bottom_enabled_handler)]
+                        set_active: model.bottom_enabled,
+                        connect_state_set[sender] => move |_, enabled| {
+                            sender.input(BarSettingsInput::BottomEnabledToggled(enabled));
+                            glib::Propagation::Proceed
+                        } @bottom_enabled_handler,
+                    }
                 },
 
                 gtk::Box {
@@ -413,14 +525,14 @@ impl Component for BarSettingsModel {
                         gtk::Label {
                             add_css_class: "label-medium-bold",
                             set_halign: gtk::Align::Start,
-                            set_label: "Reveal by default",
+                            set_label: "Auto-hide",
                             set_hexpand: true,
                         },
 
                         gtk::Label {
                             add_css_class: "label-small",
                             set_halign: gtk::Align::Start,
-                            set_label: "Whether to reveal the bar when first starting MShell.",
+                            set_label: "Hide the bar; it slides in when you move the pointer to its screen edge.",
                             set_hexpand: true,
                             set_xalign: 0.0,
                             set_wrap: true,
@@ -430,14 +542,40 @@ impl Component for BarSettingsModel {
 
                     gtk::Switch {
                         set_valign: gtk::Align::Center,
+                        // Auto-hide is the inverse of reveal_by_default.
                         #[watch]
                         #[block_signal(bottom_reveal_by_default_handler)]
-                        set_active: model.bottom_reveal_by_default,
-                        connect_state_set[sender] => move |_, enabled| {
-                            sender.input(BarSettingsInput::BottomRevealByDefaultChanged(enabled));
+                        set_active: !model.bottom_reveal_by_default,
+                        connect_state_set[sender] => move |_, auto_hide| {
+                            sender.input(BarSettingsInput::BottomRevealByDefaultChanged(!auto_hide));
                             glib::Propagation::Proceed
                         } @bottom_reveal_by_default_handler,
                     }
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+                    #[watch]
+                    set_sensitive: !model.bottom_reveal_by_default,
+
+                    gtk::Label {
+                        add_css_class: "label-small",
+                        set_halign: gtk::Align::Start,
+                        set_label: "Auto-hide delay (ms)",
+                        set_hexpand: true,
+                    },
+
+                    gtk::SpinButton {
+                        set_range: (0.0, 5000.0),
+                        set_increments: (50.0, 250.0),
+                        #[watch]
+                        #[block_signal(bottom_auto_hide_delay_handler)]
+                        set_value: model.bottom_auto_hide_delay as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(BarSettingsInput::BottomAutoHideDelayChanged(s.value() as i32));
+                        } @bottom_auto_hide_delay_handler,
+                    },
                 },
 
                 model.bottom_bar_start_controller.widget().clone() {},
@@ -564,6 +702,42 @@ impl Component for BarSettingsModel {
             let config = config_manager().config();
             let value = config.bars().bottom_bar().reveal_by_default().get();
             sender_clone.input(BarSettingsInput::BottomRevealByDefaultEffect(value));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let value = config_manager().config().bars().top_bar().enabled().get();
+            sender_clone.input(BarSettingsInput::TopEnabledEffect(value));
+        });
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let value = config_manager()
+                .config()
+                .bars()
+                .bottom_bar()
+                .enabled()
+                .get();
+            sender_clone.input(BarSettingsInput::BottomEnabledEffect(value));
+        });
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let value = config_manager()
+                .config()
+                .bars()
+                .top_bar()
+                .auto_hide_delay_ms()
+                .get();
+            sender_clone.input(BarSettingsInput::TopAutoHideDelayEffect(value));
+        });
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let value = config_manager()
+                .config()
+                .bars()
+                .bottom_bar()
+                .auto_hide_delay_ms()
+                .get();
+            sender_clone.input(BarSettingsInput::BottomAutoHideDelayEffect(value));
         });
 
         let sender_clone = sender.clone();
@@ -710,6 +884,30 @@ impl Component for BarSettingsModel {
                 .bottom_bar()
                 .reveal_by_default()
                 .get_untracked(),
+            top_enabled: config_manager()
+                .config()
+                .bars()
+                .top_bar()
+                .enabled()
+                .get_untracked(),
+            bottom_enabled: config_manager()
+                .config()
+                .bars()
+                .bottom_bar()
+                .enabled()
+                .get_untracked(),
+            top_auto_hide_delay: config_manager()
+                .config()
+                .bars()
+                .top_bar()
+                .auto_hide_delay_ms()
+                .get_untracked(),
+            bottom_auto_hide_delay: config_manager()
+                .config()
+                .bars()
+                .bottom_bar()
+                .auto_hide_delay_ms()
+                .get_untracked(),
             bar_hover_strength: config_manager()
                 .config()
                 .theme()
@@ -719,6 +917,8 @@ impl Component for BarSettingsModel {
                 .get_untracked(),
             top_min_height_debounce: None,
             bottom_min_height_debounce: None,
+            top_auto_hide_delay_debounce: None,
+            bottom_auto_hide_delay_debounce: None,
             _effects: effects,
         };
 
@@ -843,6 +1043,57 @@ impl Component for BarSettingsModel {
                     config.bars.bottom_bar.reveal_by_default = reveal;
                 });
             }
+            BarSettingsInput::TopEnabledToggled(enabled) => {
+                self.top_enabled = enabled;
+                config_manager().update_config(move |config| {
+                    config.bars.top_bar.enabled = enabled;
+                });
+            }
+            BarSettingsInput::BottomEnabledToggled(enabled) => {
+                self.bottom_enabled = enabled;
+                config_manager().update_config(move |config| {
+                    config.bars.bottom_bar.enabled = enabled;
+                });
+            }
+            BarSettingsInput::TopAutoHideDelayChanged(ms) => {
+                // Same debounce as min-height: stage now, persist once settled.
+                self.top_auto_hide_delay = ms;
+                if let Some(h) = self.top_auto_hide_delay_debounce.take() {
+                    h.abort();
+                }
+                let sender_clone = sender.clone();
+                self.top_auto_hide_delay_debounce = Some(glib::spawn_future_local(async move {
+                    glib::timeout_future(std::time::Duration::from_millis(MIN_HEIGHT_DEBOUNCE_MS))
+                        .await;
+                    sender_clone.input(BarSettingsInput::CommitTopAutoHideDelay);
+                }));
+            }
+            BarSettingsInput::BottomAutoHideDelayChanged(ms) => {
+                self.bottom_auto_hide_delay = ms;
+                if let Some(h) = self.bottom_auto_hide_delay_debounce.take() {
+                    h.abort();
+                }
+                let sender_clone = sender.clone();
+                self.bottom_auto_hide_delay_debounce = Some(glib::spawn_future_local(async move {
+                    glib::timeout_future(std::time::Duration::from_millis(MIN_HEIGHT_DEBOUNCE_MS))
+                        .await;
+                    sender_clone.input(BarSettingsInput::CommitBottomAutoHideDelay);
+                }));
+            }
+            BarSettingsInput::CommitTopAutoHideDelay => {
+                self.top_auto_hide_delay_debounce = None;
+                let ms = self.top_auto_hide_delay;
+                config_manager().update_config(move |config| {
+                    config.bars.top_bar.auto_hide_delay_ms = ms;
+                });
+            }
+            BarSettingsInput::CommitBottomAutoHideDelay => {
+                self.bottom_auto_hide_delay_debounce = None;
+                let ms = self.bottom_auto_hide_delay;
+                config_manager().update_config(move |config| {
+                    config.bars.bottom_bar.auto_hide_delay_ms = ms;
+                });
+            }
             BarSettingsInput::BarHoverStrengthChanged(v) => {
                 self.bar_hover_strength = v;
                 config_manager().update_config(move |config| {
@@ -887,6 +1138,18 @@ impl Component for BarSettingsModel {
             }
             BarSettingsInput::BottomRevealByDefaultEffect(reveal) => {
                 self.bottom_reveal_by_default = reveal;
+            }
+            BarSettingsInput::TopEnabledEffect(enabled) => {
+                self.top_enabled = enabled;
+            }
+            BarSettingsInput::BottomEnabledEffect(enabled) => {
+                self.bottom_enabled = enabled;
+            }
+            BarSettingsInput::TopAutoHideDelayEffect(ms) => {
+                self.top_auto_hide_delay = ms;
+            }
+            BarSettingsInput::BottomAutoHideDelayEffect(ms) => {
+                self.bottom_auto_hide_delay = ms;
             }
         }
 
