@@ -2615,6 +2615,31 @@ impl MargoState {
             }
         });
 
+        // While the scroller overview is open it renders EVERY tag's
+        // windows live — including ones unmapped from `space` (off-screen
+        // tags). Those never appear in `space.elements()`, so without
+        // this they get no frame callbacks and frame-throttled clients
+        // (GTK, Electron, …) won't repaint to the slot size
+        // `prearrange_overview_tags` configured for them — leaving them
+        // stale-sized in the overview until their tag is visited once.
+        // Nudge every overview-shown window on this output's monitor; the
+        // sequence-based `should_send` dedup keeps the current-tag windows
+        // already served above from being sent twice.
+        if self.is_scroller_overview_open()
+            && let Some(mon_idx) = self.monitors.iter().position(|m| &m.output == output)
+        {
+            for c in &self.clients {
+                if c.monitor == mon_idx
+                    && !c.is_initial_map_pending
+                    && !c.is_minimized
+                    && !c.is_killing
+                    && !c.is_in_scratchpad
+                {
+                    c.window.send_frame(output, time, throttle, should_send);
+                }
+            }
+        }
+
         let map = layer_map_for_output(output);
         for layer in map.layers() {
             layer.send_frame(output, time, throttle, should_send);
