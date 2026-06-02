@@ -8,6 +8,7 @@
 
 use crate::row::Row;
 use relm4::gtk::prelude::*;
+use relm4::gtk::{gdk, gio};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::path::PathBuf;
 
@@ -99,8 +100,37 @@ pub struct OverviewSettingsModel {
     grid_dim: f32,
     grid_transition: u32,
     cycle_order_idx: u32,
+    /// Solid backdrop colour painted behind the scroller-overview cells.
+    backdrop_color: gdk::RGBA,
+    /// Backdrop image path (empty = none, solid colour used).
+    backdrop_image: String,
     style_model: gtk::StringList,
     cycle_model: gtk::StringList,
+}
+
+impl OverviewSettingsModel {
+    /// Description line for the backdrop-image row: the current path, or
+    /// a hint that the solid colour is in effect when unset.
+    fn image_desc(&self) -> String {
+        if self.backdrop_image.is_empty() {
+            "No image set — the backdrop colour above is used.".to_string()
+        } else {
+            self.backdrop_image.clone()
+        }
+    }
+}
+
+/// Format a `gdk::RGBA` as margo's `0xRRGGBBAA` hex (what `parse_color`
+/// in margo-config reads).
+fn rgba_to_hex(c: gdk::RGBA) -> String {
+    let q = |f: f32| (f.clamp(0.0, 1.0) * 255.0).round() as u32;
+    format!(
+        "0x{:02x}{:02x}{:02x}{:02x}",
+        q(c.red()),
+        q(c.green()),
+        q(c.blue()),
+        q(c.alpha())
+    )
 }
 
 #[derive(Debug)]
@@ -117,6 +147,13 @@ pub enum OverviewSettingsInput {
     SetGridTransition(i32),
     /// 0 = MRU, 1 = Tag, 2 = Mixed.
     SetCycleOrder(u32),
+    SetBackdropColor(gdk::RGBA),
+    /// Open the image file chooser.
+    OpenBackdropImage,
+    /// A path was chosen — persist + display it.
+    SetBackdropImage(String),
+    /// Drop the image; fall back to the solid backdrop colour.
+    ClearBackdropImage,
 }
 
 #[relm4::component(pub)]
@@ -250,6 +287,55 @@ impl Component for OverviewSettingsModel {
                     },
                 },
 
+                // ════════ Backdrop ════════
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Backdrop",
+                    set_halign: gtk::Align::Start,
+                },
+
+                #[template]
+                Row {
+                    #[template_child] title { set_label: "Backdrop colour" },
+                    #[template_child] desc {
+                        set_label: "Solid colour painted behind the scroller-overview cells (used when no backdrop image is set).",
+                    },
+                    gtk::ColorDialogButton {
+                        set_valign: gtk::Align::Center,
+                        set_dialog: &gtk::ColorDialog::builder().with_alpha(true).build(),
+                        set_rgba: &model.backdrop_color,
+                        connect_rgba_notify[sender] => move |b| {
+                            sender.input(OverviewSettingsInput::SetBackdropColor(b.rgba()));
+                        },
+                    },
+                },
+
+                #[template]
+                Row {
+                    #[template_child] title { set_label: "Backdrop image" },
+                    #[template_child] desc {
+                        #[watch]
+                        set_label: &model.image_desc(),
+                        set_wrap: true,
+                        set_xalign: 0.0,
+                    },
+                    gtk::Box {
+                        set_valign: gtk::Align::Center,
+                        set_spacing: 6,
+                        gtk::Button {
+                            set_label: "Choose…",
+                            connect_clicked => OverviewSettingsInput::OpenBackdropImage,
+                        },
+                        gtk::Button {
+                            add_css_class: "destructive-action",
+                            set_label: "Clear",
+                            #[watch]
+                            set_sensitive: !model.backdrop_image.is_empty(),
+                            connect_clicked => OverviewSettingsInput::ClearBackdropImage,
+                        },
+                    },
+                },
+
                 // ════════ Grid overview ════════
                 gtk::Label {
                     add_css_class: "label-large-bold",
@@ -375,6 +461,11 @@ impl Component for OverviewSettingsModel {
                 margo_config::OverviewCycleOrder::Tag => 1,
                 margo_config::OverviewCycleOrder::Mixed => 2,
             },
+            backdrop_color: {
+                let c = cfg.overview_backdrop_color.0;
+                gdk::RGBA::new(c[0], c[1], c[2], c[3])
+            },
+            backdrop_image: cfg.overview_backdrop_image.clone().unwrap_or_default(),
             style_model: gtk::StringList::new(&["Scroller (Recommended)", "Grid"]),
             cycle_model: gtk::StringList::new(&["Most recent (MRU)", "Tag order", "Mixed"]),
         };
@@ -382,7 +473,7 @@ impl Component for OverviewSettingsModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match message {
             OverviewSettingsInput::SetStyle(idx) => {
                 let v = if idx == 0 { "scroller" } else { "grid" };
@@ -422,6 +513,43 @@ impl Component for OverviewSettingsModel {
                     _ => "mru",
                 };
                 apply("overview_cycle_order", v.to_string());
+            }
+            OverviewSettingsInput::SetBackdropColor(rgba) => {
+                self.backdrop_color = rgba;
+                apply("overview_backdrop_color", rgba_to_hex(rgba));
+            }
+            OverviewSettingsInput::OpenBackdropImage => {
+                let dialog = gtk::FileDialog::builder()
+                    .title("Choose overview backdrop image")
+                    .modal(true)
+                    .build();
+                // Only show image files in the picker.
+                let filter = gtk::FileFilter::new();
+                filter.set_name(Some("Images"));
+                filter.add_mime_type("image/*");
+                let filters = gio::ListStore::new::<gtk::FileFilter>();
+                filters.append(&filter);
+                dialog.set_filters(Some(&filters));
+                dialog.set_default_filter(Some(&filter));
+
+                let sender = sender.clone();
+                dialog.open(gtk::Window::NONE, gio::Cancellable::NONE, move |result| {
+                    if let Ok(file) = result
+                        && let Some(path) = file.path()
+                    {
+                        sender.input(OverviewSettingsInput::SetBackdropImage(
+                            path.to_string_lossy().to_string(),
+                        ));
+                    }
+                });
+            }
+            OverviewSettingsInput::SetBackdropImage(path) => {
+                self.backdrop_image = path.clone();
+                apply("overview_backdrop_image", path);
+            }
+            OverviewSettingsInput::ClearBackdropImage => {
+                self.backdrop_image.clear();
+                apply("overview_backdrop_image", String::new());
             }
         }
     }

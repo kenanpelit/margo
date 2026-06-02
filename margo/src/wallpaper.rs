@@ -75,6 +75,37 @@ impl WallpaperState {
         }
     }
 
+    /// Like [`Self::load`] but **without** the wallpaper fallback chain:
+    /// decode exactly `path` (with `~` expansion) or return `None`. Used
+    /// for the overview backdrop image, which must stay unset (so the
+    /// solid `overview_backdrop_color` shows) when its configured path is
+    /// missing — rather than silently borrowing the desktop wallpaper
+    /// default like [`Self::load`] would.
+    pub fn load_exact(path: &str) -> Option<Self> {
+        let trimmed = path.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        let expanded = expand_home(trimmed);
+        if !exists_and_readable(&expanded) {
+            warn!(path = %expanded.display(), "overview backdrop: image not found");
+            return None;
+        }
+        match decode_to_buffer(&expanded) {
+            Ok((buffer, size)) => {
+                info!(path = %expanded.display(), "overview backdrop: loaded");
+                Some(Self {
+                    natural_size: size,
+                    buffer,
+                })
+            }
+            Err(e) => {
+                warn!(path = %expanded.display(), error = %e, "overview backdrop: decode failed");
+                None
+            }
+        }
+    }
+
     /// Build a render element sized to fit `output_geom` (logical
     /// coordinates, scaled to `output_scale`). Currently implements
     /// `Cover` fit only: the image is upscaled until both output

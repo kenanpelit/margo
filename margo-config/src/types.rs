@@ -736,6 +736,14 @@ pub struct Config {
     /// continues seamlessly to the first (and vice versa) instead of
     /// rubber-banding at the ends. Default `false`.
     pub scroller_overview_loop: bool,
+    /// Solid colour painted behind the scroller-overview tag cells (the
+    /// area around / between the mini-desktops). Default a neutral dark
+    /// grey. Overridden by `overview_backdrop_image` when that decodes.
+    pub overview_backdrop_color: Rgba,
+    /// Optional image painted (cover-fit) behind the scroller-overview
+    /// tag cells instead of the solid `overview_backdrop_color`. `None`
+    /// (empty value) keeps the solid colour. `~` expands to `$HOME`.
+    pub overview_backdrop_image: Option<String>,
 
     // ── Twilight (blue-light filter) ───────────────────────────────
     /// Master switch. `false` disables every twilight code path —
@@ -1054,6 +1062,8 @@ impl Default for Config {
             scroller_overview_zoom: 0.5,
             scroller_overview_gap: 40,
             scroller_overview_loop: false,
+            overview_backdrop_color: Rgba([0.15, 0.15, 0.15, 1.0]),
+            overview_backdrop_image: None,
             twilight: false,
             twilight_mode: TwilightMode::Geo,
             twilight_day_temp: 6500,

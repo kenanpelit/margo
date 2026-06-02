@@ -590,6 +590,11 @@ pub struct MargoState {
     /// solid `rootcolor` clear in that case. Re-decoded by
     /// `reload_config` if the path changes.
     pub wallpaper: Option<crate::wallpaper::WallpaperState>,
+    /// Optional image painted behind the scroller-overview cells (the
+    /// `overview_backdrop_image` config knob). `None` → the solid
+    /// `overview_backdrop_color` is used instead. Decoded at startup and
+    /// re-decoded by `reload_config` so Settings → Overview applies live.
+    pub overview_backdrop: Option<crate::wallpaper::WallpaperState>,
     pub xwm: Option<X11Wm>,
     pub xwayland_shell_state: XWaylandShellState,
     pub libinput: Option<smithay::reexports::input::Libinput>,
@@ -1026,6 +1031,10 @@ impl MargoState {
             cursor_status: CursorImageStatus::default_named(),
             cursor_manager: CursorManager::new(),
             wallpaper: crate::wallpaper::WallpaperState::load(config.wallpaper.as_deref()),
+            overview_backdrop: config
+                .overview_backdrop_image
+                .as_deref()
+                .and_then(crate::wallpaper::WallpaperState::load_exact),
             xwm: None,
             xwayland_shell_state,
             libinput: None,
@@ -1605,6 +1614,16 @@ impl MargoState {
 
         self.animation_curves = AnimationCurves::bake(&new_config);
         self.enable_gaps = new_config.enable_gaps;
+        // Re-decode the overview backdrop image if the configured path
+        // changed (incl. cleared → `None`), so Settings → Overview
+        // applies live. Only re-reads the file when the path actually
+        // differs — avoids a needless decode on every `mctl reload`.
+        if new_config.overview_backdrop_image != self.config.overview_backdrop_image {
+            self.overview_backdrop = new_config
+                .overview_backdrop_image
+                .as_deref()
+                .and_then(crate::wallpaper::WallpaperState::load_exact);
+        }
         self.config = new_config;
         // Per-tag tiling layouts: re-assert the configured `taglayout`
         // directives on reload so Settings → Tiling Layout "Apply"

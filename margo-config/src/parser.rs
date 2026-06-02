@@ -367,6 +367,15 @@ fn parse_option(cfg: &mut Config, key: &str, val: &str) -> Result<()> {
         "scroller_overview_zoom" => cfg.scroller_overview_zoom = parse_f32(val).clamp(0.1, 1.0),
         "scroller_overview_gap" => cfg.scroller_overview_gap = parse_i32(val).max(0),
         "scroller_overview_loop" => cfg.scroller_overview_loop = parse_bool(val),
+        "overview_backdrop_color" => cfg.overview_backdrop_color = parse_color(val)?,
+        "overview_backdrop_image" => {
+            let trimmed = val.trim();
+            cfg.overview_backdrop_image = if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            };
+        }
 
         // ── Twilight (blue-light filter) ───────────────────────────
         "twilight" => cfg.twilight = parse_bool(val),
@@ -1510,6 +1519,8 @@ pub const OPTION_KEYS: &[&str] = &[
     "scroller_overview_gap",
     "scroller_overview_loop",
     "scroller_overview_zoom",
+    "overview_backdrop_color",
+    "overview_backdrop_image",
     "repeat_delay",
     "repeat_rate",
     "rootcolor",

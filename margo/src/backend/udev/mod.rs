@@ -2160,11 +2160,6 @@ pub(super) fn build_render_elements_inner(
     elements
 }
 
-/// Backdrop fill behind the overview — niri's default backdrop color
-/// (`#262626`). A neutral dark grey, not black, so windows read against
-/// it the way niri's overview does.
-const BACKDROP_COLOR: [f32; 4] = [0.15, 0.15, 0.15, 1.0];
-
 /// Build the render-element list for an output while the **scroller
 /// overview** is open: a niri-style grey backdrop with every tag's
 /// windows scaled down live (via `RescaleRenderElement` — no window
@@ -2239,7 +2234,7 @@ fn build_scroller_overview_elements(
             smithay::backend::renderer::element::Id::new(),
             dst,
             CommitCounter::default(),
-            BACKDROP_COLOR,
+            state.config.overview_backdrop_color.0,
             Kind::Unspecified,
         )));
         return elements;
@@ -2368,7 +2363,22 @@ fn build_scroller_overview_elements(
         }
     }
 
-    // Backdrop at the very bottom (behind every cell).
+    // Backdrop behind every cell. An optional `overview_backdrop_image`
+    // (cover-fit) sits at the bottom of the visible stack; the solid
+    // `overview_backdrop_color` goes below it as the base clear (shows
+    // when no image is set, and as a fallback if the image element fails
+    // to build). Elements[0] is topmost, so trailing pushes draw first.
+    if let Some(bg) = state.overview_backdrop.as_ref()
+        && let Some(elem) = bg.render_element(
+            renderer,
+            output_geo.loc.to_f64(),
+            output_geo.size,
+            output_scale,
+        )
+    {
+        elements.push(MargoRenderElement::Cursor(elem));
+    }
+
     let backdrop = Rectangle::<i32, Physical>::new(
         Point::from((0, 0)),
         Size::from((output_geo.size.w, output_geo.size.h)).to_physical_precise_round(scale),
@@ -2377,7 +2387,7 @@ fn build_scroller_overview_elements(
         smithay::backend::renderer::element::Id::new(),
         backdrop,
         CommitCounter::default(),
-        BACKDROP_COLOR,
+        state.config.overview_backdrop_color.0,
         Kind::Unspecified,
     )));
 
