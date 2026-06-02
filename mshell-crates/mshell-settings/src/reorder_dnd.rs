@@ -44,11 +44,18 @@ where
     // --- Source ---
     let source = gtk::DragSource::new();
     source.set_actions(gdk::DragAction::MOVE);
+    // Capture phase: the row's drag gesture sees pointer motion before its
+    // children / the enclosing ListBox, so a drag starts from anywhere on
+    // the row. A plain click (no motion) doesn't claim, so the up/down/
+    // remove buttons still work.
+    source.set_propagation_phase(gtk::PropagationPhase::Capture);
     let src_index = index.clone();
     let src_row = row.clone();
     source.connect_prepare(move |_, _, _| {
+        let idx = src_index.current_index();
+        tracing::info!(idx, "reorder_dnd: drag prepare");
         if let Some(list) = src_row.parent() {
-            DRAG.with(|c| *c.borrow_mut() = Some((list, src_index.current_index())));
+            DRAG.with(|c| *c.borrow_mut() = Some((list, idx)));
         }
         // Real payload travels via DRAG; the provider just needs to offer
         // the STRING type the DropTarget accepts.
@@ -74,8 +81,12 @@ where
     target.connect_drop(move |_, _, _, _| {
         let to = dst_index.current_index();
         let taken = DRAG.with(|c| c.borrow_mut().take());
-        if let Some((src_list, from)) = taken
-            && dst_row.parent().as_ref() == Some(&src_list)
+        let same_list = taken
+            .as_ref()
+            .is_some_and(|(src_list, _)| dst_row.parent().as_ref() == Some(src_list));
+        tracing::info!(to, ?taken, same_list, "reorder_dnd: drop");
+        if let Some((_, from)) = taken
+            && same_list
             && from != to
         {
             on_drop(from, to);
@@ -102,9 +113,11 @@ pub(crate) fn attach_row_reorder_keyed<F>(
 
     let source = gtk::DragSource::new();
     source.set_actions(gdk::DragAction::MOVE);
+    source.set_propagation_phase(gtk::PropagationPhase::Capture);
     let src_row = row.clone();
     let src_key = key.clone();
     source.connect_prepare(move |_, _, _| {
+        tracing::info!(key = %src_key, "reorder_dnd: keyed drag prepare");
         if let Some(list) = src_row.parent() {
             DRAG_KEYED.with(|c| *c.borrow_mut() = Some((list, src_key.clone())));
         }
@@ -128,8 +141,12 @@ pub(crate) fn attach_row_reorder_keyed<F>(
     let dst_key = key.clone();
     target.connect_drop(move |_, _, _, _| {
         let taken = DRAG_KEYED.with(|c| c.borrow_mut().take());
-        if let Some((src_list, from_key)) = taken
-            && dst_row.parent().as_ref() == Some(&src_list)
+        let same_list = taken
+            .as_ref()
+            .is_some_and(|(src_list, _)| dst_row.parent().as_ref() == Some(src_list));
+        tracing::info!(to = %dst_key, ?taken, same_list, "reorder_dnd: keyed drop");
+        if let Some((_, from_key)) = taken
+            && same_list
             && from_key != dst_key
         {
             on_drop(&from_key, &dst_key);
