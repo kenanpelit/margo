@@ -85,6 +85,31 @@ impl Component for AboutSettingsModel {
                     },
                 },
 
+                gtk::Box {
+                    add_css_class: "settings-about-quote",
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_hexpand: true,
+                    gtk::Label {
+                        add_css_class: "settings-about-quote-text",
+                        set_label: "Margo is a deeply personal Linux desktop \
+                                    environment built by a single human \
+                                    amplified by AI — an experiment in whether \
+                                    one person can design, implement, and \
+                                    maintain a complete modern desktop stack \
+                                    alone.",
+                        set_halign: gtk::Align::Start,
+                        set_xalign: 0.0,
+                        set_wrap: true,
+                        set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                    },
+                    gtk::Label {
+                        add_css_class: "settings-about-quote-attr",
+                        set_label: "~ kenp",
+                        set_halign: gtk::Align::End,
+                        set_xalign: 1.0,
+                    },
+                },
+
                 gtk::Label {
                     add_css_class: "label-large-bold",
                     set_label: "System",

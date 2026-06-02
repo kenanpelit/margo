@@ -476,3 +476,22 @@
 .status-error {
     color: var(--error);
 }
+
+// Settings → About: the project ethos blockquote under the hero —
+// a calm container card with a primary accent rule down the left.
+.settings-about-quote {
+    padding: var(--space-4) var(--space-5);
+    border-radius: var(--radius-md);
+    border-left: 3px solid var(--primary);
+    background-color: var(--surface-container);
+
+    .settings-about-quote-text {
+        font-style: italic;
+        color: var(--on-surface);
+    }
+
+    .settings-about-quote-attr {
+        color: var(--on-surface-variant);
+        margin-top: var(--space-2);
+    }
+}
