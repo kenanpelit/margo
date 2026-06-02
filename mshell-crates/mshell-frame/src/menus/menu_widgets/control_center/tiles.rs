@@ -452,12 +452,20 @@ impl ControlCenterTilesWidgets {
     /// creating a new row whenever the current column would overflow or a
     /// wide tile needs a fresh row.
     fn rebuild_grid(&self, grid: &gtk::Grid, tile_order: &[String], wide_tiles: &HashSet<String>) {
-        use relm4::gtk::prelude::GridExt;
+        use relm4::gtk::prelude::{Cast, GridExt};
 
-        // Remove every tile overlay currently in the grid.
+        // Detach only the overlays actually parented to this grid.
+        // `TileId::all()` is the full universe of tiles, but hidden
+        // tiles (id not in `tile_order`) were never attached, and on
+        // the first build nothing is attached yet — an unconditional
+        // `grid.remove` on those tripped `gtk_grid_remove: parent ==
+        // grid` assertions (a burst of warnings per rebuild).
+        let grid_widget: gtk::Widget = grid.clone().upcast();
         for &id in TileId::all() {
             let overlay = self.overlay_for(id);
-            grid.remove(overlay);
+            if overlay.parent().as_ref() == Some(&grid_widget) {
+                grid.remove(overlay);
+            }
         }
 
         // Re-attach in config order, appending unknowns at the end.
