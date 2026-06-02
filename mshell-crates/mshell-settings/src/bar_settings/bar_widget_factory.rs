@@ -134,7 +134,7 @@ impl FactoryComponent for ActiveWidgetModel {
         // config list directly (same path as the up/down buttons).
         let location = self.location;
         let index = index.clone();
-        crate::reorder_dnd::attach_grip_drag(&widgets.grip, &root, move |delta| {
+        crate::reorder_dnd::attach_grip_drag(&widgets.grip, returned_widget, move |delta| {
             let from = index.current_index();
             let to = (from as i32 + delta).max(0) as usize;
             move_item(location, from, to);

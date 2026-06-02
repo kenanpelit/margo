@@ -38,11 +38,19 @@
     }
 }
 
-// Drag-to-reorder feedback: the grabbed row dims while the gesture is
-// active. Applied to the row root by `reorder_dnd`, so it must match
-// regardless of which list the row lives in (bar / menu / quick / cc).
+// Drag-to-reorder feedback (set by `reorder_dnd`, on the row's position
+// element — works for any list: bar / menu / quick / cc).
+//   .dragging    — the row being held, dimmed so its origin gap is clear.
+//   .drop-target — the row it will land on, highlighted live as you drag.
 .dragging {
     opacity: 0.4;
+}
+
+.drop-target {
+    box-shadow: inset 0 0 0 2px var(--primary);
+    border-radius: var(--radius-sm);
+    background-color: color-mix(in srgb, var(--primary) 12%, transparent);
+    transition: background-color var(--motion-fast) var(--ease-standard);
 }
 
 .settings-bar-widget-section-list {

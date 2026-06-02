@@ -90,7 +90,7 @@ impl FactoryComponent for QuickActionRowModel {
         returned_widget.set_can_focus(false);
         let drag_index = index.clone();
         let drag_sender = sender.clone();
-        crate::reorder_dnd::attach_grip_drag(&widgets.grip, &root, move |delta| {
+        crate::reorder_dnd::attach_grip_drag(&widgets.grip, returned_widget, move |delta| {
             let from = drag_index.current_index();
             let to = (from as i32 + delta).max(0) as usize;
             let _ = drag_sender.output(QuickActionRowOutput::Reorder(from, to));
