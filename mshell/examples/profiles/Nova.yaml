@@ -1,39 +1,34 @@
 # ╭───────────────────────────────────────────────────────────────────────╮
 # │ Nova — the full-featured margo shell profile                            │
 # │                                                                         │
-# │ The curated "everything on" experience: a rich top bar, every menu      │
-# │ wired up, Material-You theming, twilight, dock, control center, and     │
-# │ sensible idle / clipboard / session defaults. This is the showcase      │
-# │ config — pick it in the setup wizard, then tune anything from Settings. │
+# │ The curated "everything on" showcase: rich top bar, every menu wired    │
+# │ up, Material-You theming, dock, control center, bluetooth auto-connect,  │
+# │ and sensible idle / clipboard / session defaults. Pick it in the setup   │
+# │ wizard, then tune anything from Settings.                               │
 # │                                                                         │
-# │ Edits made through Settings are re-serialised by the shell, so these    │
-# │ comments only live in the shipped copy — they document the schema, not  │
-# │ your saved state. Machine-specific bits (wallpaper folder, weather      │
-# │ location, autostart, alarms, password-store, custom session commands)   │
-# │ are intentionally left blank/neutral here.                              │
+# │ Edits made through Settings are re-serialised by the shell, so this      │
+# │ shipped copy documents the schema, not your saved state. Machine-        │
+# │ specific bits (wallpaper folder, weather location, autostart, alarms,    │
+# │ password-store, bluetooth devices, custom session commands) are          │
+# │ intentionally left blank/neutral here.                                  │
 # ╰───────────────────────────────────────────────────────────────────────╯
-
-# ── General ─────────────────────────────────────────────────────────────
-# Clock format, weather location, units. Set your weather location from
-# Settings → Weather (left at neutral coordinates here).
 general:
   clock_format_24_h: true
   weather_location_query:
     type: Coordinates
     lat: 0.0
     lon: 0.0
+  weather_saved_locations: []
   temperature_unit: Metric
   show_screen_corners: false
   screen_corner_radius: 24
   network_osd_enabled: false
-
-# ── Theme ───────────────────────────────────────────────────────────────
-# Material-You (matugen) dark theme on the bundled MargoMaterial icon set.
-# Fonts default to Maple Mono NF; install it or change them in Settings.
+  media_seek_step_seconds: 10
+  media_large_album_art: true
 theme:
   icons:
     shell_icon_theme: MargoMaterial
-    app_icon_theme: MargoMaterial
+    app_icon_theme: kora
     apply_theme_filter: false
     filter_strength: 1.0
     monochrome_strength: 0.0
@@ -44,6 +39,7 @@ theme:
     scheme_type: TonalSpot
     mode: Dark
     contrast: 0.0
+    auto_polarity: false
   css_file: ''
   attributes:
     font:
@@ -58,12 +54,8 @@ theme:
       bar_hover_strength: 14
       settings_font_scale: 1.05
       font_scale: 1.0
-      bar_font_scale: 1.0
+      bar_font_scale: 0.9
     window_opacity: 1.0
-
-# ── Bars ────────────────────────────────────────────────────────────────
-# A populated top bar (the bottom bar is empty/hidden). Widget order is
-# left → center → right; reorder or move widgets from Settings → Bar.
 bars:
   frame:
     enable_frame: true
@@ -73,47 +65,93 @@ bars:
       check_interval_minutes: 180
       check_repo: true
       check_aur: true
-      check_flatpak: false
+      check_flatpak: true
+    hidden_bar:
+      start_expanded: false
+      auto_expand: true
+      hover_delay_ms: 0
+      auto_collapse: true
+      collapse_delay_ms: 1000
+    catwalk:
+      minimum_threshold: 10
+      hide_background: false
+    custom_widgets: []
   top_bar:
-    minimum_height: 40
+    enabled: true
+    minimum_height: 36
     reveal_by_default: true
+    auto_hide_delay_ms: 400
     left_widgets:
-    - Twilight
     - MargoTags
+    - Separator
     - MargoLayoutSwitcher
+    - Separator
     - ActiveWindow
+    - Separator
     - MediaPlayer
     center_widgets:
     - Weather
+    - Separator
     - Dashboard
-    - AlarmClock
+    - Separator
+    - Catwalk
+    - Separator
     - Notifications
-    - KeepAwake
+    - Separator
+    - HiddenBar
     right_widgets:
     - Network
+    - Separator
     - CpuDashboard
-    - RecordingIndicator
-    - Valent
+    - Separator
     - AudioDashboard
+    - Separator
+    - RecordingIndicator
     - Bluetooth
+    - Separator
     - VpnIndicator
+    - Valent
+    - Separator
     - Clipboard
-    - Notes
     - Podman
     - Dns
     - Ufw
     - Power
     - ControlCenter
+    - Separator
     - Tray
+    hidden_widgets:
+    - Twilight
+    - AlarmClock
+    - KeepAwake
+    - Notes
+    - !Custom plugin:ambient-sound:ambient
+    - !Custom plugin:breathing:breathing
+    - !Custom plugin:musiclyrics:lyrics
+    - Keybinds
   bottom_bar:
-    minimum_height: 0
-    reveal_by_default: false
-    left_widgets: []
-    center_widgets: []
-    right_widgets: []
-
-# ── Menus ───────────────────────────────────────────────────────────────
-# Each bar widget opens a menu surface; position + size are tuned per menu.
+    enabled: false
+    minimum_height: 28
+    reveal_by_default: true
+    auto_hide_delay_ms: 400
+    left_widgets:
+    - Separator
+    - !Spacer 8
+    - ActiveWindow
+    center_widgets:
+    - Separator
+    - !Spacer 8
+    - MediaPlayer
+    - !Spacer 8
+    - Separator
+    right_widgets:
+    - Power
+    - !Spacer 8
+    - Separator
+    - Tray
+    - Separator
+    hidden_widgets: []
+  islands: false
 menus:
   clock_menu:
     position: Top
@@ -128,8 +166,8 @@ menus:
     position: TopRight
     widgets:
     - Clipboard
-    minimum_width: 620
-    maximum_height: 1080
+    minimum_width: 550
+    maximum_height: 890
   notification_menu:
     position: TopRight
     widgets:
@@ -181,7 +219,7 @@ menus:
     minimum_width: 540
     maximum_height: 0
   notes_menu:
-    position: TopRight
+    position: Top
     widgets:
     - Notes
     minimum_width: 540
@@ -244,10 +282,10 @@ menus:
     position: Top
     widgets:
     - Weather
-    minimum_width: 640
-    maximum_height: 640
+    minimum_width: 680
+    maximum_height: 780
   twilight_menu:
-    position: TopLeft
+    position: Top
     widgets:
     - Twilight
     minimum_width: 360
@@ -269,7 +307,7 @@ menus:
     widgets:
     - ControlCenter
     minimum_width: 460
-    maximum_height: 800
+    maximum_height: 920
   ssh_menu:
     position: TopRight
     widgets:
@@ -349,10 +387,13 @@ menus:
     - MargoLayout
     minimum_width: 280
     maximum_height: 0
+  plugin_panel_menu:
+    position: TopRight
+    widgets: []
+    minimum_width: 420
+    maximum_height: 560
   left_menu_expansion_type: AlwaysExpanded
   right_menu_expansion_type: AlwaysExpanded
-
-# ── Notifications ───────────────────────────────────────────────────────
 notifications:
   notification_position: Right
   blocklist: []
@@ -360,10 +401,7 @@ notifications:
   show_action_buttons: false
   group_notifications: false
   popup_width: 460
-
-# ── Wallpaper ───────────────────────────────────────────────────────────
-# Point `wallpaper_dir` at your wallpaper folder (or let the wizard set it).
-# Rotation is on by default once a folder is chosen.
+  history_limit: 200
 wallpaper:
   wallpaper_dir: ''
   content_fit: Cover
@@ -375,8 +413,6 @@ wallpaper:
   daily_wallpaper_enabled: false
   daily_wallpaper_source: nasa
   daily_wallpaper_locale: ''
-
-# ── Clock formats (tempo) ───────────────────────────────────────────────
 tempo:
   clock_format: '%a %d %b %H:%M'
   formats:
@@ -384,9 +420,6 @@ tempo:
   - '%H:%M:%S'
   - '%a %d %b %H:%M'
   - '%d.%m.%Y %H:%M'
-
-# ── Idle behaviour ──────────────────────────────────────────────────────
-# Dim → lock → suspend timeouts (minutes).
 idle:
   dim_enabled: true
   dim_timeout_minutes: 20
@@ -394,59 +427,38 @@ idle:
   lock_timeout_minutes: 25
   suspend_enabled: true
   suspend_timeout_minutes: 30
-
-# ── Session commands ────────────────────────────────────────────────────
-# Override the power-menu actions; blank = the built-in default
-# (systemctl / the in-process lock). Non-empty values run via `sh -c`.
 session:
   lock_command: ''
   logout_command: ''
   suspend_command: systemctl suspend -i
   reboot_command: ''
   shutdown_command: systemctl poweroff -i
-
-# ── Clipboard history ───────────────────────────────────────────────────
 clipboard:
   max_entries: 1000
   persist: All
   clear_policy: Never
   clear_after_hours: 24
-  skip_sensitive: false
+  skip_sensitive: true
   image_history: true
   density: Comfortable
-
-# ── Launcher ────────────────────────────────────────────────────────────
-# Autostart entries are per-machine, so the shipped profile leaves them
-# empty. Add your own from Settings → Launcher.
 launcher:
   autostart_scripts: []
-
-# ── Valent (KDE Connect) ────────────────────────────────────────────────
 valent:
   main_device_id: ''
-
-# ── Dock ────────────────────────────────────────────────────────────────
 dock:
   icon_size: 24
   show_tooltips: true
   show_running: true
-
-# ── Pass (password-store launcher) ──────────────────────────────────────
-# Defaults to ~/.password-store when blank; set your store from
-# Settings → Launcher.
+  icon_overrides: []
+system_tray:
+  default_expanded: false
 pass:
   store_path: ''
-
-# ── Alarm clock ─────────────────────────────────────────────────────────
-# Alarms are per-machine, so the shipped profile leaves them empty.
 alarm:
   alarms: []
   snooze_minutes: 5
   notifications: true
   urgency: normal
-
-# ── Network (proxy) ─────────────────────────────────────────────────────
-# Manual proxy is off by default; configure from Settings → Network.
 network:
   proxy_mode: None
   proxy_http: ''
@@ -454,25 +466,20 @@ network:
   proxy_socks: ''
   proxy_ignore: ''
   proxy_pac_url: ''
-
-# ── Power ───────────────────────────────────────────────────────────────
+bluetooth:
+  autoconnect_enabled: false
+  autoconnect_delay_secs: 10
+  devices: []
+  route_audio_output: true
+  route_audio_input: false
+  notifications: true
 power:
   low_battery_warning: true
   low_battery_threshold: 15
-
-# ── Privacy ─────────────────────────────────────────────────────────────
 privacy:
   remember_recent: true
-
-# ── Audio ───────────────────────────────────────────────────────────────
-# Hide HDMI / DisplayPort sinks from the output switcher by default.
 audio:
   hide_hdmi_outputs: true
-
-# ── Control Center ──────────────────────────────────────────────────────
-# Quick-settings panel: per-tile visibility, display order, and which tiles
-# span two columns (wide). Reorder / toggle from Settings → Widgets →
-# Control Center.
 control_center:
   wifi: true
   bluetooth: true
