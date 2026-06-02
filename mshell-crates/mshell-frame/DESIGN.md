@@ -28,10 +28,21 @@ so a new widget looks like it always belonged.
 - **§12** Panel archetype — spacious browse-and-filter surfaces.
 - **§13** Interaction philosophy — how the system should *feel*.
 - **§14** Visual restraint & Margo identity.
+- **§15** Design lint — the quality gate (CI-checkable rules + grep recipes).
+- **§16** Component state matrix — rest/hover/pressed/focus/selected/disabled/loading/error per component.
+- **§17** Async states — loading / empty / error / no-permission / no-service.
+- **§18** Reusable component registry — what to reuse, where it lives, when (not) to.
+- **§19** Surface decision tree — pill vs menu vs panel vs tile vs page.
 - **Quick checklists** — condensed recipes per surface kind.
 
-§0 and §1–§12 are the *visual* contract; §13–§14 are the *behavioural*
-contract. Both are binding.
+§0 and §1–§12 are the *visual* contract; §13 is the *behavioural*
+contract; §15–§19 are the *enforcement & reuse* contract (how a rule is
+checked, and which prebuilt part satisfies it). All are binding.
+
+**Reorderable rows** (grip + drag standard) live in §5; **settings-page
+layout** in §8b; **config migration** in §9; **performance budget**,
+**state-continuity matrix**, **operational accessibility**, and
+**focus/keyboard navigation** in §13.
 
 ---
 
@@ -372,6 +383,54 @@ unread → solid `--error` dot; seen-history → small dim
 acknowledged `seen` count (bump `seen = total` when the user opens the
 surface). See `bars/bar_widgets/notifications.rs`.
 
+### Reorderable rows (the drag-to-reorder standard)
+Any list the user can reorder (bar-widget sections, menu-widget lists,
+quick-actions, control-center tiles) follows ONE pattern — use
+`mshell-settings/src/reorder_dnd.rs`, don't hand-roll DnD per list:
+
+- **Grip handle, always present.** A leading `list-drag-handle-symbolic`
+  ≡ icon with class `.reorder-grip`. The gesture binds to the grip, so
+  it needs a real hit area: `.reorder-grip` is **≥28×28 px** with a
+  `cursor: grab`. A bare symbolic icon (~16 px) is too small to grab —
+  pad it, don't ship the raw icon.
+- **Gesture, not GTK DnD.** Use a `gtk::GestureDrag` (primary button,
+  Capture phase). **Do not use `GtkDragSource`/`GtkDropTarget` for rows
+  inside a `GtkListBox`** — the ListBox swallows DnD motion/drop before
+  the row sees it, so the drag starts but never lands. (Plain
+  `gtk::Box`-hosted rows don't have this problem, but use the gesture
+  everywhere for consistency.)
+- **Threshold is a fixed pixel step, never the row's own height.** Rows
+  with an expanded inline config area are tall; dividing travel by row
+  height rounds every normal drag to zero "and nothing moves". Use a
+  constant (`STEP_PX`, 32) so one step ≈ one position regardless of row
+  height.
+- **Visible feedback on `drag-begin`.** Add `.dragging` (a **global**
+  rule: `opacity: 0.4`) to the row root so the grabbed row dims
+  immediately — feedback within a frame (§13.4), not only on release.
+- **Keyboard stays.** The ↑/↓ (and remove) buttons remain for
+  keyboard/accessibility (§13.8) — drag is additive, never the only way.
+- **Apply through the existing path.** The gesture only reports a signed
+  delta; the owning list turns it into one move and clamps to its
+  length (bar rewrites config directly; relm4 lists use a `Reorder`
+  input → `FactoryVecDeque::move_to`).
+
+### Positioning (multi-monitor, scale, overflow)
+Menus open **contiguous with the bar pill that owns them** and must
+behave under real multi-head setups:
+
+- **Same output as the pill.** A menu opens on the monitor whose bar was
+  clicked / targeted by IPC — never always on the primary.
+- **Slide direction follows the bar edge.** Top bar → menu slides *down*;
+  bottom bar → *up*; a vertical edge slides inward. The revealer
+  transition is chosen from the bar position, not hardcoded.
+- **Fractional scale aware.** Sizes come from §1 tokens (logical px); never
+  bake a device-pixel size. Verify at 1.0, 1.25, 1.5, 2.0.
+- **Edge overflow clamps, never clips.** A menu taller/wider than the
+  output is capped to the work area and scrolls internally (§5 scrollable
+  lists), staying fully on-screen — it does not run under the screen edge.
+- **One menu at a time** per frame; opening another closes the previous
+  (the stack is single-occupant).
+
 ---
 
 ## 6. Bar → menu wiring checklist
@@ -505,6 +564,23 @@ won't route:
   inherit shell-rc env — `mctl` lives in `/usr/bin` so it still resolves,
   but any env-dependent shell-out from a page must set its env explicitly.
 
+**Settings-page layout standard.** Every page is built from the same
+vertical vocabulary, top to bottom — reuse these, don't invent per-page
+chrome:
+
+| Region | Shape |
+|---|---|
+| **Hero** | `settings-hero` header — icon + SemiBold title + dim subtitle. One per page, at the top. |
+| **Section** | A labelled group: a `…-section-label` (§1 caption style) over a `--surface-container` / `--radius-md` card. Group related rows; don't free-float controls. |
+| **Form row** | Label left (`--on-surface`), control right, baseline-aligned. A dim helper line under it when needed (`--on-surface-variant`). |
+| **Switch row** | Form row whose control is a `gtk::Switch`. Title + optional helper left, switch right-aligned, vertically centered. |
+| **Reorder row** | The §5 reorderable-row standard (grip + ↑/↓). |
+| **Danger zone** | Destructive actions (reset, delete profile) in their own section at the **bottom**, visually separated; buttons use the danger ladder (§2), and irreversible ones confirm first. |
+| **Action / footer bar** | Page-level Apply/Save/Reset as `.ok-button-primary` in a trailing row, not scattered inline. Prefer live-apply (write through the store) over an explicit Save where possible. |
+
+Relaxed density (§1). Copy `idle_settings.rs` for the hero + section
+shape; copy a Net/BT page for form/switch rows.
+
 ---
 
 ## 9. Config schema conventions
@@ -519,6 +595,25 @@ won't route:
   (add the key) or the block removed to fall back to defaults.
 - Both `margo-config` (compositor) and `mshell-config` (shell) export
   types named `Config`/`Menu`/`Position` — verify the import path.
+
+**Versioned migration (when a serde default is the wrong answer).** A
+`#[serde(default)]` only protects *parsing*; it can't give an existing
+user the *intended* value of a new field (see the caveat above) or
+rename/reshape an existing one. When the correct value isn't the type
+default, treat it as a migration, not a default:
+
+1. Add the field with `#[serde(default = "fn")]` returning the intended
+   value, so fresh installs and missing keys both land on it.
+2. If the desired value differs from the type default for *existing*
+   profiles (e.g. a new `bool` that should be `true`), run a one-shot
+   migration on load that fills the key when absent and rewrites the
+   profile — don't rely on the `Default` impl reaching saved YAML.
+3. For a rename/reshape, read the old key, write the new one, drop the
+   old — keep the old alias readable for one release.
+4. **Write the round-trip test:** an old-shape fixture YAML parses, the
+   migration applies, and re-serialising yields the new shape with the
+   intended values. A field added without this test is a latent
+   "works-on-my-fresh-config" bug.
 
 ---
 
@@ -789,6 +884,20 @@ feels lighter than an impressive one.
   the interaction path (the menu pollers' lazy/visible gating is the
   pattern: a closed menu does nothing).
 
+**Measurable budget (treat as acceptance criteria, not vibes):**
+
+| Rule | Target | How to check |
+|---|---|---|
+| Menu first paint | frame painted on the open frame; no empty/reflow | open the menu; it never flashes blank then fills |
+| Hover/press feedback | ≤ 1 frame (state layer is CSS, not data-gated) | hover never waits on a poll |
+| Closed surface is idle | a hidden menu/poller does **no** work | `top`/tracy shows no per-tick CPU while closed; pollers gate on visible/reveal |
+| No blocking call on the GTK main thread | never | grep the interaction path for sync `recv()` / `block_on` / `.output()` of a blocking shell-out; all must be off-thread (`spawn` / `command`) and delivered via channel |
+| No synchronous shell-out / socket read on the main loop | never | a sync IPC/socket read on the main thread is a freeze risk — bound it with a timeout or move it off-thread |
+| Config writes | coalesced | a burst of edits collapses to one profile write, not one per keystroke |
+
+The launcher is the strictest case: it must open instantly and stay
+calm under rapid typing (§0).
+
 ### 13.5 Surface ownership
 
 Each surface type owns exactly one interaction role; they must not compete
@@ -830,6 +939,21 @@ State changes preserve orientation; continuity reduces fatigue.
 - Layout changes feel progressive, never abrupt. The user never loses
   their place without cause.
 
+**What survives what** (the continuity contract; preserve unless the
+row below says otherwise):
+
+| State | Survives a data refresh | Survives close→reopen |
+|---|---|---|
+| Scroll position | yes | menu: reset to top; panel/dashboard: keep |
+| Selected row / active tab | yes | yes |
+| Active filter / segmented choice | yes | yes |
+| Expanded revealer rows | yes | menu: collapse; panel: keep |
+| Search query + results | yes | launcher: clear on close; panel: keep while session lives |
+
+A transient menu may reset scroll/expansion on reopen (it's a glance);
+a panel/dashboard is a workspace and keeps it. Never reset a *filter*
+or *selection* on a mere value update.
+
 ### 13.8 Accessibility (deepening §0.9)
 
 Accessibility is part of interaction quality, not an optional compliance
@@ -844,6 +968,38 @@ layer — accessible systems are more usable for *everyone*.
   every state legible — drop the *animation*, never the *information* it
   carried.
 - The UI stays understandable under reduced attention: a glance suffices.
+
+**Operational rules (per interactive widget — not aspirational):**
+
+- **Accessible name on every control.** An icon-only button MUST set an
+  `accessible_label` / `set_tooltip_text` that says the *action*
+  ("Move up", "Remove"), not the glyph. A tooltip is **not** a
+  substitute for the accessible name — set both when they differ.
+- **Accessible description for state** the label doesn't carry (e.g. a
+  toggle's on/off, a slider's value/unit).
+- **Tab order matches reading order** (top→bottom, left→right). Don't let
+  GTK's default focus chain wander; group related controls.
+- **Don't make decorative widgets focusable.** The `.reorder-grip`, pure
+  icons, and separators set `can_target=false`/non-focusable so they
+  don't pollute the Tab chain.
+- **Screen-reader label ≠ visual label** only when necessary; keep them
+  in sync otherwise.
+
+### 13.9 Focus & keyboard navigation
+
+Keyboard-first (§0) is a concrete contract, not a slogan:
+
+- **On open, focus the primary affordance.** A search-first panel
+  (launcher, panel §12) focuses the search field; a controls menu
+  focuses the first actionable row.
+- **`Esc` closes** the current surface and **returns focus** to the bar
+  pill / element that opened it (focus never gets stranded).
+- **Arrow keys move within a list**; `Tab`/`Shift+Tab` move between
+  regions (search → list → footer). `Enter` activates the focused row.
+- **Search-first panels** keep typing routed to the query even when a
+  result is focused — typing refines, arrows select.
+- **Every drag/reorder has a keyboard equivalent** (§5: the ↑/↓ buttons
+  stay). Nothing is mouse-only.
 
 ## 14. Visual restraint & Margo identity
 
@@ -877,6 +1033,127 @@ work; it never competes with it.**
 
 ---
 
+## 15. Design lint — the quality gate
+
+A rule no one checks is a suggestion. These are the mechanically
+**checkable** invariants of §1–§14; wire them into CI (a small
+grep/script step over `mshell-crates/`) so a violation fails the build
+instead of waiting for review. Each is phrased as "this pattern must
+NOT appear" with the grep that finds it.
+
+| # | Rule (§) | Forbidden pattern → grep |
+|---|---|---|
+| L1 | No hardcoded hex (§1) | a `#rrggbb`/`#rgb` literal in `04-components/`,`03-primitives/` SCSS: `grep -rnE '#[0-9a-fA-F]{3,8}\b' …/scss/0[34]-*` (allow only `01-tokens/_colors.scss`) |
+| L2 | No raw `px` (§1) | `grep -rnE ':\s*-?[0-9]+px' …/scss/0[2-4]-*` outside `01-tokens` (radius/space/font/icon must be a `var(--…)`; bespoke hero sizes are the only signed-off exception) |
+| L3 | `--radius-widget` / `--radius-window` only on bar/frame (§1) | `grep -rn 'radius-widget\|radius-window' …/scss/04-components` with any hit that isn't an `.ok-bar-widget`/frame rule = wrong system |
+| L4 | No literal motion durations (§1) | `grep -rnE 'transition[^;]*[0-9]+ms' …/scss` — durations must be `var(--motion-*)` |
+| L5 | No `gtk::Popover` in a bar widget (§5) | `grep -rn 'Popover' …/mshell-frame/src/bars/bar_widgets` (legacy → convert to a menu) |
+| L6 | No `add_css_class("")` (empty class) | `grep -rnE 'add_css_class\(\s*""' …/src` — use `set_css_classes(&[])` for the empty case |
+| L7 | No `GtkDragSource`/`DropTarget` for ListBox row reorder (§5) | `grep -rn 'DragSource\|DropTarget' …/mshell-settings/src` — reorder uses `reorder_dnd` (GestureDrag) |
+| L8 | No sync shell-out / blocking read on the GTK main thread (§13.4) | review `grep -rn 'block_on\|\.recv()\|Stdio::inherit' …/src` on any path reachable from a widget callback |
+| L9 | fmt/clippy clean (§11) | `cargo fmt --all -- --check` (exit 0, **not** piped) + `cargo clippy --all-targets` with no warnings |
+
+Run `cargo fmt --all -- --check` **without a pipe** and check its exit
+code directly — `cargo fmt … | tail` masks the failure behind `tail`'s
+exit 0 (this has bitten CI here). Same for any `&&`-chained gate.
+
+**Do / Don't (the rules that bite most):**
+
+| Do | Don't |
+|---|---|
+| `background-color: var(--surface-container)` | `background-color: #1e1e2e` |
+| `border-radius: var(--radius-sm)` on a button | `border-radius: 12px` / re-declaring a button radius |
+| `set_css_classes(&[])` for "no class" | `add_css_class("")` |
+| `--radius-md` for a card inside a menu | `--radius-widget` inside a menu |
+| reuse `revealer_row` / `reorder_dnd` | a bespoke row / per-list DnD copy |
+| poll only while the menu is revealed | a timer that ticks while closed |
+| selected row = `--surface-container-high` + glyph | selected row = raw colour swap |
+
+## 16. Component state matrix
+
+Every interactive component defines the same state set; "I only styled
+hover" is the usual gap. A blank cell = inherits the row above / no
+distinct treatment. Build with these in mind and verify each visually.
+
+| Component | rest | hover | pressed | focus | selected / active | disabled | loading | error |
+|---|---|---|---|---|---|---|---|---|
+| **Button** (`.ok-button-*`) | tonal surface | +`--motion-fast` state-layer wash | brief darker wash | visible focus ring | n/a | 38% opacity, no hover | spinner in place of label, width pinned | danger ladder (§2) if it's a failed action |
+| **Bar pill** (§4) | glanceable status | subtle wash | — | ring | live = `--primary` tint (§3) | dim | — | warn/danger glyph + tint (§2) |
+| **List / device row** (§5) | transparent | 14% primary wash | — | ring | `--surface-container-high` + `check-symbolic` in `--primary` | dim, non-activatable | skeleton/placeholder row | inline error line (§17) |
+| **Reorder row** (§5) | row + grip | grip → grab cursor, full opacity | `.dragging` (0.4) | ring on row | — | ↑/↓ disabled at ends | — | — |
+| **Segmented control** (§12) | capsule, dim segments | wash | — | ring | active = `--secondary-container` + hairline | dim | — | — |
+| **Search field** (§12) | pill, dim placeholder | — | — | ring + slightly raised | has-query state | — | inline "searching…" if async | "no results" empty state (§17) |
+| **Card / tile** (§5/§7) | `--surface-container` | raise to `-high` if interactive | — | ring if focusable | `-high` base | reduced opacity | placeholder content | severity tint (§2) |
+| **Toggle / switch** | pill track | wash | — | ring | on = `--primary` | dim | — | — |
+| **Notification** | comfortable card | wash | — | ring | unread dot (§5) | — | — | error = danger card |
+
+Focus ring + disabled (≥ here, 38% opacity, pointer-inert) are
+**mandatory** on every interactive component, not optional polish.
+
+## 17. Async states (loading / empty / error / no-permission / no-service)
+
+Any surface that reads async data (network, bluetooth, weather, podman,
+ufw, plugins) must define all five non-happy states — a blank or
+reflowing menu (§13.4) is a bug. Standard visuals:
+
+| State | Looks like |
+|---|---|
+| **Loading** | Frame paints immediately (§13.4); content area shows a calm placeholder (skeleton rows or a single centered spinner) — **never** an empty box that fills late. |
+| **Empty** (loaded, nothing to show) | Centered dim line stating the situation ("No devices found", "No updates"), `--on-surface-variant`, optional small icon. No error styling. |
+| **Error** (operation failed) | Inline message in the content area using the danger ladder (§2) + a Retry affordance where it makes sense. Don't blank the surface. |
+| **No permission** (auth/polkit needed) | A neutral prompt explaining what's needed + the action that grants it ("Authenticate to view rules"), not an error. (UFW's read-only fallback is the reference.) |
+| **No service** (daemon/binary absent) | Calm "not available" line naming what's missing ("UFW not installed") — informational, dim, not red. |
+
+Pick the right tone: *error* (red, something broke) vs *empty/no-service*
+(dim, nothing to show) vs *no-permission* (neutral, action available).
+Mislabelling "nothing here" as an error is itself a defect.
+
+## 18. Reusable component registry
+
+Before building a row/header/control, check this — most "new" UI is an
+existing part. Reuse keeps the system coherent (§0) and is faster.
+
+| Component | Lives in | Use when | Don't use when |
+|---|---|---|---|
+| **RevealerRow** | `common_widgets/revealer_row/` | status row that expands to details/devices (§5) | a plain non-expanding row (use a device row) |
+| **PanelHeader** | `menus/menu_widgets/.../panel_header` (§12) | spacious panel title + circular actions | a compact menu (no hero header) |
+| **Segmented control** | §12 pattern | 2–4 mutually exclusive views in a panel | many options (use a list/dropdown) |
+| **Panel search** | §12 pill search | browse-and-filter panel | a compact menu (use `--radius-xl` search) |
+| **Reorder DnD** | `mshell-settings/src/reorder_dnd.rs` | any user-reorderable list (§5) | non-reorderable list |
+| **Device / list row** | §5 row pattern | selectable item in a list | expandable row (use RevealerRow) |
+| **Dynamic box** | `mshell-common/.../dynamic_box` | animated add/remove/reorder in a `Box` (dock) | a static or relm4-factory list |
+| **Severity class** | Rust `severity_class` + §2 SCSS | any thresholded metric | binary on/off (use §3 active tint) |
+| **Managed `.conf` fragment** | §8b pattern (`tag_layout_settings`) | a Settings page writing compositor config | a shell-owned setting (use the store) |
+
+If a needed part doesn't exist, build it as a shared component here, not
+inline in one widget.
+
+## 19. Surface decision tree
+
+"Is this new thing a bar pill, a menu, a panel, a dashboard tile, or a
+Settings page?" Answer once, up front — picking the wrong surface is
+expensive to undo. Walk it top to bottom; first match wins:
+
+1. **Is it a persistent system preference** (not glance-or-toggle, lives
+   in its own configuration screen)? → **Settings page** (§8b).
+2. **Is it always-on ambient overview**, coordinating several widgets at
+   once (clock + calendar + QS)? → **Dashboard tile/section** (§7).
+3. **Is its main job browsing + filtering** a list (search, scroll,
+   segmented views)? → **Panel** (§12).
+4. **Does it need transient controls** beyond a glance (sliders,
+   toggles, a device list) shown on demand? → **Menu** (§5), with a bar
+   pill to open it (§6).
+5. **Is it pure glanceable status / a one-click toggle**, no surface of
+   its own? → **Bar pill** (§4).
+
+Cross-checks: a pill that grows sliders/lists wants a menu (§13.5). A
+menu that gains search + long lists wants the panel archetype (§12). A
+menu doing multi-widget coordination wants a dashboard (§7). When in
+doubt, the smaller surface that still fits the role wins — split before
+you overload one.
+
+---
+
 ## Quick checklists
 
 **New bar pill (opens a menu):** §4 pill shape → §6 all 11 wiring
@@ -885,6 +1162,13 @@ points → §8 register as Menu → §10 IPC verb → §11 build+verify.
 **New menu content:** §5 reuse revealer-row / quick-settings card →
 §3 active tint if stateful → §1 tokens only. Scrollable list? §5 keep
 the ListBox + scroller transparent and size-to-content (no dark band).
+Async data? define all five §17 states (loading/empty/error/no-perm/
+no-service). Define every §16 state (esp. focus + disabled).
+
+**Reorderable list (any surface):** §5 reorderable-row standard — reuse
+`reorder_dnd` (GestureDrag, fixed `STEP_PX`), `.reorder-grip` ≥28px grip,
+`.dragging` feedback, keep ↑/↓ for keyboard (§13.9). Never `DragSource`/
+`DropTarget` on `GtkListBox` rows (L7).
 
 **New dashboard tile:** drop into a column's widget list; if it's the
 big "anchor" put it last (§7 `fill`); keep quiet tiles compact above;
@@ -914,3 +1198,9 @@ interactive*? Exactly **one** accent region (§13.2)? Feedback within a
 frame and motion inside the §13.4 budget (§1 tokens)? Does it own a single
 role (§13.5) and keep the user's place across updates (§13.7)? If a "cool"
 idea fails any of these it is noise — cut it (§14).
+
+**Pre-merge lint (every PR):** §15 — no hardcoded hex / raw px / literal
+motion (L1/L2/L4), `--radius-widget` only on bar/frame (L3), no Popover
+in a bar widget (L5), no empty css class (L6), no `DragSource`/
+`DropTarget` reorder (L7), no blocking call on the main thread (L8),
+`cargo fmt --all -- --check` (un-piped, exit 0) + clippy clean (L9).
