@@ -35,6 +35,9 @@ pub enum MenuWidgetRowInput {
 pub enum MenuWidgetRowOutput {
     MoveUp(DynamicIndex),
     MoveDown(DynamicIndex),
+    /// Drag-and-drop reorder: move the row from one index to another
+    /// within this list.
+    Reorder(usize, usize),
     Remove(DynamicIndex),
     /// The widget at this index changed its internal config
     WidgetChanged(DynamicIndex, MenuWidget),
@@ -127,6 +130,12 @@ impl FactoryComponent for MenuWidgetRowModel {
         returned_widget.set_selectable(false);
         returned_widget.set_focusable(false);
         returned_widget.set_can_focus(false);
+
+        // Drag-to-reorder on top of the up/down buttons.
+        let drop_sender = sender.clone();
+        crate::reorder_dnd::attach_row_reorder(returned_widget, index, move |from, to| {
+            let _ = drop_sender.output(MenuWidgetRowOutput::Reorder(from, to));
+        });
 
         widgets
     }

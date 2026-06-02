@@ -20,6 +20,7 @@ pub enum MenuWidgetListInput {
     RemoveWidget(DynamicIndex),
     MoveUp(DynamicIndex),
     MoveDown(DynamicIndex),
+    Reorder(usize, usize),
     WidgetChanged(DynamicIndex, MenuWidget),
     SetWidgetsEffect(Vec<MenuWidget>),
 }
@@ -76,6 +77,9 @@ impl Component for MenuWidgetListModel {
             .forward(sender.input_sender(), |output| match output {
                 MenuWidgetRowOutput::MoveUp(idx) => MenuWidgetListInput::MoveUp(idx),
                 MenuWidgetRowOutput::MoveDown(idx) => MenuWidgetListInput::MoveDown(idx),
+                MenuWidgetRowOutput::Reorder(from, to) => {
+                    MenuWidgetListInput::Reorder(from, to)
+                }
                 MenuWidgetRowOutput::Remove(idx) => MenuWidgetListInput::RemoveWidget(idx),
                 MenuWidgetRowOutput::WidgetChanged(idx, w) => {
                     MenuWidgetListInput::WidgetChanged(idx, w)
@@ -129,6 +133,13 @@ impl Component for MenuWidgetListModel {
                 let idx = index.current_index();
                 if idx + 1 < self.widgets.len() {
                     self.widgets.guard().move_to(idx, idx + 1);
+                    self.emit_changed(&sender);
+                }
+            }
+            MenuWidgetListInput::Reorder(from, to) => {
+                let len = self.widgets.len();
+                if from < len && to < len && from != to {
+                    self.widgets.guard().move_to(from, to);
                     self.emit_changed(&sender);
                 }
             }

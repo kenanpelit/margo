@@ -16,6 +16,7 @@ pub enum QuickActionListInput {
     RemoveAction(DynamicIndex),
     MoveUp(DynamicIndex),
     MoveDown(DynamicIndex),
+    Reorder(usize, usize),
 }
 
 #[derive(Debug)]
@@ -62,6 +63,9 @@ impl Component for QuickActionListModel {
                 QuickActionRowOutput::Remove(idx) => QuickActionListInput::RemoveAction(idx),
                 QuickActionRowOutput::MoveUp(idx) => QuickActionListInput::MoveUp(idx),
                 QuickActionRowOutput::MoveDown(idx) => QuickActionListInput::MoveDown(idx),
+                QuickActionRowOutput::Reorder(from, to) => {
+                    QuickActionListInput::Reorder(from, to)
+                }
             });
 
         {
@@ -110,6 +114,13 @@ impl Component for QuickActionListModel {
                 let idx = index.current_index();
                 if idx + 1 < self.actions.len() {
                     self.actions.guard().move_to(idx, idx + 1);
+                    self.emit_changed(&sender);
+                }
+            }
+            QuickActionListInput::Reorder(from, to) => {
+                let len = self.actions.len();
+                if from < len && to < len && from != to {
+                    self.actions.guard().move_to(from, to);
                     self.emit_changed(&sender);
                 }
             }

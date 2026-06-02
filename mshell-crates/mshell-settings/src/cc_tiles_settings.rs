@@ -233,6 +233,18 @@ fn build_tile_row(tile_id: &str, sender: &ComponentSender<CcTilesSettingsModel>)
     container.append(&up_btn);
     container.append(&down_btn);
 
+    // Drag-to-reorder on top of the up/down buttons.
+    {
+        let s = sender.clone();
+        crate::reorder_dnd::attach_row_reorder_keyed(
+            &container,
+            tile_id.to_string(),
+            move |from, to| {
+                s.input(CcTilesSettingsInput::MoveTo(from.to_string(), to.to_string()));
+            },
+        );
+    }
+
     TileRow {
         container,
         switch,
@@ -260,6 +272,8 @@ impl std::fmt::Debug for CcTilesSettingsModel {
 pub(crate) enum CcTilesSettingsInput {
     MoveUp(String),
     MoveDown(String),
+    /// Drag-and-drop: move tile `from` to tile `to`'s position.
+    MoveTo(String, String),
     /// Config changed externally — rebuild the list.
     OrderChanged(Vec<String>),
 }
@@ -310,7 +324,7 @@ impl Component for CcTilesSettingsModel {
         header_label.add_css_class("label-large-bold");
         header_label.set_halign(gtk::Align::Start);
         let header_desc = gtk::Label::new(Some(
-            "Choose which tiles appear in the Control Center and reorder them with the ↑ / ↓ buttons. Changes take effect immediately.",
+            "Choose which tiles appear in the Control Center and reorder them by dragging a row or with the ↑ / ↓ buttons. Changes take effect immediately.",
         ));
         header_desc.add_css_class("label-small");
         header_desc.set_halign(gtk::Align::Start);
@@ -422,6 +436,32 @@ impl Component for CcTilesSettingsModel {
                     && pos + 1 < order.len()
                 {
                     order.swap(pos, pos + 1);
+                    config_manager().update_config(|c| {
+                        c.control_center.tile_order = order;
+                    });
+                }
+            }
+
+            CcTilesSettingsInput::MoveTo(from_id, to_id) => {
+                let mut order = config_manager()
+                    .config()
+                    .control_center()
+                    .tile_order()
+                    .get_untracked();
+                for &cid in ALL_TILE_IDS {
+                    if !order.contains(&cid.to_string()) {
+                        order.push(cid.to_string());
+                    }
+                }
+                if let (Some(from), Some(to)) = (
+                    order.iter().position(|s| s == &from_id),
+                    order.iter().position(|s| s == &to_id),
+                ) && from != to
+                {
+                    // Natural drop: remove the dragged id, reinsert at the
+                    // target's index (drag down → after target, up → before).
+                    let item = order.remove(from);
+                    order.insert(to.min(order.len()), item);
                     config_manager().update_config(|c| {
                         c.control_center.tile_order = order;
                     });

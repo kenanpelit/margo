@@ -1,21 +1,8 @@
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::bar_widgets::BarWidget;
 use relm4::factory::{DynamicIndex, FactoryComponent};
-use relm4::gtk::prelude::{
-    BoxExt, ButtonExt, EventControllerExt, ListBoxRowExt, OrientableExt, ToValue, WidgetExt,
-};
-use relm4::gtk::{gdk, glib};
+use relm4::gtk::prelude::{BoxExt, ButtonExt, ListBoxRowExt, OrientableExt, WidgetExt};
 use relm4::{FactorySender, gtk};
-use std::cell::RefCell;
-
-thread_local! {
-    /// The row currently being dragged: `(source list, source index)`.
-    /// GTK content-providers are awkward to round-trip a typed payload
-    /// through, so the identity travels via this main-thread-only side
-    /// channel (same trick as `dynamic_box`'s dock reorder). Captured on
-    /// drag prepare, consumed on drop, cleared on drag end.
-    static DRAG_SRC: RefCell<Option<(BarListLocation, usize)>> = const { RefCell::new(None) };
-}
 
 /// Which config list this factory child writes back into when its
 /// reorder / remove buttons fire. The parent section knows where it
@@ -137,55 +124,13 @@ impl FactoryComponent for ActiveWidgetModel {
         returned_widget.set_focusable(false);
         returned_widget.set_can_focus(false);
         // Drag-to-reorder, in addition to the up/down buttons: grab a row
-        // and drop it onto another within the same list.
-        attach_reorder_dnd(returned_widget, self.location, index);
+        // and drop it onto another within the same section's ListBox.
+        let location = self.location;
+        crate::reorder_dnd::attach_row_reorder(returned_widget, index, move |from, to| {
+            move_item(location, from, to);
+        });
         widgets
     }
-}
-
-/// Wire GTK4 drag-and-drop reordering onto a factory row. The dragged
-/// row's `(location, index)` is stashed in [`DRAG_SRC`] on prepare; on
-/// drop onto another row in the *same* list we move the item to the drop
-/// row's position. Cross-list drops are ignored (the up/down buttons
-/// also only move within a list). Pairs with `.dragging` styling.
-fn attach_reorder_dnd(row: &gtk::ListBoxRow, location: BarListLocation, index: &DynamicIndex) {
-    let source = gtk::DragSource::new();
-    source.set_actions(gdk::DragAction::MOVE);
-    let src_index = index.clone();
-    source.connect_prepare(move |_, _, _| {
-        DRAG_SRC.with(|c| *c.borrow_mut() = Some((location, src_index.current_index())));
-        // The real payload travels via DRAG_SRC; the content provider just
-        // needs to offer the STRING type the DropTarget below accepts.
-        Some(gdk::ContentProvider::for_value(&"".to_value()))
-    });
-    source.connect_drag_begin(|src, _| {
-        if let Some(w) = src.widget() {
-            w.add_css_class("dragging");
-        }
-    });
-    source.connect_drag_end(|src, _, _| {
-        if let Some(w) = src.widget() {
-            w.remove_css_class("dragging");
-        }
-        DRAG_SRC.with(|c| *c.borrow_mut() = None);
-    });
-    row.add_controller(source);
-
-    let target = gtk::DropTarget::new(glib::Type::STRING, gdk::DragAction::MOVE);
-    let dst_index = index.clone();
-    target.connect_drop(move |_, _, _, _| {
-        let to = dst_index.current_index();
-        let from = DRAG_SRC.with(|c| c.borrow_mut().take());
-        if let Some((src_loc, from)) = from
-            && src_loc == location
-            && from != to
-        {
-            move_item(location, from, to);
-            return true;
-        }
-        false
-    });
-    row.add_controller(target);
 }
 
 fn list_mut(
