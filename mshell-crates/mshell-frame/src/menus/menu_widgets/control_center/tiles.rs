@@ -27,7 +27,7 @@
 //! start those watchers lazily on the first `Reveal(true)`.
 
 use crate::bars::bar_widgets::podman::fetch_podman_summary;
-use crate::bars::bar_widgets::ufw::{Status as UfwStatus, fetch_ufw_summary};
+use crate::bars::bar_widgets::ufw::{Status as UfwStatus, fetch_ufw_status_only};
 use crate::menus::menu_widgets::control_center::tile::{TileWidget, build_expand_tile, build_tile};
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
@@ -1703,7 +1703,7 @@ fn twilight_mode_label(mode: &str) -> &'static str {
 /// (subtitle, is_active). Active = UFW enabled. Unprivileged read via the
 /// shared bar-pill helper (`systemctl is-active ufw.service`).
 async fn read_ufw_tile_state() -> (String, bool) {
-    let summary = fetch_ufw_summary().await;
+    let summary = fetch_ufw_status_only().await;
     match summary.status {
         Some(UfwStatus::Active) => ("Active".to_string(), true),
         Some(UfwStatus::Inactive) => ("Inactive".to_string(), false),

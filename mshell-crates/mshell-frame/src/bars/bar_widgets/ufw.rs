@@ -1,8 +1,10 @@
 //! UFW firewall bar pill — port of the noctalia `ufw` plugin's
 //! bar half.
 //!
-//! Render-only widget. Polls `ufw status verbose` every 120 s and
-//! draws an icon + tooltip from the result:
+//! Render-only widget. Polls UFW status every 5 min (privilege-free —
+//! `systemctl is-active ufw.service`, never `sudo`, so the background
+//! poll doesn't open a PAM/sudo session on every tick) and draws an
+//! icon + tooltip from the result:
 //!
 //!   * `security-high-symbolic` — UFW active
 //!   * `security-low-symbolic`  — UFW inactive
@@ -19,7 +21,7 @@ use relm4::gtk::prelude::{ButtonExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::time::Duration;
 
-const REFRESH_INTERVAL: Duration = Duration::from_secs(120);
+const REFRESH_INTERVAL: Duration = Duration::from_secs(300);
 const STARTUP_DELAY: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -119,7 +121,11 @@ impl Component for UfwModel {
                     () = &mut shutdown_fut => break,
                     _ = tokio::time::sleep(delay) => {}
                 }
-                let summary = fetch_ufw_summary().await;
+                // Privilege-free: the bar icon only needs the
+                // active/inactive bit, which `systemctl` gives without
+                // sudo. The full rule list (sudo/pkexec) is fetched
+                // lazily by the menu when the user opens it.
+                let summary = fetch_ufw_status_only().await;
                 let _ = out.send(UfwCommandOutput::Refreshed(summary));
             }
         });
@@ -273,6 +279,46 @@ pub(crate) async fn fetch_ufw_summary() -> UfwSummary {
         }
     }
     summary.error = Some("rule details need authentication".to_string());
+    summary
+}
+
+/// Privilege-free status probe for the background bar poll and the
+/// control-center firewall tile. Uses **only** `systemctl` — never
+/// `sudo`/`pkexec` — so a recurring poll can't open a PAM/sudo session
+/// on every tick. That sudo-per-poll was the journal + audit spam the
+/// 120 s `sudo -n ufw status verbose` path produced (two lines every
+/// cycle, ×N bars on multi-monitor). This yields the active/inactive
+/// bit that drives the pill icon; the full rule list is fetched lazily
+/// by the menu (`fetch_ufw_summary` / `fetch_ufw_summary_pkexec`) only
+/// when the user actually opens it.
+pub(crate) async fn fetch_ufw_status_only() -> UfwSummary {
+    if which("ufw").await.is_err() {
+        return UfwSummary {
+            error: Some("not installed".to_string()),
+            ..UfwSummary::default()
+        };
+    }
+
+    let mut summary = UfwSummary::default();
+    if run_capture("systemctl", &["is-active", "--quiet", "ufw.service"])
+        .await
+        .is_some()
+    {
+        summary.status = Some(Status::Active);
+    } else if run_capture("systemctl", &["cat", "ufw.service"])
+        .await
+        .is_some()
+    {
+        // Unit exists but isn't active → firewall off.
+        summary.status = Some(Status::Inactive);
+    }
+    // A short hint rather than the auth-required wording: the menu is
+    // the place to load (and act on) the actual rules.
+    summary.error = Some(if summary.status.is_some() {
+        "open menu for rules".to_string()
+    } else {
+        "status unavailable".to_string()
+    });
     summary
 }
 
