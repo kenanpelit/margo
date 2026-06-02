@@ -23,38 +23,35 @@
 }
 
 // Drag-to-reorder grip handle (the ≡ icon at the start of each
-// reorderable row). Purely an affordance — the whole row is draggable —
-// so it's dimmed and shows a grab cursor on hover.
+// reorderable row). The drag gesture is bound to this widget, so it
+// needs a real hit area — a bare symbolic icon is only ~16 px. Pad it
+// out and show a grab cursor so it reads (and behaves) as a handle.
 .reorder-grip {
     color: var(--on-surface-variant);
     opacity: 0.7;
+    min-width: 28px;
+    min-height: 28px;
+    cursor: grab;
 
     &:hover {
         opacity: 1;
-        cursor: grab;
     }
+}
+
+// Drag-to-reorder feedback: the grabbed row dims while the gesture is
+// active. Applied to the row root by `reorder_dnd`, so it must match
+// regardless of which list the row lives in (bar / menu / quick / cc).
+.dragging {
+    opacity: 0.4;
 }
 
 .settings-bar-widget-section-list {
     all: unset;
 
-    // Highlight the whole list while a dragged row hovers over it (the
-    // drop target lives on the ListBox, not the rows).
-    &:drop(active) {
-        background-color: var(--surface-container-high);
-        border-radius: var(--radius-sm);
-    }
-
     row {
         background: transparent;
         &:hover {
             background: transparent;
-        }
-
-        // Drag-to-reorder feedback: the row being dragged dims so the
-        // gap it will leave is obvious (matches the dock's `.dragging`).
-        &.dragging {
-            opacity: 0.4;
         }
     }
 }
