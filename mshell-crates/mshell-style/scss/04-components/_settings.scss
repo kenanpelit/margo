@@ -30,6 +30,19 @@
         &:hover {
             background: transparent;
         }
+
+        // Drag-to-reorder feedback: the row being dragged dims so the
+        // gap it will leave is obvious (matches the dock's `.dragging`).
+        &.dragging {
+            opacity: 0.4;
+        }
+
+        // Highlight the row a dragged item is hovering over as the drop
+        // landing spot.
+        &:drop(active) {
+            background-color: var(--surface-container-high);
+            border-radius: var(--radius-sm);
+        }
     }
 }
 
