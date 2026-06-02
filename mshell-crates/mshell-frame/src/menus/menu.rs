@@ -966,7 +966,11 @@ fn pin_scroller_bounds(
     sw.set_max_content_width(minimum_width);
     sw.set_min_content_width(minimum_width);
 
-    let max_h = if maximum_height > 0 { maximum_height } else { -1 };
+    let max_h = if maximum_height > 0 {
+        maximum_height
+    } else {
+        -1
+    };
     let min_h = if fixed_height && maximum_height > 0 {
         maximum_height
     } else {
