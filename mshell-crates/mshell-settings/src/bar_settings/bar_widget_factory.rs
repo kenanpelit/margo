@@ -61,6 +61,7 @@ impl FactoryComponent for ActiveWidgetModel {
             set_orientation: gtk::Orientation::Horizontal,
             set_spacing: 8,
 
+            #[name = "grip"]
             gtk::Image {
                 set_icon_name: Some("list-drag-handle-symbolic"),
                 add_css_class: "reorder-grip",
@@ -129,9 +130,15 @@ impl FactoryComponent for ActiveWidgetModel {
         returned_widget.set_selectable(false);
         returned_widget.set_focusable(false);
         returned_widget.set_can_focus(false);
-        // Drag-to-reorder (the drop target lives on the section's ListBox,
-        // see `bar_widget_section`): mark this row as a drag source.
-        crate::reorder_dnd::attach_row_drag_source(returned_widget, index);
+        // Drag-to-reorder via the grip handle: rewrite this section's
+        // config list directly (same path as the up/down buttons).
+        let location = self.location;
+        let index = index.clone();
+        crate::reorder_dnd::attach_grip_drag(&widgets.grip, &root, move |delta| {
+            let from = index.current_index();
+            let to = (from as i32 + delta).max(0) as usize;
+            move_item(location, from, to);
+        });
         widgets
     }
 }

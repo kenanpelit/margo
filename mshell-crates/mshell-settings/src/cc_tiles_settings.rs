@@ -238,19 +238,13 @@ fn build_tile_row(tile_id: &str, sender: &ComponentSender<CcTilesSettingsModel>)
     container.append(&up_btn);
     container.append(&down_btn);
 
-    // Drag-to-reorder on top of the up/down buttons.
+    // Drag-to-reorder via the grip handle.
     {
         let s = sender.clone();
-        crate::reorder_dnd::attach_row_reorder_keyed(
-            &container,
-            tile_id.to_string(),
-            move |from, to| {
-                s.input(CcTilesSettingsInput::MoveTo(
-                    from.to_string(),
-                    to.to_string(),
-                ));
-            },
-        );
+        let id = tile_id.to_string();
+        crate::reorder_dnd::attach_grip_drag(&grip, &container, move |delta| {
+            s.input(CcTilesSettingsInput::ReorderByDelta(id.clone(), delta));
+        });
     }
 
     TileRow {
@@ -280,8 +274,8 @@ impl std::fmt::Debug for CcTilesSettingsModel {
 pub(crate) enum CcTilesSettingsInput {
     MoveUp(String),
     MoveDown(String),
-    /// Drag-and-drop: move tile `from` to tile `to`'s position.
-    MoveTo(String, String),
+    /// Grip drag-to-reorder: move tile `id` by `delta` positions.
+    ReorderByDelta(String, i32),
     /// Config changed externally — rebuild the list.
     OrderChanged(Vec<String>),
 }
@@ -450,7 +444,7 @@ impl Component for CcTilesSettingsModel {
                 }
             }
 
-            CcTilesSettingsInput::MoveTo(from_id, to_id) => {
+            CcTilesSettingsInput::ReorderByDelta(id, delta) => {
                 let mut order = config_manager()
                     .config()
                     .control_center()
@@ -461,18 +455,15 @@ impl Component for CcTilesSettingsModel {
                         order.push(cid.to_string());
                     }
                 }
-                if let (Some(from), Some(to)) = (
-                    order.iter().position(|s| s == &from_id),
-                    order.iter().position(|s| s == &to_id),
-                ) && from != to
-                {
-                    // Natural drop: remove the dragged id, reinsert at the
-                    // target's index (drag down → after target, up → before).
-                    let item = order.remove(from);
-                    order.insert(to.min(order.len()), item);
-                    config_manager().update_config(|c| {
-                        c.control_center.tile_order = order;
-                    });
+                if let Some(from) = order.iter().position(|s| s == &id) {
+                    let to = (from as i32 + delta).clamp(0, order.len() as i32 - 1) as usize;
+                    if to != from {
+                        let item = order.remove(from);
+                        order.insert(to, item);
+                        config_manager().update_config(|c| {
+                            c.control_center.tile_order = order;
+                        });
+                    }
                 }
             }
 

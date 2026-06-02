@@ -35,6 +35,8 @@ pub enum MenuWidgetRowInput {
 pub enum MenuWidgetRowOutput {
     MoveUp(DynamicIndex),
     MoveDown(DynamicIndex),
+    /// Grip drag-to-reorder: move from one index to another in this list.
+    Reorder(usize, usize),
     Remove(DynamicIndex),
     /// The widget at this index changed its internal config
     WidgetChanged(DynamicIndex, MenuWidget),
@@ -57,6 +59,7 @@ impl FactoryComponent for MenuWidgetRowModel {
                 set_orientation: gtk::Orientation::Horizontal,
                 set_spacing: 8,
 
+                #[name = "grip"]
                 gtk::Image {
                     set_icon_name: Some("list-drag-handle-symbolic"),
                     add_css_class: "reorder-grip",
@@ -134,9 +137,14 @@ impl FactoryComponent for MenuWidgetRowModel {
         returned_widget.set_focusable(false);
         returned_widget.set_can_focus(false);
 
-        // Drag-to-reorder: this row is a drag source; the drop target is on
-        // the parent ListBox (see `menu_widget_list`).
-        crate::reorder_dnd::attach_row_drag_source(returned_widget, index);
+        // Drag-to-reorder via the grip handle.
+        let drag_index = index.clone();
+        let drag_sender = sender.clone();
+        crate::reorder_dnd::attach_grip_drag(&widgets.grip, &root, move |delta| {
+            let from = drag_index.current_index();
+            let to = (from as i32 + delta).max(0) as usize;
+            let _ = drag_sender.output(MenuWidgetRowOutput::Reorder(from, to));
+        });
 
         widgets
     }

@@ -114,14 +114,6 @@ impl Component for WidgetSectionModel {
         };
 
         let widget_list = model.widgets.widget();
-
-        // Drop target for drag-to-reorder lives on the ListBox (rows only
-        // carry the drag source). Drops rewrite this section's config list
-        // directly, like the up/down buttons.
-        crate::reorder_dnd::attach_listbox_drop_target(widget_list, move |from, to| {
-            crate::bar_settings::bar_widget_factory::move_item(location, from, to);
-        });
-
         let widgets_view = view_output!();
 
         // Build the add-widget menu
