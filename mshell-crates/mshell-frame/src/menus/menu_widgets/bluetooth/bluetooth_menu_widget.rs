@@ -472,8 +472,11 @@ impl BluetoothMenuWidgetModel {
         icon.set_valign(gtk::Align::Center);
         row.append(&icon);
 
-        // Alias label (hexpand)
+        // Alias label (hexpand). Explicit class so the font size is set on
+        // the label node itself — GTK4 does not reliably inherit font-size
+        // from the row Box onto an unclassed child label.
         let name_label = gtk::Label::new(Some(&alias));
+        name_label.add_css_class("bluetooth-dashboard-device-name");
         name_label.set_halign(gtk::Align::Start);
         name_label.set_hexpand(true);
         name_label.set_valign(gtk::Align::Center);

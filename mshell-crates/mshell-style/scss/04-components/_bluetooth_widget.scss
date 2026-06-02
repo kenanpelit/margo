@@ -99,6 +99,13 @@ label.bt-connected {
   color: var(--on-surface-variant);
 }
 
+// Device name. Set explicitly on the label node (not inherited from the
+// row) so the menu name reads one step up from the dense bar-pill size.
+.bluetooth-dashboard-device-name {
+  font-size: var(--font-sm);
+  color: var(--on-surface);
+}
+
 // Battery / secondary value label.
 .bluetooth-dashboard-value {
   font-size: var(--font-sm);
