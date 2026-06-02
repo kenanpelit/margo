@@ -1,9 +1,12 @@
+use mshell_config::config_manager::config_manager;
+use mshell_config::schema::config::{BluetoothConfig, BluetoothDevice, ConfigStoreFields};
 use mshell_services::bluetooth_service;
 use mshell_utils::bluetooth::{
     get_bluetooth_device_icon, spawn_bluetooth_devices_watcher, spawn_bluetooth_enabled_watcher,
 };
+use reactive_graph::traits::GetUntracked;
 use relm4::gtk::glib;
-use relm4::gtk::prelude::{BoxExt, OrientableExt, WidgetExt};
+use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::sync::Arc;
 use wayle_bluetooth::core::device::Device;
@@ -13,6 +16,9 @@ pub(crate) struct BluetoothSettingsModel {
     available: bool,
     enabled: bool,
     devices: Vec<Arc<Device>>,
+    /// Auto-connect + audio-routing config snapshot (Settings owns the
+    /// edits; the engine in mshell-core reads it at login / on toggle).
+    ac: BluetoothConfig,
 }
 
 #[derive(Debug)]
@@ -30,6 +36,26 @@ pub(crate) enum BluetoothSettingsInput {
     ParentRevealChanged(bool),
     /// Internal: re-read service state into model after a watcher fires.
     RefreshState,
+
+    // ── Auto-connect config edits ───────────────────────────────
+    /// Master "auto-connect at login" switch.
+    AcToggleEnabled(bool),
+    /// Post-startup connect delay, seconds.
+    AcSetDelay(u32),
+    /// Route the device as the default audio output on connect.
+    AcToggleRouteOutput(bool),
+    /// Also route it as the default mic (degrades A2DP → HSP/HFP).
+    AcToggleRouteInput(bool),
+    /// Desktop notifications on connect/disconnect/routing.
+    AcToggleNotify(bool),
+    /// Add a device to the auto-connect list (MAC, friendly name).
+    AcAddDevice(String, String),
+    /// Remove a device from the auto-connect list (by MAC).
+    AcRemoveDevice(String),
+    /// Reorder a device by a signed step (drag grip).
+    AcReorder(String, i32),
+    /// Run the smart toggle now (same as `mshellctl bluetooth toggle`).
+    AcToggleNow,
 }
 
 #[derive(Debug)]
@@ -163,6 +189,199 @@ impl Component for BluetoothSettingsModel {
                     },
                 },
 
+                // ── Auto-connect ─────────────────────────────────
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 12,
+                    #[watch]
+                    set_visible: model.available,
+
+                    gtk::Label {
+                        add_css_class: "label-large-bold",
+                        set_label: "Auto-connect",
+                        set_halign: gtk::Align::Start,
+                    },
+                    gtk::Label {
+                        add_css_class: "label-small",
+                        set_label: "Connect your headset automatically at login and route \
+                                    audio to it — no scripts or services needed. Devices are \
+                                    tried in order; the first that connects wins.",
+                        set_halign: gtk::Align::Start,
+                        set_xalign: 0.0,
+                        set_wrap: true,
+                        set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                    },
+
+                    // Master switch
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_label: "Auto-connect at login",
+                            set_halign: gtk::Align::Start,
+                            set_hexpand: true,
+                        },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            set_active: model.ac.autoconnect_enabled,
+                            connect_active_notify[sender] => move |sw| {
+                                sender.input(BluetoothSettingsInput::AcToggleEnabled(sw.is_active()));
+                            },
+                        },
+                    },
+
+                    // Delay
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_label: "Delay after login (seconds)",
+                            set_halign: gtk::Align::Start,
+                            set_hexpand: true,
+                        },
+                        gtk::SpinButton {
+                            set_valign: gtk::Align::Center,
+                            set_digits: 0,
+                            set_range: (0.0, 120.0),
+                            set_increments: (1.0, 5.0),
+                            set_value: model.ac.autoconnect_delay_secs as f64,
+                            set_tooltip_text: Some("Wait this long before the first connect attempt"),
+                            connect_value_changed[sender] => move |s| {
+                                sender.input(BluetoothSettingsInput::AcSetDelay(s.value().max(0.0) as u32));
+                            },
+                        },
+                    },
+
+                    // Route audio output
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_label: "Use as audio output",
+                                set_halign: gtk::Align::Start,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_label: "Make it the default speaker when it connects.",
+                                set_halign: gtk::Align::Start,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            set_active: model.ac.route_audio_output,
+                            connect_active_notify[sender] => move |sw| {
+                                sender.input(BluetoothSettingsInput::AcToggleRouteOutput(sw.is_active()));
+                            },
+                        },
+                    },
+
+                    // Route audio input (mic)
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+                            set_hexpand: true,
+                            gtk::Label {
+                                add_css_class: "label-medium-bold",
+                                set_label: "Use as microphone",
+                                set_halign: gtk::Align::Start,
+                            },
+                            gtk::Label {
+                                add_css_class: "label-small",
+                                set_label: "Also set it as the default mic. Off by default: a \
+                                            headset mic forces the low-quality HSP/HFP codec and \
+                                            degrades playback.",
+                                set_halign: gtk::Align::Start,
+                                set_xalign: 0.0,
+                                set_wrap: true,
+                                set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                            },
+                        },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            set_active: model.ac.route_audio_input,
+                            connect_active_notify[sender] => move |sw| {
+                                sender.input(BluetoothSettingsInput::AcToggleRouteInput(sw.is_active()));
+                            },
+                        },
+                    },
+
+                    // Notifications
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 20,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_label: "Notifications",
+                            set_halign: gtk::Align::Start,
+                            set_hexpand: true,
+                        },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            set_active: model.ac.notifications,
+                            connect_active_notify[sender] => move |sw| {
+                                sender.input(BluetoothSettingsInput::AcToggleNotify(sw.is_active()));
+                            },
+                        },
+                    },
+
+                    // Add a device by MAC
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 8,
+                        #[name = "ac_mac_entry"]
+                        gtk::Entry {
+                            set_hexpand: true,
+                            set_placeholder_text: Some("MAC, e.g. F4:9D:8A:3D:CB:30"),
+                        },
+                        #[name = "ac_name_entry"]
+                        gtk::Entry {
+                            set_placeholder_text: Some("name (optional)"),
+                        },
+                        gtk::Button {
+                            add_css_class: "ok-button-primary",
+                            set_label: "Add",
+                            connect_clicked[sender, ac_mac_entry, ac_name_entry] => move |_| {
+                                sender.input(BluetoothSettingsInput::AcAddDevice(
+                                    ac_mac_entry.text().to_string(),
+                                    ac_name_entry.text().to_string(),
+                                ));
+                                ac_mac_entry.set_text("");
+                                ac_name_entry.set_text("");
+                            },
+                        },
+                    },
+
+                    // The configured device list (rebuilt in update_with_view)
+                    #[name = "ac_list_box"]
+                    gtk::Box {
+                        add_css_class: "settings-boxed-list",
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_spacing: 2,
+                    },
+
+                    // Toggle-now button
+                    gtk::Button {
+                        add_css_class: "ok-button-surface",
+                        set_halign: gtk::Align::Start,
+                        set_label: "Toggle now",
+                        set_tooltip_text: Some("Connect, or disconnect if already connected (same as the keybind)"),
+                        connect_clicked[sender] => move |_| {
+                            sender.input(BluetoothSettingsInput::AcToggleNow);
+                        },
+                    },
+                },
+
                 // ── Device list ──────────────────────────────────
                 gtk::Label {
                     add_css_class: "label-large-bold",
@@ -231,9 +450,14 @@ impl Component for BluetoothSettingsModel {
             available: bt.available.get(),
             enabled: bt.enabled.get(),
             devices: bt.devices.get(),
+            ac: config_manager().config().bluetooth().get_untracked(),
         };
 
         let widgets = view_output!();
+
+        // Initial population of the auto-connect list (config-driven, so it
+        // isn't filled by the live-device watchers).
+        Self::rebuild_ac_list(&widgets.ac_list_box, &model.ac.devices, &sender);
 
         // Start/stop discovery based on page visibility (map = shown, unmap = hidden).
         // This gates scanning to only when this settings page is the visible child
@@ -354,11 +578,67 @@ impl Component for BluetoothSettingsModel {
             BluetoothSettingsInput::RefreshState => {
                 // Model already updated in update_cmd; rebuild device list below.
             }
+
+            // ── Auto-connect config edits ─────────────────────────
+            BluetoothSettingsInput::AcToggleEnabled(v) => {
+                self.ac.autoconnect_enabled = v;
+                persist_ac(&self.ac);
+            }
+            BluetoothSettingsInput::AcSetDelay(s) => {
+                self.ac.autoconnect_delay_secs = s;
+                persist_ac(&self.ac);
+            }
+            BluetoothSettingsInput::AcToggleRouteOutput(v) => {
+                self.ac.route_audio_output = v;
+                persist_ac(&self.ac);
+            }
+            BluetoothSettingsInput::AcToggleRouteInput(v) => {
+                self.ac.route_audio_input = v;
+                persist_ac(&self.ac);
+            }
+            BluetoothSettingsInput::AcToggleNotify(v) => {
+                self.ac.notifications = v;
+                persist_ac(&self.ac);
+            }
+            BluetoothSettingsInput::AcAddDevice(mac, name) => {
+                let mac = mac.trim().to_string();
+                let dup = self
+                    .ac
+                    .devices
+                    .iter()
+                    .any(|d| d.mac.eq_ignore_ascii_case(&mac));
+                if !mac.is_empty() && !dup {
+                    self.ac.devices.push(BluetoothDevice {
+                        mac,
+                        name: name.trim().to_string(),
+                    });
+                    persist_ac(&self.ac);
+                }
+            }
+            BluetoothSettingsInput::AcRemoveDevice(mac) => {
+                self.ac.devices.retain(|d| d.mac != mac);
+                persist_ac(&self.ac);
+            }
+            BluetoothSettingsInput::AcReorder(mac, delta) => {
+                if let Some(from) = self.ac.devices.iter().position(|d| d.mac == mac) {
+                    let to =
+                        (from as i32 + delta).clamp(0, self.ac.devices.len() as i32 - 1) as usize;
+                    if to != from {
+                        let item = self.ac.devices.remove(from);
+                        self.ac.devices.insert(to, item);
+                        persist_ac(&self.ac);
+                    }
+                }
+            }
+            BluetoothSettingsInput::AcToggleNow => {
+                mshell_services::tokio_rt().spawn(mshell_services::bluetooth::toggle());
+            }
         }
 
         // Rebuild the device list box from the current model every time we
         // process a message that could have changed it.
         Self::rebuild_device_list(&widgets.device_list_box, &self.devices, &sender);
+        Self::rebuild_ac_list(&widgets.ac_list_box, &self.ac.devices, &sender);
 
         self.update_view(widgets, sender);
     }
@@ -418,6 +698,83 @@ impl BluetoothSettingsModel {
             for device in &unpaired {
                 list_box.append(&Self::build_device_row(device, sender));
             }
+        }
+    }
+
+    /// Rebuild the auto-connect device list: one row per configured entry —
+    /// a drag grip, the friendly name + MAC, and a delete button. Rows are
+    /// tried top-to-bottom by the engine, so order is meaningful.
+    fn rebuild_ac_list(
+        list_box: &gtk::Box,
+        devices: &[BluetoothDevice],
+        sender: &ComponentSender<BluetoothSettingsModel>,
+    ) {
+        while let Some(child) = list_box.first_child() {
+            list_box.remove(&child);
+        }
+
+        if devices.is_empty() {
+            let empty = gtk::Label::new(Some(
+                "No devices yet. Add one by MAC above (e.g. your headset).",
+            ));
+            empty.add_css_class("label-small");
+            empty.set_halign(gtk::Align::Start);
+            empty.set_xalign(0.0);
+            empty.set_wrap(true);
+            list_box.append(&empty);
+            return;
+        }
+
+        for dev in devices {
+            let row = gtk::Box::builder()
+                .orientation(gtk::Orientation::Horizontal)
+                .spacing(8)
+                .build();
+            row.add_css_class("launcher-script-row");
+
+            let grip = gtk::Image::from_icon_name("list-drag-handle-symbolic");
+            grip.add_css_class("reorder-grip");
+            grip.set_tooltip_text(Some("Drag to reorder (first match wins)"));
+            row.append(&grip);
+
+            let label_text = if dev.name.is_empty() {
+                dev.mac.clone()
+            } else {
+                format!("{}  ·  {}", dev.name, dev.mac)
+            };
+            let label = gtk::Label::builder()
+                .label(&label_text)
+                .halign(gtk::Align::Start)
+                .hexpand(true)
+                .xalign(0.0)
+                .build();
+            label.add_css_class("label-medium");
+            row.append(&label);
+
+            let delete = gtk::Button::from_icon_name("user-trash-symbolic");
+            delete.add_css_class("ok-button-flat");
+            delete.set_valign(gtk::Align::Center);
+            delete.set_tooltip_text(Some("Remove from auto-connect list"));
+            {
+                let mac = dev.mac.clone();
+                let sender = sender.clone();
+                delete.connect_clicked(move |_| {
+                    sender.input(BluetoothSettingsInput::AcRemoveDevice(mac.clone()));
+                });
+            }
+            row.append(&delete);
+
+            // Drag-to-reorder via the grip handle (same pattern as the bar /
+            // menu widget lists).
+            {
+                let mac = dev.mac.clone();
+                let sender = sender.clone();
+                crate::reorder_dnd::attach_grip_drag(&grip, &row, move |delta| {
+                    sender.input(BluetoothSettingsInput::AcReorder(mac.clone(), delta));
+                });
+            }
+
+            list_box.append(&row);
         }
     }
 
@@ -547,4 +904,13 @@ impl BluetoothSettingsModel {
 
         row
     }
+}
+
+/// Persist the auto-connect config back to `config.bluetooth`. The engine
+/// in mshell-services reads it at login / on toggle.
+fn persist_ac(ac: &BluetoothConfig) {
+    let ac = ac.clone();
+    config_manager().update_config(move |c| {
+        c.bluetooth = ac.clone();
+    });
 }

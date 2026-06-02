@@ -4563,7 +4563,9 @@ name = "mshell-services"
 version = "0.9.5"
 dependencies = [
  "anyhow",
+ "mshell-config",
  "mshell-margo-client",
+ "reactive_graph",
  "tokio",
  "tracing",
  "wayle-audio",

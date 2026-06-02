@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use crate::subcommands::audio::AudioCommands;
 use crate::subcommands::bar::BarCommands;
+use crate::subcommands::bluetooth::BluetoothCommands;
 use crate::subcommands::brightness::BrightnessCommands;
 use crate::subcommands::lock::LockCommands;
 use crate::subcommands::media::MediaCommands;
@@ -75,6 +76,13 @@ pub enum Commands {
     Audio {
         #[command(subcommand)]
         command: AudioCommands,
+    },
+    /// Bluetooth auto-connect engine: toggle / connect / disconnect the
+    /// configured device(s). Bind `bluetooth toggle` to F10 to replace the
+    /// old bluetooth_toggle script.
+    Bluetooth {
+        #[command(subcommand)]
+        command: BluetoothCommands,
     },
     /// Commands for controlling media players (MPRIS)
     Media {

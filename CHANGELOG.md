@@ -7,6 +7,22 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- **Native Bluetooth auto-connect + audio routing.** Replaces the external
+  `bt-autoconnect.service` + `bt-autoconnect-once` + `bluetooth_toggle`
+  scripts (and the F10 binding) with an in-shell engine. Settings →
+  Bluetooth gains an **Auto-connect** section: a master switch, a
+  post-login delay, an ordered MAC device list (drag to reorder; first
+  that connects wins), "use as audio output" / "use as microphone"
+  routing toggles, and connect/disconnect notifications. At login the
+  shell waits the delay then connects with a few retries and routes audio
+  to the device; `mshellctl bluetooth toggle | connect | disconnect`
+  (smart toggle: power-on + connect, or disconnect if already connected)
+  backs a keybind and the Settings "Toggle now" button. The mic toggle is
+  off by default — forcing a headset mic drops the codec to HSP/HFP and
+  degrades playback.
+
 ## [0.9.5] – 2026-06-02
 
 A shell polish release: drag-to-reorder across Settings, a frameless

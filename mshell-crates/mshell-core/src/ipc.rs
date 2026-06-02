@@ -94,6 +94,20 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 IPCCommand::Bluetooth => {
                     app_sender.emit(ShellInput::ToggleBluetoothMenu(active_monitor().await));
                 }
+                IPCCommand::BluetoothCtl(action) => {
+                    // Spawn so a 10–12s connect wait never blocks the IPC loop.
+                    tokio_rt().spawn(async move {
+                        match action.as_str() {
+                            "connect" => {
+                                mshell_services::bluetooth::connect_configured().await;
+                            }
+                            "disconnect" => {
+                                mshell_services::bluetooth::disconnect_configured().await;
+                            }
+                            _ => mshell_services::bluetooth::toggle().await,
+                        }
+                    });
+                }
                 IPCCommand::CpuDashboard => {
                     app_sender.emit(ShellInput::ToggleCpuDashboardMenu(active_monitor().await));
                 }
@@ -456,6 +470,9 @@ enum IPCCommand {
     Wallpaper,
     Ufw,
     Bluetooth,
+    /// Drive the native auto-connect engine: "toggle" (smart) | "connect" |
+    /// "disconnect". Backs `mshellctl bluetooth …` (bind to F10).
+    BluetoothCtl(String),
     CpuDashboard,
     AudioDashboard,
     SystemUpdate,
@@ -1325,6 +1342,10 @@ impl IPCService {
     }
     async fn bluetooth(&self) {
         let _ = self.tx.send(IPCCommand::Bluetooth);
+    }
+    /// Native auto-connect engine: `toggle` | `connect` | `disconnect`.
+    async fn bluetooth_ctl(&self, action: String) {
+        let _ = self.tx.send(IPCCommand::BluetoothCtl(action));
     }
     async fn cpu_dashboard(&self) {
         let _ = self.tx.send(IPCCommand::CpuDashboard);

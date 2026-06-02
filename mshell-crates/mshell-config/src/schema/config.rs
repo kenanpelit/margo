@@ -37,6 +37,7 @@ pub struct Config {
     pub pass: Pass,
     pub alarm: AlarmConfig,
     pub network: NetworkConfig,
+    pub bluetooth: BluetoothConfig,
     pub power: PowerConfig,
     pub privacy: PrivacyConfig,
     pub audio: AudioConfig,
@@ -1675,6 +1676,59 @@ pub struct NetworkConfig {
     pub proxy_ignore: String,
     /// PAC URL used when `proxy_mode == Automatic`.
     pub proxy_pac_url: String,
+}
+
+/// Bluetooth auto-connect + audio-routing settings (Settings → Bluetooth).
+///
+/// Replaces the external `bt-autoconnect.service` + `bt-autoconnect-once`
+/// + `bluetooth_toggle` scripts: at login the shell waits
+/// `autoconnect_delay_secs`, then tries each device in `devices` in order
+/// until one connects, and (optionally) routes audio to it. The same
+/// engine backs the `mshellctl bluetooth toggle` keybind action.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[serde(default)]
+pub struct BluetoothConfig {
+    /// Master switch for auto-connecting at login.
+    pub autoconnect_enabled: bool,
+    /// Seconds to wait after shell start before the first connect attempt —
+    /// lets the adapter + PipeWire/WirePlumber settle. Default 6.
+    pub autoconnect_delay_secs: u32,
+    /// Devices to try, in order, until one connects. First success wins.
+    pub devices: Vec<BluetoothDevice>,
+    /// On connect, make the device the default audio OUTPUT (sink).
+    pub route_audio_output: bool,
+    /// Also make it the default INPUT (mic). Off by default: forcing a
+    /// headset mic on usually drops the codec from A2DP to HSP/HFP and
+    /// noticeably degrades playback quality.
+    pub route_audio_input: bool,
+    /// Pop desktop notifications on connect / disconnect / routing.
+    pub notifications: bool,
+}
+
+impl Default for BluetoothConfig {
+    fn default() -> Self {
+        Self {
+            autoconnect_enabled: false,
+            autoconnect_delay_secs: 6,
+            devices: Vec::new(),
+            route_audio_output: true,
+            route_audio_input: false,
+            notifications: true,
+        }
+    }
+}
+
+/// One auto-connect Bluetooth device: a MAC address plus a friendly label
+/// (the label is display-only; matching is by MAC, case-insensitive).
+#[derive(
+    Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize, Store, Patch, JsonSchema,
+)]
+#[serde(default)]
+pub struct BluetoothDevice {
+    /// Device MAC address, `AA:BB:CC:DD:EE:FF` (case-insensitive).
+    pub mac: String,
+    /// Friendly name shown in Settings (e.g. `SL4P`).
+    pub name: String,
 }
 
 /// Power-management settings surfaced on the Settings → Power page.

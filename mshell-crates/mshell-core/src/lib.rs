@@ -199,6 +199,11 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         });
     }
 
+    // Bluetooth auto-connect: if the user configured devices + enabled it,
+    // wait the configured delay then connect (with retries) and route audio.
+    // Replaces the external bt-autoconnect.service + bluetooth_toggle scripts.
+    mshell_services::bluetooth::spawn_autoconnect_startup();
+
     // Plugin keybinds: generate the binds file each launch + after any change
     // to the resolved set. Idempotent — `write_binds_file` returns false when
     // the contents already match. We call `mctl reload` only if the file

@@ -23,6 +23,8 @@ where
 {
     tokio_rt().spawn(future)
 }
+pub mod bluetooth;
+
 use mshell_margo_client::MargoService;
 use wayle_audio::AudioService;
 use wayle_battery::BatteryService;
