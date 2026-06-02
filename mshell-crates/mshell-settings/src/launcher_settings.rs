@@ -150,7 +150,13 @@ impl Component for LauncherSettingsModel {
                 gtk::ScrolledWindow {
                     set_vscrollbar_policy: gtk::PolicyType::Automatic,
                     set_hscrollbar_policy: gtk::PolicyType::Never,
-                    set_height_request: 240,
+                    // Grow with the list instead of a fixed window: size to
+                    // the rows' natural height, floor at a few rows so it
+                    // never collapses, cap so a long list scrolls in place
+                    // rather than pushing the rest of the page off-screen.
+                    set_propagate_natural_height: true,
+                    set_min_content_height: 120,
+                    set_max_content_height: 520,
                     set_hexpand: true,
 
                     #[name = "scripts_box"]
