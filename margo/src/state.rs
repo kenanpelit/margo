@@ -2165,6 +2165,179 @@ impl MargoState {
         self.mark_state_dirty();
     }
 
+    /// Pre-compute tiling geometry for the tags the **scroller overview**
+    /// is about to show but that aren't currently on screen, so their
+    /// windows render at their real tiled slots in the overview cells
+    /// without the user having to visit each tag first.
+    ///
+    /// `arrange_monitor` only ever lays out a monitor's *current* tagset,
+    /// so a window mapped onto an unvisited tag keeps whatever stale
+    /// `geom` — and surface size — it had at map time. The scroller-
+    /// overview render path reads `client.geom` directly and renders the
+    /// window's live surface tree, so those windows showed crammed at
+    /// their default position/size until the tag was selected once (which
+    /// ran a real arrange + configure). This walks every off-screen tag
+    /// the strip will show and assigns geom + sends a configure, with no
+    /// animation, so the overview is correct from the first open. The
+    /// active tag(s) are skipped — they're already laid out live and we
+    /// don't want to disturb their in-flight animations.
+    pub fn prearrange_overview_tags(&mut self) {
+        for mon_idx in 0..self.monitors.len() {
+            if !self.monitors[mon_idx].enabled {
+                continue;
+            }
+            let current_tagset = self.monitors[mon_idx].current_tagset();
+            for tag in self.scroller_overview_tags(mon_idx) {
+                let bit = 1u32 << (tag - 1);
+                if bit & current_tagset != 0 {
+                    continue; // on screen now — already arranged live.
+                }
+                self.prearrange_overview_tag(mon_idx, tag);
+            }
+        }
+    }
+
+    /// Lay out a single off-screen `tag` on `mon_idx` (helper for
+    /// [`Self::prearrange_overview_tags`]). Mirrors the non-overview
+    /// branch of `arrange_monitor` — per-tag layout/nmaster/mfact from
+    /// pertag, the same gap + smartgaps rules — but assigns geom directly
+    /// (no move animation) and sends each window the configure for its
+    /// slot so its buffer matches what the overview cell will scale down.
+    fn prearrange_overview_tag(&mut self, mon_idx: usize, tag: usize) {
+        let bit = 1u32 << (tag - 1);
+        let mon = &self.monitors[mon_idx];
+        let layout = mon
+            .pertag
+            .ltidxs
+            .get(tag)
+            .copied()
+            .unwrap_or_else(|| mon.current_layout());
+        let nmaster = mon.pertag.nmasters.get(tag).copied().unwrap_or(1);
+        let mfact = mon.pertag.mfacts.get(tag).copied().unwrap_or(0.55);
+        let work_area = mon.work_area;
+        let monitor_area = mon.monitor_area;
+        let canvas_pan = (
+            mon.pertag.canvas_pan_x.get(tag).copied().unwrap_or(0.0),
+            mon.pertag.canvas_pan_y.get(tag).copied().unwrap_or(0.0),
+        );
+        let mut gaps = layout::GapConfig {
+            gappih: if self.enable_gaps { mon.gappih } else { 0 },
+            gappiv: if self.enable_gaps { mon.gappiv } else { 0 },
+            gappoh: if self.enable_gaps { mon.gappoh } else { 0 },
+            gappov: if self.enable_gaps { mon.gappov } else { 0 },
+        };
+
+        // Tiled clients on this (mon, tag), in clients-vec order.
+        let tiled: Vec<usize> = self
+            .clients
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| {
+                c.monitor == mon_idx
+                    && (c.tags & bit) != 0
+                    && !c.is_initial_map_pending
+                    && c.is_tiled()
+            })
+            .map(|(i, _)| i)
+            .collect();
+
+        if self.config.smartgaps && tiled.len() <= 1 {
+            gaps.gappoh = 0;
+            gaps.gappov = 0;
+        }
+
+        let scroller_proportions: Vec<f32> = tiled
+            .iter()
+            .map(|&i| self.clients[i].scroller_proportion)
+            .collect();
+
+        let ctx = layout::ArrangeCtx {
+            work_area,
+            tiled: &tiled,
+            nmaster,
+            mfact,
+            gaps: &gaps,
+            scroller_proportions: &scroller_proportions,
+            default_scroller_proportion: self.config.scroller_default_proportion,
+            // No live focus on an off-screen tag.
+            focused_tiled_pos: None,
+            scroller_structs: self.config.scroller_structs,
+            scroller_focus_center: self.config.scroller_focus_center,
+            scroller_prefer_center: self.config.scroller_prefer_center,
+            scroller_prefer_overspread: self.config.scroller_prefer_overspread,
+            canvas_pan,
+        };
+
+        for (client_idx, mut rect) in layout::arrange(layout, &ctx) {
+            let c = &self.clients[client_idx];
+            if c.min_width > 0 || c.min_height > 0 || c.max_width > 0 || c.max_height > 0 {
+                clamp_size(
+                    &mut rect.width,
+                    &mut rect.height,
+                    c.min_width,
+                    c.min_height,
+                    c.max_width,
+                    c.max_height,
+                );
+            }
+            self.clients[client_idx].animation.running = false;
+            self.clients[client_idx].geom = rect;
+            self.configure_window_size(client_idx, rect);
+        }
+
+        // Floating / fullscreen clients on this tag — the overview
+        // thumbnails them too, so give them their intended geometry as
+        // well (tiled clients above already returned `None` here).
+        for i in 0..self.clients.len() {
+            let c = &self.clients[i];
+            if c.monitor != mon_idx
+                || (c.tags & bit) == 0
+                || c.is_initial_map_pending
+                || c.is_minimized
+                || c.is_killing
+                || c.is_in_scratchpad
+            {
+                continue;
+            }
+            let rect = match c.fullscreen_mode {
+                FullscreenMode::Exclusive => Some(monitor_area),
+                FullscreenMode::WorkArea => Some(work_area),
+                FullscreenMode::Off if c.is_floating && c.float_geom.width > 0 => {
+                    Some(c.float_geom)
+                }
+                FullscreenMode::Off => None,
+            };
+            if let Some(rect) = rect {
+                self.clients[i].animation.running = false;
+                self.clients[i].geom = rect;
+                self.configure_window_size(i, rect);
+            }
+        }
+    }
+
+    /// Send `client_idx`'s toplevel a configure sizing it to `geom` (no
+    /// position move — the overview places it via `client.geom`). Factored
+    /// from `arrange_monitor`'s visible-window loop; only fires once the
+    /// initial configure has gone out.
+    fn configure_window_size(&mut self, client_idx: usize, geom: Rect) {
+        let window = self.clients[client_idx].window.clone();
+        if let WindowSurface::Wayland(toplevel) = window.underlying_surface() {
+            toplevel.with_pending_state(|state| {
+                state.size = Some(Size::from((geom.width, geom.height)));
+            });
+            let initial_sent = with_states(toplevel.wl_surface(), |states| {
+                states
+                    .data_map
+                    .get::<XdgToplevelSurfaceData>()
+                    .and_then(|d| d.lock().ok().map(|d| d.initial_configure_sent))
+                    .unwrap_or(false)
+            });
+            if initial_sent {
+                toplevel.send_pending_configure();
+            }
+        }
+    }
+
     /// Smithay's `Space::map_element` always inserts the touched
     /// element at the top of the stack — there's no way to map at an
     /// explicit z. So every time `arrange_monitor` re-maps a tile-

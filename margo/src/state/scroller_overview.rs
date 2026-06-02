@@ -165,6 +165,14 @@ impl MargoState {
             self.close_overview(None);
         }
 
+        // Lay out every off-screen tag the strip will show so their
+        // windows render at their real tiled slots from the first frame —
+        // without this the overview shows windows on never-visited tags
+        // crammed at their stale map-time geometry until the tag is
+        // selected once. (`arrange_monitor` only ever arranges the live
+        // tagset.)
+        self.prearrange_overview_tags();
+
         let mon: Vec<MonitorScroll> = (0..self.monitors.len())
             .map(|i| {
                 let tags = self.scroller_overview_tags(i);
