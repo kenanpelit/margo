@@ -176,7 +176,11 @@ rounded-corner overlay mask (and only when `show_screen_corners` is
 on). It has zero effect on any widget, button, or menu.
 
 ### Spacing scale (`01-tokens/_sizing.scss`)
-Use `--space-N` for all padding and gaps — **never a raw `px` value.**
+Use `--space-N` for all padding and gaps — **never a raw `px` value**
+(the one exception: a 1–2px hairline/sub-grid micro-inset, since no
+token is finer than `--space-1` = 4px — see §15 L2). Component
+*dimensions* — `min-width`/`min-height`/icon size — are not on this
+scale and take a px value directly.
 
 | Token | px | Use |
 |---|---|---|
@@ -1043,15 +1047,24 @@ NOT appear" with the grep that finds it.
 
 | # | Rule (§) | Forbidden pattern → grep |
 |---|---|---|
-| L1 | No hardcoded hex (§1) | a `#rrggbb`/`#rgb` literal in `04-components/`,`03-primitives/` SCSS: `grep -rnE '#[0-9a-fA-F]{3,8}\b' …/scss/0[34]-*` (allow only `01-tokens/_colors.scss`) |
-| L2 | No raw `px` (§1) | `grep -rnE ':\s*-?[0-9]+px' …/scss/0[2-4]-*` outside `01-tokens` (radius/space/font/icon must be a `var(--…)`; bespoke hero sizes are the only signed-off exception) |
-| L3 | `--radius-widget` / `--radius-window` only on bar/frame (§1) | `grep -rn 'radius-widget\|radius-window' …/scss/04-components` with any hit that isn't an `.ok-bar-widget`/frame rule = wrong system |
-| L4 | No literal motion durations (§1) | `grep -rnE 'transition[^;]*[0-9]+ms' …/scss` — durations must be `var(--motion-*)` |
-| L5 | No `gtk::Popover` in a bar widget (§5) | `grep -rn 'Popover' …/mshell-frame/src/bars/bar_widgets` (legacy → convert to a menu) |
-| L6 | No `add_css_class("")` (empty class) | `grep -rnE 'add_css_class\(\s*""' …/src` — use `set_css_classes(&[])` for the empty case |
-| L7 | No `GtkDragSource`/`DropTarget` for ListBox row reorder (§5) | `grep -rn 'DragSource\|DropTarget' …/mshell-settings/src` — reorder uses `reorder_dnd` (GestureDrag) |
-| L8 | No sync shell-out / blocking read on the GTK main thread (§13.4) | review `grep -rn 'block_on\|\.recv()\|Stdio::inherit' …/src` on any path reachable from a widget callback |
-| L9 | fmt/clippy clean (§11) | `cargo fmt --all -- --check` (exit 0, **not** piped) + `cargo clippy --all-targets` with no warnings |
+| # | Conf | Rule (§) | Forbidden pattern → grep, with the exceptions that keep it false-positive-free |
+|---|---|---|---|
+| L1 | hard | No hardcoded hex (§1) | `grep -rnE '#[0-9a-fA-F]{3,8}\b' …/scss/0[34]-*` — a hex in a *rule*. Exceptions: comments, and **no `var(--x, #fallback)`** (drop the hex fallback — matugen always defines the token). Only `01-tokens/_colors.scss` may hold hex. |
+| L2 | hard | No raw `px` for **spacing / radius / font** (§1) | `grep -rnE '(padding|margin|gap|border-radius|font-size)[^;{]*:\s*-?[0-9]+px'`. Exceptions: **`0px`, `1px`, `2px`** hairline/sub-grid micro-insets are allowed (the spacing scale starts at `--space-1` = 4 px, so there is no sub-4 token). A raw `px ≥ 4` here is a real miss → use `--space-*` / `--radius-*` / `--font-*`. **Not** linted: `min-width`/`min-height`/`-gtk-icon-size`/`min-content-*` — those are component dimensions with no token scale (a bespoke offset like a `30px` avatar inset is fine). |
+| L3 | hard | `--radius-widget` / `--radius-window` only on bar/frame (§1) | `grep -rn 'radius-widget\|radius-window' …/scss/04-components` then **exclude `_bar_widget.scss`, `*_bar_widget.scss` (those *are* the `.ok-bar-widget` rules) and comments**. A hit in any other component file = wrong system. |
+| L4 | hard | No literal motion **duration** (§1) | `grep -rnE 'transition:[^;]*\bvar\(--motion' must be present; a duration like `200ms` in the duration slot is forbidden. A trailing stagger **delay** (`… var(--ease) 50ms`) is allowed — it's a delay, not a duration, and has no token. |
+| L5 | hard | No `gtk::Popover` as a bar widget's **primary** surface (§5) | `grep -rn 'Popover::new\|set_popover' …/bars/bar_widgets` (a click-to-open panel must be a layer-shell menu). **Allowed:** a **right-click context menu** via `PopoverMenu::from_model(_full)` fed a `gio::Menu` (dock item, system-tray item) — that's the correct GTK pattern, not a primary surface. |
+| L6 | hard | No `add_css_class("")` (empty class) | `grep -rnE 'add_css_class\(\s*""' …/src` — use `set_css_classes(&[])` for the empty case. |
+| L7 | hard | No `GtkDragSource`/`DropTarget` for ListBox row reorder (§5) | `grep -rn 'DragSource\|DropTarget' …/mshell-settings/src` (comments excluded) — reorder uses `reorder_dnd` (GestureDrag). |
+| L8 | warn | No sync shell-out / blocking read on the GTK main thread (§13.4) | grep-assisted **manual** review (`block_on` / `.recv()` / `Stdio::inherit` / sync socket read reachable from a widget callback). Not a hard gate — grep can't prove the thread; keep it advisory. |
+| L9 | hard | fmt/clippy clean (§11) | `cargo fmt --all -- --check` (exit 0, **not** piped) + `cargo clippy --workspace --all-targets -- -D warnings`. |
+
+"hard" = fails CI; "warn" = reported, doesn't block. Every hard rule's
+grep is written so a clean tree returns **zero** matches — if it
+false-positives on legitimate code, tighten the grep (or carve the
+exception here), don't loosen the rule. An audit of the current tree
+against these passes (the one real hit, an `--error` hex fallback, was
+removed).
 
 Run `cargo fmt --all -- --check` **without a pipe** and check its exit
 code directly — `cargo fmt … | tail` masks the failure behind `tail`'s
