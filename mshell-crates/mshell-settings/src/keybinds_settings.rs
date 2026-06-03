@@ -19,7 +19,7 @@ use relm4::gtk::{gdk, glib};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::cell::RefCell;
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::rc::Rc;
 
 // ── Known dispatch actions (name, argument hint) ────────────────────────────
@@ -262,6 +262,15 @@ impl Bind {
         a == "tag" || a == "toggletag"
     }
 
+    /// A bind owned by the plugin system (`spawn, mshellctl plugin keybind …`),
+    /// written to `binds.d/mshell-plugins.conf`. The editor must never absorb
+    /// or rewrite these — doing so used to copy them into `binds.conf` on
+    /// every save, accumulating duplicates.
+    fn is_plugin_keybind(&self) -> bool {
+        let a = self.action.to_ascii_lowercase();
+        (a == "spawn" || a == "exec") && self.args.contains("mshellctl plugin keybind")
+    }
+
     /// The raw tag bitmask argument (`tag,16` → 16). Binds carry a raw
     /// mask, not a 1-based index.
     pub(crate) fn tag_mask(&self) -> u32 {
@@ -312,48 +321,27 @@ fn binds_path() -> PathBuf {
 }
 
 // ── Reading ─────────────────────────────────────────────────────────────────
-fn expand(path: &str, base_dir: &Path) -> PathBuf {
-    let p = path.trim().trim_matches('"');
-    if let Some(rest) = p.strip_prefix("~/")
-        && let Some(home) = std::env::var_os("HOME")
-    {
-        return PathBuf::from(home).join(rest);
-    }
-    let pb = PathBuf::from(p);
-    if pb.is_absolute() {
-        pb
-    } else {
-        base_dir.join(pb)
-    }
-}
-
-/// Read a config file plus every `source =` it pulls in (depth-first, guarded).
-fn read_all_lines(path: &Path, visited: &mut HashSet<PathBuf>, out: &mut Vec<String>) {
-    let canon = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-    if !visited.insert(canon) {
-        return;
-    }
-    let Ok(text) = std::fs::read_to_string(path) else {
-        return;
-    };
-    let base_dir = path.parent().map(|p| p.to_path_buf()).unwrap_or_default();
-    for line in text.lines() {
-        let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix("source")
-            && let Some(val) = rest.trim_start().strip_prefix('=')
-        {
-            read_all_lines(&expand(val, &base_dir), visited, out);
-            continue;
-        }
-        out.push(line.to_string());
-    }
-}
-
-/// Every bind reachable from `config.conf` (inline + sourced), parsed.
+/// The user-editable binds this page owns, parsed from the **single managed
+/// file** — `binds.conf` once migrated, else the inline binds in
+/// `config.conf`.
+///
+/// Deliberately does NOT follow `source` / `include`: binds in other
+/// fragments (e.g. `binds.d/mshell-plugins.conf`, which the plugin system
+/// rewrites) belong to those files. Absorbing them here copied them into
+/// `binds.conf` on every save and accumulated duplicates. Plugin-keybind
+/// spawns are filtered out for the same reason.
 pub(crate) fn load_binds() -> Vec<Bind> {
-    let mut lines = Vec::new();
-    read_all_lines(&config_path(), &mut HashSet::new(), &mut lines);
-    let mut binds: Vec<Bind> = lines.iter().filter_map(|l| parse_bind_line(l)).collect();
+    let path = if is_migrated() {
+        binds_path()
+    } else {
+        config_path()
+    };
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let mut binds: Vec<Bind> = text
+        .lines()
+        .filter_map(parse_bind_line)
+        .filter(|b| !b.is_plugin_keybind())
+        .collect();
     binds.sort_by(sort_key);
     binds
 }
@@ -630,13 +618,21 @@ fn render_binds_conf(binds: &[Bind]) -> String {
     out.push_str("# config.conf: bind = MODS,KEY,ACTION[,ARGS]   #\"description\"\n");
 
     let mut last_cat = "";
+    let mut seen: HashSet<String> = HashSet::new();
     for b in &sorted {
+        let line = b.to_line();
+        // Collapse exact-duplicate bind lines so a file that picked up
+        // repeats (e.g. from the old source-absorbing bug) self-heals on the
+        // next save instead of growing further.
+        if !seen.insert(line.clone()) {
+            continue;
+        }
         let cat = b.category();
         if cat != last_cat {
             out.push_str(&format!("\n# {cat}\n"));
             last_cat = cat;
         }
-        out.push_str(&b.to_line());
+        out.push_str(&line);
         out.push('\n');
     }
     out
