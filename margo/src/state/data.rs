@@ -142,6 +142,11 @@ pub struct MargoClient {
     pub no_animation: bool,
     pub open_silent: bool,
     pub tag_silent: bool,
+    /// A window-rule has already placed this client (`tags` / `monitor`).
+    /// Placement is one-time: later reapplies (e.g. a browser changing its
+    /// title) must not re-assert the rule tag and yank a window the user has
+    /// since summoned / tagged elsewhere.
+    pub rule_placement_done: bool,
     pub allow_csd: bool,
     pub no_focus: bool,
     pub no_fade_in: bool,
@@ -232,6 +237,7 @@ impl MargoClient {
             no_animation: false,
             open_silent: false,
             tag_silent: false,
+            rule_placement_done: false,
             allow_csd: false,
             no_focus: false,
             no_fade_in: false,

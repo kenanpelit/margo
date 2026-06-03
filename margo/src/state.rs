@@ -3192,14 +3192,26 @@ impl MargoState {
         client: &mut MargoClient,
         rules: &[WindowRule],
     ) {
+        // Placement (`tags` / `monitor`) is a *one-time* decision, applied the
+        // first time a rule matches (initial map, or the first time a late
+        // app_id/title settles). After that the window's location belongs to
+        // the user — `summon`, `tag`, `toggletag`, a drag, etc. Re-asserting it
+        // on every later reapply (e.g. a browser updating its title on each
+        // click) would yank a summoned window straight back to its rule tag.
+        // Visual rules below keep applying on every reapply.
+        let place = !client.rule_placement_done;
+        let mut placed = false;
         for rule in rules {
-            if rule.tags != 0 {
+            if place && rule.tags != 0 {
                 client.tags = rule.tags;
+                placed = true;
             }
-            if let Some(monitor_name) = &rule.monitor {
-                if let Some(mon_idx) = monitors.iter().position(|mon| &mon.name == monitor_name) {
-                    client.monitor = mon_idx;
-                }
+            if place
+                && let Some(monitor_name) = &rule.monitor
+                && let Some(mon_idx) = monitors.iter().position(|mon| &mon.name == monitor_name)
+            {
+                client.monitor = mon_idx;
+                placed = true;
             }
 
             if let Some(value) = rule.is_floating {
@@ -3331,6 +3343,12 @@ impl MargoState {
                 client.is_floating = true;
                 client.float_geom = Self::rule_float_geometry_for(monitors, client.monitor, rule);
             }
+        }
+        // Lock placement after the first time a rule actually set a tag /
+        // monitor, so later reapplies (title changes) leave the window where
+        // the user has since put it.
+        if placed {
+            client.rule_placement_done = true;
         }
         // Fallback: if a rule flagged `isfloating:1` but didn't
         // give any size / offset hint, `client.float_geom` stays
