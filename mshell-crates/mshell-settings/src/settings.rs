@@ -69,6 +69,7 @@ pub struct SettingsWindowModel {
     users_settings_controller: Controller<UsersSettingsModel>,
     input_settings_controller: Controller<InputSettingsModel>,
     keybinds_settings_controller: Controller<KeybindsSettingsModel>,
+    summon_settings_controller: Controller<crate::summon_settings::SummonSettingsModel>,
     display_settings_controller: Controller<DisplaySettingsModel>,
     bar_settings_controller: Controller<BarSettingsModel>,
     bluetooth_settings_controller: Controller<BluetoothSettingsModel>,
@@ -646,6 +647,26 @@ impl Component for SettingsWindowModel {
                             },
                         },
                     },
+                    #[name = "summon_btn"]
+                    gtk::ToggleButton {
+                        add_css_class: "sidebar-button",
+                        set_group: Some(&general_btn),
+                        connect_toggled[stack] => move |b| {
+                            if b.is_active() { stack.set_visible_child_name("summon"); }
+                        },
+
+                        gtk::Box {
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 12,
+                            gtk::Image { set_icon_name: Some("view-app-grid-symbolic") },
+                            gtk::Label {
+                                add_css_class: "label-medium",
+                                set_label: "Tag Apps",
+                                set_halign: gtk::Align::Start,
+                                set_hexpand: true,
+                            },
+                        },
+                    },
                     #[name = "launcher_btn"]
                     gtk::ToggleButton {
                         add_css_class: "sidebar-button",
@@ -940,6 +961,10 @@ impl Component for SettingsWindowModel {
             .launch(KeybindsSettingsInit {})
             .detach();
 
+        let summon_settings_controller = crate::summon_settings::SummonSettingsModel::builder()
+            .launch(crate::summon_settings::SummonSettingsInit {})
+            .detach();
+
         let input_settings_controller = InputSettingsModel::builder()
             .launch(InputSettingsInit {})
             .detach();
@@ -1033,6 +1058,8 @@ impl Component for SettingsWindowModel {
                 ("users", "users"),
                 ("input", "input"),
                 ("keybinds", "keybinds"),
+                ("tag apps", "summon"),
+                ("summon", "summon"),
                 ("launcher", "launcher"),
                 ("menus", "menus"),
                 ("network", "network"),
@@ -1067,6 +1094,7 @@ impl Component for SettingsWindowModel {
             users_settings_controller,
             input_settings_controller,
             keybinds_settings_controller,
+            summon_settings_controller,
             display_settings_controller,
             bar_settings_controller,
             bluetooth_settings_controller,
@@ -1278,6 +1306,12 @@ impl Component for SettingsWindowModel {
             model.keybinds_settings_controller.widget(),
             Some("keybinds"),
             "Keybinds",
+        );
+
+        widgets.stack.add_titled(
+            model.summon_settings_controller.widget(),
+            Some("summon"),
+            "Tag Apps",
         );
 
         widgets.stack.add_titled(
@@ -2137,6 +2171,7 @@ impl Component for SettingsWindowModel {
                     "users" => Some(&widgets.users_btn),
                     "input" => Some(&widgets.input_btn),
                     "keybinds" => Some(&widgets.keybinds_btn),
+                    "summon" => Some(&widgets.summon_btn),
                     "idle" => Some(&widgets.idle_btn),
                     "lock" => Some(&widgets.lock_btn),
                     "tiling_layout" => Some(&widgets.tag_layout_btn),
@@ -2227,6 +2262,9 @@ fn keywords_for(label: &str) -> &'static str {
         "sound" => "audio volume output input microphone speaker mute device sink source",
         "fonts" => "font typeface family size weight",
         "keybinds" => "keybind keybinding shortcut hotkey bind keyboard binding cheatsheet",
+        "summon" => {
+            "tag apps summon bring here mango-here app hotkey per-tag launch app-id workspace app"
+        }
         "input" => "keyboard mouse touchpad layout xkb repeat sensitivity natural scroll cursor",
         "animations" => "animation motion transition speed easing",
         "date_time" | "date time" | "date & time" => "clock time date timezone ntp format 24-hour",

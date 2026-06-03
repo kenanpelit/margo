@@ -53,6 +53,7 @@ mod session_settings;
 pub mod settings;
 mod setup_settings;
 mod sound_settings;
+mod summon_settings;
 mod sys;
 mod system_tray_settings;
 mod system_update_settings;

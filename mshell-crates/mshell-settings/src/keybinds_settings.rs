@@ -107,7 +107,7 @@ const CATEGORIES: &[&str] = &[
 
 // ── One bind ────────────────────────────────────────────────────────────────
 #[derive(Clone, Debug, Default)]
-struct Bind {
+pub(crate) struct Bind {
     /// Suffix chars after `bind` (`s`=sym, `l`=lock, `r`=release, `p`=pass).
     flags: String,
     m_super: bool,
@@ -190,6 +190,62 @@ impl Bind {
     fn category(&self) -> &'static str {
         categorise(&self.action, &self.args)
     }
+
+    // ── Summon helpers (used by the dedicated Tag Apps page) ──────────
+    pub(crate) fn is_summon(&self) -> bool {
+        self.action.eq_ignore_ascii_case("summon")
+    }
+
+    /// `super+alt` / `NONE` — the modifier string (re-exported for the
+    /// Tag Apps row display).
+    pub(crate) fn mods(&self) -> String {
+        self.mods_str()
+    }
+
+    pub(crate) fn key_name(&self) -> &str {
+        self.key.trim()
+    }
+
+    /// Split a summon bind's arg tail into `(app_id, title, spawn)`. A
+    /// `none`/empty title comes back as an empty string.
+    pub(crate) fn summon_parts(&self) -> (String, String, String) {
+        let p: Vec<&str> = self.args.splitn(3, ',').collect();
+        let appid = p.first().map(|s| s.trim().to_string()).unwrap_or_default();
+        let title = p
+            .get(1)
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty() && !s.eq_ignore_ascii_case("none"))
+            .unwrap_or("")
+            .to_string();
+        let spawn = p.get(2).map(|s| s.trim().to_string()).unwrap_or_default();
+        (appid, title, spawn)
+    }
+
+    /// Build a `summon` bind from friendly fields. An empty title is
+    /// written as `none` so the spawn command stays the third arg.
+    pub(crate) fn new_summon(mods: &str, key: &str, appid: &str, title: &str, spawn: &str) -> Bind {
+        let mut b = Bind {
+            key: key.trim().to_string(),
+            action: "summon".to_string(),
+            ..Default::default()
+        };
+        for m in mods.split('+') {
+            match m.trim().to_ascii_lowercase().as_str() {
+                "super" | "mod" | "mod4" | "logo" | "win" => b.m_super = true,
+                "ctrl" | "control" => b.m_ctrl = true,
+                "shift" => b.m_shift = true,
+                "alt" | "mod1" => b.m_alt = true,
+                _ => {}
+            }
+        }
+        let title = if title.trim().is_empty() {
+            "none"
+        } else {
+            title.trim()
+        };
+        b.args = format!("{},{},{}", appid.trim(), title, spawn.trim());
+        b
+    }
 }
 
 // ── Paths ─────────────────────────────────────────────────────────────────
@@ -249,7 +305,7 @@ fn read_all_lines(path: &Path, visited: &mut HashSet<PathBuf>, out: &mut Vec<Str
 }
 
 /// Every bind reachable from `config.conf` (inline + sourced), parsed.
-fn load_binds() -> Vec<Bind> {
+pub(crate) fn load_binds() -> Vec<Bind> {
     let mut lines = Vec::new();
     read_all_lines(&config_path(), &mut HashSet::new(), &mut lines);
     let mut binds: Vec<Bind> = lines.iter().filter_map(|l| parse_bind_line(l)).collect();
@@ -550,7 +606,7 @@ fn write_binds_conf(binds: &[Bind]) -> std::io::Result<()> {
 }
 
 /// Migrate-if-needed, write `binds.conf`, reload the compositor.
-fn persist(binds: &[Bind]) {
+pub(crate) fn persist(binds: &[Bind]) {
     if let Err(e) = migrate(binds).and_then(|_| write_binds_conf(binds)) {
         tracing::warn!(error = %e, "keybinds: failed to write binds.conf");
         return;
