@@ -70,6 +70,7 @@ nav:
       - Cross-distro installer: install-script.md
       - Wayland protocol comparison: protocol-comparison.md
   - Roadmap: roadmap.md
+  - 1.0 readiness: 1.0-readiness.md
   - Changelog: changelog.md
   - Contributing: contributing.md
 
