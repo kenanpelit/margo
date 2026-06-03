@@ -10,15 +10,23 @@
 //!     `.selected` class plus its colour-state class
 //!     (`.profile-saver` green / `.profile-performance` red /
 //!     `.profile-balanced` neutral).
-//!   * **Power Controls** — three secondary actions ported from
-//!     the noctalia `power` panel:
-//!       - **Cycle** — step to the next profile.
-//!       - **Lock Auto** — toggle the `ppd-auto-profile` lock
-//!         file (`~/.local/state/ppd-auto-profile/lock`), the
-//!         same flag noctalia's auto-profile timer honours.
+//!   * **Power Controls** — four secondary actions:
+//!       - **Cycle** — step to the next profile (a manual pick, so
+//!         `mpower` backs off auto-switching until you hit Auto).
+//!       - **Auto** — return `mpower` to fully automatic now
+//!         (`mpower auto`): lifts any pause AND clears the manual
+//!         override left by a Cycle / profile pick, without waiting
+//!         for an AC transition. Highlighted while auto is live.
+//!       - **Lock** — pin the current profile by pausing `mpower`
+//!         (`mpower pause`); highlighted while paused. Click Auto
+//!         (or Lock again) to resume.
 //!       - **Idle Toggle** — flip margo's idle inhibitor via the
 //!         shared `mshell_idle::IdleInhibitor` (same path the
 //!         quick-action coffee button uses).
+//!
+//! The Auto / Lock pair drives margo's own `mpower` daemon (pause
+//! flag at `$XDG_RUNTIME_DIR/mpower.paused`), not the legacy
+//! noctalia `ppd-auto-profile` lock.
 //!
 //! Profile switching goes through `PowerProfilesService::
 //! set_active_profile` (power-profiles-daemon over D-Bus); the
@@ -38,9 +46,9 @@ use tracing::warn;
 
 pub(crate) struct PowerMenuWidgetModel {
     state: PowerState,
-    /// `ppd-auto-profile` lock-file present — auto-profile
-    /// switching is pinned off.
-    auto_locked: bool,
+    /// `mpower` is paused (`$XDG_RUNTIME_DIR/mpower.paused` present)
+    /// — the current profile is pinned, auto-switching is off.
+    mpower_paused: bool,
     /// margo idle inhibitor currently engaged.
     idle_inhibited: bool,
     hero_icon: gtk::Image,
@@ -53,11 +61,12 @@ pub(crate) struct PowerMenuWidgetModel {
     /// flip `.selected` + the colour-state class onto the
     /// active one.
     profile_buttons: Vec<(Profile, gtk::Button)>,
-    /// Power-control buttons whose label / state tracks runtime
-    /// state — kept as refs so `sync_view` can re-style them.
-    lock_auto_button: gtk::Button,
-    lock_auto_icon: gtk::Image,
-    lock_auto_label: gtk::Label,
+    /// Power-control buttons whose state tracks runtime state —
+    /// kept as refs so `sync_view` can re-style them. `auto` is
+    /// highlighted while mpower is automatic, `lock` while paused.
+    auto_button: gtk::Button,
+    lock_button: gtk::Button,
+    lock_icon: gtk::Image,
     idle_button: gtk::Button,
     /// Charge-limit section (hidden when the platform has no
     /// `charge_control_end_threshold`); preset buttons keyed by their %
@@ -71,7 +80,7 @@ impl std::fmt::Debug for PowerMenuWidgetModel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PowerMenuWidgetModel")
             .field("state", &self.state)
-            .field("auto_locked", &self.auto_locked)
+            .field("mpower_paused", &self.mpower_paused)
             .field("idle_inhibited", &self.idle_inhibited)
             .finish()
     }
@@ -81,7 +90,10 @@ impl std::fmt::Debug for PowerMenuWidgetModel {
 pub(crate) enum PowerMenuWidgetInput {
     SetProfile(Profile),
     CycleProfile,
-    ToggleAutoLock,
+    /// `mpower auto` — back to fully automatic now.
+    MpowerAuto,
+    /// `mpower pause` — pin the current profile.
+    MpowerLock,
     ToggleIdleInhibit,
     /// Set the battery charge limit (end threshold %).
     SetChargeLimit(u8),
@@ -96,9 +108,9 @@ pub(crate) struct PowerMenuWidgetInit {}
 pub(crate) enum PowerMenuWidgetCommandOutput {
     /// Profile or battery state changed (a D-Bus watcher fired).
     StateChanged,
-    /// The `ppd-auto-profile` lock-file state changed — re-read
-    /// after our own toggle (and once at startup).
-    AutoLockChanged(bool),
+    /// The `mpower.paused` flag was re-read — after our own
+    /// Auto / Lock action (and once at startup).
+    MpowerPausedChanged(bool),
     /// The shared idle inhibitor flipped (watcher or our own
     /// toggle) — re-read `IdleInhibitor::global()`.
     IdleStateChanged,
@@ -245,14 +257,19 @@ impl Component for PowerMenuWidgetModel {
         }
         controls_box.append(&cycle_button);
 
-        let (lock_auto_button, lock_auto_icon, lock_auto_label) =
-            make_control_button("changes-allow-symbolic", "Lock Auto");
+        let (auto_button, _, _) = make_control_button("view-refresh-symbolic", "Auto");
         {
             let s = sender.clone();
-            lock_auto_button
-                .connect_clicked(move |_| s.input(PowerMenuWidgetInput::ToggleAutoLock));
+            auto_button.connect_clicked(move |_| s.input(PowerMenuWidgetInput::MpowerAuto));
         }
-        controls_box.append(&lock_auto_button);
+        controls_box.append(&auto_button);
+
+        let (lock_button, lock_icon, _) = make_control_button("changes-allow-symbolic", "Lock");
+        {
+            let s = sender.clone();
+            lock_button.connect_clicked(move |_| s.input(PowerMenuWidgetInput::MpowerLock));
+        }
+        controls_box.append(&lock_button);
 
         let (idle_button, _, _) = make_control_button("coffee-symbolic", "Idle Toggle");
         {
@@ -305,11 +322,11 @@ impl Component for PowerMenuWidgetModel {
         spawn_battery_watcher(&sender, || PowerMenuWidgetCommandOutput::StateChanged);
         spawn_battery_online_watcher(&sender, || PowerMenuWidgetCommandOutput::StateChanged);
 
-        // The `ppd-auto-profile` lock-file has no change signal;
-        // read it once at startup and again after our own toggle.
+        // The `mpower.paused` flag has no change signal; read it
+        // once at startup and again after our own Auto / Lock action.
         sender.command(|out, _shutdown| async move {
-            let _ = out.send(PowerMenuWidgetCommandOutput::AutoLockChanged(
-                probe_auto_locked().await,
+            let _ = out.send(PowerMenuWidgetCommandOutput::MpowerPausedChanged(
+                probe_mpower_paused().await,
             ));
         });
 
@@ -319,16 +336,16 @@ impl Component for PowerMenuWidgetModel {
 
         let model = PowerMenuWidgetModel {
             state: read_power_state(),
-            auto_locked: false,
+            mpower_paused: false,
             idle_inhibited: IdleInhibitor::global().get(),
             hero_icon: hero_icon_widget.clone(),
             hero_title: hero_title_widget.clone(),
             hero_subtitle: hero_subtitle_widget.clone(),
             stats_box: stats_box.clone(),
             profile_buttons,
-            lock_auto_button: lock_auto_button.clone(),
-            lock_auto_icon,
-            lock_auto_label,
+            auto_button: auto_button.clone(),
+            lock_button: lock_button.clone(),
+            lock_icon,
             idle_button: idle_button.clone(),
             charge_section: charge_section.clone(),
             charge_buttons,
@@ -356,11 +373,19 @@ impl Component for PowerMenuWidgetModel {
                     set_profile(next).await;
                 });
             }
-            PowerMenuWidgetInput::ToggleAutoLock => {
+            PowerMenuWidgetInput::MpowerAuto => {
                 sender.command(move |out, _shutdown| async move {
-                    toggle_auto_lock().await;
-                    let _ = out.send(PowerMenuWidgetCommandOutput::AutoLockChanged(
-                        probe_auto_locked().await,
+                    run_mpower("auto").await;
+                    let _ = out.send(PowerMenuWidgetCommandOutput::MpowerPausedChanged(
+                        probe_mpower_paused().await,
+                    ));
+                });
+            }
+            PowerMenuWidgetInput::MpowerLock => {
+                sender.command(move |out, _shutdown| async move {
+                    run_mpower("pause").await;
+                    let _ = out.send(PowerMenuWidgetCommandOutput::MpowerPausedChanged(
+                        probe_mpower_paused().await,
                     ));
                 });
             }
@@ -397,9 +422,9 @@ impl Component for PowerMenuWidgetModel {
                     sync_view(self);
                 }
             }
-            PowerMenuWidgetCommandOutput::AutoLockChanged(auto_locked) => {
-                if self.auto_locked != auto_locked {
-                    self.auto_locked = auto_locked;
+            PowerMenuWidgetCommandOutput::MpowerPausedChanged(paused) => {
+                if self.mpower_paused != paused {
+                    self.mpower_paused = paused;
                     sync_view(self);
                 }
             }
@@ -552,27 +577,27 @@ fn sync_view(model: &PowerMenuWidgetModel) {
         btn.set_css_classes(&classes);
     }
 
-    // Lock Auto — label + icon + `.selected` flip on the lock
-    // state.
-    if model.auto_locked {
-        model.lock_auto_label.set_label("Unlock Auto");
-        model
-            .lock_auto_icon
-            .set_icon_name(Some("changes-prevent-symbolic"));
-        model.lock_auto_button.set_css_classes(&[
-            "ok-button-surface",
-            "power-control-button",
-            "selected",
-        ]);
+    // Auto / Lock — mutually-exclusive mpower state. Auto is
+    // highlighted while automatic; Lock while paused (current
+    // profile pinned), with a closed-padlock glyph.
+    let (auto_classes, lock_classes): (&[&str], &[&str]) = if model.mpower_paused {
+        (
+            &["ok-button-surface", "power-control-button"],
+            &["ok-button-surface", "power-control-button", "selected"],
+        )
     } else {
-        model.lock_auto_label.set_label("Lock Auto");
-        model
-            .lock_auto_icon
-            .set_icon_name(Some("changes-allow-symbolic"));
-        model
-            .lock_auto_button
-            .set_css_classes(&["ok-button-surface", "power-control-button"]);
-    }
+        (
+            &["ok-button-surface", "power-control-button", "selected"],
+            &["ok-button-surface", "power-control-button"],
+        )
+    };
+    model.auto_button.set_css_classes(auto_classes);
+    model.lock_button.set_css_classes(lock_classes);
+    model.lock_icon.set_icon_name(Some(if model.mpower_paused {
+        "changes-prevent-symbolic"
+    } else {
+        "changes-allow-symbolic"
+    }));
 
     // Idle Toggle — `.selected` while the inhibitor is engaged.
     if model.idle_inhibited {
@@ -644,49 +669,37 @@ fn cycle_next(current: Profile) -> Profile {
     }
 }
 
-/// `~/.local/state/ppd-auto-profile/lock` — the flag noctalia's
-/// `power` shares with its auto-profile timer.
-fn auto_lock_path() -> Option<PathBuf> {
-    let home = std::env::var_os("HOME")?;
-    Some(
-        PathBuf::from(home)
-            .join(".local/state/ppd-auto-profile")
-            .join("lock"),
-    )
+/// `$XDG_RUNTIME_DIR/mpower.paused` — the pause flag mpower's daemon
+/// honours (falls back to the temp dir, matching mpower's own path
+/// resolution).
+fn mpower_paused_path() -> PathBuf {
+    std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(std::env::temp_dir)
+        .join("mpower.paused")
 }
 
-async fn probe_auto_locked() -> bool {
-    match auto_lock_path() {
-        Some(p) => tokio::fs::try_exists(&p).await.unwrap_or(false),
-        None => false,
-    }
+async fn probe_mpower_paused() -> bool {
+    tokio::fs::try_exists(mpower_paused_path())
+        .await
+        .unwrap_or(false)
 }
 
-/// Create the lock file when absent, remove it when present —
-/// the same create/remove toggle noctalia's `action.sh` does.
-async fn toggle_auto_lock() {
-    let Some(path) = auto_lock_path() else {
-        warn!("power: $HOME unset, cannot toggle auto-profile lock");
-        return;
-    };
-    match tokio::fs::try_exists(&path).await {
-        Ok(true) => {
-            if let Err(e) = tokio::fs::remove_file(&path).await {
-                warn!(error = %e, "power: failed to clear auto-profile lock");
-            }
-        }
-        Ok(false) => {
-            if let Some(parent) = path.parent()
-                && let Err(e) = tokio::fs::create_dir_all(parent).await
-            {
-                warn!(error = %e, "power: failed to create auto-profile lock dir");
-                return;
-            }
-            if let Err(e) = tokio::fs::write(&path, b"").await {
-                warn!(error = %e, "power: failed to set auto-profile lock");
-            }
-        }
-        Err(e) => warn!(error = %e, "power: cannot stat auto-profile lock file"),
+/// Run an `mpower` subcommand (`auto` | `pause`). mpower itself owns
+/// the pause flag + the manual-override back-off, so we drive it
+/// through the CLI rather than poking its state files directly.
+async fn run_mpower(arg: &str) {
+    match tokio::process::Command::new("mpower")
+        .arg(arg)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .await
+    {
+        Ok(s) if s.success() => {}
+        Ok(s) => warn!(code = ?s.code(), arg, "power: `mpower` exited non-zero"),
+        Err(e) => warn!(error = %e, arg, "power: failed to run `mpower` (installed?)"),
     }
 }
 
