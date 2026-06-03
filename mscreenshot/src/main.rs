@@ -105,6 +105,13 @@ enum Cmd {
     /// Focused window → save + edit.
     Wi,
 
+    /// All outputs (whole layout) → edit → save.
+    All,
+    /// All outputs → save to clipboard.
+    Ac,
+    /// All outputs → save to disk.
+    Af,
+
     /// Open the most recently saved screenshot via xdg-open.
     Open,
     /// Open the screenshot save directory via xdg-open.
@@ -130,6 +137,7 @@ enum CaptureSource {
     Region,
     Screen,
     Window,
+    AllOutputs,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -179,6 +187,9 @@ fn run() -> Result<()> {
         Cmd::Wc => (CaptureSource::Window, DeliveryMode::ClipOnly),
         Cmd::Wf => (CaptureSource::Window, DeliveryMode::SaveOnly),
         Cmd::Wi => (CaptureSource::Window, DeliveryMode::EditSave),
+        Cmd::All => (CaptureSource::AllOutputs, DeliveryMode::EditSave),
+        Cmd::Ac => (CaptureSource::AllOutputs, DeliveryMode::ClipOnly),
+        Cmd::Af => (CaptureSource::AllOutputs, DeliveryMode::SaveOnly),
         Cmd::Open | Cmd::Dir | Cmd::NotifyHandle { .. } => {
             unreachable!(
                 "Open/Dir/NotifyHandle handled earlier and short-circuit before this match"
@@ -205,6 +216,7 @@ fn run() -> Result<()> {
         CaptureSource::Region => "Region screenshot",
         CaptureSource::Screen => "Screen screenshot",
         CaptureSource::Window => "Window screenshot",
+        CaptureSource::AllOutputs => "Full screenshot",
     };
 
     // `--delay N` countdown: pop one notification announcing the
@@ -267,7 +279,21 @@ fn capture(source: CaptureSource, dest: &Path, output_override: Option<&str>) ->
         CaptureSource::Region => capture_region(dest),
         CaptureSource::Screen => capture_screen(dest, output_override),
         CaptureSource::Window => capture_window(dest),
+        CaptureSource::AllOutputs => capture_all(dest),
     }
+}
+
+/// Whole layout — every output composited. `grim` with no `-o` captures
+/// the full output layout by default.
+fn capture_all(dest: &Path) -> Result<()> {
+    let status = Command::new("grim")
+        .arg(dest)
+        .status()
+        .context("spawn grim")?;
+    if !status.success() {
+        bail!("grim exited {status} for full capture");
+    }
+    Ok(())
 }
 
 fn capture_region(dest: &Path) -> Result<()> {
