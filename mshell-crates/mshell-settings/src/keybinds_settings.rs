@@ -78,7 +78,10 @@ const ACTIONS: &[(&str, &str)] = &[
     ("screenshot", "no arguments"),
     ("screenshot-window", "no arguments"),
     ("screenshot-region", "no arguments"),
-    ("screenshot-select", "Mode — rec | area | ri | rc | rf (default rec)"),
+    (
+        "screenshot-select",
+        "Mode — rec | area | ri | rc | rf (default rec)",
+    ),
     ("screenshot-output", "no arguments"),
     ("theme", "Theme preset name"),
     ("twilight_toggle", "no arguments"),
@@ -520,14 +523,8 @@ fn categorise(action: &str, args: &str) -> &'static str {
         | "focuswindow"
         | "exchange_client"
         | "sticky_window" => "Windows",
-        "screenshot"
-        | "screenshot-window"
-        | "screenshot-region"
-        | "screenshot-select"
-        | "screenshot-output"
-        | "theme"
-        | "twilight_toggle"
-        | "twilight_set" => "Shell",
+        "screenshot" | "screenshot-window" | "screenshot-region" | "screenshot-select"
+        | "screenshot-output" | "theme" | "twilight_toggle" | "twilight_set" => "Shell",
         "reload" | "quit" | "force_unlock" | "session_save" | "session_load" | "setkeymode"
         | "run_script" => "System",
         _ => "General",
