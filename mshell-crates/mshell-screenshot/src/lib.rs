@@ -7,7 +7,9 @@ mod utils;
 
 pub use capture::{CaptureBackend, ScreenshotResult};
 pub use common::OutputInfo;
-pub use editor::{editor_available, launch_editor_blocking, pick_editor};
+pub use editor::{
+    editor_available, launch_editor_blocking, pick_editor, pick_editor_with_override,
+};
 pub use selectors::area_selector::select_region;
 pub use utils::query_outputs;
 
@@ -34,11 +36,16 @@ pub enum OutputTarget {
     FileAndClipboard,
     File,
     Clipboard,
-    /// Capture → open in `pick_editor()` (satty / swappy / …) →
-    /// when the editor writes its output, copy that file to the
-    /// clipboard too. Falls back to the original capture for the
-    /// clipboard step when the editor exits without saving.
-    EditAndSave,
+    /// Capture → open in an annotation editor → when the editor
+    /// writes its output, copy that file to the clipboard too. Falls
+    /// back to the original capture for the clipboard step when the
+    /// editor exits without saving.
+    ///
+    /// The `Option<String>` is an explicit editor override (e.g.
+    /// `mshellctl screenshot region satty`). `None` uses the standard
+    /// preference chain (`SCREENSHOT_EDITOR` env, then satty → swappy
+    /// → gimp → krita) via [`editor::pick_editor`].
+    EditAndSave(Option<String>),
 }
 
 #[derive(Debug, Clone)]
@@ -305,7 +312,7 @@ fn finish_capture(image: image::RgbaImage, target: &OutputTarget) -> Result<Scre
                 in_clipboard: true,
             })
         }
-        OutputTarget::EditAndSave => finish_with_editor(image),
+        OutputTarget::EditAndSave(editor) => finish_with_editor(image, editor.as_deref()),
     }
 }
 
@@ -320,10 +327,13 @@ fn finish_capture(image: image::RgbaImage, target: &OutputTarget) -> Result<Scre
 /// If no editor is available, behaves identically to
 /// `FileAndClipboard` and warns via the returned path remaining
 /// unedited.
-fn finish_with_editor(image: image::RgbaImage) -> Result<ScreenshotResult> {
+fn finish_with_editor(
+    image: image::RgbaImage,
+    override_editor: Option<&str>,
+) -> Result<ScreenshotResult> {
     let raw_path = default_screenshot_path();
     save_to_file(&image, &raw_path)?;
-    let Some(editor) = editor::pick_editor() else {
+    let Some(editor) = editor::pick_editor_with_override(override_editor) else {
         // No annotation tool installed — degrade to FileAndClipboard.
         copy_to_clipboard(&image)?;
         return Ok(ScreenshotResult {

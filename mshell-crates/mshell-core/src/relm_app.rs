@@ -503,17 +503,26 @@ impl Component for Shell {
                     Some("full") => CaptureArea::All,
                     _ => CaptureArea::SelectRegion, // "region" / default
                 };
-                let target = match parts.next() {
-                    Some("copy") => OutputTarget::Clipboard,
-                    Some("save") => OutputTarget::File,
-                    Some("edit") => OutputTarget::EditAndSave,
-                    _ => OutputTarget::FileAndClipboard, // "default"
-                };
+                let target_tok = parts.next();
                 let delay = parts
                     .next()
                     .and_then(|s| s.parse::<u64>().ok())
                     .map(std::time::Duration::from_secs)
                     .unwrap_or_default();
+                // Optional 4th field: explicit editor name (or "-").
+                // Naming an editor implies edit mode even without the
+                // "edit" target token (`mshellctl screenshot region satty`).
+                let editor = parts
+                    .next()
+                    .filter(|s| *s != "-" && !s.is_empty())
+                    .map(str::to_string);
+                let target = match target_tok {
+                    Some("copy") => OutputTarget::Clipboard,
+                    Some("save") => OutputTarget::File,
+                    Some("edit") => OutputTarget::EditAndSave(editor),
+                    _ if editor.is_some() => OutputTarget::EditAndSave(editor),
+                    _ => OutputTarget::FileAndClipboard, // "default"
+                };
                 mshell_frame::capture_screenshot(area, target, delay);
             }
             ShellInput::ScreenRecord(spec) => {

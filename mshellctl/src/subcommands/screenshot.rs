@@ -6,10 +6,12 @@
 //! the CLI, and the menu all run the exact same path.
 //!
 //! ```text
-//! mshellctl screenshot region|window|output|full [--copy|--save|--edit] [--delay N]
+//! mshellctl screenshot region|window|output|full [EDITOR] [--copy|--save|--edit] [--delay N]
 //! ```
-//! Default delivery is edit/file + clipboard. `--copy` = clipboard only,
+//! Default delivery is file + clipboard. `--copy` = clipboard only,
 //! `--save` = file only, `--edit` = editor → save (no clipboard).
+//! A positional editor name (`mshellctl screenshot region satty`) forces
+//! that annotation tool and implies `--edit`.
 
 use crate::bus::{bus_command_with_arg, bus_command_with_reply};
 use clap::{Args, Subcommand};
@@ -46,11 +48,17 @@ pub struct Capture {
     /// Wait N seconds before capturing (catch menus / tooltips).
     #[arg(long, short = 'd')]
     delay: Option<u32>,
+    /// Force a specific annotation editor (satty | swappy | gimp |
+    /// krita). Implies `--edit`. Omit to use the default chain
+    /// (`SCREENSHOT_EDITOR` env, then satty → swappy → gimp → krita).
+    #[arg(value_name = "EDITOR")]
+    editor: Option<String>,
 }
 
 impl Capture {
     fn target(&self) -> &'static str {
-        if self.edit {
+        // A named editor implies edit mode.
+        if self.edit || self.editor.is_some() {
             "edit"
         } else if self.save {
             "save"
@@ -62,9 +70,11 @@ impl Capture {
     }
 }
 
-/// Fire the headless capture: `"<area> <target> <delay>"` over IPC.
+/// Fire the headless capture: `"<area> <target> <delay> <editor>"` over IPC.
+/// `<editor>` is `-` when unset.
 async fn capture(area: &str, c: &Capture) -> anyhow::Result<()> {
-    let spec = format!("{area} {} {}", c.target(), c.delay.unwrap_or(0));
+    let editor = c.editor.as_deref().unwrap_or("-");
+    let spec = format!("{area} {} {} {editor}", c.target(), c.delay.unwrap_or(0));
     bus_command_with_arg("ScreenshotCapture", &spec).await?;
     Ok(())
 }

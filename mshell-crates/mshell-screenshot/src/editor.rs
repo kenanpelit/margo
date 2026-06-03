@@ -15,6 +15,22 @@ use super::{Result, ScreenshotError};
 /// no editor is available — callers should treat that as "skip the
 /// edit step" rather than an error.
 pub fn pick_editor() -> Option<String> {
+    pick_editor_with_override(None)
+}
+
+/// Like [`pick_editor`], but an explicit `override_editor` (e.g. the
+/// `mshellctl screenshot region satty` positional) wins over both the
+/// `SCREENSHOT_EDITOR` env var and the default chain — provided the
+/// named binary is actually on `$PATH`. A named-but-missing editor
+/// falls through to the normal resolution rather than failing, so a
+/// typo or an uninstalled tool still yields *a* working editor.
+pub fn pick_editor_with_override(override_editor: Option<&str>) -> Option<String> {
+    if let Some(forced) = override_editor
+        && !forced.is_empty()
+        && which(forced)
+    {
+        return Some(forced.to_string());
+    }
     if let Ok(forced) = std::env::var("SCREENSHOT_EDITOR")
         && !forced.is_empty()
         && which(&forced)

@@ -98,7 +98,10 @@ mshellctl screenshot region          # in-shell selector → file + clipboard
 mshellctl screenshot window          # focused window
 mshellctl screenshot output          # pick a monitor
 mshellctl screenshot full            # whole layout (all outputs)
+mshellctl screenshot region satty    # force satty (positional editor ⇒ implies --edit)
 #   flags: --save (file only) · --copy (clipboard only) · --edit (editor) · -d N (delay)
+#   positional EDITOR: satty | swappy | gimp | krita — overrides the default
+#   chain ($SCREENSHOT_EDITOR env, then satty → swappy → gimp → krita)
 
 mshellctl screenrecord start full    # start recording (region|window|output|full)
 mshellctl screenrecord toggle region --audio <pw-source>

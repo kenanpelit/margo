@@ -233,7 +233,7 @@ impl Component for ScreenshotMenuWidgetModel {
                     icon_name: "screenshot-save-file-symbolic".into(),
                 },
                 SaveOptionRow {
-                    value: OutputTarget::EditAndSave,
+                    value: OutputTarget::EditAndSave(None),
                     icon_name: "document-edit-symbolic".into(),
                 },
             ])
@@ -292,7 +292,7 @@ impl Component for ScreenshotMenuWidgetModel {
                         OutputTarget::FileAndClipboard => "Save to file and clipboard".to_string(),
                         OutputTarget::File => "Save to file".to_string(),
                         OutputTarget::Clipboard => "Save to clipboard".to_string(),
-                        OutputTarget::EditAndSave => "Edit (satty / swappy) → save".to_string(),
+                        OutputTarget::EditAndSave(_) => "Edit (satty / swappy) → save".to_string(),
                     }));
                 self.save_row
                     .emit(RevealerRowInput::UpdateActionIconName(opt.icon_name));

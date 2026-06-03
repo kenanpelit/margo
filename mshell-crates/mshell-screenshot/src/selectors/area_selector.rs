@@ -288,7 +288,7 @@ fn create_overlay_window(
             // Ctrl+E → commit + force EditAndSave (open in
             // satty / swappy). Same override mechanic as Ctrl+S.
             gdk::Key::E | gdk::Key::e if modifier.contains(gdk::ModifierType::CONTROL_MASK) => {
-                fire_preview(&state_key, Some(OutputTarget::EditAndSave))
+                fire_preview(&state_key, Some(OutputTarget::EditAndSave(None)))
             }
             gdk::Key::Up | gdk::Key::Down | gdk::Key::Left | gdk::Key::Right => {
                 let step = if modifier.contains(gdk::ModifierType::SHIFT_MASK) {
