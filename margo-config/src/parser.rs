@@ -1552,6 +1552,8 @@ pub const OPTION_KEYS: &[&str] = &[
     "sloppyfocus",
     "sloppyfocus_arrange",
     "smartgaps",
+    "enable_gaps",
+    "gaps_enabled",
     "snap_distance",
     "swipe_min_threshold",
     "syncobj_enable",
