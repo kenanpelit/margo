@@ -397,7 +397,7 @@ impl ScreenRecordMenuWidgetModel {
     }
 }
 
-// ── Headless recording controls (driven by `mshellctl screen-record`) ───────
+// ── Headless recording controls (driven by `mshellctl screenrecord`) ───────
 // Same engine + shared `recording_state` the menu uses; no menu surface.
 
 pub(crate) fn is_recording() -> bool {

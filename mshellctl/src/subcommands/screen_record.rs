@@ -1,12 +1,12 @@
-//! `mshellctl screen-record` — start / stop / toggle screen recording.
+//! `mshellctl screenrecord` — start / stop / toggle screen recording.
 //!
 //! Drives the shell's own recording engine (the same one behind the
 //! screenshot menu's "Screen recording" section + the recording-indicator
 //! pill) headlessly over IPC. One engine, one tool.
 //!
 //! ```text
-//! mshellctl screen-record start|toggle [region|window|output|full] [--audio SRC]
-//! mshellctl screen-record stop
+//! mshellctl screenrecord start|toggle [region|window|output|full] [--audio SRC]
+//! mshellctl screenrecord stop
 //! ```
 
 use crate::bus::bus_command_with_arg;

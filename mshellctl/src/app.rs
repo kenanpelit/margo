@@ -127,7 +127,7 @@ pub enum Commands {
     },
     /// Screen recording — start / stop / toggle. Drives the shell's own
     /// recording engine (same as the screenshot menu's recording section).
-    #[command(name = "screen-record")]
+    #[command(name = "screenrecord")]
     ScreenRecord {
         #[command(subcommand)]
         command: ScreenRecordCommands,

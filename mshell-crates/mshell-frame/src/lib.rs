@@ -26,7 +26,7 @@ pub fn capture_screenshot(
 
 /// Headless screen recording — `start` / `stop` / `toggle`, sharing the
 /// menu's recording engine + state (the recording-indicator pill tracks it).
-/// Called from the IPC handler so `mshellctl screen-record …` and a keybind
+/// Called from the IPC handler so `mshellctl screenrecord …` and a keybind
 /// run the same path as the GUI.
 pub fn screen_record(action: &str, area: mshell_screenshot::CaptureArea, audio: Option<String>) {
     use crate::menus::menu_widgets::screen_record::screen_record_menu_widget as r;

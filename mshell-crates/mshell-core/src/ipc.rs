@@ -480,7 +480,7 @@ enum IPCCommand {
     /// `mshellctl screenshot`).
     ScreenshotCapture(String),
     /// Screen recording: `"<action> <area> <audio>"` (see
-    /// `mshellctl screen-record`).
+    /// `mshellctl screenrecord`).
     ScreenRecord(String),
     Wallpaper,
     Ufw,
@@ -1355,7 +1355,7 @@ impl IPCService {
     async fn screenshot_capture(&self, spec: String) {
         let _ = self.tx.send(IPCCommand::ScreenshotCapture(spec));
     }
-    /// Screen recording driven by `mshellctl screen-record …`. `spec` is
+    /// Screen recording driven by `mshellctl screenrecord …`. `spec` is
     /// `"<action> <area> <audio>"`.
     async fn screen_record(&self, spec: String) {
         let _ = self.tx.send(IPCCommand::ScreenRecord(spec));

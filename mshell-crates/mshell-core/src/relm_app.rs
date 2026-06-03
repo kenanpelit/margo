@@ -92,7 +92,7 @@ pub(crate) enum ShellInput {
     /// Spec is `"<area> <target> <delay_secs>"` — area ∈ region/window/
     /// output/full, target ∈ default/copy/save/edit.
     CaptureScreenshot(String),
-    /// Headless screen recording from `mshellctl screen-record …`.
+    /// Headless screen recording from `mshellctl screenrecord …`.
     /// Spec is `"<action> <area> <audio>"` — action ∈ start/stop/toggle,
     /// area ∈ region/window/output/full, audio = "-" (none) or a source.
     ScreenRecord(String),
