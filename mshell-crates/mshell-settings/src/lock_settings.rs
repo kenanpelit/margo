@@ -11,12 +11,134 @@ use relm4::gtk::prelude::*;
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::path::PathBuf;
 
+/// The eight lock-screen elements whose visibility is user-toggleable.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Toggle {
+    Avatar,
+    Greeting,
+    Date,
+    Battery,
+    Layout,
+    Notifications,
+    Weather,
+    Media,
+}
+
+impl Toggle {
+    /// `(mlock.conf key, label, description)`.
+    const ALL: [(Toggle, &'static str, &'static str, &'static str); 8] = [
+        (
+            Toggle::Avatar,
+            "show_avatar",
+            "Avatar",
+            "Your user picture (~/.face or AccountsService).",
+        ),
+        (
+            Toggle::Greeting,
+            "show_greeting",
+            "Greeting",
+            "“Good morning, Name” line above the clock.",
+        ),
+        (
+            Toggle::Date,
+            "show_date",
+            "Date",
+            "Full weekday + date under the clock.",
+        ),
+        (
+            Toggle::Battery,
+            "show_battery",
+            "Battery",
+            "Top-right charge indicator (laptops).",
+        ),
+        (
+            Toggle::Layout,
+            "show_layout",
+            "Keyboard layout",
+            "Top-left active xkb layout (multi-layout setups).",
+        ),
+        (
+            Toggle::Notifications,
+            "show_notifications",
+            "Notifications",
+            "Unread notification count (from the shell).",
+        ),
+        (
+            Toggle::Weather,
+            "show_weather",
+            "Weather",
+            "Current temperature (from the shell).",
+        ),
+        (
+            Toggle::Media,
+            "show_media",
+            "Now playing",
+            "Title — artist of the active media player.",
+        ),
+    ];
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Toggles {
+    avatar: bool,
+    greeting: bool,
+    date: bool,
+    battery: bool,
+    layout: bool,
+    notifications: bool,
+    weather: bool,
+    media: bool,
+}
+
+impl Default for Toggles {
+    fn default() -> Self {
+        Self {
+            avatar: true,
+            greeting: true,
+            date: true,
+            battery: true,
+            layout: true,
+            notifications: true,
+            weather: true,
+            media: true,
+        }
+    }
+}
+
+impl Toggles {
+    fn get(&self, t: Toggle) -> bool {
+        match t {
+            Toggle::Avatar => self.avatar,
+            Toggle::Greeting => self.greeting,
+            Toggle::Date => self.date,
+            Toggle::Battery => self.battery,
+            Toggle::Layout => self.layout,
+            Toggle::Notifications => self.notifications,
+            Toggle::Weather => self.weather,
+            Toggle::Media => self.media,
+        }
+    }
+    fn set(&mut self, t: Toggle, v: bool) {
+        match t {
+            Toggle::Avatar => self.avatar = v,
+            Toggle::Greeting => self.greeting = v,
+            Toggle::Date => self.date = v,
+            Toggle::Battery => self.battery = v,
+            Toggle::Layout => self.layout = v,
+            Toggle::Notifications => self.notifications = v,
+            Toggle::Weather => self.weather = v,
+            Toggle::Media => self.media = v,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct LockSettingsModel {
     /// Background mode index: 0 = wallpaper, 1 = solid colour, 2 = image.
     mode: u32,
     color: String,
     image: String,
+    toggles: Toggles,
     mode_model: gtk::StringList,
 }
 
@@ -25,6 +147,7 @@ pub(crate) enum LockSettingsInput {
     SetMode(u32),
     SetColor(String),
     SetImage(String),
+    SetToggle(Toggle, bool),
 }
 
 #[derive(Debug)]
@@ -194,6 +317,28 @@ impl Component for LockSettingsModel {
                     },
                 },
 
+                gtk::Separator { set_margin_top: 8 },
+
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Show on lock screen",
+                    set_halign: gtk::Align::Start,
+                },
+                gtk::Label {
+                    add_css_class: "label-small",
+                    set_label: "Pick what the lock screen shows alongside the clock and password field. Notifications / weather / now-playing come live from the shell.",
+                    set_halign: gtk::Align::Start,
+                    set_xalign: 0.0,
+                    set_wrap: true,
+                    set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                },
+
+                #[name = "toggles_box"]
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 10,
+                },
+
                 gtk::Label {
                     add_css_class: "label-small",
                     set_label: "The bar's Lock pill itself (placement / add / remove) is configured under Bar → Top or Bottom bar widget lists.",
@@ -212,14 +357,27 @@ impl Component for LockSettingsModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let (mode, color, image) = read_mlock_conf();
+        let (mode, color, image, toggles) = read_mlock_conf();
         let model = LockSettingsModel {
             mode,
             color,
             image,
+            toggles,
             mode_model: gtk::StringList::new(&["Wallpaper", "Solid colour", "Custom image"]),
         };
         let widgets = view_output!();
+
+        // Build the eight visibility toggle rows.
+        for (toggle, _key, label, desc) in Toggle::ALL {
+            widgets.toggles_box.append(&toggle_row(
+                label,
+                desc,
+                model.toggles.get(toggle),
+                toggle,
+                &sender,
+            ));
+        }
+
         let _ = root;
         ComponentParts { model, widgets }
     }
@@ -238,14 +396,53 @@ impl Component for LockSettingsModel {
                 self.image = v;
                 self.write();
             }
+            LockSettingsInput::SetToggle(t, v) => {
+                self.toggles.set(t, v);
+                self.write();
+            }
         }
     }
 }
 
 impl LockSettingsModel {
     fn write(&self) {
-        write_mlock_conf(self.mode, &self.color, &self.image);
+        write_mlock_conf(self.mode, &self.color, &self.image, &self.toggles);
     }
+}
+
+/// A label + description + trailing switch row for one visibility toggle.
+fn toggle_row(
+    label: &str,
+    desc: &str,
+    initial: bool,
+    toggle: Toggle,
+    sender: &ComponentSender<LockSettingsModel>,
+) -> gtk::Box {
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 20);
+    let text = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    text.set_hexpand(true);
+    let title = gtk::Label::new(Some(label));
+    title.add_css_class("label-medium-bold");
+    title.set_halign(gtk::Align::Start);
+    let sub = gtk::Label::new(Some(desc));
+    sub.add_css_class("label-small");
+    sub.set_halign(gtk::Align::Start);
+    sub.set_xalign(0.0);
+    sub.set_wrap(true);
+    text.append(&title);
+    text.append(&sub);
+    row.append(&text);
+
+    let sw = gtk::Switch::new();
+    sw.set_valign(gtk::Align::Center);
+    sw.set_active(initial);
+    let s = sender.clone();
+    sw.connect_state_set(move |_, v| {
+        s.input(LockSettingsInput::SetToggle(toggle, v));
+        gtk::glib::Propagation::Proceed
+    });
+    row.append(&sw);
+    row
 }
 
 /// `~/.config/margo/mlock.conf` — the locker's own background config
@@ -260,10 +457,11 @@ fn mlock_conf_path() -> PathBuf {
     base.join("margo").join("mlock.conf")
 }
 
-/// Read (mode index, colour, image) from mlock.conf. Missing file → the
-/// Wallpaper default (0, empty, empty).
-fn read_mlock_conf() -> (u32, String, String) {
+/// Read (mode index, colour, image, toggles) from mlock.conf. Missing file
+/// → Wallpaper default + everything shown.
+fn read_mlock_conf() -> (u32, String, String, Toggles) {
     let (mut mode, mut color, mut image) = (0u32, String::new(), String::new());
+    let mut toggles = Toggles::default();
     if let Ok(text) = std::fs::read_to_string(mlock_conf_path()) {
         for line in text.lines() {
             let line = line.trim();
@@ -272,16 +470,25 @@ fn read_mlock_conf() -> (u32, String, String) {
             }
             if let Some((k, v)) = line.split_once('=') {
                 let (k, v) = (k.trim(), v.trim());
+                let on = matches!(v, "true" | "1" | "yes" | "on");
                 match k {
                     "background" => mode = mode_index(v),
                     "background_color" => color = v.to_string(),
                     "background_image" => image = v.to_string(),
+                    "show_avatar" => toggles.avatar = on,
+                    "show_greeting" => toggles.greeting = on,
+                    "show_date" => toggles.date = on,
+                    "show_battery" => toggles.battery = on,
+                    "show_layout" => toggles.layout = on,
+                    "show_notifications" => toggles.notifications = on,
+                    "show_weather" => toggles.weather = on,
+                    "show_media" => toggles.media = on,
                     _ => {}
                 }
             }
         }
     }
-    (mode, color, image)
+    (mode, color, image, toggles)
 }
 
 fn mode_index(v: &str) -> u32 {
@@ -292,7 +499,7 @@ fn mode_index(v: &str) -> u32 {
     }
 }
 
-fn write_mlock_conf(mode: u32, color: &str, image: &str) {
+fn write_mlock_conf(mode: u32, color: &str, image: &str, toggles: &Toggles) {
     let mode_str = match mode {
         1 => "color",
         2 => "image",
@@ -302,13 +509,16 @@ fn write_mlock_conf(mode: u32, color: &str, image: &str) {
         "" => "#1e1e2e",
         c => c,
     };
-    let body = format!(
-        "# Lock-screen background — written by Settings \u{2192} Lock.\n\
+    let mut body = format!(
+        "# Lock-screen config — written by Settings \u{2192} Lock.\n\
          background = {mode_str}\n\
          background_color = {color}\n\
          background_image = {}\n",
         image.trim(),
     );
+    for (toggle, key, _, _) in Toggle::ALL {
+        body.push_str(&format!("{key} = {}\n", toggles.get(toggle)));
+    }
     let path = mlock_conf_path();
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);

@@ -47,6 +47,39 @@ pub fn lock(cr: &Context, cx: f64, cy: f64, size: f64, color: Rgb, alpha: f64) {
     cr.fill().ok();
 }
 
+/// Eighth note — filled notehead + stem + flag. Marks the now-playing line.
+pub fn note(cr: &Context, cx: f64, cy: f64, size: f64, color: Rgb, alpha: f64) {
+    pen(cr, size, color, alpha);
+    let head_r = size * 0.2;
+    let head_cx = cx - size * 0.12;
+    let head_cy = cy + size * 0.28;
+    // Stem up the right side of the head.
+    let stem_x = head_cx + head_r * 0.92;
+    cr.move_to(stem_x, head_cy);
+    cr.line_to(stem_x, cy - size * 0.4);
+    cr.stroke().ok();
+    // Flag off the stem top.
+    cr.move_to(stem_x, cy - size * 0.4);
+    cr.curve_to(
+        stem_x + size * 0.22,
+        cy - size * 0.3,
+        stem_x + size * 0.24,
+        cy - size * 0.12,
+        stem_x + size * 0.04,
+        cy - size * 0.02,
+    );
+    cr.stroke().ok();
+    // Filled notehead.
+    cr.save().ok();
+    cr.translate(head_cx, head_cy);
+    cr.rotate(-0.35);
+    cr.scale(1.25, 0.9);
+    cr.arc(0.0, 0.0, head_r, 0.0, TAU);
+    cr.restore().ok();
+    cr.set_source_rgba(color.0, color.1, color.2, alpha);
+    cr.fill().ok();
+}
+
 /// Battery body + terminal nub + a fill bar at `level` (0..1).
 pub fn battery(cr: &Context, cx: f64, cy: f64, size: f64, level: f64, color: Rgb, alpha: f64) {
     let w = size;

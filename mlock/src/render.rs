@@ -1,13 +1,18 @@
 //! Cairo + pango drawing for one lock frame.
 //!
-//! Layout (top → bottom, vertically centred):
-//!   • optional 96 px round avatar
+//! Centred auth column (top → bottom), every element config-gated:
+//!   • optional round avatar
 //!   • greeting line ("Good morning, Kenan")
-//!   • large clock + date pair
-//!   • frosted card (with drop shadow + shake offset) containing
-//!     password dots / placeholder pill
-//!   • optional Caps Lock chip below the card
+//!   • clock + date pair
+//!   • slim password capsule (shake + soft shadow) holding the dots
+//!   • optional Caps Lock chip
 //!   • status line — fail message + attempt count, or typing hint
+//!   • power-action chips (F1/F2/F3)
+//!
+//! Absolutely-positioned extras (don't perturb the centred column):
+//!   • top-right battery, top-left keyboard layout
+//!   • bottom-centre live info — weather · notifications, and a
+//!     now-playing line — published by the shell (see `sidecar`).
 
 use anyhow::Result;
 use cairo::{Format, ImageSurface};
@@ -47,43 +52,41 @@ fn palette() -> &'static Palette {
     PALETTE.get_or_init(|| read_palette().unwrap_or(Palette::FALLBACK))
 }
 
-// Frosted card. Radius + padding on the shape / spacing scale (DESIGN.md
-// §1: --radius-md 16; §0.8 rhythm 48 / 24).
-const CARD_ALPHA: f64 = 0.18;
-const CARD_RADIUS: f64 = 16.0;
-const CARD_PADDING_X: f64 = 48.0;
-const CARD_PADDING_Y: f64 = 24.0;
-
 // Avatar.
-const AVATAR_SIZE: f64 = 96.0;
+const AVATAR_SIZE: f64 = 84.0;
 const AVATAR_RING_W: f64 = 2.0;
 
 // Typography.
 const FONT_FAMILY: &str = "Maple Mono NF, Noto Sans, sans";
-const FONT_CLOCK_PT: i32 = 110;
-const FONT_DATE_PT: i32 = 22;
-const FONT_GREETING_PT: i32 = 20;
-const FONT_STATUS_PT: i32 = 14;
+const FONT_CLOCK_PT: i32 = 88;
+const FONT_DATE_PT: i32 = 20;
+const FONT_GREETING_PT: i32 = 18;
+const FONT_STATUS_PT: i32 = 13;
 const FONT_CAPS_PT: i32 = 12;
+const FONT_INFO_PT: i32 = 13;
 
-// Stack gaps.
-// All on the §0.8 spacing scale (4/8/12/16/24/32/48) so the centred stack
-// keeps a single rhythm.
-const GAP_AVATAR_GREETING: f64 = 24.0;
-const GAP_GREETING_CLOCK: f64 = 32.0;
-const GAP_CLOCK_DATE: f64 = 8.0;
-const GAP_DATE_CARD: f64 = 48.0;
-const GAP_INSIDE_CARD: f64 = 0.0; // dots only — no user label any more
-const GAP_CARD_CAPS: f64 = 16.0;
+// Stack gaps — §0.8 spacing scale (4/8/12/16/24/32) so the centred stack
+// keeps a single rhythm. Tighter than before so the composition reads as
+// a calm column rather than a sprawled one.
+const GAP_AVATAR_GREETING: f64 = 18.0;
+const GAP_GREETING_CLOCK: f64 = 20.0;
+const GAP_CLOCK_DATE: f64 = 6.0;
+const GAP_DATE_INPUT: f64 = 32.0;
+const GAP_INPUT_CAPS: f64 = 14.0;
 const GAP_CAPS_STATUS: f64 = 12.0;
 
+// Compact password input — a slim capsule, not the old 720 px slab. Sized
+// to read as a single tidy field whatever the password length.
+const INPUT_W: f64 = 300.0;
+const INPUT_H: f64 = 46.0;
+const INPUT_PAD_X: f64 = 22.0;
+
 // Dots.
-const DOT_RADIUS: f64 = 6.0;
-const DOT_SPACING: f64 = 14.0;
-const DOTS_BAND_HEIGHT: f64 = 28.0;
-const PLACEHOLDER_PILL_W: f64 = 220.0;
-const PLACEHOLDER_PILL_H: f64 = 3.0;
-const MAX_VISIBLE_DOTS: usize = 24;
+const DOT_RADIUS: f64 = 4.5;
+const DOT_SPACING: f64 = 10.0;
+const PLACEHOLDER_PILL_W: f64 = 120.0;
+const PLACEHOLDER_PILL_H: f64 = 2.5;
+const MAX_VISIBLE_DOTS: usize = 11;
 
 // Shake animation.
 const SHAKE_DURATION_MS: u64 = 400;
@@ -165,6 +168,8 @@ pub fn draw_lock_frame(
     wallpaper: Option<&image::RgbaImage>,
     avatar: Option<&image::RgbaImage>,
     accent: (f64, f64, f64),
+    toggles: &crate::config::LockToggles,
+    info: &crate::sidecar::LockInfo,
 ) -> Result<()> {
     let surface = unsafe {
         ImageSurface::create_for_data_unsafe(
@@ -194,26 +199,29 @@ pub fn draw_lock_frame(
     //    the centre.
     draw_vignette(&cr, width, height);
 
-    // 4. Build all text layouts up-front so we can measure heights
-    //    BEFORE laying out (no overlap, no magic offsets).
+    // 4. Build the (config-gated) text layouts up-front so we can measure
+    //    heights BEFORE laying out — the centred stack stays balanced no
+    //    matter which elements the user turned off.
     let now = Local::now();
-    let greeting_str = format!("{}, {}", greeting_for(now.hour()), display_name(user));
-    let clock_str = now.format("%H:%M").to_string();
-    let date_str = now.format("%A, %-d %B %Y").to_string();
+    let show_avatar = toggles.avatar && avatar.is_some();
 
-    let greeting_layout = layout(&cr, &greeting_str, FONT_GREETING_PT, false);
-    let clock_layout = layout(&cr, &clock_str, FONT_CLOCK_PT, true);
-    let date_layout = layout(&cr, &date_str, FONT_DATE_PT, false);
+    let greeting_layout = toggles.greeting.then(|| {
+        let s = format!("{}, {}", greeting_for(now.hour()), display_name(user));
+        layout(&cr, &s, FONT_GREETING_PT, false)
+    });
+    let clock_layout = layout(&cr, &now.format("%H:%M").to_string(), FONT_CLOCK_PT, true);
+    let date_layout = toggles.date.then(|| {
+        layout(
+            &cr,
+            &now.format("%A, %-d %B %Y").to_string(),
+            FONT_DATE_PT,
+            false,
+        )
+    });
 
-    let (greeting_w, greeting_h) = greeting_layout.pixel_size();
     let (clock_w, clock_h) = clock_layout.pixel_size();
-    let (date_w, date_h) = date_layout.pixel_size();
-
-    let card_content_h = DOTS_BAND_HEIGHT;
-    let card_h = card_content_h + CARD_PADDING_Y * 2.0 + GAP_INSIDE_CARD;
-    let card_w = (PLACEHOLDER_PILL_W + 60.0)
-        .max(MAX_VISIBLE_DOTS as f64 * (DOT_RADIUS * 2.0 + DOT_SPACING))
-        + CARD_PADDING_X * 2.0;
+    let greeting_h = greeting_layout.as_ref().map_or(0, |l| l.pixel_size().1) as f64;
+    let date_h = date_layout.as_ref().map_or(0, |l| l.pixel_size().1) as f64;
 
     let caps_visible = seat.caps_lock;
     let caps_chip_h = if caps_visible {
@@ -221,36 +229,29 @@ pub fn draw_lock_frame(
     } else {
         0.0
     };
-
     let status_h = FONT_STATUS_PT as f64 * 1.6;
 
-    let avatar_block_h = if avatar.is_some() {
-        AVATAR_SIZE + GAP_AVATAR_GREETING
-    } else {
-        0.0
-    };
-
-    let total = avatar_block_h
-        + greeting_h as f64
-        + GAP_GREETING_CLOCK
-        + clock_h as f64
-        + GAP_CLOCK_DATE
-        + date_h as f64
-        + GAP_DATE_CARD
-        + card_h
-        + (if caps_visible {
-            GAP_CARD_CAPS + caps_chip_h
-        } else {
-            0.0
-        })
-        + GAP_CAPS_STATUS
-        + status_h;
+    // Each present block contributes its own leading/trailing gap, so the
+    // total matches the draw walk below exactly.
+    let mut total = clock_h as f64 + GAP_DATE_INPUT + INPUT_H + GAP_CAPS_STATUS + status_h;
+    if show_avatar {
+        total += AVATAR_SIZE + GAP_AVATAR_GREETING;
+    }
+    if greeting_layout.is_some() {
+        total += greeting_h + GAP_GREETING_CLOCK;
+    }
+    if date_layout.is_some() {
+        total += GAP_CLOCK_DATE + date_h;
+    }
+    if caps_visible {
+        total += GAP_INPUT_CAPS + caps_chip_h;
+    }
 
     let cx = width as f64 / 2.0;
     let mut y = (height as f64 - total) / 2.0;
 
     // 5. Avatar.
-    if let Some(av) = avatar {
+    if show_avatar && let Some(av) = avatar {
         draw_avatar(
             &cr,
             cx,
@@ -263,41 +264,49 @@ pub fn draw_lock_frame(
     }
 
     // 6. Greeting.
-    cr.set_source_rgb(pal.muted.0, pal.muted.1, pal.muted.2);
-    cr.move_to(cx - greeting_w as f64 / 2.0, y);
-    pangocairo::functions::show_layout(&cr, &greeting_layout);
-    y += greeting_h as f64 + GAP_GREETING_CLOCK;
+    if let Some(gl) = &greeting_layout {
+        cr.set_source_rgb(pal.muted.0, pal.muted.1, pal.muted.2);
+        cr.move_to(cx - gl.pixel_size().0 as f64 / 2.0, y);
+        pangocairo::functions::show_layout(&cr, gl);
+        y += greeting_h + GAP_GREETING_CLOCK;
+    }
 
     // 7. Clock.
     cr.set_source_rgb(pal.text.0, pal.text.1, pal.text.2);
     cr.move_to(cx - clock_w as f64 / 2.0, y);
     pangocairo::functions::show_layout(&cr, &clock_layout);
-    y += clock_h as f64 + GAP_CLOCK_DATE;
+    y += clock_h as f64;
 
     // 8. Date.
-    cr.set_source_rgb(pal.muted.0, pal.muted.1, pal.muted.2);
-    cr.move_to(cx - date_w as f64 / 2.0, y);
-    pangocairo::functions::show_layout(&cr, &date_layout);
-    y += date_h as f64 + GAP_DATE_CARD;
+    if let Some(dl) = &date_layout {
+        y += GAP_CLOCK_DATE;
+        cr.set_source_rgb(pal.muted.0, pal.muted.1, pal.muted.2);
+        cr.move_to(cx - dl.pixel_size().0 as f64 / 2.0, y);
+        pangocairo::functions::show_layout(&cr, dl);
+        y += date_h;
+    }
+    y += GAP_DATE_INPUT;
 
-    // 9. Card with optional shake offset + drop shadow.
+    // 9. Compact password capsule with shake offset + soft shadow.
     let shake_dx = shake_offset(seat);
-    let card_x = cx - card_w / 2.0 + shake_dx;
+    let input_x = cx - INPUT_W / 2.0 + shake_dx;
 
-    // On a failed attempt the card border escalates to the danger tone
-    // alongside the shake + red status line, so chrome and tint move
-    // together (DESIGN.md §2 severity ladder) instead of the border
-    // staying calm-accent while everything else signals failure.
-    let card_border = if seat.fail_message.is_some() {
+    // On a failed attempt the border escalates to the danger tone alongside
+    // the shake + red status line (DESIGN.md §2 severity ladder).
+    let border = if seat.fail_message.is_some() {
         pal.danger
     } else {
         accent
     };
-    draw_card_with_shadow(&cr, card_x, y, card_w, card_h, card_border);
+    draw_input_pill(&cr, input_x, y, INPUT_W, INPUT_H, border);
 
-    // 10. Dots / placeholder pill.
-    let band_y = y + CARD_PADDING_Y + DOTS_BAND_HEIGHT / 2.0;
-    let visible_dots = seat.password.chars().count().min(MAX_VISIBLE_DOTS);
+    // 10. Dots / placeholder, centred in the capsule. The visible-dot count
+    //     is capped to what fits inside the pill's padding.
+    let band_y = y + INPUT_H / 2.0;
+    let fit =
+        (((INPUT_W - INPUT_PAD_X * 2.0) + DOT_SPACING) / (DOT_RADIUS * 2.0 + DOT_SPACING)) as usize;
+    let cap = MAX_VISIBLE_DOTS.min(fit.max(1));
+    let visible_dots = seat.password.chars().count().min(cap);
 
     if visible_dots > 0 {
         let total_dot_w = visible_dots as f64 * (DOT_RADIUS * 2.0 + DOT_SPACING) - DOT_SPACING;
@@ -309,21 +318,23 @@ pub fn draw_lock_frame(
             dx += DOT_RADIUS * 2.0 + DOT_SPACING;
         }
     } else {
-        cr.set_source_rgba(accent.0, accent.1, accent.2, 0.4);
-        cr.rectangle(
+        cr.set_source_rgba(accent.0, accent.1, accent.2, 0.35);
+        rounded_rect(
+            &cr,
             cx - PLACEHOLDER_PILL_W / 2.0 + shake_dx,
             band_y - PLACEHOLDER_PILL_H / 2.0,
             PLACEHOLDER_PILL_W,
             PLACEHOLDER_PILL_H,
+            PLACEHOLDER_PILL_H / 2.0,
         );
         cr.fill().ok();
     }
 
-    y += card_h;
+    y += INPUT_H;
 
     // 11. Caps Lock chip — drawn caps glyph + label.
     if caps_visible {
-        y += GAP_CARD_CAPS;
+        y += GAP_INPUT_CAPS;
         let chip = layout(&cr, "CAPS LOCK", FONT_CAPS_PT, true);
         let (cw, ch) = chip.pixel_size();
         let icon_w = ch as f64 * 1.05;
@@ -451,22 +462,117 @@ pub fn draw_lock_frame(
     }
 
     // 14. Top-right battery indicator (laptops only).
-    if let Some(bat) = seat.battery {
+    if toggles.battery
+        && let Some(bat) = seat.battery
+    {
         draw_battery(&cr, width as f64 - 32.0, 28.0, bat);
     }
 
     // 15. Top-left keyboard layout (multi-layout setups only).
     //     Absolutely positioned like the battery, so it never
     //     perturbs the centred stack's height maths.
-    if let Some(name) = seat.layout_name() {
+    if toggles.layout
+        && let Some(name) = seat.layout_name()
+    {
         let lay = layout(&cr, &name.to_uppercase(), FONT_CAPS_PT, true);
         cr.set_source_rgba(pal.muted.0, pal.muted.1, pal.muted.2, 0.8);
         cr.move_to(32.0, 24.0);
         pangocairo::functions::show_layout(&cr, &lay);
     }
 
+    // 16. Bottom-centre info cluster — live desktop context published by
+    //     the shell (notifications / weather / now-playing). Absolutely
+    //     positioned at the bottom edge so it never disturbs the centred
+    //     auth column; each line is gated by both its config toggle and
+    //     whether there's anything to show.
+    draw_info_cluster(&cr, cx, height as f64, toggles, info, pal);
+
     surface.flush();
     Ok(())
+}
+
+/// Draw the bottom-centre context lines, stacked upward from the bottom
+/// edge: a now-playing line (title — artist) above a combined
+/// weather · notifications line.
+fn draw_info_cluster(
+    cr: &cairo::Context,
+    cx: f64,
+    height: f64,
+    toggles: &crate::config::LockToggles,
+    info: &crate::sidecar::LockInfo,
+    pal: &Palette,
+) {
+    let mut bits: Vec<String> = Vec::new();
+    if toggles.weather && !info.weather.is_empty() {
+        bits.push(info.weather.clone());
+    }
+    if toggles.notifications && info.notifications > 0 {
+        bits.push(if info.notifications == 1 {
+            "1 notification".to_string()
+        } else {
+            format!("{} notifications", info.notifications)
+        });
+    }
+    let context_line = bits.join("    ·    ");
+
+    let now_playing = if toggles.media && info.has_media() {
+        Some(
+            match (info.media_title.is_empty(), info.media_artist.is_empty()) {
+                (false, false) => format!(
+                    "{} — {}",
+                    trunc(&info.media_title),
+                    trunc(&info.media_artist)
+                ),
+                (false, true) => trunc(&info.media_title),
+                _ => trunc(&info.media_artist),
+            },
+        )
+    } else {
+        None
+    };
+
+    // Walk upward from the bottom margin.
+    let mut baseline = height - 36.0;
+    if !context_line.is_empty() {
+        let l = layout(cr, &context_line, FONT_INFO_PT, false);
+        let (lw, lh) = l.pixel_size();
+        baseline -= lh as f64;
+        cr.set_source_rgba(pal.muted.0, pal.muted.1, pal.muted.2, 0.85);
+        cr.move_to(cx - lw as f64 / 2.0, baseline);
+        pangocairo::functions::show_layout(cr, &l);
+        baseline -= 8.0;
+    }
+    if let Some(np) = now_playing {
+        let icon_w = FONT_INFO_PT as f64 * 1.1;
+        let gap = 7.0;
+        let l = layout(cr, &np, FONT_INFO_PT, true);
+        let (lw, lh) = l.pixel_size();
+        baseline -= lh as f64;
+        let total_w = icon_w + gap + lw as f64;
+        let x0 = cx - total_w / 2.0;
+        icons::note(
+            cr,
+            x0 + icon_w / 2.0,
+            baseline + lh as f64 / 2.0,
+            icon_w,
+            pal.accent,
+            0.9,
+        );
+        cr.set_source_rgba(pal.text.0, pal.text.1, pal.text.2, 0.9);
+        cr.move_to(x0 + icon_w + gap, baseline);
+        pangocairo::functions::show_layout(cr, &l);
+    }
+}
+
+/// Clamp a metadata string so a long title can't overrun the screen.
+fn trunc(s: &str) -> String {
+    const MAX: usize = 42;
+    if s.chars().count() <= MAX {
+        return s.to_string();
+    }
+    let mut out: String = s.chars().take(MAX.saturating_sub(1)).collect();
+    out.push('…');
+    out
 }
 
 fn draw_battery(cr: &cairo::Context, right_x: f64, top_y: f64, bat: crate::battery::BatteryInfo) {
@@ -560,43 +666,27 @@ fn shake_offset(seat: &SeatState) -> f64 {
     (t * SHAKE_FREQ_HZ * std::f64::consts::TAU).sin() * SHAKE_AMPLITUDE * envelope
 }
 
-fn draw_card_with_shadow(
-    cr: &cairo::Context,
-    x: f64,
-    y: f64,
-    w: f64,
-    h: f64,
-    accent: (f64, f64, f64),
-) {
-    // Soft shadow: stack three increasingly faded, increasingly larger
-    // rounded rects — cheap blur fake that reads convincingly.
-    for (offset, alpha) in [(2.0, 0.18), (6.0, 0.12), (12.0, 0.07)] {
+/// The slim password capsule — a frosted full-radius pill with a soft
+/// shadow and an accent (or danger) hairline border.
+fn draw_input_pill(cr: &cairo::Context, x: f64, y: f64, w: f64, h: f64, border: (f64, f64, f64)) {
+    let r = h / 2.0;
+    // Soft shadow — two faded, slightly larger pills.
+    for (offset, alpha) in [(1.5, 0.16), (5.0, 0.09)] {
         let off: f64 = offset;
-        let pad = off;
-        rounded_rect(
-            cr,
-            x - pad,
-            y + off,
-            w + pad * 2.0,
-            h + pad * 2.0,
-            CARD_RADIUS + pad,
-        );
+        rounded_rect(cr, x - off, y + off, w + off * 2.0, h + off * 2.0, r + off);
         cr.set_source_rgba(0.0, 0.0, 0.0, alpha);
         cr.fill().ok();
     }
 
-    // Card surface — a frosted panel one tonal step above the dimmed
-    // wallpaper. Tinted toward the theme's on-surface (text) tone instead
-    // of a fixed white, so the panel inherits the matugen palette's
-    // warmth/coolness (DESIGN.md §0.1 surfaces-over-borders, §14 identity).
-    rounded_rect(cr, x, y, w, h, CARD_RADIUS);
+    // Frosted fill, tinted toward the theme's on-surface tone so the field
+    // inherits the matugen palette's warmth (DESIGN.md §0.1 / §14).
+    rounded_rect(cr, x, y, w, h, r);
     let frost = palette().text;
-    cr.set_source_rgba(frost.0, frost.1, frost.2, CARD_ALPHA);
+    cr.set_source_rgba(frost.0, frost.1, frost.2, 0.14);
     cr.fill_preserve().ok();
-    // Accent border — always visible, so the matugen theme reads on
-    // the lock screen even before the user starts typing.
+    // Accent border — always visible so the theme reads even before typing.
     cr.set_line_width(1.5);
-    cr.set_source_rgba(accent.0, accent.1, accent.2, 0.55);
+    cr.set_source_rgba(border.0, border.1, border.2, 0.7);
     cr.stroke().ok();
 }
 

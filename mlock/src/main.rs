@@ -25,10 +25,12 @@
 mod auth;
 mod background;
 mod battery;
+mod config;
 mod icons;
 mod power;
 mod render;
 mod seat;
+mod sidecar;
 mod state;
 mod surface;
 mod wallpaper;

@@ -290,6 +290,10 @@ impl Component for Shell {
         // suspend`, logind idle) before the system actually sleeps.
         crate::sleep_lock::spawn();
 
+        // Keep the lock-screen info sidecar (notifications / weather /
+        // now-playing) fresh for mlock.
+        crate::lock_info::start();
+
         // First launch — no shell profile saved yet. Open the setup
         // wizard menu once the frames exist (a short delay lets
         // `sync_monitors` build them first). This is the same in-shell

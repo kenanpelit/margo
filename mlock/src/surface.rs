@@ -59,6 +59,8 @@ impl MlockSurface {
         wallpaper: Option<&image::RgbaImage>,
         avatar: Option<&image::RgbaImage>,
         accent: (f64, f64, f64),
+        toggles: &crate::config::LockToggles,
+        info: &crate::sidecar::LockInfo,
     ) -> Result<()> {
         if self.width == 0 || self.height == 0 {
             return Ok(());
@@ -91,7 +93,8 @@ impl MlockSurface {
         // Draw via cairo. ImageSurface borrows the buffer; we flush
         // before unmap.
         crate::render::draw_lock_frame(
-            pixels, width, height, stride, seat_state, user, wallpaper, avatar, accent,
+            pixels, width, height, stride, seat_state, user, wallpaper, avatar, accent, toggles,
+            info,
         )?;
 
         // Hand the buffer off to the compositor. wl_shm_pool needs an

@@ -31,6 +31,13 @@ pub struct MlockState {
     /// Matugen accent (primary) read once at startup; tints the
     /// password dots / placeholder so the locker tracks the theme.
     pub accent: (f64, f64, f64),
+    /// Per-element visibility, read once from `mlock.conf`.
+    pub toggles: crate::config::LockToggles,
+    /// Live desktop info (notifications / weather / now-playing)
+    /// published by the shell; re-read every ~2 s in `tick()`.
+    pub info: crate::sidecar::LockInfo,
+    /// Throttle for the sidecar re-read.
+    last_info_check: std::time::Instant,
     /// Minute-precision wall clock — bumped by `tick()` so we can
     /// avoid full re-renders when nothing changed.
     last_minute: u32,
@@ -87,12 +94,17 @@ impl MlockState {
             info!("avatar loaded (~/.face or AccountsService)");
         }
         let accent = crate::render::matugen_accent();
+        let toggles = crate::config::LockToggles::load();
+        let info = crate::sidecar::LockInfo::load();
 
         let mut state = Self {
             conn: conn.clone(),
             wallpaper,
             avatar,
             accent,
+            toggles,
+            info,
+            last_info_check: std::time::Instant::now(),
             last_minute: 0,
             compositor: None,
             shm: None,
@@ -254,6 +266,17 @@ impl MlockState {
                 dirty = true;
             }
         }
+        // Re-read the shell's live info sidecar at most every ~2 s so a
+        // notification arriving / a track changing while locked shows up
+        // without a full per-poll file read.
+        if self.last_info_check.elapsed() >= std::time::Duration::from_secs(2) {
+            self.last_info_check = std::time::Instant::now();
+            let new_info = crate::sidecar::LockInfo::load();
+            if new_info != self.info {
+                self.info = new_info;
+                dirty = true;
+            }
+        }
         if self.seat_state.shake_until.is_some() {
             if !self.seat_state.is_shaking() {
                 self.seat_state.shake_until = None;
@@ -318,6 +341,8 @@ impl MlockState {
                     self.wallpaper.as_ref(),
                     self.avatar.as_ref(),
                     self.accent,
+                    &self.toggles,
+                    &self.info,
                 )?;
             }
         }
@@ -537,6 +562,8 @@ impl Dispatch<ext_session_lock_surface_v1::ExtSessionLockSurfaceV1, usize> for M
                 let user = state.user.clone();
                 let wallpaper = state.wallpaper.clone();
                 let avatar = state.avatar.clone();
+                let toggles = state.toggles;
+                let info = state.info.clone();
                 if let Some(surface) = state.surfaces.get_mut(*idx) {
                     match surface.render(
                         &shm,
@@ -546,6 +573,8 @@ impl Dispatch<ext_session_lock_surface_v1::ExtSessionLockSurfaceV1, usize> for M
                         wallpaper.as_ref(),
                         avatar.as_ref(),
                         state.accent,
+                        &toggles,
+                        &info,
                     ) {
                         Ok(()) => info!(idx, "initial render dispatched"),
                         Err(e) => warn!(idx, "initial render failed: {e:#}"),
