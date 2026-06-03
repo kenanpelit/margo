@@ -144,6 +144,12 @@ fn validate_text(
         // Unknown top-level key (best-effort; allowlist).
         if !is_csv_shaped_key(key) && !is_bind_key(key) && !is_known_scalar_key(key) {
             let key_col = raw.find(key.chars().next().unwrap_or('?')).unwrap_or(0) + 1;
+            let message = match suggest_key(key) {
+                Some(s) => format!("unknown config key `{key}` — did you mean `{s}`?"),
+                None => {
+                    format!("unknown config key `{key}` — typo? (compositor will use the default)")
+                }
+            };
             report.push(ConfigDiagnostic {
                 path: path.to_path_buf(),
                 line: lineno,
@@ -151,10 +157,7 @@ fn validate_text(
                 end_col: key_col + key.len(),
                 severity: Severity::Warning,
                 code: "W001".into(),
-                message: format!(
-                    "unknown config key `{}` — typo? (compositor will use the default)",
-                    key
-                ),
+                message,
                 line_text: raw.to_string(),
             });
         }
@@ -267,26 +270,67 @@ fn is_bind_key(k: &str) -> bool {
     k[4..].chars().all(|c| matches!(c, 's' | 'l' | 'r' | 'p'))
 }
 
+/// CSV-shaped value keys (comma-separated fields). Kept as a slice so
+/// it doubles as a suggestion source for `suggest_key`.
+const CSV_SHAPED_KEYS: &[&str] = &[
+    "mousebind",
+    "axisbind",
+    "switchbind",
+    "gesturebind",
+    "touchgesturebind",
+    "windowrule",
+    "monitorrule",
+    "tagrule",
+    "taglayout",
+    "layerrule",
+    "monitor",
+    "env",
+    "circle_layout",
+];
+
 fn is_csv_shaped_key(k: &str) -> bool {
-    if is_bind_key(k) {
-        return true;
+    is_bind_key(k) || CSV_SHAPED_KEYS.contains(&k)
+}
+
+/// Levenshtein edit distance. Inputs are config keys (short), so the
+/// straightforward two-row DP is plenty fast.
+fn levenshtein(a: &str, b: &str) -> usize {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    let mut cur = vec![0usize; b.len() + 1];
+    for (i, ca) in a.iter().enumerate() {
+        cur[0] = i + 1;
+        for (j, cb) in b.iter().enumerate() {
+            let cost = if ca == cb { 0 } else { 1 };
+            cur[j + 1] = (prev[j + 1] + 1).min(cur[j] + 1).min(prev[j] + cost);
+        }
+        std::mem::swap(&mut prev, &mut cur);
     }
-    matches!(
-        k,
-        "mousebind"
-            | "axisbind"
-            | "switchbind"
-            | "gesturebind"
-            | "touchgesturebind"
-            | "windowrule"
-            | "monitorrule"
-            | "tagrule"
-            | "taglayout"
-            | "layerrule"
-            | "monitor"
-            | "env"
-            | "circle_layout"
-    )
+    prev[b.len()]
+}
+
+/// The closest known config key to `unknown`, for "did you mean …?".
+/// Returns `None` when nothing is within a small edit distance, so a
+/// genuinely novel key doesn't get a misleading suggestion.
+fn suggest_key(unknown: &str) -> Option<&'static str> {
+    const EXTRAS: &[&str] = &["exec", "exec-once", "include", "source", "bind"];
+    let candidates = crate::parser::OPTION_KEYS
+        .iter()
+        .copied()
+        .chain(CSV_SHAPED_KEYS.iter().copied())
+        .chain(EXTRAS.iter().copied());
+    let mut best: Option<(&'static str, usize)> = None;
+    for c in candidates {
+        let d = levenshtein(unknown, c);
+        if best.is_none_or(|(_, bd)| d < bd) {
+            best = Some((c, d));
+        }
+    }
+    // Suggest only a genuinely close match: within 2 edits and shorter
+    // than the candidate (so a 3-char typo doesn't map to a 20-char key).
+    best.filter(|&(c, d)| d > 0 && d <= 2 && d < c.len())
+        .map(|(c, _)| c)
 }
 
 /// Recognised top-level scalar option keys (`exec`, `exec-once`,
@@ -363,6 +407,31 @@ mod tests {
         let w = r.warnings().next().unwrap();
         assert_eq!(w.code, "W001");
         assert_eq!(w.line, 1);
+    }
+
+    #[test]
+    fn unknown_key_suggests_closest_match() {
+        // `borderpix` is a one-char typo of the real key `borderpx`.
+        let r = validate_str("borderpix = 4\n");
+        let w = r.warnings().next().expect("typo should warn");
+        assert_eq!(w.code, "W001");
+        assert!(
+            w.message.contains("did you mean") && w.message.contains("borderpx"),
+            "expected a `did you mean borderpx` suggestion, got: {}",
+            w.message
+        );
+    }
+
+    #[test]
+    fn wildly_unknown_key_has_no_suggestion() {
+        // No close key — don't invent a misleading suggestion.
+        let r = validate_str("frobulator_intensity = 11\n");
+        let w = r.warnings().next().unwrap();
+        assert!(
+            !w.message.contains("did you mean"),
+            "no near match should mean no suggestion, got: {}",
+            w.message
+        );
     }
 
     #[test]
