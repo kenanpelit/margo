@@ -20,8 +20,12 @@
 //!     `error!()` and skip. We hoist the same condition up to the
 //!     diagnostic stream so it's visible without scraping logs.
 //!   * E003 — include/source path that doesn't resolve.
-//!   * W001 — unknown top-level key (the parser currently warns
-//!     into tracing; we surface it structured).
+//!   * E004 — incomplete `bind` (fewer than MODS,KEY,ACTION fields).
+//!   * E005 — unknown modifier in a `bind` (with a "did you mean").
+//!   * W001 — unknown top-level key (parser warns into tracing; we
+//!     surface it structured, with a closest-key suggestion).
+//!   * W002 — out-of-set value for an enum key (lists the allowed set
+//!     + a "did you mean").
 //!
 //! New rules slot into `validate_text` as more conditions show up.
 
@@ -145,20 +149,78 @@ fn validate_text(
         // bind is silently dropped by the parser (no key/action), so
         // surface it. (Trailing/leading/doubled commas are E001 above,
         // so a value like `alt,Tab,zoom,` won't double-report here.)
-        if is_bind_key(key) && val.split(',').count() < 3 {
+        if is_bind_key(key) {
             let val_start = eq_pos + 1 + val_trim_offset + 1;
-            report.push(ConfigDiagnostic {
-                path: path.to_path_buf(),
-                line: lineno,
-                col: val_start,
-                end_col: val_start + val.len().max(1),
-                severity: Severity::Error,
-                code: "E004".into(),
-                message: "incomplete `bind` — expected MODS,KEY,ACTION \
-                          (e.g. `super,Return,spawn,kitty`)"
-                    .to_string(),
-                line_text: raw.to_string(),
-            });
+            if val.split(',').count() < 3 {
+                report.push(ConfigDiagnostic {
+                    path: path.to_path_buf(),
+                    line: lineno,
+                    col: val_start,
+                    end_col: val_start + val.len().max(1),
+                    severity: Severity::Error,
+                    code: "E004".into(),
+                    message: "incomplete `bind` — expected MODS,KEY,ACTION \
+                              (e.g. `super,Return,spawn,kitty`)"
+                        .to_string(),
+                    line_text: raw.to_string(),
+                });
+            }
+            // E005: unknown modifier in the first (MODS) field. Walk the
+            // `+`-joined tokens, tracking byte offset for a precise caret.
+            let mods_field = val.split(',').next().unwrap_or("");
+            let mut off = 0usize;
+            for token in mods_field.split('+') {
+                let tok = token.trim();
+                if !tok.is_empty() && !is_valid_modifier_token(tok) {
+                    let lead = token.len() - token.trim_start().len();
+                    let col = val_start + off + lead;
+                    let hint = match closest(
+                        &tok.to_ascii_lowercase(),
+                        MODIFIER_SUGGESTIONS.iter().copied(),
+                    ) {
+                        Some(s) => format!(" — did you mean `{s}`?"),
+                        None => String::new(),
+                    };
+                    report.push(ConfigDiagnostic {
+                        path: path.to_path_buf(),
+                        line: lineno,
+                        col,
+                        end_col: col + tok.len(),
+                        severity: Severity::Error,
+                        code: "E005".into(),
+                        message: format!("unknown modifier `{tok}` in bind{hint}"),
+                        line_text: raw.to_string(),
+                    });
+                }
+                off += token.len() + 1; // +1 for the consumed '+'
+            }
+        }
+
+        // W002: a scalar enum key with a value outside its fixed set.
+        // The parser keeps the default (or bails) on these; surface the
+        // allowed set + a "did you mean" so the user doesn't scrape logs.
+        if let Some((_, allowed)) = ENUM_KEYS.iter().find(|(k, _)| *k == key) {
+            let v = val.to_ascii_lowercase();
+            if !v.is_empty() && !allowed.contains(&v.as_str()) {
+                let val_start = eq_pos + 1 + val_trim_offset + 1;
+                let hint = match closest(&v, allowed.iter().copied()) {
+                    Some(s) => format!(" — did you mean `{s}`?"),
+                    None => String::new(),
+                };
+                report.push(ConfigDiagnostic {
+                    path: path.to_path_buf(),
+                    line: lineno,
+                    col: val_start,
+                    end_col: val_start + val.len().max(1),
+                    severity: Severity::Warning,
+                    code: "W002".into(),
+                    message: format!(
+                        "invalid value `{val}` for `{key}` (allowed: {}){hint}",
+                        allowed.join(", ")
+                    ),
+                    line_text: raw.to_string(),
+                });
+            }
         }
 
         // Unknown top-level key (best-effort; allowlist).
@@ -330,28 +392,56 @@ fn levenshtein(a: &str, b: &str) -> usize {
     prev[b.len()]
 }
 
-/// The closest known config key to `unknown`, for "did you mean …?".
-/// Returns `None` when nothing is within a small edit distance, so a
-/// genuinely novel key doesn't get a misleading suggestion.
-fn suggest_key(unknown: &str) -> Option<&'static str> {
-    const EXTRAS: &[&str] = &["exec", "exec-once", "include", "source", "bind"];
-    let candidates = crate::parser::OPTION_KEYS
-        .iter()
-        .copied()
-        .chain(CSV_SHAPED_KEYS.iter().copied())
-        .chain(EXTRAS.iter().copied());
-    let mut best: Option<(&'static str, usize)> = None;
+/// Closest candidate to `unknown` within a small edit distance, for
+/// "did you mean …?". Returns `None` when nothing is close enough, so a
+/// genuinely novel token doesn't get a misleading suggestion (within 2
+/// edits and shorter than the candidate).
+fn closest<'a>(unknown: &str, candidates: impl Iterator<Item = &'a str>) -> Option<&'a str> {
+    let mut best: Option<(&'a str, usize)> = None;
     for c in candidates {
         let d = levenshtein(unknown, c);
         if best.is_none_or(|(_, bd)| d < bd) {
             best = Some((c, d));
         }
     }
-    // Suggest only a genuinely close match: within 2 edits and shorter
-    // than the candidate (so a 3-char typo doesn't map to a 20-char key).
     best.filter(|&(c, d)| d > 0 && d <= 2 && d < c.len())
         .map(|(c, _)| c)
 }
+
+/// The closest known config key to `unknown`.
+fn suggest_key(unknown: &str) -> Option<&'static str> {
+    const EXTRAS: &[&str] = &["exec", "exec-once", "include", "source", "bind"];
+    closest(
+        unknown,
+        crate::parser::OPTION_KEYS
+            .iter()
+            .copied()
+            .chain(CSV_SHAPED_KEYS.iter().copied())
+            .chain(EXTRAS.iter().copied()),
+    )
+}
+
+/// Valid bind modifier tokens (lowercased), matching `parser::parse_modifiers`.
+const VALID_MODIFIERS: &[&str] = &[
+    "super", "super_l", "super_r", "ctrl", "ctrl_l", "ctrl_r", "shift", "shift_l", "shift_r",
+    "alt", "alt_l", "alt_r", "hyper", "hyper_l", "hyper_r", "none",
+];
+/// Canonical names offered as "did you mean" for a bad modifier (no _l/_r noise).
+const MODIFIER_SUGGESTIONS: &[&str] = &["super", "ctrl", "shift", "alt", "hyper", "none"];
+
+fn is_valid_modifier_token(t: &str) -> bool {
+    let t = t.trim().to_ascii_lowercase();
+    t.is_empty() || t.starts_with("code:") || VALID_MODIFIERS.contains(&t.as_str())
+}
+
+/// Scalar keys whose value is one of a fixed set. Mirrors the `match`
+/// arms in `parser::parse_option`; keep in sync when a new enum knob lands.
+const ENUM_KEYS: &[(&str, &[&str])] = &[
+    ("overview_cycle_order", &["mru", "tag", "mixed"]),
+    ("overview_style", &["grid", "scroller"]),
+    ("twilight_mode", &["geo", "manual", "static", "schedule"]),
+    ("wallpaper_fit", &["cover", "contain", "fill", "center"]),
+];
 
 /// Recognised top-level scalar option keys (`exec`, `exec-once`,
 /// `include`, `source` plus everything `parse_option` dispatches on).
@@ -430,6 +520,56 @@ mod tests {
             !r.has_errors() && !r.has_warnings(),
             "MODS,KEY,ACTION is a valid bind"
         );
+    }
+
+    #[test]
+    fn unknown_bind_modifier_is_an_error() {
+        let r = validate_str("bind = altt,Tab,zoom\n");
+        assert!(r.has_errors(), "`altt` is not a valid modifier");
+        let e = r
+            .errors()
+            .find(|e| e.code == "E005")
+            .expect("E005 expected");
+        assert!(
+            e.message.contains("altt") && e.message.contains("alt"),
+            "should flag `altt` and suggest `alt`, got: {}",
+            e.message
+        );
+    }
+
+    #[test]
+    fn valid_compound_modifiers_are_clean() {
+        let r = validate_str("bind = super+shift,Return,spawn,kitty\n");
+        assert!(!r.has_errors() && !r.has_warnings());
+    }
+
+    #[test]
+    fn none_and_code_modifiers_are_clean() {
+        let r = validate_str("bind = NONE,Print,screenshot\nbind = code:133,d,spawn,fuzzel\n");
+        assert!(
+            !r.has_errors() && !r.has_warnings(),
+            "NONE and code: are valid"
+        );
+    }
+
+    #[test]
+    fn unknown_enum_value_warns_with_allowed_list() {
+        let r = validate_str("overview_style = blah\n");
+        let w = r
+            .warnings()
+            .find(|w| w.code == "W002")
+            .expect("W002 expected for bad enum value");
+        assert!(
+            w.message.contains("grid") && w.message.contains("scroller"),
+            "should list allowed values, got: {}",
+            w.message
+        );
+    }
+
+    #[test]
+    fn valid_enum_value_is_clean() {
+        let r = validate_str("overview_style = scroller\ntwilight_mode = manual\n");
+        assert!(!r.has_errors() && !r.has_warnings());
     }
 
     #[test]
