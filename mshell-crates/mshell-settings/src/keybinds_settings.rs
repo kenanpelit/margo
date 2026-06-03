@@ -78,10 +78,6 @@ const ACTIONS: &[(&str, &str)] = &[
     ("screenshot", "no arguments"),
     ("screenshot-window", "no arguments"),
     ("screenshot-region", "no arguments"),
-    (
-        "screenshot-select",
-        "Mode — rec | area | ri | rc | rf (default rec)",
-    ),
     ("screenshot-output", "no arguments"),
     ("theme", "Theme preset name"),
     ("twilight_toggle", "no arguments"),
@@ -523,8 +519,8 @@ fn categorise(action: &str, args: &str) -> &'static str {
         | "focuswindow"
         | "exchange_client"
         | "sticky_window" => "Windows",
-        "screenshot" | "screenshot-window" | "screenshot-region" | "screenshot-select"
-        | "screenshot-output" | "theme" | "twilight_toggle" | "twilight_set" => "Shell",
+        "screenshot" | "screenshot-window" | "screenshot-region" | "screenshot-output"
+        | "theme" | "twilight_toggle" | "twilight_set" => "Shell",
         "reload" | "quit" | "force_unlock" | "session_save" | "session_load" | "setkeymode"
         | "run_script" => "System",
         _ => "General",
@@ -1408,10 +1404,10 @@ mod tests {
 
     #[test]
     fn no_mods_become_none() {
-        let b = parse_bind_line("bind = NONE,Print,screenshot-select").expect("parse");
+        let b = parse_bind_line("bind = NONE,Print,screenshot-region").expect("parse");
         assert_eq!(b.mods_str(), "NONE");
         assert!(b.args.is_empty());
-        assert_eq!(b.to_line(), "bind = NONE,Print,screenshot-select");
+        assert_eq!(b.to_line(), "bind = NONE,Print,screenshot-region");
     }
 
     #[test]
@@ -1470,7 +1466,7 @@ bind = super+ctrl,f,spawn,nautilus
 bind = super,q,killclient
 bind = alt,2,summon,^(TmuxKenp|kitty)$,^Tmux$,uwsm app -a TmuxKenp -- start-kkenp
 bind = super,d,spawn,fuzzel  #\"App launcher\"
-bind = NONE,Print,screenshot-select
+bind = NONE,Print,screenshot-region
 
 # layouts
 bind = super,t,setlayout,tile

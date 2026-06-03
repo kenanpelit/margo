@@ -35,7 +35,6 @@ mod protocols;
 mod render;
 #[cfg(feature = "xdp-gnome-screencast")]
 mod screencasting;
-mod screenshot_region;
 mod scripting;
 mod session;
 mod state;

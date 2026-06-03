@@ -27,7 +27,7 @@ use smithay::{
 use tracing::{error, warn};
 
 use super::{
-    MargoRenderElement, OutputDevice, build_cursor_elements_for_output, build_render_elements,
+    MargoRenderElement, OutputDevice, build_render_elements,
     helpers::{monotonic_now, output_refresh_duration},
     serve_screencopies, take_pending_open_close_captures, take_pending_snapshots,
 };
@@ -356,40 +356,6 @@ fn render_output(
     take_pending_open_close_captures(renderer, od, state);
 
     let mut elements = build_render_elements(renderer, od, state);
-    // W2.1 region selector overlay — when active, layer:
-    //   [cursor (top), outline edges, dim, live scene]
-    if state.region_selector.is_some() {
-        let (mon_origin, mon_size) = state
-            .monitors
-            .iter()
-            .find(|m| m.output == od.output)
-            .map(|m| {
-                (
-                    (m.monitor_area.x, m.monitor_area.y),
-                    (m.monitor_area.width, m.monitor_area.height),
-                )
-            })
-            .unwrap_or(((0, 0), (1920, 1080)));
-        let scale = od.output.current_scale().fractional_scale();
-        let (cursor_elements, _cursor_loc) = build_cursor_elements_for_output(renderer, od, state);
-        let cursor_count = cursor_elements.len();
-
-        if let Some(sel) = state.region_selector.as_mut() {
-            let overlay = sel.render_elements(mon_origin, mon_size, scale);
-            let mut head: Vec<MargoRenderElement> = Vec::new();
-            for c in cursor_elements.into_iter().take(cursor_count) {
-                head.push(c);
-            }
-            let scene_tail: Vec<MargoRenderElement> = elements.drain(cursor_count..).collect();
-            for o in overlay {
-                head.push(MargoRenderElement::Solid(o));
-            }
-            for s in scene_tail {
-                head.push(s);
-            }
-            elements = head;
-        }
-    }
     // Wallpaper sits at the *bottom* of the z-order: pushed last so
     // it's at the tail of the slice. smithay's `render_frame`
     // iterates element[0] = topmost, so trailing entries are drawn

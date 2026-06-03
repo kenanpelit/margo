@@ -228,13 +228,16 @@ dwl-ipc-v2 is the wire protocol; `state.json` (in-tree IPC, written on every `ar
 
 ## 9. Screenshot UX
 
-In-compositor region selector — `margo/src/screenshot_region.rs` (W2.1). New `region_selector: Option<ActiveRegionSelector>` field on `MargoState`. UX: drag a rect, Enter to confirm, Escape to cancel. On confirm spawns `mscreenshot <mode>` with `MARGO_REGION_GEOM="X,Y WxH"` set so the binary skips its own slurp call.
+Screenshots are handled entirely outside the compositor: the `mscreenshot`
+CLI (grim / slurp / wl-copy + satty/swappy) and the mshell engine behind
+`mshellctl screenshot`. The compositor dispatch actions (`screenshot`,
+`screenshot-window`, `screenshot-region`, `screenshot-output`) just spawn
+`mscreenshot`.
 
-**Render side.** Four `SolidColorRenderElement` outline edges + dim overlay (~22% black `[0.0, 0.0, 0.0, 0.22]`). Layering `[cursor, edges, dim, scene]` ensures the cursor stays visible while in selection mode and the dim overlay gives a clear visual cue. Force-show cursor + `clamp_pointer_to_outputs` while active.
-
-**Input side.** `handle_input` early-routes pointer + keyboard to selector handlers when active.
-
-**Scope deliberately narrowed** vs an earlier reverted attempt — capture / save / clip / edit stay in `mscreenshot`; only the UX gap (slurp's separate window, focus fight) is replaced. ~340 LOC across margo + mscreenshot.
+An in-compositor region selector was prototyped and **removed** — it grabbed
+keyboard/pointer at the input layer, which fought the focused client's key
+state (a launching Enter from a terminal got stuck repeating). The shell-side
+selector (GTK layer surface) covers the same UX without the input-grab hazard.
 
 ---
 
@@ -936,7 +939,7 @@ Run after installing a fresh package. Anything failing here is a release blocker
 - [ ] HDR-capable monitor → no regression (still SDR; HDR Phase 1 advertises capability only, Phase 2/3 scaffolded but upstream-blocked).
 - [ ] Helium / Chromium → Meet → Share screen → Window tab populates with live windows; pick one → share preview shows live content (not frozen first frame).
 - [ ] F11 / browser fullscreen button / YouTube fullscreen → window goes fullscreen, exits cleanly.
-- [ ] `bind = NONE,Print,screenshot-select` → screen dims, cursor visible, drag-rect produces screenshot.
+- [ ] `bind = NONE,Print,spawn,mscreenshot area` → region capture → file + clipboard.
 - [ ] `mctl status --json | jq .outputs[0].focused.app_id` returns the focused window.
 - [ ] `mctl check-config ~/.config/margo/config.conf` reports zero errors.
 - [ ] `~/.config/margo/init.rhai` evaluates at startup if present (one log line at info level).

@@ -117,7 +117,7 @@ runtime-checked even where the per-protocol behaviour isn't.
 | `zwlr_output_manager_v1` | ✅ | ✅ | 🟢 `output_management.rs` (2) | ❌ | apply scale/transform/position; multi-output assignment is 🟡 manual |
 | `wp_color_management_v1` (HDR) | ✅ | ✅ | 🟢 `color_management.rs` (2) | ✅ `render/icc_lut` (6), `render/hdr_metadata` (5), `render/linear_composite` (8) | best dual-covered protocol; see [`hdr-design.md`](hdr-design.md) |
 | `zwlr_gamma_control_manager_v1` | ✅ | ✅ | 🟢 `gamma_control.rs` (3) + 🟡 | ✅ `twilight/*` (gamma LUT / schedule / interpolation, ~28) | day-night shift is 🟡 manual |
-| `zwlr_screencopy_manager_v1` | ✅ | ✅ | 🟢 `screencopy.rs` (2) + 🟡 | ✅ `screenshot_region.rs` (14) | hand-rolled (`protocols/screencopy.rs`) |
+| `zwlr_screencopy_manager_v1` | ✅ | ✅ | 🟢 `screencopy.rs` (2) + 🟡 | ✅ `mpicker` / `mscreenshot` (grim) | hand-rolled (`protocols/screencopy.rs`) |
 | `ext_image_copy_capture_v1` (+ capture-source) | ✅ | ✅ | ❌ | ❌ | modern capture; output/toplevel source globals advertised, capture loop only manually exercised |
 | `linux_dmabuf_v1` | ✅ | ✅ | 🟢 `dmabuf.rs` (3) | ❌ | format/modifier advertisement asserted |
 | `linux_drm_syncobj_v1` | ✅ | ✅ | ❌ | ❌ | explicit-sync; needs real GPU timeline |

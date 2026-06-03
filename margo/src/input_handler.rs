@@ -46,56 +46,6 @@ pub fn handle_input<B: InputBackend>(state: &mut MargoState, event: InputEvent<B
         state.idle_notifier_state.notify_activity(&seat);
     }
 
-    // W2.1 region selector intercept — when the in-compositor
-    // screenshot UI is active, pointer + keyboard events drive
-    // the selector instead of the normal focus / keybind paths.
-    // Anything else (axis, gesture, touch) falls through so the
-    // user can still scroll a video / mute audio while the
-    // selector is up.
-    if state.region_selector.is_some() {
-        // Force the cursor visible while in screenshot mode. If a
-        // client had marked the cursor surface as `Hidden` (some
-        // games / video players do, even briefly while focused),
-        // the user can't see WHERE they're aiming the rect.
-        // Reset to the default named cursor before any selector
-        // input runs.
-        use smithay::input::pointer::CursorImageStatus;
-        if matches!(state.cursor_status, CursorImageStatus::Hidden) {
-            state.cursor_status = CursorImageStatus::default_named();
-            // Keep the cursor manager in sync so we don't keep drawing a
-            // previously-requested named shape (e.g. a stale `pointer` hand).
-            state.cursor_manager.set_named("default", &[]);
-        }
-        match event {
-            InputEvent::Keyboard { event } => {
-                handle_region_selector_keyboard(state, event);
-                return;
-            }
-            InputEvent::PointerMotion { event } => {
-                let dx = event.delta_x();
-                let dy = event.delta_y();
-                state.input_pointer.x += dx;
-                state.input_pointer.y += dy;
-                // Clamp to the focused output's logical area so
-                // the cursor (and the selection rect's free
-                // corner) can't escape into nowhere when the
-                // user drags too far.
-                state.clamp_pointer_to_outputs();
-                let cursor = (state.input_pointer.x, state.input_pointer.y);
-                if let Some(sel) = state.region_selector.as_mut() {
-                    sel.update_drag(cursor);
-                    state.request_repaint();
-                }
-                return;
-            }
-            InputEvent::PointerButton { event } => {
-                handle_region_selector_button(state, event);
-                return;
-            }
-            _ => {}
-        }
-    }
-
     match event {
         InputEvent::Keyboard { event } => handle_keyboard(state, event),
         InputEvent::PointerMotion { event } => handle_pointer_motion(state, event),
@@ -109,124 +59,6 @@ pub fn handle_input<B: InputBackend>(state: &mut MargoState, event: InputEvent<B
         InputEvent::TouchMotion { event } => handle_touch_motion(state, event),
         InputEvent::TouchUp { event } => handle_touch_up(state, event),
         _ => {}
-    }
-}
-
-// ── Region-selector input intercepts ────────────────────────────────────────
-//
-// While `state.region_selector.is_some()`:
-//
-//   * Pointer button down (left): begin_drag at cursor.
-//   * Pointer button up (left): end_drag, then confirm
-//     (commits the rect to mscreenshot via spawn_shell).
-//   * Keyboard Enter: confirm; Escape: cancel; everything else:
-//     swallowed (no compositor binds fire while the selector is up).
-
-fn handle_region_selector_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(
-    state: &mut MargoState,
-    event: E,
-) {
-    // Compare against raw evdev key codes (linux/input-event-codes.h):
-    //   KEY_ESC = 1, KEY_ENTER = 28, KEY_KPENTER = 96.
-    // Physical-key constants, identical across layouts — xkb modifier
-    // state doesn't matter for "is the user pressing Escape".
-    let raw: u32 = event.key_code().raw();
-    let key_state = event.state();
-
-    // CRITICAL: feed the event through `keyboard.input()` even though we
-    // intercept it from clients. This keeps smithay's internal
-    // pressed-key set in sync. Otherwise the launching Enter's *release*
-    // (swallowed here while the selector is up) never updates that set,
-    // so smithay keeps thinking Enter is held — and when we restore
-    // focus on confirm, the `wl_keyboard.enter` carries Enter-as-pressed
-    // and the newly focused client (the terminal that ran
-    // `mctl dispatch screenshot-select`) starts auto-repeating Enter
-    // forever (pausing only while satty has focus). The filter always
-    // intercepts, so nothing reaches clients; we do our own Enter/Esc
-    // handling below, *after* input() returns (so the focus changes in
-    // confirm/cancel don't re-enter the keyboard handle).
-    if let Some(keyboard) = state.seat.get_keyboard() {
-        let serial = SERIAL_COUNTER.next_serial();
-        let time = event.time_msec();
-        keyboard.input::<(), _>(
-            state,
-            event.key_code(),
-            key_state,
-            serial,
-            time,
-            |_, _, _| FilterResult::Intercept(()),
-        );
-    }
-
-    if key_state != KeyState::Pressed {
-        // Any key release lifts the launch guard. The keystroke that
-        // *opened* the selector — the terminal Enter behind
-        // `mctl dispatch screenshot-select`, or a held keybind — is
-        // now released, so a fresh Enter is allowed to confirm.
-        // Without this, the launching Enter and its auto-repeats
-        // hammered `confirm_region_selection` the instant the
-        // selector appeared (degenerate rect → re-arm), so the dim
-        // overlay never went away — the "it keeps pressing Enter /
-        // won't stop" bug.
-        if let Some(sel) = state.region_selector.as_mut() {
-            sel.note_key_release();
-        }
-        return;
-    }
-
-    match raw {
-        28 | 96 => {
-            // Only confirm once the launching keystroke has been
-            // released (or the user has clicked). The launch Enter
-            // and its repeats are swallowed until then.
-            let armed = state
-                .region_selector
-                .as_ref()
-                .map(|s| s.confirm_armed())
-                .unwrap_or(false);
-            if armed {
-                state.confirm_region_selection();
-            }
-        }
-        1 => state.cancel_region_selection(),
-        _ => {} // swallow everything else while the selector is up
-    }
-}
-
-fn handle_region_selector_button<B: InputBackend, E: PointerButtonEvent<B>>(
-    state: &mut MargoState,
-    event: E,
-) {
-    let cursor = (state.input_pointer.x, state.input_pointer.y);
-    let pressed_evt = event.state() == smithay::backend::input::ButtonState::Pressed;
-    // 0x111 = BTN_RIGHT — a quick cancel, same as Escape. Handy when
-    // the selector is up and the user just wants out without
-    // reaching for the keyboard.
-    if event.button_code() == 0x111 {
-        if pressed_evt {
-            state.cancel_region_selection();
-        }
-        return;
-    }
-    // 0x110 = BTN_LEFT (linux/input-event-codes.h).
-    let is_left = event.button_code() == 0x110;
-    if !is_left {
-        return;
-    }
-    if let Some(sel) = state.region_selector.as_mut() {
-        if pressed_evt {
-            sel.begin_drag(cursor);
-            state.request_repaint();
-        } else {
-            sel.end_drag();
-            // Auto-confirm on release if the user actually dragged
-            // out a non-degenerate rect; otherwise leave the
-            // selector armed for a retry.
-            let has_rect = sel.selection_rect().is_some();
-            if has_rect {
-                state.confirm_region_selection();
-            }
-        }
     }
 }
 
@@ -831,18 +663,12 @@ fn update_hot_corner(state: &mut MargoState) {
     //     lock surface owns focus pushed the cursor through to the
     //     login prompt because the lock-surface's keyboard grab kept
     //     translating Tab/Return into the GreetD authentication flow.
-    //   * `region_selector` → the screenshot UI already intercepts
-    //     pointer + keyboard, an extra dispatch would race the
-    //     selector's commit / cancel path.
     //   * any pointer or keyboard grab held by a popup → corner
     //     trigger would smash through the grab and the popup
     //     would dismiss without surfacing an action.
     // Bail before we even check the corners; armed_at stays None so
     // a re-entry restarts the timer cleanly once the guard lifts.
     if state.session_locked {
-        return;
-    }
-    if state.region_selector.is_some() {
         return;
     }
     if state
