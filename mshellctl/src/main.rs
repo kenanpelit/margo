@@ -43,6 +43,9 @@ async fn main() -> anyhow::Result<()> {
         Commands::Screenshot { command } => {
             mshellctl::subcommands::screenshot::execute(command).await?
         }
+        Commands::ScreenRecord { command } => {
+            mshellctl::subcommands::screen_record::execute(command).await?
+        }
     };
 
     Ok(())

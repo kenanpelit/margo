@@ -396,3 +396,50 @@ impl ScreenRecordMenuWidgetModel {
         );
     }
 }
+
+// ── Headless recording controls (driven by `mshellctl screen-record`) ───────
+// Same engine + shared `recording_state` the menu uses; no menu surface.
+
+pub(crate) fn is_recording() -> bool {
+    recording_state().clone().handle().get_untracked().is_some()
+}
+
+pub(crate) fn record_start(area: CaptureArea, audio: Option<String>) {
+    if is_recording() {
+        return;
+    }
+    mshell_screenshot::record_screen(
+        ScreenRecordRequest { area, audio },
+        Duration::ZERO,
+        |handle_result| match handle_result {
+            Ok(handle) => recording_state().patch(RecordingState {
+                handle: Some(handle),
+            }),
+            Err(e) => eprintln!("Failed to start recording: {e}"),
+        },
+        |done_result| {
+            recording_state().patch(RecordingState { handle: None });
+            if let Ok(result) = done_result
+                && let Some(path) = result.saved_path
+            {
+                show_file_saved_notification("Screen recording saved".to_string(), path);
+            }
+        },
+    );
+}
+
+pub(crate) fn record_stop() {
+    if let Some(handle) = recording_state().clone().handle().get_untracked() {
+        handle.stop();
+    }
+    // The recorder's `on_done` patches the handle back to None once it has
+    // finished flushing the file.
+}
+
+pub(crate) fn record_toggle(area: CaptureArea, audio: Option<String>) {
+    if is_recording() {
+        record_stop();
+    } else {
+        record_start(area, audio);
+    }
+}

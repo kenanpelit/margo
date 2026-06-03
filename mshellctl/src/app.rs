@@ -9,6 +9,7 @@ use crate::subcommands::lock::LockCommands;
 use crate::subcommands::media::MediaCommands;
 use crate::subcommands::menu::MenuCommands;
 use crate::subcommands::plugin::PluginCommands;
+use crate::subcommands::screen_record::ScreenRecordCommands;
 use crate::subcommands::screenshot::ScreenshotCommands;
 use crate::subcommands::settings::SettingsCommands;
 use crate::subcommands::wallpaper::WallpaperCommands;
@@ -123,5 +124,12 @@ pub enum Commands {
     Screenshot {
         #[command(subcommand)]
         command: ScreenshotCommands,
+    },
+    /// Screen recording — start / stop / toggle. Drives the shell's own
+    /// recording engine (same as the screenshot menu's recording section).
+    #[command(name = "screen-record")]
+    ScreenRecord {
+        #[command(subcommand)]
+        command: ScreenRecordCommands,
     },
 }

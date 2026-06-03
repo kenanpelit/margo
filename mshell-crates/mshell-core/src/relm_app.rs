@@ -92,6 +92,10 @@ pub(crate) enum ShellInput {
     /// Spec is `"<area> <target> <delay_secs>"` — area ∈ region/window/
     /// output/full, target ∈ default/copy/save/edit.
     CaptureScreenshot(String),
+    /// Headless screen recording from `mshellctl screen-record …`.
+    /// Spec is `"<action> <area> <audio>"` — action ∈ start/stop/toggle,
+    /// area ∈ region/window/output/full, audio = "-" (none) or a source.
+    ScreenRecord(String),
     ToggleWallpaperMenu(Option<String>),
     CycleWallpaper(mshell_cache::wallpaper::CycleDirection),
     ToggleUfwMenu(Option<String>),
@@ -511,6 +515,22 @@ impl Component for Shell {
                     .map(std::time::Duration::from_secs)
                     .unwrap_or_default();
                 mshell_frame::capture_screenshot(area, target, delay);
+            }
+            ShellInput::ScreenRecord(spec) => {
+                use mshell_screenshot::CaptureArea;
+                let mut parts = spec.split_whitespace();
+                let action = parts.next().unwrap_or("toggle").to_string();
+                let area = match parts.next() {
+                    Some("window") => CaptureArea::SelectWindow,
+                    Some("output") => CaptureArea::SelectMonitor,
+                    Some("region") => CaptureArea::SelectRegion,
+                    _ => CaptureArea::All, // "full" / default
+                };
+                let audio = match parts.next() {
+                    Some(a) if a != "-" && !a.is_empty() => Some(a.to_string()),
+                    _ => None,
+                };
+                mshell_frame::screen_record(&action, area, audio);
             }
             ShellInput::ToggleNotifications(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
