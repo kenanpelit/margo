@@ -82,6 +82,9 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 IPCCommand::Screenshot => {
                     app_sender.emit(ShellInput::ToggleScreenshotMenu(active_monitor().await));
                 }
+                IPCCommand::ScreenshotCapture(spec) => {
+                    app_sender.emit(ShellInput::CaptureScreenshot(spec));
+                }
                 IPCCommand::Wallpaper => {
                     app_sender.emit(ShellInput::ToggleWallpaperMenu(active_monitor().await));
                 }
@@ -470,6 +473,9 @@ enum IPCCommand {
     Session,
     SessionAction(SessionAction),
     Screenshot,
+    /// Headless capture: `"<area> <target> <delay>"` (see
+    /// `mshellctl screenshot`).
+    ScreenshotCapture(String),
     Wallpaper,
     Ufw,
     Privacy,
@@ -1337,6 +1343,11 @@ impl IPCService {
     }
     async fn screenshot(&self) {
         let _ = self.tx.send(IPCCommand::Screenshot);
+    }
+    /// Headless capture driven by `mshellctl screenshot <area>`. `spec` is
+    /// `"<area> <target> <delay>"`.
+    async fn screenshot_capture(&self, spec: String) {
+        let _ = self.tx.send(IPCCommand::ScreenshotCapture(spec));
     }
     async fn wallpaper(&self) {
         let _ = self.tx.send(IPCCommand::Wallpaper);

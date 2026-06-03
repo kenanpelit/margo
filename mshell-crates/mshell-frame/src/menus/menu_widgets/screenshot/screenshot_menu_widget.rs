@@ -358,6 +358,20 @@ impl Component for ScreenshotMenuWidgetModel {
     }
 }
 
+/// Headless capture — the exact engine + delivery the menu buttons use,
+/// but driven from a keybind / the CLI (via `mshellctl screenshot`) with no
+/// menu surface. Kept here so it shares `complete_screenshot`.
+pub(crate) fn capture(area: CaptureArea, target: OutputTarget, delay: Duration) {
+    take_screenshot(
+        ScreenshotRequest { area, target },
+        delay,
+        |result| match result {
+            Ok(r) => complete_screenshot(r),
+            Err(e) => eprintln!("screenshot failed: {e}"),
+        },
+    );
+}
+
 fn complete_screenshot(result: ScreenshotResult) {
     play_shutter();
 

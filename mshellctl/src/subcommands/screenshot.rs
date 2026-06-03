@@ -1,40 +1,37 @@
 //! `mshellctl screenshot` — the single front door for screenshots.
 //!
-//! Every screenshot keybind and the screenshot menu route through here, so
-//! capture behaviour is identical everywhere. The capture engine is
-//! `mscreenshot` (grim + editor + clipboard + notify); region capture goes
-//! through margo's in-compositor frozen-overlay selector
-//! (`mctl dispatch screenshot-region-ui <mode>`), which then hands the
-//! geometry to `mscreenshot`.
+//! Drives the shell's own screenshot engine (the same one behind the GUI
+//! `mshellctl menu screenshot`: in-shell selectors + save / clipboard /
+//! editor / notify) headlessly over IPC. One engine, one tool — keybinds,
+//! the CLI, and the menu all run the exact same path.
 //!
 //! ```text
 //! mshellctl screenshot region|window|output|full [--copy|--save|--edit] [--delay N]
 //! ```
-//! Default delivery is edit → save + clipboard. `--copy` = clipboard only,
-//! `--save` = file only, `--edit` = edit → save (no clipboard).
+//! Default delivery is edit/file + clipboard. `--copy` = clipboard only,
+//! `--save` = file only, `--edit` = editor → save (no clipboard).
 
-use crate::bus::bus_command_with_reply;
+use crate::bus::{bus_command_with_arg, bus_command_with_reply};
 use clap::{Args, Subcommand};
-use std::process::Command;
 
 #[derive(Subcommand, Debug)]
 pub enum ScreenshotCommands {
-    /// Region select (frozen-overlay) → capture.
+    /// Region select (in-shell selector) → capture.
     Region(Capture),
     /// Focused window → capture.
     Window(Capture),
-    /// Focused output (current monitor) → capture.
+    /// Pick an output (monitor) → capture.
     Output(Capture),
     /// Whole layout (every output) → capture.
     Full(Capture),
     /// (internal) Open the in-shell area selector and print the chosen
-    /// region as "X,Y WxH" (slurp format). `mscreenshot` polls this before
-    /// falling back to slurp; not meant for direct use.
+    /// region as "X,Y WxH" (slurp format). Used by the `mscreenshot` CLI's
+    /// region bridge; not meant for direct use.
     SelectRegion,
 }
 
 /// Delivery flags shared by every capture area. If several are passed,
-/// precedence is edit > save > copy; the default is edit → save + clipboard.
+/// precedence is edit > save > copy; the default is file + clipboard.
 #[derive(Args, Debug, Default)]
 pub struct Capture {
     /// Copy to clipboard only (no file, no editor).
@@ -43,7 +40,7 @@ pub struct Capture {
     /// Save to file only (no clipboard, no editor).
     #[arg(long)]
     save: bool,
-    /// Open the editor (satty / swappy) → save (no clipboard).
+    /// Open the editor (satty / swappy) → save.
     #[arg(long)]
     edit: bool,
     /// Wait N seconds before capturing (catch menus / tooltips).
@@ -52,62 +49,32 @@ pub struct Capture {
 }
 
 impl Capture {
-    /// Pick the mscreenshot delivery subcommand for this area. The four
-    /// args are the `(default, copy, save, edit)` mscreenshot subcommands.
-    fn pick(
-        &self,
-        default: &'static str,
-        copy: &'static str,
-        save: &'static str,
-        edit: &'static str,
-    ) -> &'static str {
+    fn target(&self) -> &'static str {
         if self.edit {
-            edit
+            "edit"
         } else if self.save {
-            save
+            "save"
         } else if self.copy {
-            copy
+            "copy"
         } else {
-            default
+            "default"
         }
     }
 }
 
-fn run_mscreenshot(mode: &str, delay: Option<u32>) {
-    let mut cmd = Command::new("mscreenshot");
-    cmd.arg(mode);
-    if let Some(d) = delay {
-        cmd.args(["-d", &d.to_string()]);
-    }
-    if let Err(e) = cmd.spawn() {
-        eprintln!("mshellctl: failed to spawn mscreenshot: {e}");
-    }
+/// Fire the headless capture: `"<area> <target> <delay>"` over IPC.
+async fn capture(area: &str, c: &Capture) -> anyhow::Result<()> {
+    let spec = format!("{area} {} {}", c.target(), c.delay.unwrap_or(0));
+    bus_command_with_arg("ScreenshotCapture", &spec).await?;
+    Ok(())
 }
 
 pub async fn execute(command: ScreenshotCommands) -> anyhow::Result<()> {
     match command {
-        ScreenshotCommands::Region(c) => {
-            // Region runs through margo's in-compositor selector, which
-            // spawns mscreenshot with the chosen delivery mode.
-            let m = c.pick("rec", "rc", "rf", "ri");
-            if let Err(e) = Command::new("mctl")
-                .args(["dispatch", "screenshot-region-ui", m])
-                .spawn()
-            {
-                eprintln!("mshellctl: failed to spawn mctl dispatch: {e}");
-            }
-        }
-        ScreenshotCommands::Window(c) => {
-            run_mscreenshot(c.pick("window", "wc", "wf", "wi"), c.delay);
-        }
-        ScreenshotCommands::Output(c) => {
-            run_mscreenshot(c.pick("screen", "sc", "sf", "si"), c.delay);
-        }
-        ScreenshotCommands::Full(c) => {
-            // No clipboard-less "edit" alias for all-outputs; edit falls back
-            // to the editing default.
-            run_mscreenshot(c.pick("all", "ac", "af", "all"), c.delay);
-        }
+        ScreenshotCommands::Region(c) => capture("region", &c).await?,
+        ScreenshotCommands::Window(c) => capture("window", &c).await?,
+        ScreenshotCommands::Output(c) => capture("output", &c).await?,
+        ScreenshotCommands::Full(c) => capture("full", &c).await?,
         ScreenshotCommands::SelectRegion => {
             let geom: String = bus_command_with_reply("SelectRegion").await?;
             println!("{}", geom);

@@ -88,6 +88,10 @@ pub(crate) enum ShellInput {
     NotificationsClearAll,
     NotificationsReadPopups,
     ToggleScreenshotMenu(Option<String>),
+    /// Headless screenshot capture from `mshellctl screenshot <area>`.
+    /// Spec is `"<area> <target> <delay_secs>"` — area ∈ region/window/
+    /// output/full, target ∈ default/copy/save/edit.
+    CaptureScreenshot(String),
     ToggleWallpaperMenu(Option<String>),
     CycleWallpaper(mshell_cache::wallpaper::CycleDirection),
     ToggleUfwMenu(Option<String>),
@@ -485,6 +489,28 @@ impl Component for Shell {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
                     frame.emit(FrameInput::ToggleScreenshotMenu);
                 }
+            }
+            ShellInput::CaptureScreenshot(spec) => {
+                use mshell_screenshot::{CaptureArea, OutputTarget};
+                let mut parts = spec.split_whitespace();
+                let area = match parts.next() {
+                    Some("window") => CaptureArea::SelectWindow,
+                    Some("output") => CaptureArea::SelectMonitor,
+                    Some("full") => CaptureArea::All,
+                    _ => CaptureArea::SelectRegion, // "region" / default
+                };
+                let target = match parts.next() {
+                    Some("copy") => OutputTarget::Clipboard,
+                    Some("save") => OutputTarget::File,
+                    Some("edit") => OutputTarget::EditAndSave,
+                    _ => OutputTarget::FileAndClipboard, // "default"
+                };
+                let delay = parts
+                    .next()
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .map(std::time::Duration::from_secs)
+                    .unwrap_or_default();
+                mshell_frame::capture_screenshot(area, target, delay);
             }
             ShellInput::ToggleNotifications(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
