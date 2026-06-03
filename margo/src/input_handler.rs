@@ -128,13 +128,37 @@ fn handle_region_selector_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(
 ) {
     // Compare against raw evdev key codes (linux/input-event-codes.h):
     //   KEY_ESC = 1, KEY_ENTER = 28, KEY_KPENTER = 96.
-    // No xkbcommon translation needed for these — they're physical-
-    // key constants, identical across layouts. Avoids the
-    // keyboard.input() filter dance entirely; xkb modifier state
-    // doesn't matter for "is the user pressing Escape".
+    // Physical-key constants, identical across layouts — xkb modifier
+    // state doesn't matter for "is the user pressing Escape".
     let raw: u32 = event.key_code().raw();
+    let key_state = event.state();
 
-    if event.state() != KeyState::Pressed {
+    // CRITICAL: feed the event through `keyboard.input()` even though we
+    // intercept it from clients. This keeps smithay's internal
+    // pressed-key set in sync. Otherwise the launching Enter's *release*
+    // (swallowed here while the selector is up) never updates that set,
+    // so smithay keeps thinking Enter is held — and when we restore
+    // focus on confirm, the `wl_keyboard.enter` carries Enter-as-pressed
+    // and the newly focused client (the terminal that ran
+    // `mctl dispatch screenshot-select`) starts auto-repeating Enter
+    // forever (pausing only while satty has focus). The filter always
+    // intercepts, so nothing reaches clients; we do our own Enter/Esc
+    // handling below, *after* input() returns (so the focus changes in
+    // confirm/cancel don't re-enter the keyboard handle).
+    if let Some(keyboard) = state.seat.get_keyboard() {
+        let serial = SERIAL_COUNTER.next_serial();
+        let time = event.time_msec();
+        keyboard.input::<(), _>(
+            state,
+            event.key_code(),
+            key_state,
+            serial,
+            time,
+            |_, _, _| FilterResult::Intercept(()),
+        );
+    }
+
+    if key_state != KeyState::Pressed {
         // Any key release lifts the launch guard. The keystroke that
         // *opened* the selector — the terminal Enter behind
         // `mctl dispatch screenshot-select`, or a held keybind — is
