@@ -36,9 +36,9 @@ bind = super,       space,  spawn, qs -c noctalia-shell ipc call launcher toggle
 bind = super+ctrl,  s,      sticky_window
 bind = super+ctrl,  r,      reload_config
 
-# Screenshot dispatch — uses mscreenshot under the hood.
-bind = NONE,Print,screenshot-region-ui    # region → editor → file + clip
-bind = alt, Print,screenshot-window
+# Screenshots — one front door through the shell's capture engine.
+bind = NONE,Print,spawn,mshellctl screenshot region   # region → file + clip
+bind = alt, Print,spawn,mshellctl screenshot window
 ```
 
 Validate before reloading:

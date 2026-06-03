@@ -86,24 +86,45 @@ mlayout edit my-desk                     # open the profile in $EDITOR
 
 Profiles live at `~/.config/margo/layouts/<name>.conf`. Internally `mlayout set` re-positions outputs via `wlr-randr` (which routes through margo's `wlr-output-management-v1` handler — runtime mode + position changes apply live, no logout).
 
+## Screenshots & recording — `mshellctl screenshot` / `screenrecord`
+
+The single front door. Keybinds, the CLI, and the GUI menu
+(`mshellctl menu screenshot`, Super+Shift+S) all drive the **shell's own
+capture engine** (rich in-shell selectors + save / clipboard / editor /
+notify) — one engine, one tool.
+
+```bash
+mshellctl screenshot region          # in-shell selector → file + clipboard
+mshellctl screenshot window          # focused window
+mshellctl screenshot output          # pick a monitor
+mshellctl screenshot full            # whole layout (all outputs)
+#   flags: --save (file only) · --copy (clipboard only) · --edit (editor) · -d N (delay)
+
+mshellctl screenrecord start full    # start recording (region|window|output|full)
+mshellctl screenrecord toggle region --audio <pw-source>
+mshellctl screenrecord stop
+```
+
+Bind them however you like, e.g. `bind = NONE,Print,spawn,mshellctl screenshot region`. The recording-indicator bar pill shows an active recording and stops it on click.
+
 ## `mscreenshot`
 
-Wraps `grim` + `slurp` + `wl-copy` + an optional editor. Modes:
+A standalone `grim` + `slurp` + `wl-copy` + editor CLI. The screenshot
+keybinds no longer route through it (they use the shell engine above), but
+it stays installed as a self-contained capture tool and a `slurp`-free
+region fallback. Modes:
 
 ```bash
 mscreenshot rec       # region → editor → file + clipboard
 mscreenshot area      # region → file + clipboard (no editor)
 mscreenshot screen    # focused output → file + clipboard
+mscreenshot full      # all outputs (whole layout)
 mscreenshot window    # focused window → file + clipboard
 mscreenshot open      # open ~/Pictures/Screenshots in the file manager
 mscreenshot dir       # print the screenshot dir
 ```
 
-Editor preference: `swappy` if installed, else `satty`, else skip the editor pass and just save+copy. Files land at `~/Pictures/Screenshots/screenshot-YYYYMMDD-HHMMSS.png`.
-
-### In-compositor region selector
-
-When bound via `bind = NONE,Print,screenshot-region-ui`, margo dims the screen, lets you drag a rect (Enter to confirm, Esc to cancel) and spawns `mscreenshot <mode>` with `MARGO_REGION_GEOM="X,Y WxH"` set so `slurp` is skipped. Cursor stays visible while in selection mode (W2.1).
+Editor preference: `swappy` if installed, else `satty`, else skip the editor pass and just save+copy. Files land at `~/Pictures/Screenshots/screenshot-YYYYMMDD-HHMMSS.png`. For region capture it reuses the shell's selector via `mshellctl screenshot select-region` (falling back to `slurp`).
 
 ## `mplay`
 
@@ -157,7 +178,8 @@ mpower status        # live state: power source, current profile, CPU now, thres
 mpower cycle         # manually switch to the next profile (perf → balanced → saver)
 mpower set balanced  # manually pick a profile (performance | balanced | power-saver)
 mpower pause         # suspend auto-switching (leaves the current profile)
-mpower resume
+mpower resume        # resume + clear a manual `set`/`cycle` back-off
+mpower auto          # back to fully automatic now (alias of resume)
 ```
 
 A manual `cycle` / `set` (handy on a keybind — e.g. `ctrl+alt,p`) counts as a

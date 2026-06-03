@@ -259,7 +259,7 @@ bind = super,       q,      killclient
 bind = super+ctrl,  s,      sticky_window
 bind = super+ctrl,  r,      reload_config
 bind = alt,         l,      spawn, mlock
-bind = NONE,        Print,  screenshot-region-ui
+bind = NONE,        Print,  spawn, mshellctl screenshot region
 ```
 
 Validate before reloading:
@@ -295,11 +295,13 @@ mctl twilight preset schedule set 19:00 evening
 mlayout suggest                      # propose & activate a preset
 mlayout set vertical-ext-top         # apply a saved profile
 
-# Screenshots
-mscreenshot rec                      # region → editor → file + clipboard
-mscreenshot rec --delay 3            # 3-second countdown for menus / tooltips
-mscreenshot screen --output eDP-1    # pin to a specific monitor
-mscreenshot window                   # focused window
+# Screenshots & recording — one front door, the shell's own engine
+mshellctl screenshot region          # in-shell selector → file + clipboard
+mshellctl screenshot region --save   # region → file only
+mshellctl screenshot window          # focused window
+mshellctl screenshot full --delay 3  # whole layout, 3-second countdown
+mshellctl screenrecord toggle full   # start/stop recording the whole layout
+mshellctl menu screenshot            # the GUI front of the same engine
 
 # Shell
 mshellctl menu show dashboard        # bring up the composite dashboard

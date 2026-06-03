@@ -1545,4 +1545,72 @@ env = FOO,bar
         );
         assert_eq!(categorise("spawn", "kitty"), "Launch");
     }
+
+    #[test]
+    fn summon_parts_round_trip() {
+        let b = Bind::new_summon("alt", "1", "^Spotify$", "", "uwsm app -a S -- start");
+        assert!(b.is_summon());
+        let (appid, title, spawn) = b.summon_parts();
+        assert_eq!(appid, "^Spotify$");
+        assert_eq!(title, ""); // empty title is written as `none`, read back empty
+        assert_eq!(spawn, "uwsm app -a S -- start");
+        // Empty title serialises as `none`; the spawn's spaces survive.
+        assert!(
+            b.to_line()
+                .contains("summon,^Spotify$,none,uwsm app -a S -- start")
+        );
+        // A real title round-trips.
+        let b2 = Bind::new_summon("alt", "2", "^k$", "^Tmux$", "kitty");
+        assert_eq!(
+            b2.summon_parts(),
+            ("^k$".to_string(), "^Tmux$".to_string(), "kitty".to_string())
+        );
+    }
+
+    #[test]
+    fn tag_key_helpers() {
+        let mv = Bind::new_tag("super+shift", "5", "tag", 16);
+        assert!(mv.is_tag_key() && mv.is_simple_tag_key());
+        assert_eq!(mv.action_str(), "tag");
+        assert_eq!(mv.tag_mask(), 16);
+        assert!(mv.m_super && mv.m_shift);
+        assert!(mv.to_line().contains("super+shift,5,tag,16"));
+
+        // The all-tags mask is still "simple".
+        let all = Bind::new_tag("super", "0", "tag", u32::MAX);
+        assert!(all.is_simple_tag_key());
+
+        // A multi-bit mask (tags 2+3) is a tag key but NOT simple — the Tags
+        // page leaves it to the raw editor, untouched.
+        let multi = parse_bind_line("bind = super,x,tag,6").unwrap();
+        assert!(multi.is_tag_key() && !multi.is_simple_tag_key());
+
+        let tog = Bind::new_tag("super", "1", "toggletag", 1);
+        assert!(tog.is_tag_key() && tog.is_simple_tag_key());
+        assert_eq!(tog.action_str(), "toggletag");
+    }
+
+    #[test]
+    fn plugin_keybinds_are_recognised() {
+        let p = parse_bind_line("bind = super+shift,t,spawn,mshellctl plugin keybind todo open")
+            .unwrap();
+        assert!(p.is_plugin_keybind());
+        let normal = parse_bind_line("bind = super,Return,spawn,kitty").unwrap();
+        assert!(!normal.is_plugin_keybind());
+    }
+
+    #[test]
+    fn render_collapses_duplicate_lines() {
+        // Regression: the old source-absorbing bug accumulated identical bind
+        // lines; render_binds_conf must collapse exact duplicates so a polluted
+        // binds.conf self-heals on the next save.
+        let line = "bind = super+shift,t,spawn,mshellctl plugin keybind todo open";
+        let dupes: Vec<Bind> = (0..8).map(|_| parse_bind_line(line).unwrap()).collect();
+        let rendered = render_binds_conf(&dupes);
+        assert_eq!(
+            rendered.matches(line).count(),
+            1,
+            "8 identical binds should collapse to one"
+        );
+    }
 }
