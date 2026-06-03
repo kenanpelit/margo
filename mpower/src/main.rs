@@ -13,10 +13,12 @@
 //!   * **Manual override** — if the active profile changes to something
 //!     mpower didn't set (the bar pill, the Settings dropdown, `powerprofilesctl`
 //!     by hand), mpower backs off and leaves it alone until the next AC
-//!     transition, then resumes.
+//!     transition — or until `mpower auto` / `mpower resume` clears the
+//!     back-off on demand.
 //!
 //! CLI: `mpower` / `mpower run` (daemon) · `mpower status` · `mpower cycle` ·
-//! `mpower set <profile>` · `mpower pause` · `mpower resume` · `mpower reload`.
+//! `mpower set <profile>` · `mpower pause` · `mpower resume` · `mpower auto` ·
+//! `mpower reload`.
 
 use std::path::PathBuf;
 use std::thread;
@@ -33,8 +35,8 @@ fn main() {
         Some("status") => print_status(),
         Some("cycle") => cycle_profile(),
         Some("set") => set_profile(std::env::args().nth(2)),
-        Some("pause") => set_pause(true),
-        Some("resume") => set_pause(false),
+        Some("pause") => pause_auto(),
+        Some("resume") | Some("auto") => resume_auto(),
         Some("reload") => println!(
             "mpower re-reads {} every tick — nothing to reload.",
             mpower::config_path().display()
@@ -85,6 +87,18 @@ fn run_daemon() {
     loop {
         let cfg = Config::load();
         let tick = cfg.tick_seconds.max(1) as u64;
+        // A `mpower auto` / `mpower resume` request clears a manual override
+        // without waiting for an AC transition. We also forget `last_set` so
+        // the next tick doesn't immediately re-arm the override from the
+        // still-divergent live profile — the daemon re-adopts whatever is
+        // current as its own baseline and resumes deciding from there.
+        if take_resume_auto_flag() {
+            st.manual_override = false;
+            st.last_set = None;
+            st.high_streak = 0;
+            st.low_streak = 0;
+            st.prev = None;
+        }
         if cfg.enabled && !is_paused() {
             tick_once(&cfg, &mut st);
         } else {
@@ -234,15 +248,34 @@ fn is_paused() -> bool {
     pause_path().exists()
 }
 
-fn set_pause(pause: bool) {
-    let path = pause_path();
-    if pause {
-        let _ = std::fs::write(&path, b"1");
-        println!("mpower: auto-switching paused (until `mpower resume`)");
-    } else {
-        let _ = std::fs::remove_file(&path);
-        println!("mpower: auto-switching resumed");
-    }
+/// One-shot flag dropped by `mpower auto` / `mpower resume`; the daemon
+/// consumes it to clear an in-memory manual override (no AC flip needed).
+fn resume_auto_path() -> PathBuf {
+    std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(std::env::temp_dir)
+        .join("mpower.resume-auto")
+}
+
+/// True (and removes the flag) if an auto-resume was requested since the
+/// last tick.
+fn take_resume_auto_flag() -> bool {
+    std::fs::remove_file(resume_auto_path()).is_ok()
+}
+
+fn pause_auto() {
+    let _ = std::fs::write(pause_path(), b"1");
+    println!("mpower: auto-switching paused (until `mpower resume` / `mpower auto`)");
+}
+
+/// Resume automatic management: lift any pause AND clear a manual override
+/// (the `set`/`cycle` back-off) so the daemon starts deciding again on the
+/// next tick — without waiting for an AC transition.
+fn resume_auto() {
+    let _ = std::fs::remove_file(pause_path());
+    let _ = std::fs::write(resume_auto_path(), b"1");
+    println!("mpower: back to automatic — cleared pause + any manual override");
 }
 
 // ── status / help ───────────────────────────────────────────────────────────
@@ -365,11 +398,13 @@ USAGE:
     mpower cycle        Switch to the next profile (perf → balanced → saver).
     mpower set <PROF>   Set a profile: performance | balanced | power-saver.
     mpower pause        Suspend auto-switching (leaves current profile).
-    mpower resume       Resume auto-switching.
+    mpower resume       Resume auto-switching (also clears a manual override).
+    mpower auto         Return to fully automatic now — lift pause AND clear a
+                        manual cycle/set back-off (alias of `resume`).
     mpower reload       (no-op — the daemon re-reads its config every tick)
 
     A manual cycle/set is honoured by the daemon (it backs off auto-switching
-    until the next AC transition).
+    until the next AC transition, or until `mpower auto` / `mpower resume`).
 
 CONFIG:
     {}
