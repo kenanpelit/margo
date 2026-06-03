@@ -15,10 +15,18 @@ pub use server::insert_ipc_source;
 
 use std::path::PathBuf;
 
-/// Conventional socket path: `$XDG_RUNTIME_DIR/margo/margo-ipc.sock`,
-/// falling back to `/run/user/<uid>/margo/...` when XDG is unset —
-/// the same base dir the old state snapshot used.
+/// Resolve the IPC socket path. `$MARGO_SOCKET` wins when set — this
+/// is what `mctl` / `mshellctl` already honour, so the server MUST
+/// honour it too, otherwise a nested/dev margo started with a custom
+/// `MARGO_SOCKET` would silently bind (and clobber, since we
+/// `remove_file` first) the *live* session's socket. Without the
+/// override it's `$XDG_RUNTIME_DIR/margo/margo-ipc.sock`, falling back
+/// to `/run/user/<uid>/margo/...` when XDG is unset — the same base
+/// dir the old state snapshot used.
 pub fn socket_path() -> PathBuf {
+    if let Some(p) = std::env::var_os("MARGO_SOCKET") {
+        return PathBuf::from(p);
+    }
     let runtime = std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| {

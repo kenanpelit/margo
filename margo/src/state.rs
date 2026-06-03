@@ -637,6 +637,15 @@ pub struct MargoState {
     /// boundaries). Render path overlays the rect; input path
     /// intercepts pointer + keyboard while this is `Some`.
     pub region_selector: Option<crate::screenshot_region::ActiveRegionSelector>,
+    /// Keyboard focus to restore when the region selector closes.
+    /// Captured at `open_region_selector` time: the selector drops
+    /// keyboard focus to `None` while it's up (so the previously
+    /// focused client gets a `wl_keyboard.leave` and releases its
+    /// pressed keys — otherwise the Enter that launched
+    /// `mctl dispatch screenshot-select` from a terminal never gets
+    /// its release event and the terminal repeats Enter forever).
+    /// On confirm / cancel we hand focus back to this surface.
+    pub region_selector_prev_focus: Option<FocusTarget>,
     /// Layer surfaces in their open / close animation. Keyed by the
     /// layer's wl_surface object id so the render path can look up
     /// the per-layer animation state without an O(n) scan. Each
@@ -1047,6 +1056,7 @@ impl MargoState {
             #[cfg(feature = "a11y")]
             a11y: crate::a11y::A11yState::new(),
             region_selector: None,
+            region_selector_prev_focus: None,
             layer_animations: std::collections::HashMap::new(),
             overview_transition_animation_ms: None,
             last_reload_diagnostics: Vec::new(),
@@ -1090,6 +1100,27 @@ impl MargoState {
         self.region_selector = Some(crate::screenshot_region::ActiveRegionSelector::at(
             cursor, mode,
         ));
+        // Drop keyboard focus while the selector is up. The selector's
+        // raw input intercept (input_handler) handles Enter / Escape
+        // directly and is focus-independent, so we don't need a
+        // focused surface — and crucially, clearing focus sends the
+        // previously focused client a `wl_keyboard.leave`, which makes
+        // it treat all its pressed keys as released. Without this, the
+        // Enter that launched `mctl dispatch screenshot-select` from a
+        // terminal never gets its release delivered (the selector
+        // swallows it), so the terminal's xkb keeps repeating Enter
+        // forever — the "it never stops" bug. We stash the prior focus
+        // and hand it back on confirm / cancel.
+        if let Some(keyboard) = self.seat.get_keyboard() {
+            self.region_selector_prev_focus = keyboard.current_focus();
+            let had_focus = self.region_selector_prev_focus.is_some();
+            let serial = SERIAL_COUNTER.next_serial();
+            keyboard.set_focus(self, None, serial);
+            tracing::info!(
+                had_focus,
+                "region selector: dropped keyboard focus (leave sent)"
+            );
+        }
         self.request_repaint();
         tracing::info!(
             "region selector opened at ({:.0}, {:.0}) mode={:?}",
@@ -1117,6 +1148,7 @@ impl MargoState {
             // "never mind", and a stuck dim overlay is the exact
             // bug we're killing.
             tracing::info!("region selector confirmed with empty selection — closing");
+            self.restore_focus_after_selector();
             self.request_repaint();
             return;
         };
@@ -1126,15 +1158,31 @@ impl MargoState {
         if let Err(e) = crate::utils::spawn_shell(&cmd) {
             tracing::error!(error = ?e, "spawn mscreenshot failed");
         }
+        self.restore_focus_after_selector();
         self.request_repaint();
     }
 
-    /// User pressed Escape — drop the selector without spawning
-    /// mscreenshot.
+    /// User pressed Escape / right-clicked — drop the selector
+    /// without spawning mscreenshot.
     pub fn cancel_region_selection(&mut self) {
         if self.region_selector.take().is_some() {
             tracing::info!("region selector cancelled");
+            self.restore_focus_after_selector();
             self.request_repaint();
+        }
+    }
+
+    /// Hand keyboard focus back to whatever held it before the region
+    /// selector opened (see [`Self::open_region_selector`]). The
+    /// stashed surface may have died meanwhile — `set_focus` tolerates
+    /// a stale/dead target — so this is always safe to call on close.
+    fn restore_focus_after_selector(&mut self) {
+        let prev = self.region_selector_prev_focus.take();
+        if let Some(keyboard) = self.seat.get_keyboard() {
+            let restored = prev.is_some();
+            let serial = SERIAL_COUNTER.next_serial();
+            keyboard.set_focus(self, prev, serial);
+            tracing::info!(restored, "region selector: restored keyboard focus");
         }
     }
 
