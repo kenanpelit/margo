@@ -1,6 +1,6 @@
 //! In-compositor region selector — W2.1 from the catch-and-surpass-niri plan.
 //!
-//! When the user binds `screenshot-region-ui` to a key, instead of
+//! When the user binds `screenshot-select` to a key, instead of
 //! spawning `slurp` as an external client (the previous shell-helper
 //! flow), the dispatch action lights up an [`ActiveRegionSelector`]
 //! on `MargoState`. While active:
@@ -71,7 +71,7 @@ impl SelectorMode {
 
     /// Parse a mode name from the dispatch action arg. Falls back
     /// to `Rec` for unrecognized strings — matches the bare
-    /// `screenshot-region-ui` action's existing default.
+    /// `screenshot-select` action's existing default.
     pub fn parse(s: Option<&str>) -> Self {
         match s.map(str::trim).map(str::to_ascii_lowercase).as_deref() {
             Some("rec") | None | Some("") => SelectorMode::Rec,
@@ -122,6 +122,21 @@ pub struct ActiveRegionSelector {
     pub dragging: bool,
     /// What to do on confirm.
     pub mode: SelectorMode,
+    /// Launch guard. Starts `true`; the first key release — or any
+    /// pointer button — clears it. While set, Enter / KP-Enter is
+    /// swallowed instead of confirming.
+    ///
+    /// This is the fix for the "it keeps pressing Enter / won't
+    /// stop" bug when the selector is opened from a terminal via
+    /// `mctl dispatch screenshot-select`: the physical Enter that
+    /// ran the command (and its key auto-repeats) would otherwise
+    /// land on the freshly-armed selector and confirm/re-arm it on
+    /// every repeat, so the dim overlay never went away. Holding
+    /// confirm until that key is released means the launching
+    /// keystroke can never confirm — only a deliberate, post-launch
+    /// Enter does. Works identically for keybind launches (the bind
+    /// key's release lifts the guard).
+    pub awaiting_release: bool,
 
     // Persistent SolidColorBuffer per outline edge. Keep them on
     // the selector itself so their internal Ids remain stable
@@ -161,6 +176,7 @@ impl ActiveRegionSelector {
             current: cursor_logical,
             dragging: false,
             mode,
+            awaiting_release: true,
             outline_top: make_outline(),
             outline_bottom: make_outline(),
             outline_left: make_outline(),
@@ -170,11 +186,28 @@ impl ActiveRegionSelector {
     }
 
     /// User clicked: pin the anchor at the click point and start
-    /// tracking.
+    /// tracking. A deliberate click also lifts the launch guard —
+    /// the user is clearly driving the selector now, not the
+    /// keystroke that opened it.
     pub fn begin_drag(&mut self, cursor: (f64, f64)) {
         self.anchor = cursor;
         self.current = cursor;
         self.dragging = true;
+        self.awaiting_release = false;
+    }
+
+    /// `true` once the launching keystroke has been released (or the
+    /// user has clicked). Enter / KP-Enter only confirms when this
+    /// is `true`; see [`Self::awaiting_release`].
+    pub fn confirm_armed(&self) -> bool {
+        !self.awaiting_release
+    }
+
+    /// Lift the launch guard — called on the first key release while
+    /// the selector is up, so the keystroke that opened it can no
+    /// longer confirm.
+    pub fn note_key_release(&mut self) {
+        self.awaiting_release = false;
     }
 
     /// Cursor moved while the button is held: extend the rect.
@@ -472,6 +505,38 @@ mod tests {
         assert_eq!(r.y, 150);
         assert_eq!(r.width, 200);
         assert_eq!(r.height, 100);
+    }
+
+    // ── launch guard (the "keeps pressing Enter" fix) ────────────────────────
+
+    #[test]
+    fn fresh_selector_is_not_confirm_armed() {
+        // Right after opening (e.g. from `mctl dispatch
+        // screenshot-select`), the launching keystroke hasn't been
+        // released yet — confirm must be disarmed so the Enter that
+        // ran the command (and its auto-repeats) can't fire it.
+        let s = sel_at(100.0, 100.0);
+        assert!(!s.confirm_armed());
+        assert!(s.awaiting_release);
+    }
+
+    #[test]
+    fn key_release_arms_confirm() {
+        // The first key release lifts the guard — a deliberate Enter
+        // afterwards is now allowed to confirm.
+        let mut s = sel_at(100.0, 100.0);
+        s.note_key_release();
+        assert!(s.confirm_armed());
+        assert!(!s.awaiting_release);
+    }
+
+    #[test]
+    fn click_arms_confirm() {
+        // Clicking is also a clear "the user is driving now" signal,
+        // so begin_drag lifts the guard too.
+        let mut s = sel_at(100.0, 100.0);
+        s.begin_drag((120.0, 120.0));
+        assert!(s.confirm_armed());
     }
 
     // ── floating-point edge cases ───────────────────────────────────────────

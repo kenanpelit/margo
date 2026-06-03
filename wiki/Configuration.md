@@ -188,7 +188,8 @@ Comma-separated aliases are interchangeable. Generated from the same source as
 | --- | --- | --- |
 | `spawn` | `<COMMAND>` | Run a shell command (`sh -c`). |
 | `run_script`, `rhai-eval` | `<PATH>` | Evaluate a Rhai script live. |
-| `screenshot` / `screenshot-window` / `screenshot-region` / `screenshot-region-ui` | | Capture output / window / region (last also copies) → editor → file. |
+| `screenshot` / `screenshot-window` / `screenshot-region` | | Capture output / window / region → editor → file. |
+| `screenshot-select` | `[rec\|area\|ri\|rc\|rf]` | In-compositor region picker (slurp-free): drag, release/Enter to capture, Escape/right-click to cancel. |
 | `reload`, `reload_config` | | Reload `config.conf` in place. |
 | `theme`, `set_theme` | `<preset>` | Live-swap preset: `default` / `minimal` / `gaudy`. |
 | `session_save` / `session_load` | | Save / restore per-monitor tag + layout state. |

@@ -936,7 +936,7 @@ Run after installing a fresh package. Anything failing here is a release blocker
 - [ ] HDR-capable monitor → no regression (still SDR; HDR Phase 1 advertises capability only, Phase 2/3 scaffolded but upstream-blocked).
 - [ ] Helium / Chromium → Meet → Share screen → Window tab populates with live windows; pick one → share preview shows live content (not frozen first frame).
 - [ ] F11 / browser fullscreen button / YouTube fullscreen → window goes fullscreen, exits cleanly.
-- [ ] `bind = NONE,Print,screenshot-region-ui` → screen dims, cursor visible, drag-rect produces screenshot.
+- [ ] `bind = NONE,Print,screenshot-select` → screen dims, cursor visible, drag-rect produces screenshot.
 - [ ] `mctl status --json | jq .outputs[0].focused.app_id` returns the focused window.
 - [ ] `mctl check-config ~/.config/margo/config.conf` reports zero errors.
 - [ ] `~/.config/margo/init.rhai` evaluates at startup if present (one log line at info level).

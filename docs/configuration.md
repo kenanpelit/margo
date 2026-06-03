@@ -340,7 +340,8 @@ Every action below can be bound to a key (`bind`), a mouse button (`mousebind`),
 | --- | --- | --- |
 | `spawn` | `<COMMAND>` | Run a shell command (through `sh -c`). |
 | `run_script`, `rhai-eval` | `<PATH>` | Evaluate a Rhai script against the live compositor. |
-| `screenshot` / `screenshot-window` / `screenshot-region` / `screenshot-region-ui` | | Capture output / window / region (last one also copies to the clipboard) → editor → file. |
+| `screenshot` / `screenshot-window` / `screenshot-region` | | Capture output / window / region → editor → file. |
+| `screenshot-select` | `[rec\|area\|ri\|rc\|rf]` | In-compositor region picker (slurp-free): drag to size, release/Enter to capture, Escape/right-click to cancel. |
 | `reload`, `reload_config` | | Reload `~/.config/margo/config.conf` in place. |
 | `theme`, `set_theme` | `<preset>` | Live-swap the visual preset: `default` / `minimal` / `gaudy` (no config reload). |
 | `session_save` / `session_load` | | Save / restore per-monitor tag + layout state (`session.json`). |

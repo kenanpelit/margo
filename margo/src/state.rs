@@ -1101,18 +1101,23 @@ impl MargoState {
 
     /// User pressed Enter / released the drag button — finalize
     /// the selection: spawn `mscreenshot <mode>` with
-    /// `MARGO_REGION_GEOM` set, then close the selector. Re-arms
-    /// (keeps the selector open) if the selection is degenerate
-    /// — user clicked but didn't drag. Caller decides whether to
-    /// route Enter through this immediately or wait for a real
-    /// drag.
+    /// `MARGO_REGION_GEOM` set, then close the selector. If there's
+    /// no real selection yet (user pressed Enter without dragging),
+    /// this **closes** the selector cleanly rather than leaving the
+    /// dim overlay stuck — Enter always either captures or exits, so
+    /// the selector never gets "stuck on". Escape / right-click do
+    /// the same.
     pub fn confirm_region_selection(&mut self) {
         let Some(sel) = self.region_selector.take() else {
             return;
         };
         let Some(geom) = sel.geom_string() else {
-            // Degenerate rect — re-arm so user can try again.
-            self.region_selector = Some(sel);
+            // Nothing dragged out. Close cleanly instead of
+            // re-arming — pressing Enter on an empty selector means
+            // "never mind", and a stuck dim overlay is the exact
+            // bug we're killing.
+            tracing::info!("region selector confirmed with empty selection — closing");
+            self.request_repaint();
             return;
         };
         let mode = sel.mode.subcommand();

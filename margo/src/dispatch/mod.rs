@@ -403,7 +403,8 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
         //   screenshot-screen       → alias of `screenshot`
         //   screenshot-window       → focused window → editor → file
         //   screenshot-region       → drag-region → save (no edit)
-        //   screenshot-region-ui    → drag-region → editor → file + clipboard
+        //   screenshot-select       → in-compositor region picker →
+        //                             editor → file + clipboard
         //
         // Required runtime tools (PKGBUILD `depends`): grim, slurp,
         // wl-clipboard. Optional editor: swappy / satty (optdep).
@@ -421,19 +422,23 @@ pub fn dispatch_action(state: &mut MargoState, action: &str, arg: &Arg) {
                 tracing::error!(error = ?e, "spawn mscreenshot failed");
             }
         }
-        "screenshot-region-ui" | "screenshot_region_ui" => {
-            // W2.1 in-compositor selection. Lights up the
-            // ActiveRegionSelector at the cursor's current
-            // position; subsequent pointer + key events route
-            // through the selector until confirm / cancel. On
-            // confirm, mscreenshot is spawned with the chosen
-            // mode + MARGO_REGION_GEOM env var so it skips its
-            // own slurp invocation.
-            //
-            // Optional arg picks the delivery mode (rec / area /
-            // ri / rc / rf — same names as mscreenshot
-            // subcommands). Bare action defaults to `rec` to
-            // preserve the previous keybind contract.
+        // In-compositor region picker. Lights up the
+        // ActiveRegionSelector at the cursor's current position;
+        // subsequent pointer + key events route through the selector
+        // until confirm / cancel. On confirm, mscreenshot is spawned
+        // with the chosen mode + MARGO_REGION_GEOM env var so it
+        // skips its own slurp invocation.
+        //
+        // Drag to size, release (or Enter) to capture, Escape /
+        // right-click to cancel. The launching keystroke can't
+        // confirm — Enter only fires after that key is released —
+        // so launching it from a terminal (`mctl dispatch
+        // screenshot-select`) no longer self-triggers.
+        //
+        // Optional arg picks the delivery mode (rec / area / ri / rc
+        // / rf — same names as mscreenshot subcommands). Bare action
+        // defaults to `rec`.
+        "screenshot-select" | "screenshot_select" => {
             let mode = crate::screenshot_region::SelectorMode::parse(arg.v.as_deref());
             state.open_region_selector(mode);
         }

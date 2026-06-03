@@ -126,9 +126,6 @@ fn handle_region_selector_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(
     state: &mut MargoState,
     event: E,
 ) {
-    if event.state() != KeyState::Pressed {
-        return;
-    }
     // Compare against raw evdev key codes (linux/input-event-codes.h):
     //   KEY_ESC = 1, KEY_ENTER = 28, KEY_KPENTER = 96.
     // No xkbcommon translation needed for these — they're physical-
@@ -136,8 +133,37 @@ fn handle_region_selector_keyboard<B: InputBackend, E: KeyboardKeyEvent<B>>(
     // keyboard.input() filter dance entirely; xkb modifier state
     // doesn't matter for "is the user pressing Escape".
     let raw: u32 = event.key_code().raw();
+
+    if event.state() != KeyState::Pressed {
+        // Any key release lifts the launch guard. The keystroke that
+        // *opened* the selector — the terminal Enter behind
+        // `mctl dispatch screenshot-select`, or a held keybind — is
+        // now released, so a fresh Enter is allowed to confirm.
+        // Without this, the launching Enter and its auto-repeats
+        // hammered `confirm_region_selection` the instant the
+        // selector appeared (degenerate rect → re-arm), so the dim
+        // overlay never went away — the "it keeps pressing Enter /
+        // won't stop" bug.
+        if let Some(sel) = state.region_selector.as_mut() {
+            sel.note_key_release();
+        }
+        return;
+    }
+
     match raw {
-        28 | 96 => state.confirm_region_selection(),
+        28 | 96 => {
+            // Only confirm once the launching keystroke has been
+            // released (or the user has clicked). The launch Enter
+            // and its repeats are swallowed until then.
+            let armed = state
+                .region_selector
+                .as_ref()
+                .map(|s| s.confirm_armed())
+                .unwrap_or(false);
+            if armed {
+                state.confirm_region_selection();
+            }
+        }
         1 => state.cancel_region_selection(),
         _ => {} // swallow everything else while the selector is up
     }
@@ -148,14 +174,23 @@ fn handle_region_selector_button<B: InputBackend, E: PointerButtonEvent<B>>(
     event: E,
 ) {
     let cursor = (state.input_pointer.x, state.input_pointer.y);
+    let pressed_evt = event.state() == smithay::backend::input::ButtonState::Pressed;
+    // 0x111 = BTN_RIGHT — a quick cancel, same as Escape. Handy when
+    // the selector is up and the user just wants out without
+    // reaching for the keyboard.
+    if event.button_code() == 0x111 {
+        if pressed_evt {
+            state.cancel_region_selection();
+        }
+        return;
+    }
     // 0x110 = BTN_LEFT (linux/input-event-codes.h).
     let is_left = event.button_code() == 0x110;
     if !is_left {
         return;
     }
-    let pressed = event.state() == smithay::backend::input::ButtonState::Pressed;
     if let Some(sel) = state.region_selector.as_mut() {
-        if pressed {
+        if pressed_evt {
             sel.begin_drag(cursor);
             state.request_repaint();
         } else {

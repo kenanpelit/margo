@@ -510,13 +510,17 @@ pub const ACTIONS: &[Action] = &[
         detail: "Spawns `mscreenshot area`. Uses `slurp` for selection.",
     },
     Action {
-        name: "screenshot-region-ui",
-        aliases: &["screenshot_region_ui"],
-        args: "",
+        name: "screenshot-select",
+        aliases: &["screenshot_select"],
+        args: "[rec|area|ri|rc|rf]",
         group: Group::System,
-        summary: "Drag a region → editor → file + clipboard.",
-        detail: "Spawns `mscreenshot rec`. Region selection via `slurp`, \
-                 capture via `grim`, clipboard via `wl-copy`.",
+        summary: "In-compositor region picker → mscreenshot.",
+        detail: "Lights up margo's own slurp-free selection overlay: \
+                 drag to size, release or Enter to capture, Escape or \
+                 right-click to cancel. On confirm spawns `mscreenshot \
+                 <mode>` (default `rec`) with `MARGO_REGION_GEOM` set so \
+                 it skips its own slurp pass. The launching keystroke \
+                 can't self-confirm — safe to run from a terminal.",
     },
     Action {
         name: "screenshot-output",
