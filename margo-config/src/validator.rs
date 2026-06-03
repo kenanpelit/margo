@@ -141,6 +141,26 @@ fn validate_text(
             check_csv_commas(path, lineno, raw, eq_pos, &val, val_trim_offset, report);
         }
 
+        // `bind` arity: needs at least MODS,KEY,ACTION. A 1- or 2-field
+        // bind is silently dropped by the parser (no key/action), so
+        // surface it. (Trailing/leading/doubled commas are E001 above,
+        // so a value like `alt,Tab,zoom,` won't double-report here.)
+        if is_bind_key(key) && val.split(',').count() < 3 {
+            let val_start = eq_pos + 1 + val_trim_offset + 1;
+            report.push(ConfigDiagnostic {
+                path: path.to_path_buf(),
+                line: lineno,
+                col: val_start,
+                end_col: val_start + val.len().max(1),
+                severity: Severity::Error,
+                code: "E004".into(),
+                message: "incomplete `bind` — expected MODS,KEY,ACTION \
+                          (e.g. `super,Return,spawn,kitty`)"
+                    .to_string(),
+                line_text: raw.to_string(),
+            });
+        }
+
         // Unknown top-level key (best-effort; allowlist).
         if !is_csv_shaped_key(key) && !is_bind_key(key) && !is_known_scalar_key(key) {
             let key_col = raw.find(key.chars().next().unwrap_or('?')).unwrap_or(0) + 1;
@@ -391,6 +411,25 @@ mod tests {
         let r = validate_str("bind = alt,,Tab,overview_focus_next\n");
         assert!(r.has_errors());
         assert_eq!(r.errors().next().unwrap().code, "E001");
+    }
+
+    #[test]
+    fn incomplete_bind_is_an_error() {
+        // `bind` needs at least MODS,KEY,ACTION — this is missing the action.
+        let r = validate_str("bind = alt,Tab\n");
+        assert!(r.has_errors(), "a 2-field bind must surface an error");
+        let e = r.errors().next().unwrap();
+        assert_eq!(e.code, "E004");
+        assert_eq!(e.line, 1);
+    }
+
+    #[test]
+    fn complete_bind_with_three_fields_is_clean() {
+        let r = validate_str("bind = alt,Tab,zoom\n");
+        assert!(
+            !r.has_errors() && !r.has_warnings(),
+            "MODS,KEY,ACTION is a valid bind"
+        );
     }
 
     #[test]
