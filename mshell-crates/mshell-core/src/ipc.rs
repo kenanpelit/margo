@@ -91,6 +91,9 @@ pub fn init_ipc_shell_service(sender: &ComponentSender<Shell>) {
                 IPCCommand::Ufw => {
                     app_sender.emit(ShellInput::ToggleUfwMenu(active_monitor().await));
                 }
+                IPCCommand::Privacy => {
+                    app_sender.emit(ShellInput::TogglePrivacyMenu(active_monitor().await));
+                }
                 IPCCommand::Bluetooth => {
                     app_sender.emit(ShellInput::ToggleBluetoothMenu(active_monitor().await));
                 }
@@ -469,6 +472,7 @@ enum IPCCommand {
     Screenshot,
     Wallpaper,
     Ufw,
+    Privacy,
     Bluetooth,
     /// Drive the native auto-connect engine: "toggle" (smart) | "connect" |
     /// "disconnect". Backs `mshellctl bluetooth …` (bind to F10).
@@ -1339,6 +1343,9 @@ impl IPCService {
     }
     async fn ufw(&self) {
         let _ = self.tx.send(IPCCommand::Ufw);
+    }
+    async fn privacy(&self) {
+        let _ = self.tx.send(IPCCommand::Privacy);
     }
     async fn bluetooth(&self) {
         let _ = self.tx.send(IPCCommand::Bluetooth);

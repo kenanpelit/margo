@@ -62,6 +62,10 @@ pub enum MenuWidget {
     Notifications,
     Podman,
     Power,
+    /// `privacy` bar pill's panel — live "in use now" rows (mic /
+    /// camera / screen-share + which apps) plus a clearable access
+    /// log of recent started/stopped events.
+    Privacy,
     /// Dashboard "what's happening now" summary card — pulls
     /// notification count, low-battery state, and CPU thermals
     /// into one glanceable list. Lives at the top of the
@@ -152,6 +156,7 @@ impl MenuWidget {
             MenuWidget::Notifications => "Notifications",
             MenuWidget::Podman => "Podman",
             MenuWidget::Power => "Power Profile",
+            MenuWidget::Privacy => "Privacy",
             MenuWidget::OverviewIntel => "Overview Intelligence",
             MenuWidget::Ufw => "UFW Firewall",
             MenuWidget::QuickActions(_) => "Quick Actions",
@@ -213,6 +218,7 @@ impl MenuWidget {
             MenuWidget::Notifications,
             MenuWidget::Podman,
             MenuWidget::Power,
+            MenuWidget::Privacy,
             MenuWidget::OverviewIntel,
             MenuWidget::Ufw,
             MenuWidget::QuickActions(QuickActionsConfig::default()),

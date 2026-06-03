@@ -1486,6 +1486,7 @@ impl Component for SettingsWindowModel {
             MediaPlayer,
             HiddenBar,
             Catwalk,
+            Privacy,
             Clipboard,
             SystemUpdate,
             Dock,
@@ -1506,6 +1507,7 @@ impl Component for SettingsWindowModel {
                     Self::MediaPlayer => "Media Player",
                     Self::HiddenBar => "Hidden Bar",
                     Self::Catwalk => "Catwalk",
+                    Self::Privacy => "Privacy",
                 }
             }
         }
@@ -1702,12 +1704,7 @@ impl Component for SettingsWindowModel {
                 label: "Margo Tags",
                 icon: "square-symbolic",
             },
-            WidgetEntry::Pill {
-                kind: BarPillKind::Privacy,
-                stack_name: "pill_privacy",
-                label: "Privacy",
-                icon: "microphone-sensitivity-high-symbolic",
-            },
+            WidgetEntry::Privacy,
             WidgetEntry::Pill {
                 kind: BarPillKind::Reboot,
                 stack_name: "pill_reboot",
@@ -1996,6 +1993,23 @@ impl Component for SettingsWindowModel {
                     widgets_sub_sidebar_box.append(&btn);
                     widgets_sub_stack
                         .add_named(model.catwalk_settings_controller.widget(), Some("catwalk"));
+                }
+                WidgetEntry::Privacy => {
+                    let btn = make_sub_btn(
+                        "Privacy",
+                        "security-high-symbolic",
+                        "privacy",
+                        group_anchor.as_ref(),
+                    );
+                    if group_anchor.is_none() {
+                        group_anchor = Some(btn.clone());
+                    }
+                    widgets_sub_sidebar_box.append(&btn);
+                    let ctrl = crate::privacy_pill_settings::PrivacyPillSettingsModel::builder()
+                        .launch(crate::privacy_pill_settings::PrivacyPillSettingsInit {})
+                        .detach();
+                    widgets_sub_stack.add_named(ctrl.widget(), Some("privacy"));
+                    Box::leak(Box::new(ctrl));
                 }
                 WidgetEntry::Clipboard => {
                     let btn = make_sub_btn(

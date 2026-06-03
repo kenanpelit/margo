@@ -109,6 +109,9 @@ pub(crate) enum MenuType {
     /// `ssh_sessions` bar pill's panel — searchable `~/.ssh/config`
     /// host list with active-session indicators.
     SshSessions,
+    /// `privacy` bar pill's panel — live "in use now" rows + a
+    /// clearable mic / camera / screen-share access log.
+    Privacy,
     MediaPlayer,
     Session,
     /// Combined clock + quick-settings dashboard. Renders the
@@ -501,6 +504,12 @@ impl Component for MenuModel {
                 effect_widgets!(effects, base_config, sender, power_menu);
                 effect_min_width!(effects, base_config, sender, power_menu);
                 effect_max_height!(effects, base_config, sender, power_menu);
+            }
+            MenuType::Privacy => {
+                css_class = "privacy-menu".to_string();
+                effect_widgets!(effects, base_config, sender, privacy_menu);
+                effect_min_width!(effects, base_config, sender, privacy_menu);
+                effect_max_height!(effects, base_config, sender, privacy_menu);
             }
             MenuType::MediaPlayer => {
                 css_class = "media-player-menu".to_string();

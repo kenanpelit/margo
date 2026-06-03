@@ -4173,6 +4173,8 @@ dependencies = [
  "reactive_graph",
  "reactive_stores",
  "relm4",
+ "serde",
+ "serde_json",
  "tracing",
 ]
 

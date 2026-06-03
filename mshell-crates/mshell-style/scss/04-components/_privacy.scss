@@ -1,21 +1,121 @@
-// Privacy indicator pill — only renders when at least one of
-// the watched sensors (mic / camera) is in use, so the active
-// state is the only one we visually style. The accent color
-// reuses the error token so it reads as "pay attention" without
-// inventing a new palette slot.
+// Privacy indicator pill + panel.
+//
+// The pill shows one glyph per watched sensor (mic / camera / screen).
+// When `hide_inactive` is off the inactive glyphs read as dimmed
+// watchdog icons; an active glyph lights up in the configured accent
+// (chosen via a `privacy-accent-*` class on the pill root, so the colour
+// always comes from a matugen token — never hardcoded).
+
 .privacy-bar-widget {
-  // Both child icons sit next to each other when both sensors
-  // are active. 4 px spacing matches the bar pill rhythm.
   > box {
     padding: 0 var(--space-1);
   }
 
-  &.active {
-    color: var(--error);
+  // Resting / inactive glyphs: muted, so the pill reads as a quiet
+  // watchdog until something actually grabs a sensor.
+  .privacy-icon {
+    color: var(--on-surface-variant);
+    opacity: 0.55;
   }
 
-  .privacy-mic,
-  .privacy-camera {
+  // Active accent — resolved per configured colour key.
+  &.privacy-accent-error .privacy-icon.active {
     color: var(--error);
+  }
+  &.privacy-accent-primary .privacy-icon.active {
+    color: var(--primary);
+  }
+  &.privacy-accent-secondary .privacy-icon.active {
+    color: var(--secondary);
+  }
+  &.privacy-accent-tertiary .privacy-icon.active {
+    color: var(--tertiary);
+  }
+
+  .privacy-icon.active {
+    opacity: 1;
+  }
+}
+
+// ── Panel ────────────────────────────────────────────────────────────
+.privacy-panel {
+  padding: var(--space-3);
+
+  .privacy-panel-header {
+    .privacy-panel-icon {
+      color: var(--primary);
+    }
+    .privacy-panel-title {
+      font-weight: 700;
+      font-size: 1.1em;
+    }
+    .privacy-clear-button {
+      min-width: 28px;
+      min-height: 28px;
+      padding: var(--space-1);
+    }
+  }
+
+  // Live "in use now" rows — surface card per active sensor.
+  .privacy-live {
+    .privacy-live-row {
+      padding: var(--space-2);
+      border-radius: var(--radius-widget, 10px);
+      background: var(--surface-container-high);
+
+      .privacy-live-icon.active {
+        color: var(--error);
+      }
+      .privacy-live-label {
+        font-weight: 600;
+      }
+    }
+    .privacy-live-idle {
+      color: var(--on-surface-variant);
+      padding: var(--space-1) var(--space-2);
+    }
+  }
+
+  // Access log — newest first.
+  .privacy-log {
+    .privacy-log-empty {
+      color: var(--on-surface-variant);
+      padding: var(--space-4) var(--space-2);
+    }
+    .privacy-log-row {
+      padding: var(--space-2);
+      border-radius: var(--radius-widget, 10px);
+
+      &:hover {
+        background: var(--surface-container);
+      }
+
+      .privacy-log-icon {
+        color: var(--on-surface-variant);
+      }
+      .privacy-log-app {
+        font-weight: 600;
+      }
+      .privacy-log-time {
+        color: var(--on-surface-variant);
+        font-size: 0.85em;
+      }
+      .privacy-log-sep {
+        color: var(--on-surface-variant);
+        opacity: 0.5;
+        font-size: 0.85em;
+      }
+      .privacy-log-action {
+        font-size: 0.85em;
+        font-weight: 700;
+
+        &.started {
+          color: var(--success);
+        }
+        &.stopped {
+          color: var(--error);
+        }
+      }
+    }
   }
 }

@@ -174,6 +174,7 @@ pub(crate) enum BarOutput {
     IpClicked,
     NetworkClicked,
     PowerClicked,
+    PrivacyClicked,
     MediaPlayerClicked,
     /// Margo layout switcher bar pill clicked. Frame catches and
     /// toggles the in-stack MargoLayout menu (replaces the
@@ -1038,7 +1039,11 @@ impl BarModel {
             BarWidget::Privacy => Box::new(
                 PrivacyModel::builder()
                     .launch(PrivacyInit { orientation })
-                    .detach(),
+                    .forward(sender.output_sender(), |msg| match msg {
+                        crate::bars::bar_widgets::privacy::PrivacyOutput::Clicked => {
+                            BarOutput::PrivacyClicked
+                        }
+                    }),
             ),
             BarWidget::Reboot => Box::new(
                 RebootModel::builder()

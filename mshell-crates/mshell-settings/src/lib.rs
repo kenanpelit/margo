@@ -43,6 +43,7 @@ mod notification_settings;
 mod overview_settings;
 mod plugins_settings;
 mod power_settings;
+mod privacy_pill_settings;
 mod privacy_settings;
 mod region_settings;
 mod reorder_dnd;

@@ -107,6 +107,7 @@ bars:
     - AudioDashboard
     - Separator
     - RecordingIndicator
+    - Privacy
     - Bluetooth
     - Separator
     - VpnIndicator

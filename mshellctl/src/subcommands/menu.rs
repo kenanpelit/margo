@@ -67,6 +67,8 @@ pub enum MenuCommands {
     Wallpaper,
     /// Toggle the UFW firewall menu
     Ufw,
+    /// Toggle the Privacy menu (mic / camera / screen-share access log)
+    Privacy,
     /// Toggle the Bluetooth menu (connect/disconnect/scan/pair)
     Bluetooth,
     /// Toggle the CPU Dashboard menu (CPU, temp, RAM, load)
@@ -174,6 +176,9 @@ pub async fn execute(command: MenuCommands) -> anyhow::Result<()> {
         }
         MenuCommands::Ufw => {
             bus_command("Ufw").await?;
+        }
+        MenuCommands::Privacy => {
+            bus_command("Privacy").await?;
         }
         MenuCommands::Bluetooth => {
             bus_command("Bluetooth").await?;

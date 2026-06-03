@@ -27,6 +27,7 @@ const WALLPAPER_MENU: &str = "wallpaper";
 const SCREENSHARE_MENU: &str = "screenshare";
 const WIZARD_MENU: &str = "wizard";
 const NUFW_MENU: &str = "ufw";
+const PRIVACY_MENU: &str = "privacy";
 const BLUETOOTH_MENU: &str = "bluetooth";
 const CPU_DASHBOARD_MENU: &str = "cpu_dashboard";
 const AUDIO_DASHBOARD_MENU: &str = "audio_dashboard";
@@ -91,6 +92,7 @@ pub struct Frame {
     screenshare_menu: Controller<MenuModel>,
     wizard_menu: Controller<MenuModel>,
     ufw_menu: Controller<MenuModel>,
+    privacy_menu: Controller<MenuModel>,
     bluetooth_menu: Controller<MenuModel>,
     cpu_dashboard_menu: Controller<MenuModel>,
     audio_dashboard_menu: Controller<MenuModel>,
@@ -179,6 +181,7 @@ pub enum FrameInput {
     ToggleAppLauncherMenuWithTab(String),
     ToggleWallpaperMenu,
     ToggleUfwMenu,
+    TogglePrivacyMenu,
     ToggleBluetoothMenu,
     ToggleCpuDashboardMenu,
     ToggleAudioDashboardMenu,
@@ -762,6 +765,7 @@ impl Component for Frame {
         let screenshare_menu = Self::build_menu(&sender, MenuType::HyprlandScreenshare);
         let wizard_menu = Self::build_menu(&sender, MenuType::Wizard);
         let ufw_menu = Self::build_menu(&sender, MenuType::Ufw);
+        let privacy_menu = Self::build_menu(&sender, MenuType::Privacy);
         let bluetooth_menu = Self::build_menu(&sender, MenuType::Bluetooth);
         let cpu_dashboard_menu = Self::build_menu(&sender, MenuType::CpuDashboard);
         let audio_dashboard_menu = Self::build_menu(&sender, MenuType::AudioDashboard);
@@ -969,6 +973,7 @@ impl Component for Frame {
             screenshare_menu,
             wizard_menu,
             ufw_menu,
+            privacy_menu,
             bluetooth_menu,
             cpu_dashboard_menu,
             audio_dashboard_menu,
@@ -1142,6 +1147,10 @@ impl Component for Frame {
             }
             FrameInput::ToggleUfwMenu => {
                 self.toggle_menu(NUFW_MENU, widgets);
+                self.sync_keyboard_mode(root);
+            }
+            FrameInput::TogglePrivacyMenu => {
+                self.toggle_menu(PRIVACY_MENU, widgets);
                 self.sync_keyboard_mode(root);
             }
             FrameInput::ToggleBluetoothMenu => {
@@ -2157,6 +2166,13 @@ impl Frame {
         let wallpaper_menu_widget: Widget = self.wallpaper_menu.widget().clone().upcast();
         let screenshare_menu_widget: Widget = self.screenshare_menu.widget().clone().upcast();
         let ufw_menu_widget: Widget = self.ufw_menu.widget().clone().upcast();
+        let privacy_menu_widget: Widget = self.privacy_menu.widget().clone().upcast();
+        let privacy_menu_position = mshell_config::config_manager::config_manager()
+            .config()
+            .menus()
+            .privacy_menu()
+            .position()
+            .get();
         // Bluetooth menu position read directly from config (skip
         // the 19-arg RepositionMenus signature — defaults work).
         let bluetooth_menu_widget: Widget = self.bluetooth_menu.widget().clone().upcast();
@@ -2309,6 +2325,12 @@ impl Frame {
             &screenshare_menu_position,
         );
         Self::add_to_stack(widgets, &ufw_menu_widget, NUFW_MENU, &ufw_menu_position);
+        Self::add_to_stack(
+            widgets,
+            &privacy_menu_widget,
+            PRIVACY_MENU,
+            &privacy_menu_position,
+        );
         Self::add_to_stack(
             widgets,
             &bluetooth_menu_widget,
@@ -2504,6 +2526,7 @@ impl Frame {
                 BarOutput::AppLauncherClicked => FrameInput::ToggleAppLauncherMenu,
                 BarOutput::WallpaperClicked => FrameInput::ToggleWallpaperMenu,
                 BarOutput::UfwClicked => FrameInput::ToggleUfwMenu,
+                BarOutput::PrivacyClicked => FrameInput::TogglePrivacyMenu,
                 BarOutput::BluetoothClicked => FrameInput::ToggleBluetoothMenu,
                 BarOutput::CpuDashboardClicked => FrameInput::ToggleCpuDashboardMenu,
                 BarOutput::AudioDashboardClicked => FrameInput::ToggleAudioDashboardMenu,

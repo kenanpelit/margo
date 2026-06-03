@@ -14,6 +14,8 @@ mshell-image.workspace = true
 reactive_graph.workspace = true
 reactive_stores.workspace = true
 relm4.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 tracing.workspace = true
 [lints]
 workspace = true

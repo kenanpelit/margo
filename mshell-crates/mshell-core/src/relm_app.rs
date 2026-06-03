@@ -91,6 +91,7 @@ pub(crate) enum ShellInput {
     ToggleWallpaperMenu(Option<String>),
     CycleWallpaper(mshell_cache::wallpaper::CycleDirection),
     ToggleUfwMenu(Option<String>),
+    TogglePrivacyMenu(Option<String>),
     ToggleBluetoothMenu(Option<String>),
     ToggleCpuDashboardMenu(Option<String>),
     ToggleAudioDashboardMenu(Option<String>),
@@ -532,6 +533,11 @@ impl Component for Shell {
             ShellInput::ToggleUfwMenu(monitor_name) => {
                 if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
                     frame.emit(FrameInput::ToggleUfwMenu);
+                }
+            }
+            ShellInput::TogglePrivacyMenu(monitor_name) => {
+                if let Some(frame) = resolve_frame(&self.window_groups, &monitor_name) {
+                    frame.emit(FrameInput::TogglePrivacyMenu);
                 }
             }
             ShellInput::ToggleBluetoothMenu(monitor_name) => {

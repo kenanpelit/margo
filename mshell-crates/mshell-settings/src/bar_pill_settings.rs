@@ -26,7 +26,6 @@ pub(crate) enum BarPillKind {
     // `lock_settings.rs` — so it's not a generic bar-pill info page.
     Logout,
     MargoTags,
-    Privacy,
     Reboot,
     RecordingIndicator,
     Shutdown,
@@ -43,7 +42,6 @@ impl BarPillKind {
             Self::ColorPicker => "ColorPicker",
             Self::Logout => "Logout",
             Self::MargoTags => "Margo Tags",
-            Self::Privacy => "Privacy",
             Self::Reboot => "Reboot",
             Self::RecordingIndicator => "Recording Indicator",
             Self::Shutdown => "Shutdown",
@@ -73,9 +71,6 @@ impl BarPillKind {
             Self::Logout => "Logs out of the session. Confirms with a dialog.",
             Self::MargoTags => {
                 "1–9 tag pills with focus / occupied / urgent states. Click to switch tags, scroll to cycle."
-            }
-            Self::Privacy => {
-                "Lights up whenever an app is using the microphone or a camera. Mic detection rides PipeWire's recording-streams list (zero noise overhead); camera state is polled every 3 s with `fuser /dev/video*`. The pill hides itself when nothing is active so the bar stays quiet by default. Tooltip names which apps are recording."
             }
             Self::Reboot => "Reboots the system. Confirms with a dialog.",
             Self::RecordingIndicator => {

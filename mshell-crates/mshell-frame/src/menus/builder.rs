@@ -67,6 +67,9 @@ use crate::menus::menu_widgets::podman::podman_menu_widget::{
 use crate::menus::menu_widgets::power::power_menu_widget::{
     PowerMenuWidgetInit, PowerMenuWidgetModel,
 };
+use crate::menus::menu_widgets::privacy::privacy_menu_widget::{
+    PrivacyMenuWidgetInit, PrivacyMenuWidgetModel,
+};
 use crate::menus::menu_widgets::quick_action::quick_actions::{
     QuickActionsInit, QuickActionsModel, QuickActionsOutput,
 };
@@ -267,6 +270,11 @@ pub fn build_widget(
         MenuWidget::Power => Box::new(
             PowerMenuWidgetModel::builder()
                 .launch(PowerMenuWidgetInit {})
+                .detach(),
+        ),
+        MenuWidget::Privacy => Box::new(
+            PrivacyMenuWidgetModel::builder()
+                .launch(PrivacyMenuWidgetInit {})
                 .detach(),
         ),
         MenuWidget::Notifications => Box::new(

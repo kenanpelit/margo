@@ -480,8 +480,110 @@ pub struct BarWidgets {
     pub hidden_bar: HiddenBarConfig,
     /// Catwalk — the CPU-reactive animated cat pill.
     pub catwalk: CatwalkConfig,
+    /// Privacy indicator — mic / camera / screen-share watchdog pill.
+    #[serde(default)]
+    pub privacy: PrivacyWidgetConfig,
     /// User-defined pills, referenced from a bar slot via `!Custom <name>`.
     pub custom_widgets: Vec<CustomWidgetConfig>,
+}
+
+/// Which themed accent the [`crate::schema::bar_widgets::BarWidget::Privacy`]
+/// pill lights up with when a sensor is in use. Maps to a matugen CSS var
+/// via a `privacy-accent-*` class on the pill (see `_privacy.scss`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Store, JsonSchema)]
+pub enum PrivacyAccent {
+    Primary,
+    Error,
+    Secondary,
+    Tertiary,
+}
+
+impl PrivacyAccent {
+    /// CSS modifier class the pill carries so the stylesheet can pick the
+    /// matugen var (never hardcode colours — see DESIGN.md).
+    pub fn css_class(self) -> &'static str {
+        match self {
+            Self::Primary => "privacy-accent-primary",
+            Self::Error => "privacy-accent-error",
+            Self::Secondary => "privacy-accent-secondary",
+            Self::Tertiary => "privacy-accent-tertiary",
+        }
+    }
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Primary => "Primary",
+            Self::Error => "Error (red)",
+            Self::Secondary => "Secondary",
+            Self::Tertiary => "Tertiary",
+        }
+    }
+    pub fn all() -> &'static [Self] {
+        &[Self::Error, Self::Primary, Self::Secondary, Self::Tertiary]
+    }
+}
+
+impl PatchField for PrivacyAccent {
+    fn patch_field(
+        &mut self,
+        new: Self,
+        path: &StorePath,
+        notify: &mut dyn FnMut(&StorePath),
+        _keys: Option<&KeyMap>,
+    ) {
+        if *self != new {
+            *self = new;
+            notify(path);
+        }
+    }
+}
+
+/// Settings for the [`crate::schema::bar_widgets::BarWidget::Privacy`] pill
+/// (port of the noctalia privacy-indicator plugin). Detects which apps are
+/// using the microphone, a camera, or screen-sharing, lights up an inline
+/// glyph per active sensor, keeps a clearable access log (left-click panel),
+/// and optionally toasts on activation.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
+#[serde(default)]
+pub struct PrivacyWidgetConfig {
+    /// Hide the pill entirely while nothing is in use (margo's quiet-bar
+    /// default is the opposite of noctalia's — here we keep the indicator
+    /// visible-but-dimmed so it reads as an always-on watchdog).
+    pub hide_inactive: bool,
+    /// Toast (notify-send) when a sensor first goes active.
+    pub enable_toast: bool,
+    /// Watch the microphone (apps recording audio).
+    pub track_mic: bool,
+    /// Watch cameras (apps holding a `/dev/video*` capture node).
+    pub track_camera: bool,
+    /// Watch for screen-sharing — polls `pw-dump` for screencast nodes.
+    /// The heaviest of the three; disable on weak machines to drop the
+    /// periodic PipeWire scan (mic + camera detection stay on).
+    pub detect_screen_share: bool,
+    /// Regex of microphone app names to ignore (e.g. your own always-on
+    /// assistant). Empty = no filter.
+    pub mic_filter: String,
+    /// Regex of camera app names to ignore. Empty = no filter.
+    pub cam_filter: String,
+    /// Accent the active glyphs light up with.
+    pub accent: PrivacyAccent,
+    /// Max access-log entries kept (and persisted). 0 disables history.
+    pub history_limit: u32,
+}
+
+impl Default for PrivacyWidgetConfig {
+    fn default() -> Self {
+        Self {
+            hide_inactive: false,
+            enable_toast: true,
+            track_mic: true,
+            track_camera: true,
+            detect_screen_share: true,
+            mic_filter: String::new(),
+            cam_filter: String::new(),
+            accent: PrivacyAccent::Error,
+            history_limit: 50,
+        }
+    }
 }
 
 /// Settings for the [`BarWidget::Catwalk`] animated-cat pill (port of the
@@ -671,6 +773,8 @@ pub struct Menus {
     pub control_center_menu: Menu,
     #[serde(default = "default_ssh_menu")]
     pub ssh_menu: Menu,
+    #[serde(default = "default_privacy_menu")]
+    pub privacy_menu: Menu,
     pub media_player_menu: Menu,
     pub session_menu: Menu,
     /// Settings panel — embeds in the frame's menu stack instead
@@ -805,6 +909,18 @@ fn default_ssh_menu() -> Menu {
     }
 }
 
+fn default_privacy_menu() -> Menu {
+    Menu {
+        position: Position::TopRight,
+        widgets: vec![MenuWidget::Privacy],
+        // Roomy enough for the "in use now" rows + the access-log list
+        // (icon + app + time + started/stopped); capped so a long log
+        // scrolls instead of overflowing the screen.
+        minimum_width: 380,
+        maximum_height: 560,
+    }
+}
+
 fn default_cpu_dashboard_menu() -> Menu {
     Menu {
         position: Position::Top,
@@ -932,6 +1048,7 @@ impl Default for Menus {
             alarmclock_menu: default_alarmclock_menu(),
             control_center_menu: default_control_center_menu(),
             ssh_menu: default_ssh_menu(),
+            privacy_menu: default_privacy_menu(),
             plugin_panel_menu: default_plugin_panel_menu(),
             media_player_menu: Menu {
                 position: Position::TopRight,
