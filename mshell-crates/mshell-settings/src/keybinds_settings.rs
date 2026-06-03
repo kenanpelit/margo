@@ -229,21 +229,66 @@ impl Bind {
             action: "summon".to_string(),
             ..Default::default()
         };
-        for m in mods.split('+') {
-            match m.trim().to_ascii_lowercase().as_str() {
-                "super" | "mod" | "mod4" | "logo" | "win" => b.m_super = true,
-                "ctrl" | "control" => b.m_ctrl = true,
-                "shift" => b.m_shift = true,
-                "alt" | "mod1" => b.m_alt = true,
-                _ => {}
-            }
-        }
+        b.set_mods(mods);
         let title = if title.trim().is_empty() {
             "none"
         } else {
             title.trim()
         };
         b.args = format!("{},{},{}", appid.trim(), title, spawn.trim());
+        b
+    }
+
+    fn set_mods(&mut self, mods: &str) {
+        for m in mods.split('+') {
+            match m.trim().to_ascii_lowercase().as_str() {
+                "super" | "mod" | "mod4" | "logo" | "win" => self.m_super = true,
+                "ctrl" | "control" => self.m_ctrl = true,
+                "shift" => self.m_shift = true,
+                "alt" | "mod1" => self.m_alt = true,
+                _ => {}
+            }
+        }
+    }
+
+    // ── Tag-key helpers (move / toggle the focused window's tags) ─────
+    pub(crate) fn action_str(&self) -> &str {
+        self.action.trim()
+    }
+
+    /// `tag` / `toggletag` — moves or toggles the focused window's tag set.
+    pub(crate) fn is_tag_key(&self) -> bool {
+        let a = self.action.to_ascii_lowercase();
+        a == "tag" || a == "toggletag"
+    }
+
+    /// The raw tag bitmask argument (`tag,16` → 16). Binds carry a raw
+    /// mask, not a 1-based index.
+    pub(crate) fn tag_mask(&self) -> u32 {
+        self.args.trim().parse().unwrap_or(0)
+    }
+
+    /// A tag-key the friendly Tags page can represent: a single tag bit or
+    /// the all-tags mask. Multi-bit masks (e.g. `tag,6`) are left to the
+    /// raw keybinds editor and preserved untouched.
+    pub(crate) fn is_simple_tag_key(&self) -> bool {
+        if !self.is_tag_key() {
+            return false;
+        }
+        let m = self.tag_mask();
+        m == u32::MAX || (m != 0 && m.is_power_of_two())
+    }
+
+    /// Build a `tag` / `toggletag` bind. `action` is `"tag"` or
+    /// `"toggletag"`; `mask` is the raw tag bitmask.
+    pub(crate) fn new_tag(mods: &str, key: &str, action: &str, mask: u32) -> Bind {
+        let mut b = Bind {
+            key: key.trim().to_string(),
+            action: action.trim().to_string(),
+            args: mask.to_string(),
+            ..Default::default()
+        };
+        b.set_mods(mods);
         b
     }
 }

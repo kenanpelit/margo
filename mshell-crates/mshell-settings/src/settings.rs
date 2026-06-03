@@ -661,7 +661,7 @@ impl Component for SettingsWindowModel {
                             gtk::Image { set_icon_name: Some("view-app-grid-symbolic") },
                             gtk::Label {
                                 add_css_class: "label-medium",
-                                set_label: "Tag Apps",
+                                set_label: "Tags",
                                 set_halign: gtk::Align::Start,
                                 set_hexpand: true,
                             },
@@ -1311,7 +1311,7 @@ impl Component for SettingsWindowModel {
         widgets.stack.add_titled(
             model.summon_settings_controller.widget(),
             Some("summon"),
-            "Tag Apps",
+            "Tags",
         );
 
         widgets.stack.add_titled(
@@ -2263,7 +2263,7 @@ fn keywords_for(label: &str) -> &'static str {
         "fonts" => "font typeface family size weight",
         "keybinds" => "keybind keybinding shortcut hotkey bind keyboard binding cheatsheet",
         "summon" => {
-            "tag apps summon bring here mango-here app hotkey per-tag launch app-id workspace app"
+            "tags tag apps summon bring here mango-here app hotkey per-tag launch app-id workspace move window to tag toggletag tag key"
         }
         "input" => "keyboard mouse touchpad layout xkb repeat sensitivity natural scroll cursor",
         "animations" => "animation motion transition speed easing",
