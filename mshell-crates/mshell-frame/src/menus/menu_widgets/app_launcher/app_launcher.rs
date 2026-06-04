@@ -875,11 +875,6 @@ impl Component for AppLauncherModel {
                 self.broadcast_selection();
             }
             AppLauncherInput::ParentRevealChanged(revealed) => {
-                tracing::info!(
-                    revealed,
-                    was_revealed = self.is_revealed,
-                    "app_launcher: ParentRevealChanged"
-                );
                 if revealed && !self.is_revealed {
                     // NB: keyboard mode is owned centrally by the frame's
                     // `sync_keyboard_mode` (Exclusive iff a menu is genuinely

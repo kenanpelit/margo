@@ -333,7 +333,6 @@ impl Component for SessionMenuWidgetModel {
                 }
             }
             SessionMenuWidgetInput::ParentRevealChanged(revealed) => {
-                tracing::info!(revealed, "session: ParentRevealChanged");
                 if revealed {
                     // A fresh open — drop any stale countdown.
                     self.generation += 1;

@@ -114,6 +114,13 @@ pub(crate) struct BarModel {
     /// (or another leave) bumps it so a stale timer no-ops instead of
     /// hiding the bar out from under the pointer.
     hide_gen: u64,
+    /// Last non-zero measured natural height of the bar content. Cached
+    /// so a hide→show toggle can reserve the right exclusive zone
+    /// immediately, without waiting for the Revealer slide to re-measure.
+    full_height: i32,
+    /// Last value emitted via `BarOutput::ReserveHeight`, to dedupe
+    /// redundant emits (init `-1` so the first real value always sends).
+    last_reserved: i32,
     _effects: EffectScope,
 }
 
@@ -147,6 +154,17 @@ pub(crate) enum BarInput {
 
 #[derive(Debug)]
 pub(crate) enum BarOutput {
+    /// The bar's *reserved* height changed: the natural content height
+    /// when effectively visible, or 0 when hidden. The frame forwards
+    /// this to its FrameSpacer so the layer-shell exclusive zone jumps
+    /// straight to the final value on a reveal toggle — instead of
+    /// being driven by the Revealer's per-frame `resized` stream, which
+    /// re-tiled the compositor 60×/s and left window borders lagging
+    /// the slide ("tearing"). Emitted only on state changes (reveal
+    /// toggle, hover, content/min-height change), never per animation
+    /// frame, so the compositor runs one smooth resize animation that
+    /// matches the bar slide.
+    ReserveHeight(i32),
     ClockClicked,
     CatwalkClicked,
     DashboardClicked,
@@ -236,6 +254,11 @@ impl Component for BarModel {
                 #[watch]
                 set_reveal_child: model.enabled && !model.is_widgetless() && (model.revealed || model.hovered),
                 set_transition_type: transition_type,
+                // Match margo's window move-animation (`animation_duration_move`,
+                // default 500 ms) so the bar slide and the compositor's
+                // window-resize animation run on the same clock — keeping the
+                // window edge glued to the bar instead of tearing apart.
+                set_transition_duration: 500,
 
                 #[name = "bar_center"]
                 gtk::CenterBox {
@@ -496,6 +519,8 @@ impl Component for BarModel {
             hovered: false,
             auto_hide_delay_ms,
             hide_gen: 0,
+            full_height: 0,
+            last_reserved: -1,
             _effects: effects,
         };
 
@@ -679,7 +704,24 @@ impl Component for BarModel {
                 }
             }
         }
-        self.update_view(widgets, sender);
+        self.update_view(widgets, sender.clone());
+
+        // Reserve exactly the bar's natural content height when it is
+        // effectively visible, else 0 — and tell the frame so its
+        // FrameSpacer can jump the layer-shell exclusive zone straight to
+        // the target. Measured off `bar_center` (the Revealer's child),
+        // whose natural height is independent of the slide animation, so
+        // this fires only on real state changes — never per slide frame.
+        let visible = self.enabled && !self.is_widgetless() && (self.revealed || self.hovered);
+        let natural = widgets.bar_center.measure(gtk::Orientation::Vertical, -1).1;
+        if natural > 0 {
+            self.full_height = natural;
+        }
+        let reserve = if visible { self.full_height } else { 0 };
+        if reserve != self.last_reserved {
+            self.last_reserved = reserve;
+            let _ = sender.output(BarOutput::ReserveHeight(reserve));
+        }
     }
 }
 

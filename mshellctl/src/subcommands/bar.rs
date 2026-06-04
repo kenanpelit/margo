@@ -7,23 +7,22 @@ pub enum BarCommands {
     Top,
     /// Toggle the bottom bar
     Bottom,
-    /// Toggle the left bar
-    Left,
-    /// Toggle the right bar
-    Right,
-    /// Toggle all bars
+    /// Toggle every bar (top + bottom)
+    #[command(visible_alias = "toggle")]
     ToggleAll {
         /// Exclude bars that are hidden by default
         #[arg(short = 'x', long = "exclude")]
         exclude_hidden_by_default: bool,
     },
-    /// Reveal all bars
+    /// Reveal every bar (top + bottom)
+    #[command(visible_aliases = ["show", "show-all", "reveal"])]
     RevealAll {
         /// Exclude bars that are hidden by default
         #[arg(short = 'x', long = "exclude")]
         exclude_hidden_by_default: bool,
     },
-    /// Hide all bars
+    /// Hide every bar (top + bottom)
+    #[command(visible_alias = "hide")]
     HideAll {
         /// Exclude bars that are hidden by default
         #[arg(short = 'x', long = "exclude")]
@@ -38,12 +37,6 @@ pub async fn execute(command: BarCommands) -> anyhow::Result<()> {
         }
         BarCommands::Bottom => {
             bus_command("BarToggleBottom").await?;
-        }
-        BarCommands::Left => {
-            bus_command("BarToggleLeft").await?;
-        }
-        BarCommands::Right => {
-            bus_command("BarToggleRight").await?;
         }
         BarCommands::ToggleAll {
             exclude_hidden_by_default,

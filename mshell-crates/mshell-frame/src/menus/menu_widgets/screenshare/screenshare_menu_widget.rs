@@ -163,11 +163,6 @@ impl Component for ScreenshareMenuWidgetModel {
     ) {
         match message {
             ScreenshareMenuWidgetInput::ParentRevealChanged(revealed) => {
-                tracing::info!(
-                    revealed,
-                    was_revealed = self.is_revealed,
-                    "screenshare: ParentRevealChanged"
-                );
                 // Keyboard mode is owned centrally by the frame's
                 // `sync_keyboard_mode` (Exclusive iff a menu is genuinely
                 // revealed). Do NOT flip it here: `ParentRevealChanged`

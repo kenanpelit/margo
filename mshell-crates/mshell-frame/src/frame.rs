@@ -179,6 +179,15 @@ pub enum FrameInput {
     SyncKeyboardMode,
     /// Forward a Hidden Bar IPC verb to both bars' HiddenBar widgets.
     HiddenBar(mshell_common::hidden_bar::HiddenBarVerb),
+    /// A bar reported its target reserved height (`BarOutput::ReserveHeight`).
+    /// Routed to that bar's FrameSpacer so the layer-shell exclusive zone
+    /// jumps to the final value at toggle time (one smooth compositor
+    /// resize), instead of being streamed from the Revealer slide.
+    /// `is_top` picks which spacer; the height is the bar's natural content.
+    SpacerReserve {
+        is_top: bool,
+        height: i32,
+    },
     ToggleClipboardMenu,
     ToggleNotificationMenu,
     ToggleScreenshotMenu,
@@ -716,7 +725,7 @@ impl Component for Frame {
         {
             let sender_map = sender.clone();
             root.connect_map(move |w| {
-                tracing::info!(
+                tracing::debug!(
                     mode = ?w.keyboard_mode(),
                     "frame: surface mapped — re-asserting keyboard mode"
                 );
@@ -1139,6 +1148,16 @@ impl Component for Frame {
             FrameInput::HiddenBar(verb) => {
                 self.top_bar.sender().emit(BarInput::HiddenBar(verb));
                 self.bottom_bar.sender().emit(BarInput::HiddenBar(verb));
+            }
+            FrameInput::SpacerReserve { is_top, height } => {
+                let spacer = if is_top {
+                    &self.top_spacer
+                } else {
+                    &self.bottom_spacer
+                };
+                let _ = spacer
+                    .sender()
+                    .send(FrameSpacerInput::HeightUpdated(height));
             }
             FrameInput::ToggleClipboardMenu => {
                 self.toggle_menu(CLIPBOARD_MENU, widgets);
@@ -1712,18 +1731,11 @@ impl Frame {
     /// every cycle — the user sees the bar entirely disappear when
     /// clicking widgets in quick succession.
     fn sync_keyboard_mode(&self, root: &<Self as Component>::Root) {
-        let any_revealed = self.any_menu_revealed();
-        let desired = if any_revealed {
+        let desired = if self.any_menu_revealed() {
             gtk4_layer_shell::KeyboardMode::Exclusive
         } else {
             gtk4_layer_shell::KeyboardMode::None
         };
-        tracing::info!(
-            ?desired,
-            any_revealed,
-            current = ?root.keyboard_mode(),
-            "frame: sync_keyboard_mode (scheduling)"
-        );
 
         // Cancel any pending switch and replace it with the new one.
         if let Some(id) = self.pending_kbd_mode_timeout.borrow_mut().take() {
@@ -1744,7 +1756,7 @@ impl Frame {
                     return;
                 };
                 root.set_keyboard_mode(mode);
-                tracing::info!(?mode, "frame: sync_keyboard_mode (applied)");
+                tracing::debug!(?mode, "frame: sync_keyboard_mode (applied)");
             });
         *self.pending_kbd_mode_timeout.borrow_mut() = Some(id);
     }
@@ -1896,13 +1908,6 @@ impl Frame {
             }
         }
 
-        tracing::info!(
-            menu = name,
-            now_visible,
-            any_revealed = self.any_menu_revealed(),
-            "frame: toggle_menu"
-        );
-
         self.clock_menu
             .sender()
             .send(MenuInput::RevealChanged(name == CLOCK_MENU && now_visible))
@@ -1993,25 +1998,28 @@ impl Frame {
     // Can't use sender for this.  Must queue redraw in the callback.  Otherwise, there is a slight
     // delay and the frame isn't draw immediately.
     fn attach_resize_listeners(&self, widgets: &FrameWidgets) {
+        // NB: the spacer's reserved height (layer-shell exclusive zone) is
+        // NOT driven from this `resized` stream any more — the Revealer
+        // fires it 60×/s during a bar slide, which re-tiled the compositor
+        // every frame and tore window borders off the slide. The spacer is
+        // now driven by `BarOutput::ReserveHeight` (→ `FrameInput::SpacerReserve`),
+        // which jumps straight to the target once. This listener only keeps
+        // the drawn frame-background thickness tracking the visible bar.
         let frame_widget = widgets.frame_draw_widget.clone();
-        let top_sender = self.top_spacer.sender().clone();
         widgets
             .top_bar_container
             .connect_local("resized", false, move |values| {
                 let height = values[2].get::<i32>().expect("height i32");
                 frame_widget.update_style(|s| s.top_thickness = height as f64);
-                let _ = top_sender.send(FrameSpacerInput::HeightUpdated(height));
                 None
             });
 
         let frame_widget = widgets.frame_draw_widget.clone();
-        let bottom_sender = self.bottom_spacer.sender().clone();
         widgets
             .bottom_bar_container
             .connect_local("resized", false, move |values| {
                 let height = values[2].get::<i32>().expect("height i32");
                 frame_widget.update_style(|s| s.bottom_thickness = height as f64);
-                let _ = bottom_sender.send(FrameSpacerInput::HeightUpdated(height));
                 None
             });
 
@@ -2561,9 +2569,13 @@ impl Frame {
     }
 
     fn build_bar(sender: &ComponentSender<Self>, bar_type: BarType) -> Controller<BarModel> {
-        BarModel::builder()
-            .launch(BarInit { bar_type })
-            .forward(sender.input_sender(), |msg| match msg {
+        BarModel::builder().launch(BarInit { bar_type }).forward(
+            sender.input_sender(),
+            move |msg| match msg {
+                BarOutput::ReserveHeight(h) => FrameInput::SpacerReserve {
+                    is_top: matches!(bar_type, BarType::Top),
+                    height: h,
+                },
                 BarOutput::ClockClicked => FrameInput::ToggleClockMenu,
                 BarOutput::CatwalkClicked => FrameInput::ToggleCpuDashboardMenu,
                 BarOutput::DashboardClicked => FrameInput::ToggleDashboardMenu,
@@ -2619,7 +2631,8 @@ impl Frame {
                 BarOutput::MediaPlayerClicked => FrameInput::ToggleMediaPlayerMenu,
                 BarOutput::MargoLayoutClicked => FrameInput::ToggleMargoLayoutMenu,
                 BarOutput::CloseMenu => FrameInput::CloseMenus,
-            })
+            },
+        )
     }
 
     fn build_menu(sender: &ComponentSender<Self>, menu_type: MenuType) -> Controller<MenuModel> {

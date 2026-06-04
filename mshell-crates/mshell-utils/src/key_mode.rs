@@ -24,10 +24,8 @@ pub fn wire_entry_focus(entry: &gtk::Entry) {
                 // `sync_keyboard_mode`, so this only ever needs to act for a
                 // mapped entry.
                 if !entry_clone.is_mapped() {
-                    tracing::info!("key_mode: entry focus ENTER ignored (entry not mapped)");
                     return;
                 }
-                tracing::info!("key_mode: entry focus ENTER -> Exclusive");
                 window_clone.set_keyboard_mode(gtk4_layer_shell::KeyboardMode::Exclusive);
             });
 
