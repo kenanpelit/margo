@@ -7,6 +7,60 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.9.8] – 2026-06-04
+
+A shell-polish release: a walker-class app launcher, a much richer
+clipboard (CLI + smart typing), notification timeout bars, and Control
+Center additions — plus a second-generation config parser and an
+expanded setup wizard.
+
+### Added
+
+- **App launcher preview pane.** `mshellctl menu app-launcher` gains a
+  detail pane beside the results (text / monospace / colour swatch),
+  per-provider rich rows + type classes, and comfortable density.
+  Settings → Launcher → Appearance toggles cover the preview pane,
+  compact rows, and large app icons.
+- **`mshellctl clipboard` CLI.** Headless access to the clipboard
+  history — `list [--json]`, `copy`, `pin`/`unpin`, `delete`, `clear`,
+  `wipe` — driving the same store as `menu clipboard`.
+- **Smart clipboard content typing.** Entries are classified as URL /
+  colour / code / email (plus text/image), with per-row type icons and
+  a `clipboard.image_max_kb` cap; every knob is exposed under
+  Settings → Widgets → Clipboard.
+- **Notification timeout bar.** Popup toasts show a shrinking bar
+  counting down their on-screen time, paused while hovered. Toggle +
+  duration in Settings → Notifications (`show_timeout_bar`,
+  `popup_duration_ms`).
+- **Control Center: power-profile control + battery chip.** A
+  Saver / Balanced / Performance segmented control above the sliders
+  and a battery pill in the header, both toggleable from
+  Settings → Widgets → Control Center → Sections.
+- **Session widget menu controls.** Settings → Widgets → Session gains
+  the standard menu size & position section.
+- **Second-generation config parser diagnostics.** "Did you mean"
+  suggestions for unknown keys, incomplete-`bind` (E004), modifier /
+  enum validation (E005/W002), and scalar type-checking (W003).
+- **Expanded setup wizard.** Hardware-aware steps + Display / Power /
+  Night-light pages, review-edit, keyboard navigation, and the margo
+  logo on the Welcome step.
+
+### Changed
+
+- Control Center SCSS moved fully onto tokens; volume / mic /
+  brightness sliders gain a sensible scroll step.
+- `~/.config/margo` reorganised toward `~/.cachy/modules/margo`
+  (dotfiles-managed) with `binds.conf` split out of `config.conf`.
+
+### Fixed
+
+- App launcher Ctrl+N/K navigation no longer triggers a display-wide
+  restyle per keystroke; dropped the unsupported GTK4 `gap` / `cursor`
+  CSS that produced theme-parser errors.
+- Honour `$MARGO_SOCKET` in the compositor IPC socket path.
+- Dropped the removed `mshelldash` menu verb from the shell completions
+  and docs.
+
 ## [0.9.6] – 2026-06-03
 
 A Bluetooth + overview release: a native auto-connect engine that
