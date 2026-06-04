@@ -169,6 +169,11 @@ pub struct General {
     /// returns to this cadence once a fetch succeeds.
     #[serde(default = "default_weather_poll_minutes")]
     pub weather_poll_minutes: u32,
+    /// Minutes between retries while a weather fetch is failing (the
+    /// faster fallback cadence); returns to `weather_poll_minutes` once
+    /// a fetch succeeds.
+    #[serde(default = "default_weather_retry_minutes")]
+    pub weather_retry_minutes: u32,
     /// Draw rounded screen corners as a per-monitor overlay.
     /// Layer-shell windows masked at each corner so the
     /// underlying compositor's rectangular monitor edges read
@@ -214,6 +219,10 @@ fn default_weather_poll_minutes() -> u32 {
     15
 }
 
+fn default_weather_retry_minutes() -> u32 {
+    2
+}
+
 impl Default for General {
     fn default() -> Self {
         Self {
@@ -225,6 +234,7 @@ impl Default for General {
             weather_saved_locations: Vec::new(),
             temperature_unit: TemperatureUnitConfig::Metric,
             weather_poll_minutes: default_weather_poll_minutes(),
+            weather_retry_minutes: default_weather_retry_minutes(),
             show_screen_corners: false,
             screen_corner_radius: 24,
             network_osd_enabled: false,

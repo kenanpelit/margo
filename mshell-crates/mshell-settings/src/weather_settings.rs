@@ -27,6 +27,7 @@ pub(crate) struct WeatherSettingsModel {
     weather_unit_types: gtk::StringList,
     active_weather_unit_type: TemperatureUnitConfig,
     poll_minutes: u32,
+    retry_minutes: u32,
     /// Bookmarked locations the weather-menu switcher flips between.
     saved_locations: Vec<SavedLocation>,
     active_query: LocationQueryConfig,
@@ -45,6 +46,7 @@ pub(crate) enum WeatherSettingsInput {
     WeatherUnitTypeSelected(TemperatureUnitConfig),
     WeatherUnitTypeEffect(TemperatureUnitConfig),
     SetPollMinutes(u32),
+    SetRetryMinutes(u32),
     DialogCanceled,
     /// Saved-location bookmarks changed in config — refresh the list.
     SavedLocationsEffect(Vec<SavedLocation>),
@@ -307,6 +309,42 @@ impl Component for WeatherSettingsModel {
                     },
                 },
 
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium-bold",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Retry interval on failure",
+                            set_hexpand: true,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_halign: gtk::Align::Start,
+                            set_label: "Minutes between retries while a fetch keeps failing (faster fallback). Returns to the normal interval once it recovers.",
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                            set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                        },
+                    },
+
+                    #[name = "retry_minutes_spin"]
+                    gtk::SpinButton {
+                        set_valign: gtk::Align::Center,
+                        set_range: (1.0, 60.0),
+                        set_increments: (1.0, 5.0),
+                        set_digits: 0,
+                        set_value: model.retry_minutes as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(WeatherSettingsInput::SetRetryMinutes(s.value() as u32));
+                        },
+                    },
+                },
+
                 // ── Saved locations: bookmark the current location under a
                 //    name; the weather menu's switcher flips between them. ──
                 gtk::Box {
@@ -419,6 +457,11 @@ impl Component for WeatherSettingsModel {
                 .config()
                 .general()
                 .weather_poll_minutes()
+                .get_untracked(),
+            retry_minutes: config_manager()
+                .config()
+                .general()
+                .weather_retry_minutes()
                 .get_untracked(),
             saved_locations: config_manager()
                 .config()
@@ -547,6 +590,13 @@ impl Component for WeatherSettingsModel {
                 self.poll_minutes = mins;
                 config_manager().update_config(move |config| {
                     config.general.weather_poll_minutes = mins;
+                });
+            }
+            WeatherSettingsInput::SetRetryMinutes(mins) => {
+                let mins = mins.clamp(1, 60);
+                self.retry_minutes = mins;
+                config_manager().update_config(move |config| {
+                    config.general.weather_retry_minutes = mins;
                 });
             }
             WeatherSettingsInput::DialogCanceled => {}

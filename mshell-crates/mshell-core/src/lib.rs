@@ -312,26 +312,32 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     // without touching the main-thread reactive store.
     {
         use std::sync::atomic::{AtomicU64, Ordering};
-        let configured_mins = std::sync::Arc::new(AtomicU64::new(
+        let cfg_general = || {
             mshell_config::config_manager::config_manager()
                 .config()
                 .general()
-                .weather_poll_minutes()
-                .get_untracked()
-                .max(1) as u64,
+        };
+        let configured_mins = std::sync::Arc::new(AtomicU64::new(
+            cfg_general().weather_poll_minutes().get_untracked().max(1) as u64,
+        ));
+        let retry_mins = std::sync::Arc::new(AtomicU64::new(
+            cfg_general().weather_retry_minutes().get_untracked().max(1) as u64,
         ));
 
-        // Live config updates (main-thread Effect): store + apply.
+        // Live config updates (main-thread Effect): store both cadences +
+        // apply the normal one immediately (the retry one only takes effect
+        // on the next failure).
         let cm_mins = configured_mins.clone();
+        let cm_retry = retry_mins.clone();
         let initialized = Cell::new(false);
         Effect::new(move |_| {
-            let mins = mshell_config::config_manager::config_manager()
-                .config()
-                .general()
-                .weather_poll_minutes()
-                .get()
-                .max(1) as u64;
+            // The StoreField accessors consume the `general()` subfield, so
+            // re-walk it per field.
+            let cm = mshell_config::config_manager::config_manager();
+            let mins = cm.config().general().weather_poll_minutes().get().max(1) as u64;
+            let retry = cm.config().general().weather_retry_minutes().get().max(1) as u64;
             cm_mins.store(mins, Ordering::Relaxed);
+            cm_retry.store(retry, Ordering::Relaxed);
             if !initialized.get() {
                 initialized.set(true);
                 return;
@@ -339,17 +345,17 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             weather_service().set_poll_interval(std::time::Duration::from_secs(mins * 60));
         });
 
-        // Fast-retry: on a failed fetch poll every 2 min until it recovers,
-        // then snap back to the configured cadence.
+        // Fast-retry: on a failed fetch poll at the (configurable) retry
+        // cadence until it recovers, then snap back to the normal cadence.
         tokio_rt().spawn(async move {
             use futures::StreamExt;
             let weather = weather_service();
             let mut status = weather.status.watch();
-            const RETRY: std::time::Duration = std::time::Duration::from_secs(120);
             while let Some(st) = status.next().await {
                 match st {
                     wayle_weather::WeatherStatus::Error(_) => {
-                        weather.set_poll_interval(RETRY);
+                        let mins = retry_mins.load(Ordering::Relaxed).max(1);
+                        weather.set_poll_interval(std::time::Duration::from_secs(mins * 60));
                     }
                     wayle_weather::WeatherStatus::Loaded => {
                         let mins = configured_mins.load(Ordering::Relaxed).max(1);
