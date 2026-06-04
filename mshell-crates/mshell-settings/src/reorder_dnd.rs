@@ -125,9 +125,11 @@ pub(crate) fn attach_grip_drag<F>(
     gesture.connect_drag_begin(move |_, sx, sy| {
         pos_begin.add_css_class("dragging");
         if let Some(parent) = pos_begin.parent() {
+            // `translate_coordinates` is deprecated since GTK 4.12; the
+            // replacement is `compute_point` (graphene).
             let yp = grip_w
-                .translate_coordinates(&parent, sx, sy)
-                .map(|(_, y)| y)
+                .compute_point(&parent, &gtk::graphene::Point::new(sx as f32, sy as f32))
+                .map(|p| p.y() as f64)
                 .unwrap_or(sy);
             start_begin.set(yp);
         }
