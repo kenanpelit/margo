@@ -1896,6 +1896,13 @@ impl Frame {
             }
         }
 
+        tracing::info!(
+            menu = name,
+            now_visible,
+            any_revealed = self.any_menu_revealed(),
+            "frame: toggle_menu"
+        );
+
         self.clock_menu
             .sender()
             .send(MenuInput::RevealChanged(name == CLOCK_MENU && now_visible))
