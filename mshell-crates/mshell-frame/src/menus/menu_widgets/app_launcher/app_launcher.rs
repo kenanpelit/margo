@@ -102,6 +102,12 @@ pub(crate) struct AppLauncherModel {
     /// repaint.
     active_category: String,
     is_revealed: bool,
+    /// Detail for the selected result (right preview pane). `None`
+    /// hides the pane so the list fills the width.
+    current_preview: Option<mshell_launcher::LauncherPreview>,
+    /// Per-widget provider that paints the colour swatch's background;
+    /// reloaded with the selected colour in `refresh_preview`.
+    swatch_provider: gtk::CssProvider,
     _effects: EffectScope,
 }
 
@@ -284,22 +290,88 @@ impl Component for AppLauncherModel {
                 set_hexpand: true,
             },
 
-            #[name = "scrolled_window"]
-            ScrolledWindow {
-                set_vscrollbar_policy: gtk::PolicyType::Automatic,
-                set_hscrollbar_policy: gtk::PolicyType::Never,
-                set_propagate_natural_height: true,
-                // Don't let an extra-long row name push the
-                // launcher wider than the parent's allocation —
-                // labels inside each row already ellipsize, so
-                // capping the natural width here is what makes
-                // the cap actually fire.
-                set_propagate_natural_width: false,
-                set_hexpand: true,
+            // Two-zone content: result list (left) + preview pane
+            // (right). The preview hides when the selection yields no
+            // detail, so the list reclaims the full width.
+            gtk::Box {
+                add_css_class: "app-launcher-content",
+                set_orientation: gtk::Orientation::Horizontal,
+                set_vexpand: true,
 
-                #[name = "apps_box"]
-                gtk::Box {
+                #[name = "scrolled_window"]
+                ScrolledWindow {
+                    set_vscrollbar_policy: gtk::PolicyType::Automatic,
+                    set_hscrollbar_policy: gtk::PolicyType::Never,
+                    set_propagate_natural_height: true,
+                    // Don't let an extra-long row name push the
+                    // launcher wider than the parent's allocation —
+                    // labels inside each row already ellipsize, so
+                    // capping the natural width here is what makes
+                    // the cap actually fire.
+                    set_propagate_natural_width: false,
                     set_hexpand: true,
+
+                    #[name = "apps_box"]
+                    gtk::Box {
+                        set_hexpand: true,
+                    },
+                },
+
+                gtk::Box {
+                    add_css_class: "app-launcher-preview",
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 6,
+                    set_width_request: 220,
+                    #[watch]
+                    set_visible: model.current_preview.is_some(),
+
+                    gtk::Label {
+                        add_css_class: "app-launcher-preview-title",
+                        set_halign: gtk::Align::Start,
+                        set_xalign: 0.0,
+                        set_wrap: true,
+                        #[watch]
+                        set_label: model
+                            .current_preview
+                            .as_ref()
+                            .map(|p| p.title.as_str())
+                            .unwrap_or(""),
+                    },
+
+                    #[name = "preview_swatch"]
+                    gtk::Box {
+                        add_css_class: "app-launcher-preview-swatch",
+                        set_height_request: 44,
+                        #[watch]
+                        set_visible: model
+                            .current_preview
+                            .as_ref()
+                            .map(|p| matches!(p.kind, mshell_launcher::PreviewKind::Color))
+                            .unwrap_or(false),
+                    },
+
+                    gtk::Label {
+                        set_halign: gtk::Align::Start,
+                        set_xalign: 0.0,
+                        set_wrap: true,
+                        set_vexpand: true,
+                        set_valign: gtk::Align::Start,
+                        #[watch]
+                        set_css_classes: if matches!(
+                            model.current_preview.as_ref().map(|p| &p.kind),
+                            Some(mshell_launcher::PreviewKind::Mono)
+                        ) {
+                            &["app-launcher-preview-body", "mono"]
+                        } else {
+                            &["app-launcher-preview-body"]
+                        },
+                        #[watch]
+                        set_label: model
+                            .current_preview
+                            .as_ref()
+                            .map(|p| p.body.as_str())
+                            .unwrap_or(""),
+                    },
                 },
             },
 
@@ -607,12 +679,27 @@ impl Component for AppLauncherModel {
             selected_id: None,
             active_category,
             is_revealed: false,
+            current_preview: None,
+            swatch_provider: gtk::CssProvider::new(),
             _effects: effect_scope,
         };
 
         let widgets = view_output!();
         widgets.apps_box.append(model.dynamic_box.widget());
         widgets.root.add_controller(key_controller);
+
+        // The colour-swatch background is painted by a dedicated
+        // CssProvider (reloaded per selection in `refresh_preview`).
+        // Registered display-wide — the `.app-launcher-preview-swatch`
+        // selector scopes it — because the per-widget
+        // `StyleContext::add_provider` is deprecated in GTK4.
+        if let Some(display) = gtk::gdk::Display::default() {
+            gtk::style_context_add_provider_for_display(
+                &display,
+                &model.swatch_provider,
+                gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+            );
+        }
 
         // Initial category strip + binds strip + result render.
         // All three depend on the runtime being constructed so we
@@ -829,6 +916,7 @@ impl AppLauncherModel {
     fn recompute_results(&mut self) {
         self.results = self.runtime.borrow().query(&self.filter);
         self.selected_id = self.results.first().map(|d| d.item.id.clone());
+        self.refresh_preview();
     }
 
     fn push_results_to_dynamic_box(&self) {
@@ -893,6 +981,28 @@ impl AppLauncherModel {
             .unwrap_or(0);
         let target = (current as isize + delta).clamp(0, self.results.len() as isize - 1) as usize;
         self.selected_id = Some(self.results[target].item.id.clone());
+        self.refresh_preview();
+    }
+
+    /// The currently highlighted result, if any.
+    fn selected_display_item(&self) -> Option<&DisplayItem> {
+        let id = self.selected_id.as_ref()?;
+        self.results.iter().find(|d| &d.item.id == id)
+    }
+
+    /// Recompute the preview pane for the current selection. Asks the
+    /// owning provider via the runtime; paints the colour swatch when
+    /// the preview is a `Color`.
+    fn refresh_preview(&mut self) {
+        self.current_preview = self
+            .selected_display_item()
+            .and_then(|d| self.runtime.borrow().preview_for(&d.item));
+        let swatch = self.current_preview.as_ref().and_then(|p| p.swatch.clone());
+        let css = match swatch {
+            Some(hex) => format!(".app-launcher-preview-swatch {{ background-color: {hex}; }}"),
+            None => String::new(),
+        };
+        self.swatch_provider.load_from_string(&css);
     }
 
     fn activate_id(&mut self, id: &str, alt: bool) {

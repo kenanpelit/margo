@@ -80,6 +80,24 @@ impl Provider for ClipboardProvider {
         "Clipboard"
     }
 
+    /// Colour entries paint a swatch; everything else previews the raw
+    /// payload monospace.
+    fn preview(&self, item: &LauncherItem) -> Option<mshell_launcher::LauncherPreview> {
+        let text = item.name.clone();
+        let hex = text.trim();
+        let is_hex = (hex.len() == 7 || hex.len() == 4)
+            && hex.starts_with('#')
+            && hex[1..].chars().all(|c| c.is_ascii_hexdigit());
+        if is_hex {
+            Some(mshell_launcher::LauncherPreview::color(
+                hex.to_string(),
+                format!("{hex} — Enter to copy"),
+            ))
+        } else {
+            Some(mshell_launcher::LauncherPreview::mono("Clipboard", text))
+        }
+    }
+
     fn category(&self) -> &str {
         "Insert"
     }

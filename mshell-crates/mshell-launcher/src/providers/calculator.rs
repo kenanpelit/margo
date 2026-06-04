@@ -167,6 +167,12 @@ impl Provider for CalculatorProvider {
             }),
         }]
     }
+
+    /// Show the result large + monospace in the preview pane. The
+    /// result lives in `name`; `description` is the copy hint.
+    fn preview(&self, item: &LauncherItem) -> Option<crate::LauncherPreview> {
+        Some(crate::LauncherPreview::mono("Result", item.name.clone()))
+    }
 }
 
 /// Pipe `text` to `wl-copy`. Failures are logged at warn level;

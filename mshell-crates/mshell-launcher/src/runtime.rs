@@ -174,6 +174,15 @@ impl LauncherRuntime {
             .unwrap_or(false)
     }
 
+    /// Preview for `item`, asked of the provider that produced it.
+    /// Drives the launcher's side preview pane.
+    pub fn preview_for(&self, item: &LauncherItem) -> Option<crate::LauncherPreview> {
+        self.providers
+            .iter()
+            .find(|p| p.name() == item.provider_name)
+            .and_then(|p| p.preview(item))
+    }
+
     /// Run the matching provider's `delete_item` on the given item
     /// *and* drop the corresponding frecency / pin entries so the
     /// next browse-mode pass treats the item as if the user had

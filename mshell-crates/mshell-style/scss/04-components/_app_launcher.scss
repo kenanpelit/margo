@@ -208,15 +208,11 @@
 .app-launcher-item {
   background-color: transparent;
   border-radius: var(--radius-sm);
-  // Tightened vertical padding (was 8px → 4px → 2px → 1px).
-  // Original value read as a blank line above + below each row
-  // (every app filled four "lines" of the panel: blank / name /
-  // description / blank). 1px keeps the rows visually distinct
-  // via the 1px outer margin below while collapsing the gap to
-  // the minimum the panel can show. (Density: launcher = medium /
-  // tight per DESIGN.md — many results must stay visible.)
-  padding: 1px var(--space-3);
-  margin: 1px 0;
+  // Comfortable density (DESIGN.md §1 density = medium): readable
+  // rows, not the old one-line cramping, still tight enough to show
+  // many results at once.
+  padding: var(--space-2) var(--space-3);
+  margin: 2px 0;
   transition: background-color var(--motion-fast) var(--ease-standard),
               color var(--motion-fast) var(--ease-standard),
               box-shadow var(--motion-medium) var(--ease-standard);
@@ -225,14 +221,36 @@
     -gtk-icon-size: var(--icon-md);
   }
 
+  // App / window rows lead with a larger icon so the list scans
+  // icon-first.
+  &.row-apps image,
+  &.row-windows image {
+    -gtk-icon-size: var(--icon-lg);
+  }
+
   // Title vs subtitle hierarchy (DESIGN.md §1 Fonts): SemiBold name,
-  // regular dim description.
-  .label-medium-bold {
+  // regular dim description. Both the legacy + the new per-row hooks
+  // are styled so existing rows and variant rows match.
+  .label-medium-bold,
+  .app-launcher-item-title {
     font-weight: 600;
   }
-  .label-small {
+  .label-small,
+  .app-launcher-item-sub {
     color: var(--on-surface-variant);
     opacity: 0.7;
+  }
+
+  // Calculator: result large + monospace (walker-style), expression dim.
+  &.row-calculator {
+    .app-launcher-item-title {
+      font-size: var(--font-xl);
+      font-family: monospace;
+      font-feature-settings: "tnum";
+    }
+    .app-launcher-item-sub {
+      font-family: monospace;
+    }
   }
 
   // Hover = primary state-layer wash, not a solid surface fill.
@@ -387,4 +405,50 @@
 .app-launcher-check check {
   min-width: 14px;
   min-height: 14px;
+}
+
+// ── Two-zone content + preview pane ─────────────────────────────
+//
+// Result list (left) sits beside a detail/preview pane (right). The
+// pane only shows when the selected result has a preview; otherwise
+// it's hidden and the list reclaims the full width (DESIGN.md §0:
+// no empty chrome; §13.4 responsiveness).
+.app-launcher-content {
+  gap: var(--space-3);
+}
+
+// Preview pane — same inset "well" language as the result list
+// card so the two zones read as siblings on one surface.
+.app-launcher-preview {
+  background-color: var(--surface-container-lowest);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.22);
+
+  .app-launcher-preview-title {
+    font-size: var(--font-md);
+    font-weight: 600;
+    color: var(--on-surface);
+  }
+
+  .app-launcher-preview-body {
+    color: var(--on-surface-variant);
+    font-size: var(--font-sm);
+
+    // Calc result / file path / code → monospace + tabular figures.
+    &.mono {
+      font-family: monospace;
+      font-feature-settings: "tnum";
+      font-size: var(--font-lg);
+      color: var(--on-surface);
+    }
+  }
+
+  // Colour swatch — its background is painted at runtime by a
+  // per-selection CssProvider (see refresh_preview); here we only
+  // give it shape + a faint inset edge so light swatches still read.
+  .app-launcher-preview-swatch {
+    border-radius: var(--radius-sm);
+    box-shadow: inset 0 0 0 1px unquote("color-mix(in srgb, var(--on-surface) 12%, transparent)");
+  }
 }

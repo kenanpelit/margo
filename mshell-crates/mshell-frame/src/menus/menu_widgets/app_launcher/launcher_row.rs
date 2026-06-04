@@ -35,6 +35,9 @@ pub(crate) struct LauncherRowModel {
     /// past the first nine.
     quick_key: String,
     is_selected: bool,
+    /// Per-provider CSS modifier class (`row-apps`, `row-calc`, …) so
+    /// SCSS can specialise the row layout/typography by source.
+    variant: String,
 }
 
 #[derive(Debug)]
@@ -80,10 +83,12 @@ impl Component for LauncherRowModel {
         #[name = "button"]
         gtk::Button {
             #[watch]
-            set_css_classes: if model.is_selected {
-                &["ok-button-surface", "app-launcher-item", "selected"]
-            } else {
-                &["ok-button-surface", "app-launcher-item"]
+            set_css_classes: &{
+                let mut v = vec!["ok-button-surface", "app-launcher-item", model.variant.as_str()];
+                if model.is_selected {
+                    v.push("selected");
+                }
+                v
             },
             set_vexpand: false,
             set_hexpand: true,
@@ -153,6 +158,7 @@ impl Component for LauncherRowModel {
 
                     gtk::Label {
                         add_css_class: "label-medium-bold",
+                        add_css_class: "app-launcher-item-title",
                         set_label: &model.item.name,
                         set_halign: gtk::Align::Start,
                         set_ellipsize: pango::EllipsizeMode::End,
@@ -160,6 +166,7 @@ impl Component for LauncherRowModel {
 
                     gtk::Label {
                         add_css_class: "label-small",
+                        add_css_class: "app-launcher-item-sub",
                         set_label: &model.item.description,
                         set_visible: !model.item.description.is_empty(),
                         set_halign: gtk::Align::Start,
@@ -208,12 +215,21 @@ impl Component for LauncherRowModel {
         // model so the gesture closure can check it without a
         // second clone.
         let has_usage_key = item.usage_key.is_some();
+        // Per-provider styling hook: `.row-apps`, `.row-calc`, … —
+        // lowercased + sanitised so the class is a valid CSS ident.
+        let variant = format!(
+            "row-{}",
+            item.provider_name
+                .to_ascii_lowercase()
+                .replace(|c: char| !c.is_ascii_alphanumeric(), "-")
+        );
         let model = LauncherRowModel {
             item,
             pinned,
             hidden,
             quick_key,
             is_selected: false,
+            variant,
         };
 
         let widgets = view_output!();

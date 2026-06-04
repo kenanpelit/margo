@@ -110,4 +110,15 @@ pub trait Provider {
     fn alt_action(&self, _item: &LauncherItem) -> Option<std::rc::Rc<dyn Fn() + 'static>> {
         None
     }
+
+    /// Detail shown in the launcher's preview pane for `item` when it
+    /// is the selection. Default: a plain text preview from the item's
+    /// name + description. Providers override for richer content
+    /// (calc result, clipboard payload, colour swatch).
+    fn preview(&self, item: &LauncherItem) -> Option<crate::LauncherPreview> {
+        Some(crate::LauncherPreview::text(
+            item.name.clone(),
+            item.description.clone(),
+        ))
+    }
 }
