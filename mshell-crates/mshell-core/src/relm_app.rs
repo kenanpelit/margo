@@ -307,7 +307,9 @@ impl Component for Shell {
         // `sync_monitors` build them first). This is the same in-shell
         // layer-shell menu as `mshellctl wizard`; the compositor no
         // longer launches any floating wizard window.
-        if mshell_config::config_utils::list_available_profiles().is_empty() {
+        if mshell_config::config_utils::list_available_profiles().is_empty()
+            && !mshell_config::config_utils::wizard_completed()
+        {
             relm4::gtk::glib::timeout_add_local_once(std::time::Duration::from_secs(2), || {
                 mshell_settings::open_wizard();
             });

@@ -40,6 +40,21 @@ pub(crate) fn write_active_profile_to_cache(name: Option<&str>) {
     }
 }
 
+/// True once the setup wizard has applied at least once (the sentinel
+/// file exists). Used to gate first-launch auto-open.
+pub fn wizard_completed() -> bool {
+    crate::paths::wizard_sentinel_path().exists()
+}
+
+/// Mark the setup wizard as completed so first-launch auto-open stops.
+pub fn mark_wizard_completed() {
+    let p = crate::paths::wizard_sentinel_path();
+    if let Some(parent) = p.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let _ = fs::write(&p, b"1\n");
+}
+
 pub fn list_available_profiles() -> Vec<String> {
     let dir = profiles_dir();
     let mut out = Vec::new();

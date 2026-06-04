@@ -25,3 +25,12 @@ pub fn active_profile_cache_path() -> PathBuf {
 pub fn profile_path(name: &str) -> PathBuf {
     profiles_dir().join(format!("{name}.yaml"))
 }
+
+/// Marker written once the setup wizard has applied, so first-launch
+/// auto-open stops nagging. Re-opening from Settings / `mshellctl
+/// wizard` always works regardless of this file.
+pub fn wizard_sentinel_path() -> PathBuf {
+    home_dir()
+        .expect("HOME not set")
+        .join(".config/margo/.wizard-done")
+}

@@ -1,12 +1,19 @@
 //! In-shell setup wizard — a layer-shell MENU, never a floating window.
 //!
-//! Hosts the five-step first-run flow (Welcome → Theme → Keyboard →
-//! Wallpaper → Done) inside a `gtk::Stack`, exactly like every other
-//! mshell menu surface. Apply writes the choices LIVE through
-//! `config_manager` (theme / font / clock / wallpaper) plus the xkb lines
-//! in the compositor's `config.conf`, then closes the menu. Reachable
-//! from the Settings → Setup button, `mshellctl wizard`, and the
-//! first-launch auto-open.
+//! A **hardware-aware** first-run flow inside a `gtk::Stack`: the visited
+//! steps are computed at open time from a [`hw_info::HwInfo`] probe (no
+//! Touchpad step on a desktop, no Wi-Fi without a card, no Power without a
+//! battery, no Display on a single monitor — see [`steps::build_steps`]).
+//! Steps: Welcome → Theme → Keyboard → [Touchpad] → [Display] → [Power] →
+//! Night light → [Wi-Fi] → Wallpaper → Bar → Review. The Review step lets
+//! the user jump back to edit any step; Enter advances, Escape cancels.
+//!
+//! Apply writes the choices LIVE through `config_manager` (theme / font /
+//! clock / wallpaper / bar) plus the xkb + touchpad + twilight lines in
+//! the compositor's `config.conf`, runs `mpower`, then drops a
+//! `~/.config/margo/.wizard-done` sentinel so first-launch auto-open stops
+//! nagging. Reachable from the Settings → Setup button, `mshellctl
+//! wizard`, and (once, gated by the sentinel) the first-launch auto-open.
 
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
@@ -24,8 +31,8 @@ use relm4::gtk::{gio, glib};
 use relm4::{ComponentParts, ComponentSender, SimpleComponent, gtk};
 use std::path::PathBuf;
 
-// Welcome, Theme, Keyboard, Touchpad, Network, Wallpaper, Bar, Review.
-const PAGES: usize = 8;
+use super::hw_info::HwInfo;
+use super::steps;
 
 /// Curated theme presets (full catalogue lives in Settings → Theme).
 const THEMES: &[(Themes, &str)] = &[
@@ -86,7 +93,10 @@ fn option_names() -> Vec<&'static str> {
 }
 
 pub(crate) struct WizardMenuWidgetModel {
-    page: usize,
+    /// Ordered applicable steps for THIS machine (hardware-aware).
+    steps: Vec<steps::StepKind>,
+    /// Index into `steps` — the current step.
+    pos: usize,
     /// Chosen starter profile ("default" or "Nova"); seeded + activated live
     /// when picked on the Welcome step.
     base_profile: String,
@@ -112,6 +122,12 @@ pub(crate) struct WizardMenuWidgetModel {
     /// Free-text status line under the Connect button.
     wifi_status: String,
     wallpaper_dir: String,
+    /// Power: chosen mpower mode ("auto" | "balanced" | "power-saver").
+    power_mode: &'static str,
+    /// Twilight (blue-light) enabled.
+    twilight_on: bool,
+    /// Display: free-text status under the Auto-arrange button.
+    display_status: String,
     /// `false` = main bar on top (default), `true` = on the bottom.
     bar_at_bottom: bool,
     /// Set once the final step has written + reloaded. Flips the last
@@ -144,6 +160,11 @@ pub(crate) enum WizardMenuWidgetInput {
     BrowseWallpaper,
     WallpaperPicked(String),
     BarPositionChanged(bool),
+    PowerModeChanged(&'static str),
+    TwilightToggled(bool),
+    AutoArrangeDisplays,
+    DisplayStatus(String),
+    EditStep(steps::StepKind),
     Reboot,
 }
 
@@ -177,7 +198,7 @@ impl SimpleComponent for WizardMenuWidgetModel {
                 add_css_class: "label-small",
                 set_halign: gtk::Align::Start,
                 #[watch]
-                set_label: &format!("Step {} of {}", model.page + 1, PAGES),
+                set_label: &format!("Step {} of {}", model.pos + 1, model.steps.len()),
             },
 
             #[name = "stack"]
@@ -186,7 +207,7 @@ impl SimpleComponent for WizardMenuWidgetModel {
                 set_transition_type: gtk::StackTransitionType::SlideLeftRight,
                 set_transition_duration: 180,
                 #[watch]
-                set_visible_child_name: &model.page.to_string(),
+                set_visible_child_name: model.cur().child_name(),
 
                 // ── 0 Welcome ─────────────────────────────────
                 add_named[Some("0")] = &gtk::Box {
@@ -560,8 +581,85 @@ impl SimpleComponent for WizardMenuWidgetModel {
                     },
                 },
 
-                // ── 7 Review ──────────────────────────────────
+                // ── 7 Display ─────────────────────────────────
                 add_named[Some("7")] = &gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 12,
+                    gtk::Label { add_css_class: "label-large-bold", set_label: "Display", set_halign: gtk::Align::Start },
+                    gtk::Label {
+                        add_css_class: "label-small",
+                        set_label: "Multiple monitors detected. Auto-arrange picks a sensible layout now; fine-tune later in Settings → Display.",
+                        set_halign: gtk::Align::Start, set_xalign: 0.0, set_wrap: true,
+                    },
+                    gtk::Button {
+                        set_css_classes: &["ok-button-surface"],
+                        set_label: "Auto-arrange monitors",
+                        set_halign: gtk::Align::Start,
+                        connect_clicked[sender] => move |_| sender.input(WizardMenuWidgetInput::AutoArrangeDisplays),
+                    },
+                    gtk::Label {
+                        add_css_class: "label-small",
+                        #[watch]
+                        set_label: &model.display_status,
+                        #[watch]
+                        set_visible: !model.display_status.is_empty(),
+                        set_halign: gtk::Align::Start, set_xalign: 0.0, set_wrap: true,
+                    },
+                },
+
+                // ── 8 Power ───────────────────────────────────
+                add_named[Some("8")] = &gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 12,
+                    gtk::Label { add_css_class: "label-large-bold", set_label: "Power", set_halign: gtk::Align::Start },
+                    gtk::Label {
+                        add_css_class: "label-small",
+                        set_label: "Battery detected. Pick how margo manages the power profile.",
+                        set_halign: gtk::Align::Start, set_xalign: 0.0, set_wrap: true,
+                    },
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal, set_spacing: 16,
+                        gtk::Label { add_css_class: "label-medium", set_label: "Profile", set_halign: gtk::Align::Start, set_hexpand: true },
+                        gtk::DropDown {
+                            set_valign: gtk::Align::Center,
+                            set_model: Some(&gtk::StringList::new(&["Automatic", "Balanced", "Power saver"])),
+                            #[watch]
+                            set_selected: match model.power_mode { "balanced" => 1, "power-saver" => 2, _ => 0 },
+                            connect_selected_notify[sender] => move |dd| {
+                                let m = match dd.selected() { 1 => "balanced", 2 => "power-saver", _ => "auto" };
+                                sender.input(WizardMenuWidgetInput::PowerModeChanged(m));
+                            },
+                        },
+                    },
+                },
+
+                // ── 9 Twilight (night light) ──────────────────
+                add_named[Some("9")] = &gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 12,
+                    gtk::Label { add_css_class: "label-large-bold", set_label: "Night light", set_halign: gtk::Align::Start },
+                    gtk::Label {
+                        add_css_class: "label-small",
+                        set_label: "Warm the screen on a sunrise/sunset schedule. Tune temperature + location later in Settings → Display.",
+                        set_halign: gtk::Align::Start, set_xalign: 0.0, set_wrap: true,
+                    },
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Horizontal, set_spacing: 16,
+                        gtk::Label { add_css_class: "label-medium", set_label: "Enable night light", set_halign: gtk::Align::Start, set_hexpand: true },
+                        gtk::Switch {
+                            set_valign: gtk::Align::Center,
+                            #[watch]
+                            set_active: model.twilight_on,
+                            connect_state_set[sender] => move |_, v| {
+                                sender.input(WizardMenuWidgetInput::TwilightToggled(v));
+                                glib::Propagation::Proceed
+                            },
+                        },
+                    },
+                },
+
+                // ── 10 Review ─────────────────────────────────
+                add_named[Some("10")] = &gtk::Box {
                     set_orientation: gtk::Orientation::Vertical,
                     set_spacing: 8,
                     gtk::Label {
@@ -575,6 +673,16 @@ impl SimpleComponent for WizardMenuWidgetModel {
                         #[watch]
                         set_label: &model.review_text(),
                         set_halign: gtk::Align::Start, set_xalign: 0.0, set_wrap: true,
+                    },
+                    #[name = "review_edit_row"]
+                    gtk::FlowBox {
+                        set_selection_mode: gtk::SelectionMode::None,
+                        set_max_children_per_line: 4,
+                        set_column_spacing: 6,
+                        set_row_spacing: 6,
+                        set_margin_top: 6,
+                        #[watch]
+                        set_visible: !model.applied,
                     },
                 },
             },
@@ -596,7 +704,7 @@ impl SimpleComponent for WizardMenuWidgetModel {
                     #[watch]
                     set_visible: !model.applied,
                     #[watch]
-                    set_sensitive: model.page > 0,
+                    set_sensitive: model.pos > 0,
                     connect_clicked[sender] => move |_| sender.input(WizardMenuWidgetInput::Back),
                 },
                 gtk::Button {
@@ -611,7 +719,7 @@ impl SimpleComponent for WizardMenuWidgetModel {
                     #[watch]
                     set_label: if model.applied {
                         "Close"
-                    } else if model.page + 1 == PAGES {
+                    } else if model.is_last() {
                         "Apply & finish"
                     } else {
                         "Next"
@@ -629,7 +737,41 @@ impl SimpleComponent for WizardMenuWidgetModel {
     ) -> ComponentParts<Self> {
         let model = read_live();
         let widgets = view_output!();
-        let _ = root;
+
+        // Review-step "edit" chips: one per applicable step (skip Welcome
+        // + Review themselves). relm4's `view!` can't loop, so build them
+        // here from the model's hardware-aware step list.
+        for kind in &model.steps {
+            use steps::StepKind::{Review, Welcome};
+            if matches!(kind, Welcome | Review) {
+                continue;
+            }
+            let k = *kind;
+            let btn = gtk::Button::builder()
+                .label(format!("✎ {}", k.label()))
+                .css_classes(["ok-button-surface"])
+                .build();
+            let s = sender.clone();
+            btn.connect_clicked(move |_| s.input(WizardMenuWidgetInput::EditStep(k)));
+            widgets.review_edit_row.append(&btn);
+        }
+
+        // Keyboard navigation: Enter advances, Escape cancels.
+        let key = gtk::EventControllerKey::new();
+        let ks = sender.clone();
+        key.connect_key_pressed(move |_, keyval, _, _| match keyval {
+            gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter => {
+                ks.input(WizardMenuWidgetInput::Next);
+                glib::Propagation::Stop
+            }
+            gtk::gdk::Key::Escape => {
+                ks.input(WizardMenuWidgetInput::Cancel);
+                glib::Propagation::Stop
+            }
+            _ => glib::Propagation::Proceed,
+        });
+        root.add_controller(key);
+
         // Warm the Wi-Fi list from NetworkManager's last scan (no rescan)
         // so the dropdown is populated by the time the user reaches the
         // Network step. The Scan button forces a fresh rescan.
@@ -640,12 +782,12 @@ impl SimpleComponent for WizardMenuWidgetModel {
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>) {
         match message {
             WizardMenuWidgetInput::Next => {
-                if self.page + 1 == PAGES {
+                if self.is_last() {
                     if self.applied {
                         // Last page already applied → the primary button
                         // is now "Close". Reset for a clean re-open.
                         let _ = sender.output(WizardMenuWidgetOutput::CloseMenu);
-                        self.page = 0;
+                        self.pos = 0;
                         self.applied = false;
                     } else {
                         // Apply (writes + live `mctl config reload`) and
@@ -654,16 +796,16 @@ impl SimpleComponent for WizardMenuWidgetModel {
                         self.applied = true;
                     }
                 } else {
-                    self.page += 1;
+                    self.pos += 1;
                 }
             }
             WizardMenuWidgetInput::Back => {
                 self.applied = false;
-                self.page = self.page.saturating_sub(1);
+                self.pos = self.pos.saturating_sub(1);
             }
             WizardMenuWidgetInput::Cancel => {
                 let _ = sender.output(WizardMenuWidgetOutput::CloseMenu);
-                self.page = 0;
+                self.pos = 0;
                 self.applied = false;
             }
             WizardMenuWidgetInput::Reboot => run_session_action(SessionAction::Reboot),
@@ -738,6 +880,26 @@ impl SimpleComponent for WizardMenuWidgetModel {
             }
             WizardMenuWidgetInput::WifiStatus(s) => self.wifi_status = s,
             WizardMenuWidgetInput::BarPositionChanged(bottom) => self.bar_at_bottom = bottom,
+            WizardMenuWidgetInput::PowerModeChanged(m) => self.power_mode = m,
+            WizardMenuWidgetInput::TwilightToggled(v) => self.twilight_on = v,
+            WizardMenuWidgetInput::DisplayStatus(s) => self.display_status = s,
+            WizardMenuWidgetInput::EditStep(kind) => self.goto(kind),
+            WizardMenuWidgetInput::AutoArrangeDisplays => {
+                self.display_status = "Arranging…".to_string();
+                let s = sender.input_sender().clone();
+                std::thread::spawn(move || {
+                    let ok = matches!(
+                        std::process::Command::new("mlayout").arg("suggest").status(),
+                        Ok(st) if st.success()
+                    );
+                    let msg = if ok {
+                        "✓ Applied a layout for the current monitors.".to_string()
+                    } else {
+                        "Couldn't auto-arrange — set it up later in Settings → Display.".to_string()
+                    };
+                    let _ = s.send(WizardMenuWidgetInput::DisplayStatus(msg));
+                });
+            }
             WizardMenuWidgetInput::WallpaperPicked(p) => self.wallpaper_dir = p,
             WizardMenuWidgetInput::BrowseWallpaper => {
                 let s = sender.clone();
@@ -760,6 +922,23 @@ impl SimpleComponent for WizardMenuWidgetModel {
 }
 
 impl WizardMenuWidgetModel {
+    fn cur(&self) -> steps::StepKind {
+        self.steps
+            .get(self.pos)
+            .copied()
+            .unwrap_or(steps::StepKind::Review)
+    }
+    fn is_last(&self) -> bool {
+        self.pos + 1 >= self.steps.len()
+    }
+    /// Jump to a step by kind (Review "edit" buttons). No-op if absent.
+    fn goto(&mut self, kind: steps::StepKind) {
+        if let Some(i) = self.steps.iter().position(|s| *s == kind) {
+            self.pos = i;
+            self.applied = false;
+        }
+    }
+
     fn apply(&self) {
         let mode = self.mode;
         let theme = self.theme_scheme;
@@ -809,6 +988,27 @@ impl WizardMenuWidgetModel {
             Ok(()) => reload_margo_config(),
             Err(e) => tracing::warn!(error = %e, "wizard: failed to write compositor config"),
         }
+
+        // Power profile (mpower): "auto" clears any manual override; the
+        // others set + hold it. Best-effort — the daemon may be off.
+        let _ = match self.power_mode {
+            "auto" => std::process::Command::new("mpower").arg("auto").status(),
+            other => std::process::Command::new("mpower")
+                .args(["set", other])
+                .status(),
+        };
+
+        // Twilight (night light): write the on/off to the compositor config
+        // (schedule/geo/manual stay as the user already had them).
+        let tw = [(
+            "twilight",
+            Some(if self.twilight_on { "1" } else { "0" }.to_string()),
+        )];
+        if patch_margo_conf(&tw).is_ok() {
+            reload_margo_config();
+        }
+
+        mshell_config::config_utils::mark_wizard_completed();
     }
 
     /// Multi-line summary shown on the Review step (and the "applied"
@@ -855,6 +1055,8 @@ impl WizardMenuWidgetModel {
         let dwt = on(self.disable_while_typing);
         let wall = &self.wallpaper_dir;
         let bar = if self.bar_at_bottom { "Bottom" } else { "Top" };
+        let power = self.power_mode;
+        let night = if self.twilight_on { "on" } else { "off" };
         let wifi = if !self.wifi_status.is_empty() {
             self.wifi_status.clone()
         } else {
@@ -864,6 +1066,7 @@ impl WizardMenuWidgetModel {
             "Theme: {theme} · {mode} · {font} · {clock}-clock\n\
              Keyboard: {layout} / {variant} / {options}\n\
              Touchpad: tap {tap} · natural-scroll {nat} · dwt {dwt}\n\
+             Power: {power} · Night light: {night}\n\
              Wi-Fi: {wifi}\n\
              Wallpaper: {wall}\n\
              Bar: {bar}"
@@ -960,7 +1163,8 @@ fn read_live() -> WizardMenuWidgetModel {
     // Each `config()` is a cheap ArcStore clone; the field accessors
     // consume `self`, so read each from a fresh handle.
     WizardMenuWidgetModel {
-        page: 0,
+        steps: steps::build_steps(&HwInfo::probe()),
+        pos: 0,
         // Pre-select whichever bundled profile is already active, else the
         // recommended "Nova".
         base_profile: match config_manager().active_profile().get_untracked().as_deref() {
@@ -1000,6 +1204,9 @@ fn read_live() -> WizardMenuWidgetModel {
         wifi_selected: 0,
         wifi_password: String::new(),
         wifi_status: String::new(),
+        power_mode: "auto",
+        twilight_on: read_margo_conf_bool("twilight", false),
+        display_status: String::new(),
         bar_at_bottom: {
             // Bottom is "primary" only if the top bar is empty. The field
             // accessors consume `self`, so take a fresh handle per slot.
