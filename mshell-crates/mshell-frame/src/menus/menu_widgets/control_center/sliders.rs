@@ -120,6 +120,9 @@ impl Component for ControlCenterSlidersModel {
                     add_css_class: "control-center-slider",
                     set_hexpand: true,
                     set_range: (0.0, 1.0),
+                    // Scroll over the slider steps 5% (page 10%) — without an
+                    // explicit increment GtkScale scrolls in tiny default steps.
+                    set_increments: (0.05, 0.1),
                     set_draw_value: false,
                     connect_value_changed[sender] => move |scale| {
                         let v = scale.value();
@@ -177,6 +180,9 @@ impl Component for ControlCenterSlidersModel {
                     add_css_class: "control-center-slider",
                     set_hexpand: true,
                     set_range: (0.0, 1.0),
+                    // Scroll over the slider steps 5% (page 10%) — without an
+                    // explicit increment GtkScale scrolls in tiny default steps.
+                    set_increments: (0.05, 0.1),
                     set_draw_value: false,
                     connect_value_changed[sender] => move |scale| {
                         let v = scale.value();
@@ -234,6 +240,9 @@ impl Component for ControlCenterSlidersModel {
                     add_css_class: "control-center-slider",
                     set_hexpand: true,
                     set_range: (0.0, 1.0),
+                    // Scroll over the slider steps 5% (page 10%) — without an
+                    // explicit increment GtkScale scrolls in tiny default steps.
+                    set_increments: (0.05, 0.1),
                     set_draw_value: false,
                     connect_value_changed[sender] => move |scale| {
                         let v = scale.value();

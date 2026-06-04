@@ -60,8 +60,10 @@
 .control-center-device-name {
   font-size: var(--font-xs);
   color: var(--on-surface-variant);
-  margin-left: 30px;
-  margin-top: -4px;
+  // Indent under the slider, clear of the icon column (icon min-width +
+  // row gap). Tokens, not a hardcoded 30px (DESIGN.md §0).
+  margin-left: calc(var(--space-5) + var(--space-3));
+  margin-top: calc(var(--space-1) * -1);
 }
 
 // Icon in the slider row — dim variant, same tier as audio-dashboard icons.
@@ -114,8 +116,9 @@
     border-radius: var(--radius-pill);
     background-color: var(--primary);
     margin: calc(var(--space-1) * -1);
-    // Shadow so the knob lifts off the track visually.
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+    // Tonal lift so the knob reads off the track — theme-aware token mix,
+    // not a hardcoded rgba black (DESIGN.md §0).
+    box-shadow: 0 1px 3px unquote("color-mix(in srgb, var(--on-surface) 30%, transparent)");
   }
 }
 
