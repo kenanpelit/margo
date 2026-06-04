@@ -405,10 +405,8 @@
 // Result list (left) sits beside a detail/preview pane (right). The
 // pane only shows when the selected result has a preview; otherwise
 // it's hidden and the list reclaims the full width (DESIGN.md §0:
-// no empty chrome; §13.4 responsiveness).
-.app-launcher-content {
-  gap: var(--space-3);
-}
+// no empty chrome; §13.4 responsiveness). The list↔preview gap is set
+// in Rust via `set_spacing` — GTK4 CSS has no `gap` property.
 
 // Preview pane — same inset "well" language as the result list
 // card so the two zones read as siblings on one surface.

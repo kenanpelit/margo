@@ -318,6 +318,7 @@ impl Component for AppLauncherModel {
             gtk::Box {
                 add_css_class: "app-launcher-content",
                 set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 12,
                 set_vexpand: true,
 
                 #[name = "scrolled_window"]
