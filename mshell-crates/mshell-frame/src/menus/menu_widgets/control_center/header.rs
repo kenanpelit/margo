@@ -51,8 +51,17 @@ pub(crate) fn read_uptime_secs() -> u64 {
 /// Snapshot for the header battery chip: `(present, "82%", icon-name)`.
 /// `present == false` hides the chip (desktops without a battery).
 fn read_battery_chip() -> (bool, String, String) {
+    use mshell_config::config_manager::config_manager;
+    use mshell_config::schema::config::{ConfigStoreFields, ControlCenterConfigStoreFields};
+    use reactive_graph::traits::GetUntracked;
+
+    let enabled = config_manager()
+        .config()
+        .control_center()
+        .show_battery_chip()
+        .get_untracked();
     let dev = &battery_service().device;
-    if !dev.is_present.get() {
+    if !enabled || !dev.is_present.get() {
         return (false, String::new(), String::new());
     }
     let percent = dev.percentage.get();

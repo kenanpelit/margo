@@ -256,6 +256,36 @@ fn build_tile_row(tile_id: &str, sender: &ComponentSender<CcTilesSettingsModel>)
 
 // ── Model ─────────────────────────────────────────────────────────────────────
 
+/// Build a labelled on/off row for a non-tile Control Center section.
+/// `on_toggle` is a plain fn pointer (writes config) — no capture needed.
+fn build_section_toggle(
+    title: &str,
+    subtitle: &str,
+    initial: bool,
+    on_toggle: fn(bool),
+) -> gtk::Box {
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let col = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    col.set_hexpand(true);
+    let t = gtk::Label::new(Some(title));
+    t.add_css_class("label-medium");
+    t.set_halign(gtk::Align::Start);
+    let s = gtk::Label::new(Some(subtitle));
+    s.add_css_class("label-small");
+    s.set_halign(gtk::Align::Start);
+    s.set_xalign(0.0);
+    s.set_wrap(true);
+    col.append(&t);
+    col.append(&s);
+    row.append(&col);
+    let sw = gtk::Switch::new();
+    sw.set_valign(gtk::Align::Center);
+    sw.set_active(initial);
+    sw.connect_active_notify(move |sw| on_toggle(sw.is_active()));
+    row.append(&sw);
+    row
+}
+
 pub(crate) struct CcTilesSettingsModel {
     /// Current effective ordered tile ids.
     tile_order: Vec<String>,
@@ -317,6 +347,37 @@ impl Component for CcTilesSettingsModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
+        // ── Sections (non-tile control-center widgets) ──
+        let sections_label = gtk::Label::new(Some("Sections"));
+        sections_label.add_css_class("label-large-bold");
+        sections_label.set_halign(gtk::Align::Start);
+        root.append(&sections_label);
+
+        root.append(&build_section_toggle(
+            "Battery chip",
+            "Show the battery icon + percentage in the header (auto-hidden on desktops).",
+            config_manager()
+                .config()
+                .control_center()
+                .show_battery_chip()
+                .get_untracked(),
+            |v| {
+                config_manager().update_config(move |c| c.control_center.show_battery_chip = v);
+            },
+        ));
+        root.append(&build_section_toggle(
+            "Power profile",
+            "Show the Saver / Balanced / Performance switcher above the sliders.",
+            config_manager()
+                .config()
+                .control_center()
+                .show_power_profile()
+                .get_untracked(),
+            |v| {
+                config_manager().update_config(move |c| c.control_center.show_power_profile = v);
+            },
+        ));
+
         // Section header
         let separator = gtk::Separator::new(gtk::Orientation::Horizontal);
         root.append(&separator);

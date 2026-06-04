@@ -25,6 +25,9 @@ use crate::menus::menu_widgets::control_center::header::{
     ControlCenterHeaderInit, ControlCenterHeaderInput, ControlCenterHeaderModel,
     ControlCenterHeaderOutput,
 };
+use crate::menus::menu_widgets::control_center::power_profile::{
+    ControlCenterPowerProfileInit, ControlCenterPowerProfileInput, ControlCenterPowerProfileModel,
+};
 use crate::menus::menu_widgets::control_center::sliders::{
     ControlCenterSlidersInit, ControlCenterSlidersModel, ControlCenterSlidersOutput,
 };
@@ -56,6 +59,9 @@ use crate::menus::menu_widgets::ufw::ufw_menu_widget::{
 use crate::menus::menu_widgets::valent::valent_menu_widget::{
     ValentMenuWidgetInit, ValentMenuWidgetInput, ValentMenuWidgetModel,
 };
+use mshell_config::config_manager::config_manager;
+use mshell_config::schema::config::{ConfigStoreFields, ControlCenterConfigStoreFields};
+use reactive_graph::traits::GetUntracked;
 use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Controller, gtk};
 
@@ -81,6 +87,8 @@ pub(crate) struct ControlCenterMenuWidgetModel {
     /// Held for widget lifetime; widget is embedded in the stack main page.
     #[allow(dead_code)]
     sliders: Controller<ControlCenterSlidersModel>,
+    /// Power-profile segmented control; refreshed on reveal.
+    power_profile: Controller<ControlCenterPowerProfileModel>,
     tiles: Controller<ControlCenterTilesModel>,
     // Detail page components — held to keep widget alive and for emit calls.
     wifi_detail: Controller<NetworkMenuWidgetModel>,
@@ -179,6 +187,10 @@ impl Component for ControlCenterMenuWidgetModel {
                 }
             });
 
+        let power_profile = ControlCenterPowerProfileModel::builder()
+            .launch(ControlCenterPowerProfileInit {})
+            .detach();
+
         let tiles = ControlCenterTilesModel::builder()
             .launch(ControlCenterTilesInit {})
             .forward(sender.input_sender(), |msg| match msg {
@@ -239,8 +251,15 @@ impl Component for ControlCenterMenuWidgetModel {
         stack.set_transition_duration(250);
         stack.set_hexpand(true);
 
-        // Main page: sliders + grid in a vertical box
+        // Main page: power-profile (optional) + sliders + grid.
         let main_page = gtk::Box::new(gtk::Orientation::Vertical, 16);
+        let show_power_profile = config_manager()
+            .config()
+            .control_center()
+            .show_power_profile()
+            .get_untracked();
+        power_profile.widget().set_visible(show_power_profile);
+        main_page.append(power_profile.widget());
         main_page.append(sliders.widget());
         main_page.append(tiles.widget());
         stack.add_named(&main_page, Some(PAGE_MAIN));
@@ -313,6 +332,7 @@ impl Component for ControlCenterMenuWidgetModel {
         let model = ControlCenterMenuWidgetModel {
             header,
             sliders,
+            power_profile,
             tiles,
             wifi_detail,
             bt_detail,
@@ -349,11 +369,22 @@ impl Component for ControlCenterMenuWidgetModel {
 
             ControlCenterMenuWidgetInput::ParentRevealChanged(revealed) => {
                 if revealed {
-                    // Refresh uptime whenever the menu is opened.
+                    // Refresh uptime + power profile whenever the menu opens.
                     self.header
                         .sender()
                         .send(ControlCenterHeaderInput::RecomputeUptime)
                         .ok();
+                    self.power_profile
+                        .sender()
+                        .send(ControlCenterPowerProfileInput::Refresh)
+                        .ok();
+                    // Honour the Settings toggle live (re-read on each open).
+                    let show_pp = config_manager()
+                        .config()
+                        .control_center()
+                        .show_power_profile()
+                        .get_untracked();
+                    self.power_profile.widget().set_visible(show_pp);
                 }
                 // Forward reveal state to the tile grid for lazy watcher start.
                 self.tiles

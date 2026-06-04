@@ -1980,6 +1980,18 @@ pub struct ControlCenterConfig {
     /// whose id appears here spans both columns and starts on a fresh row.
     #[serde(default)]
     pub wide_tiles: Vec<String>,
+    /// Header battery chip (icon + %). On by default; hidden anyway when
+    /// the machine has no battery.
+    #[serde(default = "default_true")]
+    pub show_battery_chip: bool,
+    /// Power-profile segmented control (Saver / Balanced / Performance)
+    /// above the sliders. On by default.
+    #[serde(default = "default_true")]
+    pub show_power_profile: bool,
+    /// Compact media player (title + transport) above the tile grid,
+    /// shown only while a player is active. On by default.
+    #[serde(default = "default_true")]
+    pub show_media: bool,
 }
 
 fn default_cc_tile_order() -> Vec<String> {
@@ -2024,6 +2036,9 @@ impl Default for ControlCenterConfig {
             podman: true,
             tile_order: default_cc_tile_order(),
             wide_tiles: Vec::new(),
+            show_battery_chip: true,
+            show_power_profile: true,
+            show_media: true,
         }
     }
 }

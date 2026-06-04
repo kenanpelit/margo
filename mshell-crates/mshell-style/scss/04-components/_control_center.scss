@@ -64,6 +64,37 @@
   box-shadow: 0 0 0 1px var(--outline-variant);
 }
 
+// ── Power-profile segmented control ─────────────────────────────────────────────
+// A 3-segment toggle (Saver / Balanced / Performance). Resting segments
+// are flat `--surface-container`; the active one fills with `--primary`
+// (icon + label flip to `--on-primary`) — same active language as tiles.
+.control-center-power-profile {
+  .control-center-pp-btn {
+    all: unset;
+    background: var(--surface-container);
+    border-radius: var(--radius-md);
+    padding: var(--space-2) var(--space-3);
+    color: var(--on-surface-variant);
+    @include state-layer(var(--surface-container));
+    transition: background var(--motion-fast) var(--ease-standard),
+                color var(--motion-fast) var(--ease-standard);
+
+    image {
+      -gtk-icon-size: var(--icon-sm);
+    }
+    label {
+      font-size: var(--font-xs);
+      font-weight: 600;
+    }
+
+    &.active {
+      background: var(--primary);
+      color: var(--on-primary);
+      @include state-layer(var(--primary));
+    }
+  }
+}
+
 // ── Sliders ────────────────────────────────────────────────────────────────────
 // Outer vertical stack (volume row + brightness row).
 .control-center-sliders {
