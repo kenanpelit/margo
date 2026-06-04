@@ -106,7 +106,6 @@ _mshellctl_menu_subcommands() {
         'media-player:toggle the media-player menu'
         'session:toggle the session menu'
         'dashboard:toggle the dashboard menu'
-        'mshelldash:toggle the mshelldash menu'
         'plugin:toggle an installed plugin'\''s panel/menu by key'
     )
     _describe -t menus 'menu' subs

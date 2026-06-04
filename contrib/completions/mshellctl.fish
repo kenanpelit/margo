@@ -9,7 +9,7 @@
 
 set -l top_subs audio bar brightness inspect lock media menu plugin quit screenshot set-wallpaper settings wallpaper wizard help
 
-set -l menu_subs app-launcher clipboard clock notifications screenshot wallpaper ufw bluetooth cpu-dashboard audio-dashboard system-update valent keep-awake twilight weather keybinds alarm-clock control-center ssh-sessions dns podman notes ip network power media-player session dashboard mshelldash plugin
+set -l menu_subs app-launcher clipboard clock notifications screenshot wallpaper ufw bluetooth cpu-dashboard audio-dashboard system-update valent keep-awake twilight weather keybinds alarm-clock control-center ssh-sessions dns podman notes ip network power media-player session dashboard plugin
 
 set -l plugin_subs list reload keybind help
 

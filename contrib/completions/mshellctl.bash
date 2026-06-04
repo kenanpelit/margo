@@ -67,7 +67,7 @@ _mshellctl() {
                 ufw bluetooth cpu-dashboard audio-dashboard system-update valent
                 keep-awake twilight weather keybinds alarm-clock control-center
                 ssh-sessions dns podman notes ip network power media-player
-                session dashboard mshelldash plugin
+                session dashboard plugin
             )
             if [ -z "$sub2" ]; then
                 COMPREPLY=($(compgen -W "${menu_subs[*]}" -- "$cur"))
