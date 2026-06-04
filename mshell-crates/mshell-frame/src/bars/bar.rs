@@ -121,6 +121,10 @@ pub(crate) struct BarModel {
     /// Last value emitted via `BarOutput::ReserveHeight`, to dedupe
     /// redundant emits (init `-1` so the first real value always sends).
     last_reserved: i32,
+    /// Bar show/hide slide duration (ms), live from `bars.slide_duration_ms`.
+    /// Match it to margo's `animation_duration_move` so the slide and the
+    /// window resize stay glued. 0 = instant.
+    slide_duration_ms: u32,
     _effects: EffectScope,
 }
 
@@ -137,6 +141,8 @@ pub(crate) enum BarInput {
     SetEnabled(bool),
     /// `HorizontalBar::auto_hide_delay_ms` changed (live).
     SetAutoHideDelay(i32),
+    /// `bars.slide_duration_ms` changed (live) — bar slide animation length.
+    SetSlideDuration(u32),
     /// Pointer left the bar's hover region — start the auto-hide debounce.
     ScheduleHide,
     /// Fired by the debounce timer; hides only if no re-enter happened
@@ -254,11 +260,12 @@ impl Component for BarModel {
                 #[watch]
                 set_reveal_child: model.enabled && !model.is_widgetless() && (model.revealed || model.hovered),
                 set_transition_type: transition_type,
-                // Match margo's window move-animation (`animation_duration_move`,
-                // default 500 ms) so the bar slide and the compositor's
-                // window-resize animation run on the same clock — keeping the
-                // window edge glued to the bar instead of tearing apart.
-                set_transition_duration: 500,
+                // Match margo's window move-animation (`animation_duration_move`)
+                // so the bar slide and the compositor's window-resize run on the
+                // same clock — keeping the window edge glued to the bar instead
+                // of tearing apart. Live from `bars.slide_duration_ms`.
+                #[watch]
+                set_transition_duration: model.slide_duration_ms,
 
                 #[name = "bar_center"]
                 gtk::CenterBox {
@@ -446,6 +453,14 @@ impl Component for BarModel {
             sender_clone.input(BarInput::SetIslands(islands));
         });
 
+        // Slide-animation duration — global, applied live (the Revealer's
+        // `transition_duration` is `#[watch]`ed on `slide_duration_ms`).
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
+            let ms = config_manager().config().bars().slide_duration_ms().get();
+            sender_clone.input(BarInput::SetSlideDuration(ms));
+        });
+
         let islands = config_manager().config().bars().islands().get_untracked();
 
         // Enabled / auto-hide (reveal_by_default) / auto-hide delay — all
@@ -521,6 +536,11 @@ impl Component for BarModel {
             hide_gen: 0,
             full_height: 0,
             last_reserved: -1,
+            slide_duration_ms: config_manager()
+                .config()
+                .bars()
+                .slide_duration_ms()
+                .get_untracked(),
             _effects: effects,
         };
 
@@ -643,6 +663,9 @@ impl Component for BarModel {
             }
             BarInput::SetAutoHideDelay(ms) => {
                 self.auto_hide_delay_ms = ms;
+            }
+            BarInput::SetSlideDuration(ms) => {
+                self.slide_duration_ms = ms;
             }
             BarInput::ScheduleHide => {
                 if self.revealed {

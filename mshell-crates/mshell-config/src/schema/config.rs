@@ -457,6 +457,17 @@ pub struct Bars {
     /// continuous-strip look). Opt-in; default off.
     #[serde(default)]
     pub islands: bool,
+    /// Bar show/hide slide animation duration in milliseconds. Set this to
+    /// match the compositor's window move-animation (margo
+    /// `animation_duration_move`, default 500) so a bar toggle slides and the
+    /// windows resize on the same clock — otherwise the window edge lags the
+    /// bar. 0 disables the slide (instant).
+    #[serde(default = "default_bar_slide_ms")]
+    pub slide_duration_ms: u32,
+}
+
+fn default_bar_slide_ms() -> u32 {
+    500
 }
 
 impl Default for Bars {
@@ -487,6 +498,7 @@ impl Default for Bars {
             },
             bottom_bar: HorizontalBar::default(),
             islands: false,
+            slide_duration_ms: default_bar_slide_ms(),
         }
     }
 }

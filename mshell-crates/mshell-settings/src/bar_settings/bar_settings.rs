@@ -19,6 +19,8 @@ use relm4::{Component, ComponentController, ComponentParts, ComponentSender, Con
 pub(crate) struct BarSettingsModel {
     enable_frame: bool,
     islands: bool,
+    /// Bar show/hide slide animation duration (ms); `bars.slide_duration_ms`.
+    slide_duration: i32,
     chips: FactoryVecDeque<MonitorChipModel>,
     available_monitors: Vec<String>,
     selected_monitors: Vec<String>,
@@ -71,6 +73,10 @@ pub(crate) enum BarSettingsInput {
     EnableFrameChanged(bool),
     IslandsToggled(bool),
     IslandsChanged(bool),
+    /// SpinButton edited → write `bars.slide_duration_ms`.
+    SlideDurationSet(i32),
+    /// Config changed elsewhere → mirror into the SpinButton.
+    SlideDurationChanged(i32),
     AddMonitor(String),
     RemoveMonitor(DynamicIndex),
     AvailableMonitorsChanged(Vec<String>),
@@ -221,6 +227,33 @@ impl Component for BarSettingsModel {
                             glib::Propagation::Proceed
                         } @islands_handler,
                     }
+                },
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 20,
+
+                    gtk::Label {
+                        add_css_class: "label-small",
+                        set_halign: gtk::Align::Start,
+                        set_label: "Bar slide animation (ms). Match the compositor's window move-animation (margo animation_duration_move) so a bar toggle stays glued to the windows. 0 = instant. Applies immediately.",
+                        set_hexpand: true,
+                        set_xalign: 0.0,
+                        set_wrap: true,
+                        set_natural_wrap_mode: gtk::NaturalWrapMode::None,
+                    },
+
+                    gtk::SpinButton {
+                        set_valign: gtk::Align::Center,
+                        set_range: (0.0, 2000.0),
+                        set_increments: (50.0, 100.0),
+                        #[watch]
+                        #[block_signal(slide_duration_handler)]
+                        set_value: model.slide_duration as f64,
+                        connect_value_changed[sender] => move |s| {
+                            sender.input(BarSettingsInput::SlideDurationSet(s.value() as i32));
+                        } @slide_duration_handler,
+                    },
                 },
 
                 gtk::Box {
@@ -615,6 +648,12 @@ impl Component for BarSettingsModel {
 
         let sender_clone = sender.clone();
         effects.push(move |_| {
+            let ms = config_manager().config().bars().slide_duration_ms().get();
+            sender_clone.input(BarSettingsInput::SlideDurationChanged(ms as i32));
+        });
+
+        let sender_clone = sender.clone();
+        effects.push(move |_| {
             let config = config_manager().config();
             let monitors = config.bars().frame().monitor_filter().get();
             sender_clone.input(BarSettingsInput::SelectedMonitorsChanged(monitors));
@@ -851,6 +890,11 @@ impl Component for BarSettingsModel {
         let model = BarSettingsModel {
             enable_frame: false,
             islands: false,
+            slide_duration: config_manager()
+                .config()
+                .bars()
+                .slide_duration_ms()
+                .get_untracked() as i32,
             chips,
             available_monitors: Vec::new(),
             selected_monitors: Vec::new(),
@@ -953,6 +997,15 @@ impl Component for BarSettingsModel {
             }
             BarSettingsInput::IslandsChanged(enabled) => {
                 self.islands = enabled;
+            }
+            BarSettingsInput::SlideDurationSet(ms) => {
+                let ms = ms.max(0) as u32;
+                config_manager().update_config(|config| {
+                    config.bars.slide_duration_ms = ms;
+                });
+            }
+            BarSettingsInput::SlideDurationChanged(ms) => {
+                self.slide_duration = ms;
             }
             BarSettingsInput::AddMonitor(name) => {
                 if !self.selected_monitors.contains(&name) {
