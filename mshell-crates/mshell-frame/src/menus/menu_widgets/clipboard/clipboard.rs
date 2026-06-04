@@ -81,10 +81,33 @@ impl ClipTab {
     fn matches_cat(self, cat: ClipCategory, pinned: bool) -> bool {
         match self {
             ClipTab::All => true,
-            ClipTab::Text => cat == ClipCategory::Text,
+            // Text tab = the whole text family (plain text + the
+            // refined URL / colour / code / email categories).
+            ClipTab::Text => matches!(
+                cat,
+                ClipCategory::Text
+                    | ClipCategory::Url
+                    | ClipCategory::Color
+                    | ClipCategory::Code
+                    | ClipCategory::Email
+            ),
             ClipTab::Images => cat == ClipCategory::Image,
             ClipTab::Files => cat == ClipCategory::File,
             ClipTab::Favorites => pinned,
+        }
+    }
+
+    /// Symbolic icon name for a content category — drives the per-row
+    /// type glyph.
+    pub(crate) fn category_icon(cat: ClipCategory) -> &'static str {
+        match cat {
+            ClipCategory::Url => "web-browser-symbolic",
+            ClipCategory::Color => "color-select-symbolic",
+            ClipCategory::Code => "text-x-script-symbolic",
+            ClipCategory::Email => "mail-message-symbolic",
+            ClipCategory::Image => "image-x-generic-symbolic",
+            ClipCategory::File => "text-x-generic-symbolic",
+            ClipCategory::Text => "edit-paste-symbolic",
         }
     }
 }
@@ -169,6 +192,7 @@ impl ClipRow {
 /// newly-bound [`ClipRow`].
 struct RowWidgets {
     title: gtk::Label,
+    type_icon: gtk::Image,
     preview_box: gtk::Box,
     pin_button: gtk::Button,
     pin_image: gtk::Image,
@@ -538,11 +562,20 @@ impl Component for ClipboardModel {
             let content = gtk::Box::new(gtk::Orientation::Vertical, 4);
             content.add_css_class("clipboard-item");
 
+            // Header: per-content-type icon + relative-time title.
+            let type_icon = gtk::Image::new();
+            type_icon.add_css_class("clipboard-item-type");
+            type_icon.set_valign(gtk::Align::Center);
+
             let title = gtk::Label::new(None);
             title.add_css_class("clipboard-item-title");
             title.set_hexpand(true);
             title.set_halign(gtk::Align::Start);
-            content.append(&title);
+
+            let header = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+            header.append(&type_icon);
+            header.append(&title);
+            content.append(&header);
 
             let preview_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
             preview_box.set_valign(gtk::Align::Center);
@@ -598,6 +631,7 @@ impl Component for ClipboardModel {
 
             let rw = RowWidgets {
                 title,
+                type_icon,
                 preview_box,
                 pin_button,
                 pin_image,
@@ -618,6 +652,8 @@ impl Component for ClipboardModel {
             let row = bo.borrow::<ClipRow>();
 
             rw.title.set_label(&relative_time(row.timestamp));
+            rw.type_icon
+                .set_icon_name(Some(ClipTab::category_icon(row.category)));
             if row.pinned {
                 rw.pin_button.add_css_class("pinned");
                 rw.pin_image.set_icon_name(Some("starred-symbolic"));
