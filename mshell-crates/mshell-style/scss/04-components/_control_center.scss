@@ -33,6 +33,27 @@
   }
 }
 
+// Battery chip — compact pill (icon + %) sitting before the action
+// quartet. Quiet `--surface-container-high` so it reads as info, not a
+// control; hidden entirely on batteryless machines (Rust set_visible).
+.control-center-battery-chip {
+  background-color: var(--surface-container-high);
+  border-radius: var(--radius-pill);
+  padding: var(--space-1) var(--space-2);
+
+  .control-center-battery-icon {
+    -gtk-icon-size: var(--icon-sm);
+    color: var(--on-surface-variant);
+  }
+
+  .control-center-battery-label {
+    font-size: var(--font-xs);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--on-surface);
+  }
+}
+
 // Avatar circle — 48×48, overflow:hidden set in Rust.
 // Provide only the border-radius and a faint ring so the face-image is
 // clipped neatly.

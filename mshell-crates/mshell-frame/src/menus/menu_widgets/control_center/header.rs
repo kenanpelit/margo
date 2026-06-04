@@ -7,11 +7,14 @@
 //!           up 3h 5m
 //! ```
 
+use mshell_services::{battery_service, line_power_service};
 use mshell_session::session_lock::lock_session;
 use mshell_settings::open_settings;
+use mshell_utils::battery::{get_battery_icon, get_charging_battery_icon};
 use relm4::gtk::prelude::{BoxExt, ButtonExt, OrientableExt, WidgetExt};
 use relm4::{Component, ComponentParts, ComponentSender, gtk};
 use std::path::PathBuf;
+use wayle_battery::types::DeviceState;
 
 // ── Uptime helpers ────────────────────────────────────────────────────────────
 
@@ -43,6 +46,34 @@ pub(crate) fn read_uptime_secs() -> u64 {
         .unwrap_or(0)
 }
 
+// ── Battery chip ──────────────────────────────────────────────────────────────
+
+/// Snapshot for the header battery chip: `(present, "82%", icon-name)`.
+/// `present == false` hides the chip (desktops without a battery).
+fn read_battery_chip() -> (bool, String, String) {
+    let dev = &battery_service().device;
+    if !dev.is_present.get() {
+        return (false, String::new(), String::new());
+    }
+    let percent = dev.percentage.get();
+    let charging = matches!(
+        dev.state.get(),
+        DeviceState::Charging | DeviceState::FullyCharged
+    ) || line_power_service()
+        .map(|s| s.device.online.get())
+        .unwrap_or(false);
+    let icon = if charging {
+        get_charging_battery_icon(percent)
+    } else {
+        get_battery_icon(percent)
+    };
+    (
+        true,
+        format!("{}%", percent.round().clamp(0.0, 100.0) as u8),
+        icon.to_string(),
+    )
+}
+
 // ── Avatar path resolution ────────────────────────────────────────────────────
 
 /// Resolve the avatar for the current user.
@@ -67,6 +98,10 @@ fn resolve_avatar(username: &str) -> Option<PathBuf> {
 pub(crate) struct ControlCenterHeaderModel {
     uptime: String,
     username: String,
+    /// Battery chip state, refreshed on reveal alongside uptime.
+    battery_present: bool,
+    battery_percent: String,
+    battery_icon: String,
     /// Edit-mode toggle state (inert until Task 6).
     pub(crate) edit_mode: bool,
 }
@@ -151,6 +186,27 @@ impl Component for ControlCenterHeaderModel {
                 },
             },
 
+            // ── Battery chip (hidden on batteryless machines) ──
+            gtk::Box {
+                add_css_class: "control-center-battery-chip",
+                set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 4,
+                set_valign: gtk::Align::Center,
+                #[watch]
+                set_visible: model.battery_present,
+
+                gtk::Image {
+                    add_css_class: "control-center-battery-icon",
+                    #[watch]
+                    set_icon_name: Some(model.battery_icon.as_str()),
+                },
+                gtk::Label {
+                    add_css_class: "control-center-battery-label",
+                    #[watch]
+                    set_label: &model.battery_percent,
+                },
+            },
+
             // ── Action buttons ──
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
@@ -214,9 +270,14 @@ impl Component for ControlCenterHeaderModel {
         let username = glib_user_name();
         let uptime = fmt_uptime(read_uptime_secs());
 
+        let (battery_present, battery_percent, battery_icon) = read_battery_chip();
+
         let model = ControlCenterHeaderModel {
             uptime,
             username: username.clone(),
+            battery_present,
+            battery_percent,
+            battery_icon,
             edit_mode: false,
         };
 
@@ -239,6 +300,10 @@ impl Component for ControlCenterHeaderModel {
         match message {
             ControlCenterHeaderInput::RecomputeUptime => {
                 self.uptime = fmt_uptime(read_uptime_secs());
+                let (present, percent, icon) = read_battery_chip();
+                self.battery_present = present;
+                self.battery_percent = percent;
+                self.battery_icon = icon;
             }
             ControlCenterHeaderInput::LockClicked => {
                 // Invoke lock directly — same pattern as the lock quick-action.
