@@ -1232,15 +1232,32 @@ impl Default for Menus {
 
 /// Launcher-wide settings (currently the `>start` script autostart
 /// list). Each entry is keyed by the script's short name.
-#[derive(
-    Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize, Store, Patch, JsonSchema,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Store, Patch, JsonSchema)]
 #[serde(default)]
 pub struct Launcher {
     /// Scripts the user opted into running at shell startup, with a
     /// per-script delay. Names match `ScriptsProvider` short names
     /// (e.g. `start-brave-ai`).
     pub autostart_scripts: Vec<ScriptAutostart>,
+    /// Show the detail/preview pane beside the result list. When off,
+    /// the result list always fills the launcher's full width.
+    pub show_preview: bool,
+    /// Compact rows (tighter padding) instead of the default
+    /// comfortable density — fits more results per screen.
+    pub compact_rows: bool,
+    /// Lead app / window rows with a larger icon.
+    pub large_app_icons: bool,
+}
+
+impl Default for Launcher {
+    fn default() -> Self {
+        Self {
+            autostart_scripts: Vec::new(),
+            show_preview: true,
+            compact_rows: false,
+            large_app_icons: true,
+        }
+    }
 }
 
 /// Valent (KDE Connect) integration settings. `main_device_id` is the

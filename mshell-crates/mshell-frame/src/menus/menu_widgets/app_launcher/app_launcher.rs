@@ -55,7 +55,7 @@ use mshell_common::dynamic_box::generic_widget_controller::{
 use mshell_common::scoped_effects::EffectScope;
 use mshell_config::config_manager::config_manager;
 use mshell_config::schema::config::{
-    ConfigStoreFields, IconsStoreFields, PassStoreFields, ThemeStoreFields,
+    ConfigStoreFields, IconsStoreFields, LauncherStoreFields, PassStoreFields, ThemeStoreFields,
 };
 use mshell_launcher::providers::{
     ArchLinuxPkgsProvider, BluetoothProvider, CalculatorProvider, CommandProvider, EmojiProvider,
@@ -108,6 +108,10 @@ pub(crate) struct AppLauncherModel {
     /// Per-widget provider that paints the colour swatch's background;
     /// reloaded with the selected colour in `refresh_preview`.
     swatch_provider: gtk::CssProvider,
+    /// Settings → Launcher knobs, mirrored live from the config store.
+    show_preview: bool,
+    compact_rows: bool,
+    large_app_icons: bool,
     _effects: EffectScope,
 }
 
@@ -161,6 +165,8 @@ pub(crate) enum AppLauncherInput {
     SetSearchText(String),
     ShowHiddenAppsChanged,
     ThemeChanged,
+    /// Settings → Launcher toggle changed (preview / density / icons).
+    LauncherConfigChanged,
     /// Right-click context menu → Pin/Unpin. Carries the
     /// item's `usage_key` so the runtime can persist the toggle
     /// regardless of which row is currently keyboard-selected.
@@ -190,7 +196,18 @@ impl Component for AppLauncherModel {
         #[root]
         #[name = "root"]
         gtk::Box {
-            add_css_class: "app-launcher-menu-widget",
+            // Base class + Settings-driven modifiers (density / icon size).
+            #[watch]
+            set_css_classes: &{
+                let mut v = vec!["app-launcher-menu-widget"];
+                if model.compact_rows {
+                    v.push("app-launcher-compact");
+                }
+                if model.large_app_icons {
+                    v.push("launcher-large-icons");
+                }
+                v
+            },
             set_orientation: gtk::Orientation::Vertical,
             // Fill the parent menu surface's allocation — the
             // outer width is **owned by the config** (via
@@ -323,7 +340,7 @@ impl Component for AppLauncherModel {
                     set_spacing: 6,
                     set_width_request: 220,
                     #[watch]
-                    set_visible: model.current_preview.is_some(),
+                    set_visible: model.show_preview && model.current_preview.is_some(),
 
                     gtk::Label {
                         add_css_class: "app-launcher-preview-title",
@@ -653,6 +670,16 @@ impl Component for AppLauncherModel {
             sender_clone.input(AppLauncherInput::ThemeChanged);
         });
 
+        // Live-track the Settings → Launcher toggles so changes apply
+        // without reopening the launcher.
+        let sender_clone = sender.clone();
+        effect_scope.push(move |_| {
+            let _ = config_manager().config().launcher().show_preview().get();
+            let _ = config_manager().config().launcher().compact_rows().get();
+            let _ = config_manager().config().launcher().large_app_icons().get();
+            sender_clone.input(AppLauncherInput::LauncherConfigChanged);
+        });
+
         let sender_clone = sender.clone();
         let monitor = gio::AppInfoMonitor::get();
         monitor.connect_changed(move |_| {
@@ -681,6 +708,21 @@ impl Component for AppLauncherModel {
             is_revealed: false,
             current_preview: None,
             swatch_provider: gtk::CssProvider::new(),
+            show_preview: config_manager()
+                .config()
+                .launcher()
+                .show_preview()
+                .get_untracked(),
+            compact_rows: config_manager()
+                .config()
+                .launcher()
+                .compact_rows()
+                .get_untracked(),
+            large_app_icons: config_manager()
+                .config()
+                .launcher()
+                .large_app_icons()
+                .get_untracked(),
             _effects: effect_scope,
         };
 
@@ -878,6 +920,14 @@ impl Component for AppLauncherModel {
             AppLauncherInput::ThemeChanged => {
                 self.push_results_to_dynamic_box();
                 self.broadcast_selection();
+            }
+            AppLauncherInput::LauncherConfigChanged => {
+                let cfg = config_manager();
+                self.show_preview = cfg.config().launcher().show_preview().get_untracked();
+                self.compact_rows = cfg.config().launcher().compact_rows().get_untracked();
+                self.large_app_icons = cfg.config().launcher().large_app_icons().get_untracked();
+                // The `#[watch]` bindings on the root classes + preview
+                // pane re-apply after this update returns.
             }
             AppLauncherInput::TogglePinFromRow(key) => {
                 if !key.is_empty() {

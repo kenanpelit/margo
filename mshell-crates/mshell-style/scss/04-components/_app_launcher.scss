@@ -221,13 +221,6 @@
     -gtk-icon-size: var(--icon-md);
   }
 
-  // App / window rows lead with a larger icon so the list scans
-  // icon-first.
-  &.row-apps image,
-  &.row-windows image {
-    -gtk-icon-size: var(--icon-lg);
-  }
-
   // Title vs subtitle hierarchy (DESIGN.md §1 Fonts): SemiBold name,
   // regular dim description. Both the legacy + the new per-row hooks
   // are styled so existing rows and variant rows match.
@@ -451,4 +444,22 @@
     border-radius: var(--radius-sm);
     box-shadow: inset 0 0 0 1px unquote("color-mix(in srgb, var(--on-surface) 12%, transparent)");
   }
+}
+
+// ── Settings → Launcher toggles ─────────────────────────────────
+//
+// `large_app_icons` (default on): root carries `.launcher-large-icons`
+// → app/window rows lead with a larger icon. `compact_rows`: root
+// carries `.app-launcher-compact` → tighter row padding to fit more
+// results. Both are driven from the config store (see app_launcher.rs).
+.launcher-large-icons {
+  .app-launcher-item.row-apps image,
+  .app-launcher-item.row-windows image {
+    -gtk-icon-size: var(--icon-lg);
+  }
+}
+
+.app-launcher-compact .app-launcher-item {
+  padding: 1px var(--space-3);
+  margin: 1px 0;
 }

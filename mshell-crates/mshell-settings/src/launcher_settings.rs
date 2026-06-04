@@ -120,6 +120,103 @@ impl Component for LauncherSettingsModel {
                     },
                 },
 
+                // Appearance ───────────────────────────────────
+                gtk::Label {
+                    add_css_class: "label-large-bold",
+                    set_label: "Appearance",
+                    set_halign: gtk::Align::Start,
+                },
+
+                gtk::Box {
+                    add_css_class: "settings-row",
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 12,
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium",
+                            set_label: "Preview pane",
+                            set_halign: gtk::Align::Start,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_label: "Show a detail pane beside the results for the selected item.",
+                            set_halign: gtk::Align::Start,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                        },
+                    },
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        set_active: config_manager().config().launcher().show_preview().get_untracked(),
+                        connect_active_notify => move |sw| {
+                            let v = sw.is_active();
+                            config_manager().update_config(move |c| c.launcher.show_preview = v);
+                        },
+                    },
+                },
+
+                gtk::Box {
+                    add_css_class: "settings-row",
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 12,
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium",
+                            set_label: "Compact rows",
+                            set_halign: gtk::Align::Start,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_label: "Tighter row spacing to fit more results on screen.",
+                            set_halign: gtk::Align::Start,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                        },
+                    },
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        set_active: config_manager().config().launcher().compact_rows().get_untracked(),
+                        connect_active_notify => move |sw| {
+                            let v = sw.is_active();
+                            config_manager().update_config(move |c| c.launcher.compact_rows = v);
+                        },
+                    },
+                },
+
+                gtk::Box {
+                    add_css_class: "settings-row",
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 12,
+                    gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_hexpand: true,
+                        gtk::Label {
+                            add_css_class: "label-medium",
+                            set_label: "Large app icons",
+                            set_halign: gtk::Align::Start,
+                        },
+                        gtk::Label {
+                            add_css_class: "label-small",
+                            set_label: "Lead app and window rows with a bigger icon.",
+                            set_halign: gtk::Align::Start,
+                            set_xalign: 0.0,
+                            set_wrap: true,
+                        },
+                    },
+                    gtk::Switch {
+                        set_valign: gtk::Align::Center,
+                        set_active: config_manager().config().launcher().large_app_icons().get_untracked(),
+                        connect_active_notify => move |sw| {
+                            let v = sw.is_active();
+                            config_manager().update_config(move |c| c.launcher.large_app_icons = v);
+                        },
+                    },
+                },
+
                 // Scripts ──────────────────────────────────────
                 gtk::Label {
                     add_css_class: "label-large-bold",
