@@ -7,8 +7,8 @@
 // severity tinting via calm / warn / danger.
 //
 // Card contract (inlined — grass @use modules cannot share @extend
-// across file boundaries, so the same four declarations are repeated
-// verbatim in _mshelldash.scss; see Task 2 report for rationale).
+// across file boundaries, so the four declarations are repeated
+// verbatim wherever the card chrome is needed).
 
 // ── Dash-card contract ─────────────────────────────────────────────
 // Secondary tile — surface-container (mid tier).

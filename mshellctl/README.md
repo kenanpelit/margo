@@ -8,7 +8,7 @@ state, and drive audio / wallpaper / lock — over zbus on the session bus
 
 ```bash
 mshellctl menu dashboard         # open/toggle a menu (dashboard, control-center, …)
-mshellctl menu mshelldash media  # open the standalone dashboard on a tab
+mshellctl menu control-center    # open/toggle the control center
 mshellctl audio ...              # volume / mute / device control
 mshellctl wallpaper ...          # rotate / apply wallpaper
 mshellctl lock                   # lock the session
